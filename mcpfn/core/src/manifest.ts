@@ -274,6 +274,11 @@ export function validateManifest(value: unknown): McpFnManifest {
   for (const resource of manifest.resourceTemplates ?? []) {
     assertObject("Every manifest resource template", resource);
     assertName("Every manifest resource template", resource.name);
+    if (typeof resource.uriTemplate !== "string") {
+      throw new McpFnValidationError(
+        `Manifest resource template ${resource.name} has an invalid URI template`,
+      );
+    }
     const unsupportedOperator = unsupportedUriTemplateOperator(resource.uriTemplate);
     if (unsupportedOperator) {
       throw new McpFnValidationError(

@@ -190,6 +190,68 @@ function derivePromptSchemaInventory(
   return inventory;
 }
 
+function intersectStringCandidates(
+  left: Set<string> | undefined,
+  right: Set<string> | undefined,
+): Set<string> | undefined {
+  if (!left) return right;
+  if (!right) return left;
+  return new Set([...left].filter((candidate) => right.has(candidate)));
+}
+
+function finiteStringCandidates(
+  schema: unknown,
+  root: McpFnObjectSchema,
+  references = new Set<string>(),
+): Set<string> | undefined {
+  if (typeof schema === "boolean") return schema ? undefined : new Set();
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return new Set();
+  const value = schema as Record<string, unknown>;
+  let candidates: Set<string> | undefined;
+  if (typeof value.type === "string" && value.type !== "string") return new Set();
+  if (Array.isArray(value.type) && !value.type.includes("string")) return new Set();
+  if (Object.hasOwn(value, "const")) {
+    candidates = typeof value.const === "string" ? new Set([value.const]) : new Set();
+  }
+  if (Array.isArray(value.enum)) {
+    candidates = intersectStringCandidates(
+      candidates,
+      new Set(value.enum.filter((entry): entry is string => typeof entry === "string")),
+    );
+  }
+  if (value.$ref !== undefined) {
+    if (typeof value.$ref !== "string" || references.has(value.$ref)) return new Set();
+    const referenced = resolveLocalSchemaReference(root, value.$ref);
+    if (!referenced) return new Set();
+    candidates = intersectStringCandidates(
+      candidates,
+      finiteStringCandidates(referenced, root, new Set(references).add(value.$ref)),
+    );
+  }
+  if (Array.isArray(value.allOf)) {
+    for (const member of value.allOf) {
+      candidates = intersectStringCandidates(
+        candidates,
+        finiteStringCandidates(member, root, references),
+      );
+    }
+  }
+  for (const keyword of ["anyOf", "oneOf"] as const) {
+    if (!Array.isArray(value[keyword])) continue;
+    let union: Set<string> | undefined = new Set();
+    for (const member of value[keyword]) {
+      const memberCandidates = finiteStringCandidates(member, root, references);
+      if (!memberCandidates) {
+        union = undefined;
+        break;
+      }
+      for (const candidate of memberCandidates) union.add(candidate);
+    }
+    candidates = intersectStringCandidates(candidates, union);
+  }
+  return candidates;
+}
+
 function schemaMayAcceptString(
   schema: unknown,
   root: McpFnObjectSchema,
@@ -198,6 +260,8 @@ function schemaMayAcceptString(
   if (typeof schema === "boolean") return schema;
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) return false;
   const value = schema as Record<string, unknown>;
+  const finiteCandidates = finiteStringCandidates(schema, root, references);
+  if (finiteCandidates?.size === 0) return false;
   if (value.$ref !== undefined) {
     if (typeof value.$ref !== "string" || references.has(value.$ref)) return false;
     const referenced = resolveLocalSchemaReference(root, value.$ref);
@@ -231,7 +295,29 @@ export function assertPromptSchemaSupportsStringValues(
     );
   }
   for (const [name, schemas] of inventory.propertySchemas) {
-    if (schemas.some((propertySchema) => !schemaMayAcceptString(propertySchema, schema))) {
+    const finiteCandidates = finiteStringCandidates({ allOf: schemas }, schema);
+    let hasStringWitness = schemas.every(
+      (propertySchema) => schemaMayAcceptString(propertySchema, schema),
+    );
+    if (hasStringWitness && finiteCandidates) {
+      const candidateSchema = {
+        ...(schema.$defs && typeof schema.$defs === "object" ? { $defs: schema.$defs } : {}),
+        ...(schema.definitions && typeof schema.definitions === "object"
+          ? { definitions: schema.definitions }
+          : {}),
+        allOf: schemas,
+      };
+      let validate: ValidateFunction | undefined;
+      try {
+        validate = new Ajv({ strict: false, allowUnionTypes: true }).compile(candidateSchema);
+      } catch {
+        hasStringWitness = false;
+      }
+      if (validate) {
+        hasStringWitness = [...finiteCandidates].some((candidate) => validate!(candidate));
+      }
+    }
+    if (!hasStringWitness) {
       throw new McpFnValidationError(
         `${label} argument ${name} must accept string values`,
       );
@@ -414,6 +500,11 @@ export class McpFnRegistry<TContext = undefined> {
         `Duplicate MCP resource template: ${definition.name}`,
       );
     }
+    if (typeof definition.uriTemplate !== "string") {
+      throw new McpFnValidationError(
+        `Invalid resource URI template ${JSON.stringify(definition.uriTemplate)}`,
+      );
+    }
     const unsupportedOperator = unsupportedUriTemplateOperator(definition.uriTemplate);
     if (unsupportedOperator) {
       throw new McpFnValidationError(
@@ -463,6 +554,11 @@ export class McpFnRegistry<TContext = undefined> {
     assertName("prompt", definition.name);
     if (this.prompts.has(definition.name)) {
       throw new McpFnValidationError(`Duplicate MCP prompt: ${definition.name}`);
+    }
+    if (typeof definition.get !== "function") {
+      throw new McpFnValidationError(
+        `Prompt ${definition.name} requires a get handler function`,
+      );
     }
     if (
       definition.arguments !== undefined && (

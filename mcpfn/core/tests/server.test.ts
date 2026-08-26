@@ -206,6 +206,18 @@ describe("McpFnServer", () => {
     })).toThrow(/argument age must accept string values/);
 
     expect(() => new McpFnRegistry().registerPrompt({
+      name: "contradictory_prompt",
+      argumentsSchema: {
+        type: "object",
+        properties: {
+          value: { allOf: [{ const: "a" }, { const: "b" }] },
+        },
+        required: ["value"],
+      },
+      get: async () => ({ messages: [] }),
+    })).toThrow(/argument value must accept string values/);
+
+    expect(() => new McpFnRegistry().registerPrompt({
       name: "conditional_prompt",
       arguments: [{ name: "topic" }],
       argumentsSchema: {
@@ -214,6 +226,16 @@ describe("McpFnServer", () => {
       },
       get: async () => ({ messages: [] }),
     })).toThrow(/must use derivable properties/);
+  });
+
+  it("rejects prompts without callable get handlers", () => {
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "missing_get",
+    } as never)).toThrow(/requires a get handler function/);
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "invalid_get",
+      get: true,
+    } as never)).toThrow(/requires a get handler function/);
   });
 
   it("rejects malformed prompt argument inventories with a validation error", () => {

@@ -217,6 +217,11 @@ describe("McpFn protocol primitives", () => {
       name: "unsupported-path-parameter",
       read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Unsupported" }] }),
     })).toThrow(/unsupported URI template operator ;/);
+    expect(() => new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: null,
+      name: "non-string-template",
+      read: async () => ({ contents: [] }),
+    } as never)).toThrow(/Invalid resource URI template/);
 
     const distinct = new McpFnRegistry().registerResourceTemplate({
       uriTemplate: "docs://distinct/{id}/a",
@@ -238,6 +243,39 @@ describe("McpFn protocol primitives", () => {
       uriTemplate: "docs://distinct-query{?second}",
       name: "distinct-second-query",
       read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Second" }] }),
+    })).not.toThrow();
+
+    const sdkQuerySemantics = new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://sdk-query{?a,b}",
+      name: "sdk-query-pair",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Pair" }] }),
+    });
+    expect(() => sdkQuerySemantics.registerResourceTemplate({
+      uriTemplate: "docs://sdk-query{?a}",
+      name: "sdk-query-single",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Single" }] }),
+    })).not.toThrow();
+
+    const sdkMultiVariableSemantics = new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://sdk-multi/{x,y}",
+      name: "sdk-multi-expression",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Expression" }] }),
+    });
+    expect(() => sdkMultiVariableSemantics.registerResourceTemplate({
+      uriTemplate: "docs://sdk-multi/{x},{y}",
+      name: "sdk-adjacent-expressions",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Adjacent" }] }),
+    })).not.toThrow();
+
+    const explodedGrammar = new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://sdk-exploded/{value*}a",
+      name: "sdk-exploded",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Exploded" }] }),
+    });
+    expect(() => explodedGrammar.registerResourceTemplate({
+      uriTemplate: "docs://sdk-exploded/{value},a",
+      name: "sdk-comma-literal",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Literal" }] }),
     })).not.toThrow();
   });
 

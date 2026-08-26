@@ -961,6 +961,14 @@ describe("McpFn manifests", () => {
     })).toThrow(/at least one variable/);
     expect(() => validateManifest({
       ...normalized,
+      resourceTemplates: [{ name: "missing-template" }],
+    })).toThrow(/invalid URI template/);
+    expect(() => validateManifest({
+      ...normalized,
+      resourceTemplates: [{ name: "non-string-template", uriTemplate: 42 }],
+    })).toThrow(/invalid URI template/);
+    expect(() => validateManifest({
+      ...normalized,
       resourceTemplates: [
         { name: "person", uriTemplate: "docs://users/{id}" },
         { name: "user", uriTemplate: "docs://users/{name}" },
@@ -991,5 +999,17 @@ describe("McpFn manifests", () => {
         },
       }],
     })).toThrow(/argument age must accept string values/);
+    expect(() => validateManifest({
+      ...normalized,
+      prompts: [{
+        name: "contradictory",
+        arguments: [{ name: "value", required: true }],
+        argumentsSchema: {
+          type: "object",
+          properties: { value: { allOf: [{ const: "a" }, { const: "b" }] } },
+          required: ["value"],
+        },
+      }],
+    })).toThrow(/argument value must accept string values/);
   });
 });

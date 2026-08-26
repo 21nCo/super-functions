@@ -70,6 +70,20 @@ function uriTemplateAutomaton(uriTemplate: string): TemplateAutomaton {
     states[loop]!.epsilon.push(next);
     state = next;
   };
+  const commaSeparated = () => {
+    oneOrMore("/,");
+    const boundary = state;
+    const firstComponentCharacter = nextState();
+    const component = nextState();
+    states[boundary]!.transitions.push({
+      predicate: { kind: "literal", value: "," },
+      to: firstComponentCharacter,
+    });
+    const predicate = { kind: "except", value: "/," } as const;
+    states[firstComponentCharacter]!.transitions.push({ predicate, to: component });
+    states[component]!.transitions.push({ predicate, to: component });
+    states[component]!.epsilon.push(boundary);
+  };
   const expression = (value: string) => {
     const operator = /^[+#./?&]/.exec(value)?.[0] ?? "";
     const exploded = value.includes("*");
@@ -87,7 +101,7 @@ function uriTemplateAutomaton(uriTemplate: string): TemplateAutomaton {
     if (operator === ".") literal(".");
     if (operator === "/") literal("/");
     if (operator === "+" || operator === "#") oneOrMore("");
-    else if (exploded) oneOrMore("/");
+    else if (exploded && (operator === "" || operator === "/")) commaSeparated();
     else oneOrMore("/,");
   };
   const matcher = /\{([^{}]+)\}/g;
