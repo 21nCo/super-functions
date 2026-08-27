@@ -1,26 +1,28 @@
 {
   "name": "@superfunctions/oauth-core",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Core OAuth types and service contracts for Superfunctions",
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsup",
     "test": "vitest --config ./vitest.config.ts --run",
     "test:watch": "vitest --config ./vitest.config.ts --watch",
     "lint": "echo 'lint not configured'",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "node --input-type=module -e \"import('node:fs').then(({ rmSync }) => rmSync('dist', { recursive: true, force: true }))\""
   },
   "keywords": [
     "oauth",
@@ -42,7 +44,12 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "tsup": "^8.5.0",
     "typescript": "^5.6.0",
     "vitest": "^3.2.4"
-  }
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "sideEffects": false
 }

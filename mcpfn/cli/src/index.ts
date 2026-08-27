@@ -221,10 +221,7 @@ export async function runCli(
     .action(async (url: string, options: { timeout?: string; output?: string }) => {
       const timeoutMs = options.timeout === undefined
         ? undefined
-        : Number.parseInt(options.timeout, 10);
-      if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs < 1)) {
-        throw new Error("--timeout must be a positive integer");
-      }
+        : parsePositiveInteger(options.timeout, "--timeout");
       const report = await diagnoseMcpAuthorization(url, { timeoutMs });
       const serialized = `${JSON.stringify(report, null, 2)}\n`;
       if (options.output) {

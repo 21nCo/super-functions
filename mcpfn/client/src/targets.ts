@@ -45,16 +45,17 @@ export function customTarget(options: {
 
 export function transportTarget(
   transport: Transport,
-  descriptor: McpFnTargetDescriptor = { kind: "custom" },
+  descriptor?: McpFnTargetDescriptor,
 ): McpFnTarget {
+  const targetDescriptor = descriptor ?? { kind: "custom" };
   let opened = false;
   return customTarget({
-    kind: descriptor.kind,
-    descriptor,
+    kind: targetDescriptor.kind,
+    descriptor: targetDescriptor,
     open: () => {
       if (opened) throw new Error("A one-shot McpFn transport target cannot be reopened");
       opened = true;
-      return { transport };
+      return { transport, close: () => transport.close() };
     },
   });
 }
@@ -85,6 +86,8 @@ export function streamableHttpTarget(
   const descriptorUrl = new URL(targetUrl.toString());
   descriptorUrl.search = "";
   descriptorUrl.hash = "";
+  descriptorUrl.username = "";
+  descriptorUrl.password = "";
   return customTarget({
     kind: "streamable-http",
     descriptor: { url: descriptorUrl.toString() },

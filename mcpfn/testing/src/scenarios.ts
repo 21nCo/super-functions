@@ -267,18 +267,7 @@ export function validateMcpFnScenarios(value: unknown): McpFnScenario[] {
       throw new Error(`Invalid scenario at index ${index}: name is required`);
     }
     const kind = candidate.kind ?? "tools.call";
-    const requiredField = kind === "tools.call" || kind === "tools.call:task"
-      ? "tool"
-      : kind === "resources.read" || kind === "resources.subscribe" ||
-          kind === "resources.unsubscribe"
-        ? "uri"
-        : kind === "prompts.get"
-          ? "prompt"
-          : ["tasks.get", "tasks.result", "tasks.cancel"].includes(String(kind))
-            ? "taskId"
-            : kind === "events.expect"
-              ? "event"
-          : undefined;
+    const requiredField = requiredScenarioField(String(kind));
     if (requiredField && typeof candidate[requiredField] !== "string") {
       throw new Error(
         `Invalid scenario at index ${index}: ${String(kind)} requires ${requiredField}`,
@@ -508,7 +497,9 @@ function resolveScenarioVariables(
   const resolved = visit(scenario) as McpFnScenario;
   return {
     scenario: resolved,
-    missing: [...required].filter((name) => values[name] === undefined).sort(),
+    missing: [...required]
+      .filter((name) => values[name] === undefined)
+      .sort((left, right) => left.localeCompare(right)),
   };
 }
 
@@ -605,16 +596,12 @@ async function executeScenario(
     return;
   }
   if (isInventoryScenario(scenario)) {
-    const values = kind === "tools.list"
-      ? await client.listTools(requestOptions)
-      : kind === "resources.list"
-        ? await client.listResources(requestOptions)
-        : kind === "resources.templates.list"
-          ? await client.listResourceTemplates(requestOptions)
-          : await client.listPrompts(requestOptions);
+    const values = await listScenarioInventory(client, scenario.kind, requestOptions);
     if (scenario.expectNames) {
-      const actual = values.map((value) => value.name).sort();
-      const expected = [...scenario.expectNames].sort();
+      const actual = values.map((value) => value.name)
+        .sort((left, right) => left.localeCompare(right));
+      const expected = [...scenario.expectNames]
+        .sort((left, right) => left.localeCompare(right));
       if (stableJson(actual) !== stableJson(expected)) {
         throw new McpFnAssertionError(
           `Inventory mismatch\nexpected: ${stableJson(expected)}\nactual:   ${stableJson(actual)}`,
@@ -735,4 +722,43 @@ function isToolScenario(scenario: McpFnScenario): scenario is McpFnToolScenario 
 function isInventoryScenario(scenario: McpFnScenario): scenario is McpFnInventoryScenario {
   return ["tools.list", "resources.list", "resources.templates.list", "prompts.list"]
     .includes(scenario.kind ?? "");
+}
+
+function requiredScenarioField(kind: string): string | undefined {
+  switch (kind) {
+    case "tools.call":
+    case "tools.call:task":
+      return "tool";
+    case "resources.read":
+    case "resources.subscribe":
+    case "resources.unsubscribe":
+      return "uri";
+    case "prompts.get":
+      return "prompt";
+    case "tasks.get":
+    case "tasks.result":
+    case "tasks.cancel":
+      return "taskId";
+    case "events.expect":
+      return "event";
+    default:
+      return undefined;
+  }
+}
+
+async function listScenarioInventory(
+  client: McpFnTestClient<unknown>,
+  kind: McpFnInventoryScenario["kind"],
+  requestOptions: { signal: AbortSignal; timeout: number },
+) {
+  switch (kind) {
+    case "tools.list":
+      return client.listTools(requestOptions);
+    case "resources.list":
+      return client.listResources(requestOptions);
+    case "resources.templates.list":
+      return client.listResourceTemplates(requestOptions);
+    case "prompts.list":
+      return client.listPrompts(requestOptions);
+  }
 }

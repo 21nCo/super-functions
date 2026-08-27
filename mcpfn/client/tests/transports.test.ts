@@ -4,12 +4,14 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
 
 import {
   createMcpFnClient,
   stdioTarget,
   streamableHttpTarget,
+  transportTarget,
 } from "../src/index.js";
 
 describe("McpFn first-class transports", () => {
@@ -110,5 +112,25 @@ describe("McpFn first-class transports", () => {
     );
     expect(invalidatePendingAuthorization).toHaveBeenCalledOnce();
     await handle.close?.();
+  });
+
+  it("redacts HTTP descriptor userinfo and closes one-shot custom transports", async () => {
+    const httpTarget = streamableHttpTarget(
+      "https://user:password@mcp.example.com/mcp?access_token=secret#fragment",
+    );
+    expect(httpTarget.describe()).toEqual({
+      kind: "streamable-http",
+      url: "https://mcp.example.com/mcp",
+    });
+
+    const close = vi.fn(async () => undefined);
+    const transport = { close } as unknown as Transport;
+    const handle = await transportTarget(transport).open({
+      requestId: "test",
+      signal: new AbortController().signal,
+      diagnostic: async () => undefined,
+    });
+    await handle.close?.();
+    expect(close).toHaveBeenCalledOnce();
   });
 });

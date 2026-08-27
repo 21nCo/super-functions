@@ -28,6 +28,15 @@ describe("mcpfn CLI", () => {
       stderr: (value) => { errors += value; },
     })).toBe(2);
     expect(errors).toContain("Unknown command: not-a-command");
+
+    errors = "";
+    expect(await runCli([
+      "auth-diagnose",
+      "https://mcp.example.com/mcp",
+      "--timeout",
+      "10ms",
+    ], { stderr: (value) => { errors += value; } })).toBe(2);
+    expect(errors).toContain("--timeout must be a positive integer");
   });
 
   it("validates and diffs manifests with stable exit codes", async () => {

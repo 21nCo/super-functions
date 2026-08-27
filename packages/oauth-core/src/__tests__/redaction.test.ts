@@ -30,7 +30,7 @@ describe("OAuth diagnostics redaction", () => {
       maxArrayEntries: 2,
       maxStringLength: 3,
     });
-    expect(redacted).toEqual({ values: [1, 2], text: "abc…" });
+    expect(redacted).toEqual({ values: [1, 2, "[TRUNCATED]"], text: "abc…" });
   });
 
   it("preserves public authorization discovery metadata", () => {
@@ -74,5 +74,37 @@ describe("OAuth diagnostics redaction", () => {
     expect(redacted).not.toContain("access_token=token");
     expect(redacted).not.toContain("hunter2");
     expect(redacted.match(/REDACTED/g)).toHaveLength(3);
+  });
+
+  it("preserves bounded diagnostic types and detects circular values", () => {
+    const circular: Record<string, unknown> = { safe: "visible" };
+    circular.self = circular;
+    const error = Object.assign(new Error("password=hunter2"), {
+      accessToken: "secret",
+    });
+
+    expect(redactOAuthValue({
+      map: new Map([["access_token", "secret"], ["safe", "visible"]]),
+      set: new Set(["visible", "password=hunter2"]),
+      date: new Date("2026-08-26T00:00:00.000Z"),
+      error,
+      circular,
+    })).toMatchObject({
+      map: {
+        type: "Map",
+        entries: [["access_token", "[REDACTED]"], ["safe", "visible"]],
+      },
+      set: {
+        type: "Set",
+        values: ["visible", "password=[REDACTED]"],
+      },
+      date: "2026-08-26T00:00:00.000Z",
+      error: {
+        name: "Error",
+        message: "password=[REDACTED]",
+        accessToken: "[REDACTED]",
+      },
+      circular: { safe: "visible", self: "[CIRCULAR]" },
+    });
   });
 });

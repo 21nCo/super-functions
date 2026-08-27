@@ -178,7 +178,7 @@ export class McpFnOAuthClientProvider implements OAuthClientProvider {
   readonly clientMetadata: OAuthClientMetadata;
   readonly clientMetadataUrl?: string;
   readonly addClientAuthentication?: AddClientAuthentication;
-  readonly validateResourceURL?: McpFnOAuthClientProviderOptions["validateResourceURL"];
+  readonly validateResourceURL: McpFnOAuthClientProviderOptions["validateResourceURL"] | undefined;
   private readonly options: McpFnOAuthClientProviderOptions;
   private readonly store: McpFnOAuthSessionStore;
 
@@ -206,11 +206,22 @@ export class McpFnOAuthClientProvider implements OAuthClientProvider {
   }
 
   async saveClientInformation(value: OAuthClientInformationMixed): Promise<void> {
-    await this.store.setClientInformation(value);
-    await this.emit("client-registration", "succeeded", undefined, {
-      clientId: value.client_id,
+    await this.emit("client-registration", "started", undefined, {
       storage: this.store.security,
     });
+    try {
+      await this.store.setClientInformation(value);
+      await this.emit("client-registration", "succeeded", undefined, {
+        clientId: value.client_id,
+        storage: this.store.security,
+      });
+    } catch (error) {
+      await this.emit("client-registration", "failed", readCode(error) ?? "MCPFN_OAUTH_STORAGE_FAILED", {
+        message: error instanceof Error ? error.message : String(error),
+        storage: this.store.security,
+      });
+      throw error;
+    }
   }
 
   tokens(): Promise<OAuthTokens | undefined> {
@@ -218,17 +229,31 @@ export class McpFnOAuthClientProvider implements OAuthClientProvider {
   }
 
   async saveTokens(value: OAuthTokens): Promise<void> {
-    const previous = await this.store.getTokens();
-    await this.store.setTokens(value);
-    await Promise.all([
-      this.store.clear("verifier"),
-      this.store.clear("state"),
-    ]);
-    await this.emit(previous ? "token-refresh" : "token-exchange", "succeeded", undefined, {
-      tokenType: value.token_type,
-      hasRefreshToken: Boolean(value.refresh_token),
-      storage: this.store.security,
-    });
+    let phase: "token-exchange" | "token-refresh" = "token-exchange";
+    try {
+      const [previous, verifier] = await Promise.all([
+        this.store.getTokens(),
+        this.store.getCodeVerifier(),
+      ]);
+      phase = previous && !verifier ? "token-refresh" : "token-exchange";
+      await this.emit(phase, "started", undefined, { storage: this.store.security });
+      await this.store.setTokens(value);
+      await Promise.all([
+        this.store.clear("verifier"),
+        this.store.clear("state"),
+      ]);
+      await this.emit(phase, "succeeded", undefined, {
+        tokenType: value.token_type,
+        hasRefreshToken: Boolean(value.refresh_token),
+        storage: this.store.security,
+      });
+    } catch (error) {
+      await this.emit(phase, "failed", readCode(error) ?? "MCPFN_OAUTH_STORAGE_FAILED", {
+        message: error instanceof Error ? error.message : String(error),
+        storage: this.store.security,
+      });
+      throw error;
+    }
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {

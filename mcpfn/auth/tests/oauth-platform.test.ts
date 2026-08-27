@@ -117,6 +117,16 @@ describe("McpFn OAuth client compatibility", () => {
       "http://localhost:43123/callback",
       ["http://localhost/callback"],
     )).toThrow(/not registered/);
+    try {
+      matchMcpRedirectUri(
+        "https://user:password@client.example.com/wrong?code=secret",
+        ["https://client.example.com/callback"],
+      );
+    } catch (error) {
+      expect(error).toMatchObject({
+        requested: "https://client.example.com/wrong?redacted",
+      });
+    }
   });
 
   it("isolates OAuth diagnostic observer failures", async () => {
@@ -178,6 +188,46 @@ describe("McpFn OAuth client compatibility", () => {
       outcome: "failed",
       code: "MCPFN_REVOCATION_UNAVAILABLE",
     }));
+  });
+
+  it("classifies a verifier-bound save as exchange and reports storage failures", async () => {
+    const diagnostics: Array<{ phase: string; outcome: string; code?: string }> = [];
+    const store = new MemoryMcpFnOAuthSessionStore();
+    const provider = createMcpFnOAuthClientProvider({
+      redirectUrl: "https://app.example.com/callback",
+      clientMetadata: { redirect_uris: ["https://app.example.com/callback"] },
+      store,
+      openAuthorization: () => undefined,
+      diagnostics: (event) => { diagnostics.push(event); },
+    });
+    await provider.saveTokens({ access_token: "old", token_type: "Bearer" });
+    await provider.saveCodeVerifier("v".repeat(43));
+    await provider.saveTokens({ access_token: "new", token_type: "Bearer" });
+    expect(diagnostics.at(-1)).toMatchObject({
+      phase: "token-exchange",
+      outcome: "succeeded",
+    });
+
+    class FailingStore extends MemoryMcpFnOAuthSessionStore {
+      override async setTokens(): Promise<void> {
+        throw Object.assign(new Error("storage unavailable"), { code: "E_STORAGE" });
+      }
+    }
+    const failedDiagnostics: typeof diagnostics = [];
+    const failing = createMcpFnOAuthClientProvider({
+      redirectUrl: "https://app.example.com/callback",
+      clientMetadata: { redirect_uris: ["https://app.example.com/callback"] },
+      store: new FailingStore(),
+      openAuthorization: () => undefined,
+      diagnostics: (event) => { failedDiagnostics.push(event); },
+    });
+    await expect(failing.saveTokens({ access_token: "new", token_type: "Bearer" }))
+      .rejects.toThrow("storage unavailable");
+    expect(failedDiagnostics.at(-1)).toMatchObject({
+      phase: "token-exchange",
+      outcome: "failed",
+      code: "E_STORAGE",
+    });
   });
 });
 
@@ -278,6 +328,42 @@ describe("McpFn hosted authorization compatibility", () => {
       error: "invalid_request",
       error_description: expect.stringContaining("not registered"),
     });
+  });
+
+  it("returns invalid_target for a malformed authorization resource", async () => {
+    const url = authorizationUrl(chatgpt.clientId, chatgpt.redirectUris[0]);
+    url.searchParams.set("resource", "not-an-absolute-url");
+    const response = await handler()(new Request(url));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: "invalid_target" });
+  });
+
+  it("preserves issuer path prefixes in discovery and hosted routes", async () => {
+    const prefixedIssuer = "https://login.example.com/tenant-a";
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer: prefixedIssuer,
+      clients: {
+        resolve: async (clientId) => clientId === chatgpt.clientId ? chatgpt : null,
+      },
+      authorize: async () => Response.json({ ok: true }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({ access_token: "opaque", token_type: "Bearer" }),
+      },
+    });
+    const discovery = await compatibility(new Request(
+      "https://login.example.com/.well-known/oauth-authorization-server/tenant-a",
+    ));
+    await expect(discovery.json()).resolves.toMatchObject({
+      issuer: prefixedIssuer,
+      authorization_endpoint: `${prefixedIssuer}/authorize`,
+      token_endpoint: `${prefixedIssuer}/token`,
+    });
+    const url = authorizationUrl(chatgpt.clientId, chatgpt.redirectUris[0]);
+    url.pathname = "/tenant-a/authorize";
+    url.searchParams.delete("resource");
+    expect((await compatibility(new Request(url))).status).toBe(200);
+    url.pathname = "/authorize";
+    expect((await compatibility(new Request(url))).status).toBe(404);
   });
 
   it("re-authorizes every Client ID Metadata Document redirect before fetching it", async () => {

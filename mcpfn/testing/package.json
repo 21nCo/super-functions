@@ -36,7 +36,7 @@
     "@mcpfn/client": "0.0.1",
     "@mcpfn/core": "0.0.1",
     "@modelcontextprotocol/sdk": "1.25.2",
-    "@superfunctions/oauth-core": "0.0.1"
+    "@superfunctions/oauth-core": "0.0.2"
   },
   "peerDependencies": {
     "@playwright/test": ">=1.40.0"

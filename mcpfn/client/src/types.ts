@@ -126,13 +126,13 @@ export type McpFnClientErrorCode =
   | "MCPFN_TARGET_OPEN_FAILED";
 
 export class McpFnClientError extends Error {
-  readonly code: McpFnClientErrorCode | string;
+  readonly code: string;
   readonly phase: McpFnDiagnosticPhase;
   readonly retryable: boolean;
   readonly details?: Record<string, unknown>;
 
   constructor(
-    code: McpFnClientErrorCode | string,
+    code: string,
     message: string,
     options: {
       phase: McpFnDiagnosticPhase;

@@ -21,7 +21,7 @@ export class McpFnRedirectMismatchError extends Error {
   }
 }
 
-/** Exact matching, except an explicitly enabled RFC 8252 loopback port. */
+/** Exact matching, with RFC 8252 loopback ports enabled unless explicitly disabled. */
 export function matchMcpRedirectUri(
   requested: string | URL,
   registeredRedirectUris: ReadonlyArray<string | URL>,
@@ -83,5 +83,7 @@ function redactRedirect(value: string): string {
   const url = new URL(value);
   url.search = url.search ? "?redacted" : "";
   url.hash = "";
+  url.username = "";
+  url.password = "";
   return url.toString();
 }

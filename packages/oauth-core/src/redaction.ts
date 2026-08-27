@@ -22,10 +22,8 @@ const SECRET_KEYS = new Set([
   "token",
 ]);
 const EMBEDDED_URL = /\b[a-z][a-z0-9+.-]*:\/{1,2}[^\s<>"']+/gi;
-const SECRET_ASSIGNMENT = new RegExp(
-  String.raw`(\b(?:(?:[a-z0-9]+[_-])*token|api[_-]?key|authorization(?:[_-]?code)?|bearer|password|(?:client[_-]?)?secret|code[_-]?verifier|pkce(?:[_-]?verifier)?|(?:oauth[_-]?)?state|session(?:[_-]?id)?|cookie|credentials?)\b["']?\s*(?:=|:)\s*)(["']?)([^"'\s,;&#]+)\2`,
-  "gi",
-);
+const KEY_VALUE_ASSIGNMENT =
+  /(\b([a-z][a-z0-9_-]*)\b["']?\s*(?:=|:)\s*)(["']?)([^"'\s,;&#]+)\3/gi;
 
 export interface OAuthRedactionOptions {
   maxDepth?: number;
@@ -45,33 +43,73 @@ export function redactOAuthValue<T>(
     maxDepth: options.maxDepth ?? 8,
     maxArrayEntries: options.maxArrayEntries ?? 100,
     maxStringLength: options.maxStringLength ?? 2_048,
-  }, 0) as T;
+  }, 0, new WeakSet()) as T;
 }
 
 function redact(
   value: unknown,
   options: Required<OAuthRedactionOptions>,
   depth: number,
+  ancestors: WeakSet<object>,
 ): unknown {
   if (depth > options.maxDepth) return "[TRUNCATED]";
-  if (Array.isArray(value)) {
-    return value
-      .slice(0, options.maxArrayEntries)
-      .map((entry) => redact(entry, options, depth + 1));
-  }
-  if (value && typeof value === "object") {
-    if (value instanceof URL) return redactUrl(value, options.maxStringLength);
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
-        key,
-        isSecretKey(key) ? REDACTED : redact(entry, options, depth + 1),
-      ]),
-    );
-  }
   if (typeof value === "string") {
     return redactString(value, options.maxStringLength);
   }
-  return value;
+  if (!value || typeof value !== "object") return value;
+  if (value instanceof URL) return redactUrl(value, options.maxStringLength);
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? "Invalid Date" : value.toISOString();
+  }
+  if (ancestors.has(value)) return "[CIRCULAR]";
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      const entries = value
+        .slice(0, options.maxArrayEntries)
+        .map((entry) => redact(entry, options, depth + 1, ancestors));
+      if (value.length > options.maxArrayEntries) entries.push("[TRUNCATED]");
+      return entries;
+    }
+    if (value instanceof Map) {
+      const entries = [...value.entries()]
+        .slice(0, options.maxArrayEntries)
+        .map(([key, entry]) => [
+          redact(key, options, depth + 1, ancestors),
+          typeof key === "string" && isSecretKey(key)
+            ? REDACTED
+            : redact(entry, options, depth + 1, ancestors),
+        ]);
+      if (value.size > options.maxArrayEntries) entries.push(["[TRUNCATED]", "[TRUNCATED]"]);
+      return { type: "Map", entries };
+    }
+    if (value instanceof Set) {
+      const values = [...value.values()]
+        .slice(0, options.maxArrayEntries)
+        .map((entry) => redact(entry, options, depth + 1, ancestors));
+      if (value.size > options.maxArrayEntries) values.push("[TRUNCATED]");
+      return { type: "Set", values };
+    }
+    const enumerable = Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        key,
+        isSecretKey(key) ? REDACTED : redact(entry, options, depth + 1, ancestors),
+      ]),
+    );
+    if (value instanceof Error) {
+      return {
+        ...enumerable,
+        name: redactString(value.name, options.maxStringLength),
+        message: redactString(value.message, options.maxStringLength),
+        ...(value.stack
+          ? { stack: redactString(value.stack, options.maxStringLength) }
+          : {}),
+      };
+    }
+    return enumerable;
+  } finally {
+    ancestors.delete(value);
+  }
 }
 
 function maybeRedactUrl(value: string, maxLength: number): string | undefined {
@@ -85,14 +123,14 @@ function maybeRedactUrl(value: string, maxLength: number): string | undefined {
 
 function redactUrl(url: URL, maxLength: number): string {
   const copy = new URL(url.toString());
-  for (const key of [...copy.searchParams.keys()]) {
+  for (const key of copy.searchParams.keys()) {
     if (isSensitiveUrlKey(key)) copy.searchParams.set(key, REDACTED);
   }
   if (copy.hash.length > 1) {
     const fragment = copy.hash.slice(1);
     const parameters = new URLSearchParams(fragment);
     let changed = false;
-    for (const key of [...parameters.keys()]) {
+    for (const key of parameters.keys()) {
       if (!isSensitiveUrlKey(key)) continue;
       parameters.set(key, REDACTED);
       changed = true;
@@ -112,8 +150,11 @@ function redactString(value: string, maxLength: number): string {
   if (redactedUrl !== undefined) return redactedUrl;
   const redacted = value
     .replace(EMBEDDED_URL, (candidate) => maybeRedactUrl(candidate, maxLength) ?? candidate)
-    .replace(SECRET_ASSIGNMENT, (_match, prefix: string, quote: string) =>
-      `${prefix}${quote}${REDACTED}${quote}`);
+    .replace(
+      KEY_VALUE_ASSIGNMENT,
+      (match, prefix: string, key: string, quote: string) =>
+        isSensitiveUrlKey(key) ? `${prefix}${quote}${REDACTED}${quote}` : match,
+    );
   return redacted.length > maxLength
     ? `${redacted.slice(0, maxLength)}…`
     : redacted;

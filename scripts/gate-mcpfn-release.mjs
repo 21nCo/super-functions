@@ -212,6 +212,7 @@ function verifyPackedConsumer() {
     { cwd: consumerRoot },
   );
   const packageNames = [
+    "@superfunctions/oauth-core",
     "@mcpfn/core",
     "@mcpfn/client",
     "@mcpfn/auth",
@@ -350,8 +351,6 @@ try {
 
   for (const workspace of [
     "@datafn/core",
-    "@superfunctions/observability",
-    "@superfunctions/db",
     "@superfunctions/http",
   ]) {
     npmStep(`dependency:build:${workspace}`, ["run", "build", "--workspace", workspace]);
@@ -368,6 +367,9 @@ try {
   npmStep("cli:test", ["run", "test", "--workspace", "@mcpfn/cli"]);
   npmStep("cli:build", ["run", "build", "--workspace", "@mcpfn/cli"]);
 
+  run("release-tag:oauth-core", process.execPath, [
+    "scripts/resolve-release-tag.mjs", "superfunctions-oauth-core-v0.0.2",
+  ]);
   run("release-tag:client", process.execPath, [
     "scripts/resolve-release-tag.mjs", "mcpfn-client-v0.0.1",
   ]);
