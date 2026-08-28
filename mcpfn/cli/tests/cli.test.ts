@@ -248,6 +248,25 @@ describe("mcpfn CLI", () => {
     await expect(loadScenarios("scenarios.mjs", root)).resolves.toHaveLength(9);
   });
 
+  it("rejects an incomplete portable scenario artifact before either test command runs", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-incomplete-scenarios-"));
+    roots.push(root);
+    await writeFile(
+      path.join(root, "scenarios.json"),
+      JSON.stringify({
+        formatVersion: 1,
+        kind: "mcpfn.scenarios",
+        status: "incomplete",
+        incompleteReason: "Live-provider evidence is pending",
+        scenarios: [{ name: "individually complete", kind: "initialize" }],
+      }),
+    );
+
+    await expect(loadScenarios("scenarios.json", root)).rejects.toThrow(
+      "McpFn scenario artifact is incomplete: Live-provider evidence is pending",
+    );
+  });
+
   it("classifies target connection failures as runtime exit 1", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-runtime-"));
     roots.push(root);

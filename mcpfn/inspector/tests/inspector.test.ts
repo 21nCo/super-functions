@@ -93,6 +93,48 @@ describe("McpFn inspector", () => {
     expect(snapshot.timelineComplete).toBe(true);
   });
 
+  it("bounds inventory surfaces and reports every dropped entry", async () => {
+    const registry = new McpFnRegistry();
+    for (let index = 0; index < 3; index += 1) {
+      registry.register({
+        name: `tool-${index}`,
+        description: `Tool ${index}`,
+        inputSchema: { type: "object" },
+        handler: async (input) => structuredResult(input),
+      });
+    }
+    const server = createMcpFnServer({
+      info: { name: "bounded-inventory", version: "1.0.0" },
+      registry,
+    });
+    const inspector = McpFnInspector.create({
+      inspector: { maxInventoryEntries: 2 },
+      target: customTarget({
+        kind: "bounded-inventory",
+        open: async () => {
+          const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+          await server.connect(serverTransport);
+          return { transport: clientTransport, close: () => server.close() };
+        },
+      }),
+    });
+    await inspector.connect();
+    try {
+      await expect(inspector.snapshot()).resolves.toMatchObject({
+        tools: [{ name: "tool-0" }, { name: "tool-1" }],
+        droppedInventoryEntries: {
+          tools: 1,
+          resources: 0,
+          resourceTemplates: 0,
+          prompts: 0,
+        },
+        inventoryComplete: false,
+      });
+    } finally {
+      await inspector.close();
+    }
+  });
+
   it("drops even the truncation marker when it exceeds the byte cap", () => {
     const inspector = McpFnInspector.create({
       inspector: { maxEvents: 1, maxTimelineBytes: 1 },

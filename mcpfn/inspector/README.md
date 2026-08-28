@@ -10,6 +10,9 @@ Its version 1 timeline also records logging, progress, task status, resource
 updates, list changes, and subscription events. Retention is bounded by event
 count and serialized bytes; snapshots expose dropped-event and completeness
 metadata instead of silently presenting a partial history as complete.
+Inventory surfaces are likewise bounded (500 retained entries per surface by
+default) and snapshots expose per-surface dropped counts plus
+`inventoryComplete`. Configure the bound with `maxInventoryEntries`.
 
 ```ts
 import { streamableHttpTarget } from "@mcpfn/client";

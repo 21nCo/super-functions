@@ -301,7 +301,11 @@ function createPromptScenario(
 
 /** Validate an unknown scenario module before it reaches the shared runner. */
 export function validateMcpFnScenarios(value: unknown): McpFnScenario[] {
-  const scenarios = isScenarioArtifact(value) ? value.scenarios : value;
+  const artifact = isScenarioArtifact(value) ? value : undefined;
+  if (artifact?.status === "incomplete") {
+    throw new Error(`McpFn scenario artifact is incomplete: ${artifact.incompleteReason}`);
+  }
+  const scenarios = artifact?.scenarios ?? value;
   if (!Array.isArray(scenarios)) {
     throw new TypeError("Scenario module must export an array or mcpfn.scenarios artifact");
   }

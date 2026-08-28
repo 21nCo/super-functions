@@ -39,6 +39,15 @@ export interface McpFnInspectorSnapshot {
   timeline: McpFnInspectorTimelineEvent[];
   droppedEvents: number;
   timelineComplete: boolean;
+  droppedInventoryEntries: McpFnInspectorDroppedInventoryEntries;
+  inventoryComplete: boolean;
+}
+
+export interface McpFnInspectorDroppedInventoryEntries {
+  tools: number;
+  resources: number;
+  resourceTemplates: number;
+  prompts: number;
 }
 
 export interface McpFnInspectorTimelineEvent {
@@ -54,6 +63,8 @@ export interface McpFnInspectorLimits {
   maxEvents?: number;
   /** Defaults to 512 KiB across the retained timeline. */
   maxTimelineBytes?: number;
+  /** Defaults to 500 retained entries for each inventory surface. */
+  maxInventoryEntries?: number;
 }
 
 export type McpFnInspectorOperation =
@@ -85,6 +96,7 @@ export class McpFnInspector {
   private readonly unsubscribes: Array<() => void>;
   private readonly maxEvents: number;
   private readonly maxTimelineBytes: number;
+  private readonly maxInventoryEntries: number;
   private timelineBytes = 0;
   private droppedEvents = 0;
 
@@ -93,6 +105,10 @@ export class McpFnInspector {
     this.maxTimelineBytes = validateLimit(
       limits.maxTimelineBytes ?? 524_288,
       "maxTimelineBytes",
+    );
+    this.maxInventoryEntries = validateLimit(
+      limits.maxInventoryEntries ?? 500,
+      "maxInventoryEntries",
     );
     this.unsubscribes = [
       client.onDiagnostic((event) => this.record("diagnostic", event.phase, event.at, event)),
@@ -120,6 +136,18 @@ export class McpFnInspector {
       capabilities?.resources ? this.client.resources.listTemplatesAll() : Promise.resolve([]),
       capabilities?.prompts ? this.client.prompts.listAll() : Promise.resolve([]),
     ]);
+    const retainedTools = tools.slice(0, this.maxInventoryEntries);
+    const retainedResources = resources.slice(0, this.maxInventoryEntries);
+    const retainedResourceTemplates = resourceTemplates.slice(0, this.maxInventoryEntries);
+    const retainedPrompts = prompts.slice(0, this.maxInventoryEntries);
+    const droppedInventoryEntries = {
+      tools: tools.length - retainedTools.length,
+      resources: resources.length - retainedResources.length,
+      resourceTemplates: resourceTemplates.length - retainedResourceTemplates.length,
+      prompts: prompts.length - retainedPrompts.length,
+    };
+    const inventoryComplete = Object.values(droppedInventoryEntries)
+      .every((count) => count === 0);
     return redactOAuthValue({
       formatVersion: 1,
       kind: "mcpfn.inspector-snapshot",
@@ -127,20 +155,19 @@ export class McpFnInspector {
       state: this.client.state,
       server: this.client.getServerVersion(),
       capabilities,
-      tools,
-      resources,
-      resourceTemplates,
-      prompts,
+      tools: retainedTools,
+      resources: retainedResources,
+      resourceTemplates: retainedResourceTemplates,
+      prompts: retainedPrompts,
       timeline: [...this.events],
       droppedEvents: this.droppedEvents,
       timelineComplete: this.droppedEvents === 0,
+      droppedInventoryEntries,
+      inventoryComplete,
     }, {
       maxArrayEntries: Math.max(
         this.maxEvents,
-        tools.length,
-        resources.length,
-        resourceTemplates.length,
-        prompts.length,
+        this.maxInventoryEntries,
         1,
       ),
     }) as McpFnInspectorSnapshot;

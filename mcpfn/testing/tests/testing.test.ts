@@ -81,7 +81,9 @@ describe("McpFn testing", () => {
         status: "incomplete",
         incompleteReason: "Requires controlled live-provider credentials",
       }], { status: "incomplete", incompleteReason: "Controlled-live lane" });
-      expect(validateMcpFnScenarios(artifact)).toHaveLength(1);
+      expect(() => validateMcpFnScenarios(artifact)).toThrow(
+        "McpFn scenario artifact is incomplete: Controlled-live lane",
+      );
       const auth = vi.fn(async (scenario: { phase: string }) => {
         if (scenario.phase === "slow-provider") {
           await new Promise(() => undefined);

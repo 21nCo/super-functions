@@ -57,6 +57,9 @@ try {
 Scenarios run serially so stateful workflows and idempotency checks remain
 deterministic. Legacy arrays are readable; portable artifacts use
 `{ formatVersion: 1, kind: "mcpfn.scenarios", status, scenarios }`. A runner
+rejects an artifact whose top-level status is `incomplete`, even when its
+individual scenarios are complete, so incomplete evidence cannot produce a
+passing report. A runner
 timeout supplies an abort signal and also bounds adapters that do not cooperate
 with cancellation. `assertStructuredTextParity` requires a JSON text block; do
 not use it for intentionally human-readable text.
