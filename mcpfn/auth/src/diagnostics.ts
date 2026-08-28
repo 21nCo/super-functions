@@ -55,6 +55,9 @@ export async function diagnoseMcpAuthorization(
       },
       fetchImplementation,
     );
+    if (!resourceMetadata) {
+      throw new Error("No OAuth protected-resource metadata was found");
+    }
     steps.push({
       phase: "resource-discovery",
       status: "passed",

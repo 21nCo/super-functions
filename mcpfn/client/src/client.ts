@@ -480,8 +480,8 @@ export class McpFnClient {
       await this.emit("transport-close", "started", requestId);
       const pendingConnect = this.connectPromise;
       this.connectController?.abort();
-      await pendingConnect?.catch(() => undefined);
       await this.cleanupAttempt();
+      await pendingConnect?.catch(() => undefined);
       this._state = permanent ? "closed" : "idle";
       await this.emit("transport-close", "succeeded", requestId);
     })().finally(() => {

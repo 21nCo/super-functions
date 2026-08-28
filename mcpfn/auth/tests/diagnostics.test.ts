@@ -2,6 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 
 import { diagnoseMcpAuthorization } from "../src/index.js";
 
+const discoveryMocks = vi.hoisted(() => ({
+  protectedResource: vi.fn(),
+}));
+
+vi.mock("@modelcontextprotocol/sdk/client/auth.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@modelcontextprotocol/sdk/client/auth.js")>();
+  discoveryMocks.protectedResource.mockImplementation(
+    actual.discoverOAuthProtectedResourceMetadata,
+  );
+  return {
+    ...actual,
+    discoverOAuthProtectedResourceMetadata: discoveryMocks.protectedResource,
+  };
+});
+
 describe("McpFn authorization diagnostics", () => {
   it("discovers protected-resource and authorization metadata without credentials", async () => {
     const fetchImplementation = vi.fn<typeof fetch>(async (input) => {
@@ -34,5 +49,24 @@ describe("McpFn authorization diagnostics", () => {
     for (const [, init] of fetchImplementation.mock.calls) {
       expect(new Headers(init?.headers).has("authorization")).toBe(false);
     }
+  });
+
+  it("fails when the target does not advertise protected-resource metadata", async () => {
+    discoveryMocks.protectedResource.mockResolvedValueOnce(undefined);
+    const fetchImplementation = vi.fn<typeof fetch>();
+
+    const report = await diagnoseMcpAuthorization("https://mcp.example.com/mcp", {
+      fetchImplementation,
+    });
+
+    expect(report).toMatchObject({
+      ok: false,
+      steps: [{
+        phase: "resource-discovery",
+        status: "failed",
+        error: "No OAuth protected-resource metadata was found",
+      }],
+    });
+    expect(fetchImplementation).not.toHaveBeenCalled();
   });
 });

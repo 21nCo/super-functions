@@ -118,6 +118,36 @@ describe("McpFn production client", () => {
     expect(client.state).toBe("closed");
   });
 
+  it("closes the transport to interrupt a pending MCP initialization", async () => {
+    let onclose: (() => void) | undefined;
+    const closeTransport = vi.fn(async () => onclose?.());
+    const transport = {
+      start: vi.fn(async () => undefined),
+      send: vi.fn(async () => undefined),
+      close: closeTransport,
+      get onclose() {
+        return onclose;
+      },
+      set onclose(callback: (() => void) | undefined) {
+        onclose = callback;
+      },
+    } as unknown as McpFnTransportHandle["transport"];
+    const client = createMcpFnClient({
+      target: customTarget({
+        kind: "stalled-initialization",
+        open: () => ({ transport }),
+      }),
+    });
+
+    const connecting = client.connect();
+    await vi.waitFor(() => expect(transport.send).toHaveBeenCalled());
+
+    await expect(client.close()).resolves.toBeUndefined();
+    await expect(connecting).rejects.toMatchObject({ code: "MCPFN_CONNECT_ABORTED" });
+    expect(closeTransport).toHaveBeenCalled();
+    expect(client.state).toBe("closed");
+  });
+
   it("cleans up target and protocol ownership when configure fails", async () => {
     const [clientTransport] = InMemoryTransport.createLinkedPair();
     const closeHandle = vi.fn(async () => undefined);
