@@ -264,8 +264,8 @@ export class McpFnInspector {
 }
 
 function validateLimit(value: number, name: string): number {
-  if (!Number.isInteger(value) || value < 1) {
-    throw new TypeError(`${name} must be a positive integer`);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new TypeError(`${name} must be a positive safe integer`);
   }
   return value;
 }

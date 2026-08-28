@@ -7,6 +7,13 @@ import { McpFnTestClient, runScenarios } from "@mcpfn/testing";
 import { McpFnInspector } from "../src/index.js";
 
 describe("McpFn inspector", () => {
+  it("rejects limits that cannot be represented as safe integers", () => {
+    expect(() => McpFnInspector.create({
+      inspector: { maxInventoryEntries: Number.MAX_SAFE_INTEGER + 1 },
+      target: customTarget({ kind: "unused", open: () => { throw new Error("unused"); } }),
+    })).toThrow(/maxInventoryEntries must be a positive safe integer/);
+  });
+
   it("inventories and runs a server through the production session engine", async () => {
     const createServer = () => createMcpFnServer({
       info: { name: "inspected", version: "1.0.0" },

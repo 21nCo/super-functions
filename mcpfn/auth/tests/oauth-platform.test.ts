@@ -600,6 +600,9 @@ describe("McpFn hosted authorization compatibility", () => {
     expect(() => create("http://127.0.0.1:8787", true)).not.toThrow();
     expect(() => create("https://login.example.com/tenant?")).toThrow(/must use HTTPS/);
     expect(() => create("https://login.example.com/tenant#")).toThrow(/must use HTTPS/);
+    expect(() => create("https://login.example.com/tenant/")).toThrow(
+      /without a non-root trailing slash/,
+    );
   });
 
   it("rejects sparse registration arrays", () => {

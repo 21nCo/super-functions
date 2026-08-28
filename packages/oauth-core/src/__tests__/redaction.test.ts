@@ -35,6 +35,21 @@ describe("OAuth diagnostics redaction", () => {
     expect(redacted).toEqual({ values: [1, 2, "[TRUNCATED]"], text: "abc…" });
   });
 
+  it("bounds plain-object entries before reading values beyond the cap", () => {
+    const value = {
+      first: 1,
+      second: 2,
+      get third(): never {
+        throw new Error("object value read beyond the cap");
+      },
+    };
+    expect(redactOAuthValue(value, { maxObjectEntries: 2 })).toEqual({
+      first: 1,
+      second: 2,
+      "[TRUNCATED]": "[TRUNCATED]",
+    });
+  });
+
   it("preserves public authorization discovery metadata", () => {
     expect(redactOAuthValue({
       authorizationServerMetadata: {

@@ -28,6 +28,7 @@ const KEY_VALUE_ASSIGNMENT =
 export interface OAuthRedactionOptions {
   maxDepth?: number;
   maxArrayEntries?: number;
+  maxObjectEntries?: number;
   maxStringLength?: number;
 }
 
@@ -41,7 +42,14 @@ export function redactOAuthValue<T>(
 ): T {
   return redact(value, {
     maxDepth: options.maxDepth ?? 8,
-    maxArrayEntries: normalizeEntryLimit(options.maxArrayEntries ?? 100),
+    maxArrayEntries: normalizeEntryLimit(
+      options.maxArrayEntries ?? 100,
+      "maxArrayEntries",
+    ),
+    maxObjectEntries: normalizeEntryLimit(
+      options.maxObjectEntries ?? 100,
+      "maxObjectEntries",
+    ),
     maxStringLength: options.maxStringLength ?? 2_048,
   }, 0, new WeakSet()) as T;
 }
@@ -137,9 +145,9 @@ function redactSet(
   return { type: "Set", values };
 }
 
-function normalizeEntryLimit(value: number): number {
+function normalizeEntryLimit(value: number, name: string): number {
   if (!Number.isFinite(value)) {
-    throw new TypeError("maxArrayEntries must be finite");
+    throw new TypeError(`${name} must be finite`);
   }
   return Math.max(0, Math.floor(value));
 }
@@ -150,12 +158,37 @@ function redactRecord(
   depth: number,
   ancestors: WeakSet<object>,
 ): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [
+  const redacted: Record<string, unknown> = {};
+  let retained = 0;
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    if (retained >= options.maxObjectEntries) {
+      defineEnumerable(redacted, "[TRUNCATED]", "[TRUNCATED]");
+      break;
+    }
+    defineEnumerable(
+      redacted,
       key,
-      isSecretKey(key) ? REDACTED : redact(entry, options, depth + 1, ancestors),
-    ]),
-  );
+      isSecretKey(key)
+        ? REDACTED
+        : redact(value[key], options, depth + 1, ancestors),
+    );
+    retained += 1;
+  }
+  return redacted;
+}
+
+function defineEnumerable(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): void {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
 }
 
 function redactError(

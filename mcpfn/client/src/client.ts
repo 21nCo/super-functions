@@ -278,11 +278,13 @@ export class McpFnClient {
     if (this._state === "closed") this._state = "idle";
     const controller = new AbortController();
     this.connectController = controller;
-    this.connectPromise = this.connectInternal(controller.signal).finally(() => {
+    let connectPromise: Promise<void>;
+    connectPromise = this.connectInternal(controller.signal).finally(() => {
       if (this.connectController === controller) this.connectController = undefined;
-      this.connectPromise = undefined;
+      if (this.connectPromise === connectPromise) this.connectPromise = undefined;
     });
-    return this.connectPromise;
+    this.connectPromise = connectPromise;
+    return connectPromise;
   }
 
   private async connectInternal(signal: AbortSignal): Promise<void> {
@@ -318,12 +320,16 @@ export class McpFnClient {
     signal: AbortSignal,
   ): Promise<{ error: unknown } | undefined> {
     try {
-      this.handle = await this.options.target.open({
+      const handle = await this.options.target.open({
         requestId,
         signal,
         diagnostic: (event) => this.dispatch(event),
       });
-      await this.rejectLateTargetOpen(signal);
+      if (signal.aborted) {
+        await closeTransportHandle(handle);
+        throw connectAbortedError();
+      }
+      this.handle = handle;
       return undefined;
     } catch (error) {
       if (signal.aborted) throw connectAbortedError(error);
@@ -342,14 +348,6 @@ export class McpFnClient {
         { phase: "transport-connect", retryable: true, cause: error },
       );
     }
-  }
-
-  private async rejectLateTargetOpen(signal: AbortSignal): Promise<void> {
-    if (!signal.aborted) return;
-    const lateHandle = this.handle;
-    this.handle = undefined;
-    await closeTransportHandle(lateHandle);
-    throw connectAbortedError();
   }
 
   private async initializeAttempt(
@@ -500,11 +498,14 @@ export class McpFnClient {
       const requestId = this.requestId();
       await this.emit("transport-close", "started", requestId);
       const pendingConnect = this.connectPromise;
-      this.connectController?.abort();
+      const pendingController = this.connectController;
+      pendingController?.abort();
+      if (this.connectPromise === pendingConnect) this.connectPromise = undefined;
+      if (this.connectController === pendingController) this.connectController = undefined;
       await this.cleanupAttempt();
-      // The aborted connection path remains attached so rejectLateTargetOpen()
-      // closes a handle even when a custom target ignores abort and resolves later.
-      // Do not await it: an uncooperative target open must not block close().
+      // Retain an observed continuation without leaving the aborted attempt as
+      // the active connection. A custom target that ignores abort may settle
+      // later, but its isolated handle is closed by openTargetAttempt().
       void pendingConnect?.catch(() => undefined);
       this._state = permanent ? "closed" : "idle";
       await this.emit("transport-close", "succeeded", requestId);

@@ -164,15 +164,26 @@ describe("McpFn production client", () => {
     expect(client.state).toBe("idle");
   });
 
-  it("aborts a pending open and closes a handle that resolves after close starts", async () => {
-    const [clientTransport] = InMemoryTransport.createLinkedPair();
+  it("detaches an aborted open so reconnect succeeds and closes its late handle", async () => {
+    const [lateClientTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMcpFnServer({
+      info: { name: "reconnected", version: "1.0.0" },
+      registry: new McpFnRegistry(),
+    });
     let targetSignal: AbortSignal | undefined;
     let resolveOpen!: (handle: McpFnTransportHandle) => void;
+    let openCalls = 0;
     const closeHandle = vi.fn(async () => undefined);
     const client = createMcpFnClient({
       target: customTarget({
         kind: "delayed",
-        open: (context) => {
+        open: async (context) => {
+          openCalls += 1;
+          if (openCalls > 1) {
+            const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+            await server.connect(serverTransport);
+            return { transport: clientTransport, close: () => server.close() };
+          }
           targetSignal = context.signal;
           return new Promise<McpFnTransportHandle>((resolve) => {
             resolveOpen = resolve;
@@ -191,10 +202,14 @@ describe("McpFn production client", () => {
     await expect(closing).resolves.toBeUndefined();
     expect(client.state).toBe("closed");
     expect(closeHandle).not.toHaveBeenCalled();
-    resolveOpen({ transport: clientTransport, close: closeHandle });
+    await expect(client.reconnect()).resolves.toBeUndefined();
+    expect(client.state).toBe("connected");
+    resolveOpen({ transport: lateClientTransport, close: closeHandle });
 
     await connectResult;
     await vi.waitFor(() => expect(closeHandle).toHaveBeenCalledOnce());
+    expect(client.state).toBe("connected");
+    await client.close();
   });
 
   it("closes the transport to interrupt a pending MCP initialization", async () => {
