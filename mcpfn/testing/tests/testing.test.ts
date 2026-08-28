@@ -445,7 +445,7 @@ describe("McpFn testing", () => {
       });
       expect(JSON.parse(body)).toEqual({ ok: true });
       expect(authorization).toBe("Bearer conformance-secret");
-      expect(host).toBe(`127.0.0.1:${address.port}`);
+      expect(host).toBe("untrusted.example.test");
     } finally {
       await proxy.close();
       await new Promise<void>((resolve, reject) => {

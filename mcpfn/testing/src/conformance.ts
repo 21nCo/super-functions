@@ -81,7 +81,8 @@ export async function createAuthenticatedConformanceProxy(
     }
     const headers: IncomingHttpHeaders = { ...incoming.headers };
     delete headers.connection;
-    headers.host = upstream.host;
+    // Preserve Host so the official suite can exercise DNS-rebinding defenses;
+    // the outbound socket and request path remain fixed below.
     injected.forEach((value, name) => {
       headers[name.toLowerCase()] = value;
     });
