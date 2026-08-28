@@ -29,7 +29,7 @@ export interface McpFnInspectorSnapshot {
   formatVersion: 1;
   kind: "mcpfn.inspector-snapshot";
   target: McpFnTargetDescriptor;
-  state: string;
+  clientState: string;
   server?: Implementation;
   capabilities?: ServerCapabilities;
   tools: Tool[];
@@ -157,7 +157,7 @@ export class McpFnInspector {
       formatVersion: 1,
       kind: "mcpfn.inspector-snapshot",
       target: this.client.getTargetDescriptor(),
-      state: this.client.state,
+      clientState: this.client.state,
       server: this.client.getServerVersion(),
       capabilities,
       tools: tools.items,

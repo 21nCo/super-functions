@@ -188,12 +188,13 @@ describe("McpFn production client", () => {
     await vi.waitFor(() => expect(targetSignal).toBeDefined());
     const closing = client.close();
     await vi.waitFor(() => expect(targetSignal?.aborted).toBe(true));
+    await expect(closing).resolves.toBeUndefined();
+    expect(client.state).toBe("closed");
+    expect(closeHandle).not.toHaveBeenCalled();
     resolveOpen({ transport: clientTransport, close: closeHandle });
 
-    await closing;
     await connectResult;
-    expect(closeHandle).toHaveBeenCalledOnce();
-    expect(client.state).toBe("closed");
+    await vi.waitFor(() => expect(closeHandle).toHaveBeenCalledOnce());
   });
 
   it("closes the transport to interrupt a pending MCP initialization", async () => {

@@ -1207,6 +1207,18 @@ describe("McpFn hosted authorization compatibility", () => {
     expect(accepted.status).toBe(200);
     expect(authenticateClient).toHaveBeenCalledOnce();
     expect(callbackBodies).toEqual([body.toString(), body.toString()]);
+    const unknownClient = await compatibility(new Request(`${issuer}/token`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        authorization: `Basic ${btoa("unknown:incorrect")}`,
+      },
+      body,
+    }));
+    expect(unknownClient.status).toBe(401);
+    expect(unknownClient.headers.get("www-authenticate"))
+      .toBe('Basic realm="mcp-token"');
+    await expect(unknownClient.json()).resolves.toMatchObject({ error: "invalid_client" });
     const drift = await compatibility(new Request(`${issuer}/token`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },

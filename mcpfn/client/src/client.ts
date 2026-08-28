@@ -502,7 +502,10 @@ export class McpFnClient {
       const pendingConnect = this.connectPromise;
       this.connectController?.abort();
       await this.cleanupAttempt();
-      await pendingConnect?.catch(() => undefined);
+      // The aborted connection path remains attached so rejectLateTargetOpen()
+      // closes a handle even when a custom target ignores abort and resolves later.
+      // Do not await it: an uncooperative target open must not block close().
+      void pendingConnect?.catch(() => undefined);
       this._state = permanent ? "closed" : "idle";
       await this.emit("transport-close", "succeeded", requestId);
     })().finally(() => {

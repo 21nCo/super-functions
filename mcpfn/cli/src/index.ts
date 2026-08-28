@@ -194,8 +194,8 @@ export async function runCli(
     }) => {
       const target = parseTarget(targetValue, options, cwd);
       const inspector = McpFnInspector.create({ target });
-      await inspector.connect();
       try {
+        await inspector.connect();
         const serialized = `${JSON.stringify(await inspector.snapshot(), null, 2)}\n`;
         if (options.output) {
           await writeFile(path.resolve(cwd, options.output), serialized, "utf8");

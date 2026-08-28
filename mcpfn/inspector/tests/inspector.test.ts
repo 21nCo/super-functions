@@ -32,6 +32,7 @@ describe("McpFn inspector", () => {
     await inspector.connect();
     try {
       await expect(inspector.snapshot()).resolves.toMatchObject({
+        clientState: "connected",
         server: { name: "inspected", version: "1.0.0" },
         tools: [{ name: "echo" }],
       });
@@ -42,6 +43,7 @@ describe("McpFn inspector", () => {
       };
       const result = await inspector.run(operation);
       const bounded = await inspector.snapshot();
+      expect(JSON.stringify(bounded)).not.toContain('"clientState":"[REDACTED]"');
       expect(bounded.timeline.length).toBeLessThanOrEqual(3);
       expect(bounded.droppedEvents).toBeGreaterThan(0);
       expect(bounded.timelineComplete).toBe(false);

@@ -467,15 +467,23 @@ export function createMcpAuthorizationCompatibilityHandler(
         ...normalized.details,
       });
       const retryAfter = normalized.details?.retryAfterSeconds;
+      const basicChallenge =
+        normalized.code === "invalid_client" &&
+        /^Basic(?:\s|$)/i.test(request.headers.get("authorization") ?? "");
       return json(
         normalized.status,
         {
           error: normalized.code,
           error_description: normalized.message,
         },
-        typeof retryAfter === "number" && Number.isFinite(retryAfter)
-          ? { "retry-after": String(Math.max(0, Math.ceil(retryAfter))) }
-          : {},
+        {
+          ...(typeof retryAfter === "number" && Number.isFinite(retryAfter)
+            ? { "retry-after": String(Math.max(0, Math.ceil(retryAfter))) }
+            : {}),
+          ...(basicChallenge
+            ? { "www-authenticate": 'Basic realm="mcp-token"' }
+            : {}),
+        },
       );
     }
   };
