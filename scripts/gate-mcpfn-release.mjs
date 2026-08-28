@@ -254,7 +254,7 @@ const server = createMcpFnServer({
 });
 await server.serveStdio();
 `);
-  writeFileSync(roundtrip, `
+  writeFileSync(roundtrip, String.raw`
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import {
@@ -315,7 +315,7 @@ try {
   await mcp.close();
   await new Promise((resolve) => httpServer.close(resolve));
 }
-process.stdout.write(JSON.stringify({ ok: true, transports: ["stdio", "streamable-http"] }) + "\\n");
+process.stdout.write(JSON.stringify({ ok: true, transports: ["stdio", "streamable-http"] }) + "\n");
 `);
   run("consumer:roundtrip", process.execPath, [roundtrip], {
     cwd: consumerRoot,

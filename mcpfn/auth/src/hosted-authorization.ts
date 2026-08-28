@@ -1095,7 +1095,7 @@ function readBasicClientCredentials(
 }
 
 function decodeFormComponent(value: string): string {
-  return decodeURIComponent(value.replace(/\+/g, " "));
+  return decodeURIComponent(value.replaceAll("+", " "));
 }
 
 async function withSerializedRefresh(
