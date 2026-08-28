@@ -588,7 +588,7 @@ describe("McpFn testing", () => {
     request.end();
     await started;
 
-    await proxy.close();
+    await expect(proxy.close()).resolves.toBeUndefined();
     await new Promise<void>((resolve, reject) => {
       upstream.close((error) => (error ? reject(error) : resolve()));
     });

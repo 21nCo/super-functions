@@ -146,7 +146,7 @@ export function normalizeMcpClientRegistration(input: {
   let redirectUris: string[];
   try {
     redirectUris = unique(
-      (input.metadata.redirect_uris ?? []).map((value) =>
+      registrationStringArray(input.metadata.redirect_uris, "redirect_uris", []).map((value) =>
         normalizeMcpRedirectUri(value, input.redirectPolicy),
       ),
     );
@@ -165,8 +165,12 @@ export function normalizeMcpClientRegistration(input: {
       "At least one redirect_uri is required",
     );
   }
-  const responseTypes = unique(input.metadata.response_types ?? ["code"]);
-  const grantTypes = unique(input.metadata.grant_types ?? ["authorization_code"]);
+  const responseTypes = unique(
+    registrationStringArray(input.metadata.response_types, "response_types", ["code"]),
+  );
+  const grantTypes = unique(
+    registrationStringArray(input.metadata.grant_types, "grant_types", ["authorization_code"]),
+  );
   return {
     clientId: input.clientId,
     source: input.source,
@@ -182,6 +186,21 @@ export function normalizeMcpClientRegistration(input: {
       token_endpoint_auth_method: input.metadata.token_endpoint_auth_method ?? "none",
     },
   };
+}
+
+function registrationStringArray(
+  value: unknown,
+  field: string,
+  fallback: string[],
+): string[] {
+  if (value === undefined) return fallback;
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client_metadata",
+      `${field} must be an array of strings`,
+    );
+  }
+  return value;
 }
 
 export function validateMcpAuthorizationRequest(options: {
@@ -392,7 +411,7 @@ export function createMcpAuthorizationCompatibilityHandler(
 ): (request: Request) => Promise<Response> {
   validateClientMetadataDocumentOptions(options.clientMetadataDocuments);
   const issuer = normalizeIssuer(options.issuer);
-  const issuerPath = issuer.pathname === "/" ? "" : issuer.pathname.replace(/\/+$/, "");
+  const issuerPath = issuer.pathname === "/" ? "" : trimTrailingSlashes(issuer.pathname);
   const endpointPrefix = normalizeEndpointPrefix(
     options.endpointPrefix ?? issuerPath,
   );
@@ -461,7 +480,7 @@ export function createMcpAuthorizationServerMetadata(
 ): Record<string, unknown> {
   const issuer = normalizeIssuer(options.issuer);
   const issuerPath =
-    issuer.pathname === "/" ? "" : issuer.pathname.replace(/\/+$/, "");
+    issuer.pathname === "/" ? "" : trimTrailingSlashes(issuer.pathname);
   const endpointPrefix = normalizeEndpointPrefix(
     options.endpointPrefix ?? issuerPath,
   );
@@ -722,86 +741,13 @@ async function handleTokenRequest(
     callbackRequest,
     supportedMethods,
   );
-  let tokenSet: McpFnHostedTokenSet;
-  if (grantType === "authorization_code") {
-    if (!authentication.client.grantTypes.includes("authorization_code")) {
-      throw new McpFnHostedAuthorizationError(
-        "unauthorized_client",
-        "The client is not registered for authorization_code",
-      );
-    }
-    const redirectUri = normalizeRequiredUrl(form, "redirect_uri");
-    const resource = normalizeOptionalResource(form, options.allowedResources);
-    assertRequiredTokenResource(options, resource, "authorization_code");
-    try {
-      matchMcpRedirectUri(
-        redirectUri,
-        authentication.client.redirectUris,
-        options.redirectPolicy,
-      );
-    } catch (error) {
-      if (error instanceof McpFnRedirectMismatchError) {
-        throw new McpFnHostedAuthorizationError(
-          "invalid_grant",
-          "Authorization code redirect binding does not match the client registration",
-        );
-      }
-      throw error;
-    }
-    const codeVerifier = singleFormValue(form, "code_verifier", true)!;
-    if (!/^[A-Za-z0-9._~-]{43,128}$/.test(codeVerifier)) {
-      throw new McpFnHostedAuthorizationError("invalid_grant", "PKCE code_verifier is invalid");
-    }
-    tokenSet = await options.tokenAuthority.exchangeAuthorizationCode({
-      ...authentication,
-      code: singleFormValue(form, "code", true)!,
-      redirectUri,
-      codeVerifier,
-      ...(resource ? { resource } : {}),
-    }, callbackRequest);
-  } else if (grantType === "refresh_token") {
-    if (!options.tokenAuthority.refreshToken) {
-      throw new McpFnHostedAuthorizationError(
-        "unsupported_grant_type",
-        "refresh_token is not enabled by the token authority",
-      );
-    }
-    if (!authentication.client.grantTypes.includes("refresh_token")) {
-      throw new McpFnHostedAuthorizationError(
-        "unauthorized_client",
-        "The client is not registered for refresh_token",
-      );
-    }
-    const credential = singleFormValue(form, "refresh_token", true)!;
-    const scopes = unique((singleFormValue(form, "scope") ?? "").split(/\s+/).filter(Boolean));
-    assertSupportedScopes(scopes, options.supportedScopes);
-    const resource = normalizeOptionalResource(form, options.allowedResources);
-    assertRequiredTokenResource(options, resource, "refresh_token");
-    tokenSet = await withSerializedRefresh(options.tokenAuthority, credential, async () => {
-      const refreshed = await options.tokenAuthority.refreshToken!({
-        ...authentication,
-        refreshToken: credential,
-        scopes,
-        ...(resource ? { resource } : {}),
-      }, callbackRequest);
-      if (
-        (options.capabilities?.rotateRefreshTokens ?? true) &&
-        (!refreshed.refresh_token || refreshed.refresh_token === credential)
-      ) {
-        throw new McpFnHostedAuthorizationError(
-          "server_error",
-          "The token authority did not rotate the refresh credential",
-          { status: 500 },
-        );
-      }
-      return refreshed;
-    });
-  } else {
-    throw new McpFnHostedAuthorizationError(
-      "unsupported_grant_type",
-      "The requested OAuth grant is not supported",
-    );
-  }
+  const tokenSet = await issueHostedToken(
+    grantType,
+    options,
+    authentication,
+    form,
+    callbackRequest,
+  );
   validateHostedTokenSet(tokenSet);
   await emit(options, grantType === "refresh_token" ? "token-refresh" : "token-exchange", "succeeded", undefined, {
     clientId: authentication.client.clientId,
@@ -809,6 +755,122 @@ async function handleTokenRequest(
     hasRefreshToken: Boolean(tokenSet.refresh_token),
   });
   return json(200, tokenSet);
+}
+
+function issueHostedToken(
+  grantType: string,
+  options: McpFnAuthorizationCompatibilityOptions,
+  authentication: McpFnHostedClientAuthentication,
+  form: URLSearchParams,
+  request: Request,
+): Promise<McpFnHostedTokenSet> | McpFnHostedTokenSet {
+  if (grantType === "authorization_code") {
+    return exchangeHostedAuthorizationCode(options, authentication, form, request);
+  }
+  if (grantType === "refresh_token") {
+    return refreshHostedToken(options, authentication, form, request);
+  }
+  throw new McpFnHostedAuthorizationError(
+    "unsupported_grant_type",
+    "The requested OAuth grant is not supported",
+  );
+}
+
+async function exchangeHostedAuthorizationCode(
+  options: McpFnAuthorizationCompatibilityOptions,
+  authentication: McpFnHostedClientAuthentication,
+  form: URLSearchParams,
+  request: Request,
+): Promise<McpFnHostedTokenSet> {
+  if (!authentication.client.grantTypes.includes("authorization_code")) {
+    throw new McpFnHostedAuthorizationError(
+      "unauthorized_client",
+      "The client is not registered for authorization_code",
+    );
+  }
+  const redirectUri = normalizeRequiredUrl(form, "redirect_uri");
+  const resource = normalizeOptionalResource(form, options.allowedResources);
+  assertRequiredTokenResource(options, resource, "authorization_code");
+  assertAuthorizationCodeRedirect(redirectUri, authentication.client.redirectUris, options);
+  const codeVerifier = singleFormValue(form, "code_verifier", true)!;
+  if (!/^[A-Za-z0-9._~-]{43,128}$/.test(codeVerifier)) {
+    throw new McpFnHostedAuthorizationError("invalid_grant", "PKCE code_verifier is invalid");
+  }
+  return options.tokenAuthority.exchangeAuthorizationCode({
+    ...authentication,
+    code: singleFormValue(form, "code", true)!,
+    redirectUri,
+    codeVerifier,
+    ...(resource ? { resource } : {}),
+  }, request);
+}
+
+function assertAuthorizationCodeRedirect(
+  redirectUri: string,
+  registeredRedirectUris: string[],
+  options: McpFnAuthorizationCompatibilityOptions,
+): void {
+  try {
+    matchMcpRedirectUri(redirectUri, registeredRedirectUris, options.redirectPolicy);
+  } catch (error) {
+    if (!(error instanceof McpFnRedirectMismatchError)) throw error;
+    throw new McpFnHostedAuthorizationError(
+      "invalid_grant",
+      "Authorization code redirect binding does not match the client registration",
+    );
+  }
+}
+
+async function refreshHostedToken(
+  options: McpFnAuthorizationCompatibilityOptions,
+  authentication: McpFnHostedClientAuthentication,
+  form: URLSearchParams,
+  request: Request,
+): Promise<McpFnHostedTokenSet> {
+  if (!options.tokenAuthority.refreshToken) {
+    throw new McpFnHostedAuthorizationError(
+      "unsupported_grant_type",
+      "refresh_token is not enabled by the token authority",
+    );
+  }
+  if (!authentication.client.grantTypes.includes("refresh_token")) {
+    throw new McpFnHostedAuthorizationError(
+      "unauthorized_client",
+      "The client is not registered for refresh_token",
+    );
+  }
+  const credential = singleFormValue(form, "refresh_token", true)!;
+  const scopes = unique((singleFormValue(form, "scope") ?? "").split(/\s+/).filter(Boolean));
+  assertSupportedScopes(scopes, options.supportedScopes);
+  const resource = normalizeOptionalResource(form, options.allowedResources);
+  assertRequiredTokenResource(options, resource, "refresh_token");
+  return withSerializedRefresh(options.tokenAuthority, credential, async () => {
+    const refreshed = await options.tokenAuthority.refreshToken!({
+      ...authentication,
+      refreshToken: credential,
+      scopes,
+      ...(resource ? { resource } : {}),
+    }, request);
+    assertRefreshTokenRotated(options, credential, refreshed);
+    return refreshed;
+  });
+}
+
+function assertRefreshTokenRotated(
+  options: McpFnAuthorizationCompatibilityOptions,
+  credential: string,
+  refreshed: McpFnHostedTokenSet,
+): void {
+  if (
+    (options.capabilities?.rotateRefreshTokens ?? true) &&
+    (!refreshed.refresh_token || refreshed.refresh_token === credential)
+  ) {
+    throw new McpFnHostedAuthorizationError(
+      "server_error",
+      "The token authority did not rotate the refresh credential",
+      { status: 500 },
+    );
+  }
 }
 
 async function handleRevocationRequest(
@@ -891,7 +953,7 @@ async function authenticateHostedClient(
     }
     throw error;
   }
-  if (!client || client.tokenEndpointAuthMethod !== method) {
+  if (client?.tokenEndpointAuthMethod !== method) {
     throw new McpFnHostedAuthorizationError(
       "invalid_client",
       "Client authentication does not match the registered method",
@@ -1002,7 +1064,8 @@ function readBasicClientCredentials(
   authorization: string | null,
 ): { clientId: string; clientSecret: string } | undefined {
   if (!authorization) return undefined;
-  if (!authorization.startsWith("Basic ")) {
+  const match = /^Basic +(\S+) *$/i.exec(authorization);
+  if (!match) {
     throw new McpFnHostedAuthorizationError(
       "invalid_client",
       "Unsupported Authorization header at the token endpoint",
@@ -1010,7 +1073,7 @@ function readBasicClientCredentials(
     );
   }
   try {
-    const decoded = atob(authorization.slice(6));
+    const decoded = atob(match[1]);
     const separator = decoded.indexOf(":");
     if (separator < 1) throw new Error("missing separator");
     return {
@@ -1206,48 +1269,22 @@ async function fetchClientMetadataDocument(
     for (let redirectCount = 0; ; redirectCount += 1) {
       await assertClientMetadataDocumentUrlAllowed(currentUrl, options, controller.signal);
       if (controller.signal.aborted) throw clientMetadataTimeoutError();
-      let response: Response;
-      try {
-        response = await withAbort(fetchImplementation(currentUrl, {
-            headers: { accept: "application/json" },
-            redirect: "manual",
-            signal: controller.signal,
-          }), controller.signal);
-      } catch (error) {
-        if (controller.signal.aborted) throw clientMetadataTimeoutError();
-        throw error;
-      }
-      if (isRedirectStatus(response.status)) {
-        const location = response.headers.get("location");
-        await response.body?.cancel().catch(() => undefined);
-        if (!location || redirectCount >= maxRedirects) {
-          throw new McpFnHostedAuthorizationError(
-            "invalid_client",
-            "Client ID Metadata Document redirect could not be followed safely",
-          );
-        }
-        currentUrl = new URL(location, currentUrl);
+      const response = await fetchClientMetadataResponse(
+        fetchImplementation,
+        currentUrl,
+        controller,
+      );
+      const redirectUrl = await clientMetadataRedirectUrl(
+        response,
+        currentUrl,
+        redirectCount,
+        maxRedirects,
+      );
+      if (redirectUrl) {
+        currentUrl = redirectUrl;
         continue;
       }
-      if (!response.ok) {
-        await response.body?.cancel().catch(() => undefined);
-        throw new McpFnHostedAuthorizationError(
-          "invalid_client",
-          "Client ID Metadata Document could not be loaded",
-        );
-      }
-      if (
-        !response.headers
-          .get("content-type")
-          ?.toLowerCase()
-          .includes("application/json")
-      ) {
-        await response.body?.cancel().catch(() => undefined);
-        throw new McpFnHostedAuthorizationError(
-          "invalid_client",
-          "Client ID Metadata Document must use application/json",
-        );
-      }
+      await assertClientMetadataResponse(response);
       return await readBoundedJson(
         response,
         options.maxBytes ?? 256_000,
@@ -1259,6 +1296,59 @@ async function fetchClientMetadataDocument(
     throw error;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+async function fetchClientMetadataResponse(
+  fetchImplementation: typeof fetch,
+  url: URL,
+  controller: AbortController,
+): Promise<Response> {
+  try {
+    return await withAbort(fetchImplementation(url, {
+      headers: { accept: "application/json" },
+      redirect: "manual",
+      signal: controller.signal,
+    }), controller.signal);
+  } catch (error) {
+    if (controller.signal.aborted) throw clientMetadataTimeoutError();
+    throw error;
+  }
+}
+
+async function clientMetadataRedirectUrl(
+  response: Response,
+  currentUrl: URL,
+  redirectCount: number,
+  maxRedirects: number,
+): Promise<URL | undefined> {
+  if (!isRedirectStatus(response.status)) return undefined;
+  const location = response.headers.get("location");
+  await response.body?.cancel().catch(() => undefined);
+  if (!location || redirectCount >= maxRedirects) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client",
+      "Client ID Metadata Document redirect could not be followed safely",
+    );
+  }
+  return new URL(location, currentUrl);
+}
+
+async function assertClientMetadataResponse(response: Response): Promise<void> {
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client",
+      "Client ID Metadata Document could not be loaded",
+    );
+  }
+  const contentType = response.headers.get("content-type")?.toLowerCase();
+  if (!contentType?.includes("application/json")) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client",
+      "Client ID Metadata Document must use application/json",
+    );
   }
 }
 
@@ -1411,9 +1501,19 @@ function json(status: number, body: unknown, headers: HeadersInit = {}): Respons
 }
 
 function unique(values: string[]): string[] {
-  return [...new Set(values)].sort((left, right) =>
-    left < right ? -1 : left > right ? 1 : 0
-  );
+  return [...new Set(values)].sort(compareCodeUnits);
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end -= 1;
+  return value.slice(0, end);
 }
 
 async function emit(

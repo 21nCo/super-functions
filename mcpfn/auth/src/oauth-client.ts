@@ -110,7 +110,7 @@ export function createEncryptedMcpFnOAuthSessionStore(options: {
       parsed &&
       typeof parsed === "object" &&
       (parsed as { formatVersion?: unknown }).formatVersion === 1 &&
-      Object.prototype.hasOwnProperty.call(parsed, "value")
+      Object.hasOwn(parsed, "value")
     ) {
       return (parsed as { value: T }).value;
     }

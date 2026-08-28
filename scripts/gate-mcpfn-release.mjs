@@ -246,7 +246,7 @@ const server = createMcpFnServer({
 });
 await server.serveStdio();
 `);
-  writeFileSync(roundtrip, `
+  writeFileSync(roundtrip, String.raw`
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import {

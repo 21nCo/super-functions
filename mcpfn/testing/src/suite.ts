@@ -22,7 +22,7 @@ export interface RunMcpFnTargetSuiteOptions {
   expectedToolNames?: readonly string[];
   clientInfo?: Implementation;
   client?: McpFnTestClientOptions;
-  scenarioRun?: Parameters<typeof runScenarios>[2];
+  scenarioRun?: NonNullable<Parameters<typeof runScenarios>[2]>;
   /** Aggregate JSON size cap. Defaults to 1 MiB. */
   maxReportBytes?: number;
   /** Diagnostic timeline count cap. Defaults to 500. */

@@ -272,108 +272,15 @@ export class McpFnClient {
       const requestId = this.requestId();
       this._state = "connecting";
       await this.emit("transport-connect", "started", requestId, undefined, { attempt });
-      try {
-        this.handle = await this.options.target.open({
-          requestId,
-          signal,
-          diagnostic: (event) => this.dispatch(event),
-        });
-        if (signal.aborted) {
-          const lateHandle = this.handle;
-          this.handle = undefined;
-          await closeTransportHandle(lateHandle);
-          throw connectAbortedError();
-        }
-      } catch (error) {
-        if (signal.aborted) {
-          throw connectAbortedError(error);
-        }
-        lastError = error;
-        await this.emit("transport-connect", "failed", requestId, "MCPFN_TARGET_OPEN_FAILED", {
-          attempt,
-          message: errorMessage(error),
-        });
-        if (attempt < retries) {
-          await delay(this.options.connectRetryDelayMs ?? 100, signal);
-          continue;
-        }
-        this._state = "idle";
-        throw new McpFnClientError(
-          "MCPFN_TARGET_OPEN_FAILED",
-          "Failed to open the MCP target",
-          { phase: "transport-connect", retryable: true, cause: error },
-        );
+      const openError = await this.openTargetAttempt(requestId, attempt, retries, signal);
+      if (openError) {
+        lastError = openError;
+        continue;
       }
-
-      const protocol = new Client(
-        this.options.info ?? { name: "mcpfn-client", version: "0.0.1" },
-        {
-          ...this.instrumentClientOptions(),
-          capabilities: this.effectiveCapabilities(),
-        },
-      );
-      this._protocol = protocol;
-      protocol.onerror = (error) => {
-        void this.emit("capability-operation", "failed", this.requestId(), errorCode(error), {
-          message: error.message,
-          source: "protocol",
-        });
-      };
-      protocol.onclose = () => {
-        if (this._protocol !== protocol || this._state !== "connected") return;
-        const handle = this.handle;
-        this._protocol = undefined;
-        this.handle = undefined;
-        this._state = "idle";
-        void closeTransportHandle(handle);
-        void this.emit("transport-close", "succeeded", this.requestId());
-      };
-      await this.emit("mcp-initialize", "started", requestId);
-      try {
-        this.installFirstClassHandlers(protocol);
-        await this.options.configure?.(protocol);
-        await protocol.connect(this.handle.transport);
-        if (signal.aborted) {
-          await this.cleanupAttempt();
-          throw connectAbortedError();
-        }
-        this._state = "connected";
-        await this.emit("transport-connect", "succeeded", requestId, undefined, { attempt });
-        await this.emit("mcp-initialize", "succeeded", requestId, undefined, {
-          server: protocol.getServerVersion(),
-          capabilities: protocol.getServerCapabilities(),
-        });
-        return;
-      } catch (error) {
-        lastError = error;
-        if (signal.aborted) {
-          await this.cleanupAttempt();
-          throw connectAbortedError(error);
-        }
-        if (error instanceof UnauthorizedError) {
-          this._state = "authorization-required";
-          await this.emit(
-            "authorization-request",
-            "succeeded",
-            requestId,
-            "MCPFN_AUTHORIZATION_REQUIRED",
-          );
-          throw new McpFnClientError(
-            "MCPFN_AUTHORIZATION_REQUIRED",
-            "MCP authorization is required; complete the callback and retry",
-            { phase: "authorization-request", retryable: true, cause: error },
-          );
-        }
-        await this.emit("mcp-initialize", "failed", requestId, errorCode(error), {
-          message: errorMessage(error),
-          attempt,
-        });
-        await this.cleanupAttempt();
-        if (attempt < retries) {
-          await delay(this.options.connectRetryDelayMs ?? 100, signal);
-          continue;
-        }
-      }
+      const initialization = await this.initializeAttempt(requestId, attempt, signal);
+      if (initialization.connected) return;
+      lastError = initialization.error;
+      if (attempt < retries) await this.connectRetryDelay(signal);
     }
     this._state = "idle";
     throw new McpFnClientError(
@@ -381,6 +288,142 @@ export class McpFnClient {
       "Failed to connect and initialize the MCP session",
       { phase: "mcp-initialize", retryable: true, cause: lastError },
     );
+  }
+
+  private async openTargetAttempt(
+    requestId: string,
+    attempt: number,
+    retries: number,
+    signal: AbortSignal,
+  ): Promise<unknown | undefined> {
+    try {
+      this.handle = await this.options.target.open({
+        requestId,
+        signal,
+        diagnostic: (event) => this.dispatch(event),
+      });
+      await this.rejectLateTargetOpen(signal);
+      return undefined;
+    } catch (error) {
+      if (signal.aborted) throw connectAbortedError(error);
+      await this.emit("transport-connect", "failed", requestId, "MCPFN_TARGET_OPEN_FAILED", {
+        attempt,
+        message: errorMessage(error),
+      });
+      if (attempt < retries) {
+        await this.connectRetryDelay(signal);
+        return error;
+      }
+      this._state = "idle";
+      throw new McpFnClientError(
+        "MCPFN_TARGET_OPEN_FAILED",
+        "Failed to open the MCP target",
+        { phase: "transport-connect", retryable: true, cause: error },
+      );
+    }
+  }
+
+  private async rejectLateTargetOpen(signal: AbortSignal): Promise<void> {
+    if (!signal.aborted) return;
+    const lateHandle = this.handle;
+    this.handle = undefined;
+    await closeTransportHandle(lateHandle);
+    throw connectAbortedError();
+  }
+
+  private async initializeAttempt(
+    requestId: string,
+    attempt: number,
+    signal: AbortSignal,
+  ): Promise<{ connected: true } | { connected: false; error: unknown }> {
+    const protocol = this.createProtocol();
+    await this.emit("mcp-initialize", "started", requestId);
+    try {
+      this.installFirstClassHandlers(protocol);
+      await this.options.configure?.(protocol);
+      await protocol.connect(this.handle!.transport);
+      await this.rejectAbortedInitialization(signal);
+      this._state = "connected";
+      await this.emit("transport-connect", "succeeded", requestId, undefined, { attempt });
+      await this.emit("mcp-initialize", "succeeded", requestId, undefined, {
+        server: protocol.getServerVersion(),
+        capabilities: protocol.getServerCapabilities(),
+      });
+      return { connected: true };
+    } catch (error) {
+      return this.handleInitializationFailure(error, requestId, attempt, signal);
+    }
+  }
+
+  private createProtocol(): Client {
+    const protocol = new Client(
+      this.options.info ?? { name: "mcpfn-client", version: "0.0.1" },
+      {
+        ...this.instrumentClientOptions(),
+        capabilities: this.effectiveCapabilities(),
+      },
+    );
+    this._protocol = protocol;
+    protocol.onerror = (error) => {
+      void this.emit("capability-operation", "failed", this.requestId(), errorCode(error), {
+        message: error.message,
+        source: "protocol",
+      });
+    };
+    protocol.onclose = () => this.handleProtocolClose(protocol);
+    return protocol;
+  }
+
+  private handleProtocolClose(protocol: Client): void {
+    if (this._protocol !== protocol || this._state !== "connected") return;
+    const handle = this.handle;
+    this._protocol = undefined;
+    this.handle = undefined;
+    this._state = "idle";
+    void closeTransportHandle(handle);
+    void this.emit("transport-close", "succeeded", this.requestId());
+  }
+
+  private async rejectAbortedInitialization(signal: AbortSignal): Promise<void> {
+    if (!signal.aborted) return;
+    await this.cleanupAttempt();
+    throw connectAbortedError();
+  }
+
+  private async handleInitializationFailure(
+    error: unknown,
+    requestId: string,
+    attempt: number,
+    signal: AbortSignal,
+  ): Promise<{ connected: false; error: unknown }> {
+    if (signal.aborted) {
+      await this.cleanupAttempt();
+      throw connectAbortedError(error);
+    }
+    if (error instanceof UnauthorizedError) {
+      this._state = "authorization-required";
+      await this.emit(
+        "authorization-request",
+        "succeeded",
+        requestId,
+        "MCPFN_AUTHORIZATION_REQUIRED",
+      );
+      throw new McpFnClientError(
+        "MCPFN_AUTHORIZATION_REQUIRED",
+        "MCP authorization is required; complete the callback and retry",
+        { phase: "authorization-request", retryable: true, cause: error },
+      );
+    }
+    await this.emit("mcp-initialize", "failed", requestId, errorCode(error), {
+      message: errorMessage(error),
+      attempt,
+    });
+    await this.cleanupAttempt();
+    return { connected: false, error };
+  }
+
+  private connectRetryDelay(signal: AbortSignal): Promise<void> {
+    return delay(this.options.connectRetryDelayMs ?? 100, signal);
   }
 
   async completeAuthorization(

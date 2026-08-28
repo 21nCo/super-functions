@@ -54,6 +54,11 @@ describe("McpFn OAuth client compatibility", () => {
       ["com.example.app:/callback"],
       { allowPrivateUseSchemes: true },
     ).kind).toBe("exact");
+    expect(matchMcpRedirectUri(
+      "com.3m:/callback",
+      ["com.3m:/callback"],
+      { allowPrivateUseSchemes: true },
+    ).kind).toBe("exact");
     for (const unsafe of [
       "javascript:alert(1)",
       "data:text/plain,callback",
@@ -612,6 +617,14 @@ describe("McpFn hosted authorization compatibility", () => {
       },
       {
         redirect_uris: ["https://client.example/callback"],
+        response_types: ["code", 1],
+      },
+      {
+        redirect_uris: ["https://client.example/callback"],
+        grant_types: ["authorization_code", {}],
+      },
+      {
+        redirect_uris: ["https://client.example/callback"],
         scope: "mcp:read admin:all",
       },
     ]) {
@@ -998,7 +1011,7 @@ describe("McpFn hosted authorization compatibility", () => {
       method: "POST",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        authorization: `Basic ${btoa("secret-client:correct")}`,
+        authorization: `bAsIc ${btoa("secret-client:correct")}`,
       },
       body,
     }));

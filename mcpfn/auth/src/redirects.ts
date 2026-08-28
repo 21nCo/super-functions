@@ -85,7 +85,7 @@ export function matchMcpRedirectUri(
 
 function isReverseDomainPrivateUseScheme(protocol: string): boolean {
   const scheme = protocol.slice(0, -1).toLowerCase();
-  return /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z](?:[a-z0-9-]*[a-z0-9])?$/.test(
+  return /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(
     scheme,
   );
 }

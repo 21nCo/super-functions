@@ -23,7 +23,7 @@ const SECRET_KEYS = new Set([
 ]);
 const EMBEDDED_URL = /\b[a-z][a-z0-9+.-]*:\/{1,2}[^\s<>"']+/gi;
 const KEY_VALUE_ASSIGNMENT =
-  /(\b([a-z][a-z0-9_-]*)\b["']?\s*(?:=|:)\s*)(["']?)([^"'\s,;&#]+)\3/gi;
+  /(\b([a-z][a-z0-9_-]*)\b["']?\s*[=:]\s*)(["']?)([^"'\s,;&#]+)\3/gi;
 
 export interface OAuthRedactionOptions {
   maxDepth?: number;
@@ -64,52 +64,96 @@ function redact(
   if (ancestors.has(value)) return "[CIRCULAR]";
   ancestors.add(value);
   try {
-    if (Array.isArray(value)) {
-      const entries = value
-        .slice(0, options.maxArrayEntries)
-        .map((entry) => redact(entry, options, depth + 1, ancestors));
-      if (value.length > options.maxArrayEntries) entries.push("[TRUNCATED]");
-      return entries;
-    }
-    if (value instanceof Map) {
-      const entries = [...value.entries()]
-        .slice(0, options.maxArrayEntries)
-        .map(([key, entry]) => [
-          redact(key, options, depth + 1, ancestors),
-          typeof key === "string" && isSecretKey(key)
-            ? REDACTED
-            : redact(entry, options, depth + 1, ancestors),
-        ]);
-      if (value.size > options.maxArrayEntries) entries.push(["[TRUNCATED]", "[TRUNCATED]"]);
-      return { type: "Map", entries };
-    }
-    if (value instanceof Set) {
-      const values = [...value.values()]
-        .slice(0, options.maxArrayEntries)
-        .map((entry) => redact(entry, options, depth + 1, ancestors));
-      if (value.size > options.maxArrayEntries) values.push("[TRUNCATED]");
-      return { type: "Set", values };
-    }
-    const enumerable = Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
-        key,
-        isSecretKey(key) ? REDACTED : redact(entry, options, depth + 1, ancestors),
-      ]),
-    );
-    if (value instanceof Error) {
-      return {
-        ...enumerable,
-        name: redactString(value.name, options.maxStringLength),
-        message: redactString(value.message, options.maxStringLength),
-        ...(value.stack
-          ? { stack: redactString(value.stack, options.maxStringLength) }
-          : {}),
-      };
-    }
-    return enumerable;
+    return redactObject(value, options, depth, ancestors);
   } finally {
     ancestors.delete(value);
   }
+}
+
+function redactObject(
+  value: object,
+  options: Required<OAuthRedactionOptions>,
+  depth: number,
+  ancestors: WeakSet<object>,
+): unknown {
+  if (Array.isArray(value)) return redactArray(value, options, depth, ancestors);
+  if (value instanceof Map) return redactMap(value, options, depth, ancestors);
+  if (value instanceof Set) return redactSet(value, options, depth, ancestors);
+  const enumerable = redactRecord(value as Record<string, unknown>, options, depth, ancestors);
+  return value instanceof Error
+    ? redactError(value, enumerable, options.maxStringLength)
+    : enumerable;
+}
+
+function redactArray(
+  value: unknown[],
+  options: Required<OAuthRedactionOptions>,
+  depth: number,
+  ancestors: WeakSet<object>,
+): unknown[] {
+  const entries = value
+    .slice(0, options.maxArrayEntries)
+    .map((entry) => redact(entry, options, depth + 1, ancestors));
+  if (value.length > options.maxArrayEntries) entries.push("[TRUNCATED]");
+  return entries;
+}
+
+function redactMap(
+  value: Map<unknown, unknown>,
+  options: Required<OAuthRedactionOptions>,
+  depth: number,
+  ancestors: WeakSet<object>,
+): { type: "Map"; entries: unknown[][] } {
+  const entries = [...value.entries()]
+    .slice(0, options.maxArrayEntries)
+    .map(([key, entry]) => [
+      redact(key, options, depth + 1, ancestors),
+      typeof key === "string" && isSecretKey(key)
+        ? REDACTED
+        : redact(entry, options, depth + 1, ancestors),
+    ]);
+  if (value.size > options.maxArrayEntries) entries.push(["[TRUNCATED]", "[TRUNCATED]"]);
+  return { type: "Map", entries };
+}
+
+function redactSet(
+  value: Set<unknown>,
+  options: Required<OAuthRedactionOptions>,
+  depth: number,
+  ancestors: WeakSet<object>,
+): { type: "Set"; values: unknown[] } {
+  const values = [...value.values()]
+    .slice(0, options.maxArrayEntries)
+    .map((entry) => redact(entry, options, depth + 1, ancestors));
+  if (value.size > options.maxArrayEntries) values.push("[TRUNCATED]");
+  return { type: "Set", values };
+}
+
+function redactRecord(
+  value: Record<string, unknown>,
+  options: Required<OAuthRedactionOptions>,
+  depth: number,
+  ancestors: WeakSet<object>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [
+      key,
+      isSecretKey(key) ? REDACTED : redact(entry, options, depth + 1, ancestors),
+    ]),
+  );
+}
+
+function redactError(
+  value: Error,
+  enumerable: Record<string, unknown>,
+  maxStringLength: number,
+): Record<string, unknown> {
+  return {
+    ...enumerable,
+    name: redactString(value.name, maxStringLength),
+    message: redactString(value.message, maxStringLength),
+    ...(value.stack ? { stack: redactString(value.stack, maxStringLength) } : {}),
+  };
 }
 
 function maybeRedactUrl(value: string, maxLength: number): string | undefined {
@@ -168,9 +212,16 @@ function isSecretKey(key: string): boolean {
 }
 
 function normalizeKey(key: string): string {
-  return key
+  const normalized = key
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-    .replace(/[^a-z0-9]+/gi, "_")
-    .replace(/^_+|_+$/g, "")
-    .toLowerCase();
+    .replace(/[^a-z0-9]+/gi, "_");
+  return trimUnderscores(normalized).toLowerCase();
+}
+
+function trimUnderscores(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value[start] === "_") start += 1;
+  while (end > start && value[end - 1] === "_") end -= 1;
+  return value.slice(start, end);
 }

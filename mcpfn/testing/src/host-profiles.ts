@@ -150,12 +150,15 @@ export function checkHostCompatibility(
 
   issues.sort((left, right) => {
     if (left.path !== right.path) return left.path < right.path ? -1 : 1;
-    return left.code < right.code ? -1 : left.code > right.code ? 1 : 0;
+    if (left.code < right.code) return -1;
+    if (left.code > right.code) return 1;
+    return 0;
   });
-  const status = issues.some((issue) => issue.severity === "incompatible")
-    ? "incompatible"
-    : issues.length
-      ? "degraded"
-      : "compatible";
+  let status: McpFnHostCompatibilityResult["status"] = "compatible";
+  if (issues.some((issue) => issue.severity === "incompatible")) {
+    status = "incompatible";
+  } else if (issues.length > 0) {
+    status = "degraded";
+  }
   return { status, compatible: status !== "incompatible", issues };
 }

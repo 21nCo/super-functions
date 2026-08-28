@@ -17,6 +17,7 @@ import type {
   CompleteResult,
   CreateTaskResult,
   GetPromptResult,
+  Implementation,
   ListTasksResult,
   Prompt,
   ReadResourceResult,
@@ -67,20 +68,25 @@ export class McpFnTestClient<TContext = undefined> {
 
   static async connectTarget<TContext = undefined>(
     target: McpFnTarget,
-    info = { name: "mcpfn-test-client", version: "1.0.0" },
+    info?: Implementation,
     options: McpFnTestClientOptions = {},
   ): Promise<McpFnTestClient<TContext>> {
     const session = createMcpFnClient({
       target,
-      info,
+      info: info ?? { name: "mcpfn-test-client", version: "1.0.0" },
       capabilities: options.capabilities,
       handlers: options.handlers,
       events: options.events,
       configure: options.configure,
       diagnostics: options.diagnostics,
     });
-    await session.connect();
-    return new McpFnTestClient<TContext>(session);
+    try {
+      await session.connect();
+      return new McpFnTestClient<TContext>(session);
+    } catch (error) {
+      await session.close(true).catch(() => undefined);
+      throw error;
+    }
   }
 
   listTools(options?: RequestOptions): Promise<Tool[]> { return this.session.tools.listAll(options); }

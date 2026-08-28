@@ -12,12 +12,14 @@ import { redactOAuthValue } from "@superfunctions/oauth-core";
 import { McpFnAssertionError, assertStructuredTextParity, stableJson } from "./assertions.js";
 import type { McpFnTestClient } from "./client.js";
 
+export type McpFnScenarioSideEffect = "none" | "idempotent" | "non-idempotent";
+
 export interface McpFnScenarioBase {
   formatVersion?: 1;
   name: string;
   /** Defaults to the runner timeout. */
   timeoutMs?: number;
-  sideEffect?: "none" | "idempotent" | "non-idempotent";
+  sideEffect?: McpFnScenarioSideEffect;
   status?: "complete" | "incomplete";
   incompleteReason?: string;
   /** Environment-backed placeholders used by this scenario, never their values. */
@@ -138,7 +140,7 @@ export interface McpFnScenarioResult {
   operation: string;
   tool?: string;
   status: "passed" | "failed" | "incomplete";
-  sideEffect: "none" | "idempotent" | "non-idempotent";
+  sideEffect: McpFnScenarioSideEffect;
   durationMs: number;
   error?: string;
   /** Observed client events discarded while this scenario was running. */
@@ -166,86 +168,131 @@ export function createMcpFnScenario(
   operation: McpFnRecordedOperation,
   result: McpFnRecordedOperationResult,
 ): McpFnScenario {
-  if (operation.kind === "tools.call") {
-    const toolResult = result as CallToolResult;
-    return {
-      formatVersion: 1,
-      name,
-      kind: "tools.call",
-      sideEffect: "non-idempotent",
-      tool: operation.name,
-      ...(operation.arguments ? { arguments: operation.arguments } : {}),
-      expect: {
-        isError: Boolean(toolResult.isError),
-        ...(toolResult.structuredContent !== undefined
-          ? { structuredContent: toolResult.structuredContent }
-          : {}),
-      },
-    };
+  switch (operation.kind) {
+    case "tools.call":
+      return createToolCallScenario(name, operation, result as CallToolResult);
+    case "tools.call:task":
+      return createToolTaskScenario(name, operation);
+    case "resources.read":
+      return createResourceReadScenario(name, operation, result);
+    case "resources.subscribe":
+    case "resources.unsubscribe":
+      return createResourceLifecycleScenario(name, operation);
+    case "tasks.get":
+    case "tasks.cancel":
+      return createTaskLifecycleScenario(name, operation);
+    case "tasks.result":
+      return createTaskResultScenario(name, operation, result);
+    case "tasks.list":
+      return createTaskListScenario(name, operation);
+    case "prompts.get":
+      return createPromptScenario(name, operation, result);
   }
-  if (operation.kind === "tools.call:task") {
-    return {
-      formatVersion: 1,
-      name,
-      kind: "tools.call:task",
-      sideEffect: "non-idempotent",
-      tool: operation.name,
-      ...(operation.arguments ? { arguments: operation.arguments } : {}),
-      ...(operation.task ? { task: operation.task } : {}),
-    };
-  }
-  if (operation.kind === "resources.read") {
-    return {
-      formatVersion: 1,
-      name,
-      kind: "resources.read",
-      sideEffect: "none",
-      uri: operation.uri,
-      expect: result,
-    };
-  }
-  if (operation.kind === "resources.subscribe" || operation.kind === "resources.unsubscribe") {
-    return {
-      formatVersion: 1,
-      name,
-      kind: operation.kind,
-      sideEffect: "idempotent",
-      uri: operation.uri,
-    };
-  }
-  if (operation.kind === "tasks.get" || operation.kind === "tasks.cancel") {
-    return {
-      formatVersion: 1,
-      name,
-      kind: operation.kind,
-      sideEffect: operation.kind === "tasks.cancel" ? "idempotent" : "none",
-      taskId: operation.taskId,
-    };
-  }
-  if (operation.kind === "tasks.result") {
-    return {
-      formatVersion: 1,
-      name,
-      kind: operation.kind,
-      sideEffect: "none",
-      taskId: operation.taskId,
-      expect: result,
-    };
-  }
-  if (operation.kind === "tasks.list") {
-    return {
-      formatVersion: 1,
-      name,
-      kind: operation.kind,
-      sideEffect: "none",
-      ...(operation.cursor ? { cursor: operation.cursor } : {}),
-    };
-  }
+}
+
+function scenarioBase(name: string, sideEffect: McpFnScenarioSideEffect) {
+  return { formatVersion: 1 as const, name, sideEffect };
+}
+
+function createToolCallScenario(
+  name: string,
+  operation: Extract<McpFnRecordedOperation, { kind: "tools.call" }>,
+  result: CallToolResult,
+): McpFnToolScenario {
   return {
-    formatVersion: 1,
-    name,
-    kind: "prompts.get",
-    sideEffect: "none",
+    ...scenarioBase(name, "non-idempotent"),
+    kind: "tools.call",
+    tool: operation.name,
+    ...(operation.arguments ? { arguments: operation.arguments } : {}),
+    expect: {
+      isError: Boolean(result.isError),
+      ...(result.structuredContent !== undefined
+        ? { structuredContent: result.structuredContent }
+        : {}),
+    },
+  };
+}
+
+function createToolTaskScenario(
+  name: string,
+  operation: Extract<McpFnRecordedOperation, { kind: "tools.call:task" }>,
+): McpFnCreateTaskScenario {
+  return {
+    ...scenarioBase(name, "non-idempotent"),
+    kind: operation.kind,
+    tool: operation.name,
+    ...(operation.arguments ? { arguments: operation.arguments } : {}),
+    ...(operation.task ? { task: operation.task } : {}),
+  };
+}
+
+function createResourceReadScenario(
+  name: string,
+  operation: Extract<McpFnRecordedOperation, { kind: "resources.read" }>,
+  result: McpFnRecordedOperationResult,
+): McpFnResourceScenario {
+  return {
+    ...scenarioBase(name, "none"),
+    kind: operation.kind,
+    uri: operation.uri,
+    expect: result,
+  };
+}
+
+function createResourceLifecycleScenario(
+  name: string,
+  operation: Extract<McpFnRecordedOperation, { kind: "resources.subscribe" | "resources.unsubscribe" }>,
+): McpFnResourceScenario {
+  return {
+    ...scenarioBase(name, "idempotent"),
+    kind: operation.kind,
+    uri: operation.uri,
+  };
+}
+
+function createTaskLifecycleScenario(
+  name: string,
+  operation: Extract<McpFnRecordedOperation, { kind: "tasks.get" | "tasks.cancel" }>,
+): McpFnTaskScenario {
+  return {
+    ...scenarioBase(name, operation.kind === "tasks.cancel" ? "idempotent" : "none"),
+    kind: operation.kind,
+    taskId: operation.taskId,
+  };
+}
+
+function createTaskResultScenario(
+  name: string,
+  operation: Extract<McpFnRecordedOperation, { kind: "tasks.result" }>,
+  result: McpFnRecordedOperationResult,
+): McpFnTaskScenario {
+  return {
+    ...scenarioBase(name, "none"),
+    kind: operation.kind,
+    taskId: operation.taskId,
+    expect: result,
+  };
+}
+
+function createTaskListScenario(
+  name: string,
+  operation: Extract<McpFnRecordedOperation, { kind: "tasks.list" }>,
+): McpFnTaskScenario {
+  return {
+    ...scenarioBase(name, "none"),
+    kind: operation.kind,
+    ...(operation.cursor ? { cursor: operation.cursor } : {}),
+  };
+}
+
+function createPromptScenario(
+  name: string,
+  operation: Extract<McpFnRecordedOperation, { kind: "prompts.get" }>,
+  result: McpFnRecordedOperationResult,
+): McpFnPromptScenario {
+  return {
+    ...scenarioBase(name, "none"),
+    kind: operation.kind,
     prompt: operation.name,
     ...(operation.arguments ? { arguments: operation.arguments } : {}),
     expect: result,
@@ -256,91 +303,119 @@ export function createMcpFnScenario(
 export function validateMcpFnScenarios(value: unknown): McpFnScenario[] {
   const scenarios = isScenarioArtifact(value) ? value.scenarios : value;
   if (!Array.isArray(scenarios)) {
-    throw new Error("Scenario module must export an array or mcpfn.scenarios artifact");
+    throw new TypeError("Scenario module must export an array or mcpfn.scenarios artifact");
   }
   for (const [index, scenario] of scenarios.entries()) {
-    if (!scenario || typeof scenario !== "object" || Array.isArray(scenario)) {
-      throw new Error(`Invalid scenario at index ${index}`);
-    }
-    const candidate = scenario as Record<string, unknown>;
-    if (candidate.formatVersion !== undefined && candidate.formatVersion !== 1) {
-      throw new Error(`Invalid scenario at index ${index}: unsupported formatVersion`);
-    }
-    if (typeof candidate.name !== "string" || !candidate.name.trim()) {
-      throw new Error(`Invalid scenario at index ${index}: name is required`);
-    }
-    const kind = candidate.kind ?? "tools.call";
-    const requiredField = requiredScenarioField(String(kind));
-    if (requiredField && typeof candidate[requiredField] !== "string") {
-      throw new Error(
-        `Invalid scenario at index ${index}: ${String(kind)} requires ${requiredField}`,
-      );
-    }
-    if (!requiredField && ![
-      "initialize",
-      "tools.list",
-      "resources.list",
-      "resources.templates.list",
-      "prompts.list",
-      "tasks.list",
-      "auth.assert",
-    ].includes(String(kind))) {
-      throw new Error(`Invalid scenario at index ${index}: unsupported kind ${String(kind)}`);
-    }
-    if (
-      candidate.timeoutMs !== undefined &&
-      (
-        !Number.isInteger(candidate.timeoutMs) ||
-        Number(candidate.timeoutMs) < 1 ||
-        Number(candidate.timeoutMs) > 300_000
-      )
-    ) {
-      throw new Error(`Invalid scenario at index ${index}: timeoutMs must be 1..300000`);
-    }
-    if (candidate.status === "incomplete" && typeof candidate.incompleteReason !== "string") {
-      throw new Error(`Invalid scenario at index ${index}: incompleteReason is required`);
-    }
-    if (
-      candidate.sideEffect !== undefined &&
-      !["none", "idempotent", "non-idempotent"].includes(String(candidate.sideEffect))
-    ) {
-      throw new Error(`Invalid scenario at index ${index}: sideEffect is unsupported`);
-    }
-    if (
-      candidate.variables !== undefined &&
-      (
-        !Array.isArray(candidate.variables) ||
-        candidate.variables.some((entry) =>
-          typeof entry !== "string" || !/^[A-Z][A-Z0-9_]*$/.test(entry)
-        )
-      )
-    ) {
-      throw new Error(`Invalid scenario at index ${index}: variables must be environment names`);
-    }
-    if (kind === "auth.assert") {
-      const expectation = candidate.expect as Record<string, unknown> | undefined;
-      if (
-        typeof candidate.phase !== "string" ||
-        !expectation ||
-        !["allowed", "denied"].includes(String(expectation.outcome))
-      ) {
-        throw new Error(`Invalid scenario at index ${index}: auth.assert expectation is required`);
-      }
-    }
+    validateScenarioCandidate(scenario, index);
   }
   return scenarios as McpFnScenario[];
 }
 
+const SCENARIO_KINDS_WITHOUT_REQUIRED_FIELDS = new Set([
+  "initialize",
+  "tools.list",
+  "resources.list",
+  "resources.templates.list",
+  "prompts.list",
+  "tasks.list",
+  "auth.assert",
+]);
+
+function validateScenarioCandidate(scenario: unknown, index: number): void {
+  if (!scenario || typeof scenario !== "object" || Array.isArray(scenario)) {
+    throw new TypeError(`Invalid scenario at index ${index}`);
+  }
+  const candidate = scenario as Record<string, unknown>;
+  validateScenarioIdentity(candidate, index);
+  const kind = scenarioKind(candidate, index);
+  validateScenarioOperation(candidate, kind, index);
+  validateScenarioLimits(candidate, index);
+  validateScenarioMetadata(candidate, index);
+  if (kind === "auth.assert") validateAuthScenario(candidate, index);
+}
+
+function validateScenarioIdentity(candidate: Record<string, unknown>, index: number): void {
+  if (candidate.formatVersion !== undefined && candidate.formatVersion !== 1) {
+    throw new TypeError(`Invalid scenario at index ${index}: unsupported formatVersion`);
+  }
+  if (typeof candidate.name !== "string" || !candidate.name.trim()) {
+    throw new TypeError(`Invalid scenario at index ${index}: name is required`);
+  }
+}
+
+function scenarioKind(candidate: Record<string, unknown>, index: number): string {
+  const kind = candidate.kind ?? "tools.call";
+  if (typeof kind !== "string") {
+    throw new TypeError(`Invalid scenario at index ${index}: kind must be a string`);
+  }
+  return kind;
+}
+
+function validateScenarioOperation(
+  candidate: Record<string, unknown>,
+  kind: string,
+  index: number,
+): void {
+  const requiredField = requiredScenarioField(kind);
+  if (requiredField && typeof candidate[requiredField] !== "string") {
+    throw new TypeError(`Invalid scenario at index ${index}: ${kind} requires ${requiredField}`);
+  }
+  if (!requiredField && !SCENARIO_KINDS_WITHOUT_REQUIRED_FIELDS.has(kind)) {
+    throw new TypeError(`Invalid scenario at index ${index}: unsupported kind ${kind}`);
+  }
+}
+
+function validateScenarioLimits(candidate: Record<string, unknown>, index: number): void {
+  if (
+    candidate.timeoutMs !== undefined &&
+    (!Number.isInteger(candidate.timeoutMs) || Number(candidate.timeoutMs) < 1 || Number(candidate.timeoutMs) > 300_000)
+  ) {
+    throw new TypeError(`Invalid scenario at index ${index}: timeoutMs must be 1..300000`);
+  }
+  if (
+    candidate.variables !== undefined &&
+    (
+      !Array.isArray(candidate.variables) ||
+      candidate.variables.some((entry) => typeof entry !== "string" || !/^[A-Z][A-Z0-9_]*$/.test(entry))
+    )
+  ) {
+    throw new TypeError(`Invalid scenario at index ${index}: variables must be environment names`);
+  }
+}
+
+function validateScenarioMetadata(candidate: Record<string, unknown>, index: number): void {
+  if (candidate.status === "incomplete" && typeof candidate.incompleteReason !== "string") {
+    throw new TypeError(`Invalid scenario at index ${index}: incompleteReason is required`);
+  }
+  if (
+    candidate.sideEffect !== undefined &&
+    (typeof candidate.sideEffect !== "string" || !["none", "idempotent", "non-idempotent"].includes(candidate.sideEffect))
+  ) {
+    throw new TypeError(`Invalid scenario at index ${index}: sideEffect is unsupported`);
+  }
+}
+
+function validateAuthScenario(candidate: Record<string, unknown>, index: number): void {
+  const expectation = candidate.expect as Record<string, unknown> | undefined;
+  if (
+    typeof candidate.phase !== "string" ||
+    !expectation ||
+    typeof expectation.outcome !== "string" ||
+    !["allowed", "denied"].includes(expectation.outcome)
+  ) {
+    throw new TypeError(`Invalid scenario at index ${index}: auth.assert expectation is required`);
+  }
+}
+
 export function createMcpFnScenarioArtifact(
   scenarios: McpFnScenario[],
-  options: Omit<McpFnScenarioArtifact, "formatVersion" | "kind" | "scenarios"> = {
-    status: "complete",
-  },
+  options?: Omit<McpFnScenarioArtifact, "formatVersion" | "kind" | "scenarios">,
 ): McpFnScenarioArtifact {
+  const artifactOptions = options ?? { status: "complete" as const };
   return {
     formatVersion: 1,
     kind: "mcpfn.scenarios",
-    ...options,
+    ...artifactOptions,
     scenarios: validateMcpFnScenarios(scenarios),
   };
 }
@@ -478,7 +553,6 @@ export async function runScenarios(
               controller.abort();
               reject(new McpFnAssertionError(`Scenario timed out after ${timeoutMs}ms`));
             }, timeoutMs);
-            (timer as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
           }),
         ]);
         pushResult({
@@ -548,7 +622,7 @@ function resolveScenarioVariables(
     scenario: resolved,
     missing: [...required]
       .filter((name) => values[name] === undefined)
-      .sort((left, right) => left < right ? -1 : left > right ? 1 : 0),
+      .sort(compareCodeUnits),
   };
 }
 
@@ -611,141 +685,144 @@ async function executeScenario(
   runOptions: McpFnScenarioRunOptions,
 ): Promise<void> {
   const kind = scenario.kind ?? "tools.call";
-  if (kind === "tools.call" && isToolScenario(scenario)) {
-    const result = await client.callToolWithOptions(
-      scenario.tool,
-      scenario.arguments,
-      requestOptions,
-    );
-    if (result.isError && scenario.expect?.isError === undefined) {
-      throw new McpFnAssertionError(
-        "Tool returned isError=true without an explicit expect.isError=true assertion",
-      );
-    }
-    if (
-      scenario.expect?.isError !== undefined &&
-      Boolean(result.isError) !== scenario.expect.isError
-    ) {
-      throw new McpFnAssertionError(
-        `Expected isError=${scenario.expect.isError}, received ${Boolean(result.isError)}`,
-      );
-    }
-    if (
-      scenario.expect &&
-      Object.prototype.hasOwnProperty.call(scenario.expect, "structuredContent") &&
-      stableJson(result.structuredContent) !== stableJson(scenario.expect.structuredContent)
-    ) {
-      throw new McpFnAssertionError(
-        `Structured result mismatch\nexpected: ${stableJson(scenario.expect.structuredContent)}\nactual:   ${stableJson(result.structuredContent)}`,
-      );
-    }
-    if (scenario.expect?.structuredTextParity) assertStructuredTextParity(result);
-    await scenario.verify?.(result);
-    return;
-  }
-  if (kind === "initialize" && scenario.kind === "initialize") {
-    const actual = client.client.getServerCapabilities() ?? {};
-    if (scenario.expectCapabilities && stableJson(actual) !== stableJson(scenario.expectCapabilities)) {
-      throw new McpFnAssertionError(
-        `Capability mismatch\nexpected: ${stableJson(scenario.expectCapabilities)}\nactual:   ${stableJson(actual)}`,
-      );
-    }
-    return;
-  }
   if (isInventoryScenario(scenario)) {
-    const values = await listScenarioInventory(client, scenario.kind, requestOptions);
-    if (scenario.expectNames) {
-      const actual = values.map((value) => value.name)
-        .sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
-      const expected = [...scenario.expectNames]
-        .sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
-      if (stableJson(actual) !== stableJson(expected)) {
-        throw new McpFnAssertionError(
-          `Inventory mismatch\nexpected: ${stableJson(expected)}\nactual:   ${stableJson(actual)}`,
-        );
-      }
-    }
+    await executeInventoryScenario(client, scenario, requestOptions);
     return;
   }
-  if (scenario.kind === "resources.read") {
-    assertExpected(
-      await client.readResourceWithOptions(scenario.uri, requestOptions),
-      scenario.expect,
-    );
-    return;
-  }
-  if (scenario.kind === "resources.subscribe") {
-    await client.subscribeResourceWithOptions(scenario.uri, requestOptions);
-    return;
-  }
-  if (scenario.kind === "resources.unsubscribe") {
-    await client.unsubscribeResourceWithOptions(scenario.uri, requestOptions);
-    return;
-  }
-  if (scenario.kind === "prompts.get") {
-    assertExpected(
-      await client.getPromptWithOptions(scenario.prompt, scenario.arguments, requestOptions),
-      scenario.expect,
-    );
-    return;
-  }
-  if (scenario.kind === "tools.call:task") {
-    assertExpected(
-      await client.createToolTaskWithOptions(
-        scenario.tool,
-        scenario.arguments,
-        scenario.task,
-        requestOptions,
-      ),
-      scenario.expect,
-    );
-    return;
-  }
-  if (scenario.kind === "tasks.get") {
-    assertExpected(await client.getTaskWithOptions(scenario.taskId!, requestOptions), scenario.expect);
-    return;
-  }
-  if (scenario.kind === "tasks.result") {
-    assertExpected(
-      await client.getTaskResultWithOptions(scenario.taskId!, requestOptions),
-      scenario.expect,
-    );
-    return;
-  }
-  if (scenario.kind === "tasks.cancel") {
-    assertExpected(
-      await client.cancelTaskWithOptions(scenario.taskId!, requestOptions),
-      scenario.expect,
-    );
-    return;
-  }
-  if (scenario.kind === "tasks.list") {
-    assertExpected(
-      await client.listTasksWithOptions(scenario.cursor, requestOptions),
-      scenario.expect,
-    );
-    return;
-  }
-  if (scenario.kind === "events.expect") {
-    const matching = observedEvents.filter((event) => event.kind === scenario.event);
-    if (matching.length < (scenario.minimum ?? 1)) {
-      throw new McpFnAssertionError(
-        `Expected at least ${scenario.minimum ?? 1} ${scenario.event} event(s), received ${matching.length}`,
+  switch (scenario.kind) {
+    case undefined:
+    case "tools.call":
+      return executeToolScenario(client, scenario, requestOptions);
+    case "initialize":
+      return executeInitializeScenario(client, scenario);
+    case "resources.read":
+      return assertExpectedAsync(client.readResourceWithOptions(scenario.uri, requestOptions), scenario.expect);
+    case "resources.subscribe":
+      return client.subscribeResourceWithOptions(scenario.uri, requestOptions);
+    case "resources.unsubscribe":
+      return client.unsubscribeResourceWithOptions(scenario.uri, requestOptions);
+    case "prompts.get":
+      return assertExpectedAsync(
+        client.getPromptWithOptions(scenario.prompt, scenario.arguments, requestOptions),
+        scenario.expect,
       );
-    }
-    if (scenario.expectPayload !== undefined) {
-      assertExpected(matching.at(-1)?.payload, scenario.expectPayload);
-    }
-    return;
-  }
-  if (scenario.kind === "auth.assert") {
-    if (!runOptions.auth) {
-      throw new McpFnAssertionError("auth.assert requires a scenario auth adapter");
-    }
-    assertExpected(await runOptions.auth(scenario, requestOptions.signal), scenario.expect);
-    return;
+    case "tools.call:task":
+      return assertExpectedAsync(
+        client.createToolTaskWithOptions(scenario.tool, scenario.arguments, scenario.task, requestOptions),
+        scenario.expect,
+      );
+    case "tasks.get":
+      return assertExpectedAsync(client.getTaskWithOptions(scenario.taskId!, requestOptions), scenario.expect);
+    case "tasks.result":
+      return assertExpectedAsync(client.getTaskResultWithOptions(scenario.taskId!, requestOptions), scenario.expect);
+    case "tasks.cancel":
+      return assertExpectedAsync(client.cancelTaskWithOptions(scenario.taskId!, requestOptions), scenario.expect);
+    case "tasks.list":
+      return assertExpectedAsync(client.listTasksWithOptions(scenario.cursor, requestOptions), scenario.expect);
+    case "events.expect":
+      return executeEventScenario(scenario, observedEvents);
+    case "auth.assert":
+      return executeAuthScenario(scenario, requestOptions.signal, runOptions);
   }
   throw new McpFnAssertionError(`Unsupported scenario operation ${kind}`);
+}
+
+async function executeToolScenario(
+  client: McpFnTestClient<unknown>,
+  scenario: McpFnToolScenario,
+  requestOptions: { signal: AbortSignal; timeout: number },
+): Promise<void> {
+  const result = await client.callToolWithOptions(
+    scenario.tool,
+    scenario.arguments,
+    requestOptions,
+  );
+  assertToolResult(result, scenario);
+  await scenario.verify?.(result);
+}
+
+function assertToolResult(result: CallToolResult, scenario: McpFnToolScenario): void {
+  if (result.isError && scenario.expect?.isError === undefined) {
+    throw new McpFnAssertionError(
+      "Tool returned isError=true without an explicit expect.isError=true assertion",
+    );
+  }
+  if (
+    scenario.expect?.isError !== undefined &&
+    Boolean(result.isError) !== scenario.expect.isError
+  ) {
+    throw new McpFnAssertionError(
+      `Expected isError=${scenario.expect.isError}, received ${Boolean(result.isError)}`,
+    );
+  }
+  if (
+    scenario.expect &&
+    Object.hasOwn(scenario.expect, "structuredContent") &&
+    stableJson(result.structuredContent) !== stableJson(scenario.expect.structuredContent)
+  ) {
+    throw new McpFnAssertionError(
+      `Structured result mismatch\nexpected: ${stableJson(scenario.expect.structuredContent)}\nactual:   ${stableJson(result.structuredContent)}`,
+    );
+  }
+  if (scenario.expect?.structuredTextParity) assertStructuredTextParity(result);
+}
+
+function executeInitializeScenario(
+  client: McpFnTestClient<unknown>,
+  scenario: McpFnInitializeScenario,
+): void {
+  const actual = client.client.getServerCapabilities() ?? {};
+  if (scenario.expectCapabilities && stableJson(actual) !== stableJson(scenario.expectCapabilities)) {
+    throw new McpFnAssertionError(
+      `Capability mismatch\nexpected: ${stableJson(scenario.expectCapabilities)}\nactual:   ${stableJson(actual)}`,
+    );
+  }
+}
+
+async function executeInventoryScenario(
+  client: McpFnTestClient<unknown>,
+  scenario: McpFnInventoryScenario,
+  requestOptions: { signal: AbortSignal; timeout: number },
+): Promise<void> {
+  const values = await listScenarioInventory(client, scenario.kind, requestOptions);
+  if (!scenario.expectNames) return;
+  const actual = values.map((value) => value.name).sort(compareCodeUnits);
+  const expected = [...scenario.expectNames].sort(compareCodeUnits);
+  if (stableJson(actual) !== stableJson(expected)) {
+    throw new McpFnAssertionError(
+      `Inventory mismatch\nexpected: ${stableJson(expected)}\nactual:   ${stableJson(actual)}`,
+    );
+  }
+}
+
+async function assertExpectedAsync(actual: Promise<unknown>, expected: unknown): Promise<void> {
+  assertExpected(await actual, expected);
+}
+
+function executeEventScenario(
+  scenario: McpFnEventScenario,
+  observedEvents: McpFnClientEvent[],
+): void {
+  const matching = observedEvents.filter((event) => event.kind === scenario.event);
+  if (matching.length < (scenario.minimum ?? 1)) {
+    throw new McpFnAssertionError(
+      `Expected at least ${scenario.minimum ?? 1} ${scenario.event} event(s), received ${matching.length}`,
+    );
+  }
+  if (scenario.expectPayload !== undefined) {
+    assertExpected(matching.at(-1)?.payload, scenario.expectPayload);
+  }
+}
+
+async function executeAuthScenario(
+  scenario: McpFnAuthScenario,
+  signal: AbortSignal,
+  runOptions: McpFnScenarioRunOptions,
+): Promise<void> {
+  if (!runOptions.auth) {
+    throw new McpFnAssertionError("auth.assert requires a scenario auth adapter");
+  }
+  assertExpected(await runOptions.auth(scenario, signal), scenario.expect);
 }
 
 function truncateError(value: string, options: McpFnScenarioRunOptions): string {
@@ -756,12 +833,18 @@ function truncateError(value: string, options: McpFnScenarioRunOptions): string 
   return `${new TextDecoder().decode(bytes.slice(0, Math.max(0, maxBytes - 16)))}...[TRUNCATED]`;
 }
 
-function defaultSideEffect(operation: string): "none" | "idempotent" | "non-idempotent" {
-  return operation === "tools.call" || operation === "tools.call:task"
-    ? "non-idempotent"
-    : operation === "tasks.cancel"
-      ? "idempotent"
-      : "none";
+function defaultSideEffect(operation: string): McpFnScenarioSideEffect {
+  if (operation === "tools.call" || operation === "tools.call:task") {
+    return "non-idempotent";
+  }
+  if (operation === "tasks.cancel") return "idempotent";
+  return "none";
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 function assertExpected(actual: unknown, expected: unknown): void {
