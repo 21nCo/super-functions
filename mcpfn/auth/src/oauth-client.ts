@@ -111,9 +111,12 @@ export function createEncryptedMcpFnOAuthSessionStore(options: {
     if (
       parsed &&
       typeof parsed === "object" &&
-      (parsed as { kind?: unknown }).kind === ENCRYPTED_SESSION_ENVELOPE_KIND &&
       (parsed as { formatVersion?: unknown }).formatVersion === 1 &&
-      Object.hasOwn(parsed, "value")
+      Object.hasOwn(parsed, "value") &&
+      (
+        (parsed as { kind?: unknown }).kind === ENCRYPTED_SESSION_ENVELOPE_KIND ||
+        isLegacyEncryptedSessionEnvelope(parsed)
+      )
     ) {
       return (parsed as { value: T }).value;
     }
@@ -146,6 +149,11 @@ export function createEncryptedMcpFnOAuthSessionStore(options: {
       if (scope === "all" || scope === "state") await options.store.delete(key("state"));
     },
   };
+}
+
+function isLegacyEncryptedSessionEnvelope(value: object): boolean {
+  const keys = Object.keys(value);
+  return keys.length === 2 && keys.includes("formatVersion") && keys.includes("value");
 }
 
 export type McpFnOAuthClientPhase =

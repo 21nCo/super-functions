@@ -90,7 +90,12 @@ describe("mcpfn CLI", () => {
       `import { defineMcpFnServer } from ${JSON.stringify(coreUrl)};
        export default defineMcpFnServer({ info: { name: "declared", version: "1.0.0" } });`,
     );
-    await expect(loadManifestSource("declaration.mjs", root)).resolves.toMatchObject({
+    const declarationOnly = await loadManifestSource("declaration.mjs", root);
+    expect(declarationOnly).toMatchObject({
+      manifest: { server: { name: "declared" } },
+    });
+    expect(declarationOnly).not.toHaveProperty("server");
+    await expect(loadManifestSource("declaration.mjs", root, undefined, {})).resolves.toMatchObject({
       manifest: { server: { name: "declared" } },
       server: expect.any(Object),
     });
@@ -114,6 +119,37 @@ describe("mcpfn CLI", () => {
       name: "foreign",
       version: "1.0.0",
     })).rejects.toThrow(/sorted and unique/);
+  });
+
+  it("loads task-capable declaration manifests without constructing a runtime", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-task-manifest-"));
+    roots.push(root);
+    const coreUrl = pathToFileURL(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../core/src/index.ts"),
+    ).href;
+    await writeFile(
+      path.join(root, "tasks.mjs"),
+      `import { defineMcpFnServer, structuredResult } from ${JSON.stringify(coreUrl)};
+       export default defineMcpFnServer({
+         info: { name: "tasks", version: "1.0.0" },
+         tools: [{
+           name: "deferred", description: "Deferred work.", inputSchema: { type: "object" },
+           execution: { taskSupport: "required" },
+           handler: async () => structuredResult({ ok: true }),
+           taskHandler: { createTask: async () => { throw new Error("not invoked"); } }
+         }]
+       });`,
+    );
+    let output = "";
+
+    expect(await runCli(["manifest", "tasks.mjs"], {
+      cwd: root,
+      stdout: (value) => { output += value; },
+    })).toBe(0);
+    expect(JSON.parse(output)).toMatchObject({
+      server: { name: "tasks" },
+      capabilities: { tasks: { requests: { tools: { call: {} } } } },
+    });
   });
 
   it("enforces max-report-bytes against the exact CLI serialization", async () => {

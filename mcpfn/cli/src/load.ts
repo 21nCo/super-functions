@@ -8,6 +8,7 @@ import {
   type McpFnRegistry,
   type McpFnServer,
   type McpFnServerInfo,
+  type McpFnServerRuntimeOptions,
 } from "@mcpfn/core";
 import { validateMcpFnScenarios, type McpFnScenario } from "@mcpfn/testing";
 
@@ -48,7 +49,7 @@ function isRegistryExport(value: unknown): value is McpFnRegistry<unknown> {
 
 function isDeclarationExport(value: unknown): value is {
   manifest(): McpFnManifest;
-  createServer(): McpFnServer<unknown>;
+  createServer(runtime?: McpFnServerRuntimeOptions<unknown>): McpFnServer<unknown>;
 } {
   return Boolean(
     value &&
@@ -62,6 +63,7 @@ export async function loadManifestSource(
   file: string,
   cwd = process.cwd(),
   info?: McpFnServerInfo,
+  runtime?: McpFnServerRuntimeOptions<unknown>,
 ): Promise<{ manifest: McpFnManifest; server?: McpFnServer<unknown> }> {
   const value = await loadModule(file, cwd);
   // Use the public surface instead of instanceof: a global CLI and the target
@@ -70,11 +72,13 @@ export async function loadManifestSource(
     return { manifest: validateManifest(value.manifest()), server: value };
   }
   if (isDeclarationExport(value)) {
-    const server = value.createServer();
+    const manifest = validateManifest(value.manifest());
+    if (runtime === undefined) return { manifest };
+    const server = value.createServer(runtime);
     if (!isServerExport(server)) {
       throw new Error("McpFn declaration createServer() did not return a server");
     }
-    return { manifest: validateManifest(value.manifest()), server };
+    return { manifest, server };
   }
   if (isRegistryExport(value)) {
     if (!info) {

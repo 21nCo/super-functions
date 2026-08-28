@@ -283,12 +283,18 @@ describe("oauth-core service", () => {
 
 describe("OAuth diagnostic redaction", () => {
   it("stops iterating Maps and Sets at the configured entry cap", () => {
+    let mapClosed = false;
+    let setClosed = false;
     class GuardedMap extends Map<unknown, unknown> {
       override get size(): number { return 1_000; }
       override *entries(): MapIterator<[unknown, unknown]> {
-        yield ["first", 1];
-        yield ["second", 2];
-        throw new Error("Map iteration exceeded the cap");
+        try {
+          yield ["first", 1];
+          yield ["second", 2];
+          throw new Error("Map iteration exceeded the cap");
+        } finally {
+          mapClosed = true;
+        }
       }
       override [Symbol.iterator](): MapIterator<[unknown, unknown]> {
         return this.entries();
@@ -297,9 +303,13 @@ describe("OAuth diagnostic redaction", () => {
     class GuardedSet extends Set<unknown> {
       override get size(): number { return 1_000; }
       override *values(): SetIterator<unknown> {
-        yield "first";
-        yield "second";
-        throw new Error("Set iteration exceeded the cap");
+        try {
+          yield "first";
+          yield "second";
+          throw new Error("Set iteration exceeded the cap");
+        } finally {
+          setClosed = true;
+        }
       }
       override [Symbol.iterator](): SetIterator<unknown> {
         return this.values();
@@ -313,6 +323,41 @@ describe("OAuth diagnostic redaction", () => {
     expect(redactOAuthValue(new GuardedSet(), { maxArrayEntries: 2 })).toEqual({
       type: "Set",
       values: ["first", "second", "[TRUNCATED]"],
+    });
+    expect(mapClosed).toBe(true);
+    expect(setClosed).toBe(true);
+  });
+
+  it("normalizes fractional collection caps and avoids zero-cap iterators", () => {
+    class NoIterationMap extends Map<unknown, unknown> {
+      override get size(): number { return 1; }
+      override [Symbol.iterator](): MapIterator<[unknown, unknown]> {
+        throw new Error("zero cap created a Map iterator");
+      }
+    }
+    class NoIterationSet extends Set<unknown> {
+      override get size(): number { return 1; }
+      override [Symbol.iterator](): SetIterator<unknown> {
+        throw new Error("zero cap created a Set iterator");
+      }
+    }
+
+    expect(redactOAuthValue(new Map([["first", 1], ["second", 2]]), {
+      maxArrayEntries: 1.9,
+    })).toEqual({
+      type: "Map",
+      entries: [["first", 1], ["[TRUNCATED]", "[TRUNCATED]"]],
+    });
+    expect(redactOAuthValue(new Set(["first", "second"]), {
+      maxArrayEntries: 1.9,
+    })).toEqual({ type: "Set", values: ["first", "[TRUNCATED]"] });
+    expect(redactOAuthValue(new NoIterationMap(), { maxArrayEntries: 0 })).toEqual({
+      type: "Map",
+      entries: [["[TRUNCATED]", "[TRUNCATED]"]],
+    });
+    expect(redactOAuthValue(new NoIterationSet(), { maxArrayEntries: 0 })).toEqual({
+      type: "Set",
+      values: ["[TRUNCATED]"],
     });
   });
 });

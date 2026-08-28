@@ -41,7 +41,7 @@ export function redactOAuthValue<T>(
 ): T {
   return redact(value, {
     maxDepth: options.maxDepth ?? 8,
-    maxArrayEntries: options.maxArrayEntries ?? 100,
+    maxArrayEntries: normalizeEntryLimit(options.maxArrayEntries ?? 100),
     maxStringLength: options.maxStringLength ?? 2_048,
   }, 0, new WeakSet()) as T;
 }
@@ -105,17 +105,16 @@ function redactMap(
   ancestors: WeakSet<object>,
 ): { type: "Map"; entries: unknown[][] } {
   const entries: unknown[][] = [];
-  const iterator = value.entries();
-  while (entries.length < options.maxArrayEntries) {
-    const next = iterator.next();
-    if (next.done) break;
-    const [key, entry] = next.value;
-    entries.push([
-      redact(key, options, depth + 1, ancestors),
-      typeof key === "string" && isSecretKey(key)
-        ? REDACTED
-        : redact(entry, options, depth + 1, ancestors),
-    ]);
+  if (options.maxArrayEntries > 0) {
+    for (const [key, entry] of value) {
+      entries.push([
+        redact(key, options, depth + 1, ancestors),
+        typeof key === "string" && isSecretKey(key)
+          ? REDACTED
+          : redact(entry, options, depth + 1, ancestors),
+      ]);
+      if (entries.length >= options.maxArrayEntries) break;
+    }
   }
   if (value.size > options.maxArrayEntries) entries.push(["[TRUNCATED]", "[TRUNCATED]"]);
   return { type: "Map", entries };
@@ -128,14 +127,21 @@ function redactSet(
   ancestors: WeakSet<object>,
 ): { type: "Set"; values: unknown[] } {
   const values: unknown[] = [];
-  const iterator = value.values();
-  while (values.length < options.maxArrayEntries) {
-    const next = iterator.next();
-    if (next.done) break;
-    values.push(redact(next.value, options, depth + 1, ancestors));
+  if (options.maxArrayEntries > 0) {
+    for (const entry of value) {
+      values.push(redact(entry, options, depth + 1, ancestors));
+      if (values.length >= options.maxArrayEntries) break;
+    }
   }
   if (value.size > options.maxArrayEntries) values.push("[TRUNCATED]");
   return { type: "Set", values };
+}
+
+function normalizeEntryLimit(value: number): number {
+  if (!Number.isFinite(value)) {
+    throw new TypeError("maxArrayEntries must be finite");
+  }
+  return Math.max(0, Math.floor(value));
 }
 
 function redactRecord(

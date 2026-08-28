@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { InMemoryTaskStore } from "@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js";
 import { cac } from "cac";
 import { diagnoseMcpAuthorization } from "@mcpfn/auth";
 import {
@@ -110,7 +111,9 @@ export async function runCli(
       scenariosPath: string,
       options: { output?: string; visibleTools?: string; maxReportBytes?: string },
     ) => {
-      const loaded = await loadManifestSource(serverPath, cwd);
+      const loaded = await loadManifestSource(serverPath, cwd, undefined, {
+        taskStore: new InMemoryTaskStore(),
+      });
       if (!loaded.server) {
         throw new Error("The test command requires a module exporting McpFnServer");
       }

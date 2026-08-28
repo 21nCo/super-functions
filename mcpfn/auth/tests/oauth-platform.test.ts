@@ -103,6 +103,13 @@ describe("McpFn OAuth client compatibility", () => {
       }),
       keyRef: "key-1",
     });
+    records.set("oauth:verifier", {
+      ciphertext: JSON.stringify({
+        formatVersion: 1,
+        value: "legacy-verifier",
+      }),
+      keyRef: "key-1",
+    });
     const store = createEncryptedMcpFnOAuthSessionStore({
       namespace: "oauth",
       keyRef: "key-1",
@@ -121,6 +128,7 @@ describe("McpFn OAuth client compatibility", () => {
       access_token: "legacy-token",
       value: { access_token: "nested-token" },
     });
+    await expect(store.getCodeVerifier()).resolves.toBe("legacy-verifier");
     await store.setTokens({ access_token: "new-token", token_type: "Bearer" });
     expect(JSON.parse(records.get("oauth:tokens")!.ciphertext)).toMatchObject({
       kind: "mcpfn.oauth-session-envelope",
