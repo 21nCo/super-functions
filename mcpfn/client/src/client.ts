@@ -239,7 +239,6 @@ export class McpFnClient {
           { phase: "capability-operation" },
         ));
       }, options.timeoutMs ?? 30_000);
-      timer.unref?.();
     });
   }
 

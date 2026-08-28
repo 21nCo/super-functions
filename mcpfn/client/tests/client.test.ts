@@ -71,6 +71,23 @@ describe("McpFn production client", () => {
     expect(JSON.stringify(events)).toContain("REDACTED");
   });
 
+  it("keeps the client event deadline referenced until the wait settles", async () => {
+    const deadline = setTimeout(() => undefined, 60_000);
+    const unref = vi.spyOn(deadline, "unref");
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout").mockReturnValueOnce(deadline);
+    const controller = new AbortController();
+    const client = createMcpFnClient({
+      target: customTarget({ kind: "unused", open: () => { throw new Error("unused"); } }),
+    });
+
+    const waiting = client.waitForEvent(() => false, { signal: controller.signal });
+    expect(unref).not.toHaveBeenCalled();
+    controller.abort();
+    await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+
+    setTimeoutSpy.mockRestore();
+  });
+
   it("treats falsy target-open rejections as retryable failures", async () => {
     const open = vi.fn().mockRejectedValue(undefined);
     const client = createMcpFnClient({
