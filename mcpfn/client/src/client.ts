@@ -272,9 +272,9 @@ export class McpFnClient {
       const requestId = this.requestId();
       this._state = "connecting";
       await this.emit("transport-connect", "started", requestId, undefined, { attempt });
-      const openError = await this.openTargetAttempt(requestId, attempt, retries, signal);
-      if (openError) {
-        lastError = openError;
+      const openFailure = await this.openTargetAttempt(requestId, attempt, retries, signal);
+      if (openFailure) {
+        lastError = openFailure.error;
         continue;
       }
       const initialization = await this.initializeAttempt(requestId, attempt, signal);
@@ -295,7 +295,7 @@ export class McpFnClient {
     attempt: number,
     retries: number,
     signal: AbortSignal,
-  ): Promise<unknown | undefined> {
+  ): Promise<{ error: unknown } | undefined> {
     try {
       this.handle = await this.options.target.open({
         requestId,
@@ -312,7 +312,7 @@ export class McpFnClient {
       });
       if (attempt < retries) {
         await this.connectRetryDelay(signal);
-        return error;
+        return { error };
       }
       this._state = "idle";
       throw new McpFnClientError(
