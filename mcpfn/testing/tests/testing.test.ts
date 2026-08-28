@@ -1,3 +1,4 @@
+import { createServer, request as httpRequest } from "node:http";
 import { describe, expect, it } from "vitest";
 import { InMemoryTaskStore } from "@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js";
 import {
@@ -12,6 +13,7 @@ import {
   assertManifestContract,
   buildOfficialConformanceArgs,
   checkHostCompatibility,
+  createAuthenticatedConformanceProxy,
   createMcpFnScenarioArtifact,
   createMcpFnScenarioReport,
   runScenarios,
@@ -121,6 +123,31 @@ describe("McpFn testing", () => {
       expect(boundedReport.droppedResults).toBeGreaterThan(0);
       expect(new TextEncoder().encode(JSON.stringify(boundedReport)).byteLength)
         .toBeLessThanOrEqual(1_024);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("preserves the complete server implementation identity", async () => {
+    const server = createMcpFnServer({
+      info: {
+        name: "identity",
+        title: "Identity Server",
+        version: "1.0.0",
+        description: "Complete implementation metadata.",
+        websiteUrl: "https://example.test",
+        instructions: "Use the echo tool.",
+      },
+      registry: new McpFnRegistry(),
+    });
+    const client = await McpFnTestClient.connect(server);
+    try {
+      expect(client.client.getServerVersion()).toMatchObject({
+        name: "identity",
+        title: "Identity Server",
+        description: "Complete implementation metadata.",
+        websiteUrl: "https://example.test",
+      });
     } finally {
       await client.close();
     }
@@ -372,6 +399,59 @@ describe("McpFn testing", () => {
       "--output-dir",
       "/tmp/mcpfn-conformance",
     ]);
+  });
+
+  it("injects credentials through a fixed loopback conformance proxy", async () => {
+    let authorization: string | undefined;
+    let host: string | undefined;
+    const upstream = createServer((request, response) => {
+      authorization = request.headers.authorization;
+      host = request.headers.host;
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true }));
+    });
+    await new Promise<void>((resolve, reject) => {
+      upstream.once("error", reject);
+      upstream.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = upstream.address();
+    if (!address || typeof address === "string")
+      throw new Error("test server did not bind");
+    const proxy = await createAuthenticatedConformanceProxy({
+      url: `http://127.0.0.1:${address.port}/mcp`,
+      headers: { authorization: "Bearer conformance-secret" },
+    });
+    try {
+      expect(proxy.url).not.toContain("conformance-secret");
+      const body = await new Promise<string>((resolve, reject) => {
+        const request = httpRequest(
+          proxy.url,
+          {
+            headers: {
+              authorization: "Bearer attacker-value",
+              host: "untrusted.example.test",
+            },
+          },
+          (response) => {
+            const chunks: Buffer[] = [];
+            response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+            response.once("end", () =>
+              resolve(Buffer.concat(chunks).toString()),
+            );
+          },
+        );
+        request.once("error", reject);
+        request.end();
+      });
+      expect(JSON.parse(body)).toEqual({ ok: true });
+      expect(authorization).toBe("Bearer conformance-secret");
+      expect(host).toBe("untrusted.example.test");
+    } finally {
+      await proxy.close();
+      await new Promise<void>((resolve, reject) => {
+        upstream.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 
   it("reports degraded and incompatible host-profile matches", () => {

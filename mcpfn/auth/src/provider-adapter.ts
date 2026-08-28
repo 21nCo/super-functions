@@ -51,6 +51,12 @@ export interface McpFnAuthProviderAdapterOptions<TSession extends McpFnAuthSessi
     principal: McpFnPrincipal;
     request: Request;
   }): boolean | Promise<boolean>;
+  requiredScopes?:
+    | string[]
+    | ((input: {
+        principal: McpFnPrincipal;
+        request: Request;
+      }) => string[] | Promise<string[]>);
 }
 
 export interface McpFnAuthProviderAdapter<TSession extends McpFnAuthSessionLike> {
@@ -124,6 +130,24 @@ export function createAuthProviderMcpHandler<TSession extends McpFnAuthSessionLi
       return bearerChallengeResponse(401, metadataUrl, {
         error: "invalid_token",
         description: "A valid Bearer access token is required",
+      });
+    }
+    const requiredScopes =
+      typeof options.requiredScopes === "function"
+        ? await options.requiredScopes({
+            principal: authenticated.principal,
+            request: request.clone(),
+          })
+        : options.requiredScopes ?? [];
+    const grantedScopes = new Set(authenticated.principal.scopes);
+    const missingScopes = [...new Set(requiredScopes)].filter(
+      (scope) => !grantedScopes.has(scope),
+    );
+    if (missingScopes.length) {
+      return bearerChallengeResponse(403, metadataUrl, {
+        error: "insufficient_scope",
+        description: "The Bearer credential lacks required scopes",
+        scope: [...new Set(requiredScopes)].sort().join(" "),
       });
     }
     const handleOptions: HandleRequestOptions = { authInfo: authenticated.authInfo };

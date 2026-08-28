@@ -1,5 +1,11 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import {
+  createServer,
+  request as httpRequest,
+  type IncomingHttpHeaders,
+} from "node:http";
+import { request as httpsRequest } from "node:https";
 import path from "node:path";
 
 export const OFFICIAL_CONFORMANCE_VERSION = "0.1.16";
@@ -20,6 +26,100 @@ export interface OfficialConformanceResult {
   exitCode: number;
   stdout: string;
   stderr: string;
+}
+
+export interface AuthenticatedConformanceProxy {
+  /** Loopback URL to pass to the official conformance runner. */
+  url: string;
+  close(): Promise<void>;
+}
+
+export interface AuthenticatedConformanceProxyOptions {
+  /** Fixed upstream MCP URL. Requests cannot select a different origin. */
+  url: string;
+  /** Headers injected into every upstream request. Values are never logged. */
+  headers: HeadersInit;
+}
+
+export interface AuthenticatedOfficialConformanceOptions extends OfficialConformanceOptions {
+  headers: HeadersInit;
+}
+
+/**
+ * Start a loopback-only streaming proxy for runners that cannot send auth
+ * headers. The proxy has one fixed upstream origin and injected headers always
+ * replace client-supplied values.
+ */
+export async function createAuthenticatedConformanceProxy(
+  options: AuthenticatedConformanceProxyOptions,
+): Promise<AuthenticatedConformanceProxy> {
+  const upstream = new URL(options.url);
+  if (!["http:", "https:"].includes(upstream.protocol)) {
+    throw new TypeError(
+      "Authenticated conformance upstream must use HTTP or HTTPS",
+    );
+  }
+  if (upstream.username || upstream.password || upstream.hash) {
+    throw new TypeError(
+      "Authenticated conformance upstream must not contain userinfo or a fragment",
+    );
+  }
+  const injected = new Headers(options.headers);
+  const server = createServer((incoming, outgoing) => {
+    if (!incoming.url?.startsWith("/")) {
+      outgoing.writeHead(400).end();
+      return;
+    }
+    const target = new URL(incoming.url, upstream.origin);
+    const headers: IncomingHttpHeaders = { ...incoming.headers };
+    delete headers.connection;
+    injected.forEach((value, name) => {
+      headers[name.toLowerCase()] = value;
+    });
+    const transport = target.protocol === "https:" ? httpsRequest : httpRequest;
+    const proxied = transport(
+      target,
+      {
+        method: incoming.method,
+        headers,
+      },
+      (response) => {
+        outgoing.writeHead(response.statusCode ?? 502, response.headers);
+        response.pipe(outgoing);
+      },
+    );
+    proxied.once("error", () => {
+      if (!outgoing.headersSent) outgoing.writeHead(502);
+      outgoing.end();
+    });
+    incoming.once("aborted", () => proxied.destroy());
+    incoming.pipe(proxied);
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    throw new Error("Authenticated conformance proxy did not bind a TCP port");
+  }
+  const url = new URL(
+    upstream.pathname + upstream.search,
+    `http://127.0.0.1:${address.port}`,
+  );
+  return {
+    url: url.toString(),
+    close: async () => {
+      if (!server.listening) return;
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    },
+  };
 }
 
 function npxInvocation(args: string[]): { command: string; args: string[] } {
@@ -94,4 +194,20 @@ export async function runOfficialConformance(
       resolve({ exitCode: code ?? 1, stdout, stderr });
     });
   });
+}
+
+/** Run the pinned official suite against an authenticated MCP endpoint. */
+export async function runAuthenticatedOfficialConformance(
+  options: AuthenticatedOfficialConformanceOptions,
+): Promise<OfficialConformanceResult> {
+  const { headers, ...conformance } = options;
+  const proxy = await createAuthenticatedConformanceProxy({
+    url: conformance.url,
+    headers,
+  });
+  try {
+    return await runOfficialConformance({ ...conformance, url: proxy.url });
+  } finally {
+    await proxy.close();
+  }
 }

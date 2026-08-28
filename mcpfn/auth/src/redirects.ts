@@ -21,21 +21,44 @@ export class McpFnRedirectMismatchError extends Error {
   }
 }
 
+/**
+ * Normalize a registered or requested redirect under the MCP OAuth profile.
+ * HTTPS is the default. Plain HTTP is restricted to loopback hosts and
+ * fragments/userinfo are always rejected.
+ */
+export function normalizeMcpRedirectUri(
+  value: string | URL,
+  policy: McpFnRedirectPolicy = {},
+): string {
+  let url: URL;
+  try {
+    url = new URL(value.toString());
+  } catch {
+    throw new McpFnRedirectMismatchError(String(value));
+  }
+  if (url.username || url.password || url.hash || url.hostname.includes("*")) {
+    throw new McpFnRedirectMismatchError(url.toString());
+  }
+  if (url.protocol === "https:") return url.toString();
+  if (url.protocol === "http:" && isLoopback(url, policy)) return url.toString();
+  if (
+    policy.allowPrivateUseSchemes === true &&
+    !["http:", "https:", "javascript:", "data:", "file:"].includes(url.protocol)
+  ) {
+    return url.toString();
+  }
+  throw new McpFnRedirectMismatchError(url.toString());
+}
+
 /** Exact matching, with RFC 8252 loopback ports enabled unless explicitly disabled. */
 export function matchMcpRedirectUri(
   requested: string | URL,
   registeredRedirectUris: ReadonlyArray<string | URL>,
   policy: McpFnRedirectPolicy = {},
 ): McpFnRedirectMatch {
-  const actual = new URL(requested.toString());
-  if (
-    !["http:", "https:"].includes(actual.protocol) &&
-    policy.allowPrivateUseSchemes !== true
-  ) {
-    throw new McpFnRedirectMismatchError(actual.toString());
-  }
+  const actual = new URL(normalizeMcpRedirectUri(requested, policy));
   for (const candidateValue of registeredRedirectUris) {
-    const candidate = new URL(candidateValue.toString());
+    const candidate = new URL(normalizeMcpRedirectUri(candidateValue, policy));
     if (candidate.toString() === actual.toString()) {
       return {
         requested: actual.toString(),
@@ -80,10 +103,14 @@ function equalExceptPort(left: URL, right: URL): boolean {
 }
 
 function redactRedirect(value: string): string {
-  const url = new URL(value);
-  url.search = url.search ? "?redacted" : "";
-  url.hash = "";
-  url.username = "";
-  url.password = "";
-  return url.toString();
+  try {
+    const url = new URL(value);
+    url.search = url.search ? "?redacted" : "";
+    url.hash = "";
+    url.username = "";
+    url.password = "";
+    return url.toString();
+  } catch {
+    return "[invalid redirect URI]";
+  }
 }

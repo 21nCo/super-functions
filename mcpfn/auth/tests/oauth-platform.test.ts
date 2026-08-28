@@ -127,6 +127,15 @@ describe("McpFn OAuth client compatibility", () => {
         requested: "https://client.example.com/wrong?redacted",
       });
     }
+    expect(() => matchMcpRedirectUri(
+      "not a URI",
+      ["https://client.example.com/callback"],
+    )).toThrow(/not registered/);
+    try {
+      matchMcpRedirectUri("not a URI", ["https://client.example.com/callback"]);
+    } catch (error) {
+      expect(error).toMatchObject({ requested: "[invalid redirect URI]" });
+    }
   });
 
   it("isolates OAuth diagnostic observer failures", async () => {
@@ -285,7 +294,7 @@ describe("McpFn hosted authorization compatibility", () => {
     url.searchParams.set("response_type", "code");
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set("code_challenge", "challenge");
+    url.searchParams.set("code_challenge", "c".repeat(43));
     url.searchParams.set("code_challenge_method", "S256");
     url.searchParams.set("state", "state-1");
     url.searchParams.set("resource", resource);
@@ -304,6 +313,54 @@ describe("McpFn hosted authorization compatibility", () => {
       clientId: "chatgpt-client",
       redirectMatch: "exact",
     });
+  });
+
+  it("rejects duplicated authorization parameters before handing off consent", async () => {
+    for (const name of [
+      "response_type",
+      "client_id",
+      "redirect_uri",
+      "code_challenge",
+      "code_challenge_method",
+      "state",
+      "resource",
+      "scope",
+    ]) {
+      const url = authorizationUrl(chatgpt.clientId, chatgpt.redirectUris[0]);
+      url.searchParams.append(name, url.searchParams.get(name)!);
+      const response = await handler()(new Request(url));
+      if (["client_id", "redirect_uri"].includes(name)) {
+        expect(response.status, name).toBe(400);
+        await expect(response.json()).resolves.toMatchObject({
+          error: "invalid_request",
+        });
+      } else {
+        expect(response.status, name).toBe(302);
+        expect(
+          new URL(response.headers.get("location")!).searchParams.get("error"),
+        ).toBe("invalid_request");
+      }
+    }
+  });
+
+  it("redirects validation errors only after matching a registered callback", async () => {
+    const trusted = authorizationUrl(chatgpt.clientId, chatgpt.redirectUris[0]);
+    trusted.searchParams.set("code_challenge_method", "plain");
+    const trustedResponse = await handler()(new Request(trusted));
+    expect(trustedResponse.status).toBe(302);
+    const location = new URL(trustedResponse.headers.get("location")!);
+    expect(location.origin + location.pathname).toBe(chatgpt.redirectUris[0]);
+    expect(location.searchParams.get("error")).toBe("invalid_request");
+    expect(location.searchParams.get("state")).toBe("state-1");
+
+    const untrusted = authorizationUrl(
+      chatgpt.clientId,
+      "https://attacker.example.com/callback",
+    );
+    untrusted.searchParams.set("code_challenge_method", "plain");
+    const untrustedResponse = await handler()(new Request(untrusted));
+    expect(untrustedResponse.status).toBe(400);
+    expect(untrustedResponse.headers.get("location")).toBeNull();
   });
 
   it("accepts Claude-shaped extensible grants for the compatible code flow", async () => {
@@ -334,8 +391,10 @@ describe("McpFn hosted authorization compatibility", () => {
     const url = authorizationUrl(chatgpt.clientId, chatgpt.redirectUris[0]);
     url.searchParams.set("resource", "not-an-absolute-url");
     const response = await handler()(new Request(url));
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({ error: "invalid_target" });
+    expect(response.status).toBe(302);
+    expect(
+      new URL(response.headers.get("location")!).searchParams.get("error"),
+    ).toBe("invalid_target");
   });
 
   it("preserves issuer path prefixes in discovery and hosted routes", async () => {
@@ -364,6 +423,113 @@ describe("McpFn hosted authorization compatibility", () => {
     expect((await compatibility(new Request(url))).status).toBe(200);
     url.pathname = "/authorize";
     expect((await compatibility(new Request(url))).status).toBe(404);
+  });
+
+  it("supports hosted endpoints beneath a prefix without changing the issuer", async () => {
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      endpointPrefix: "/auth/oauth",
+      clients: {
+        resolve: async (clientId) =>
+          clientId === chatgpt.clientId ? chatgpt : null,
+      },
+      authorize: async () => Response.json({ ok: true }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({
+          access_token: "opaque",
+          token_type: "Bearer",
+        }),
+      },
+    });
+    const discovery = await compatibility(
+      new Request(
+        "https://login.example.com/.well-known/oauth-authorization-server",
+      ),
+    );
+    await expect(discovery.json()).resolves.toMatchObject({
+      issuer,
+      authorization_endpoint: `${issuer}/auth/oauth/authorize`,
+      token_endpoint: `${issuer}/auth/oauth/token`,
+    });
+    const url = authorizationUrl(chatgpt.clientId, chatgpt.redirectUris[0]);
+    url.pathname = "/auth/oauth/authorize";
+    url.searchParams.delete("resource");
+    expect((await compatibility(new Request(url))).status).toBe(200);
+    url.pathname = "/authorize";
+    expect((await compatibility(new Request(url))).status).toBe(404);
+  });
+
+  it("rejects unsafe redirects before persisting a dynamic registration", async () => {
+    const register = vi.fn();
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      clients: { resolve: async () => null, register },
+      authorize: async () => Response.json({ ok: true }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({
+          access_token: "opaque",
+          token_type: "Bearer",
+        }),
+      },
+    });
+    const response = await compatibility(
+      new Request(`${issuer}/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          redirect_uris: ["http://public.example.com/callback"],
+        }),
+      }),
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "invalid_client_metadata",
+    });
+    expect(register).not.toHaveBeenCalled();
+  });
+
+  it("rejects incompatible dynamic-registration auth, response, grant, and scope metadata", async () => {
+    const register = vi.fn();
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      clients: { resolve: async () => null, register },
+      authorize: async () => Response.json({ ok: true }),
+      supportedScopes: ["mcp:read"],
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({
+          access_token: "opaque",
+          token_type: "Bearer",
+        }),
+      },
+    });
+    for (const metadata of [
+      {
+        redirect_uris: ["https://client.example/callback"],
+        token_endpoint_auth_method: "client_secret_basic",
+      },
+      {
+        redirect_uris: ["https://client.example/callback"],
+        response_types: ["token"],
+      },
+      {
+        redirect_uris: ["https://client.example/callback"],
+        grant_types: ["password"],
+      },
+      {
+        redirect_uris: ["https://client.example/callback"],
+        scope: "mcp:read admin:all",
+      },
+    ]) {
+      const response = await compatibility(
+        new Request(`${issuer}/register`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(metadata),
+        }),
+      );
+      expect(response.status).toBe(400);
+    }
+    expect(register).not.toHaveBeenCalled();
   });
 
   it("re-authorizes every Client ID Metadata Document redirect before fetching it", async () => {
@@ -404,7 +570,10 @@ describe("McpFn hosted authorization compatibility", () => {
         controller.enqueue(new TextEncoder().encode("x".repeat(64)));
         controller.close();
       },
-    }), { status: 200 }));
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
     const compatibility = createMcpAuthorizationCompatibilityHandler({
       issuer,
       clients: { resolve: async () => null },
@@ -528,7 +697,6 @@ describe("McpFn hosted authorization compatibility", () => {
       grant_type: "refresh_token",
       client_id: chatgpt.clientId,
       refresh_token: "refresh-1",
-      resource,
     };
     const refreshOne = post("/token", refreshBody);
     await vi.waitFor(() => expect(refreshToken).toHaveBeenCalledTimes(1));
@@ -698,6 +866,51 @@ describe("generic auth provider composition", () => {
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toMatch(/^Bearer /);
     expect(authenticate).not.toHaveBeenCalled();
+  });
+
+  it("rejects bearer credentials supplied through the query string", async () => {
+    const authenticate = vi.fn();
+    const handler = createAuthProviderMcpHandler(
+      async () => Response.json({ ok: true }),
+      {
+        resource: "https://mcp.example.com/mcp",
+        provider: { authenticate },
+      },
+    );
+    const response = await handler(
+      new Request("https://mcp.example.com/mcp?access_token=query-secret"),
+    );
+    expect(response.status).toBe(401);
+    expect(authenticate).not.toHaveBeenCalled();
+  });
+
+  it("returns an insufficient-scope challenge before invoking MCP", async () => {
+    const downstream = vi.fn(async () => Response.json({ ok: true }));
+    const handler = createAuthProviderMcpHandler(downstream, {
+      resource: "https://mcp.example.com/mcp",
+      requiredScopes: ["mcp:read", "skills:read"],
+      provider: {
+        authenticate: async () => ({
+          id: "client-1",
+          type: "oauth",
+          subject: { actorId: "user-1", actorType: "user" },
+          scopes: ["mcp:read"],
+        }),
+      },
+    });
+    const response = await handler(
+      new Request("https://mcp.example.com/mcp", {
+        headers: { authorization: "Bearer opaque-token" },
+      }),
+    );
+    expect(response.status).toBe(403);
+    expect(response.headers.get("www-authenticate")).toContain(
+      'error="insufficient_scope"',
+    );
+    expect(response.headers.get("www-authenticate")).toContain(
+      'scope="mcp:read skills:read"',
+    );
+    expect(downstream).not.toHaveBeenCalled();
   });
 
   it("does not let mapped extras replace trusted principal fields", async () => {

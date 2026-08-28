@@ -32,7 +32,7 @@ describe("McpFn OAuth resource server", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       resource: "https://mcp.example.com/api/mcp",
-      authorization_servers: ["https://login.example.com/"],
+      authorization_servers: ["https://login.example.com"],
       scopes_supported: ["read", "write"],
       bearer_methods_supported: ["header"],
     });

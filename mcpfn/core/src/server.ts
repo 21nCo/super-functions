@@ -173,11 +173,12 @@ export class McpFnServer<TContext = undefined> {
       capabilities: this.capabilities,
       clientRequirements: options.clientRequirements,
     };
+    const { instructions, ...implementation } = options.info;
     this.protocol = new Server(
-      { name: options.info.name, version: options.info.version },
+      implementation,
       {
         capabilities: this.capabilities,
-        instructions: options.info.instructions,
+        instructions,
         taskStore: options.taskStore,
         taskMessageQueue: options.taskMessageQueue,
         defaultTaskPollInterval: options.defaultTaskPollInterval,

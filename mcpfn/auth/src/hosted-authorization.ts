@@ -4,6 +4,7 @@ import { redactOAuthValue } from "@superfunctions/oauth-core";
 import {
   matchMcpRedirectUri,
   McpFnRedirectMismatchError,
+  normalizeMcpRedirectUri,
   type McpFnRedirectPolicy,
 } from "./redirects.js";
 
@@ -109,6 +110,8 @@ export interface McpFnHostedAuthorizationCapabilities {
   requireState?: boolean;
   /** Defaults to true when allowedResources is configured. */
   requireResource?: boolean;
+  /** Defaults to false so a rotating refresh token can retain its stored audience. */
+  requireRefreshResource?: boolean;
   /** Defaults to true when refresh is enabled. */
   rotateRefreshTokens?: boolean;
 }
@@ -135,11 +138,27 @@ export function normalizeMcpClientRegistration(input: {
   clientId: string;
   source: McpFnClientRegistrationSource;
   metadata: OAuthClientMetadata;
+  redirectPolicy?: McpFnRedirectPolicy;
 }): McpFnNormalizedClientRegistration {
   if (!input.clientId) {
     throw new McpFnHostedAuthorizationError("invalid_client_metadata", "client_id is required");
   }
-  const redirectUris = uniqueUrls(input.metadata.redirect_uris ?? []);
+  let redirectUris: string[];
+  try {
+    redirectUris = unique(
+      (input.metadata.redirect_uris ?? []).map((value) =>
+        normalizeMcpRedirectUri(value, input.redirectPolicy),
+      ),
+    );
+  } catch (error) {
+    if (error instanceof McpFnRedirectMismatchError) {
+      throw new McpFnHostedAuthorizationError(
+        "invalid_client_metadata",
+        "redirect_uris contains an unsafe or malformed URI",
+      );
+    }
+    throw error;
+  }
   if (!redirectUris.length) {
     throw new McpFnHostedAuthorizationError(
       "invalid_client_metadata",
@@ -173,7 +192,7 @@ export function validateMcpAuthorizationRequest(options: {
   supportedScopes?: ReadonlyArray<string>;
 }): McpFnValidatedAuthorizationRequest {
   const url = new URL(options.url.toString());
-  const responseType = url.searchParams.get("response_type");
+  const responseType = authorizationParameter(url, "response_type", true);
   if (responseType !== "code" || !options.client.responseTypes.includes("code")) {
     throw new McpFnHostedAuthorizationError(
       "unsupported_response_type",
@@ -186,11 +205,11 @@ export function validateMcpAuthorizationRequest(options: {
       "The client has no compatible authorization_code flow",
     );
   }
-  const requestedClientId = url.searchParams.get("client_id");
+  const requestedClientId = authorizationParameter(url, "client_id", true);
   if (requestedClientId !== options.client.clientId) {
     throw new McpFnHostedAuthorizationError("invalid_client", "client_id does not match registration");
   }
-  const redirectUri = url.searchParams.get("redirect_uri");
+  const redirectUri = authorizationParameter(url, "redirect_uri", true);
   if (!redirectUri) {
     throw new McpFnHostedAuthorizationError("invalid_request", "redirect_uri is required");
   }
@@ -201,11 +220,16 @@ export function validateMcpAuthorizationRequest(options: {
   );
   const codeChallenge = validateAuthorizationPkce(url);
   const resource = normalizeAuthorizationResource(
-    url.searchParams.get("resource"),
+    authorizationParameter(url, "resource"),
     options.allowedResources,
   );
-  const scopes = unique((url.searchParams.get("scope") ?? "").split(/\s+/).filter(Boolean));
+  const scopes = unique(
+    (authorizationParameter(url, "scope") ?? "").split(/\s+/).filter(Boolean),
+  );
   assertSupportedScopes(scopes, options.supportedScopes);
+  const state = normalizeAuthorizationState(
+    authorizationParameter(url, "state"),
+  );
   return {
     client: options.client,
     responseType: "code",
@@ -214,7 +238,7 @@ export function validateMcpAuthorizationRequest(options: {
     codeChallenge,
     codeChallengeMethod: "S256",
     scopes,
-    ...(url.searchParams.get("state") ? { state: url.searchParams.get("state")! } : {}),
+    ...(state ? { state } : {}),
     ...(resource ? { resource } : {}),
     raw: new URLSearchParams(url.searchParams),
   };
@@ -240,17 +264,56 @@ function validateAuthorizationRedirect(
 }
 
 function validateAuthorizationPkce(url: URL): string {
-  const codeChallenge = url.searchParams.get("code_challenge");
+  const codeChallenge = authorizationParameter(url, "code_challenge", true);
   if (!codeChallenge) {
     throw new McpFnHostedAuthorizationError("invalid_request", "PKCE code_challenge is required");
   }
-  if (url.searchParams.get("code_challenge_method") !== "S256") {
+  if (authorizationParameter(url, "code_challenge_method", true) !== "S256") {
     throw new McpFnHostedAuthorizationError(
       "invalid_request",
       "PKCE code_challenge_method must be S256",
     );
   }
+  if (!/^[A-Za-z0-9_-]{43}$/.test(codeChallenge)) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_request",
+      "PKCE S256 code_challenge must be 43 base64url characters",
+    );
+  }
   return codeChallenge;
+}
+
+function authorizationParameter(
+  url: URL,
+  name: string,
+  required = false,
+): string | null {
+  const values = url.searchParams.getAll(name);
+  if (
+    values.length > 1 ||
+    (required && (values.length !== 1 || values[0]?.trim() === ""))
+  ) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_request",
+      `${name} must be supplied exactly once`,
+    );
+  }
+  return values[0] ?? null;
+}
+
+function normalizeAuthorizationState(value: string | null): string | undefined {
+  if (value === null) return undefined;
+  if (
+    value.length < 1 ||
+    value.length > 512 ||
+    /[\u0000-\u001f\u007f]/u.test(value)
+  ) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_request",
+      "state is invalid",
+    );
+  }
+  return value;
 }
 
 function normalizeAuthorizationResource(
@@ -278,6 +341,8 @@ function normalizeAuthorizationResource(
 
 export interface McpFnAuthorizationCompatibilityOptions {
   issuer: string | URL;
+  /** Route prefix for authorize/token/register/revoke. Defaults to the issuer path. */
+  endpointPrefix?: string;
   clients: McpFnHostedClientRegistry;
   authorize(
     input: McpFnValidatedAuthorizationRequest,
@@ -306,6 +371,18 @@ export interface McpFnAuthorizationCompatibilityOptions {
   }): void | Promise<void>;
 }
 
+export interface McpFnAuthorizationServerMetadataOptions {
+  issuer: string | URL;
+  endpointPrefix?: string;
+  dynamicRegistration: boolean;
+  refreshTokenGrant: boolean;
+  tokenRevocation: boolean;
+  tokenEndpointAuthMethods?: McpFnHostedTokenEndpointAuthMethod[];
+  supportedScopes?: string[];
+  clientMetadataDocuments: boolean;
+  extraMetadata?: Record<string, unknown>;
+}
+
 /**
  * MCP-specific authorization compatibility router. Identity, login, consent,
  * signing, token issuance, and durable security state stay in the callbacks.
@@ -314,39 +391,31 @@ export function createMcpAuthorizationCompatibilityHandler(
   options: McpFnAuthorizationCompatibilityOptions,
 ): (request: Request) => Promise<Response> {
   validateClientMetadataDocumentOptions(options.clientMetadataDocuments);
-  const issuer = new URL(options.issuer.toString());
-  if (issuer.search || issuer.hash) {
-    throw new TypeError("issuer must not contain a query string or fragment");
-  }
-  const routePrefix = issuer.pathname === "/" ? "" : issuer.pathname.replace(/\/+$/, "");
-  const endpoint = (name: string) => {
-    const url = new URL(issuer);
-    url.pathname = `${routePrefix}/${name}`;
-    return url.toString();
-  };
+  const issuer = normalizeIssuer(options.issuer);
+  const issuerPath = issuer.pathname === "/" ? "" : issuer.pathname.replace(/\/+$/, "");
+  const endpointPrefix = normalizeEndpointPrefix(
+    options.endpointPrefix ?? issuerPath,
+  );
   const tokenEndpointAuthMethods = unique(
     options.capabilities?.tokenEndpointAuthMethods ?? ["none"],
   ) as McpFnHostedTokenEndpointAuthMethod[];
   validateHostedCapabilities(options, tokenEndpointAuthMethods);
-  const grantTypes = [
-    "authorization_code",
-    ...(options.tokenAuthority.refreshToken ? ["refresh_token"] : []),
-  ];
-  const metadata = {
-    ...options.extraMetadata,
-    issuer: issuer.toString(),
-    authorization_endpoint: endpoint("authorize"),
-    token_endpoint: endpoint("token"),
-    ...(options.clients.register ? { registration_endpoint: endpoint("register") } : {}),
-    ...(options.tokenAuthority.revokeToken ? { revocation_endpoint: endpoint("revoke") } : {}),
-    response_types_supported: ["code"],
-    grant_types_supported: grantTypes,
-    code_challenge_methods_supported: ["S256"],
-    token_endpoint_auth_methods_supported: tokenEndpointAuthMethods,
-    ...(options.supportedScopes ? { scopes_supported: unique(options.supportedScopes) } : {}),
-    client_id_metadata_document_supported: options.clientMetadataDocuments?.enabled === true,
-  };
-  const routes = createHostedRoutes(routePrefix, options);
+  const metadata = createMcpAuthorizationServerMetadata({
+    issuer: options.issuer,
+    ...(options.endpointPrefix ? { endpointPrefix: options.endpointPrefix } : {}),
+    dynamicRegistration: Boolean(options.clients.register),
+    refreshTokenGrant: Boolean(options.tokenAuthority.refreshToken),
+    tokenRevocation: Boolean(options.tokenAuthority.revokeToken),
+    tokenEndpointAuthMethods,
+    ...(options.supportedScopes
+      ? { supportedScopes: options.supportedScopes }
+      : {}),
+    clientMetadataDocuments: options.clientMetadataDocuments?.enabled === true,
+    ...(options.extraMetadata
+      ? { extraMetadata: options.extraMetadata }
+      : {}),
+  });
+  const routes = createHostedRoutes(issuerPath, endpointPrefix, options);
 
   return async (request): Promise<Response> => {
     const url = new URL(request.url);
@@ -372,29 +441,87 @@ export function createMcpAuthorizationCompatibilityHandler(
         message: normalized.message,
         ...normalized.details,
       });
-      return json(normalized.status, {
-        error: normalized.code,
-        error_description: normalized.message,
-      });
+      const retryAfter = normalized.details?.retryAfterSeconds;
+      return json(
+        normalized.status,
+        {
+          error: normalized.code,
+          error_description: normalized.message,
+        },
+        typeof retryAfter === "number" && Number.isFinite(retryAfter)
+          ? { "retry-after": String(Math.max(0, Math.ceil(retryAfter))) }
+          : {},
+      );
     }
+  };
+}
+
+export function createMcpAuthorizationServerMetadata(
+  options: McpFnAuthorizationServerMetadataOptions,
+): Record<string, unknown> {
+  const issuer = normalizeIssuer(options.issuer);
+  const issuerPath =
+    issuer.pathname === "/" ? "" : issuer.pathname.replace(/\/+$/, "");
+  const endpointPrefix = normalizeEndpointPrefix(
+    options.endpointPrefix ?? issuerPath,
+  );
+  const endpoint = (name: string) => {
+    const url = new URL(issuer);
+    url.pathname = `${endpointPrefix}/${name}`;
+    return url.toString();
+  };
+  const tokenEndpointAuthMethods = unique(
+    options.tokenEndpointAuthMethods ?? ["none"],
+  ) as McpFnHostedTokenEndpointAuthMethod[];
+  if (!tokenEndpointAuthMethods.length) {
+    throw new TypeError(
+      "At least one supported token endpoint authentication method is required",
+    );
+  }
+  return {
+    ...options.extraMetadata,
+    issuer:
+      issuer.pathname === "/" && !issuer.search && !issuer.hash
+        ? issuer.origin
+        : issuer.toString(),
+    authorization_endpoint: endpoint("authorize"),
+    token_endpoint: endpoint("token"),
+    ...(options.dynamicRegistration
+      ? { registration_endpoint: endpoint("register") }
+      : {}),
+    ...(options.tokenRevocation
+      ? { revocation_endpoint: endpoint("revoke") }
+      : {}),
+    response_types_supported: ["code"],
+    grant_types_supported: [
+      "authorization_code",
+      ...(options.refreshTokenGrant ? ["refresh_token"] : []),
+    ],
+    code_challenge_methods_supported: ["S256"],
+    token_endpoint_auth_methods_supported: tokenEndpointAuthMethods,
+    ...(options.supportedScopes
+      ? { scopes_supported: unique(options.supportedScopes) }
+      : {}),
+    client_id_metadata_document_supported: options.clientMetadataDocuments,
   };
 }
 
 type McpFnHostedRoute = "metadata" | "register" | "authorize" | "token" | "revoke";
 
 function createHostedRoutes(
-  routePrefix: string,
+  issuerPath: string,
+  endpointPrefix: string,
   options: McpFnAuthorizationCompatibilityOptions,
 ): Map<string, McpFnHostedRoute> {
   const routes = new Map<string, McpFnHostedRoute>([
-    [`GET /.well-known/oauth-authorization-server${routePrefix}`, "metadata"],
-    [`GET ${routePrefix}/.well-known/openid-configuration`, "metadata"],
-    [`POST ${routePrefix}/register`, "register"],
-    [`GET ${routePrefix}/authorize`, "authorize"],
-    [`POST ${routePrefix}/token`, "token"],
+    [`GET /.well-known/oauth-authorization-server${issuerPath}`, "metadata"],
+    [`GET ${endpointPrefix}/.well-known/openid-configuration`, "metadata"],
+    [`POST ${endpointPrefix}/register`, "register"],
+    [`GET ${endpointPrefix}/authorize`, "authorize"],
+    [`POST ${endpointPrefix}/token`, "token"],
   ]);
   if (options.tokenAuthority.revokeToken) {
-    routes.set(`POST ${routePrefix}/revoke`, "revoke");
+    routes.set(`POST ${endpointPrefix}/revoke`, "revoke");
   }
   return routes;
 }
@@ -434,9 +561,51 @@ async function handleRegistrationRequest(
       { status: 404 },
     );
   }
-  const raw = await readBoundedJson(request, 256_000) as OAuthClientMetadata;
-  const clientMetadata = normalizeClientMetadata(raw);
-  const registration = await options.clients.register(clientMetadata, request);
+  const raw = (await readBoundedJson(request, 256_000)) as OAuthClientMetadata;
+  const clientMetadata = normalizeClientMetadata(raw, options.redirectPolicy);
+  const requested = normalizeMcpClientRegistration({
+    clientId: "pending-dynamic-registration",
+    source: "dynamic",
+    metadata: clientMetadata,
+    redirectPolicy: options.redirectPolicy,
+  });
+  const supportedMethods = options.capabilities?.tokenEndpointAuthMethods ?? [
+    "none",
+  ];
+  if (
+    !supportedMethods.includes(
+      requested.tokenEndpointAuthMethod as McpFnHostedTokenEndpointAuthMethod,
+    )
+  ) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client_metadata",
+      "token_endpoint_auth_method is not supported",
+    );
+  }
+  if (!requested.responseTypes.includes("code")) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client_metadata",
+      "response_types must include code",
+    );
+  }
+  if (!requested.grantTypes.includes("authorization_code")) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client_metadata",
+      "grant_types must include authorization_code",
+    );
+  }
+  const registrationScopes =
+    typeof clientMetadata.scope === "string"
+      ? unique(clientMetadata.scope.split(/\s+/).filter(Boolean))
+      : [];
+  assertSupportedScopes(registrationScopes, options.supportedScopes);
+  const persisted = await options.clients.register(clientMetadata, request);
+  const registration = normalizeMcpClientRegistration({
+    clientId: persisted.clientId,
+    source: persisted.source,
+    metadata: persisted.metadata,
+    redirectPolicy: options.redirectPolicy,
+  });
   await emit(options, "client-registration", "succeeded", undefined, {
     clientId: registration.clientId,
     source: registration.source,
@@ -452,35 +621,47 @@ async function handleAuthorizationRequest(
   url: URL,
   request: Request,
 ): Promise<Response> {
-  const clientId = url.searchParams.get("client_id");
-  if (!clientId) {
-    throw new McpFnHostedAuthorizationError("invalid_request", "client_id is required");
-  }
+  const clientId = authorizationParameter(url, "client_id", true)!;
   const client = await resolveClient(options, clientId);
   if (!client) {
     throw new McpFnHostedAuthorizationError("invalid_client", "Unknown MCP client");
   }
-  const validated = validateMcpAuthorizationRequest({
-    url,
-    client,
-    redirectPolicy: options.redirectPolicy,
-    allowedResources: options.allowedResources,
-    supportedScopes: options.supportedScopes,
-  });
-  if ((options.capabilities?.requireState ?? true) && !validated.state) {
-    throw new McpFnHostedAuthorizationError(
-      "invalid_request",
-      "state is required for this MCP authorization profile",
-    );
-  }
-  if (
-    (options.capabilities?.requireResource ?? Boolean(options.allowedResources?.length)) &&
-    !validated.resource
-  ) {
-    throw new McpFnHostedAuthorizationError(
-      "invalid_target",
-      "resource is required for this MCP authorization profile",
-    );
+  const trustedRedirect = validateAuthorizationRedirect(
+    authorizationParameter(url, "redirect_uri", true)!,
+    client.redirectUris,
+    options.redirectPolicy,
+  ).requested;
+  let validated: McpFnValidatedAuthorizationRequest;
+  try {
+    validated = validateMcpAuthorizationRequest({
+      url,
+      client,
+      redirectPolicy: options.redirectPolicy,
+      allowedResources: options.allowedResources,
+      supportedScopes: options.supportedScopes,
+    });
+    if ((options.capabilities?.requireState ?? true) && !validated.state) {
+      throw new McpFnHostedAuthorizationError(
+        "invalid_request",
+        "state is required for this MCP authorization profile",
+      );
+    }
+    if (
+      (options.capabilities?.requireResource ?? Boolean(options.allowedResources?.length)) &&
+      !validated.resource
+    ) {
+      throw new McpFnHostedAuthorizationError(
+        "invalid_target",
+        "resource is required for this MCP authorization profile",
+      );
+    }
+  } catch (error) {
+    if (!(error instanceof McpFnHostedAuthorizationError)) throw error;
+    await emit(options, "authorization-request", "failed", error.code, {
+      clientId,
+      registrationSource: client.source,
+    });
+    return trustedAuthorizationErrorRedirect(trustedRedirect, url, error);
   }
   await emit(options, "authorization-request", "succeeded", undefined, {
     clientId,
@@ -488,6 +669,31 @@ async function handleAuthorizationRequest(
     redirectMatch: validated.redirectMatch,
   });
   return options.authorize(validated, request);
+}
+
+function trustedAuthorizationErrorRedirect(
+  redirectUri: string,
+  authorizationUrl: URL,
+  error: McpFnHostedAuthorizationError,
+): Response {
+  const redirect = new URL(redirectUri);
+  redirect.searchParams.set("error", error.code);
+  redirect.searchParams.set("error_description", error.message);
+  try {
+    const state = normalizeAuthorizationState(
+      authorizationParameter(authorizationUrl, "state"),
+    );
+    if (state) redirect.searchParams.set("state", state);
+  } catch {
+    // Invalid state is never reflected to the client.
+  }
+  return new Response(null, {
+    status: 302,
+    headers: {
+      "cache-control": "no-store",
+      location: redirect.toString(),
+    },
+  });
 }
 
 const refreshLocks = new WeakMap<McpFnHostedTokenAuthority, Map<string, Promise<McpFnHostedTokenSet>>>();
@@ -516,7 +722,7 @@ async function handleTokenRequest(
     }
     const redirectUri = normalizeRequiredUrl(form, "redirect_uri");
     const resource = normalizeOptionalResource(form, options.allowedResources);
-    assertRequiredTokenResource(options, resource);
+    assertRequiredTokenResource(options, resource, "authorization_code");
     try {
       matchMcpRedirectUri(
         redirectUri,
@@ -560,7 +766,7 @@ async function handleTokenRequest(
     const scopes = unique((singleFormValue(form, "scope") ?? "").split(/\s+/).filter(Boolean));
     assertSupportedScopes(scopes, options.supportedScopes);
     const resource = normalizeOptionalResource(form, options.allowedResources);
-    assertRequiredTokenResource(options, resource);
+    assertRequiredTokenResource(options, resource, "refresh_token");
     tokenSet = await withSerializedRefresh(options.tokenAuthority, credential, async () => {
       const refreshed = await options.tokenAuthority.refreshToken!({
         ...authentication,
@@ -757,11 +963,12 @@ function assertSupportedScopes(scopes: string[], supportedScopes?: ReadonlyArray
 function assertRequiredTokenResource(
   options: McpFnAuthorizationCompatibilityOptions,
   resource: string | undefined,
+  grantType: "authorization_code" | "refresh_token",
 ): void {
-  if (
-    (options.capabilities?.requireResource ?? Boolean(options.allowedResources?.length)) &&
-    !resource
-  ) {
+  const required = grantType === "refresh_token"
+    ? options.capabilities?.requireRefreshResource ?? false
+    : options.capabilities?.requireResource ?? Boolean(options.allowedResources?.length);
+  if (required && !resource) {
     throw new McpFnHostedAuthorizationError(
       "invalid_target",
       "resource is required for this MCP token request",
@@ -858,7 +1065,14 @@ async function resolveClient(
   clientId: string,
 ): Promise<McpFnNormalizedClientRegistration | null> {
   const stored = await options.clients.resolve(clientId);
-  if (stored) return stored;
+  if (stored) {
+    return normalizeMcpClientRegistration({
+      clientId: stored.clientId,
+      source: stored.source,
+      metadata: stored.metadata,
+      redirectPolicy: options.redirectPolicy,
+    });
+  }
   if (!options.clientMetadataDocuments?.enabled) return null;
   let clientUrl: URL;
   try {
@@ -878,18 +1092,38 @@ async function resolveClient(
   return normalizeMcpClientRegistration({
     clientId,
     source: "client-metadata-document",
-    metadata: normalizeClientMetadata(record as OAuthClientMetadata),
+    metadata: normalizeClientMetadata(
+      record as OAuthClientMetadata,
+      options.redirectPolicy,
+    ),
+    redirectPolicy: options.redirectPolicy,
   });
 }
 
-function normalizeClientMetadata(value: OAuthClientMetadata): OAuthClientMetadata {
+function normalizeClientMetadata(
+  value: OAuthClientMetadata,
+  redirectPolicy?: McpFnRedirectPolicy,
+): OAuthClientMetadata {
   if (!value || typeof value !== "object") {
     throw new McpFnHostedAuthorizationError("invalid_client_metadata", "Client metadata must be an object");
   }
-  return {
-    ...value,
-    redirect_uris: Array.isArray(value.redirect_uris) ? value.redirect_uris : [],
-  };
+  try {
+    return {
+      ...value,
+      redirect_uris: Array.isArray(value.redirect_uris)
+        ? value.redirect_uris.map((redirect) =>
+          normalizeMcpRedirectUri(redirect, redirectPolicy))
+        : [],
+    };
+  } catch (error) {
+    if (error instanceof McpFnRedirectMismatchError) {
+      throw new McpFnHostedAuthorizationError(
+        "invalid_client_metadata",
+        "redirect_uris contains an unsafe or malformed URI",
+      );
+    }
+    throw error;
+  }
 }
 
 async function readBoundedJson(
@@ -960,6 +1194,18 @@ async function fetchClientMetadataDocument(
         throw new McpFnHostedAuthorizationError(
           "invalid_client",
           "Client ID Metadata Document could not be loaded",
+        );
+      }
+      if (
+        !response.headers
+          .get("content-type")
+          ?.toLowerCase()
+          .includes("application/json")
+      ) {
+        await response.body?.cancel().catch(() => undefined);
+        throw new McpFnHostedAuthorizationError(
+          "invalid_client",
+          "Client ID Metadata Document must use application/json",
         );
       }
       return await readBoundedJson(
@@ -1086,6 +1332,32 @@ function validateClientMetadataDocumentOptions(
   }
 }
 
+function normalizeIssuer(value: string | URL): URL {
+  const issuer = new URL(value.toString());
+  if (issuer.search || issuer.hash || issuer.username || issuer.password) {
+    throw new TypeError(
+      "issuer must not contain userinfo, a query string, or a fragment",
+    );
+  }
+  return issuer;
+}
+
+function normalizeEndpointPrefix(value: string): string {
+  if (value === "" || value === "/") return "";
+  if (
+    !value.startsWith("/") ||
+    value.endsWith("/") ||
+    value.includes("//") ||
+    value.includes("?") ||
+    value.includes("#")
+  ) {
+    throw new TypeError(
+      "endpointPrefix must be an absolute path without a trailing slash",
+    );
+  }
+  return value;
+}
+
 function json(status: number, body: unknown, headers: HeadersInit = {}): Response {
   return Response.json(body, {
     status,
@@ -1098,10 +1370,6 @@ function json(status: number, body: unknown, headers: HeadersInit = {}): Respons
 
 function unique(values: string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
-}
-
-function uniqueUrls(values: Array<string | URL>): string[] {
-  return unique(values.map((value) => new URL(value.toString()).toString()));
 }
 
 async function emit(

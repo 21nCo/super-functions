@@ -40,8 +40,15 @@ function normalizeResource(resource: string | URL): URL {
   return url;
 }
 
+function normalizeIdentifier(value: string | URL): string {
+  const url = new URL(value.toString());
+  return url.pathname === "/" && !url.search && !url.hash
+    ? url.origin
+    : url.toString();
+}
+
 function unique(values: Array<string | URL>): string[] {
-  return [...new Set(values.map((value) => new URL(value.toString()).toString()))].sort();
+  return [...new Set(values.map(normalizeIdentifier))].sort();
 }
 
 export function protectedResourceMetadataUrl(resource: string | URL): URL {

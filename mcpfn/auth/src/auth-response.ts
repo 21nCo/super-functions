@@ -10,6 +10,7 @@ function json(status: number, body: unknown, headers: HeadersInit = {}): Respons
 }
 
 export function readBearerToken(request: Request): string | undefined {
+  if (new URL(request.url).searchParams.has("access_token")) return undefined;
   const authorization = request.headers.get("authorization");
   if (!authorization) return undefined;
   const match = /^Bearer\s+([^\s]+)$/i.exec(authorization.trim());

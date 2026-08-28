@@ -20,7 +20,7 @@ It includes:
 - bounded, redacted scenario and target-suite reports;
 - orchestration of the official `@modelcontextprotocol/conformance` runner.
 
-Official conformance validates protocol behavior. McpFn scenarios validate product behavior. Production MCP servers should run both.
+Official conformance validates protocol behavior. McpFn scenarios validate product behavior. Production MCP servers should run both. For a protected endpoint, use `runAuthenticatedOfficialConformance({ url, headers })`; it binds a temporary loopback-only streaming proxy, injects the configured headers without printing them, and always closes the proxy after the pinned official runner exits.
 
 Use `runMcpFnTargetSuite({ target, scenarios, manifest })` when a test should
 exercise a subprocess or deployed target. It constructs the same session used
