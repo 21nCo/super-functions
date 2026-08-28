@@ -49,18 +49,20 @@ describe("OAuth diagnostics redaction", () => {
     });
   });
 
-  it("redacts credential-shaped query and fragment values", () => {
+  it("redacts credential-shaped query values and removes fragments", () => {
     const redacted = redactOAuthValue(
       "https://client.example/callback?api_key=key&password=pass&view=ok#access_token=token&tab=details",
     );
     expect(redacted).toContain("api_key=%5BREDACTED%5D");
     expect(redacted).toContain("password=%5BREDACTED%5D");
     expect(redacted).toContain("view=ok");
-    expect(redacted).toContain("access_token=%5BREDACTED%5D");
-    expect(redacted).toContain("tab=details");
+    expect(redacted).not.toContain("#");
     expect(redacted).not.toContain("api_key=key");
     expect(redacted).not.toContain("password=pass");
     expect(redacted).not.toContain("access_token=token");
+    expect(redactOAuthValue("https://client.example/callback#raw-secret")).toBe(
+      "https://client.example/callback",
+    );
     expect(redactOAuthValue("com.example.app:/callback?code=secret&view=ok")).toBe(
       "com.example.app:/callback?code=%5BREDACTED%5D&view=ok",
     );
@@ -73,7 +75,7 @@ describe("OAuth diagnostics redaction", () => {
     expect(redacted).not.toContain("secret");
     expect(redacted).not.toContain("access_token=token");
     expect(redacted).not.toContain("hunter2");
-    expect(redacted.match(/REDACTED/g)).toHaveLength(3);
+    expect(redacted.match(/REDACTED/g)).toHaveLength(2);
   });
 
   it("preserves bounded diagnostic types and detects circular values", () => {

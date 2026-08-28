@@ -1,6 +1,6 @@
 {
   "name": "@superfunctions/oauth-http",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "OAuth HTTP transport contracts for Superfunctions",
   "type": "module",
   "main": "./dist/index.js",

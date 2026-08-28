@@ -42,6 +42,9 @@ function normalizeResource(resource: string | URL): URL {
 
 function normalizeIdentifier(value: string | URL): string {
   const url = new URL(value.toString());
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new TypeError("OAuth authorization servers must use HTTP or HTTPS");
+  }
   return url.pathname === "/" && !url.search && !url.hash
     ? url.origin
     : url.toString();

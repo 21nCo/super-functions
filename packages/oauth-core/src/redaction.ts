@@ -126,17 +126,7 @@ function redactUrl(url: URL, maxLength: number): string {
   for (const key of copy.searchParams.keys()) {
     if (isSensitiveUrlKey(key)) copy.searchParams.set(key, REDACTED);
   }
-  if (copy.hash.length > 1) {
-    const fragment = copy.hash.slice(1);
-    const parameters = new URLSearchParams(fragment);
-    let changed = false;
-    for (const key of parameters.keys()) {
-      if (!isSensitiveUrlKey(key)) continue;
-      parameters.set(key, REDACTED);
-      changed = true;
-    }
-    if (changed) copy.hash = parameters.toString();
-  }
+  copy.hash = "";
   copy.username = "";
   copy.password = "";
   const serialized = copy.toString();

@@ -38,6 +38,17 @@ describe("McpFn OAuth resource server", () => {
     });
   });
 
+  it("rejects non-HTTP authorization server identifiers", () => {
+    expect(() => createOAuthResourceServerHandler(
+      async () => new Response("mcp"),
+      {
+        resource,
+        authorizationServers: ["file:///private/oauth"],
+        verifier: { verifyAccessToken: async () => { throw new Error("unused"); } },
+      },
+    )).toThrow(/authorization servers must use HTTP or HTTPS/);
+  });
+
   it("challenges missing tokens and enforces scopes, expiry, and resource audience", async () => {
     const verifier = vi.fn(async (token: string) => ({
       token,

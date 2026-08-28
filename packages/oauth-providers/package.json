@@ -1,6 +1,6 @@
 {
   "name": "@superfunctions/oauth-providers",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "OAuth provider descriptors for Superfunctions",
   "type": "module",
   "main": "./dist/index.js",

@@ -6,6 +6,7 @@ import {
   type IncomingHttpHeaders,
 } from "node:http";
 import { request as httpsRequest } from "node:https";
+import type { Socket } from "node:net";
 import path from "node:path";
 
 export const OFFICIAL_CONFORMANCE_VERSION = "0.1.16";
@@ -74,6 +75,8 @@ export async function createAuthenticatedConformanceProxy(
   const port = upstream.port === "" ? undefined : Number(upstream.port);
   const requestPath = `${upstream.pathname}${upstream.search}`;
   const injected = new Headers(options.headers);
+  const activeRequests = new Set<ReturnType<typeof httpRequest>>();
+  const activeSockets = new Set<Socket>();
   const server = createServer((incoming, outgoing) => {
     if (!incoming.url?.startsWith("/")) {
       outgoing.writeHead(400).end();
@@ -101,12 +104,18 @@ export async function createAuthenticatedConformanceProxy(
         response.pipe(outgoing);
       },
     );
+    activeRequests.add(proxied);
+    proxied.once("close", () => activeRequests.delete(proxied));
     proxied.once("error", () => {
       if (!outgoing.headersSent) outgoing.writeHead(502);
       outgoing.end();
     });
     incoming.once("aborted", () => proxied.destroy());
     incoming.pipe(proxied);
+  });
+  server.on("connection", (socket) => {
+    activeSockets.add(socket);
+    socket.once("close", () => activeSockets.delete(socket));
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -127,6 +136,8 @@ export async function createAuthenticatedConformanceProxy(
   return {
     url: url.toString(),
     close: async () => {
+      for (const request of activeRequests) request.destroy();
+      for (const socket of activeSockets) socket.destroy();
       if (!server.listening) return;
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));

@@ -121,10 +121,13 @@ export function createAuthProviderMcpHandler<TSession extends McpFnAuthSessionLi
   const metadataUrl = protectedResourceMetadataUrl(options.resource);
   return async (request) => {
     let authenticated;
+    const authenticationRequest = request.clone();
     try {
-      authenticated = await adapter.authenticate(request.clone());
+      authenticated = await adapter.authenticate(authenticationRequest);
     } catch {
       authenticated = null;
+    } finally {
+      void authenticationRequest.body?.cancel().catch(() => undefined);
     }
     if (!authenticated) {
       return bearerChallengeResponse(401, metadataUrl, {
@@ -132,13 +135,20 @@ export function createAuthProviderMcpHandler<TSession extends McpFnAuthSessionLi
         description: "A valid Bearer access token is required",
       });
     }
-    const requiredScopes =
-      typeof options.requiredScopes === "function"
-        ? await options.requiredScopes({
-            principal: authenticated.principal,
-            request: request.clone(),
-          })
-        : options.requiredScopes ?? [];
+    let requiredScopes: string[];
+    if (typeof options.requiredScopes === "function") {
+      const scopeRequest = request.clone();
+      try {
+        requiredScopes = await options.requiredScopes({
+          principal: authenticated.principal,
+          request: scopeRequest,
+        });
+      } finally {
+        void scopeRequest.body?.cancel().catch(() => undefined);
+      }
+    } else {
+      requiredScopes = options.requiredScopes ?? [];
+    }
     const grantedScopes = new Set(authenticated.principal.scopes);
     const missingScopes = [...new Set(requiredScopes)].filter(
       (scope) => !grantedScopes.has(scope),

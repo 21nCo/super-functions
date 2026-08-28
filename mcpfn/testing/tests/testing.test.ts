@@ -458,6 +458,33 @@ describe("McpFn testing", () => {
     })).rejects.toThrow(/literal loopback address/);
   });
 
+  it("closes the conformance proxy while streaming requests are active", async () => {
+    let requestStarted!: () => void;
+    const started = new Promise<void>((resolve) => { requestStarted = resolve; });
+    const upstream = createServer(() => requestStarted());
+    await new Promise<void>((resolve, reject) => {
+      upstream.once("error", reject);
+      upstream.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = upstream.address();
+    if (!address || typeof address === "string") {
+      throw new Error("test server did not bind");
+    }
+    const proxy = await createAuthenticatedConformanceProxy({
+      url: `http://127.0.0.1:${address.port}/mcp`,
+      headers: { authorization: "Bearer conformance-secret" },
+    });
+    const request = httpRequest(proxy.url);
+    request.on("error", () => undefined);
+    request.end();
+    await started;
+
+    await proxy.close();
+    await new Promise<void>((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    });
+  });
+
   it("reports degraded and incompatible host-profile matches", () => {
     const registry = new McpFnRegistry()
       .register({

@@ -402,7 +402,7 @@ export function createMcpAuthorizationCompatibilityHandler(
   validateHostedCapabilities(options, tokenEndpointAuthMethods);
   const metadata = createMcpAuthorizationServerMetadata({
     issuer: options.issuer,
-    ...(options.endpointPrefix ? { endpointPrefix: options.endpointPrefix } : {}),
+    endpointPrefix,
     dynamicRegistration: Boolean(options.clients.register),
     refreshTokenGrant: Boolean(options.tokenAuthority.refreshToken),
     tokenRevocation: Boolean(options.tokenAuthority.revokeToken),
@@ -1344,15 +1344,17 @@ function normalizeIssuer(value: string | URL): URL {
 
 function normalizeEndpointPrefix(value: string): string {
   if (value === "" || value === "/") return "";
+  const canonicalPath = new URL(value, "https://mcpfn.invalid").pathname;
   if (
     !value.startsWith("/") ||
     value.endsWith("/") ||
     value.includes("//") ||
     value.includes("?") ||
-    value.includes("#")
+    value.includes("#") ||
+    canonicalPath !== value
   ) {
     throw new TypeError(
-      "endpointPrefix must be an absolute path without a trailing slash",
+      "endpointPrefix must be a canonical absolute path without a trailing slash",
     );
   }
   return value;

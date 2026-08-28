@@ -471,6 +471,54 @@ describe("McpFn hosted authorization compatibility", () => {
     expect((await compatibility(new Request(url))).status).toBe(404);
   });
 
+  it("keeps an explicitly empty endpoint prefix aligned with a path issuer", async () => {
+    const prefixedIssuer = "https://login.example.com/tenant-a";
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer: prefixedIssuer,
+      endpointPrefix: "",
+      clients: {
+        resolve: async (clientId) => clientId === chatgpt.clientId ? chatgpt : null,
+      },
+      authorize: async () => Response.json({ ok: true }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({ access_token: "opaque", token_type: "Bearer" }),
+      },
+    });
+    const discovery = await compatibility(new Request(
+      "https://login.example.com/.well-known/oauth-authorization-server/tenant-a",
+    ));
+    await expect(discovery.json()).resolves.toMatchObject({
+      issuer: prefixedIssuer,
+      authorization_endpoint: "https://login.example.com/authorize",
+      token_endpoint: "https://login.example.com/token",
+    });
+    const url = authorizationUrl(chatgpt.clientId, chatgpt.redirectUris[0]);
+    url.pathname = "/authorize";
+    url.searchParams.delete("resource");
+    expect((await compatibility(new Request(url))).status).toBe(200);
+  });
+
+  it("rejects endpoint prefixes that URL parsing would canonicalize", () => {
+    expect(() => createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      endpointPrefix: "/oauth/../admin",
+      clients: { resolve: async () => null },
+      authorize: async () => Response.json({ ok: true }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({ access_token: "opaque", token_type: "Bearer" }),
+      },
+    })).toThrow(/canonical absolute path/);
+    expect(() => createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      endpointPrefix: "/oauth/%2e%2e/admin",
+      clients: { resolve: async () => null },
+      authorize: async () => Response.json({ ok: true }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({ access_token: "opaque", token_type: "Bearer" }),
+      },
+    })).toThrow(/canonical absolute path/);
+  });
+
   it("rejects unsafe redirects before persisting a dynamic registration", async () => {
     const register = vi.fn();
     const compatibility = createMcpAuthorizationCompatibilityHandler({
@@ -923,6 +971,46 @@ describe("generic auth provider composition", () => {
       'scope="mcp:read skills:read"',
     );
     expect(downstream).not.toHaveBeenCalled();
+  });
+
+  it("cancels unread authentication and scope clones before forwarding a stream", async () => {
+    let authenticationCancel: ReturnType<typeof vi.spyOn> | undefined;
+    let scopeCancel: ReturnType<typeof vi.spyOn> | undefined;
+    const downstream = vi.fn(async (request: Request) => new Response(await request.text()));
+    const handler = createAuthProviderMcpHandler(downstream, {
+      resource: "https://mcp.example.com/mcp",
+      provider: {
+        authenticate: async (request) => {
+          authenticationCancel = vi.spyOn(request.body!, "cancel");
+          return {
+            id: "client-1",
+            type: "oauth",
+            subject: { actorId: "user-1", actorType: "user" },
+          };
+        },
+      },
+      requiredScopes: async ({ request }) => {
+        scopeCancel = vi.spyOn(request.body!, "cancel");
+        return [];
+      },
+    });
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("bounded"));
+        controller.close();
+      },
+    });
+    const response = await handler(new Request("https://mcp.example.com/mcp", {
+      method: "POST",
+      headers: { authorization: "Bearer opaque-token" },
+      body,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" }));
+
+    await expect(response.text()).resolves.toBe("bounded");
+    expect(authenticationCancel).toHaveBeenCalledOnce();
+    expect(scopeCancel).toHaveBeenCalledOnce();
+    expect(downstream).toHaveBeenCalledOnce();
   });
 
   it("does not let mapped extras replace trusted principal fields", async () => {
