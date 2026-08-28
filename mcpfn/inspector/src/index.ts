@@ -385,7 +385,9 @@ function readRedactedCollection(
 }
 
 function replaceSecretMarkers(value: unknown): unknown {
-  if (value === "[REDACTED]") return "${MCPFN_SECRET}";
+  if (typeof value === "string") {
+    return value.replaceAll("[REDACTED]", "${MCPFN_SECRET}");
+  }
   if (Array.isArray(value)) return value.map(replaceSecretMarkers);
   if (value && typeof value === "object") {
     return Object.fromEntries(

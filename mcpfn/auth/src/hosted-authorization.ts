@@ -416,6 +416,7 @@ export function createMcpAuthorizationCompatibilityHandler(
 ): (request: Request) => Promise<Response> {
   validateClientMetadataDocumentOptions(options.clientMetadataDocuments);
   const issuer = normalizeIssuer(options.issuer, options.allowInsecureLoopbackIssuer ?? false);
+  const rfc8414IssuerPath = issuer.pathname === "/" ? "" : issuer.pathname;
   const issuerPath = issuer.pathname === "/" ? "" : trimTrailingSlashes(issuer.pathname);
   const endpointPrefix = normalizeEndpointPrefix(
     options.endpointPrefix ?? issuerPath,
@@ -440,7 +441,7 @@ export function createMcpAuthorizationCompatibilityHandler(
       ? { extraMetadata: options.extraMetadata }
       : {}),
   });
-  const routes = createHostedRoutes(issuerPath, endpointPrefix, options);
+  const routes = createHostedRoutes(rfc8414IssuerPath, issuerPath, endpointPrefix, options);
 
   return async (request): Promise<Response> => {
     const url = new URL(request.url);
@@ -543,12 +544,13 @@ export function createMcpAuthorizationServerMetadata(
 type McpFnHostedRoute = "metadata" | "register" | "authorize" | "token" | "revoke";
 
 function createHostedRoutes(
+  rfc8414IssuerPath: string,
   issuerPath: string,
   endpointPrefix: string,
   options: McpFnAuthorizationCompatibilityOptions,
 ): Map<string, McpFnHostedRoute> {
   const routes = new Map<string, McpFnHostedRoute>([
-    [`GET /.well-known/oauth-authorization-server${issuerPath}`, "metadata"],
+    [`GET /.well-known/oauth-authorization-server${rfc8414IssuerPath}`, "metadata"],
     [`GET ${issuerPath}/.well-known/openid-configuration`, "metadata"],
     [`POST ${endpointPrefix}/register`, "register"],
     [`GET ${endpointPrefix}/authorize`, "authorize"],

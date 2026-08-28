@@ -47,7 +47,11 @@ describe("McpFn inspector", () => {
       const operation = {
         kind: "tools.call" as const,
         name: "echo",
-        arguments: { access_token: "never-export-me", value: "safe" },
+        arguments: {
+          access_token: "never-export-me",
+          header: "Authorization: Bearer never-export-me",
+          value: "safe",
+        },
       };
       const result = await inspector.run(operation);
       const bounded = await inspector.snapshot();
@@ -60,11 +64,18 @@ describe("McpFn inspector", () => {
       expect(scenario).toMatchObject({
         kind: "tools.call",
         tool: "echo",
-        arguments: { access_token: "${MCPFN_SECRET}" },
+        arguments: {
+          access_token: "${MCPFN_SECRET}",
+          header: "Authorization: ${MCPFN_SECRET}",
+        },
         variables: ["MCPFN_SECRET"],
         expect: {
           isError: false,
-          structuredContent: { access_token: "${MCPFN_SECRET}", value: "safe" },
+          structuredContent: {
+            access_token: "${MCPFN_SECRET}",
+            header: "Authorization: ${MCPFN_SECRET}",
+            value: "safe",
+          },
         },
       });
       const runner = await McpFnTestClient.connect(createServer());

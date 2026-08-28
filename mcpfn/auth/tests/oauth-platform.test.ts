@@ -488,7 +488,7 @@ describe("McpFn hosted authorization compatibility", () => {
     expect((await compatibility(new Request(url))).status).toBe(404);
   });
 
-  it("preserves a trailing-slash issuer while removing it for discovery paths", async () => {
+  it("preserves a trailing-slash issuer in RFC 8414 discovery", async () => {
     const prefixedIssuer = "https://login.example.com/tenant-a/";
     const compatibility = createMcpAuthorizationCompatibilityHandler({
       issuer: prefixedIssuer,
@@ -501,7 +501,7 @@ describe("McpFn hosted authorization compatibility", () => {
       },
     });
     for (const discoveryUrl of [
-      "https://login.example.com/.well-known/oauth-authorization-server/tenant-a",
+      "https://login.example.com/.well-known/oauth-authorization-server/tenant-a/",
       "https://login.example.com/tenant-a/.well-known/openid-configuration",
     ]) {
       const discovery = await compatibility(new Request(discoveryUrl));
@@ -512,6 +512,9 @@ describe("McpFn hosted authorization compatibility", () => {
         token_endpoint: `${prefixedIssuer}token`,
       });
     }
+    expect((await compatibility(new Request(
+      "https://login.example.com/.well-known/oauth-authorization-server/tenant-a",
+    ))).status).toBe(404);
   });
 
   it("supports hosted endpoints beneath a prefix without changing the issuer", async () => {
