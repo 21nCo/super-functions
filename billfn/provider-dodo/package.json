@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@billfn/core": "^0.0.1",
-    "@superfunctions/webhooks": "^0.0.1"
+    "@superfunctions/webhooks": "^0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

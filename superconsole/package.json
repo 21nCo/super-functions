@@ -43,7 +43,7 @@
     "@sveltejs/vite-plugin-svelte": "4.0.4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/svelte": "^5.2.8",
-    "@superfunctions/db": "0.1.4",
+    "@superfunctions/db": "0.2.0",
     "@types/node": "^20.19.27",
     "autoprefixer": "^10.4.21",
     "jsdom": "^26.1.0",

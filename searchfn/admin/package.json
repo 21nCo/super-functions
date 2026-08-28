@@ -33,7 +33,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@searchfn/adapter-contracts": "0.3.0",
+    "@searchfn/adapter-contracts": "0.4.0",
     "@superfunctions/admin": "0.1.0"
   },
   "devDependencies": {
