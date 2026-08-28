@@ -986,6 +986,29 @@ describe("generic auth provider composition", () => {
     expect(authenticateBearer).not.toHaveBeenCalled();
   });
 
+  it("returns an invalid-token challenge when the request body is already consumed", async () => {
+    const authenticateBearer = vi.fn();
+    const handler = createAuthProviderMcpHandler(
+      async () => Response.json({ ok: true }),
+      {
+        resource: "https://mcp.example.com/mcp",
+        provider: { authenticateBearer },
+      },
+    );
+    const request = new Request("https://mcp.example.com/mcp", {
+      method: "POST",
+      headers: { authorization: "Bearer token" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "ping", id: 1 }),
+    });
+    await request.text();
+
+    const response = await handler(request);
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toMatch(/^Bearer /);
+    expect(authenticateBearer).not.toHaveBeenCalled();
+  });
+
   it("rejects bearer credentials supplied through the query string", async () => {
     const authenticateBearer = vi.fn();
     const handler = createAuthProviderMcpHandler(

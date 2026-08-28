@@ -126,13 +126,14 @@ export function createAuthProviderMcpHandler<TSession extends McpFnAuthSessionLi
   const metadataUrl = protectedResourceMetadataUrl(options.resource);
   return async (request) => {
     let authenticated;
-    const authenticationRequest = request.clone();
+    let authenticationRequest: Request | undefined;
     try {
+      authenticationRequest = request.clone();
       authenticated = await adapter.authenticate(authenticationRequest);
     } catch {
       authenticated = null;
     } finally {
-      void authenticationRequest.body?.cancel().catch(() => undefined);
+      void authenticationRequest?.body?.cancel().catch(() => undefined);
     }
     if (!authenticated) {
       return bearerChallengeResponse(401, metadataUrl, {
