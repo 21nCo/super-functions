@@ -22,8 +22,8 @@ const SECRET_KEYS = new Set([
   "token",
 ]);
 const EMBEDDED_URL = /\b[a-z][a-z0-9+.-]*:\/{1,2}[^\s<>"']+/gi;
-const AUTHORIZATION_SCHEME_CREDENTIAL =
-  /(\b(?:proxy[-_])?authorization\b["']?\s*[=:]\s*)(["']?)[a-z][a-z0-9+.-]*\s+([^"'\s,;&#]+)\2/gi;
+const AUTHORIZATION_CREDENTIAL_LINE =
+  /(\b(?:proxy[-_])?authorization\b["']?\s*[=:]\s*)[^\r\n]*/gi;
 const KEY_VALUE_ASSIGNMENT =
   /(\b([a-z][a-z0-9_-]*)\b["']?\s*[=:]\s*)(["']?)([^"'\s,;&#]+)\3/gi;
 
@@ -245,8 +245,8 @@ function redactString(value: string, maxLength: number): string {
   const redacted = value
     .replace(EMBEDDED_URL, (candidate) => maybeRedactUrl(candidate, maxLength) ?? candidate)
     .replace(
-      AUTHORIZATION_SCHEME_CREDENTIAL,
-      (_match, prefix: string, quote: string) => `${prefix}${quote}${REDACTED}${quote}`,
+      AUTHORIZATION_CREDENTIAL_LINE,
+      (_match, prefix: string) => `${prefix}${REDACTED}`,
     )
     .replace(
       KEY_VALUE_ASSIGNMENT,

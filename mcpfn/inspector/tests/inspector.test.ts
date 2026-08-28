@@ -95,6 +95,20 @@ describe("McpFn inspector", () => {
       enumerable: true,
       get: () => { throw new Error("object value read beyond the export cap"); },
     });
+    const replayableLongSecret = inspector.exportScenario(
+      "replayable long secret",
+      {
+        kind: "tools.call",
+        name: "echo",
+        arguments: { access_token: "x".repeat(2_049) },
+      },
+      { content: [], structuredContent: { value: "retained" } },
+    );
+    expect(replayableLongSecret).toMatchObject({
+      arguments: { access_token: "${MCPFN_SECRET}" },
+      variables: ["MCPFN_SECRET"],
+    });
+    expect(replayableLongSecret.status).toBeUndefined();
     for (const structuredContent of [
       { value: "x".repeat(2_049) },
       { values: Array.from({ length: 101 }, (_, index) => index) },

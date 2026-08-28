@@ -122,6 +122,18 @@ describe("OAuth diagnostics redaction", () => {
     }
   });
 
+  it("redacts complete multi-part authorization payloads", () => {
+    const accessKey = ["fixture", "access", "key"].join("-");
+    const signature = ["fixture", "signature", "value"].join("-");
+    const response = ["fixture", "digest", "response"].join("-");
+    for (const value of [
+      `Authorization: AWS4-HMAC-SHA256 Credential=${accessKey}/scope, SignedHeaders=host;x-date, Signature=${signature}`,
+      `Authorization: Digest username="fixture-user", realm="fixture-realm", response="${response}"`,
+    ]) {
+      expect(redactOAuthValue(value)).toBe("Authorization: [REDACTED]");
+    }
+  });
+
   it("preserves bounded diagnostic types and detects circular values", () => {
     const circular: Record<string, unknown> = { safe: "visible" };
     circular.self = circular;
