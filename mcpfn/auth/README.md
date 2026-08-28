@@ -65,8 +65,10 @@ client, resource-server, or hosted authorization features.
 `createMcpFnAuthProviderAdapter()` maps a generic `@superfunctions/auth`
 session into official MCP `authInfo`, keeping identity, tenant, scopes, and
 resources out of model-controlled tool arguments. Bearer credentials are
-required, the structural provider must authenticate the exact token through
-`authenticateBearer(token, request)`, and an AuthProvider's `authorize()` hook
+required. A bearer-specific provider can implement
+`authenticateBearer(token, request)` directly; a standard AuthFn
+`authenticate(request)` provider is invoked with a credential-isolated request
+containing only that exact Bearer token. An AuthProvider's `authorize()` hook
 receives the normalized MCP resource URL before trusted context is created. `auth-diagnose` and
 `diagnoseMcpAuthorization()` perform read-only discovery without browser or
 credential actions.

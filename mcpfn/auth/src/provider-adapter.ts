@@ -40,13 +40,28 @@ export interface McpFnAuthSessionLike {
   metadata?: unknown;
 }
 
-/** AuthFn is optional: consumers can pass any provider matching this contract. */
-export interface McpFnAuthProviderLike<TSession extends McpFnAuthSessionLike> {
+export interface McpFnBearerAuthProviderLike<
+  TSession extends McpFnAuthSessionLike,
+> {
   /** Authenticate this exact Bearer token; other request credentials must not satisfy it. */
   authenticateBearer(token: string, request: Request): Promise<TSession | null>;
   authorize?(session: TSession, resourceId: string): Promise<boolean>;
   revoke?(sessionId: string): Promise<void>;
 }
+
+/** Structural AuthFn contract. McpFn invokes it with only the exact Bearer credential. */
+export interface McpFnRequestAuthProviderLike<
+  TSession extends McpFnAuthSessionLike,
+> {
+  authenticate(request: Request): Promise<TSession | null>;
+  authorize?(session: TSession, resourceId: string): Promise<boolean>;
+  revoke?(sessionId: string): Promise<void>;
+}
+
+/** AuthFn is optional: consumers can pass either supported structural provider contract. */
+export type McpFnAuthProviderLike<TSession extends McpFnAuthSessionLike> =
+  | McpFnBearerAuthProviderLike<TSession>
+  | McpFnRequestAuthProviderLike<TSession>;
 
 export interface McpFnAuthProviderAdapterOptions<TSession extends McpFnAuthSessionLike> {
   provider: McpFnAuthProviderLike<TSession>;
@@ -81,7 +96,12 @@ export function createMcpFnAuthProviderAdapter<TSession extends McpFnAuthSession
     async authenticate(request) {
       const bearer = readBearerToken(request);
       if (!bearer) return null;
-      const session = await options.provider.authenticateBearer(bearer, request);
+      const session = "authenticateBearer" in options.provider
+        ? await options.provider.authenticateBearer(bearer, request)
+        : await options.provider.authenticate(new Request(request.url, {
+          method: request.method,
+          headers: { authorization: `Bearer ${bearer}` },
+        }));
       if (!session) return null;
       const principal = options.map
         ? await options.map(session, request)

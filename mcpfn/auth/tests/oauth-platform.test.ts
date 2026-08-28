@@ -593,21 +593,26 @@ describe("McpFn hosted authorization compatibility", () => {
   });
 
   it("revalidates client metadata after registration persistence transforms it", async () => {
+    let persisted: ReturnType<typeof normalizeMcpClientRegistration> | null = null;
+    const authorize = vi.fn(async () => Response.json({ ok: true }));
     const compatibility = createMcpAuthorizationCompatibilityHandler({
       issuer,
       clients: {
-        resolve: async () => null,
-        register: async (metadata) => ({
-          clientId: "persisted-client",
-          source: "dynamic",
-          redirectUris: [...(metadata.redirect_uris ?? [])],
-          responseTypes: ["code"],
-          grantTypes: ["authorization_code"],
-          tokenEndpointAuthMethod: "client_secret_basic",
-          metadata: { ...metadata, token_endpoint_auth_method: "client_secret_basic" },
-        }),
+        resolve: async (clientId) =>
+          persisted?.clientId === clientId ? persisted : null,
+        register: async (metadata) => {
+          persisted = normalizeMcpClientRegistration({
+            clientId: "persisted-client",
+            source: "dynamic",
+            metadata: {
+              ...metadata,
+              token_endpoint_auth_method: "client_secret_basic",
+            },
+          });
+          return persisted;
+        },
       },
-      authorize: async () => Response.json({ ok: true }),
+      authorize,
       tokenAuthority: {
         exchangeAuthorizationCode: async () => ({
           access_token: "opaque",
@@ -624,6 +629,14 @@ describe("McpFn hosted authorization compatibility", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: "invalid_client_metadata",
     });
+
+    const resolved = await compatibility(new Request(authorizationUrl(
+      "persisted-client",
+      "https://client.example/callback",
+    )));
+    expect(resolved.status).toBe(400);
+    await expect(resolved.json()).resolves.toMatchObject({ error: "invalid_client" });
+    expect(authorize).not.toHaveBeenCalled();
   });
 
   it("re-authorizes every Client ID Metadata Document redirect before fetching it", async () => {
@@ -939,6 +952,33 @@ describe("generic auth provider composition", () => {
     expect(response.status).toBe(401);
     expect(authenticateBearer).toHaveBeenCalledWith("attacker-token", expect.any(Request));
     expect(downstream).not.toHaveBeenCalled();
+  });
+
+  it("isolates the exact Bearer token for a structural AuthFn provider", async () => {
+    const authenticate = vi.fn(async (request: Request) => {
+      expect(request.headers.get("authorization")).toBe("Bearer trusted-token");
+      expect(request.headers.get("cookie")).toBeNull();
+      return {
+        id: "client-1",
+        type: "oauth",
+        subject: { actorId: "user-1", actorType: "user" },
+      };
+    });
+    const downstream = vi.fn(async () => Response.json({ ok: true }));
+    const handler = createAuthProviderMcpHandler(downstream, {
+      resource: "https://mcp.example.com/mcp",
+      provider: { authenticate },
+    });
+    const response = await handler(new Request("https://mcp.example.com/mcp", {
+      headers: {
+        authorization: "Bearer trusted-token",
+        cookie: "session=must-not-propagate",
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(authenticate).toHaveBeenCalledOnce();
+    expect(downstream).toHaveBeenCalledOnce();
   });
 
   it("preserves provider resource authorization and fails closed on denial", async () => {

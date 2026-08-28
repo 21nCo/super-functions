@@ -1075,12 +1075,23 @@ async function resolveClient(
 ): Promise<McpFnNormalizedClientRegistration | null> {
   const stored = await options.clients.resolve(clientId);
   if (stored) {
-    return normalizeMcpClientRegistration({
+    const registration = normalizeMcpClientRegistration({
       clientId: stored.clientId,
       source: stored.source,
       metadata: stored.metadata,
       redirectPolicy: options.redirectPolicy,
     });
+    try {
+      assertCompatibleClientRegistration(
+        registration,
+        options.capabilities?.tokenEndpointAuthMethods ?? ["none"],
+        options.supportedScopes,
+      );
+    } catch (error) {
+      if (error instanceof McpFnHostedAuthorizationError) return null;
+      throw error;
+    }
+    return registration;
   }
   if (!options.clientMetadataDocuments?.enabled) return null;
   let clientUrl: URL;
