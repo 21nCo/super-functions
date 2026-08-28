@@ -63,6 +63,12 @@ export interface McpFnClientOptions {
   maxInventoryPages?: number;
 }
 
+export interface McpFnBoundedInventory<T> {
+  items: T[];
+  droppedItems: number;
+  complete: boolean;
+}
+
 export class McpFnClient {
   private readonly options: McpFnClientOptions;
   private readonly listeners = new Set<McpFnDiagnosticSink>();
@@ -76,6 +82,8 @@ export class McpFnClient {
 
   readonly tools = {
     listAll: (options?: RequestOptions) => this.listTools(options),
+    listBounded: (maxEntries: number, options?: RequestOptions) =>
+      this.listToolsBounded(maxEntries, options),
     call: (name: string, args: Record<string, unknown> = {}, options?: RequestOptions) =>
       this.operation("tools/call", () => this.protocol.callTool(
         { name, arguments: args },
@@ -96,7 +104,11 @@ export class McpFnClient {
 
   readonly resources = {
     listAll: (options?: RequestOptions) => this.listResources(options),
+    listBounded: (maxEntries: number, options?: RequestOptions) =>
+      this.listResourcesBounded(maxEntries, options),
     listTemplatesAll: (options?: RequestOptions) => this.listResourceTemplates(options),
+    listTemplatesBounded: (maxEntries: number, options?: RequestOptions) =>
+      this.listResourceTemplatesBounded(maxEntries, options),
     read: (uri: string, options?: RequestOptions): Promise<ReadResourceResult> =>
       this.operation("resources/read", () => this.protocol.readResource(
         { uri },
@@ -122,6 +134,8 @@ export class McpFnClient {
 
   readonly prompts = {
     listAll: (options?: RequestOptions) => this.listPrompts(options),
+    listBounded: (maxEntries: number, options?: RequestOptions) =>
+      this.listPromptsBounded(maxEntries, options),
     get: (
       name: string,
       args?: Record<string, string>,
@@ -507,7 +521,14 @@ export class McpFnClient {
   }
 
   private async listTools(options?: RequestOptions): Promise<Tool[]> {
-    return this.listInventory("tools/list", async (cursor) => {
+    return (await this.listToolsBounded(undefined, options)).items;
+  }
+
+  private async listToolsBounded(
+    maxEntries: number | undefined,
+    options?: RequestOptions,
+  ): Promise<McpFnBoundedInventory<Tool>> {
+    return this.listInventory("tools/list", maxEntries, async (cursor) => {
       const page = await this.protocol.listTools(
         cursor ? { cursor } : undefined,
         this.observeProgress(options, "tools/list"),
@@ -517,7 +538,14 @@ export class McpFnClient {
   }
 
   private async listResources(options?: RequestOptions): Promise<Resource[]> {
-    return this.listInventory("resources/list", async (cursor) => {
+    return (await this.listResourcesBounded(undefined, options)).items;
+  }
+
+  private async listResourcesBounded(
+    maxEntries: number | undefined,
+    options?: RequestOptions,
+  ): Promise<McpFnBoundedInventory<Resource>> {
+    return this.listInventory("resources/list", maxEntries, async (cursor) => {
       const page = await this.protocol.listResources(
         cursor ? { cursor } : undefined,
         this.observeProgress(options, "resources/list"),
@@ -527,7 +555,14 @@ export class McpFnClient {
   }
 
   private async listResourceTemplates(options?: RequestOptions): Promise<ResourceTemplate[]> {
-    return this.listInventory("resources/templates/list", async (cursor) => {
+    return (await this.listResourceTemplatesBounded(undefined, options)).items;
+  }
+
+  private async listResourceTemplatesBounded(
+    maxEntries: number | undefined,
+    options?: RequestOptions,
+  ): Promise<McpFnBoundedInventory<ResourceTemplate>> {
+    return this.listInventory("resources/templates/list", maxEntries, async (cursor) => {
       const page = await this.protocol.listResourceTemplates(
         cursor ? { cursor } : undefined,
         this.observeProgress(options, "resources/templates/list"),
@@ -537,7 +572,14 @@ export class McpFnClient {
   }
 
   private async listPrompts(options?: RequestOptions): Promise<Prompt[]> {
-    return this.listInventory("prompts/list", async (cursor) => {
+    return (await this.listPromptsBounded(undefined, options)).items;
+  }
+
+  private async listPromptsBounded(
+    maxEntries: number | undefined,
+    options?: RequestOptions,
+  ): Promise<McpFnBoundedInventory<Prompt>> {
+    return this.listInventory("prompts/list", maxEntries, async (cursor) => {
       const page = await this.protocol.listPrompts(
         cursor ? { cursor } : undefined,
         this.observeProgress(options, "prompts/list"),
@@ -548,17 +590,30 @@ export class McpFnClient {
 
   private async listInventory<T>(
     operation: string,
+    maxEntries: number | undefined,
     loadPage: (cursor?: string) => Promise<{ items: T[]; nextCursor?: string }>,
-  ): Promise<T[]> {
+  ): Promise<McpFnBoundedInventory<T>> {
+    if (
+      maxEntries !== undefined &&
+      (!Number.isSafeInteger(maxEntries) || maxEntries < 1)
+    ) {
+      throw new TypeError("McpFn inventory maxEntries must be a positive safe integer");
+    }
     return this.operation(operation, async () => {
       const values: T[] = [];
+      let droppedItems = 0;
       const seenCursors = new Set<string>();
       let cursor: string | undefined;
       const maxPages = this.options.maxInventoryPages ?? DEFAULT_MAX_INVENTORY_PAGES;
       for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
         const page = await loadPage(cursor);
-        values.push(...page.items);
-        if (!page.nextCursor) return values;
+        for (const item of page.items) {
+          if (maxEntries === undefined || values.length < maxEntries) values.push(item);
+          else droppedItems += 1;
+        }
+        if (!page.nextCursor) {
+          return { items: values, droppedItems, complete: droppedItems === 0 };
+        }
         if (seenCursors.has(page.nextCursor)) {
           throw inventoryPaginationError(operation, "cursor repeated");
         }

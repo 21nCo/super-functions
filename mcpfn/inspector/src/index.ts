@@ -130,21 +130,26 @@ export class McpFnInspector {
 
   async snapshot(): Promise<McpFnInspectorSnapshot> {
     const capabilities = this.client.getServerCapabilities();
+    const emptyInventory = { items: [], droppedItems: 0, complete: true };
     const [tools, resources, resourceTemplates, prompts] = await Promise.all([
-      capabilities?.tools ? this.client.tools.listAll() : Promise.resolve([]),
-      capabilities?.resources ? this.client.resources.listAll() : Promise.resolve([]),
-      capabilities?.resources ? this.client.resources.listTemplatesAll() : Promise.resolve([]),
-      capabilities?.prompts ? this.client.prompts.listAll() : Promise.resolve([]),
+      capabilities?.tools
+        ? this.client.tools.listBounded(this.maxInventoryEntries)
+        : Promise.resolve(emptyInventory),
+      capabilities?.resources
+        ? this.client.resources.listBounded(this.maxInventoryEntries)
+        : Promise.resolve(emptyInventory),
+      capabilities?.resources
+        ? this.client.resources.listTemplatesBounded(this.maxInventoryEntries)
+        : Promise.resolve(emptyInventory),
+      capabilities?.prompts
+        ? this.client.prompts.listBounded(this.maxInventoryEntries)
+        : Promise.resolve(emptyInventory),
     ]);
-    const retainedTools = tools.slice(0, this.maxInventoryEntries);
-    const retainedResources = resources.slice(0, this.maxInventoryEntries);
-    const retainedResourceTemplates = resourceTemplates.slice(0, this.maxInventoryEntries);
-    const retainedPrompts = prompts.slice(0, this.maxInventoryEntries);
     const droppedInventoryEntries = {
-      tools: tools.length - retainedTools.length,
-      resources: resources.length - retainedResources.length,
-      resourceTemplates: resourceTemplates.length - retainedResourceTemplates.length,
-      prompts: prompts.length - retainedPrompts.length,
+      tools: tools.droppedItems,
+      resources: resources.droppedItems,
+      resourceTemplates: resourceTemplates.droppedItems,
+      prompts: prompts.droppedItems,
     };
     const inventoryComplete = Object.values(droppedInventoryEntries)
       .every((count) => count === 0);
@@ -155,10 +160,10 @@ export class McpFnInspector {
       state: this.client.state,
       server: this.client.getServerVersion(),
       capabilities,
-      tools: retainedTools,
-      resources: retainedResources,
-      resourceTemplates: retainedResourceTemplates,
-      prompts: retainedPrompts,
+      tools: tools.items,
+      resources: resources.items,
+      resourceTemplates: resourceTemplates.items,
+      prompts: prompts.items,
       timeline: [...this.events],
       droppedEvents: this.droppedEvents,
       timelineComplete: this.droppedEvents === 0,

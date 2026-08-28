@@ -40,6 +40,11 @@ describe("McpFn production client", () => {
 
     await client.connect();
     await expect(client.tools.listAll()).resolves.toHaveLength(2);
+    await expect(client.tools.listBounded(1)).resolves.toMatchObject({
+      items: [{ name: "one" }],
+      droppedItems: 1,
+      complete: false,
+    });
     await expect(client.tools.call("two")).resolves.toMatchObject({
       structuredContent: { value: 2 },
     });
@@ -92,6 +97,10 @@ describe("McpFn production client", () => {
       details: { operation: "resources/list", reason: "exceeded 2 pages" },
     });
     expect(resourcePage).toBe(2);
+
+    await expect(client.tools.listBounded(0)).rejects.toThrow(
+      /maxEntries must be a positive safe integer/,
+    );
 
     await client.close();
   });

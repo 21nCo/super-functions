@@ -22,9 +22,14 @@ const client = createMcpFnClient({
 
 await client.connect();
 const tools = await client.tools.listAll();
+const boundedTools = await client.tools.listBounded(500);
 const result = await client.tools.call("orders_list", { limit: 20 });
 await client.close();
 ```
+
+`listBounded()` variants retain at most the requested number of inventory
+entries while pagination continues, returning `droppedItems` and `complete`
+metadata without accumulating discarded pages in memory.
 
 `stdioTarget()` is Node-only. `streamableHttpTarget()` uses Web Standard
 requests through the official SDK. Authorization is supplied through an
