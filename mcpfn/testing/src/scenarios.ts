@@ -388,6 +388,13 @@ function validateScenarioLimits(candidate: Record<string, unknown>, index: numbe
 }
 
 function validateScenarioMetadata(candidate: Record<string, unknown>, index: number): void {
+  if (
+    candidate.status !== undefined &&
+    candidate.status !== "complete" &&
+    candidate.status !== "incomplete"
+  ) {
+    throw new TypeError(`Invalid scenario at index ${index}: status must be complete or incomplete`);
+  }
   if (candidate.status === "incomplete" && typeof candidate.incompleteReason !== "string") {
     throw new TypeError(`Invalid scenario at index ${index}: incompleteReason is required`);
   }

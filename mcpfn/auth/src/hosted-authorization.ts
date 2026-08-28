@@ -1532,11 +1532,6 @@ function validateClientMetadataDocumentOptions(
 function normalizeIssuer(value: string | URL, allowInsecureLoopback: boolean): URL {
   const serialized = value.toString();
   const issuer = new URL(serialized);
-  if (issuer.pathname !== "/" && issuer.pathname.endsWith("/")) {
-    throw new TypeError(
-      "issuer must be a canonical URL without a non-root trailing slash",
-    );
-  }
   const loopbackHttp =
     allowInsecureLoopback &&
     issuer.protocol === "http:" &&

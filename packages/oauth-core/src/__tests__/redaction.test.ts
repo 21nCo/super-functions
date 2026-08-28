@@ -50,6 +50,18 @@ describe("OAuth diagnostics redaction", () => {
     });
   });
 
+  it("does not overwrite a retained key when adding the truncation marker", () => {
+    expect(redactOAuthValue({
+      "[TRUNCATED]": "retained",
+      first: 1,
+      second: 2,
+    }, { maxObjectEntries: 2 })).toEqual({
+      "[TRUNCATED]": "retained",
+      first: 1,
+      "[TRUNCATED_1]": "[TRUNCATED]",
+    });
+  });
+
   it("preserves public authorization discovery metadata", () => {
     expect(redactOAuthValue({
       authorizationServerMetadata: {

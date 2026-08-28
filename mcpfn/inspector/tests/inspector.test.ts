@@ -39,6 +39,7 @@ describe("McpFn inspector", () => {
     await inspector.connect();
     try {
       await expect(inspector.snapshot()).resolves.toMatchObject({
+        formatVersion: 2,
         clientState: "connected",
         server: { name: "inspected", version: "1.0.0" },
         tools: [{ name: "echo" }],

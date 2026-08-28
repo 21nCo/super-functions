@@ -84,6 +84,11 @@ describe("McpFn testing", () => {
       expect(() => validateMcpFnScenarios(artifact)).toThrow(
         "McpFn scenario artifact is incomplete: Controlled-live lane",
       );
+      expect(() => validateMcpFnScenarios([{
+        name: "mistyped scenario status",
+        tool: "echo",
+        status: "incomplate",
+      }])).toThrow("status must be complete or incomplete");
       const auth = vi.fn(async (scenario: { phase: string }) => {
         if (scenario.phase === "slow-provider") {
           await new Promise(() => undefined);

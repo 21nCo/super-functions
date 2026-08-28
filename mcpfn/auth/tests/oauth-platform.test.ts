@@ -488,6 +488,32 @@ describe("McpFn hosted authorization compatibility", () => {
     expect((await compatibility(new Request(url))).status).toBe(404);
   });
 
+  it("preserves a trailing-slash issuer while removing it for discovery paths", async () => {
+    const prefixedIssuer = "https://login.example.com/tenant-a/";
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer: prefixedIssuer,
+      clients: {
+        resolve: async (clientId) => clientId === chatgpt.clientId ? chatgpt : null,
+      },
+      authorize: async () => Response.json({ ok: true }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({ access_token: "opaque", token_type: "Bearer" }),
+      },
+    });
+    for (const discoveryUrl of [
+      "https://login.example.com/.well-known/oauth-authorization-server/tenant-a",
+      "https://login.example.com/tenant-a/.well-known/openid-configuration",
+    ]) {
+      const discovery = await compatibility(new Request(discoveryUrl));
+      expect(discovery.status).toBe(200);
+      await expect(discovery.json()).resolves.toMatchObject({
+        issuer: prefixedIssuer,
+        authorization_endpoint: `${prefixedIssuer}authorize`,
+        token_endpoint: `${prefixedIssuer}token`,
+      });
+    }
+  });
+
   it("supports hosted endpoints beneath a prefix without changing the issuer", async () => {
     const compatibility = createMcpAuthorizationCompatibilityHandler({
       issuer,
@@ -600,9 +626,7 @@ describe("McpFn hosted authorization compatibility", () => {
     expect(() => create("http://127.0.0.1:8787", true)).not.toThrow();
     expect(() => create("https://login.example.com/tenant?")).toThrow(/must use HTTPS/);
     expect(() => create("https://login.example.com/tenant#")).toThrow(/must use HTTPS/);
-    expect(() => create("https://login.example.com/tenant/")).toThrow(
-      /without a non-root trailing slash/,
-    );
+    expect(() => create("https://login.example.com/tenant/")).not.toThrow();
   });
 
   it("rejects sparse registration arrays", () => {

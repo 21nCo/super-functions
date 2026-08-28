@@ -26,7 +26,7 @@ import {
 import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 export interface McpFnInspectorSnapshot {
-  formatVersion: 1;
+  formatVersion: 2;
   kind: "mcpfn.inspector-snapshot";
   target: McpFnTargetDescriptor;
   clientState: string;
@@ -154,7 +154,7 @@ export class McpFnInspector {
     const inventoryComplete = Object.values(droppedInventoryEntries)
       .every((count) => count === 0);
     return redactOAuthValue({
-      formatVersion: 1,
+      formatVersion: 2,
       kind: "mcpfn.inspector-snapshot",
       target: this.client.getTargetDescriptor(),
       clientState: this.client.state,

@@ -163,7 +163,7 @@ function redactRecord(
   for (const key in value) {
     if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
     if (retained >= options.maxObjectEntries) {
-      defineEnumerable(redacted, "[TRUNCATED]", "[TRUNCATED]");
+      defineEnumerable(redacted, nextTruncationMarker(redacted), "[TRUNCATED]");
       break;
     }
     defineEnumerable(
@@ -176,6 +176,16 @@ function redactRecord(
     retained += 1;
   }
   return redacted;
+}
+
+function nextTruncationMarker(value: Record<string, unknown>): string {
+  let marker = "[TRUNCATED]";
+  let suffix = 0;
+  while (Object.prototype.hasOwnProperty.call(value, marker)) {
+    suffix += 1;
+    marker = `[TRUNCATED_${suffix}]`;
+  }
+  return marker;
 }
 
 function defineEnumerable(
