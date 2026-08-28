@@ -147,7 +147,9 @@ export function createAuthProviderMcpHandler<TSession extends McpFnAuthSessionLi
       return bearerChallengeResponse(403, metadataUrl, {
         error: "insufficient_scope",
         description: "The Bearer credential lacks required scopes",
-        scope: [...new Set(requiredScopes)].sort().join(" "),
+        scope: [...new Set(requiredScopes)]
+          .sort((left, right) => left.localeCompare(right))
+          .join(" "),
       });
     }
     const handleOptions: HandleRequestOptions = { authInfo: authenticated.authInfo };

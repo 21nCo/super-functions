@@ -48,7 +48,9 @@ function normalizeIdentifier(value: string | URL): string {
 }
 
 function unique(values: Array<string | URL>): string[] {
-  return [...new Set(values.map(normalizeIdentifier))].sort();
+  return [...new Set(values.map(normalizeIdentifier))].sort((left, right) =>
+    left.localeCompare(right),
+  );
 }
 
 export function protectedResourceMetadataUrl(resource: string | URL): URL {
@@ -69,7 +71,11 @@ export function createProtectedResourceMetadata(
     resource: resource.toString(),
     authorization_servers: unique(options.authorizationServers),
     ...(options.scopesSupported
-      ? { scopes_supported: [...new Set(options.scopesSupported)].sort() }
+      ? {
+          scopes_supported: [...new Set(options.scopesSupported)].sort((left, right) =>
+            left.localeCompare(right),
+          ),
+        }
       : {}),
     bearer_methods_supported: ["header"],
     ...(options.resourceName ? { resource_name: options.resourceName } : {}),
@@ -158,7 +164,9 @@ export function createOAuthResourceServerHandler(
       return bearerChallengeResponse(403, metadataUrl, {
         error: "insufficient_scope",
         description: "The access token lacks required scopes",
-        scope: [...new Set(requiredScopes)].sort().join(" "),
+        scope: [...new Set(requiredScopes)]
+          .sort((left, right) => left.localeCompare(right))
+          .join(" "),
       });
     }
     return mcpHandler(request, { authInfo });
