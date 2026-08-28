@@ -56,6 +56,7 @@ describe("McpFn inspector", () => {
       expect(bounded.droppedEvents).toBeGreaterThan(0);
       expect(bounded.timelineComplete).toBe(false);
       const scenario = inspector.exportScenario("echo", operation, result);
+      expect(scenario.status).toBeUndefined();
       expect(scenario).toMatchObject({
         kind: "tools.call",
         tool: "echo",
@@ -78,6 +79,36 @@ describe("McpFn inspector", () => {
       }
     } finally {
       await inspector.close();
+    }
+  });
+
+  it("marks scenario exports incomplete when redaction bounds truncate assertions", () => {
+    const inspector = McpFnInspector.create({
+      target: customTarget({ kind: "unused", open: () => { throw new Error("unused"); } }),
+    });
+    let nested: Record<string, unknown> = { value: "retained" };
+    for (let index = 0; index < 10; index += 1) nested = { nested };
+    const oversizedObject = Object.fromEntries(
+      Array.from({ length: 100 }, (_, index) => [`key-${index}`, index]),
+    );
+    Object.defineProperty(oversizedObject, "unread", {
+      enumerable: true,
+      get: () => { throw new Error("object value read beyond the export cap"); },
+    });
+    for (const structuredContent of [
+      { value: "x".repeat(2_049) },
+      { values: Array.from({ length: 101 }, (_, index) => index) },
+      oversizedObject,
+      nested,
+    ]) {
+      expect(inspector.exportScenario(
+        "bounded export",
+        { kind: "tools.call", name: "echo" },
+        { content: [], structuredContent },
+      )).toMatchObject({
+        status: "incomplete",
+        incompleteReason: "Inspector export exceeded redaction bounds and was truncated",
+      });
     }
   });
 

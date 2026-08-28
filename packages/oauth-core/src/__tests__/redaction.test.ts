@@ -107,6 +107,21 @@ describe("OAuth diagnostics redaction", () => {
     expect(redacted.match(/REDACTED/g)).toHaveLength(2);
   });
 
+  it("redacts credentials following authorization schemes", () => {
+    const bearerCredential = ["fixture", "bearer", "value"].join("-");
+    const basicCredential = ["fixture", "basic", "value"].join("-");
+    const proofCredential = ["fixture", "proof", "value"].join("-");
+    for (const [value, credential] of [
+      [`request failed: Authorization: Bearer ${bearerCredential}`, bearerCredential],
+      [`authorization=Basic ${basicCredential}`, basicCredential],
+      [`Proxy-Authorization: DPoP ${proofCredential}`, proofCredential],
+    ]) {
+      const redacted = redactOAuthValue(value);
+      expect(redacted).not.toContain(credential);
+      expect(redacted).toContain("[REDACTED]");
+    }
+  });
+
   it("preserves bounded diagnostic types and detects circular values", () => {
     const circular: Record<string, unknown> = { safe: "visible" };
     circular.self = circular;

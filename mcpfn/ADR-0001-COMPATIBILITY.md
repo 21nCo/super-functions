@@ -19,12 +19,16 @@ ownership, OAuth compatibility policy, testing, artifacts, and inspection.
 
 ## Public format policy
 
-Manifests, scenario artifacts, scenario reports, target-suite reports, client
-events, and inspector snapshots use integer `formatVersion: 1`. Readers reject
-unknown major format versions. Additive optional fields are compatible within
-version 1; removing or changing field meaning requires version 2. Individual
-legacy scenario arrays remain readable during the 0.x migration but exporters
-write version 1 records or artifacts.
+Manifests, scenario artifacts, scenario reports, target-suite reports, and
+client events use integer `formatVersion: 1`. Inspector snapshots use
+`formatVersion: 2`; version 2 removes the version 1 `state` field and replaces
+it with the unambiguous `clientState` field. Snapshot readers must reject the
+unknown major version until they migrate to `clientState`; no dual-field
+compatibility representation is emitted. Additive optional fields are
+compatible within a major format version, while removing or changing field
+meaning requires the next version. Individual legacy scenario arrays remain
+readable during the 0.x migration, but exporters write version 1 records or
+artifacts.
 
 Diagnostic event phase/outcome/code values and client event kinds are stable
 machine-readable identifiers. New identifiers and optional fields are

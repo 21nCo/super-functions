@@ -25,6 +25,13 @@ import {
 } from "@mcpfn/testing";
 import { redactOAuthValue } from "@superfunctions/oauth-core";
 
+const SCENARIO_REDACTION_LIMITS = {
+  maxDepth: 8,
+  maxArrayEntries: 100,
+  maxObjectEntries: 100,
+  maxStringLength: 2_048,
+} as const;
+
 export interface McpFnInspectorSnapshot {
   formatVersion: 2;
   kind: "mcpfn.inspector-snapshot";
@@ -209,8 +216,15 @@ export class McpFnInspector {
     result: McpFnInspectorOperationResult,
   ): McpFnExportedScenario {
     const scenario = createMcpFnScenario(name, operation, result);
-    const redacted = redactOAuthValue(scenario);
-    const exported = replaceSecretMarkers(redacted) as McpFnExportedScenario;
+    const redacted = redactOAuthValue(scenario, SCENARIO_REDACTION_LIMITS);
+    const replaced = replaceSecretMarkers(redacted) as McpFnExportedScenario;
+    const exported = exceedsRedactionBounds(scenario, SCENARIO_REDACTION_LIMITS)
+      ? {
+        ...replaced,
+        status: "incomplete" as const,
+        incompleteReason: "Inspector export exceeded redaction bounds and was truncated",
+      }
+      : replaced;
     const variables = collectVariables(exported);
     return variables.length ? { ...exported, variables } : exported;
   }
@@ -272,6 +286,55 @@ function validateLimit(value: number, name: string): number {
 
 function encodedBytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+}
+
+function exceedsRedactionBounds(
+  value: unknown,
+  limits: typeof SCENARIO_REDACTION_LIMITS,
+  depth = 0,
+  ancestors = new WeakSet<object>(),
+): boolean {
+  if (depth > limits.maxDepth) return true;
+  if (typeof value === "string") return value.length > limits.maxStringLength;
+  if (!value || typeof value !== "object" || value instanceof Date) return false;
+  if (value instanceof URL) return value.toString().length > limits.maxStringLength;
+  if (ancestors.has(value)) return false;
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      if (value.length > limits.maxArrayEntries) return true;
+      return value.some((entry) =>
+        exceedsRedactionBounds(entry, limits, depth + 1, ancestors)
+      );
+    }
+    if (value instanceof Map) {
+      if (value.size > limits.maxArrayEntries) return true;
+      for (const [key, entry] of value) {
+        if (
+          exceedsRedactionBounds(key, limits, depth + 1, ancestors) ||
+          exceedsRedactionBounds(entry, limits, depth + 1, ancestors)
+        ) return true;
+      }
+      return false;
+    }
+    if (value instanceof Set) {
+      if (value.size > limits.maxArrayEntries) return true;
+      for (const entry of value) {
+        if (exceedsRedactionBounds(entry, limits, depth + 1, ancestors)) return true;
+      }
+      return false;
+    }
+    if (value instanceof Error && [value.name, value.message, value.stack ?? ""]
+      .some((entry) => entry.length > limits.maxStringLength)) return true;
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record);
+    if (keys.length > limits.maxObjectEntries) return true;
+    return keys.some((key) =>
+      exceedsRedactionBounds(record[key], limits, depth + 1, ancestors)
+    );
+  } finally {
+    ancestors.delete(value);
+  }
 }
 
 function replaceSecretMarkers(value: unknown): unknown {
