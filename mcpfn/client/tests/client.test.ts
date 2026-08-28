@@ -71,6 +71,21 @@ describe("McpFn production client", () => {
     expect(JSON.stringify(events)).toContain("REDACTED");
   });
 
+  it("treats falsy target-open rejections as retryable failures", async () => {
+    const open = vi.fn().mockRejectedValue(undefined);
+    const client = createMcpFnClient({
+      target: customTarget({ kind: "falsy-rejection", open }),
+      connectRetries: 1,
+      connectRetryDelayMs: 1,
+    });
+
+    await expect(client.connect()).rejects.toMatchObject({
+      code: "MCPFN_TARGET_OPEN_FAILED",
+    });
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(client.state).toBe("idle");
+  });
+
   it("aborts a pending open and closes a handle that resolves after close starts", async () => {
     const [clientTransport] = InMemoryTransport.createLinkedPair();
     let targetSignal: AbortSignal | undefined;
