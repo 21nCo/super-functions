@@ -1,6 +1,6 @@
 {
   "name": "@superfunctions/webhooks",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Shared webhook signing, verification, and delivery primitives",
   "type": "module",
   "main": "./dist/index.js",

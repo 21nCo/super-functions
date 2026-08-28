@@ -1,6 +1,6 @@
 {
   "name": "@superfunctions/auth",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Framework-agnostic authentication abstraction layer for Superfunctions libraries",
   "type": "module",
   "main": "./dist/index.js",

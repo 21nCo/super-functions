@@ -1,6 +1,6 @@
 {
   "name": "@datafn/cli",
-  "version": "0.0.4",
+  "version": "0.1.0",
   "description": "CLI and Codegen for DataFn",
   "license": "MIT",
   "type": "module",
@@ -27,8 +27,8 @@
     "test:watch": "vitest watch"
   },
   "dependencies": {
-    "@datafn/core": "0.0.4",
-    "@datafn/client": "0.0.4"
+    "@datafn/core": "0.1.0",
+    "@datafn/client": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
