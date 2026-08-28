@@ -157,6 +157,7 @@ function isSensitiveUrlKey(key: string): boolean {
 function isSecretKey(key: string): boolean {
   const normalized = normalizeKey(key);
   return SECRET_KEYS.has(normalized) ||
+    normalized.endsWith("_api_key") ||
     normalized.endsWith("_token") ||
     normalized.endsWith("_password") ||
     normalized.endsWith("_secret") ||

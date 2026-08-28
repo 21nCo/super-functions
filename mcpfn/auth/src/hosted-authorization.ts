@@ -1109,7 +1109,7 @@ async function resolveClient(
       "Client ID Metadata Document client_id does not match its URL",
     );
   }
-  return normalizeMcpClientRegistration({
+  const registration = normalizeMcpClientRegistration({
     clientId,
     source: "client-metadata-document",
     metadata: normalizeClientMetadata(
@@ -1118,6 +1118,12 @@ async function resolveClient(
     ),
     redirectPolicy: options.redirectPolicy,
   });
+  assertCompatibleClientRegistration(
+    registration,
+    options.capabilities?.tokenEndpointAuthMethods ?? ["none"],
+    options.supportedScopes,
+  );
+  return registration;
 }
 
 function normalizeClientMetadata(

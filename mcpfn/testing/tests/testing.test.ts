@@ -137,6 +137,36 @@ describe("McpFn testing", () => {
       expect(boundedReport.droppedResults).toBeGreaterThan(0);
       expect(new TextEncoder().encode(JSON.stringify(boundedReport)).byteLength)
         .toBeLessThanOrEqual(1_024);
+
+      const emitNotifications = vi.spyOn(client.session, "onEvent");
+      let observeEvent: ((event: Parameters<Parameters<typeof client.session.onEvent>[0]>[0]) => void) |
+        undefined;
+      emitNotifications.mockImplementation((listener) => {
+        observeEvent = listener;
+        return () => undefined;
+      });
+      const eventBounded = await runScenarios(client, [{
+        name: "bounded observed events",
+        kind: "auth.assert",
+        phase: "emit-events",
+        expect: { outcome: "allowed" },
+      }], {
+        maxObservedEvents: 2,
+        auth: async () => {
+          for (let index = 0; index < 5; index += 1) {
+            observeEvent?.({ kind: "logging.message", payload: { index } });
+          }
+          return { outcome: "allowed" };
+        },
+      });
+      const eventBoundedReport = createMcpFnScenarioReport(eventBounded);
+      expect(eventBounded).toMatchObject([{ status: "passed", droppedObservedEvents: 3 }]);
+      expect(eventBoundedReport).toMatchObject({
+        status: "incomplete",
+        droppedObservedEvents: 3,
+        incompleteReason: "Observed client events exceeded maxObservedEvents",
+      });
+      emitNotifications.mockRestore();
     } finally {
       await client.close();
     }

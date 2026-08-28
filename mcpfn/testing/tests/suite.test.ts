@@ -48,4 +48,61 @@ describe("McpFn target suite", () => {
     expect(JSON.stringify(report.target)).not.toContain("access_token=token");
     expect(JSON.stringify(report.target)).toContain("REDACTED");
   });
+
+  it("marks target reports incomplete when observed events exceed the scenario cap", async () => {
+    let server: ReturnType<typeof createMcpFnServer>;
+    server = createMcpFnServer({
+      info: { name: "event-heavy-target", version: "1.0.0" },
+      additionalCapabilities: { logging: {} },
+      registry: new McpFnRegistry().register({
+        name: "notify",
+        description: "Emit enough notifications to exercise the event cap.",
+        inputSchema: { type: "object" },
+        handler: async () => {
+          for (let index = 0; index < 5; index += 1) {
+            await server.sendLoggingMessage({ level: "info", data: { index } });
+          }
+          return structuredResult({ ok: true });
+        },
+      }),
+    });
+
+    const report = await runMcpFnTargetSuite({
+      target: customTarget({
+        kind: "fixture",
+        open: async () => {
+          const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+          await server.connect(serverTransport);
+          return { transport: clientTransport, close: () => server.close() };
+        },
+      }),
+      scenarios: [
+        { name: "notify", tool: "notify" },
+        {
+          name: "drain notifications",
+          kind: "auth.assert",
+          phase: "drain",
+          expect: { outcome: "allowed" },
+        },
+      ],
+      scenarioRun: {
+        maxObservedEvents: 2,
+        auth: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          return { outcome: "allowed" };
+        },
+      },
+    });
+
+    expect(report).toMatchObject({
+      ok: false,
+      status: "incomplete",
+      droppedObservedEvents: 3,
+      incompleteReason: "Observed client events exceeded maxObservedEvents",
+      results: [
+        { status: "passed", droppedObservedEvents: 3 },
+        { status: "passed" },
+      ],
+    });
+  });
 });

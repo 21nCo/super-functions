@@ -670,6 +670,40 @@ describe("McpFn hosted authorization compatibility", () => {
     expect(fetch.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it("rejects incompatible Client ID Metadata Documents before authorization", async () => {
+    const clientId = "https://clients.example.com/client.json";
+    const authorize = vi.fn(async () => Response.json({ ok: true }));
+    const fetch = vi.fn(async () => Response.json({
+      client_id: clientId,
+      redirect_uris: ["https://client.example.com/callback"],
+      token_endpoint_auth_method: "client_secret_basic",
+    }));
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      clients: { resolve: async () => null },
+      authorize,
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({ access_token: "opaque", token_type: "Bearer" }),
+      },
+      clientMetadataDocuments: {
+        enabled: true,
+        allow: async () => true,
+        fetch,
+      },
+    });
+
+    const response = await compatibility(new Request(authorizationUrl(
+      clientId,
+      "https://client.example.com/callback",
+    )));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "invalid_client_metadata",
+    });
+    expect(authorize).not.toHaveBeenCalled();
+  });
+
   it("enforces a streaming byte cap for metadata without content-length", async () => {
     const clientId = "https://clients.example.com/client.json";
     const fetch = vi.fn(async () => new Response(new ReadableStream({

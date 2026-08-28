@@ -10,18 +10,20 @@ describe("OAuth diagnostics redaction", () => {
         code_verifier: "verifier",
         state: "state-secret",
         apiKey: "api-key-secret",
+        "x-api-key": "prefixed-api-key-secret",
         safe: "visible",
       },
-      url: "https://client.example/callback?code=secret&state=secret-state&view=ok",
+      url: "https://client.example/callback?code=secret&state=secret-state&x-api-key=prefixed-api-key-secret&view=ok",
     })).toEqual({
       accessToken: "[REDACTED]",
       nested: {
         code_verifier: "[REDACTED]",
         state: "[REDACTED]",
         apiKey: "[REDACTED]",
+        "x-api-key": "[REDACTED]",
         safe: "visible",
       },
-      url: "https://client.example/callback?code=%5BREDACTED%5D&state=%5BREDACTED%5D&view=ok",
+      url: "https://client.example/callback?code=%5BREDACTED%5D&state=%5BREDACTED%5D&x-api-key=%5BREDACTED%5D&view=ok",
     });
   });
 

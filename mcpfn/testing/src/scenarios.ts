@@ -141,6 +141,8 @@ export interface McpFnScenarioResult {
   sideEffect: "none" | "idempotent" | "non-idempotent";
   durationMs: number;
   error?: string;
+  /** Observed client events discarded while this scenario was running. */
+  droppedObservedEvents?: number;
 }
 
 export interface McpFnScenarioReport {
@@ -153,6 +155,7 @@ export interface McpFnScenarioReport {
   failed: number;
   incomplete: number;
   droppedResults: number;
+  droppedObservedEvents: number;
   incompleteReason?: string;
   results: McpFnScenarioResult[];
 }
@@ -385,12 +388,26 @@ export async function runScenarios(
   ) {
     throw new Error("maxErrorBytes must be an integer of at least 64");
   }
+  if (
+    options.maxObservedEvents !== undefined &&
+    (!Number.isInteger(options.maxObservedEvents) || options.maxObservedEvents < 1)
+  ) {
+    throw new Error("maxObservedEvents must be a positive integer");
+  }
   if (scenarios.length > (options.maxScenarios ?? 1_000)) {
     throw new Error(`Scenario count exceeds the configured cap of ${options.maxScenarios ?? 1_000}`);
   }
   const results: McpFnScenarioResult[] = [];
   const observedEvents: McpFnClientEvent[] = [];
-  const unsubscribe = client.session.onEvent((event) => { observedEvents.push(event); });
+  const maxObservedEvents = options.maxObservedEvents ?? 500;
+  let droppedObservedEvents = 0;
+  const unsubscribe = client.session.onEvent((event) => {
+    observedEvents.push(event);
+    if (observedEvents.length > maxObservedEvents) {
+      observedEvents.shift();
+      droppedObservedEvents += 1;
+    }
+  });
   let timedOutScenario: string | undefined;
   try {
     for (const scenario of scenarios) {
@@ -438,6 +455,7 @@ export async function runScenarios(
       const controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
       let timedOut = false;
+      const droppedBeforeScenario = droppedObservedEvents;
       try {
         await Promise.race([
           executeScenario(client, resolved.scenario, {
@@ -457,6 +475,9 @@ export async function runScenarios(
           ...common,
           status: "passed",
           durationMs: performance.now() - startedAt,
+          ...(droppedObservedEvents > droppedBeforeScenario
+            ? { droppedObservedEvents: droppedObservedEvents - droppedBeforeScenario }
+            : {}),
         });
       } catch (error) {
         results.push({
@@ -464,6 +485,9 @@ export async function runScenarios(
           status: "failed",
           durationMs: performance.now() - startedAt,
           error: truncateError(error instanceof Error ? error.message : String(error), options),
+          ...(droppedObservedEvents > droppedBeforeScenario
+            ? { droppedObservedEvents: droppedObservedEvents - droppedBeforeScenario }
+            : {}),
         });
         if (timedOut) timedOutScenario = scenario.name;
       } finally {
@@ -480,6 +504,8 @@ export interface McpFnScenarioRunOptions {
   defaultTimeoutMs?: number;
   maxScenarios?: number;
   maxErrorBytes?: number;
+  /** Observed client-event count cap. Defaults to 500. */
+  maxObservedEvents?: number;
   variables?: Record<string, string | undefined>;
   auth?(scenario: McpFnAuthScenario, signal: AbortSignal): Promise<{
     outcome: "allowed" | "denied";
@@ -522,16 +548,24 @@ export function createMcpFnScenarioReport(
 ): McpFnScenarioReport {
   const failed = results.filter((result) => result.status === "failed").length;
   const incomplete = results.filter((result) => result.status === "incomplete").length;
+  const droppedObservedEvents = results.reduce(
+    (total, result) => total + (result.droppedObservedEvents ?? 0),
+    0,
+  );
   const report: McpFnScenarioReport = {
     formatVersion: 1,
     kind: "mcpfn.scenario-report",
-    status: incomplete === 0 ? "complete" : "incomplete",
+    status: incomplete === 0 && droppedObservedEvents === 0 ? "complete" : "incomplete",
     ...(options.manifestHash ? { manifestHash: options.manifestHash } : {}),
     total: results.length,
     passed: results.length - failed - incomplete,
     failed,
     incomplete,
     droppedResults: 0,
+    droppedObservedEvents,
+    ...(droppedObservedEvents > 0
+      ? { incompleteReason: "Observed client events exceeded maxObservedEvents" }
+      : {}),
     results: structuredClone(results),
   };
   const maxBytes = options.maxBytes ?? 1_048_576;

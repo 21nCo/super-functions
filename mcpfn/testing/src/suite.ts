@@ -45,6 +45,7 @@ export interface McpFnTargetSuiteReport {
   failed: number;
   incomplete: number;
   droppedResults: number;
+  droppedObservedEvents: number;
   incompleteReason?: string;
   timeline: McpFnDiagnosticEvent[];
   droppedTimelineEvents: number;
@@ -86,7 +87,13 @@ export async function runMcpFnTargetSuite(
     const results = await runScenarios(client, options.scenarios ?? [], options.scenarioRun);
     const failed = results.filter((result) => result.status === "failed").length;
     const incomplete = results.filter((result) => result.status === "incomplete").length;
-    const artifactIncomplete = incomplete > 0 || droppedTimelineEvents > 0;
+    const droppedObservedEvents = results.reduce(
+      (total, result) => total + (result.droppedObservedEvents ?? 0),
+      0,
+    );
+    const artifactIncomplete = incomplete > 0 ||
+      droppedTimelineEvents > 0 ||
+      droppedObservedEvents > 0;
     const report: McpFnTargetSuiteReport = {
       formatVersion: 1,
       kind: "mcpfn.target-suite-report",
@@ -103,8 +110,18 @@ export async function runMcpFnTargetSuite(
       failed,
       incomplete,
       droppedResults: 0,
-      ...(droppedTimelineEvents > 0
-        ? { incompleteReason: "Diagnostic timeline exceeded maxTimelineEvents" }
+      droppedObservedEvents,
+      ...(droppedTimelineEvents > 0 || droppedObservedEvents > 0
+        ? {
+          incompleteReason: [
+            ...(droppedTimelineEvents > 0
+              ? ["Diagnostic timeline exceeded maxTimelineEvents"]
+              : []),
+            ...(droppedObservedEvents > 0
+              ? ["Observed client events exceeded maxObservedEvents"]
+              : []),
+          ].join("; "),
+        }
         : {}),
       timeline,
       droppedTimelineEvents,
