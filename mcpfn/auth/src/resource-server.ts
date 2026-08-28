@@ -16,6 +16,8 @@ export interface McpFnProtectedResourceMetadata extends Record<string, unknown> 
 export interface McpFnProtectedResourceOptions {
   resource: string | URL;
   authorizationServers: Array<string | URL>;
+  /** Allow HTTP only for literal loopback issuers in controlled local testing. */
+  allowInsecureLoopbackAuthorizationServers?: boolean;
   scopesSupported?: string[];
   resourceName?: string;
   resourceDocumentation?: string;
@@ -40,20 +42,44 @@ function normalizeResource(resource: string | URL): URL {
   return url;
 }
 
-function normalizeIdentifier(value: string | URL): string {
+function normalizeIdentifier(
+  value: string | URL,
+  allowInsecureLoopback: boolean,
+): string {
   const url = new URL(value.toString());
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new TypeError("OAuth authorization servers must use HTTP or HTTPS");
+  const loopbackHttp =
+    allowInsecureLoopback &&
+    url.protocol === "http:" &&
+    (url.hostname === "127.0.0.1" || url.hostname === "[::1]");
+  if (
+    (url.protocol !== "https:" && !loopbackHttp) ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  ) {
+    throw new TypeError(
+      "OAuth authorization server identifiers must use HTTPS without userinfo, query, or fragment",
+    );
   }
-  return url.pathname === "/" && !url.search && !url.hash
+  return url.pathname === "/"
     ? url.origin
     : url.toString();
 }
 
-function unique(values: Array<string | URL>): string[] {
-  return [...new Set(values.map(normalizeIdentifier))].sort((left, right) =>
-    left.localeCompare(right),
-  );
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function unique(
+  values: Array<string | URL>,
+  allowInsecureLoopback: boolean,
+): string[] {
+  return [
+    ...new Set(
+      values.map((value) => normalizeIdentifier(value, allowInsecureLoopback)),
+    ),
+  ].sort(compareCodeUnits);
 }
 
 export function protectedResourceMetadataUrl(resource: string | URL): URL {
@@ -72,12 +98,13 @@ export function createProtectedResourceMetadata(
   return {
     ...options.extraMetadata,
     resource: resource.toString(),
-    authorization_servers: unique(options.authorizationServers),
+    authorization_servers: unique(
+      options.authorizationServers,
+      options.allowInsecureLoopbackAuthorizationServers ?? false,
+    ),
     ...(options.scopesSupported
       ? {
-          scopes_supported: [...new Set(options.scopesSupported)].sort((left, right) =>
-            left.localeCompare(right),
-          ),
+          scopes_supported: [...new Set(options.scopesSupported)].sort(compareCodeUnits),
         }
       : {}),
     bearer_methods_supported: ["header"],
@@ -168,7 +195,7 @@ export function createOAuthResourceServerHandler(
         error: "insufficient_scope",
         description: "The access token lacks required scopes",
         scope: [...new Set(requiredScopes)]
-          .sort((left, right) => left.localeCompare(right))
+          .sort(compareCodeUnits)
           .join(" "),
       });
     }

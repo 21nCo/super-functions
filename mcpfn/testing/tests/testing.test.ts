@@ -1,5 +1,5 @@
 import { createServer, request as httpRequest } from "node:http";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InMemoryTaskStore } from "@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js";
 import {
   McpFnRegistry,
@@ -82,6 +82,12 @@ describe("McpFn testing", () => {
         incompleteReason: "Requires controlled live-provider credentials",
       }], { status: "incomplete", incompleteReason: "Controlled-live lane" });
       expect(validateMcpFnScenarios(artifact)).toHaveLength(1);
+      const auth = vi.fn(async (scenario: { phase: string }) => {
+        if (scenario.phase === "slow-provider") {
+          await new Promise(() => undefined);
+        }
+        return { outcome: "allowed" as const, code: "AUTHORIZED" };
+      });
       const lifecycle = await runScenarios(client, [
         ...artifact.scenarios,
         {
@@ -99,18 +105,26 @@ describe("McpFn testing", () => {
           timeoutMs: 5,
           expect: { outcome: "allowed" },
         },
-      ], {
-        auth: async (scenario) => {
-          if (scenario.phase === "slow-provider") {
-            await new Promise(() => undefined);
-          }
-          return { outcome: "allowed", code: "AUTHORIZED" };
+        {
+          formatVersion: 1,
+          name: "skipped after timeout",
+          kind: "auth.assert",
+          phase: "must-not-overlap",
+          expect: { outcome: "allowed" },
         },
+      ], {
+        auth,
       });
       expect(lifecycle.map((result) => result.status)).toEqual([
         "incomplete",
         "passed",
         "failed",
+        "incomplete",
+      ]);
+      expect(lifecycle[3]?.error).toContain("Skipped after timed-out scenario");
+      expect(auth.mock.calls.map(([scenario]) => scenario.phase)).toEqual([
+        "token-exchange",
+        "slow-provider",
       ]);
       const boundedReport = createMcpFnScenarioReport(
         Array.from({ length: 30 }, (_, index) => ({
@@ -402,11 +416,14 @@ describe("McpFn testing", () => {
   });
 
   it("injects credentials through a fixed loopback conformance proxy", async () => {
-    let authorization: string | undefined;
-    let host: string | undefined;
+    const observed: Array<{ authorization?: string; host?: string }> = [];
     const upstream = createServer((request, response) => {
-      authorization = request.headers.authorization;
-      host = request.headers.host;
+      observed.push({
+        ...(request.headers.authorization
+          ? { authorization: request.headers.authorization }
+          : {}),
+        ...(request.headers.host ? { host: request.headers.host } : {}),
+      });
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ ok: true }));
     });
@@ -423,7 +440,11 @@ describe("McpFn testing", () => {
     });
     try {
       expect(proxy.url).not.toContain("conformance-secret");
-      const body = await new Promise<string>((resolve, reject) => {
+      const authenticated = await fetch(proxy.url, {
+        headers: { authorization: "Bearer attacker-value" },
+      });
+      await expect(authenticated.json()).resolves.toEqual({ ok: true });
+      const hostileBody = await new Promise<string>((resolve, reject) => {
         const request = httpRequest(
           proxy.url,
           {
@@ -443,9 +464,14 @@ describe("McpFn testing", () => {
         request.once("error", reject);
         request.end();
       });
-      expect(JSON.parse(body)).toEqual({ ok: true });
-      expect(authorization).toBe("Bearer conformance-secret");
-      expect(host).toBe("untrusted.example.test");
+      expect(JSON.parse(hostileBody)).toEqual({ ok: true });
+      expect(observed).toEqual([
+        {
+          authorization: "Bearer conformance-secret",
+          host: `127.0.0.1:${address.port}`,
+        },
+        { host: "untrusted.example.test" },
+      ]);
     } finally {
       await proxy.close();
       await new Promise<void>((resolve, reject) => {

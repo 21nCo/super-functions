@@ -7,6 +7,10 @@ import {
   type McpFnWebStandardHandler,
 } from "./resource-server.js";
 
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 export interface McpFnPrincipal {
   subject: string;
   clientId: string;
@@ -38,7 +42,8 @@ export interface McpFnAuthSessionLike {
 
 /** AuthFn is optional: consumers can pass any provider matching this contract. */
 export interface McpFnAuthProviderLike<TSession extends McpFnAuthSessionLike> {
-  authenticate(request: Request): Promise<TSession | null>;
+  /** Authenticate this exact Bearer token; other request credentials must not satisfy it. */
+  authenticateBearer(token: string, request: Request): Promise<TSession | null>;
   authorize?(session: TSession, resourceId: string): Promise<boolean>;
   revoke?(sessionId: string): Promise<void>;
 }
@@ -76,7 +81,7 @@ export function createMcpFnAuthProviderAdapter<TSession extends McpFnAuthSession
     async authenticate(request) {
       const bearer = readBearerToken(request);
       if (!bearer) return null;
-      const session = await options.provider.authenticate(request);
+      const session = await options.provider.authenticateBearer(bearer, request);
       if (!session) return null;
       const principal = options.map
         ? await options.map(session, request)
@@ -158,7 +163,7 @@ export function createAuthProviderMcpHandler<TSession extends McpFnAuthSessionLi
         error: "insufficient_scope",
         description: "The Bearer credential lacks required scopes",
         scope: [...new Set(requiredScopes)]
-          .sort((left, right) => left.localeCompare(right))
+          .sort(compareCodeUnits)
           .join(" "),
       });
     }

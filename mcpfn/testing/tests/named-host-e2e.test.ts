@@ -47,6 +47,7 @@ describe("named host production OAuth lifecycle", () => {
       protectedHandler = createOAuthResourceServerHandler(mcpHandler, {
         resource,
         authorizationServers: [fixture.origin],
+        allowInsecureLoopbackAuthorizationServers: true,
         scopesSupported: ["mcp:read"],
         requiredScopes: ["mcp:read"],
         verifier: fixture.oauth,

@@ -391,6 +391,7 @@ export async function runScenarios(
   const results: McpFnScenarioResult[] = [];
   const observedEvents: McpFnClientEvent[] = [];
   const unsubscribe = client.session.onEvent((event) => { observedEvents.push(event); });
+  let timedOutScenario: string | undefined;
   try {
     for (const scenario of scenarios) {
       const startedAt = performance.now();
@@ -402,6 +403,15 @@ export async function runScenarios(
         ...(isToolScenario(scenario) ? { tool: scenario.tool } : {}),
         sideEffect: scenario.sideEffect ?? defaultSideEffect(operation),
       };
+      if (timedOutScenario) {
+        results.push({
+          ...common,
+          status: "incomplete",
+          durationMs: 0,
+          error: truncateError(`Skipped after timed-out scenario: ${timedOutScenario}`, options),
+        });
+        continue;
+      }
       const resolved = resolveScenarioVariables(scenario, options.variables);
       if (resolved.missing.length > 0) {
         results.push({
@@ -427,6 +437,7 @@ export async function runScenarios(
       const timeoutMs = scenario.timeoutMs ?? options.defaultTimeoutMs ?? 30_000;
       const controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
+      let timedOut = false;
       try {
         await Promise.race([
           executeScenario(client, resolved.scenario, {
@@ -435,6 +446,7 @@ export async function runScenarios(
           }, observedEvents, options),
           new Promise<never>((_resolve, reject) => {
             timer = setTimeout(() => {
+              timedOut = true;
               controller.abort();
               reject(new McpFnAssertionError(`Scenario timed out after ${timeoutMs}ms`));
             }, timeoutMs);
@@ -453,6 +465,7 @@ export async function runScenarios(
           durationMs: performance.now() - startedAt,
           error: truncateError(error instanceof Error ? error.message : String(error), options),
         });
+        if (timedOut) timedOutScenario = scenario.name;
       } finally {
         if (timer) clearTimeout(timer);
       }
@@ -499,7 +512,7 @@ function resolveScenarioVariables(
     scenario: resolved,
     missing: [...required]
       .filter((name) => values[name] === undefined)
-      .sort((left, right) => left.localeCompare(right)),
+      .sort((left, right) => left < right ? -1 : left > right ? 1 : 0),
   };
 }
 
@@ -599,9 +612,9 @@ async function executeScenario(
     const values = await listScenarioInventory(client, scenario.kind, requestOptions);
     if (scenario.expectNames) {
       const actual = values.map((value) => value.name)
-        .sort((left, right) => left.localeCompare(right));
+        .sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
       const expected = [...scenario.expectNames]
-        .sort((left, right) => left.localeCompare(right));
+        .sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
       if (stableJson(actual) !== stableJson(expected)) {
         throw new McpFnAssertionError(
           `Inventory mismatch\nexpected: ${stableJson(expected)}\nactual:   ${stableJson(actual)}`,

@@ -38,7 +38,7 @@ export interface AuthenticatedConformanceProxy {
 export interface AuthenticatedConformanceProxyOptions {
   /** Fixed loopback MCP URL. Requests cannot select a different origin or path. */
   url: string;
-  /** Headers injected into every upstream request. Values are never logged. */
+  /** Headers injected into requests using the proxy's own authority. Values are never logged. */
   headers: HeadersInit;
 }
 
@@ -48,8 +48,8 @@ export interface AuthenticatedOfficialConformanceOptions extends OfficialConform
 
 /**
  * Start a loopback-only streaming proxy for runners that cannot send auth
- * headers. The proxy has one fixed upstream origin and injected headers always
- * replace client-supplied values.
+ * headers. Authenticated requests use one fixed upstream authority and path.
+ * Host-manipulation probes are forwarded without injected credentials.
  */
 export async function createAuthenticatedConformanceProxy(
   options: AuthenticatedConformanceProxyOptions,
@@ -77,6 +77,7 @@ export async function createAuthenticatedConformanceProxy(
   const injected = new Headers(options.headers);
   const activeRequests = new Set<ReturnType<typeof httpRequest>>();
   const activeSockets = new Set<Socket>();
+  let proxyAuthority: string | undefined;
   const server = createServer((incoming, outgoing) => {
     if (!incoming.url?.startsWith("/")) {
       outgoing.writeHead(400).end();
@@ -84,11 +85,15 @@ export async function createAuthenticatedConformanceProxy(
     }
     const headers: IncomingHttpHeaders = { ...incoming.headers };
     delete headers.connection;
-    // Preserve Host so the official suite can exercise DNS-rebinding defenses;
-    // the outbound socket and request path remain fixed below.
+    const usesProxyAuthority = incoming.headers.host === proxyAuthority;
     injected.forEach((value, name) => {
-      headers[name.toLowerCase()] = value;
+      const normalizedName = name.toLowerCase();
+      delete headers[normalizedName];
+      if (usesProxyAuthority) headers[normalizedName] = value;
     });
+    // Authenticated traffic is pinned to the upstream Host. Host-manipulation
+    // probes retain their hostile value, but never receive injected credentials.
+    if (usesProxyAuthority) headers.host = upstream.host;
     const transport = protocol === "https:" ? httpsRequest : httpRequest;
     const proxied = transport(
       {
@@ -133,6 +138,7 @@ export async function createAuthenticatedConformanceProxy(
     upstream.pathname + upstream.search,
     `http://127.0.0.1:${address.port}`,
   );
+  proxyAuthority = url.host;
   return {
     url: url.toString(),
     close: async () => {

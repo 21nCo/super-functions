@@ -38,15 +38,55 @@ describe("McpFn OAuth resource server", () => {
     });
   });
 
-  it("rejects non-HTTP authorization server identifiers", () => {
+  it("requires RFC-valid HTTPS authorization server issuer identifiers", async () => {
+    const create = (authorizationServer: string) => createOAuthResourceServerHandler(
+      async () => new Response("mcp"),
+      {
+        resource,
+        authorizationServers: [authorizationServer],
+        verifier: { verifyAccessToken: async () => { throw new Error("unused"); } },
+      },
+    );
+    for (const invalid of [
+      "file:///private/oauth",
+      "http://login.example.com",
+      "https://user:password@login.example.com",
+      "https://login.example.com?tenant=one",
+      "https://login.example.com#issuer",
+    ]) {
+      expect(() => create(invalid)).toThrow(
+        /must use HTTPS without userinfo, query, or fragment/,
+      );
+    }
+    const handler = create("https://login.example.com/tenant-a");
+    const response = await handler(new Request(
+      "https://mcp.example.com/.well-known/oauth-protected-resource/api/mcp",
+    ));
+    await expect(response.json()).resolves.toMatchObject({
+      authorization_servers: ["https://login.example.com/tenant-a"],
+    });
+
+    expect(() => create("http://127.0.0.1:8787")).toThrow(
+      /must use HTTPS/,
+    );
     expect(() => createOAuthResourceServerHandler(
       async () => new Response("mcp"),
       {
         resource,
-        authorizationServers: ["file:///private/oauth"],
+        authorizationServers: ["http://localhost:8787"],
+        allowInsecureLoopbackAuthorizationServers: true,
         verifier: { verifyAccessToken: async () => { throw new Error("unused"); } },
       },
-    )).toThrow(/authorization servers must use HTTP or HTTPS/);
+    )).toThrow(/must use HTTPS/);
+    expect(() => createOAuthResourceServerHandler(
+      async () => new Response("mcp"),
+      {
+        resource,
+        authorizationServers: ["http://127.0.0.1:8787"],
+        allowInsecureLoopbackAuthorizationServers: true,
+        verifier: { verifyAccessToken: async () => { throw new Error("unused"); } },
+      },
+    )).not.toThrow();
   });
 
   it("challenges missing tokens and enforces scopes, expiry, and resource audience", async () => {

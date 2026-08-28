@@ -258,5 +258,7 @@ function collectVariables(value: unknown): string[] {
     }
   };
   visit(value);
-  return [...variables].sort((left, right) => left.localeCompare(right));
+  return [...variables].sort((left, right) =>
+    left < right ? -1 : left > right ? 1 : 0
+  );
 }

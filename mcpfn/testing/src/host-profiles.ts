@@ -148,7 +148,10 @@ export function checkHostCompatibility(
     }
   }
 
-  issues.sort((left, right) => left.path.localeCompare(right.path) || left.code.localeCompare(right.code));
+  issues.sort((left, right) => {
+    if (left.path !== right.path) return left.path < right.path ? -1 : 1;
+    return left.code < right.code ? -1 : left.code > right.code ? 1 : 0;
+  });
   const status = issues.some((issue) => issue.severity === "incompatible")
     ? "incompatible"
     : issues.length

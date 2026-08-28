@@ -592,6 +592,40 @@ describe("McpFn hosted authorization compatibility", () => {
     expect(register).not.toHaveBeenCalled();
   });
 
+  it("revalidates client metadata after registration persistence transforms it", async () => {
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      clients: {
+        resolve: async () => null,
+        register: async (metadata) => ({
+          clientId: "persisted-client",
+          source: "dynamic",
+          redirectUris: [...(metadata.redirect_uris ?? [])],
+          responseTypes: ["code"],
+          grantTypes: ["authorization_code"],
+          tokenEndpointAuthMethod: "client_secret_basic",
+          metadata: { ...metadata, token_endpoint_auth_method: "client_secret_basic" },
+        }),
+      },
+      authorize: async () => Response.json({ ok: true }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({
+          access_token: "opaque",
+          token_type: "Bearer",
+        }),
+      },
+    });
+    const response = await compatibility(new Request(`${issuer}/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ redirect_uris: ["https://client.example/callback"] }),
+    }));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "invalid_client_metadata",
+    });
+  });
+
   it("re-authorizes every Client ID Metadata Document redirect before fetching it", async () => {
     const clientId = "https://clients.example.com/client.json";
     const redirected = "https://blocked.example.com/client.json";
@@ -859,7 +893,7 @@ describe("generic auth provider composition", () => {
     const handler = createAuthProviderMcpHandler(downstream, {
       resource: "https://mcp.example.com/mcp",
       provider: {
-        authenticate: async () => ({
+        authenticateBearer: async () => ({
           id: "client-1",
           type: "oauth",
           subject: {
@@ -883,6 +917,30 @@ describe("generic auth provider composition", () => {
     expect(downstream).toHaveBeenCalledOnce();
   });
 
+  it("binds provider authentication to the exact Bearer token", async () => {
+    const authenticateBearer = vi.fn(async (token: string) => token === "trusted-token"
+      ? {
+          id: "client-1",
+          type: "oauth",
+          subject: { actorId: "user-1", actorType: "user" },
+        }
+      : null);
+    const downstream = vi.fn(async () => Response.json({ ok: true }));
+    const handler = createAuthProviderMcpHandler(downstream, {
+      resource: "https://mcp.example.com/mcp",
+      provider: { authenticateBearer },
+    });
+    const response = await handler(new Request("https://mcp.example.com/mcp", {
+      headers: {
+        authorization: "Bearer attacker-token",
+        cookie: "session=otherwise-valid",
+      },
+    }));
+    expect(response.status).toBe(401);
+    expect(authenticateBearer).toHaveBeenCalledWith("attacker-token", expect.any(Request));
+    expect(downstream).not.toHaveBeenCalled();
+  });
+
   it("preserves provider resource authorization and fails closed on denial", async () => {
     const session = {
       id: "client-1",
@@ -894,7 +952,7 @@ describe("generic auth provider composition", () => {
     const handler = createAuthProviderMcpHandler(downstream, {
       resource: "https://mcp.example.com/mcp",
       provider: {
-        authenticate: async () => session,
+        authenticateBearer: async () => session,
         authorize,
       },
     });
@@ -912,12 +970,12 @@ describe("generic auth provider composition", () => {
   });
 
   it("rejects missing bearer credentials before invoking the provider", async () => {
-    const authenticate = vi.fn();
+    const authenticateBearer = vi.fn();
     const handler = createAuthProviderMcpHandler(
       async () => Response.json({ ok: true }),
       {
         resource: "https://mcp.example.com/mcp",
-        provider: { authenticate },
+        provider: { authenticateBearer },
       },
     );
 
@@ -925,23 +983,23 @@ describe("generic auth provider composition", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toMatch(/^Bearer /);
-    expect(authenticate).not.toHaveBeenCalled();
+    expect(authenticateBearer).not.toHaveBeenCalled();
   });
 
   it("rejects bearer credentials supplied through the query string", async () => {
-    const authenticate = vi.fn();
+    const authenticateBearer = vi.fn();
     const handler = createAuthProviderMcpHandler(
       async () => Response.json({ ok: true }),
       {
         resource: "https://mcp.example.com/mcp",
-        provider: { authenticate },
+        provider: { authenticateBearer },
       },
     );
     const response = await handler(
       new Request("https://mcp.example.com/mcp?access_token=query-secret"),
     );
     expect(response.status).toBe(401);
-    expect(authenticate).not.toHaveBeenCalled();
+    expect(authenticateBearer).not.toHaveBeenCalled();
   });
 
   it("returns an insufficient-scope challenge before invoking MCP", async () => {
@@ -950,7 +1008,7 @@ describe("generic auth provider composition", () => {
       resource: "https://mcp.example.com/mcp",
       requiredScopes: ["mcp:read", "skills:read"],
       provider: {
-        authenticate: async () => ({
+        authenticateBearer: async () => ({
           id: "client-1",
           type: "oauth",
           subject: { actorId: "user-1", actorType: "user" },
@@ -980,7 +1038,7 @@ describe("generic auth provider composition", () => {
     const handler = createAuthProviderMcpHandler(downstream, {
       resource: "https://mcp.example.com/mcp",
       provider: {
-        authenticate: async (request) => {
+        authenticateBearer: async (_token, request) => {
           authenticationCancel = vi.spyOn(request.body!, "cancel");
           return {
             id: "client-1",
@@ -1019,7 +1077,7 @@ describe("generic auth provider composition", () => {
     const handler = createAuthProviderMcpHandler(downstream, {
       resource: "https://mcp.example.com/mcp",
       provider: {
-        authenticate: async () => ({
+        authenticateBearer: async () => ({
           id: "client-1",
           type: "oauth",
           subject: { actorId: "user-1", actorType: "user" },

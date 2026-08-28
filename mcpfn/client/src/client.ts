@@ -453,7 +453,7 @@ export class McpFnClient {
     this._protocol = undefined;
     this.handle = undefined;
     await protocol?.close().catch(() => undefined);
-    await handle?.close?.().catch(() => undefined);
+    await closeTransportHandle(handle);
   }
 
   private async listTools(options?: RequestOptions): Promise<Tool[]> {

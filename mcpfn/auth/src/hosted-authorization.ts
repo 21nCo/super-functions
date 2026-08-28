@@ -572,33 +572,7 @@ async function handleRegistrationRequest(
   const supportedMethods = options.capabilities?.tokenEndpointAuthMethods ?? [
     "none",
   ];
-  if (
-    !supportedMethods.includes(
-      requested.tokenEndpointAuthMethod as McpFnHostedTokenEndpointAuthMethod,
-    )
-  ) {
-    throw new McpFnHostedAuthorizationError(
-      "invalid_client_metadata",
-      "token_endpoint_auth_method is not supported",
-    );
-  }
-  if (!requested.responseTypes.includes("code")) {
-    throw new McpFnHostedAuthorizationError(
-      "invalid_client_metadata",
-      "response_types must include code",
-    );
-  }
-  if (!requested.grantTypes.includes("authorization_code")) {
-    throw new McpFnHostedAuthorizationError(
-      "invalid_client_metadata",
-      "grant_types must include authorization_code",
-    );
-  }
-  const registrationScopes =
-    typeof clientMetadata.scope === "string"
-      ? unique(clientMetadata.scope.split(/\s+/).filter(Boolean))
-      : [];
-  assertSupportedScopes(registrationScopes, options.supportedScopes);
+  assertCompatibleClientRegistration(requested, supportedMethods, options.supportedScopes);
   const persisted = await options.clients.register(clientMetadata, request);
   const registration = normalizeMcpClientRegistration({
     clientId: persisted.clientId,
@@ -606,6 +580,7 @@ async function handleRegistrationRequest(
     metadata: persisted.metadata,
     redirectPolicy: options.redirectPolicy,
   });
+  assertCompatibleClientRegistration(registration, supportedMethods, options.supportedScopes);
   await emit(options, "client-registration", "succeeded", undefined, {
     clientId: registration.clientId,
     source: registration.source,
@@ -614,6 +589,40 @@ async function handleRegistrationRequest(
     ...registration.metadata,
     client_id: registration.clientId,
   });
+}
+
+function assertCompatibleClientRegistration(
+  registration: McpFnNormalizedClientRegistration,
+  supportedMethods: McpFnHostedTokenEndpointAuthMethod[],
+  supportedScopes?: string[],
+): void {
+  if (
+    !supportedMethods.includes(
+      registration.tokenEndpointAuthMethod as McpFnHostedTokenEndpointAuthMethod,
+    )
+  ) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client_metadata",
+      "token_endpoint_auth_method is not supported",
+    );
+  }
+  if (!registration.responseTypes.includes("code")) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client_metadata",
+      "response_types must include code",
+    );
+  }
+  if (!registration.grantTypes.includes("authorization_code")) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client_metadata",
+      "grant_types must include authorization_code",
+    );
+  }
+  const scopes =
+    typeof registration.metadata.scope === "string"
+      ? unique(registration.metadata.scope.split(/\s+/).filter(Boolean))
+      : [];
+  assertSupportedScopes(scopes, supportedScopes);
 }
 
 async function handleAuthorizationRequest(
@@ -1371,7 +1380,9 @@ function json(status: number, body: unknown, headers: HeadersInit = {}): Respons
 }
 
 function unique(values: string[]): string[] {
-  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+  return [...new Set(values)].sort((left, right) =>
+    left < right ? -1 : left > right ? 1 : 0
+  );
 }
 
 async function emit(

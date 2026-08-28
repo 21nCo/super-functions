@@ -123,6 +123,27 @@ describe("McpFn production client", () => {
     expect(client.getServerVersion()).toBeUndefined();
   });
 
+  it("closes a custom transport when its handle omits close", async () => {
+    const closeTransport = vi.fn(async () => undefined);
+    const transport = {
+      start: vi.fn(async () => undefined),
+      send: vi.fn(async () => undefined),
+      close: closeTransport,
+    } as unknown as McpFnTransportHandle["transport"];
+    const client = createMcpFnClient({
+      target: customTarget({
+        kind: "configure-failure-with-transport-fallback",
+        open: () => ({ transport }),
+      }),
+      configure: async () => {
+        throw new Error("configure failed");
+      },
+    });
+    await expect(client.connect()).rejects.toMatchObject({ code: "MCPFN_CONNECT_FAILED" });
+    expect(closeTransport).toHaveBeenCalledOnce();
+    expect(client.state).toBe("idle");
+  });
+
   it("isolates diagnostic observer failures from lifecycle and operation results", async () => {
     let executions = 0;
     const server = createMcpFnServer({
