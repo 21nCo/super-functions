@@ -468,6 +468,7 @@ export function createMcpAuthorizationCompatibilityHandler(
       });
       const retryAfter = normalized.details?.retryAfterSeconds;
       const basicChallenge =
+        (route === "token" || route === "revoke") &&
         normalized.code === "invalid_client" &&
         /^Basic(?:\s|$)/i.test(request.headers.get("authorization") ?? "");
       return json(

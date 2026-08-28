@@ -212,6 +212,62 @@ describe("McpFn production client", () => {
     await client.close();
   });
 
+  it("keeps a delayed initialization attempt from taking over a reconnect", async () => {
+    const [firstClientTransport] = InMemoryTransport.createLinkedPair();
+    const firstClose = vi.fn(async () => undefined);
+    const server = createMcpFnServer({
+      info: { name: "reconnected-after-configure", version: "1.0.0" },
+      registry: new McpFnRegistry(),
+    });
+    let openCalls = 0;
+    let configureCalls = 0;
+    let releaseConfigure!: () => void;
+    let markConfigureStarted!: () => void;
+    const configureStarted = new Promise<void>((resolve) => {
+      markConfigureStarted = resolve;
+    });
+    const delayedConfigure = new Promise<void>((resolve) => {
+      releaseConfigure = resolve;
+    });
+    const client = createMcpFnClient({
+      target: customTarget({
+        kind: "delayed-configure",
+        open: async () => {
+          openCalls += 1;
+          if (openCalls === 1) {
+            return { transport: firstClientTransport, close: firstClose };
+          }
+          const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+          await server.connect(serverTransport);
+          return { transport: clientTransport, close: () => server.close() };
+        },
+      }),
+      configure: async () => {
+        configureCalls += 1;
+        if (configureCalls === 1) {
+          markConfigureStarted();
+          await delayedConfigure;
+        }
+      },
+    });
+
+    const connecting = client.connect();
+    const connectResult = expect(connecting).rejects.toMatchObject({
+      code: "MCPFN_CONNECT_ABORTED",
+    });
+    await configureStarted;
+    await client.close();
+    expect(firstClose).toHaveBeenCalledOnce();
+    await expect(client.reconnect()).resolves.toBeUndefined();
+    expect(client.getServerVersion()).toMatchObject({ name: "reconnected-after-configure" });
+
+    releaseConfigure();
+    await connectResult;
+    expect(client.state).toBe("connected");
+    expect(client.getServerVersion()).toMatchObject({ name: "reconnected-after-configure" });
+    await client.close();
+  });
+
   it("closes the transport to interrupt a pending MCP initialization", async () => {
     let onclose: (() => void) | undefined;
     const closeTransport = vi.fn(async () => onclose?.());

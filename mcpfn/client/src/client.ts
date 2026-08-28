@@ -355,13 +355,15 @@ export class McpFnClient {
     attempt: number,
     signal: AbortSignal,
   ): Promise<{ connected: true } | { connected: false; error: unknown }> {
+    const handle = this.handle!;
     const protocol = this.createProtocol();
     await this.emit("mcp-initialize", "started", requestId);
     try {
       this.installFirstClassHandlers(protocol);
       await this.options.configure?.(protocol);
-      await protocol.connect(this.handle!.transport);
-      await this.rejectAbortedInitialization(signal);
+      await this.rejectAbortedInitialization(signal, protocol, handle);
+      await protocol.connect(handle.transport);
+      await this.rejectAbortedInitialization(signal, protocol, handle);
       this._state = "connected";
       await this.emit("transport-connect", "succeeded", requestId, undefined, { attempt });
       await this.emit("mcp-initialize", "succeeded", requestId, undefined, {
@@ -370,7 +372,14 @@ export class McpFnClient {
       });
       return { connected: true };
     } catch (error) {
-      return this.handleInitializationFailure(error, requestId, attempt, signal);
+      return this.handleInitializationFailure(
+        error,
+        requestId,
+        attempt,
+        signal,
+        protocol,
+        handle,
+      );
     }
   }
 
@@ -403,9 +412,13 @@ export class McpFnClient {
     void this.emit("transport-close", "succeeded", this.requestId());
   }
 
-  private async rejectAbortedInitialization(signal: AbortSignal): Promise<void> {
-    if (!signal.aborted) return;
-    await this.cleanupAttempt();
+  private async rejectAbortedInitialization(
+    signal: AbortSignal,
+    protocol: Client,
+    handle: McpFnTransportHandle,
+  ): Promise<void> {
+    if (!signal.aborted && this._protocol === protocol && this.handle === handle) return;
+    await this.cleanupOwnedAttempt(protocol, handle);
     throw connectAbortedError();
   }
 
@@ -414,9 +427,11 @@ export class McpFnClient {
     requestId: string,
     attempt: number,
     signal: AbortSignal,
+    protocol: Client,
+    handle: McpFnTransportHandle,
   ): Promise<{ connected: false; error: unknown }> {
-    if (signal.aborted) {
-      await this.cleanupAttempt();
+    if (signal.aborted || this._protocol !== protocol || this.handle !== handle) {
+      await this.cleanupOwnedAttempt(protocol, handle);
       throw connectAbortedError(error);
     }
     if (error instanceof UnauthorizedError) {
@@ -437,7 +452,7 @@ export class McpFnClient {
       message: errorMessage(error),
       attempt,
     });
-    await this.cleanupAttempt();
+    await this.cleanupOwnedAttempt(protocol, handle);
     return { connected: false, error };
   }
 
@@ -522,6 +537,18 @@ export class McpFnClient {
     this.handle = undefined;
     await protocol?.close().catch(() => undefined);
     await closeTransportHandle(handle);
+  }
+
+  private async cleanupOwnedAttempt(
+    protocol: Client,
+    handle: McpFnTransportHandle,
+  ): Promise<void> {
+    const ownsProtocol = this._protocol === protocol;
+    const ownsHandle = this.handle === handle;
+    if (ownsProtocol) this._protocol = undefined;
+    if (ownsHandle) this.handle = undefined;
+    if (ownsProtocol) await protocol.close().catch(() => undefined);
+    if (ownsHandle) await closeTransportHandle(handle);
   }
 
   private async listTools(options?: RequestOptions): Promise<Tool[]> {
