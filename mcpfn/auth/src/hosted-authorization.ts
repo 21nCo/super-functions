@@ -561,6 +561,7 @@ async function handleRegistrationRequest(
       { status: 404 },
     );
   }
+  const callbackRequest = request.clone();
   const raw = (await readBoundedJson(request, 256_000)) as OAuthClientMetadata;
   const clientMetadata = normalizeClientMetadata(raw, options.redirectPolicy);
   const requested = normalizeMcpClientRegistration({
@@ -573,7 +574,7 @@ async function handleRegistrationRequest(
     "none",
   ];
   assertCompatibleClientRegistration(requested, supportedMethods, options.supportedScopes);
-  const persisted = await options.clients.register(clientMetadata, request);
+  const persisted = await options.clients.register(clientMetadata, callbackRequest);
   const registration = normalizeMcpClientRegistration({
     clientId: persisted.clientId,
     source: persisted.source,
@@ -877,7 +878,19 @@ async function authenticateHostedClient(
       { status: 401 },
     );
   }
-  const client = await resolveClient(options, clientId);
+  let client: McpFnNormalizedClientRegistration | null;
+  try {
+    client = await resolveClient(options, clientId);
+  } catch (error) {
+    if (error instanceof McpFnHostedAuthorizationError) {
+      throw new McpFnHostedAuthorizationError(
+        "invalid_client",
+        "Client metadata is invalid or unavailable",
+        { status: 401 },
+      );
+    }
+    throw error;
+  }
   if (!client || client.tokenEndpointAuthMethod !== method) {
     throw new McpFnHostedAuthorizationError(
       "invalid_client",
@@ -1112,10 +1125,11 @@ async function resolveClient(
   const registration = normalizeMcpClientRegistration({
     clientId,
     source: "client-metadata-document",
-    metadata: normalizeClientMetadata(
-      record as OAuthClientMetadata,
-      options.redirectPolicy,
-    ),
+    metadata: normalizeClientMetadata({
+      ...(record as OAuthClientMetadata),
+      token_endpoint_auth_method:
+        (record as OAuthClientMetadata).token_endpoint_auth_method ?? "client_secret_basic",
+    }, options.redirectPolicy),
     redirectPolicy: options.redirectPolicy,
   });
   assertCompatibleClientRegistration(

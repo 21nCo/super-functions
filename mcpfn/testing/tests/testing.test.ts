@@ -172,6 +172,59 @@ describe("McpFn testing", () => {
     }
   });
 
+  it("attributes observed-event loss while later scenarios are skipped", async () => {
+    const client = await McpFnTestClient.connect(createMcpFnServer({
+      info: { name: "event-loss-after-timeout", version: "1.0.0" },
+      registry: new McpFnRegistry(),
+    }));
+    const onEvent = vi.spyOn(client.session, "onEvent");
+    let observeEvent: ((event: Parameters<Parameters<typeof client.session.onEvent>[0]>[0]) => void) |
+      undefined;
+    onEvent.mockImplementation((listener) => {
+      observeEvent = listener;
+      return () => undefined;
+    });
+    const skippedScenario = {
+      get name() {
+        for (let index = 0; index < 5; index += 1) {
+          observeEvent?.({ kind: "logging.message", payload: { index } });
+        }
+        return "skipped while events continue";
+      },
+      kind: "auth.assert" as const,
+      phase: "must-not-run",
+      expect: { outcome: "allowed" as const },
+    };
+    try {
+      const results = await runScenarios(client, [
+        {
+          name: "times out",
+          kind: "auth.assert",
+          phase: "never-settles",
+          timeoutMs: 5,
+          expect: { outcome: "allowed" },
+        },
+        skippedScenario,
+      ], {
+        maxObservedEvents: 2,
+        auth: async () => new Promise(() => undefined),
+      });
+
+      expect(results).toMatchObject([
+        { status: "failed" },
+        { status: "incomplete", droppedObservedEvents: 3 },
+      ]);
+      expect(createMcpFnScenarioReport(results)).toMatchObject({
+        status: "incomplete",
+        droppedObservedEvents: 3,
+        incompleteReason: "Observed client events exceeded maxObservedEvents",
+      });
+    } finally {
+      onEvent.mockRestore();
+      await client.close();
+    }
+  });
+
   it("preserves the complete server implementation identity", async () => {
     const server = createMcpFnServer({
       info: {

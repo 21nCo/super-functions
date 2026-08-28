@@ -401,6 +401,17 @@ export async function runScenarios(
   const observedEvents: McpFnClientEvent[] = [];
   const maxObservedEvents = options.maxObservedEvents ?? 500;
   let droppedObservedEvents = 0;
+  let attributedDroppedObservedEvents = 0;
+  const pushResult = (result: McpFnScenarioResult): void => {
+    const newlyDropped = droppedObservedEvents - attributedDroppedObservedEvents;
+    results.push({
+      ...result,
+      ...(newlyDropped > 0
+        ? { droppedObservedEvents: (result.droppedObservedEvents ?? 0) + newlyDropped }
+        : {}),
+    });
+    attributedDroppedObservedEvents = droppedObservedEvents;
+  };
   const unsubscribe = client.session.onEvent((event) => {
     observedEvents.push(event);
     if (observedEvents.length > maxObservedEvents) {
@@ -421,7 +432,7 @@ export async function runScenarios(
         sideEffect: scenario.sideEffect ?? defaultSideEffect(operation),
       };
       if (timedOutScenario) {
-        results.push({
+        pushResult({
           ...common,
           status: "incomplete",
           durationMs: 0,
@@ -431,7 +442,7 @@ export async function runScenarios(
       }
       const resolved = resolveScenarioVariables(scenario, options.variables);
       if (resolved.missing.length > 0) {
-        results.push({
+        pushResult({
           ...common,
           status: "incomplete",
           durationMs: 0,
@@ -443,7 +454,7 @@ export async function runScenarios(
         continue;
       }
       if (scenario.status === "incomplete") {
-        results.push({
+        pushResult({
           ...common,
           status: "incomplete",
           durationMs: 0,
@@ -455,7 +466,6 @@ export async function runScenarios(
       const controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
       let timedOut = false;
-      const droppedBeforeScenario = droppedObservedEvents;
       try {
         await Promise.race([
           executeScenario(client, resolved.scenario, {
@@ -471,23 +481,17 @@ export async function runScenarios(
             (timer as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
           }),
         ]);
-        results.push({
+        pushResult({
           ...common,
           status: "passed",
           durationMs: performance.now() - startedAt,
-          ...(droppedObservedEvents > droppedBeforeScenario
-            ? { droppedObservedEvents: droppedObservedEvents - droppedBeforeScenario }
-            : {}),
         });
       } catch (error) {
-        results.push({
+        pushResult({
           ...common,
           status: "failed",
           durationMs: performance.now() - startedAt,
           error: truncateError(error instanceof Error ? error.message : String(error), options),
-          ...(droppedObservedEvents > droppedBeforeScenario
-            ? { droppedObservedEvents: droppedObservedEvents - droppedBeforeScenario }
-            : {}),
         });
         if (timedOut) timedOutScenario = scenario.name;
       } finally {
@@ -495,6 +499,12 @@ export async function runScenarios(
       }
     }
   } finally {
+    const unattributed = droppedObservedEvents - attributedDroppedObservedEvents;
+    const lastResult = results.at(-1);
+    if (lastResult && unattributed > 0) {
+      lastResult.droppedObservedEvents =
+        (lastResult.droppedObservedEvents ?? 0) + unattributed;
+    }
     unsubscribe();
   }
   return results;

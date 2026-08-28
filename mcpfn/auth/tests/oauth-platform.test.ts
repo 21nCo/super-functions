@@ -548,6 +548,41 @@ describe("McpFn hosted authorization compatibility", () => {
     expect(register).not.toHaveBeenCalled();
   });
 
+  it("preserves the dynamic registration request body for host policy", async () => {
+    let callbackBody: unknown;
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      clients: {
+        resolve: async () => null,
+        register: async (metadata, request) => {
+          callbackBody = await request.json();
+          return normalizeMcpClientRegistration({
+            clientId: "registered-client",
+            source: "dynamic",
+            metadata,
+          });
+        },
+      },
+      authorize: async () => Response.json({ ok: true }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({ access_token: "opaque", token_type: "Bearer" }),
+      },
+    });
+    const metadata = {
+      redirect_uris: ["https://client.example/callback"],
+      token_endpoint_auth_method: "none",
+    };
+
+    const response = await compatibility(new Request(`${issuer}/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(metadata),
+    }));
+
+    expect(response.status).toBe(201);
+    expect(callbackBody).toEqual(metadata);
+  });
+
   it("rejects incompatible dynamic-registration auth, response, grant, and scope metadata", async () => {
     const register = vi.fn();
     const compatibility = createMcpAuthorizationCompatibilityHandler({
@@ -702,6 +737,73 @@ describe("McpFn hosted authorization compatibility", () => {
       error: "invalid_client_metadata",
     });
     expect(authorize).not.toHaveBeenCalled();
+  });
+
+  it("defaults omitted Client ID Metadata Document auth methods to basic", async () => {
+    const clientId = "https://clients.example.com/client.json";
+    const authorize = vi.fn(async () => Response.json({ ok: true }));
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      clients: { resolve: async () => null },
+      authorize,
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({ access_token: "opaque", token_type: "Bearer" }),
+      },
+      clientMetadataDocuments: {
+        enabled: true,
+        allow: async () => true,
+        fetch: async () => Response.json({
+          client_id: clientId,
+          redirect_uris: ["https://client.example.com/callback"],
+        }),
+      },
+    });
+
+    const response = await compatibility(new Request(authorizationUrl(
+      clientId,
+      "https://client.example.com/callback",
+    )));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "invalid_client_metadata",
+    });
+    expect(authorize).not.toHaveBeenCalled();
+  });
+
+  it("maps metadata document failures to invalid_client at credential endpoints", async () => {
+    const clientId = "https://clients.example.com/client.json";
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      clients: { resolve: async () => null },
+      authorize: async () => Response.json({ ok: true }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({ access_token: "opaque", token_type: "Bearer" }),
+        revokeToken: async () => undefined,
+      },
+      clientMetadataDocuments: {
+        enabled: true,
+        allow: async () => true,
+        fetch: async () => Response.json({
+          client_id: clientId,
+          redirect_uris: ["https://client.example.com/callback"],
+          token_endpoint_auth_method: "client_secret_basic",
+        }),
+      },
+    });
+
+    for (const [path, body] of [
+      ["/token", { grant_type: "authorization_code", client_id: clientId }],
+      ["/revoke", { token: "opaque", client_id: clientId }],
+    ] as const) {
+      const response = await compatibility(new Request(`${issuer}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(body),
+      }));
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toMatchObject({ error: "invalid_client" });
+    }
   });
 
   it("enforces a streaming byte cap for metadata without content-length", async () => {
