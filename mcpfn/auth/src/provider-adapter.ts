@@ -103,6 +103,7 @@ export function createMcpFnAuthProviderAdapter<TSession extends McpFnAuthSession
         : await options.provider.authenticate(new Request(request.url, {
           method: request.method,
           headers: { authorization: `Bearer ${bearer}` },
+          credentials: "omit",
         }));
       if (!session) return null;
       const principal = options.map
@@ -147,21 +148,31 @@ export function createAuthProviderMcpHandler<TSession extends McpFnAuthSessionLi
   const adapter = createMcpFnAuthProviderAdapter(options);
   const metadataUrl = protectedResourceMetadataUrl(options.resource);
   return async (request) => {
-    let authenticated;
-    let authenticationRequest: Request | undefined;
+    let authenticationRequest: Request;
     try {
       authenticationRequest = request.clone();
+    } catch {
+      return invalidTokenResponse(metadataUrl);
+    }
+    let authenticated;
+    try {
       authenticated = await adapter.authenticate(authenticationRequest);
     } catch {
-      authenticated = null;
+      return new Response(JSON.stringify({
+        error: "temporarily_unavailable",
+        error_description: "The authentication provider is unavailable",
+      }), {
+        status: 503,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      });
     } finally {
-      void authenticationRequest?.body?.cancel().catch(() => undefined);
+      void authenticationRequest.body?.cancel().catch(() => undefined);
     }
     if (!authenticated) {
-      return bearerChallengeResponse(401, metadataUrl, {
-        error: "invalid_token",
-        description: "A valid Bearer access token is required",
-      });
+      return invalidTokenResponse(metadataUrl);
     }
     let requiredScopes: string[];
     if (typeof options.requiredScopes === "function") {
@@ -193,6 +204,13 @@ export function createAuthProviderMcpHandler<TSession extends McpFnAuthSessionLi
     const handleOptions: HandleRequestOptions = { authInfo: authenticated.authInfo };
     return mcpHandler(request, handleOptions);
   };
+}
+
+function invalidTokenResponse(metadataUrl: URL): Response {
+  return bearerChallengeResponse(401, metadataUrl, {
+    error: "invalid_token",
+    description: "A valid Bearer access token is required",
+  });
 }
 
 function defaultPrincipal(session: McpFnAuthSessionLike): McpFnPrincipal {

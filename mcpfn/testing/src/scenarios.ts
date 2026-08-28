@@ -696,29 +696,29 @@ async function executeScenario(
     case "initialize":
       return executeInitializeScenario(client, scenario);
     case "resources.read":
-      return assertExpectedAsync(client.readResourceWithOptions(scenario.uri, requestOptions), scenario.expect);
+      return assertExpectedAsync(client.readResource(scenario.uri, requestOptions), scenario.expect);
     case "resources.subscribe":
-      return client.subscribeResourceWithOptions(scenario.uri, requestOptions);
+      return client.subscribeResource(scenario.uri, requestOptions);
     case "resources.unsubscribe":
-      return client.unsubscribeResourceWithOptions(scenario.uri, requestOptions);
+      return client.unsubscribeResource(scenario.uri, requestOptions);
     case "prompts.get":
       return assertExpectedAsync(
-        client.getPromptWithOptions(scenario.prompt, scenario.arguments, requestOptions),
+        client.getPrompt(scenario.prompt, scenario.arguments, requestOptions),
         scenario.expect,
       );
     case "tools.call:task":
       return assertExpectedAsync(
-        client.createToolTaskWithOptions(scenario.tool, scenario.arguments, scenario.task, requestOptions),
+        client.createToolTask(scenario.tool, scenario.arguments, scenario.task, requestOptions),
         scenario.expect,
       );
     case "tasks.get":
-      return assertExpectedAsync(client.getTaskWithOptions(scenario.taskId!, requestOptions), scenario.expect);
+      return assertExpectedAsync(client.getTask(scenario.taskId!, requestOptions), scenario.expect);
     case "tasks.result":
-      return assertExpectedAsync(client.getTaskResultWithOptions(scenario.taskId!, requestOptions), scenario.expect);
+      return assertExpectedAsync(client.getTaskResult(scenario.taskId!, requestOptions), scenario.expect);
     case "tasks.cancel":
-      return assertExpectedAsync(client.cancelTaskWithOptions(scenario.taskId!, requestOptions), scenario.expect);
+      return assertExpectedAsync(client.cancelTask(scenario.taskId!, requestOptions), scenario.expect);
     case "tasks.list":
-      return assertExpectedAsync(client.listTasksWithOptions(scenario.cursor, requestOptions), scenario.expect);
+      return assertExpectedAsync(client.listTasks(scenario.cursor, requestOptions), scenario.expect);
     case "events.expect":
       return executeEventScenario(scenario, observedEvents);
     case "auth.assert":
@@ -732,7 +732,7 @@ async function executeToolScenario(
   scenario: McpFnToolScenario,
   requestOptions: { signal: AbortSignal; timeout: number },
 ): Promise<void> {
-  const result = await client.callToolWithOptions(
+  const result = await client.callTool(
     scenario.tool,
     scenario.arguments,
     requestOptions,

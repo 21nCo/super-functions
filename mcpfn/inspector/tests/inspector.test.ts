@@ -70,4 +70,43 @@ describe("McpFn inspector", () => {
       await inspector.close();
     }
   });
+
+  it("preserves retained timelines above the redactor default array limit", async () => {
+    const inspector = McpFnInspector.create({
+      inspector: { maxEvents: 150, maxTimelineBytes: 1_000_000 },
+      target: customTarget({ kind: "unused", open: () => { throw new Error("unused"); } }),
+    });
+    const record = (inspector as unknown as {
+      record(source: "diagnostic", kind: string, at: string, raw: never): void;
+    }).record.bind(inspector);
+    for (let index = 0; index < 101; index += 1) {
+      record("diagnostic", "capability-operation", new Date(index).toISOString(), {
+        phase: "capability-operation",
+        outcome: "succeeded",
+        at: new Date(index).toISOString(),
+      } as never);
+    }
+
+    const snapshot = await inspector.snapshot();
+    expect(snapshot.timeline).toHaveLength(101);
+    expect(snapshot.timeline.every((event) => typeof event === "object")).toBe(true);
+    expect(snapshot.timelineComplete).toBe(true);
+  });
+
+  it("drops even the truncation marker when it exceeds the byte cap", () => {
+    const inspector = McpFnInspector.create({
+      inspector: { maxEvents: 1, maxTimelineBytes: 1 },
+      target: customTarget({ kind: "unused", open: () => { throw new Error("unused"); } }),
+    });
+    (inspector as unknown as {
+      record(source: "diagnostic", kind: string, at: string, raw: never): void;
+    }).record("diagnostic", "oversized", new Date(0).toISOString(), {
+      phase: "capability-operation",
+      outcome: "succeeded",
+      at: new Date(0).toISOString(),
+      details: { value: "x".repeat(1_000) },
+    } as never);
+
+    expect(inspector.timeline()).toEqual([]);
+  });
 });

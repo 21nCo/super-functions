@@ -194,7 +194,7 @@ function registrationStringArray(
   fallback: string[],
 ): string[] {
   if (value === undefined) return fallback;
-  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+  if (!Array.isArray(value) || Array.from(value).some((entry) => typeof entry !== "string")) {
     throw new McpFnHostedAuthorizationError(
       "invalid_client_metadata",
       `${field} must be an array of strings`,
@@ -360,6 +360,8 @@ function normalizeAuthorizationResource(
 
 export interface McpFnAuthorizationCompatibilityOptions {
   issuer: string | URL;
+  /** Allow HTTP only for literal loopback issuers in controlled local testing. */
+  allowInsecureLoopbackIssuer?: boolean;
   /** Route prefix for authorize/token/register/revoke. Defaults to the issuer path. */
   endpointPrefix?: string;
   clients: McpFnHostedClientRegistry;
@@ -392,6 +394,8 @@ export interface McpFnAuthorizationCompatibilityOptions {
 
 export interface McpFnAuthorizationServerMetadataOptions {
   issuer: string | URL;
+  /** Allow HTTP only for literal loopback issuers in controlled local testing. */
+  allowInsecureLoopbackIssuer?: boolean;
   endpointPrefix?: string;
   dynamicRegistration: boolean;
   refreshTokenGrant: boolean;
@@ -410,7 +414,7 @@ export function createMcpAuthorizationCompatibilityHandler(
   options: McpFnAuthorizationCompatibilityOptions,
 ): (request: Request) => Promise<Response> {
   validateClientMetadataDocumentOptions(options.clientMetadataDocuments);
-  const issuer = normalizeIssuer(options.issuer);
+  const issuer = normalizeIssuer(options.issuer, options.allowInsecureLoopbackIssuer ?? false);
   const issuerPath = issuer.pathname === "/" ? "" : trimTrailingSlashes(issuer.pathname);
   const endpointPrefix = normalizeEndpointPrefix(
     options.endpointPrefix ?? issuerPath,
@@ -421,6 +425,7 @@ export function createMcpAuthorizationCompatibilityHandler(
   validateHostedCapabilities(options, tokenEndpointAuthMethods);
   const metadata = createMcpAuthorizationServerMetadata({
     issuer: options.issuer,
+    allowInsecureLoopbackIssuer: options.allowInsecureLoopbackIssuer,
     endpointPrefix,
     dynamicRegistration: Boolean(options.clients.register),
     refreshTokenGrant: Boolean(options.tokenAuthority.refreshToken),
@@ -478,7 +483,7 @@ export function createMcpAuthorizationCompatibilityHandler(
 export function createMcpAuthorizationServerMetadata(
   options: McpFnAuthorizationServerMetadataOptions,
 ): Record<string, unknown> {
-  const issuer = normalizeIssuer(options.issuer);
+  const issuer = normalizeIssuer(options.issuer, options.allowInsecureLoopbackIssuer ?? false);
   const issuerPath =
     issuer.pathname === "/" ? "" : trimTrailingSlashes(issuer.pathname);
   const endpointPrefix = normalizeEndpointPrefix(
@@ -1077,8 +1082,8 @@ function readBasicClientCredentials(
     const separator = decoded.indexOf(":");
     if (separator < 1) throw new Error("missing separator");
     return {
-      clientId: decodeURIComponent(decoded.slice(0, separator)),
-      clientSecret: decodeURIComponent(decoded.slice(separator + 1)),
+      clientId: decodeFormComponent(decoded.slice(0, separator)),
+      clientSecret: decodeFormComponent(decoded.slice(separator + 1)),
     };
   } catch {
     throw new McpFnHostedAuthorizationError(
@@ -1087,6 +1092,10 @@ function readBasicClientCredentials(
       { status: 401 },
     );
   }
+}
+
+function decodeFormComponent(value: string): string {
+  return decodeURIComponent(value.replace(/\+/g, " "));
 }
 
 async function withSerializedRefresh(
@@ -1331,7 +1340,14 @@ async function clientMetadataRedirectUrl(
       "Client ID Metadata Document redirect could not be followed safely",
     );
   }
-  return new URL(location, currentUrl);
+  try {
+    return new URL(location, currentUrl);
+  } catch {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client",
+      "Client ID Metadata Document redirect could not be followed safely",
+    );
+  }
 }
 
 async function assertClientMetadataResponse(response: Response): Promise<void> {
@@ -1462,11 +1478,24 @@ function validateClientMetadataDocumentOptions(
   }
 }
 
-function normalizeIssuer(value: string | URL): URL {
-  const issuer = new URL(value.toString());
-  if (issuer.search || issuer.hash || issuer.username || issuer.password) {
+function normalizeIssuer(value: string | URL, allowInsecureLoopback: boolean): URL {
+  const serialized = value.toString();
+  const issuer = new URL(serialized);
+  const loopbackHttp =
+    allowInsecureLoopback &&
+    issuer.protocol === "http:" &&
+    (issuer.hostname === "127.0.0.1" || issuer.hostname === "[::1]");
+  if (
+    (issuer.protocol !== "https:" && !loopbackHttp) ||
+    issuer.username ||
+    issuer.password ||
+    issuer.search ||
+    issuer.hash ||
+    serialized.includes("?") ||
+    serialized.includes("#")
+  ) {
     throw new TypeError(
-      "issuer must not contain userinfo, a query string, or a fragment",
+      "issuer must use HTTPS without userinfo, a query string, or a fragment",
     );
   }
   return issuer;

@@ -24,7 +24,7 @@ export function bearerChallengeResponse(
 ): Response {
   const fields = [
     `resource_metadata="${metadataUrl.toString()}"`,
-    `error="${details.error}"`,
+    `error="${sanitizeChallengeValue(details.error)}"`,
     `error_description="${sanitizeChallengeValue(details.description)}"`,
   ];
   if (details.scope) fields.push(`scope="${sanitizeChallengeValue(details.scope)}"`);

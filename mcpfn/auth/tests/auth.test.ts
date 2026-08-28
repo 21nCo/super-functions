@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   MCP_ENTERPRISE_MANAGED_AUTHORIZATION_EXTENSION_ID,
   MCP_ID_JAG_GRANT_PROFILE,
+  bearerChallengeResponse,
   createOAuthResourceServerHandler,
   enterpriseManagedAuthorizationClientMetadata,
   protectedResourceMetadataUrl,
@@ -53,6 +54,8 @@ describe("McpFn OAuth resource server", () => {
       "https://user:password@login.example.com",
       "https://login.example.com?tenant=one",
       "https://login.example.com#issuer",
+      "https://login.example.com/tenant?",
+      "https://login.example.com/tenant#",
     ]) {
       expect(() => create(invalid)).toThrow(
         /must use HTTPS without userinfo, query, or fragment/,
@@ -87,6 +90,15 @@ describe("McpFn OAuth resource server", () => {
         verifier: { verifyAccessToken: async () => { throw new Error("unused"); } },
       },
     )).not.toThrow();
+  });
+
+  it("sanitizes caller-derived challenge error codes", () => {
+    const response = bearerChallengeResponse(
+      401,
+      new URL("https://mcp.example.com/.well-known/oauth-protected-resource/api/mcp"),
+      { error: "invalid\"\r\ntoken", description: "invalid" },
+    );
+    expect(response.headers.get("www-authenticate")).toContain('error="invalidtoken"');
   });
 
   it("challenges missing tokens and enforces scopes, expiry, and resource audience", async () => {

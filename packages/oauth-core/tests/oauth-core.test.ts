@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { cloneOAuthStateRecord, type OAuthStateRecord } from "@superfunctions/oauth-storage";
-import { DefaultOAuthService } from "../src/index.js";
+import { DefaultOAuthService, redactOAuthValue } from "../src/index.js";
 
 class TestStateStore {
   private readonly records = new Map<string, OAuthStateRecord>();
@@ -277,6 +277,42 @@ describe("oauth-core service", () => {
     ).rejects.toMatchObject({
       code: "OAUTH_STATE_INVALID",
       message: "OAuth state is invalid or expired"
+    });
+  });
+});
+
+describe("OAuth diagnostic redaction", () => {
+  it("stops iterating Maps and Sets at the configured entry cap", () => {
+    class GuardedMap extends Map<unknown, unknown> {
+      override get size(): number { return 1_000; }
+      override *entries(): MapIterator<[unknown, unknown]> {
+        yield ["first", 1];
+        yield ["second", 2];
+        throw new Error("Map iteration exceeded the cap");
+      }
+      override [Symbol.iterator](): MapIterator<[unknown, unknown]> {
+        return this.entries();
+      }
+    }
+    class GuardedSet extends Set<unknown> {
+      override get size(): number { return 1_000; }
+      override *values(): SetIterator<unknown> {
+        yield "first";
+        yield "second";
+        throw new Error("Set iteration exceeded the cap");
+      }
+      override [Symbol.iterator](): SetIterator<unknown> {
+        return this.values();
+      }
+    }
+
+    expect(redactOAuthValue(new GuardedMap(), { maxArrayEntries: 2 })).toEqual({
+      type: "Map",
+      entries: [["first", 1], ["second", 2], ["[TRUNCATED]", "[TRUNCATED]"]],
+    });
+    expect(redactOAuthValue(new GuardedSet(), { maxArrayEntries: 2 })).toEqual({
+      type: "Set",
+      values: ["first", "second", "[TRUNCATED]"],
     });
   });
 });

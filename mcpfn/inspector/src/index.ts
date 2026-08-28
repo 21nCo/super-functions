@@ -134,6 +134,15 @@ export class McpFnInspector {
       timeline: [...this.events],
       droppedEvents: this.droppedEvents,
       timelineComplete: this.droppedEvents === 0,
+    }, {
+      maxArrayEntries: Math.max(
+        this.maxEvents,
+        tools.length,
+        resources.length,
+        resourceTemplates.length,
+        prompts.length,
+        1,
+      ),
     }) as McpFnInspectorSnapshot;
   }
 
@@ -202,12 +211,13 @@ export class McpFnInspector {
       };
       bytes = encodedBytes(event);
       this.droppedEvents += 1;
+      if (bytes > this.maxTimelineBytes) return;
     }
     this.events.push(event);
     this.timelineBytes += bytes;
     while (
       this.events.length > this.maxEvents ||
-      (this.timelineBytes > this.maxTimelineBytes && this.events.length > 1)
+      this.timelineBytes > this.maxTimelineBytes
     ) {
       const removed = this.events.shift();
       if (removed) this.timelineBytes -= encodedBytes(removed);

@@ -75,6 +75,18 @@ The `@mcpfn/testing/playwright` subpath exports a Playwright `test` extended wit
 
 Keep application-specific UI selectors, real-provider secrets, workspace authorization, and least-privilege assertions in the application repository. McpFn owns the reusable protocol and credential-lifecycle mechanics.
 
+## Proof levels
+
+| Level | What it proves | What it does not prove |
+| --- | --- | --- |
+| Workspace | Source, focused tests, and builds pass in this checkout. | Packed-package resolution or any live environment. |
+| Installed | Packed tarballs install and execute in a clean consumer. | Registry publication or live-provider behavior. |
+| Published | A named registry version resolves and executes. | A particular deployment or host authorization. |
+| Controlled live | A controlled endpoint completes protocol and OAuth checks. | Production deployment, production data, or end-user host acceptance. |
+| Deployed | The named production revision and configuration are running. | External host acceptance unless that host is tested separately. |
+
+Each release claim must name its highest verified level. Evidence at one level never implies a later level.
+
 ## Official conformance
 
 Start a real Streamable HTTP endpoint, then run:

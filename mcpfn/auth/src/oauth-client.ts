@@ -91,6 +91,8 @@ export interface McpFnEncryptedSessionRecordStore {
   delete(key: string): Promise<void>;
 }
 
+const ENCRYPTED_SESSION_ENVELOPE_KIND = "mcpfn.oauth-session-envelope";
+
 /** Encrypts client registration, tokens, and the transient verifier at rest. */
 export function createEncryptedMcpFnOAuthSessionStore(options: {
   namespace: string;
@@ -109,17 +111,21 @@ export function createEncryptedMcpFnOAuthSessionStore(options: {
     if (
       parsed &&
       typeof parsed === "object" &&
+      (parsed as { kind?: unknown }).kind === ENCRYPTED_SESSION_ENVELOPE_KIND &&
       (parsed as { formatVersion?: unknown }).formatVersion === 1 &&
       Object.hasOwn(parsed, "value")
     ) {
       return (parsed as { value: T }).value;
     }
-    // Read compatibility for credentials encrypted before the v1 envelope.
     return parsed as T;
   };
   const put = async (part: string, value: unknown): Promise<void> => {
     await options.store.put(key(part), {
-      ciphertext: await options.cipher.encrypt(JSON.stringify({ formatVersion: 1, value }), options.keyRef),
+      ciphertext: await options.cipher.encrypt(JSON.stringify({
+        kind: ENCRYPTED_SESSION_ENVELOPE_KIND,
+        formatVersion: 1,
+        value,
+      }), options.keyRef),
       keyRef: options.keyRef,
     });
   };
@@ -231,17 +237,20 @@ export class McpFnOAuthClientProvider implements OAuthClientProvider {
   async saveTokens(value: OAuthTokens): Promise<void> {
     let phase: "token-exchange" | "token-refresh" = "token-exchange";
     try {
-      const [previous, verifier] = await Promise.all([
+      const [previous, verifier, pendingState] = await Promise.all([
         this.store.getTokens(),
         this.store.getCodeVerifier(),
+        this.store.getState(),
       ]);
-      phase = previous && !verifier ? "token-refresh" : "token-exchange";
+      const completesAuthorizationCodeExchange = Boolean(verifier) && !pendingState;
+      phase = previous && !completesAuthorizationCodeExchange
+        ? "token-refresh"
+        : "token-exchange";
       await this.emit(phase, "started", undefined, { storage: this.store.security });
       await this.store.setTokens(value);
-      await Promise.all([
-        this.store.clear("verifier"),
-        this.store.clear("state"),
-      ]);
+      if (completesAuthorizationCodeExchange) {
+        await this.store.clear("verifier");
+      }
       await this.emit(phase, "succeeded", undefined, {
         tokenType: value.token_type,
         hasRefreshToken: Boolean(value.refresh_token),

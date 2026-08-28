@@ -141,15 +141,23 @@ function verifyPackage(packagePath) {
   );
   const packed = JSON.parse(result.stdout)[0];
   const files = new Set(packed.files.map((entry) => entry.path));
-  const requiredFiles = ["README.md", "dist/index.js", "dist/index.cjs", "dist/index.d.ts"];
+  const requiredFiles = [
+    "README.md",
+    "dist/index.js",
+    "dist/index.cjs",
+    "dist/index.d.ts",
+    "dist/index.d.cts",
+  ];
   if (packagePath === "mcpfn/testing") {
     requiredFiles.push(
       "dist/auth.js",
       "dist/auth.cjs",
       "dist/auth.d.ts",
+      "dist/auth.d.cts",
       "dist/playwright.js",
       "dist/playwright.cjs",
       "dist/playwright.d.ts",
+      "dist/playwright.d.cts",
     );
   }
   if (packagePath === "mcpfn/cli") requiredFiles.push("dist/bin.js");
@@ -246,7 +254,7 @@ const server = createMcpFnServer({
 });
 await server.serveStdio();
 `);
-  writeFileSync(roundtrip, String.raw`
+  writeFileSync(roundtrip, `
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import {

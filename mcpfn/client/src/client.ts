@@ -45,6 +45,8 @@ import type {
 } from "./types.js";
 import { McpFnClientError } from "./types.js";
 
+const DEFAULT_MAX_INVENTORY_PAGES = 1_000;
+
 export interface McpFnClientOptions {
   target: McpFnTarget;
   info?: Implementation;
@@ -58,6 +60,7 @@ export interface McpFnClientOptions {
   clock?: () => Date;
   connectRetries?: number;
   connectRetryDelayMs?: number;
+  maxInventoryPages?: number;
 }
 
 export class McpFnClient {
@@ -165,8 +168,13 @@ export class McpFnClient {
 
   constructor(options: McpFnClientOptions) {
     this.options = options;
-    if ((options.connectRetries ?? 0) < 0) {
-      throw new Error("McpFn connectRetries must not be negative");
+    const connectRetries = options.connectRetries ?? 0;
+    if (!Number.isSafeInteger(connectRetries) || connectRetries < 0) {
+      throw new Error("McpFn connectRetries must be a non-negative safe integer");
+    }
+    const maxInventoryPages = options.maxInventoryPages ?? DEFAULT_MAX_INVENTORY_PAGES;
+    if (!Number.isSafeInteger(maxInventoryPages) || maxInventoryPages < 1) {
+      throw new Error("McpFn maxInventoryPages must be a positive safe integer");
     }
     if (options.diagnostics) this.listeners.add(options.diagnostics);
     if (options.events) this.eventListeners.add(options.events);
@@ -499,66 +507,65 @@ export class McpFnClient {
   }
 
   private async listTools(options?: RequestOptions): Promise<Tool[]> {
-    return this.operation("tools/list", async () => {
-      const values: Tool[] = [];
-      let cursor: string | undefined;
-      do {
-        const page = await this.protocol.listTools(
-          cursor ? { cursor } : undefined,
-          this.observeProgress(options, "tools/list"),
-        );
-        values.push(...page.tools);
-        cursor = page.nextCursor;
-      } while (cursor);
-      return values;
+    return this.listInventory("tools/list", async (cursor) => {
+      const page = await this.protocol.listTools(
+        cursor ? { cursor } : undefined,
+        this.observeProgress(options, "tools/list"),
+      );
+      return { items: page.tools, nextCursor: page.nextCursor };
     });
   }
 
   private async listResources(options?: RequestOptions): Promise<Resource[]> {
-    return this.operation("resources/list", async () => {
-      const values: Resource[] = [];
-      let cursor: string | undefined;
-      do {
-        const page = await this.protocol.listResources(
-          cursor ? { cursor } : undefined,
-          this.observeProgress(options, "resources/list"),
-        );
-        values.push(...page.resources);
-        cursor = page.nextCursor;
-      } while (cursor);
-      return values;
+    return this.listInventory("resources/list", async (cursor) => {
+      const page = await this.protocol.listResources(
+        cursor ? { cursor } : undefined,
+        this.observeProgress(options, "resources/list"),
+      );
+      return { items: page.resources, nextCursor: page.nextCursor };
     });
   }
 
   private async listResourceTemplates(options?: RequestOptions): Promise<ResourceTemplate[]> {
-    return this.operation("resources/templates/list", async () => {
-      const values: ResourceTemplate[] = [];
-      let cursor: string | undefined;
-      do {
-        const page = await this.protocol.listResourceTemplates(
-          cursor ? { cursor } : undefined,
-          this.observeProgress(options, "resources/templates/list"),
-        );
-        values.push(...page.resourceTemplates);
-        cursor = page.nextCursor;
-      } while (cursor);
-      return values;
+    return this.listInventory("resources/templates/list", async (cursor) => {
+      const page = await this.protocol.listResourceTemplates(
+        cursor ? { cursor } : undefined,
+        this.observeProgress(options, "resources/templates/list"),
+      );
+      return { items: page.resourceTemplates, nextCursor: page.nextCursor };
     });
   }
 
   private async listPrompts(options?: RequestOptions): Promise<Prompt[]> {
-    return this.operation("prompts/list", async () => {
-      const values: Prompt[] = [];
+    return this.listInventory("prompts/list", async (cursor) => {
+      const page = await this.protocol.listPrompts(
+        cursor ? { cursor } : undefined,
+        this.observeProgress(options, "prompts/list"),
+      );
+      return { items: page.prompts, nextCursor: page.nextCursor };
+    });
+  }
+
+  private async listInventory<T>(
+    operation: string,
+    loadPage: (cursor?: string) => Promise<{ items: T[]; nextCursor?: string }>,
+  ): Promise<T[]> {
+    return this.operation(operation, async () => {
+      const values: T[] = [];
+      const seenCursors = new Set<string>();
       let cursor: string | undefined;
-      do {
-        const page = await this.protocol.listPrompts(
-          cursor ? { cursor } : undefined,
-          this.observeProgress(options, "prompts/list"),
-        );
-        values.push(...page.prompts);
+      const maxPages = this.options.maxInventoryPages ?? DEFAULT_MAX_INVENTORY_PAGES;
+      for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
+        const page = await loadPage(cursor);
+        values.push(...page.items);
+        if (!page.nextCursor) return values;
+        if (seenCursors.has(page.nextCursor)) {
+          throw inventoryPaginationError(operation, "cursor repeated");
+        }
+        seenCursors.add(page.nextCursor);
         cursor = page.nextCursor;
-      } while (cursor);
-      return values;
+      }
+      throw inventoryPaginationError(operation, `exceeded ${maxPages} pages`);
     });
   }
 
@@ -760,5 +767,13 @@ function connectAbortedError(cause?: unknown): McpFnClientError {
     "MCPFN_CONNECT_ABORTED",
     "McpFn connection was aborted",
     { phase: "transport-connect", cause },
+  );
+}
+
+function inventoryPaginationError(operation: string, reason: string): McpFnClientError {
+  return new McpFnClientError(
+    "MCPFN_OPERATION_FAILED",
+    `MCP inventory pagination failed: ${reason}`,
+    { phase: "capability-operation", details: { operation, reason } },
   );
 }

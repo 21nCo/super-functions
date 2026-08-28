@@ -1,5 +1,5 @@
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { customTarget } from "@mcpfn/client";
 import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
 
@@ -47,6 +47,18 @@ describe("McpFn target suite", () => {
     expect(JSON.stringify(report.target)).not.toContain("secret");
     expect(JSON.stringify(report.target)).not.toContain("access_token=token");
     expect(JSON.stringify(report.target)).toContain("REDACTED");
+    expect(report.timeline).toEqual(expect.arrayContaining([
+      expect.objectContaining({ phase: "transport-close", outcome: "succeeded" }),
+    ]));
+  });
+
+  it("rejects an invalid report cap before opening the target", async () => {
+    const open = vi.fn();
+    await expect(runMcpFnTargetSuite({
+      target: customTarget({ kind: "never-opened", open }),
+      maxReportBytes: 1,
+    })).rejects.toThrow(/at least 1024/);
+    expect(open).not.toHaveBeenCalled();
   });
 
   it("marks target reports incomplete when observed events exceed the scenario cap", async () => {

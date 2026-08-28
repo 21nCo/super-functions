@@ -104,14 +104,19 @@ function redactMap(
   depth: number,
   ancestors: WeakSet<object>,
 ): { type: "Map"; entries: unknown[][] } {
-  const entries = [...value.entries()]
-    .slice(0, options.maxArrayEntries)
-    .map(([key, entry]) => [
+  const entries: unknown[][] = [];
+  const iterator = value.entries();
+  while (entries.length < options.maxArrayEntries) {
+    const next = iterator.next();
+    if (next.done) break;
+    const [key, entry] = next.value;
+    entries.push([
       redact(key, options, depth + 1, ancestors),
       typeof key === "string" && isSecretKey(key)
         ? REDACTED
         : redact(entry, options, depth + 1, ancestors),
     ]);
+  }
   if (value.size > options.maxArrayEntries) entries.push(["[TRUNCATED]", "[TRUNCATED]"]);
   return { type: "Map", entries };
 }
@@ -122,9 +127,13 @@ function redactSet(
   depth: number,
   ancestors: WeakSet<object>,
 ): { type: "Set"; values: unknown[] } {
-  const values = [...value.values()]
-    .slice(0, options.maxArrayEntries)
-    .map((entry) => redact(entry, options, depth + 1, ancestors));
+  const values: unknown[] = [];
+  const iterator = value.values();
+  while (values.length < options.maxArrayEntries) {
+    const next = iterator.next();
+    if (next.done) break;
+    values.push(redact(next.value, options, depth + 1, ancestors));
+  }
   if (value.size > options.maxArrayEntries) values.push("[TRUNCATED]");
   return { type: "Set", values };
 }

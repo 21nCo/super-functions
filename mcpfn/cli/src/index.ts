@@ -123,11 +123,20 @@ export async function runCli(
             .filter(Boolean),
         });
         const results = await runScenarios(client, await loadScenarios(scenariosPath, cwd));
+        const outputMaxBytes = parsePositiveInteger(
+          options.maxReportBytes,
+          "--max-report-bytes",
+        );
+        if (outputMaxBytes !== undefined && outputMaxBytes < 1_025) {
+          throw new Error("--max-report-bytes must be an integer of at least 1025");
+        }
         const report = createMcpFnScenarioReport(results, {
           manifestHash: loaded.manifest.hash,
-          maxBytes: parsePositiveInteger(options.maxReportBytes, "--max-report-bytes"),
+          maxBytes: outputMaxBytes === undefined ? undefined : outputMaxBytes - 1,
         });
-        const serialized = `${JSON.stringify(report, null, 2)}\n`;
+        const serialized = outputMaxBytes === undefined
+          ? `${JSON.stringify(report, null, 2)}\n`
+          : `${JSON.stringify(report)}\n`;
         if (options.output) {
           await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
         }

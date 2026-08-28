@@ -2,11 +2,13 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const jiti = path.join(repoRoot, "node_modules/jiti/lib/jiti-cli.mjs");
+const cliRequire = createRequire(path.join(repoRoot, "mcpfn/cli/package.json"));
+const jiti = path.join(path.dirname(cliRequire.resolve("jiti/package.json")), "lib/jiti-cli.mjs");
 const serverSource = path.join(repoRoot, "mcpfn/examples/calculator-http-server.ts");
 const clientSource = path.join(repoRoot, "mcpfn/examples/calculator-client.ts");
 
@@ -47,10 +49,17 @@ async function stop(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   const exited = new Promise((resolve) => child.once("exit", resolve));
   child.kill("SIGTERM");
-  const timeout = new Promise((resolve) => setTimeout(resolve, 3_000, "timeout"));
-  if (await Promise.race([exited, timeout]) === "timeout") {
-    child.kill("SIGKILL");
-    await exited;
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(resolve, 3_000, "timeout");
+  });
+  try {
+    if (await Promise.race([exited, timeout]) === "timeout") {
+      child.kill("SIGKILL");
+      await exited;
+    }
+  } finally {
+    clearTimeout(timer);
   }
 }
 

@@ -62,6 +62,8 @@ export async function runMcpFnTargetSuite(
   if (!Number.isInteger(maxTimelineEvents) || maxTimelineEvents < 1) {
     throw new Error("maxTimelineEvents must be a positive integer");
   }
+  const maxReportBytes = options.maxReportBytes ?? 1_048_576;
+  validateReportCap(maxReportBytes);
   const consumerDiagnostic = options.client?.diagnostics;
   const client = await McpFnTestClient.connectTarget(
     options.target,
@@ -78,68 +80,74 @@ export async function runMcpFnTargetSuite(
       },
     },
   );
-  try {
-    if (options.manifest) {
-      await assertManifestContract(client, options.manifest, {
-        expectedToolNames: options.expectedToolNames,
-      });
+  const execution = await (async () => {
+    try {
+      if (options.manifest) {
+        await assertManifestContract(client, options.manifest, {
+          expectedToolNames: options.expectedToolNames,
+        });
+      }
+      const results = await runScenarios(client, options.scenarios ?? [], options.scenarioRun);
+      return {
+        results,
+        server: client.session.getServerVersion(),
+        capabilities: client.session.getServerCapabilities(),
+      };
+    } finally {
+      await client.close();
     }
-    const results = await runScenarios(client, options.scenarios ?? [], options.scenarioRun);
-    const failed = results.filter((result) => result.status === "failed").length;
-    const incomplete = results.filter((result) => result.status === "incomplete").length;
-    const droppedObservedEvents = results.reduce(
-      (total, result) => total + (result.droppedObservedEvents ?? 0),
-      0,
-    );
-    const artifactIncomplete = incomplete > 0 ||
-      droppedTimelineEvents > 0 ||
-      droppedObservedEvents > 0;
-    const report: McpFnTargetSuiteReport = {
-      formatVersion: 1,
-      kind: "mcpfn.target-suite-report",
-      status: artifactIncomplete ? "incomplete" : "complete",
-      runtime: { node: process.version, scenarioFormatVersion: 1 },
-      ok: failed === 0 && !artifactIncomplete,
-      target: redactOAuthValue(options.target.describe()),
-      server: client.session.getServerVersion(),
-      capabilities: client.session.getServerCapabilities(),
-      manifestChecked: Boolean(options.manifest),
-      ...(options.manifest ? { manifestHash: options.manifest.hash } : {}),
-      total: results.length,
-      passed: results.length - failed - incomplete,
-      failed,
-      incomplete,
-      droppedResults: 0,
-      droppedObservedEvents,
-      ...(droppedTimelineEvents > 0 || droppedObservedEvents > 0
-        ? {
-          incompleteReason: [
-            ...(droppedTimelineEvents > 0
-              ? ["Diagnostic timeline exceeded maxTimelineEvents"]
-              : []),
-            ...(droppedObservedEvents > 0
-              ? ["Observed client events exceeded maxObservedEvents"]
-              : []),
-          ].join("; "),
-        }
-        : {}),
-      timeline,
-      droppedTimelineEvents,
-      results,
-    };
-    return enforceReportCap(report, options.maxReportBytes ?? 1_048_576);
-  } finally {
-    await client.close();
-  }
+  })();
+  const results = execution.results;
+  const failed = results.filter((result) => result.status === "failed").length;
+  const incomplete = results.filter((result) => result.status === "incomplete").length;
+  const droppedObservedEvents = results.reduce(
+    (total, result) => total + (result.droppedObservedEvents ?? 0),
+    0,
+  );
+  const artifactIncomplete = incomplete > 0 ||
+    droppedTimelineEvents > 0 ||
+    droppedObservedEvents > 0;
+  const report: McpFnTargetSuiteReport = {
+    formatVersion: 1,
+    kind: "mcpfn.target-suite-report",
+    status: artifactIncomplete ? "incomplete" : "complete",
+    runtime: { node: process.version, scenarioFormatVersion: 1 },
+    ok: failed === 0 && !artifactIncomplete,
+    target: redactOAuthValue(options.target.describe()),
+    server: execution.server,
+    capabilities: execution.capabilities,
+    manifestChecked: Boolean(options.manifest),
+    ...(options.manifest ? { manifestHash: options.manifest.hash } : {}),
+    total: results.length,
+    passed: results.length - failed - incomplete,
+    failed,
+    incomplete,
+    droppedResults: 0,
+    droppedObservedEvents,
+    ...(droppedTimelineEvents > 0 || droppedObservedEvents > 0
+      ? {
+        incompleteReason: [
+          ...(droppedTimelineEvents > 0
+            ? ["Diagnostic timeline exceeded maxTimelineEvents"]
+            : []),
+          ...(droppedObservedEvents > 0
+            ? ["Observed client events exceeded maxObservedEvents"]
+            : []),
+        ].join("; "),
+      }
+      : {}),
+    timeline,
+    droppedTimelineEvents,
+    results,
+  };
+  return enforceReportCap(report, maxReportBytes);
 }
 
 function enforceReportCap(
   report: McpFnTargetSuiteReport,
   maxBytes: number,
 ): McpFnTargetSuiteReport {
-  if (!Number.isInteger(maxBytes) || maxBytes < 1_024) {
-    throw new Error("maxReportBytes must be an integer of at least 1024");
-  }
+  validateReportCap(maxBytes);
   const bounded = structuredClone(report);
   if (jsonBytes(bounded) > maxBytes) {
     bounded.ok = false;
@@ -166,6 +174,12 @@ function enforceReportCap(
     throw new Error("The minimum target suite report exceeds maxReportBytes");
   }
   return bounded;
+}
+
+function validateReportCap(maxBytes: number): void {
+  if (!Number.isInteger(maxBytes) || maxBytes < 1_024) {
+    throw new Error("maxReportBytes must be an integer of at least 1024");
+  }
 }
 
 function jsonBytes(value: unknown): number {

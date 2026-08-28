@@ -46,7 +46,8 @@ function normalizeIdentifier(
   value: string | URL,
   allowInsecureLoopback: boolean,
 ): string {
-  const url = new URL(value.toString());
+  const serialized = value.toString();
+  const url = new URL(serialized);
   const loopbackHttp =
     allowInsecureLoopback &&
     url.protocol === "http:" &&
@@ -56,7 +57,9 @@ function normalizeIdentifier(
     url.username ||
     url.password ||
     url.search ||
-    url.hash
+    url.hash ||
+    serialized.includes("?") ||
+    serialized.includes("#")
   ) {
     throw new TypeError(
       "OAuth authorization server identifiers must use HTTPS without userinfo, query, or fragment",

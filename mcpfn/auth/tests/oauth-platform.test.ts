@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   MemoryMcpFnOAuthSessionStore,
   createAuthProviderMcpHandler,
+  createEncryptedMcpFnOAuthSessionStore,
   createMcpAuthorizationCompatibilityHandler,
   createMcpFnOAuthClientProvider,
   matchMcpRedirectUri,
@@ -91,6 +92,43 @@ describe("McpFn OAuth client compatibility", () => {
     expect(store.security).toBe("memory");
   });
 
+  it("uses an unambiguous encrypted-session envelope", async () => {
+    const records = new Map<string, { ciphertext: string; keyRef: string }>();
+    records.set("oauth:tokens", {
+      ciphertext: JSON.stringify({
+        access_token: "legacy-token",
+        token_type: "Bearer",
+        formatVersion: 1,
+        value: { access_token: "nested-token" },
+      }),
+      keyRef: "key-1",
+    });
+    const store = createEncryptedMcpFnOAuthSessionStore({
+      namespace: "oauth",
+      keyRef: "key-1",
+      cipher: {
+        encrypt: async (plaintext) => plaintext,
+        decrypt: async (ciphertext) => ciphertext,
+      },
+      store: {
+        get: async (key) => records.get(key) ?? null,
+        put: async (key, value) => { records.set(key, value); },
+        delete: async (key) => { records.delete(key); },
+      },
+    });
+
+    await expect(store.getTokens()).resolves.toMatchObject({
+      access_token: "legacy-token",
+      value: { access_token: "nested-token" },
+    });
+    await store.setTokens({ access_token: "new-token", token_type: "Bearer" });
+    expect(JSON.parse(records.get("oauth:tokens")!.ciphertext)).toMatchObject({
+      kind: "mcpfn.oauth-session-envelope",
+      formatVersion: 1,
+      value: { access_token: "new-token" },
+    });
+  });
+
   it("correlates callback state and classifies later token saves as refreshes", async () => {
     const diagnostics: Array<{ phase: string }> = [];
     const provider = createMcpFnOAuthClientProvider({
@@ -135,16 +173,12 @@ describe("McpFn OAuth client compatibility", () => {
       "http://localhost:43123/callback",
       ["http://localhost/callback"],
     )).toThrow(/not registered/);
-    try {
-      matchMcpRedirectUri(
+    expect(() => matchMcpRedirectUri(
         "https://user:password@client.example.com/wrong?code=secret",
         ["https://client.example.com/callback"],
-      );
-    } catch (error) {
-      expect(error).toMatchObject({
-        requested: "https://client.example.com/wrong?redacted",
-      });
-    }
+      )).toThrow(expect.objectContaining({
+      requested: "https://client.example.com/wrong?redacted",
+    }));
     expect(() => matchMcpRedirectUri(
       "not a URI",
       ["https://client.example.com/callback"],
@@ -191,7 +225,8 @@ describe("McpFn OAuth client compatibility", () => {
     });
     await provider.saveClientInformation({ client_id: "client-1" });
     await provider.saveCodeVerifier("verifier");
-    await provider.state();
+    const state = await provider.state();
+    await provider.validateAuthorizationState(state);
     await provider.saveTokens({ access_token: "access", token_type: "Bearer" });
     await expect(provider.codeVerifier()).rejects.toThrow(/No PKCE verifier/);
     await expect(provider.validateAuthorizationState("stale")).rejects.toThrow(/state/);
@@ -217,7 +252,7 @@ describe("McpFn OAuth client compatibility", () => {
     }));
   });
 
-  it("classifies a verifier-bound save as exchange and reports storage failures", async () => {
+  it("preserves pending authorization during refresh and reports storage failures", async () => {
     const diagnostics: Array<{ phase: string; outcome: string; code?: string }> = [];
     const store = new MemoryMcpFnOAuthSessionStore();
     const provider = createMcpFnOAuthClientProvider({
@@ -229,11 +264,14 @@ describe("McpFn OAuth client compatibility", () => {
     });
     await provider.saveTokens({ access_token: "old", token_type: "Bearer" });
     await provider.saveCodeVerifier("v".repeat(43));
+    const pendingState = await provider.state();
     await provider.saveTokens({ access_token: "new", token_type: "Bearer" });
     expect(diagnostics.at(-1)).toMatchObject({
-      phase: "token-exchange",
+      phase: "token-refresh",
       outcome: "succeeded",
     });
+    await expect(provider.codeVerifier()).resolves.toBe("v".repeat(43));
+    await expect(provider.validateAuthorizationState(pendingState)).resolves.toBeUndefined();
 
     class FailingStore extends MemoryMcpFnOAuthSessionStore {
       override async setTokens(): Promise<void> {
@@ -524,6 +562,35 @@ describe("McpFn hosted authorization compatibility", () => {
     })).toThrow(/canonical absolute path/);
   });
 
+  it("requires HTTPS issuers unless literal-loopback HTTP is explicitly enabled", () => {
+    const create = (issuer: string, allowInsecureLoopbackIssuer = false) =>
+      createMcpAuthorizationCompatibilityHandler({
+        issuer,
+        allowInsecureLoopbackIssuer,
+        clients: { resolve: async () => null },
+        authorize: async () => Response.json({ ok: true }),
+        tokenAuthority: {
+          exchangeAuthorizationCode: async () => ({
+            access_token: "opaque",
+            token_type: "Bearer",
+          }),
+        },
+      });
+    expect(() => create("http://login.example.com")).toThrow(/must use HTTPS/);
+    expect(() => create("http://localhost:8787", true)).toThrow(/must use HTTPS/);
+    expect(() => create("http://127.0.0.1:8787", true)).not.toThrow();
+    expect(() => create("https://login.example.com/tenant?")).toThrow(/must use HTTPS/);
+    expect(() => create("https://login.example.com/tenant#")).toThrow(/must use HTTPS/);
+  });
+
+  it("rejects sparse registration arrays", () => {
+    expect(() => normalizeMcpClientRegistration({
+      clientId: "sparse-client",
+      source: "pre-registered",
+      metadata: { redirect_uris: new Array(1) },
+    })).toThrow(/redirect_uris must be an array of strings/);
+  });
+
   it("rejects unsafe redirects before persisting a dynamic registration", async () => {
     const register = vi.fn();
     const compatibility = createMcpAuthorizationCompatibilityHandler({
@@ -716,6 +783,33 @@ describe("McpFn hosted authorization compatibility", () => {
     expect(fetch).toHaveBeenCalledOnce();
     expect(fetch.mock.calls[0]?.[1]).toMatchObject({ redirect: "manual" });
     expect(fetch.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("maps malformed Client ID Metadata Document redirects to invalid_client", async () => {
+    const clientId = "https://clients.example.com/client.json";
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      clients: { resolve: async () => null },
+      authorize: async () => Response.json({ ok: true }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({ access_token: "opaque", token_type: "Bearer" }),
+      },
+      clientMetadataDocuments: {
+        enabled: true,
+        allow: async () => true,
+        fetch: async () => new Response(null, {
+          status: 302,
+          headers: { location: "https://[invalid" },
+        }),
+      },
+    });
+
+    const response = await compatibility(new Request(authorizationUrl(
+      clientId,
+      "https://client.example.com/callback",
+    )));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: "invalid_client" });
   });
 
   it("rejects incompatible Client ID Metadata Documents before authorization", async () => {
@@ -981,7 +1075,7 @@ describe("McpFn hosted authorization compatibility", () => {
 
   it("negotiates secret client authentication and rejects method drift", async () => {
     const secretClient = normalizeMcpClientRegistration({
-      clientId: "secret-client",
+      clientId: "secret client",
       source: "pre-registered",
       metadata: {
         redirect_uris: ["https://client.example.com/callback"],
@@ -989,8 +1083,10 @@ describe("McpFn hosted authorization compatibility", () => {
         token_endpoint_auth_method: "client_secret_basic",
       },
     });
-    const authenticateClient = vi.fn(async (input: { clientSecret: string }) =>
-      input.clientSecret === "correct");
+    const authenticateClient = vi.fn(async (input: {
+      client: { clientId: string };
+      clientSecret: string;
+    }) => input.client.clientId === "secret client" && input.clientSecret === "correct secret");
     const compatibility = createMcpAuthorizationCompatibilityHandler({
       issuer,
       clients: { resolve: async (clientId) => clientId === secretClient.clientId ? secretClient : null },
@@ -1011,7 +1107,7 @@ describe("McpFn hosted authorization compatibility", () => {
       method: "POST",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        authorization: `bAsIc ${btoa("secret-client:correct")}`,
+        authorization: `bAsIc ${btoa("secret+client:correct+secret")}`,
       },
       body,
     }));
@@ -1020,7 +1116,7 @@ describe("McpFn hosted authorization compatibility", () => {
     const drift = await compatibility(new Request(`${issuer}/token`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ ...Object.fromEntries(body), client_id: "secret-client" }),
+      body: new URLSearchParams({ ...Object.fromEntries(body), client_id: "secret client" }),
     }));
     expect(drift.status).toBe(401);
     await expect(drift.json()).resolves.toMatchObject({ error: "invalid_client" });
@@ -1107,6 +1203,7 @@ describe("generic auth provider composition", () => {
     const authenticate = vi.fn(async (request: Request) => {
       expect(request.headers.get("authorization")).toBe("Bearer trusted-token");
       expect(request.headers.get("cookie")).toBeNull();
+      expect(request.credentials).toBe("omit");
       return {
         id: "client-1",
         type: "oauth",
@@ -1156,6 +1253,25 @@ describe("generic auth provider composition", () => {
     );
     expect(authorize).toHaveBeenCalledWith(session, "https://mcp.example.com/mcp");
     expect(downstream).not.toHaveBeenCalled();
+  });
+
+  it("reports provider faults as unavailable instead of invalid_token", async () => {
+    const handler = createAuthProviderMcpHandler(
+      async () => Response.json({ ok: true }),
+      {
+        resource: "https://mcp.example.com/mcp",
+        provider: {
+          authenticateBearer: async () => { throw new Error("provider offline"); },
+        },
+      },
+    );
+    const response = await handler(new Request("https://mcp.example.com/mcp", {
+      headers: { authorization: "Bearer opaque-token" },
+    }));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("www-authenticate")).toBeNull();
+    await expect(response.json()).resolves.toMatchObject({ error: "temporarily_unavailable" });
   });
 
   it("rejects missing bearer credentials before invoking the provider", async () => {

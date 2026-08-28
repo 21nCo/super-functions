@@ -46,6 +46,18 @@ function isRegistryExport(value: unknown): value is McpFnRegistry<unknown> {
   );
 }
 
+function isDeclarationExport(value: unknown): value is {
+  manifest(): McpFnManifest;
+  createServer(): McpFnServer<unknown>;
+} {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    typeof (value as { manifest?: unknown }).manifest === "function" &&
+    typeof (value as { createServer?: unknown }).createServer === "function",
+  );
+}
+
 export async function loadManifestSource(
   file: string,
   cwd = process.cwd(),
@@ -56,6 +68,13 @@ export async function loadManifestSource(
   // project commonly load separate physical copies of @mcpfn/core.
   if (isServerExport(value)) {
     return { manifest: validateManifest(value.manifest()), server: value };
+  }
+  if (isDeclarationExport(value)) {
+    const server = value.createServer();
+    if (!isServerExport(server)) {
+      throw new Error("McpFn declaration createServer() did not return a server");
+    }
+    return { manifest: validateManifest(value.manifest()), server };
   }
   if (isRegistryExport(value)) {
     if (!info) {

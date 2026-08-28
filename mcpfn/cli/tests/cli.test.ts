@@ -82,6 +82,19 @@ describe("mcpfn CLI", () => {
       server: expect.any(Object),
     });
 
+    const coreUrl = pathToFileURL(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../core/src/index.ts"),
+    ).href;
+    await writeFile(
+      path.join(root, "declaration.mjs"),
+      `import { defineMcpFnServer } from ${JSON.stringify(coreUrl)};
+       export default defineMcpFnServer({ info: { name: "declared", version: "1.0.0" } });`,
+    );
+    await expect(loadManifestSource("declaration.mjs", root)).resolves.toMatchObject({
+      manifest: { server: { name: "declared" } },
+      server: expect.any(Object),
+    });
+
     await writeFile(
       path.join(root, "registry.mjs"),
       `const tools = ["z", "a"].map((name) => ({
@@ -101,6 +114,44 @@ describe("mcpfn CLI", () => {
       name: "foreign",
       version: "1.0.0",
     })).rejects.toThrow(/sorted and unique/);
+  });
+
+  it("enforces max-report-bytes against the exact CLI serialization", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-report-cap-"));
+    roots.push(root);
+    const coreUrl = pathToFileURL(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../core/src/index.ts"),
+    ).href;
+    await writeFile(
+      path.join(root, "server.mjs"),
+      `import { defineMcpFnServer, structuredResult } from ${JSON.stringify(coreUrl)};
+       export default defineMcpFnServer({
+         info: { name: "report-cap", version: "1.0.0" },
+         tools: [{
+           name: "noop", description: "No operation.", inputSchema: { type: "object" },
+           handler: async () => structuredResult({ ok: true })
+         }]
+       });`,
+    );
+    await writeFile(
+      path.join(root, "scenarios.json"),
+      JSON.stringify(Array.from({ length: 30 }, (_, index) => ({
+        name: `initialize ${index} ${"x".repeat(80)}`,
+        kind: "initialize",
+      }))),
+    );
+    let output = "";
+    const exitCode = await runCli([
+      "test",
+      "server.mjs",
+      "scenarios.json",
+      "--max-report-bytes",
+      "1025",
+    ], { cwd: root, stdout: (value) => { output += value; } });
+
+    expect(exitCode).toBe(1);
+    expect(new TextEncoder().encode(output).byteLength).toBeLessThanOrEqual(1_025);
+    expect(JSON.parse(output)).toMatchObject({ status: "incomplete" });
   });
 
   it("returns test-failure exit code 1 for a manifest contract mismatch", async () => {

@@ -90,10 +90,7 @@ export class McpFnTestClient<TContext = undefined> {
   }
 
   listTools(options?: RequestOptions): Promise<Tool[]> { return this.session.tools.listAll(options); }
-  callTool(name: string, args: Record<string, unknown> = {}): Promise<CallToolResult> {
-    return this.session.tools.call(name, args);
-  }
-  callToolWithOptions(
+  callTool(
     name: string,
     args: Record<string, unknown> = {},
     options?: RequestOptions,
@@ -103,36 +100,21 @@ export class McpFnTestClient<TContext = undefined> {
   createToolTask(
     name: string,
     args: Record<string, unknown> = {},
-    options: { ttl?: number } = {},
-  ): Promise<CreateTaskResult> {
-    return this.session.tools.createTask(name, args, options);
-  }
-  createToolTaskWithOptions(
-    name: string,
-    args: Record<string, unknown> = {},
     task: { ttl?: number } = {},
     options?: RequestOptions,
   ): Promise<CreateTaskResult> {
     return this.session.tools.createTask(name, args, task, options);
   }
-  getTask(taskId: string): Promise<Task> { return this.session.tasks.get(taskId); }
-  getTaskResult(taskId: string): Promise<CallToolResult> {
-    return this.session.tasks.result(taskId);
-  }
-  listTasks(cursor?: string): Promise<ListTasksResult> {
-    return this.session.tasks.list(cursor);
-  }
-  cancelTask(taskId: string): Promise<Task> { return this.session.tasks.cancel(taskId); }
-  getTaskWithOptions(taskId: string, options?: RequestOptions): Promise<Task> {
+  getTask(taskId: string, options?: RequestOptions): Promise<Task> {
     return this.session.tasks.get(taskId, options);
   }
-  getTaskResultWithOptions(taskId: string, options?: RequestOptions): Promise<CallToolResult> {
+  getTaskResult(taskId: string, options?: RequestOptions): Promise<CallToolResult> {
     return this.session.tasks.result(taskId, options);
   }
-  listTasksWithOptions(cursor?: string, options?: RequestOptions): Promise<ListTasksResult> {
+  listTasks(cursor?: string, options?: RequestOptions): Promise<ListTasksResult> {
     return this.session.tasks.list(cursor, options);
   }
-  cancelTaskWithOptions(taskId: string, options?: RequestOptions): Promise<Task> {
+  cancelTask(taskId: string, options?: RequestOptions): Promise<Task> {
     return this.session.tasks.cancel(taskId, options);
   }
   listResources(options?: RequestOptions): Promise<Resource[]> {
@@ -141,31 +123,19 @@ export class McpFnTestClient<TContext = undefined> {
   listResourceTemplates(options?: RequestOptions): Promise<ResourceTemplate[]> {
     return this.session.resources.listTemplatesAll(options);
   }
-  readResource(uri: string): Promise<ReadResourceResult> {
-    return this.session.resources.read(uri);
-  }
-  readResourceWithOptions(uri: string, options?: RequestOptions): Promise<ReadResourceResult> {
+  readResource(uri: string, options?: RequestOptions): Promise<ReadResourceResult> {
     return this.session.resources.read(uri, options);
   }
-  subscribeResource(uri: string): Promise<void> {
-    return this.session.resources.subscribe(uri);
-  }
-  subscribeResourceWithOptions(uri: string, options?: RequestOptions): Promise<void> {
+  subscribeResource(uri: string, options?: RequestOptions): Promise<void> {
     return this.session.resources.subscribe(uri, options);
   }
-  unsubscribeResource(uri: string): Promise<void> {
-    return this.session.resources.unsubscribe(uri);
-  }
-  unsubscribeResourceWithOptions(uri: string, options?: RequestOptions): Promise<void> {
+  unsubscribeResource(uri: string, options?: RequestOptions): Promise<void> {
     return this.session.resources.unsubscribe(uri, options);
   }
   listPrompts(options?: RequestOptions): Promise<Prompt[]> {
     return this.session.prompts.listAll(options);
   }
-  getPrompt(name: string, args?: Record<string, string>): Promise<GetPromptResult> {
-    return this.session.prompts.get(name, args);
-  }
-  getPromptWithOptions(
+  getPrompt(
     name: string,
     args?: Record<string, string>,
     options?: RequestOptions,

@@ -54,6 +54,48 @@ describe("McpFn production client", () => {
     await client.close();
   });
 
+  it("rejects repeated inventory cursors and enforces the overall page cap", async () => {
+    const server = createMcpFnServer({
+      info: { name: "pagination-bounds", version: "1.0.0" },
+      registry: new McpFnRegistry(),
+    });
+    const client = createMcpFnClient({
+      target: customTarget({
+        kind: "in-memory",
+        open: async () => {
+          const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+          await server.connect(serverTransport);
+          return { transport: clientTransport, close: () => server.close() };
+        },
+      }),
+      maxInventoryPages: 2,
+    });
+    await client.connect();
+
+    const listTools = vi.spyOn(client.protocol, "listTools").mockResolvedValue({
+      tools: [],
+      nextCursor: "repeated",
+    });
+    await expect(client.tools.listAll()).rejects.toMatchObject({
+      code: "MCPFN_OPERATION_FAILED",
+      details: { operation: "tools/list", reason: "cursor repeated" },
+    });
+    expect(listTools).toHaveBeenCalledTimes(2);
+
+    let resourcePage = 0;
+    vi.spyOn(client.protocol, "listResources").mockImplementation(async () => ({
+      resources: [],
+      nextCursor: `page-${++resourcePage}`,
+    }));
+    await expect(client.resources.listAll()).rejects.toMatchObject({
+      code: "MCPFN_OPERATION_FAILED",
+      details: { operation: "resources/list", reason: "exceeded 2 pages" },
+    });
+    expect(resourcePage).toBe(2);
+
+    await client.close();
+  });
+
   it("redacts target queries before diagnostics are emitted", async () => {
     const events: unknown[] = [];
     const client = createMcpFnClient({
@@ -79,13 +121,23 @@ describe("McpFn production client", () => {
     const client = createMcpFnClient({
       target: customTarget({ kind: "unused", open: () => { throw new Error("unused"); } }),
     });
+    try {
+      const waiting = client.waitForEvent(() => false, { signal: controller.signal });
+      expect(unref).not.toHaveBeenCalled();
+      controller.abort();
+      await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
+  });
 
-    const waiting = client.waitForEvent(() => false, { signal: controller.signal });
-    expect(unref).not.toHaveBeenCalled();
-    controller.abort();
-    await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
-
-    setTimeoutSpy.mockRestore();
+  it("rejects non-integer and non-finite connection retry counts", () => {
+    const target = customTarget({ kind: "unused", open: () => { throw new Error("unused"); } });
+    for (const connectRetries of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => createMcpFnClient({ target, connectRetries })).toThrow(
+        /non-negative safe integer/,
+      );
+    }
   });
 
   it("treats falsy target-open rejections as retryable failures", async () => {
