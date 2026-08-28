@@ -246,6 +246,7 @@ export function validateMcpAuthorizationRequest(options: {
     (authorizationParameter(url, "scope") ?? "").split(/\s+/).filter(Boolean),
   );
   assertSupportedScopes(scopes, options.supportedScopes);
+  assertScopesWithinClientRegistration(scopes, options.client);
   const state = normalizeAuthorizationState(
     authorizationParameter(url, "state"),
   );
@@ -643,10 +644,7 @@ function assertCompatibleClientRegistration(
       "grant_types must include authorization_code",
     );
   }
-  const scopes =
-    typeof registration.metadata.scope === "string"
-      ? unique(registration.metadata.scope.split(/\s+/).filter(Boolean))
-      : [];
+  const scopes = registeredClientScopes(registration) ?? [];
   assertSupportedScopes(scopes, supportedScopes);
 }
 
@@ -737,29 +735,35 @@ async function handleTokenRequest(
   request: Request,
   supportedMethods: McpFnHostedTokenEndpointAuthMethod[],
 ): Promise<Response> {
-  const callbackRequest = request.clone();
-  const form = await readBoundedForm(request, 64_000);
-  const grantType = singleFormValue(form, "grant_type", true)!;
-  const authentication = await authenticateHostedClient(
-    options,
-    form,
-    callbackRequest,
-    supportedMethods,
-  );
-  const tokenSet = await issueHostedToken(
-    grantType,
-    options,
-    authentication,
-    form,
-    callbackRequest,
-  );
-  validateHostedTokenSet(tokenSet);
-  await emit(options, grantType === "refresh_token" ? "token-refresh" : "token-exchange", "succeeded", undefined, {
-    clientId: authentication.client.clientId,
-    tokenEndpointAuthMethod: authentication.method,
-    hasRefreshToken: Boolean(tokenSet.refresh_token),
-  });
-  return json(200, tokenSet);
+  const authenticationRequest = request.clone();
+  const tokenAuthorityRequest = request.clone();
+  try {
+    const form = await readBoundedForm(request, 64_000);
+    const grantType = singleFormValue(form, "grant_type", true)!;
+    const authentication = await authenticateHostedClient(
+      options,
+      form,
+      authenticationRequest,
+      supportedMethods,
+    );
+    const tokenSet = await issueHostedToken(
+      grantType,
+      options,
+      authentication,
+      form,
+      tokenAuthorityRequest,
+    );
+    validateHostedTokenSet(tokenSet);
+    await emit(options, grantType === "refresh_token" ? "token-refresh" : "token-exchange", "succeeded", undefined, {
+      clientId: authentication.client.clientId,
+      tokenEndpointAuthMethod: authentication.method,
+      hasRefreshToken: Boolean(tokenSet.refresh_token),
+    });
+    return json(200, tokenSet);
+  } finally {
+    void authenticationRequest.body?.cancel().catch(() => undefined);
+    void tokenAuthorityRequest.body?.cancel().catch(() => undefined);
+  }
 }
 
 function issueHostedToken(
@@ -847,6 +851,7 @@ async function refreshHostedToken(
   const credential = singleFormValue(form, "refresh_token", true)!;
   const scopes = unique((singleFormValue(form, "scope") ?? "").split(/\s+/).filter(Boolean));
   assertSupportedScopes(scopes, options.supportedScopes);
+  assertScopesWithinClientRegistration(scopes, authentication.client);
   const resource = normalizeOptionalResource(form, options.allowedResources);
   assertRequiredTokenResource(options, resource, "refresh_token");
   return withSerializedRefresh(options.tokenAuthority, credential, async () => {
@@ -883,28 +888,34 @@ async function handleRevocationRequest(
   request: Request,
   supportedMethods: McpFnHostedTokenEndpointAuthMethod[],
 ): Promise<Response> {
-  const callbackRequest = request.clone();
-  const form = await readBoundedForm(request, 64_000);
-  const authentication = await authenticateHostedClient(
-    options,
-    form,
-    callbackRequest,
-    supportedMethods,
-  );
-  const rawHint = singleFormValue(form, "token_type_hint");
-  const tokenTypeHint = rawHint === "access_token" || rawHint === "refresh_token"
-    ? rawHint
-    : undefined;
-  await options.tokenAuthority.revokeToken!({
-    ...authentication,
-    token: singleFormValue(form, "token", true)!,
-    ...(tokenTypeHint ? { tokenTypeHint } : {}),
-  }, callbackRequest);
-  await emit(options, "token-revocation", "succeeded", undefined, {
-    clientId: authentication.client.clientId,
-    tokenEndpointAuthMethod: authentication.method,
-  });
-  return new Response(null, { status: 200, headers: { "cache-control": "no-store" } });
+  const authenticationRequest = request.clone();
+  const revocationRequest = request.clone();
+  try {
+    const form = await readBoundedForm(request, 64_000);
+    const authentication = await authenticateHostedClient(
+      options,
+      form,
+      authenticationRequest,
+      supportedMethods,
+    );
+    const rawHint = singleFormValue(form, "token_type_hint");
+    const tokenTypeHint = rawHint === "access_token" || rawHint === "refresh_token"
+      ? rawHint
+      : undefined;
+    await options.tokenAuthority.revokeToken!({
+      ...authentication,
+      token: singleFormValue(form, "token", true)!,
+      ...(tokenTypeHint ? { tokenTypeHint } : {}),
+    }, revocationRequest);
+    await emit(options, "token-revocation", "succeeded", undefined, {
+      clientId: authentication.client.clientId,
+      tokenEndpointAuthMethod: authentication.method,
+    });
+    return new Response(null, { status: 200, headers: { "cache-control": "no-store" } });
+  } finally {
+    void authenticationRequest.body?.cancel().catch(() => undefined);
+    void revocationRequest.body?.cancel().catch(() => undefined);
+  }
 }
 
 async function authenticateHostedClient(
@@ -1046,6 +1057,37 @@ function assertSupportedScopes(scopes: string[], supportedScopes?: ReadonlyArray
     throw new McpFnHostedAuthorizationError("invalid_scope", "Requested MCP scope is unsupported", {
       details: { unsupportedScopes: unsupported },
     });
+  }
+}
+
+function registeredClientScopes(
+  client: McpFnNormalizedClientRegistration,
+): string[] | undefined {
+  const value: unknown = client.metadata.scope;
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client_metadata",
+      "scope must be a space-delimited string",
+    );
+  }
+  return unique(value.split(/\s+/).filter(Boolean));
+}
+
+function assertScopesWithinClientRegistration(
+  scopes: string[],
+  client: McpFnNormalizedClientRegistration,
+): void {
+  const registeredScopes = registeredClientScopes(client);
+  if (!registeredScopes) return;
+  const registered = new Set(registeredScopes);
+  const unauthorized = scopes.filter((scope) => !registered.has(scope));
+  if (unauthorized.length) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_scope",
+      "Requested MCP scope exceeds the client registration",
+      { details: { unauthorizedScopes: unauthorized } },
+    );
   }
 }
 

@@ -694,6 +694,10 @@ describe("McpFn hosted authorization compatibility", () => {
         redirect_uris: ["https://client.example/callback"],
         scope: "mcp:read admin:all",
       },
+      {
+        redirect_uris: ["https://client.example/callback"],
+        scope: ["mcp:read"],
+      },
     ]) {
       const response = await compatibility(
         new Request(`${issuer}/register`, {
@@ -705,6 +709,61 @@ describe("McpFn hosted authorization compatibility", () => {
       expect(response.status).toBe(400);
     }
     expect(register).not.toHaveBeenCalled();
+  });
+
+  it("enforces a registered client scope ceiling for authorization and refresh", async () => {
+    const limitedClient = normalizeMcpClientRegistration({
+      clientId: "limited-client",
+      source: "pre-registered",
+      metadata: {
+        redirect_uris: ["https://client.example.com/callback"],
+        grant_types: ["authorization_code", "refresh_token"],
+        token_endpoint_auth_method: "none",
+        scope: "mcp:read",
+      },
+    });
+    const refreshToken = vi.fn(async () => ({
+      access_token: "access-2",
+      token_type: "Bearer",
+      refresh_token: "refresh-2",
+    }));
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      clients: {
+        resolve: async (clientId) => clientId === limitedClient.clientId ? limitedClient : null,
+      },
+      supportedScopes: ["mcp:read", "mcp:write"],
+      allowedResources: [resource],
+      authorize: async () => Response.json({ ok: true }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({
+          access_token: "access-1",
+          token_type: "Bearer",
+        }),
+        refreshToken,
+      },
+    });
+    const authorize = authorizationUrl(limitedClient.clientId, limitedClient.redirectUris[0]);
+    authorize.searchParams.set("scope", "mcp:write");
+
+    const authorizationResponse = await compatibility(new Request(authorize));
+    expect(authorizationResponse.status).toBe(302);
+    expect(new URL(authorizationResponse.headers.get("location")!).searchParams.get("error"))
+      .toBe("invalid_scope");
+
+    const refreshResponse = await compatibility(new Request(`${issuer}/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: limitedClient.clientId,
+        refresh_token: "refresh-1",
+        scope: "mcp:write",
+      }),
+    }));
+    expect(refreshResponse.status).toBe(400);
+    await expect(refreshResponse.json()).resolves.toMatchObject({ error: "invalid_scope" });
+    expect(refreshToken).not.toHaveBeenCalled();
   });
 
   it("revalidates client metadata after registration persistence transforms it", async () => {
@@ -1074,19 +1133,23 @@ describe("McpFn hosted authorization compatibility", () => {
   });
 
   it("negotiates secret client authentication and rejects method drift", async () => {
+    const callbackBodies: string[] = [];
     const secretClient = normalizeMcpClientRegistration({
       clientId: "secret client",
       source: "pre-registered",
       metadata: {
         redirect_uris: ["https://client.example.com/callback"],
-        grant_types: ["authorization_code"],
+        grant_types: ["authorization_code", "refresh_token"],
         token_endpoint_auth_method: "client_secret_basic",
       },
     });
     const authenticateClient = vi.fn(async (input: {
       client: { clientId: string };
       clientSecret: string;
-    }) => input.client.clientId === "secret client" && input.clientSecret === "correct secret");
+    }, request: Request) => {
+      callbackBodies.push(await request.text());
+      return input.client.clientId === "secret client" && input.clientSecret === "correct secret";
+    });
     const compatibility = createMcpAuthorizationCompatibilityHandler({
       issuer,
       clients: { resolve: async (clientId) => clientId === secretClient.clientId ? secretClient : null },
@@ -1094,9 +1157,20 @@ describe("McpFn hosted authorization compatibility", () => {
       capabilities: { tokenEndpointAuthMethods: ["client_secret_basic"] },
       tokenAuthority: {
         authenticateClient,
-        exchangeAuthorizationCode: async () => ({ access_token: "access", token_type: "Bearer" }),
+        exchangeAuthorizationCode: async (_input, request) => {
+          callbackBodies.push(await request.text());
+          return { access_token: "access", token_type: "Bearer", refresh_token: "refresh-1" };
+        },
+        refreshToken: async (_input, request) => {
+          callbackBodies.push(await request.text());
+          return { access_token: "access-2", token_type: "Bearer", refresh_token: "refresh-2" };
+        },
+        revokeToken: async (_input, request) => {
+          callbackBodies.push(await request.text());
+        },
       },
     });
+    const authorization = `bAsIc ${btoa("secret+client:correct+secret")}`;
     const body = new URLSearchParams({
       grant_type: "authorization_code",
       code: "code",
@@ -1107,12 +1181,13 @@ describe("McpFn hosted authorization compatibility", () => {
       method: "POST",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        authorization: `bAsIc ${btoa("secret+client:correct+secret")}`,
+        authorization,
       },
       body,
     }));
     expect(accepted.status).toBe(200);
     expect(authenticateClient).toHaveBeenCalledOnce();
+    expect(callbackBodies).toEqual([body.toString(), body.toString()]);
     const drift = await compatibility(new Request(`${issuer}/token`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -1120,6 +1195,36 @@ describe("McpFn hosted authorization compatibility", () => {
     }));
     expect(drift.status).toBe(401);
     await expect(drift.json()).resolves.toMatchObject({ error: "invalid_client" });
+
+    const refreshBody = new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: "refresh-1",
+    });
+    expect((await compatibility(new Request(`${issuer}/token`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        authorization,
+      },
+      body: refreshBody,
+    }))).status).toBe(200);
+    const revocationBody = new URLSearchParams({ token: "access-2" });
+    expect((await compatibility(new Request(`${issuer}/revoke`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        authorization,
+      },
+      body: revocationBody,
+    }))).status).toBe(200);
+    expect(callbackBodies).toEqual([
+      body.toString(),
+      body.toString(),
+      refreshBody.toString(),
+      refreshBody.toString(),
+      revocationBody.toString(),
+      revocationBody.toString(),
+    ]);
   });
 
   it("isolates hosted authorization diagnostic observer failures", async () => {
