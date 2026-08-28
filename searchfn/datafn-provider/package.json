@@ -1,6 +1,6 @@
 {
   "name": "@searchfn/datafn-provider",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Factory that bridges any SearchAdapter into a DataFn SearchProvider.",
   "license": "MIT",
   "type": "module",
@@ -49,11 +49,11 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@searchfn/adapter-contracts": "^0.3.0",
+    "@searchfn/adapter-contracts": "^0.4.0",
     "@superfunctions/observability": "0.0.1"
   },
   "peerDependencies": {
-    "@datafn/core": "0.0.4"
+    "@datafn/core": "0.1.0"
   },
   "devDependencies": {
     "@datafn/core": "*",
