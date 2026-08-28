@@ -20,7 +20,6 @@ export class McpFnRedirectMismatchError extends Error {
     this.requested = redactRedirect(requested);
   }
 }
-
 /**
  * Normalize a registered or requested redirect under the MCP OAuth profile.
  * HTTPS is the default. Plain HTTP is restricted to loopback hosts and
@@ -43,7 +42,7 @@ export function normalizeMcpRedirectUri(
   if (url.protocol === "http:" && isLoopback(url, policy)) return url.toString();
   if (
     policy.allowPrivateUseSchemes === true &&
-    !["http:", "https:", "javascript:", "data:", "file:"].includes(url.protocol)
+    isReverseDomainPrivateUseScheme(url.protocol)
   ) {
     return url.toString();
   }
@@ -82,6 +81,13 @@ export function matchMcpRedirectUri(
     }
   }
   throw new McpFnRedirectMismatchError(actual.toString());
+}
+
+function isReverseDomainPrivateUseScheme(protocol: string): boolean {
+  const scheme = protocol.slice(0, -1).toLowerCase();
+  return /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z](?:[a-z0-9-]*[a-z0-9])?$/.test(
+    scheme,
+  );
 }
 
 function isLoopback(url: URL, policy: McpFnRedirectPolicy): boolean {

@@ -445,13 +445,17 @@ describe("McpFn testing", () => {
       });
       expect(JSON.parse(body)).toEqual({ ok: true });
       expect(authorization).toBe("Bearer conformance-secret");
-      expect(host).toBe("untrusted.example.test");
+      expect(host).toBe(`127.0.0.1:${address.port}`);
     } finally {
       await proxy.close();
       await new Promise<void>((resolve, reject) => {
         upstream.close((error) => (error ? reject(error) : resolve()));
       });
     }
+    await expect(createAuthenticatedConformanceProxy({
+      url: "https://mcp.example.com/mcp",
+      headers: { authorization: "Bearer conformance-secret" },
+    })).rejects.toThrow(/literal loopback address/);
   });
 
   it("reports degraded and incompatible host-profile matches", () => {

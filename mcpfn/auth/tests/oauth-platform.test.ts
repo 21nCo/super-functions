@@ -54,6 +54,19 @@ describe("McpFn OAuth client compatibility", () => {
       ["com.example.app:/callback"],
       { allowPrivateUseSchemes: true },
     ).kind).toBe("exact");
+    for (const unsafe of [
+      "javascript:alert(1)",
+      "data:text/plain,callback",
+      "file:///tmp/callback",
+      "vbscript:msgbox(1)",
+      "myapp:/callback",
+    ]) {
+      expect(() => matchMcpRedirectUri(
+        unsafe,
+        [unsafe],
+        { allowPrivateUseSchemes: true },
+      )).toThrow(/not registered/);
+    }
   });
 
   it("stores no credentials persistently unless an encrypted store is supplied", async () => {
@@ -239,7 +252,6 @@ describe("McpFn OAuth client compatibility", () => {
     });
   });
 });
-
 describe("McpFn hosted authorization compatibility", () => {
   const issuer = "https://login.example.com";
   const resource = "https://mcp.example.com/mcp";

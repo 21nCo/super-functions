@@ -35,7 +35,7 @@ export interface AuthenticatedConformanceProxy {
 }
 
 export interface AuthenticatedConformanceProxyOptions {
-  /** Fixed upstream MCP URL. Requests cannot select a different origin. */
+  /** Fixed loopback MCP URL. Requests cannot select a different origin or path. */
   url: string;
   /** Headers injected into every upstream request. Values are never logged. */
   headers: HeadersInit;
@@ -64,22 +64,34 @@ export async function createAuthenticatedConformanceProxy(
       "Authenticated conformance upstream must not contain userinfo or a fragment",
     );
   }
+  const hostname = normalizeLoopbackHostname(upstream.hostname);
+  if (!hostname) {
+    throw new TypeError(
+      "Authenticated conformance upstream must use a literal loopback address",
+    );
+  }
+  const protocol = upstream.protocol === "https:" ? "https:" : "http:";
+  const port = upstream.port === "" ? undefined : Number(upstream.port);
+  const requestPath = `${upstream.pathname}${upstream.search}`;
   const injected = new Headers(options.headers);
   const server = createServer((incoming, outgoing) => {
     if (!incoming.url?.startsWith("/")) {
       outgoing.writeHead(400).end();
       return;
     }
-    const target = new URL(incoming.url, upstream.origin);
     const headers: IncomingHttpHeaders = { ...incoming.headers };
     delete headers.connection;
+    headers.host = upstream.host;
     injected.forEach((value, name) => {
       headers[name.toLowerCase()] = value;
     });
-    const transport = target.protocol === "https:" ? httpsRequest : httpRequest;
+    const transport = protocol === "https:" ? httpsRequest : httpRequest;
     const proxied = transport(
-      target,
       {
+        protocol,
+        hostname,
+        port,
+        path: requestPath,
         method: incoming.method,
         headers,
       },
@@ -120,6 +132,14 @@ export async function createAuthenticatedConformanceProxy(
       });
     },
   };
+}
+
+function normalizeLoopbackHostname(
+  hostname: string,
+): "127.0.0.1" | "::1" | undefined {
+  if (hostname === "127.0.0.1") return "127.0.0.1";
+  if (hostname === "[::1]") return "::1";
+  return undefined;
 }
 
 function npxInvocation(args: string[]): { command: string; args: string[] } {
