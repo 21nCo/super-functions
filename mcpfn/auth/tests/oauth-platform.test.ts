@@ -543,6 +543,17 @@ describe("McpFn hosted authorization compatibility", () => {
       authorization_endpoint: "https://login.example.com/authorize",
       token_endpoint: "https://login.example.com/token",
     });
+    const oidcDiscovery = await compatibility(new Request(
+      "https://login.example.com/tenant-a/.well-known/openid-configuration",
+    ));
+    expect(oidcDiscovery.status).toBe(200);
+    await expect(oidcDiscovery.json()).resolves.toMatchObject({
+      issuer: prefixedIssuer,
+      authorization_endpoint: "https://login.example.com/authorize",
+    });
+    expect((await compatibility(new Request(
+      "https://login.example.com/.well-known/openid-configuration",
+    ))).status).toBe(404);
     const url = authorizationUrl(chatgpt.clientId, chatgpt.redirectUris[0]);
     url.pathname = "/authorize";
     url.searchParams.delete("resource");

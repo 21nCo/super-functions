@@ -540,7 +540,7 @@ function createHostedRoutes(
 ): Map<string, McpFnHostedRoute> {
   const routes = new Map<string, McpFnHostedRoute>([
     [`GET /.well-known/oauth-authorization-server${issuerPath}`, "metadata"],
-    [`GET ${endpointPrefix}/.well-known/openid-configuration`, "metadata"],
+    [`GET ${issuerPath}/.well-known/openid-configuration`, "metadata"],
     [`POST ${endpointPrefix}/register`, "register"],
     [`GET ${endpointPrefix}/authorize`, "authorize"],
     [`POST ${endpointPrefix}/token`, "token"],
