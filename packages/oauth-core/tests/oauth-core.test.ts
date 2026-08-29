@@ -292,6 +292,19 @@ describe("OAuth diagnostic redaction", () => {
     );
   });
 
+  it("redacts quoted credentials containing escaped matching quotes", () => {
+    const value = String.raw`password="prefix\"suffix", client_secret='left\'right'`;
+    const redacted = redactOAuthValue(value);
+
+    expect(redacted).toBe(
+      'password="[REDACTED]", client_secret=\'[REDACTED]\'',
+    );
+    expect(redacted).not.toContain("prefix");
+    expect(redacted).not.toContain("suffix");
+    expect(redacted).not.toContain("left");
+    expect(redacted).not.toContain("right");
+  });
+
   it("stops iterating Maps and Sets at the configured entry cap", () => {
     let mapClosed = false;
     let setClosed = false;

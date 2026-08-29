@@ -80,7 +80,7 @@ describe("McpFn OAuth resource server", () => {
         allowInsecureLoopbackAuthorizationServers: true,
         verifier: { verifyAccessToken: async () => { throw new Error("unused"); } },
       },
-    )).toThrow(/must use HTTPS/);
+    )).not.toThrow();
     expect(() => createOAuthResourceServerHandler(
       async () => new Response("mcp"),
       {

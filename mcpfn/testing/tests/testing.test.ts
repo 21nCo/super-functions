@@ -89,7 +89,7 @@ describe("McpFn testing", () => {
         tool: "echo",
         status: "incomplate",
       }])).toThrow("status must be complete or incomplete");
-      for (const minimum of [-1, 0, Number.NaN, "1"]) {
+      for (const minimum of [-1, 0, Number.NaN, Number.MAX_SAFE_INTEGER + 1, "1"]) {
         expect(() => validateMcpFnScenarios([{
           name: "invalid event minimum",
           kind: "events.expect",

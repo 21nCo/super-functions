@@ -183,7 +183,7 @@ export class McpFnInspector {
         this.maxInventoryEntries,
         1,
       ),
-    }) as McpFnInspectorSnapshot;
+    }) as unknown as McpFnInspectorSnapshot;
   }
 
   async run(operation: McpFnInspectorOperation): Promise<McpFnInspectorOperationResult> {
@@ -221,7 +221,7 @@ export class McpFnInspector {
       ...SCENARIO_REDACTION_LIMITS,
       redactionMarker: SCENARIO_SECRET_MARKER,
     });
-    const replaced = redacted as McpFnExportedScenario;
+    const replaced = redacted as unknown as McpFnExportedScenario;
     const exported = exceedsRedactionBounds(scenario, redacted, SCENARIO_REDACTION_LIMITS)
       ? {
         ...replaced,
@@ -249,7 +249,7 @@ export class McpFnInspector {
       kind,
       at,
       event: raw,
-    }) as McpFnInspectorTimelineEvent;
+    }) as unknown as McpFnInspectorTimelineEvent;
     let bytes = encodedBytes(event);
     if (bytes > this.maxTimelineBytes) {
       event = {
@@ -456,7 +456,7 @@ function collectVariables(value: unknown): string[] {
   const visit = (entry: unknown): void => {
     if (typeof entry === "string") {
       for (const match of entry.matchAll(
-        /\$\{([A-Z][A-Z0-9_]*)\}|%24%7B([A-Z][A-Z0-9_]*)%7D/gi,
+        /\$\{([A-Z][A-Z0-9_]*)\}|%24%7[Bb]([A-Z][A-Z0-9_]*)%7[Dd]/g,
       )) {
         variables.add(match[1] ?? match[2]);
       }

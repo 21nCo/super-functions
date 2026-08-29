@@ -25,7 +25,7 @@ const EMBEDDED_URL = /\b[a-z][a-z0-9+.-]*:\/{1,2}[^\s<>"']+/gi;
 const AUTHORIZATION_CREDENTIAL_LINE =
   /(\b(?:proxy[-_])?authorization\b["']?\s*[=:]\s*)[^\r\n]*/gi;
 const KEY_VALUE_ASSIGNMENT =
-  /(\b([a-z][a-z0-9_-]*)\b["']?\s*[=:]\s*)(?:(["'])(.*?)\3|([^\s,;]+))/gi;
+  /(\b([a-z][a-z0-9_-]*)\b["']?\s*[=:]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;]+)/gi;
 
 export interface OAuthRedactionOptions {
   maxDepth?: number;
@@ -36,14 +36,26 @@ export interface OAuthRedactionOptions {
   redactionMarker?: string;
 }
 
+export type OAuthRedactedValue =
+  | string
+  | number
+  | boolean
+  | bigint
+  | symbol
+  | null
+  | undefined
+  | OAuthRedactedValue[]
+  | { [key: string]: OAuthRedactedValue }
+  | ((...args: never[]) => unknown);
+
 /**
  * Redacts OAuth/session credentials and bounds diagnostic values before they
  * reach logs, CLI reports, test artifacts, or inspector event streams.
  */
-export function redactOAuthValue<T>(
-  value: T,
+export function redactOAuthValue(
+  value: unknown,
   options: OAuthRedactionOptions = {},
-): T {
+): OAuthRedactedValue {
   return redact(value, {
     maxDepth: options.maxDepth ?? 8,
     maxArrayEntries: normalizeEntryLimit(
@@ -56,7 +68,7 @@ export function redactOAuthValue<T>(
     ),
     maxStringLength: options.maxStringLength ?? 2_048,
     redactionMarker: options.redactionMarker ?? REDACTED,
-  }, 0, new WeakSet()) as T;
+  }, 0, new WeakSet()) as OAuthRedactedValue;
 }
 
 function redact(
@@ -269,10 +281,12 @@ function redactString(
     )
     .replace(
       KEY_VALUE_ASSIGNMENT,
-      (match, prefix: string, key: string, quote: string) =>
-        isSensitiveUrlKey(key)
-          ? `${prefix}${quote ?? ""}${redactionMarker}${quote ?? ""}`
-          : match,
+      (match, prefix: string, key: string) => {
+        if (!isSensitiveUrlKey(key)) return match;
+        const valueStart = match.slice(prefix.length, prefix.length + 1);
+        const quote = valueStart === '"' || valueStart === "'" ? valueStart : "";
+        return `${prefix}${quote}${redactionMarker}${quote}`;
+      },
     );
   return redacted.length > maxLength
     ? `${redacted.slice(0, maxLength)}…`

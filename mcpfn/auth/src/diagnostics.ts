@@ -124,7 +124,7 @@ function boundedFetch(fetchImplementation: typeof fetch, timeoutMs: number): typ
 }
 
 function redactReport(report: McpFnAuthorizationDiagnosticReport): McpFnAuthorizationDiagnosticReport {
-  return redactOAuthValue(report) as McpFnAuthorizationDiagnosticReport;
+  return redactOAuthValue(report) as unknown as McpFnAuthorizationDiagnosticReport;
 }
 
 function errorMessage(error: unknown): string {

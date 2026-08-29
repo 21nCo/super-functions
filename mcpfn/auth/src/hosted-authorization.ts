@@ -1638,7 +1638,12 @@ async function emit(
       outcome,
       ...(code ? { code } : {}),
       ...(details ? { details } : {}),
-    }));
+    }) as {
+      phase: string;
+      outcome: "succeeded" | "failed";
+      code?: string;
+      details?: Record<string, unknown>;
+    });
   } catch {
     // Diagnostics are observational and must never change authorization behavior.
   }

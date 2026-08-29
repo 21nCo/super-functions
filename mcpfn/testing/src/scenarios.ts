@@ -410,7 +410,7 @@ function validateScenarioMetadata(candidate: Record<string, unknown>, index: num
 function validateEventScenario(candidate: Record<string, unknown>, index: number): void {
   if (
     candidate.minimum !== undefined &&
-    (!Number.isInteger(candidate.minimum) || Number(candidate.minimum) < 1)
+    (!Number.isSafeInteger(candidate.minimum) || Number(candidate.minimum) < 1)
   ) {
     throw new TypeError(
       `Invalid scenario at index ${index}: events.expect minimum must be a positive integer`,
@@ -627,7 +627,7 @@ function resolveScenarioVariables(
   const values = { ...process.env, ...supplied };
   const required = new Set(scenario.variables ?? []);
   const marker = /\$\{([A-Z][A-Z0-9_]*)\}/g;
-  const encodedMarker = /%24%7B([A-Z][A-Z0-9_]*)%7D/gi;
+  const encodedMarker = /%24%7[Bb]([A-Z][A-Z0-9_]*)%7[Dd]/g;
   const visit = (value: unknown): unknown => {
     if (typeof value === "string") {
       for (const match of value.matchAll(marker)) required.add(match[1]);

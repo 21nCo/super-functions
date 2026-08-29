@@ -87,6 +87,21 @@ describe("McpFn inspector", () => {
           },
         },
       });
+      const ordinaryPlaceholders = inspector.exportScenario(
+        "ordinary placeholders",
+        {
+          kind: "tools.call",
+          name: "echo",
+          arguments: {
+            raw: "${ordinary}",
+            encoded: "%24%7Borderinary%7D",
+          },
+        },
+        {
+          content: [{ type: "text", text: "ok" }],
+        },
+      );
+      expect(ordinaryPlaceholders.variables).toBeUndefined();
       const runner = await McpFnTestClient.connect(createServer());
       try {
         await expect(runScenarios(runner, [scenario], {

@@ -373,7 +373,7 @@ export class McpFnOAuthClientProvider implements OAuthClientProvider {
         ...(code ? { code } : {}),
         at: (this.options.clock?.() ?? new Date()).toISOString(),
         ...(details ? { details } : {}),
-      }));
+      }) as unknown as McpFnOAuthClientDiagnostic);
     } catch {
       // Diagnostics are observational and must never change OAuth semantics.
     }

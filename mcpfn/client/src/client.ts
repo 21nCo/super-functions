@@ -41,6 +41,7 @@ import type {
   McpFnDiagnosticPhase,
   McpFnDiagnosticSink,
   McpFnTarget,
+  McpFnTargetDescriptor,
   McpFnTransportHandle,
 } from "./types.js";
 import { McpFnClientError } from "./types.js";
@@ -774,7 +775,7 @@ export class McpFnClient {
       requestId: this.requestId(),
       target: this.options.target.describe(),
       ...(payload !== undefined ? { payload } : {}),
-    }) as McpFnClientEvent;
+    }) as unknown as McpFnClientEvent;
     await Promise.allSettled(
       [...this.eventListeners].map(async (listener) => listener(event)),
     );
@@ -797,13 +798,21 @@ export class McpFnClient {
       ...(code ? { code } : {}),
       requestId,
       at: (this.options.clock?.() ?? new Date()).toISOString(),
-      target: redactOAuthValue(this.options.target.describe()),
-      ...(details ? { details: redactOAuthValue(details) } : {}),
+      target: redactOAuthValue(
+        this.options.target.describe(),
+      ) as unknown as McpFnTargetDescriptor,
+      ...(details
+        ? {
+            details: redactOAuthValue(
+              details,
+            ) as unknown as Record<string, unknown>,
+          }
+        : {}),
     });
   }
 
   private async dispatch(event: McpFnDiagnosticEvent): Promise<void> {
-    const redacted = redactOAuthValue(event);
+    const redacted = redactOAuthValue(event) as unknown as McpFnDiagnosticEvent;
     await Promise.allSettled(
       [...this.listeners].map(async (listener) => listener(redacted)),
     );

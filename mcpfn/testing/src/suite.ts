@@ -71,7 +71,7 @@ export async function runMcpFnTargetSuite(
     {
       ...options.client,
       diagnostics: async (event) => {
-        timeline.push(redactOAuthValue(event));
+        timeline.push(redactOAuthValue(event) as unknown as McpFnDiagnosticEvent);
         if (timeline.length > maxTimelineEvents) {
           timeline.shift();
           droppedTimelineEvents += 1;
@@ -113,7 +113,9 @@ export async function runMcpFnTargetSuite(
     status: artifactIncomplete ? "incomplete" : "complete",
     runtime: { node: process.version, scenarioFormatVersion: 1 },
     ok: failed === 0 && !artifactIncomplete,
-    target: redactOAuthValue(options.target.describe()),
+    target: redactOAuthValue(
+      options.target.describe(),
+    ) as unknown as McpFnTargetDescriptor,
     server: execution.server,
     capabilities: execution.capabilities,
     manifestChecked: Boolean(options.manifest),
