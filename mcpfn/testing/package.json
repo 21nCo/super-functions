@@ -1,6 +1,6 @@
 {
   "name": "@mcpfn/testing",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Protocol, authentication, Playwright, contract, scenario, and official conformance testing for MCP servers",
   "type": "module",
   "main": "dist/index.cjs",
@@ -31,9 +31,9 @@
   },
   "dependencies": {
     "@mcpfn/client": "0.0.1",
-    "@mcpfn/core": "0.0.1",
+    "@mcpfn/core": "0.0.2",
     "@modelcontextprotocol/sdk": "1.25.2",
-    "@superfunctions/oauth-core": "0.1.0"
+    "@superfunctions/oauth-core": "0.1.1"
   },
   "peerDependencies": {
     "@playwright/test": ">=1.40.0"
@@ -44,7 +44,7 @@
     }
   },
   "devDependencies": {
-    "@mcpfn/auth": "0.0.1",
+    "@mcpfn/auth": "0.0.2",
     "@playwright/test": "^1.57.0",
     "@types/node": "^20.0.0",
     "tsup": "^8.5.0",
