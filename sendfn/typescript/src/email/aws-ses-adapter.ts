@@ -12,6 +12,7 @@ import {
   MessageRejected,
   LimitExceededException
 } from '@aws-sdk/client-ses';
+import { isBareEmail } from './address';
 
 export class AwsSesAdapter implements EmailProvider {
   readonly name = 'aws-ses';
@@ -169,8 +170,7 @@ export class AwsSesAdapter implements EmailProvider {
   }
 
   validateEmail(email: string): boolean {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+    return isBareEmail(email);
   }
 
   async isHealthy(): Promise<boolean> {

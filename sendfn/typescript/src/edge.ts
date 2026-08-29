@@ -1,4 +1,5 @@
 import { resendAdapter } from './email/resend-adapter';
+import { isBareEmail } from './email/address';
 import type { EmailProvider } from './email/provider';
 import type { WhatsAppProvider } from './whatsapp/provider';
 import type {
@@ -213,13 +214,24 @@ function tryParseSender(value: string): { name?: string; email: string } | null 
     return { email: value };
   }
 
-  const match = value.match(/^(.+?)\s*<([^<>]+)>$/);
-  if (!match) {
+  if (!value.endsWith('>')) {
     return null;
   }
 
-  const name = match[1].trim().replace(/^"(.+)"$/, '$1');
-  const email = match[2].trim();
+  const openingBracket = value.lastIndexOf('<');
+  if (
+    openingBracket <= 0 ||
+    value.indexOf('<') !== openingBracket ||
+    value.indexOf('>') !== value.length - 1
+  ) {
+    return null;
+  }
+
+  let name = value.slice(0, openingBracket).trim();
+  if (name.length > 2 && name.startsWith('"') && name.endsWith('"')) {
+    name = name.slice(1, -1);
+  }
+  const email = value.slice(openingBracket + 1, -1).trim();
   if (!name || !isBareEmail(email)) {
     return null;
   }
@@ -233,8 +245,4 @@ function assertBareEmail(value: string, fieldName: string): void {
       `Invalid ${fieldName}. Use a bare email address or set email.from to Name <email@example.com>.`
     );
   }
-}
-
-function isBareEmail(value: string): boolean {
-  return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value);
 }

@@ -5,6 +5,7 @@ import {
   type SendEmailResponse
 } from './provider';
 import type { ResendConfig } from '../types';
+import { isBareEmail } from './address';
 
 interface ResendEmailResponse {
   id?: string;
@@ -114,8 +115,7 @@ export class ResendAdapter implements EmailProvider {
   }
 
   validateEmail(email: string): boolean {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+    return isBareEmail(email);
   }
 
   async isHealthy(): Promise<boolean> {
