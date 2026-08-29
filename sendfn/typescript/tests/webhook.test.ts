@@ -12,6 +12,8 @@ function createVerifier(now = new Date('2026-04-02T00:00:00Z')): AwsSnsVerifier 
     now: () => now,
     fetchCertificate: async () => 'certificate',
     verifySignature: async (_canonicalMessage, signature) => signature === 'valid',
+    topicArns: ['arn:aws:sns:us-east-1:123456789012:sendfn'],
+    maxAgeMs: 5 * 60 * 1000,
   });
 }
 
@@ -193,6 +195,24 @@ describe('AWS SES webhook processing', () => {
     });
   });
 
+  it('authorizes the SNS topic and signs the canonical message with a terminal newline', async () => {
+    let canonicalMessage = '';
+    const verifier = new AwsSnsVerifier({
+      topicArns: ['arn:aws:sns:us-east-1:123456789012:sendfn'],
+      fetchCertificate: async () => 'certificate',
+      verifySignature: async (value) => {
+        canonicalMessage = value;
+        return true;
+      },
+    });
+    await verifier.verify(createEnvelope({ notificationType: 'Delivery' }));
+    expect(canonicalMessage).toMatch(/\nTopicArn\narn:aws:sns:us-east-1:123456789012:sendfn\nType\nNotification\n$/);
+    await expect(verifier.verify(createEnvelope(
+      { notificationType: 'Delivery' },
+      { TopicArn: 'arn:aws:sns:us-east-1:123456789012:other' },
+    ))).rejects.toMatchObject({ code: 'SENDFN_WEBHOOK_MESSAGE_INVALID' });
+  });
+
   it('correlates delivery events and keeps duplicate deliveries idempotent', async () => {
     await seedEmailTransaction(adapter);
     const logger = {
@@ -278,6 +298,7 @@ describe('AWS SES webhook processing', () => {
           destination: ['user@example.com'],
         },
         bounce: {
+          timestamp: '2026-04-02T00:00:07Z',
           feedbackId: 'fb-1',
           bounceType: 'Permanent',
           bounceSubType: 'General',
@@ -306,6 +327,8 @@ describe('AWS SES webhook processing', () => {
         bounceType: 'Permanent',
       },
     });
+    expect(adapter.records<any>('communication_events')[0].eventTimestamp.toISOString())
+      .toBe('2026-04-02T00:00:07.000Z');
     expect(adapter.records('suppression_list')[0]).toMatchObject({
       email: 'user@example.com',
       reason: 'bounce',
@@ -329,6 +352,7 @@ describe('AWS SES webhook processing', () => {
           destination: ['user@example.com'],
         },
         complaint: {
+          timestamp: '2026-04-02T00:00:09Z',
           feedbackId: 'cp-1',
           complaintFeedbackType: 'abuse',
           complaintSubType: 'OnAccountSuppressionList',

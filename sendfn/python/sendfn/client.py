@@ -16,6 +16,7 @@ from .errors import (
     SuppressionError,
     TemplateError,
 )
+from .events.aws_sns_verifier import AwsSnsVerifier
 from .events.tracker import EventTracker
 from .events.webhook_handler import AwsSesWebhookHandler
 from .models import (
@@ -54,6 +55,8 @@ class SendfnConfig:
         push: Optional[PushConfig] = None,
         sms_provider: Optional[SmsProvider] = None,
         options: Optional[SendfnOptions] = None,
+        aws_sns_topic_arns: Optional[list[str]] = None,
+        aws_sns_max_age_seconds: Optional[int] = None,
     ) -> None:
         """Initialize configuration.
 
@@ -69,6 +72,8 @@ class SendfnConfig:
         self.push = push
         self.sms_provider = sms_provider
         self.options = options or SendfnOptions()  # type: ignore[call-arg]
+        self.aws_sns_topic_arns = aws_sns_topic_arns or []
+        self.aws_sns_max_age_seconds = aws_sns_max_age_seconds
 
 
 class Sendfn:
@@ -123,6 +128,10 @@ class Sendfn:
         self.webhook_handler = AwsSesWebhookHandler(
             self.db,
             self.suppression_manager,
+            verifier=AwsSnsVerifier(
+                topic_arns=config.aws_sns_topic_arns,
+                max_age_seconds=config.aws_sns_max_age_seconds,
+            ),
         )
 
     def _coerce_error(

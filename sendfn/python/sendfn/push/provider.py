@@ -77,21 +77,21 @@ class PushProvider(Protocol):
     @property
     def name(self) -> str:
         """Provider name."""
-        ...
+        raise NotImplementedError
 
     @property
     def platform(self) -> str:
         """Platform (ios, android, web)."""
-        ...
+        raise NotImplementedError
 
     @property
     def capabilities(self) -> PushProviderCapabilities:
         """Provider capabilities."""
-        ...
+        raise NotImplementedError
 
     async def initialize(self) -> None:
         """Initialize the provider."""
-        ...
+        raise NotImplementedError
 
     async def send_push(self, request: SendPushRequest) -> SendPushResponse:
         """Send a push notification.
@@ -102,7 +102,7 @@ class PushProvider(Protocol):
         Returns:
             Push send response
         """
-        ...
+        raise NotImplementedError
 
     async def send_bulk_push(
         self, requests: list[SendPushRequest]
@@ -115,7 +115,7 @@ class PushProvider(Protocol):
         Returns:
             List of push send responses
         """
-        ...
+        raise NotImplementedError
 
     def validate_token(self, token: str) -> bool:
         """Validate a device token.
@@ -126,7 +126,7 @@ class PushProvider(Protocol):
         Returns:
             True if valid, False otherwise
         """
-        ...
+        raise NotImplementedError
 
     async def is_healthy(self) -> bool:
         """Check if the provider is healthy.
@@ -134,8 +134,8 @@ class PushProvider(Protocol):
         Returns:
             True if healthy, False otherwise
         """
-        ...
+        raise NotImplementedError
 
     async def close(self) -> None:
         """Close the provider connection."""
-        ...
+        raise NotImplementedError

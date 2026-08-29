@@ -48,14 +48,15 @@ export class DeviceTokenManager {
       throw new ValidationError('Old device token was not found for the supplied user and platform');
     }
 
-    await this.deactivateTokens([oldToken]);
-    return this.registerDevice({
+    const replacement = await this.registerDevice({
       userId,
       token: newToken,
       platform,
       appVersion: existing.appVersion ?? undefined,
       deviceInfo: existing.deviceInfo ?? undefined,
     });
+    await this.adapter.deactivateDeviceTokenById(existing.id);
+    return replacement;
   }
 
   async cleanupInactiveDevices(olderThan: Date): Promise<number> {

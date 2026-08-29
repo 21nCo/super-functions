@@ -24,6 +24,13 @@ function safeDeviceToken<T extends { token: string }>(value: T): SendFnAdminJson
   return { ...toAdminJson(value), token: "[REDACTED]" } as SendFnAdminJson<T>;
 }
 
+function safePushNotification<T extends { deviceTokens: string[] }>(value: T): SendFnAdminJson<T> {
+  return {
+    ...toAdminJson(value),
+    deviceTokens: value.deviceTokens.map(() => "[REDACTED]"),
+  } as SendFnAdminJson<T>;
+}
+
 function parseDate(value: string, label: string): Date {
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) {
@@ -45,7 +52,12 @@ function translateSendFnError(error: unknown): never {
     throw new AdminError("internal", "SendFn could not complete the administration operation.", { cause: error });
   }
 
-  if (error.code === "SENDFN_VALIDATION_ERROR" || error.code === "SENDFN_TEMPLATE_ERROR") {
+  if (
+    error.code === "SENDFN_VALIDATION_ERROR" ||
+    error.code === "SENDFN_TEMPLATE_ERROR" ||
+    error.code === "SENDFN_TEMPLATE_NOT_FOUND" ||
+    error.code === "SENDFN_TEMPLATE_RENDER_ERROR"
+  ) {
     throw new AdminError("invalid_argument", error.message, {
       details: error.details,
       retryable: error.retryable,
@@ -167,12 +179,13 @@ export function createSendFnDomainAdminService(
 
     async sendPush(input, context) {
       assertProject(context);
-      return { item: toAdminJson(await domain(() => sendfn.push(input))) };
+      return { item: safePushNotification(await domain(() => sendfn.push(input))) };
     },
 
     async sendBulkPush(input, context) {
       assertProject(context);
-      return { items: toAdminJson(await domain(() => sendfn.bulkPush(input.messages))) };
+      const notifications = await domain(() => sendfn.bulkPush(input.messages));
+      return { items: notifications.map(safePushNotification) };
     },
 
     async listSuppressions(input, context) {
@@ -225,7 +238,7 @@ export function createSendFnDomainAdminService(
     async deactivateDevice(input, context) {
       assertProject(context);
       await domain(() => sendfn.deactivateDevice(input.token));
-      return { accepted: true, deactivatedToken: input.token };
+      return { accepted: true, deactivatedToken: "[REDACTED]" };
     },
 
     async refreshDevice(input, context) {

@@ -99,6 +99,12 @@ describe("@sendfn/admin", () => {
     expect(sendFnAdminCapability.operations.find(
       (operation) => operation.id === "sendfn.device-tokens.list",
     )?.redaction?.outputFields).toContain("token");
+    expect(sendFnAdminCapability.operations.find(
+      (operation) => operation.id === "sendfn.messages.send-push",
+    )?.redaction?.outputFields).toContain("deviceTokens");
+    expect(sendFnAdminCapability.operations.find(
+      (operation) => operation.id === "sendfn.device-tokens.deactivate",
+    )?.redaction?.outputFields).toContain("deactivatedToken");
   });
 
   it("uses the real SendFn template, suppression, and device services", async () => {

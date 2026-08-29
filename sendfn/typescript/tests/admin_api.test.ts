@@ -51,7 +51,11 @@ class FakePushProvider implements PushProvider {
     supportsSilentPush: true,
   };
 
-  async initialize(): Promise<void> {}
+  initializeCalls = 0;
+
+  async initialize(): Promise<void> {
+    this.initializeCalls += 1;
+  }
 
   async sendPush(params: SendPushRequest): Promise<SendPushResponse> {
     return {
@@ -80,6 +84,37 @@ class FakePushProvider implements PushProvider {
 }
 
 describe('admin API envelopes', () => {
+  it('awaits provider initialization failures and initializes shared push providers once', async () => {
+    const failingEmail = new FakeEmailProvider();
+    failingEmail.initialize = async () => {
+      throw new Error('credentials unavailable');
+    };
+    const failingClient = sendfn({
+      database: new StrongMockAdapter() as any,
+      emailProvider: failingEmail,
+      email: { fromEmail: 'noreply@example.com' },
+    });
+    await expect(failingClient.email({
+      userId: 'user-1',
+      to: 'user@example.com',
+      subject: 'Hello',
+      html: '<p>Hello</p>',
+    })).rejects.toMatchObject({
+      code: 'SENDFN_EMAIL_PROVIDER_ERROR',
+      message: 'credentials unavailable',
+    });
+
+    const pushProvider = new FakePushProvider();
+    const pushClient = sendfn({
+      database: new StrongMockAdapter() as any,
+      pushProviders: { android: pushProvider, web: pushProvider },
+    });
+    await pushClient.registerDevice({ userId: 'user-1', token: 'token-1', platform: 'android' });
+    await pushClient.push({ userId: 'user-1', title: 'Hello', body: 'World' });
+    expect(pushProvider.initializeCalls).toBe(1);
+    await Promise.all([failingClient.close(), pushClient.close()]);
+  });
+
   it('returns canonical success envelopes for authorized admin email sends', async () => {
     const client = sendfn({
       database: new StrongMockAdapter() as any,

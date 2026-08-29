@@ -22,6 +22,12 @@ export interface SendfnConfig {
   apiConfig?: {
     adminKey?: string;
   };
+  awsSns?: {
+    /** SNS topics authorized to deliver SES lifecycle events. */
+    topicArns: string[];
+    /** Optional replay window. Omit to allow delayed SNS retries. */
+    maxAgeMs?: number;
+  };
 }
 
 export interface EmailConfig {
@@ -102,7 +108,7 @@ export interface SendEmailParams {
 
 export interface Attachment {
   filename: string;
-  content: Buffer | string;
+  content: Uint8Array | string;
   contentType?: string;
   encoding?: string;
 }

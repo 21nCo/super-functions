@@ -134,8 +134,8 @@ export class AwsSesAdapter implements EmailProvider {
         rawMessage += `Content-Disposition: attachment; filename="${filename}"\n\n`;
 
         const content = typeof att.content === 'string'
-          ? Buffer.from(att.content).toString('base64')
-          : att.content.toString('base64');
+          ? Buffer.from(att.content, att.encoding as BufferEncoding | undefined).toString('base64')
+          : Buffer.from(att.content).toString('base64');
 
         const chunked = content.match(/.{1,76}/g)?.join('\n') || content;
         rawMessage += `${chunked}\n\n`;

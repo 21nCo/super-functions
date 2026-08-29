@@ -103,6 +103,30 @@ async def test_suppression_short_circuits_before_provider_call() -> None:
 
 
 @pytest.mark.asyncio
+async def test_suppression_checks_cc_and_bcc_recipients() -> None:
+    service, provider = create_service()
+    for email in ["cc@example.com", "bcc@example.com"]:
+        await service.suppression_manager.add_to_suppression_list(
+            email=email,
+            reason="manual",
+            source="manual",
+        )
+
+    with pytest.raises(SuppressionError):
+        await service.send_email(
+            SendEmailParams(
+                userId="user-1",
+                to="to@example.com",
+                cc="cc@example.com",
+                bcc="bcc@example.com",
+                subject="Hello",
+                html="<p>Hello</p>",
+            )
+        )
+    assert provider.send_calls == 0
+
+
+@pytest.mark.asyncio
 async def test_missing_template_and_empty_content_fail_with_stable_codes() -> None:
     service, provider = create_service()
 

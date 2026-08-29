@@ -1,4 +1,4 @@
-import { ApnsClient, Notification, NotificationOptions } from 'apns2';
+import { ApnsClient, Notification } from 'apns2';
 import { PushProvider, PushProviderCapabilities, SendPushRequest, SendPushResponse } from './provider';
 import { ApnsConfig } from '../types';
 import { PushProviderError } from '../errors';
@@ -36,6 +36,7 @@ export class ApnsProvider implements PushProvider {
       keyId: config.keyId,
       signingKey: config.key,
       defaultTopic: bundleId,
+      host: config.production === false ? 'api.sandbox.push.apple.com' : 'api.push.apple.com',
     });
   }
 

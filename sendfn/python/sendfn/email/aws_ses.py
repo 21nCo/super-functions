@@ -180,7 +180,7 @@ class AwsSesProvider:
 
         client = self._client
         assert client is not None
-        response = client.send_email(**kwargs)
+        response = await asyncio.to_thread(client.send_email, **kwargs)
 
         return SendEmailResponse(
             success=True,
@@ -240,7 +240,7 @@ class AwsSesProvider:
 
         client = self._client
         assert client is not None
-        response = client.send_raw_email(**kwargs)
+        response = await asyncio.to_thread(client.send_raw_email, **kwargs)
 
         return SendEmailResponse(
             success=True,

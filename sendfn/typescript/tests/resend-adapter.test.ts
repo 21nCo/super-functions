@@ -23,6 +23,7 @@ describe('ResendAdapter', () => {
       replyTo: 'support@example.com',
       metadata: { challengeId: 'otp_123' },
       tags: { source: 'authfn' },
+      attachments: [{ filename: 'code.txt', content: new TextEncoder().encode('123456') }],
     });
 
     expect(result).toMatchObject({
@@ -46,6 +47,7 @@ describe('ResendAdapter', () => {
       subject: 'Your code',
       reply_to: 'support@example.com',
       tags: [{ name: 'source', value: 'authfn' }],
+      attachments: [{ filename: 'code.txt', content: 'MTIzNDU2' }],
     });
   });
 

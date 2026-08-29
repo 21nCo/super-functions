@@ -63,6 +63,7 @@ class ApnsProvider:
             key=self.config.key,
             key_id=self.config.key_id,
             team_id=self.config.team_id,
+            topic=self.config.bundle_id,
             use_sandbox=not self.config.production,
         )
 
@@ -130,10 +131,16 @@ class ApnsProvider:
                     message=payload,
                     priority=(10 if request.priority == "high" else 5),
                     time_to_live=request.ttl,
-                    collapse_id=request.collapse_key,
+                    collapse_key=request.collapse_key,
+                    apns_topic=self.config.bundle_id,
                 )
 
-                await client.send_notification(notification)
+                response = await client.send_notification(notification)
+                if not response.is_successful:
+                    reason = response.description or response.status
+                    if reason in ["BadDeviceToken", "Unregistered"]:
+                        invalid_tokens.append(token)
+                    return {"token": token, "success": False, "error": str(reason)}
 
                 return {"token": token, "success": True}
 

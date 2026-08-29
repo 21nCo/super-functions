@@ -89,8 +89,9 @@ export class PushService {
         const provider = this.providers.get(platform);
 
         if (!provider) {
-            console.warn(`No provider for platform ${platform}`);
-            continue;
+            throw new PushProviderError(`No push provider configured for platform ${platform}`, {
+              retryable: false,
+            });
         }
 
         const notification = await this.adapter.createPushNotification({
@@ -145,7 +146,7 @@ export class PushService {
             });
 
             // Record event
-            await this.adapter.recordEvent({
+            if (this.options.eventTracking !== false) await this.adapter.recordEvent({
                 referenceId: notification.id,
                 referenceType: 'push',
                 eventType: response.success ? 'sent' : 'failed',
@@ -173,7 +174,7 @@ export class PushService {
                 metadata: { ...params.metadata, error: error.message }
             });
 
-             await this.adapter.recordEvent({
+             if (this.options.eventTracking !== false) await this.adapter.recordEvent({
                 referenceId: notification.id,
                 referenceType: 'push',
                 eventType: 'failed',

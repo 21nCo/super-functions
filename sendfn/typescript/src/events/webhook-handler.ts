@@ -19,12 +19,14 @@ interface SesEvent {
     destination?: string[];
   };
   bounce?: {
+    timestamp?: string;
     bounceType?: string;
     bounceSubType?: string;
     feedbackId?: string;
     bouncedRecipients?: Array<{ emailAddress?: string; diagnosticCode?: string; status?: string }>;
   };
   complaint?: {
+    timestamp?: string;
     feedbackId?: string;
     complainedRecipients?: Array<{ emailAddress?: string }>;
     complaintFeedbackType?: string;
@@ -201,6 +203,7 @@ export class AwsSesWebhookHandler {
     const existingEvents = await this.adapter.getEventsByReference(referenceId, 'email');
     const matchedTransactions = transaction ? 1 : 0;
     let createdSuppressionEntries = 0;
+    const eventTimestamp = parseDate(event.bounce.timestamp ?? event.mail!.timestamp);
 
     for (const recipient of event.bounce.bouncedRecipients) {
       const recipientEmail = recipient.emailAddress ?? null;
@@ -225,7 +228,7 @@ export class AwsSesWebhookHandler {
             bounceSubType: event.bounce.bounceSubType ?? null,
             diagnosticCode: recipient.diagnosticCode ?? null,
           },
-          eventTimestamp: parseDate(event.mail!.timestamp),
+          eventTimestamp,
         });
       }
 
@@ -251,7 +254,7 @@ export class AwsSesWebhookHandler {
     }
 
     if (transaction) {
-      await this.applyLifecycleTransition(transaction, 'bounced', parseDate(event.mail!.timestamp));
+      await this.applyLifecycleTransition(transaction, 'bounced', eventTimestamp);
     }
 
     return {
@@ -274,6 +277,7 @@ export class AwsSesWebhookHandler {
     const existingEvents = await this.adapter.getEventsByReference(referenceId, 'email');
     const matchedTransactions = transaction ? 1 : 0;
     let createdSuppressionEntries = 0;
+    const eventTimestamp = parseDate(event.complaint.timestamp ?? event.mail!.timestamp);
 
     for (const recipient of event.complaint.complainedRecipients) {
       const recipientEmail = recipient.emailAddress ?? null;
@@ -297,7 +301,7 @@ export class AwsSesWebhookHandler {
             complaintFeedbackType: event.complaint.complaintFeedbackType ?? null,
             complaintSubType: event.complaint.complaintSubType ?? null,
           },
-          eventTimestamp: parseDate(event.mail!.timestamp),
+          eventTimestamp,
         });
       }
 
@@ -321,7 +325,7 @@ export class AwsSesWebhookHandler {
     }
 
     if (transaction) {
-      await this.applyLifecycleTransition(transaction, 'complained', parseDate(event.mail!.timestamp));
+      await this.applyLifecycleTransition(transaction, 'complained', eventTimestamp);
     }
 
     return {

@@ -5,8 +5,6 @@ import {
   EmailProviderError,
   SendEmailParams,
   SendfnDatabaseAdapter,
-  SuppressionError,
-  TemplateError,
   ValidationError,
 } from '../src';
 import { EmailService } from '../src/email/service';
@@ -98,6 +96,49 @@ describe('EmailService', () => {
     });
 
     expect(provider.sendCalls).toBe(0);
+  });
+
+  it('checks copied and blind-copied recipients against suppressions', async () => {
+    for (const email of ['cc@example.com', 'bcc@example.com']) {
+      await db.addToSuppressionList({
+        email,
+        reason: 'manual',
+        source: 'manual',
+        bounceType: null,
+        metadata: {},
+        suppressedAt: new Date(),
+      });
+    }
+
+    await expect(service.sendEmail({
+      userId: 'user-1',
+      to: 'to@example.com',
+      cc: 'cc@example.com',
+      bcc: 'bcc@example.com',
+      subject: 'Hello',
+      html: '<p>Hello</p>',
+    })).rejects.toMatchObject({ code: 'SENDFN_SUPPRESSED' });
+    expect(provider.sendCalls).toBe(0);
+  });
+
+  it('forwards tags and honors disabled event tracking', async () => {
+    service = new EmailService(
+      provider as any,
+      db,
+      new TemplateEngine(),
+      registry,
+      { fromEmail: 'noreply@example.com' },
+      { eventTracking: false, retryAttempts: 1, retryDelay: 0 }
+    );
+    await service.sendEmail({
+      userId: 'user-1',
+      to: 'user@example.com',
+      subject: 'Hello',
+      html: '<p>Hello</p>',
+      tags: ['transactional'],
+    });
+    expect(provider.requests[0].tags).toEqual({ transactional: 'transactional' });
+    expect(rawAdapter.records('communication_events')).toHaveLength(0);
   });
 
   it('fails with stable template and validation errors before provider invocation', async () => {

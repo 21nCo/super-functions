@@ -38,7 +38,7 @@ import sys
 from importlib import import_module
 from pathlib import Path
 
-__version__ = "0.1.0"
+__version__ = "0.0.1"
 
 
 def _bootstrap_repo_local_superfunctions() -> None:

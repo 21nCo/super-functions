@@ -478,7 +478,7 @@ const sendWhatsApp = {
 const sendPush = {
   id: "sendfn.messages.send-push", title: "Send push notification", description: "Send one push notification through configured SendFn platform providers.",
   inputSchema: sendPushSchema, outputSchema: itemSchema(pushNotificationSchema), route: { method: "POST", path: "/resources/messages/actions/send-push" }, permission: "sendfn.messages.send", minimumScope: "project",
-  safety: { classification: "write", idempotent: false, requiresConfirmation: true, confirmation: { risk: "high", method: "explicit", reason: "Push delivery notifies an external user device.", maxAgeSeconds: 300 }, audit: "required" }, redaction: { inputFields: ["userId", "body", "data", "metadata"] },
+  safety: { classification: "write", idempotent: false, requiresConfirmation: true, confirmation: { risk: "high", method: "explicit", reason: "Push delivery notifies an external user device.", maxAgeSeconds: 300 }, audit: "required" }, redaction: { inputFields: ["userId", "body", "data", "metadata"], outputFields: ["deviceTokens"] },
   mcp: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, target: { resource: "messages", collection: true },
 } as const satisfies AdminOperationDefinition<SendFnSendPushInput, SendFnPushOutput>;
 const sendBulkPush = {
@@ -487,7 +487,7 @@ const sendBulkPush = {
   outputSchema: { type: "object", properties: { items: { type: "array", items: pushNotificationSchema } }, required: ["items"], additionalProperties: false },
   route: { method: "POST", path: "/resources/messages/actions/send-push-bulk" }, permission: "sendfn.messages.send-bulk", minimumScope: "project",
   safety: { classification: "write", idempotent: false, requiresConfirmation: true, confirmation: { risk: "high", method: "mfa", reason: "Bulk push can notify many users.", maxAgeSeconds: 300 }, audit: "required" },
-  redaction: { inputFields: ["userId", "body", "data", "metadata"] }, mcp: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, target: { resource: "messages", collection: true },
+  redaction: { inputFields: ["userId", "body", "data", "metadata"], outputFields: ["deviceTokens"] }, mcp: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, target: { resource: "messages", collection: true },
 } as const satisfies AdminOperationDefinition<SendFnSendBulkPushInput, SendFnPushListOutput>;
 
 const listSuppressions = {
@@ -528,7 +528,7 @@ const registerDevice = {
 const deactivateDevice = {
   id: "sendfn.device-tokens.deactivate", title: "Deactivate device token", description: "Deactivate one device token after explicit confirmation.",
   inputSchema: deactivateDeviceInputSchema, outputSchema: deactivatedOutputSchema, route: { method: "POST", path: "/resources/device-tokens/actions/deactivate" }, permission: "sendfn.device-tokens.deactivate", minimumScope: "project",
-  safety: { classification: "destructive", idempotent: true, requiresConfirmation: true, confirmation: { risk: "high", method: "recent-auth", reason: "Deactivation stops push delivery to the device." }, audit: "required" }, redaction: { inputFields: ["token"] },
+  safety: { classification: "destructive", idempotent: true, requiresConfirmation: true, confirmation: { risk: "high", method: "recent-auth", reason: "Deactivation stops push delivery to the device." }, audit: "required" }, redaction: { inputFields: ["token"], outputFields: ["deactivatedToken"] },
   mcp: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, target: { resource: "device-tokens", idInput: "token" },
 } as const satisfies AdminOperationDefinition<SendFnDeactivateDeviceInput, SendFnDeactivateDeviceOutput>;
 const refreshDevice = {

@@ -170,14 +170,16 @@ async def test_apns_caps_in_flight_concurrency_at_ten() -> None:
     observed_max = 0
 
     class FakeClient:
-        async def send_notification(self, _notification: Any) -> None:
+        async def send_notification(self, _notification: Any) -> Any:
             nonlocal active, observed_max
             active += 1
             observed_max = max(observed_max, active)
             await asyncio.sleep(0.005)
             active -= 1
+            return type("Result", (), {"is_successful": True})()
 
     provider._client = FakeClient()
+    provider.config = type("Config", (), {"bundle_id": "org.example.app"})()
 
     class FakeNotificationRequest:
         def __init__(self, **kwargs: Any) -> None:
@@ -200,6 +202,41 @@ async def test_apns_caps_in_flight_concurrency_at_ten() -> None:
         assert_apns_concurrency_cap(11)
     assert exc_info.value.code == "SENDFN_INTERNAL_ERROR"
     assert str(exc_info.value) == "APNS concurrency cap exceeded"
+
+
+@pytest.mark.asyncio
+async def test_apns_passes_topic_and_reports_unsuccessful_responses() -> None:
+    provider = object.__new__(ApnsProvider)
+    provider.config = type("Config", (), {"bundle_id": "org.example.app"})()
+    captured: list[dict[str, Any]] = []
+
+    class FakeNotificationRequest:
+        def __init__(self, **kwargs: Any) -> None:
+            captured.append(kwargs)
+
+    class FakeClient:
+        async def send_notification(self, _notification: Any) -> Any:
+            return type(
+                "Result",
+                (),
+                {"is_successful": False, "description": "BadDeviceToken", "status": "410"},
+            )()
+
+    provider._notification_request_cls = FakeNotificationRequest
+    provider._client = FakeClient()
+    response = await provider.send_push(
+        SendPushRequest(
+            device_tokens=["invalid-token"],
+            title="Hello",
+            body="World",
+            collapse_key="thread-1",
+        )
+    )
+
+    assert captured[0]["collapse_key"] == "thread-1"
+    assert captured[0]["apns_topic"] == "org.example.app"
+    assert response.success is False
+    assert response.invalid_tokens == ["invalid-token"]
 
 
 @pytest.mark.asyncio

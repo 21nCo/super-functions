@@ -229,6 +229,19 @@ describe('push and device phase 5 contracts', () => {
     ).toThrowError('APNS configuration requires a non-empty `bundleId` topic');
   });
 
+  it('selects the APNS host from the production option', () => {
+    const common = {
+      bundleId: 'org.example.app',
+      keyId: 'key-id',
+      teamId: 'team-id',
+      key: 'signing-key',
+    };
+    expect((new ApnsProvider({ ...common, production: true }) as any).client.host)
+      .toBe('api.push.apple.com');
+    expect((new ApnsProvider({ ...common, production: false }) as any).client.host)
+      .toBe('api.sandbox.push.apple.com');
+  });
+
   it('returns the first stable platform notification and deactivates invalid tokens before resolution', async () => {
     await deviceManager.registerDevice({
       userId: 'user-1',
@@ -319,6 +332,23 @@ describe('push and device phase 5 contracts', () => {
       platform: 'ios',
       sentCount: 1,
       status: 'sent',
+    });
+  });
+
+  it('fails when active device platforms have no configured provider', async () => {
+    await deviceManager.registerDevice({
+      userId: 'ios-user',
+      token: 'ios-token',
+      platform: 'ios',
+    });
+    const service = new PushService(new Map(), db, deviceManager, {});
+    await expect(service.sendPush({
+      userId: 'ios-user',
+      title: 'Hello',
+      body: 'World',
+    })).rejects.toMatchObject({
+      code: 'SENDFN_PUSH_PROVIDER_ERROR',
+      message: 'No push provider configured for platform ios',
     });
   });
 
@@ -421,6 +451,15 @@ describe('push and device phase 5 contracts', () => {
 
     const activeTokens = await deviceManager.getActiveDevices('user-123', 'android');
     expect(activeTokens.map((device) => device.token)).toEqual(['old-token']);
+  });
+
+  it('refreshes only the matched user token when token strings are shared', async () => {
+    await deviceManager.registerDevice({ userId: 'user-a', token: 'shared', platform: 'android' });
+    await deviceManager.registerDevice({ userId: 'user-b', token: 'shared', platform: 'android' });
+    await deviceManager.refreshDeviceToken('shared', 'replacement', 'user-a', 'android');
+
+    expect((await deviceManager.getActiveDevices('user-a')).map((device) => device.token)).toEqual(['replacement']);
+    expect((await deviceManager.getActiveDevices('user-b')).map((device) => device.token)).toEqual(['shared']);
   });
 
   it('reactivates existing tuples, cleans up inactive devices, and keeps bulk push bounded', async () => {

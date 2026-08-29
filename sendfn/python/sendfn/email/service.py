@@ -57,7 +57,9 @@ class EmailService:
     async def send_email(self, params: SendEmailParams) -> EmailTransaction:
         """Send an email."""
         recipients = self._normalize_recipients(params)
-        await self._assert_recipients_not_suppressed(recipients["to"])
+        await self._assert_recipients_not_suppressed(
+            [*recipients["to"], *recipients["cc"], *recipients["bcc"]]
+        )
 
         rendered = self._resolve_content(params)
         self._assert_resolved_content(rendered["subject"], rendered["html"])

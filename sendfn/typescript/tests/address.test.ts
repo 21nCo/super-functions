@@ -17,7 +17,7 @@ describe('email address validation', () => {
   });
 
   it('parses display-name senders without regular-expression backtracking', async () => {
-    const requests: Array<{ from: string }> = [];
+    const requests: Array<{ from: string; idempotencyKey?: string }> = [];
     const client = createSendFn({
       email: { from: '"Agent Team" <agent@example.com>' },
       emailProvider: {
@@ -42,7 +42,37 @@ describe('email address validation', () => {
       },
     });
 
-    await client.email({ userId: 'user_1', to: 'recipient@example.com', subject: 'Hello' });
+    await client.email({ idempotencyKey: 'edge-1', userId: 'user_1', to: 'recipient@example.com', subject: 'Hello' });
     expect(requests[0]?.from).toBe('Agent Team <agent@example.com>');
+    expect(requests[0]?.idempotencyKey).toBe('edge-1');
+  });
+
+  it('rejects control characters in edge sender display names', async () => {
+    const client = createSendFn({
+      email: { fromEmail: 'agent@example.com', fromName: 'Agent\r\nBcc: attacker@example.com' },
+      emailProvider: {
+        name: 'test',
+        capabilities: {
+          supportsTemplates: false,
+          supportsAttachments: false,
+          supportsBulkSend: false,
+          supportsScheduling: false,
+          maxRecipientsPerEmail: 1,
+          maxAttachmentSize: 0,
+        },
+        async initialize() {},
+        async sendEmail() { throw new Error('must not send'); },
+        async sendBulkEmail() { return []; },
+        validateEmail: isBareEmail,
+        async isHealthy() { return true; },
+        async close() {},
+      },
+    });
+    await expect(client.email({
+      idempotencyKey: 'edge-1',
+      userId: 'user_1',
+      to: 'recipient@example.com',
+      subject: 'Hello',
+    })).rejects.toThrow('Display names cannot contain control characters');
   });
 });

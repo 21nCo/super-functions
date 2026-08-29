@@ -19,10 +19,10 @@ export interface AwsSnsVerifierOptions {
   fetchCertificate?: (url: string) => Promise<string>;
   verifySignature?: (canonicalMessage: string, signature: string, certificate: string) => Promise<boolean> | boolean;
   maxAgeMs?: number;
+  topicArns?: readonly string[];
 }
 
 const CERT_HOST_PATTERN = /^sns\.[a-z0-9-]+\.amazonaws\.com$/i;
-const DEFAULT_MAX_AGE_MS = 5 * 60 * 1000;
 
 function createWebhookError(code: string, message: string): SendfnError {
   return new SendfnError(message, {
@@ -35,17 +35,22 @@ export class AwsSnsVerifier {
   private readonly now: () => Date;
   private readonly fetchCertificate: (url: string) => Promise<string>;
   private readonly verifySignature: (canonicalMessage: string, signature: string, certificate: string) => Promise<boolean> | boolean;
-  private readonly maxAgeMs: number;
+  private readonly maxAgeMs?: number;
+  private readonly topicArns: Set<string>;
 
   constructor(options: AwsSnsVerifierOptions = {}) {
     this.now = options.now ?? (() => new Date());
     this.fetchCertificate = options.fetchCertificate ?? this.defaultFetchCertificate;
     this.verifySignature = options.verifySignature ?? this.defaultVerifySignature;
-    this.maxAgeMs = options.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
+    this.maxAgeMs = options.maxAgeMs;
+    this.topicArns = new Set(options.topicArns ?? []);
   }
 
   async verify(message: SnsMessage): Promise<void> {
     this.validateEnvelopeShape(message);
+    if (!this.topicArns.has(message.TopicArn!)) {
+      throw createWebhookError('SENDFN_WEBHOOK_MESSAGE_INVALID', 'SNS message is malformed');
+    }
     this.validateSigningCertUrl(message.SigningCertURL!);
     this.validateTimestamp(message.Timestamp!);
 
@@ -69,6 +74,7 @@ export class AwsSnsVerifier {
       'Type',
       'Message',
       'MessageId',
+      'TopicArn',
       'Timestamp',
       'SignatureVersion',
       'Signature',
@@ -109,7 +115,7 @@ export class AwsSnsVerifier {
       throw createWebhookError('SENDFN_WEBHOOK_MESSAGE_INVALID', 'SNS message is malformed');
     }
 
-    if (Math.abs(this.now().getTime() - parsed.getTime()) > this.maxAgeMs) {
+    if (this.maxAgeMs !== undefined && Math.abs(this.now().getTime() - parsed.getTime()) > this.maxAgeMs) {
       throw createWebhookError('SENDFN_WEBHOOK_MESSAGE_INVALID', 'SNS message is malformed');
     }
   }
@@ -124,9 +130,9 @@ export class AwsSnsVerifier {
       'Type',
     ];
 
-    return orderedFields
+    return `${orderedFields
       .map((field) => `${field}\n${message[field] ?? ''}`)
-      .join('\n');
+      .join('\n')}\n`;
   }
 
   private async defaultFetchCertificate(url: string): Promise<string> {

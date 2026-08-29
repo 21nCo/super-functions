@@ -171,6 +171,7 @@ class FcmConfig(BaseModel):
 class ApnsConfig(BaseModel):
     """Apple Push Notification Service configuration."""
 
+    bundle_id: str = Field(alias="bundleId")
     key_id: str = Field(alias="keyId")
     team_id: str = Field(alias="teamId")
     key: str  # P8 certificate content

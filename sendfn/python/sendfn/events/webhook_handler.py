@@ -182,6 +182,7 @@ class AwsSesWebhookHandler:
         reference_id = transaction.id if transaction else _create_orphan_reference_id(provider_message_id)
         existing_events = await get_events_by_reference(self.db, str(reference_id), "email")
         created_suppression_entries = 0
+        event_timestamp = _parse_timestamp(bounce.get("timestamp") or event["mail"]["timestamp"])
 
         for recipient in recipients:
             email = recipient.get("emailAddress")
@@ -215,7 +216,7 @@ class AwsSesWebhookHandler:
                             "bounceSubType": bounce.get("bounceSubType"),
                             "diagnosticCode": recipient.get("diagnosticCode"),
                         },
-                        "eventTimestamp": _parse_timestamp(event["mail"]["timestamp"]),
+                        "eventTimestamp": event_timestamp,
                     },
                 )
 
@@ -237,7 +238,7 @@ class AwsSesWebhookHandler:
 
         if transaction is not None:
             await self._apply_lifecycle_transition(
-                transaction, "bounced", _parse_timestamp(event["mail"]["timestamp"])
+                transaction, "bounced", event_timestamp
             )
 
         return {
@@ -262,6 +263,9 @@ class AwsSesWebhookHandler:
         reference_id = transaction.id if transaction else _create_orphan_reference_id(provider_message_id)
         existing_events = await get_events_by_reference(self.db, str(reference_id), "email")
         created_suppression_entries = 0
+        event_timestamp = _parse_timestamp(
+            complaint.get("timestamp") or event["mail"]["timestamp"]
+        )
 
         for recipient in recipients:
             email = recipient.get("emailAddress")
@@ -294,7 +298,7 @@ class AwsSesWebhookHandler:
                             "complaintFeedbackType": complaint.get("complaintFeedbackType"),
                             "complaintSubType": complaint.get("complaintSubType"),
                         },
-                        "eventTimestamp": _parse_timestamp(event["mail"]["timestamp"]),
+                        "eventTimestamp": event_timestamp,
                     },
                 )
 
@@ -315,7 +319,7 @@ class AwsSesWebhookHandler:
 
         if transaction is not None:
             await self._apply_lifecycle_transition(
-                transaction, "complained", _parse_timestamp(event["mail"]["timestamp"])
+                transaction, "complained", event_timestamp
             )
 
         return {

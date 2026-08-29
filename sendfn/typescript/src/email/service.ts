@@ -1,7 +1,6 @@
 import {
   Attachment,
   EmailConfig,
-  EmailTemplate,
   EmailTransaction,
   SendEmailParams,
   SendfnOptions
@@ -71,7 +70,11 @@ export class EmailService {
     const rendered = this.resolveContent(params);
     this.assertTransportHeaders(params, recipients, rendered.subject);
     if (!transaction) {
-      await this.assertRecipientsNotSuppressed(recipients.to);
+      await this.assertRecipientsNotSuppressed([
+        ...recipients.to,
+        ...recipients.cc,
+        ...recipients.bcc,
+      ]);
       this.assertResolvedContent(rendered.subject, rendered.html, rendered.text);
       this.assertProviderLimits(recipients, params.attachments);
     }
@@ -113,6 +116,10 @@ export class EmailService {
         attachments: params.attachments,
         replyTo: params.replyTo ?? this.config.replyTo,
         headers: params.headers,
+        tags: params.tags
+          ? Object.fromEntries(params.tags.map((tag) => [tag, tag]))
+          : undefined,
+        metadata: params.metadata,
       });
 
       await this.adapter.updateEmailTransaction(transaction.id, {
@@ -121,7 +128,7 @@ export class EmailService {
         sentAt: response.timestamp,
       });
 
-      await this.adapter.recordEvent({
+      if (this.options.eventTracking !== false) await this.adapter.recordEvent({
         referenceId: transaction.id,
         referenceType: 'email',
         eventType: 'sent',
@@ -159,7 +166,7 @@ export class EmailService {
         },
       });
 
-      await this.adapter.recordEvent({
+      if (this.options.eventTracking !== false) await this.adapter.recordEvent({
         referenceId: transaction.id,
         referenceType: 'email',
         eventType: 'failed',

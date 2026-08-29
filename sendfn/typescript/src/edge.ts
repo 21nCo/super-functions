@@ -74,6 +74,7 @@ export function createSendFn(config: SendFnEdgeConfig): SendFnEdgeClient {
       const recipients = toArray(params.to) ?? [];
       const sender = resolveSender(config.email);
       const response = await emailProvider.sendEmail({
+        idempotencyKey: params.idempotencyKey,
         from: sender.header,
         to: recipients,
         cc: toArray(params.cc),
@@ -82,7 +83,10 @@ export function createSendFn(config: SendFnEdgeConfig): SendFnEdgeClient {
         html: params.html ?? '',
         text: params.text,
         attachments: params.attachments,
-        metadata: params.metadata
+        metadata: params.metadata,
+        tags: params.tags
+          ? Object.fromEntries(params.tags.map((tag) => [tag, tag]))
+          : undefined,
       });
 
       if (!response.success) {
@@ -179,6 +183,9 @@ function resolveSender(config: SenderConfig | undefined): ResolvedSender {
 
   const rawFromEmail = (config?.fromEmail ?? 'noreply@example.com').trim();
   const fromName = config?.fromName?.trim();
+  if (fromName && hasHeaderControlCharacter(fromName)) {
+    throw new Error('Invalid email.fromName. Display names cannot contain control characters.');
+  }
   const parsedFromEmail = tryParseSender(rawFromEmail);
   if (parsedFromEmail) {
     const displayName = fromName || parsedFromEmail.name;
@@ -235,8 +242,18 @@ function tryParseSender(value: string): { name?: string; email: string } | null 
   if (!name || !isBareEmail(email)) {
     return null;
   }
+  if (hasHeaderControlCharacter(name)) {
+    return null;
+  }
 
   return { name, email };
+}
+
+function hasHeaderControlCharacter(value: string): boolean {
+  return [...value].some((character) => {
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127;
+  });
 }
 
 function assertBareEmail(value: string, fieldName: string): void {

@@ -23,7 +23,7 @@ export async function main() {
     pushProviders: process.env.APNS_PRIVATE_KEY
       ? {
           ios: apnsAdapter({
-            bundleId: process.env.APNS_BUNDLE_ID,
+            bundleId: process.env.APNS_BUNDLE_ID!,
             key: process.env.APNS_PRIVATE_KEY,
             keyId: process.env.APNS_KEY_ID!,
             production: process.env.APNS_PRODUCTION === 'true',

@@ -56,16 +56,16 @@ class SmsProvider(Protocol):
     @property
     def name(self) -> str:
         """Provider name."""
-        ...
+        raise NotImplementedError
 
     @property
     def capabilities(self) -> SmsProviderCapabilities:
         """Provider capabilities."""
-        ...
+        raise NotImplementedError
 
     async def initialize(self) -> None:
         """Initialize the provider."""
-        ...
+        raise NotImplementedError
 
     async def send_sms(self, request: SendSmsRequest) -> SendSmsResponse:
         """Send an SMS.
@@ -76,7 +76,7 @@ class SmsProvider(Protocol):
         Returns:
             SMS send response
         """
-        ...
+        raise NotImplementedError
 
     async def is_healthy(self) -> bool:
         """Check if the provider is healthy.
@@ -84,8 +84,8 @@ class SmsProvider(Protocol):
         Returns:
             True if healthy, False otherwise
         """
-        ...
+        raise NotImplementedError
 
     async def close(self) -> None:
         """Close the provider connection."""
-        ...
+        raise NotImplementedError

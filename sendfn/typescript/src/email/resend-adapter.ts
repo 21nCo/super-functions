@@ -13,6 +13,35 @@ interface ResendEmailResponse {
   name?: string;
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
+function attachmentToBase64(content: Uint8Array | string, encoding?: string): string {
+  if (typeof content !== 'string') {
+    return bytesToBase64(content);
+  }
+  if (encoding?.toLowerCase() === 'base64') {
+    return content.replace(/\s/g, '');
+  }
+  if (encoding?.toLowerCase() === 'base64url') {
+    const normalized = content.replace(/-/g, '+').replace(/_/g, '/');
+    return normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+  }
+  return bytesToBase64(new TextEncoder().encode(content));
+}
+
+function metadataHeader(metadata: Record<string, any>): string {
+  return bytesToBase64(new TextEncoder().encode(JSON.stringify(metadata)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
 export class ResendAdapter implements EmailProvider {
   readonly name = 'resend';
   readonly capabilities: EmailProviderCapabilities = {
@@ -57,10 +86,7 @@ export class ResendAdapter implements EmailProvider {
           reply_to: params.replyTo,
           attachments: params.attachments?.map((attachment) => ({
             filename: attachment.filename,
-            content:
-              typeof attachment.content === 'string'
-                ? Buffer.from(attachment.content, attachment.encoding as BufferEncoding | undefined).toString('base64')
-                : attachment.content.toString('base64'),
+            content: attachmentToBase64(attachment.content, attachment.encoding),
             content_type: attachment.contentType,
           })),
           tags: params.tags
@@ -68,7 +94,7 @@ export class ResendAdapter implements EmailProvider {
             : undefined,
           headers: {
             ...(params.headers ?? {}),
-            ...(params.metadata ? { 'X-Sendfn-Metadata': Buffer.from(JSON.stringify(params.metadata)).toString('base64url') } : {}),
+            ...(params.metadata ? { 'X-Sendfn-Metadata': metadataHeader(params.metadata) } : {}),
           },
         }),
       });

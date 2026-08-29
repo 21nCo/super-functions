@@ -421,6 +421,14 @@ export class SendfnDb {
     }
   }
 
+  async deactivateDeviceTokenById(id: string): Promise<void> {
+    await this.adapter.update({
+      model: 'device_tokens',
+      where: [{ field: 'id', operator: 'eq', value: id }],
+      data: { isActive: false, updatedAt: new Date() }
+    });
+  }
+
   async deleteDeviceToken(id: string): Promise<void> {
     await this.adapter.delete({
       model: 'device_tokens',

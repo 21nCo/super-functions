@@ -157,11 +157,15 @@ async def test_verifier_rejects_invalid_hosts_stale_timestamps_and_malformed_env
         now=lambda: datetime(2026, 4, 2, 0, 0, 0, tzinfo=timezone.utc),
         fetch_certificate=lambda _url: "certificate",
         verify_signature=lambda *_args: True,
+        topic_arns=["arn:aws:sns:us-east-1:123456789012:sendfn"],
+        max_age_seconds=5 * 60,
     )
     stale_verifier = AwsSnsVerifier(
         now=lambda: datetime(2026, 4, 2, 0, 10, 0, tzinfo=timezone.utc),
         fetch_certificate=lambda _url: "certificate",
         verify_signature=lambda *_args: True,
+        topic_arns=["arn:aws:sns:us-east-1:123456789012:sendfn"],
+        max_age_seconds=5 * 60,
     )
 
     with pytest.raises(SendfnError) as invalid_host:
@@ -210,6 +214,25 @@ async def test_verifier_rejects_invalid_hosts_stale_timestamps_and_malformed_env
         )
 
     assert malformed.value.code == "SENDFN_WEBHOOK_MESSAGE_INVALID"
+
+    canonical_messages: list[str] = []
+    topic_verifier = AwsSnsVerifier(
+        fetch_certificate=lambda _url: "certificate",
+        verify_signature=lambda canonical, *_args: canonical_messages.append(canonical) or True,
+        topic_arns=["arn:aws:sns:us-east-1:123456789012:sendfn"],
+    )
+    await topic_verifier.verify(create_envelope({"notificationType": "Delivery"}))
+    assert canonical_messages[0].endswith(
+        "TopicArn\narn:aws:sns:us-east-1:123456789012:sendfn\nType\nNotification\n"
+    )
+    with pytest.raises(SendfnError) as untrusted_topic:
+        await topic_verifier.verify(
+            create_envelope(
+                {"notificationType": "Delivery"},
+                TopicArn="arn:aws:sns:us-east-1:123456789012:other",
+            )
+        )
+    assert untrusted_topic.value.code == "SENDFN_WEBHOOK_MESSAGE_INVALID"
 
 
 @pytest.mark.asyncio
@@ -267,6 +290,7 @@ async def test_bounce_and_complaint_update_state_suppression_and_duplicate_termi
                     "destination": ["user@example.com"],
                 },
                 "bounce": {
+                    "timestamp": "2026-04-02T00:00:07Z",
                     "feedbackId": "fb-1",
                     "bounceType": "Permanent",
                     "bounceSubType": "General",
@@ -284,6 +308,9 @@ async def test_bounce_and_complaint_update_state_suppression_and_duplicate_termi
     assert bounce["matchedTransactions"] == 1
     assert bounce["createdSuppressionEntries"] == 1
     assert get_records(db, "email_transactions")[0]["status"] == "bounced"
+    assert get_records(db, "communication_events")[0]["eventTimestamp"] == datetime(
+        2026, 4, 2, 0, 0, 7, tzinfo=timezone.utc
+    )
     bounce_suppression = await get_suppression_list_entry(db, "user@example.com")
     assert bounce_suppression is not None
     assert bounce_suppression.reason == "bounce"
@@ -302,6 +329,7 @@ async def test_bounce_and_complaint_update_state_suppression_and_duplicate_termi
                 "destination": ["user@example.com"],
             },
             "complaint": {
+                "timestamp": "2026-04-02T00:00:09Z",
                 "feedbackId": "cp-1",
                 "complaintFeedbackType": "abuse",
                 "complaintSubType": "OnAccountSuppressionList",

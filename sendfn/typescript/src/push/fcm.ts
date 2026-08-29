@@ -4,6 +4,7 @@ import { FcmConfig } from '../types';
 import { PushProviderError } from '../errors';
 
 const MAX_FCM_BATCH_SIZE = 500;
+let nextAppId = 1;
 
 export class FcmProvider implements PushProvider {
   readonly name = 'fcm';
@@ -17,17 +18,13 @@ export class FcmProvider implements PushProvider {
   };
 
   private app: admin.app.App;
+  private closed = false;
 
   constructor(private config: FcmConfig) {
-    // Prevent multiple initializations
-    if (admin.apps.length > 0) {
-        this.app = admin.apps[0]!;
-    } else {
-        this.app = admin.initializeApp({
-            credential: admin.credential.cert(config.serviceAccountKey as admin.ServiceAccount),
-            projectId: config.projectId,
-        });
-    }
+    this.app = admin.initializeApp({
+        credential: admin.credential.cert(config.serviceAccountKey as admin.ServiceAccount),
+        projectId: config.projectId,
+    }, `sendfn-${nextAppId++}`);
   }
 
   async initialize(): Promise<void> {
@@ -115,7 +112,9 @@ export class FcmProvider implements PushProvider {
   }
 
   async close(): Promise<void> {
+    if (this.closed) return;
     await this.app.delete();
+    this.closed = true;
   }
 }
 

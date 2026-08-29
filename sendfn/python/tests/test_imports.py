@@ -18,7 +18,7 @@ def test_base_import_succeeds_without_optional_web_extras() -> None:
 
     module = importlib.import_module("sendfn")
 
-    assert module.__version__ == "0.1.0"
+    assert module.__version__ == "0.0.1"
     assert "sendfn.http.fastapi" not in sys.modules
 
 

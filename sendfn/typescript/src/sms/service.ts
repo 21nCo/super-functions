@@ -46,7 +46,7 @@ export class SmsService {
         });
 
         // 4. Record Event
-        await this.db.recordEvent({
+        if (this.options.eventTracking !== false) await this.db.recordEvent({
             referenceId: transaction.id,
             referenceType: 'sms',
             eventType: response.success ? 'sent' : 'failed',
@@ -69,7 +69,7 @@ export class SmsService {
             metadata: { ...params.metadata, error: error.message }
         });
 
-        await this.db.recordEvent({
+        if (this.options.eventTracking !== false) await this.db.recordEvent({
             referenceId: transaction.id,
             referenceType: 'sms',
             eventType: 'failed',

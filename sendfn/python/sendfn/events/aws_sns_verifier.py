@@ -8,14 +8,13 @@ import re
 import subprocess
 import tempfile
 from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterable, Optional
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from ..errors import SendfnError
 
 CERT_HOST_PATTERN = re.compile(r"^sns\.[a-z0-9-]+\.amazonaws\.com$", re.IGNORECASE)
-DEFAULT_MAX_AGE_SECONDS = 5 * 60
 
 
 def create_webhook_error(code: str, message: str) -> SendfnError:
@@ -32,16 +31,23 @@ class AwsSnsVerifier:
         now: Optional[Callable[[], datetime]] = None,
         fetch_certificate: Optional[Callable[[str], str]] = None,
         verify_signature: Optional[Callable[[str, str, str], bool]] = None,
-        max_age_seconds: int = DEFAULT_MAX_AGE_SECONDS,
+        max_age_seconds: Optional[int] = None,
+        topic_arns: Optional[Iterable[str]] = None,
     ) -> None:
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.fetch_certificate = fetch_certificate or self._default_fetch_certificate
         self.verify_signature = verify_signature or self._default_verify_signature
         self.max_age_seconds = max_age_seconds
+        self.topic_arns = set(topic_arns or ())
 
     async def verify(self, message: dict[str, Any]) -> None:
         """Verify SNS envelope shape, freshness, cert host, and signature."""
         self._validate_envelope_shape(message)
+        if message["TopicArn"] not in self.topic_arns:
+            raise create_webhook_error(
+                "SENDFN_WEBHOOK_MESSAGE_INVALID",
+                "SNS message is malformed",
+            )
         self._validate_signing_cert_url(message["SigningCertURL"])
         self._validate_timestamp(message["Timestamp"])
 
@@ -71,6 +77,7 @@ class AwsSnsVerifier:
             "Type",
             "Message",
             "MessageId",
+            "TopicArn",
             "Timestamp",
             "SignatureVersion",
             "Signature",
@@ -101,7 +108,7 @@ class AwsSnsVerifier:
     def _validate_timestamp(self, timestamp: str) -> None:
         parsed = self._parse_timestamp(timestamp)
         age = abs((self.now() - parsed).total_seconds())
-        if age > self.max_age_seconds:
+        if self.max_age_seconds is not None and age > self.max_age_seconds:
             raise create_webhook_error(
                 "SENDFN_WEBHOOK_MESSAGE_INVALID",
                 "SNS message is malformed",
@@ -126,7 +133,7 @@ class AwsSnsVerifier:
         if message.get("Subject"):
             ordered_fields.append("Subject")
         ordered_fields.extend(["Timestamp", "TopicArn", "Type"])
-        return "\n".join(f"{field}\n{message.get(field, '')}" for field in ordered_fields)
+        return "\n".join(f"{field}\n{message.get(field, '')}" for field in ordered_fields) + "\n"
 
     def _default_fetch_certificate(self, url: str) -> str:
         try:

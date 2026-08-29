@@ -77,16 +77,16 @@ class EmailProvider(Protocol):
     @property
     def name(self) -> str:
         """Provider name."""
-        ...
+        raise NotImplementedError
 
     @property
     def capabilities(self) -> EmailProviderCapabilities:
         """Provider capabilities."""
-        ...
+        raise NotImplementedError
 
     async def initialize(self) -> None:
         """Initialize the provider."""
-        ...
+        raise NotImplementedError
 
     async def send_email(self, request: SendEmailRequest) -> SendEmailResponse:
         """Send a single email.
@@ -97,7 +97,7 @@ class EmailProvider(Protocol):
         Returns:
             Email send response
         """
-        ...
+        raise NotImplementedError
 
     async def send_bulk_email(
         self, requests: list[SendEmailRequest]
@@ -110,7 +110,7 @@ class EmailProvider(Protocol):
         Returns:
             List of email send responses
         """
-        ...
+        raise NotImplementedError
 
     def validate_email(self, email: str) -> bool:
         """Validate an email address.
@@ -121,7 +121,7 @@ class EmailProvider(Protocol):
         Returns:
             True if valid, False otherwise
         """
-        ...
+        raise NotImplementedError
 
     async def is_healthy(self) -> bool:
         """Check if the provider is healthy.
@@ -129,8 +129,8 @@ class EmailProvider(Protocol):
         Returns:
             True if healthy, False otherwise
         """
-        ...
+        raise NotImplementedError
 
     async def close(self) -> None:
         """Close the provider connection."""
-        ...
+        raise NotImplementedError

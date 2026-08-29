@@ -70,6 +70,11 @@ function createRequestId(request: Request): string {
   return request.headers.get('x-request-id') ?? `req_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
 
+function trackInitialization(initialization: Promise<void>): Promise<void> {
+  void initialization.catch(() => undefined);
+  return initialization;
+}
+
 function buildSuccessResponse(data: unknown, requestId: string, status = 200): Response {
   return Response.json(
     {
@@ -125,6 +130,10 @@ export class Sendfn implements SendfnClient {
   private smsProvider?: SmsProvider;
   private whatsappProvider?: WhatsAppProvider;
   private pushProviders = new Map<Platform, PushProvider>();
+  private emailInitialization: Promise<void> = Promise.resolve();
+  private smsInitialization: Promise<void> = Promise.resolve();
+  private whatsappInitialization: Promise<void> = Promise.resolve();
+  private pushInitialization: Promise<void> = Promise.resolve();
   private closed = false;
 
   public router: any;
@@ -164,9 +173,7 @@ export class Sendfn implements SendfnClient {
     // Initialize Email Service if Provider is provided
     if (config.emailProvider) {
         this.emailProvider = config.emailProvider;
-        // Initialize provider if needed (though it should be initialized by consumer, maybe we ensure?)
-        // The interface has initialize()
-        config.emailProvider.initialize().catch(err => console.error("Failed to init email provider", err));
+        this.emailInitialization = trackInitialization(config.emailProvider.initialize());
 
         this.emailService = new EmailService(
             config.emailProvider,
@@ -180,6 +187,7 @@ export class Sendfn implements SendfnClient {
         // Backwards compatibility / ease of use: if awsSes config present but no provider passed, create default
         const provider = new AwsSesAdapter(config.email.awsSes);
         this.emailProvider = provider;
+        this.emailInitialization = trackInitialization(provider.initialize());
         this.emailService = new EmailService(
             provider,
             this.db,
@@ -193,7 +201,7 @@ export class Sendfn implements SendfnClient {
     // Initialize SMS Service if Provider is provided
     if (config.smsProvider) {
         this.smsProvider = config.smsProvider;
-        config.smsProvider.initialize().catch(err => console.error("Failed to init sms provider", err));
+        this.smsInitialization = trackInitialization(config.smsProvider.initialize());
 
         this.smsService = new SmsService(
             config.smsProvider,
@@ -205,7 +213,7 @@ export class Sendfn implements SendfnClient {
     // Initialize WhatsApp Service if Provider is provided
     if (config.whatsappProvider) {
         this.whatsappProvider = config.whatsappProvider;
-        config.whatsappProvider.initialize().catch(err => console.error("Failed to init whatsapp provider", err));
+        this.whatsappInitialization = trackInitialization(config.whatsappProvider.initialize());
 
         this.whatsappService = new WhatsAppService(
             config.whatsappProvider,
@@ -225,11 +233,12 @@ export class Sendfn implements SendfnClient {
     }
 
     if (config.push?.providers.fcm) {
+        const fcmProvider = new FcmProvider(config.push.providers.fcm);
         if (!pushProvidersToInitialize.has('android')) {
-          pushProvidersToInitialize.set('android', new FcmProvider(config.push.providers.fcm));
+          pushProvidersToInitialize.set('android', fcmProvider);
         }
         if (!pushProvidersToInitialize.has('web')) {
-          pushProvidersToInitialize.set('web', new FcmProvider(config.push.providers.fcm));
+          pushProvidersToInitialize.set('web', fcmProvider);
         }
     }
     if (!pushProvidersToInitialize.has('ios') && config.push?.providers.apns) {
@@ -238,8 +247,10 @@ export class Sendfn implements SendfnClient {
 
     for (const [platform, provider] of pushProvidersToInitialize) {
         this.pushProviders.set(platform, provider);
-        provider.initialize().catch(err => console.error(`Failed to init ${platform} push provider`, err));
     }
+    this.pushInitialization = trackInitialization(Promise.all(
+      [...new Set(pushProvidersToInitialize.values())].map((provider) => provider.initialize())
+    ).then(() => undefined));
 
     this.pushService = new PushService(
         this.pushProviders,
@@ -253,6 +264,12 @@ export class Sendfn implements SendfnClient {
         this.suppressionManager,
         {
           logger: this.config.options?.logger,
+          verifier: this.config.awsSns
+            ? AwsSesWebhookHandler.createVerifier({
+                topicArns: this.config.awsSns.topicArns,
+                maxAgeMs: this.config.awsSns.maxAgeMs,
+              })
+            : undefined,
         }
     );
 
@@ -542,14 +559,20 @@ export class Sendfn implements SendfnClient {
     if (!this.emailService) {
         throw new EmailProviderError("Email provider not configured");
     }
-    return this.withTypedError(() => this.emailService!.sendEmail(params), EmailProviderError);
+    return this.withTypedError(async () => {
+      await this.emailInitialization;
+      return this.emailService!.sendEmail(params);
+    }, EmailProviderError);
   }
 
   async bulkEmail(recipients: SendEmailParams[]): Promise<EmailTransaction[]> {
     if (!this.emailService) {
         throw new EmailProviderError("Email provider not configured");
     }
-    return this.withTypedError(() => this.emailService!.sendBulkEmail(recipients), EmailProviderError);
+    return this.withTypedError(async () => {
+      await this.emailInitialization;
+      return this.emailService!.sendBulkEmail(recipients);
+    }, EmailProviderError);
   }
 
   // SMS methods
@@ -557,7 +580,10 @@ export class Sendfn implements SendfnClient {
       if (!this.smsService) {
           throw new SmsProviderError("SMS provider not configured");
       }
-      return this.withTypedError(() => this.smsService!.sendSms(params), SmsProviderError);
+      return this.withTypedError(async () => {
+        await this.smsInitialization;
+        return this.smsService!.sendSms(params);
+      }, SmsProviderError);
   }
 
   // WhatsApp methods
@@ -565,16 +591,25 @@ export class Sendfn implements SendfnClient {
       if (!this.whatsappService) {
           throw new WhatsAppProviderError("WhatsApp provider not configured");
       }
-      return this.withTypedError(() => this.whatsappService!.sendWhatsApp(params), WhatsAppProviderError);
+      return this.withTypedError(async () => {
+        await this.whatsappInitialization;
+        return this.whatsappService!.sendWhatsApp(params);
+      }, WhatsAppProviderError);
   }
 
   // Push methods
   async push(params: SendPushParams): Promise<PushNotification> {
-    return this.withTypedError(() => this.pushService.sendPush(params), PushProviderError);
+    return this.withTypedError(async () => {
+      await this.pushInitialization;
+      return this.pushService.sendPush(params);
+    }, PushProviderError);
   }
 
   async bulkPush(notifications: SendPushParams[]): Promise<PushNotification[]> {
-    return this.withTypedError(() => this.pushService.sendBulkPush(notifications), PushProviderError);
+    return this.withTypedError(async () => {
+      await this.pushInitialization;
+      return this.pushService.sendBulkPush(notifications);
+    }, PushProviderError);
   }
 
   // Device management
