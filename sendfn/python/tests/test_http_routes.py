@@ -15,8 +15,8 @@ from sendfn.email.service import EmailService
 from sendfn.email.templates import TemplateEngine, TemplateRegistry
 from sendfn.errors import SendfnError
 from sendfn.events.tracker import EventTracker
-from sendfn.models import EmailConfig
 from sendfn.http.routes import create_sendfn_routes
+from sendfn.models import EmailConfig
 from sendfn.suppression.manager import SuppressionManager
 
 

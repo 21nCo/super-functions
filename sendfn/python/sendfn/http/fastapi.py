@@ -3,10 +3,10 @@
 This module provides FastAPI integration using superfunctions_fastapi adapter.
 """
 
-from typing import Optional
+from typing import Any, Optional
 
-from ..errors import SendfnError
 from ..client import Sendfn
+from ..errors import SendfnError
 from .routes import create_sendfn_routes
 
 try:
@@ -25,7 +25,7 @@ def create_sendfn_router(
     admin_key: Optional[str] = None,
     prefix: str = "",
     tags: Optional[list[str]] = None,
-):
+) -> Any:
     """Create a FastAPI router with sendfn endpoints.
 
     This function uses superfunctions abstractions to create a FastAPI router,

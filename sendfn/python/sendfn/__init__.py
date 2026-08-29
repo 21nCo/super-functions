@@ -32,9 +32,11 @@ Example:
     ... ))
 """
 
+# ruff: noqa: E402
+
+import sys
 from importlib import import_module
 from pathlib import Path
-import sys
 
 __version__ = "0.1.0"
 
@@ -60,8 +62,8 @@ from .errors import (
     DatabaseError,
     EmailProviderError,
     PushProviderError,
-    SmsProviderError,
     SendfnError,
+    SmsProviderError,
     SuppressionError,
     TemplateError,
     ValidationError,

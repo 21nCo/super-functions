@@ -1,7 +1,5 @@
 """Tests for sendfn models."""
 
-import pytest
-from pydantic import ValidationError
 
 from sendfn.models import (
     EmailTransaction,

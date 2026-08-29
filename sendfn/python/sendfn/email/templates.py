@@ -2,11 +2,10 @@
 
 import html
 import re
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from ..errors import TemplateError
 from ..models import EmailTemplate
-
 
 TemplateNode = dict[str, Any]
 
@@ -53,7 +52,7 @@ class TemplateEngine:
         nodes = self._parse(template)
         variables: set[str] = set()
         self._collect_variables(nodes, variables)
-        return sorted(list(variables))
+        return sorted(variables)
 
     def _collect_variables(self, nodes: list[TemplateNode], variables: set[str]) -> None:
         for node in nodes:
@@ -81,7 +80,7 @@ class TemplateEngine:
                 if not parsed:
                     raise ValueError(f"Unsupported block tag: {tag}")
 
-                node = {
+                node: TemplateNode = {
                     "type": parsed.group(1),
                     "name": parsed.group(2),
                     "children": [],
@@ -109,7 +108,7 @@ class TemplateEngine:
         if len(frames) != 1:
             raise ValueError("Unclosed template block")
 
-        return frames[0]["children"]
+        return cast(list[TemplateNode], frames[0]["children"])
 
     def _render_nodes(self, nodes: list[TemplateNode], scopes: list[dict[str, Any]]) -> str:
         result: list[str] = []

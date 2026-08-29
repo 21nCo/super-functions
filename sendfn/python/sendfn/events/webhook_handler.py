@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, cast
 from uuid import uuid4
 
 from superfunctions.db import Adapter
@@ -118,7 +118,7 @@ class AwsSesWebhookHandler:
                 },
             )
             if exc is sendfn_error:
-                raise sendfn_error
+                raise
             raise sendfn_error from exc
 
         logger.info(
@@ -152,7 +152,7 @@ class AwsSesWebhookHandler:
                 "SENDFN_WEBHOOK_MESSAGE_INVALID",
                 "SNS message is malformed",
             )
-        return event
+        return cast(dict[str, Any], event)
 
     async def _process_event(self, event: dict[str, Any]) -> dict[str, Any]:
         notification_type = event["notificationType"]

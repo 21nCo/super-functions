@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from sendfn.database.memory import MemoryAdapter
 from sendfn._concurrency import map_with_concurrency
+from sendfn.database.memory import MemoryAdapter
 from sendfn.errors import SendfnError, ValidationError
 from sendfn.models import RegisterDeviceParams, SendPushParams
 from sendfn.push.apns import ApnsProvider

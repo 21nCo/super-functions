@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from superfunctions.db import (
-    Adapter,
     AdapterCapabilities,
     CountParams,
     CreateManyParams,
@@ -117,7 +116,7 @@ class MemoryAdapter:
                 record.update(params.data)
                 return record
 
-        raise ValueError(f"Record not found matching where clause")
+        raise ValueError("Record not found matching where clause")
 
     async def delete(self, params: DeleteParams) -> None:
         """Delete a single record."""
@@ -128,7 +127,7 @@ class MemoryAdapter:
                 del storage[record_id]
                 return
 
-        raise ValueError(f"Record not found matching where clause")
+        raise ValueError("Record not found matching where clause")
 
     async def create_many(self, params: CreateManyParams) -> List[Dict[str, Any]]:
         """Create multiple records."""

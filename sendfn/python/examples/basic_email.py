@@ -52,7 +52,7 @@ async def main():
         )
     )
 
-    print(f"Email sent successfully!")
+    print("Email sent successfully!")
     print(f"Transaction ID: {transaction.id}")
     print(f"Status: {transaction.status}")
     print(f"Provider Message ID: {transaction.provider_message_id}")

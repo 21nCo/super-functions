@@ -6,8 +6,8 @@ from uuid import uuid4
 
 from superfunctions.db import Adapter
 
-from ..models import DeviceToken, Platform, RegisterDeviceParams
 from ..errors import ValidationError
+from ..models import DeviceToken, Platform, RegisterDeviceParams
 
 
 class DeviceTokenManager:

@@ -137,7 +137,7 @@ class AwsSnsVerifier:
                 "SENDFN_WEBHOOK_SIGNATURE_INVALID",
                 "SNS signature verification failed",
             ) from exc
-        return payload
+        return str(payload)
 
     def _default_verify_signature(
         self, canonical_message: str, signature: str, certificate: str

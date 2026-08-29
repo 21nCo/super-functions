@@ -1,14 +1,12 @@
 """APNS (Apple Push Notification Service) provider for push notifications."""
 
-import asyncio
 from datetime import datetime
 from typing import Any, Optional
 
-from ..errors import PushProviderError
 from .._concurrency import map_with_concurrency
+from ..errors import PushProviderError
 from ..models import ApnsConfig
 from .provider import (
-    PushProvider,
     PushProviderCapabilities,
     SendPushRequest,
     SendPushResponse,
@@ -79,7 +77,10 @@ class ApnsProvider:
         """
         if not self._client:
             await self.initialize()
-        assert self._notification_request_cls is not None
+        client = self._client
+        notification_request_cls = self._notification_request_cls
+        assert client is not None
+        assert notification_request_cls is not None
 
         results: list[dict[str, Any]] = []
         invalid_tokens: list[str] = []
@@ -124,7 +125,7 @@ class ApnsProvider:
         # Send to each token with the provider concurrency cap.
         async def send_to_token(token: str, _index: int) -> dict[str, Any]:
             try:
-                notification = self._notification_request_cls(
+                notification = notification_request_cls(
                     device_token=token,
                     message=payload,
                     priority=(10 if request.priority == "high" else 5),
@@ -132,7 +133,7 @@ class ApnsProvider:
                     collapse_id=request.collapse_key,
                 )
 
-                await self._client.send_notification(notification)
+                await client.send_notification(notification)
 
                 return {"token": token, "success": True}
 

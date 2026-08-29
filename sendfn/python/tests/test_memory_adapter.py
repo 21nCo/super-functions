@@ -4,7 +4,13 @@ from datetime import datetime
 from uuid import UUID
 
 import pytest
-from superfunctions.db import CreateManyParams, CreateParams, FindManyParams, UpdateParams, WhereClause
+from superfunctions.db import (
+    CreateManyParams,
+    CreateParams,
+    FindManyParams,
+    UpdateParams,
+    WhereClause,
+)
 
 from sendfn.database.memory import MemoryAdapter
 from sendfn.errors import DatabaseError

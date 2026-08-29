@@ -1,10 +1,9 @@
 """Console SMS provider for testing."""
 
 from datetime import datetime
-from typing import Optional
 from uuid import uuid4
 
-from .provider import SendSmsRequest, SendSmsResponse, SmsProvider, SmsProviderCapabilities
+from .provider import SendSmsRequest, SendSmsResponse, SmsProviderCapabilities
 
 
 class ConsoleSmsProvider:

@@ -5,7 +5,7 @@ with sendfn-specific logic.
 """
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from uuid import uuid4
 
 from superfunctions.db import (
@@ -133,11 +133,14 @@ async def _get_reference_record(
     if model is None:
         return None
 
-    return await db.find_one(
-        FindOneParams(
-            model=model,
-            where=[WhereClause(field="id", operator="eq", value=reference_id)],
-        )
+    return cast(
+        Optional[dict[str, Any]],
+        await db.find_one(
+            FindOneParams(
+                model=model,
+                where=[WhereClause(field="id", operator="eq", value=reference_id)],
+            )
+        ),
     )
 
 
@@ -325,7 +328,7 @@ async def find_suppression_list(db: Adapter, params: dict) -> list[SuppressionLi
 # --- Device Token Helpers ---
 
 
-async def create_device_token(db: Adapter, **data) -> DeviceToken:
+async def create_device_token(db: Adapter, **data: Any) -> DeviceToken:
     """Create a device token."""
     result = await db.create(
         CreateParams(
@@ -339,7 +342,7 @@ async def create_device_token(db: Adapter, **data) -> DeviceToken:
     return DeviceToken.model_validate(result)
 
 
-async def update_device_token(db: Adapter, device_id: str, **data) -> DeviceToken:
+async def update_device_token(db: Adapter, device_id: str, **data: Any) -> DeviceToken:
     """Update a device token."""
     result = await db.update(
         UpdateParams(

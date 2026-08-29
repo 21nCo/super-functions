@@ -1,7 +1,7 @@
 """Main Sendfn client."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
 from superfunctions.db import Adapter
 
@@ -43,11 +43,6 @@ from .sms.provider import SmsProvider
 from .sms.service import SmsService
 from .suppression.manager import SuppressionManager
 
-if TYPE_CHECKING:
-    from .email.aws_ses import AwsSesProvider
-    from .push.apns import ApnsProvider
-    from .push.fcm import FcmProvider
-
 
 class SendfnConfig:
     """Sendfn configuration."""
@@ -73,7 +68,7 @@ class SendfnConfig:
         self.email = email
         self.push = push
         self.sms_provider = sms_provider
-        self.options = options or SendfnOptions()
+        self.options = options or SendfnOptions()  # type: ignore[call-arg]
 
 
 class Sendfn:

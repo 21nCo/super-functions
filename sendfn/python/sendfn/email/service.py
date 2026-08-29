@@ -1,8 +1,7 @@
 """Email service orchestration."""
 
 import asyncio
-from datetime import datetime
-from typing import Optional
+from typing import Optional, TypedDict
 
 from superfunctions.db import Adapter
 
@@ -16,6 +15,18 @@ from .templates import TemplateEngine, TemplateRegistry
 
 DEFAULT_MAX_RECIPIENTS = 50
 DEFAULT_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+
+
+class RecipientGroups(TypedDict):
+    to: list[str]
+    cc: list[str]
+    bcc: list[str]
+
+
+class ResolvedEmailContent(TypedDict):
+    subject: str
+    html: str
+    text: Optional[str]
 
 
 class EmailService:
@@ -86,7 +97,10 @@ class EmailService:
             bcc=recipients["bcc"] or None,
             attachments=params.attachments,
             reply_to=self.config.reply_to,
-            tags={"userId": params.user_id} if params.tags is None else {**params.tags, "userId": params.user_id},
+            tags={
+                **({tag: tag for tag in params.tags} if params.tags else {}),
+                "userId": params.user_id,
+            },
             metadata=params.metadata,
         )
 
@@ -150,7 +164,9 @@ class EmailService:
                 },
             )
 
-            raise send_error
+            if send_error is error:
+                raise
+            raise send_error from error
 
     async def send_bulk_email(
         self, recipients: list[SendEmailParams]
@@ -165,11 +181,14 @@ class EmailService:
         """Get email transaction status."""
         return await db_helpers.get_email_transaction(self.db, transaction_id)
 
-    def _normalize_recipients(self, params: SendEmailParams) -> dict[str, list[str]]:
+    def _normalize_recipients(self, params: SendEmailParams) -> RecipientGroups:
+        to = [params.to] if isinstance(params.to, str) else params.to
+        cc = [params.cc] if isinstance(params.cc, str) else params.cc
+        bcc = [params.bcc] if isinstance(params.bcc, str) else params.bcc
         return {
-          "to": list(params.to),
-          "cc": list(params.cc) if params.cc else [],
-          "bcc": list(params.bcc) if params.bcc else [],
+            "to": [str(email) for email in to],
+            "cc": [str(email) for email in cc] if cc else [],
+            "bcc": [str(email) for email in bcc] if bcc else [],
         }
 
     async def _assert_recipients_not_suppressed(self, recipients: list[str]) -> None:
@@ -185,7 +204,7 @@ class EmailService:
                     details={"recipient": email},
                 )
 
-    def _resolve_content(self, params: SendEmailParams) -> dict[str, Optional[str]]:
+    def _resolve_content(self, params: SendEmailParams) -> ResolvedEmailContent:
         subject = params.subject
         html = params.html
         text = params.text
@@ -230,7 +249,7 @@ class EmailService:
 
     def _assert_provider_limits(
         self,
-        recipients: dict[str, list[str]],
+        recipients: RecipientGroups,
         attachments: Optional[list[Attachment]],
     ) -> None:
         recipient_count = len(recipients["to"]) + len(recipients["cc"]) + len(recipients["bcc"])

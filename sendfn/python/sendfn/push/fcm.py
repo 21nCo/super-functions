@@ -6,7 +6,6 @@ from typing import Any, Optional
 from ..errors import PushProviderError
 from ..models import FcmConfig
 from .provider import (
-    PushProvider,
     PushProviderCapabilities,
     SendPushRequest,
     SendPushResponse,

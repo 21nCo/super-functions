@@ -1,5 +1,7 @@
 """Push notification package for sendfn."""
 
+from typing import Any
+
 from .device_manager import DeviceTokenManager
 from .provider import (
     PushProvider,
@@ -21,7 +23,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     if name == "FcmProvider":
         from .fcm import FcmProvider
 

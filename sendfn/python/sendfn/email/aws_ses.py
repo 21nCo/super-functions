@@ -9,9 +9,8 @@ from email.mime.text import MIMEText
 from typing import Any, Optional
 
 from ..errors import EmailProviderError
-from ..models import Attachment, AwsSesConfig
+from ..models import AwsSesConfig
 from .provider import (
-    EmailProvider,
     EmailProviderCapabilities,
     SendEmailRequest,
     SendEmailResponse,
@@ -52,10 +51,10 @@ class AwsSesProvider:
         """Initialize the AWS SES client."""
         try:
             import boto3
-        except ImportError:
+        except ImportError as error:
             raise EmailProviderError(
                 "boto3 is required for AWS SES. Install with: pip install boto3"
-            )
+            ) from error
 
         self._client = boto3.client(
             "ses",
@@ -159,7 +158,7 @@ class AwsSesProvider:
         if request.bcc:
             destination["BccAddresses"] = request.bcc
 
-        message = {
+        message: dict[str, Any] = {
             "Subject": {"Data": request.subject, "Charset": "UTF-8"},
             "Body": {"Html": {"Data": request.html, "Charset": "UTF-8"}},
         }
@@ -179,7 +178,9 @@ class AwsSesProvider:
         if self.config.configuration_set_name:
             kwargs["ConfigurationSetName"] = self.config.configuration_set_name
 
-        response = self._client.send_email(**kwargs)
+        client = self._client
+        assert client is not None
+        response = client.send_email(**kwargs)
 
         return SendEmailResponse(
             success=True,
@@ -237,7 +238,9 @@ class AwsSesProvider:
         if self.config.configuration_set_name:
             kwargs["ConfigurationSetName"] = self.config.configuration_set_name
 
-        response = self._client.send_raw_email(**kwargs)
+        client = self._client
+        assert client is not None
+        response = client.send_raw_email(**kwargs)
 
         return SendEmailResponse(
             success=True,

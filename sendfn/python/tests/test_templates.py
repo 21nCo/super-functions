@@ -2,8 +2,8 @@
 
 import pytest
 
-from sendfn.errors import TemplateError
 from sendfn.email.templates import TemplateEngine
+from sendfn.errors import TemplateError
 
 
 def test_template_engine_renders_variables_conditionals_and_loops() -> None:
