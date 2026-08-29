@@ -1,5 +1,7 @@
 import { defineConfig } from "tsup";
 
+import { mcpfnCliVersionDefine } from "./version.config.js";
+
 export default defineConfig({
   entry: ["src/index.ts", "src/bin.ts"],
   format: ["esm", "cjs"],
@@ -7,4 +9,5 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   splitting: false,
+  define: mcpfnCliVersionDefine,
 });

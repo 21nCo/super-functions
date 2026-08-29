@@ -10,7 +10,12 @@ import {
   structuredResult,
 } from "@mcpfn/core";
 
-import { loadManifestSource, loadScenarios, runCli } from "../src/index.js";
+import {
+  loadManifestSource,
+  loadScenarios,
+  MCPFN_CLI_VERSION,
+  runCli,
+} from "../src/index.js";
 
 const testRequire = createRequire(import.meta.url);
 
@@ -19,6 +24,13 @@ describe("mcpfn CLI", () => {
 
   afterEach(async () => {
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  });
+
+  it("keeps the reported CLI version aligned with the package manifest", async () => {
+    const packageJson = JSON.parse(
+      await readFile(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    expect(MCPFN_CLI_VERSION).toBe(packageJson.version);
   });
 
   it("returns usage exit code 2 when a command is missing or unknown", async () => {
