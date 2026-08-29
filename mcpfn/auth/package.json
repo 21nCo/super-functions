@@ -1,6 +1,6 @@
 {
   "name": "@mcpfn/auth",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Web Standard OAuth protected-resource middleware and enterprise-managed authorization helpers for MCP",
   "type": "module",
   "main": "dist/index.cjs",
@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.25.2",
-    "@superfunctions/oauth-core": "0.1.0",
+    "@superfunctions/oauth-core": "0.1.1",
     "@superfunctions/oauth-storage": "0.1.0"
   },
   "peerDependencies": {

@@ -22,10 +22,10 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.25.2",
-    "@superfunctions/oauth-core": "0.1.0"
+    "@superfunctions/oauth-core": "0.1.1"
   },
   "devDependencies": {
-    "@mcpfn/core": "0.0.1",
+    "@mcpfn/core": "0.0.2",
     "@types/node": "^20.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
