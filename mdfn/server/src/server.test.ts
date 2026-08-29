@@ -39,7 +39,8 @@ describe("mdfn server", () => {
     const commented = await service.createComment(principal, created.id, { expectedVersion: 1, anchor: { from: 2, to: 5 }, body: "Please revise", idempotencyKey: "comment" });
     const threadId = commented.sidecar?.comments?.[0]?.id;
     expect(threadId).toBeTruthy();
-    expect((await service.createComment(principal, created.id, { expectedVersion: 1, anchor: { from: 2, to: 5 }, body: "ignored replay", idempotencyKey: "comment" })).version).toBe(2);
+    expect((await service.createComment(principal, created.id, { expectedVersion: 1, anchor: { from: 2, to: 5 }, body: "Please revise", idempotencyKey: "comment" })).version).toBe(2);
+    await expect(service.createComment(principal, created.id, { expectedVersion: 1, anchor: { from: 2, to: 5 }, body: "different payload", idempotencyKey: "comment" })).rejects.toMatchObject({ code: "MDFN_IDEMPOTENCY_KEY_REUSED" });
     const replied = await service.replyComment(principal, created.id, threadId!, { expectedVersion: 2, body: "Working on it" });
     const resolved = await service.resolveComment(principal, created.id, threadId!, { expectedVersion: 3, resolved: true });
     const suggested = await service.createSuggestion(principal, created.id, { expectedVersion: 4, anchor: { from: 2, to: 5 }, replacement: "Two" });
@@ -61,6 +62,15 @@ describe("mdfn server", () => {
     await expect(service.read(principal, created.id)).rejects.toMatchObject({ code: "MDFN_DOCUMENT_NOT_FOUND" });
     void replied;
     void resolved;
+  });
+
+  it("maps editorial anchors through disjoint Markdown changes", async () => {
+    const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `mapping-${id++}`; })() });
+    const principal = { id: "author" };
+    const created = await service.create(principal, { markdown: "aa middle zz" });
+    const commented = await service.createComment(principal, created.id, { expectedVersion: 1, anchor: { from: 3, to: 9 }, body: "Keep mapped" });
+    const updated = await service.update(principal, created.id, { expectedVersion: commented.version, markdown: "Aaa middle zzZ" });
+    expect(updated.sidecar?.comments?.[0]?.anchor).toEqual({ from: 4, to: 10 });
   });
 
   it("restores the complete historical title, Markdown, and sidecar snapshot", async () => {

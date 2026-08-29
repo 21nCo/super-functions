@@ -147,6 +147,11 @@ function renderExtensionNode(node: ExtensionRenderNode, context: RenderContext, 
     }
     attributes.push(rawValue === true ? ` ${normalizedName}` : ` ${normalizedName}="${escapeHtml(String(rawValue))}"`);
   }
+  if (node.tag === "a" && Object.entries(node.attrs ?? {}).some(([name, value]) => name.toLowerCase() === "target" && String(value).toLowerCase() === "_blank")) {
+    const relIndex = attributes.findIndex((attribute) => attribute.startsWith(" rel="));
+    if (relIndex >= 0) attributes.splice(relIndex, 1);
+    attributes.push(' rel="noreferrer noopener"');
+  }
   const contents = `${node.text === undefined ? "" : escapeHtml(node.text)}${(node.children ?? []).map((child) => renderExtensionNode(child, context, depth + 1)).join("")}`;
   if (["br", "hr", "img"].includes(node.tag)) return `<${node.tag}${attributes.join("")}>`;
   return `<${node.tag}${attributes.join("")}>${contents}</${node.tag}>`;

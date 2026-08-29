@@ -300,17 +300,17 @@ export function createDomEditor(options: DomEditorOptions): DomEditor {
       const before = view.state.doc;
       view.updateState(next);
       if (syncing) return;
-      let edit = new MdfnTransaction().withSource(transaction.docChanged ? "visual:document" : "visual:selection");
       if (transaction.docChanged) {
         const document = proseMirrorToDocument(next.doc, before, options.controller.getState().document.schemaVersion);
-        edit = edit.replaceDocument(document);
+        options.controller.dispatch(new MdfnTransaction().replaceDocument(document).withSource("visual:document"));
         previousPmDocument = next.doc;
       }
       if (transaction.selectionSet || transaction.docChanged) {
         const controllerState = options.controller.getState();
-        edit = edit.setSelection(selectionFromPm(next, controllerState.document, controllerState.markdown.length));
+        options.controller.dispatch(new MdfnTransaction()
+          .setSelection(selectionFromPm(next, controllerState.document, controllerState.markdown.length))
+          .withSource("visual:selection"));
       }
-      if (edit.operations.length > 0) options.controller.dispatch(edit);
     },
   });
 

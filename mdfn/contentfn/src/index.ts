@@ -134,6 +134,19 @@ function textFromRichNode(value: unknown, ancestors = new WeakSet<object>(), dep
 }
 
 function richBlocksToMarkdown(value: readonly unknown[]): { markdown: string; unsupported: number } {
+  const escapeText = (text: string): string => text
+    .replace(/\\/g, "\\\\")
+    .replace(/([`*_[\]<>#])/g, "\\$1")
+    .replace(/(^|\n)([ \t]*)([-+>]|\d+[.)])(?=\s)/g, "$1$2\\$3");
+  const codeFence = (text: string): string => {
+    let longest = 0;
+    let current = 0;
+    for (const character of text) {
+      if (character === "`") { current += 1; longest = Math.max(longest, current); }
+      else current = 0;
+    }
+    return "`".repeat(Math.max(3, longest + 1));
+  };
   let unsupported = 0;
   const blocks = value.map((entry) => {
     if (!entry || typeof entry !== "object") { unsupported += 1; return opaqueMigrationComment(entry); }
@@ -147,11 +160,15 @@ function richBlocksToMarkdown(value: readonly unknown[]): { markdown: string; un
     unsupported += projected.unsupported;
     const retained = projected.opaque.join("\n\n");
     const withOpaque = (markdown: string): string => retained ? `${markdown}\n\n${retained}` : markdown;
-    if (type === "paragraph") return withOpaque(projected.text);
-    if (/^h[1-6]$/.test(type)) return withOpaque(`${"#".repeat(Number(type[1]))} ${projected.text}`);
-    if (type === "blockquote") return withOpaque(projected.text.split("\n").map((line) => `> ${line}`).join("\n"));
-    if (type === "code") return withOpaque(`\`\`\`${typeof block.language === "string" ? block.language : ""}\n${projected.text}\n\`\`\``);
-    if (type === "list-item") return withOpaque(`- ${projected.text}`);
+    if (type === "paragraph") return withOpaque(escapeText(projected.text));
+    if (/^h[1-6]$/.test(type)) return withOpaque(`${"#".repeat(Number(type[1]))} ${escapeText(projected.text)}`);
+    if (type === "blockquote") return withOpaque(escapeText(projected.text).split("\n").map((line) => `> ${line}`).join("\n"));
+    if (type === "code") {
+      const fence = codeFence(projected.text);
+      const language = typeof block.language === "string" ? block.language.replace(/[^A-Za-z0-9_+.-]/g, "") : "";
+      return withOpaque(`${fence}${language}\n${projected.text}\n${fence}`);
+    }
+    if (type === "list-item") return withOpaque(`- ${escapeText(projected.text)}`);
     return opaqueMigrationComment(entry);
   });
   return { markdown: blocks.join("\n\n"), unsupported };

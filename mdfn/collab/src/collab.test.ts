@@ -133,6 +133,18 @@ describe("collaboration", () => {
     session.destroy(); controller.destroy(); peer.destroy();
   });
 
+  it("validates candidate Markdown before mutating the live Y document", async () => {
+    const controller = createEditor({ markdown: "safe", projector: createMarkdownProjector({ maxBytes: 4 }) });
+    const session = createCollaborationSession({ controller, documentId: "limits", user: { id: "owner" } });
+    const baseline = session.encodeStateVector();
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, session.encodeUpdate());
+    peer.getText("markdown").insert(4, "!");
+    await expect(session.applyUpdate(Y.encodeStateAsUpdate(peer, baseline), "peer")).rejects.toThrowError(/MDFN_COLLAB_MARKDOWN_INVALID/);
+    expect(session.doc.getText("markdown").toString()).toBe("safe");
+    session.destroy(); controller.destroy(); peer.destroy();
+  });
+
   it("rejects malformed sidecars, unauthorized updates, and oversized payloads", async () => {
     const projector = createMarkdownProjector();
     const controller = createEditor({ markdown: "safe", projector });

@@ -36,6 +36,26 @@ describe("@mdfn/source", () => {
     editor.destroy();
   });
 
+  it("preserves disjoint CodeMirror changes as separate source operations", () => {
+    const controller = createEditor({
+      markdown: "abcde",
+      projector: createMarkdownProjector(),
+      sidecar: {
+        comments: [{
+          id: "comment",
+          anchor: { from: 2, to: 3 },
+          resolved: false,
+          messages: [{ id: "message", authorId: "reviewer", body: "Keep this range", createdAt: "2026-08-30T00:00:00.000Z" }],
+        }],
+      },
+    });
+    const editor = createSourceEditor({ target: document.createElement("div"), controller });
+    editor.view.dispatch({ changes: [{ from: 0, to: 1, insert: "A" }, { from: 4, to: 5, insert: "E" }] });
+    expect(controller.getState().markdown).toBe("AbcdE");
+    expect(controller.getState().sidecar?.comments?.[0]?.anchor).toEqual({ from: 2, to: 3 });
+    editor.destroy();
+  });
+
   it("provides deterministic mode state", () => {
     const modes = createModeController();
     modes.setMode("split");

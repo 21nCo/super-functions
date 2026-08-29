@@ -150,6 +150,17 @@ describe("@mdfn/dom", () => {
     expect(changed.content[0].source).not.toHaveProperty("raw");
   });
 
+  it("serializes top-level block deletion without retaining deleted source", () => {
+    const source = "First.\n\nSecond.\n";
+    const projector = createMarkdownProjector();
+    const before = documentToProseMirror(projector.parse(source).document);
+    const after = before.type.create(before.attrs, [before.child(1)]);
+    const changed = proseMirrorToDocument(after, before);
+    const output = projector.serialize(changed, source).markdown;
+    expect(output).not.toContain("First.");
+    expect(output).toContain("Second.");
+  });
+
   it("preserves unsupported inline source and reference links through nearby visual edits", () => {
     for (const source of [
       "before <custom-inline>inside</custom-inline> after\n",

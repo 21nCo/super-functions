@@ -14,6 +14,7 @@ import { createEditorState } from "./state";
 
 export interface EditorController {
   getState(): EditorState;
+  validateMarkdown(markdown: string): void;
   dispatch(transaction: Transaction): StateChange;
   subscribe(listener: EditorListener): () => void;
   can(command: string): boolean;
@@ -43,6 +44,7 @@ export function createEditor(input: CreateEditorInput): EditorController {
   const undoStack: EditorState[] = [];
   const redoStack: EditorState[] = [];
   const historyLimit = Math.max(1, input.historyLimit ?? 100);
+  let savedRevision = { sourceHash: state.sourceHash, sidecar: JSON.stringify(state.sidecar) };
   let destroyed = false;
 
   const assertAlive = (): void => {
@@ -55,7 +57,8 @@ export function createEditor(input: CreateEditorInput): EditorController {
 
   const restore = (next: EditorState, source: string): boolean => {
     const previous = state;
-    state = Object.freeze({ ...next, version: previous.version + 1 });
+    const dirty = next.sourceHash !== savedRevision.sourceHash || JSON.stringify(next.sidecar) !== savedRevision.sidecar;
+    state = Object.freeze({ ...next, dirty, version: previous.version + 1 });
     notify({
       previous,
       current: state,
@@ -74,6 +77,10 @@ export function createEditor(input: CreateEditorInput): EditorController {
     getState() {
       assertAlive();
       return state;
+    },
+    validateMarkdown(markdown) {
+      assertAlive();
+      input.projector.parse(markdown);
     },
     dispatch(transaction) {
       assertAlive();
@@ -135,6 +142,7 @@ export function createEditor(input: CreateEditorInput): EditorController {
       assertAlive();
       if (!state.dirty) return;
       const previous = state;
+      savedRevision = { sourceHash: state.sourceHash, sidecar: JSON.stringify(state.sidecar) };
       state = Object.freeze({ ...state, dirty: false, version: previous.version + 1 });
       notify({
         previous,

@@ -94,8 +94,9 @@ export function applyTransaction(state: EditorState, transaction: Transaction, p
       const serialized = projector.serialize(operation.document, markdown);
       const previousMarkdown = markdown;
       markdown = serialized.markdown;
-      document = operation.document;
-      diagnostics = serialized.diagnostics;
+      const parsed = projector.parse(markdown);
+      document = parsed.document;
+      diagnostics = Object.freeze([...serialized.diagnostics, ...parsed.diagnostics]);
       if (previousMarkdown !== markdown) {
         let from = 0;
         const shared = Math.min(previousMarkdown.length, markdown.length);

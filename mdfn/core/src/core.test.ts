@@ -77,6 +77,13 @@ describe("@mdfn/core", () => {
     expect(editor.getState().sidecar?.comments?.[0]?.anchor).toEqual({ from: 13, to: 18 });
   });
 
+  it("reparses serialized documents before retaining source spans", () => {
+    const editor = createEditor({ markdown: "abc", projector });
+    const edited = { ...projector.parse("abcd").document, source: { from: 0, to: 3, raw: "abc", dirty: true } } as MdfnDocument;
+    editor.dispatch(new Transaction().replaceDocument(edited));
+    expect(editor.getState().document).toEqual(projector.parse("abcd").document);
+  });
+
   it("clears node selections when source edits can invalidate node identity", () => {
     const editor = createEditor({ markdown: "hello", projector, selection: { kind: "node", nodeId: "paragraph-1" } });
     const change = editor.dispatch(new Transaction().replaceSource(5, 5, " world"));
@@ -186,6 +193,16 @@ describe("@mdfn/core", () => {
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({ source: "state:saved", documentChanged: false }));
     expect(editor.undo()).toBe(true);
     expect(editor.getState().markdown).toBe("before");
+  });
+
+  it("derives restored dirty state from the current saved revision", () => {
+    const editor = createEditor({ markdown: "one", projector });
+    editor.dispatch(new Transaction().replaceSource(0, 3, "two"));
+    editor.markSaved();
+    expect(editor.undo()).toBe(true);
+    expect(editor.getState()).toMatchObject({ markdown: "one", dirty: true });
+    expect(editor.redo()).toBe(true);
+    expect(editor.getState()).toMatchObject({ markdown: "two", dirty: false });
   });
 
   it("uses SHA-256 source identity", () => {

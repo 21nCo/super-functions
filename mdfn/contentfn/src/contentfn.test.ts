@@ -32,6 +32,15 @@ describe("markdown content", () => {
     expect(result.diagnostics[0]?.code).toBe("MDFN_CONTENT_RICHTEXT_LOSSY");
   });
 
+  it("escapes projected rich text and chooses a collision-free code fence", () => {
+    const result = migrateToMarkdownContent([
+      { type: "paragraph", children: [{ text: "# heading *emphasis*" }] },
+      { type: "code", language: "ts bad", children: [{ text: "```\nvalue" }] },
+    ]);
+    expect(result.content.markdown).toContain("\\# heading \\*emphasis\\*");
+    expect(result.content.markdown).toContain("````tsbad\n```\nvalue\n````");
+  });
+
   it("rejects malformed optional envelope fields", () => {
     const valid = markdownContent("text");
     expect(isMarkdownContent({ ...valid, schemaHash: 1 })).toBe(false);

@@ -90,18 +90,25 @@ export function createSourceEditor(options: SourceEditorOptions): SourceEditor {
       if (syncing || (!update.docChanged && !update.selectionSet)) return;
       let transaction = new Transaction().withSource("source");
       if (update.docChanged) {
-        const previous = options.controller.getState().markdown;
-        const change = smallestSourceChange(previous, update.state.doc.toString());
-        if (change) {
-          const pasted = update.transactions.some((entry) => entry.isUserEvent("input.paste"));
-          const rules = pasted ? options.controller.extensions.pasteRules : options.controller.extensions.inputRules;
-          const insert = applyExtensionTextRules(change.insert, previous, change.from, change.to, rules);
-          transaction = transaction.replaceSource(change.from, change.to, insert);
-          if (insert !== change.insert) {
-            syncing = true;
-            update.view.dispatch({ changes: { from: change.from, to: change.from + change.insert.length, insert } });
-            syncing = false;
-          }
+        let current = options.controller.getState().markdown;
+        let offset = 0;
+        const corrections: Array<{ from: number; to: number; insert: string }> = [];
+        const pasted = update.transactions.some((entry) => entry.isUserEvent("input.paste"));
+        const rules = pasted ? options.controller.extensions.pasteRules : options.controller.extensions.inputRules;
+        update.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+          const from = fromA + offset;
+          const to = toA + offset;
+          const rawInsert = inserted.toString();
+          const insert = applyExtensionTextRules(rawInsert, current, from, to, rules);
+          transaction = transaction.replaceSource(from, to, insert);
+          current = `${current.slice(0, from)}${insert}${current.slice(to)}`;
+          offset += insert.length - (toA - fromA);
+          if (insert !== rawInsert) corrections.push({ from: fromB, to: toB, insert });
+        });
+        if (corrections.length > 0) {
+          syncing = true;
+          update.view.dispatch({ changes: corrections });
+          syncing = false;
         }
       }
       const main = update.view.state.selection.main;

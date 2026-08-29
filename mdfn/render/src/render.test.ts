@@ -58,6 +58,18 @@ describe("@mdfn/render", () => {
     expect(() => renderHtml(document, { extensions: [malicious] })).toThrowError("MDFN_EXTENSION_RENDER_RESULT_INVALID");
   });
 
+  it("forces noopener on extension links that open a new browsing context", () => {
+    const extension: MdfnExtension = {
+      name: "safe-blank-link",
+      version: "1.0.0",
+      preservation: { noEdit: "exact", edited: "semantic", unsupported: "opaque" },
+      render: ({ node }) => node.type === "heading" ? { tag: "a", attrs: { href: "https://example.com", target: "_blank", rel: "opener" }, text: "Open" } : null,
+    };
+    const html = renderHtml(document, { extensions: [extension] }).html;
+    expect(html).toContain('target="_blank" rel="noreferrer noopener"');
+    expect(html).not.toContain('rel="opener"');
+  });
+
   it("enforces node limits for manually rendered empty list items", () => {
     const list: MdfnDocument = {
       type: "doc",

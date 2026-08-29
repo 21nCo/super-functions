@@ -72,7 +72,7 @@ export function getSchema(): { version: number; schemas: TableSchema[] } {
   return { version: MDFN_SERVER_SCHEMA_VERSION, schemas: [
     { modelName: DOCUMENTS, fields: { id: { type: "string", required: true }, ownerId: { type: "string", required: true }, tenantId: { type: "string" }, title: { type: "string" }, markdown: { type: "string", required: true }, sourceHash: { type: "string", required: true }, schemaHash: { type: "string", required: true }, sidecar: { type: "json" }, version: { type: "number", required: true }, createdAt: date, updatedAt: date }, indexes: [{ name: "idx_mdfn_documents_owner", fields: ["ownerId"] }, { name: "idx_mdfn_documents_tenant", fields: ["tenantId"] }] },
     { modelName: VERSIONS, fields: { id: { type: "string", required: true }, documentId: { type: "string", required: true }, ownerId: { type: "string", required: true }, tenantId: { type: "string" }, title: { type: "string" }, markdown: { type: "string", required: true }, sourceHash: { type: "string", required: true }, schemaHash: { type: "string", required: true }, sidecar: { type: "json" }, version: { type: "number", required: true }, authorId: { type: "string", required: true }, changeSource: { type: "string", required: true }, createdAt: date, updatedAt: date }, indexes: [{ name: "idx_mdfn_versions_document_version", fields: ["documentId", "version"], unique: true }] },
-    { modelName: RECEIPTS, fields: { id: { type: "string", required: true }, documentId: { type: "string", required: true }, idempotencyKey: { type: "string", required: true }, result: { type: "json", required: true }, createdAt: date }, indexes: [{ name: "idx_mdfn_receipts_key", fields: ["documentId", "idempotencyKey"], unique: true }] },
+    { modelName: RECEIPTS, fields: { id: { type: "string", required: true }, documentId: { type: "string", required: true }, idempotencyKey: { type: "string", required: true }, operation: { type: "string", required: true }, payloadHash: { type: "string", required: true }, result: { type: "json", required: true }, createdAt: date }, indexes: [{ name: "idx_mdfn_receipts_key", fields: ["documentId", "idempotencyKey"], unique: true }] },
     { modelName: COLLAB_UPDATES, fields: { id: { type: "string", required: true }, documentId: { type: "string", required: true }, authorId: { type: "string", required: true }, update: { type: "string", required: true }, createdAt: date }, indexes: [{ name: "idx_mdfn_collab_document", fields: ["documentId", "createdAt"] }] },
   ] };
 }
@@ -144,6 +144,8 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
   interface WriteUpdateOptions {
     readonly trustedEditorial?: boolean;
     readonly restoreSnapshot?: RestoreSnapshot;
+    readonly idempotencyOperation?: string;
+    readonly idempotencyPayload?: unknown;
   }
   const protectedSidecar = (value: MdfnSidecar | undefined): string => JSON.stringify({
     comments: value?.comments ?? [],
@@ -151,22 +153,69 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     reviewState: value?.reviewState ?? "draft",
     audit: value?.audit ?? [],
   });
+  const changedRanges = (previous: string, next: string): Array<{ from: number; to: number; insertedLength: number }> => {
+    if (previous === next) return [];
+    let prefix = 0;
+    while (prefix < previous.length && prefix < next.length && previous.charCodeAt(prefix) === next.charCodeAt(prefix)) prefix += 1;
+    let previousEnd = previous.length;
+    let nextEnd = next.length;
+    while (previousEnd > prefix && nextEnd > prefix && previous.charCodeAt(previousEnd - 1) === next.charCodeAt(nextEnd - 1)) { previousEnd -= 1; nextEnd -= 1; }
+    const before = previous.slice(prefix, previousEnd);
+    const after = next.slice(prefix, nextEnd);
+    if (before.length * after.length > 250_000) return [{ from: prefix, to: previousEnd, insertedLength: after.length }];
+    const width = after.length + 1;
+    const lcs = new Uint32Array((before.length + 1) * width);
+    for (let left = before.length - 1; left >= 0; left -= 1) {
+      for (let right = after.length - 1; right >= 0; right -= 1) {
+        const index = left * width + right;
+        lcs[index] = before.charCodeAt(left) === after.charCodeAt(right)
+          ? lcs[(left + 1) * width + right + 1] + 1
+          : Math.max(lcs[(left + 1) * width + right], lcs[index + 1]);
+      }
+    }
+    const ranges: Array<{ from: number; to: number; insertedLength: number }> = [];
+    let left = 0;
+    let right = 0;
+    let position = prefix;
+    while (left < before.length || right < after.length) {
+      if (left < before.length && right < after.length && before.charCodeAt(left) === after.charCodeAt(right)) {
+        left += 1; right += 1; position += 1; continue;
+      }
+      const from = position;
+      let removed = 0;
+      let insertedLength = 0;
+      while (left < before.length || right < after.length) {
+        if (left < before.length && right < after.length && before.charCodeAt(left) === after.charCodeAt(right)) break;
+        if (right < after.length && (left === before.length || lcs[left * width + right + 1] >= lcs[(left + 1) * width + right])) {
+          right += 1; insertedLength += 1;
+        } else {
+          left += 1; removed += 1;
+        }
+      }
+      ranges.push({ from, to: from + removed, insertedLength });
+      position += insertedLength;
+    }
+    return ranges;
+  };
   const mapForMarkdownChange = (sidecar: MdfnSidecar | undefined, previous: string, next: string): MdfnSidecar | undefined => {
     if (!sidecar || previous === next) return sidecar;
-    let from = 0;
-    const shared = Math.min(previous.length, next.length);
-    while (from < shared && previous.charCodeAt(from) === next.charCodeAt(from)) from += 1;
-    let previousTo = previous.length;
-    let nextTo = next.length;
-    while (previousTo > from && nextTo > from && previous.charCodeAt(previousTo - 1) === next.charCodeAt(nextTo - 1)) { previousTo -= 1; nextTo -= 1; }
-    return mapSidecar(sidecar, [{ from, to: previousTo, insertedLength: nextTo - from }]);
+    return mapSidecar(sidecar, changedRanges(previous, next));
+  };
+  interface Receipt { readonly operation: string; readonly payloadHash: string; readonly result: MdfnDocumentRecord; }
+  const replayReceipt = async (storage: Storage, documentId: string, idempotencyKey: string, operation: string, payloadHash: string): Promise<MdfnDocumentRecord | undefined> => {
+    const receipt = await storage.findOne<Receipt>({ model: RECEIPTS, where: [{ field: "documentId", operator: "eq", value: documentId }, { field: "idempotencyKey", operator: "eq", value: idempotencyKey }] });
+    if (!receipt) return undefined;
+    if (receipt.operation !== operation || receipt.payloadHash !== payloadHash) throw new MdfnServerError("MDFN_IDEMPOTENCY_KEY_REUSED", 409);
+    return receipt.result;
   };
   const writeUpdate = async (principal: MdfnPrincipal, id: string, input: UpdateInput, options: WriteUpdateOptions = {}): Promise<MdfnDocumentRecord> => {
     const current = await loadScoped(principal, id);
     await allowed(config, "update", principal, current);
+    const operation = options.idempotencyOperation ?? "document:update";
+    const payloadHash = hashString(JSON.stringify(options.idempotencyPayload ?? { ...input, idempotencyKey: undefined, restoreSnapshot: options.restoreSnapshot }));
     if (input.idempotencyKey) {
-      const receipt = await database.findOne<{ result: MdfnDocumentRecord }>({ model: RECEIPTS, where: [{ field: "documentId", operator: "eq", value: id }, { field: "idempotencyKey", operator: "eq", value: input.idempotencyKey }] });
-      if (receipt) return receipt.result;
+      const replay = await replayReceipt(database, id, input.idempotencyKey, operation, payloadHash);
+      if (replay) return replay;
     }
     if (current.version !== input.expectedVersion) throw new MdfnServerError("MDFN_VERSION_CONFLICT", 409);
     const markdown = options.restoreSnapshot?.markdown ?? input.markdown ?? current.markdown;
@@ -181,14 +230,14 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     const next: MdfnDocumentRecord = { ...current, title, markdown, sourceHash: hashString(markdown), schemaHash: registry.schemaHash, sidecar, version: current.version + 1, updatedAt: new Date() };
     return withStorage(async (storage) => {
       if (input.idempotencyKey) {
-        const receipt = await storage.findOne<{ result: MdfnDocumentRecord }>({ model: RECEIPTS, where: [{ field: "documentId", operator: "eq", value: id }, { field: "idempotencyKey", operator: "eq", value: input.idempotencyKey }] });
-        if (receipt) return receipt.result;
+        const replay = await replayReceipt(storage, id, input.idempotencyKey, operation, payloadHash);
+        if (replay) return replay;
       }
       const latest = await storage.findOne<MdfnDocumentRecord>({ model: DOCUMENTS, where: whereId(id) });
       if (!latest || latest.version !== input.expectedVersion) throw new MdfnServerError("MDFN_VERSION_CONFLICT", 409);
       const updated = await storage.update<MdfnDocumentRecord>({ model: DOCUMENTS, where: [{ field: "id", operator: "eq", value: id }, { field: "version", operator: "eq", value: input.expectedVersion }], data: next });
       await storage.create({ model: VERSIONS, data: revision(updated, principal.id, input.changeSource ?? "update") });
-      if (input.idempotencyKey) await storage.create({ model: RECEIPTS, data: { id: createId(), documentId: id, idempotencyKey: input.idempotencyKey, result: updated, createdAt: new Date() } });
+      if (input.idempotencyKey) await storage.create({ model: RECEIPTS, data: { id: createId(), documentId: id, idempotencyKey: input.idempotencyKey, operation, payloadHash, result: updated, createdAt: new Date() } });
       return updated;
     });
   };
@@ -198,18 +247,19 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     expectedVersion: number,
     changeSource: string,
     idempotencyKey: string | undefined,
+    idempotencyPayload: unknown,
     mutate: (document: MdfnDocumentRecord) => { readonly markdown?: string; readonly sidecar: MdfnSidecar },
   ): Promise<MdfnDocumentRecord> => {
     const current = await loadScoped(principal, id);
     await allowed(config, "update", principal, current);
     if (idempotencyKey) {
-      const receipt = await database.findOne<{ result: MdfnDocumentRecord }>({ model: RECEIPTS, where: [{ field: "documentId", operator: "eq", value: id }, { field: "idempotencyKey", operator: "eq", value: idempotencyKey }] });
-      if (receipt) return receipt.result;
+      const replay = await replayReceipt(database, id, idempotencyKey, changeSource, hashString(JSON.stringify(idempotencyPayload)));
+      if (replay) return replay;
     }
     if (current.version !== expectedVersion) throw new MdfnServerError("MDFN_VERSION_CONFLICT", 409);
     try {
       const next = mutate(current);
-      return writeUpdate(principal, id, { expectedVersion, markdown: next.markdown, sidecar: next.sidecar, changeSource, idempotencyKey }, { trustedEditorial: true });
+      return writeUpdate(principal, id, { expectedVersion, markdown: next.markdown, sidecar: next.sidecar, changeSource, idempotencyKey }, { trustedEditorial: true, idempotencyOperation: changeSource, idempotencyPayload });
     } catch (error) {
       if (error instanceof MdfnServerError) throw error;
       throw new MdfnServerError("MDFN_EDITORIAL_INVALID", 422);
@@ -261,23 +311,23 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
         principal,
         id,
         { expectedVersion: input.expectedVersion, changeSource: `restore:${input.version}`, idempotencyKey: input.idempotencyKey },
-        { trustedEditorial: true, restoreSnapshot: restored },
+        { trustedEditorial: true, restoreSnapshot: restored, idempotencyOperation: "document:restore", idempotencyPayload: input },
       );
     },
     async createComment(principal, id, input) {
-      return mutateEditorial(principal, id, input.expectedVersion, "editorial:comment-created", input.idempotencyKey, (document) => createCommentThread({ sidecar: document.sidecar, anchor: input.anchor, body: input.body, actor: editorialActor(principal), markdownLength: document.markdown.length }));
+      return mutateEditorial(principal, id, input.expectedVersion, "editorial:comment-created", input.idempotencyKey, input, (document) => createCommentThread({ sidecar: document.sidecar, anchor: input.anchor, body: input.body, actor: editorialActor(principal), markdownLength: document.markdown.length }));
     },
     async replyComment(principal, id, threadId, input) {
-      return mutateEditorial(principal, id, input.expectedVersion, "editorial:comment-replied", input.idempotencyKey, (document) => ({ sidecar: replyToComment({ sidecar: document.sidecar ?? {}, threadId, body: input.body, actor: editorialActor(principal) }) }));
+      return mutateEditorial(principal, id, input.expectedVersion, "editorial:comment-replied", input.idempotencyKey, { threadId, ...input }, (document) => ({ sidecar: replyToComment({ sidecar: document.sidecar ?? {}, threadId, body: input.body, actor: editorialActor(principal) }) }));
     },
     async resolveComment(principal, id, threadId, input) {
-      return mutateEditorial(principal, id, input.expectedVersion, input.resolved ? "editorial:comment-resolved" : "editorial:comment-reopened", input.idempotencyKey, (document) => ({ sidecar: setCommentResolved({ sidecar: document.sidecar ?? {}, threadId, resolved: input.resolved, actor: editorialActor(principal) }) }));
+      return mutateEditorial(principal, id, input.expectedVersion, input.resolved ? "editorial:comment-resolved" : "editorial:comment-reopened", input.idempotencyKey, { threadId, ...input }, (document) => ({ sidecar: setCommentResolved({ sidecar: document.sidecar ?? {}, threadId, resolved: input.resolved, actor: editorialActor(principal) }) }));
     },
     async createSuggestion(principal, id, input) {
-      return mutateEditorial(principal, id, input.expectedVersion, "editorial:suggestion-created", input.idempotencyKey, (document) => createSuggestion({ sidecar: document.sidecar, anchor: input.anchor, replacement: input.replacement, actor: editorialActor(principal), markdownLength: document.markdown.length }));
+      return mutateEditorial(principal, id, input.expectedVersion, "editorial:suggestion-created", input.idempotencyKey, input, (document) => createSuggestion({ sidecar: document.sidecar, anchor: input.anchor, replacement: input.replacement, actor: editorialActor(principal), markdownLength: document.markdown.length }));
     },
     async decideSuggestion(principal, id, suggestionId, input) {
-      return mutateEditorial(principal, id, input.expectedVersion, `editorial:suggestion-${input.decision}`, input.idempotencyKey, (document) => {
+      return mutateEditorial(principal, id, input.expectedVersion, `editorial:suggestion-${input.decision}`, input.idempotencyKey, { suggestionId, ...input }, (document) => {
         const controller = createEditor({ markdown: document.markdown, projector: createMarkdownProjector(markdownOptions), extensions: config.extensions, sidecar: document.sidecar });
         try {
           decideSuggestion({ controller, suggestionId, decision: input.decision, actor: editorialActor(principal) });
@@ -287,7 +337,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
       });
     },
     async transitionReview(principal, id, input) {
-      return mutateEditorial(principal, id, input.expectedVersion, "editorial:review-transitioned", input.idempotencyKey, (document) => ({ sidecar: transitionReview({ sidecar: document.sidecar, to: input.state, actor: editorialActor(principal) }) }));
+      return mutateEditorial(principal, id, input.expectedVersion, "editorial:review-transitioned", input.idempotencyKey, input, (document) => ({ sidecar: transitionReview({ sidecar: document.sidecar, to: input.state, actor: editorialActor(principal) }) }));
     },
     async appendCollaborationUpdate(principal, id, update) { const document = await loadScoped(principal, id); await allowed(config, "collaborate", principal, document); const limit = config.maxCollaborationUpdateBytes ?? 1024 * 1024; if (new TextEncoder().encode(update).byteLength > limit) throw new MdfnServerError("MDFN_COLLAB_UPDATE_TOO_LARGE", 413); const updateId = createId(); await database.create({ model: COLLAB_UPDATES, data: { id: updateId, documentId: id, authorId: principal.id, update, createdAt: new Date() } }); return updateId; },
     async collaborationUpdates(principal, id) {

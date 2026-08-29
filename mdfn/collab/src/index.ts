@@ -116,7 +116,13 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
     if (candidateMetadata.get("profileId") !== expectedProfile) throw new Error("MDFN_COLLAB_PROFILE_MISMATCH");
     if (candidateMetadata.get("protocolVersion") !== expectedProtocol) throw new Error("MDFN_COLLAB_PROTOCOL_MISMATCH");
     if (candidateMetadata.get("extensions") !== expectedExtensions) throw new Error("MDFN_COLLAB_EXTENSIONS_MISMATCH");
-    parseSidecar(candidate.getMap<string>("sidecar").get("value"), candidate.getText("markdown").length);
+    const markdown = candidate.getText("markdown").toString();
+    try {
+      options.controller.validateMarkdown(markdown);
+    } catch (error) {
+      throw new Error(`MDFN_COLLAB_MARKDOWN_INVALID:${error instanceof Error ? error.message : String(error)}`);
+    }
+    parseSidecar(candidate.getMap<string>("sidecar").get("value"), markdown.length);
   };
 
   const protectedSidecar = (value: MdfnSidecar | undefined): string => JSON.stringify({
