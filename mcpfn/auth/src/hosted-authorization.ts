@@ -366,6 +366,12 @@ export interface McpFnAuthorizationCompatibilityOptions {
   /** Route prefix for authorize/token/register/revoke. Defaults to the issuer path. */
   endpointPrefix?: string;
   clients: McpFnHostedClientRegistry;
+  /** Runs before any registered or external client lookup at client-bearing endpoints. */
+  beforeClientResolution?(input: {
+    clientId: string;
+    endpoint: "authorization" | "token" | "revocation";
+    request: Request;
+  }): void | Promise<void>;
   authorize(
     input: McpFnValidatedAuthorizationRequest,
     request: Request,
@@ -665,6 +671,7 @@ async function handleAuthorizationRequest(
   request: Request,
 ): Promise<Response> {
   const clientId = authorizationParameter(url, "client_id", true)!;
+  await runBeforeClientResolution(options, clientId, "authorization", request);
   const client = await resolveClient(options, clientId);
   if (!client) {
     throw new McpFnHostedAuthorizationError("invalid_client", "Unknown MCP client");
@@ -756,6 +763,7 @@ async function handleTokenRequest(
       form,
       authenticationRequest,
       supportedMethods,
+      "token",
     );
     const tokenSet = await issueHostedToken(
       grantType,
@@ -908,6 +916,7 @@ async function handleRevocationRequest(
       form,
       authenticationRequest,
       supportedMethods,
+      "revocation",
     );
     const rawHint = singleFormValue(form, "token_type_hint");
     const tokenTypeHint = rawHint === "access_token" || rawHint === "refresh_token"
@@ -934,6 +943,7 @@ async function authenticateHostedClient(
   form: URLSearchParams,
   request: Request,
   supportedMethods: McpFnHostedTokenEndpointAuthMethod[],
+  endpoint: "token" | "revocation",
 ): Promise<McpFnHostedClientAuthentication> {
   const basic = readBasicClientCredentials(request.headers.get("authorization"));
   const bodyClientId = singleFormValue(form, "client_id");
@@ -967,6 +977,7 @@ async function authenticateHostedClient(
       { status: 401 },
     );
   }
+  await runBeforeClientResolution(options, clientId, endpoint, request);
   let client: McpFnNormalizedClientRegistration | null;
   try {
     client = await resolveClient(options, clientId);
@@ -1265,6 +1276,21 @@ async function resolveClient(
   return registration;
 }
 
+async function runBeforeClientResolution(
+  options: McpFnAuthorizationCompatibilityOptions,
+  clientId: string,
+  endpoint: "authorization" | "token" | "revocation",
+  request: Request,
+): Promise<void> {
+  if (!options.beforeClientResolution) return;
+  const callbackRequest = request.clone();
+  try {
+    await options.beforeClientResolution({ clientId, endpoint, request: callbackRequest });
+  } finally {
+    void callbackRequest.body?.cancel().catch(() => undefined);
+  }
+}
+
 function normalizeClientMetadata(
   value: OAuthClientMetadata,
   redirectPolicy?: McpFnRedirectPolicy,
@@ -1324,7 +1350,6 @@ async function fetchClientMetadataDocument(
     () => controller.abort(),
     options.timeoutMs ?? 10_000,
   );
-  (timeout as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
   const maxRedirects = options.maxRedirects ?? 3;
   let currentUrl = new URL(initialUrl);
   try {

@@ -7,6 +7,7 @@ import {
   createMcpAuthorizationCompatibilityHandler,
   createMcpFnOAuthClientProvider,
   matchMcpRedirectUri,
+  McpFnHostedAuthorizationError,
   normalizeMcpClientRegistration,
 } from "../src/index.js";
 
@@ -893,6 +894,73 @@ describe("McpFn hosted authorization compatibility", () => {
     expect(fetch.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it("runs client lookup policy before external metadata fetches", async () => {
+    const clientId = "https://clients.example.com/client.json";
+    const fetch = vi.fn(async () => Response.json({
+      client_id: clientId,
+      redirect_uris: ["https://client.example.com/callback"],
+    }));
+    const observed: Array<{ endpoint: string; clientId: string; body: string }> = [];
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      clients: { resolve: async () => null },
+      beforeClientResolution: async ({ endpoint, clientId: requestedClientId, request }) => {
+        observed.push({ endpoint, clientId: requestedClientId, body: await request.text() });
+        throw new McpFnHostedAuthorizationError(
+          "temporarily_unavailable",
+          "Too many client lookup attempts",
+          { status: 429, details: { retryAfterSeconds: 5 } },
+        );
+      },
+      authorize: async () => Response.json({ ok: true }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({
+          access_token: "opaque",
+          token_type: "Bearer",
+        }),
+        revokeToken: async () => undefined,
+      },
+      clientMetadataDocuments: { enabled: true, allow: async () => true, fetch },
+    });
+    const authorization = new Request(authorizationUrl(
+      clientId,
+      "https://client.example.com/callback",
+    ));
+    const formRequest = (path: "token" | "revoke", body: URLSearchParams) =>
+      new Request(`${issuer}/${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body,
+      });
+    const tokenBody = new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: clientId,
+      code: "code",
+      redirect_uri: "https://client.example.com/callback",
+      code_verifier: "v".repeat(43),
+    });
+    const revocationBody = new URLSearchParams({ client_id: clientId, token: "opaque" });
+
+    for (const request of [
+      authorization,
+      formRequest("token", tokenBody),
+      formRequest("revoke", revocationBody),
+    ]) {
+      const response = await compatibility(request);
+      expect(response.status).toBe(429);
+      expect(response.headers.get("retry-after")).toBe("5");
+    }
+    expect(observed.map(({ endpoint, clientId: observedClientId }) =>
+      [endpoint, observedClientId])).toEqual([
+      ["authorization", clientId],
+      ["token", clientId],
+      ["revocation", clientId],
+    ]);
+    expect(observed[1]?.body).toBe(tokenBody.toString());
+    expect(observed[2]?.body).toBe(revocationBody.toString());
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("maps malformed Client ID Metadata Document redirects to invalid_client", async () => {
     const clientId = "https://clients.example.com/client.json";
     const compatibility = createMcpAuthorizationCompatibilityHandler({
@@ -1571,6 +1639,54 @@ describe("generic auth provider composition", () => {
     await expect(response.text()).resolves.toBe("bounded");
     expect(authenticationCancel).toHaveBeenCalledOnce();
     expect(scopeCancel).toHaveBeenCalledOnce();
+    expect(downstream).toHaveBeenCalledOnce();
+  });
+
+  it("gives every auth callback an independent readable request clone", async () => {
+    const observed: string[] = [];
+    const read = async (phase: string, request: Request) => {
+      observed.push(`${phase}:${await request.text()}`);
+    };
+    const downstream = vi.fn(async (request: Request) => new Response(await request.text()));
+    const handler = createAuthProviderMcpHandler(downstream, {
+      resource: "https://mcp.example.com/mcp",
+      provider: {
+        authenticateBearer: async (_token, request) => {
+          await read("authenticate", request);
+          return {
+            id: "client-1",
+            type: "oauth",
+            subject: { actorId: "user-1", actorType: "user" },
+          };
+        },
+      },
+      map: async (session, request) => {
+        await read("map", request);
+        return {
+          subject: session.subject.actorId,
+          clientId: session.id,
+          scopes: [],
+          resourceIds: [],
+        };
+      },
+      authorize: async ({ request }) => {
+        await read("authorize", request);
+        return true;
+      },
+    });
+    const requestBody = JSON.stringify({ jsonrpc: "2.0", method: "ping", id: 1 });
+    const response = await handler(new Request("https://mcp.example.com/mcp", {
+      method: "POST",
+      headers: { authorization: "Bearer opaque-token" },
+      body: requestBody,
+    }));
+
+    await expect(response.text()).resolves.toBe(requestBody);
+    expect(observed).toEqual([
+      `authenticate:${requestBody}`,
+      `map:${requestBody}`,
+      `authorize:${requestBody}`,
+    ]);
     expect(downstream).toHaveBeenCalledOnce();
   });
 

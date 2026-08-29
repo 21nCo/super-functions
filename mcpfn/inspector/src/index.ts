@@ -31,6 +31,7 @@ const SCENARIO_REDACTION_LIMITS = {
   maxObjectEntries: 100,
   maxStringLength: 2_048,
 } as const;
+const SCENARIO_SECRET_MARKER = "${MCPFN_SECRET}";
 
 export interface McpFnInspectorSnapshot {
   formatVersion: 2;
@@ -216,8 +217,11 @@ export class McpFnInspector {
     result: McpFnInspectorOperationResult,
   ): McpFnExportedScenario {
     const scenario = createMcpFnScenario(name, operation, result);
-    const redacted = redactOAuthValue(scenario, SCENARIO_REDACTION_LIMITS);
-    const replaced = replaceSecretMarkers(redacted) as McpFnExportedScenario;
+    const redacted = redactOAuthValue(scenario, {
+      ...SCENARIO_REDACTION_LIMITS,
+      redactionMarker: SCENARIO_SECRET_MARKER,
+    });
+    const replaced = redacted as McpFnExportedScenario;
     const exported = exceedsRedactionBounds(scenario, redacted, SCENARIO_REDACTION_LIMITS)
       ? {
         ...replaced,
@@ -295,7 +299,7 @@ function exceedsRedactionBounds(
   depth = 0,
   ancestors = new WeakSet<object>(),
 ): boolean {
-  if (redacted === "[REDACTED]") return false;
+  if (redacted === SCENARIO_SECRET_MARKER) return false;
   if (depth > limits.maxDepth) return true;
   if (typeof value === "string") return isTruncatedString(redacted, limits.maxStringLength);
   if (!value || typeof value !== "object" || value instanceof Date) return false;
@@ -303,72 +307,135 @@ function exceedsRedactionBounds(
   if (ancestors.has(value)) return false;
   ancestors.add(value);
   try {
-    if (Array.isArray(value)) {
-      if (value.length > limits.maxArrayEntries) return true;
-      const redactedArray = Array.isArray(redacted) ? redacted : [];
-      return value.some((entry, index) =>
-        exceedsRedactionBounds(entry, redactedArray[index], limits, depth + 1, ancestors)
-      );
-    }
-    if (value instanceof Map) {
-      if (value.size > limits.maxArrayEntries) return true;
-      const redactedEntries = readRedactedCollection(redacted, "entries");
-      let index = 0;
-      for (const [key, entry] of value) {
-        const redactedPair = Array.isArray(redactedEntries[index])
-          ? redactedEntries[index] as unknown[]
-          : [];
-        if (
-          exceedsRedactionBounds(key, redactedPair?.[0], limits, depth + 1, ancestors) ||
-          exceedsRedactionBounds(entry, redactedPair?.[1], limits, depth + 1, ancestors)
-        ) return true;
-        index += 1;
-      }
-      return false;
-    }
-    if (value instanceof Set) {
-      if (value.size > limits.maxArrayEntries) return true;
-      const redactedValues = readRedactedCollection(redacted, "values");
-      let index = 0;
-      for (const entry of value) {
-        if (
-          exceedsRedactionBounds(
-            entry,
-            redactedValues[index],
-            limits,
-            depth + 1,
-            ancestors,
-          )
-        ) return true;
-        index += 1;
-      }
-      return false;
-    }
-    const record = value as Record<string, unknown>;
-    const redactedRecord = redacted && typeof redacted === "object"
-      ? redacted as Record<string, unknown>
-      : {};
-    if (
-      value instanceof Error &&
-      ["name", "message", "stack"].some((key) =>
-        typeof (value as unknown as Record<string, unknown>)[key] === "string" &&
-        isTruncatedString(redactedRecord[key], limits.maxStringLength)
-      )
-    ) return true;
-    const keys = Object.keys(record);
-    if (keys.length > limits.maxObjectEntries) return true;
-    return keys.some((key) =>
-      exceedsRedactionBounds(
-        record[key],
-        redactedRecord[key],
-        limits,
-        depth + 1,
-        ancestors,
-      )
+    return exceedsObjectRedactionBounds(
+      value,
+      redacted,
+      limits,
+      depth,
+      ancestors,
     );
   } finally {
     ancestors.delete(value);
   }
+}
+
+function exceedsObjectRedactionBounds(
+  value: object,
+  redacted: unknown,
+  limits: typeof SCENARIO_REDACTION_LIMITS,
+  depth: number,
+  ancestors: WeakSet<object>,
+): boolean {
+  if (Array.isArray(value)) {
+    return exceedsArrayRedactionBounds(value, redacted, limits, depth, ancestors);
+  }
+  if (value instanceof Map) {
+    return exceedsMapRedactionBounds(value, redacted, limits, depth, ancestors);
+  }
+  if (value instanceof Set) {
+    return exceedsSetRedactionBounds(value, redacted, limits, depth, ancestors);
+  }
+  return exceedsRecordRedactionBounds(value, redacted, limits, depth, ancestors);
+}
+
+function exceedsArrayRedactionBounds(
+  value: unknown[],
+  redacted: unknown,
+  limits: typeof SCENARIO_REDACTION_LIMITS,
+  depth: number,
+  ancestors: WeakSet<object>,
+): boolean {
+  if (value.length > limits.maxArrayEntries) return true;
+  const redactedArray = Array.isArray(redacted) ? redacted : [];
+  return value.some((entry, index) =>
+    exceedsRedactionBounds(entry, redactedArray[index], limits, depth + 1, ancestors)
+  );
+}
+
+function exceedsMapRedactionBounds(
+  value: Map<unknown, unknown>,
+  redacted: unknown,
+  limits: typeof SCENARIO_REDACTION_LIMITS,
+  depth: number,
+  ancestors: WeakSet<object>,
+): boolean {
+  if (value.size > limits.maxArrayEntries) return true;
+  const redactedEntries = readRedactedCollection(redacted, "entries");
+  let index = 0;
+  for (const [key, entry] of value) {
+    const pair = Array.isArray(redactedEntries[index])
+      ? redactedEntries[index] as unknown[]
+      : [];
+    if (
+      exceedsRedactionBounds(key, pair[0], limits, depth + 1, ancestors) ||
+      exceedsRedactionBounds(entry, pair[1], limits, depth + 1, ancestors)
+    ) return true;
+    index += 1;
+  }
+  return false;
+}
+
+function exceedsSetRedactionBounds(
+  value: Set<unknown>,
+  redacted: unknown,
+  limits: typeof SCENARIO_REDACTION_LIMITS,
+  depth: number,
+  ancestors: WeakSet<object>,
+): boolean {
+  if (value.size > limits.maxArrayEntries) return true;
+  const redactedValues = readRedactedCollection(redacted, "values");
+  let index = 0;
+  for (const entry of value) {
+    if (
+      exceedsRedactionBounds(
+        entry,
+        redactedValues[index],
+        limits,
+        depth + 1,
+        ancestors,
+      )
+    ) return true;
+    index += 1;
+  }
+  return false;
+}
+
+function exceedsRecordRedactionBounds(
+  value: object,
+  redacted: unknown,
+  limits: typeof SCENARIO_REDACTION_LIMITS,
+  depth: number,
+  ancestors: WeakSet<object>,
+): boolean {
+  const record = value as Record<string, unknown>;
+  const redactedRecord = redacted && typeof redacted === "object"
+    ? redacted as Record<string, unknown>
+    : {};
+  if (value instanceof Error && errorWasTruncated(record, redactedRecord, limits)) {
+    return true;
+  }
+  const keys = Object.keys(record);
+  if (keys.length > limits.maxObjectEntries) return true;
+  return keys.some((key) =>
+    exceedsRedactionBounds(
+      record[key],
+      redactedRecord[key],
+      limits,
+      depth + 1,
+      ancestors,
+    )
+  );
+}
+
+function errorWasTruncated(
+  value: Record<string, unknown>,
+  redacted: Record<string, unknown>,
+  limits: typeof SCENARIO_REDACTION_LIMITS,
+): boolean {
+  return ["name", "message", "stack"].some((key) =>
+    typeof value[key] === "string" &&
+    isTruncatedString(redacted[key], limits.maxStringLength)
+  );
 }
 
 function isTruncatedString(value: unknown, maxLength: number): boolean {
@@ -382,20 +449,6 @@ function readRedactedCollection(
   if (!value || typeof value !== "object") return [];
   const collection = (value as Record<string, unknown>)[key];
   return Array.isArray(collection) ? collection : [];
-}
-
-function replaceSecretMarkers(value: unknown): unknown {
-  if (typeof value === "string") {
-    return value.replaceAll("[REDACTED]", "${MCPFN_SECRET}");
-  }
-  if (Array.isArray(value)) return value.map(replaceSecretMarkers);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .map(([key, entry]) => [key, replaceSecretMarkers(entry)]),
-    );
-  }
-  return value;
 }
 
 function collectVariables(value: unknown): string[] {

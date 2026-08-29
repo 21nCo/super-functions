@@ -32,6 +32,8 @@ export interface OAuthRedactionOptions {
   maxArrayEntries?: number;
   maxObjectEntries?: number;
   maxStringLength?: number;
+  /** Replacement emitted for credential values. Defaults to `[REDACTED]`. */
+  redactionMarker?: string;
 }
 
 /**
@@ -53,6 +55,7 @@ export function redactOAuthValue<T>(
       "maxObjectEntries",
     ),
     maxStringLength: options.maxStringLength ?? 2_048,
+    redactionMarker: options.redactionMarker ?? REDACTED,
   }, 0, new WeakSet()) as T;
 }
 
@@ -64,10 +67,12 @@ function redact(
 ): unknown {
   if (depth > options.maxDepth) return "[TRUNCATED]";
   if (typeof value === "string") {
-    return redactString(value, options.maxStringLength);
+    return redactString(value, options.maxStringLength, options.redactionMarker);
   }
   if (!value || typeof value !== "object") return value;
-  if (value instanceof URL) return redactUrl(value, options.maxStringLength);
+  if (value instanceof URL) {
+    return redactUrl(value, options.maxStringLength, options.redactionMarker);
+  }
   if (value instanceof Date) {
     return Number.isNaN(value.getTime()) ? "Invalid Date" : value.toISOString();
   }
@@ -91,7 +96,7 @@ function redactObject(
   if (value instanceof Set) return redactSet(value, options, depth, ancestors);
   const enumerable = redactRecord(value as Record<string, unknown>, options, depth, ancestors);
   return value instanceof Error
-    ? redactError(value, enumerable, options.maxStringLength)
+    ? redactError(value, enumerable, options.maxStringLength, options.redactionMarker)
     : enumerable;
 }
 
@@ -120,7 +125,7 @@ function redactMap(
       entries.push([
         redact(key, options, depth + 1, ancestors),
         typeof key === "string" && isSecretKey(key)
-          ? REDACTED
+          ? options.redactionMarker
           : redact(entry, options, depth + 1, ancestors),
       ]);
       if (entries.length >= options.maxArrayEntries) break;
@@ -163,7 +168,7 @@ function redactRecord(
   const redacted: Record<string, unknown> = {};
   let retained = 0;
   for (const key in value) {
-    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    if (!Object.hasOwn(value, key)) continue;
     if (retained >= options.maxObjectEntries) {
       defineEnumerable(redacted, nextTruncationMarker(redacted), "[TRUNCATED]");
       break;
@@ -172,7 +177,7 @@ function redactRecord(
       redacted,
       key,
       isSecretKey(key)
-        ? REDACTED
+        ? options.redactionMarker
         : redact(value[key], options, depth + 1, ancestors),
     );
     retained += 1;
@@ -183,7 +188,7 @@ function redactRecord(
 function nextTruncationMarker(value: Record<string, unknown>): string {
   let marker = "[TRUNCATED]";
   let suffix = 0;
-  while (Object.prototype.hasOwnProperty.call(value, marker)) {
+  while (Object.hasOwn(value, marker)) {
     suffix += 1;
     marker = `[TRUNCATED_${suffix}]`;
   }
@@ -207,28 +212,35 @@ function redactError(
   value: Error,
   enumerable: Record<string, unknown>,
   maxStringLength: number,
+  redactionMarker: string,
 ): Record<string, unknown> {
   return {
     ...enumerable,
-    name: redactString(value.name, maxStringLength),
-    message: redactString(value.message, maxStringLength),
-    ...(value.stack ? { stack: redactString(value.stack, maxStringLength) } : {}),
+    name: redactString(value.name, maxStringLength, redactionMarker),
+    message: redactString(value.message, maxStringLength, redactionMarker),
+    ...(value.stack
+      ? { stack: redactString(value.stack, maxStringLength, redactionMarker) }
+      : {}),
   };
 }
 
-function maybeRedactUrl(value: string, maxLength: number): string | undefined {
+function maybeRedactUrl(
+  value: string,
+  maxLength: number,
+  redactionMarker: string,
+): string | undefined {
   if (!/^[a-z][a-z0-9+.-]*:\//i.test(value)) return undefined;
   try {
-    return redactUrl(new URL(value), maxLength);
+    return redactUrl(new URL(value), maxLength, redactionMarker);
   } catch {
     return undefined;
   }
 }
 
-function redactUrl(url: URL, maxLength: number): string {
+function redactUrl(url: URL, maxLength: number, redactionMarker: string): string {
   const copy = new URL(url.toString());
   for (const key of copy.searchParams.keys()) {
-    if (isSensitiveUrlKey(key)) copy.searchParams.set(key, REDACTED);
+    if (isSensitiveUrlKey(key)) copy.searchParams.set(key, redactionMarker);
   }
   copy.hash = "";
   copy.username = "";
@@ -239,19 +251,28 @@ function redactUrl(url: URL, maxLength: number): string {
     : serialized;
 }
 
-function redactString(value: string, maxLength: number): string {
-  const redactedUrl = maybeRedactUrl(value, maxLength);
+function redactString(
+  value: string,
+  maxLength: number,
+  redactionMarker: string,
+): string {
+  const redactedUrl = maybeRedactUrl(value, maxLength, redactionMarker);
   if (redactedUrl !== undefined) return redactedUrl;
   const redacted = value
-    .replace(EMBEDDED_URL, (candidate) => maybeRedactUrl(candidate, maxLength) ?? candidate)
+    .replace(
+      EMBEDDED_URL,
+      (candidate) => maybeRedactUrl(candidate, maxLength, redactionMarker) ?? candidate,
+    )
     .replace(
       AUTHORIZATION_CREDENTIAL_LINE,
-      (_match, prefix: string) => `${prefix}${REDACTED}`,
+      (_match, prefix: string) => `${prefix}${redactionMarker}`,
     )
     .replace(
       KEY_VALUE_ASSIGNMENT,
       (match, prefix: string, key: string, quote: string) =>
-        isSensitiveUrlKey(key) ? `${prefix}${quote}${REDACTED}${quote}` : match,
+        isSensitiveUrlKey(key)
+          ? `${prefix}${quote}${redactionMarker}${quote}`
+          : match,
     );
   return redacted.length > maxLength
     ? `${redacted.slice(0, maxLength)}…`

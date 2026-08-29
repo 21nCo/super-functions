@@ -98,16 +98,19 @@ export function createMcpFnAuthProviderAdapter<TSession extends McpFnAuthSession
     async authenticate(request) {
       const bearer = readBearerToken(request);
       if (!bearer) return null;
-      const session = "authenticateBearer" in options.provider
-        ? await options.provider.authenticateBearer(bearer, request)
-        : await options.provider.authenticate(new Request(request.url, {
+      const provider = options.provider;
+      const session = "authenticateBearer" in provider
+        ? await withRequestClone(request, (providerRequest) =>
+          provider.authenticateBearer(bearer, providerRequest))
+        : await provider.authenticate(new Request(request.url, {
           method: request.method,
           headers: { authorization: `Bearer ${bearer}` },
           credentials: "omit",
         }));
       if (!session) return null;
       const principal = options.map
-        ? await options.map(session, request)
+        ? await withRequestClone(request, (mapRequest) =>
+          options.map!(session, mapRequest))
         : defaultPrincipal(session);
       if (
         options.provider.authorize &&
@@ -115,7 +118,11 @@ export function createMcpFnAuthProviderAdapter<TSession extends McpFnAuthSession
       ) {
         return null;
       }
-      if (options.authorize && !(await options.authorize({ principal, request }))) {
+      if (
+        options.authorize &&
+        !(await withRequestClone(request, (authorizeRequest) =>
+          options.authorize!({ principal, request: authorizeRequest })))
+      ) {
         return null;
       }
       return {
@@ -139,6 +146,18 @@ export function createMcpFnAuthProviderAdapter<TSession extends McpFnAuthSession
       };
     },
   };
+}
+
+async function withRequestClone<T>(
+  request: Request,
+  callback: (clone: Request) => T | Promise<T>,
+): Promise<T> {
+  const clone = request.clone();
+  try {
+    return await callback(clone);
+  } finally {
+    void clone.body?.cancel().catch(() => undefined);
+  }
 }
 
 export function createAuthProviderMcpHandler<TSession extends McpFnAuthSessionLike>(

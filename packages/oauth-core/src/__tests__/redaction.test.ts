@@ -27,6 +27,18 @@ describe("OAuth diagnostics redaction", () => {
     });
   });
 
+  it("supports a caller-owned marker without rewriting literal redaction text", () => {
+    expect(redactOAuthValue({
+      accessToken: "access-secret",
+      literal: "the application returned [REDACTED]",
+      detail: "Authorization: Bearer access-secret",
+    }, { redactionMarker: "${MCPFN_SECRET}" })).toEqual({
+      accessToken: "${MCPFN_SECRET}",
+      literal: "the application returned [REDACTED]",
+      detail: "Authorization: ${MCPFN_SECRET}",
+    });
+  });
+
   it("bounds diagnostic collections and strings", () => {
     const redacted = redactOAuthValue({ values: [1, 2, 3], text: "abcdef" }, {
       maxArrayEntries: 2,
