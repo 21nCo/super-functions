@@ -1,7 +1,7 @@
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it } from "vitest";
 import { customTarget } from "@mcpfn/client";
-import { McpFnRegistry, createMcpFnServer, structuredResult } from "mcpfn";
+import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
 import { McpFnTestClient, runScenarios } from "@mcpfn/testing";
 
 import { McpFnInspector } from "../src/index.js";

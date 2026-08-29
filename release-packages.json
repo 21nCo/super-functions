@@ -64,7 +64,7 @@
   { "slug": "uifn-components-solid", "path": "uifn/components-solid", "name": "@uifn/components-solid" },
   { "slug": "uifn-registry", "path": "uifn/registry", "name": "@uifn/registry" },
   { "slug": "uifn-storybook", "path": "uifn/storybook", "name": "@uifn/storybook" },
-  { "slug": "mcpfn", "path": "mcpfn/core", "name": "mcpfn" },
+  { "slug": "mcpfn-core", "path": "mcpfn/core", "name": "@mcpfn/core" },
   { "slug": "mcpfn-client", "path": "mcpfn/client", "name": "@mcpfn/client" },
   { "slug": "mcpfn-auth", "path": "mcpfn/auth", "name": "@mcpfn/auth" },
   { "slug": "mcpfn-testing", "path": "mcpfn/testing", "name": "@mcpfn/testing" },

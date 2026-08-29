@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createDatafnServer } from "@datafn/server";
 import { memoryAdapter } from "@superfunctions/db/adapters";
-import { createMcpFnServer } from "mcpfn";
+import { createMcpFnServer } from "@mcpfn/core";
 import { McpFnTestClient } from "@mcpfn/testing";
 
 import { createDatafnMcpRegistry } from "../src/index.js";

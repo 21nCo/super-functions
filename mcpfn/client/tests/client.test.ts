@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { McpFnRegistry, createMcpFnServer, structuredResult } from "mcpfn";
+import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
 
 import { createMcpFnClient, customTarget } from "../src/index.js";
 import type { McpFnTransportHandle } from "../src/index.js";

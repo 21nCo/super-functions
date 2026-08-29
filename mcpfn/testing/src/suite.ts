@@ -4,7 +4,7 @@ import type {
   McpFnTarget,
   McpFnTargetDescriptor,
 } from "@mcpfn/client";
-import type { McpFnManifest } from "mcpfn";
+import type { McpFnManifest } from "@mcpfn/core";
 import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 import { assertManifestContract } from "./assertions.js";

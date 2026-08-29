@@ -11,7 +11,7 @@ import {
   structuredResult,
   type McpFnJsonSchema,
   type McpFnToolDefinition,
-} from "mcpfn";
+} from "@mcpfn/core";
 
 import type {
   CreateDatafnMcpRegistryOptions,

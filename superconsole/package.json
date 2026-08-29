@@ -24,8 +24,8 @@
     "verify:function-agnostic": "node scripts/verify-function-agnostic.mjs"
   },
   "dependencies": {
-    "mcpfn": "0.0.3",
-    "@superfunctions/admin": "0.1.1",
+    "@mcpfn/core": "0.0.1",
+    "@superfunctions/admin": "0.1.0",
     "@sveltejs/kit": "2.69.3",
     "@uifn/components": "0.0.1",
     "@uifn/components-svelte": "0.0.1",

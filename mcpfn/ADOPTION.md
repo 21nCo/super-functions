@@ -4,7 +4,7 @@ This inventory separates the shared platform release from consumer migrations.
 
 | Surface | Current owner | MCP-2 state | Migration boundary |
 | --- | --- | --- | --- |
-| Server declaration/runtime | `mcpfn` | Shared registry, manifest, and official-SDK runtime available | Consumers may adopt one server at a time without changing public contracts |
+| Server declaration/runtime | `@mcpfn/core` | Shared registry, manifest, and official-SDK runtime available | Consumers may adopt one server at a time without changing public contracts |
 | Production client/session | `@mcpfn/client` | stdio, Streamable HTTP, OAuth callback completion, capabilities, tasks, and diagnostics available | Replace private clients only with consumer-specific regression evidence |
 | OAuth compatibility | `@mcpfn/auth` | Client, resource-server, generic provider, and hosted composition seams available | Existing identity, consent, signing, token, and provider-link systems remain authoritative |
 | Test/quality platform | `@mcpfn/testing` | Local/external targets, scenarios, auth matrices, host-shaped fixtures, and conformance available | Each consumer supplies domain assertions and credentials through adapters |

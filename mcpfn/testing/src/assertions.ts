@@ -1,6 +1,6 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { UriTemplate } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
-import type { McpFnManifest } from "mcpfn";
+import type { McpFnManifest } from "@mcpfn/core";
 
 import type { McpFnTestClient } from "./client.js";
 

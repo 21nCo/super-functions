@@ -11,7 +11,7 @@ cannot add capabilities, so `declaration.manifest()` and every runtime manifest
 remain byte-for-byte identical. When combining a supplied registry with inline
 definitions, the declaration clones the registry before adding them.
 
-`mcpfn` is the shared MCP runtime for Superfunctions. It delegates wire protocol and transport behavior to the official Model Context Protocol SDK while providing the pieces product code needs to remain stable:
+`@mcpfn/core` is the shared MCP runtime for Superfunctions. It delegates wire protocol and transport behavior to the official Model Context Protocol SDK while providing the pieces product code needs to remain stable:
 
 - an explicit, validated tool, resource, template, and prompt registry;
 - pagination, completions, subscriptions, and task-capable tools;
@@ -27,7 +27,7 @@ import {
   McpFnRegistry,
   createMcpFnServer,
   structuredResult,
-} from "mcpfn";
+} from "@mcpfn/core";
 
 const registry = new McpFnRegistry()
   .register({

@@ -43,25 +43,11 @@ export class AdminError extends Error {
   }
 }
 
-function isAdminError(error: unknown): error is AdminError {
-  if (error instanceof AdminError) return true;
-  if (!(error instanceof Error) || error.name !== "AdminError") return false;
-
-  const candidate = error as Partial<AdminError>;
-  return typeof candidate.code === "string"
-    && Object.hasOwn(STATUS_BY_CODE, candidate.code)
-    && typeof candidate.status === "number"
-    && Number.isInteger(candidate.status)
-    && candidate.status >= 400
-    && candidate.status <= 599
-    && typeof candidate.retryable === "boolean";
-}
-
 export function normalizeAdminError(
   error: unknown,
   identity: { requestId?: string; correlationId?: string } = {},
 ): AdminOperationError {
-  const normalized = isAdminError(error)
+  const normalized = error instanceof AdminError
     ? error
     : new AdminError("internal", "The administration operation could not be completed.", { cause: error });
   return {
