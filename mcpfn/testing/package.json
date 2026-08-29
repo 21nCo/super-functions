@@ -1,6 +1,6 @@
 {
   "name": "@mcpfn/testing",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Protocol, authentication, Playwright, contract, scenario, and official conformance testing for MCP servers",
   "type": "module",
   "main": "dist/index.cjs",
@@ -30,8 +30,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mcpfn/client": "0.0.1",
-    "@mcpfn/core": "0.0.2",
+    "@mcpfn/client": "0.0.2",
+    "mcpfn": "0.0.3",
     "@modelcontextprotocol/sdk": "1.25.2",
     "@superfunctions/oauth-core": "0.1.1"
   },

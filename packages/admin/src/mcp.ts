@@ -1,4 +1,4 @@
-import type { McpFnObjectSchema, McpFnToolDefinition } from "@mcpfn/core";
+import type { McpFnObjectSchema, McpFnToolDefinition } from "mcpfn";
 import { AdminError } from "./errors.js";
 import type { AdminDispatcher } from "./dispatcher.js";
 import type { AdminCapabilityRegistry, AdminRegistryOperation } from "./registry.js";

@@ -10,7 +10,7 @@
 - all calls execute through `DatafnExecutor`, preserving DataFn validation, permissions, hooks, authorization, namespace isolation, rate limits, and idempotency.
 
 ```ts
-import { createMcpFnServer } from "@mcpfn/core";
+import { createMcpFnServer } from "mcpfn";
 import { createDatafnMcpRegistry } from "@mcpfn/datafn";
 
 const registry = createDatafnMcpRegistry({

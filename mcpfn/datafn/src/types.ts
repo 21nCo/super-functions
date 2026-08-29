@@ -1,6 +1,6 @@
 import type { DatafnSchema } from "@datafn/core";
 import type { DatafnExecutor } from "@datafn/server";
-import type { McpFnRegistry } from "@mcpfn/core";
+import type { McpFnRegistry } from "mcpfn";
 
 export interface DatafnReadToolOptions {
   name?: string;

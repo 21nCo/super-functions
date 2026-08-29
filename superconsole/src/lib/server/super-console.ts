@@ -22,7 +22,7 @@ import {
   type AdminResult,
   type AdminScope,
 } from '@superfunctions/admin';
-import { createMcpFnServer, McpFnRegistry, type McpFnListedTool, type McpFnRequestExtra, type McpFnServer, type McpFnToolDefinition } from '@mcpfn/core';
+import { createMcpFnServer, McpFnRegistry, type McpFnListedTool, type McpFnRequestExtra, type McpFnServer, type McpFnToolDefinition } from 'mcpfn';
 import { parseModuleSelection } from './catalog.js';
 import type {
   SuperConsoleOptions,

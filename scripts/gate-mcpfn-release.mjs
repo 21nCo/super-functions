@@ -227,7 +227,7 @@ function verifyPackedConsumer() {
   );
   const packageNames = [
     "@superfunctions/oauth-core",
-    "@mcpfn/core",
+    "mcpfn",
     "@mcpfn/client",
     "@mcpfn/auth",
     "@mcpfn/testing",
@@ -248,7 +248,7 @@ function verifyPackedConsumer() {
   const stdioServer = path.join(consumerRoot, "stdio-server.mjs");
   const roundtrip = path.join(consumerRoot, "roundtrip.mjs");
   writeFileSync(stdioServer, `
-import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
+import { McpFnRegistry, createMcpFnServer, structuredResult } from "mcpfn";
 const server = createMcpFnServer({
   info: { name: "packed-stdio", version: "1.0.0" },
   registry: new McpFnRegistry().register({
@@ -268,7 +268,7 @@ import {
   stdioTarget,
   streamableHttpTarget,
 } from "@mcpfn/client";
-import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
+import { McpFnRegistry, createMcpFnServer, structuredResult } from "mcpfn";
 
 async function call(target) {
   const client = createMcpFnClient({ target });
@@ -342,9 +342,9 @@ try {
   npmStep("oauth-core:test", ["run", "test", "--workspace", "@superfunctions/oauth-core"]);
   npmStep("oauth-core:build", ["run", "build", "--workspace", "@superfunctions/oauth-core"]);
 
-  npmStep("core:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/core"]);
-  npmStep("core:test", ["run", "test", "--workspace", "@mcpfn/core"]);
-  npmStep("core:build", ["run", "build", "--workspace", "@mcpfn/core"]);
+  npmStep("core:typecheck", ["run", "typecheck", "--workspace", "./mcpfn/core"]);
+  npmStep("core:test", ["run", "test", "--workspace", "./mcpfn/core"]);
+  npmStep("core:build", ["run", "build", "--workspace", "./mcpfn/core"]);
 
   npmStep("client:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/client"]);
   npmStep("client:test", ["run", "test", "--workspace", "@mcpfn/client"]);
@@ -385,6 +385,10 @@ try {
     "scripts/resolve-release-tag.mjs",
     `superfunctions-oauth-core-v${packageVersion("packages/oauth-core")}`,
   ]);
+  run("release-tag:core", process.execPath, [
+    "scripts/resolve-release-tag.mjs",
+    `mcpfn-v${packageVersion("mcpfn/core")}`,
+  ]);
   run("release-tag:client", process.execPath, [
     "scripts/resolve-release-tag.mjs",
     `mcpfn-client-v${packageVersion("mcpfn/client")}`,
@@ -413,7 +417,7 @@ try {
   ], { timeout: 30_000 });
   run("official:conformance", process.execPath, ["scripts/test-mcpfn-conformance.mjs"]);
 
-  const packageNames = ["@mcpfn/core", "@mcpfn/client", "@mcpfn/auth", "@mcpfn/testing", "@mcpfn/inspector", "@mcpfn/datafn", "@mcpfn/cli"];
+  const packageNames = ["mcpfn", "@mcpfn/client", "@mcpfn/auth", "@mcpfn/testing", "@mcpfn/inspector", "@mcpfn/datafn", "@mcpfn/cli"];
   run("packages:esm-import", process.execPath, [
     "--input-type=module",
     "-e",
