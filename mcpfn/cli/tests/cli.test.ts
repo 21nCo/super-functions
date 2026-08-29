@@ -1,7 +1,8 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   McpFnRegistry,
@@ -10,6 +11,8 @@ import {
 } from "@mcpfn/core";
 
 import { loadManifestSource, loadScenarios, runCli } from "../src/index.js";
+
+const testRequire = createRequire(import.meta.url);
 
 describe("mcpfn CLI", () => {
   const roots: string[] = [];
@@ -82,9 +85,7 @@ describe("mcpfn CLI", () => {
       server: expect.any(Object),
     });
 
-    const coreUrl = pathToFileURL(
-      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../core/src/index.ts"),
-    ).href;
+    const coreUrl = pathToFileURL(testRequire.resolve("@mcpfn/core")).href;
     await writeFile(
       path.join(root, "declaration.mjs"),
       `import { defineMcpFnServer } from ${JSON.stringify(coreUrl)};
@@ -124,9 +125,7 @@ describe("mcpfn CLI", () => {
   it("loads task-capable declaration manifests without constructing a runtime", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-task-manifest-"));
     roots.push(root);
-    const coreUrl = pathToFileURL(
-      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../core/src/index.ts"),
-    ).href;
+    const coreUrl = pathToFileURL(testRequire.resolve("@mcpfn/core")).href;
     await writeFile(
       path.join(root, "tasks.mjs"),
       `import { defineMcpFnServer, structuredResult } from ${JSON.stringify(coreUrl)};
@@ -155,9 +154,7 @@ describe("mcpfn CLI", () => {
   it("enforces max-report-bytes against the exact CLI serialization", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-report-cap-"));
     roots.push(root);
-    const coreUrl = pathToFileURL(
-      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../core/src/index.ts"),
-    ).href;
+    const coreUrl = pathToFileURL(testRequire.resolve("@mcpfn/core")).href;
     await writeFile(
       path.join(root, "server.mjs"),
       `import { defineMcpFnServer, structuredResult } from ${JSON.stringify(coreUrl)};
@@ -193,9 +190,7 @@ describe("mcpfn CLI", () => {
   it("returns test-failure exit code 1 for a manifest contract mismatch", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-mismatch-"));
     roots.push(root);
-    const coreUrl = pathToFileURL(
-      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../core/src/index.ts"),
-    ).href;
+    const coreUrl = pathToFileURL(testRequire.resolve("@mcpfn/core")).href;
     const stale = createManifest(
       { name: "mismatch", version: "1.0.0" },
       new McpFnRegistry(),
