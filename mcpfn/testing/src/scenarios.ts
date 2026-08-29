@@ -334,6 +334,7 @@ function validateScenarioCandidate(scenario: unknown, index: number): void {
   const kind = scenarioKind(candidate, index);
   validateScenarioOperation(candidate, kind, index);
   validateScenarioLimits(candidate, index);
+  if (kind === "events.expect") validateEventScenario(candidate, index);
   validateScenarioMetadata(candidate, index);
   if (kind === "auth.assert") validateAuthScenario(candidate, index);
 }
@@ -403,6 +404,17 @@ function validateScenarioMetadata(candidate: Record<string, unknown>, index: num
     (typeof candidate.sideEffect !== "string" || !["none", "idempotent", "non-idempotent"].includes(candidate.sideEffect))
   ) {
     throw new TypeError(`Invalid scenario at index ${index}: sideEffect is unsupported`);
+  }
+}
+
+function validateEventScenario(candidate: Record<string, unknown>, index: number): void {
+  if (
+    candidate.minimum !== undefined &&
+    (!Number.isInteger(candidate.minimum) || Number(candidate.minimum) < 1)
+  ) {
+    throw new TypeError(
+      `Invalid scenario at index ${index}: events.expect minimum must be a positive integer`,
+    );
   }
 }
 
@@ -615,10 +627,16 @@ function resolveScenarioVariables(
   const values = { ...process.env, ...supplied };
   const required = new Set(scenario.variables ?? []);
   const marker = /\$\{([A-Z][A-Z0-9_]*)\}/g;
+  const encodedMarker = /%24%7B([A-Z][A-Z0-9_]*)%7D/gi;
   const visit = (value: unknown): unknown => {
     if (typeof value === "string") {
       for (const match of value.matchAll(marker)) required.add(match[1]);
-      return value.replace(marker, (original, name: string) => values[name] ?? original);
+      for (const match of value.matchAll(encodedMarker)) required.add(match[1]);
+      return value
+        .replace(marker, (original, name: string) => values[name] ?? original)
+        .replace(encodedMarker, (original, name: string) =>
+          values[name] === undefined ? original : encodeURIComponent(values[name]),
+        );
     }
     if (Array.isArray(value)) return value.map(visit);
     if (value && typeof value === "object") {

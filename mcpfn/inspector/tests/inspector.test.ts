@@ -50,6 +50,8 @@ describe("McpFn inspector", () => {
         arguments: {
           access_token: "never-export-me",
           header: "Authorization: Bearer never-export-me",
+          callback:
+            "https://client.example/callback?access_token=never-export-me",
           literal: "the application returned [REDACTED]",
           value: "safe",
         },
@@ -68,6 +70,8 @@ describe("McpFn inspector", () => {
         arguments: {
           access_token: "${MCPFN_SECRET}",
           header: "Authorization: ${MCPFN_SECRET}",
+          callback:
+            "https://client.example/callback?access_token=%24%7BMCPFN_SECRET%7D",
           literal: "the application returned [REDACTED]",
         },
         variables: ["MCPFN_SECRET"],
@@ -76,6 +80,8 @@ describe("McpFn inspector", () => {
           structuredContent: {
             access_token: "${MCPFN_SECRET}",
             header: "Authorization: ${MCPFN_SECRET}",
+            callback:
+              "https://client.example/callback?access_token=%24%7BMCPFN_SECRET%7D",
             literal: "the application returned [REDACTED]",
             value: "safe",
           },

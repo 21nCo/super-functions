@@ -282,6 +282,16 @@ describe("oauth-core service", () => {
 });
 
 describe("OAuth diagnostic redaction", () => {
+  it("redacts complete quoted and delimiter-bearing credential values", () => {
+    expect(
+      redactOAuthValue(
+        'password="correct horse battery staple", client_secret="abc&def", token=abc&def',
+      ),
+    ).toBe(
+      'password="[REDACTED]", client_secret="[REDACTED]", token=[REDACTED]',
+    );
+  });
+
   it("stops iterating Maps and Sets at the configured entry cap", () => {
     let mapClosed = false;
     let setClosed = false;

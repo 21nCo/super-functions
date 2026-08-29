@@ -455,8 +455,10 @@ function collectVariables(value: unknown): string[] {
   const variables = new Set<string>();
   const visit = (entry: unknown): void => {
     if (typeof entry === "string") {
-      for (const match of entry.matchAll(/\$\{([A-Z][A-Z0-9_]*)\}/g)) {
-        variables.add(match[1]);
+      for (const match of entry.matchAll(
+        /\$\{([A-Z][A-Z0-9_]*)\}|%24%7B([A-Z][A-Z0-9_]*)%7D/gi,
+      )) {
+        variables.add(match[1] ?? match[2]);
       }
     } else if (Array.isArray(entry)) {
       entry.forEach(visit);

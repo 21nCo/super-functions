@@ -25,7 +25,7 @@ const EMBEDDED_URL = /\b[a-z][a-z0-9+.-]*:\/{1,2}[^\s<>"']+/gi;
 const AUTHORIZATION_CREDENTIAL_LINE =
   /(\b(?:proxy[-_])?authorization\b["']?\s*[=:]\s*)[^\r\n]*/gi;
 const KEY_VALUE_ASSIGNMENT =
-  /(\b([a-z][a-z0-9_-]*)\b["']?\s*[=:]\s*)(["']?)([^"'\s,;&#]+)\3/gi;
+  /(\b([a-z][a-z0-9_-]*)\b["']?\s*[=:]\s*)(?:(["'])(.*?)\3|([^\s,;]+))/gi;
 
 export interface OAuthRedactionOptions {
   maxDepth?: number;
@@ -271,7 +271,7 @@ function redactString(
       KEY_VALUE_ASSIGNMENT,
       (match, prefix: string, key: string, quote: string) =>
         isSensitiveUrlKey(key)
-          ? `${prefix}${quote}${redactionMarker}${quote}`
+          ? `${prefix}${quote ?? ""}${redactionMarker}${quote ?? ""}`
           : match,
     );
   return redacted.length > maxLength

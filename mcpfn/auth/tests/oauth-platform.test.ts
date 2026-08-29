@@ -626,7 +626,7 @@ describe("McpFn hosted authorization compatibility", () => {
         },
       });
     expect(() => create("http://login.example.com")).toThrow(/must use HTTPS/);
-    expect(() => create("http://localhost:8787", true)).toThrow(/must use HTTPS/);
+    expect(() => create("http://localhost:8787", true)).not.toThrow();
     expect(() => create("http://127.0.0.1:8787", true)).not.toThrow();
     expect(() => create("https://login.example.com/tenant?")).toThrow(/must use HTTPS/);
     expect(() => create("https://login.example.com/tenant#")).toThrow(/must use HTTPS/);

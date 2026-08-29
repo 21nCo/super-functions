@@ -89,6 +89,14 @@ describe("McpFn testing", () => {
         tool: "echo",
         status: "incomplate",
       }])).toThrow("status must be complete or incomplete");
+      for (const minimum of [-1, 0, Number.NaN, "1"]) {
+        expect(() => validateMcpFnScenarios([{
+          name: "invalid event minimum",
+          kind: "events.expect",
+          event: "resources.subscribed",
+          minimum,
+        }])).toThrow("events.expect minimum must be a positive integer");
+      }
       const auth = vi.fn(async (scenario: { phase: string }) => {
         if (scenario.phase === "slow-provider") {
           await new Promise(() => undefined);

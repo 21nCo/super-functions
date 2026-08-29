@@ -1562,7 +1562,9 @@ function normalizeIssuer(value: string | URL, allowInsecureLoopback: boolean): U
   const loopbackHttp =
     allowInsecureLoopback &&
     issuer.protocol === "http:" &&
-    (issuer.hostname === "127.0.0.1" || issuer.hostname === "[::1]");
+    (issuer.hostname === "localhost" ||
+      issuer.hostname === "127.0.0.1" ||
+      issuer.hostname === "[::1]");
   if (
     (issuer.protocol !== "https:" && !loopbackHttp) ||
     issuer.username ||
