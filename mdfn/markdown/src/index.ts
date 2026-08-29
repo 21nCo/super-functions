@@ -240,7 +240,7 @@ function scanExtensionBlocks(source: string, registry: ResolvedExtensionRegistry
     const nextBreak = lineBreak.exec(source);
     const end = nextBreak ? nextBreak.index + nextBreak[0].length : source.length;
     const line = source.slice(offset, end);
-    const lineContent = line.replace(/\r\n|\r|\n$/, "");
+    const lineContent = line.replace(/(?:\r\n|\r|\n)$/, "");
     if (codeFence) {
       const closing = new RegExp(`^[ \\t]{0,3}${codeFence.marker === "`" ? "`" : "~"}{${codeFence.length},}[ \\t]*$`);
       if (closing.test(lineContent)) codeFence = null;
