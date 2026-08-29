@@ -342,9 +342,9 @@ try {
   npmStep("oauth-core:test", ["run", "test", "--workspace", "@superfunctions/oauth-core"]);
   npmStep("oauth-core:build", ["run", "build", "--workspace", "@superfunctions/oauth-core"]);
 
-  npmStep("core:typecheck", ["run", "typecheck", "--workspace", "mcpfn"]);
-  npmStep("core:test", ["run", "test", "--workspace", "mcpfn"]);
-  npmStep("core:build", ["run", "build", "--workspace", "mcpfn"]);
+  npmStep("core:typecheck", ["run", "typecheck", "--workspace", "./mcpfn/core"]);
+  npmStep("core:test", ["run", "test", "--workspace", "./mcpfn/core"]);
+  npmStep("core:build", ["run", "build", "--workspace", "./mcpfn/core"]);
 
   npmStep("client:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/client"]);
   npmStep("client:test", ["run", "test", "--workspace", "@mcpfn/client"]);
