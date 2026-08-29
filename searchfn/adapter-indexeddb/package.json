@@ -24,7 +24,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@searchfn/adapter-contracts": "0.3.0",
+    "@searchfn/adapter-contracts": "0.4.0",
     "@searchfn/core": "0.3.0"
   },
   "devDependencies": {

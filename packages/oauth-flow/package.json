@@ -1,6 +1,6 @@
 {
   "name": "@superfunctions/oauth-flow",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "High-level OAuth orchestration contracts for Superfunctions",
   "type": "module",
   "main": "./dist/index.js",
@@ -38,9 +38,9 @@
     "access": "public"
   },
   "dependencies": {
-    "@superfunctions/oauth-core": "0.0.1",
-    "@superfunctions/oauth-http": "0.0.1",
-    "@superfunctions/oauth-storage": "0.0.1"
+    "@superfunctions/oauth-core": "0.1.0",
+    "@superfunctions/oauth-http": "0.1.0",
+    "@superfunctions/oauth-storage": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

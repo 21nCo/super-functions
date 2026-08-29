@@ -1,6 +1,6 @@
 {
   "name": "@superfunctions/oauth-core",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "Core OAuth types and service contracts for Superfunctions",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -45,7 +45,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@superfunctions/oauth-storage": "0.0.1"
+    "@superfunctions/oauth-storage": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

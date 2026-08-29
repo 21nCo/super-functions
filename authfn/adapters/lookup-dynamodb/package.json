@@ -1,6 +1,6 @@
 {
   "name": "@authfn/lookup-dynamodb",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "DynamoDB global lookup store adapter for AuthFn multi-region routing",
   "type": "module",
   "main": "./dist/index.js",
@@ -27,8 +27,8 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.800.0",
     "@aws-sdk/lib-dynamodb": "^3.800.0",
-    "@superfunctions/db": "0.1.4",
-    "authfn": "0.1.1"
+    "@superfunctions/db": "0.2.0",
+    "authfn": "0.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

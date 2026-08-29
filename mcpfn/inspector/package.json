@@ -24,7 +24,7 @@
     "@mcpfn/client": "0.0.1",
     "@mcpfn/testing": "0.0.1",
     "@modelcontextprotocol/sdk": "1.25.2",
-    "@superfunctions/oauth-core": "0.0.2"
+    "@superfunctions/oauth-core": "0.1.0"
   },
   "devDependencies": {
     "@mcpfn/core": "0.0.1",

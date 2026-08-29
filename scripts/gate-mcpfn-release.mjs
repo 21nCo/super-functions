@@ -57,6 +57,12 @@ function npmStep(name, args, options) {
   return run(name, process.platform === "win32" ? "npm.cmd" : "npm", args, options);
 }
 
+function packageVersion(packagePath) {
+  return JSON.parse(
+    readFileSync(path.join(repoRoot, packagePath, "package.json"), "utf8"),
+  ).version;
+}
+
 function verifyDocumentation() {
   const files = [
     "mcpfn/README.md",
@@ -376,13 +382,16 @@ try {
   npmStep("cli:build", ["run", "build", "--workspace", "@mcpfn/cli"]);
 
   run("release-tag:oauth-core", process.execPath, [
-    "scripts/resolve-release-tag.mjs", "superfunctions-oauth-core-v0.0.2",
+    "scripts/resolve-release-tag.mjs",
+    `superfunctions-oauth-core-v${packageVersion("packages/oauth-core")}`,
   ]);
   run("release-tag:client", process.execPath, [
-    "scripts/resolve-release-tag.mjs", "mcpfn-client-v0.0.1",
+    "scripts/resolve-release-tag.mjs",
+    `mcpfn-client-v${packageVersion("mcpfn/client")}`,
   ]);
   run("release-tag:inspector", process.execPath, [
-    "scripts/resolve-release-tag.mjs", "mcpfn-inspector-v0.0.1",
+    "scripts/resolve-release-tag.mjs",
+    `mcpfn-inspector-v${packageVersion("mcpfn/inspector")}`,
   ]);
 
   run("example:manifest", process.execPath, [
