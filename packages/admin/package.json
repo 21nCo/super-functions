@@ -1,6 +1,6 @@
 {
   "name": "@superfunctions/admin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Shared administration contracts and runtime for Superfunctions",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,7 +23,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@mcpfn/core": "0.0.1"
+    "mcpfn": "0.0.3"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

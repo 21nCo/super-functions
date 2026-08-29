@@ -13,7 +13,7 @@ import {
   diffManifests,
   validateManifest,
   type McpFnManifest,
-} from "@mcpfn/core";
+} from "mcpfn";
 import { McpFnInspector } from "@mcpfn/inspector";
 import {
   McpFnTestClient,
@@ -38,6 +38,7 @@ export interface CliRunOptions {
 export const MCPFN_CLI_EXIT_SUCCESS = 0;
 export const MCPFN_CLI_EXIT_TEST_FAILURE = 1;
 export const MCPFN_CLI_EXIT_USAGE = 2;
+export const MCPFN_CLI_VERSION = "0.0.3";
 
 export async function runCli(
   argv = process.argv.slice(2),
@@ -244,7 +245,7 @@ export async function runCli(
     });
 
   cli.help();
-  cli.version("0.0.1");
+  cli.version(MCPFN_CLI_VERSION);
   try {
     const parsed = cli.parse(["node", "mcpfn", ...argv], { run: false });
     if (!cli.matchedCommand) {

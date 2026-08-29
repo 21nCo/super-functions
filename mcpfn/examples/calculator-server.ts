@@ -3,7 +3,7 @@ import {
   McpFnRegistry,
   createMcpFnServer,
   structuredResult,
-} from "@mcpfn/core";
+} from "mcpfn";
 
 const numberResultSchema = {
   type: "object" as const,

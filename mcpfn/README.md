@@ -6,7 +6,7 @@ McpFn is the Superfunctions layer for building and keeping Model Context Protoco
 
 | Package | Purpose |
 | --- | --- |
-| `@mcpfn/core` | Official-SDK runtime, tools/resources/prompts/tasks, client-mediated features, MCP Apps contracts, manifests, and compatibility diffing |
+| `mcpfn` | Official-SDK runtime, tools/resources/prompts/tasks, client-mediated features, MCP Apps contracts, manifests, and compatibility diffing |
 | `@mcpfn/client` | Production stdio/Streamable HTTP targets, lifecycle-safe sessions, complete inventories, tasks, OAuth callback completion, and redacted phase diagnostics |
 | `@mcpfn/auth` | OAuth client persistence and callback policy, discovery diagnostics, hosted authorization compatibility, RFC 9728 resource protection, and generic auth-provider composition |
 | `@mcpfn/testing` | The production client exposed as a fixture, auth regression matrices, named host-shaped OAuth fixtures, local/external target suites, scenarios, Playwright, and conformance orchestration |
@@ -29,7 +29,7 @@ import {
   McpFnRegistry,
   createMcpFnServer,
   structuredResult,
-} from "@mcpfn/core";
+} from "mcpfn";
 
 // Replace this example with your application's published-skill lookup.
 const resolvePublishedSkill = async (slug: string) => ({ slug });

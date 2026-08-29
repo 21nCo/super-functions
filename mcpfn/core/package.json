@@ -1,6 +1,6 @@
 {
-  "name": "@mcpfn/core",
-  "version": "0.0.2",
+  "name": "mcpfn",
+  "version": "0.0.3",
   "description": "Protocol-correct MCP runtime, tool registry, manifests, and compatibility diffing",
   "type": "module",
   "main": "dist/index.cjs",

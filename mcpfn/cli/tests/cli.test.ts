@@ -8,9 +8,14 @@ import {
   McpFnRegistry,
   createManifest,
   structuredResult,
-} from "@mcpfn/core";
+} from "mcpfn";
 
-import { loadManifestSource, loadScenarios, runCli } from "../src/index.js";
+import {
+  loadManifestSource,
+  loadScenarios,
+  MCPFN_CLI_VERSION,
+  runCli,
+} from "../src/index.js";
 
 const testRequire = createRequire(import.meta.url);
 
@@ -19,6 +24,13 @@ describe("mcpfn CLI", () => {
 
   afterEach(async () => {
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  });
+
+  it("keeps the reported CLI version aligned with the package manifest", async () => {
+    const packageJson = JSON.parse(
+      await readFile(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    expect(MCPFN_CLI_VERSION).toBe(packageJson.version);
   });
 
   it("returns usage exit code 2 when a command is missing or unknown", async () => {
@@ -85,7 +97,7 @@ describe("mcpfn CLI", () => {
       server: expect.any(Object),
     });
 
-    const coreUrl = pathToFileURL(testRequire.resolve("@mcpfn/core")).href;
+    const coreUrl = pathToFileURL(testRequire.resolve("mcpfn")).href;
     await writeFile(
       path.join(root, "declaration.mjs"),
       `import { defineMcpFnServer } from ${JSON.stringify(coreUrl)};
@@ -125,7 +137,7 @@ describe("mcpfn CLI", () => {
   it("loads task-capable declaration manifests without constructing a runtime", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-task-manifest-"));
     roots.push(root);
-    const coreUrl = pathToFileURL(testRequire.resolve("@mcpfn/core")).href;
+    const coreUrl = pathToFileURL(testRequire.resolve("mcpfn")).href;
     await writeFile(
       path.join(root, "tasks.mjs"),
       `import { defineMcpFnServer, structuredResult } from ${JSON.stringify(coreUrl)};
@@ -154,7 +166,7 @@ describe("mcpfn CLI", () => {
   it("enforces max-report-bytes against the exact CLI serialization", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-report-cap-"));
     roots.push(root);
-    const coreUrl = pathToFileURL(testRequire.resolve("@mcpfn/core")).href;
+    const coreUrl = pathToFileURL(testRequire.resolve("mcpfn")).href;
     await writeFile(
       path.join(root, "server.mjs"),
       `import { defineMcpFnServer, structuredResult } from ${JSON.stringify(coreUrl)};
@@ -190,7 +202,7 @@ describe("mcpfn CLI", () => {
   it("returns test-failure exit code 1 for a manifest contract mismatch", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-mismatch-"));
     roots.push(root);
-    const coreUrl = pathToFileURL(testRequire.resolve("@mcpfn/core")).href;
+    const coreUrl = pathToFileURL(testRequire.resolve("mcpfn")).href;
     const stale = createManifest(
       { name: "mismatch", version: "1.0.0" },
       new McpFnRegistry(),

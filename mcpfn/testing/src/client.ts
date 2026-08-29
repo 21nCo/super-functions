@@ -26,7 +26,7 @@ import type {
   Task,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { McpFnServer } from "@mcpfn/core";
+import type { McpFnServer } from "mcpfn";
 
 export interface McpFnTestClientOptions {
   capabilities?: ClientCapabilities;

@@ -232,10 +232,11 @@ jobs:
           npm run build --workspace @superfunctions/db
           npm run build --workspace @superfunctions/oauth-storage
           npm run build --workspace @superfunctions/oauth-core
+          npm run build --workspace mcpfn
           npm run build --workspace @mcpfn/client
 
       - name: Require supported CommonJS entry points
-        run: node -e 'for (const name of ["@superfunctions/oauth-core", "@mcpfn/client"]) { const loaded = require(name); if (!Object.keys(loaded).length) throw new Error(name + " has no CommonJS exports"); }'
+        run: node -e 'for (const name of ["@superfunctions/oauth-core", "mcpfn", "@mcpfn/client"]) { const loaded = require(name); if (!Object.keys(loaded).length) throw new Error(name + " has no CommonJS exports"); }'
 
   docs:
     name: Docs Guardrails

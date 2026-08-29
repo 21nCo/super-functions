@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createMcpFnOAuthClientProvider, createOAuthResourceServerHandler } from "@mcpfn/auth";
 import { createMcpFnClient, streamableHttpTarget } from "@mcpfn/client";
-import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
+import { McpFnRegistry, createMcpFnServer, structuredResult } from "mcpfn";
 
 import {
   MCPFN_NAMED_OAUTH_HOST_FIXTURES,
