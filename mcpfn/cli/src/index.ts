@@ -13,7 +13,7 @@ import {
   diffManifests,
   validateManifest,
   type McpFnManifest,
-} from "mcpfn";
+} from "@mcpfn/core";
 import { McpFnInspector } from "@mcpfn/inspector";
 import {
   McpFnTestClient,

@@ -1,7 +1,7 @@
 import {
   MCP_APP_EXTENSION_ID,
   type McpFnManifest,
-} from "mcpfn";
+} from "@mcpfn/core";
 
 export type McpFnServerFeature =
   | "tools"

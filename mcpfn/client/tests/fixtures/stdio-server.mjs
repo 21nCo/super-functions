@@ -1,4 +1,4 @@
-import { McpFnRegistry, createMcpFnServer, structuredResult } from "mcpfn";
+import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
 
 const server = createMcpFnServer({
   info: { name: "mcpfn-stdio-fixture", version: "1.0.0" },

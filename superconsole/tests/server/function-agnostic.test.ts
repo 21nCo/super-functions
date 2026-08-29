@@ -28,7 +28,7 @@ describe('function-agnostic source guard', () => {
     expect(findFunctionAgnosticIssues(`
       <script lang="ts">
         import { ButtonRoot as UIFnButton } from '@uifn/components-svelte/button';
-        import type { Tool } from 'mcpfn';
+        import type { Tool } from '@mcpfn/core';
         import { client } from 'searchfn';
       </script>
       <p>AuthFnConfig is presentation text.</p>

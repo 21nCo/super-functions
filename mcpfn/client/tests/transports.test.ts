@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { McpFnRegistry, createMcpFnServer, structuredResult } from "mcpfn";
+import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
 
 import {
   createMcpFnClient,

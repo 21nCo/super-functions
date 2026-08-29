@@ -5,7 +5,7 @@ import {
   McpFnRegistry,
   createMcpFnServer,
   structuredResult,
-} from "mcpfn";
+} from "@mcpfn/core";
 
 import {
   McpFnTestClient,

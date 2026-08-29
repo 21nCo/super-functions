@@ -9,7 +9,7 @@ import {
   type McpFnServer,
   type McpFnServerInfo,
   type McpFnServerRuntimeOptions,
-} from "mcpfn";
+} from "@mcpfn/core";
 import { validateMcpFnScenarios, type McpFnScenario } from "@mcpfn/testing";
 
 async function loadModule(file: string, cwd: string): Promise<unknown> {
@@ -67,7 +67,7 @@ export async function loadManifestSource(
 ): Promise<{ manifest: McpFnManifest; server?: McpFnServer<unknown> }> {
   const value = await loadModule(file, cwd);
   // Use the public surface instead of instanceof: a global CLI and the target
-  // project commonly load separate physical copies of mcpfn.
+  // project commonly load separate physical copies of @mcpfn/core.
   if (isServerExport(value)) {
     return { manifest: validateManifest(value.manifest()), server: value };
   }

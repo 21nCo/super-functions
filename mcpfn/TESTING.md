@@ -113,7 +113,7 @@ imports. LangFn, MemoryFn, and ProbeFn are not covered by this release gate.
 CI routes a change set made entirely of the McpFn runtime, its DataFn adapter, README, and release metadata through this dedicated Node.js 22 gate. Root package manifests, lockfiles, CI workflows, and the CI planner always run the repository's generic JavaScript job as well as the McpFn gate. This conservative boundary prevents unrelated global changes from gaining coverage merely by being included with McpFn work.
 
 When publishing manually, release the required `@superfunctions/oauth-*`
-versions, then `mcpfn`, `@mcpfn/client`, and `@mcpfn/auth`, followed by
+versions, then `@mcpfn/core`, `@mcpfn/client`, and `@mcpfn/auth`, followed by
 `@mcpfn/testing`, `@mcpfn/inspector`, `@mcpfn/datafn`, and `@mcpfn/cli`. The
 repository's package release workflow publishes one selected package at a time;
 it does not infer dependency order.
