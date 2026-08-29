@@ -1,6 +1,6 @@
 {
   "name": "@mcpfn/client",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Production MCP client, target, session, lifecycle, and diagnostic engine for McpFn",
   "type": "module",
   "main": "dist/index.cjs",
@@ -25,7 +25,7 @@
     "@superfunctions/oauth-core": "0.1.1"
   },
   "devDependencies": {
-    "@mcpfn/core": "0.0.3",
+    "@mcpfn/core": "0.0.4",
     "@types/node": "^20.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
