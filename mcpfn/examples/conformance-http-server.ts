@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -384,6 +385,7 @@ await new Promise<void>((resolve, reject) => {
 const address = httpServer.address() as AddressInfo;
 const origin = `http://127.0.0.1:${address.port}`;
 handler = await server.createWebStandardHandler({
+  sessionIdGenerator: randomUUID,
   enableDnsRebindingProtection: true,
   allowedHosts: [`127.0.0.1:${address.port}`],
   allowedOrigins: [origin],

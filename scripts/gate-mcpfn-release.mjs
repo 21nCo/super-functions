@@ -63,6 +63,61 @@ function packageVersion(packagePath) {
   ).version;
 }
 
+function verifyMcpSdkSecurityPolicy() {
+  const expectedVersion = "1.29.0";
+  const expectedOverrides = {
+    "fast-uri": "3.1.5",
+    nanoid: "3.3.18",
+  };
+  const packagePaths = [
+    "mcpfn/core",
+    "mcpfn/client",
+    "mcpfn/auth",
+    "mcpfn/testing",
+    "mcpfn/inspector",
+    "mcpfn/cli",
+  ];
+  const resolvedVersions = Object.fromEntries(
+    packagePaths.map((packagePath) => {
+      const manifest = JSON.parse(
+        readFileSync(path.join(repoRoot, packagePath, "package.json"), "utf8"),
+      );
+      return [packagePath, manifest.dependencies?.["@modelcontextprotocol/sdk"]];
+    }),
+  );
+  const mismatches = Object.entries(resolvedVersions).filter(
+    ([, version]) => version !== expectedVersion,
+  );
+  const rootManifest = JSON.parse(
+    readFileSync(path.join(repoRoot, "package.json"), "utf8"),
+  );
+  const resolvedOverrides = Object.fromEntries(
+    Object.keys(expectedOverrides).map((name) => [name, rootManifest.overrides?.[name]]),
+  );
+  const overrideMismatches = Object.entries(expectedOverrides).filter(
+    ([name, version]) => resolvedOverrides[name] !== version,
+  );
+  const ok = mismatches.length === 0 && overrideMismatches.length === 0;
+  results.push({
+    name: "dependencies:mcp-sdk-security-policy",
+    command: "internal MCP SDK security version check",
+    ok,
+    status: ok ? 0 : 1,
+    stdout: JSON.stringify({
+      expectedVersion,
+      resolvedVersions,
+      expectedOverrides,
+      resolvedOverrides,
+    }),
+    stderr: "",
+  });
+  if (!ok) {
+    throw new Error(
+      `McpFn dependency security policy failed: ${JSON.stringify({ mismatches, overrideMismatches })}`,
+    );
+  }
+}
+
 function verifyDocumentation() {
   const files = [
     "mcpfn/README.md",
@@ -330,6 +385,7 @@ process.stdout.write(JSON.stringify({ ok: true, transports: ["stdio", "streamabl
 }
 
 try {
+  verifyMcpSdkSecurityPolicy();
   for (const workspace of [
     "@superfunctions/auth",
     "@superfunctions/observability",
@@ -381,22 +437,22 @@ try {
   npmStep("cli:test", ["run", "test", "--workspace", "@mcpfn/cli"]);
   npmStep("cli:build", ["run", "build", "--workspace", "@mcpfn/cli"]);
 
-  run("release-tag:oauth-core", process.execPath, [
-    "scripts/resolve-release-tag.mjs",
-    `superfunctions-oauth-core-v${packageVersion("packages/oauth-core")}`,
-  ]);
-  run("release-tag:core", process.execPath, [
-    "scripts/resolve-release-tag.mjs",
-    `mcpfn-core-v${packageVersion("mcpfn/core")}`,
-  ]);
-  run("release-tag:client", process.execPath, [
-    "scripts/resolve-release-tag.mjs",
-    `mcpfn-client-v${packageVersion("mcpfn/client")}`,
-  ]);
-  run("release-tag:inspector", process.execPath, [
-    "scripts/resolve-release-tag.mjs",
-    `mcpfn-inspector-v${packageVersion("mcpfn/inspector")}`,
-  ]);
+  for (const [name, packagePath, tagSlug] of [
+    ["oauth-core", "packages/oauth-core", "superfunctions-oauth-core"],
+    ["core", "mcpfn/core", "mcpfn-core"],
+    ["client", "mcpfn/client", "mcpfn-client"],
+    ["inspector", "mcpfn/inspector", "mcpfn-inspector"],
+    ["auth", "mcpfn/auth", "mcpfn-auth"],
+    ["testing", "mcpfn/testing", "mcpfn-testing"],
+    ["datafn", "mcpfn/datafn", "mcpfn-datafn"],
+    ["cli", "mcpfn/cli", "mcpfn-cli"],
+    ["admin", "packages/admin", "superfunctions-admin"],
+  ]) {
+    run(`release-tag:${name}`, process.execPath, [
+      "scripts/resolve-release-tag.mjs",
+      `${tagSlug}-v${packageVersion(packagePath)}`,
+    ]);
+  }
 
   run("example:manifest", process.execPath, [
     "mcpfn/cli/dist/bin.js", "manifest", "mcpfn/examples/calculator-server.ts", "--output", candidateManifest,

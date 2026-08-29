@@ -93,6 +93,23 @@ describe("McpFn OAuth client compatibility", () => {
     expect(store.security).toBe("memory");
   });
 
+  it("accepts SDK discovery invalidation without clearing unrelated credentials", async () => {
+    const store = new MemoryMcpFnOAuthSessionStore();
+    const provider = createMcpFnOAuthClientProvider({
+      redirectUrl: "https://app.example.com/callback",
+      clientMetadata: { redirect_uris: ["https://app.example.com/callback"] },
+      store,
+      openAuthorization: () => undefined,
+    });
+    await provider.saveClientInformation({ client_id: "client-1" });
+    await provider.saveTokens({ access_token: "secret", token_type: "Bearer" });
+
+    await provider.invalidateCredentials("discovery");
+
+    await expect(provider.clientInformation()).resolves.toMatchObject({ client_id: "client-1" });
+    await expect(provider.tokens()).resolves.toMatchObject({ access_token: "secret" });
+  });
+
   it("uses an unambiguous encrypted-session envelope", async () => {
     const records = new Map<string, { ciphertext: string; keyRef: string }>();
     records.set("oauth:tokens", {

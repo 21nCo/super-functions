@@ -130,6 +130,46 @@ function page<T>(
   };
 }
 
+async function releaseAfterResponse(
+  response: Response,
+  release: () => Promise<void>,
+): Promise<Response> {
+  if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream")) {
+    await release();
+    return response;
+  }
+
+  const reader = response.body.getReader();
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const result = await reader.read();
+        if (result.done) {
+          controller.close();
+          await release();
+        } else {
+          controller.enqueue(result.value);
+        }
+      } catch (error) {
+        controller.error(error);
+        await release();
+      }
+    },
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        await release();
+      }
+    },
+  });
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 export class McpFnServer<TContext = undefined> {
   readonly registry: McpFnRegistry<TContext>;
   readonly info: McpFnServerInfo;
@@ -141,9 +181,12 @@ export class McpFnServer<TContext = undefined> {
   private readonly toolVisibility?: McpFnServerOptions<TContext>["toolVisibility"];
   private readonly manifestOptions: CreateManifestOptions;
   private readonly pageSize: number;
+  private readonly serverOptions: McpFnServerOptions<TContext>;
+  private readonly requestServers = new Set<McpFnServer<TContext>>();
   private connected = false;
 
   constructor(options: McpFnServerOptions<TContext>) {
+    this.serverOptions = { ...options };
     this.info = options.info;
     this.registry = options.registry;
     assertMcpAppContracts(this.registry);
@@ -353,10 +396,87 @@ export class McpFnServer<TContext = undefined> {
   async createWebStandardHandler(
     options: ConstructorParameters<typeof WebStandardStreamableHTTPServerTransport>[0] = {},
   ): Promise<(request: Request, options?: HandleRequestOptions) => Promise<Response>> {
-    const transport = new WebStandardStreamableHTTPServerTransport(options);
-    await this.connect(transport);
-    return (request: Request, handleOptions?: HandleRequestOptions) =>
-      transport.handleRequest(request, handleOptions);
+    if (!options.sessionIdGenerator) {
+      return async (request: Request, handleOptions?: HandleRequestOptions) => {
+        const requestServer = new McpFnServer(this.serverOptions);
+        const transport = new WebStandardStreamableHTTPServerTransport(options);
+        this.requestServers.add(requestServer);
+        let released = false;
+        const release = async () => {
+          if (released) return;
+          released = true;
+          this.requestServers.delete(requestServer);
+          await requestServer.close();
+        };
+
+        try {
+          await requestServer.connect(transport);
+          const response = await transport.handleRequest(request, handleOptions);
+          return releaseAfterResponse(response, release);
+        } catch (error) {
+          await release();
+          throw error;
+        }
+      };
+    }
+
+    const sessions = new Map<string, {
+      server: McpFnServer<TContext>;
+      transport: WebStandardStreamableHTTPServerTransport;
+    }>();
+    return async (request: Request, handleOptions?: HandleRequestOptions) => {
+      const sessionId = request.headers.get("mcp-session-id");
+      if (sessionId) {
+        const session = sessions.get(sessionId);
+        if (!session) {
+          return new Response(JSON.stringify({
+            jsonrpc: "2.0",
+            error: { code: -32001, message: "Session not found" },
+            id: null,
+          }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return session.transport.handleRequest(request, handleOptions);
+      }
+
+      const requestServer = new McpFnServer(this.serverOptions);
+      let initializedSessionId: string | undefined;
+      let released = false;
+      let transport: WebStandardStreamableHTTPServerTransport;
+      const release = async () => {
+        if (released) return;
+        released = true;
+        if (initializedSessionId) sessions.delete(initializedSessionId);
+        this.requestServers.delete(requestServer);
+        await requestServer.close();
+      };
+      transport = new WebStandardStreamableHTTPServerTransport({
+        ...options,
+        onsessioninitialized: async (id) => {
+          await options.onsessioninitialized?.(id);
+          initializedSessionId = id;
+          sessions.set(id, { server: requestServer, transport });
+        },
+        onsessionclosed: async (id) => {
+          sessions.delete(id);
+          this.requestServers.delete(requestServer);
+          await options.onsessionclosed?.(id);
+        },
+      });
+      this.requestServers.add(requestServer);
+
+      try {
+        await requestServer.connect(transport);
+        const response = await transport.handleRequest(request, handleOptions);
+        if (initializedSessionId) return response;
+        return releaseAfterResponse(response, release);
+      } catch (error) {
+        await release();
+        throw error;
+      }
+    };
   }
 
   sample(
@@ -436,6 +556,9 @@ export class McpFnServer<TContext = undefined> {
   }
 
   async close(): Promise<void> {
+    const requestServers = [...this.requestServers];
+    this.requestServers.clear();
+    await Promise.all(requestServers.map((server) => server.close()));
     await this.protocol.close();
     this.connected = false;
   }

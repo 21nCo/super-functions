@@ -593,4 +593,68 @@ describe("McpFnServer", () => {
       result: { structuredContent: { clientId: "client-42" } },
     });
   });
+
+  it("routes sessionful HTTP clients to isolated transports", async () => {
+    const registry = new McpFnRegistry().register({
+      name: "echo",
+      description: "Echo a value.",
+      inputSchema: {
+        type: "object",
+        properties: { value: { type: "string" } },
+        required: ["value"],
+      },
+      handler: async ({ value }) => structuredResult({ value }),
+    });
+    const server = createMcpFnServer({
+      info: { name: "session-test", version: "1.0.0" },
+      registry,
+    });
+    let nextSession = 0;
+    const handler = await server.createWebStandardHandler({
+      enableJsonResponse: true,
+      sessionIdGenerator: () => `session-${++nextSession}`,
+    });
+    closeables.push(server);
+    const post = (body: unknown, sessionId?: string) => handler(new Request(
+      "https://example.com/mcp",
+      {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+          ...(sessionId ? { "mcp-session-id": sessionId } : {}),
+        },
+        body: JSON.stringify(body),
+      },
+    ));
+    const initialize = (id: number) => post({
+      jsonrpc: "2.0",
+      id,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-11-25",
+        capabilities: {},
+        clientInfo: { name: `client-${id}`, version: "1.0.0" },
+      },
+    });
+
+    const first = await initialize(1);
+    const second = await initialize(2);
+    const firstSession = first.headers.get("mcp-session-id");
+    const secondSession = second.headers.get("mcp-session-id");
+    expect(firstSession).toBe("session-1");
+    expect(secondSession).toBe("session-2");
+
+    for (const [id, sessionId] of [[3, firstSession], [4, secondSession]] as const) {
+      const response = await post({
+        jsonrpc: "2.0",
+        id,
+        method: "tools/call",
+        params: { name: "echo", arguments: { value: sessionId } },
+      }, sessionId!);
+      expect(await response.json()).toMatchObject({
+        result: { structuredContent: { value: sessionId } },
+      });
+    }
+  });
 });
