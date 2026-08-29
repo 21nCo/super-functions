@@ -9,9 +9,9 @@ description: Overview of the docsfn documentation toolchain and how to use this 
 
 ## Where to go next
 
-- **[Getting Started](./getting-started/)** — Install packages, minimal config, quick start, project layout.  
-- **[Core Concepts](./core-concepts/)** — Configuration reference and content format.  
-- **[API Reference](./api/)** — Package-level reference (expanded in later phases).  
-- **[Guides](./guides/)** — Framework walkthroughs and customization (filled in over time).  
+- **[Getting Started](./getting-started/)** — Install packages, minimal config, quick start, project layout.
+- **[Core Concepts](./core-concepts/)** — Configuration reference and content format.
+- **[API Reference](./api/)** — Package-level reference (expanded in later phases).
+- **[Guides](./guides/)** — Framework walkthroughs and customization (filled in over time).
 
 Use the left sidebar to browse; every page includes breadcrumbs and prev/next where the manifest provides an ordering.

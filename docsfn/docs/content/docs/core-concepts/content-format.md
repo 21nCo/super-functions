@@ -19,8 +19,8 @@ Blank lines separate paragraphs. Use `**bold**`, `*italic*`, and `` `inline code
 
 ### Lists
 
-- **Unordered** — `-` or `*` items.  
-- **Ordered** — `1.` numbered items.  
+- **Unordered** — `-` or `*` items.
+- **Ordered** — `1.` numbered items.
 Indent nested lists with two spaces.
 
 ### Code blocks
@@ -148,9 +148,9 @@ Each docs subdirectory may include a **`meta.json`** (name overridden by `conten
 
 ### `pages` entries
 
-- **String** — slug key matching a file stem, e.g. `"quick-start"` → `quick-start.md`.  
-- **Object** — `{ "key": "subdir", "label": "Custom label", "icon": "optional", "hidden": true }`  
-  - `hidden: true` removes the item from visible nav while keeping routes if files exist.  
+- **String** — slug key matching a file stem, e.g. `"quick-start"` → `quick-start.md`.
+- **Object** — `{ "key": "subdir", "label": "Custom label", "icon": "optional", "hidden": true }`
+  - `hidden: true` removes the item from visible nav while keeping routes if files exist.
   - `icon` is passed through to UI layers that support icons.
 
 Example:
@@ -172,17 +172,17 @@ Example:
 
 ## File naming
 
-- Use **`.md`** (or supported MDX where applicable).  
-- Name section roots **`index.md`** so the directory maps to a single URL segment.  
+- Use **`.md`** (or supported MDX where applicable).
+- Name section roots **`index.md`** so the directory maps to a single URL segment.
 - Prefer **kebab-case** filenames for slugs (`quick-start.md`).
 
 ---
 
 ## Directory → URL mapping (docs collection)
 
-1. `content.root` + `content.docsDir` defines the docs tree root on disk.  
-2. Each file becomes a **slug** from its path relative to that root (without extension).  
-3. URLs are prefixed with **`site.basePath`**.  
+1. `content.root` + `content.docsDir` defines the docs tree root on disk.
+2. Each file becomes a **slug** from its path relative to that root (without extension).
+3. URLs are prefixed with **`site.basePath`**.
 4. Example: `content/docs/guides/setup.md` → slug like `guides/setup` → URL `/docs/guides/setup` (exact rules follow manifest normalization in `@docsfn/core`).
 
 Blog and **api** collections use separate directories and routing conventions.

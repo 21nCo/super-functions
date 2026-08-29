@@ -90,7 +90,7 @@
     </div>
   </details>
 {:else if item.type === 'link'}
-  <a 
+  <a
     href={resolvedHref}
     class="docsfn-sidebar-link {isActive ? 'active' : ''}"
     data-active={isActive}

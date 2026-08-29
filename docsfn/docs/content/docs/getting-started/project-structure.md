@@ -49,10 +49,10 @@ my-docs-site/
 
 ## How content maps to URLs
 
-- **`site.basePath`** (commonly `/docs`) is the prefix for **docs** pages.  
-- A file `content/docs/guides/setup.md` becomes a doc whose path is derived from the **slug** built by the manifest (typically `/docs/guides/setup`).  
-- `content/docs/guides/index.md` is usually the section root (e.g. `/docs/guides`).  
-- **Blog** paths come from `content/blog/*.md` and your framework’s blog routes (`/blog`, `/blog/[slug]`).  
+- **`site.basePath`** (commonly `/docs`) is the prefix for **docs** pages.
+- A file `content/docs/guides/setup.md` becomes a doc whose path is derived from the **slug** built by the manifest (typically `/docs/guides/setup`).
+- `content/docs/guides/index.md` is usually the section root (e.g. `/docs/guides`).
+- **Blog** paths come from `content/blog/*.md` and your framework’s blog routes (`/blog`, `/blog/[slug]`).
 
 Exact slugs and collision rules are defined in `@docsfn/core` manifest generation; keep directory names URL-safe and use `meta.json` for labels and ordering.
 

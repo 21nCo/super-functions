@@ -45,7 +45,7 @@
         {sectionContext}
       </div>
     {/if}
-    
+
     <div class="docsfn-pagination-links">
       {#if resolvedPrevPage}
         <a

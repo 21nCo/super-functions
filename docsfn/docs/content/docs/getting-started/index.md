@@ -9,8 +9,8 @@ description: Install docsfn, create a minimal site, and understand how content m
 
 In this section you will:
 
-1. [Install](./installation) the packages you need for your stack  
-2. Follow a [Quick Start](./quick-start) with copy-paste examples for SvelteKit and Next.js  
-3. Learn the recommended [Project Structure](./project-structure) and how files become URLs  
+1. [Install](./installation) the packages you need for your stack
+2. Follow a [Quick Start](./quick-start) with copy-paste examples for SvelteKit and Next.js
+3. Learn the recommended [Project Structure](./project-structure) and how files become URLs
 
 If you are new to docsfn, read [Quick Start](./quick-start) first, then skim [Project Structure](./project-structure) before diving into [Core Concepts: Configuration](../core-concepts/configuration).
