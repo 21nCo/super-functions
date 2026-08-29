@@ -192,12 +192,12 @@ class TemplateRegistry:
             """,
             text="""
             Welcome, {{userName}}!
-            
+
             Thank you for joining {{appName}}. We're excited to have you on board.
             {{#if verificationUrl}}
             Verify your email: {{verificationUrl}}
             {{/if}}
-            
+
             Best regards,
             The {{appName}} Team
             """,
@@ -226,17 +226,17 @@ class TemplateRegistry:
             """,
             text="""
             Password Reset Request
-            
+
             Hi {{userName}},
-            
+
             We received a request to reset your password for your {{appName}} account.
-            
+
             Reset your password: {{resetUrl}}
-            
+
             This link will expire in {{expiryHours}} hours.
-            
+
             If you didn't request this, you can safely ignore this email.
-            
+
             Best regards,
             The {{appName}} Team
             """,
@@ -262,11 +262,11 @@ class TemplateRegistry:
             """,
             text="""
             {{title}}
-            
+
             {{message}}
-            
+
             {{#if actionUrl}}{{actionText}}: {{actionUrl}}{{/if}}
-            
+
             Best regards,
             {{appName}}
             """,

@@ -68,7 +68,7 @@ export class SmsService {
             status: 'failed',
             metadata: { ...params.metadata, error: error.message }
         });
-        
+
         await this.db.recordEvent({
             referenceId: transaction.id,
             referenceType: 'sms',
@@ -81,7 +81,7 @@ export class SmsService {
             metadata: { error: error.message },
             eventTimestamp: new Date()
         });
-        
+
         throw error;
     }
   }

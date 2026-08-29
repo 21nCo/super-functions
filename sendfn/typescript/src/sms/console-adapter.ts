@@ -9,7 +9,7 @@ export class ConsoleSmsAdapter implements SmsProvider {
 
   async sendSms(params: SendSmsRequest): Promise<SendSmsResponse> {
     console.log(`[SMS] To: ${params.to}, Message: ${params.message}`);
-    
+
     return {
       success: true,
       messageId: `console-${Date.now()}`,

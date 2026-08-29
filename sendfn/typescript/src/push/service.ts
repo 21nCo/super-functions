@@ -28,7 +28,7 @@ export class PushService {
 
     // If userId provided, fetch tokens
     const userIds = Array.isArray(params.userId) ? params.userId : [params.userId];
-    
+
     // This is simplified. Ideally we fetch all tokens for all users.
     for (const uid of userIds) {
         const devices = await this.deviceManager.getActiveDevices(uid);
@@ -61,19 +61,19 @@ export class PushService {
     }
 
     // 2. Create PushNotification record(s)
-    // The schema assumes single provider per record? 
+    // The schema assumes single provider per record?
     // "provider: string (e.g., "fcm", "apns")"
     // If we send to mixed platforms, we might need multiple records or a "mixed" provider.
     // For v0, let's create one record per platform send to keep it clean.
-    // But the method returns Promise<PushNotification>. 
+    // But the method returns Promise<PushNotification>.
     // Let's assume we return the "primary" one or aggregate.
-    // Actually, if we have multiple platforms, we should probably treat them as separate operations internally 
-    // but the API call is single. 
+    // Actually, if we have multiple platforms, we should probably treat them as separate operations internally
+    // but the API call is single.
     // Let's handle just one for simplicity in return type, or change return type.
     // The spec says: "Return PushNotification".
-    
+
     // Let's iterate platforms and send.
-    
+
     const platforms = PLATFORM_ORDER.filter((platform) => (platformTokens.get(platform)?.length ?? 0) > 0);
     let logicalNotificationId: string | null = null;
     let aggregateSentCount = 0;
@@ -87,7 +87,7 @@ export class PushService {
     for (const platform of platforms) {
         const pTokens = platformTokens.get(platform)!;
         const provider = this.providers.get(platform);
-        
+
         if (!provider) {
             console.warn(`No provider for platform ${platform}`);
             continue;
@@ -138,9 +138,9 @@ export class PushService {
                 sentCount: response.successCount,
                 failedCount: response.failedCount,
                 sentAt: response.timestamp,
-                metadata: { 
+                metadata: {
                     ...params.metadata,
-                    results: response.results 
+                    results: response.results
                 }
             });
 
@@ -172,7 +172,7 @@ export class PushService {
                 status: 'failed',
                 metadata: { ...params.metadata, error: error.message }
             });
-            
+
              await this.adapter.recordEvent({
                 referenceId: notification.id,
                 referenceType: 'push',
@@ -185,7 +185,7 @@ export class PushService {
                 metadata: { error: error.message },
                 eventTimestamp: new Date()
             });
-            
+
             throw error;
         }
     }

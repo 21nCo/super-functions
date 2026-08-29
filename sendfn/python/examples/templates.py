@@ -51,11 +51,11 @@ async def main():
         """,
         text="""
         Hi {{inviteeName}}!
-        
+
         {{inviterName}} has invited you to join {{appName}}.
-        
+
         Accept invitation: {{inviteUrl}}
-        
+
         This invitation will expire in {{expiryDays}} days.
         """,
         variables=["inviteeName", "inviterName", "appName", "inviteUrl", "expiryDays", "message"],

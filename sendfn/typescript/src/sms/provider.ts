@@ -1,12 +1,12 @@
 export interface SmsProvider {
   readonly name: string;
-  
+
   initialize(): Promise<void>;
-  
+
   sendSms(params: SendSmsRequest): Promise<SendSmsResponse>;
-  
+
   isHealthy(): Promise<boolean>;
-  
+
   close(): Promise<void>;
 }
 

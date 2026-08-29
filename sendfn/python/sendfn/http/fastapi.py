@@ -48,15 +48,15 @@ def create_sendfn_router(
 
         app = FastAPI()
         client = Sendfn(SendfnConfig(database=adapter, email=email_config))
-        
+
         # Create router using superfunctions abstractions
         router = create_sendfn_router(
             client,
             admin_key="secret-key",
-            prefix="/api/sendfn", 
+            prefix="/api/sendfn",
             tags=["sendfn"]
         )
-        
+
         app.include_router(router)
         ```
     """

@@ -34,7 +34,7 @@ from ..errors import DatabaseError
 
 class MemoryAdapter:
     """In-memory database adapter for testing sendfn operations.
-    
+
     Implements the superfunctions.db.Adapter protocol using in-memory dictionaries.
     """
 
@@ -53,7 +53,7 @@ class MemoryAdapter:
             migration_support=False,
             batch_operations=True,
         )
-        
+
         # Storage: model_name -> {id -> record}
         self._storage: Dict[str, Dict[str, Dict[str, Any]]] = {}
         self._start_time = datetime.utcnow()
@@ -76,58 +76,58 @@ class MemoryAdapter:
     async def find_one(self, params: FindOneParams) -> Optional[Dict[str, Any]]:
         """Find a single record."""
         storage = self._get_or_create_storage(params.model)
-        
+
         for record in storage.values():
             if self._matches_where(record, params.where):
                 return record
-        
+
         return None
 
     async def find_many(self, params: FindManyParams) -> List[Dict[str, Any]]:
         """Find multiple records."""
         storage = self._get_or_create_storage(params.model)
         where = params.where or []
-        
+
         results = [
             record for record in storage.values()
             if self._matches_where(record, where)
         ]
-        
+
         # Apply ordering
         if params.order_by:
             for order in reversed(params.order_by):
                 field = order.field
                 reverse = order.direction == "desc"
                 results.sort(key=lambda x: x.get(field, ""), reverse=reverse)
-        
+
         # Apply pagination
         if params.offset is not None:
             results = results[params.offset:]
         if params.limit is not None:
             results = results[:params.limit]
-        
+
         return results
 
     async def update(self, params: UpdateParams) -> Dict[str, Any]:
         """Update a single record."""
         storage = self._get_or_create_storage(params.model)
-        
+
         for record in storage.values():
             if self._matches_where(record, params.where):
                 record.update(params.data)
                 return record
-        
+
         raise ValueError(f"Record not found matching where clause")
 
     async def delete(self, params: DeleteParams) -> None:
         """Delete a single record."""
         storage = self._get_or_create_storage(params.model)
-        
+
         for record_id, record in list(storage.items()):
             if self._matches_where(record, params.where):
                 del storage[record_id]
                 return
-        
+
         raise ValueError(f"Record not found matching where clause")
 
     async def create_many(self, params: CreateManyParams) -> List[Dict[str, Any]]:
@@ -157,24 +157,24 @@ class MemoryAdapter:
         """Update multiple records, returns count."""
         storage = self._get_or_create_storage(params.model)
         count = 0
-        
+
         for record in storage.values():
             if self._matches_where(record, params.where):
                 record.update(params.data)
                 count += 1
-        
+
         return count
 
     async def delete_many(self, params: DeleteManyParams) -> int:
         """Delete multiple records, returns count."""
         storage = self._get_or_create_storage(params.model)
         count = 0
-        
+
         for record_id, record in list(storage.items()):
             if self._matches_where(record, params.where):
                 del storage[record_id]
                 count += 1
-        
+
         return count
 
     async def upsert(self, params: UpsertParams) -> Dict[str, Any]:
@@ -182,7 +182,7 @@ class MemoryAdapter:
         existing = await self.find_one(
             FindOneParams(model=params.model, where=params.where)
         )
-        
+
         if existing:
             return await self.update(
                 UpdateParams(
@@ -200,12 +200,12 @@ class MemoryAdapter:
         """Count records."""
         storage = self._get_or_create_storage(params.model)
         where = params.where or []
-        
+
         count = sum(
             1 for record in storage.values()
             if self._matches_where(record, where)
         )
-        
+
         return count
 
     async def transaction(self, callback: Any) -> Any:
@@ -259,9 +259,9 @@ class MemoryAdapter:
             field = condition.field
             operator = condition.operator
             value = condition.value
-            
+
             record_value = record.get(field)
-            
+
             if operator == Operator.EQ or operator == "eq":
                 if record_value != value:
                     return False
@@ -286,7 +286,7 @@ class MemoryAdapter:
             elif operator == Operator.CONTAINS or operator == "contains":
                 if record_value is None or value not in record_value:
                     return False
-        
+
         return True
 
     async def clear_all(self) -> None:

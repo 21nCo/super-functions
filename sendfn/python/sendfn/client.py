@@ -86,16 +86,16 @@ class Sendfn:
             config: Sendfn configuration
         """
         self.config = config
-        
+
         # Use database adapter directly
         self.db = config.database
-        
+
         # Initialize event tracker
         self.event_tracker = EventTracker(
             self.db,
             enabled=config.options.event_tracking if config.options else True,
         )
-        
+
         # Initialize suppression manager
         self.suppression_manager = SuppressionManager(
             self.db,
@@ -105,25 +105,25 @@ class Sendfn:
         # Template registry must exist before any email-service wiring touches it.
         self.template_registry = TemplateRegistry()
         self._closed = False
-        
+
         # Initialize email service if configured
         self.email_service: Optional[EmailService] = None
         if config.email:
             self._initialize_email_service(config.email)
-        
+
         # Initialize device manager
         self.device_manager = DeviceTokenManager(self.db)
-        
+
         # Initialize push service if configured
         self.push_service: Optional[PushService] = None
         if config.push:
             self._initialize_push_service(config.push)
-        
+
         # Initialize SMS service if configured
         self.sms_service: Optional[SmsService] = None
         if config.sms_provider:
             self._initialize_sms_service(config.sms_provider)
-        
+
         # Initialize webhook handler
         self.webhook_handler = AwsSesWebhookHandler(
             self.db,
@@ -155,10 +155,10 @@ class Sendfn:
             provider = AwsSesProvider(email_config.aws_ses)
         else:
             raise EmailProviderError("Email provider configuration required")
-        
+
         # Create template engine
         template_engine = TemplateEngine()
-        
+
         # Create email service
         self.email_service = EmailService(
             provider=provider,
@@ -179,7 +179,7 @@ class Sendfn:
             push_config: Push notification configuration
         """
         providers: dict[Platform, Any] = {}
-        
+
         # Initialize FCM if configured
         if "fcm" in push_config.providers:
             from .push.fcm import FcmProvider
@@ -197,7 +197,7 @@ class Sendfn:
             apns_config = push_config.providers["apns"]
             if isinstance(apns_config, ApnsConfig):
                 providers["ios"] = ApnsProvider(apns_config)
-        
+
         # Create push service
         self.push_service = PushService(
             providers=providers,

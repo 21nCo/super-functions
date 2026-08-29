@@ -85,7 +85,7 @@ export class AwsSesAdapter implements EmailProvider {
   private async sendRawEmail(params: SendEmailRequest): Promise<SendEmailResponse> {
     const boundary = `----=_Part_${Date.now()}`;
     let rawMessage = '';
-    
+
     // Headers
     rawMessage += `From: ${params.from}\n`;
     rawMessage += `To: ${params.to.join(', ')}\n`;
@@ -99,30 +99,30 @@ export class AwsSesAdapter implements EmailProvider {
     if (params.idempotencyKey) rawMessage += `X-Sendfn-Idempotency-Key: ${params.idempotencyKey.replace(/[\r\n]/g, '')}\n`;
     rawMessage += `MIME-Version: 1.0\n`;
     rawMessage += `Content-Type: multipart/mixed; boundary="${boundary}"\n\n`;
-    
+
     // Body (Multipart Alternative for Text/HTML)
     const altBoundary = `----=_Part_${Date.now()}_Alt`;
     rawMessage += `--${boundary}\n`;
     rawMessage += `Content-Type: multipart/alternative; boundary="${altBoundary}"\n\n`;
-    
+
     // Text Part
     if (params.text) {
       rawMessage += `--${altBoundary}\n`;
       rawMessage += `Content-Type: text/plain; charset=UTF-8\n\n`;
       rawMessage += `${params.text}\n\n`;
     }
-    
+
     // HTML Part
     if (params.html) {
       rawMessage += `--${altBoundary}\n`;
       rawMessage += `Content-Type: text/html; charset=UTF-8\n\n`;
       rawMessage += `${params.html}\n\n`;
     }
-    
+
     rawMessage += `--${altBoundary}--
 
 `;
-    
+
     // Attachments
     if (params.attachments) {
       for (const att of params.attachments) {
@@ -131,16 +131,16 @@ export class AwsSesAdapter implements EmailProvider {
         rawMessage += `Content-Type: ${att.contentType || 'application/octet-stream'}; name="${filename}"\n`;
         rawMessage += `Content-Transfer-Encoding: base64\n`;
         rawMessage += `Content-Disposition: attachment; filename="${filename}"\n\n`;
-        
-        const content = typeof att.content === 'string' 
-          ? Buffer.from(att.content).toString('base64') 
+
+        const content = typeof att.content === 'string'
+          ? Buffer.from(att.content).toString('base64')
           : att.content.toString('base64');
-          
+
         const chunked = content.match(/.{1,76}/g)?.join('\n') || content;
         rawMessage += `${chunked}\n\n`;
       }
     }
-    
+
     rawMessage += `--${boundary}--
 `;
 

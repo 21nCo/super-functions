@@ -69,7 +69,7 @@ export class FcmProvider implements PushProvider {
 
       const chunkResults = response.responses.map((res, idx) => {
         if (!res.success) {
-            if (res.error?.code === 'messaging/registration-token-not-registered' || 
+            if (res.error?.code === 'messaging/registration-token-not-registered' ||
                 res.error?.code === 'messaging/invalid-registration-token') {
                 invalidTokens.push(chunkTokens[idx]);
             }

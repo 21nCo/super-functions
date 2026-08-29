@@ -40,7 +40,7 @@ export class ApnsProvider implements PushProvider {
   }
 
   async initialize(): Promise<void> {
-    // 
+    //
   }
 
   async sendPush(params: SendPushRequest): Promise<SendPushResponse> {
@@ -65,7 +65,7 @@ export class ApnsProvider implements PushProvider {
             expiration: params.ttl ? Math.floor(Date.now() / 1000) + params.ttl : undefined,
             collapseId: params.collapseKey,
         });
-        
+
         // If image, need mutable-content: 1 and attachment in data
         if (params.imageUrl) {
             notification.aps.mutableContent = 1;
@@ -79,11 +79,11 @@ export class ApnsProvider implements PushProvider {
             return { token, success: true };
         } catch (error: any) {
             let errMsg = error.reason || error.message;
-            
+
             if (error.reason === 'BadDeviceToken' || error.reason === 'Unregistered') {
                 invalidTokens.push(token);
             }
-            
+
             return { token, success: false, error: errMsg };
         }
       }
@@ -126,7 +126,7 @@ export class ApnsProvider implements PushProvider {
   }
 
   async close(): Promise<void> {
-    // No explicit close on ApnsClient? check docs. 
+    // No explicit close on ApnsClient? check docs.
     // It uses http2 session. It might need it.
     // Assuming standard usage.
   }

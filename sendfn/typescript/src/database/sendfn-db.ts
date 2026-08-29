@@ -375,7 +375,7 @@ export class SendfnDb {
       { field: 'userId', operator: 'eq', value: userId },
       { field: 'isActive', operator: 'eq', value: true }
     ];
-    
+
     if (platform) {
       where.push({ field: 'platform', operator: 'eq', value: platform });
     }

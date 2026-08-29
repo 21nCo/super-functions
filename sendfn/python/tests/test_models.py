@@ -68,7 +68,7 @@ def test_email_transaction_model():
         createdAt=datetime.utcnow(),
         updatedAt=datetime.utcnow(),
     )
-    
+
     assert transaction.user_id == "user-123"
     assert transaction.status == "sent"
 
@@ -88,6 +88,6 @@ def test_suppression_list_model():
         suppressedAt=datetime.utcnow(),
         createdAt=datetime.utcnow(),
     )
-    
+
     assert suppression.email == "spam@example.com"
     assert suppression.reason == "manual"

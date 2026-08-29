@@ -54,14 +54,14 @@ describe('Sendfn SDK Basic Test', () => {
     const result = await client.checkSuppressionList('bounced@example.com');
     expect(result.suppressed).toBe(true);
   });
-  
+
   it('should allow sending sms via console adapter', async () => {
       const res = await client.sms({
           userId: 'user-1',
           to: '+1234567890',
           message: 'Hello World'
       });
-      
+
       expect(res).toBeDefined();
       expect(res.status).toBe('sent');
       expect(res.provider).toBe('console-sms');

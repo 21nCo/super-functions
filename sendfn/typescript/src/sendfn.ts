@@ -126,7 +126,7 @@ export class Sendfn implements SendfnClient {
   private whatsappProvider?: WhatsAppProvider;
   private pushProviders = new Map<Platform, PushProvider>();
   private closed = false;
-  
+
   public router: any;
 
   constructor(private config: SendfnConfig) {
@@ -143,24 +143,24 @@ export class Sendfn implements SendfnClient {
     // Initialize Database Wrapper
     this.databaseAdapter = config.database;
     this.db = new SendfnDb(wrapWithSchema(config.database, getSchema()));
-    
+
     // Dependencies
     const templateEngine = new TemplateEngine();
     this.templateRegistry = new TemplateRegistry();
-    
+
     // Register default templates
     this.templateRegistry.register(welcomeEmailTemplate);
     this.templateRegistry.register(passwordResetTemplate);
     this.templateRegistry.register(notificationTemplate);
-    
+
     this.suppressionManager = new SuppressionManager(this.db, {
         enabled: config.options?.suppressionEnabled ?? true
     });
-    
+
     this.eventTracker = new EventTracker(this.db);
-    
+
     this.deviceManager = new DeviceTokenManager(this.db);
-    
+
     // Initialize Email Service if Provider is provided
     if (config.emailProvider) {
         this.emailProvider = config.emailProvider;
@@ -189,12 +189,12 @@ export class Sendfn implements SendfnClient {
             config.options || {}
         );
     }
-    
+
     // Initialize SMS Service if Provider is provided
     if (config.smsProvider) {
         this.smsProvider = config.smsProvider;
         config.smsProvider.initialize().catch(err => console.error("Failed to init sms provider", err));
-        
+
         this.smsService = new SmsService(
             config.smsProvider,
             this.db,
@@ -240,14 +240,14 @@ export class Sendfn implements SendfnClient {
         this.pushProviders.set(platform, provider);
         provider.initialize().catch(err => console.error(`Failed to init ${platform} push provider`, err));
     }
-    
+
     this.pushService = new PushService(
         this.pushProviders,
         this.db,
         this.deviceManager,
         config.options || {}
     );
-    
+
     this.awsSesWebhookHandler = new AwsSesWebhookHandler(
         this.db,
         this.suppressionManager,
@@ -255,7 +255,7 @@ export class Sendfn implements SendfnClient {
           logger: this.config.options?.logger,
         }
     );
-    
+
     if (config.enableApi) {
         this.initializeRouter();
     }
