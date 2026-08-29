@@ -645,6 +645,27 @@ describe('MailFn domain service', () => {
     await expect(context.mailfn.getDraft(context.admin, draft.id)).rejects.toMatchObject({ code: 'MAILFN_NOT_FOUND' });
   });
 
+  it('disables inbox-scoped webhooks when deleting an inbox', async () => {
+    const context = await setup({ webhookDispatcher: { async deliver() { return { ok: true, status: 204, retryable: false }; } } });
+    const created = await createInbox(context, 'webhook-erasure');
+    const webhook = await context.mailfn.createWebhook(context.admin, {
+      inboxId: created.inbox.id, url: 'https://consumer.example.test/hook', eventTypes: ['message.received'],
+    });
+    await context.mailfn.deleteInbox(context.admin, created.inbox.id);
+    expect(await context.store.getWebhook(webhook.webhook.id)).toMatchObject({ status: 'disabled' });
+  });
+
+  it('accepts tagged senders and SMTP null reverse paths on inbound mail', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'external-senders');
+    for (const [index, envelopeFrom] of ['sender+tag@example.com', '<>'].entries()) {
+      const value = raw();
+      await expect(context.mailfn.receiveInbound({
+        providerDeliveryId: `external-${index}`, envelopeFrom, envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength,
+      })).resolves.toMatchObject({ envelopeFrom: index === 0 ? 'sender+tag@example.com' : '' });
+    }
+  });
+
   it('atomically blocks inbound metadata writes after an inbox starts deleting', async () => {
     const store = new QuiescingInboundStore();
     const context = await setup({ store });
@@ -826,9 +847,21 @@ describe('MailFn domain service', () => {
     await expect(context.mailfn.reportAbuse(context.admin, {
       kind: 'spam', resourceType: 'project', resourceId: context.project.id, reason: 'automated complaint',
     })).resolves.toMatchObject({ status: 'open' });
+    await expect(context.mailfn.reportAbuse(context.admin, {
+      kind: 'invented' as never, resourceType: 'project', resourceId: context.project.id, reason: 'invalid kind',
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
     await expect(context.mailfn.configureCompliance(context.admin, {
       dataRegion: 'global', retentionLocked: true, exportEnabled: false, deletionSlaHours: 24,
     })).resolves.toMatchObject({ projectId: context.project.id, retentionLocked: true });
+  });
+
+  it('compares credential expirations by instant instead of ISO spelling', async () => {
+    const context = await setup({ clock: new MutableClock(new Date('2026-08-10T00:00:00.000Z')) });
+    await expect(context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      permissions: ['inbox:read'],
+      expiresAt: '2026-08-09T20:00:01-04:00',
+    })).resolves.toMatchObject({ credential: { status: 'active' } });
   });
 
   it('enforces retention locks and supports gated compliance export and case-management workflows', async () => {

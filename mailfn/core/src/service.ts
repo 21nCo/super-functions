@@ -1,4 +1,4 @@
-import { addressDomain, normalizeAddress, normalizeDomain, normalizeLocalPart } from './address.js';
+import { addressDomain, normalizeAddress, normalizeDomain, normalizeEnvelopeSender, normalizeLocalPart } from './address.js';
 import sanitizeMarkup from 'sanitize-html';
 import type {
   MailFnClock,
@@ -448,6 +448,9 @@ export class MailFn {
     // listing. The deleting state remains retryable when object cleanup fails.
     await this.deleteInboxMessages(quiesced);
     await this.store.deleteDrafts(quiesced.projectId, quiesced.id);
+    for (const webhook of await this.store.listWebhooks(quiesced.projectId, quiesced.id)) {
+      if (webhook.status !== 'disabled') await this.store.saveWebhook({ ...webhook, status: 'disabled', updatedAt: this.now() });
+    }
     const completedAt = this.now();
     const updated: Inbox = { ...quiesced, status: 'deleted', updatedAt: completedAt };
     await this.store.saveInbox(updated);
@@ -487,8 +490,8 @@ export class MailFn {
         status: 413,
       });
     }
-    const envelopeFrom = normalizeAddress(input.envelopeFrom);
-    const senderReputation = await this.store.getSenderReputation(project.id, envelopeFrom);
+    const envelopeFrom = normalizeEnvelopeSender(input.envelopeFrom);
+    const senderReputation = envelopeFrom ? await this.store.getSenderReputation(project.id, envelopeFrom) : null;
     if (senderReputation?.status === 'block') {
       await this.systemAudit(project.id, 'sender.blocked', 'inbox', inbox.id, {
         inboxId: inbox.id,
@@ -569,7 +572,7 @@ export class MailFn {
 
   public async receiveInbound(input: InboundEnvelope, preflight?: InboundPreflight): Promise<Message> {
     const recipient = normalizeAddress(input.envelopeTo);
-    const envelopeFrom = normalizeAddress(input.envelopeFrom);
+    const envelopeFrom = normalizeEnvelopeSender(input.envelopeFrom);
     const providerDeliveryId = requireText(input.providerDeliveryId, 'providerDeliveryId');
     const now = this.now();
     const receivedAt = input.receivedAt ?? now;
@@ -1682,6 +1685,9 @@ export class MailFn {
   ): Promise<AbuseCase> {
     await this.authorize(actor, 'support:write', actor.projectId);
     await this.assertAbuseResource(actor.projectId, input.resourceType, input.resourceId);
+    assertMailFn(['spam', 'phishing', 'malware', 'complaint', 'bounce', 'policy'].includes(input.kind), {
+      code: 'MAILFN_VALIDATION_FAILED', message: 'Invalid abuse kind', status: 400,
+    });
     const now = this.now();
     const abuseCase: AbuseCase = {
       id: this.ids.generate('abu'),
@@ -2371,7 +2377,8 @@ function requireText(value: string, field: string): string {
 }
 
 function requireFutureIso(value: string, now: string, field: string): void {
-  if (!Number.isFinite(Date.parse(value)) || value <= now) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp) || timestamp <= Date.parse(now)) {
     throw new MailFnError({ code: 'MAILFN_VALIDATION_FAILED', message: `${field} must be a future ISO timestamp`, status: 400 });
   }
 }

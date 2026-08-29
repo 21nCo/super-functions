@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeAddress, normalizeDomain, normalizeLocalPart } from './address.js';
+import { normalizeAddress, normalizeDomain, normalizeEnvelopeSender, normalizeLocalPart } from './address.js';
 
 describe('MailFn address normalization', () => {
   it('normalizes safe unique-address inputs', () => {
@@ -9,8 +9,14 @@ describe('MailFn address normalization', () => {
     expect(normalizeLocalPart('Agent_42')).toBe('agent_42');
   });
 
-  it.each(['missing-at', '@example.com', 'a@localhost', '../a@example.com', 'a+tag@example.com'])('rejects unsupported input %s', (value) => {
+  it.each(['missing-at', '@example.com', 'a@localhost', '../a@example.com'])('rejects unsupported input %s', (value) => {
     expect(() => normalizeAddress(value)).toThrow('Invalid email address');
+  });
+
+  it('accepts RFC mailbox tags and the SMTP null reverse path', () => {
+    expect(normalizeAddress('Agent+tag@example.com')).toBe('agent+tag@example.com');
+    expect(normalizeEnvelopeSender('<>')).toBe('');
+    expect(normalizeEnvelopeSender('')).toBe('');
   });
 
   it('rejects normalized mailboxes beyond the SMTP length limit', () => {

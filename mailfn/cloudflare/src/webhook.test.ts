@@ -9,6 +9,10 @@ import {
 } from './webhook.js';
 
 const resolvePublic = async () => ['93.184.216.34'];
+const resolvedFetch = (fetcher: typeof globalThis.fetch) => async (url: URL, addresses: readonly string[], init: RequestInit) => {
+  expect(addresses).toEqual(['93.184.216.34']);
+  return fetcher(url, init);
+};
 
 describe('Cloudflare webhook delivery', () => {
   it('signs timestamped delivery payloads and permits replay checks', async () => {
@@ -26,7 +30,7 @@ describe('Cloudflare webhook delivery', () => {
       id: 'evt_1', version: 1, type: 'message.parsed', projectId: 'prj_1', occurredAt: '2026-08-10T00:00:00.000Z', payload: {},
     } satisfies MailFnEvent;
     const timestamp = '2026-08-10T00:00:00.000Z';
-    const result = await new CloudflareWebhookDispatcher({ fetch: fetcher, resolveHostname: resolvePublic })
+    const result = await new CloudflareWebhookDispatcher({ fetchResolved: resolvedFetch(fetcher), resolveHostname: resolvePublic })
       .deliver({ webhook, event, deliveryId: 'delivery-1', timestamp });
     expect(result).toEqual({ ok: true, status: 204, retryable: false });
     expect(await verifyMailFnWebhook({
@@ -59,17 +63,17 @@ describe('Cloudflare webhook delivery', () => {
       event: { id: 'e', version: 1, type: 'message.received', projectId: 'p', occurredAt: '', payload: {} } as MailFnEvent,
       deliveryId: 'd', timestamp: new Date().toISOString(),
     };
-    await expect(new CloudflareWebhookDispatcher({ fetch: transient, maxAttempts: 2, resolveHostname: resolvePublic }).deliver(input))
+    await expect(new CloudflareWebhookDispatcher({ fetchResolved: resolvedFetch(transient), maxAttempts: 2, resolveHostname: resolvePublic }).deliver(input))
       .resolves.toMatchObject({ ok: true });
     expect(transient).toHaveBeenCalledTimes(2);
     const timeout = vi.fn()
       .mockResolvedValueOnce(new Response(null, { status: 408 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    await expect(new CloudflareWebhookDispatcher({ fetch: timeout, maxAttempts: 2, resolveHostname: resolvePublic }).deliver(input))
+    await expect(new CloudflareWebhookDispatcher({ fetchResolved: resolvedFetch(timeout), maxAttempts: 2, resolveHostname: resolvePublic }).deliver(input))
       .resolves.toMatchObject({ ok: true });
     expect(timeout).toHaveBeenCalledTimes(2);
     const permanent = vi.fn(async () => new Response(null, { status: 400 }));
-    await expect(new CloudflareWebhookDispatcher({ fetch: permanent, resolveHostname: resolvePublic }).deliver(input))
+    await expect(new CloudflareWebhookDispatcher({ fetchResolved: resolvedFetch(permanent), resolveHostname: resolvePublic }).deliver(input))
       .resolves.toEqual({ ok: false, status: 400, retryable: false });
     expect(permanent).toHaveBeenCalledTimes(1);
   });
@@ -85,7 +89,7 @@ describe('Cloudflare webhook delivery', () => {
     let signature = '';
     const dispatcher = new CloudflareWebhookDispatcher({
       resolveHostname: resolvePublic,
-      fetch: async (_url, init) => {
+      fetchResolved: async (_url, _addresses, init) => {
         signature = new Headers(init?.headers).get('MailFn-Signature') ?? '';
         return new Response(null, { status: 204 });
       },
@@ -105,7 +109,7 @@ describe('Cloudflare webhook delivery', () => {
 
   it('blocks webhook delivery when DNS resolves to a private address', async () => {
     const fetcher = vi.fn();
-    const dispatcher = new CloudflareWebhookDispatcher({ fetch: fetcher, resolveHostname: async () => ['127.0.0.1'] });
+    const dispatcher = new CloudflareWebhookDispatcher({ fetchResolved: resolvedFetch(fetcher), resolveHostname: async () => ['127.0.0.1'] });
     const now = new Date().toISOString();
     const result = await dispatcher.deliver({
       webhook: {
@@ -118,5 +122,15 @@ describe('Cloudflare webhook delivery', () => {
     });
     expect(result).toEqual({ ok: false, retryable: false });
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when no DNS-pinning transport is configured', async () => {
+    const now = new Date().toISOString();
+    const result = await new CloudflareWebhookDispatcher({ resolveHostname: resolvePublic }).deliver({
+      webhook: { id: 'w', projectId: 'p', url: 'https://example.com', eventTypes: ['message.received'], secretHash: 'h', secretCiphertext: 'secret', status: 'active', consecutiveFailures: 0, createdAt: now, updatedAt: now } as Webhook,
+      event: { id: 'e', version: 1, type: 'message.received', projectId: 'p', occurredAt: now, payload: {} },
+      deliveryId: 'd', timestamp: now,
+    });
+    expect(result).toEqual({ ok: false, retryable: false });
   });
 });

@@ -2,7 +2,8 @@ import type { MailFnWebhookDispatcher } from '@mailfn/core';
 import type { D1Database } from './bindings.js';
 
 export interface CloudflareWebhookDispatcherOptions {
-  fetch?: typeof globalThis.fetch;
+  /** Transport must connect to one of the supplied, already-vetted IP addresses. */
+  fetchResolved?: (url: URL, addresses: readonly string[], init: RequestInit) => Promise<Response>;
   maxAttempts?: number;
   timeoutMs?: number;
   resolveHostname?: (hostname: string) => Promise<string[]>;
@@ -10,13 +11,13 @@ export interface CloudflareWebhookDispatcherOptions {
 }
 
 export class CloudflareWebhookDispatcher implements MailFnWebhookDispatcher {
-  private readonly fetcher: typeof globalThis.fetch;
+  private readonly fetchResolved?: CloudflareWebhookDispatcherOptions['fetchResolved'];
   private readonly maxAttempts: number;
   private readonly timeoutMs: number;
   private readonly resolveHostname: (hostname: string) => Promise<string[]>;
 
   public constructor(options: CloudflareWebhookDispatcherOptions = {}) {
-    this.fetcher = options.fetch ?? globalThis.fetch;
+    this.fetchResolved = options.fetchResolved;
     this.maxAttempts = Math.min(8, Math.max(1, options.maxAttempts ?? 4));
     this.timeoutMs = Math.min(30_000, Math.max(250, options.timeoutMs ?? 10_000));
     const dnsFetch = options.dnsFetch ?? globalThis.fetch;
@@ -25,10 +26,11 @@ export class CloudflareWebhookDispatcher implements MailFnWebhookDispatcher {
 
   public async deliver(input: Parameters<MailFnWebhookDispatcher['deliver']>[0]): Promise<{ ok: boolean; status?: number; retryable: boolean }> {
     const secret = input.webhook.secretCiphertext;
-    if (!secret) return { ok: false, retryable: false };
+    if (!secret || !this.fetchResolved) return { ok: false, retryable: false };
     const url = new URL(input.webhook.url);
+    let addresses: string[];
     try {
-      const addresses = await this.resolveHostname(url.hostname);
+      addresses = await this.resolveHostname(url.hostname);
       if (!addresses.length || addresses.some((address) => !isPublicIpAddress(address))) {
         return { ok: false, retryable: false };
       }
@@ -42,7 +44,7 @@ export class CloudflareWebhookDispatcher implements MailFnWebhookDispatcher {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
       try {
-        const response = await this.fetcher(input.webhook.url, {
+        const response = await this.fetchResolved(url, addresses, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

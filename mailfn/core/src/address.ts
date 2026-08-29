@@ -1,6 +1,8 @@
 import { MailFnError } from './errors.js';
 
 const LOCAL_PART_PATTERN = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
+const MAILBOX_LOCAL_ATOM = "[a-z0-9!#$%&'*+/=?^_`{|}~-]+";
+const MAILBOX_LOCAL_PART_PATTERN = new RegExp(`^${MAILBOX_LOCAL_ATOM}(?:\\.${MAILBOX_LOCAL_ATOM})*$`);
 const DOMAIN_PATTERN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
 export function normalizeAddress(value: string): string {
@@ -14,10 +16,15 @@ export function normalizeAddress(value: string): string {
   }
   const localPart = normalized.slice(0, at);
   const domain = normalized.slice(at + 1);
-  if (!LOCAL_PART_PATTERN.test(localPart) || !DOMAIN_PATTERN.test(domain)) {
+  if (localPart.length > 64 || !MAILBOX_LOCAL_PART_PATTERN.test(localPart) || !DOMAIN_PATTERN.test(domain)) {
     throw invalidAddress();
   }
   return `${localPart}@${domain}`;
+}
+
+export function normalizeEnvelopeSender(value: string): string {
+  const normalized = value.trim();
+  return normalized === '' || normalized === '<>' ? '' : normalizeAddress(normalized);
 }
 
 export function normalizeDomain(value: string): string {

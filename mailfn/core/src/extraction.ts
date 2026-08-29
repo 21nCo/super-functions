@@ -108,7 +108,7 @@ function stripMarkup(value: string): string {
     if (tagStart === -1) return plain + value.slice(cursor);
 
     plain += value.slice(cursor, tagStart);
-    const tagEnd = value.indexOf('>', tagStart + 1);
+    const tagEnd = findTagEnd(value, tagStart + 1);
     if (tagEnd === -1) return `${plain} `;
 
     const tagName = openingTagName(lower, tagStart + 1, tagEnd);
@@ -121,6 +121,20 @@ function stripMarkup(value: string): string {
   }
 
   return plain;
+}
+
+function findTagEnd(value: string, start: number): number {
+  let quote: '"' | "'" | null = null;
+  for (let cursor = start; cursor < value.length; cursor += 1) {
+    const character = value[cursor];
+    if (quote) {
+      if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'") quote = character;
+    else if (character === '>') return cursor;
+  }
+  return -1;
 }
 
 function openingTagName(value: string, start: number, end: number): string {
@@ -138,7 +152,7 @@ function closingTagEnd(value: string, tagName: 'script' | 'style', start: number
   while (candidate !== -1) {
     const boundary = value[candidate + token.length];
     if (boundary === '>' || (boundary !== undefined && isHtmlWhitespace(boundary))) {
-      const end = value.indexOf('>', candidate + token.length);
+      const end = findTagEnd(value, candidate + token.length);
       return end === -1 ? value.length : end + 1;
     }
     candidate = value.indexOf(token, candidate + token.length);

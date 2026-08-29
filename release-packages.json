@@ -116,5 +116,6 @@
   { "slug": "mailfn-cli", "path": "mailfn/cli", "name": "@mailfn/cli" },
   { "slug": "mailfn-mcp", "path": "mailfn/mcp", "name": "@mailfn/mcp" },
   { "slug": "mailfn-sendfn", "path": "mailfn/sendfn", "name": "@mailfn/sendfn" },
-  { "slug": "mailfn", "path": "mailfn/facade", "name": "mailfn" }
+  { "slug": "mailfn", "path": "mailfn/facade", "name": "mailfn" },
+  { "slug": "mailfn-admin", "path": "mailfn/admin", "name": "@mailfn/admin" }
 ]

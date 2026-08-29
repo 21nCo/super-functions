@@ -20,6 +20,7 @@ const packageDirs = [
   "mailfn/mcp",
   "mailfn/sendfn",
   "mailfn/facade",
+  "mailfn/admin",
 ];
 
 function run(file, args, cwd = root) {
@@ -117,7 +118,7 @@ try {
     [
       "--input-type=module",
       "-e",
-      "await import('mailfn'); await import('@mailfn/core'); await import('@mailfn/client'); await import('@mailfn/cloudflare'); await import('@mailfn/testing'); await import('@mailfn/cli'); await import('@mailfn/mcp'); await import('@mailfn/sendfn');",
+      "await import('mailfn'); await import('@mailfn/core'); await import('@mailfn/client'); await import('@mailfn/cloudflare'); await import('@mailfn/testing'); await import('@mailfn/cli'); await import('@mailfn/mcp'); await import('@mailfn/sendfn'); await import('@mailfn/admin');",
     ],
     staging,
   );
