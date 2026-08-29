@@ -1,8 +1,9 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import { derivePkceS256Challenge, generatePkcePair } from "@superfunctions/oauth-core";
 
 import {
   assertAuthorizationCodeClientMetadata,
@@ -67,16 +68,12 @@ export interface McpFnOAuthCallback {
   parameters: Record<string, string>;
 }
 
-function base64Url(value: Buffer): string {
-  return value.toString("base64url");
-}
-
 export function createPkcePair(): McpFnPkcePair {
-  const verifier = base64Url(randomBytes(48));
+  const pair = generatePkcePair(48);
   return {
-    verifier,
-    challenge: createHash("sha256").update(verifier).digest("base64url"),
-    method: "S256",
+    verifier: pair.codeVerifier,
+    challenge: pair.codeChallenge,
+    method: pair.codeChallengeMethod,
   };
 }
 
@@ -236,6 +233,7 @@ export class McpFnMockOAuthAuthorizationServer {
         code_challenge_methods_supported: ["S256"],
         token_endpoint_auth_methods_supported: ["none"],
         scopes_supported: this.scopesSupported,
+        client_id_metadata_document_supported: true,
       });
     }
 
@@ -368,9 +366,7 @@ export class McpFnMockOAuthAuthorizationServer {
       return oauthError(400, "invalid_grant", "Authorization code binding does not match");
     }
     const verifier = formValue(form, "code_verifier");
-    const challenge = verifier
-      ? createHash("sha256").update(verifier).digest("base64url")
-      : undefined;
+    const challenge = verifier ? derivePkceS256Challenge(verifier) : undefined;
     if (challenge !== record.codeChallenge) {
       return oauthError(400, "invalid_grant", "PKCE verification failed");
     }
@@ -439,6 +435,11 @@ export interface McpFnStartMockOAuthServerOptions
   extends Omit<McpFnMockOAuthServerOptions, "issuer"> {
   hostname?: string;
   port?: number;
+  /** Optional same-origin route used to compose a protected MCP fixture. */
+  handle?(
+    request: Request,
+    oauth: McpFnMockOAuthAuthorizationServer,
+  ): Promise<Response | undefined> | Response | undefined;
 }
 
 async function toRequest(req: IncomingMessage, origin: string): Promise<Request> {
@@ -475,7 +476,9 @@ export async function startMockOAuthAuthorizationServer(
   const server = createServer(async (req, res) => {
     try {
       if (!oauth) throw new Error("Mock OAuth server is not initialized");
-      await writeResponse(res, await oauth.handle(await toRequest(req, origin)));
+      const request = await toRequest(req, origin);
+      const custom = await options.handle?.(request.clone(), oauth);
+      await writeResponse(res, custom ?? await oauth.handle(request));
     } catch {
       res.statusCode = 500;
       res.setHeader("content-type", "application/json");

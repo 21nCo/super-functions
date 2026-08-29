@@ -4,3 +4,4 @@ export * from "./client.js";
 export * from "./conformance.js";
 export * from "./host-profiles.js";
 export * from "./scenarios.js";
+export * from "./suite.js";

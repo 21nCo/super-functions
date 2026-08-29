@@ -2,6 +2,13 @@
 
 A regression-free MCP project needs five independent layers.
 
+Scenario arrays remain readable for compatibility, while new portable bundles
+use the version 1 `mcpfn.scenarios` artifact. Every scenario can declare a
+timeout, side-effect class, required variable names, or an explicit incomplete
+state. Reports and inspector timelines apply aggregate bounds and record
+truncation rather than silently dropping evidence. See `TEST_VECTORS.md` for
+the maintained compatibility matrix.
+
 | Layer | What it catches | McpFn surface |
 | --- | --- | --- |
 | Unit/domain | Handler logic, authorization, persistence, policy | Existing package tests |
@@ -44,9 +51,19 @@ export default [
 ] satisfies McpFnScenario[];
 ```
 
-`mcpfn test` connects an official client and server with the official in-memory transport. It checks tool, resource-template, prompt, and static-resource contracts against the manifest and then runs scenarios serially. `McpFnTestClient` also exposes resources, prompts, completions, subscriptions, and experimental task APIs; its `configure` hook installs client-side roots, sampling, elicitation, and notification handlers before initialization.
+`mcpfn test` connects the production McpFn client and server with the official
+in-memory transport. `mcpfn test-target` runs the same scenarios against stdio
+or Streamable HTTP. Both check or exercise the real capability boundary.
+`McpFnTestClient` also exposes resources, prompts, completions, subscriptions,
+and experimental task APIs; its `configure` hook installs client-side roots,
+sampling, elicitation, and notification handlers before initialization.
 
 `structuredTextParity` is appropriate only when the text block is JSON representing the same object as `structuredContent`. Human-readable text such as MemoryFn's search summary should be asserted separately.
+
+`McpFnInspector.exportScenario()` uses this same contract. Its sanitized output
+can be passed directly to `runScenarios()` or saved in a scenario module for
+`mcpfn test`; the CLI validates tool, resource, prompt, inventory, and
+initialization shapes before execution.
 
 For tools with a declared success `outputSchema`, assert error codes by parsing the JSON text block: McpFn intentionally omits structured error content so it cannot be rejected against the success schema.
 
@@ -57,6 +74,18 @@ For tools with a declared success `outputSchema`, assert error codes by parsing 
 The `@mcpfn/testing/playwright` subpath exports a Playwright `test` extended with `mcpfnOAuth`. Its local server supports authorization-code + PKCE, consent approval and denial, callback capture, one-time codes, refresh rotation, revocation, discovery, client metadata variants, and access-token verification. The extension-grant variants verify that an authorization server accepts a compatible authorization-code client even when its metadata advertises additional JWT-bearer, device-code, or custom grants. Actual unsupported token requests must still return `unsupported_grant_type`.
 
 Keep application-specific UI selectors, real-provider secrets, workspace authorization, and least-privilege assertions in the application repository. McpFn owns the reusable protocol and credential-lifecycle mechanics.
+
+## Proof levels
+
+| Level | What it proves | What it does not prove |
+| --- | --- | --- |
+| Workspace | Source, focused tests, and builds pass in this checkout. | Packed-package resolution or any live environment. |
+| Installed | Packed tarballs install and execute in a clean consumer. | Registry publication or live-provider behavior. |
+| Published | A named registry version resolves and executes. | A particular deployment or host authorization. |
+| Controlled live | A controlled endpoint completes protocol and OAuth checks. | Production deployment, production data, or end-user host acceptance. |
+| Deployed | The named production revision and configuration are running. | External host acceptance unless that host is tested separately. |
+
+Each release claim must name its highest verified level. Evidence at one level never implies a later level.
 
 ## Official conformance
 
@@ -74,8 +103,17 @@ McpFn delegates to the pinned official conformance npm package and returns its e
 npm run gate:mcpfn-release
 ```
 
-The gate typechecks, tests, and builds all five McpFn packages; runs OAuth boundary tests, a real Chromium PKCE flow, and the official active conformance suite; runs the complete DataFn server suite; exercises the real CLI against the checked-in calculator server, manifest, and scenarios; and checks package contents. LangFn, MemoryFn, and ProbeFn are not covered by this release gate.
+The gate typechecks, tests, and builds all seven McpFn packages; runs real stdio
+and Streamable HTTP round trips, OAuth boundary tests, a real Chromium PKCE
+flow, and the official active conformance suite; runs the complete DataFn
+server suite; exercises the real CLI; checks package contents; and installs
+packed artifacts into a temporary external consumer for ESM and CommonJS
+imports. LangFn, MemoryFn, and ProbeFn are not covered by this release gate.
 
 CI routes a change set made entirely of the McpFn runtime, its DataFn adapter, README, and release metadata through this dedicated Node.js 22 gate. Root package manifests, lockfiles, CI workflows, and the CI planner always run the repository's generic JavaScript job as well as the McpFn gate. This conservative boundary prevents unrelated global changes from gaining coverage merely by being included with McpFn work.
 
-When publishing manually, release `@mcpfn/core` and `@mcpfn/auth` first, followed by `@mcpfn/testing`, `@mcpfn/datafn`, and `@mcpfn/cli`. The repository's package release workflow publishes one selected package at a time; it does not infer dependency order.
+When publishing manually, release the required `@superfunctions/oauth-*`
+versions, then `@mcpfn/core`, `@mcpfn/client`, and `@mcpfn/auth`, followed by
+`@mcpfn/testing`, `@mcpfn/inspector`, `@mcpfn/datafn`, and `@mcpfn/cli`. The
+repository's package release workflow publishes one selected package at a time;
+it does not infer dependency order.

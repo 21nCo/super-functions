@@ -10,6 +10,7 @@ import {
   assertBearerResourceChallenge,
   bearerCredential,
   createOAuthClientMetadataVariants,
+  MCPFN_NAMED_OAUTH_HOST_FIXTURES,
   type McpFnAuthCredential,
 } from "../src/auth.js";
 
@@ -131,6 +132,14 @@ describe("McpFn authentication regression suite", () => {
     expect(variants.deviceCodeExtension.grant_types).toContain(
       "urn:ietf:params:oauth:grant-type:device_code",
     );
+  });
+
+  it("publishes named ChatGPT and Claude host-shaped fixtures", () => {
+    expect(MCPFN_NAMED_OAUTH_HOST_FIXTURES.chatgpt.redirectUris[0]).toContain("chatgpt.com");
+    expect(MCPFN_NAMED_OAUTH_HOST_FIXTURES.claude.grantTypes).toContain(
+      "urn:ietf:params:oauth:grant-type:jwt-bearer",
+    );
+    expect(MCPFN_NAMED_OAUTH_HOST_FIXTURES.claude.grantTypes).toContain("authorization_code");
   });
 
   it("selects Bearer from multiple challenges and rejects malformed metadata URLs", () => {

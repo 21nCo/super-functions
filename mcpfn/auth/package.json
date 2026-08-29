@@ -8,9 +8,8 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
     }
   },
   "files": ["dist", "README.md"],
@@ -22,9 +21,20 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.25.2"
+    "@modelcontextprotocol/sdk": "1.25.2",
+    "@superfunctions/oauth-core": "0.1.0",
+    "@superfunctions/oauth-storage": "0.1.0"
+  },
+  "peerDependencies": {
+    "@superfunctions/auth": ">=0.1.2"
+  },
+  "peerDependenciesMeta": {
+    "@superfunctions/auth": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "@superfunctions/auth": "0.2.0",
     "@types/node": "^20.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",

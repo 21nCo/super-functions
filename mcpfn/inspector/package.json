@@ -1,0 +1,45 @@
+{
+  "name": "@mcpfn/inspector",
+  "version": "0.0.1",
+  "description": "Headless McpFn inspector built on the production client and target engine",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsup",
+    "clean": "node --input-type=module -e \"import('node:fs').then(({ rmSync }) => rmSync('dist', { recursive: true, force: true }))\"",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mcpfn/client": "0.0.1",
+    "@mcpfn/testing": "0.0.1",
+    "@modelcontextprotocol/sdk": "1.25.2",
+    "@superfunctions/oauth-core": "0.1.0"
+  },
+  "devDependencies": {
+    "@mcpfn/core": "0.0.1",
+    "@types/node": "^20.0.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": { "node": ">=18.18.0" },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "mcpfn/inspector"
+  },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false
+}

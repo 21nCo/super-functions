@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   MCP_ENTERPRISE_MANAGED_AUTHORIZATION_EXTENSION_ID,
   MCP_ID_JAG_GRANT_PROFILE,
+  bearerChallengeResponse,
   createOAuthResourceServerHandler,
   enterpriseManagedAuthorizationClientMetadata,
   protectedResourceMetadataUrl,
@@ -32,10 +33,72 @@ describe("McpFn OAuth resource server", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       resource: "https://mcp.example.com/api/mcp",
-      authorization_servers: ["https://login.example.com/"],
+      authorization_servers: ["https://login.example.com"],
       scopes_supported: ["read", "write"],
       bearer_methods_supported: ["header"],
     });
+  });
+
+  it("requires RFC-valid HTTPS authorization server issuer identifiers", async () => {
+    const create = (authorizationServer: string) => createOAuthResourceServerHandler(
+      async () => new Response("mcp"),
+      {
+        resource,
+        authorizationServers: [authorizationServer],
+        verifier: { verifyAccessToken: async () => { throw new Error("unused"); } },
+      },
+    );
+    for (const invalid of [
+      "file:///private/oauth",
+      "http://login.example.com",
+      "https://user:password@login.example.com",
+      "https://login.example.com?tenant=one",
+      "https://login.example.com#issuer",
+      "https://login.example.com/tenant?",
+      "https://login.example.com/tenant#",
+    ]) {
+      expect(() => create(invalid)).toThrow(
+        /must use HTTPS without userinfo, query, or fragment/,
+      );
+    }
+    const handler = create("https://login.example.com/tenant-a");
+    const response = await handler(new Request(
+      "https://mcp.example.com/.well-known/oauth-protected-resource/api/mcp",
+    ));
+    await expect(response.json()).resolves.toMatchObject({
+      authorization_servers: ["https://login.example.com/tenant-a"],
+    });
+
+    expect(() => create("http://127.0.0.1:8787")).toThrow(
+      /must use HTTPS/,
+    );
+    expect(() => createOAuthResourceServerHandler(
+      async () => new Response("mcp"),
+      {
+        resource,
+        authorizationServers: ["http://localhost:8787"],
+        allowInsecureLoopbackAuthorizationServers: true,
+        verifier: { verifyAccessToken: async () => { throw new Error("unused"); } },
+      },
+    )).not.toThrow();
+    expect(() => createOAuthResourceServerHandler(
+      async () => new Response("mcp"),
+      {
+        resource,
+        authorizationServers: ["http://127.0.0.1:8787"],
+        allowInsecureLoopbackAuthorizationServers: true,
+        verifier: { verifyAccessToken: async () => { throw new Error("unused"); } },
+      },
+    )).not.toThrow();
+  });
+
+  it("sanitizes caller-derived challenge error codes", () => {
+    const response = bearerChallengeResponse(
+      401,
+      new URL("https://mcp.example.com/.well-known/oauth-protected-resource/api/mcp"),
+      { error: "invalid\"\r\ntoken", description: "invalid" },
+    );
+    expect(response.headers.get("www-authenticate")).toContain('error="invalidtoken"');
   });
 
   it("challenges missing tokens and enforces scopes, expiry, and resource audience", async () => {

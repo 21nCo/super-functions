@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { cloneOAuthStateRecord, type OAuthStateRecord } from "@superfunctions/oauth-storage";
-import { DefaultOAuthService } from "../src/index.js";
+import { DefaultOAuthService, redactOAuthValue } from "../src/index.js";
 
 class TestStateStore {
   private readonly records = new Map<string, OAuthStateRecord>();
@@ -277,6 +277,126 @@ describe("oauth-core service", () => {
     ).rejects.toMatchObject({
       code: "OAUTH_STATE_INVALID",
       message: "OAuth state is invalid or expired"
+    });
+  });
+});
+
+describe("OAuth diagnostic redaction", () => {
+  it("redacts complete quoted and delimiter-bearing credential values", () => {
+    expect(
+      redactOAuthValue(
+        'password="correct horse battery staple", client_secret="abc&def", token=abc&def',
+      ),
+    ).toBe(
+      'password="[REDACTED]", client_secret="[REDACTED]", token=[REDACTED]',
+    );
+  });
+
+  it("redacts quoted credentials containing escaped matching quotes", () => {
+    const value = String.raw`password="prefix\"suffix", client_secret='left\'right'`;
+    const redacted = redactOAuthValue(value);
+
+    expect(redacted).toBe(
+      'password="[REDACTED]", client_secret=\'[REDACTED]\'',
+    );
+    expect(redacted).not.toContain("prefix");
+    expect(redacted).not.toContain("suffix");
+    expect(redacted).not.toContain("left");
+    expect(redacted).not.toContain("right");
+  });
+
+  it("redacts complete unquoted credentials across punctuation delimiters", () => {
+    expect(
+      redactOAuthValue("client_secret=abc,def; visible=yes; password=abc;def"),
+    ).toBe("client_secret=[REDACTED]; visible=yes; password=[REDACTED]");
+  });
+
+  it("redacts unterminated quoted credentials through the end of the line", () => {
+    const doubleQuoted = redactOAuthValue('password="secret suffix');
+    const singleQuoted = redactOAuthValue("client_secret='left right");
+
+    expect(doubleQuoted).toBe('password="[REDACTED]"');
+    expect(singleQuoted).toBe("client_secret='[REDACTED]'");
+    expect(doubleQuoted).not.toContain("suffix");
+    expect(singleQuoted).not.toContain("right");
+  });
+
+  it("stops iterating Maps and Sets at the configured entry cap", () => {
+    let mapClosed = false;
+    let setClosed = false;
+    class GuardedMap extends Map<unknown, unknown> {
+      override get size(): number { return 1_000; }
+      override *entries(): MapIterator<[unknown, unknown]> {
+        try {
+          yield ["first", 1];
+          yield ["second", 2];
+          throw new Error("Map iteration exceeded the cap");
+        } finally {
+          mapClosed = true;
+        }
+      }
+      override [Symbol.iterator](): MapIterator<[unknown, unknown]> {
+        return this.entries();
+      }
+    }
+    class GuardedSet extends Set<unknown> {
+      override get size(): number { return 1_000; }
+      override *values(): SetIterator<unknown> {
+        try {
+          yield "first";
+          yield "second";
+          throw new Error("Set iteration exceeded the cap");
+        } finally {
+          setClosed = true;
+        }
+      }
+      override [Symbol.iterator](): SetIterator<unknown> {
+        return this.values();
+      }
+    }
+
+    expect(redactOAuthValue(new GuardedMap(), { maxArrayEntries: 2 })).toEqual({
+      type: "Map",
+      entries: [["first", 1], ["second", 2], ["[TRUNCATED]", "[TRUNCATED]"]],
+    });
+    expect(redactOAuthValue(new GuardedSet(), { maxArrayEntries: 2 })).toEqual({
+      type: "Set",
+      values: ["first", "second", "[TRUNCATED]"],
+    });
+    expect(mapClosed).toBe(true);
+    expect(setClosed).toBe(true);
+  });
+
+  it("normalizes fractional collection caps and avoids zero-cap iterators", () => {
+    class NoIterationMap extends Map<unknown, unknown> {
+      override get size(): number { return 1; }
+      override [Symbol.iterator](): MapIterator<[unknown, unknown]> {
+        throw new Error("zero cap created a Map iterator");
+      }
+    }
+    class NoIterationSet extends Set<unknown> {
+      override get size(): number { return 1; }
+      override [Symbol.iterator](): SetIterator<unknown> {
+        throw new Error("zero cap created a Set iterator");
+      }
+    }
+
+    expect(redactOAuthValue(new Map([["first", 1], ["second", 2]]), {
+      maxArrayEntries: 1.9,
+    })).toEqual({
+      type: "Map",
+      entries: [["first", 1], ["[TRUNCATED]", "[TRUNCATED]"]],
+    });
+    expect(redactOAuthValue(new Set(["first", "second"]), {
+      maxArrayEntries: 1.9,
+    })).toEqual({ type: "Set", values: ["first", "[TRUNCATED]"] });
+    expect(redactOAuthValue(new NoIterationMap(), { maxArrayEntries: 0 })).toEqual({
+      type: "Map",
+      entries: [["[TRUNCATED]", "[TRUNCATED]"]],
+    });
+    expect(redactOAuthValue(new NoIterationSet(), { maxArrayEntries: 0 })).toEqual({
+      type: "Set",
+      values: ["[TRUNCATED]"],
     });
   });
 });

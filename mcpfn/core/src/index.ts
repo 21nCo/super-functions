@@ -1,5 +1,6 @@
 export * from "./apps.js";
 export * from "./canonical.js";
+export * from "./declaration.js";
 export * from "./diff.js";
 export * from "./errors.js";
 export * from "./manifest.js";

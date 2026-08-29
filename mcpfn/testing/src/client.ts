@@ -1,5 +1,15 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import {
+  createMcpFnClient,
+  customTarget,
+  type McpFnClient,
+  type McpFnClientEventSink,
+  type McpFnClientMediatedHandlers,
+  type McpFnDiagnosticSink,
+  type McpFnTarget,
+} from "@mcpfn/client";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
   CallToolResult,
   ClientCapabilities,
@@ -7,6 +17,7 @@ import type {
   CompleteResult,
   CreateTaskResult,
   GetPromptResult,
+  Implementation,
   ListTasksResult,
   Prompt,
   ReadResourceResult,
@@ -15,26 +26,26 @@ import type {
   Task,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import {
-  CallToolResultSchema,
-  CreateTaskResultSchema,
-} from "@modelcontextprotocol/sdk/types.js";
 import type { McpFnServer } from "@mcpfn/core";
 
 export interface McpFnTestClientOptions {
   capabilities?: ClientCapabilities;
+  handlers?: McpFnClientMediatedHandlers;
+  events?: McpFnClientEventSink;
   /** Install roots, sampling, elicitation, or notification handlers before initialize. */
   configure?(client: Client): void | Promise<void>;
+  diagnostics?: McpFnDiagnosticSink;
 }
 
 export class McpFnTestClient<TContext = undefined> {
-  readonly client: Client;
-  private readonly server: McpFnServer<TContext>;
-  private closed = false;
+  readonly session: McpFnClient;
 
-  private constructor(client: Client, server: McpFnServer<TContext>) {
-    this.client = client;
-    this.server = server;
+  private constructor(session: McpFnClient) {
+    this.session = session;
+  }
+
+  get client(): Client {
+    return this.session.protocol;
   }
 
   static async connect<TContext>(
@@ -42,125 +53,97 @@ export class McpFnTestClient<TContext = undefined> {
     info = { name: "mcpfn-test-client", version: "1.0.0" },
     options: McpFnTestClientOptions = {},
   ): Promise<McpFnTestClient<TContext>> {
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const client = new Client(info, { capabilities: options.capabilities ?? {} });
-    await options.configure?.(client);
-    await server.connect(serverTransport);
-    await client.connect(clientTransport);
-    return new McpFnTestClient(client, server);
-  }
-
-  async listTools(): Promise<Tool[]> {
-    const values: Tool[] = [];
-    let cursor: string | undefined;
-    do {
-      const page = await this.client.listTools(cursor ? { cursor } : undefined);
-      values.push(...page.tools);
-      cursor = page.nextCursor;
-    } while (cursor);
-    return values;
-  }
-
-  async callTool(
-    name: string,
-    args: Record<string, unknown> = {},
-  ): Promise<CallToolResult> {
-    return (await this.client.callTool({ name, arguments: args })) as CallToolResult;
-  }
-
-  async createToolTask(
-    name: string,
-    args: Record<string, unknown> = {},
-    options: { ttl?: number } = {},
-  ): Promise<CreateTaskResult> {
-    return this.client.request(
-      {
-        method: "tools/call",
-        params: { name, arguments: args, task: options },
+    const serverName = (server as McpFnServer<TContext> & { info?: { name?: string } })
+      .info?.name ?? "mcpfn-server";
+    return this.connectTarget<TContext>(customTarget({
+      kind: "in-memory",
+      descriptor: { server: serverName },
+      open: async () => {
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+        await server.connect(serverTransport);
+        return { transport: clientTransport, close: () => server.close() };
       },
-      CreateTaskResultSchema,
-    );
+    }), info, options);
   }
 
-  getTask(taskId: string): Promise<Task> {
-    return this.client.experimental.tasks.getTask(taskId);
+  static async connectTarget<TContext = undefined>(
+    target: McpFnTarget,
+    info?: Implementation,
+    options: McpFnTestClientOptions = {},
+  ): Promise<McpFnTestClient<TContext>> {
+    const session = createMcpFnClient({
+      target,
+      info: info ?? { name: "mcpfn-test-client", version: "1.0.0" },
+      capabilities: options.capabilities,
+      handlers: options.handlers,
+      events: options.events,
+      configure: options.configure,
+      diagnostics: options.diagnostics,
+    });
+    try {
+      await session.connect();
+      return new McpFnTestClient<TContext>(session);
+    } catch (error) {
+      await session.close(true).catch(() => undefined);
+      throw error;
+    }
   }
 
-  getTaskResult(taskId: string): Promise<CallToolResult> {
-    return this.client.experimental.tasks.getTaskResult(
-      taskId,
-      CallToolResultSchema,
-    ) as Promise<CallToolResult>;
+  listTools(options?: RequestOptions): Promise<Tool[]> { return this.session.tools.listAll(options); }
+  callTool(
+    name: string,
+    args: Record<string, unknown> = {},
+    options?: RequestOptions,
+  ): Promise<CallToolResult> {
+    return this.session.tools.call(name, args, options);
   }
-
-  listTasks(cursor?: string): Promise<ListTasksResult> {
-    return this.client.experimental.tasks.listTasks(cursor);
+  createToolTask(
+    name: string,
+    args: Record<string, unknown> = {},
+    task: { ttl?: number } = {},
+    options?: RequestOptions,
+  ): Promise<CreateTaskResult> {
+    return this.session.tools.createTask(name, args, task, options);
   }
-
-  cancelTask(taskId: string): Promise<Task> {
-    return this.client.experimental.tasks.cancelTask(taskId);
+  getTask(taskId: string, options?: RequestOptions): Promise<Task> {
+    return this.session.tasks.get(taskId, options);
   }
-
-  async listResources(): Promise<Resource[]> {
-    const values: Resource[] = [];
-    let cursor: string | undefined;
-    do {
-      const page = await this.client.listResources(cursor ? { cursor } : undefined);
-      values.push(...page.resources);
-      cursor = page.nextCursor;
-    } while (cursor);
-    return values;
+  getTaskResult(taskId: string, options?: RequestOptions): Promise<CallToolResult> {
+    return this.session.tasks.result(taskId, options);
   }
-
-  async listResourceTemplates(): Promise<ResourceTemplate[]> {
-    const values: ResourceTemplate[] = [];
-    let cursor: string | undefined;
-    do {
-      const page = await this.client.listResourceTemplates(cursor ? { cursor } : undefined);
-      values.push(...page.resourceTemplates);
-      cursor = page.nextCursor;
-    } while (cursor);
-    return values;
+  listTasks(cursor?: string, options?: RequestOptions): Promise<ListTasksResult> {
+    return this.session.tasks.list(cursor, options);
   }
-
-  readResource(uri: string): Promise<ReadResourceResult> {
-    return this.client.readResource({ uri });
+  cancelTask(taskId: string, options?: RequestOptions): Promise<Task> {
+    return this.session.tasks.cancel(taskId, options);
   }
-
-  async subscribeResource(uri: string): Promise<void> {
-    await this.client.subscribeResource({ uri });
+  listResources(options?: RequestOptions): Promise<Resource[]> {
+    return this.session.resources.listAll(options);
   }
-
-  async unsubscribeResource(uri: string): Promise<void> {
-    await this.client.unsubscribeResource({ uri });
+  listResourceTemplates(options?: RequestOptions): Promise<ResourceTemplate[]> {
+    return this.session.resources.listTemplatesAll(options);
   }
-
-  async listPrompts(): Promise<Prompt[]> {
-    const values: Prompt[] = [];
-    let cursor: string | undefined;
-    do {
-      const page = await this.client.listPrompts(cursor ? { cursor } : undefined);
-      values.push(...page.prompts);
-      cursor = page.nextCursor;
-    } while (cursor);
-    return values;
+  readResource(uri: string, options?: RequestOptions): Promise<ReadResourceResult> {
+    return this.session.resources.read(uri, options);
   }
-
+  subscribeResource(uri: string, options?: RequestOptions): Promise<void> {
+    return this.session.resources.subscribe(uri, options);
+  }
+  unsubscribeResource(uri: string, options?: RequestOptions): Promise<void> {
+    return this.session.resources.unsubscribe(uri, options);
+  }
+  listPrompts(options?: RequestOptions): Promise<Prompt[]> {
+    return this.session.prompts.listAll(options);
+  }
   getPrompt(
     name: string,
     args?: Record<string, string>,
+    options?: RequestOptions,
   ): Promise<GetPromptResult> {
-    return this.client.getPrompt({ name, ...(args ? { arguments: args } : {}) });
+    return this.session.prompts.get(name, args, options);
   }
-
-  complete(params: CompleteRequest["params"]): Promise<CompleteResult> {
-    return this.client.complete(params);
+  complete(params: CompleteRequest["params"], options?: RequestOptions): Promise<CompleteResult> {
+    return this.session.prompts.complete(params, options);
   }
-
-  async close(): Promise<void> {
-    if (this.closed) return;
-    this.closed = true;
-    await this.client.close().catch(() => undefined);
-    await this.server.close().catch(() => undefined);
-  }
+  close(): Promise<void> { return this.session.close(); }
 }

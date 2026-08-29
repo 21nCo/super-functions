@@ -385,6 +385,39 @@ export interface McpFnOAuthClientMetadataVariants {
   genericExtension: McpFnOAuthClientMetadata;
 }
 
+export interface McpFnNamedOAuthHostFixture {
+  id: "chatgpt" | "claude";
+  name: string;
+  redirectUris: string[];
+  responseTypes: ["code"];
+  grantTypes: string[];
+  tokenEndpointAuthMethod: "none";
+}
+
+/** Host-shaped fixtures; applications still configure their registered production URLs. */
+export const MCPFN_NAMED_OAUTH_HOST_FIXTURES = {
+  chatgpt: {
+    id: "chatgpt",
+    name: "ChatGPT connector",
+    redirectUris: ["https://chatgpt.com/connector_platform_oauth_redirect"],
+    responseTypes: ["code"],
+    grantTypes: ["authorization_code", "refresh_token"],
+    tokenEndpointAuthMethod: "none",
+  },
+  claude: {
+    id: "claude",
+    name: "Claude connector",
+    redirectUris: ["https://claude.example.com/oauth/callback"],
+    responseTypes: ["code"],
+    grantTypes: [
+      "authorization_code",
+      "refresh_token",
+      MCPFN_OAUTH_EXTENSION_GRANTS.jwtBearer,
+    ],
+    tokenEndpointAuthMethod: "none",
+  },
+} as const satisfies Record<string, McpFnNamedOAuthHostFixture>;
+
 export function createOAuthClientMetadataFixture(
   options: McpFnOAuthClientMetadataFixtureOptions,
 ): McpFnOAuthClientMetadata {

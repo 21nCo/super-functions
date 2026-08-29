@@ -84,6 +84,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build trusted SQLite native binding
+        run: npm rebuild better-sqlite3
+
       - name: Ensure Rollup native package
         run: node scripts/ci-install-rollup-native.mjs
 
@@ -198,6 +201,41 @@ jobs:
 
       - name: Run McpFn release gate
         run: npm run gate:mcpfn-release
+
+  mcpfn-node18-cjs:
+    name: McpFn Node 18 CommonJS
+    needs: plan
+    if: needs.plan.outputs.run_mcpfn == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18.20.8"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build trusted esbuild native binding
+        run: npm rebuild esbuild
+
+      - name: Ensure Rollup native package
+        run: node scripts/ci-install-rollup-native.mjs
+
+      - name: Build CommonJS dependency chain
+        run: |
+          npm run build --workspace @superfunctions/observability
+          npm run build --workspace @superfunctions/db
+          npm run build --workspace @superfunctions/oauth-storage
+          npm run build --workspace @superfunctions/oauth-core
+          npm run build --workspace @mcpfn/client
+
+      - name: Require supported CommonJS entry points
+        run: node -e 'for (const name of ["@superfunctions/oauth-core", "@mcpfn/client"]) { const loaded = require(name); if (!Object.keys(loaded).length) throw new Error(name + " has no CommonJS exports"); }'
 
   docs:
     name: Docs Guardrails

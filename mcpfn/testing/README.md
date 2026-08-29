@@ -4,7 +4,7 @@
 
 It includes:
 
-- an official MCP client fixture;
+- the production McpFn client exposed as a fixture;
 - exact manifest assertions across tools, resources, templates, and prompts;
 - resource, prompt, completion, subscription, and task client methods;
 - reusable API-key and OAuth resource-server regression matrices;
@@ -12,11 +12,20 @@ It includes:
 - extensible Client ID Metadata fixtures that include unrelated grant types;
 - optional Playwright fixtures for real redirect and consent-page coverage;
 - generic tools-only, full-protocol, and MCP Apps host profiles;
+- named ChatGPT- and Claude-shaped OAuth metadata fixtures;
+- one suite for in-memory, custom, stdio, and Streamable HTTP targets;
 - structured/text response parity checks;
-- declarative semantic scenarios;
+- version 1 declarative scenarios for capabilities, tasks, events, and auth phases;
+- per-scenario timeout/cancellation, side-effect and incomplete metadata;
+- bounded, redacted scenario and target-suite reports;
 - orchestration of the official `@modelcontextprotocol/conformance` runner.
 
-Official conformance validates protocol behavior. McpFn scenarios validate product behavior. Production MCP servers should run both.
+Official conformance validates protocol behavior. McpFn scenarios validate product behavior. Production MCP servers should run both. For a protected local endpoint, use `runAuthenticatedOfficialConformance({ url, headers })`; it requires a literal loopback upstream, binds a temporary loopback-only streaming proxy, pins every request to the configured upstream path, injects the configured headers without printing them, and always closes the proxy after the pinned official runner exits.
+
+Use `runMcpFnTargetSuite({ target, scenarios, manifest })` when a test should
+exercise a subprocess or deployed target. It constructs the same session used
+by applications, the inspector, and CLI. Scenario execution is serial and
+capability calls are never retried implicitly.
 
 ```ts
 import {
@@ -45,7 +54,15 @@ try {
 }
 ```
 
-Scenarios run serially so stateful workflows and idempotency checks remain deterministic. `assertStructuredTextParity` requires a JSON text block; do not use it for intentionally human-readable text.
+Scenarios run serially so stateful workflows and idempotency checks remain
+deterministic. Legacy arrays are readable; portable artifacts use
+`{ formatVersion: 1, kind: "mcpfn.scenarios", status, scenarios }`. A runner
+rejects an artifact whose top-level status is `incomplete`, even when its
+individual scenarios are complete, so incomplete evidence cannot produce a
+passing report. A runner
+timeout supplies an abort signal and also bounds adapters that do not cooperate
+with cancellation. `assertStructuredTextParity` requires a JSON text block; do
+not use it for intentionally human-readable text.
 
 `checkHostCompatibility(manifest, profile)` returns `compatible`, `degraded`, or `incompatible`. Unsupported optional server surfaces are degraded; missing protocol overlap or required client-mediated features are incompatible. The built-in profiles are stable capability fixtures, not claims about the current behavior of named commercial hosts. Supply a custom profile for a captured host version.
 

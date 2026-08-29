@@ -8,8 +8,9 @@ import {
   type McpFnRegistry,
   type McpFnServer,
   type McpFnServerInfo,
+  type McpFnServerRuntimeOptions,
 } from "@mcpfn/core";
-import type { McpFnScenario } from "@mcpfn/testing";
+import { validateMcpFnScenarios, type McpFnScenario } from "@mcpfn/testing";
 
 async function loadModule(file: string, cwd: string): Promise<unknown> {
   const resolved = path.isAbsolute(file) ? file : path.resolve(cwd, file);
@@ -46,16 +47,38 @@ function isRegistryExport(value: unknown): value is McpFnRegistry<unknown> {
   );
 }
 
+function isDeclarationExport(value: unknown): value is {
+  manifest(): McpFnManifest;
+  createServer(runtime?: McpFnServerRuntimeOptions<unknown>): McpFnServer<unknown>;
+} {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    typeof (value as { manifest?: unknown }).manifest === "function" &&
+    typeof (value as { createServer?: unknown }).createServer === "function",
+  );
+}
+
 export async function loadManifestSource(
   file: string,
   cwd = process.cwd(),
   info?: McpFnServerInfo,
+  runtime?: McpFnServerRuntimeOptions<unknown>,
 ): Promise<{ manifest: McpFnManifest; server?: McpFnServer<unknown> }> {
   const value = await loadModule(file, cwd);
   // Use the public surface instead of instanceof: a global CLI and the target
   // project commonly load separate physical copies of @mcpfn/core.
   if (isServerExport(value)) {
     return { manifest: validateManifest(value.manifest()), server: value };
+  }
+  if (isDeclarationExport(value)) {
+    const manifest = validateManifest(value.manifest());
+    if (runtime === undefined) return { manifest };
+    const server = value.createServer(runtime);
+    if (!isServerExport(server)) {
+      throw new Error("McpFn declaration createServer() did not return a server");
+    }
+    return { manifest, server };
   }
   if (isRegistryExport(value)) {
     if (!info) {
@@ -71,18 +94,5 @@ export async function loadScenarios(
   cwd = process.cwd(),
 ): Promise<McpFnScenario[]> {
   const value = await loadModule(file, cwd);
-  if (!Array.isArray(value)) {
-    throw new Error("Scenario module must default-export an array");
-  }
-  for (const [index, scenario] of value.entries()) {
-    if (
-      !scenario ||
-      typeof scenario !== "object" ||
-      typeof (scenario as { name?: unknown }).name !== "string" ||
-      typeof (scenario as { tool?: unknown }).tool !== "string"
-    ) {
-      throw new Error(`Invalid scenario at index ${index}`);
-    }
-  }
-  return value as McpFnScenario[];
+  return validateMcpFnScenarios(value) as McpFnScenario[];
 }

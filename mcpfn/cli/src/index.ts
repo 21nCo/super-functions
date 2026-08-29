@@ -1,17 +1,28 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { InMemoryTaskStore } from "@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js";
 import { cac } from "cac";
+import { diagnoseMcpAuthorization } from "@mcpfn/auth";
+import {
+  stdioTarget,
+  streamableHttpTarget,
+  McpFnClientError,
+  type McpFnTarget,
+} from "@mcpfn/client";
 import {
   diffManifests,
   validateManifest,
   type McpFnManifest,
 } from "@mcpfn/core";
+import { McpFnInspector } from "@mcpfn/inspector";
 import {
   McpFnTestClient,
   McpFnAssertionError,
   assertManifestContract,
   runOfficialConformance,
+  runMcpFnTargetSuite,
   runScenarios,
+  createMcpFnScenarioReport,
 } from "@mcpfn/testing";
 
 import { loadManifestSource, loadScenarios } from "./load.js";
@@ -23,6 +34,10 @@ export interface CliRunOptions {
   stdout?: (text: string) => void;
   stderr?: (text: string) => void;
 }
+
+export const MCPFN_CLI_EXIT_SUCCESS = 0;
+export const MCPFN_CLI_EXIT_TEST_FAILURE = 1;
+export const MCPFN_CLI_EXIT_USAGE = 2;
 
 export async function runCli(
   argv = process.argv.slice(2),
@@ -86,6 +101,7 @@ export async function runCli(
 
   cli.command("test <server> <scenarios>", "Run protocol-level semantic regression scenarios")
     .option("--output <path>", "Write a JSON report")
+    .option("--max-report-bytes <bytes>", "Maximum aggregate JSON report size")
     .option(
       "--visible-tools <names>",
       "Comma-separated tool names expected for a request-filtered server",
@@ -93,9 +109,11 @@ export async function runCli(
     .action(async (
       serverPath: string,
       scenariosPath: string,
-      options: { output?: string; visibleTools?: string },
+      options: { output?: string; visibleTools?: string; maxReportBytes?: string },
     ) => {
-      const loaded = await loadManifestSource(serverPath, cwd);
+      const loaded = await loadManifestSource(serverPath, cwd, undefined, {
+        taskStore: new InMemoryTaskStore(),
+      });
       if (!loaded.server) {
         throw new Error("The test command requires a module exporting McpFnServer");
       }
@@ -108,19 +126,25 @@ export async function runCli(
             .filter(Boolean),
         });
         const results = await runScenarios(client, await loadScenarios(scenariosPath, cwd));
-        const report = {
+        const outputMaxBytes = parsePositiveInteger(
+          options.maxReportBytes,
+          "--max-report-bytes",
+        );
+        if (outputMaxBytes !== undefined && outputMaxBytes < 1_025) {
+          throw new Error("--max-report-bytes must be an integer of at least 1025");
+        }
+        const report = createMcpFnScenarioReport(results, {
           manifestHash: loaded.manifest.hash,
-          total: results.length,
-          passed: results.filter((result) => result.status === "passed").length,
-          failed: results.filter((result) => result.status === "failed").length,
-          results,
-        };
-        const serialized = `${JSON.stringify(report, null, 2)}\n`;
+          maxBytes: outputMaxBytes === undefined ? undefined : outputMaxBytes - 1,
+        });
+        const serialized = outputMaxBytes === undefined
+          ? `${JSON.stringify(report, null, 2)}\n`
+          : `${JSON.stringify(report)}\n`;
         if (options.output) {
           await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
         }
         stdout(serialized);
-        if (report.failed > 0) exitCode = 1;
+        if (report.failed > 0 || report.status === "incomplete") exitCode = 1;
       } finally {
         await client.close();
       }
@@ -159,6 +183,66 @@ export async function runCli(
       exitCode = result.exitCode;
     });
 
+  cli.command("inspect <target>", "Inventory an HTTP or stdio MCP target")
+    .option("--stdio", "Treat target as an executable instead of an HTTP URL")
+    .option("--args <json>", "JSON array of stdio executable arguments")
+    .option("--output <path>", "Write the redacted JSON snapshot")
+    .action(async (targetValue: string, options: {
+      stdio?: boolean;
+      args?: string;
+      output?: string;
+    }) => {
+      const target = parseTarget(targetValue, options, cwd);
+      const inspector = McpFnInspector.create({ target });
+      try {
+        await inspector.connect();
+        const serialized = `${JSON.stringify(await inspector.snapshot(), null, 2)}\n`;
+        if (options.output) {
+          await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+        }
+        stdout(serialized);
+      } finally {
+        await inspector.close();
+      }
+    });
+
+  cli.command("test-target <target> <scenarios>", "Run scenarios against an HTTP or stdio MCP target")
+    .option("--stdio", "Treat target as an executable instead of an HTTP URL")
+    .option("--args <json>", "JSON array of stdio executable arguments")
+    .option("--output <path>", "Write the JSON report")
+    .action(async (targetValue: string, scenariosPath: string, options: {
+      stdio?: boolean;
+      args?: string;
+      output?: string;
+    }) => {
+      const report = await runMcpFnTargetSuite({
+        target: parseTarget(targetValue, options, cwd),
+        scenarios: await loadScenarios(scenariosPath, cwd),
+      });
+      const serialized = `${JSON.stringify(report, null, 2)}\n`;
+      if (options.output) {
+        await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+      }
+      stdout(serialized);
+      if (!report.ok) exitCode = 1;
+    });
+
+  cli.command("auth-diagnose <url>", "Probe OAuth discovery without opening a browser")
+    .option("--timeout <milliseconds>", "Per-request timeout in milliseconds")
+    .option("--output <path>", "Write the redacted JSON report")
+    .action(async (url: string, options: { timeout?: string; output?: string }) => {
+      const timeoutMs = options.timeout === undefined
+        ? undefined
+        : parsePositiveInteger(options.timeout, "--timeout");
+      const report = await diagnoseMcpAuthorization(url, { timeoutMs });
+      const serialized = `${JSON.stringify(report, null, 2)}\n`;
+      if (options.output) {
+        await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+      }
+      stdout(serialized);
+      if (!report.ok) exitCode = 1;
+    });
+
   cli.help();
   cli.version("0.0.1");
   try {
@@ -171,8 +255,39 @@ export async function runCli(
     await cli.runMatchedCommand();
   } catch (error) {
     stderr(`${error instanceof Error ? error.message : String(error)}\n`);
-    if (error instanceof McpFnAssertionError) return 1;
-    return 2;
+    if (error instanceof McpFnAssertionError || error instanceof McpFnClientError) {
+      return MCPFN_CLI_EXIT_TEST_FAILURE;
+    }
+    return MCPFN_CLI_EXIT_USAGE;
   }
   return exitCode;
+}
+
+function parsePositiveInteger(value: string | undefined, name: string): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function parseTarget(
+  targetValue: string,
+  options: { stdio?: boolean; args?: string },
+  cwd: string,
+): McpFnTarget {
+  if (!options.stdio) {
+    if (options.args) throw new Error("--args requires --stdio");
+    return streamableHttpTarget(targetValue);
+  }
+  let args: string[] | undefined;
+  if (options.args) {
+    const parsed = JSON.parse(options.args) as unknown;
+    if (!Array.isArray(parsed) || parsed.some((value) => typeof value !== "string")) {
+      throw new Error("--args must be a JSON array of strings");
+    }
+    args = parsed;
+  }
+  return stdioTarget({ command: targetValue, args, cwd });
 }
