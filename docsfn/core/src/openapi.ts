@@ -166,7 +166,9 @@ function compareStrings(left: string, right: string): number {
 function normalizeBasePath(basePath: string | undefined): string {
   const value = typeof basePath === "string" && basePath.length > 0 ? basePath : "/docs";
   const prefixed = value.startsWith("/") ? value : `/${value}`;
-  return prefixed.length > 1 ? prefixed.replace(/\/+$/, "") : prefixed;
+  let end = prefixed.length;
+  while (end > 1 && prefixed.charCodeAt(end - 1) === 47) end -= 1;
+  return prefixed.slice(0, end);
 }
 
 function normalizeRouteSlug(value: string): string {

@@ -137,7 +137,9 @@ function normalizeRoutePattern(pattern: string): string {
     });
   }
 
-  return trimmed.length > 1 ? trimmed.replace(/\/+$/, "") : trimmed;
+  let end = trimmed.length;
+  while (end > 1 && trimmed.charCodeAt(end - 1) === 47) end -= 1;
+  return trimmed.slice(0, end);
 }
 
 function normalizeRouteForMatch(route: string): string {
@@ -146,7 +148,9 @@ function normalizeRouteForMatch(route: string): string {
     return "/";
   }
   const prefixed = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
-  return prefixed.length > 1 ? prefixed.replace(/\/+$/, "") : prefixed;
+  let end = prefixed.length;
+  while (end > 1 && prefixed.charCodeAt(end - 1) === 47) end -= 1;
+  return prefixed.slice(0, end);
 }
 
 function globToRegExp(pattern: string): RegExp {

@@ -52,7 +52,7 @@ describe("docsfn dogfood site source", () => {
     });
     expect(changelogResults.some((item) => item.path === "/changelog/docsfn-v0-1-0")).toBe(true);
 
-    const changelogJsonResponse = (await getChangelogJson({} as never)) as Response;
+    const changelogJsonResponse = (await getChangelogJson()) as Response;
     expect(changelogJsonResponse.status).toBe(200);
     const changelogJson = (await changelogJsonResponse.json()) as {
       collectionId: string;

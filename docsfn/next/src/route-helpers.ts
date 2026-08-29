@@ -140,10 +140,22 @@ function compareStrings(left: string, right: string): number {
   });
 }
 
+function trimLeadingSlashes(value: string): string {
+  let start = 0;
+  while (start < value.length && value.charCodeAt(start) === 47) start += 1;
+  return value.slice(start);
+}
+
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(0, end);
+}
+
 function normalizeBasePath(basePath?: string): string {
   const value = typeof basePath === "string" && basePath.length > 0 ? basePath : "/docs";
   const prefixed = value.startsWith("/") ? value : `/${value}`;
-  return prefixed.length > 1 ? prefixed.replace(/\/+$/, "") : prefixed;
+  return trimTrailingSlashes(prefixed);
 }
 
 function normalizeSlugSegments(slug: SlugParam): string[] {
@@ -172,7 +184,7 @@ function normalizeCollectionId(collectionId: string): string {
 }
 
 function normalizePostSlug(slug: string): string {
-  return slug.replace(/^\/+/, "").replace(/\/+$/, "");
+  return trimTrailingSlashes(trimLeadingSlashes(slug));
 }
 
 function normalizeEmbedParamName(param: string | undefined): string {
@@ -422,7 +434,7 @@ function removeBasePathPrefix(routePath: string, basePath: string): string[] {
     ? ""
     : routePath.startsWith(`${basePath}/`)
       ? routePath.slice(basePath.length + 1)
-      : routePath.replace(/^\/+/, "");
+      : trimLeadingSlashes(routePath);
   return withoutBase.split("/").filter((segment) => segment.length > 0);
 }
 
@@ -431,7 +443,7 @@ function resolveCanonicalUrl(canonicalUrl: string | undefined, path: string): st
     return path;
   }
 
-  const normalizedOrigin = canonicalUrl.replace(/\/+$/, "");
+  const normalizedOrigin = trimTrailingSlashes(canonicalUrl);
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${normalizedOrigin}${normalizedPath}`;
 }

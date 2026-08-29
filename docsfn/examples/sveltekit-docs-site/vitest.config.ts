@@ -12,6 +12,7 @@ export default defineConfig({
     }),
   ],
   resolve: {
+    conditions: ["browser"],
     alias: [
       { find: "@docsfn/svelte/ApiReferenceRenderer.svelte", replacement: resolve(root, "../../svelte/src/ApiReferenceRenderer.svelte") },
       { find: "@docsfn/svelte/DocsContent.svelte", replacement: resolve(root, "../../svelte/src/DocsContent.svelte") },

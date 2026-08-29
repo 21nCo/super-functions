@@ -178,7 +178,9 @@ function rawEntryToSourceEntry(entry: RawContentEntry): DocsSourceEntry {
 function normalizeBasePath(basePath?: string): string {
   const value = typeof basePath === "string" && basePath.length > 0 ? basePath : "/docs";
   const prefixed = value.startsWith("/") ? value : `/${value}`;
-  return prefixed.length > 1 ? prefixed.replace(/\/+$/, "") : prefixed;
+  let end = prefixed.length;
+  while (end > 1 && prefixed.charCodeAt(end - 1) === 47) end -= 1;
+  return prefixed.slice(0, end);
 }
 
 async function listCanonicalEntries(input: {

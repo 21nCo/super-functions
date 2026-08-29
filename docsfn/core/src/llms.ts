@@ -40,9 +40,17 @@ function pathFor(canonicalUrl: string | undefined, route: string): string {
   if (!canonicalUrl) {
     return route;
   }
-  const trimmed = canonicalUrl.replace(/\/+$/, "");
+  let end = canonicalUrl.length;
+  while (end > 0 && canonicalUrl.charCodeAt(end - 1) === 47) end -= 1;
+  const trimmed = canonicalUrl.slice(0, end);
   const prefixed = route.startsWith("/") ? route : `/${route}`;
   return `${trimmed}${prefixed}`;
+}
+
+function trimTrailingNewlines(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 10) end -= 1;
+  return value.slice(0, end);
 }
 
 function globToRegExp(pattern: string): RegExp {
@@ -177,7 +185,7 @@ export function buildLlmsTxt(manifest: DocsManifest, options: BuildLlmsTxtOption
     lines.push("");
   }
 
-  return `${lines.join("\n").replace(/\n+$/, "")}\n`;
+  return `${trimTrailingNewlines(lines.join("\n"))}\n`;
 }
 
 export function buildLlmsFullTxt(
@@ -254,7 +262,7 @@ export function buildLlmsFullTxt(
     }
   }
 
-  return `${lines.join("\n").replace(/\n+$/, "")}\n`;
+  return `${trimTrailingNewlines(lines.join("\n"))}\n`;
 }
 
 export function buildLlmsTxtArtifacts(

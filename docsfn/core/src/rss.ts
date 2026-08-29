@@ -34,7 +34,9 @@ export function generateRSSFeed(
 ): string {
   const { title, description, link, language = "en" } = options;
 
-  const normalizedLink = link.replace(/\/+$/, "");
+  let linkEnd = link.length;
+  while (linkEnd > 0 && link.charCodeAt(linkEnd - 1) === 47) linkEnd -= 1;
+  const normalizedLink = link.slice(0, linkEnd);
   const hasRequestedCollection = options.collectionId !== undefined;
   const requestedCollectionId = hasRequestedCollection
     ? normalizeDatedCollectionId(options.collectionId ?? "")

@@ -39,21 +39,35 @@ function compareStrings(left: string, right: string): number {
   });
 }
 
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(0, end);
+}
+
+function trimSlashes(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value.charCodeAt(start) === 47) start += 1;
+  while (end > start && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(start, end);
+}
+
 function normalizeBasePath(basePath?: string): string {
   const value = typeof basePath === "string" && basePath.length > 0 ? basePath : "/docs";
   const prefixed = value.startsWith("/") ? value : `/${value}`;
-  return prefixed.length > 1 ? prefixed.replace(/\/+$/, "") : prefixed;
+  return trimTrailingSlashes(prefixed);
 }
 
 function normalizeAbsoluteRoute(value: string, fallback: string): string {
   const candidate = value.trim().length > 0 ? value : fallback;
   const prefixed = candidate.startsWith("/") ? candidate : `/${candidate}`;
-  return prefixed.length > 1 ? prefixed.replace(/\/+$/, "") : prefixed;
+  return trimTrailingSlashes(prefixed);
 }
 
 function appendRoute(basePath: string, suffix: string): string {
   const normalizedBase = normalizeAbsoluteRoute(basePath, "/");
-  const normalizedSuffix = suffix.replace(/^\/+|\/+$/g, "");
+  const normalizedSuffix = trimSlashes(suffix);
   if (!normalizedSuffix) {
     return normalizedBase;
   }

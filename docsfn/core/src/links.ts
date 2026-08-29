@@ -98,5 +98,7 @@ function resolveBaseRoute(
 
 function normalizeAbsolutePath(path: string): string {
   const prefixed = path.startsWith("/") ? path : `/${path}`;
-  return prefixed.length > 1 ? prefixed.replace(/\/+$/, "") : prefixed;
+  let end = prefixed.length;
+  while (end > 1 && prefixed.charCodeAt(end - 1) === 47) end -= 1;
+  return prefixed.slice(0, end);
 }

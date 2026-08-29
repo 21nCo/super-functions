@@ -18,9 +18,26 @@ export interface FumadocsTransformResult {
 function parseImportSpecifiers(source: string): string[] {
   return source
     .split(",")
-    .map((entry) => entry.trim())
-    .map((entry) => entry.replace(/\s+as\s+.+$/, "").trim())
+    .map((entry) => {
+      const words = entry.trim().split(/\s+/);
+      const alias = words.indexOf("as");
+      return words.slice(0, alias === -1 ? words.length : alias).join(" ");
+    })
     .filter(Boolean);
+}
+
+function parseNamedImport(line: string): { rawSpecifiers: string; moduleName: string } | null {
+  const trimmed = line.trim().replace(/;$/, "").trimEnd();
+  if (!trimmed.startsWith("import")) return null;
+  const open = trimmed.indexOf("{");
+  const close = trimmed.indexOf("}", open + 1);
+  if (open === -1 || close === -1 || trimmed.slice(6, open).trim() !== "") return null;
+  const from = trimmed.slice(close + 1).trim();
+  if (!from.startsWith("from")) return null;
+  const quoted = from.slice(4).trim();
+  const quote = quoted[0];
+  if ((quote !== '"' && quote !== "'") || quoted.at(-1) !== quote) return null;
+  return { rawSpecifiers: trimmed.slice(open + 1, close), moduleName: quoted.slice(1, -1) };
 }
 
 function validateFumadocsImport(input: {
@@ -68,15 +85,13 @@ export function transformFumadocsV15(
   const importedComponents = new Set<string>();
 
   for (const line of lines) {
-    const importMatch = line.match(
-      /^\s*import\s+\{([^}]+)\}\s+from\s+["']([^"']+)["']\s*;?\s*$/
-    );
+    const importMatch = parseNamedImport(line);
     if (!importMatch) {
       keptLines.push(line);
       continue;
     }
 
-    const [, rawSpecifiers, moduleName] = importMatch;
+    const { rawSpecifiers, moduleName } = importMatch;
     const specifiers = parseImportSpecifiers(rawSpecifiers);
     for (const specifier of specifiers) {
       importedComponents.add(specifier);
