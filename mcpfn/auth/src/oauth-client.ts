@@ -18,7 +18,13 @@ import {
   type McpFnRedirectPolicy,
 } from "./redirects.js";
 
-export type McpFnOAuthCredentialScope = "all" | "client" | "tokens" | "verifier" | "state";
+export type McpFnOAuthCredentialScope =
+  | "all"
+  | "client"
+  | "tokens"
+  | "verifier"
+  | "discovery"
+  | "state";
 
 export interface McpFnOAuthSessionStore {
   readonly security: "memory" | "encrypted";
