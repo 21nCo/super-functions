@@ -20,7 +20,7 @@ export function PageActions({
 }: PageActionsProps) {
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<PageFeedbackValue>();
-  const resetTimer = useRef<ReturnType<typeof setTimeout>>();
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => () => {
     if (resetTimer.current) clearTimeout(resetTimer.current);

@@ -2,10 +2,11 @@
   import type { ComponentType } from "svelte";
   import type { DocsTopNavItem } from "@docsfn/core/browser";
   import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
+    Menu as DropdownMenu,
+    MenuContent as DropdownMenuContent,
+    MenuItem as DropdownMenuItem,
+    MenuPositioner as DropdownMenuPositioner,
+    MenuTrigger as DropdownMenuTrigger,
   } from "@uifn/svelte";
   import type { DocsPageSurface } from "./DocsLayout.svelte";
   import Icon from "./Icon.svelte";
@@ -98,23 +99,25 @@
               {item.label}
               <Icon name="chevron-down" size={13} strokeWidth={1.8} />
             </DropdownMenuTrigger>
-            <DropdownMenuContent class="docsfn-topbar-dropdown-content">
-              {#each item.items as subItem, subIndex (`${subItem.label}:${subIndex}`)}
-                <DropdownMenuItem>
-                  <a
-                    href={subItem.href}
-                    class="docsfn-topbar-dropdown-item"
-                    target={subItem.external ? "_blank" : undefined}
-                    rel={subItem.external ? "noreferrer noopener" : undefined}
-                  >
-                    {subItem.label}
-                    {#if subItem.external}
-                      <Icon name="external-link" size={13} strokeWidth={1.8} />
-                    {/if}
-                  </a>
-                </DropdownMenuItem>
-              {/each}
-            </DropdownMenuContent>
+            <DropdownMenuPositioner>
+              <DropdownMenuContent class="docsfn-topbar-dropdown-content">
+                {#each item.items as subItem, subIndex (`${subItem.label}:${subIndex}`)}
+                  <DropdownMenuItem value={`${subItem.label}:${subIndex}`}>
+                    <a
+                      href={subItem.href}
+                      class="docsfn-topbar-dropdown-item"
+                      target={subItem.external ? "_blank" : undefined}
+                      rel={subItem.external ? "noreferrer noopener" : undefined}
+                    >
+                      {subItem.label}
+                      {#if subItem.external}
+                        <Icon name="external-link" size={13} strokeWidth={1.8} />
+                      {/if}
+                    </a>
+                  </DropdownMenuItem>
+                {/each}
+              </DropdownMenuContent>
+            </DropdownMenuPositioner>
           </DropdownMenu>
         {:else}
           <a

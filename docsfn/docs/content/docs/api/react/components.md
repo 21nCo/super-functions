@@ -178,7 +178,7 @@ Sorts by date (newest first) when parseable, else by slug.
 | **`onVersionChange`** | `(versionSlug: string) => void?` | Selection callback (e.g. router push) |
 | **`className`** | `string?` | Wrapper class |
 
-Uses **`@uifn/react`** **`DropdownMenu`**.
+Uses the **`@uifn/react`** **`Menu`** primitive.
 
 ## `ThemeProvider`
 

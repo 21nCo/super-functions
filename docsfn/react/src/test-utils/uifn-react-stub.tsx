@@ -178,7 +178,34 @@ export function DialogOverlay(props: React.HTMLAttributes<HTMLDivElement>) {
   return open ? <div {...props} /> : null;
 }
 
+export const DialogBackdrop = DialogOverlay;
+
+export function DialogPositioner(props: React.HTMLAttributes<HTMLDivElement>) {
+  const { open } = React.useContext(DialogContext);
+  return open ? <div {...props} /> : null;
+}
+
 export function DialogContent(props: React.HTMLAttributes<HTMLDivElement>) {
   const { open } = React.useContext(DialogContext);
   return open ? <div {...props} /> : null;
+}
+
+export function Menu(props: React.HTMLAttributes<HTMLDivElement>) {
+  return <div {...props} />;
+}
+
+export function MenuTrigger(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return <button type="button" {...props} />;
+}
+
+export function MenuPositioner(props: React.HTMLAttributes<HTMLDivElement>) {
+  return <div {...props} />;
+}
+
+export function MenuContent(props: React.HTMLAttributes<HTMLDivElement>) {
+  return <div {...props} />;
+}
+
+export function MenuItem(props: React.HTMLAttributes<HTMLDivElement> & { value?: string }) {
+  return <div {...props} />;
 }

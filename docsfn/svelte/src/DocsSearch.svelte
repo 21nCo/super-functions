@@ -8,7 +8,13 @@
     type DocsSearchRuntime,
     type DocsSearchRuntimeResultItem,
   } from "@docsfn/core/search-runtime";
-  import { Dialog, DialogPortal, DialogOverlay, DialogContent } from "@uifn/svelte";
+  import {
+    Dialog,
+    DialogBackdrop as DialogOverlay,
+    DialogContent,
+    DialogPortal,
+    DialogPositioner,
+  } from "@uifn/svelte";
   import Icon from "./Icon.svelte";
 
   type SearchScopeFilter = DocsSearchScope | "all";
@@ -230,7 +236,8 @@
 
   <DialogPortal>
     <DialogOverlay class="docsfn-search-overlay" />
-    <DialogContent class="docsfn-search-content" on:keydown={handleKeyDown}>
+    <DialogPositioner>
+      <DialogContent class="docsfn-search-content" on:keydown={handleKeyDown}>
       <div class="docsfn-search-header">
         <span class="docsfn-search-icon" aria-hidden="true">
           <Icon name="search" size={18} strokeWidth={1.8} />
@@ -302,7 +309,8 @@
             </div>
           {/if}
       </div>
-    </DialogContent>
+      </DialogContent>
+    </DialogPositioner>
   </DialogPortal>
 </Dialog>
 

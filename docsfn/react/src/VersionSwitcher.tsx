@@ -1,10 +1,11 @@
 import React from "react";
 import type { Version } from "@docsfn/core";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+  Menu as DropdownMenu,
+  MenuContent as DropdownMenuContent,
+  MenuItem as DropdownMenuItem,
+  MenuPositioner as DropdownMenuPositioner,
+  MenuTrigger as DropdownMenuTrigger,
 } from "@uifn/react";
 import type { DocsPageSurface } from "./DocsLayout";
 
@@ -84,40 +85,43 @@ export function VersionSwitcher({
           />
         </svg>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="docsfn-version-switcher-content">
-        {resolvedVersions.map((version) => {
-          const isActive = version.slug === resolvedCurrentVersion;
-          return (
-            <DropdownMenuItem
-              key={version.slug}
-              onClick={() => navigateToVersion(version.slug)}
-              className={`docsfn-version-item ${isActive ? "active" : ""}`}
-              data-active={isActive}
-            >
-              <span className="docsfn-version-item-label">{version.label}</span>
-              {version.isDefault ? <span className="docsfn-version-badge">Default</span> : null}
-              {isActive ? (
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  className="docsfn-version-check"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M13 4L6 11L3 8"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              ) : null}
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
+      <DropdownMenuPositioner>
+        <DropdownMenuContent className="docsfn-version-switcher-content">
+          {resolvedVersions.map((version) => {
+            const isActive = version.slug === resolvedCurrentVersion;
+            return (
+              <DropdownMenuItem
+                key={version.slug}
+                value={version.slug}
+                onClick={() => navigateToVersion(version.slug)}
+                className={`docsfn-version-item ${isActive ? "active" : ""}`}
+                data-active={isActive}
+              >
+                <span className="docsfn-version-item-label">{version.label}</span>
+                {version.isDefault ? <span className="docsfn-version-badge">Default</span> : null}
+                {isActive ? (
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    className="docsfn-version-check"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M13 4L6 11L3 8"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                ) : null}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenuPositioner>
     </DropdownMenu>
   );
 }

@@ -1,10 +1,11 @@
 <script lang="ts">
   import type { Version } from "@docsfn/core/browser";
   import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
+    Menu as DropdownMenu,
+    MenuContent as DropdownMenuContent,
+    MenuItem as DropdownMenuItem,
+    MenuPositioner as DropdownMenuPositioner,
+    MenuTrigger as DropdownMenuTrigger,
   } from "@uifn/svelte";
   import type { DocsPageSurface } from "./DocsLayout.svelte";
 
@@ -83,38 +84,41 @@
         />
       </svg>
     </DropdownMenuTrigger>
-    <DropdownMenuContent class="docsfn-version-switcher-content">
-      {#each resolvedVersions as version (version.slug)}
-        {@const isActive = version.slug === resolvedCurrentVersion}
-        <DropdownMenuItem
-          on:click={() => handleChange(version.slug)}
-          class="docsfn-version-item {isActive ? 'active' : ''}"
-          data-active={isActive}
-        >
-          <span class="docsfn-version-item-label">{version.label}</span>
-          {#if version.isDefault}
-            <span class="docsfn-version-badge">Default</span>
-          {/if}
-          {#if isActive}
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              class="docsfn-version-check"
-              aria-hidden="true"
-            >
-              <path
-                d="M13 4L6 11L3 8"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          {/if}
-        </DropdownMenuItem>
-      {/each}
-    </DropdownMenuContent>
+    <DropdownMenuPositioner>
+      <DropdownMenuContent class="docsfn-version-switcher-content">
+        {#each resolvedVersions as version (version.slug)}
+          {@const isActive = version.slug === resolvedCurrentVersion}
+          <DropdownMenuItem
+            value={version.slug}
+            on:click={() => handleChange(version.slug)}
+            class="docsfn-version-item {isActive ? 'active' : ''}"
+            data-active={isActive}
+          >
+            <span class="docsfn-version-item-label">{version.label}</span>
+            {#if version.isDefault}
+              <span class="docsfn-version-badge">Default</span>
+            {/if}
+            {#if isActive}
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                class="docsfn-version-check"
+                aria-hidden="true"
+              >
+                <path
+                  d="M13 4L6 11L3 8"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            {/if}
+          </DropdownMenuItem>
+        {/each}
+      </DropdownMenuContent>
+    </DropdownMenuPositioner>
   </DropdownMenu>
 {/if}

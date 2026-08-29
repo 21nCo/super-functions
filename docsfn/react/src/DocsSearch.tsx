@@ -13,9 +13,10 @@ import {
 } from "@docsfn/core";
 import {
   Dialog,
-  DialogPortal,
-  DialogOverlay,
+  DialogBackdrop as DialogOverlay,
   DialogContent,
+  DialogPortal,
+  DialogPositioner,
 } from "@uifn/react";
 import { ScrollArea } from "@uifn/react";
 import { navigateTo } from "./navigation";
@@ -225,7 +226,8 @@ export function DocsSearch({
 
       <DialogPortal>
         <DialogOverlay className="docsfn-search-overlay" />
-        <DialogContent className="docsfn-search-content" onKeyDown={handleKeyDown}>
+        <DialogPositioner>
+          <DialogContent className="docsfn-search-content" onKeyDown={handleKeyDown}>
           <div className="docsfn-search-header">
             <span className="docsfn-search-icon" aria-hidden="true">
               <Search size={18} strokeWidth={1.8} />
@@ -299,7 +301,8 @@ export function DocsSearch({
               </div>
             ) : null}
           </ScrollArea>
-        </DialogContent>
+          </DialogContent>
+        </DialogPositioner>
       </DialogPortal>
     </Dialog>
   );

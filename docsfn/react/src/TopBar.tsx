@@ -2,10 +2,11 @@ import React, { useState } from "react";
 import type { DocsTopNavItem } from "@docsfn/core";
 import { BookOpen, ChevronDown, ExternalLink, Menu, X } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+  Menu as DropdownMenu,
+  MenuContent as DropdownMenuContent,
+  MenuItem as DropdownMenuItem,
+  MenuPositioner as DropdownMenuPositioner,
+  MenuTrigger as DropdownMenuTrigger,
 } from "@uifn/react";
 import type { DocsPageSurface } from "./DocsLayout";
 
@@ -121,13 +122,18 @@ export function TopBar({
                     {item.label}
                     <ChevronDown size={13} strokeWidth={1.8} aria-hidden="true" />
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent className="docsfn-topbar-dropdown-content">
-                    {item.items.map((subItem, subIndex) => (
-                      <DropdownMenuItem key={`${subItem.label}:${subIndex}`}>
-                        {renderLink(subItem, "docsfn-topbar-dropdown-item")}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
+                  <DropdownMenuPositioner>
+                    <DropdownMenuContent className="docsfn-topbar-dropdown-content">
+                      {item.items.map((subItem, subIndex) => (
+                        <DropdownMenuItem
+                          key={`${subItem.label}:${subIndex}`}
+                          value={`${subItem.label}:${subIndex}`}
+                        >
+                          {renderLink(subItem, "docsfn-topbar-dropdown-item")}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenuPositioner>
                 </DropdownMenu>
               );
             }

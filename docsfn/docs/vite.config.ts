@@ -8,7 +8,6 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const svelteSrc = path.resolve(dirname, "../svelte/src");
 const coreSrc = path.resolve(dirname, "../core/src");
 const uifnSvelteSrc = path.resolve(dirname, "../../uifn/svelte/lib/index.ts");
-const uifnCoreSrc = path.resolve(dirname, "../../uifn/core/src");
 const searchfnRoot = path.resolve(dirname, "../../searchfn");
 
 export default defineConfig({
@@ -20,8 +19,6 @@ export default defineConfig({
       { find: "@docsfn/core/analytics", replacement: path.join(coreSrc, "analytics.ts") },
       { find: "@docsfn/core/browser", replacement: path.join(coreSrc, "browser.ts") },
       { find: "@uifn/svelte", replacement: uifnSvelteSrc },
-      { find: /^@uifn\/core$/, replacement: path.join(uifnCoreSrc, "index.ts") },
-      { find: /^@uifn\/core\/(.*)$/, replacement: `${uifnCoreSrc}/$1` },
       { find: "@searchfn/client", replacement: path.join(searchfnRoot, "client/src/index.ts") },
       { find: "@searchfn/core", replacement: path.join(searchfnRoot, "core/src/index.ts") },
       { find: "@searchfn/adapter-contracts", replacement: path.join(searchfnRoot, "adapter-contracts/src/index.ts") },
