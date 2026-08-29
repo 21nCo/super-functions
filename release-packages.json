@@ -108,5 +108,12 @@
   { "slug": "searchfn-adapter-opensearch", "path": "searchfn/adapter-opensearch", "name": "@searchfn/adapter-opensearch" },
   { "slug": "searchfn-adapter-postgres", "path": "searchfn/adapter-postgres", "name": "@searchfn/adapter-postgres" },
   { "slug": "searchfn-core-wasm", "path": "searchfn/core-wasm", "name": "@searchfn/core-wasm" },
-  { "slug": "searchfn-server", "path": "searchfn/server", "name": "@searchfn/server" }
+  { "slug": "searchfn-server", "path": "searchfn/server", "name": "@searchfn/server" },
+  { "slug": "docsfn-core", "path": "docsfn/core", "name": "@docsfn/core" },
+  { "slug": "docsfn-next", "path": "docsfn/next", "name": "@docsfn/next" },
+  { "slug": "docsfn-provider-fs", "path": "docsfn/provider-fs", "name": "@docsfn/provider-fs" },
+  { "slug": "docsfn-sveltekit", "path": "docsfn/sveltekit", "name": "@docsfn/sveltekit" },
+  { "slug": "docsfn-cli", "path": "docsfn/cli", "name": "@docsfn/cli" },
+  { "slug": "docsfn-react", "path": "docsfn/react", "name": "@docsfn/react" },
+  { "slug": "docsfn-svelte", "path": "docsfn/svelte", "name": "@docsfn/svelte" }
 ]
