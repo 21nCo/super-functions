@@ -27,4 +27,10 @@ describe('verification extraction markup handling', () => {
   it('does not extract from an unclosed executable block', () => {
     expect(extractOtp(message('<script>verification code 111111'))).toBeNull();
   });
+
+  it('extracts bounded contextual and generic digit runs', () => {
+    expect(extractOtp(message('<p>Your login PIN is 4321.</p>'))?.value).toBe('4321');
+    expect(extractOtp(message('<p>Reference 987654 is ready.</p>'))?.value).toBe('987654');
+    expect(extractOtp(message('<p>Login 12345678901</p>'))).toBeNull();
+  });
 });

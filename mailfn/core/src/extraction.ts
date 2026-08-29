@@ -1,8 +1,15 @@
 import type { ExtractedVerification, Message } from './types.js';
 
-const OTP_PATTERNS = [
-  /(?:verification|security|login|one[- ]time|auth(?:entication)?|confirm(?:ation)?)\s*(?:code|pin|otp)?\s*(?:is|:|-)?\s*([0-9]{4,10})/i,
-  /\b([0-9]{6})\b/,
+const OTP_CONTEXT_TERMS = [
+  'verification',
+  'security',
+  'login',
+  'one-time',
+  'one time',
+  'authentication',
+  'auth',
+  'confirmation',
+  'confirm',
 ];
 
 const LINK_PATTERN = /https?:\/\/[^\s<>"']+/gi;
@@ -11,14 +18,48 @@ const VERIFY_TERMS = /verify|verification|confirm|activate|magic|login|reset|rec
 export function extractOtp(message: Message): ExtractedVerification | null {
   for (const [field, value] of verificationFields(message)) {
     const plain = stripMarkup(value);
-    for (const pattern of OTP_PATTERNS) {
-      const match = pattern.exec(plain);
-      if (match?.[1]) {
-        return source(message, 'otp', match[1], field);
-      }
+    const contextual = contextualOtp(plain);
+    if (contextual) {
+      return source(message, 'otp', contextual, field);
+    }
+    const generic = findDigitCode(plain, 6, 6);
+    if (generic) {
+      return source(message, 'otp', generic, field);
     }
   }
   return null;
+}
+
+function contextualOtp(value: string): string | null {
+  const lower = value.toLowerCase();
+  let contextStart = -1;
+  for (const term of OTP_CONTEXT_TERMS) {
+    const index = lower.indexOf(term);
+    if (index !== -1 && (contextStart === -1 || index < contextStart)) contextStart = index;
+  }
+  return contextStart === -1
+    ? null
+    : findDigitCode(value.slice(contextStart, contextStart + 160), 4, 10);
+}
+
+function findDigitCode(value: string, minimumLength: number, maximumLength: number): string | null {
+  let cursor = 0;
+  while (cursor < value.length) {
+    if (!isAsciiDigit(value.charCodeAt(cursor))) {
+      cursor += 1;
+      continue;
+    }
+
+    const start = cursor;
+    while (cursor < value.length && isAsciiDigit(value.charCodeAt(cursor))) cursor += 1;
+    const length = cursor - start;
+    if (length >= minimumLength && length <= maximumLength) return value.slice(start, cursor);
+  }
+  return null;
+}
+
+function isAsciiDigit(code: number): boolean {
+  return code >= 48 && code <= 57;
 }
 
 export function extractVerificationLink(message: Message): ExtractedVerification | null {
