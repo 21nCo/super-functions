@@ -305,6 +305,22 @@ describe("OAuth diagnostic redaction", () => {
     expect(redacted).not.toContain("right");
   });
 
+  it("redacts complete unquoted credentials across punctuation delimiters", () => {
+    expect(
+      redactOAuthValue("client_secret=abc,def; visible=yes; password=abc;def"),
+    ).toBe("client_secret=[REDACTED]; visible=yes; password=[REDACTED]");
+  });
+
+  it("redacts unterminated quoted credentials through the end of the line", () => {
+    const doubleQuoted = redactOAuthValue('password="secret suffix');
+    const singleQuoted = redactOAuthValue("client_secret='left right");
+
+    expect(doubleQuoted).toBe('password="[REDACTED]"');
+    expect(singleQuoted).toBe("client_secret='[REDACTED]'");
+    expect(doubleQuoted).not.toContain("suffix");
+    expect(singleQuoted).not.toContain("right");
+  });
+
   it("stops iterating Maps and Sets at the configured entry cap", () => {
     let mapClosed = false;
     let setClosed = false;
