@@ -1,0 +1,33 @@
+{
+  "name": "@mdfn/extensions",
+  "version": "0.1.0",
+  "description": "Certified Markdown extension packs for mdfn",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.cjs" },
+    "./commonmark": { "types": "./dist/commonmark.d.ts", "import": "./dist/commonmark.js", "require": "./dist/commonmark.cjs" },
+    "./gfm": { "types": "./dist/gfm.d.ts", "import": "./dist/gfm.js", "require": "./dist/gfm.cjs" },
+    "./callout": { "types": "./dist/callout.d.ts", "import": "./dist/callout.js", "require": "./dist/callout.cjs" },
+    "./diagram": { "types": "./dist/diagram.d.ts", "import": "./dist/diagram.js", "require": "./dist/diagram.cjs" },
+    "./directives": { "types": "./dist/directives.d.ts", "import": "./dist/directives.js", "require": "./dist/directives.cjs" }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/commonmark.ts src/gfm.ts src/callout.ts src/diagram.ts src/directives.ts --format esm,cjs --dts --sourcemap --clean",
+    "test": "vitest run --config ../vitest.config.ts --root .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "dependencies": { "@mdfn/core": "0.1.0" },
+  "devDependencies": { "@mdfn/markdown": "0.1.0", "@mdfn/render": "0.1.0", "@mdfn/testing": "0.1.0", "tsup": "^8.0.0", "typescript": "^5.3.0", "vitest": "3.2.4" },
+  "files": ["dist", "README.md"],
+  "license": "MIT",
+  "engines": { "node": ">=20 <25" },
+  "repository": { "type": "git", "url": "git+https://github.com/21nCo/super-functions.git", "directory": "mdfn/extensions" },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "mdfn": { "status": "stable-candidate", "layer": "extensions", "schemaVersion": 1 }
+}

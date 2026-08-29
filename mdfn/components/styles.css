@@ -1,0 +1,25 @@
+[data-mdfn-component="toolbar"] { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; padding: .375rem; border-block-end: 1px solid var(--uifn-color-border, #d4d4d8); }
+[data-mdfn-component="editor-shell"] { display: grid; min-block-size: 12rem; border: 1px solid var(--uifn-color-border, #d4d4d8); border-radius: .5rem; overflow: clip; background: var(--uifn-color-bg, #fff); color: var(--uifn-color-fg, #18181b); }
+[data-mdfn-toolbar-group] { display: inline-flex; align-items: center; gap: .125rem; }
+[data-mdfn-editor="visual"] { white-space: pre-wrap; }
+[data-mdfn-surface] { min-inline-size: 0; padding: .75rem; }
+[data-mode="split"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+[data-mdfn-component="authoring-chrome"] { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: .5rem; padding: .5rem; border-block-end: 1px solid var(--uifn-color-border, #d4d4d8); }
+[data-mdfn-component="authoring-chrome"] > [data-mdfn-surface="mode-switcher"], [data-mdfn-component="authoring-chrome"] > [data-mdfn-surface="bubble-toolbar"] { grid-column: 1 / -1; }
+[data-mdfn-surface="bubble-toolbar"] { position: sticky; inset-block-start: 0; z-index: 2; background: var(--uifn-color-bg, #fff); box-shadow: 0 .25rem .75rem color-mix(in srgb, currentColor 12%, transparent); }
+[data-mdfn-surface="outline"] [data-level="2"] { padding-inline-start: 1rem; }
+[data-mdfn-surface="outline"] [data-level="3"] { padding-inline-start: 2rem; }
+[data-mdfn-surface="diagnostics"] [data-severity="error"] { color: var(--uifn-color-danger, #b91c1c); }
+[data-mdfn-surface="diagnostics"] [data-severity="warning"] { color: var(--uifn-color-warning, #92400e); }
+[data-mdfn-component="authoring-chrome"] :focus-visible, [data-mdfn-editor]:focus-visible { outline: 2px solid var(--uifn-color-focus, #2563eb); outline-offset: 2px; }
+@media (max-width: 48rem) {
+  [data-mode="split"] { grid-template-columns: 1fr; }
+  [data-mdfn-component="authoring-chrome"] { grid-template-columns: 1fr; max-block-size: 45vh; overflow: auto; overscroll-behavior: contain; }
+  [data-mdfn-component="toolbar"] { overflow-x: auto; flex-wrap: nowrap; }
+}
+@media (prefers-contrast: more) {
+  [data-mdfn-component="editor-shell"], [data-mdfn-component="toolbar"] { border-width: 2px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-mdfn-component="editor-shell"] * { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}

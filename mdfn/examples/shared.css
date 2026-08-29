@@ -1,0 +1,252 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  color: #17211b;
+  background:
+    radial-gradient(circle at 10% 0%, rgb(196 229 194 / 62%), transparent 32rem),
+    linear-gradient(180deg, #f6f4ec 0%, #ece9df 100%);
+  --example-ink: #17211b;
+  --example-muted: #5f695f;
+  --example-line: #ccd2c8;
+  --example-accent: #28603f;
+  --example-surface: rgb(255 255 252 / 88%);
+  --uifn-color-bg: #fffef9;
+  --uifn-color-fg: #17211b;
+  --uifn-color-border: #cdd4ca;
+  --uifn-color-focus: #28603f;
+  --uifn-color-accent-solid: #28603f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-inline-size: 20rem;
+  min-block-size: 100vh;
+}
+
+button, input, textarea { font: inherit; }
+
+.example-app {
+  inline-size: min(100% - 2rem, 92rem);
+  margin-inline: auto;
+  padding-block: 2.5rem 4rem;
+}
+
+.example-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(16rem, .7fr);
+  align-items: end;
+  gap: 2rem;
+  padding: 1rem 0 2rem;
+}
+
+.example-kicker {
+  margin: 0 0 .75rem;
+  color: var(--example-accent);
+  font-size: .75rem;
+  font-weight: 800;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.example-hero h1 {
+  max-inline-size: 16ch;
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2.6rem, 7vw, 5.8rem);
+  font-weight: 500;
+  letter-spacing: -.055em;
+  line-height: .93;
+}
+
+.example-intro {
+  max-inline-size: 36rem;
+  margin: 1.25rem 0 0;
+  color: var(--example-muted);
+  font-size: clamp(1rem, 1.5vw, 1.2rem);
+  line-height: 1.65;
+}
+
+.example-meta {
+  display: grid;
+  gap: .75rem;
+  margin: 0;
+  padding: 1rem 1.1rem;
+  border-block: 1px solid var(--example-line);
+}
+
+.example-meta div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.example-meta dt {
+  color: var(--example-muted);
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.example-meta dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+.example-status {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+}
+
+.example-status::before {
+  content: "";
+  inline-size: .55rem;
+  block-size: .55rem;
+  border-radius: 999px;
+  background: #2f8751;
+  box-shadow: 0 0 0 .22rem rgb(47 135 81 / 15%);
+}
+
+.example-workspace {
+  overflow: hidden;
+  border: 1px solid var(--example-line);
+  border-radius: 1rem;
+  background: var(--example-surface);
+  box-shadow: 0 1.75rem 5rem rgb(35 48 38 / 12%);
+  backdrop-filter: blur(1rem);
+}
+
+.example-workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .9rem 1rem;
+  border-block-end: 1px solid var(--example-line);
+  background: rgb(246 244 236 / 78%);
+}
+
+.example-document-name {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  margin: 0;
+  font-size: .9rem;
+  font-weight: 750;
+}
+
+.example-document-name::before {
+  content: "MD";
+  display: grid;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  border-radius: .45rem;
+  color: #fff;
+  background: var(--example-accent);
+  font-size: .64rem;
+  letter-spacing: .04em;
+}
+
+.example-reset {
+  min-block-size: 2.2rem;
+  border: 1px solid #aeb8ad;
+  border-radius: 999px;
+  padding: .35rem .85rem;
+  color: var(--example-ink);
+  background: #fffef9;
+  cursor: pointer;
+}
+
+.example-reset:hover { border-color: var(--example-accent); color: var(--example-accent); }
+.example-reset:focus-visible { outline: 2px solid var(--example-accent); outline-offset: 2px; }
+
+.example-workspace [data-mdfn-component="editor-shell"] {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.example-workspace [data-mdfn-component="authoring-chrome"] {
+  background: rgb(246 244 236 / 70%);
+}
+
+.example-workspace [data-mdfn-surface="visual"],
+.example-workspace [data-mdfn-surface="source"],
+.example-workspace [data-mdfn-surface="preview"] {
+  min-block-size: 28rem;
+  background: #fffef9;
+}
+
+.example-workspace .ProseMirror,
+.example-workspace .cm-editor,
+.example-workspace [data-mdfn-surface="preview"] {
+  min-block-size: 26rem;
+  padding: clamp(1.25rem, 4vw, 3.5rem);
+  outline: none;
+  line-height: 1.7;
+}
+
+.example-workspace .ProseMirror,
+.example-workspace [data-mdfn-surface="preview"] {
+  max-inline-size: 54rem;
+  margin-inline: auto;
+}
+
+.example-workspace .ProseMirror h1,
+.example-workspace [data-mdfn-surface="preview"] h1 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  font-weight: 500;
+  letter-spacing: -.04em;
+  line-height: 1.05;
+}
+
+.example-workspace blockquote {
+  margin-inline: 0;
+  border-inline-start: .25rem solid #7ba488;
+  padding-inline-start: 1rem;
+  color: var(--example-muted);
+}
+
+.example-workspace table { inline-size: 100%; border-collapse: collapse; }
+.example-workspace th, .example-workspace td { border-block-end: 1px solid var(--example-line); padding: .55rem; text-align: start; }
+
+.example-source-card {
+  display: grid;
+  grid-template-columns: minmax(0, .35fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  margin-block-start: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--example-line);
+  border-radius: .9rem;
+  background: rgb(255 255 252 / 72%);
+}
+
+.example-source-card h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 1.6rem; font-weight: 500; }
+.example-source-card p { margin: .5rem 0 0; color: var(--example-muted); line-height: 1.55; }
+
+.example-source {
+  overflow: auto;
+  max-block-size: 24rem;
+  margin: 0;
+  border-radius: .65rem;
+  padding: 1rem;
+  color: #dfeade;
+  background: #18231c;
+  font: .8rem/1.65 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 52rem) {
+  .example-app { inline-size: min(100% - 1rem, 92rem); padding-block-start: 1rem; }
+  .example-hero, .example-source-card { grid-template-columns: 1fr; }
+  .example-hero h1 { max-inline-size: 12ch; }
+  .example-workspace-header { align-items: flex-start; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+}

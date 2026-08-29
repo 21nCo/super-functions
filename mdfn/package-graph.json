@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "graphId": "mdfn-1.0-dag",
+  "frameworks": ["react", "svelte", "solid"],
+  "stable": [
+    { "name": "@mdfn/core", "path": "mdfn/core", "layer": "core", "dependencies": [] },
+    { "name": "@mdfn/markdown", "path": "mdfn/markdown", "layer": "markdown", "dependencies": ["@mdfn/core"] },
+    { "name": "@mdfn/render", "path": "mdfn/render", "layer": "render", "dependencies": ["@mdfn/core"] },
+    { "name": "@mdfn/extensions", "path": "mdfn/extensions", "layer": "extensions", "dependencies": ["@mdfn/core"] },
+    { "name": "@mdfn/dom", "path": "mdfn/dom", "layer": "browser", "dependencies": ["@mdfn/core", "@mdfn/markdown"] },
+    { "name": "@mdfn/source", "path": "mdfn/source", "layer": "browser", "dependencies": ["@mdfn/core", "@mdfn/markdown", "@mdfn/render"] },
+    { "name": "@mdfn/adapter-kit", "path": "mdfn/adapter-kit", "layer": "adapter-kit", "dependencies": ["@mdfn/core"] },
+    { "name": "@mdfn/react", "path": "mdfn/react", "layer": "adapter", "dependencies": ["@mdfn/core", "@mdfn/dom", "@mdfn/source", "@mdfn/adapter-kit"] },
+    { "name": "@mdfn/svelte", "path": "mdfn/svelte", "layer": "adapter", "dependencies": ["@mdfn/core", "@mdfn/dom", "@mdfn/source", "@mdfn/adapter-kit"] },
+    { "name": "@mdfn/solid", "path": "mdfn/solid", "layer": "adapter", "dependencies": ["@mdfn/core", "@mdfn/dom", "@mdfn/source", "@mdfn/adapter-kit"] },
+    { "name": "@mdfn/components", "path": "mdfn/components", "layer": "components", "dependencies": ["@mdfn/core"] },
+    { "name": "@mdfn/components-react", "path": "mdfn/components-react", "layer": "components-adapter", "dependencies": ["@mdfn/core", "@mdfn/react", "@mdfn/components"] },
+    { "name": "@mdfn/components-svelte", "path": "mdfn/components-svelte", "layer": "components-adapter", "dependencies": ["@mdfn/core", "@mdfn/svelte", "@mdfn/components"] },
+    { "name": "@mdfn/components-solid", "path": "mdfn/components-solid", "layer": "components-adapter", "dependencies": ["@mdfn/core", "@mdfn/solid", "@mdfn/components"] },
+    { "name": "@mdfn/testing", "path": "mdfn/testing", "layer": "testing", "dependencies": ["@mdfn/core", "@mdfn/markdown", "@mdfn/render"] },
+    { "name": "@mdfn/registry", "path": "mdfn/registry", "layer": "registry", "dependencies": ["@mdfn/core"] },
+    { "name": "mdfn", "path": "mdfn/facade", "layer": "facade", "dependencies": ["@mdfn/core", "@mdfn/markdown", "@mdfn/render", "@mdfn/extensions"] }
+  ],
+  "optional": [
+    { "name": "@mdfn/collab", "path": "mdfn/collab", "layer": "platform", "dependencies": ["@mdfn/core"] },
+    { "name": "@mdfn/client", "path": "mdfn/client", "layer": "platform", "dependencies": ["@mdfn/core"] },
+    { "name": "@mdfn/server", "path": "mdfn/server", "layer": "platform", "dependencies": ["@mdfn/core", "@mdfn/markdown"] },
+    { "name": "@mdfn/filefn", "path": "mdfn/filefn", "layer": "bridge", "dependencies": ["@mdfn/core"] },
+    { "name": "@mdfn/contentfn", "path": "mdfn/contentfn", "layer": "bridge", "dependencies": ["@mdfn/core"] },
+    { "name": "@mdfn/searchfn", "path": "mdfn/searchfn", "layer": "bridge", "dependencies": ["@mdfn/core", "@mdfn/render"] },
+    { "name": "@mdfn/ai", "path": "mdfn/ai", "layer": "bridge", "dependencies": ["@mdfn/core"] }
+  ]
+}

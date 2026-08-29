@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "outDir": "dist", "rootDir": "src", "jsx": "preserve", "jsxImportSource": "solid-js", "noEmit": true, "types": ["vitest/globals"] },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["dist", "node_modules", "src/**/*.test.ts", "src/**/*.test.tsx"]
+}
