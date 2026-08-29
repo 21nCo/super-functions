@@ -385,6 +385,10 @@ try {
     "scripts/resolve-release-tag.mjs",
     `superfunctions-oauth-core-v${packageVersion("packages/oauth-core")}`,
   ]);
+  run("release-tag:core", process.execPath, [
+    "scripts/resolve-release-tag.mjs",
+    `mcpfn-core-v${packageVersion("mcpfn/core")}`,
+  ]);
   run("release-tag:client", process.execPath, [
     "scripts/resolve-release-tag.mjs",
     `mcpfn-client-v${packageVersion("mcpfn/client")}`,
