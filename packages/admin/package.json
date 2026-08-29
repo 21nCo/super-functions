@@ -23,7 +23,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@mcpfn/core": "0.0.1"
+    "@mcpfn/core": "0.0.2"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
