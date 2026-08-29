@@ -12,7 +12,7 @@ describe('MailFnClient', () => {
     const readFetch = vi.fn()
       .mockResolvedValueOnce(envelope(null, 503, { code: 'MAILFN_STORAGE_FAILED', message: 'down', retryable: true }))
       .mockResolvedValueOnce(envelope([]));
-    await expect(new MailFnClient({ baseUrl: 'https://mailfn.test/', token: 'token', fetch: readFetch, retries: 1 }).listInboxes()).resolves.toEqual([]);
+    await expect(new MailFnClient({ baseUrl: 'https://mailfn.test////', token: 'token', fetch: readFetch, retries: 1 }).listInboxes()).resolves.toEqual([]);
     expect(readFetch).toHaveBeenCalledTimes(2);
 
     const createFetch = vi.fn()

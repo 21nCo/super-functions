@@ -58,7 +58,60 @@ function verificationFields(message: Message): Array<['subject' | 'text' | 'html
 }
 
 function stripMarkup(value: string): string {
-  return value.replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<[^>]+>/g, ' ');
+  const lower = value.toLowerCase();
+  let cursor = 0;
+  let plain = '';
+
+  while (cursor < value.length) {
+    const tagStart = value.indexOf('<', cursor);
+    if (tagStart === -1) return plain + value.slice(cursor);
+
+    plain += value.slice(cursor, tagStart);
+    const tagEnd = value.indexOf('>', tagStart + 1);
+    if (tagEnd === -1) return `${plain} `;
+
+    const tagName = openingTagName(lower, tagStart + 1, tagEnd);
+    if (tagName === 'script' || tagName === 'style') {
+      cursor = closingTagEnd(lower, tagName, tagEnd + 1);
+    } else {
+      cursor = tagEnd + 1;
+    }
+    plain += ' ';
+  }
+
+  return plain;
+}
+
+function openingTagName(value: string, start: number, end: number): string {
+  let cursor = start;
+  while (cursor < end && isHtmlWhitespace(value[cursor]!)) cursor += 1;
+  if (value[cursor] === '/') return '';
+  const nameStart = cursor;
+  while (cursor < end && isTagNameCharacter(value[cursor]!)) cursor += 1;
+  return value.slice(nameStart, cursor);
+}
+
+function closingTagEnd(value: string, tagName: 'script' | 'style', start: number): number {
+  const token = `</${tagName}`;
+  let candidate = value.indexOf(token, start);
+  while (candidate !== -1) {
+    const boundary = value[candidate + token.length];
+    if (boundary === '>' || (boundary !== undefined && isHtmlWhitespace(boundary))) {
+      const end = value.indexOf('>', candidate + token.length);
+      return end === -1 ? value.length : end + 1;
+    }
+    candidate = value.indexOf(token, candidate + token.length);
+  }
+  return value.length;
+}
+
+function isHtmlWhitespace(value: string): boolean {
+  return value === ' ' || value === '\t' || value === '\n' || value === '\r' || value === '\f';
+}
+
+function isTagNameCharacter(value: string): boolean {
+  const code = value.charCodeAt(0);
+  return (code >= 97 && code <= 122) || (code >= 48 && code <= 57) || value === '-' || value === ':';
 }
 
 function source(

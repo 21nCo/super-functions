@@ -61,7 +61,7 @@ export class MailFnClient {
   private readonly retries: number;
 
   public constructor(private readonly config: MailFnClientConfig) {
-    this.baseUrl = config.baseUrl.replace(/\/+$/, '');
+    this.baseUrl = stripTrailingSlashes(config.baseUrl);
     this.fetcher = config.fetch ?? globalThis.fetch;
     this.timeoutMs = Math.max(1, config.timeoutMs ?? 30_000);
     this.retries = Math.max(0, Math.min(5, config.retries ?? 2));
@@ -400,6 +400,12 @@ export class MailFnClient {
     }
     throw new MailFnClientError('MAILFN_NETWORK_ERROR', 'MailFn network request failed', 0, true, undefined, undefined, { cause: lastError });
   }
+}
+
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(0, end);
 }
 
 export interface RequestOptions {
