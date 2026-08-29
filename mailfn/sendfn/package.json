@@ -1,0 +1,21 @@
+{
+  "name": "@mailfn/sendfn",
+  "version": "0.1.0",
+  "description": "SendFn composition adapter for MailFn outbound, reply, and forward flows",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist", "README.md"],
+  "scripts": { "build": "tsc", "test": "vitest run", "typecheck": "tsc --noEmit", "lint": "tsc --noEmit", "clean": "rm -rf dist" },
+  "keywords": ["mailfn", "sendfn", "email", "reply"],
+  "author": "21n",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/21nCo/super-functions.git", "directory": "mailfn/sendfn" },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "dependencies": { "@mailfn/core": "0.1.0" },
+  "peerDependencies": { "sendfn": ">=0.0.4" },
+  "peerDependenciesMeta": { "sendfn": { "optional": true } },
+  "devDependencies": { "@superfunctions/db": "0.2.0", "typescript": "^5.6.0", "vitest": "3.2.4" }
+}

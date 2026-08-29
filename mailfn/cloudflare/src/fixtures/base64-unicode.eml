@@ -1,0 +1,9 @@
+From: =?UTF-8?B?0KLQtdGB0YI=?= <unicode@example.com>
+To: target@inbound.example.com
+Subject: =?UTF-8?B?0J/RgNC40LLQtdGCIOKckw==?=
+Message-ID: <base64@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: base64
+
+VW5pY29kZSBib2R5IOKckw==

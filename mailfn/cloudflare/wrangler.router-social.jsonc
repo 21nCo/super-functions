@@ -1,0 +1,50 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "router-mailfn",
+  "account_id": "1befb9044360e6ea040ea5038f8ddb5a",
+  "main": "src/entrypoint.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [
+    { "pattern": "mailfn.router.social", "custom_domain": true }
+  ],
+  "vars": {
+    "MAILFN_DOMAIN": "router.social",
+    "MAILFN_PROJECT_ID": "prj_e54fc56af8f04ab69e4e5b1f7bbd2ef0",
+    "MAILFN_PUBLIC_PLATFORM_ENABLED": "false",
+    "MAILFN_PRODUCTION_SECURITY_APPROVED": "false",
+    "MAILFN_BILLING_ENABLED": "false",
+    "MAILFN_SUPPORT_ENABLED": "false",
+    "MAILFN_PROTOCOL_SERVICES_ENABLED": "false",
+    "MAILFN_ALLOWED_DATA_REGIONS": "apac",
+    "MAILFN_STORAGE_REGION": "apac"
+  },
+  "d1_databases": [
+    {
+      "binding": "MAILFN_DB",
+      "database_name": "router-mailfn",
+      "database_id": "2e58c167-1ec8-46e6-a5c9-2a6ce34720e8",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    { "binding": "MAILFN_OBJECTS", "bucket_name": "router-mailfn-objects" }
+  ],
+  "queues": {
+    "producers": [
+      { "binding": "MAILFN_PARSE_QUEUE", "queue": "router-mailfn-parse" }
+    ],
+    "consumers": [
+      {
+        "queue": "router-mailfn-parse",
+        "max_batch_size": 10,
+        "max_retries": 5,
+        "dead_letter_queue": "router-mailfn-parse-dlq"
+      }
+    ]
+  },
+  "triggers": { "crons": ["*/15 * * * *"] },
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}

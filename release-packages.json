@@ -108,5 +108,13 @@
   { "slug": "searchfn-adapter-opensearch", "path": "searchfn/adapter-opensearch", "name": "@searchfn/adapter-opensearch" },
   { "slug": "searchfn-adapter-postgres", "path": "searchfn/adapter-postgres", "name": "@searchfn/adapter-postgres" },
   { "slug": "searchfn-core-wasm", "path": "searchfn/core-wasm", "name": "@searchfn/core-wasm" },
-  { "slug": "searchfn-server", "path": "searchfn/server", "name": "@searchfn/server" }
+  { "slug": "searchfn-server", "path": "searchfn/server", "name": "@searchfn/server" },
+  { "slug": "mailfn-core", "path": "mailfn/core", "name": "@mailfn/core" },
+  { "slug": "mailfn-client", "path": "mailfn/client", "name": "@mailfn/client" },
+  { "slug": "mailfn-cloudflare", "path": "mailfn/cloudflare", "name": "@mailfn/cloudflare" },
+  { "slug": "mailfn-testing", "path": "mailfn/testing", "name": "@mailfn/testing" },
+  { "slug": "mailfn-cli", "path": "mailfn/cli", "name": "@mailfn/cli" },
+  { "slug": "mailfn-mcp", "path": "mailfn/mcp", "name": "@mailfn/mcp" },
+  { "slug": "mailfn-sendfn", "path": "mailfn/sendfn", "name": "@mailfn/sendfn" },
+  { "slug": "mailfn", "path": "mailfn/facade", "name": "mailfn" }
 ]
