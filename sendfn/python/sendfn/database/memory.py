@@ -44,13 +44,13 @@ class MemoryAdapter:
         self.version = "0.1.0"
         self.capabilities = AdapterCapabilities(
             transactions=False,
-            nested_transactions=False,
+            nestedTransactions=False,
             joins=False,
-            full_text_search=False,
-            json_operations=True,
-            schema_management=False,
-            migration_support=False,
-            batch_operations=True,
+            fullTextSearch=False,
+            jsonOperations=True,
+            schemaManagement=False,
+            migrationSupport=False,
+            batchOperations=True,
         )
 
         # Storage: model_name -> {id -> record}
@@ -223,6 +223,7 @@ class MemoryAdapter:
         return HealthStatus(
             healthy=True,
             connections={"total": 1, "active": 1},
+            lastError=None,
             uptime=uptime,
         )
 

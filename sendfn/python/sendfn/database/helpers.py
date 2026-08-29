@@ -12,8 +12,11 @@ from superfunctions.db import (
     Adapter,
     CreateParams,
     DeleteParams,
+    Direction,
     FindManyParams,
     FindOneParams,
+    Operator,
+    OrderBy,
     UpdateParams,
     WhereClause,
 )
@@ -83,7 +86,7 @@ async def update_email_transaction(db: Adapter, id: str, data: dict) -> EmailTra
     result = await db.update(
         UpdateParams(
             model="email_transactions",
-            where=[WhereClause(field="id", operator="eq", value=id)],
+            where=[WhereClause(field="id", operator=Operator.EQ, value=id)],
             data={**data, "updatedAt": datetime.utcnow()},
         )
     )
@@ -95,7 +98,7 @@ async def get_email_transaction(db: Adapter, id: str) -> Optional[EmailTransacti
     result = await db.find_one(
         FindOneParams(
             model="email_transactions",
-            where=[WhereClause(field="id", operator="eq", value=id)],
+            where=[WhereClause(field="id", operator=Operator.EQ, value=id)],
         )
     )
     return EmailTransaction.model_validate(result) if result else None
@@ -111,7 +114,7 @@ async def get_email_transaction_by_provider_message_id(
             where=[
                 WhereClause(
                     field="providerMessageId",
-                    operator="eq",
+                    operator=Operator.EQ,
                     value=provider_message_id,
                 )
             ],
@@ -138,7 +141,7 @@ async def _get_reference_record(
         await db.find_one(
             FindOneParams(
                 model=model,
-                where=[WhereClause(field="id", operator="eq", value=reference_id)],
+                where=[WhereClause(field="id", operator=Operator.EQ, value=reference_id)],
             )
         ),
     )
@@ -170,10 +173,10 @@ async def get_events_by_reference(
         FindManyParams(
             model="communication_events",
             where=[
-                WhereClause(field="referenceId", operator="eq", value=reference_id),
-                WhereClause(field="referenceType", operator="eq", value=reference_type),
+                WhereClause(field="referenceId", operator=Operator.EQ, value=reference_id),
+                WhereClause(field="referenceType", operator=Operator.EQ, value=reference_type),
             ],
-            order_by=[{"field": "eventTimestamp", "direction": "asc"}],
+            orderBy=[OrderBy(field="eventTimestamp", direction=Direction.ASC)],
         )
     )
     return [CommunicationEvent.model_validate(r) for r in results]
@@ -192,17 +195,17 @@ async def find_events(db: Adapter, params: dict) -> list[CommunicationEvent]:
 
     where = []
     if params.get("reference_id"):
-        where.append(WhereClause(field="referenceId", operator="eq", value=params["reference_id"]))
+        where.append(WhereClause(field="referenceId", operator=Operator.EQ, value=params["reference_id"]))
     if params.get("reference_type"):
-        where.append(WhereClause(field="referenceType", operator="eq", value=params["reference_type"]))
+        where.append(WhereClause(field="referenceType", operator=Operator.EQ, value=params["reference_type"]))
     if params.get("event_type"):
-        where.append(WhereClause(field="eventType", operator="eq", value=params["event_type"]))
+        where.append(WhereClause(field="eventType", operator=Operator.EQ, value=params["event_type"]))
     if params.get("provider"):
-        where.append(WhereClause(field="provider", operator="eq", value=params["provider"]))
+        where.append(WhereClause(field="provider", operator=Operator.EQ, value=params["provider"]))
     if start_at:
-        where.append(WhereClause(field="eventTimestamp", operator="gte", value=start_at))
+        where.append(WhereClause(field="eventTimestamp", operator=Operator.GTE, value=start_at))
     if end_at:
-        where.append(WhereClause(field="eventTimestamp", operator="lt", value=end_at))
+        where.append(WhereClause(field="eventTimestamp", operator=Operator.LT, value=end_at))
     if params.get("provider_message_id") and params.get("reference_type") == "push":
         return []
 
@@ -212,7 +215,7 @@ async def find_events(db: Adapter, params: dict) -> list[CommunicationEvent]:
             where=where if where else None,
             limit=None if requires_reference_filtering else limit,
             offset=None if requires_reference_filtering else offset,
-            order_by=[{"field": "eventTimestamp", "direction": "asc"}],
+            orderBy=[OrderBy(field="eventTimestamp", direction=Direction.ASC)],
         )
     )
 
@@ -264,7 +267,7 @@ async def get_suppression_list_entry(db: Adapter, email: str) -> Optional[Suppre
             where=[
                 WhereClause(
                     field="email",
-                    operator="eq",
+                    operator=Operator.EQ,
                     value=normalize_suppression_email(email),
                 )
             ],
@@ -302,7 +305,7 @@ async def remove_from_suppression_list(db: Adapter, email: str) -> None:
         await db.delete(
             DeleteParams(
                 model="suppression_list",
-                where=[WhereClause(field="id", operator="eq", value=str(entry.id))],
+                where=[WhereClause(field="id", operator=Operator.EQ, value=str(entry.id))],
             )
         )
 
@@ -311,7 +314,7 @@ async def find_suppression_list(db: Adapter, params: dict) -> list[SuppressionLi
     """Find suppression list entries matching criteria."""
     where = []
     if params.get("reason"):
-        where.append(WhereClause(field="reason", operator="eq", value=params["reason"]))
+        where.append(WhereClause(field="reason", operator=Operator.EQ, value=params["reason"]))
 
     results = await db.find_many(
         FindManyParams(
@@ -319,7 +322,7 @@ async def find_suppression_list(db: Adapter, params: dict) -> list[SuppressionLi
             where=where if where else None,
             limit=params.get("limit"),
             offset=params.get("offset"),
-            order_by=[{"field": "email", "direction": "asc"}],
+            orderBy=[OrderBy(field="email", direction=Direction.ASC)],
         )
     )
     return [SuppressionList.model_validate(r) for r in results]
@@ -347,7 +350,7 @@ async def update_device_token(db: Adapter, device_id: str, **data: Any) -> Devic
     result = await db.update(
         UpdateParams(
             model="device_tokens",
-            where=[WhereClause(field="id", operator="eq", value=str(device_id))],
+            where=[WhereClause(field="id", operator=Operator.EQ, value=str(device_id))],
             data={**data, "updatedAt": datetime.utcnow()},
         )
     )
@@ -365,9 +368,9 @@ async def find_device_token(
         FindOneParams(
             model="device_tokens",
             where=[
-                WhereClause(field="userId", operator="eq", value=user_id),
-                WhereClause(field="token", operator="eq", value=token),
-                WhereClause(field="platform", operator="eq", value=platform),
+                WhereClause(field="userId", operator=Operator.EQ, value=user_id),
+                WhereClause(field="token", operator=Operator.EQ, value=token),
+                WhereClause(field="platform", operator=Operator.EQ, value=platform),
             ],
         )
     )
@@ -382,17 +385,18 @@ async def find_device_tokens(
 ) -> list[DeviceToken]:
     """Find device tokens for a user."""
     where = [
-        WhereClause(field="userId", operator="eq", value=user_id),
-        WhereClause(field="isActive", operator="eq", value=is_active),
+        WhereClause(field="userId", operator=Operator.EQ, value=user_id),
+        WhereClause(field="isActive", operator=Operator.EQ, value=is_active),
     ]
 
     if platform:
-        where.append(WhereClause(field="platform", operator="eq", value=platform))
+        where.append(WhereClause(field="platform", operator=Operator.EQ, value=platform))
 
     results = await db.find_many(
         FindManyParams(
             model="device_tokens",
             where=where,
+            orderBy=None,
         )
     )
     return [DeviceToken.model_validate(r) for r in results]
@@ -407,9 +411,10 @@ async def find_inactive_device_tokens(
         FindManyParams(
             model="device_tokens",
             where=[
-                WhereClause(field="isActive", operator="eq", value=False),
-                WhereClause(field="lastUsedAt", operator="lt", value=older_than),
+                WhereClause(field="isActive", operator=Operator.EQ, value=False),
+                WhereClause(field="lastUsedAt", operator=Operator.LT, value=older_than),
             ],
+            orderBy=None,
         )
     )
     return [DeviceToken.model_validate(r) for r in results]
@@ -422,7 +427,8 @@ async def deactivate_device_tokens(db: Adapter, tokens: list[str]) -> None:
         devices = await db.find_many(
             FindManyParams(
                 model="device_tokens",
-                where=[WhereClause(field="token", operator="eq", value=token)],
+                where=[WhereClause(field="token", operator=Operator.EQ, value=token)],
+                orderBy=None,
             )
         )
 
@@ -431,7 +437,7 @@ async def deactivate_device_tokens(db: Adapter, tokens: list[str]) -> None:
             await db.update(
                 UpdateParams(
                     model="device_tokens",
-                    where=[WhereClause(field="id", operator="eq", value=str(device["id"]))],
+                    where=[WhereClause(field="id", operator=Operator.EQ, value=str(device["id"]))],
                     data={"isActive": False, "updatedAt": datetime.utcnow()},
                 )
             )
@@ -442,7 +448,7 @@ async def delete_device_token(db: Adapter, device_id: Any) -> None:
     await db.delete(
         DeleteParams(
             model="device_tokens",
-            where=[WhereClause(field="id", operator="eq", value=str(device_id))],
+            where=[WhereClause(field="id", operator=Operator.EQ, value=str(device_id))],
         )
     )
 
@@ -482,7 +488,7 @@ async def update_push_notification(
     result = await db.update(
         UpdateParams(
             model="push_notifications",
-            where=[WhereClause(field="id", operator="eq", value=id)],
+            where=[WhereClause(field="id", operator=Operator.EQ, value=id)],
             data={**data, "updatedAt": datetime.utcnow()},
         )
     )
@@ -494,7 +500,7 @@ async def get_push_notification(db: Adapter, id: str) -> Optional[PushNotificati
     result = await db.find_one(
         FindOneParams(
             model="push_notifications",
-            where=[WhereClause(field="id", operator="eq", value=id)],
+            where=[WhereClause(field="id", operator=Operator.EQ, value=id)],
         )
     )
     return PushNotification.model_validate(result) if result else None
@@ -524,7 +530,7 @@ async def update_sms_transaction(db: Adapter, id: str, data: dict) -> SmsTransac
     result = await db.update(
         UpdateParams(
             model="sms_transactions",
-            where=[WhereClause(field="id", operator="eq", value=id)],
+            where=[WhereClause(field="id", operator=Operator.EQ, value=id)],
             data={**data, "updatedAt": datetime.utcnow()},
         )
     )
@@ -536,7 +542,7 @@ async def get_sms_transaction(db: Adapter, id: str) -> Optional[SmsTransaction]:
     result = await db.find_one(
         FindOneParams(
             model="sms_transactions",
-            where=[WhereClause(field="id", operator="eq", value=id)],
+            where=[WhereClause(field="id", operator=Operator.EQ, value=id)],
         )
     )
     return SmsTransaction.model_validate(result) if result else None
