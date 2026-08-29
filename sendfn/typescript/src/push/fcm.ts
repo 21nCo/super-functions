@@ -1,0 +1,124 @@
+import * as admin from 'firebase-admin';
+import { PushProvider, PushProviderCapabilities, SendPushRequest, SendPushResponse } from './provider';
+import { FcmConfig } from '../types';
+import { PushProviderError } from '../errors';
+
+const MAX_FCM_BATCH_SIZE = 500;
+
+export class FcmProvider implements PushProvider {
+  readonly name = 'fcm';
+  readonly platform = 'android'; // Also supports web, but spec says Android primarily for FCM
+  readonly capabilities: PushProviderCapabilities = {
+    maxPayloadSize: 4096,
+    supportsBatching: true, // Multicast
+    supportsScheduling: false,
+    supportsImages: true,
+    supportsSilentPush: true,
+  };
+
+  private app: admin.app.App;
+
+  constructor(private config: FcmConfig) {
+    // Prevent multiple initializations
+    if (admin.apps.length > 0) {
+        this.app = admin.apps[0]!;
+    } else {
+        this.app = admin.initializeApp({
+            credential: admin.credential.cert(config.serviceAccountKey as admin.ServiceAccount),
+            projectId: config.projectId,
+        });
+    }
+  }
+
+  async initialize(): Promise<void> {
+    // Initialized in constructor
+  }
+
+  async sendPush(params: SendPushRequest): Promise<SendPushResponse> {
+    const invalidTokens: string[] = [];
+    const results: { token: string; success: boolean; error?: string }[] = [];
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (let start = 0; start < params.deviceTokens.length; start += MAX_FCM_BATCH_SIZE) {
+      const chunkTokens = params.deviceTokens.slice(start, start + MAX_FCM_BATCH_SIZE);
+      const message: admin.messaging.MulticastMessage = {
+      tokens: chunkTokens,
+      notification: {
+        title: params.title,
+        body: params.body,
+        imageUrl: params.imageUrl,
+      },
+      data: params.data as { [key: string]: string },
+      android: {
+        priority: params.priority === 'high' ? 'high' : 'normal',
+        ttl: params.ttl ? params.ttl * 1000 : undefined, // ms
+        collapseKey: params.collapseKey,
+        notification: {
+            sound: params.sound || 'default',
+        }
+      },
+      // Also add webpush config if needed
+    };
+
+    try {
+      const response = await this.app.messaging().sendEachForMulticast(message);
+
+      successCount += response.successCount;
+      failedCount += response.failureCount;
+
+      const chunkResults = response.responses.map((res, idx) => {
+        if (!res.success) {
+            if (res.error?.code === 'messaging/registration-token-not-registered' || 
+                res.error?.code === 'messaging/invalid-registration-token') {
+                invalidTokens.push(chunkTokens[idx]);
+            }
+        }
+        return {
+            token: chunkTokens[idx],
+            success: res.success,
+            error: res.error?.message
+        };
+      });
+
+      results.push(...chunkResults);
+    } catch (error: any) {
+        throw new PushProviderError(`FCM Error: ${error.message}`);
+    }
+    }
+
+      return {
+        success: failedCount === 0,
+        successCount,
+        failedCount,
+        invalidTokens,
+        results,
+        timestamp: new Date(),
+      };
+  }
+
+  async sendBulkPush(params: SendPushRequest[]): Promise<SendPushResponse[]> {
+      // Just iterate for now
+      const results: SendPushResponse[] = [];
+      for (const req of params) {
+          results.push(await this.sendPush(req));
+      }
+      return results;
+  }
+
+  validateToken(token: string): boolean {
+    return !!token; // Basic check
+  }
+
+  async isHealthy(): Promise<boolean> {
+    return true; // Hard to check without sending
+  }
+
+  async close(): Promise<void> {
+    await this.app.delete();
+  }
+}
+
+export function fcmAdapter(config: FcmConfig): FcmProvider {
+  return new FcmProvider(config);
+}

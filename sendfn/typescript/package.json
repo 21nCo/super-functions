@@ -1,0 +1,102 @@
+{
+  "name": "sendfn",
+  "version": "0.0.4",
+  "description": "Unified communications platform SDK for email and push notifications",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src",
+    "examples",
+    "tests",
+    "README.md",
+    "tsconfig.json",
+    "tsup.config.ts",
+    "vitest.config.ts"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./edge": {
+      "types": "./dist/edge.d.ts",
+      "import": "./dist/edge.mjs",
+      "require": "./dist/edge.js"
+    },
+    "./adapters/meta-whatsapp": {
+      "types": "./dist/adapters/meta-whatsapp.d.ts",
+      "import": "./dist/adapters/meta-whatsapp.mjs",
+      "require": "./dist/adapters/meta-whatsapp.js"
+    },
+    "./adapters/apns": {
+      "types": "./dist/adapters/apns.d.ts",
+      "import": "./dist/adapters/apns.mjs",
+      "require": "./dist/adapters/apns.js"
+    },
+    "./adapters/fcm": {
+      "types": "./dist/adapters/fcm.d.ts",
+      "import": "./dist/adapters/fcm.mjs",
+      "require": "./dist/adapters/fcm.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "lint": "tsc --noEmit",
+    "release:verify": "npm run build && npm run lint && npm test -- --run"
+  },
+  "keywords": [
+    "email",
+    "push",
+    "notifications",
+    "ses",
+    "fcm",
+    "apns",
+    "sdk"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "sendfn/typescript"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "overrides": {
+    "fast-xml-parser": "^4.5.4"
+  },
+  "superfunctions": {
+    "initFunction": "sendFn",
+    "schemaVersion": 1,
+    "namespace": "sendfn",
+    "libraryNames": [
+      "sendfn"
+    ]
+  },
+  "dependencies": {
+    "@aws-sdk/client-ses": "^3.400.0",
+    "@superfunctions/delivery": "0.1.0",
+    "@superfunctions/db": "0.1.4",
+    "@superfunctions/http": "0.1.2",
+    "apns2": "^11.0.0",
+    "firebase-admin": "^12.0.0",
+    "uuid": "^9.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/uuid": "^9.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^2.0.0"
+  }
+}

@@ -108,5 +108,6 @@
   { "slug": "searchfn-adapter-opensearch", "path": "searchfn/adapter-opensearch", "name": "@searchfn/adapter-opensearch" },
   { "slug": "searchfn-adapter-postgres", "path": "searchfn/adapter-postgres", "name": "@searchfn/adapter-postgres" },
   { "slug": "searchfn-core-wasm", "path": "searchfn/core-wasm", "name": "@searchfn/core-wasm" },
-  { "slug": "searchfn-server", "path": "searchfn/server", "name": "@searchfn/server" }
+  { "slug": "searchfn-server", "path": "searchfn/server", "name": "@searchfn/server" },
+  { "slug": "sendfn", "path": "sendfn/typescript", "name": "sendfn" }
 ]
