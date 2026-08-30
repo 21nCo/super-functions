@@ -254,6 +254,18 @@ export class MailFn {
   public async rotateCredential(actor: Actor, credentialId: string, idempotencyKey: string): Promise<CreatedCredential> {
     const credential = await this.requireCredential(credentialId);
     await this.authorize(actor, 'token:manage', credential.projectId, credential.inboxId);
+    if (!actor.scopes.includes('project:admin')) {
+      assertMailFn(credential.permissions.every((scope) => actor.scopes.includes(scope)), {
+        code: 'MAILFN_FORBIDDEN',
+        message: 'Rotated credentials cannot exceed the actor scopes',
+        status: 403,
+      });
+      assertMailFn(!actor.inboxId || credential.inboxId === actor.inboxId, {
+        code: 'MAILFN_FORBIDDEN',
+        message: 'Inbox credentials cannot rotate credentials outside their inbox',
+        status: 403,
+      });
+    }
     assertMailFn(idempotencyKey.trim().length > 0, {
       code: 'MAILFN_VALIDATION_FAILED', message: 'Credential rotation requires an idempotency key', status: 400,
     });
@@ -1593,6 +1605,10 @@ export class MailFn {
     const domain = await this.store.getDomain(domainId);
     if (!domain) throw notFound('Domain');
     await this.authorize(actor, 'domain:manage', domain.projectId);
+    return this.disableDomainRouting(domain);
+  }
+
+  private async disableDomainRouting(domain: MailDomain): Promise<MailDomain> {
     if (domain.status === 'disabled' && !domain.routingRuleId) return domain;
     if (domain.status === 'disabled') {
       if (!this.domainAdapter) throw new MailFnError({
@@ -1893,6 +1909,9 @@ export class MailFn {
     assertMailFn(['open', 'investigating', 'resolved', 'dismissed'].includes(input.status), {
       code: 'MAILFN_VALIDATION_FAILED', message: 'Invalid abuse case status', status: 400,
     });
+    assertMailFn(input.disableResource === undefined || typeof input.disableResource === 'boolean', {
+      code: 'MAILFN_VALIDATION_FAILED', message: 'disableResource must be a boolean', status: 400,
+    });
     if (input.disableResource) await this.disableAbuseResource(actor, abuseCase);
     const updated = { ...abuseCase, status: input.status, updatedAt: this.now() };
     await this.store.saveAbuseCase(updated);
@@ -2113,8 +2132,7 @@ export class MailFn {
     if (abuseCase.resourceType === 'domain') {
       const domain = await this.store.getDomain(abuseCase.resourceId);
       if (!domain || domain.projectId !== actor.projectId) throw notFound('Domain');
-      await this.domainAdapter?.disableRouting(domain);
-      await this.store.saveDomain({ ...domain, status: 'disabled', updatedAt: this.now() });
+      await this.disableDomainRouting(domain);
       return;
     }
     throw new MailFnError({

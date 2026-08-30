@@ -135,12 +135,20 @@ describe('MailFn in workerd', () => {
     });
     const store = new D1MailFnStore(env.MAILFN_DB);
     await env.MAILFN_DB.prepare('DROP INDEX IF EXISTS mailfn_threads_subject').run();
-    const thread = (id: string, createdAt: string, messageId: string): Thread => ({
+    const thread = (
+      id: string,
+      createdAt: string,
+      messageId: string,
+      participants = [`${id}@example.com`],
+      labels = [id],
+    ): Thread => ({
       id,
       projectId: bootstrap.project.id,
       inboxId: created.inbox.id,
       normalizedSubject: 'duplicate subject',
       messageIds: [messageId],
+      participants,
+      labels,
       lastMessageAt: createdAt,
       createdAt,
       updatedAt: createdAt,
@@ -172,6 +180,8 @@ describe('MailFn in workerd', () => {
     await expect(store.listThreads(bootstrap.project.id, created.inbox.id)).resolves.toMatchObject([{
       id: winner.id,
       messageIds: ['msg_winner', 'msg_losing'],
+      participants: ['thr_losing@example.com', 'thr_winner@example.com'],
+      labels: ['thr_losing', 'thr_winner'],
     }]);
     await expect(store.getMessage('msg_winner')).resolves.toMatchObject({ threadId: winner.id });
     await expect(store.getMessage('msg_losing')).resolves.toMatchObject({ threadId: winner.id });

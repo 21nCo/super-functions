@@ -263,9 +263,38 @@ export const MAILFN_D1_MIGRATIONS = [
            (SELECT MAX(message.received_at) FROM mailfn_messages AS message WHERE message.thread_id = thread.id),
            thread.last_message_at
          ),
+         '$.participants', json(COALESCE((
+           SELECT json_group_array(ordered.value)
+           FROM (
+             SELECT DISTINCT participant.value AS value
+             FROM mailfn_threads AS member, json_each(member.data_json, '$.participants') AS participant
+             WHERE member.project_id = thread.project_id
+               AND member.inbox_id = thread.inbox_id
+               AND member.normalized_subject = thread.normalized_subject
+             ORDER BY participant.value
+           ) AS ordered
+         ), '[]')),
+         '$.labels', json(COALESCE((
+           SELECT json_group_array(ordered.value)
+           FROM (
+             SELECT DISTINCT label.value AS value
+             FROM mailfn_threads AS member, json_each(member.data_json, '$.labels') AS label
+             WHERE member.project_id = thread.project_id
+               AND member.inbox_id = thread.inbox_id
+               AND member.normalized_subject = thread.normalized_subject
+             ORDER BY label.value
+           ) AS ordered
+         ), '[]')),
          '$.updatedAt', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
        )
-   WHERE EXISTS (SELECT 1 FROM mailfn_messages AS message WHERE message.thread_id = thread.id)`,
+   WHERE EXISTS (SELECT 1 FROM mailfn_messages AS message WHERE message.thread_id = thread.id)
+      OR EXISTS (
+        SELECT 1 FROM mailfn_threads AS member
+        WHERE member.id <> thread.id
+          AND member.project_id = thread.project_id
+          AND member.inbox_id = thread.inbox_id
+          AND member.normalized_subject = thread.normalized_subject
+      )`,
   `DELETE FROM mailfn_threads AS losing
    WHERE EXISTS (
      SELECT 1 FROM mailfn_threads AS winner

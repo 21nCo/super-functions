@@ -289,6 +289,19 @@ describe('MailFn domain service', () => {
     await expect(context.store.getCredential(issued.credential.id)).resolves.toMatchObject({ status: 'revoked' });
   });
 
+  it('prevents limited token managers from escalating through credential rotation', async () => {
+    const context = await setup();
+    const manager = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      permissions: ['token:manage'],
+    });
+    const actor = await context.mailfn.authenticate(manager.token);
+
+    await expect(context.mailfn.rotateCredential(actor, context.admin.actorId, 'escalation-attempt'))
+      .rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN' });
+    await expect(context.store.getCredential(context.admin.actorId)).resolves.toMatchObject({ status: 'active' });
+  });
+
   it('compares message time filters by instant across timezone offsets', async () => {
     const context = await setup();
     const created = await createInbox(context, 'timezone-filter');
@@ -1228,6 +1241,49 @@ describe('MailFn domain service', () => {
     await expect(context.mailfn.configureCompliance(context.admin, {
       dataRegion: 'global', retentionLocked: true, exportEnabled: false, deletionSlaHours: 24,
     })).resolves.toMatchObject({ projectId: context.project.id, retentionLocked: true });
+  });
+
+  it('rejects non-boolean abuse enforcement flags before changing the resource', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'abuse-boolean');
+    const abuseCase = await context.mailfn.reportAbuse(context.admin, {
+      kind: 'spam', resourceType: 'inbox', resourceId: created.inbox.id, reason: 'reported',
+    });
+
+    await expect(context.mailfn.updateAbuseCase(context.admin, abuseCase.id, {
+      status: 'investigating', disableResource: 'false' as never,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED', message: 'disableResource must be a boolean' });
+    await expect(context.store.getInbox(created.inbox.id)).resolves.toMatchObject({ status: 'active' });
+    await expect(context.mailfn.authenticate(created.credential.token)).resolves.toMatchObject({ inboxId: created.inbox.id });
+  });
+
+  it('keeps abuse domain enforcement retryable when routing teardown has no adapter', async () => {
+    const context = await setup({
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'abuse-routing-live' }),
+        disableRouting: async () => undefined,
+      },
+    });
+    const domain = await context.mailfn.createDomain(context.admin, 'abuse-routing.example.com');
+    await context.mailfn.verifyDomain(context.admin, domain.id);
+    const abuseCase = await context.mailfn.reportAbuse(context.admin, {
+      kind: 'phishing', resourceType: 'domain', resourceId: domain.id, reason: 'reported',
+    });
+    const withoutAdapter = new MailFn({
+      store: context.store,
+      objects: context.objects,
+      defaultDomain: 'inbound.example.com',
+      secretProtector: noOpSecretProtector,
+    });
+
+    await expect(withoutAdapter.updateAbuseCase(context.admin, abuseCase.id, {
+      status: 'investigating', disableResource: true,
+    })).rejects.toMatchObject({ code: 'MAILFN_DOMAIN_ROUTING_FAILED', retryable: true });
+    await expect(context.store.getDomain(domain.id)).resolves.toMatchObject({
+      status: 'disabling', routingRuleId: 'abuse-routing-live',
+    });
   });
 
   it('rejects unknown abuse resource types before persisting a case', async () => {
