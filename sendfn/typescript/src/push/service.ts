@@ -23,24 +23,23 @@ export class PushService {
 
   async sendPush(params: SendPushParams): Promise<PushNotification> {
     // 1. Resolve tokens
-    let tokens: string[] = [];
-    let platformTokens: Map<Platform, string[]> = new Map();
+    const platformTokenSets = new Map<Platform, Set<string>>();
 
     // If userId provided, fetch tokens
     const userIds = Array.isArray(params.userId) ? params.userId : [params.userId];
+    const recipientMetadata = { ...(params.metadata || {}), recipientUserIds: [...userIds] };
 
     // This is simplified. Ideally we fetch all tokens for all users.
     for (const uid of userIds) {
         const devices = await this.deviceManager.getActiveDevices(uid);
         for (const device of devices) {
-            tokens.push(device.token);
-            const list = platformTokens.get(device.platform) || [];
-            list.push(device.token);
-            platformTokens.set(device.platform, list);
+            const tokens = platformTokenSets.get(device.platform) ?? new Set<string>();
+            tokens.add(device.token);
+            platformTokenSets.set(device.platform, tokens);
         }
     }
 
-    if (tokens.length === 0) {
+    if (platformTokenSets.size === 0) {
         // Create a failed notification record or just return?
         // Let's create a failed one to track intent.
         const notification = await this.adapter.createPushNotification({
@@ -55,7 +54,7 @@ export class PushService {
             sentCount: 0,
             failedCount: 0,
             sentAt: null,
-            metadata: { error: 'No active devices found' }
+            metadata: { ...recipientMetadata, error: 'No active devices found' }
         });
         return notification;
     }
@@ -74,7 +73,7 @@ export class PushService {
 
     // Let's iterate platforms and send.
 
-    const platforms = PLATFORM_ORDER.filter((platform) => (platformTokens.get(platform)?.length ?? 0) > 0);
+    const platforms = PLATFORM_ORDER.filter((platform) => (platformTokenSets.get(platform)?.size ?? 0) > 0);
     const missingPlatform = platforms.find((platform) => !this.providers.has(platform));
     if (missingPlatform) {
       throw new PushProviderError(`No push provider configured for platform ${missingPlatform}`, {
@@ -86,7 +85,7 @@ export class PushService {
     let aggregateSentCount = 0;
     let aggregateFailedCount = 0;
     let logicalMetadata: Record<string, any> = {
-      ...(params.metadata || {}),
+      ...recipientMetadata,
       notificationIds: [] as string[],
     };
     let logicalSentAt: Date | null = null;
@@ -94,7 +93,7 @@ export class PushService {
     const providerErrors: Array<{ platform: Platform; provider: string; error: string }> = [];
 
     for (const platform of platforms) {
-        const pTokens = platformTokens.get(platform)!;
+        const pTokens = [...platformTokenSets.get(platform)!];
         const provider = this.providers.get(platform)!;
 
         const notification = await this.adapter.createPushNotification({
@@ -109,7 +108,7 @@ export class PushService {
             sentCount: 0,
             failedCount: 0,
             sentAt: null,
-            metadata: params.metadata || {}
+            metadata: recipientMetadata
         });
 
         (logicalMetadata.notificationIds as string[]).push(notification.id);
@@ -135,7 +134,7 @@ export class PushService {
         } catch (error: any) {
              await this.adapter.updatePushNotification(notification.id, {
                 status: 'failed',
-                metadata: { ...params.metadata, error: error.message }
+                metadata: { ...recipientMetadata, error: error.message }
             });
 
              if (this.options.eventTracking !== false) await this.adapter.recordEvent({
@@ -168,7 +167,7 @@ export class PushService {
             failedCount: response.failedCount,
             sentAt: response.timestamp,
             metadata: {
-                ...params.metadata,
+                ...recipientMetadata,
                 results: response.results
             }
         });

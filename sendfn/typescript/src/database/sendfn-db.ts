@@ -576,7 +576,10 @@ export class SendfnDb {
       }
 
       if (params.userId) {
-        if (!('userId' in reference) || reference.userId !== params.userId) {
+        const recipientUserIds = Array.isArray(reference.metadata?.recipientUserIds)
+          ? reference.metadata.recipientUserIds.filter((value): value is string => typeof value === 'string')
+          : [];
+        if (!('userId' in reference) || (reference.userId !== params.userId && !recipientUserIds.includes(params.userId))) {
           continue;
         }
       }

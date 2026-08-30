@@ -353,6 +353,21 @@ describe('push and device phase 5 contracts', () => {
     expect(activeDevices.map((device) => device.token)).toEqual(['android-good', 'web-good']);
   });
 
+  it('deduplicates shared device tokens and keeps multi-user push events queryable per recipient', async () => {
+    await deviceManager.registerDevice({ userId: 'user-a', token: 'shared-token', platform: 'android' });
+    await deviceManager.registerDevice({ userId: 'user-b', token: 'shared-token', platform: 'android' });
+    const provider = new FakePushProvider('android-provider', 'android');
+    const sendPush = vi.spyOn(provider, 'sendPush');
+    const service = new PushService(new Map([['android', provider]]), db, deviceManager, {});
+
+    const result = await service.sendPush({ userId: ['user-a', 'user-b'], title: 'Hello', body: 'World' });
+
+    expect(sendPush).toHaveBeenCalledWith(expect.objectContaining({ deviceTokens: ['shared-token'] }));
+    expect(result.deviceTokens).toEqual(['shared-token']);
+    await expect(db.findEvents({ referenceType: 'push', userId: 'user-a' })).resolves.toHaveLength(1);
+    await expect(db.findEvents({ referenceType: 'push', userId: 'user-b' })).resolves.toHaveLength(1);
+  });
+
   it('supports injected push providers without legacy credential config', async () => {
     await deviceManager.registerDevice({
       userId: 'ios-user',

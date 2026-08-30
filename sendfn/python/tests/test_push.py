@@ -229,6 +229,11 @@ async def test_fcm_applies_delivery_options_to_web_push(monkeypatch: pytest.Monk
     assert captured[0].webpush.headers == {"TTL": "60", "Topic": "thread-1", "Urgency": "high"}
     assert captured[0].webpush.data == {"sound": "default"}
 
+    await provider.send_push(SendPushRequest(
+        device_tokens=["android-token"], title="Android", body="Push", platform="android", ttl=0,
+    ))
+    assert captured[1].android.ttl == timedelta(seconds=0)
+
 
 @pytest.mark.asyncio
 async def test_fcm_owns_a_named_app_without_reusing_the_host_default(

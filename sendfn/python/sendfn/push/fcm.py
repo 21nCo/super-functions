@@ -113,7 +113,7 @@ class FcmProvider:
                     data=data_str if data_str else None,
                     android=None if request.platform == "web" else self._messaging.AndroidConfig(
                         priority=request.priority,
-                        ttl=timedelta(seconds=request.ttl) if request.ttl else None,
+                        ttl=timedelta(seconds=request.ttl) if request.ttl is not None else None,
                         collapse_key=request.collapse_key,
                         notification=self._messaging.AndroidNotification(
                             sound=request.sound or "default",

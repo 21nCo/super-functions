@@ -129,8 +129,9 @@ export class AwsSesAdapter implements EmailProvider {
     if (params.attachments) {
       for (const att of params.attachments) {
         const filename = sanitizeMimeParameter(att.filename);
+        const contentType = validateAttachmentContentType(att.contentType);
         rawMessage += `--${boundary}\n`;
-        rawMessage += `Content-Type: ${att.contentType || 'application/octet-stream'}; name="${filename}"\n`;
+        rawMessage += `Content-Type: ${contentType}; name="${filename}"\n`;
         rawMessage += `Content-Transfer-Encoding: base64\n`;
         rawMessage += `Content-Disposition: attachment; filename="${filename}"\n\n`;
 
@@ -215,6 +216,14 @@ export class AwsSesAdapter implements EmailProvider {
 
 function sanitizeMimeParameter(value: string): string {
   return value.normalize('NFKC').replace(/[\u0000-\u001f\u007f"\\/;]/g, '_').slice(0, 255) || 'attachment';
+}
+
+function validateAttachmentContentType(value: string | undefined): string {
+  const contentType = value || 'application/octet-stream';
+  if (/[\u0000-\u001f\u007f]/.test(contentType) || !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(contentType)) {
+    throw new Error('Invalid attachment content type');
+  }
+  return contentType;
 }
 
 export function awsSesAdapter(config: AwsSesConfig): AwsSesAdapter {

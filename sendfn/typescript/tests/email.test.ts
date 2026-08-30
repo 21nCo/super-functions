@@ -316,6 +316,18 @@ describe('EmailService', () => {
     expect(raw).toContain('filename="proof___X-Injected: yes_.txt"');
   });
 
+  it('rejects attachment content types that can inject raw SES headers', async () => {
+    const adapter = new AwsSesAdapter({ accessKeyId: 'key', secretAccessKey: 'secret', region: 'us-east-1' });
+    const send = vi.fn(async () => ({ MessageId: 'must-not-send' }));
+    (adapter as any).sesClient = { send };
+
+    await expect(adapter.sendEmail({
+      from: 'agent@example.com', to: ['to@example.com'], subject: 'Raw', text: 'body',
+      attachments: [{ filename: 'proof.txt', contentType: 'text/plain\r\nX-Injected: yes', content: Buffer.from('proof') }],
+    })).resolves.toMatchObject({ success: false, error: { message: 'Invalid attachment content type' } });
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('forwards tags through the SES simple-send path', async () => {
     const adapter = new AwsSesAdapter({ accessKeyId: 'key', secretAccessKey: 'secret', region: 'us-east-1' });
     const inputs: any[] = [];
