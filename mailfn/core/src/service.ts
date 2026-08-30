@@ -250,6 +250,53 @@ export class MailFn {
     return created;
   }
 
+  public async rotateCredential(actor: Actor, credentialId: string, idempotencyKey: string): Promise<CreatedCredential> {
+    const credential = await this.requireCredential(credentialId);
+    await this.authorize(actor, 'token:manage', credential.projectId, credential.inboxId);
+    assertMailFn(idempotencyKey.trim().length > 0, {
+      code: 'MAILFN_VALIDATION_FAILED', message: 'Credential rotation requires an idempotency key', status: 400,
+    });
+    assertMailFn(this.secretProtector, {
+      code: 'MAILFN_VALIDATION_FAILED', message: 'Secret protection must be configured before rotating credentials', status: 500,
+    });
+    const key = `credential.rotate:${idempotencyKey}`;
+    const stored = await this.store.getIdempotency(credential.projectId, key);
+    if (stored && stored.expiresAt > this.now()) {
+      return this.completeCredentialRotation(actor, credential, stored);
+    }
+    if (stored) await this.store.deleteExpiredIdempotency(credential.projectId, key, this.now());
+
+    const replacement = await this.buildCredential({
+      projectId: credential.projectId,
+      inboxId: credential.inboxId,
+      permissions: credential.permissions,
+      expiresAt: credential.expiresAt,
+    });
+    const now = this.now();
+    const record: IdempotencyRecord = {
+      key,
+      projectId: credential.projectId,
+      operation: 'credential.rotate',
+      resourceId: replacement.credential.id,
+      requestHash: credential.id,
+      responseCiphertext: await this.secretProtector.protect(replacement.token),
+      expiresAt: new Date(Date.parse(now) + 24 * 60 * 60 * 1000).toISOString(),
+      createdAt: now,
+    };
+    if (await this.store.createIdempotency(record)) {
+      await this.store.saveCredential(replacement.credential);
+      await this.audit(actor, 'credential.created', 'credential', replacement.credential.id, {
+        inboxId: credential.inboxId ?? null,
+        scopeCount: credential.permissions.length,
+      });
+    }
+    const claimed = await this.store.getIdempotency(credential.projectId, key);
+    assertMailFn(claimed, {
+      code: 'MAILFN_STORAGE_FAILED', message: 'Credential rotation could not be claimed', status: 503, retryable: true,
+    });
+    return this.completeCredentialRotation(actor, credential, claimed);
+  }
+
   public async revokeCredential(actor: Actor, credentialId: string, expectedInboxId?: string): Promise<Credential> {
     const credential = await this.requireCredential(credentialId);
     if (expectedInboxId !== undefined && credential.inboxId !== expectedInboxId) throw notFound('Credential');
@@ -1286,6 +1333,9 @@ export class MailFn {
     if (!draft) throw notFound('Draft');
     await this.authorize(actor, 'send:write', draft.projectId, draft.inboxId);
     const inbox = await this.requireDraftInbox(draft.projectId, draft.inboxId);
+    assertMailFn(inbox.status === 'active' && (!inbox.expiresAt || inbox.expiresAt > this.now()), {
+      code: 'MAILFN_INBOX_INACTIVE', message: 'Inbox is not active', status: 410,
+    });
     if (draft.status === 'sent') return draft;
     assertMailFn(draft.status === 'draft' || draft.status === 'sending', {
       code: 'MAILFN_CONFLICT',
@@ -1445,7 +1495,6 @@ export class MailFn {
       status: 501,
     });
     const project = await this.requireProject(actor.projectId);
-    if ((await this.store.listDomains(project.id)).length >= project.quota.maxDomains) throw quotaExceeded('domains');
     const domain = normalizeDomain(domainName);
     if (await this.store.getDomainByName(project.id, domain)) {
       throw new MailFnError({ code: 'MAILFN_CONFLICT', message: 'Domain already exists', status: 409 });
@@ -1465,8 +1514,11 @@ export class MailFn {
       createdAt: now,
       updatedAt: now,
     };
-    if (!(await this.store.createDomain(entry))) {
-      throw new MailFnError({ code: 'MAILFN_CONFLICT', message: 'Domain already exists', status: 409 });
+    if (!(await this.store.createDomainWithQuota(entry, project.quota.maxDomains))) {
+      if (await this.store.getDomainByName(project.id, domain)) {
+        throw new MailFnError({ code: 'MAILFN_CONFLICT', message: 'Domain already exists', status: 409 });
+      }
+      throw quotaExceeded('domains');
     }
     return entry;
   }
@@ -1519,7 +1571,23 @@ export class MailFn {
     await this.authorize(actor, 'domain:manage', domain.projectId);
     const updated = { ...domain, status: 'disabled' as const, updatedAt: this.now() };
     await this.store.saveDomain(updated);
-    await this.domainAdapter?.disableRouting(updated);
+    try {
+      await this.domainAdapter?.disableRouting(updated);
+    } catch (cause) {
+      try {
+        await this.store.saveDomain(domain);
+      } catch (rollbackCause) {
+        throw new MailFnError({
+          code: 'MAILFN_STORAGE_FAILED',
+          message: 'Domain routing teardown failed and active state could not be restored',
+          status: 503,
+          retryable: true,
+          details: { rollbackError: rollbackCause instanceof Error ? rollbackCause.message : String(rollbackCause) },
+          cause,
+        });
+      }
+      throw cause;
+    }
     return updated;
   }
 
@@ -1876,6 +1944,37 @@ export class MailFn {
       status: 409,
       details: { inboxId: inbox.id },
     });
+  }
+
+  private async completeCredentialRotation(
+    actor: Actor,
+    credential: Credential,
+    record: IdempotencyRecord,
+  ): Promise<CreatedCredential> {
+    assertMailFn(record.operation === 'credential.rotate' && record.requestHash === credential.id, {
+      code: 'MAILFN_CONFLICT', message: 'Idempotency key was used for a different credential rotation', status: 409,
+    });
+    assertMailFn(record.responseCiphertext && this.secretProtector, {
+      code: 'MAILFN_CONFLICT', message: 'Credential rotation cannot replay its one-time token', status: 409,
+    });
+    const token = await this.secretProtector.reveal(record.responseCiphertext);
+    let replacement = await this.store.getCredential(record.resourceId);
+    if (!replacement) {
+      replacement = {
+        id: record.resourceId,
+        projectId: credential.projectId,
+        inboxId: credential.inboxId,
+        tokenHash: await this.tokens.hash(token),
+        tokenPrefix: token.slice(0, Math.min(24, token.length)),
+        permissions: credential.permissions,
+        status: 'active',
+        expiresAt: credential.expiresAt,
+        createdAt: record.createdAt,
+      };
+      await this.store.saveCredential(replacement);
+    }
+    if (credential.status === 'active') await this.revokeCredential(actor, credential.id);
+    return { credential: replacement, token };
   }
 
   private async buildCredential(input: CreateCredentialInput): Promise<CreatedCredential> {

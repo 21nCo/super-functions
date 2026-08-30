@@ -160,12 +160,12 @@ export class D1MailFnStore implements MailFnStore {
   async listMessages(projectId: string, inboxId: string, filter: MessageFilter = {}): Promise<Message[]> {
     const clauses = ['project_id = ?', 'inbox_id = ?'];
     const values: unknown[] = [projectId, inboxId];
-    if (filter.receivedAfter) { clauses.push('received_at > ?'); values.push(filter.receivedAfter); }
-    if (filter.receivedBefore) { clauses.push('received_at < ?'); values.push(filter.receivedBefore); }
+    if (filter.receivedAfter) { clauses.push('julianday(received_at) > julianday(?)'); values.push(normalizeInstant(filter.receivedAfter)); }
+    if (filter.receivedBefore) { clauses.push('julianday(received_at) < julianday(?)'); values.push(normalizeInstant(filter.receivedBefore)); }
     if (filter.threadId) { clauses.push('thread_id = ?'); values.push(filter.threadId); }
     if (filter.status) { clauses.push('status = ?'); values.push(filter.status); }
     const messages = await this.many<Message>(
-      `SELECT data_json FROM mailfn_messages WHERE ${clauses.join(' AND ')} ORDER BY received_at DESC, id DESC`,
+      `SELECT data_json FROM mailfn_messages WHERE ${clauses.join(' AND ')} ORDER BY julianday(received_at) DESC, id DESC`,
       values,
     );
     return messages.filter((message) => matchesMessage(message, filter));
@@ -183,8 +183,8 @@ export class D1MailFnStore implements MailFnStore {
     }
     const clauses = ['project_id = ?', 'inbox_id = ?'];
     const values: unknown[] = [projectId, inboxId];
-    if (filter.receivedAfter) { clauses.push('received_at > ?'); values.push(filter.receivedAfter); }
-    if (filter.receivedBefore) { clauses.push('received_at < ?'); values.push(filter.receivedBefore); }
+    if (filter.receivedAfter) { clauses.push('julianday(received_at) > julianday(?)'); values.push(normalizeInstant(filter.receivedAfter)); }
+    if (filter.receivedBefore) { clauses.push('julianday(received_at) < julianday(?)'); values.push(normalizeInstant(filter.receivedBefore)); }
     if (filter.threadId) { clauses.push('thread_id = ?'); values.push(filter.threadId); }
     if (filter.status) { clauses.push('status = ?'); values.push(filter.status); }
     if (filter.recipient) { clauses.push('lower(envelope_to) = ?'); values.push(filter.recipient.toLowerCase()); }
@@ -217,14 +217,14 @@ export class D1MailFnStore implements MailFnStore {
       values.push(label);
     }
     if (cursor) {
-      clauses.push('(received_at < ? OR (received_at = ? AND id < ?))');
+      clauses.push('(julianday(received_at) < julianday(?) OR (julianday(received_at) = julianday(?) AND id < ?))');
       values.push(cursor.receivedAt, cursor.receivedAt, cursor.id);
     }
     values.push(limit + 1);
     const messages = await this.many<Message>(
       `SELECT data_json FROM mailfn_messages
        WHERE ${clauses.join(' AND ')}
-       ORDER BY received_at DESC, id DESC
+       ORDER BY julianday(received_at) DESC, id DESC
        LIMIT ?`,
       values,
     );
@@ -241,13 +241,13 @@ export class D1MailFnStore implements MailFnStore {
   ): Promise<Message[]> {
     const clauses = ['mailfn_messages_fts.project_id = ?', 'mailfn_messages_fts.inbox_id = ?', 'mailfn_messages_fts MATCH ?'];
     const values: unknown[] = [projectId, inboxId, ftsPhrase(input.query)];
-    if (input.receivedAfter) { clauses.push('message.received_at > ?'); values.push(input.receivedAfter); }
-    if (input.receivedBefore) { clauses.push('message.received_at < ?'); values.push(input.receivedBefore); }
+    if (input.receivedAfter) { clauses.push('julianday(message.received_at) > julianday(?)'); values.push(normalizeInstant(input.receivedAfter)); }
+    if (input.receivedBefore) { clauses.push('julianday(message.received_at) < julianday(?)'); values.push(normalizeInstant(input.receivedBefore)); }
     return this.many(
       `SELECT message.data_json FROM mailfn_messages_fts
        JOIN mailfn_messages AS message ON message.id = mailfn_messages_fts.message_id
        WHERE ${clauses.join(' AND ')} AND message.status = 'ready'
-       ORDER BY message.received_at DESC, message.id DESC`,
+       ORDER BY julianday(message.received_at) DESC, message.id DESC`,
       values,
     );
   }
@@ -260,8 +260,8 @@ export class D1MailFnStore implements MailFnStore {
   ): Promise<{ items: Message[]; hasMore: boolean; cursorFound: boolean }> {
     const clauses = ['mailfn_messages_fts.project_id = ?', 'mailfn_messages_fts.inbox_id = ?', 'mailfn_messages_fts MATCH ?'];
     const values: unknown[] = [projectId, inboxId, ftsPhrase(input.query)];
-    if (input.receivedAfter) { clauses.push('message.received_at > ?'); values.push(input.receivedAfter); }
-    if (input.receivedBefore) { clauses.push('message.received_at < ?'); values.push(input.receivedBefore); }
+    if (input.receivedAfter) { clauses.push('julianday(message.received_at) > julianday(?)'); values.push(normalizeInstant(input.receivedAfter)); }
+    if (input.receivedBefore) { clauses.push('julianday(message.received_at) < julianday(?)'); values.push(normalizeInstant(input.receivedBefore)); }
     const cursor = cursorId ? await this.getMessage(cursorId) : null;
     if (cursorId) {
       if (!cursor || cursor.projectId !== projectId || cursor.inboxId !== inboxId) {
@@ -275,7 +275,7 @@ export class D1MailFnStore implements MailFnStore {
         [...values, cursorId],
       );
       if (!cursorMatch.length) return { items: [], hasMore: false, cursorFound: false };
-      clauses.push('(message.received_at < ? OR (message.received_at = ? AND message.id < ?))');
+      clauses.push('(julianday(message.received_at) < julianday(?) OR (julianday(message.received_at) = julianday(?) AND message.id < ?))');
       values.push(cursor.receivedAt, cursor.receivedAt, cursor.id);
     }
     values.push(limit + 1);
@@ -283,7 +283,7 @@ export class D1MailFnStore implements MailFnStore {
       `SELECT message.data_json FROM mailfn_messages_fts
        JOIN mailfn_messages AS message ON message.id = mailfn_messages_fts.message_id
        WHERE ${clauses.join(' AND ')} AND message.status = 'ready'
-       ORDER BY message.received_at DESC, message.id DESC
+       ORDER BY julianday(message.received_at) DESC, message.id DESC
        LIMIT ?`,
       values,
     );
@@ -555,6 +555,19 @@ export class D1MailFnStore implements MailFnStore {
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;
   }
+  async createDomainWithQuota(value: MailDomain, maxDomains: number): Promise<boolean> {
+    const result = await bind(this.database.prepare(
+      `INSERT OR IGNORE INTO mailfn_domains(id, project_id, domain, status, verification_token, verified_at, created_at, updated_at, data_json)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE (SELECT COUNT(*) FROM mailfn_domains WHERE project_id = ?) < ?`,
+    ), [
+      value.id, value.projectId, value.domain, value.status, value.verificationToken,
+      value.verifiedAt ?? null, value.createdAt, value.updatedAt, json(value),
+      value.projectId, maxDomains,
+    ]).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
+  }
   async saveDomain(value: MailDomain): Promise<void> {
     await this.run(
       `INSERT INTO mailfn_domains(id, project_id, domain, status, verification_token, verified_at, created_at, updated_at, data_json)
@@ -594,6 +607,17 @@ export class D1MailFnStore implements MailFnStore {
 
   async getIdempotency(projectId: string, key: string): Promise<IdempotencyRecord | null> {
     return this.one('SELECT data_json FROM mailfn_idempotency WHERE project_id = ? AND key = ?', [projectId, key]);
+  }
+  async createIdempotency(value: IdempotencyRecord): Promise<boolean> {
+    const result = await bind(this.database.prepare(
+      `INSERT OR IGNORE INTO mailfn_idempotency(project_id, key, operation, resource_id, request_hash, expires_at, created_at, data_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ), [
+      value.projectId, value.key, value.operation, value.resourceId, value.requestHash,
+      value.expiresAt, value.createdAt, json(value),
+    ]).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
   }
   async saveIdempotency(value: IdempotencyRecord): Promise<void> {
     await this.run(
@@ -791,6 +815,11 @@ function parse<T>(value: string): T {
   return JSON.parse(value) as T;
 }
 
+function normalizeInstant(value: string): string {
+  const instant = Date.parse(value);
+  return Number.isNaN(instant) ? value : new Date(instant).toISOString();
+}
+
 function ftsPhrase(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
 }
@@ -804,8 +833,9 @@ function matchesMessage(message: Message, filter: MessageFilter): boolean {
   if (filter.recipient && message.envelopeTo.toLowerCase() !== filter.recipient.toLowerCase()) return false;
   if (filter.subject && !message.subject.toLowerCase().includes(filter.subject.toLowerCase())) return false;
   if (filter.text && !`${message.textBody ?? ''}\n${message.htmlBody ?? ''}`.toLowerCase().includes(filter.text.toLowerCase())) return false;
-  if (filter.receivedAfter && message.receivedAt <= filter.receivedAfter) return false;
-  if (filter.receivedBefore && message.receivedAt >= filter.receivedBefore) return false;
+  const receivedAt = Date.parse(message.receivedAt);
+  if (filter.receivedAfter && receivedAt <= Date.parse(filter.receivedAfter)) return false;
+  if (filter.receivedBefore && receivedAt >= Date.parse(filter.receivedBefore)) return false;
   if (filter.unreadOnly && message.readAt) return false;
   if (filter.threadId && message.threadId !== filter.threadId) return false;
   if (filter.labels?.some((label) => !message.labels.includes(label))) return false;

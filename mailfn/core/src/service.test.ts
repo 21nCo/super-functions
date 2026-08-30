@@ -245,6 +245,52 @@ describe('MailFn domain service', () => {
     await expect(createInbox(context)).rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
   });
 
+  it('replays credential rotations durably across service instances', async () => {
+    const context = await setup();
+    const issued = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      permissions: ['inbox:read'],
+    });
+    const secondService = new MailFn({
+      store: context.store,
+      objects: context.objects,
+      defaultDomain: 'inbound.example.com',
+      secretProtector: noOpSecretProtector,
+    });
+
+    const rotations = await Promise.all([
+      context.mailfn.rotateCredential(context.admin, issued.credential.id, 'rotation-1'),
+      secondService.rotateCredential(context.admin, issued.credential.id, 'rotation-1'),
+    ]);
+
+    expect(rotations[1]).toEqual(rotations[0]);
+    const credentials = await context.store.listCredentials(context.project.id);
+    expect(credentials.filter((entry) => entry.id === rotations[0].credential.id)).toEqual([
+      expect.objectContaining({ status: 'active' }),
+    ]);
+    expect(credentials).toHaveLength(3);
+    await expect(context.store.getCredential(issued.credential.id)).resolves.toMatchObject({ status: 'revoked' });
+  });
+
+  it('compares message time filters by instant across timezone offsets', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'timezone-filter');
+    const first = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'timezone-early', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: raw({ subject: 'Early' }), rawSize: raw({ subject: 'Early' }).byteLength,
+    });
+    const second = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'timezone-late', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: raw({ subject: 'Late' }), rawSize: raw({ subject: 'Late' }).byteLength,
+    });
+    await context.store.saveMessage({ ...first, receivedAt: '2026-01-01T00:30:00+01:00' });
+    await context.store.saveMessage({ ...second, receivedAt: '2025-12-31T23:45:00.000Z' });
+
+    await expect(context.store.listMessages(context.project.id, created.inbox.id, {
+      receivedAfter: '2026-01-01T00:40:00+01:00',
+    })).resolves.toMatchObject([{ id: second.id }]);
+  });
+
   it('does not expose an inbox or credential when its atomic creation transaction fails', async () => {
     const store = new FailingAtomicInboxStore();
     const context = await setup({ store });
@@ -909,6 +955,47 @@ describe('MailFn domain service', () => {
     await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({ status: 'active' });
   });
 
+  it('restores active domain state when provider routing teardown fails', async () => {
+    const context = await setup({
+      domainAdapter: {
+        getRequiredDnsRecords: async (domain) => [{ type: 'MX', name: domain, value: 'mx.provider.test' }],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'routing-still-live' }),
+        disableRouting: async () => { throw new Error('provider teardown unavailable'); },
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'rollback-disable.example.com');
+    await context.mailfn.verifyDomain(context.admin, pending.id);
+
+    await expect(context.mailfn.disableDomain(context.admin, pending.id)).rejects.toThrow('provider teardown unavailable');
+    await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({
+      status: 'active',
+      routingRuleId: 'routing-still-live',
+    });
+  });
+
+  it('enforces the domain quota atomically across concurrent domain names', async () => {
+    const context = await setup({
+      quota: { maxDomains: 1 },
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'unused' }),
+        disableRouting: async () => undefined,
+      },
+    });
+    const results = await Promise.allSettled([
+      context.mailfn.createDomain(context.admin, 'quota-a.example.com'),
+      context.mailfn.createDomain(context.admin, 'quota-b.example.com'),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toMatchObject([{
+      reason: { code: 'MAILFN_QUOTA_EXCEEDED' },
+    }]);
+    expect(await context.store.listDomains(context.project.id)).toHaveLength(1);
+  });
+
   it('compensates provider routing when active custom-domain state cannot be persisted', async () => {
     const disableRouting = vi.fn(async () => undefined);
     const context = await setup({
@@ -1022,6 +1109,35 @@ describe('MailFn domain service', () => {
     await context.mailfn.sendDraft(context.admin, forward.id);
     expect(sent[1]?.subject).toBe('Fwd: Question');
     expect(sent[1]?.attachments).toMatchObject([{ filename: 'proof.txt', contentType: 'text/plain', content: new TextEncoder().encode('proof') }]);
+  });
+
+  it('rejects sending drafts from disabled or elapsed expiring inboxes before dispatch', async () => {
+    const send = vi.fn(async () => ({ providerMessageId: 'must-not-send', status: 'sent' as const }));
+    const clock = new MutableClock();
+    const context = await setup({ clock, sendAdapter: { send } });
+    const disabled = await createInbox(context, 'disabled-draft');
+    const disabledDraft = await context.mailfn.createDraft(context.admin, {
+      inboxId: disabled.inbox.id, to: ['recipient@example.com'], subject: 'Disabled', text: 'body',
+    });
+    await context.store.saveInbox({ ...disabled.inbox, status: 'disabled', updatedAt: clock.now().toISOString() });
+    await expect(context.mailfn.sendDraft(context.admin, disabledDraft.id)).rejects.toMatchObject({
+      code: 'MAILFN_INBOX_INACTIVE',
+    });
+
+    const expiring = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id,
+      kind: 'expiring',
+      requestedLocalPart: 'expired-draft',
+      expirySeconds: 60,
+    });
+    const expiredDraft = await context.mailfn.createDraft(context.admin, {
+      inboxId: expiring.inbox.id, to: ['recipient@example.com'], subject: 'Expired', text: 'body',
+    });
+    clock.advance(61_000);
+    await expect(context.mailfn.sendDraft(context.admin, expiredDraft.id)).rejects.toMatchObject({
+      code: 'MAILFN_INBOX_INACTIVE',
+    });
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('provides complete draft and independent thread-label lifecycles', async () => {

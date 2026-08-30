@@ -193,33 +193,33 @@ describe("@mailfn/admin", () => {
     );
   });
 
-  it("returns one-time secrets and coalesces idempotent credential rotations", async () => {
-    const createCredential = vi.fn(async () => ({
+  it("returns one-time secrets and delegates durable credential rotation idempotency", async () => {
+    const rotateCredential = vi.fn(async () => ({
       credential: { id: "credential_new", projectId: "project_1", tokenHash: "hash", tokenPrefix: "mail", permissions: ["inbox:read"], status: "active", createdAt: "now" },
       token: "one-time-token",
     }));
-    const revokeCredential = vi.fn(async (_actor, id: string) => ({ id, projectId: "project_1", status: "revoked" }));
-    const service = createMailFnDomainAdminService({
+    const options = {
       mailfn: {
         createWebhook: vi.fn(async () => ({ webhook: { id: "webhook_1", projectId: "project_1", secretHash: "hash", secretCiphertext: "ciphertext" }, secret: "one-time-secret" })),
-        createCredential,
-        revokeCredential,
+        rotateCredential,
       } as unknown as MailFn,
       store: {
         getCredential: vi.fn(async () => ({ id: "credential_old", projectId: "project_1", permissions: ["inbox:read"], status: "active" })),
       } as unknown as MemoryMailFnStore,
-    });
+    };
+    const service = createMailFnDomainAdminService(options);
+    const secondService = createMailFnDomainAdminService(options);
     await expect(service.createWebhook({ payload: { url: "https://example.test/hook", eventTypes: ["message.received"] } }, context)).resolves.toMatchObject({
       data: { item: { id: "webhook_1", secret: "one-time-secret" } },
     });
     const rotations = await Promise.all([
       service.rotateCredential({ id: "credential_old" }, context),
-      service.rotateCredential({ id: "credential_old" }, context),
+      secondService.rotateCredential({ id: "credential_old" }, context),
     ]);
     expect(rotations[0]).toMatchObject({ data: { item: { id: "credential_new", token: "one-time-token" } } });
     expect(rotations[1]).toEqual(rotations[0]);
-    expect(createCredential).toHaveBeenCalledOnce();
-    expect(revokeCredential).toHaveBeenCalledWith(expect.anything(), "credential_old");
+    expect(rotateCredential).toHaveBeenCalledTimes(2);
+    expect(rotateCredential).toHaveBeenCalledWith(expect.anything(), "credential_old", "idempotency_1");
   });
 
   it("binds project-scoped reads and writes to the real MailFn service", async () => {

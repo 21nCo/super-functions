@@ -147,7 +147,7 @@ export class MemoryMailFnStore implements MailFnStore {
     return values(this.messages)
       .filter((message) => message.projectId === projectId && message.inboxId === inboxId)
       .filter((message) => matchesMessage(message, filter))
-      .sort((left, right) => right.receivedAt.localeCompare(left.receivedAt) || right.id.localeCompare(left.id));
+      .sort((left, right) => Date.parse(right.receivedAt) - Date.parse(left.receivedAt) || right.id.localeCompare(left.id));
   }
   async listMessagesPage(
     projectId: string,
@@ -355,6 +355,16 @@ export class MemoryMailFnStore implements MailFnStore {
     this.domains.set(domain.id, copy(domain));
     return true;
   }
+  async createDomainWithQuota(domain: MailDomain, maxDomains: number): Promise<boolean> {
+    if (values(this.domains).some((entry) => entry.projectId === domain.projectId && entry.domain === domain.domain)) {
+      return false;
+    }
+    if (values(this.domains).filter((entry) => entry.projectId === domain.projectId).length >= maxDomains) {
+      return false;
+    }
+    this.domains.set(domain.id, copy(domain));
+    return true;
+  }
   async saveDomain(domain: MailDomain): Promise<void> {
     this.domains.set(domain.id, copy(domain));
   }
@@ -389,6 +399,12 @@ export class MemoryMailFnStore implements MailFnStore {
   async getIdempotency(projectId: string, key: string): Promise<IdempotencyRecord | null> {
     const record = this.idempotency.get(`${projectId}:${key}`);
     return record ? copy(record) : null;
+  }
+  async createIdempotency(record: IdempotencyRecord): Promise<boolean> {
+    const key = `${record.projectId}:${record.key}`;
+    if (this.idempotency.has(key)) return false;
+    this.idempotency.set(key, copy(record));
+    return true;
   }
   async saveIdempotency(record: IdempotencyRecord): Promise<void> {
     this.idempotency.set(`${record.projectId}:${record.key}`, copy(record));
@@ -519,8 +535,9 @@ function matchesMessage(message: Message, filter: MessageFilter): boolean {
     const body = `${message.textBody ?? ''}\n${message.htmlBody ?? ''}`.toLowerCase();
     if (!body.includes(filter.text.toLowerCase())) return false;
   }
-  if (filter.receivedAfter && message.receivedAt <= filter.receivedAfter) return false;
-  if (filter.receivedBefore && message.receivedAt >= filter.receivedBefore) return false;
+  const receivedAt = Date.parse(message.receivedAt);
+  if (filter.receivedAfter && receivedAt <= Date.parse(filter.receivedAfter)) return false;
+  if (filter.receivedBefore && receivedAt >= Date.parse(filter.receivedBefore)) return false;
   if (filter.unreadOnly && message.readAt) return false;
   if (filter.threadId && message.threadId !== filter.threadId) return false;
   if (filter.labels?.some((label) => !message.labels.includes(label))) return false;

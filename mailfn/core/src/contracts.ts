@@ -106,6 +106,7 @@ export interface MailFnStore {
   getDomainByName(projectId: string, domain: string): Promise<MailDomain | null>;
   listDomains(projectId: string): Promise<MailDomain[]>;
   createDomain(domain: MailDomain): Promise<boolean>;
+  createDomainWithQuota(domain: MailDomain, maxDomains: number): Promise<boolean>;
   saveDomain(domain: MailDomain): Promise<void>;
 
   appendEvent(event: MailFnEvent): Promise<void>;
@@ -115,6 +116,7 @@ export interface MailFnStore {
   deleteExpiredAudits(projectId: string, now: string): Promise<number>;
 
   getIdempotency(projectId: string, key: string): Promise<IdempotencyRecord | null>;
+  createIdempotency(record: IdempotencyRecord): Promise<boolean>;
   saveIdempotency(record: IdempotencyRecord): Promise<void>;
   deleteExpiredIdempotency(projectId: string, key: string, now: string): Promise<void>;
   reserveIngressQuota(reservation: IngressQuotaReservation): Promise<IngressQuotaDecision>;

@@ -235,7 +235,6 @@ export function createMailFnDomainAdminService(
   options: MailFnDomainAdminServiceOptions,
 ): MailFnAdminService {
   const { mailfn, store } = options;
-  const credentialRotations = new Map<string, Promise<AdminOperationResult<MailFnMutationOutput>>>();
 
   const state = (context: AdminOperationContext) => ({
     activeProjectId: projectId(context),
@@ -458,30 +457,11 @@ export function createMailFnDomainAdminService(
       const { activeProjectId, adminActor } = state(context);
       const credentialId = string(input.id, "id");
       if (!context.idempotencyKey) throw new AdminError("precondition_failed", "Credential rotation requires an idempotency key.");
-      const rotationKey = `${activeProjectId}:${credentialId}:${context.idempotencyKey}`;
-      const existing = credentialRotations.get(rotationKey);
-      if (existing) return existing;
-      const rotation = (async () => {
-        const credential = await store.getCredential(credentialId);
-        if (!credential) notFound("Credential");
-        assertProject(credential, activeProjectId, "Credential");
-        const replacement = await mailfn.createCredential(adminActor, {
-          projectId: activeProjectId,
-          inboxId: credential.inboxId,
-          permissions: credential.permissions,
-          expiresAt: credential.expiresAt,
-        });
-        try {
-          await mailfn.revokeCredential(adminActor, credential.id);
-        } catch (error) {
-          await mailfn.revokeCredential(adminActor, replacement.credential.id).catch(() => undefined);
-          throw error;
-        }
-        return accepted({ ...safeCredential(asJson(replacement.credential)), token: replacement.token });
-      })();
-      credentialRotations.set(rotationKey, rotation);
-      rotation.catch(() => credentialRotations.delete(rotationKey));
-      return rotation;
+      const credential = await store.getCredential(credentialId);
+      if (!credential) notFound("Credential");
+      assertProject(credential, activeProjectId, "Credential");
+      const replacement = await mailfn.rotateCredential(adminActor, credentialId, context.idempotencyKey);
+      return accepted({ ...safeCredential(asJson(replacement.credential)), token: replacement.token });
     },
     async purgeRetention(_input, context) {
       return accepted(await mailfn.runRetention(state(context).activeProjectId));

@@ -43,6 +43,8 @@ run("npm", ["run", "build"], path.join(root, "clifn/core"));
 run("npm", ["run", "build"], path.join(root, "packages/observability"));
 run("npm", ["run", "build"], path.join(root, "packages/db"));
 run("npm", ["run", "build"], path.join(root, "packages/http"));
+run("npm", ["run", "build"], path.join(root, "mcpfn/core"));
+run("npm", ["run", "build"], path.join(root, "packages/admin"));
 const sendfnDirectory = path.join(root, "sendfn/typescript");
 const hasLocalSendfn = existsSync(path.join(sendfnDirectory, "package.json"));
 if (hasLocalSendfn) {

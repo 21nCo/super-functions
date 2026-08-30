@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Message, Webhook } from '@mailfn/core';
+import type { MailDomain, Message, Webhook } from '@mailfn/core';
 
 import type { D1Database, D1PreparedStatement, D1Result } from './bindings.js';
 import { D1MailFnStore } from './d1-store.js';
@@ -81,5 +81,34 @@ describe('D1MailFnStore', () => {
 
     expect(database.statements[0]?.query).toContain("SELECT COUNT(*) FROM mailfn_webhooks WHERE project_id = ? AND status <> 'disabled'");
     expect(database.statements[0]?.values.slice(-2)).toEqual(['prj_1', 3]);
+  });
+
+  it('compares received filters as normalized instants', async () => {
+    const database = new RecordingDatabase();
+    const store = new D1MailFnStore(database);
+
+    await store.listMessages('prj_1', 'inb_1', {
+      receivedAfter: '2026-08-30T05:30:00+05:30',
+      receivedBefore: '2026-08-30T07:30:00+05:30',
+    });
+
+    expect(database.statements[0]?.query).toContain('julianday(received_at) > julianday(?)');
+    expect(database.statements[0]?.query).toContain('julianday(received_at) < julianday(?)');
+    expect(database.statements[0]?.values).toEqual([
+      'prj_1', 'inb_1', '2026-08-30T00:00:00.000Z', '2026-08-30T02:00:00.000Z',
+    ]);
+  });
+
+  it('guards domain creation with the project quota in one statement', async () => {
+    const database = new RecordingDatabase();
+    const store = new D1MailFnStore(database);
+    const now = '2026-08-30T00:00:00.000Z';
+    await store.createDomainWithQuota({
+      id: 'dom_1', projectId: 'prj_1', domain: 'mail.example.test', status: 'pending',
+      verificationToken: 'verify', expectedRecords: [], createdAt: now, updatedAt: now,
+    } satisfies MailDomain, 2);
+
+    expect(database.statements[0]?.query).toContain('SELECT COUNT(*) FROM mailfn_domains WHERE project_id = ?');
+    expect(database.statements[0]?.values.slice(-2)).toEqual(['prj_1', 2]);
   });
 });

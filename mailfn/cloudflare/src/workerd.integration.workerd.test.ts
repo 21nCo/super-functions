@@ -9,7 +9,7 @@ import {
 } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { ParseJob, Webhook } from '@mailfn/core';
+import type { MailDomain, ParseJob, Webhook } from '@mailfn/core';
 import type { D1Database, Queue, R2Bucket } from './bindings.js';
 import { D1MailFnStore } from './d1-store.js';
 import { applyMailFnMigrations } from './migrations.js';
@@ -220,6 +220,29 @@ describe('MailFn in workerd', () => {
       reason: { code: 'MAILFN_QUOTA_EXCEEDED' },
     }]);
     expect(await new D1MailFnStore(env.MAILFN_DB).listInboxes(bootstrap.project.id)).toHaveLength(1);
+  });
+
+  it('enforces the domain quota atomically in D1', async () => {
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const now = '2026-08-30T00:00:00.000Z';
+    const domain = (id: string): MailDomain => ({
+      id,
+      projectId: 'project-domain-quota',
+      domain: `${id}.example.test`,
+      status: 'pending',
+      verificationToken: `verify-${id}`,
+      expectedRecords: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const results = await Promise.all([
+      store.createDomainWithQuota(domain('domain-a'), 1),
+      store.createDomainWithQuota(domain('domain-b'), 1),
+    ]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(await store.listDomains('project-domain-quota')).toHaveLength(1);
   });
 
   it('enforces the active-webhook quota atomically in D1', async () => {
