@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 from datetime import datetime, timedelta, timezone
@@ -241,13 +242,26 @@ async def test_verifier_rejects_invalid_hosts_stale_timestamps_and_malformed_env
 
 
 @pytest.mark.asyncio
-async def test_verifies_and_confirms_subscription_handshakes() -> None:
+async def test_verifies_and_confirms_subscription_handshakes(monkeypatch: pytest.MonkeyPatch) -> None:
     canonical_messages: list[str] = []
     confirmed: list[str] = []
+    threaded: list[Any] = []
+
+    async def run_in_thread(function: Any, *args: Any) -> Any:
+        threaded.append(function)
+        return function(*args)
+
+    def fetch_certificate(_url: str) -> str:
+        return "certificate"
+
+    def confirm_subscription(url: str) -> None:
+        confirmed.append(url)
+
+    monkeypatch.setattr(asyncio, "to_thread", run_in_thread)
     verifier = AwsSnsVerifier(
-        fetch_certificate=lambda _url: "certificate",
+        fetch_certificate=fetch_certificate,
         verify_signature=lambda canonical, *_args: canonical_messages.append(canonical) or True,
-        confirm_subscription=confirmed.append,
+        confirm_subscription=confirm_subscription,
         topic_arns=["arn:aws:sns:us-east-1:123456789012:sendfn"],
     )
     db = MemoryAdapter()
@@ -265,6 +279,7 @@ async def test_verifies_and_confirms_subscription_handshakes() -> None:
     assert result["accepted"] is True
     assert result["subscriptionConfirmed"] is True
     assert confirmed == [subscribe_url]
+    assert threaded == [fetch_certificate, confirm_subscription]
     assert f"SubscribeURL\n{subscribe_url}\n" in canonical_messages[0]
     assert "Token\ntoken-1\n" in canonical_messages[0]
 

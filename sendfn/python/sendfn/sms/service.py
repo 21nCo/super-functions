@@ -73,7 +73,6 @@ class SmsService:
         )
 
         try:
-            # Send via provider
             response = await self.provider.send_sms(
                 SendSmsRequest(
                     to=params.to,
@@ -81,49 +80,7 @@ class SmsService:
                     metadata=params.metadata,
                 )
             )
-
-            # Update transaction
-            await update_sms_transaction(
-                self.db,
-                str(transaction.id),
-                {
-                    "status": "sent" if response.success else "failed",
-                    "providerMessageId": response.provider_message_id,
-                    "sentAt": response.timestamp,
-                    "metadata": {
-                        **(params.metadata or {}),
-                        "error": response.error,
-                    },
-                },
-            )
-
-            # Record event
-            if self.event_tracking:
-                await record_event(
-                    self.db,
-                    {
-                        "referenceId": str(transaction.id),
-                        "referenceType": "sms",
-                        "eventType": "sent" if response.success else "failed",
-                        "provider": self.provider.name,
-                        "providerEventId": response.provider_message_id,
-                        "recipientEmail": None,
-                        "recipientPhone": params.to,
-                        "deviceToken": None,
-                        "metadata": {"error": response.error} if response.error else {},
-                        "eventTimestamp": response.timestamp,
-                    },
-                )
-
-            # Get updated transaction
-            updated_transaction = await get_sms_transaction(self.db, str(transaction.id))
-            if not updated_transaction:
-                raise ValueError(f"Transaction {transaction.id} not found after update")
-
-            return updated_transaction
-
         except Exception as error:
-            # Update transaction as failed
             await update_sms_transaction(
                 self.db,
                 str(transaction.id),
@@ -133,7 +90,6 @@ class SmsService:
                 },
             )
 
-            # Record failed event
             if self.event_tracking:
                 await record_event(
                     self.db,
@@ -152,3 +108,40 @@ class SmsService:
                 )
 
             raise error
+
+        await update_sms_transaction(
+            self.db,
+            str(transaction.id),
+            {
+                "status": "sent" if response.success else "failed",
+                "providerMessageId": response.provider_message_id,
+                "sentAt": response.timestamp,
+                "metadata": {
+                    **(params.metadata or {}),
+                    "error": response.error,
+                },
+            },
+        )
+
+        if self.event_tracking:
+            await record_event(
+                self.db,
+                {
+                    "referenceId": str(transaction.id),
+                    "referenceType": "sms",
+                    "eventType": "sent" if response.success else "failed",
+                    "provider": self.provider.name,
+                    "providerEventId": response.provider_message_id,
+                    "recipientEmail": None,
+                    "recipientPhone": params.to,
+                    "deviceToken": None,
+                    "metadata": {"error": response.error} if response.error else {},
+                    "eventTimestamp": response.timestamp,
+                },
+            )
+
+        updated_transaction = await get_sms_transaction(self.db, str(transaction.id))
+        if not updated_transaction:
+            raise ValueError(f"Transaction {transaction.id} not found after update")
+
+        return updated_transaction

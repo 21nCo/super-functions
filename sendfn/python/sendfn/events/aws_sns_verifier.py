@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import re
 from datetime import datetime, timezone
@@ -56,7 +57,10 @@ class AwsSnsVerifier:
         self._validate_timestamp(message["Timestamp"])
 
         canonical_message = self._build_canonical_message(message)
-        certificate = self.fetch_certificate(message["SigningCertURL"])
+        certificate = await asyncio.to_thread(
+            self.fetch_certificate,
+            message["SigningCertURL"],
+        )
 
         try:
             is_valid = self.verify_signature(
@@ -85,7 +89,10 @@ class AwsSnsVerifier:
             )
         self._validate_sns_url(str(message["SubscribeURL"]))
         try:
-            self._confirm_subscription(str(message["SubscribeURL"]))
+            await asyncio.to_thread(
+                self._confirm_subscription,
+                str(message["SubscribeURL"]),
+            )
         except SendfnError:
             raise
         except Exception as exc:

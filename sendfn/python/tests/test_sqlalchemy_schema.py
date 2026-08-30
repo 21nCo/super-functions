@@ -35,3 +35,8 @@ async def test_sqlalchemy_setup_provisions_tables_before_first_sendfn_operation(
     })
 
     assert transaction.subject == "Provisioned"
+
+    indexes = sqlalchemy.inspect(engine).get_indexes("device_tokens")
+    device_index = next(index for index in indexes if index["name"] == "device_tokens_user_token_platform")
+    assert device_index["column_names"] == ["userId", "token", "platform"]
+    assert device_index["unique"] == 1

@@ -97,7 +97,13 @@ def build_sqlalchemy_metadata(namespace_prefix: str = "") -> Any:
         Column("createdAt", DateTime(timezone=True), nullable=False),
         Column("updatedAt", DateTime(timezone=True), nullable=False),
     )
-    Index(name("device_tokens_user_platform"), device_tokens.c.userId, device_tokens.c.platform)
+    Index(
+        name("device_tokens_user_token_platform"),
+        device_tokens.c.userId,
+        device_tokens.c.token,
+        device_tokens.c.platform,
+        unique=True,
+    )
 
     Table(
         name("suppression_list"), metadata,
