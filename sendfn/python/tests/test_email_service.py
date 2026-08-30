@@ -159,6 +159,22 @@ async def test_suppression_checks_cc_and_bcc_recipients() -> None:
 
 
 @pytest.mark.asyncio
+async def test_persists_every_primary_email_recipient() -> None:
+    service, _provider = create_service()
+
+    transaction = await service.send_email(
+        SendEmailParams(
+            userId="user-1",
+            to=["first@example.com", "second@example.com"],
+            subject="Hello",
+            html="<p>Hello</p>",
+        )
+    )
+
+    assert transaction.to == ["first@example.com", "second@example.com"]
+
+
+@pytest.mark.asyncio
 async def test_missing_template_and_empty_content_fail_with_stable_codes() -> None:
     service, provider = create_service()
 

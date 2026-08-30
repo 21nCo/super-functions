@@ -70,6 +70,14 @@ def test_email_transaction_model():
     assert transaction.user_id == "user-123"
     assert transaction.status == "sent"
 
+    transaction = EmailTransaction(
+        **{
+            **transaction.model_dump(by_alias=True),
+            "to": ["first@example.com", "second@example.com"],
+        }
+    )
+    assert transaction.to == ["first@example.com", "second@example.com"]
+
 
 def test_suppression_list_model():
     """Test SuppressionList model."""

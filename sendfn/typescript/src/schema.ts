@@ -1,6 +1,6 @@
 import type { TableSchema } from '@superfunctions/db';
 
-export const SENDFN_SCHEMA_VERSION = 1;
+export const SENDFN_SCHEMA_VERSION = 2;
 
 export interface SendfnSchemaOptions {
   namespace?: string;
@@ -18,7 +18,7 @@ export function getSendFnSchema(_options: SendfnSchemaOptions = {}): TableSchema
       fields: {
         id: { type: 'string', required: true },
         userId: { type: 'string', required: true, fieldName: 'user_id' },
-        to: { type: 'string', required: true },
+        to: { type: 'json', required: true },
         from: { type: 'string', required: true },
         subject: { type: 'string', required: true },
         templateId: { type: 'string', required: false, fieldName: 'template_id' },

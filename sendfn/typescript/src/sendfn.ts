@@ -36,6 +36,7 @@ import { DeviceTokenManager } from './push/device-manager';
 import { EventTracker } from './events/tracker';
 import { SuppressionManager } from './suppression/manager';
 import { AwsSesWebhookHandler } from './events/webhook-handler';
+import type { SnsMessage } from './events/aws-sns-verifier';
 import { welcomeEmailTemplate, passwordResetTemplate, notificationTemplate } from './templates/defaults';
 import { createRouter } from '@superfunctions/http';
 import { wrapWithSchema, type Adapter } from '@superfunctions/db';
@@ -61,6 +62,16 @@ interface CanonicalMeta {
 }
 
 const SUPPORTED_PUSH_PLATFORMS = ['ios', 'android', 'web'] as const;
+
+async function parseJsonBody<T = unknown>(ctx: { json(): Promise<unknown> }): Promise<T> {
+  try {
+    return await ctx.json() as T;
+  } catch (error) {
+    throw new ValidationError('Request body must be valid JSON', {
+      code: 'SENDFN_VALIDATION_ERROR', retryable: false, cause: error,
+    });
+  }
+}
 
 function isPlatform(value: string): value is Platform {
   return (SUPPORTED_PUSH_PLATFORMS as readonly string[]).includes(value);
@@ -393,7 +404,7 @@ export class Sendfn implements SendfnClient {
                   handler: async (req: Request, ctx: any) =>
                     withEnvelope(
                       req,
-                      async () => this.email(await ctx.json()),
+                      async () => this.email(await parseJsonBody(ctx) as SendEmailParams),
                       { successStatus: 201, validationMessage: 'Request body failed validation' }
                     )
               },
@@ -405,7 +416,7 @@ export class Sendfn implements SendfnClient {
                   handler: async (req: Request, ctx: any) =>
                     withEnvelope(
                       req,
-                      async () => this.sms(validateSmsParams(await ctx.json())),
+                      async () => this.sms(validateSmsParams(await parseJsonBody(ctx))),
                       { successStatus: 201, validationMessage: 'Request body failed validation' }
                     )
               },
@@ -417,7 +428,7 @@ export class Sendfn implements SendfnClient {
                   handler: async (req: Request, ctx: any) =>
                     withEnvelope(
                       req,
-                      async () => this.whatsapp(await ctx.json()),
+                      async () => this.whatsapp(await parseJsonBody(ctx) as SendWhatsAppParams),
                       { successStatus: 201, validationMessage: 'Request body failed validation' }
                     )
               },
@@ -429,7 +440,7 @@ export class Sendfn implements SendfnClient {
                   handler: async (req: Request, ctx: any) =>
                     withEnvelope(
                       req,
-                      async () => this.push(await ctx.json()),
+                      async () => this.push(await parseJsonBody(ctx) as SendPushParams),
                       { successStatus: 201, validationMessage: 'Request body failed validation' }
                     )
               },
@@ -441,7 +452,7 @@ export class Sendfn implements SendfnClient {
                   handler: async (req: Request, ctx: any) =>
                     withEnvelope(
                       req,
-                      async () => this.registerDevice(await ctx.json()),
+                      async () => this.registerDevice(await parseJsonBody(ctx) as RegisterDeviceParams),
                       { successStatus: 201, validationMessage: 'Request body failed validation' }
                     )
               },
@@ -477,12 +488,7 @@ export class Sendfn implements SendfnClient {
                     withEnvelope(
                       req,
                       async () => {
-                        let body: unknown;
-                        try {
-                          body = await ctx.json();
-                        } catch {
-                          throw new ValidationError('Request body must be valid JSON');
-                        }
+                        const body = await parseJsonBody(ctx);
 
                         if (!body || typeof body !== 'object' || Array.isArray(body)) {
                           throw new ValidationError('Request body must be a JSON object');
@@ -546,7 +552,7 @@ export class Sendfn implements SendfnClient {
                     return withEnvelope(
                       req,
                       async () =>
-                        this.awsSesWebhookHandler.handleSnsNotification(await ctx.json(), {
+                        this.awsSesWebhookHandler.handleSnsNotification(await parseJsonBody<SnsMessage>(ctx), {
                           requestId,
                         }),
                       { requestId }

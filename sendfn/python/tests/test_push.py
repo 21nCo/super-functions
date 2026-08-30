@@ -194,6 +194,34 @@ async def test_fcm_chunks_batches_at_500(monkeypatch: pytest.MonkeyPatch) -> Non
     assert response.success_count == 501
     assert response.failed_count == 0
 
+    chunk_sizes.clear()
+    to_thread_calls = 0
+
+    def fail_second_chunk(message: Any) -> FakeResponse:
+        chunk_sizes.append(len(message.tokens))
+        if len(chunk_sizes) == 2:
+            raise RuntimeError("second chunk unavailable")
+        return FakeResponse(len(message.tokens))
+
+    provider._messaging.send_each_for_multicast = fail_second_chunk
+    partial = await provider.send_push(
+        SendPushRequest(
+            device_tokens=[f"partial-{index}" for index in range(501)],
+            title="Partial",
+            body="Delivery",
+        )
+    )
+
+    assert chunk_sizes == [500, 1]
+    assert partial.success is False
+    assert partial.success_count == 500
+    assert partial.failed_count == 1
+    assert partial.results[-1] == {
+        "token": "partial-500",
+        "success": False,
+        "error": "FCM Error: second chunk unavailable",
+    }
+
 
 @pytest.mark.asyncio
 async def test_fcm_applies_delivery_options_to_web_push(monkeypatch: pytest.MonkeyPatch) -> None:

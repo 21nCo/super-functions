@@ -153,6 +153,27 @@ describe('EmailService', () => {
     expect(rawAdapter.records('communication_events')).toHaveLength(0);
   });
 
+  it('applies the configured display name while persisting a bare sender address', async () => {
+    service = new EmailService(
+      provider as any,
+      db,
+      new TemplateEngine(),
+      registry,
+      { fromEmail: 'noreply@example.com', fromName: 'Example "Alerts"' },
+      { retryAttempts: 1, retryDelay: 0 },
+    );
+
+    const transaction = await service.sendEmail({
+      userId: 'user-1',
+      to: 'user@example.com',
+      subject: 'Hello',
+      text: 'body',
+    });
+
+    expect(provider.requests[0].from).toBe('"Example \\"Alerts\\"" <noreply@example.com>');
+    expect(transaction.from).toBe('noreply@example.com');
+  });
+
   it('does not rewrite an accepted email as failed when event persistence fails', async () => {
     vi.spyOn(db, 'recordEvent').mockRejectedValueOnce(new Error('event store unavailable'));
     await expect(service.sendEmail({

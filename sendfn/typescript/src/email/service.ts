@@ -24,6 +24,17 @@ const DEFAULT_BULK_CONCURRENCY = 5;
 const IDEMPOTENCY_NAMESPACE = 'f6ff2eac-697c-4df6-8d11-e5c37f652f53';
 const IDEMPOTENCY_PENDING_RECLAIM_MS = 5 * 60 * 1000;
 
+function formatSender(address: string, displayName?: string): string {
+  if (!displayName) return address;
+  if (/[\r\n]/.test(displayName)) {
+    throw new ValidationError('Email header values cannot contain line breaks', {
+      code: 'SENDFN_VALIDATION_ERROR', retryable: false,
+    });
+  }
+  const escapedName = displayName.replace(/([\\"])/g, '\\$1');
+  return `"${escapedName}" <${address}>`;
+}
+
 function canonicalize(value: unknown): unknown {
   if (value instanceof Uint8Array) {
     return { bytes: Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join('') };
@@ -84,8 +95,9 @@ export class EmailService {
     this.assertTransportHeaders(params, recipients, rendered.subject);
     this.assertResolvedContent(rendered.subject, rendered.html, rendered.text);
     this.assertProviderLimits(recipients, params.attachments);
+    const senderAddress = params.from ?? this.config.fromEmail;
     const providerRequest: SendEmailRequest = {
-      from: params.from ?? this.config.fromEmail,
+      from: formatSender(senderAddress, params.from ? undefined : this.config.fromName),
       to: recipients.to,
       cc: recipients.cc,
       bcc: recipients.bcc,
@@ -124,7 +136,7 @@ export class EmailService {
       transaction = await this.adapter.createEmailTransaction({
       userId: params.userId,
       to: recipients.to.length === 1 ? recipients.to[0]! : recipients.to,
-      from: params.from ?? this.config.fromEmail,
+      from: senderAddress,
       subject: rendered.subject,
       templateId: params.templateId || null,
       templateData: params.templateData || null,

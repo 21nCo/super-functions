@@ -223,6 +223,33 @@ describe('push and device phase 5 contracts', () => {
       code: 'SENDFN_VALIDATION_ERROR',
       message: 'Push data value for `nested` must be a string, finite number, or boolean',
     });
+
+    let requestCount = 0;
+    provider.app = {
+      messaging: () => ({
+        sendEachForMulticast: async (message) => {
+          requestCount += 1;
+          if (requestCount === 2) throw new Error('second chunk unavailable');
+          return {
+            successCount: message.tokens.length,
+            failureCount: 0,
+            responses: message.tokens.map(() => ({ success: true })),
+          };
+        },
+      }),
+    };
+
+    const partial = await provider.sendPush({
+      deviceTokens: Array.from({ length: 501 }, (_, index) => `partial-${index}`),
+      title: 'Partial',
+      body: 'Delivery',
+    });
+    expect(partial).toMatchObject({ success: false, successCount: 500, failedCount: 1 });
+    expect(partial.results.at(-1)).toEqual({
+      token: 'partial-500',
+      success: false,
+      error: 'FCM Error: second chunk unavailable',
+    });
   });
 
   it('does not instantiate an unused configured FCM fallback', async () => {

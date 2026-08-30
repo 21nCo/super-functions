@@ -241,6 +241,31 @@ describe('admin API envelopes', () => {
     await client.close();
   });
 
+  it('returns validation errors for malformed JSON on every JSON admin route', async () => {
+    const client = sendfn({
+      database: new StrongMockAdapter() as any,
+      enableApi: true,
+      apiConfig: { adminKey: 'top-secret' },
+      awsSns: { topicArns: ['arn:aws:sns:us-east-1:123456789012:sendfn'] },
+    } satisfies SendfnConfig);
+    const routes = ['/email', '/sms', '/whatsapp', '/push', '/devices', '/devices/refresh', '/webhooks/aws-ses'];
+
+    for (const route of routes) {
+      const response = await (client.router as any).handle(new Request(`http://localhost${route}`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer top-secret', 'content-type': 'application/json' },
+        body: '{not-json',
+      }));
+      expect(response.status, route).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'SENDFN_VALIDATION_ERROR' },
+      });
+    }
+
+    await client.close();
+  });
+
   it('rejects unsupported runtime push-provider keys', () => {
     expect(() =>
       sendfn({

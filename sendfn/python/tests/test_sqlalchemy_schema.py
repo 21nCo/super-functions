@@ -17,7 +17,7 @@ async def test_sqlalchemy_setup_provisions_tables_before_first_sendfn_operation(
 
     transaction = await create_email_transaction(adapter, {
         "userId": "project-1",
-        "to": "recipient@example.com",
+        "to": ["first@example.com", "second@example.com"],
         "from": "agent@example.com",
         "subject": "Provisioned",
         "templateId": None,
@@ -35,6 +35,7 @@ async def test_sqlalchemy_setup_provisions_tables_before_first_sendfn_operation(
     })
 
     assert transaction.subject == "Provisioned"
+    assert transaction.to == ["first@example.com", "second@example.com"]
 
     indexes = sqlalchemy.inspect(engine).get_indexes("device_tokens")
     device_index = next(index for index in indexes if index["name"] == "device_tokens_user_token_platform")

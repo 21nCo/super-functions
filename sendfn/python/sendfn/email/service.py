@@ -77,7 +77,11 @@ class EmailService:
             self.db,
             {
                 "userId": params.user_id,
-                "to": recipients["to"][0],
+                "to": (
+                    recipients["to"][0]
+                    if len(recipients["to"]) == 1
+                    else recipients["to"]
+                ),
                 "from": self.config.from_email,
                 "subject": rendered["subject"],
                 "templateId": params.template_id,

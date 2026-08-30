@@ -103,7 +103,18 @@ export class FcmProvider implements PushProvider {
 
       results.push(...chunkResults);
     } catch (error: any) {
-        throw new PushProviderError(`FCM Error: ${error.message}`);
+        if (results.length === 0) {
+          throw new PushProviderError(`FCM Error: ${error.message}`);
+        }
+
+        const unattemptedTokens = params.deviceTokens.slice(start);
+        failedCount += unattemptedTokens.length;
+        results.push(...unattemptedTokens.map((token) => ({
+          token,
+          success: false,
+          error: `FCM Error: ${error.message}`,
+        })));
+        break;
     }
     }
 

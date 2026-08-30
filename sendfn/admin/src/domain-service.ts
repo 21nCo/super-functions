@@ -24,11 +24,22 @@ function safeDeviceToken<T extends { token: string }>(value: T): SendFnAdminJson
   return { ...toAdminJson(value), token: "[REDACTED]" } as SendFnAdminJson<T>;
 }
 
+function redactNestedTokens(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactNestedTokens);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => [key, key === "token" ? "[REDACTED]" : redactNestedTokens(item)]),
+  );
+}
+
 function safePushNotification<T extends { deviceTokens: string[] }>(value: T): SendFnAdminJson<T> {
+  const safeValue = toAdminJson(value) as Record<string, unknown>;
   return {
-    ...toAdminJson(value),
+    ...safeValue,
     deviceTokens: value.deviceTokens.map(() => "[REDACTED]"),
-  } as SendFnAdminJson<T>;
+    metadata: redactNestedTokens(safeValue.metadata),
+  } as unknown as SendFnAdminJson<T>;
 }
 
 function parseDate(value: string, label: string): Date {

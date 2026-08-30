@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { getSchema, SENDFN_SCHEMA_VERSION } from '../src/schema';
 import { StrongMockAdapter, WeakOverwriteMockAdapter, assertTestDoubleFidelity } from './mock-adapter';
 
 type ReleaseGateResult = {
@@ -25,6 +26,14 @@ function evaluateTypeScriptReleaseGateFailure(command: string, stderr: string): 
 }
 
 describe('release gate metadata', () => {
+  it('stores email recipient lists in a JSON-compatible field', () => {
+    const schema = getSchema();
+    const emailTransactions = schema.schemas.find((table) => table.modelName === 'email_transactions');
+
+    expect(SENDFN_SCHEMA_VERSION).toBe(2);
+    expect(emailTransactions?.fields.to).toMatchObject({ type: 'json', required: true });
+  });
+
   it('documents repo-root TypeScript release-gate commands and required tooling', () => {
     const packageJson = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),

@@ -47,6 +47,15 @@ class FakeVerifier:
             raise self.error
 
 
+class RacingMemoryAdapter(MemoryAdapter):
+    """Force concurrent event creates to overlap before the primary-key check."""
+
+    async def create(self, params: Any) -> dict[str, Any]:
+        if params.model == "communication_events":
+            await asyncio.sleep(0)
+        return await super().create(params)
+
+
 def create_envelope(
     message: dict[str, Any],
     **overrides: Any,
@@ -314,7 +323,7 @@ def test_default_sns_verifier_checks_rsa_signatures_without_an_openssl_process()
 
 @pytest.mark.asyncio
 async def test_delivery_updates_matching_transaction_and_keeps_duplicates_idempotent() -> None:
-    db = MemoryAdapter()
+    db = RacingMemoryAdapter()
     await seed_email_transaction(db)
     handler = AwsSesWebhookHandler(db, SuppressionManager(db), verifier=FakeVerifier())
 
@@ -335,8 +344,10 @@ async def test_delivery_updates_matching_transaction_and_keeps_duplicates_idempo
         }
     )
 
-    first = await handler.handle_webhook(envelope)
-    second = await handler.handle_webhook(envelope)
+    first, second = await asyncio.gather(
+        handler.handle_webhook(envelope),
+        handler.handle_webhook(envelope),
+    )
 
     assert first == {
         "accepted": True,

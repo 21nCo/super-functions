@@ -4,9 +4,10 @@ This module provides convenience functions that wrap superfunctions.db calls
 with sendfn-specific logic.
 """
 
+import json
 from datetime import datetime
 from typing import Any, Optional, cast
-from uuid import uuid4
+from uuid import UUID, uuid4, uuid5
 
 from superfunctions.db import (
     Adapter,
@@ -34,6 +35,7 @@ from ..models import (
 
 DEFAULT_EVENT_QUERY_LIMIT = 50
 MAX_EVENT_QUERY_LIMIT = 200
+EVENT_IDEMPOTENCY_NAMESPACE = UUID("bfbc0bcb-8cf7-4d9a-8cc5-7d4196909d50")
 
 
 def normalize_suppression_email(email: str) -> str:
@@ -152,16 +154,51 @@ async def _get_reference_record(
 
 async def record_event(db: Adapter, data: dict) -> CommunicationEvent:
     """Record a communication event."""
-    result = await db.create(
-        CreateParams(
-            model="communication_events",
-            data={
-                **data,
-                "id": str(uuid4()),
-                "createdAt": datetime.utcnow(),
-            },
+    provider_event_id = data.get("providerEventId")
+    event_id = str(
+        uuid5(
+            EVENT_IDEMPOTENCY_NAMESPACE,
+            json.dumps(
+                [
+                    data.get("referenceId"),
+                    data.get("referenceType"),
+                    data.get("eventType"),
+                    data.get("provider"),
+                    provider_event_id,
+                    data.get("recipientEmail"),
+                    data.get("recipientPhone"),
+                    data.get("deviceToken"),
+                ],
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ),
         )
+        if provider_event_id
+        else uuid4()
     )
+    try:
+        result = await db.create(
+            CreateParams(
+                model="communication_events",
+                data={
+                    **data,
+                    "id": event_id,
+                    "createdAt": datetime.utcnow(),
+                },
+            )
+        )
+    except Exception:
+        if not provider_event_id:
+            raise
+        existing = await db.find_one(
+            FindOneParams(
+                model="communication_events",
+                where=[WhereClause(field="id", operator=Operator.EQ, value=event_id)],
+            )
+        )
+        if existing is None:
+            raise
+        result = existing
     return CommunicationEvent.model_validate(result)
 
 

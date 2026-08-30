@@ -14,7 +14,7 @@ class EmailTransaction(BaseModel):
 
     id: UUID
     user_id: str = Field(alias="userId")
-    to: EmailStr
+    to: EmailStr | list[EmailStr]
     from_: EmailStr = Field(alias="from")
     subject: str
     template_id: Optional[str] = Field(None, alias="templateId")

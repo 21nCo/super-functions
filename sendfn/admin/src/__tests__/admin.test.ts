@@ -7,7 +7,7 @@ import {
   createAdminRegistry,
   type AdminOperationContext,
 } from "@superfunctions/admin";
-import { consoleSmsAdapter, sendfn, type SendfnClient } from "sendfn";
+import { consoleSmsAdapter, sendfn, type PushProvider, type SendfnClient } from "sendfn";
 import {
   createSendFnDomainAdminAdapter,
   sendFnAdminCapability,
@@ -213,6 +213,60 @@ describe("@sendfn/admin", () => {
         nextCursor: null,
       },
     });
+  });
+
+  it("redacts provider tokens nested in push result metadata", async () => {
+    const privateToken = "private-push-token";
+    const pushProvider: PushProvider = {
+      name: "test-push",
+      platform: "android",
+      capabilities: {
+        maxPayloadSize: 4096,
+        supportsBatching: true,
+        supportsScheduling: false,
+        supportsImages: true,
+        supportsSilentPush: true,
+      },
+      async initialize() {},
+      async close() {},
+      async isHealthy() { return true; },
+      validateToken() { return true; },
+      async sendBulkPush() { return []; },
+      async sendPush(request) {
+        return {
+          success: true,
+          successCount: request.deviceTokens.length,
+          failedCount: 0,
+          invalidTokens: [],
+          results: request.deviceTokens.map((token) => ({ token, success: true })),
+          timestamp: new Date("2026-08-31T00:00:00.000Z"),
+        };
+      },
+    };
+    const client = sendfn({
+      database: memoryAdapter({ debug: false }),
+      pushProviders: { android: pushProvider },
+    });
+    clients.push(client);
+    await client.registerDevice({ userId: "user_push", token: privateToken, platform: "android" });
+    const { dispatch } = dispatcher(client);
+
+    const sent = await dispatch.dispatch({
+      operationId: "sendfn.messages.send-push",
+      input: { userId: "user_push", title: "Hello", body: "World" },
+      context: context({ confirmationToken: "confirmed" }),
+    });
+
+    expect(sent).toMatchObject({
+      ok: true,
+      data: {
+        item: {
+          deviceTokens: "[REDACTED]",
+          metadata: { results: [{ token: "[REDACTED]", success: true }] },
+        },
+      },
+    });
+    expect(JSON.stringify(sent)).not.toContain(privateToken);
   });
 
   it("rejects access when a public SendFn client is mounted under another project", async () => {

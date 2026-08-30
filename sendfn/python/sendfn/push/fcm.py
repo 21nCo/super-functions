@@ -100,8 +100,8 @@ class FcmProvider:
         success_count = 0
         failed_count = 0
 
-        try:
-            for start in range(0, len(request.device_tokens), 500):
+        for start in range(0, len(request.device_tokens), 500):
+            try:
                 chunk_tokens = request.device_tokens[start : start + 500]
                 message = self._messaging.MulticastMessage(
                     tokens=chunk_tokens,
@@ -158,18 +158,30 @@ class FcmProvider:
                             ),
                         }
                     )
+            except Exception as error:
+                if not results:
+                    raise PushProviderError(f"FCM Error: {str(error)}") from error
 
-            return SendPushResponse(
-                success=failed_count == 0,
-                success_count=success_count,
-                failed_count=failed_count,
-                invalid_tokens=invalid_tokens,
-                results=results,
-                timestamp=datetime.now(),
-            )
+                unattempted_tokens = request.device_tokens[start:]
+                failed_count += len(unattempted_tokens)
+                results.extend(
+                    {
+                        "token": token,
+                        "success": False,
+                        "error": f"FCM Error: {str(error)}",
+                    }
+                    for token in unattempted_tokens
+                )
+                break
 
-        except Exception as error:
-            raise PushProviderError(f"FCM Error: {str(error)}") from error
+        return SendPushResponse(
+            success=failed_count == 0,
+            success_count=success_count,
+            failed_count=failed_count,
+            invalid_tokens=invalid_tokens,
+            results=results,
+            timestamp=datetime.now(),
+        )
 
     async def send_bulk_push(
         self, requests: list[SendPushRequest]

@@ -32,7 +32,7 @@ def build_sqlalchemy_metadata(namespace_prefix: str = "") -> Any:
         name("email_transactions"), metadata,
         Column("id", String(36), primary_key=True),
         Column("userId", String(255), nullable=False),
-        Column("to", String(320), nullable=False),
+        Column("to", JSON, nullable=False),
         Column("from", String(320), nullable=False),
         Column("subject", Text, nullable=False),
         Column("templateId", String(255)),
