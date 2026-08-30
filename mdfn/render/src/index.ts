@@ -129,16 +129,19 @@ function renderExtensionNode(node: ExtensionRenderNode, context: RenderContext, 
   if (!node || typeof node !== "object" || !EXTENSION_TAGS.has(node.tag)) throw new Error("MDFN_EXTENSION_RENDER_TAG_FORBIDDEN");
   if (depth > (context.policy.maxDepth ?? 128)) throw new RangeError(`MDFN_RENDER_DEPTH_LIMIT_EXCEEDED:${context.policy.maxDepth ?? 128}`);
   const attributes: string[] = [];
+  let linkHref: string | undefined;
   for (const [name, rawValue] of Object.entries(node.attrs ?? {})) {
     const normalizedName = name.toLowerCase();
     if (/^on/.test(normalizedName) || normalizedName === "style" || normalizedName === "srcdoc") throw new Error("MDFN_EXTENSION_RENDER_ATTRIBUTE_FORBIDDEN");
     const allowed = EXTENSION_ATTRS.has(normalizedName) || normalizedName.startsWith("aria-") || normalizedName.startsWith("data-") || normalizedName === "href" || normalizedName === "src";
     if (!allowed) throw new Error(`MDFN_EXTENSION_RENDER_ATTRIBUTE_FORBIDDEN:${normalizedName}`);
     if (rawValue === false || rawValue === null || rawValue === undefined) continue;
+    if (node.tag === "a" && (normalizedName === "target" || normalizedName === "rel")) continue;
     if (normalizedName === "href") {
       const value = String(rawValue);
       const policy = { ...DEFAULT_LINKS, ...(context.policy.links ?? {}) };
       if (!validateUrl(value, policy)) throw new Error("MDFN_EXTENSION_RENDER_URL_FORBIDDEN");
+      if (node.tag === "a") linkHref = value;
     }
     if (normalizedName === "src") {
       const value = String(rawValue);
@@ -147,10 +150,10 @@ function renderExtensionNode(node: ExtensionRenderNode, context: RenderContext, 
     }
     attributes.push(rawValue === true ? ` ${normalizedName}` : ` ${normalizedName}="${escapeHtml(String(rawValue))}"`);
   }
-  if (node.tag === "a" && Object.entries(node.attrs ?? {}).some(([name, value]) => name.toLowerCase() === "target" && String(value).toLowerCase() === "_blank")) {
-    const relIndex = attributes.findIndex((attribute) => attribute.startsWith(" rel="));
-    if (relIndex >= 0) attributes.splice(relIndex, 1);
-    attributes.push(' rel="noreferrer noopener"');
+  if (node.tag === "a" && linkHref && isExternal(linkHref)) {
+    const policy = { ...DEFAULT_LINKS, ...(context.policy.links ?? {}) };
+    if (policy.externalTarget) attributes.push(` target="${policy.externalTarget}"`);
+    if (policy.externalRel) attributes.push(` rel="${escapeHtml(policy.externalRel)}"`);
   }
   const contents = `${node.text === undefined ? "" : escapeHtml(node.text)}${(node.children ?? []).map((child) => renderExtensionNode(child, context, depth + 1)).join("")}`;
   if (["br", "hr", "img"].includes(node.tag)) return `<${node.tag}${attributes.join("")}>`;

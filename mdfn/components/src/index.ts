@@ -1,4 +1,4 @@
-import { Transaction, type EditorController, type MdfnDiagnostic, type MdfnNode, type ReviewState } from "@mdfn/core";
+import { Transaction, mapSelection, type EditorController, type MdfnDiagnostic, type MdfnNode, type ReviewState, type TextSelection } from "@mdfn/core";
 
 export type EditorMode = "visual" | "source" | "split" | "preview" | "read-only";
 
@@ -36,20 +36,51 @@ export function insertMarkdownAtSelection(
   controller: EditorController,
   target: MarkdownInsertionTarget | null | undefined,
   markdown: string,
+  selection?: TextSelection,
 ): void {
-  if (target?.insertMarkdown(markdown)) return;
+  if (!selection && target?.insertMarkdown(markdown)) return;
   const state = controller.getState();
-  const selection = state.selection?.kind === "text"
+  const insertionSelection = selection ?? (state.selection?.kind === "text"
     ? state.selection
-    : { anchor: state.markdown.length, head: state.markdown.length };
-  const from = Math.min(selection.anchor, selection.head);
-  const to = Math.max(selection.anchor, selection.head);
+    : { kind: "text", anchor: state.markdown.length, head: state.markdown.length });
+  const from = Math.min(insertionSelection.anchor, insertionSelection.head);
+  const to = Math.max(insertionSelection.anchor, insertionSelection.head);
   controller.dispatch(
     new Transaction()
       .replaceSource(from, to, markdown)
       .setSelection({ kind: "text", anchor: from + markdown.length, head: from + markdown.length })
       .withSource("components:file-insert"),
   );
+}
+
+/** Keep an asynchronous file insertion anchored to the selection where it started. */
+export function captureMarkdownInsertion(controller: EditorController): {
+  insert(markdown: string): void;
+  cancel(): void;
+} {
+  const state = controller.getState();
+  let selection: TextSelection = state.selection?.kind === "text"
+    ? state.selection
+    : { kind: "text", anchor: state.markdown.length, head: state.markdown.length };
+  let active = true;
+  const unsubscribe = controller.subscribe((change) => {
+    if (!active || change.changedRanges.length === 0) return;
+    const mapped = mapSelection(selection, change.changedRanges);
+    if (mapped?.kind === "text") selection = mapped;
+  });
+  const cancel = (): void => {
+    if (!active) return;
+    active = false;
+    unsubscribe();
+  };
+  return {
+    insert(markdown) {
+      if (!active) return;
+      cancel();
+      insertMarkdownAtSelection(controller, null, markdown, selection);
+    },
+    cancel,
+  };
 }
 
 export const defaultToolbarGroups: readonly ToolbarGroup[] = Object.freeze([

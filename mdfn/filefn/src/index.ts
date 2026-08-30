@@ -126,7 +126,7 @@ export function createFileFnAssetProvider(input: {
 }
 
 export function assetReferenceMarkdown(reference: AssetReference, alt = reference.name ?? "asset"): string {
-  const label = alt.replaceAll("]", "\\]");
+  const label = alt.replaceAll("\\", "\\\\").replaceAll("]", "\\]");
   const url = formatMdfnAssetUrl({ provider: reference.provider, id: reference.id, documentId: reference.documentId, versionId: reference.versionId });
   return `![${label}](${url})`;
 }

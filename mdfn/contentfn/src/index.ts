@@ -136,7 +136,7 @@ function textFromRichNode(value: unknown, ancestors = new WeakSet<object>(), dep
 function richBlocksToMarkdown(value: readonly unknown[]): { markdown: string; unsupported: number } {
   const escapeText = (text: string): string => text
     .replace(/\\/g, "\\\\")
-    .replace(/([`*_[\]<>#])/g, "\\$1")
+    .replace(/([`*_[\]{}()#+\-.!|>~<>])/g, "\\$1")
     .replace(/(^|\n)([ \t]*)([-+>]|\d+[.)])(?=\s)/g, "$1$2\\$3");
   const codeFence = (text: string): string => {
     let longest = 0;

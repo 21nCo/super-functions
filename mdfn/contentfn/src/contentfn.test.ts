@@ -39,6 +39,10 @@ describe("markdown content", () => {
     ]);
     expect(result.content.markdown).toContain("\\# heading \\*emphasis\\*");
     expect(result.content.markdown).toContain("````tsbad\n```\nvalue\n````");
+    const punctuation = migrateToMarkdownContent([
+      { type: "paragraph", children: [{ text: "~~strike~~ | ![label](target) {value}." }] },
+    ]);
+    expect(punctuation.content.markdown).toBe("\\~\\~strike\\~\\~ \\| \\!\\[label\\]\\(target\\) \\{value\\}\\.");
   });
 
   it("rejects malformed optional envelope fields", () => {

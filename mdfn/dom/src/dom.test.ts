@@ -52,6 +52,24 @@ describe("@mdfn/dom", () => {
     editor.destroy();
   });
 
+  it("maps visual insertion, deletion, and replacement selections to exact source offsets", () => {
+    const cases = [
+      { apply: (editor: ReturnType<typeof createDomEditor>) => editor.view.state.tr.setSelection(TextSelection.create(editor.view.state.doc, 3)).insertText("X"), markdown: "abXcd\n", offset: 3 },
+      { apply: (editor: ReturnType<typeof createDomEditor>) => editor.view.state.tr.setSelection(TextSelection.create(editor.view.state.doc, 2, 3)).deleteSelection(), markdown: "acd\n", offset: 1 },
+      { apply: (editor: ReturnType<typeof createDomEditor>) => editor.view.state.tr.setSelection(TextSelection.create(editor.view.state.doc, 2, 4)).insertText("X"), markdown: "aXd\n", offset: 2 },
+    ];
+    for (const entry of cases) {
+      const controller = createEditor({ markdown: "abcd\n", projector: createMarkdownProjector() });
+      const editor = createDomEditor({ target: document.createElement("div"), controller });
+      editor.view.dispatch(entry.apply(editor));
+      expect(controller.getState()).toMatchObject({
+        markdown: entry.markdown,
+        selection: { kind: "text", anchor: entry.offset, head: entry.offset },
+      });
+      editor.destroy();
+    }
+  });
+
   it("does not dispatch controller history shortcuts while read-only", () => {
     const controller = createEditor({ markdown: "a\n", projector: createMarkdownProjector() });
     controller.dispatch(new Transaction().replaceSource(1, 1, "b"));

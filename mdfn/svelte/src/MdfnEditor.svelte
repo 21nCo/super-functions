@@ -20,6 +20,7 @@
   let previewTarget = $state<HTMLElement>();
   let loadError = $state<Error | null>(null);
   let value = $state('');
+  const effectiveReadOnly = $derived(readOnly || mode === 'read-only');
 
   $effect(() => {
     value = controller.getState().markdown;
@@ -45,7 +46,7 @@
     const currentSource = sourceTarget;
     const currentPreview = previewTarget;
     const currentController = controller;
-    const currentReadOnly = readOnly;
+    const currentReadOnly = effectiveReadOnly;
     const currentAriaLabel = ariaLabel;
     const currentOnFiles = onFiles;
     const currentEditorRef = editorRef;
@@ -117,7 +118,7 @@
 {#if loadError}
   <div data-mdfn-source-fallback="true" class={className}>
     <div role="status">Visual editor unavailable: {loadError.message}</div>
-    <textarea aria-label={`${ariaLabel} source fallback`} {value} readonly={readOnly} oninput={updateFallback}></textarea>
+    <textarea aria-label={`${ariaLabel} source fallback`} {value} readonly={effectiveReadOnly} oninput={updateFallback}></textarea>
   </div>
 {:else}
   <div data-mdfn-svelte="editor" data-mode={mode} class={className}>

@@ -58,7 +58,7 @@ describe("@mdfn/render", () => {
     expect(() => renderHtml(document, { extensions: [malicious] })).toThrowError("MDFN_EXTENSION_RENDER_RESULT_INVALID");
   });
 
-  it("forces noopener on extension links that open a new browsing context", () => {
+  it("applies host link policy instead of extension-provided target and rel values", () => {
     const extension: MdfnExtension = {
       name: "safe-blank-link",
       version: "1.0.0",
@@ -68,6 +68,12 @@ describe("@mdfn/render", () => {
     const html = renderHtml(document, { extensions: [extension] }).html;
     expect(html).toContain('target="_blank" rel="noreferrer noopener"');
     expect(html).not.toContain('rel="opener"');
+    const customized = renderHtml(document, {
+      extensions: [extension],
+      links: { externalTarget: "_self", externalRel: "nofollow" },
+    }).html;
+    expect(customized).toContain('target="_self" rel="nofollow"');
+    expect(customized).not.toContain('target="_blank"');
   });
 
   it("enforces node limits for manually rendered empty list items", () => {

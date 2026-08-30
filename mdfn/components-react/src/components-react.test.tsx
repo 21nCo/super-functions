@@ -19,13 +19,15 @@ describe("React toolbar", () => {
 
   it("renders the complete responsive authoring surface with UIFn chrome", () => {
     const controller = createEditor({ markdown: "# Outline", projector: createMarkdownProjector() });
-    const html = renderToStaticMarkup(<MdfnAuthoringChrome controller={controller} mode="read-only" readOnly />);
+    const html = renderToStaticMarkup(<MdfnAuthoringChrome controller={controller} mode="read-only" />);
     expect(html).toContain('data-mdfn-component="authoring-chrome"');
     expect(html).toContain('data-mdfn-surface="outline"');
     expect(html).toContain('data-mdfn-surface="diagnostics"');
     expect(html).toContain('data-mdfn-surface="editorial"');
     expect(html).toContain('data-mdfn-surface="history"');
     expect(html).toContain('data-uifn-component="card"');
+    expect(html).not.toContain('aria-label="Select files"');
+    expect(html).not.toContain('>Add comment<');
   });
 
   it("keeps the visual editor mounted after publishing its command target", async () => {
@@ -98,6 +100,22 @@ describe("React toolbar", () => {
       await Promise.resolve();
     });
     expect(controller.getState().markdown).toBe("before![asset](mdfn-asset:filefn/id)");
+    await act(async () => root.unmount());
+  });
+
+  it("anchors a pending file insertion to the original selection", async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const controller = createEditor({ markdown: "before after", projector: createMarkdownProjector(), selection: { kind: "text", anchor: 7, head: 12 } });
+    let resolveUpload!: (markdown: string) => void;
+    const target = document.createElement("div");
+    const root = createRoot(target);
+    await act(async () => root.render(<MdfnAuthoringChrome controller={controller} mode="source" onSelectFiles={() => new Promise((resolve) => { resolveUpload = resolve; })} />));
+    const input = target.querySelector<HTMLInputElement>('[aria-label="Select files"]')!;
+    Object.defineProperty(input, "files", { configurable: true, value: [new File(["x"], "x.png")] });
+    await act(async () => { input.dispatchEvent(new Event("change", { bubbles: true })); });
+    await act(async () => { controller.dispatch(new Transaction().replaceSource(0, 0, "prefix ").setSelection({ kind: "text", anchor: 0, head: 0 })); });
+    await act(async () => { resolveUpload("asset"); await Promise.resolve(); });
+    expect(controller.getState().markdown).toBe("prefix before asset");
     await act(async () => root.unmount());
   });
 });

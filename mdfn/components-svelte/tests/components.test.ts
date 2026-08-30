@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { mount, tick, unmount } from "svelte";
-import { createEditor } from "@mdfn/core";
+import { createEditor, Transaction } from "@mdfn/core";
 import { createMarkdownProjector } from "@mdfn/markdown";
 import MdfnEditorShell from "../src/MdfnEditorShell.svelte";
 import MdfnAuthoringChrome from "../src/MdfnAuthoringChrome.svelte";
@@ -9,11 +9,13 @@ describe("Svelte authoring components", () => {
   it("mounts UIFn chrome and every read-only authoring surface", async () => {
     const controller = createEditor({ markdown: "# Outline", projector: createMarkdownProjector() });
     const target = document.createElement("div");
-    const component = mount(MdfnEditorShell, { target, props: { controller, mode: "read-only", readOnly: true } });
+    const component = mount(MdfnEditorShell, { target, props: { controller, mode: "read-only" } });
     await tick();
     expect(target.querySelector('[data-mdfn-component="authoring-chrome"]')).not.toBeNull();
     expect(target.querySelector('[data-mdfn-surface="outline"]')?.textContent).toContain("Outline");
     expect(target.querySelector('[data-uifn-component="card"]')).not.toBeNull();
+    expect(target.querySelector('[aria-label="Select files"]')).toBeNull();
+    expect(Array.from(target.querySelectorAll("button")).some((button) => button.textContent === "Add comment")).toBe(false);
     await unmount(component);
     expect(target.children).toHaveLength(0);
   });
@@ -81,6 +83,26 @@ describe("Svelte authoring components", () => {
     input.dispatchEvent(new Event("change", { bubbles: true }));
     await tick();
     expect(controller.getState().markdown).toBe("before![asset](mdfn-asset:filefn/id)");
+    await unmount(component);
+  });
+
+  it("anchors a pending file insertion to the original selection", async () => {
+    const controller = createEditor({ markdown: "before after", projector: createMarkdownProjector(), selection: { kind: "text", anchor: 7, head: 12 } });
+    let resolveUpload!: (markdown: string) => void;
+    const target = document.createElement("div");
+    const component = mount(MdfnAuthoringChrome, {
+      target,
+      props: { controller, mode: "source", onSelectFiles: () => new Promise((resolve) => { resolveUpload = resolve; }) },
+    });
+    await tick();
+    const input = target.querySelector<HTMLInputElement>('[aria-label="Select files"]')!;
+    Object.defineProperty(input, "files", { configurable: true, value: [new File(["x"], "x.png")] });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await tick();
+    controller.dispatch(new Transaction().replaceSource(0, 0, "prefix ").setSelection({ kind: "text", anchor: 0, head: 0 }));
+    resolveUpload("asset");
+    await tick();
+    expect(controller.getState().markdown).toBe("prefix before asset");
     await unmount(component);
   });
 });

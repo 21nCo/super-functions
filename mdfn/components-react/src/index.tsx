@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Button, Card, Input, ToolbarButton, ToolbarRoot } from "@uifn/components-react";
-import { createAuthoringModel, createToolbarModel, insertMarkdownAtSelection, runToolbarAction, type AuthoringVersion, type SlashCommand, type ToolbarCommandTarget, type ToolbarGroup } from "@mdfn/components";
+import { captureMarkdownInsertion, createAuthoringModel, createToolbarModel, runToolbarAction, type AuthoringVersion, type SlashCommand, type ToolbarCommandTarget, type ToolbarGroup } from "@mdfn/components";
 import { Transaction, canTransitionReview, createCommentThread, createSuggestion, decideSuggestion, replyToComment, setCommentResolved, transitionReview, type EditorController, type EditorialActor, type ReviewState } from "@mdfn/core";
 import { MdfnEditor, useMdfn, type MdfnEditorHandle, type MdfnEditorProps } from "@mdfn/react";
 
@@ -45,6 +45,7 @@ export interface MdfnEditorShellProps extends MdfnEditorProps {
 export const MdfnEditorShell = React.forwardRef<React.ElementRef<typeof MdfnEditor>, MdfnEditorShellProps>(function MdfnEditorShell(
   { toolbarGroups, hideToolbar, hideAuthoringChrome, actor, onSelectFiles, onModeChange, versions, onRestoreVersion, className, onReady, ...props }, forwardedRef,
 ) {
+  const readOnly = props.readOnly === true || props.mode === "read-only";
   const [commandTarget, setCommandTarget] = React.useState<ToolbarCommandTarget | null>(null);
   const [editorHandle, setEditorHandle] = React.useState<MdfnEditorHandle | null>(null);
   const editorHandleRef = React.useRef<MdfnEditorHandle | null>(null);
@@ -66,15 +67,22 @@ export const MdfnEditorShell = React.forwardRef<React.ElementRef<typeof MdfnEdit
     onReady?.(handle);
   }, [onReady]);
   const handleFiles = React.useCallback(async (files: readonly File[]) => {
-    const markdown = await onSelectFiles?.(files);
-    if (markdown) insertMarkdownAtSelection(props.controller, editorHandleRef.current, markdown);
-    await props.onFiles?.(files);
+    const insertion = captureMarkdownInsertion(props.controller);
+    try {
+      const markdown = await onSelectFiles?.(files);
+      if (markdown) insertion.insert(markdown);
+      else insertion.cancel();
+      await props.onFiles?.(files);
+    } catch (error) {
+      insertion.cancel();
+      throw error;
+    }
   }, [onSelectFiles, props.controller, props.onFiles]);
   return (
     <div className={className} data-mdfn-component="editor-shell">
-      {!hideToolbar && !props.readOnly && <MdfnToolbar controller={props.controller} groups={toolbarGroups} commandTarget={commandTarget} />}
-      {!hideAuthoringChrome && <MdfnAuthoringChrome controller={props.controller} editor={editorHandle} mode={props.mode} readOnly={props.readOnly} actor={actor} onSelectFiles={onSelectFiles} onModeChange={onModeChange} versions={versions} onRestoreVersion={onRestoreVersion} />}
-      <MdfnEditor {...props} onFiles={handleFiles} ref={setEditorRef} onReady={editorReady} />
+      {!hideToolbar && !readOnly && <MdfnToolbar controller={props.controller} groups={toolbarGroups} commandTarget={commandTarget} />}
+      {!hideAuthoringChrome && <MdfnAuthoringChrome controller={props.controller} editor={editorHandle} mode={props.mode} readOnly={readOnly} actor={actor} onSelectFiles={onSelectFiles} onModeChange={onModeChange} versions={versions} onRestoreVersion={onRestoreVersion} />}
+      <MdfnEditor {...props} readOnly={readOnly} onFiles={handleFiles} ref={setEditorRef} onReady={editorReady} />
     </div>
   );
 });
@@ -95,6 +103,7 @@ export interface MdfnAuthoringChromeProps {
 const modes = ["visual", "source", "split", "preview", "read-only"] as const;
 
 export function MdfnAuthoringChrome({ controller, editor, mode = "visual", readOnly, compact, actor, onSelectFiles, onModeChange, versions = [], onRestoreVersion }: MdfnAuthoringChromeProps): React.ReactElement {
+  const isReadOnly = readOnly === true || mode === "read-only";
   useMdfn(controller);
   const [slashQuery, setSlashQuery] = React.useState("");
   const [link, setLink] = React.useState("");
@@ -140,29 +149,35 @@ export function MdfnAuthoringChrome({ controller, editor, mode = "visual", readO
       <nav aria-label="Editor mode" data-mdfn-surface="mode-switcher">
         {modes.map((item) => <Button key={item} type="button" aria-pressed={mode === item} disabled={!onModeChange} onClick={() => onModeChange?.(item)}>{item}</Button>)}
       </nav>
-      {!readOnly && model.bubbleVisible && <MdfnToolbar controller={controller} groups={model.bubble.groups} commandTarget={editor ? { can: (command) => editor.can(command as Parameters<MdfnEditorHandle["can"]>[0]), run: (command) => editor.run(command as Parameters<MdfnEditorHandle["run"]>[0]) } : null} ariaLabel="Selection formatting" data-mdfn-surface="bubble-toolbar" />}
-      {!readOnly && model.floatingVisible && <div data-mdfn-surface="floating-toolbar"><MdfnToolbar controller={controller} groups={model.floating.groups} commandTarget={editor ? { can: (command) => editor.can(command as Parameters<MdfnEditorHandle["can"]>[0]), run: (command) => editor.run(command as Parameters<MdfnEditorHandle["run"]>[0]) } : null} ariaLabel="Block formatting" /></div>}
-      {!readOnly && <Button type="button" aria-expanded={model.slashOpen} aria-controls="mdfn-insert-menu" onClick={() => setSlashOpen((value) => !value)}>Insert</Button>}
-      {!readOnly && model.slashOpen && <Card id="mdfn-insert-menu" data-mdfn-surface="slash-menu">
+      {!isReadOnly && model.bubbleVisible && <MdfnToolbar controller={controller} groups={model.bubble.groups} commandTarget={editor ? { can: (command) => editor.can(command as Parameters<MdfnEditorHandle["can"]>[0]), run: (command) => editor.run(command as Parameters<MdfnEditorHandle["run"]>[0]) } : null} ariaLabel="Selection formatting" data-mdfn-surface="bubble-toolbar" />}
+      {!isReadOnly && model.floatingVisible && <div data-mdfn-surface="floating-toolbar"><MdfnToolbar controller={controller} groups={model.floating.groups} commandTarget={editor ? { can: (command) => editor.can(command as Parameters<MdfnEditorHandle["can"]>[0]), run: (command) => editor.run(command as Parameters<MdfnEditorHandle["run"]>[0]) } : null} ariaLabel="Block formatting" /></div>}
+      {!isReadOnly && <Button type="button" aria-expanded={model.slashOpen} aria-controls="mdfn-insert-menu" onClick={() => setSlashOpen((value) => !value)}>Insert</Button>}
+      {!isReadOnly && model.slashOpen && <Card id="mdfn-insert-menu" data-mdfn-surface="slash-menu">
         <Card.Header><Card.Title>Insert</Card.Title></Card.Header>
         <Card.Content>
           <Input aria-label="Filter insert commands" value={slashQuery} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setSlashQuery(event.currentTarget.value)} />
           <div role="listbox" aria-label="Insert commands">{model.slashCommands.map((item) => <Button key={item.id} type="button" role="option" onClick={() => runSlash(item)}>{item.label}</Button>)}</div>
         </Card.Content>
       </Card>}
-      {!readOnly && <Card data-mdfn-surface="link-editor">
+      {!isReadOnly && <Card data-mdfn-surface="link-editor">
         <Card.Header><Card.Title>Link</Card.Title></Card.Header>
         <Card.Content><Input type="url" aria-label="Link URL" value={link} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setLink(event.currentTarget.value)} /><Button type="button" onClick={() => editor?.setLink(link)}>Apply link</Button><Button type="button" onClick={() => editor?.removeLink()}>Remove link</Button></Card.Content>
       </Card>}
-      {!readOnly && <Card data-mdfn-surface="table-controls">
+      {!isReadOnly && <Card data-mdfn-surface="table-controls">
         <Card.Header><Card.Title>Table</Card.Title></Card.Header>
         <Card.Content><Input type="number" min={1} max={100} aria-label="Table rows" value={rows} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setRows(Number(event.currentTarget.value))} /><Input type="number" min={1} max={100} aria-label="Table columns" value={columns} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setColumns(Number(event.currentTarget.value))} /><Button type="button" onClick={() => editor?.insertTable(rows, columns)}>Insert table</Button></Card.Content>
       </Card>}
-      {!readOnly && <Card data-mdfn-surface="file-controls">
+      {!isReadOnly && <Card data-mdfn-surface="file-controls">
         <Card.Header><Card.Title>Files</Card.Title></Card.Header>
         <Card.Content><Input type="file" aria-label="Select files" multiple onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
           const files = [...(event.currentTarget.files ?? [])];
-          void onSelectFiles?.(files).then((markdown) => { if (markdown) insertMarkdownAtSelection(controller, editor, markdown); });
+          const insertion = captureMarkdownInsertion(controller);
+          const upload = onSelectFiles?.(files);
+          if (!upload) { insertion.cancel(); return; }
+          void upload.then((markdown) => {
+            if (markdown) insertion.insert(markdown);
+            else insertion.cancel();
+          }, () => insertion.cancel());
         }} /></Card.Content>
       </Card>}
       <MdfnOutline controller={controller} />
@@ -171,14 +186,14 @@ export function MdfnAuthoringChrome({ controller, editor, mode = "visual", readO
         <Card.Header><Card.Title>Review</Card.Title></Card.Header>
         <Card.Content>
           <p>State: {model.reviewState}</p>
-          {!readOnly && <><Input aria-label="Comment" value={comment} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setComment(event.currentTarget.value)} /><Button type="button" disabled={!comment.trim()} onClick={addComment}>Add comment</Button></>}
-          {!readOnly && <><Input aria-label="Suggestion replacement" value={suggestion} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setSuggestion(event.currentTarget.value)} /><Button type="button" onClick={addSuggestion}>Add suggestion</Button></>}
-          <ul aria-label="Comments">{(model.comments ?? []).map((thread) => <li key={thread.id}>{thread.messages.map((message) => <p key={message.id}>{message.body}</p>)} {thread.resolved ? "Resolved" : "Open"} {!readOnly && <><Input aria-label={`Reply to comment ${thread.id}`} value={replies[thread.id] ?? ""} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setReplies((current) => ({ ...current, [thread.id]: event.currentTarget.value }))} /><Button type="button" disabled={!(replies[thread.id] ?? "").trim()} onClick={() => { updateSidecar(replyToComment({ sidecar: controller.getState().sidecar ?? {}, threadId: thread.id, body: replies[thread.id] ?? "", actor: currentActor }), "editorial:comment-reply"); setReplies((current) => ({ ...current, [thread.id]: "" })); }}>Reply</Button><Button type="button" onClick={() => updateSidecar(setCommentResolved({ sidecar: controller.getState().sidecar ?? {}, threadId: thread.id, resolved: !thread.resolved, actor: currentActor }), "editorial:comment-resolution")}>{thread.resolved ? "Reopen" : "Resolve"}</Button></>}</li>)}</ul>
-          <ul aria-label="Suggestions">{(model.suggestions ?? []).map((suggestion) => <li key={suggestion.id}>{suggestion.replacement} ({suggestion.status}) {suggestion.status === "pending" && !readOnly && <><Button type="button" onClick={() => decideSuggestion({ controller, suggestionId: suggestion.id, decision: "accepted", actor: currentActor })}>Accept</Button><Button type="button" onClick={() => decideSuggestion({ controller, suggestionId: suggestion.id, decision: "rejected", actor: currentActor })}>Reject</Button></>}</li>)}</ul>
-          {!readOnly && <div aria-label="Review transitions">{(["draft", "in-review", "changes-requested", "approved"] as const).map((state) => <Button key={state} type="button" disabled={state === model.reviewState || !canTransitionReview(model.reviewState, state)} onClick={() => setReview(state)}>{state}</Button>)}</div>}
+          {!isReadOnly && <><Input aria-label="Comment" value={comment} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setComment(event.currentTarget.value)} /><Button type="button" disabled={!comment.trim()} onClick={addComment}>Add comment</Button></>}
+          {!isReadOnly && <><Input aria-label="Suggestion replacement" value={suggestion} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setSuggestion(event.currentTarget.value)} /><Button type="button" onClick={addSuggestion}>Add suggestion</Button></>}
+          <ul aria-label="Comments">{(model.comments ?? []).map((thread) => <li key={thread.id}>{thread.messages.map((message) => <p key={message.id}>{message.body}</p>)} {thread.resolved ? "Resolved" : "Open"} {!isReadOnly && <><Input aria-label={`Reply to comment ${thread.id}`} value={replies[thread.id] ?? ""} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setReplies((current) => ({ ...current, [thread.id]: event.currentTarget.value }))} /><Button type="button" disabled={!(replies[thread.id] ?? "").trim()} onClick={() => { updateSidecar(replyToComment({ sidecar: controller.getState().sidecar ?? {}, threadId: thread.id, body: replies[thread.id] ?? "", actor: currentActor }), "editorial:comment-reply"); setReplies((current) => ({ ...current, [thread.id]: "" })); }}>Reply</Button><Button type="button" onClick={() => updateSidecar(setCommentResolved({ sidecar: controller.getState().sidecar ?? {}, threadId: thread.id, resolved: !thread.resolved, actor: currentActor }), "editorial:comment-resolution")}>{thread.resolved ? "Reopen" : "Resolve"}</Button></>}</li>)}</ul>
+          <ul aria-label="Suggestions">{(model.suggestions ?? []).map((suggestion) => <li key={suggestion.id}>{suggestion.replacement} ({suggestion.status}) {suggestion.status === "pending" && !isReadOnly && <><Button type="button" onClick={() => decideSuggestion({ controller, suggestionId: suggestion.id, decision: "accepted", actor: currentActor })}>Accept</Button><Button type="button" onClick={() => decideSuggestion({ controller, suggestionId: suggestion.id, decision: "rejected", actor: currentActor })}>Reject</Button></>}</li>)}</ul>
+          {!isReadOnly && <div aria-label="Review transitions">{(["draft", "in-review", "changes-requested", "approved"] as const).map((state) => <Button key={state} type="button" disabled={state === model.reviewState || !canTransitionReview(model.reviewState, state)} onClick={() => setReview(state)}>{state}</Button>)}</div>}
         </Card.Content>
       </Card>
-      <Card data-mdfn-surface="history"><Card.Header><Card.Title>Version history</Card.Title></Card.Header><Card.Content><ol aria-label="Document versions">{versions.map((entry) => <li key={entry.version}>Version {entry.version}{entry.authorId ? ` by ${entry.authorId}` : ""} {onRestoreVersion && !readOnly && <Button type="button" onClick={() => void onRestoreVersion(entry.version)}>Restore</Button>}</li>)}</ol><ol aria-label="Editorial activity">{(model.audit ?? []).map((entry) => <li key={entry.id}>{entry.action} by {entry.actorId}</li>)}</ol></Card.Content></Card>
+      <Card data-mdfn-surface="history"><Card.Header><Card.Title>Version history</Card.Title></Card.Header><Card.Content><ol aria-label="Document versions">{versions.map((entry) => <li key={entry.version}>Version {entry.version}{entry.authorId ? ` by ${entry.authorId}` : ""} {onRestoreVersion && !isReadOnly && <Button type="button" onClick={() => void onRestoreVersion(entry.version)}>Restore</Button>}</li>)}</ol><ol aria-label="Editorial activity">{(model.audit ?? []).map((entry) => <li key={entry.id}>{entry.action} by {entry.actorId}</li>)}</ol></Card.Content></Card>
     </section>
   );
 }

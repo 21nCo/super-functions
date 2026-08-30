@@ -62,7 +62,7 @@ export const MdfnEditor: Component<MdfnEditorProps> = (props) => {
   createEffect(() => {
     const mode = local.mode ?? "visual";
     const controller = local.controller;
-    const readOnly = local.readOnly;
+    const readOnly = local.readOnly === true || mode === "read-only";
     const ariaLabel = local.ariaLabel ?? "Markdown editor";
     const onFiles = local.onFiles;
     const editorRef = local.editorRef;
@@ -146,7 +146,7 @@ export const MdfnEditor: Component<MdfnEditorProps> = (props) => {
       {loadError() ? (
         <div data-mdfn-source-fallback="true">
           <div role="status">Visual editor unavailable: {loadError()!.message}</div>
-          <textarea aria-label={`${local.ariaLabel ?? "Markdown editor"} source fallback`} value={fallbackValue()} readOnly={local.readOnly} onInput={updateFallback} />
+          <textarea aria-label={`${local.ariaLabel ?? "Markdown editor"} source fallback`} value={fallbackValue()} readOnly={local.readOnly === true || local.mode === "read-only"} onInput={updateFallback} />
         </div>
       ) : (
         <>

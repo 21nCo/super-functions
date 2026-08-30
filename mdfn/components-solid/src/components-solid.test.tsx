@@ -8,11 +8,13 @@ describe("Solid authoring components", () => {
   it("mounts UIFn chrome and every read-only authoring surface", async () => {
     const controller = createEditor({ markdown: "# Outline", projector: createMarkdownProjector() });
     const target = document.createElement("div");
-    const dispose = render(() => <MdfnEditorShell controller={controller} mode="read-only" readOnly />, target);
+    const dispose = render(() => <MdfnEditorShell controller={controller} mode="read-only" />, target);
     await Promise.resolve();
     expect(target.querySelector('[data-mdfn-component="authoring-chrome"]')).not.toBeNull();
     expect(target.querySelector('[data-mdfn-surface="outline"]')?.textContent).toContain("Outline");
     expect(target.querySelector('[data-uifn-component="card"]')).not.toBeNull();
+    expect(target.querySelector('[aria-label="Select files"]')).toBeNull();
+    expect(Array.from(target.querySelectorAll("button")).some((button) => button.textContent === "Add comment")).toBe(false);
     dispose();
     expect(target.children).toHaveLength(0);
   });
@@ -92,6 +94,23 @@ describe("Solid authoring components", () => {
     input.dispatchEvent(new Event("change", { bubbles: true }));
     await Promise.resolve();
     expect(controller.getState().markdown).toBe("before![asset](mdfn-asset:filefn/id)");
+    dispose();
+  });
+
+  it("anchors a pending file insertion to the original selection", async () => {
+    const controller = createEditor({ markdown: "before after", projector: createMarkdownProjector(), selection: { kind: "text", anchor: 7, head: 12 } });
+    let resolveUpload!: (markdown: string) => void;
+    const target = document.createElement("div");
+    const dispose = render(() => <MdfnAuthoringChrome controller={controller} mode="source" onSelectFiles={() => new Promise((resolve) => { resolveUpload = resolve; })} />, target);
+    await Promise.resolve();
+    const input = target.querySelector<HTMLInputElement>('[aria-label="Select files"]')!;
+    Object.defineProperty(input, "files", { configurable: true, value: [new File(["x"], "x.png")] });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await Promise.resolve();
+    controller.dispatch(new Transaction().replaceSource(0, 0, "prefix ").setSelection({ kind: "text", anchor: 0, head: 0 }));
+    resolveUpload("asset");
+    await Promise.resolve();
+    expect(controller.getState().markdown).toBe("prefix before asset");
     dispose();
   });
 });

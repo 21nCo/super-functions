@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createEditor } from "@mdfn/core";
+import { createEditor, Transaction } from "@mdfn/core";
 import { createMarkdownProjector } from "@mdfn/markdown";
-import { createAuthoringModel, createToolbarModel, filterSlashCommands, insertMarkdownAtSelection, runToolbarAction } from "./index";
+import { captureMarkdownInsertion, createAuthoringModel, createToolbarModel, filterSlashCommands, insertMarkdownAtSelection, runToolbarAction } from "./index";
 
 describe("toolbar model", () => {
   it("reports actual history availability", () => {
@@ -50,6 +50,25 @@ describe("toolbar model", () => {
     expect(controller.getState()).toMatchObject({
       markdown: "before asset",
       selection: { kind: "text", anchor: 12, head: 12 },
+    });
+  });
+
+  it("keeps asynchronous Markdown insertion anchored through intervening edits", () => {
+    const controller = createEditor({
+      markdown: "before after",
+      projector: createMarkdownProjector(),
+      selection: { kind: "text", anchor: 7, head: 12 },
+    });
+    const insertion = captureMarkdownInsertion(controller);
+    controller.dispatch(
+      new Transaction()
+        .replaceSource(0, 0, "prefix ")
+        .setSelection({ kind: "text", anchor: 0, head: 0 }),
+    );
+    insertion.insert("asset");
+    expect(controller.getState()).toMatchObject({
+      markdown: "prefix before asset",
+      selection: { kind: "text", anchor: 19, head: 19 },
     });
   });
 });

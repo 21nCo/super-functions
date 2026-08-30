@@ -32,6 +32,8 @@ describe("filefn bridge", () => {
   it("emits a durable document- and version-bound asset identifier", () => {
     expect(assetReferenceMarkdown({ id: "asset", provider: "filefn", documentId: "document", versionId: "v1", mediaType: "image/png" }, "Image"))
       .toBe("![Image](mdfn-asset:filefn/asset?document=document&version=v1)");
+    expect(assetReferenceMarkdown({ id: "asset", provider: "filefn", documentId: "document", mediaType: "image/png" }, "x\\]y"))
+      .toBe(String.raw`![x\\\]y](mdfn-asset:filefn/asset?document=document)`);
   });
 
   it("adapts an asset provider to the shared authoring file callback", async () => {
