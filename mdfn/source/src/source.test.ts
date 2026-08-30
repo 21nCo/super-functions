@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { createEditor, Transaction } from "@mdfn/core";
+import { createEditor, Transaction, type MdfnExtension } from "@mdfn/core";
 import { undoDepth, redoDepth } from "@codemirror/commands";
 import { runScopeHandlers } from "@codemirror/view";
 import { createMarkdownProjector } from "@mdfn/markdown";
@@ -136,5 +136,24 @@ describe("@mdfn/source", () => {
     expect(controller.getState()).toMatchObject({ markdown: "→", selection: { kind: "text", anchor: 1, head: 1 } });
     expect(editor.view.state.doc.toString()).toBe("→");
     editor.destroy();
+  });
+
+  it("renders previews with controller extensions unless the policy overrides them", () => {
+    const extension: MdfnExtension = {
+      name: "preview-render",
+      version: "1.0.0",
+      preservation: { noEdit: "exact", edited: "semantic", unsupported: "opaque" },
+      render: ({ node }) => node.type === "heading"
+        ? { tag: "aside", attrs: { class: "preview-extension" }, children: [{ tag: "strong", text: "Rendered" }] }
+        : null,
+    };
+    const controller = createEditor({
+      markdown: "# Preview\n",
+      projector: createMarkdownProjector({ extensions: [extension] }),
+      extensions: [extension],
+    });
+
+    expect(createPreview(controller).html).toContain('<aside class="preview-extension"><strong>Rendered</strong></aside>');
+    expect(createPreview(controller, { extensions: [] }).html).not.toContain('class="preview-extension"');
   });
 });

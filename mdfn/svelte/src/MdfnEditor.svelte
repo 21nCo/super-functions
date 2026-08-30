@@ -107,6 +107,7 @@
     void import('@mdfn/source').then((module) => {
       if (!cancelled) currentPreview.innerHTML = module.createPreview(currentController).html;
     }).catch((error: unknown) => {
+      if (cancelled) return;
       loadError = error instanceof Error ? error : new Error(String(error));
       currentOnLoadError?.(loadError);
     });

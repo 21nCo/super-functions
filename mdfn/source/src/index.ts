@@ -161,7 +161,10 @@ export interface PreviewResult {
 }
 
 export function createPreview(controller: EditorController, policy?: RenderPolicy): PreviewResult {
-  const rendered = renderHtml(controller.getState().document, policy);
+  const rendered = renderHtml(controller.getState().document, {
+    ...policy,
+    extensions: policy?.extensions ?? controller.extensions,
+  });
   return { html: rendered.html, diagnostics: rendered.diagnostics };
 }
 

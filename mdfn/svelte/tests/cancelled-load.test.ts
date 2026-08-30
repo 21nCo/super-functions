@@ -19,7 +19,7 @@ const deferredImport = vi.hoisted(() => {
 vi.mock("@mdfn/source", () => deferredImport.wait());
 
 describe("@mdfn/svelte cancelled loading", () => {
-  it("ignores a deferred module rejection after unmount", async () => {
+  it("ignores a deferred preview-module rejection after unmount", async () => {
     const target = document.createElement("div");
     document.body.append(target);
     const onLoadError = vi.fn();
@@ -28,7 +28,7 @@ describe("@mdfn/svelte cancelled loading", () => {
       target,
       props: {
         controller: createEditor({ markdown: "body", projector: createMarkdownProjector() }),
-        mode: "source",
+        mode: "preview",
         onLoadError,
         editorRef,
       },
