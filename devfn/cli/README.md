@@ -3,13 +3,13 @@
 DevFn runs heterogeneous local environments through one command contract while keeping application processes native and infrastructure Compose-backed where appropriate.
 
 ```bash
-npx devfn init
-npx devfn init --yes
-npx devfn doctor --trust
-npx devfn up --profile default
-npx devfn status --json
-npx devfn logs app
-npx devfn down
+npx @devfn/cli init
+npx @devfn/cli init --yes
+npx @devfn/cli doctor --trust
+npx @devfn/cli up --profile default
+npx @devfn/cli status --json
+npx @devfn/cli logs app
+npx @devfn/cli down
 ```
 
 Profiles that declare public processes or ports require `--allow-public` on every start.
