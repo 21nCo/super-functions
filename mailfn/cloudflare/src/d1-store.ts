@@ -756,6 +756,22 @@ export class D1MailFnStore implements MailFnStore {
   async releaseStorage(reservationId: string): Promise<void> {
     await this.run('DELETE FROM mailfn_storage_reservations WHERE id = ?', [reservationId]);
   }
+  async releaseOrphanedStorageReservations(projectId: string, before: string): Promise<number> {
+    const result = await bind(this.database.prepare(
+      `DELETE FROM mailfn_storage_reservations
+       WHERE project_id = ? AND created_at <= ?
+         AND NOT EXISTS (
+           SELECT 1 FROM mailfn_messages
+           WHERE mailfn_messages.id = mailfn_storage_reservations.id
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM mailfn_attachments
+           WHERE mailfn_attachments.id = mailfn_storage_reservations.id
+         )`,
+    ), [projectId, before]).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0);
+  }
 
   async appendUsage(value: UsageRecord): Promise<void> {
     await this.run(

@@ -136,6 +136,7 @@ export interface MailFnStore {
     limit: number,
   ): Promise<'created' | 'existing' | 'denied'>;
   releaseStorage(reservationId: string): Promise<void>;
+  releaseOrphanedStorageReservations(projectId: string, before: string): Promise<number>;
 
   appendUsage(record: UsageRecord): Promise<void>;
   reserveOutboundUsage(record: UsageRecord, limit: number): Promise<'created' | 'existing' | 'denied'>;

@@ -505,6 +505,19 @@ export class MemoryMailFnStore implements MailFnStore {
   async releaseStorage(reservationId: string): Promise<void> {
     this.storageReservations.delete(reservationId);
   }
+  async releaseOrphanedStorageReservations(projectId: string, before: string): Promise<number> {
+    let released = 0;
+    for (const [id, reservation] of this.storageReservations) {
+      if (
+        reservation.projectId === projectId && reservation.createdAt <= before &&
+        !this.messages.has(id) && !this.attachments.has(id)
+      ) {
+        this.storageReservations.delete(id);
+        released += 1;
+      }
+    }
+    return released;
+  }
 
   async appendUsage(record: UsageRecord): Promise<void> {
     this.usage.set(record.id, copy(record));

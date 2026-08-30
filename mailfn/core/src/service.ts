@@ -106,6 +106,7 @@ export interface CreatedWebhook {
 
 const PARSE_LEASE_MS = 15 * 60 * 1000;
 const WEBHOOK_DELIVERY_LEASE_MS = 5 * 60 * 1000;
+const STORAGE_RESERVATION_LEASE_MS = 15 * 60 * 1000;
 
 function isExpiredAt(expiresAt: string, now: string): boolean {
   return Date.parse(expiresAt) <= Date.parse(now);
@@ -505,6 +506,11 @@ export class MailFn {
       : undefined;
     const quiesced: Inbox = { ...inbox, status: 'deleting', updatedAt: startedAt };
     await this.store.saveInbox(quiesced);
+    for (const credential of await this.store.listCredentials(inbox.projectId, inbox.id)) {
+      if (credential.status === 'active') {
+        await this.store.saveCredential({ ...credential, status: 'revoked', revokedAt: this.now() });
+      }
+    }
     await this.audit(actor, 'inbox.deletion_started', 'inbox', inbox.id, {
       inboxId: inbox.id,
       deletionDueAt: deletionDueAt ?? null,
@@ -519,11 +525,6 @@ export class MailFn {
     const completedAt = this.now();
     const updated: Inbox = { ...quiesced, status: 'deleted', updatedAt: completedAt };
     await this.store.saveInbox(updated);
-    for (const credential of await this.store.listCredentials(inbox.projectId, inbox.id)) {
-      if (credential.status === 'active') {
-        await this.store.saveCredential({ ...credential, status: 'revoked', revokedAt: this.now() });
-      }
-    }
     await this.audit(actor, 'inbox.deleted', 'inbox', inbox.id, {
       inboxId: inbox.id,
       deletionDueAt: deletionDueAt ?? null,
@@ -818,6 +819,10 @@ export class MailFn {
       stored.rawSize !== preflight.rawSize || stored.createdAt !== preflight.createdAt ||
       stored.storageReserved !== preflight.storageReserved
     ) return false;
+    if (Date.parse(stored.createdAt) <= this.clock.now().getTime() - STORAGE_RESERVATION_LEASE_MS) {
+      this.inboundPreflights.delete(preflight.reservationId);
+      return false;
+    }
     return true;
   }
 
@@ -1662,6 +1667,7 @@ export class MailFn {
       expiredInboxes: 0,
       deletedMessages: 0,
       deletedObjects: 0,
+      releasedStorageReservations: 0,
       auditEventsDeleted: 0,
       eventRecordsDeleted: 0,
       webhookDeliveriesDeleted: 0,
@@ -1670,6 +1676,11 @@ export class MailFn {
     const now = this.now();
     for (const project of projects) {
       const compliance = await this.store.getComplianceProfile(project.id);
+      const reservationCutoff = new Date(Date.parse(now) - STORAGE_RESERVATION_LEASE_MS).toISOString();
+      result.releasedStorageReservations += await this.store.releaseOrphanedStorageReservations(
+        project.id,
+        reservationCutoff,
+      );
       for (const inbox of await this.store.listInboxes(project.id)) {
         let effectiveInbox = inbox;
         if (!['expired', 'deleting', 'deleted'].includes(inbox.status) && inbox.expiresAt && isExpiredAt(inbox.expiresAt, now)) {
@@ -1684,6 +1695,11 @@ export class MailFn {
         if (compliance?.retentionLocked) continue;
         if (effectiveInbox.status === 'deleting') {
           try {
+            for (const credential of await this.store.listCredentials(project.id, effectiveInbox.id)) {
+              if (credential.status === 'active') {
+                await this.store.saveCredential({ ...credential, status: 'revoked', revokedAt: now });
+              }
+            }
             for (const message of await this.store.listMessages(project.id, effectiveInbox.id)) {
               result.deletedObjects += await this.deleteMessageObjects(message);
               await this.deleteMessageRecord(message);
@@ -1693,11 +1709,6 @@ export class MailFn {
             for (const webhook of await this.store.listWebhooks(project.id, effectiveInbox.id)) {
               if (webhook.status !== 'disabled') {
                 await this.store.saveWebhook({ ...webhook, status: 'disabled', updatedAt: now });
-              }
-            }
-            for (const credential of await this.store.listCredentials(project.id, effectiveInbox.id)) {
-              if (credential.status === 'active') {
-                await this.store.saveCredential({ ...credential, status: 'revoked', revokedAt: now });
               }
             }
             await this.store.saveInbox({ ...effectiveInbox, status: 'deleted', updatedAt: now });

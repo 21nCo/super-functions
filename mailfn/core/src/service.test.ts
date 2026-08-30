@@ -767,11 +767,39 @@ describe('MailFn domain service', () => {
 
     await expect(context.mailfn.deleteInbox(context.admin, created.inbox.id)).rejects.toThrow('object store unavailable');
     expect((await context.store.getInbox(created.inbox.id))?.status).toBe('deleting');
+    await expect(context.mailfn.authenticate(created.credential.token)).rejects.toMatchObject({ code: 'MAILFN_UNAUTHORIZED' });
     await expect(context.mailfn.preflightInbound({
       envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
     })).rejects.toMatchObject({ code: 'MAILFN_INBOX_INACTIVE' });
     objects.failDeletes = false;
     await expect(context.mailfn.deleteInbox(context.admin, created.inbox.id)).resolves.toMatchObject({ status: 'deleted' });
+  });
+
+  it('reclaims expired orphan storage reservations without accepting stale preflights', async () => {
+    const clock = new MutableClock();
+    const value = raw({ subject: 'reservation lease' });
+    const context = await setup({ clock, quota: { maxStoredBytes: value.byteLength } });
+    const created = await createInbox(context, 'reservation-lease');
+    const abandoned = await context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
+    });
+
+    await expect(context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
+    })).rejects.toMatchObject({ code: 'MAILFN_QUOTA_EXCEEDED' });
+
+    clock.advance(15 * 60 * 1000 + 1);
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({
+      releasedStorageReservations: 1,
+    });
+    await expect(context.mailfn.receiveInbound({
+      providerDeliveryId: 'stale-preflight', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    }, abandoned)).rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+    const replacement = await context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
+    });
+    await context.mailfn.cancelInbound(replacement);
   });
 
   it('blocks draft writes while deleting and erases drafts with the inbox', async () => {

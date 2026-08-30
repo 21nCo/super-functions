@@ -552,6 +552,7 @@ export interface RetentionResult {
   expiredInboxes: number;
   deletedMessages: number;
   deletedObjects: number;
+  releasedStorageReservations: number;
   auditEventsDeleted: number;
   eventRecordsDeleted: number;
   webhookDeliveriesDeleted: number;

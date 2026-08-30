@@ -93,6 +93,19 @@ describe('D1MailFnStore', () => {
     expect(database.statements[1]?.query).toContain("delivery.status IN ('pending', 'failed')");
   });
 
+  it('atomically releases only old storage reservations without durable records', async () => {
+    const database = new RecordingDatabase();
+    const store = new D1MailFnStore(database);
+
+    await store.releaseOrphanedStorageReservations('prj_1', '2026-08-30T00:00:00.000Z');
+
+    expect(database.statements[0]?.query).toContain('DELETE FROM mailfn_storage_reservations');
+    expect(database.statements[0]?.query).toContain('NOT EXISTS');
+    expect(database.statements[0]?.query).toContain('mailfn_messages.id = mailfn_storage_reservations.id');
+    expect(database.statements[0]?.query).toContain('mailfn_attachments.id = mailfn_storage_reservations.id');
+    expect(database.statements[0]?.values).toEqual(['prj_1', '2026-08-30T00:00:00.000Z']);
+  });
+
   it('compares received filters as normalized instants', async () => {
     const database = new RecordingDatabase();
     const store = new D1MailFnStore(database);
