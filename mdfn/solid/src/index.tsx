@@ -1,6 +1,6 @@
 import { createEffect, createSignal, onCleanup, splitProps, type Accessor, type Component, type JSX } from "solid-js";
 import { createAdapterBridge, type AdapterSnapshot } from "@mdfn/adapter-kit";
-import { Transaction, type EditorController } from "@mdfn/core";
+import { smallestSourceChange, Transaction, type EditorController } from "@mdfn/core";
 import type { DomCommand, DomEditor } from "@mdfn/dom";
 import type { EditorMode, SourceEditor } from "@mdfn/source";
 
@@ -138,7 +138,8 @@ export const MdfnEditor: Component<MdfnEditorProps> = (props) => {
   const updateFallback: JSX.EventHandler<HTMLTextAreaElement, InputEvent> = (event) => {
     const markdown = event.currentTarget.value;
     const current = local.controller.getState().markdown;
-    local.controller.dispatch(new Transaction().replaceSource(0, current.length, markdown).withSource("solid:fallback"));
+    const change = smallestSourceChange(current, markdown);
+    if (change) local.controller.dispatch(new Transaction().replaceSource(change.from, change.to, change.insert).withSource("solid:fallback"));
   };
 
   return (

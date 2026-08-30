@@ -37,6 +37,20 @@ export interface CreateEditorInput {
   readonly sidecar?: MdfnSidecar;
 }
 
+export function smallestSourceChange(previous: string, next: string): { from: number; to: number; insert: string } | undefined {
+  if (previous === next) return undefined;
+  let from = 0;
+  const shared = Math.min(previous.length, next.length);
+  while (from < shared && previous.charCodeAt(from) === next.charCodeAt(from)) from += 1;
+  let previousTo = previous.length;
+  let nextTo = next.length;
+  while (previousTo > from && nextTo > from && previous.charCodeAt(previousTo - 1) === next.charCodeAt(nextTo - 1)) {
+    previousTo -= 1;
+    nextTo -= 1;
+  }
+  return { from, to: previousTo, insert: next.slice(from, nextTo) };
+}
+
 export function createEditor(input: CreateEditorInput): EditorController {
   const extensions = resolveExtensions(input.extensions ?? []);
   let state = createEditorState({ markdown: input.markdown, projector: input.projector, schemaHash: extensions.schemaHash, selection: input.selection, sidecar: input.sidecar });

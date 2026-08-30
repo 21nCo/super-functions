@@ -7,6 +7,7 @@ import {
   mapAnchor,
   resolveExtensions,
   restoreSnapshot,
+  smallestSourceChange,
   type EditorProjector,
   type MdfnDocument,
   type MdfnExtension,
@@ -261,5 +262,16 @@ describe("@mdfn/core", () => {
     const change = editor.dispatch(new Transaction().replaceSource(0, 0, "x"));
     expect(change.sidecarChanged).toBe(true);
     expect(editor.getState().sidecar?.comments?.[0]?.anchor).toEqual({ from: 2, to: 3 });
+  });
+
+  it("keeps unchanged anchors stable when a textarea edit is reduced to its smallest source range", () => {
+    const sidecar = {
+      comments: [{ id: "thread", anchor: { from: 1, to: 2 }, resolved: false, messages: [{ id: "message", authorId: "a", body: "note", createdAt: "2026-08-12T00:00:00.000Z" }] }],
+    } as const;
+    const editor = createEditor({ markdown: "abc", projector, sidecar });
+    const change = smallestSourceChange("abc", "abcd");
+    expect(change).toEqual({ from: 3, to: 3, insert: "d" });
+    editor.dispatch(new Transaction().replaceSource(change!.from, change!.to, change!.insert));
+    expect(editor.getState().sidecar?.comments?.[0]?.anchor).toEqual({ from: 1, to: 2 });
   });
 });

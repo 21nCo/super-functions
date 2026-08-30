@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Transaction } from '@mdfn/core';
+  import { smallestSourceChange, Transaction } from '@mdfn/core';
   import type { DomEditor } from '@mdfn/dom';
   import type { SourceEditor } from '@mdfn/source';
   import type { MdfnEditorHandle, MdfnEditorProps } from './types.js';
@@ -118,7 +118,8 @@
   function updateFallback(event: Event) {
     const markdown = (event.currentTarget as HTMLTextAreaElement).value;
     const current = controller.getState().markdown;
-    controller.dispatch(new Transaction().replaceSource(0, current.length, markdown).withSource('svelte:fallback'));
+    const change = smallestSourceChange(current, markdown);
+    if (change) controller.dispatch(new Transaction().replaceSource(change.from, change.to, change.insert).withSource('svelte:fallback'));
   }
 </script>
 

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import type { AdapterSnapshot } from "@mdfn/adapter-kit";
-import { Transaction, type EditorController } from "@mdfn/core";
+import { smallestSourceChange, Transaction, type EditorController } from "@mdfn/core";
 import type { DomCommand, DomEditor } from "@mdfn/dom";
 import type { EditorMode, SourceEditor } from "@mdfn/source";
 
@@ -149,7 +149,8 @@ function SourceFallback({ controller, ariaLabel, readOnly, error }: { controller
         readOnly={readOnly}
         onChange={(event) => {
           const current = controller.getState().markdown;
-          controller.dispatch(new Transaction().replaceSource(0, current.length, event.currentTarget.value).withSource("react:fallback"));
+          const change = smallestSourceChange(current, event.currentTarget.value);
+          if (change) controller.dispatch(new Transaction().replaceSource(change.from, change.to, change.insert).withSource("react:fallback"));
         }}
       />
     </div>
