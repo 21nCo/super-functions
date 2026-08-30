@@ -1401,9 +1401,23 @@ export class MailFn {
       status: 500,
     });
     const project = await this.requireProject(actor.projectId);
-    if ((await this.store.listWebhooks(project.id)).length >= project.quota.maxWebhooks) throw quotaExceeded('webhooks');
+    const activeWebhookCount = (await this.store.listWebhooks(project.id))
+      .filter((webhook) => webhook.status !== 'disabled').length;
+    if (activeWebhookCount >= project.quota.maxWebhooks) throw quotaExceeded('webhooks');
     if (input.inboxId) await this.requireInbox(project.id, input.inboxId);
     const url = parseWebhookUrl(input.url);
+    if (this.webhookDispatcher?.validateUrl) {
+      try {
+        await this.webhookDispatcher.validateUrl(url);
+      } catch (cause) {
+        throw new MailFnError({
+          code: 'MAILFN_VALIDATION_FAILED',
+          message: cause instanceof Error ? cause.message : 'Webhook URL is not deliverable',
+          status: 400,
+          cause,
+        });
+      }
+    }
     const id = this.ids.generate('whk');
     const created = await this.tokens.create(id);
     const now = this.now();

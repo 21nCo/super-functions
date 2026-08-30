@@ -646,13 +646,19 @@ describe('MailFn domain service', () => {
   });
 
   it('disables inbox-scoped webhooks when deleting an inbox', async () => {
-    const context = await setup({ webhookDispatcher: { async deliver() { return { ok: true, status: 204, retryable: false }; } } });
+    const context = await setup({
+      quota: { maxWebhooks: 1 },
+      webhookDispatcher: { async deliver() { return { ok: true, status: 204, retryable: false }; } },
+    });
     const created = await createInbox(context, 'webhook-erasure');
     const webhook = await context.mailfn.createWebhook(context.admin, {
       inboxId: created.inbox.id, url: 'https://consumer.example.test/hook', eventTypes: ['message.received'],
     });
     await context.mailfn.deleteInbox(context.admin, created.inbox.id);
     expect(await context.store.getWebhook(webhook.webhook.id)).toMatchObject({ status: 'disabled' });
+    await expect(context.mailfn.createWebhook(context.admin, {
+      url: 'https://consumer.example.test/project-hook', eventTypes: ['message.received'],
+    })).resolves.toMatchObject({ webhook: { status: 'active' } });
   });
 
   it('accepts tagged senders and SMTP null reverse paths on inbound mail', async () => {
@@ -796,6 +802,23 @@ describe('MailFn domain service', () => {
     expect(await context.store.listWebhookDeliveries(webhook.webhook.id)).toMatchObject([{
       status: 'delivered', attempt: 2, nextAttemptAt: undefined,
     }]);
+  });
+
+  it('rejects webhook URLs that the configured transport cannot deliver', async () => {
+    const context = await setup({
+      webhookDispatcher: {
+        async validateUrl() { throw new Error('Cloudflare-proxied webhook hosts are unsupported'); },
+        async deliver() { return { ok: true, status: 204, retryable: false }; },
+      },
+    });
+    await expect(context.mailfn.createWebhook(context.admin, {
+      url: 'https://proxied.example.test/hook', eventTypes: ['message.received'],
+    })).rejects.toMatchObject({
+      code: 'MAILFN_VALIDATION_FAILED',
+      message: 'Cloudflare-proxied webhook hosts are unsupported',
+      status: 400,
+    });
+    await expect(context.store.listWebhooks(context.project.id)).resolves.toHaveLength(0);
   });
 
   it('verifies, activates, uses, and reversibly disables custom domains', async () => {

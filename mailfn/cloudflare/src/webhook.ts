@@ -10,6 +10,12 @@ export interface CloudflareWebhookDispatcherOptions {
   dnsFetch?: typeof globalThis.fetch;
 }
 
+class WebhookResolutionError extends Error {
+  public constructor(message: string, public readonly retryable: boolean) {
+    super(message);
+  }
+}
+
 /**
  * Cloudflare Workers transport that connects to a vetted address while using
  * the original hostname for TLS verification and the HTTP Host header.
@@ -83,18 +89,19 @@ export class CloudflareWebhookDispatcher implements MailFnWebhookDispatcher {
     this.resolveHostname = options.resolveHostname ?? ((hostname) => resolveWithDnsOverHttps(hostname, dnsFetch));
   }
 
+  public async validateUrl(url: URL): Promise<void> {
+    await this.resolveAddresses(url);
+  }
+
   public async deliver(input: Parameters<MailFnWebhookDispatcher['deliver']>[0]): Promise<{ ok: boolean; status?: number; retryable: boolean }> {
     const secret = input.webhook.secretCiphertext;
     if (!secret || !this.fetchResolved) return { ok: false, retryable: false };
     const url = new URL(input.webhook.url);
     let addresses: string[];
     try {
-      addresses = await this.resolveHostname(url.hostname);
-      if (!addresses.length || addresses.some((address) => !isPublicIpAddress(address))) {
-        return { ok: false, retryable: false };
-      }
-    } catch {
-      return { ok: false, retryable: true };
+      addresses = await this.resolveAddresses(url);
+    } catch (error) {
+      return { ok: false, retryable: error instanceof WebhookResolutionError ? error.retryable : true };
     }
     const body = JSON.stringify(input.event);
     const signature = await sign(`${input.timestamp}.${input.deliveryId}.${body}`, secret);
@@ -127,6 +134,29 @@ export class CloudflareWebhookDispatcher implements MailFnWebhookDispatcher {
       if (attempt < this.maxAttempts) await new Promise((resolve) => setTimeout(resolve, Math.min(8_000, 250 * 2 ** (attempt - 1))));
     }
     return { ok: false, status, retryable: true };
+  }
+
+  private async resolveAddresses(url: URL): Promise<string[]> {
+    let addresses: string[];
+    try {
+      addresses = await this.resolveHostname(url.hostname);
+    } catch (cause) {
+      throw new WebhookResolutionError(
+        cause instanceof Error ? cause.message : 'Webhook hostname could not be resolved',
+        true,
+      );
+    }
+    if (!addresses.length) throw new WebhookResolutionError('Webhook hostname did not resolve to an address', true);
+    if (addresses.some((address) => !isPublicIpAddress(address))) {
+      throw new WebhookResolutionError('Webhook host must resolve only to public IP addresses', false);
+    }
+    if (addresses.some(isCloudflareIpAddress)) {
+      throw new WebhookResolutionError(
+        'Cloudflare-proxied webhook hosts are unsupported by the Cloudflare Workers pinned transport',
+        false,
+      );
+    }
+    return addresses;
   }
 }
 
@@ -216,21 +246,78 @@ async function resolveWithDnsOverHttps(hostname: string, fetcher: typeof globalT
   return addresses;
 }
 
-function isPublicIpAddress(value: string): boolean {
-  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(value);
-  if (ipv4) {
-    const parts = ipv4.slice(1).map(Number);
-    if (parts.some((part) => part > 255)) return false;
-    const [a, b, c] = parts;
-    return !(
-      a === 0 || a === 10 || a === 127 || a >= 224 ||
-      (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) ||
-      (a === 192 && b === 0 && (c === 0 || c === 2)) ||
-      (a === 198 && (b === 18 || b === 19 || b === 51)) || (a === 203 && b === 0 && c === 113)
-    );
+const NON_PUBLIC_IPV4_CIDRS = [
+  ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
+  ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.0.2.0', 24],
+  ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24], ['203.0.113.0', 24],
+  ['224.0.0.0', 4], ['240.0.0.0', 4],
+] as const;
+
+const CLOUDFLARE_IPV4_CIDRS = [
+  ['173.245.48.0', 20], ['103.21.244.0', 22], ['103.22.200.0', 22], ['103.31.4.0', 22],
+  ['141.101.64.0', 18], ['108.162.192.0', 18], ['190.93.240.0', 20], ['188.114.96.0', 20],
+  ['197.234.240.0', 22], ['198.41.128.0', 17], ['162.158.0.0', 15], ['104.16.0.0', 13],
+  ['104.24.0.0', 14], ['172.64.0.0', 13], ['131.0.72.0', 22],
+] as const;
+
+const CLOUDFLARE_IPV6_CIDRS = [
+  ['2400:cb00::', 32], ['2606:4700::', 32], ['2803:f800::', 32], ['2405:b500::', 32],
+  ['2405:8100::', 32], ['2a06:98c0::', 29], ['2c0f:f248::', 32],
+] as const;
+
+function parseIpv4(value: string): bigint | undefined {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(value);
+  if (!match) return undefined;
+  const parts = match.slice(1).map(Number);
+  if (parts.some((part) => part > 255)) return undefined;
+  return parts.reduce((result, part) => (result << 8n) | BigInt(part), 0n);
+}
+
+function parseIpv6(value: string): bigint | undefined {
+  if (!value.includes(':') || value.includes('%') || value.includes('[') || value.includes(']')) return undefined;
+  let normalized = value.toLowerCase();
+  const ipv4Suffix = /(?:^|:)(\d{1,3}(?:\.\d{1,3}){3})$/.exec(normalized);
+  if (ipv4Suffix) {
+    const ipv4 = parseIpv4(ipv4Suffix[1]!);
+    if (ipv4 === undefined) return undefined;
+    normalized = `${normalized.slice(0, ipv4Suffix.index)}:${((ipv4 >> 16n) & 0xffffn).toString(16)}:${(ipv4 & 0xffffn).toString(16)}`;
   }
-  const normalized = value.toLowerCase();
-  if (!normalized.includes(':') || normalized === '::' || normalized === '::1') return false;
-  return !/^(?:fc|fd|fe8|fe9|fea|feb)/.test(normalized) && !normalized.startsWith('::ffff:');
+  const halves = normalized.split('::');
+  if (halves.length > 2) return undefined;
+  const left = halves[0] ? halves[0].split(':') : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  if (left.some((part) => !/^[0-9a-f]{1,4}$/.test(part)) || right.some((part) => !/^[0-9a-f]{1,4}$/.test(part))) return undefined;
+  if ((halves.length === 1 && left.length !== 8) || (halves.length === 2 && left.length + right.length >= 8)) return undefined;
+  const groups = halves.length === 2
+    ? [...left, ...Array<string>(8 - left.length - right.length).fill('0'), ...right]
+    : left;
+  return groups.reduce((result, part) => (result << 16n) | BigInt(`0x${part}`), 0n);
+}
+
+function inCidr(address: bigint, network: bigint, prefix: number, bits: number): boolean {
+  const shift = BigInt(bits - prefix);
+  return address >> shift === network >> shift;
+}
+
+function inIpv4Cidrs(address: bigint, cidrs: readonly (readonly [string, number])[]): boolean {
+  return cidrs.some(([network, prefix]) => inCidr(address, parseIpv4(network)!, prefix, 32));
+}
+
+function inIpv6Cidrs(address: bigint, cidrs: readonly (readonly [string, number])[]): boolean {
+  return cidrs.some(([network, prefix]) => inCidr(address, parseIpv6(network)!, prefix, 128));
+}
+
+function isPublicIpAddress(value: string): boolean {
+  const ipv4 = parseIpv4(value);
+  if (ipv4 !== undefined) return !inIpv4Cidrs(ipv4, NON_PUBLIC_IPV4_CIDRS);
+  const ipv6 = parseIpv6(value);
+  if (ipv6 === undefined || !inCidr(ipv6, parseIpv6('2000::')!, 3, 128)) return false;
+  return !inIpv6Cidrs(ipv6, [['2001::', 23], ['2001:db8::', 32], ['3fff::', 20]]);
+}
+
+function isCloudflareIpAddress(value: string): boolean {
+  const ipv4 = parseIpv4(value);
+  if (ipv4 !== undefined) return inIpv4Cidrs(ipv4, CLOUDFLARE_IPV4_CIDRS);
+  const ipv6 = parseIpv6(value);
+  return ipv6 !== undefined && inIpv6Cidrs(ipv6, CLOUDFLARE_IPV6_CIDRS);
 }

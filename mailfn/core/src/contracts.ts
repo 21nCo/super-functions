@@ -168,6 +168,7 @@ export interface MailFnDomainAdapter {
 }
 
 export interface MailFnWebhookDispatcher {
+  validateUrl?(url: URL): Promise<void>;
   deliver(input: {
     webhook: Webhook;
     event: MailFnEvent;
