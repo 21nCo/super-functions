@@ -83,12 +83,16 @@ function actor(context: AdminOperationContext): Actor {
 
 function safeCredential(value: JsonRecord): JsonRecord {
   const { tokenHash: _tokenHash, ...safe } = value;
-  return safe;
+  return withoutUndefined(safe);
 }
 
 function safeWebhook(value: JsonRecord): JsonRecord {
   const { secretHash: _secretHash, secretCiphertext: _secretCiphertext, ...safe } = value;
-  return safe;
+  return withoutUndefined(safe);
+}
+
+function withoutUndefined(value: JsonRecord): JsonRecord {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
 }
 
 function safeDomain(value: JsonRecord): JsonRecord {

@@ -10,6 +10,65 @@ export interface CloudflareWebhookDispatcherOptions {
   dnsFetch?: typeof globalThis.fetch;
 }
 
+/**
+ * Cloudflare Workers transport that connects to a vetted address while using
+ * the original hostname for TLS verification and the HTTP Host header.
+ */
+export async function cloudflareFetchResolved(
+  url: URL,
+  addresses: readonly string[],
+  init: RequestInit,
+): Promise<Response> {
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('MAILFN_WEBHOOK_PROTOCOL_FORBIDDEN');
+  if (typeof init.body !== 'string') throw new Error('MAILFN_WEBHOOK_BODY_INVALID');
+  const { connect } = await import('cloudflare:sockets');
+  let lastError: unknown;
+  for (const address of addresses) {
+    try {
+      const tls = url.protocol === 'https:';
+      let socket = connect(
+        { hostname: address, port: Number(url.port || (tls ? 443 : 80)) },
+        { allowHalfOpen: false, secureTransport: tls ? 'starttls' : 'off' },
+      );
+      if (tls) socket = socket.startTls({ expectedServerHostname: url.hostname });
+      const abort = (): void => { void socket.close(); };
+      if (init.signal?.aborted) throw new Error('MAILFN_WEBHOOK_ABORTED');
+      init.signal?.addEventListener('abort', abort, { once: true });
+      try {
+        await socket.opened;
+        const headers = new Headers(init.headers);
+        headers.set('Host', url.host);
+        headers.set('Content-Length', String(new TextEncoder().encode(init.body).byteLength));
+        headers.set('Connection', 'close');
+        const headerLines = [...headers].map(([name, value]) => `${name}: ${value}`);
+        const request = `${init.method ?? 'GET'} ${url.pathname}${url.search} HTTP/1.1\r\n${headerLines.join('\r\n')}\r\n\r\n${init.body}`;
+        const writer = socket.writable.getWriter();
+        await writer.write(new TextEncoder().encode(request));
+        writer.releaseLock();
+        const reader = socket.readable.getReader();
+        const decoder = new TextDecoder();
+        let responseHead = '';
+        while (!responseHead.includes('\r\n\r\n')) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          responseHead += decoder.decode(value, { stream: true });
+          if (responseHead.length > 64 * 1024) throw new Error('MAILFN_WEBHOOK_RESPONSE_HEADERS_TOO_LARGE');
+        }
+        await reader.cancel();
+        const status = Number(/^HTTP\/1\.[01]\s+(\d{3})/.exec(responseHead)?.[1]);
+        if (!Number.isInteger(status) || status < 200 || status > 599) throw new Error('MAILFN_WEBHOOK_RESPONSE_INVALID');
+        return new Response(null, { status });
+      } finally {
+        init.signal?.removeEventListener('abort', abort);
+        await socket.close().catch(() => undefined);
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('MAILFN_WEBHOOK_CONNECT_FAILED');
+}
+
 export class CloudflareWebhookDispatcher implements MailFnWebhookDispatcher {
   private readonly fetchResolved?: CloudflareWebhookDispatcherOptions['fetchResolved'];
   private readonly maxAttempts: number;

@@ -30,7 +30,7 @@ export interface MailFnAdminActionDefinition {
     reason: string;
     maxAgeSeconds?: number;
   };
-  idempotent: true;
+  idempotent: boolean;
   target: "resource" | "collection";
 }
 export const mailFnAdminResources = [
@@ -351,7 +351,7 @@ export const mailFnAdminActions = [
       reason: "A webhook creates durable outbound delivery of scoped MailFn events to an external endpoint.",
       maxAgeSeconds: 300,
     },
-    idempotent: true,
+    idempotent: false,
     target: "collection",
   },
   {
@@ -367,7 +367,7 @@ export const mailFnAdminActions = [
       reason: "Credential rotation issues a replacement and revokes the active credential.",
       maxAgeSeconds: 300,
     },
-    idempotent: true,
+    idempotent: false,
     target: "resource",
   },
   {
@@ -537,6 +537,57 @@ const actionOutputSchema: AdminObjectSchema = {
   required: ["accepted"],
   additionalProperties: true,
 };
+const webhookIssueOutputSchema: AdminObjectSchema = {
+  type: "object",
+  properties: {
+    accepted: { type: "boolean", enum: [true] },
+    item: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        projectId: { type: "string" },
+        inboxId: { type: "string" },
+        url: { type: "string" },
+        eventTypes: { type: "array", items: { type: "string" } },
+        status: { type: "string" },
+        consecutiveFailures: { type: "integer" },
+        createdAt: { type: "string" },
+        updatedAt: { type: "string" },
+        secret: { type: "string" },
+      },
+      required: ["id", "projectId", "url", "eventTypes", "status", "consecutiveFailures", "createdAt", "updatedAt", "secret"],
+      additionalProperties: false,
+    },
+  },
+  required: ["accepted", "item"],
+  additionalProperties: false,
+};
+const credentialIssueOutputSchema: AdminObjectSchema = {
+  type: "object",
+  properties: {
+    accepted: { type: "boolean", enum: [true] },
+    item: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        projectId: { type: "string" },
+        inboxId: { type: "string" },
+        tokenPrefix: { type: "string" },
+        permissions: { type: "array", items: { type: "string" } },
+        status: { type: "string" },
+        expiresAt: { type: "string" },
+        lastUsedAt: { type: "string" },
+        revokedAt: { type: "string" },
+        createdAt: { type: "string" },
+        token: { type: "string" },
+      },
+      required: ["id", "projectId", "tokenPrefix", "permissions", "status", "createdAt", "token"],
+      additionalProperties: false,
+    },
+  },
+  required: ["accepted", "item"],
+  additionalProperties: false,
+};
 const payloadSchema = (
   properties: NonNullable<AdminObjectSchema["properties"]>,
   required: string[] = [],
@@ -675,13 +726,18 @@ function actionOperation(
   const sensitiveFields =
     mailFnAdminResources.find((resource) => resource.id === action.resource)
       ?.sensitiveFields ?? [];
+  const oneTimeOutput = action.id === "create-webhook"
+    ? { path: "$.item.secret", field: "secret", schema: webhookIssueOutputSchema }
+    : action.id === "rotate-credential"
+      ? { path: "$.item.token", field: "token", schema: credentialIssueOutputSchema }
+      : undefined;
   return {
     id: "mailfn." + action.resource + "." + action.id,
     title: action.title,
     description: action.description,
     inputSchema:
       actionInputSchemas[action.id as (typeof mailFnAdminActions)[number]["id"]],
-    outputSchema: actionOutputSchema,
+    outputSchema: oneTimeOutput?.schema ?? actionOutputSchema,
     route: {
       method: "POST",
       path: "/resources/" + action.resource + "/actions/" + action.id,
@@ -700,7 +756,11 @@ function actionOperation(
       destructiveHint: action.classification === "destructive",
       idempotentHint: action.idempotent,
     },
-    redaction: { inputFields: sensitiveFields, outputFields: sensitiveFields },
+    redaction: {
+      inputFields: sensitiveFields,
+      outputFields: sensitiveFields.filter((field) => field !== oneTimeOutput?.field),
+      ...(oneTimeOutput ? { allowOutputPaths: [oneTimeOutput.path] } : {}),
+    },
     target:
       action.target === "resource"
         ? { resource: action.resource, idInput: "id" }

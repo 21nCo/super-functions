@@ -36,6 +36,15 @@ class RecordingDatabase implements D1Database {
 }
 
 describe('D1MailFnStore', () => {
+  it('keeps inbox-scoped webhook queries separate from project-wide webhooks', async () => {
+    const database = new RecordingDatabase();
+    const store = new D1MailFnStore(database);
+    await store.listWebhooks('prj_1', 'inb_1');
+    expect(database.statements[0]?.query).toContain('project_id = ? AND inbox_id = ?');
+    expect(database.statements[0]?.query).not.toContain('inbox_id IS NULL');
+    expect(database.statements[0]?.values).toEqual(['prj_1', 'inb_1']);
+  });
+
   it('binds every durable message column including independent retention clocks', async () => {
     const database = new RecordingDatabase();
     const store = new D1MailFnStore(database);

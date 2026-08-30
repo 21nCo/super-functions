@@ -6,7 +6,12 @@ import {
   createMailFnDomainAdminService,
   type MailFnAdminService,
 } from "../index.js";
-import type { AdminClient } from "@superfunctions/admin";
+import {
+  createAdminDispatcher,
+  createAdminRegistry,
+  MemoryAdminAuditSink,
+  type AdminClient,
+} from "@superfunctions/admin";
 import {
   DEFAULT_PROJECT_QUOTA,
   DEFAULT_STABLE_RETENTION,
@@ -57,6 +62,7 @@ describe("@mailfn/admin", () => {
       },
     });
     expect(mailFnAdminCapability.operations.find((operation) => operation.id === "mailfn.credentials.rotate-credential")?.safety).toMatchObject({
+      idempotent: false,
       requiresConfirmation: true,
       confirmation: { risk: "critical", method: "mfa", maxAgeSeconds: 300 },
     });
@@ -69,6 +75,57 @@ describe("@mailfn/admin", () => {
     ]) {
       expect(mailFnAdminCapability.operations.find((operation) => operation.id === operationId)?.safety.confirmation).toBeDefined();
     }
+  });
+
+  it("reveals declared one-time webhook and credential secrets while redacting audit records", async () => {
+    const service = {
+      createWebhook: vi.fn(async () => ({
+        ok: true as const,
+        data: {
+          accepted: true as const,
+          item: {
+            id: "webhook_1", projectId: "project_1", url: "https://example.test/hook",
+            eventTypes: ["message.received"], status: "active", consecutiveFailures: 0,
+            createdAt: "2026-08-30T00:00:00.000Z", updatedAt: "2026-08-30T00:00:00.000Z",
+            secret: "one-time-secret",
+          },
+        },
+      })),
+      rotateCredential: vi.fn(async () => ({
+        ok: true as const,
+        data: {
+          accepted: true as const,
+          item: {
+            id: "credential_2", projectId: "project_1", tokenPrefix: "mfn_credential_2",
+            permissions: ["inbox:read"], status: "active", createdAt: "2026-08-30T00:00:00.000Z",
+            token: "one-time-token",
+          },
+        },
+      })),
+    } as unknown as MailFnAdminService;
+    const audit = new MemoryAdminAuditSink();
+    const registry = createAdminRegistry({
+      adapters: [createMailFnAdminAdapter(service)],
+      enabledModules: ["mailfn"],
+    });
+    const dispatcher = createAdminDispatcher({
+      registry,
+      audit,
+      confirmation: { verify: async () => true },
+    });
+    const confirmedContext = { ...context, confirmationToken: "confirmed" };
+    await expect(dispatcher.dispatch({
+      operationId: "mailfn.webhooks.create-webhook",
+      input: { payload: { url: "https://example.test/hook", eventTypes: ["message.received"] } },
+      context: confirmedContext,
+    })).resolves.toMatchObject({ data: { item: { secret: "one-time-secret" } } });
+    await expect(dispatcher.dispatch({
+      operationId: "mailfn.credentials.rotate-credential",
+      input: { id: "credential_1" },
+      context: confirmedContext,
+    })).resolves.toMatchObject({ data: { item: { token: "one-time-token" } } });
+    expect(JSON.stringify(audit.events)).not.toContain("one-time-secret");
+    expect(JSON.stringify(audit.events)).not.toContain("one-time-token");
   });
 
   it("delegates the operation and complete scope to the injected domain service", async () => {

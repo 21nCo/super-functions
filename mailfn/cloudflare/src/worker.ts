@@ -22,7 +22,7 @@ import { PostalMimeParser } from './mime.js';
 import { applyMailFnMigrations } from './migrations.js';
 import { R2MailFnObjectStore } from './object-store.js';
 import { CloudflareMailFnQueue } from './queue.js';
-import { CloudflareWebhookDispatcher } from './webhook.js';
+import { CloudflareWebhookDispatcher, cloudflareFetchResolved } from './webhook.js';
 
 export interface MailFnCloudflareEnv {
   MAILFN_DB: D1Database;
@@ -84,7 +84,7 @@ export async function createCloudflareMailFn(
     objects: new R2MailFnObjectStore(env.MAILFN_OBJECTS),
     queue: new CloudflareMailFnQueue(env.MAILFN_PARSE_QUEUE),
     mimeParser: new PostalMimeParser(),
-    webhookDispatcher: new CloudflareWebhookDispatcher({ maxAttempts: 1 }),
+    webhookDispatcher: new CloudflareWebhookDispatcher({ fetchResolved: cloudflareFetchResolved, maxAttempts: 1 }),
     secretProtector,
     defaultDomain: env.MAILFN_DOMAIN,
     sendAdapter: options.sendAdapter,

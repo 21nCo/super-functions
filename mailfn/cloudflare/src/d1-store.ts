@@ -452,7 +452,7 @@ export class D1MailFnStore implements MailFnStore {
   }
   async listWebhooks(projectId: string, inboxId?: string): Promise<Webhook[]> {
     return inboxId
-      ? this.many('SELECT data_json FROM mailfn_webhooks WHERE project_id = ? AND (inbox_id = ? OR inbox_id IS NULL) ORDER BY created_at', [projectId, inboxId])
+      ? this.many('SELECT data_json FROM mailfn_webhooks WHERE project_id = ? AND inbox_id = ? ORDER BY created_at', [projectId, inboxId])
       : this.many('SELECT data_json FROM mailfn_webhooks WHERE project_id = ? ORDER BY created_at', [projectId]);
   }
   async saveWebhook(value: Webhook): Promise<void> {
