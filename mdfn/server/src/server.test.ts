@@ -172,4 +172,13 @@ describe("mdfn server", () => {
     expect(stored.sidecar?.comments).toHaveLength(1);
     expect(stored.sidecar?.audit).toHaveLength(1);
   });
+
+  it("rejects protected editorial state during document creation", async () => {
+    const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true });
+    const principal = { id: "author" };
+    await expect(service.create(principal, {
+      markdown: "hello",
+      sidecar: { reviewState: "approved", comments: [], suggestions: [], audit: [] },
+    })).rejects.toMatchObject({ code: "MDFN_EDITORIAL_MUTATION_FORBIDDEN", status: 403 });
+  });
 });

@@ -179,6 +179,15 @@ describe("@mdfn/dom", () => {
     expect(output).toContain("Second.");
   });
 
+  it("serializes top-level block reordering without reusing stale source spans", () => {
+    const source = "First.\n\nSecond.\n";
+    const projector = createMarkdownProjector();
+    const before = documentToProseMirror(projector.parse(source).document);
+    const after = before.type.create(before.attrs, [before.child(1), before.child(0)]);
+    const output = projector.serialize(proseMirrorToDocument(after, before), source).markdown;
+    expect(output.indexOf("Second.")).toBeLessThan(output.indexOf("First."));
+  });
+
   it("preserves unsupported inline source and reference links through nearby visual edits", () => {
     for (const source of [
       "before <custom-inline>inside</custom-inline> after\n",

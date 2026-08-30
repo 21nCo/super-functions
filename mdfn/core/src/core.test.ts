@@ -49,6 +49,19 @@ describe("@mdfn/core", () => {
     expect(mapAnchor({ from: 8, to: 11 }, [{ from: 6, to: 11, insertedLength: 4 }])).toEqual({ from: 10, to: 10 });
   });
 
+  it("publishes the minimal changed range when restoring history", () => {
+    const editor = createEditor({ markdown: "before after", projector });
+    const listener = vi.fn();
+    editor.subscribe(listener);
+    editor.dispatch(new Transaction().replaceSource(12, 12, "!"));
+    listener.mockClear();
+    expect(editor.undo()).toBe(true);
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      changedRanges: [{ from: 12, to: 13, insertedLength: 0 }],
+      documentChanged: true,
+    }));
+  });
+
   it("maps canonical selections through source replacement", () => {
     const editor = createEditor({
       markdown: "hello world",

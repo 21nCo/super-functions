@@ -55,6 +55,19 @@ export function createEditor(input: CreateEditorInput): EditorController {
     for (const listener of [...listeners]) listener(change);
   };
 
+  const changedRange = (previous: string, next: string): StateChange["changedRanges"] => {
+    if (previous === next) return [];
+    let from = 0;
+    while (from < previous.length && from < next.length && previous.charCodeAt(from) === next.charCodeAt(from)) from += 1;
+    let previousEnd = previous.length;
+    let nextEnd = next.length;
+    while (previousEnd > from && nextEnd > from && previous.charCodeAt(previousEnd - 1) === next.charCodeAt(nextEnd - 1)) {
+      previousEnd -= 1;
+      nextEnd -= 1;
+    }
+    return [{ from, to: previousEnd, insertedLength: nextEnd - from }];
+  };
+
   const restore = (next: EditorState, source: string): boolean => {
     const previous = state;
     const dirty = next.sourceHash !== savedRevision.sourceHash || JSON.stringify(next.sidecar) !== savedRevision.sidecar;
@@ -62,8 +75,8 @@ export function createEditor(input: CreateEditorInput): EditorController {
     notify({
       previous,
       current: state,
-      changedRanges: [{ from: 0, to: previous.markdown.length, insertedLength: state.markdown.length }],
-      documentChanged: true,
+      changedRanges: changedRange(previous.markdown, state.markdown),
+      documentChanged: previous.markdown !== state.markdown,
       selectionChanged: previous.selection !== state.selection,
       sidecarChanged: previous.sidecar !== state.sidecar,
       source,

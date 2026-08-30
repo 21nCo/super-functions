@@ -71,4 +71,17 @@ describe("toolbar model", () => {
       selection: { kind: "text", anchor: 19, head: 19 },
     });
   });
+
+  it("keeps pending insertion anchors stable across history restoration", () => {
+    const controller = createEditor({
+      markdown: "before after",
+      projector: createMarkdownProjector(),
+      selection: { kind: "text", anchor: 7, head: 12 },
+    });
+    controller.dispatch(new Transaction().replaceSource(12, 12, "!"));
+    const insertion = captureMarkdownInsertion(controller);
+    expect(controller.undo()).toBe(true);
+    insertion.insert("asset");
+    expect(controller.getState().markdown).toBe("before asset");
+  });
 });

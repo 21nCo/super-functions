@@ -174,7 +174,13 @@ function pmToBlock(node: PmNode, dirty: boolean): MdfnNode {
 }
 
 export function proseMirrorToDocument(current: PmNode, previous?: PmNode, schemaVersion = 1): MdfnDocument {
-  const structureChanged = !previous || current.childCount !== previous.childCount;
+  const structureChanged = !previous
+    || current.childCount !== previous.childCount
+    || current.content.content.some((child, index) => {
+      const previousChild = previous.child(index);
+      return child.attrs.mdfnFrom !== previousChild.attrs.mdfnFrom
+        || child.attrs.mdfnTo !== previousChild.attrs.mdfnTo;
+    });
   const content = current.content.content.map((child, index) => {
     const previousChild = previous && index < previous.childCount ? previous.child(index) : undefined;
     const dirty = structureChanged || !previousChild || !child.eq(previousChild);

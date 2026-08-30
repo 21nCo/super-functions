@@ -269,6 +269,9 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     async create(principal, input) {
       await allowed(config, "create", principal);
       parse(input.markdown, input.sidecar);
+      if (input.sidecar && protectedSidecar(input.sidecar) !== protectedSidecar(undefined)) {
+        throw new MdfnServerError("MDFN_EDITORIAL_MUTATION_FORBIDDEN", 403);
+      }
       const now = new Date();
       const document: MdfnDocumentRecord = { id: input.id ?? createId(), ownerId: principal.id, tenantId: principal.tenantId, title: input.title, markdown: input.markdown, sourceHash: hashString(input.markdown), schemaHash: registry.schemaHash, sidecar: input.sidecar, version: 1, createdAt: now, updatedAt: now };
       return withStorage(async (storage) => {
