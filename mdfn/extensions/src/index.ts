@@ -49,10 +49,10 @@ export function createDirectiveExtension(options: DirectiveExtensionOptions): Md
     preservation: exactPreservation,
     security: { allowsRawHtml: false },
     parseMarkdown({ source, offset, line }) {
-      const opening = new RegExp(`^:::[ \\t]*${name}(?:[ \\t]+([^\\r\\n]*?))?[ \\t]*(?:\\r?\\n|\\r|$)`).exec(line);
+      const opening = new RegExp(`^(:{3,})[ \\t]*${name}(?:[ \\t]+([^\\r\\n]*?))?[ \\t]*(?:\\r?\\n|\\r|$)`).exec(line);
       if (!opening) return null;
       const searchFrom = offset + line.length;
-      const closePattern = /^:{3,}[ \t]*(?:\r?\n|\r|$)/gm;
+      const closePattern = new RegExp(`^:{${opening[1].length},}[ \\t]*(?:\\r?\\n|\\r|$)`, "gm");
       closePattern.lastIndex = searchFrom;
       const close = closePattern.exec(source);
       const closeEnd = close ? close.index + close[0].length : source.length;
@@ -62,7 +62,7 @@ export function createDirectiveExtension(options: DirectiveExtensionOptions): Md
         consumed: closeEnd - offset,
         node: {
           type: nodeType,
-          attrs: { name, label: opening[1]?.trim() || options.label || name },
+          attrs: { name, label: opening[2]?.trim() || options.label || name },
           text: body,
         },
         diagnostics: close ? [] : [{ code: "MDFN_DIRECTIVE_UNCLOSED", message: `Directive ${name} has no closing fence`, severity: "warning", source: { from: offset, to: source.length }, extension: `directive/${name}` }],
@@ -71,7 +71,11 @@ export function createDirectiveExtension(options: DirectiveExtensionOptions): Md
     serializeMarkdown({ node }) {
       if (node.type !== nodeType) return null;
       const label = typeof node.attrs?.label === "string" && node.attrs.label !== name ? ` ${node.attrs.label}` : "";
-      return `:::${name}${label}\n${node.text ?? ""}\n:::`;
+      const body = node.text ?? "";
+      let fenceLength = 3;
+      for (const match of body.matchAll(/^(:{3,})[ \\t]*(?:\\r)?$/gm)) fenceLength = Math.max(fenceLength, match[1].length + 1);
+      const fence = ":".repeat(fenceLength);
+      return `${fence}${name}${label}\n${body}\n${fence}`;
     },
     render({ node }) {
       if (node.type !== nodeType) return null;

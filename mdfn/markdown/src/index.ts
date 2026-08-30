@@ -118,14 +118,16 @@ function convertMdastNode(
   source: string,
   diagnostics: MdfnDiagnostic[],
   depth: number,
+  maxDepth: number,
   allowRawHtml: boolean,
   definitions: ReadonlyMap<string, MdastNode>,
   inlineContext = false,
 ): MdfnNode {
+  if (depth > maxDepth) throw new RangeError(`MDFN_DEPTH_LIMIT_EXCEEDED:${maxDepth}`);
   const span = sourceSpan(node, source);
   const id = span ? `${node.type}:${span.from}:${span.to}` : undefined;
   const childInline = ["paragraph", "heading", "strong", "emphasis", "delete", "link", "linkReference"].includes(node.type);
-  const content = node.children?.map((child) => convertMdastNode(child, source, diagnostics, depth + 1, allowRawHtml, definitions, childInline));
+  const content = node.children?.map((child) => convertMdastNode(child, source, diagnostics, depth + 1, maxDepth, allowRawHtml, definitions, childInline));
   const common = { id, source: span, content };
   switch (node.type) {
     case "text": return { type: "text", id, source: span, text: node.value ?? "" };
@@ -210,14 +212,14 @@ function scanExtensionBlocks(source: string, registry: ResolvedExtensionRegistry
   const diagnostics: MdfnDiagnostic[] = [];
   let offset = 0;
   const fallbackAt = (line: string): { consumed: number; syntax: string; diagnostic: string } | null => {
-    const directive = /^:::[ \t]*([a-z][a-z0-9-]*)(?:[ \t]+[^\r\n]*)?[ \t]*(?:\r?\n|\r|$)/i.exec(line);
+    const directive = /^(:{3,})[ \t]*([a-z][a-z0-9-]*)(?:[ \t]+[^\r\n]*)?[ \t]*(?:\r?\n|\r|$)/i.exec(line);
     if (directive) {
-      const close = /^:{3,}[ \t]*(?:\r?\n|\r|$)/gm;
+      const close = new RegExp(`^:{${directive[1].length},}[ \\t]*(?:\\r?\\n|\\r|$)`, "gm");
       close.lastIndex = offset + line.length;
       const match = close.exec(source);
       return {
         consumed: match ? match.index + match[0].length - offset : source.length - offset,
-        syntax: `directive/${directive[1].toLowerCase()}`,
+        syntax: `directive/${directive[2].toLowerCase()}`,
         diagnostic: match ? "MDFN_EXTENSION_DISABLED_OR_UNKNOWN" : "MDFN_DIRECTIVE_UNCLOSED",
       };
     }
@@ -305,13 +307,17 @@ function validateLimits(source: string, options: MarkdownOptions): void {
   }
 }
 
-function countAndDepth(node: MdfnNode, depth = 1): { count: number; depth: number } {
-  let count = 1;
-  let maximum = depth;
-  for (const child of node.content ?? []) {
-    const nested = countAndDepth(child, depth + 1);
-    count += nested.count;
-    maximum = Math.max(maximum, nested.depth);
+function countAndDepth(node: MdfnNode, maxNodes: number, maxDepth: number): { count: number; depth: number } {
+  let count = 0;
+  let maximum = 0;
+  const pending: Array<{ node: MdfnNode; depth: number }> = [{ node, depth: 1 }];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    count += 1;
+    if (count > maxNodes) throw new RangeError(`MDFN_NODE_LIMIT_EXCEEDED:${maxNodes}`);
+    if (current.depth > maxDepth) throw new RangeError(`MDFN_DEPTH_LIMIT_EXCEEDED:${maxDepth}`);
+    maximum = Math.max(maximum, current.depth);
+    for (const child of current.node.content ?? []) pending.push({ node: child, depth: current.depth + 1 });
   }
   return { count, depth: maximum };
 }
@@ -327,17 +333,20 @@ export function parseMarkdown(source: string, options: MarkdownOptions = {}): Ma
   } : undefined) as MdastNode;
   const diagnostics = [...extensionScan.diagnostics];
   const definitions = new Map<string, MdastNode>();
-  const collectDefinitions = (node: MdastNode): void => {
+  const pendingDefinitions = [mdast];
+  while (pendingDefinitions.length > 0) {
+    const node = pendingDefinitions.pop()!;
     if (node.type === "definition" && node.identifier && !definitions.has(node.identifier.toLocaleLowerCase())) definitions.set(node.identifier.toLocaleLowerCase(), node);
-    node.children?.forEach(collectDefinitions);
-  };
-  collectDefinitions(mdast);
+    if (node.children) pendingDefinitions.push(...node.children);
+  }
+  const maxDepth = options.maxDepth ?? DEFAULT_LIMITS.maxDepth;
+  const maxNodes = options.maxNodes ?? DEFAULT_LIMITS.maxNodes;
   const normalNodes = (mdast.children ?? [])
     .filter((node) => {
       const span = sourceSpan(node, source);
       return !span || (span.raw ?? source.slice(span.from, span.to)).trim().length > 0;
     })
-    .map((node) => convertMdastNode(node, source, diagnostics, 1, options.allowRawHtml === true, definitions));
+    .map((node) => convertMdastNode(node, source, diagnostics, 2, maxDepth, options.allowRawHtml === true, definitions));
   const content = [...normalNodes, ...extensionScan.nodes].sort((a, b) => (a.source?.from ?? Number.MAX_SAFE_INTEGER) - (b.source?.from ?? Number.MAX_SAFE_INTEGER));
   const document: MdfnDocument = {
     type: "doc",
@@ -346,9 +355,7 @@ export function parseMarkdown(source: string, options: MarkdownOptions = {}): Ma
     source: { from: 0, to: source.length, raw: source, preservation: "exact" },
   };
   diagnostics.push(...registry.diagnose(document));
-  const shape = countAndDepth(document);
-  if (shape.count > (options.maxNodes ?? DEFAULT_LIMITS.maxNodes)) throw new RangeError(`MDFN_NODE_LIMIT_EXCEEDED:${options.maxNodes ?? DEFAULT_LIMITS.maxNodes}`);
-  if (shape.depth > (options.maxDepth ?? DEFAULT_LIMITS.maxDepth)) throw new RangeError(`MDFN_DEPTH_LIMIT_EXCEEDED:${options.maxDepth ?? DEFAULT_LIMITS.maxDepth}`);
+  const shape = countAndDepth(document, maxNodes, maxDepth);
   return {
     source,
     document,

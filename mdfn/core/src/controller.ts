@@ -148,10 +148,15 @@ export function createEditor(input: CreateEditorInput): EditorController {
       assertAlive();
       const change = applyTransaction(state, transaction, input.projector);
       if (change.current !== state) {
-        if ((change.documentChanged || change.sidecarChanged) && transaction.metadata.addToHistory !== false) {
-          undoStack.push(state);
-          if (undoStack.length > historyLimit) undoStack.shift();
-          redoStack.length = 0;
+        if (change.documentChanged || change.sidecarChanged) {
+          if (transaction.metadata.addToHistory !== false) {
+            undoStack.push(state);
+            if (undoStack.length > historyLimit) undoStack.shift();
+            redoStack.length = 0;
+          } else {
+            undoStack.length = 0;
+            redoStack.length = 0;
+          }
         }
         state = change.current;
         notify(change);

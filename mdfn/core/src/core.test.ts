@@ -63,6 +63,22 @@ describe("@mdfn/core", () => {
     }));
   });
 
+  it("invalidates local history when a non-history collaboration change arrives", () => {
+    const editor = createEditor({ markdown: "shared", projector });
+    editor.dispatch(new Transaction().replaceSource(6, 6, " local"));
+    expect(editor.canUndo()).toBe(true);
+
+    editor.dispatch(new Transaction()
+      .replaceSource(0, editor.getState().markdown.length, "remote state")
+      .withSource("collaboration")
+      .withMetadata({ addToHistory: false }));
+
+    expect(editor.getState().markdown).toBe("remote state");
+    expect(editor.canUndo()).toBe(false);
+    expect(editor.canRedo()).toBe(false);
+    expect(editor.undo()).toBe(false);
+  });
+
   it("maps canonical selections through source replacement", () => {
     const editor = createEditor({
       markdown: "hello world",

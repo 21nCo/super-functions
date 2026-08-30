@@ -36,6 +36,7 @@ describe("@mdfn/markdown", () => {
 
   it("enforces resource limits and supports explicit formatting", () => {
     expect(() => parseMarkdown("12345", { maxBytes: 4 })).toThrowError(/MDFN_SOURCE_TOO_LARGE/);
+    expect(() => parseMarkdown(`${"> ".repeat(32)}deep`, { maxDepth: 8 })).toThrowError(/MDFN_DEPTH_LIMIT_EXCEEDED:8/);
     expect(formatMarkdown("# title\n\ntext").markdown).toContain("# title");
   });
 
