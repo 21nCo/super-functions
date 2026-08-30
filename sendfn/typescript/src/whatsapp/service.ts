@@ -25,50 +25,14 @@ export class WhatsAppService {
       metadata: params.metadata ?? {},
     });
 
+    let response;
     try {
-      const response = await this.provider.sendWhatsApp({
+      response = await this.provider.sendWhatsApp({
         to: params.to,
         message: params.message,
         previewUrl: params.previewUrl,
         metadata: params.metadata,
       });
-
-      await this.db.updateWhatsAppTransaction(transaction.id, {
-        status: response.success ? 'sent' : 'failed',
-        providerMessageId: response.providerMessageId ?? response.messageId ?? null,
-        sentAt: response.success ? response.timestamp : null,
-        metadata: {
-          ...(params.metadata ?? {}),
-          raw: response.raw,
-          error: response.error,
-        },
-      });
-
-      if (this.options.eventTracking !== false) {
-        await this.db.recordEvent({
-          referenceId: transaction.id,
-          referenceType: 'whatsapp',
-          eventType: response.success ? 'sent' : 'failed',
-          provider: this.provider.name,
-          providerEventId: response.providerMessageId ?? response.messageId ?? null,
-          recipientEmail: null,
-          recipientPhone: params.to,
-          deviceToken: null,
-          metadata: {
-            error: response.error,
-            raw: response.raw,
-          },
-          eventTimestamp: response.timestamp,
-        });
-      }
-
-      const updatedTransaction = await this.db.getWhatsAppTransaction(transaction.id);
-      if (!updatedTransaction) {
-        throw new Error(
-          `Could not find WhatsApp transaction ${transaction.id} after creation.`
-        );
-      }
-      return updatedTransaction;
     } catch (error: any) {
       await this.db.updateWhatsAppTransaction(transaction.id, {
         status: 'failed',
@@ -92,5 +56,42 @@ export class WhatsAppService {
 
       throw error;
     }
+
+    await this.db.updateWhatsAppTransaction(transaction.id, {
+      status: response.success ? 'sent' : 'failed',
+      providerMessageId: response.providerMessageId ?? response.messageId ?? null,
+      sentAt: response.success ? response.timestamp : null,
+      metadata: {
+        ...(params.metadata ?? {}),
+        raw: response.raw,
+        error: response.error,
+      },
+    });
+
+    if (this.options.eventTracking !== false) {
+      await this.db.recordEvent({
+        referenceId: transaction.id,
+        referenceType: 'whatsapp',
+        eventType: response.success ? 'sent' : 'failed',
+        provider: this.provider.name,
+        providerEventId: response.providerMessageId ?? response.messageId ?? null,
+        recipientEmail: null,
+        recipientPhone: params.to,
+        deviceToken: null,
+        metadata: {
+          error: response.error,
+          raw: response.raw,
+        },
+        eventTimestamp: response.timestamp,
+      });
+    }
+
+    const updatedTransaction = await this.db.getWhatsAppTransaction(transaction.id);
+    if (!updatedTransaction) {
+      throw new Error(
+        `Could not find WhatsApp transaction ${transaction.id} after creation.`
+      );
+    }
+    return updatedTransaction;
   }
 }

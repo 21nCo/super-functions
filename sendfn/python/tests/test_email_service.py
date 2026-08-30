@@ -4,9 +4,11 @@ import base64
 from datetime import datetime
 from email import policy
 from email.parser import Parser
+from unittest.mock import AsyncMock
 
 import pytest
 
+from sendfn.database import helpers as db_helpers
 from sendfn.database.memory import MemoryAdapter
 from sendfn.email.aws_ses import AwsSesProvider
 from sendfn.email.provider import (
@@ -192,6 +194,47 @@ async def test_provider_limits_fail_before_network_call() -> None:
 
     assert attachment_limit.value.code == "SENDFN_PROVIDER_LIMIT"
     assert provider.send_calls == 0
+
+    provider.capabilities.max_attachment_size = 10
+    await service.send_email(
+        SendEmailParams(
+            userId="user-1",
+            to="user@example.com",
+            subject="Hello",
+            html="<p>Hello</p>",
+            attachments=[
+                Attachment(
+                    filename="encoded.bin",
+                    content=base64.b64encode(b"x" * 9).decode("ascii"),
+                    encoding="base64",
+                )
+            ],
+        )
+    )
+    assert provider.send_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_accepted_delivery_is_not_marked_failed_when_persistence_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, provider = create_service()
+    update = AsyncMock(side_effect=RuntimeError("database unavailable"))
+    monkeypatch.setattr(db_helpers, "update_email_transaction", update)
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await service.send_email(
+            SendEmailParams(
+                userId="user-1",
+                to="user@example.com",
+                subject="Hello",
+                html="<p>Hello</p>",
+            )
+        )
+
+    assert provider.send_calls == 1
+    assert update.await_count == 1
+    assert update.await_args.args[2]["status"] == "sent"
 
 
 @pytest.mark.asyncio

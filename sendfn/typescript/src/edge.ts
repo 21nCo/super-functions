@@ -89,6 +89,7 @@ export function createSendFn(config: SendFnEdgeConfig): SendFnEdgeClient {
         html: params.html ?? '',
         text: params.text,
         replyTo: params.replyTo,
+        headers: params.headers,
         attachments: params.attachments,
         metadata: params.metadata,
         tags: params.tags

@@ -4,6 +4,7 @@ import {
   type SendfnConfig,
 } from '../src';
 import { createSendFn as createEdgeSendFn } from '../src/edge';
+import { WhatsAppService } from '../src/whatsapp/service';
 import { WhatsAppTransactionSchema } from '../src/types';
 import { metaWhatsAppAdapter } from '../src/whatsapp/meta-cloud-adapter';
 import { StrongMockAdapter } from './mock-adapter';
@@ -221,6 +222,27 @@ describe('WhatsApp channel', () => {
         message: 'Hello missing transaction',
       })
     ).rejects.toThrow(/Could not find WhatsApp transaction .* after creation/);
+  });
+
+  it('does not rewrite an accepted delivery as failed when persistence fails', async () => {
+    const updateWhatsAppTransaction = vi.fn().mockRejectedValue(new Error('database unavailable'));
+    const service = new WhatsAppService({
+      name: 'accepted-provider',
+      async sendWhatsApp() {
+        return { success: true, providerMessageId: 'wamid.accepted', timestamp: new Date() };
+      },
+    } as any, {
+      createWhatsAppTransaction: vi.fn().mockResolvedValue({ id: 'wa_1' }),
+      updateWhatsAppTransaction,
+      recordEvent: vi.fn(),
+      getWhatsAppTransaction: vi.fn(),
+    } as any, { eventTracking: true } as any);
+
+    await expect(service.sendWhatsApp({
+      userId: 'user-1', to: '+15551234567', message: 'Accepted',
+    })).rejects.toThrow('database unavailable');
+    expect(updateWhatsAppTransaction).toHaveBeenCalledTimes(1);
+    expect(updateWhatsAppTransaction).toHaveBeenCalledWith('wa_1', expect.objectContaining({ status: 'sent' }));
   });
 
   it('supports the edge client without a database adapter', async () => {

@@ -1,7 +1,6 @@
 """AWS SES email provider implementation."""
 
 import asyncio
-import base64
 import re
 from datetime import datetime
 from email.mime.application import MIMEApplication
@@ -15,6 +14,7 @@ from .provider import (
     EmailProviderCapabilities,
     SendEmailRequest,
     SendEmailResponse,
+    decode_attachment_content,
 )
 
 
@@ -213,17 +213,7 @@ class AwsSesProvider:
         # Add attachments
         if request.attachments:
             for attachment in request.attachments:
-                content = attachment.content
-                if isinstance(content, str):
-                    encoding = (attachment.encoding or "utf-8").lower()
-                    if encoding == "base64":
-                        content = base64.b64decode(content, validate=True)
-                    elif encoding == "base64url":
-                        content = base64.urlsafe_b64decode(
-                            content + "=" * (-len(content) % 4)
-                        )
-                    else:
-                        content = content.encode("utf-8" if encoding == "utf8" else encoding)
+                content = decode_attachment_content(attachment.content, attachment.encoding)
                 part = MIMEApplication(content)
                 part.add_header(
                     "Content-Disposition",

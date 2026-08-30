@@ -1,6 +1,21 @@
 """Email provider protocol and interfaces."""
 
+from __future__ import annotations
+
+import base64
 from typing import Any, Optional, Protocol
+
+
+def decode_attachment_content(content: bytes | str, encoding: Optional[str]) -> bytes:
+    """Return the exact attachment bytes represented by the public request model."""
+    if isinstance(content, bytes):
+        return content
+    resolved = (encoding or "utf-8").lower()
+    if resolved == "base64":
+        return base64.b64decode(content, validate=True)
+    if resolved == "base64url":
+        return base64.urlsafe_b64decode(content + "=" * (-len(content) % 4))
+    return content.encode("utf-8" if resolved == "utf8" else resolved)
 
 
 class EmailProviderCapabilities:

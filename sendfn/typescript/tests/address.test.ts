@@ -17,7 +17,7 @@ describe('email address validation', () => {
   });
 
   it('parses display-name senders without regular-expression backtracking', async () => {
-    const requests: Array<{ from: string; idempotencyKey?: string; replyTo?: string }> = [];
+    const requests: Array<{ from: string; idempotencyKey?: string; replyTo?: string; headers?: Record<string, string> }> = [];
     const client = createSendFn({
       email: { from: '"Agent Team" <agent@example.com>' },
       emailProvider: {
@@ -46,12 +46,14 @@ describe('email address validation', () => {
       idempotencyKey: 'edge-1',
       userId: 'user_1',
       replyTo: 'support@example.com',
+      headers: { 'In-Reply-To': '<thread@example.com>' },
       to: 'recipient@example.com',
       subject: 'Hello',
     });
     expect(requests[0]?.from).toBe('Agent Team <agent@example.com>');
     expect(requests[0]?.idempotencyKey).toBe('edge-1');
     expect(requests[0]?.replyTo).toBe('support@example.com');
+    expect(requests[0]?.headers).toEqual({ 'In-Reply-To': '<thread@example.com>' });
   });
 
   it('rejects control characters in edge sender display names', async () => {

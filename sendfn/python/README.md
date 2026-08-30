@@ -192,13 +192,18 @@ adapter = MemoryAdapter()
 
 ### With Superfunctions DB
 
-```python
-from superfunctions.db import create_adapter
+Install the SQLAlchemy integration and a driver for your database:
 
-adapter = create_adapter({
-    "type": "postgres",
-    "connection_string": "postgresql://...",
-})
+```bash
+python -m pip install 'sendfn[database]' psycopg
+```
+
+```python
+from sqlalchemy import create_engine
+from superfunctions_sqlalchemy import create_adapter
+
+engine = create_engine("postgresql+psycopg://user:password@localhost/sendfn")
+adapter = create_adapter(engine)
 ```
 
 ## Development

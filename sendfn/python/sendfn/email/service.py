@@ -10,7 +10,12 @@ from ..errors import EmailProviderError, SuppressionError, TemplateError, Valida
 from ..events.tracker import EventTracker
 from ..models import Attachment, EmailConfig, EmailTransaction, SendEmailParams
 from ..suppression.manager import SuppressionManager
-from .provider import EmailProvider, SendEmailRequest, SendEmailResponse
+from .provider import (
+    EmailProvider,
+    SendEmailRequest,
+    SendEmailResponse,
+    decode_attachment_content,
+)
 from .templates import TemplateEngine, TemplateRegistry
 
 DEFAULT_MAX_RECIPIENTS = 50
@@ -108,27 +113,6 @@ class EmailService:
 
         try:
             response = await self._send_with_retry(request)
-
-            transaction = await db_helpers.update_email_transaction(
-                self.db,
-                str(transaction.id),
-                {
-                    "status": "sent",
-                    "providerMessageId": response.provider_message_id,
-                    "sentAt": response.timestamp,
-                },
-            )
-
-            await self.event_tracker.record_event(
-                reference_id=str(transaction.id),
-                reference_type="email",
-                event_type="sent",
-                provider=self.provider.name,
-                provider_event_id=response.provider_message_id,
-                recipient_email=recipients["to"][0],
-            )
-
-            return transaction
         except Exception as error:
             send_error = (
                 error
@@ -169,6 +153,27 @@ class EmailService:
             if send_error is error:
                 raise
             raise send_error from error
+
+        transaction = await db_helpers.update_email_transaction(
+            self.db,
+            str(transaction.id),
+            {
+                "status": "sent",
+                "providerMessageId": response.provider_message_id,
+                "sentAt": response.timestamp,
+            },
+        )
+
+        await self.event_tracker.record_event(
+            reference_id=str(transaction.id),
+            reference_type="email",
+            event_type="sent",
+            provider=self.provider.name,
+            provider_event_id=response.provider_message_id,
+            recipient_email=recipients["to"][0],
+        )
+
+        return transaction
 
     async def send_bulk_email(
         self, recipients: list[SendEmailParams]
@@ -282,10 +287,7 @@ class EmailService:
 
         total = 0
         for attachment in attachments:
-            if isinstance(attachment.content, bytes):
-                total += len(attachment.content)
-            else:
-                total += len(attachment.content.encode("utf-8"))
+            total += len(decode_attachment_content(attachment.content, attachment.encoding))
         return total
 
     async def _send_with_retry(self, request: SendEmailRequest) -> SendEmailResponse:

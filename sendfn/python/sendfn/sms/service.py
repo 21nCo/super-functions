@@ -1,5 +1,6 @@
 """SMS service orchestration."""
 
+import asyncio
 from datetime import datetime
 
 from superfunctions.db import Adapter
@@ -26,6 +27,17 @@ class SmsService:
         self.provider = provider
         self.db = db
         self.event_tracking = event_tracking
+        self._initialized = False
+        self._initialize_lock = asyncio.Lock()
+
+    async def _ensure_initialized(self) -> None:
+        if self._initialized:
+            return
+        async with self._initialize_lock:
+            if self._initialized:
+                return
+            await self.provider.initialize()
+            self._initialized = True
 
     async def send_sms(self, params: SendSmsParams) -> SmsTransaction:
         """Send an SMS.
@@ -42,6 +54,8 @@ class SmsService:
             record_event,
             update_sms_transaction,
         )
+
+        await self._ensure_initialized()
 
         # Create transaction record (pending)
         transaction = await create_sms_transaction(
