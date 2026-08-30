@@ -9,7 +9,7 @@ import {
 } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { MailDomain, Message, ParseJob, Webhook } from '@mailfn/core';
+import type { MailDomain, Message, ParseJob, Thread, Webhook } from '@mailfn/core';
 import type { D1Database, Queue, R2Bucket } from './bindings.js';
 import { D1MailFnStore } from './d1-store.js';
 import { applyMailFnMigrations } from './migrations.js';
@@ -77,6 +77,14 @@ describe('MailFn in workerd', () => {
         )
         .run();
     }
+    await env.MAILFN_DB.prepare(`INSERT OR REPLACE INTO mailfn_credentials(
+      id, project_id, inbox_id, token_hash, token_prefix, permissions, status, created_at, data_json
+    ) VALUES ('cred_conflict', 'prj_2', 'inb_conflict', 'hash', 'prefix', '["message:read"]', 'active', ?, ?)`)
+      .bind(
+        '2026-08-29T00:00:00.000Z',
+        JSON.stringify({ id: 'cred_conflict', projectId: 'prj_2', inboxId: 'inb_conflict', status: 'active' }),
+      )
+      .run();
 
     await expect(applyMailFnMigrations(env.MAILFN_DB)).resolves.toBeUndefined();
     const domains = await env.MAILFN_DB.prepare(
@@ -87,16 +95,19 @@ describe('MailFn in workerd', () => {
       'SELECT resolved_owner_domain_id FROM mailfn_domain_conflicts WHERE domain_id = ?',
     ).bind('dom_conflict').first()).resolves.toEqual({ resolved_owner_domain_id: 'dom_owner' });
     await expect(env.MAILFN_DB.prepare(
-      'SELECT version FROM mailfn_schema_migrations WHERE version = 2',
-    ).first()).resolves.toEqual({ version: 2 });
+      'SELECT version FROM mailfn_schema_migrations WHERE version = 3',
+    ).first()).resolves.toEqual({ version: 3 });
     await expect(env.MAILFN_DB.prepare(
       'SELECT id, status FROM mailfn_inboxes WHERE id IN (?, ?) ORDER BY id',
     ).bind('inb_owner', 'inb_conflict').all()).resolves.toMatchObject({
       results: [
-        { id: 'inb_conflict', status: 'deleted' },
+        { id: 'inb_conflict', status: 'deleting' },
         { id: 'inb_owner', status: 'active' },
       ],
     });
+    await expect(env.MAILFN_DB.prepare(
+      'SELECT status, revoked_at FROM mailfn_credentials WHERE id = ?',
+    ).bind('cred_conflict').first()).resolves.toMatchObject({ status: 'revoked', revoked_at: expect.any(String) });
 
     const store = new D1MailFnStore(env.MAILFN_DB);
     const message = (id: string, projectId: string, inboxId: string, envelopeTo: string): Message => ({
@@ -113,6 +124,61 @@ describe('MailFn in workerd', () => {
     await expect(store.createInboundMessageIfInboxActive(message(
       'msg_conflict', 'prj_2', 'inb_conflict', 'conflict@shared.example.com',
     ))).resolves.toBe(false);
+  });
+
+  it('upgrades populated schema-v2 thread duplicates before adding subject uniqueness', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'thread-v2-upgrade', displayName: 'Thread v2 Upgrade' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const created = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'expiring', requestedLocalPart: 'thread-v2', expirySeconds: 3_600,
+    });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    await env.MAILFN_DB.prepare('DROP INDEX IF EXISTS mailfn_threads_subject').run();
+    const thread = (id: string, createdAt: string, messageId: string): Thread => ({
+      id,
+      projectId: bootstrap.project.id,
+      inboxId: created.inbox.id,
+      normalizedSubject: 'duplicate subject',
+      messageIds: [messageId],
+      lastMessageAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    const winner = thread('thr_winner', '2026-08-29T00:00:00.000Z', 'msg_winner');
+    const losing = thread('thr_losing', '2026-08-30T00:00:00.000Z', 'msg_losing');
+    await store.saveThread(winner);
+    await store.saveThread(losing);
+    const message = (id: string, threadId: string, receivedAt: string): Message => ({
+      id, projectId: bootstrap.project.id, inboxId: created.inbox.id, providerDeliveryId: id,
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      from: [{ address: 'sender@example.com' }], to: [{ address: created.inbox.address }], cc: [], bcc: [], replyTo: [],
+      subject: 'Duplicate Subject', receivedAt, parsedAt: receivedAt, headers: {}, rawObjectKey: `raw/${id}`,
+      rawRetentionExpiresAt: '2026-09-01T00:00:00.000Z', attachmentRetentionExpiresAt: '2026-09-01T00:00:00.000Z',
+      references: [], authenticationResults: {}, sizeBytes: 1, status: 'ready', labels: [], threadId,
+      retentionExpiresAt: '2026-09-01T00:00:00.000Z', createdAt: receivedAt, updatedAt: receivedAt,
+    });
+    await store.saveMessage(message('msg_winner', winner.id, winner.createdAt));
+    await store.saveMessage(message('msg_losing', losing.id, losing.createdAt));
+    const draft = await mailfn.createDraft(admin, {
+      inboxId: created.inbox.id, threadId: losing.id, to: ['recipient@example.com'], subject: 'Draft', text: 'body',
+    });
+    await env.MAILFN_DB.prepare('DELETE FROM mailfn_schema_migrations').run();
+    await env.MAILFN_DB.prepare(
+      'INSERT INTO mailfn_schema_migrations(version, applied_at) VALUES (2, ?)',
+    ).bind('2026-08-30T00:00:00.000Z').run();
+
+    await expect(applyMailFnMigrations(env.MAILFN_DB)).resolves.toBeUndefined();
+    await expect(store.listThreads(bootstrap.project.id, created.inbox.id)).resolves.toMatchObject([{
+      id: winner.id,
+      messageIds: ['msg_winner', 'msg_losing'],
+    }]);
+    await expect(store.getMessage('msg_winner')).resolves.toMatchObject({ threadId: winner.id });
+    await expect(store.getMessage('msg_losing')).resolves.toMatchObject({ threadId: winner.id });
+    await expect(store.getDraft(draft.id)).resolves.toMatchObject({ threadId: winner.id });
+    await expect(store.saveThread(thread(
+      'thr_duplicate', '2026-08-31T00:00:00.000Z', 'msg_duplicate',
+    ))).rejects.toBeDefined();
   });
 
   it('runs the Worker fetch surface with real workerd bindings', async () => {

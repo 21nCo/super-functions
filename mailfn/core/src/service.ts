@@ -105,6 +105,7 @@ export interface CreatedWebhook {
 }
 
 const PARSE_LEASE_MS = 15 * 60 * 1000;
+const WEBHOOK_DELIVERY_LEASE_MS = 5 * 60 * 1000;
 
 export class MailFn {
   private readonly store: MailFnStore;
@@ -431,7 +432,7 @@ export class MailFn {
   }
 
   public async listInboxes(actor: Actor): Promise<Inbox[]> {
-    await this.authorize(actor, 'inbox:read', actor.projectId);
+    await this.authorize(actor, 'inbox:read', actor.projectId, actor.inboxId);
     const inboxes = await this.store.listInboxes(actor.projectId);
     return actor.inboxId ? inboxes.filter((inbox) => inbox.id === actor.inboxId) : inboxes;
   }
@@ -1004,11 +1005,30 @@ export class MailFn {
         if (webhook.status !== 'active') continue;
         for (const delivery of await this.store.listWebhookDeliveries(webhook.id)) {
           if (processed >= limit) return processed;
-          if (delivery.status !== 'failed' || !delivery.nextAttemptAt || delivery.nextAttemptAt > this.now()) continue;
+          const now = this.now();
+          const failedReady = delivery.status === 'failed'
+            && delivery.nextAttemptAt !== undefined
+            && delivery.nextAttemptAt <= now;
+          const abandonedPending = delivery.status === 'pending'
+            && delivery.updatedAt <= new Date(Date.parse(now) - WEBHOOK_DELIVERY_LEASE_MS).toISOString();
+          if (!failedReady && !abandonedPending) continue;
+          const claimed: WebhookDelivery = {
+            ...delivery,
+            attempt: delivery.attempt + 1,
+            status: 'pending',
+            nextAttemptAt: undefined,
+            updatedAt: now,
+          };
+          if (!(await this.store.claimWebhookDelivery(
+            delivery.id,
+            delivery.status,
+            delivery.updatedAt,
+            claimed,
+          ))) continue;
           const event = events.get(delivery.eventId);
           if (!event) {
             await this.store.saveWebhookDelivery({
-              ...delivery,
+              ...claimed,
               status: 'dead_letter',
               nextAttemptAt: undefined,
               updatedAt: this.now(),
@@ -1016,7 +1036,7 @@ export class MailFn {
             processed += 1;
             continue;
           }
-          await this.deliverWebhook(webhook, event, { ...delivery, attempt: delivery.attempt + 1 });
+          await this.deliverWebhook(webhook, event, claimed);
           webhook = (await this.store.getWebhook(webhook.id)) ?? webhook;
           processed += 1;
           if (webhook.status !== 'active') break;
@@ -1642,6 +1662,35 @@ export class MailFn {
           }
         }
         if (compliance?.retentionLocked) continue;
+        if (effectiveInbox.status === 'deleting') {
+          try {
+            for (const message of await this.store.listMessages(project.id, effectiveInbox.id)) {
+              result.deletedObjects += await this.deleteMessageObjects(message);
+              await this.deleteMessageRecord(message);
+              result.deletedMessages += 1;
+            }
+            await this.store.deleteDrafts(project.id, effectiveInbox.id);
+            for (const webhook of await this.store.listWebhooks(project.id, effectiveInbox.id)) {
+              if (webhook.status !== 'disabled') {
+                await this.store.saveWebhook({ ...webhook, status: 'disabled', updatedAt: now });
+              }
+            }
+            for (const credential of await this.store.listCredentials(project.id, effectiveInbox.id)) {
+              if (credential.status === 'active') {
+                await this.store.saveCredential({ ...credential, status: 'revoked', revokedAt: now });
+              }
+            }
+            await this.store.saveInbox({ ...effectiveInbox, status: 'deleted', updatedAt: now });
+            await this.systemAudit(project.id, 'inbox.deletion_recovered', 'inbox', effectiveInbox.id, {
+              inboxId: effectiveInbox.id,
+            }).catch(() => undefined);
+          } catch {
+            await this.systemAudit(project.id, 'inbox.deletion_retry_failed', 'inbox', effectiveInbox.id, {
+              inboxId: effectiveInbox.id,
+            }).catch(() => undefined);
+          }
+          continue;
+        }
         const messages = await this.store.listMessages(project.id, inbox.id);
         for (const message of messages) {
           const retention = effectiveInbox.kind === 'expiring' ? DEFAULT_EXPIRING_RETENTION : project.defaultRetentionPolicy;

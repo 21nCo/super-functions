@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { MAILFN_D1_MIGRATIONS } from './migrations.js';
+import { MAILFN_D1_MIGRATIONS, MAILFN_D1_SCHEMA_VERSION } from './migrations.js';
 
 describe('MailFn D1 schema', () => {
   it('covers every durable domain and critical uniqueness/index boundary', () => {
@@ -18,9 +18,12 @@ describe('MailFn D1 schema', () => {
     expect(sql).toContain('token_hash TEXT NOT NULL');
     expect(sql).toContain('mailfn_messages_fts USING fts5');
     expect(sql).toContain('mailfn_webhook_deliveries(webhook_id, created_at)');
+    expect(sql).toContain('mailfn_threads_subject');
     expect(sql).toContain('resolved_owner_domain_id');
-    expect(sql).toContain("SET status = 'deleted'");
+    expect(sql).toContain("SET status = 'deleting'");
+    expect(sql).toContain("SET status = 'revoked'");
     expect(sql).toContain('conflict.project_id = mailfn_inboxes.project_id');
     expect(sql).toContain('DELETE FROM mailfn_domains');
+    expect(MAILFN_D1_SCHEMA_VERSION).toBe(3);
   });
 });

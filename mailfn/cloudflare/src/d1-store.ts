@@ -485,6 +485,23 @@ export class D1MailFnStore implements MailFnStore {
       [value.id, value.webhookId, value.eventId, value.attempt, value.status, value.nextAttemptAt ?? null, value.createdAt, value.updatedAt, json(value)],
     );
   }
+  async claimWebhookDelivery(
+    deliveryId: string,
+    expectedStatus: WebhookDelivery['status'],
+    expectedUpdatedAt: string,
+    value: WebhookDelivery,
+  ): Promise<boolean> {
+    const result = await bind(this.database.prepare(
+      `UPDATE mailfn_webhook_deliveries
+       SET attempt = ?, status = ?, next_attempt_at = ?, updated_at = ?, data_json = ?
+       WHERE id = ? AND status = ? AND updated_at = ?`,
+    ), [
+      value.attempt, value.status, value.nextAttemptAt ?? null, value.updatedAt, json(value),
+      deliveryId, expectedStatus, expectedUpdatedAt,
+    ]).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
+  }
   async listWebhookDeliveries(webhookId: string): Promise<WebhookDelivery[]> {
     return this.many('SELECT data_json FROM mailfn_webhook_deliveries WHERE webhook_id = ? ORDER BY created_at', [webhookId]);
   }

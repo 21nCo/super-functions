@@ -311,6 +311,17 @@ export class MemoryMailFnStore implements MailFnStore {
   async saveWebhookDelivery(delivery: WebhookDelivery): Promise<void> {
     this.webhookDeliveries.set(delivery.id, copy(delivery));
   }
+  async claimWebhookDelivery(
+    deliveryId: string,
+    expectedStatus: WebhookDelivery['status'],
+    expectedUpdatedAt: string,
+    delivery: WebhookDelivery,
+  ): Promise<boolean> {
+    const current = this.webhookDeliveries.get(deliveryId);
+    if (!current || current.status !== expectedStatus || current.updatedAt !== expectedUpdatedAt) return false;
+    this.webhookDeliveries.set(deliveryId, copy(delivery));
+    return true;
+  }
   async listWebhookDeliveries(webhookId: string): Promise<WebhookDelivery[]> {
     return values(this.webhookDeliveries).filter((delivery) => delivery.webhookId === webhookId);
   }

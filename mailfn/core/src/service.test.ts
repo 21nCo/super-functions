@@ -355,6 +355,7 @@ describe('MailFn domain service', () => {
     const first = await createInbox(context, 'first');
     const second = await createInbox(context, 'second');
     const actor = await context.mailfn.authenticate(first.credential.token);
+    await expect(context.mailfn.listInboxes(actor)).resolves.toMatchObject([{ id: first.inbox.id }]);
     await expect(context.mailfn.getInbox(actor, second.inbox.id)).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN' });
     const audits = await context.mailfn.getAuditEvents(context.admin);
     expect(audits.some((entry) => entry.action === 'authorization.failed')).toBe(true);
@@ -791,6 +792,26 @@ describe('MailFn domain service', () => {
     })).resolves.toMatchObject({ webhook: { status: 'active' } });
   });
 
+  it('finishes interrupted inbox deletion during retention reconciliation', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'deletion-recovery');
+    const value = raw({ subject: 'Delete me' });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'deletion-recovery', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    await context.store.saveInbox({ ...created.inbox, status: 'deleting', updatedAt: '2026-08-10T00:00:01.000Z' });
+
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({
+      deletedMessages: 1,
+      deletedObjects: 1,
+    });
+    await expect(context.store.getInbox(created.inbox.id)).resolves.toMatchObject({ status: 'deleted' });
+    await expect(context.store.getMessage(message.id)).resolves.toBeNull();
+    expect(context.objects.size()).toBe(0);
+    await expect(context.mailfn.authenticate(created.credential.token)).rejects.toMatchObject({ code: 'MAILFN_UNAUTHORIZED' });
+  });
+
   it('enforces webhook quotas atomically across concurrent creations', async () => {
     const context = await setup({
       quota: { maxWebhooks: 1 },
@@ -950,6 +971,40 @@ describe('MailFn domain service', () => {
     clock.advance(2_100);
     expect(await context.mailfn.retryWebhookDeliveries(context.project.id)).toBe(1);
     expect(await context.store.listWebhookDeliveries(webhook.webhook.id)).toMatchObject([{
+      status: 'delivered', attempt: 2, nextAttemptAt: undefined,
+    }]);
+  });
+
+  it('reclaims one abandoned pending webhook delivery with a conditional lease', async () => {
+    const clock = new MutableClock();
+    let deliveries = 0;
+    const context = await setup({
+      clock,
+      webhookDispatcher: { async deliver() { deliveries += 1; return { ok: true, status: 204, retryable: false }; } },
+    });
+    const created = await createInbox(context, 'abandoned-webhook');
+    const webhook = await context.mailfn.createWebhook(context.admin, {
+      inboxId: created.inbox.id,
+      url: 'https://consumer.example.test/hook',
+      eventTypes: ['message.received'],
+    });
+    await context.store.appendEvent({
+      id: 'evt_abandoned', version: 1, type: 'message.received', projectId: context.project.id,
+      inboxId: created.inbox.id, occurredAt: clock.now().toISOString(), payload: {},
+    });
+    await context.store.saveWebhookDelivery({
+      id: 'delivery_abandoned', webhookId: webhook.webhook.id, eventId: 'evt_abandoned', attempt: 1,
+      status: 'pending', createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString(),
+    });
+    clock.advance(5 * 60 * 1000 + 1);
+
+    const processed = await Promise.all([
+      context.mailfn.retryWebhookDeliveries(context.project.id),
+      context.mailfn.retryWebhookDeliveries(context.project.id),
+    ]);
+    expect(processed.reduce((total, value) => total + value, 0)).toBe(1);
+    expect(deliveries).toBe(1);
+    await expect(context.store.listWebhookDeliveries(webhook.webhook.id)).resolves.toMatchObject([{
       status: 'delivered', attempt: 2, nextAttemptAt: undefined,
     }]);
   });

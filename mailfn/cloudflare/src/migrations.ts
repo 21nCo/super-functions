@@ -1,6 +1,6 @@
 import type { D1Database } from './bindings.js';
 
-export const MAILFN_D1_SCHEMA_VERSION = 2;
+export const MAILFN_D1_SCHEMA_VERSION = 3;
 
 export const MAILFN_D1_MIGRATIONS = [
   `CREATE TABLE IF NOT EXISTS mailfn_schema_migrations (
@@ -53,7 +53,6 @@ export const MAILFN_D1_MIGRATIONS = [
     last_message_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, data_json TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS mailfn_threads_inbox ON mailfn_threads(project_id, inbox_id, last_message_at DESC)`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS mailfn_threads_subject ON mailfn_threads(project_id, inbox_id, normalized_subject)`,
   `CREATE TABLE IF NOT EXISTS mailfn_webhooks (
     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, inbox_id TEXT, url TEXT NOT NULL, event_types TEXT NOT NULL,
     secret_hash TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, data_json TEXT NOT NULL
@@ -91,11 +90,11 @@ export const MAILFN_D1_MIGRATIONS = [
     ORDER BY owner.created_at ASC, owner.id ASC LIMIT 1
   )`,
   `UPDATE mailfn_inboxes
-   SET status = 'deleted',
+   SET status = 'deleting',
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
        data_json = json_set(
          data_json,
-         '$.status', 'deleted',
+         '$.status', 'deleting',
          '$.updatedAt', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
        )
    WHERE EXISTS (
@@ -103,6 +102,22 @@ export const MAILFN_D1_MIGRATIONS = [
      WHERE conflict.project_id = mailfn_inboxes.project_id
        AND lower(substr(mailfn_inboxes.address, instr(mailfn_inboxes.address, '@') + 1)) = lower(conflict.domain)
    )`,
+  `UPDATE mailfn_credentials
+   SET status = 'revoked',
+       revoked_at = COALESCE(revoked_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+       data_json = json_set(
+         data_json,
+         '$.status', 'revoked',
+         '$.revokedAt', COALESCE(revoked_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+       )
+   WHERE inbox_id IN (
+     SELECT inbox.id FROM mailfn_inboxes AS inbox
+     WHERE EXISTS (
+       SELECT 1 FROM mailfn_domain_conflicts AS conflict
+       WHERE conflict.project_id = inbox.project_id
+         AND lower(substr(inbox.address, instr(inbox.address, '@') + 1)) = lower(conflict.domain)
+     )
+   ) AND status = 'active'`,
   `DELETE FROM mailfn_domains
    WHERE id IN (SELECT domain_id FROM mailfn_domain_conflicts)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS mailfn_domains_domain_unique ON mailfn_domains(domain)`,
@@ -162,6 +177,104 @@ export const MAILFN_D1_MIGRATIONS = [
     project_id TEXT PRIMARY KEY, data_region TEXT NOT NULL, retention_locked INTEGER NOT NULL,
     deletion_sla_hours INTEGER NOT NULL, updated_at TEXT NOT NULL, data_json TEXT NOT NULL
   )`,
+  `UPDATE mailfn_messages
+   SET thread_id = (
+         SELECT winner.id
+         FROM mailfn_threads AS losing
+         JOIN mailfn_threads AS winner
+           ON winner.project_id = losing.project_id
+          AND winner.inbox_id = losing.inbox_id
+          AND winner.normalized_subject = losing.normalized_subject
+         WHERE losing.id = mailfn_messages.thread_id
+         ORDER BY winner.created_at ASC, winner.id ASC
+         LIMIT 1
+       ),
+       data_json = json_set(data_json, '$.threadId', (
+         SELECT winner.id
+         FROM mailfn_threads AS losing
+         JOIN mailfn_threads AS winner
+           ON winner.project_id = losing.project_id
+          AND winner.inbox_id = losing.inbox_id
+          AND winner.normalized_subject = losing.normalized_subject
+         WHERE losing.id = mailfn_messages.thread_id
+         ORDER BY winner.created_at ASC, winner.id ASC
+         LIMIT 1
+       ))
+   WHERE thread_id IN (
+     SELECT losing.id FROM mailfn_threads AS losing
+     WHERE EXISTS (
+       SELECT 1 FROM mailfn_threads AS winner
+       WHERE winner.project_id = losing.project_id
+         AND winner.inbox_id = losing.inbox_id
+         AND winner.normalized_subject = losing.normalized_subject
+         AND (winner.created_at < losing.created_at OR (winner.created_at = losing.created_at AND winner.id < losing.id))
+     )
+   )`,
+  `UPDATE mailfn_drafts
+   SET thread_id = (
+         SELECT winner.id
+         FROM mailfn_threads AS losing
+         JOIN mailfn_threads AS winner
+           ON winner.project_id = losing.project_id
+          AND winner.inbox_id = losing.inbox_id
+          AND winner.normalized_subject = losing.normalized_subject
+         WHERE losing.id = mailfn_drafts.thread_id
+         ORDER BY winner.created_at ASC, winner.id ASC
+         LIMIT 1
+       ),
+       data_json = json_set(data_json, '$.threadId', (
+         SELECT winner.id
+         FROM mailfn_threads AS losing
+         JOIN mailfn_threads AS winner
+           ON winner.project_id = losing.project_id
+          AND winner.inbox_id = losing.inbox_id
+          AND winner.normalized_subject = losing.normalized_subject
+         WHERE losing.id = mailfn_drafts.thread_id
+         ORDER BY winner.created_at ASC, winner.id ASC
+         LIMIT 1
+       ))
+   WHERE thread_id IN (
+     SELECT losing.id FROM mailfn_threads AS losing
+     WHERE EXISTS (
+       SELECT 1 FROM mailfn_threads AS winner
+       WHERE winner.project_id = losing.project_id
+         AND winner.inbox_id = losing.inbox_id
+         AND winner.normalized_subject = losing.normalized_subject
+         AND (winner.created_at < losing.created_at OR (winner.created_at = losing.created_at AND winner.id < losing.id))
+     )
+   )`,
+  `UPDATE mailfn_threads AS thread
+   SET last_message_at = COALESCE(
+         (SELECT MAX(message.received_at) FROM mailfn_messages AS message WHERE message.thread_id = thread.id),
+         thread.last_message_at
+       ),
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+       data_json = json_set(
+         data_json,
+         '$.messageIds', json(COALESCE((
+           SELECT json_group_array(ordered.id)
+           FROM (
+             SELECT message.id FROM mailfn_messages AS message
+             WHERE message.thread_id = thread.id
+             ORDER BY message.received_at ASC, message.id ASC
+           ) AS ordered
+         ), '[]')),
+         '$.lastMessageAt', COALESCE(
+           (SELECT MAX(message.received_at) FROM mailfn_messages AS message WHERE message.thread_id = thread.id),
+           thread.last_message_at
+         ),
+         '$.updatedAt', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+       )
+   WHERE EXISTS (SELECT 1 FROM mailfn_messages AS message WHERE message.thread_id = thread.id)`,
+  `DELETE FROM mailfn_threads AS losing
+   WHERE EXISTS (
+     SELECT 1 FROM mailfn_threads AS winner
+     WHERE winner.project_id = losing.project_id
+       AND winner.inbox_id = losing.inbox_id
+       AND winner.normalized_subject = losing.normalized_subject
+       AND (winner.created_at < losing.created_at OR (winner.created_at = losing.created_at AND winner.id < losing.id))
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS mailfn_threads_subject ON mailfn_threads(project_id, inbox_id, normalized_subject)`,
 ] as const;
 
 export async function applyMailFnMigrations(database: D1Database): Promise<void> {
