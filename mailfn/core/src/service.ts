@@ -1333,7 +1333,7 @@ export class MailFn {
     if (!draft) throw notFound('Draft');
     await this.authorize(actor, 'send:write', draft.projectId, draft.inboxId);
     const inbox = await this.requireDraftInbox(draft.projectId, draft.inboxId);
-    assertMailFn(inbox.status === 'active' && (!inbox.expiresAt || inbox.expiresAt > this.now()), {
+    assertMailFn(inbox.status === 'active' && (!inbox.expiresAt || Date.parse(inbox.expiresAt) > Date.parse(this.now())), {
       code: 'MAILFN_INBOX_INACTIVE', message: 'Inbox is not active', status: 410,
     });
     if (draft.status === 'sent') return draft;
@@ -1496,7 +1496,7 @@ export class MailFn {
     });
     const project = await this.requireProject(actor.projectId);
     const domain = normalizeDomain(domainName);
-    if (await this.store.getDomainByName(project.id, domain)) {
+    if (await this.store.getDomainByNameAcrossProjects(domain)) {
       throw new MailFnError({ code: 'MAILFN_CONFLICT', message: 'Domain already exists', status: 409 });
     }
     const token = this.ids.generate('verify').replace(/^verify_/, '');
@@ -1515,7 +1515,7 @@ export class MailFn {
       updatedAt: now,
     };
     if (!(await this.store.createDomainWithQuota(entry, project.quota.maxDomains))) {
-      if (await this.store.getDomainByName(project.id, domain)) {
+      if (await this.store.getDomainByNameAcrossProjects(domain)) {
         throw new MailFnError({ code: 'MAILFN_CONFLICT', message: 'Domain already exists', status: 409 });
       }
       throw quotaExceeded('domains');
@@ -1569,6 +1569,7 @@ export class MailFn {
     const domain = await this.store.getDomain(domainId);
     if (!domain) throw notFound('Domain');
     await this.authorize(actor, 'domain:manage', domain.projectId);
+    if (domain.status === 'disabled') return domain;
     const updated = { ...domain, status: 'disabled' as const, updatedAt: this.now() };
     await this.store.saveDomain(updated);
     try {
@@ -1764,6 +1765,9 @@ export class MailFn {
     input: Pick<AbuseCase, 'kind' | 'resourceType' | 'resourceId' | 'reason'>,
   ): Promise<AbuseCase> {
     await this.authorize(actor, 'support:write', actor.projectId);
+    assertMailFn(['project', 'inbox', 'message', 'domain'].includes(input.resourceType), {
+      code: 'MAILFN_VALIDATION_FAILED', message: 'Invalid abuse resource type', status: 400,
+    });
     await this.assertAbuseResource(actor.projectId, input.resourceType, input.resourceId);
     assertMailFn(['spam', 'phishing', 'malware', 'complaint', 'bounce', 'policy'].includes(input.kind), {
       code: 'MAILFN_VALIDATION_FAILED', message: 'Invalid abuse kind', status: 400,

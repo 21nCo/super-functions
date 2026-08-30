@@ -109,6 +109,7 @@ describe('D1MailFnStore', () => {
     } satisfies MailDomain, 2);
 
     expect(database.statements[0]?.query).toContain('SELECT COUNT(*) FROM mailfn_domains WHERE project_id = ?');
-    expect(database.statements[0]?.values.slice(-2)).toEqual(['prj_1', 2]);
+    expect(database.statements[0]?.query).toContain('NOT EXISTS (SELECT 1 FROM mailfn_domains WHERE domain = ?)');
+    expect(database.statements[0]?.values.slice(-3)).toEqual(['mail.example.test', 'prj_1', 2]);
   });
 });

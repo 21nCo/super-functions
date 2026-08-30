@@ -1,6 +1,6 @@
 import type { D1Database } from './bindings.js';
 
-export const MAILFN_D1_SCHEMA_VERSION = 1;
+export const MAILFN_D1_SCHEMA_VERSION = 2;
 
 export const MAILFN_D1_MIGRATIONS = [
   `CREATE TABLE IF NOT EXISTS mailfn_schema_migrations (
@@ -69,8 +69,9 @@ export const MAILFN_D1_MIGRATIONS = [
   `CREATE TABLE IF NOT EXISTS mailfn_domains (
     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, domain TEXT NOT NULL, status TEXT NOT NULL, verification_token TEXT NOT NULL,
     verified_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, data_json TEXT NOT NULL,
-    UNIQUE(project_id, domain)
+    UNIQUE(domain)
   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS mailfn_domains_domain_unique ON mailfn_domains(domain)`,
   `CREATE TABLE IF NOT EXISTS mailfn_events (
     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, inbox_id TEXT, message_id TEXT, type TEXT NOT NULL,
     version INTEGER NOT NULL, occurred_at TEXT NOT NULL, data_json TEXT NOT NULL

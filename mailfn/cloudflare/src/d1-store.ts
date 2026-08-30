@@ -544,14 +544,18 @@ export class D1MailFnStore implements MailFnStore {
   async getDomainByName(projectId: string, domain: string): Promise<MailDomain | null> {
     return this.one('SELECT data_json FROM mailfn_domains WHERE project_id = ? AND domain = ?', [projectId, domain]);
   }
+  async getDomainByNameAcrossProjects(domain: string): Promise<MailDomain | null> {
+    return this.one('SELECT data_json FROM mailfn_domains WHERE domain = ?', [domain]);
+  }
   async listDomains(projectId: string): Promise<MailDomain[]> {
     return this.many('SELECT data_json FROM mailfn_domains WHERE project_id = ? ORDER BY created_at', [projectId]);
   }
   async createDomain(value: MailDomain): Promise<boolean> {
     const result = await bind(this.database.prepare(
       `INSERT OR IGNORE INTO mailfn_domains(id, project_id, domain, status, verification_token, verified_at, created_at, updated_at, data_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ), [value.id, value.projectId, value.domain, value.status, value.verificationToken, value.verifiedAt ?? null, value.createdAt, value.updatedAt, json(value)]).run();
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE NOT EXISTS (SELECT 1 FROM mailfn_domains WHERE domain = ?)`,
+    ), [value.id, value.projectId, value.domain, value.status, value.verificationToken, value.verifiedAt ?? null, value.createdAt, value.updatedAt, json(value), value.domain]).run();
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;
   }
@@ -559,11 +563,12 @@ export class D1MailFnStore implements MailFnStore {
     const result = await bind(this.database.prepare(
       `INSERT OR IGNORE INTO mailfn_domains(id, project_id, domain, status, verification_token, verified_at, created_at, updated_at, data_json)
        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
-       WHERE (SELECT COUNT(*) FROM mailfn_domains WHERE project_id = ?) < ?`,
+       WHERE NOT EXISTS (SELECT 1 FROM mailfn_domains WHERE domain = ?)
+         AND (SELECT COUNT(*) FROM mailfn_domains WHERE project_id = ?) < ?`,
     ), [
       value.id, value.projectId, value.domain, value.status, value.verificationToken,
       value.verifiedAt ?? null, value.createdAt, value.updatedAt, json(value),
-      value.projectId, maxDomains,
+      value.domain, value.projectId, maxDomains,
     ]).run();
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;

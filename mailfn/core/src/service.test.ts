@@ -933,7 +933,32 @@ describe('MailFn domain service', () => {
       projectId: context.project.id, kind: 'stable', requestedLocalPart: 'custom', domain: 'mail.example.com',
     })).inbox.address).toBe('custom@mail.example.com');
     await expect(context.mailfn.disableDomain(context.admin, pending.id)).resolves.toMatchObject({ status: 'disabled' });
+    await expect(context.mailfn.disableDomain(context.admin, pending.id)).resolves.toMatchObject({ status: 'disabled' });
     expect(disableRouting).toHaveBeenCalledOnce();
+  });
+
+  it('enforces custom-domain ownership across projects', async () => {
+    const context = await setup({
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'unused' }),
+        disableRouting: async () => undefined,
+      },
+    });
+    const other = await context.mailfn.bootstrapProject({ slug: 'other-project', displayName: 'Other project' });
+    const otherAdmin = await context.mailfn.authenticate(other.credential.token);
+
+    const results = await Promise.allSettled([
+      context.mailfn.createDomain(context.admin, 'owned.example.com'),
+      context.mailfn.createDomain(otherAdmin, 'owned.example.com'),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toMatchObject([{
+      reason: { code: 'MAILFN_CONFLICT' },
+    }]);
+    await expect(context.store.getDomainByNameAcrossProjects('owned.example.com')).resolves.not.toBeNull();
   });
 
   it('does not remove provider routing before disabled domain state is durable', async () => {
@@ -1028,6 +1053,23 @@ describe('MailFn domain service', () => {
     await expect(context.mailfn.configureCompliance(context.admin, {
       dataRegion: 'global', retentionLocked: true, exportEnabled: false, deletionSlaHours: 24,
     })).resolves.toMatchObject({ projectId: context.project.id, retentionLocked: true });
+  });
+
+  it('rejects unknown abuse resource types before persisting a case', async () => {
+    const context = await setup({
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'unused' }),
+        disableRouting: async () => undefined,
+      },
+    });
+    const domain = await context.mailfn.createDomain(context.admin, 'abuse.example.com');
+
+    await expect(context.mailfn.reportAbuse(context.admin, {
+      kind: 'spam', resourceType: 'unknown' as never, resourceId: domain.id, reason: 'invalid resource type',
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED', message: 'Invalid abuse resource type' });
+    await expect(context.mailfn.listAbuseCases(context.admin)).resolves.toHaveLength(0);
   });
 
   it('compares credential expirations by instant instead of ISO spelling', async () => {
@@ -1138,6 +1180,24 @@ describe('MailFn domain service', () => {
       code: 'MAILFN_INBOX_INACTIVE',
     });
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it('compares offset-bearing inbox expiration by instant before sending', async () => {
+    const send = vi.fn(async () => ({ providerMessageId: 'offset-send', status: 'sent' as const }));
+    const clock = new MutableClock(new Date('2026-08-10T00:00:00.000Z'));
+    const context = await setup({ clock, sendAdapter: { send } });
+    const created = await createInbox(context, 'offset-expiry');
+    await context.store.saveInbox({
+      ...created.inbox,
+      expiresAt: '2026-08-09T23:30:00-01:00',
+      updatedAt: clock.now().toISOString(),
+    });
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Offset', text: 'body',
+    });
+
+    await expect(context.mailfn.sendDraft(context.admin, draft.id)).resolves.toMatchObject({ status: 'sent' });
+    expect(send).toHaveBeenCalledOnce();
   });
 
   it('provides complete draft and independent thread-label lifecycles', async () => {

@@ -104,6 +104,7 @@ export interface MailFnStore {
 
   getDomain(id: string): Promise<MailDomain | null>;
   getDomainByName(projectId: string, domain: string): Promise<MailDomain | null>;
+  getDomainByNameAcrossProjects(domain: string): Promise<MailDomain | null>;
   listDomains(projectId: string): Promise<MailDomain[]>;
   createDomain(domain: MailDomain): Promise<boolean>;
   createDomainWithQuota(domain: MailDomain, maxDomains: number): Promise<boolean>;

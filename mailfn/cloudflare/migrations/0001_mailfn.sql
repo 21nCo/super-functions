@@ -163,8 +163,10 @@ CREATE TABLE IF NOT EXISTS mailfn_domains (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   data_json TEXT NOT NULL,
-  UNIQUE(project_id, domain)
+  UNIQUE(domain)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS mailfn_domains_domain_unique ON mailfn_domains(domain);
 
 CREATE TABLE IF NOT EXISTS mailfn_events (
   id TEXT PRIMARY KEY,
@@ -289,4 +291,4 @@ CREATE TABLE IF NOT EXISTS mailfn_compliance (
 );
 
 INSERT OR IGNORE INTO mailfn_schema_migrations(version, applied_at)
-VALUES (1, CURRENT_TIMESTAMP);
+VALUES (2, CURRENT_TIMESTAMP);

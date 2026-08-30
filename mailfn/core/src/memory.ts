@@ -345,18 +345,21 @@ export class MemoryMailFnStore implements MailFnStore {
       values(this.domains).find((entry) => entry.projectId === projectId && entry.domain === domain) ?? null,
     );
   }
+  async getDomainByNameAcrossProjects(domain: string): Promise<MailDomain | null> {
+    return copy(values(this.domains).find((entry) => entry.domain === domain) ?? null);
+  }
   async listDomains(projectId: string): Promise<MailDomain[]> {
     return values(this.domains).filter((domain) => domain.projectId === projectId);
   }
   async createDomain(domain: MailDomain): Promise<boolean> {
-    if (values(this.domains).some((entry) => entry.projectId === domain.projectId && entry.domain === domain.domain)) {
+    if (values(this.domains).some((entry) => entry.domain === domain.domain)) {
       return false;
     }
     this.domains.set(domain.id, copy(domain));
     return true;
   }
   async createDomainWithQuota(domain: MailDomain, maxDomains: number): Promise<boolean> {
-    if (values(this.domains).some((entry) => entry.projectId === domain.projectId && entry.domain === domain.domain)) {
+    if (values(this.domains).some((entry) => entry.domain === domain.domain)) {
       return false;
     }
     if (values(this.domains).filter((entry) => entry.projectId === domain.projectId).length >= maxDomains) {
