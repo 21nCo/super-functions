@@ -10,7 +10,7 @@ describe('MailFn D1 schema', () => {
       'webhook_deliveries', 'drafts', 'domains', 'events', 'audits', 'idempotency', 'usage',
       'domain_conflicts',
       'abuse_cases', 'sender_reputation', 'support_cases', 'compliance',
-      'ingress_reservations', 'storage_reservations', 'webhook_replays',
+      'ingress_reservations', 'storage_reservations', 'storage_claims', 'webhook_replays',
     ]) expect(sql).toContain(`mailfn_${table}`);
     expect(sql).toContain('UNIQUE(inbox_id, provider_delivery_id)');
     expect(sql).toContain('address TEXT NOT NULL UNIQUE');
@@ -24,6 +24,6 @@ describe('MailFn D1 schema', () => {
     expect(sql).toContain("SET status = 'revoked'");
     expect(sql).toContain('conflict.project_id = mailfn_inboxes.project_id');
     expect(sql).toContain('DELETE FROM mailfn_domains');
-    expect(MAILFN_D1_SCHEMA_VERSION).toBe(3);
+    expect(MAILFN_D1_SCHEMA_VERSION).toBe(4);
   });
 });

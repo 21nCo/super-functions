@@ -17,7 +17,7 @@ class RecordingStatement implements D1PreparedStatement {
 
   async first<T>(): Promise<T | null> { return null; }
   async all<T>(): Promise<D1Result<T>> { return { success: true, results: [] }; }
-  async run<T>(): Promise<D1Result<T>> { return { success: true, results: [] }; }
+  async run<T>(): Promise<D1Result<T>> { return { success: true, results: [], meta: { changes: 1 } }; }
 }
 
 class RecordingDatabase implements D1Database {
@@ -97,13 +97,33 @@ describe('D1MailFnStore', () => {
     const database = new RecordingDatabase();
     const store = new D1MailFnStore(database);
 
-    await store.releaseOrphanedStorageReservations('prj_1', '2026-08-30T00:00:00.000Z');
+    await store.releaseOrphanedStorageReservations(
+      'prj_1',
+      '2026-08-30T00:00:00.000Z',
+      '2026-08-29T23:00:00.000Z',
+    );
 
     expect(database.statements[0]?.query).toContain('DELETE FROM mailfn_storage_reservations');
     expect(database.statements[0]?.query).toContain('NOT EXISTS');
+    expect(database.statements[0]?.query).toContain('mailfn_storage_claims.claimed_at > ?');
     expect(database.statements[0]?.query).toContain('mailfn_messages.id = mailfn_storage_reservations.id');
     expect(database.statements[0]?.query).toContain('mailfn_attachments.id = mailfn_storage_reservations.id');
-    expect(database.statements[0]?.values).toEqual(['prj_1', '2026-08-30T00:00:00.000Z']);
+    expect(database.statements[0]?.values).toEqual([
+      'prj_1',
+      '2026-08-30T00:00:00.000Z',
+      '2026-08-29T23:00:00.000Z',
+    ]);
+  });
+
+  it('atomically claims an existing storage reservation before object writes', async () => {
+    const database = new RecordingDatabase();
+    const store = new D1MailFnStore(database);
+
+    await expect(store.claimStorage('msg_1', '2026-08-30T00:00:00.000Z')).resolves.toBe(true);
+
+    expect(database.statements[0]?.query).toContain('INSERT INTO mailfn_storage_claims');
+    expect(database.statements[0]?.query).toContain('SELECT id, ? FROM mailfn_storage_reservations WHERE id = ?');
+    expect(database.statements[0]?.values).toEqual(['2026-08-30T00:00:00.000Z', 'msg_1']);
   });
 
   it('compares received filters as normalized instants', async () => {

@@ -107,9 +107,15 @@ export interface CreatedWebhook {
 const PARSE_LEASE_MS = 15 * 60 * 1000;
 const WEBHOOK_DELIVERY_LEASE_MS = 5 * 60 * 1000;
 const STORAGE_RESERVATION_LEASE_MS = 15 * 60 * 1000;
+const STORAGE_WRITE_LEASE_MS = 60 * 60 * 1000;
 
 function isExpiredAt(expiresAt: string, now: string): boolean {
   return Date.parse(expiresAt) <= Date.parse(now);
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) &&
+    Object.values(value).every((entry) => typeof entry === 'string');
 }
 
 export class MailFn {
@@ -338,10 +344,7 @@ export class MailFn {
       code: 'MAILFN_VALIDATION_FAILED', message: 'Inbox kind must be stable or expiring', status: 400,
     });
     assertMailFn(
-      input.metadata === undefined || (
-        input.metadata !== null && typeof input.metadata === 'object' && !Array.isArray(input.metadata) &&
-        Object.values(input.metadata).every((value) => typeof value === 'string')
-      ),
+      input.metadata === undefined || isStringRecord(input.metadata),
       { code: 'MAILFN_VALIDATION_FAILED', message: 'Inbox metadata values must be strings', status: 400 },
     );
     await this.authorize(actor, 'inbox:create', input.projectId);
@@ -462,6 +465,9 @@ export class MailFn {
     });
     assertMailFn(input.status === undefined || input.status === 'active' || input.status === 'disabled', {
       code: 'MAILFN_VALIDATION_FAILED', message: 'Inbox status must be active or disabled', status: 400,
+    });
+    assertMailFn(input.metadata === undefined || isStringRecord(input.metadata), {
+      code: 'MAILFN_VALIDATION_FAILED', message: 'Inbox metadata values must be strings', status: 400,
     });
     const expiresAt = input.expiresAt === null ? undefined : input.expiresAt ?? inbox.expiresAt;
     if (expiresAt) requireFutureIso(expiresAt, this.now(), 'expiresAt');
@@ -695,6 +701,15 @@ export class MailFn {
     }
     const messageId = reservation.reservationId;
     const storageReservation = reservation.storageReserved ? 'created' as const : 'existing' as const;
+    if (!(await this.store.claimStorage(messageId, now))) {
+      await this.store.releaseIngressQuota(messageId).catch(() => undefined);
+      throw new MailFnError({
+        code: 'MAILFN_CONFLICT',
+        message: 'Inbound storage reservation is missing or expired',
+        status: 409,
+        retryable: true,
+      });
+    }
     const rawObjectKey = objectKey(project.id, inbox.id, messageId, 'raw.eml');
     try {
       await this.objects.put(rawObjectKey, input.raw, {
@@ -783,6 +798,7 @@ export class MailFn {
         status: 409,
       });
     }
+    await this.store.releaseStorageClaim(messageId).catch(() => undefined);
     await this.usage(project.id, 'inbound_message', 1, message.id).catch(() =>
       this.systemAudit(project.id, 'usage.append_failed', 'message', message.id, { metric: 'inbound_message' }).catch(() => undefined),
     );
@@ -873,6 +889,14 @@ export class MailFn {
           createdAt: this.now(),
         }, project.quota.maxStoredBytes);
         if (storageReservation === 'denied') throw quotaExceeded('stored bytes');
+        if (!(await this.store.claimStorage(attachmentId, this.now()))) {
+          throw new MailFnError({
+            code: 'MAILFN_STORAGE_FAILED',
+            message: 'Attachment storage reservation is missing or expired',
+            status: 503,
+            retryable: true,
+          });
+        }
         reservedAttachmentIds.push(attachmentId);
         const key = objectKey(project.id, message.inboxId, message.id, `attachments/${attachmentId}`);
         const attachment: Attachment = {
@@ -895,6 +919,7 @@ export class MailFn {
         });
         written.push({ attachment, key });
         await this.store.saveAttachment(attachment);
+        await this.store.releaseStorageClaim(attachmentId).catch(() => undefined);
         await this.usage(project.id, 'attachment_bytes', attachment.sizeBytes, attachment.id).catch(() =>
           this.systemAudit(project.id, 'usage.append_failed', 'attachment', attachment.id, { metric: 'attachment_bytes' }).catch(() => undefined),
         );
@@ -1353,6 +1378,14 @@ export class MailFn {
     input: { to: string[]; text?: string; html?: string; includeOriginalAttachments?: boolean },
   ): Promise<Draft> {
     await this.authorize(actor, 'message:read', actor.projectId, inboxId);
+    assertMailFn(
+      input.includeOriginalAttachments === undefined || typeof input.includeOriginalAttachments === 'boolean',
+      {
+        code: 'MAILFN_VALIDATION_FAILED',
+        message: 'includeOriginalAttachments must be a boolean',
+        status: 400,
+      },
+    );
     const message = await this.requireMessage(actor.projectId, inboxId, messageId);
     const attachments = input.includeOriginalAttachments
       ? await this.store.listAttachments(message.id)
@@ -1677,9 +1710,11 @@ export class MailFn {
     for (const project of projects) {
       const compliance = await this.store.getComplianceProfile(project.id);
       const reservationCutoff = new Date(Date.parse(now) - STORAGE_RESERVATION_LEASE_MS).toISOString();
+      const claimCutoff = new Date(Date.parse(now) - STORAGE_WRITE_LEASE_MS).toISOString();
       result.releasedStorageReservations += await this.store.releaseOrphanedStorageReservations(
         project.id,
         reservationCutoff,
+        claimCutoff,
       );
       for (const inbox of await this.store.listInboxes(project.id)) {
         let effectiveInbox = inbox;

@@ -153,6 +153,29 @@ class RecoveringAttachmentStore extends MemoryMailFnStore {
   }
 }
 
+class PausedInboundStore extends MemoryMailFnStore {
+  private resolveInboundSaveStarted!: () => void;
+  private resumeInboundSave!: () => void;
+  public readonly inboundSaveStarted = new Promise<void>((resolve) => {
+    this.resolveInboundSaveStarted = resolve;
+  });
+  private readonly inboundSaveResume = new Promise<void>((resolve) => {
+    this.resumeInboundSave = resolve;
+  });
+
+  public continueInboundSave(): void {
+    this.resumeInboundSave();
+  }
+
+  override async createInboundMessageIfInboxActive(
+    ...args: Parameters<MemoryMailFnStore['createInboundMessageIfInboxActive']>
+  ): Promise<boolean> {
+    this.resolveInboundSaveStarted();
+    await this.inboundSaveResume;
+    return super.createInboundMessageIfInboxActive(...args);
+  }
+}
+
 async function setup(options: {
   clock?: MutableClock;
   queue?: MailFnQueue;
@@ -233,6 +256,16 @@ describe('MailFn domain service', () => {
     await expect(setup({
       retentionPolicy: { deleteOnInboxExpiry: 'false' as unknown as boolean },
     })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+  });
+
+  it('rejects non-string inbox metadata values on update', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'metadata-update');
+
+    await expect(context.mailfn.updateInbox(context.admin, created.inbox.id, {
+      metadata: { owner: 42 } as never,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+    await expect(context.store.getInbox(created.inbox.id)).resolves.toMatchObject({ metadata: {} });
   });
 
   it('rechecks the active-inbox quota before reactivation', async () => {
@@ -800,6 +833,32 @@ describe('MailFn domain service', () => {
       envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
     });
     await context.mailfn.cancelInbound(replacement);
+  });
+
+  it('keeps claimed storage reserved while inbound metadata persistence is in flight', async () => {
+    const clock = new MutableClock();
+    const store = new PausedInboundStore();
+    const value = raw({ subject: 'in-flight reservation' });
+    const context = await setup({ clock, store, quota: { maxStoredBytes: value.byteLength } });
+    const created = await createInbox(context, 'in-flight-reservation');
+    const preflight = await context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
+    });
+    const receiving = context.mailfn.receiveInbound({
+      providerDeliveryId: 'in-flight-reservation', envelopeFrom: 'sender@example.com',
+      envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength,
+    }, preflight);
+
+    await store.inboundSaveStarted;
+    clock.advance(15 * 60 * 1000 + 1);
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({
+      releasedStorageReservations: 0,
+    });
+    store.continueInboundSave();
+    await expect(receiving).resolves.toMatchObject({ providerDeliveryId: 'in-flight-reservation' });
+    await expect(context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
+    })).rejects.toMatchObject({ code: 'MAILFN_QUOTA_EXCEEDED' });
   });
 
   it('blocks draft writes while deleting and erases drafts with the inbox', async () => {
@@ -1466,6 +1525,9 @@ describe('MailFn domain service', () => {
     const reply = await context.mailfn.createReplyDraft(context.admin, created.inbox.id, message.id, { text: 'Answer' });
     await context.mailfn.sendDraft(context.admin, reply.id);
     expect(sent[0]?.headers).toEqual({ 'In-Reply-To': '<origin@example.com>', References: '<root@example.com> <origin@example.com>' });
+    await expect(context.mailfn.createForwardDraft(context.admin, created.inbox.id, message.id, {
+      to: ['other@example.com'], includeOriginalAttachments: 'false' as never,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
     const forward = await context.mailfn.createForwardDraft(context.admin, created.inbox.id, message.id, { to: ['other@example.com'], includeOriginalAttachments: true });
     await context.mailfn.sendDraft(context.admin, forward.id);
     expect(sent[1]?.subject).toBe('Fwd: Question');

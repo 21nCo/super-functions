@@ -754,12 +754,37 @@ export class D1MailFnStore implements MailFnStore {
       : 'denied';
   }
   async releaseStorage(reservationId: string): Promise<void> {
-    await this.run('DELETE FROM mailfn_storage_reservations WHERE id = ?', [reservationId]);
+    const results = await this.database.batch([
+      bind(this.database.prepare('DELETE FROM mailfn_storage_claims WHERE id = ?'), [reservationId]),
+      bind(this.database.prepare('DELETE FROM mailfn_storage_reservations WHERE id = ?'), [reservationId]),
+    ]);
+    if (results.some((result) => !result.success)) throw new Error('MAILFN_D1_WRITE_FAILED');
   }
-  async releaseOrphanedStorageReservations(projectId: string, before: string): Promise<number> {
+  async claimStorage(reservationId: string, claimedAt: string): Promise<boolean> {
+    const result = await bind(this.database.prepare(
+      `INSERT INTO mailfn_storage_claims(id, claimed_at)
+       SELECT id, ? FROM mailfn_storage_reservations WHERE id = ?
+       ON CONFLICT(id) DO UPDATE SET claimed_at = excluded.claimed_at`,
+    ), [claimedAt, reservationId]).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
+  }
+  async releaseStorageClaim(reservationId: string): Promise<void> {
+    await this.run('DELETE FROM mailfn_storage_claims WHERE id = ?', [reservationId]);
+  }
+  async releaseOrphanedStorageReservations(
+    projectId: string,
+    reservationBefore: string,
+    claimBefore: string,
+  ): Promise<number> {
     const result = await bind(this.database.prepare(
       `DELETE FROM mailfn_storage_reservations
        WHERE project_id = ? AND created_at <= ?
+         AND NOT EXISTS (
+           SELECT 1 FROM mailfn_storage_claims
+           WHERE mailfn_storage_claims.id = mailfn_storage_reservations.id
+             AND mailfn_storage_claims.claimed_at > ?
+         )
          AND NOT EXISTS (
            SELECT 1 FROM mailfn_messages
            WHERE mailfn_messages.id = mailfn_storage_reservations.id
@@ -768,7 +793,7 @@ export class D1MailFnStore implements MailFnStore {
            SELECT 1 FROM mailfn_attachments
            WHERE mailfn_attachments.id = mailfn_storage_reservations.id
          )`,
-    ), [projectId, before]).run();
+    ), [projectId, reservationBefore, claimBefore]).run();
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0);
   }

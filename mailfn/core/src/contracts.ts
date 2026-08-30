@@ -135,8 +135,14 @@ export interface MailFnStore {
     reservation: { id: string; projectId: string; bytes: number; createdAt: string },
     limit: number,
   ): Promise<'created' | 'existing' | 'denied'>;
+  claimStorage(reservationId: string, claimedAt: string): Promise<boolean>;
+  releaseStorageClaim(reservationId: string): Promise<void>;
   releaseStorage(reservationId: string): Promise<void>;
-  releaseOrphanedStorageReservations(projectId: string, before: string): Promise<number>;
+  releaseOrphanedStorageReservations(
+    projectId: string,
+    reservationBefore: string,
+    claimBefore: string,
+  ): Promise<number>;
 
   appendUsage(record: UsageRecord): Promise<void>;
   reserveOutboundUsage(record: UsageRecord, limit: number): Promise<'created' | 'existing' | 'denied'>;

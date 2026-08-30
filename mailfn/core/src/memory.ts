@@ -53,6 +53,7 @@ export class MemoryMailFnStore implements MailFnStore {
   private readonly compliance = new Map<string, ComplianceProfile>();
   private readonly ingressReservations = new Map<string, IngressQuotaReservation>();
   private readonly storageReservations = new Map<string, { id: string; projectId: string; bytes: number; createdAt: string }>();
+  private readonly storageClaims = new Map<string, string>();
 
   async getProject(id: string): Promise<Project | null> {
     return this.projects.has(id) ? copy(this.projects.get(id)!) : null;
@@ -503,15 +504,31 @@ export class MemoryMailFnStore implements MailFnStore {
     return 'created';
   }
   async releaseStorage(reservationId: string): Promise<void> {
+    this.storageClaims.delete(reservationId);
     this.storageReservations.delete(reservationId);
   }
-  async releaseOrphanedStorageReservations(projectId: string, before: string): Promise<number> {
+  async claimStorage(reservationId: string, claimedAt: string): Promise<boolean> {
+    if (!this.storageReservations.has(reservationId)) return false;
+    this.storageClaims.set(reservationId, claimedAt);
+    return true;
+  }
+  async releaseStorageClaim(reservationId: string): Promise<void> {
+    this.storageClaims.delete(reservationId);
+  }
+  async releaseOrphanedStorageReservations(
+    projectId: string,
+    reservationBefore: string,
+    claimBefore: string,
+  ): Promise<number> {
     let released = 0;
     for (const [id, reservation] of this.storageReservations) {
+      const claimedAt = this.storageClaims.get(id);
       if (
-        reservation.projectId === projectId && reservation.createdAt <= before &&
+        reservation.projectId === projectId && reservation.createdAt <= reservationBefore &&
+        (!claimedAt || claimedAt <= claimBefore) &&
         !this.messages.has(id) && !this.attachments.has(id)
       ) {
+        this.storageClaims.delete(id);
         this.storageReservations.delete(id);
         released += 1;
       }

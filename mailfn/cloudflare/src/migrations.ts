@@ -1,6 +1,6 @@
 import type { D1Database } from './bindings.js';
 
-export const MAILFN_D1_SCHEMA_VERSION = 3;
+export const MAILFN_D1_SCHEMA_VERSION = 4;
 
 export const MAILFN_D1_MIGRATIONS = [
   `CREATE TABLE IF NOT EXISTS mailfn_schema_migrations (
@@ -155,6 +155,11 @@ export const MAILFN_D1_MIGRATIONS = [
     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, bytes INTEGER NOT NULL CHECK(bytes >= 0), created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS mailfn_storage_project ON mailfn_storage_reservations(project_id)`,
+  `CREATE TABLE IF NOT EXISTS mailfn_storage_claims (
+    id TEXT PRIMARY KEY, claimed_at TEXT NOT NULL,
+    FOREIGN KEY(id) REFERENCES mailfn_storage_reservations(id) ON DELETE CASCADE
+  )`,
+  `CREATE INDEX IF NOT EXISTS mailfn_storage_claims_expiry ON mailfn_storage_claims(claimed_at)`,
   `CREATE TABLE IF NOT EXISTS mailfn_webhook_replays (
     delivery_id TEXT PRIMARY KEY, expires_at TEXT NOT NULL, created_at TEXT NOT NULL
   )`,
