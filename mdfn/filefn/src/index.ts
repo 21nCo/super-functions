@@ -150,9 +150,15 @@ export function createAuthoringAssetHandler(input: {
   const gateway = createAssetGateway(input.provider);
   return async (files) => {
     if (files.length === 0) return undefined;
+    if (files.length > 1 && !input.provider.delete) throw new Error("MDFN_ASSET_DELETE_UNAVAILABLE");
     const references: AssetReference[] = [];
-    for (const file of files) references.push(await gateway.upload(file, { ...input.context, purpose: "insert" }));
-    return references.map((reference) => assetReferenceMarkdown(reference)).join(input.separator ?? "\n");
+    try {
+      for (const file of files) references.push(await gateway.upload(file, { ...input.context, purpose: "insert" }));
+      return references.map((reference) => assetReferenceMarkdown(reference)).join(input.separator ?? "\n");
+    } catch (error) {
+      await Promise.allSettled(references.map((reference) => gateway.delete(reference, { ...input.context, purpose: "manage" })));
+      throw error;
+    }
   };
 }
 

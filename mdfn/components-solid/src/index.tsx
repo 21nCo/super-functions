@@ -7,7 +7,7 @@ import { MdfnEditor, createMdfnSignal, type MdfnEditorHandle, type MdfnEditorPro
 type EditorMode = NonNullable<MdfnEditorProps["mode"]>;
 
 export const MdfnToolbar: Component<{ controller: EditorController; groups?: readonly ToolbarGroup[]; ariaLabel?: string; class?: string; commandTarget?: ToolbarCommandTarget | null }> = (props) => {
-  const snapshot = createMdfnSignal(props.controller);
+  const snapshot = createMdfnSignal(() => props.controller);
   const model = () => { snapshot().version; return createToolbarModel(props.controller, props.groups, props.ariaLabel, props.commandTarget); };
   return <ToolbarRoot class={props.class} data-mdfn-component="toolbar" aria-label={model().ariaLabel}>
     <Index each={model().groups}>{(group) => <span role="group" aria-label={group().label} data-mdfn-toolbar-group={group().id}>
@@ -72,7 +72,7 @@ export const MdfnAuthoringChrome: Component<MdfnAuthoringChromeProps> = (props) 
     onCleanup(() => lifecycle.abort());
     return lifecycle;
   });
-  const snapshot = createMdfnSignal(props.controller);
+  const snapshot = createMdfnSignal(() => props.controller);
   const [slashQuery, setSlashQuery] = createSignal("");
   const [link, setLink] = createSignal("");
   const [rows, setRows] = createSignal(2);

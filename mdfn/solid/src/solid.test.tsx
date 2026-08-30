@@ -24,6 +24,28 @@ describe("@mdfn/solid", () => {
     expect(snapshot?.().markdown).toBe("two");
   });
 
+  it("moves a shared-state signal to a replacement controller", () => {
+    const first = createEditor({ markdown: "first", projector: createMarkdownProjector() });
+    const second = createEditor({ markdown: "second", projector: createMarkdownProjector() });
+    let dispose = (): void => {};
+    let setController!: (controller: typeof first) => void;
+    let snapshot: Accessor<AdapterSnapshot> | undefined;
+    createRoot((cleanup) => {
+      dispose = cleanup;
+      const [controller, updateController] = createSignal(first);
+      setController = updateController;
+      snapshot = createMdfnSignal(controller);
+    });
+
+    setController(second);
+    expect(snapshot?.().markdown).toBe("second");
+    first.dispatch(new Transaction().replaceSource(0, 5, "stale"));
+    expect(snapshot?.().markdown).toBe("second");
+    second.dispatch(new Transaction().replaceSource(0, 6, "active"));
+    expect(snapshot?.().markdown).toBe("active");
+    dispose();
+  });
+
   it("mounts the real adapter, replays controller changes, and cleans up", async () => {
     const controller = createEditor({ markdown: "# Mounted", projector: createMarkdownProjector() });
     const target = document.createElement("div");

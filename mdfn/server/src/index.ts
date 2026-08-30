@@ -26,7 +26,20 @@ const COLLAB_UPDATES = "mdfnCollaborationUpdates";
 export const MDFN_SERVER_SCHEMA_VERSION = 1;
 
 export interface MdfnPrincipal { readonly id: string; readonly tenantId?: string; readonly roles?: readonly string[]; }
-export type MdfnServerAction = "create" | "read" | "update" | "delete" | "history" | "collaborate" | "compact-collaboration";
+export type MdfnServerAction =
+  | "create"
+  | "read"
+  | "update"
+  | "delete"
+  | "history"
+  | "collaborate"
+  | "compact-collaboration"
+  | "comment:create"
+  | "comment:reply"
+  | "comment:resolve"
+  | "suggestion:create"
+  | "suggestion:decide"
+  | "review:transition";
 
 export interface MdfnDocumentRecord {
   readonly id: string;
@@ -145,6 +158,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
   type RestoreSnapshot = Pick<MdfnVersionRecord, "title" | "markdown" | "sidecar">;
   interface WriteUpdateOptions {
     readonly trustedEditorial?: boolean;
+    readonly authorizationAction?: MdfnServerAction;
     readonly restoreSnapshot?: RestoreSnapshot;
     readonly idempotencyOperation?: string;
     readonly idempotencyPayload?: unknown;
@@ -258,7 +272,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
   };
   const writeUpdate = async (principal: MdfnPrincipal, id: string, input: UpdateInput, options: WriteUpdateOptions = {}): Promise<MdfnDocumentRecord> => {
     const current = await loadScoped(principal, id);
-    await allowed(config, "update", principal, current);
+    await allowed(config, options.authorizationAction ?? "update", principal, current);
     const operation = options.idempotencyOperation ?? "document:update";
     const payloadHash = hashString(JSON.stringify(options.idempotencyPayload ?? { ...input, idempotencyKey: undefined, restoreSnapshot: options.restoreSnapshot }));
     if (input.idempotencyKey) {
@@ -304,13 +318,14 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     principal: MdfnPrincipal,
     id: string,
     expectedVersion: number,
+    authorizationAction: MdfnServerAction,
     changeSource: string,
     idempotencyKey: string | undefined,
     idempotencyPayload: unknown,
     mutate: (document: MdfnDocumentRecord) => { readonly markdown?: string; readonly sidecar: MdfnSidecar },
   ): Promise<MdfnDocumentRecord> => {
     const current = await loadScoped(principal, id);
-    await allowed(config, "update", principal, current);
+    await allowed(config, authorizationAction, principal, current);
     if (idempotencyKey) {
       const replay = await replayReceipt(database, id, idempotencyKey, changeSource, hashString(JSON.stringify(idempotencyPayload)));
       if (replay) return replay;
@@ -318,7 +333,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     if (current.version !== expectedVersion) throw new MdfnServerError("MDFN_VERSION_CONFLICT", 409);
     try {
       const next = mutate(current);
-      return writeUpdate(principal, id, { expectedVersion, markdown: next.markdown, sidecar: next.sidecar, changeSource, idempotencyKey }, { trustedEditorial: true, idempotencyOperation: changeSource, idempotencyPayload });
+      return writeUpdate(principal, id, { expectedVersion, markdown: next.markdown, sidecar: next.sidecar, changeSource, idempotencyKey }, { trustedEditorial: true, authorizationAction, idempotencyOperation: changeSource, idempotencyPayload });
     } catch (error) {
       if (error instanceof MdfnServerError) throw error;
       throw new MdfnServerError("MDFN_EDITORIAL_INVALID", 422);
@@ -377,19 +392,19 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
       );
     },
     async createComment(principal, id, input) {
-      return mutateEditorial(principal, id, input.expectedVersion, "editorial:comment-created", input.idempotencyKey, input, (document) => createCommentThread({ sidecar: document.sidecar, anchor: input.anchor, body: input.body, actor: editorialActor(principal), markdownLength: document.markdown.length }));
+      return mutateEditorial(principal, id, input.expectedVersion, "comment:create", "editorial:comment-created", input.idempotencyKey, input, (document) => createCommentThread({ sidecar: document.sidecar, anchor: input.anchor, body: input.body, actor: editorialActor(principal), markdownLength: document.markdown.length }));
     },
     async replyComment(principal, id, threadId, input) {
-      return mutateEditorial(principal, id, input.expectedVersion, "editorial:comment-replied", input.idempotencyKey, { threadId, ...input }, (document) => ({ sidecar: replyToComment({ sidecar: document.sidecar ?? {}, threadId, body: input.body, actor: editorialActor(principal) }) }));
+      return mutateEditorial(principal, id, input.expectedVersion, "comment:reply", "editorial:comment-replied", input.idempotencyKey, { threadId, ...input }, (document) => ({ sidecar: replyToComment({ sidecar: document.sidecar ?? {}, threadId, body: input.body, actor: editorialActor(principal) }) }));
     },
     async resolveComment(principal, id, threadId, input) {
-      return mutateEditorial(principal, id, input.expectedVersion, input.resolved ? "editorial:comment-resolved" : "editorial:comment-reopened", input.idempotencyKey, { threadId, ...input }, (document) => ({ sidecar: setCommentResolved({ sidecar: document.sidecar ?? {}, threadId, resolved: input.resolved, actor: editorialActor(principal) }) }));
+      return mutateEditorial(principal, id, input.expectedVersion, "comment:resolve", input.resolved ? "editorial:comment-resolved" : "editorial:comment-reopened", input.idempotencyKey, { threadId, ...input }, (document) => ({ sidecar: setCommentResolved({ sidecar: document.sidecar ?? {}, threadId, resolved: input.resolved, actor: editorialActor(principal) }) }));
     },
     async createSuggestion(principal, id, input) {
-      return mutateEditorial(principal, id, input.expectedVersion, "editorial:suggestion-created", input.idempotencyKey, input, (document) => createSuggestion({ sidecar: document.sidecar, anchor: input.anchor, replacement: input.replacement, actor: editorialActor(principal), markdownLength: document.markdown.length }));
+      return mutateEditorial(principal, id, input.expectedVersion, "suggestion:create", "editorial:suggestion-created", input.idempotencyKey, input, (document) => createSuggestion({ sidecar: document.sidecar, anchor: input.anchor, replacement: input.replacement, actor: editorialActor(principal), markdownLength: document.markdown.length }));
     },
     async decideSuggestion(principal, id, suggestionId, input) {
-      return mutateEditorial(principal, id, input.expectedVersion, `editorial:suggestion-${input.decision}`, input.idempotencyKey, { suggestionId, ...input }, (document) => {
+      return mutateEditorial(principal, id, input.expectedVersion, "suggestion:decide", `editorial:suggestion-${input.decision}`, input.idempotencyKey, { suggestionId, ...input }, (document) => {
         const controller = createEditor({ markdown: document.markdown, projector: createMarkdownProjector(markdownOptions), extensions: config.extensions, sidecar: document.sidecar });
         try {
           decideSuggestion({ controller, suggestionId, decision: input.decision, actor: editorialActor(principal) });
@@ -399,7 +414,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
       });
     },
     async transitionReview(principal, id, input) {
-      return mutateEditorial(principal, id, input.expectedVersion, "editorial:review-transitioned", input.idempotencyKey, input, (document) => ({ sidecar: transitionReview({ sidecar: document.sidecar, to: input.state, actor: editorialActor(principal) }) }));
+      return mutateEditorial(principal, id, input.expectedVersion, "review:transition", "editorial:review-transitioned", input.idempotencyKey, input, (document) => ({ sidecar: transitionReview({ sidecar: document.sidecar, to: input.state, actor: editorialActor(principal) }) }));
     },
     async appendCollaborationUpdate(principal, id, update) { const document = await loadScoped(principal, id); await allowed(config, "collaborate", principal, document); const limit = config.maxCollaborationUpdateBytes ?? 1024 * 1024; if (new TextEncoder().encode(update).byteLength > limit) throw new MdfnServerError("MDFN_COLLAB_UPDATE_TOO_LARGE", 413); const updateId = createId(); await database.create({ model: COLLAB_UPDATES, data: { id: updateId, documentId: id, authorId: principal.id, update, createdAt: new Date() } }); return updateId; },
     async collaborationUpdates(principal, id) {

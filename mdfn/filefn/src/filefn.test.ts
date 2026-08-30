@@ -45,6 +45,28 @@ describe("filefn bridge", () => {
     expect(markdown).toBe("![asset](mdfn-asset:memory/inserted?document=document)");
   });
 
+  it("rolls back earlier uploads when a later file fails", async () => {
+    const uploaded: string[] = [];
+    const deleted: string[] = [];
+    const provider = {
+      async upload(_file: File | Blob, context: { documentId: string }) {
+        const id = `asset-${uploaded.length + 1}`;
+        if (uploaded.length === 1) throw new Error("upload failed");
+        uploaded.push(id);
+        return { id, provider: "test", documentId: context.documentId };
+      },
+      async resolve(reference: { id: string; provider: string; documentId: string }) {
+        return { reference, state: "ready" as const, embed: "download" as const };
+      },
+      async delete(reference: { id: string }) { deleted.push(reference.id); },
+    };
+    const handler = createAuthoringAssetHandler({ provider, context: { documentId: "document" } });
+
+    await expect(handler([new Blob(["first"]), new Blob(["second"])]))
+      .rejects.toThrow("upload failed");
+    expect(deleted).toEqual(["asset-1"]);
+  });
+
   it("renders pending-local placeholders without requiring a delivery URL", async () => {
     const client = {
       resolveRenderable: vi.fn().mockResolvedValue({

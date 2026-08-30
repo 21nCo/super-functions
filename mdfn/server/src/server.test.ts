@@ -188,6 +188,39 @@ describe("mdfn server", () => {
     expect((await service.collaborationUpdates(principal, document.id)).updates).toEqual(["update"]);
   });
 
+  it("authorizes protected editorial decisions separately from document updates", async () => {
+    const actions: string[] = [];
+    const service = createMdfnService({
+      database: memoryAdapter(),
+      durability: "ephemeral",
+      authorize: (action) => {
+        actions.push(action);
+        return action !== "suggestion:decide" && action !== "review:transition";
+      },
+      createId: (() => { let id = 0; return () => `editorial-auth-${id++}`; })(),
+    });
+    const principal = { id: "author" };
+    const document = await service.create(principal, { markdown: "body" });
+    await expect(service.update(principal, document.id, { expectedVersion: 1, markdown: "updated" }))
+      .resolves.toMatchObject({ markdown: "updated" });
+    const suggested = await service.createSuggestion(principal, document.id, {
+      expectedVersion: 2,
+      anchor: { from: 0, to: 7 },
+      replacement: "accepted",
+    });
+    const suggestionId = suggested.sidecar?.suggestions?.[0]?.id;
+
+    await expect(service.decideSuggestion(principal, document.id, suggestionId!, {
+      expectedVersion: 3,
+      decision: "accepted",
+    })).rejects.toMatchObject({ code: "MDFN_FORBIDDEN" });
+    await expect(service.transitionReview(principal, document.id, {
+      expectedVersion: 3,
+      state: "in-review",
+    })).rejects.toMatchObject({ code: "MDFN_FORBIDDEN" });
+    expect(actions).toEqual(expect.arrayContaining(["update", "suggestion:create", "suggestion:decide", "review:transition"]));
+  });
+
   it("keeps editorial state and audit history server-authoritative", async () => {
     const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `integrity-${id++}`; })() });
     const principal = { id: "author" };

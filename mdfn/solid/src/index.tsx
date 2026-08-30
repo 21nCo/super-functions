@@ -4,10 +4,22 @@ import { smallestSourceChange, Transaction, type EditorController } from "@mdfn/
 import type { DomCommand, DomEditor } from "@mdfn/dom";
 import type { EditorMode, SourceEditor } from "@mdfn/source";
 
-export function createMdfnSignal(controller: EditorController): Accessor<AdapterSnapshot> {
-  const bridge = createAdapterBridge(controller);
+export function createMdfnSignal(controller: EditorController | Accessor<EditorController>): Accessor<AdapterSnapshot> {
+  const resolveController = typeof controller === "function" ? controller : () => controller;
+  let currentController = resolveController();
+  let bridge = createAdapterBridge(currentController);
   const [snapshot, setSnapshot] = createSignal(bridge.getSnapshot());
-  const unsubscribe = bridge.subscribe(() => setSnapshot(bridge.getSnapshot()));
+  let unsubscribe = bridge.subscribe(() => setSnapshot(bridge.getSnapshot()));
+  createEffect(() => {
+    const nextController = resolveController();
+    if (nextController === currentController) return;
+    unsubscribe();
+    bridge.destroy();
+    currentController = nextController;
+    bridge = createAdapterBridge(currentController);
+    setSnapshot(bridge.getSnapshot());
+    unsubscribe = bridge.subscribe(() => setSnapshot(bridge.getSnapshot()));
+  });
   onCleanup(() => { unsubscribe(); bridge.destroy(); });
   return snapshot;
 }

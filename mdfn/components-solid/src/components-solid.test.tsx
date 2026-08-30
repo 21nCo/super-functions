@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "solid-js/web";
 import { createEditor, Transaction } from "@mdfn/core";
@@ -111,6 +112,26 @@ describe("Solid authoring components", () => {
     resolveUpload("asset");
     await Promise.resolve();
     expect(controller.getState().markdown).toBe("prefix before asset");
+    dispose();
+  });
+
+  it("follows a replacement controller in the authoring chrome", async () => {
+    const first = createEditor({ markdown: "# First", projector: createMarkdownProjector() });
+    const second = createEditor({ markdown: "# Second", projector: createMarkdownProjector() });
+    const [controller, setController] = createSignal(first);
+    const target = document.createElement("div");
+    const dispose = render(() => <MdfnAuthoringChrome controller={controller()} mode="read-only" />, target);
+    await Promise.resolve();
+    expect(target.querySelector('[data-mdfn-surface="outline"]')?.textContent).toContain("First");
+
+    setController(second);
+    await Promise.resolve();
+    expect(target.querySelector('[data-mdfn-surface="outline"]')?.textContent).toContain("Second");
+    first.dispatch(new Transaction().replaceSource(2, 7, "Detached"));
+    second.dispatch(new Transaction().replaceSource(2, 8, "Active"));
+    await Promise.resolve();
+    expect(target.querySelector('[data-mdfn-surface="outline"]')?.textContent).toContain("Active");
+    expect(target.querySelector('[data-mdfn-surface="outline"]')?.textContent).not.toContain("Detached");
     dispose();
   });
 });

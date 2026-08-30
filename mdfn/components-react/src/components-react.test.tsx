@@ -91,7 +91,9 @@ describe("React toolbar", () => {
     const target = document.createElement("div");
     const root = createRoot(target);
     await act(async () => root.render(
-      <MdfnAuthoringChrome controller={controller} mode="source" onSelectFiles={async () => "![asset](mdfn-asset:filefn/id)"} />,
+      <React.StrictMode>
+        <MdfnAuthoringChrome controller={controller} mode="source" onSelectFiles={async () => "![asset](mdfn-asset:filefn/id)"} />
+      </React.StrictMode>,
     ));
     const input = target.querySelector<HTMLInputElement>('[aria-label="Select files"]')!;
     Object.defineProperty(input, "files", { configurable: true, value: [new File(["x"], "x.png", { type: "image/png" })] });
