@@ -1,5 +1,6 @@
 """Email service regression tests."""
 
+import asyncio
 import base64
 from datetime import datetime
 from email import policy
@@ -66,7 +67,7 @@ class MockEmailProvider:
         return None
 
 
-def create_service() -> tuple[EmailService, MockEmailProvider]:
+def create_service(*, bulk_concurrency: int = 5) -> tuple[EmailService, MockEmailProvider]:
     provider = MockEmailProvider()
     adapter = MemoryAdapter()
     service = EmailService(
@@ -79,8 +80,33 @@ def create_service() -> tuple[EmailService, MockEmailProvider]:
         config=EmailConfig(fromEmail="noreply@example.com"),
         retry_attempts=3,
         retry_delay=0,
+        bulk_concurrency=bulk_concurrency,
     )
     return service, provider
+
+
+@pytest.mark.asyncio
+async def test_bulk_email_honors_bounded_concurrency_and_preserves_order() -> None:
+    service, _provider = create_service(bulk_concurrency=2)
+    active = 0
+    observed_max = 0
+
+    async def send(params: SendEmailParams):
+        nonlocal active, observed_max
+        active += 1
+        observed_max = max(observed_max, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return params.user_id
+
+    service.send_email = send  # type: ignore[method-assign]
+    recipients = [
+        SendEmailParams(userId=f"user-{index}", to=f"user-{index}@example.com", subject="Hello", html="<p>Hello</p>")
+        for index in range(5)
+    ]
+
+    assert await service.send_bulk_email(recipients) == [f"user-{index}" for index in range(5)]
+    assert observed_max == 2
 
 
 @pytest.mark.asyncio

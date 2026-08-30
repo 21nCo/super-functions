@@ -404,6 +404,28 @@ describe('EmailService', () => {
     await expect(db.getEmailTransaction(transactionId)).resolves.toMatchObject({ status: 'sent', providerMessageId: 'msg-1' });
   });
 
+  it('rechecks suppression before reclaiming a stale pending transaction', async () => {
+    const idempotencyKey = 'mailfn:draft:suppressed-reclaim';
+    const transactionId = uuidv5(JSON.stringify(['project-1', idempotencyKey]), IDEMPOTENCY_NAMESPACE);
+    await db.createEmailTransaction({
+      userId: 'project-1', to: 'recipient@example.com', from: 'agent@example.com', subject: 'Recover',
+      templateId: null, templateData: null, provider: provider.name, providerMessageId: null, status: 'pending',
+      sentAt: null, deliveredAt: null, bouncedAt: null, complainedAt: null, metadata: { idempotencyKey },
+    }, transactionId);
+    const [record] = rawAdapter.records<any>('email_transactions');
+    record.updatedAt = new Date(Date.now() - 10 * 60 * 1000);
+    await db.addToSuppressionList({
+      email: 'recipient@example.com', reason: 'manual', source: 'test', bounceType: null,
+      metadata: {}, suppressedAt: new Date(),
+    });
+
+    await expect(service.sendEmail({
+      idempotencyKey, userId: 'project-1', from: 'agent@example.com', to: 'recipient@example.com',
+      subject: 'Recover', text: 'body',
+    })).rejects.toMatchObject({ code: 'SENDFN_SUPPRESSED' });
+    expect(provider.sendCalls).toBe(0);
+  });
+
   it('closes an ambiguous stale pending transaction without duplicating through a non-idempotent provider', async () => {
     provider.capabilities.supportsIdempotency = false;
     const idempotencyKey = 'mailfn:draft:ambiguous';

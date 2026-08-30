@@ -213,6 +213,31 @@ describe('AWS SES webhook processing', () => {
     ))).rejects.toMatchObject({ code: 'SENDFN_WEBHOOK_MESSAGE_INVALID' });
   });
 
+  it('verifies and confirms SNS subscription handshakes before processing notifications', async () => {
+    let canonicalMessage = '';
+    const confirmSubscription = vi.fn(async () => undefined);
+    const verifier = new AwsSnsVerifier({
+      topicArns: ['arn:aws:sns:us-east-1:123456789012:sendfn'],
+      fetchCertificate: async () => 'certificate',
+      verifySignature: async (value) => { canonicalMessage = value; return true; },
+      confirmSubscription,
+    });
+    const handler = new AwsSesWebhookHandler(db, suppressionManager, { verifier });
+    const envelope = createEnvelope({}, {
+      Type: 'SubscriptionConfirmation',
+      Token: 'token-1',
+      SubscribeURL: 'https://sns.us-east-1.amazonaws.com/?Action=ConfirmSubscription&Token=token-1',
+      Message: 'Confirm this subscription',
+    });
+
+    await expect(handler.handleSnsNotification(envelope)).resolves.toMatchObject({
+      accepted: true, verified: true, subscriptionConfirmed: true,
+    });
+    expect(confirmSubscription).toHaveBeenCalledWith(envelope.SubscribeURL);
+    expect(canonicalMessage).toContain(`SubscribeURL\n${envelope.SubscribeURL}\n`);
+    expect(canonicalMessage).toContain('Token\ntoken-1\n');
+  });
+
   it('correlates delivery events and keeps duplicate deliveries idempotent', async () => {
     await seedEmailTransaction(adapter);
     const logger = {

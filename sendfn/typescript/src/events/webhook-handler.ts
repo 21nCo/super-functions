@@ -48,6 +48,7 @@ export interface WebhookProcessResult {
   matchedTransactions: number;
   createdSuppressionEntries: number;
   orphanEvents: number;
+  subscriptionConfirmed?: true;
 }
 
 export interface AwsSesWebhookHandlerOptions {
@@ -130,6 +131,27 @@ export class AwsSesWebhookHandler {
 
     try {
       await this.verifier.verify(snsMessage);
+      if (snsMessage.Type === 'SubscriptionConfirmation') {
+        await this.verifier.confirmSubscription(snsMessage);
+        const confirmed: WebhookProcessResult = {
+          accepted: true,
+          verified: true,
+          matchedTransactions: 0,
+          createdSuppressionEntries: 0,
+          orphanEvents: 0,
+          subscriptionConfirmed: true,
+        };
+        this.logger.info?.({
+          ...baseLog,
+          status: 'accepted',
+          verificationResult: 'verified',
+          subscriptionConfirmed: true,
+          matchedTransactions: 0,
+          orphanEvents: 0,
+          createdSuppressionEntries: 0,
+        });
+        return confirmed;
+      }
       const event = this.parseSesEvent(snsMessage.Message!);
       const result = await this.processEvent(event);
 

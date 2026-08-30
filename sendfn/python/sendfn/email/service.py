@@ -5,6 +5,7 @@ from typing import Optional, TypedDict
 
 from superfunctions.db import Adapter
 
+from .._concurrency import map_with_concurrency, resolve_concurrency
 from ..database import helpers as db_helpers
 from ..errors import EmailProviderError, SuppressionError, TemplateError, ValidationError
 from ..events.tracker import EventTracker
@@ -48,6 +49,7 @@ class EmailService:
         config: EmailConfig,
         retry_attempts: int = 3,
         retry_delay: int = 1000,
+        bulk_concurrency: int = 5,
     ) -> None:
         self.provider = provider
         self.db = db
@@ -58,6 +60,7 @@ class EmailService:
         self.config = config
         self.retry_attempts = retry_attempts
         self.retry_delay = retry_delay
+        self.bulk_concurrency = resolve_concurrency(bulk_concurrency, 5)
 
     async def send_email(self, params: SendEmailParams) -> EmailTransaction:
         """Send an email."""
@@ -179,10 +182,11 @@ class EmailService:
         self, recipients: list[SendEmailParams]
     ) -> list[EmailTransaction]:
         """Send bulk emails."""
-        results: list[EmailTransaction] = []
-        for params in recipients:
-            results.append(await self.send_email(params))
-        return results
+        return await map_with_concurrency(
+            recipients,
+            self.bulk_concurrency,
+            lambda params, _index: self.send_email(params),
+        )
 
     async def get_email_status(self, transaction_id: str) -> Optional[EmailTransaction]:
         """Get email transaction status."""

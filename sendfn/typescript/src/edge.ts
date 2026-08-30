@@ -1,5 +1,6 @@
 import { resendAdapter } from './email/resend-adapter';
 import { isBareEmail } from './email/address';
+import { assertCustomEmailHeaders } from './email/headers';
 import type { EmailProvider } from './email/provider';
 import type { WhatsAppProvider } from './whatsapp/provider';
 import type {
@@ -79,6 +80,7 @@ export function createSendFn(config: SendFnEdgeConfig): SendFnEdgeClient {
       )) {
         throw new Error('Invalid replyTo. Use a single valid mailbox without control characters.');
       }
+      assertCustomEmailHeaders(params.headers);
       const response = await emailProvider.sendEmail({
         idempotencyKey: params.idempotencyKey,
         from: sender.header,

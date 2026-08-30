@@ -48,7 +48,7 @@ export function createSendFnDeliveryProvider<
         metadata.providerMessageId = result.providerMessageId;
       }
       return {
-        sent: true,
+        sent: result.status !== 'pending' && result.status !== 'failed',
         metadata
       };
     }

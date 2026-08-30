@@ -65,7 +65,7 @@ export class FcmProvider implements PushProvider {
       data: stringifyData(params.data),
       android: {
         priority: params.priority === 'high' ? 'high' : 'normal',
-        ttl: params.ttl ? params.ttl * 1000 : undefined, // ms
+        ttl: params.ttl === undefined ? undefined : params.ttl * 1000, // ms
         collapseKey: params.collapseKey,
         notification: {
             sound: params.sound || 'default',

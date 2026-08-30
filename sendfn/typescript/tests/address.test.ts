@@ -118,4 +118,27 @@ describe('email address validation', () => {
     })).rejects.toThrow('Invalid replyTo');
     expect(sendCalls).toBe(0);
   });
+
+  it.each([
+    [{ Bcc: 'attacker@example.com' }, 'Bcc'],
+    [{ 'X-Safe': 'ok\r\nBcc: attacker@example.com' }, 'X-Safe'],
+  ])('rejects unsafe edge custom headers before provider dispatch', async (headers, rejectedName) => {
+    let sendCalls = 0;
+    const client = createSendFn({
+      emailProvider: {
+        name: 'test',
+        capabilities: { supportsTemplates: false, supportsAttachments: false, supportsBulkSend: false, supportsScheduling: false, maxRecipientsPerEmail: 1, maxAttachmentSize: 0 },
+        async initialize() {},
+        async sendEmail() { sendCalls += 1; throw new Error('must not send'); },
+        async sendBulkEmail() { return []; },
+        validateEmail: isBareEmail,
+        async isHealthy() { return true; },
+        async close() {},
+      },
+    });
+
+    await expect(client.email({ userId: 'user_1', to: 'recipient@example.com', subject: 'Hello', headers }))
+      .rejects.toThrow(`Custom email header ${rejectedName} is not allowed`);
+    expect(sendCalls).toBe(0);
+  });
 });

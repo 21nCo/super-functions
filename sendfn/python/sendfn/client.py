@@ -175,6 +175,7 @@ class Sendfn:
             config=email_config,
             retry_attempts=self.config.options.retry_attempts if self.config.options else 3,
             retry_delay=self.config.options.retry_delay if self.config.options else 1000,
+            bulk_concurrency=self.config.options.bulk_concurrency if self.config.options else 5,
         )
 
     def _initialize_push_service(self, push_config: PushConfig) -> None:

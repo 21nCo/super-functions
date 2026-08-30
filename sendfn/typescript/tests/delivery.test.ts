@@ -67,4 +67,20 @@ describe('createSendFnDeliveryProvider', () => {
       }
     });
   });
+
+  it.each(['pending', 'failed'] as const)('does not report %s transactions as sent', async (status) => {
+    const provider = createSendFnDeliveryProvider({
+      async email(params) {
+        return {
+          id: `email_${status}`, userId: params.userId, to: String(params.to), from: 'sender@example.com',
+          subject: params.subject ?? '', templateId: null, templateData: null, provider: 'test',
+          providerMessageId: null, status, sentAt: null, deliveredAt: null, bouncedAt: null, complainedAt: null,
+          metadata: {}, createdAt: new Date(), updatedAt: new Date(),
+        } satisfies EmailTransaction;
+      },
+    });
+
+    await expect(provider.send({ channel: 'email', to: 'ada@example.com', subject: 'Verify', text: 'Code' }))
+      .resolves.toMatchObject({ sent: false });
+  });
 });

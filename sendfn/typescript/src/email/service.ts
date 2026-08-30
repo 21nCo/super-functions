@@ -13,6 +13,7 @@ import {
 } from '../errors';
 import { SendfnDatabaseAdapter } from '../database/adapter';
 import { EmailProvider, SendEmailRequest, SendEmailResponse } from './provider';
+import { assertCustomEmailHeaders } from './headers';
 import { TemplateEngine, TemplateRegistry } from '../templates/engine';
 import { mapWithConcurrency, resolveConcurrency } from '../utils/concurrency';
 import { v5 as uuidv5 } from 'uuid';
@@ -22,12 +23,6 @@ const DEFAULT_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_BULK_CONCURRENCY = 5;
 const IDEMPOTENCY_NAMESPACE = 'f6ff2eac-697c-4df6-8d11-e5c37f652f53';
 const IDEMPOTENCY_PENDING_RECLAIM_MS = 5 * 60 * 1000;
-const RESERVED_CUSTOM_HEADERS = new Set([
-  'bcc', 'cc', 'content-disposition', 'content-transfer-encoding', 'content-type', 'date',
-  'dkim-signature', 'from', 'message-id', 'mime-version', 'reply-to', 'return-path',
-  'sender', 'subject', 'to', 'x-sendfn-idempotency-key',
-]);
-
 export class EmailService {
   constructor(
     private provider: EmailProvider,
@@ -70,14 +65,14 @@ export class EmailService {
     const rendered = this.resolveContent(params);
     this.assertTransportHeaders(params, recipients, rendered.subject);
     if (!transaction) {
-      await this.assertRecipientsNotSuppressed([
-        ...recipients.to,
-        ...recipients.cc,
-        ...recipients.bcc,
-      ]);
       this.assertResolvedContent(rendered.subject, rendered.html, rendered.text);
       this.assertProviderLimits(recipients, params.attachments);
     }
+    await this.assertRecipientsNotSuppressed([
+      ...recipients.to,
+      ...recipients.cc,
+      ...recipients.bcc,
+    ]);
 
     if (!transaction) try {
       transaction = await this.adapter.createEmailTransaction({
@@ -229,18 +224,7 @@ export class EmailService {
         code: 'SENDFN_VALIDATION_ERROR', retryable: false,
       });
     }
-    for (const [name, value] of Object.entries(params.headers ?? {})) {
-      const normalized = name.toLowerCase();
-      if (
-        !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || /[\r\n]/.test(value) ||
-        RESERVED_CUSTOM_HEADERS.has(normalized) || normalized.startsWith('content-') ||
-        normalized.startsWith('resent-') || normalized === 'received'
-      ) {
-        throw new ValidationError(`Custom email header ${name} is not allowed`, {
-          code: 'SENDFN_VALIDATION_ERROR', retryable: false,
-        });
-      }
-    }
+    assertCustomEmailHeaders(params.headers);
   }
 
   private resolveContent(params: SendEmailParams): {

@@ -159,15 +159,17 @@ describe('push and device phase 5 contracts', () => {
 
   it('chunks FCM requests at 500 tokens', async () => {
     const provider = Object.create(FcmProvider.prototype) as FcmProvider & {
-      app: { messaging(): { sendEachForMulticast(message: { tokens: string[]; data?: Record<string, string> }): Promise<any> } };
+      app: { messaging(): { sendEachForMulticast(message: { tokens: string[]; data?: Record<string, string>; android?: { ttl?: number } }): Promise<any> } };
     };
     const chunkSizes: number[] = [];
     const payloads: Array<Record<string, string> | undefined> = [];
+    const timeToLive: Array<number | undefined> = [];
     provider.app = {
       messaging: () => ({
         sendEachForMulticast: async (message) => {
           chunkSizes.push(message.tokens.length);
           payloads.push(message.data);
+          timeToLive.push(message.android?.ttl);
           return {
             successCount: message.tokens.length,
             failureCount: 0,
@@ -182,6 +184,7 @@ describe('push and device phase 5 contracts', () => {
       title: 'Hello',
       body: 'World',
       data: { screen: 'inbox', attempt: 2, enabled: true },
+      ttl: 0,
     });
 
     expect(chunkSizes).toEqual([500, 1]);
@@ -191,6 +194,7 @@ describe('push and device phase 5 contracts', () => {
       { screen: 'inbox', attempt: '2', enabled: 'true' },
       { screen: 'inbox', attempt: '2', enabled: 'true' },
     ]);
+    expect(timeToLive).toEqual([0, 0]);
 
     await expect(provider.sendPush({
       deviceTokens: ['tok'],
