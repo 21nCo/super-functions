@@ -89,6 +89,13 @@ function isExternal(url: string): boolean {
   return /^https?:\/\//i.test(url);
 }
 
+function encodeUrl(url: string): string {
+  return url
+    .split(/(%[0-9a-f]{2})/gi)
+    .map((segment) => /^%[0-9a-f]{2}$/i.test(segment) ? segment : encodeURI(segment))
+    .join("");
+}
+
 function resolveRegistry(policy: RenderPolicy): ResolvedExtensionRegistry {
   const configured = policy.extensions;
   if (configured && "schemaHash" in configured) return configured;
@@ -243,7 +250,7 @@ function renderNode(node: MdfnNode, context: RenderContext, depth: number): stri
       const external = isExternal(url);
       const target = external && policy.externalTarget ? ` target="${policy.externalTarget}"` : "";
       const rel = external && policy.externalRel ? ` rel="${escapeHtml(policy.externalRel)}"` : "";
-      return `<a href="${escapeHtml(encodeURI(url))}"${title ? ` title="${escapeHtml(title)}"` : ""}${target}${rel}>${children()}</a>`;
+      return `<a href="${escapeHtml(encodeUrl(url))}"${title ? ` title="${escapeHtml(title)}"` : ""}${target}${rel}>${children()}</a>`;
     }
     case "image": {
       const url = stringAttr(node, "url");
@@ -252,7 +259,7 @@ function renderNode(node: MdfnNode, context: RenderContext, depth: number): stri
         pushUnsafeUrl(context, node, "image", url);
         return `<span data-mdfn-blocked-image="true">${escapeHtml(stringAttr(node, "alt"))}</span>`;
       }
-      return `<img src="${escapeHtml(encodeURI(url))}" alt="${escapeHtml(stringAttr(node, "alt"))}"${stringAttr(node, "title") ? ` title="${escapeHtml(stringAttr(node, "title"))}"` : ""} loading="${policy.loading}" decoding="${policy.decoding}">`;
+      return `<img src="${escapeHtml(encodeUrl(url))}" alt="${escapeHtml(stringAttr(node, "alt"))}"${stringAttr(node, "title") ? ` title="${escapeHtml(stringAttr(node, "title"))}"` : ""} loading="${policy.loading}" decoding="${policy.decoding}">`;
     }
     case "asset": return `<span data-mdfn-asset="${escapeHtml(stringAttr(node, "id"))}" data-mdfn-provider="${escapeHtml(stringAttr(node, "provider"))}">${escapeHtml(stringAttr(node, "alt") || "Asset")}</span>`;
     case "definition": return "";
@@ -312,7 +319,7 @@ export function renderTree(document: MdfnDocument): RenderTreeNode {
 
 function plainText(node: MdfnNode): string {
   if (node.type === "text" || node.type === "inlineCode" || node.type === "codeBlock") return node.text ?? "";
-  if (node.type === "image") return stringAttr(node, "alt");
+  if (node.type === "image" || node.type === "asset") return stringAttr(node, "alt");
   if (node.type === "opaque") return "";
   const separator = ["paragraph", "heading", "blockquote", "listItem", "tableRow"].includes(node.type) ? "\n" : "";
   return (node.content ?? []).map(plainText).join("") + separator;

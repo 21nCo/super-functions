@@ -61,6 +61,8 @@ export interface MdfnCollaborationUpdateBatch {
   readonly updates: readonly string[];
   /** Exact persisted update ids represented by `updates` and therefore safe to compact. */
   readonly includedUpdateIds: readonly string[];
+  /** Opaque continuation for the next bounded batch, when more updates remain. */
+  readonly nextCursor?: string;
 }
 
 export interface MdfnServerConfig {
@@ -72,6 +74,8 @@ export interface MdfnServerConfig {
   readonly basePath?: string;
   readonly createId?: () => string;
   readonly maxCollaborationUpdateBytes?: number;
+  readonly maxCollaborationBatchBytes?: number;
+  readonly maxCollaborationBatchUpdates?: number;
   /** Maximum encoded request body accepted by JSON-writing routes. */
   readonly maxRequestBodyBytes?: number;
   /** Durable storage requires adapter transactions. Ephemeral is intended only for in-memory/test hosts. */
@@ -80,6 +84,17 @@ export interface MdfnServerConfig {
 
 export class MdfnServerError extends Error {
   constructor(readonly code: string, readonly status: number, message = code) { super(message); this.name = "MdfnServerError"; }
+}
+
+function configuredDocumentBytes(config: MdfnServerConfig): number {
+  return config.markdown?.maxBytes ?? 2 * 1024 * 1024;
+}
+
+function configuredCollaborationUpdateBytes(config: MdfnServerConfig): number {
+  if (config.maxCollaborationUpdateBytes !== undefined) return config.maxCollaborationUpdateBytes;
+  const documentBytes = configuredDocumentBytes(config);
+  const yjsOverhead = Math.max(64 * 1024, Math.ceil(documentBytes / 16));
+  return 4 * Math.ceil((documentBytes + yjsOverhead) / 3);
 }
 
 export function getSchema(): { version: number; schemas: TableSchema[] } {
@@ -108,7 +123,11 @@ export interface MdfnService {
   decideSuggestion(principal: MdfnPrincipal, id: string, suggestionId: string, input: { readonly expectedVersion: number; readonly decision: "accepted" | "rejected"; readonly idempotencyKey?: string }): Promise<MdfnDocumentRecord>;
   transitionReview(principal: MdfnPrincipal, id: string, input: { readonly expectedVersion: number; readonly state: ReviewState; readonly idempotencyKey?: string }): Promise<MdfnDocumentRecord>;
   appendCollaborationUpdate(principal: MdfnPrincipal, id: string, update: string): Promise<string>;
-  collaborationUpdates(principal: MdfnPrincipal, id: string): Promise<MdfnCollaborationUpdateBatch>;
+  collaborationUpdates(
+    principal: MdfnPrincipal,
+    id: string,
+    options?: { readonly cursor?: string; readonly limit?: number },
+  ): Promise<MdfnCollaborationUpdateBatch>;
   compactCollaborationUpdates(principal: MdfnPrincipal, id: string, snapshot: string, includedUpdateIds: readonly string[]): Promise<string>;
 }
 
@@ -126,6 +145,12 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
   const registry = resolveExtensions(config.extensions ?? []);
   const markdownOptions: MarkdownOptions = { ...config.markdown, extensions: registry };
   const createId = config.createId ?? (() => crypto.randomUUID());
+  const collaborationUpdateBytes = configuredCollaborationUpdateBytes(config);
+  const collaborationBatchBytes = Math.max(
+    collaborationUpdateBytes,
+    config.maxCollaborationBatchBytes ?? collaborationUpdateBytes * 4,
+  );
+  const collaborationBatchUpdates = Math.min(1_000, Math.max(1, config.maxCollaborationBatchUpdates ?? 100));
   const parse = (source: string, sidecar?: MdfnSidecar): void => {
     try {
       parseMarkdown(source, markdownOptions);
@@ -416,18 +441,42 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     async transitionReview(principal, id, input) {
       return mutateEditorial(principal, id, input.expectedVersion, "review:transition", "editorial:review-transitioned", input.idempotencyKey, input, (document) => ({ sidecar: transitionReview({ sidecar: document.sidecar, to: input.state, actor: editorialActor(principal) }) }));
     },
-    async appendCollaborationUpdate(principal, id, update) { const document = await loadScoped(principal, id); await allowed(config, "collaborate", principal, document); const limit = config.maxCollaborationUpdateBytes ?? 1024 * 1024; if (new TextEncoder().encode(update).byteLength > limit) throw new MdfnServerError("MDFN_COLLAB_UPDATE_TOO_LARGE", 413); const updateId = createId(); await database.create({ model: COLLAB_UPDATES, data: { id: updateId, documentId: id, authorId: principal.id, update, createdAt: new Date() } }); return updateId; },
-    async collaborationUpdates(principal, id) {
+    async appendCollaborationUpdate(principal, id, update) { const document = await loadScoped(principal, id); await allowed(config, "collaborate", principal, document); if (new TextEncoder().encode(update).byteLength > collaborationUpdateBytes) throw new MdfnServerError("MDFN_COLLAB_UPDATE_TOO_LARGE", 413); const updateId = createId(); await database.create({ model: COLLAB_UPDATES, data: { id: updateId, documentId: id, authorId: principal.id, update, createdAt: new Date() } }); return updateId; },
+    async collaborationUpdates(principal, id, options = {}) {
       const document = await loadScoped(principal, id);
       await allowed(config, "collaborate", principal, document);
-      const rows = await database.findMany<{ id: string; update: string }>({ model: COLLAB_UPDATES, where: [{ field: "documentId", operator: "eq", value: id }], orderBy: [{ field: "createdAt", direction: "asc" }] });
-      return { updates: rows.map((row) => row.update), includedUpdateIds: rows.map((row) => row.id) };
+      const offset = options.cursor === undefined ? 0 : Number(options.cursor);
+      const requestedLimit = options.limit ?? collaborationBatchUpdates;
+      if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(requestedLimit) || requestedLimit < 1) {
+        throw new MdfnServerError("MDFN_COLLAB_CURSOR_INVALID", 422);
+      }
+      const limit = Math.min(collaborationBatchUpdates, requestedLimit);
+      const rows = await database.findMany<{ id: string; update: string }>({
+        model: COLLAB_UPDATES,
+        where: [{ field: "documentId", operator: "eq", value: id }],
+        orderBy: [{ field: "createdAt", direction: "asc" }, { field: "id", direction: "asc" }],
+        offset,
+        limit: limit + 1,
+      });
+      const included: Array<{ id: string; update: string }> = [];
+      let encodedBytes = 0;
+      for (const row of rows.slice(0, limit)) {
+        const rowBytes = new TextEncoder().encode(row.update).byteLength;
+        if (included.length > 0 && encodedBytes + rowBytes > collaborationBatchBytes) break;
+        included.push(row);
+        encodedBytes += rowBytes;
+      }
+      const hasMore = included.length < rows.length;
+      return {
+        updates: included.map((row) => row.update),
+        includedUpdateIds: included.map((row) => row.id),
+        ...(hasMore ? { nextCursor: String(offset + included.length) } : {}),
+      };
     },
     async compactCollaborationUpdates(principal, id, snapshot, includedUpdateIds) {
       const document = await loadScoped(principal, id);
       await allowed(config, "compact-collaboration", principal, document);
-      const limit = config.maxCollaborationUpdateBytes ?? 1024 * 1024;
-      if (new TextEncoder().encode(snapshot).byteLength > limit) throw new MdfnServerError("MDFN_COLLAB_UPDATE_TOO_LARGE", 413);
+      if (new TextEncoder().encode(snapshot).byteLength > collaborationUpdateBytes) throw new MdfnServerError("MDFN_COLLAB_UPDATE_TOO_LARGE", 413);
       if (!Array.isArray(includedUpdateIds) || includedUpdateIds.some((updateId) => typeof updateId !== "string" || !updateId)) {
         throw new MdfnServerError("MDFN_COLLAB_COMPACTION_INVALID", 422);
       }
@@ -453,9 +502,13 @@ function idempotent<T extends { readonly idempotencyKey?: string }>(request: Req
 
 export function createMdfnRouter(config: MdfnServerConfig, service = createMdfnService(config)): Router<{ principal: MdfnPrincipal }> {
   const principal = config.resolvePrincipal ?? (() => { throw new MdfnServerError("MDFN_UNAUTHENTICATED", 401); });
+  const defaultBodyBytes = Math.max(
+    configuredDocumentBytes(config) + 4 * 1024 * 1024,
+    configuredCollaborationUpdateBytes(config) + 64 * 1024,
+  );
   return createRouter({
     basePath: config.basePath ?? "/api/mdfn",
-    maxBodyBytes: config.maxRequestBodyBytes ?? (config.markdown?.maxBytes ?? 2 * 1024 * 1024) + 4 * 1024 * 1024,
+    maxBodyBytes: config.maxRequestBodyBytes ?? defaultBodyBytes,
     context: async (request) => ({ principal: await principal(request) }),
     onError: (error) => error instanceof MdfnServerError
       ? Response.json({ error: error.code }, { status: error.status })
@@ -480,7 +533,7 @@ export function createMdfnRouter(config: MdfnServerConfig, service = createMdfnS
       { method: "POST", path: "/documents/:id/suggestions", handler: async (request, context) => response(await service.createSuggestion(context.principal, context.params.id!, idempotent(request, await context.json()))) },
       { method: "PATCH", path: "/documents/:id/suggestions/:suggestionId", handler: async (request, context) => response(await service.decideSuggestion(context.principal, context.params.id!, context.params.suggestionId!, idempotent(request, await context.json()))) },
       { method: "PUT", path: "/documents/:id/review", handler: async (request, context) => response(await service.transitionReview(context.principal, context.params.id!, idempotent(request, await context.json()))) },
-      { method: "GET", path: "/documents/:id/collaboration-updates", handler: async (_request, context) => Response.json(await service.collaborationUpdates(context.principal, context.params.id!)) },
+      { method: "GET", path: "/documents/:id/collaboration-updates", handler: async (_request, context) => Response.json(await service.collaborationUpdates(context.principal, context.params.id!, { cursor: context.query.get("cursor") ?? undefined, limit: context.query.has("limit") ? Number(context.query.get("limit")) : undefined })) },
       { method: "POST", path: "/documents/:id/collaboration-updates", handler: async (_request, context) => { const body = await context.json<{ update: string }>(); return Response.json({ id: await service.appendCollaborationUpdate(context.principal, context.params.id!, body.update) }, { status: 201 }); } },
       { method: "PUT", path: "/documents/:id/collaboration-updates/compact", handler: async (_request, context) => { const body = await context.json<{ snapshot: string; includedUpdateIds: string[] }>(); return Response.json({ id: await service.compactCollaborationUpdates(context.principal, context.params.id!, body.snapshot, body.includedUpdateIds) }); } },
     ],

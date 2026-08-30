@@ -15,8 +15,10 @@ be selected explicitly and is intended only for memory-backed tests.
 The router exposes document and version CRUD, version restore, sidecar and
 audit reads, comment/reply/resolve, suggestion/decision, review transitions,
 and collaboration update append/read/compact routes under `/api/mdfn` by
-default. Collaboration reads return both the updates and their exact
-`includedUpdateIds`; compaction requires those ids and removes only that
-represented batch, preserving updates that arrive concurrently. Every
-operation is tenant/owner scoped and passes through the host's authorization
-callback.
+default. Collaboration reads return a bounded page containing the updates,
+their exact `includedUpdateIds`, and a `nextCursor` when another page remains;
+pass that cursor back as the `cursor` query parameter. Compaction requires the
+represented ids and preserves updates that arrive concurrently. The default
+collaboration and router body limits are derived from the configured maximum
+Markdown size plus Yjs and transport-encoding overhead. Every operation is
+tenant/owner scoped and passes through the host's authorization callback.

@@ -213,6 +213,24 @@ describe("@mdfn/core", () => {
     expect(restoreSnapshot(forged, projector, editor.extensions.schemaHash).document).toEqual(projector.parse("source").document);
   });
 
+  it("keeps freshly projected diagnostics when restoring a cached document", () => {
+    const editor = createEditor({ markdown: "source", projector });
+    const snapshot = createSnapshot(editor.getState());
+    const diagnosticProjector: EditorProjector = {
+      ...projector,
+      parse(markdown) {
+        const parsed = projector.parse(markdown);
+        return {
+          ...parsed,
+          diagnostics: [{ code: "MDFN_POLICY_CHANGED", message: "Current policy warning", severity: "warning" }],
+        };
+      },
+    };
+
+    expect(restoreSnapshot(snapshot, diagnosticProjector, editor.extensions.schemaHash).diagnostics)
+      .toMatchObject([{ code: "MDFN_POLICY_CHANGED" }]);
+  });
+
   it("publishes saved-state changes without adding history", () => {
     const editor = createEditor({ markdown: "before", projector });
     editor.dispatch(new Transaction().replaceSource(0, 6, "after"));

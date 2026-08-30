@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { assetReferenceMarkdown, createAssetGateway, createAuthoringAssetHandler, createFileFnAssetProvider, createMemoryAssetProvider, resolvedAssetRenderNode } from "./index";
+import { MdfnAssetRollbackError, assetReferenceMarkdown, createAssetGateway, createAuthoringAssetHandler, createFileFnAssetProvider, createMemoryAssetProvider, resolvedAssetRenderNode } from "./index";
 
 describe("filefn bridge", () => {
   it("stores bytes and enforces provider policy", async () => {
@@ -65,6 +65,38 @@ describe("filefn bridge", () => {
     await expect(handler([new Blob(["first"]), new Blob(["second"])]))
       .rejects.toThrow("upload failed");
     expect(deleted).toEqual(["asset-1"]);
+  });
+
+  it.each(["resolve", "delete"] as const)("reports durable references when rollback %s fails", async (failure) => {
+    let uploads = 0;
+    const provider = {
+      async upload(_file: File | Blob, context: { documentId: string }) {
+        uploads += 1;
+        if (uploads === 2) throw new Error("upload failed");
+        return { id: "asset-1", provider: "test", documentId: context.documentId };
+      },
+      async resolve(reference: { id: string; provider: string; documentId: string }) {
+        if (failure === "resolve") throw new Error("resolve failed");
+        return { reference, state: "ready" as const, embed: "download" as const };
+      },
+      async delete() {
+        if (failure === "delete") throw new Error("delete failed");
+      },
+    };
+    const handler = createAuthoringAssetHandler({ provider, context: { documentId: "document" } });
+
+    const error = await handler([new Blob(["first"]), new Blob(["second"])]).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(MdfnAssetRollbackError);
+    expect(error).toMatchObject({
+      code: "MDFN_ASSET_ROLLBACK_FAILED",
+      uploadError: new Error("upload failed"),
+      uploadedReferences: [{ id: "asset-1", provider: "test", documentId: "document" }],
+      rollbackFailures: [{
+        reference: { id: "asset-1", provider: "test", documentId: "document" },
+        error: new Error(`${failure} failed`),
+      }],
+    });
   });
 
   it("renders pending-local placeholders without requiring a delivery URL", async () => {

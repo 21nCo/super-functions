@@ -133,6 +133,22 @@ describe("collaboration", () => {
     session.destroy(); controller.destroy(); peer.destroy();
   });
 
+  it("accepts valid default-sized collaboration updates above the old one MiB cap", async () => {
+    const controller = createEditor({ markdown: "", projector: createMarkdownProjector() });
+    const session = createCollaborationSession({ controller, documentId: "large-default", user: { id: "owner" } });
+    const baseline = session.encodeStateVector();
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, session.encodeUpdate());
+    const largeMarkdown = Array.from({ length: 1_025 }, () => "x".repeat(1_024)).join("\n\n");
+    peer.getText("markdown").insert(0, largeMarkdown);
+    const update = Y.encodeStateAsUpdate(peer, baseline);
+    expect(update.byteLength).toBeGreaterThan(1024 * 1024);
+
+    await expect(session.applyUpdate(update, "peer")).resolves.toBeUndefined();
+    expect(controller.getState().markdown).toBe(largeMarkdown);
+    session.destroy(); controller.destroy(); peer.destroy();
+  });
+
   it("validates candidate Markdown before mutating the live Y document", async () => {
     const controller = createEditor({ markdown: "safe", projector: createMarkdownProjector({ maxBytes: 4 }) });
     const session = createCollaborationSession({ controller, documentId: "limits", user: { id: "owner" } });

@@ -141,6 +141,24 @@ export function assetReferenceMarkdown(reference: AssetReference, alt = referenc
 
 export type MdfnAuthoringAssetHandler = (files: readonly (File | Blob)[]) => Promise<string | undefined>;
 
+export interface MdfnAssetRollbackFailure {
+  readonly reference: AssetReference;
+  readonly error: unknown;
+}
+
+export class MdfnAssetRollbackError extends Error {
+  public readonly code = "MDFN_ASSET_ROLLBACK_FAILED" as const;
+
+  public constructor(
+    public readonly uploadError: unknown,
+    public readonly uploadedReferences: readonly AssetReference[],
+    public readonly rollbackFailures: readonly MdfnAssetRollbackFailure[],
+  ) {
+    super("MDFN_ASSET_ROLLBACK_FAILED", { cause: uploadError });
+    this.name = "MdfnAssetRollbackError";
+  }
+}
+
 /** Adapt any authorized asset provider to the framework-neutral authoring callback. */
 export function createAuthoringAssetHandler(input: {
   readonly provider: MdfnAssetProvider;
@@ -156,7 +174,15 @@ export function createAuthoringAssetHandler(input: {
       for (const file of files) references.push(await gateway.upload(file, { ...input.context, purpose: "insert" }));
       return references.map((reference) => assetReferenceMarkdown(reference)).join(input.separator ?? "\n");
     } catch (error) {
-      await Promise.allSettled(references.map((reference) => gateway.delete(reference, { ...input.context, purpose: "manage" })));
+      const rollback = await Promise.allSettled(
+        references.map((reference) => gateway.delete(reference, { ...input.context, purpose: "manage" })),
+      );
+      const rollbackFailures = rollback.flatMap((result, index): MdfnAssetRollbackFailure[] =>
+        result.status === "rejected" ? [{ reference: references[index]!, error: result.reason }] : [],
+      );
+      if (rollbackFailures.length > 0) {
+        throw new MdfnAssetRollbackError(error, references, rollbackFailures);
+      }
       throw error;
     }
   };

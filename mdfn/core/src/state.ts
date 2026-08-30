@@ -53,7 +53,7 @@ export function restoreSnapshot(snapshot: MdfnSnapshot, projector: EditorProject
     const expectedDocumentHash = hashValue({ sourceHash: state.sourceHash, schemaHash: expectedSchemaHash, document: state.document });
     const cachedDocumentHash = hashValue({ sourceHash: snapshot.sourceHash, schemaHash: snapshot.schemaHash, document: snapshot.document });
     if (snapshot.documentHash === expectedDocumentHash && cachedDocumentHash === expectedDocumentHash) {
-      return Object.freeze({ ...state, document: snapshot.document, diagnostics: snapshot.diagnostics });
+      return Object.freeze({ ...state, document: snapshot.document });
     }
   }
   return state;

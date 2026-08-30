@@ -30,6 +30,24 @@ describe("@mdfn/render", () => {
     expect(result.diagnostics.map((entry) => entry.code)).toContain("MDFN_UNSAFE_URL_BLOCKED");
   });
 
+  it("preserves valid percent escapes while encoding unescaped URL characters", () => {
+    const urls: MdfnDocument = {
+      type: "doc",
+      schemaVersion: 1,
+      content: [
+        { type: "paragraph", content: [
+          { type: "link", attrs: { url: "https://example.com/a%20b and c" }, content: [{ type: "text", text: "link" }] },
+          { type: "image", attrs: { url: "https://example.com/image%20one and two.png", alt: "image" } },
+        ] },
+      ],
+    };
+
+    const html = renderHtml(urls).html;
+    expect(html).toContain('href="https://example.com/a%20b%20and%20c"');
+    expect(html).toContain('src="https://example.com/image%20one%20and%20two.png"');
+    expect(html).not.toContain("%2520");
+  });
+
   it("requires a sanitizer before opt-in raw HTML rendering", () => {
     expect(() => renderHtml(document, { rawHtml: { enabled: true } })).toThrowError("MDFN_RAW_HTML_SANITIZER_REQUIRED");
     const policy: RenderPolicy = { rawHtml: { enabled: true, sanitize: () => "<p>sanitized</p>" } };
@@ -40,6 +58,17 @@ describe("@mdfn/render", () => {
     expect(extractHeadings(document)[0]).toMatchObject({ level: 2, text: "Security" });
     expect(extractLinks(document)).toHaveLength(4);
     expect(extractChunks(document)[0]).toMatchObject({ heading: "Security" });
+  });
+
+  it("includes durable asset labels in plain-text search projections", () => {
+    const asset: MdfnDocument = {
+      type: "doc",
+      schemaVersion: 1,
+      content: [{ type: "asset", attrs: { id: "asset-1", provider: "filefn", alt: "Quarterly report" } }],
+    };
+
+    expect(extractDocument(asset).plainText).toBe("Quarterly report");
+    expect(extractChunks(asset)[0]?.text).toBe("Quarterly report");
   });
 
   it("accepts only structured, policy-checked extension output", () => {

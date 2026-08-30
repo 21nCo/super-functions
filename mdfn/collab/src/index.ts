@@ -20,6 +20,8 @@ export interface CollaborationSessionOptions {
   readonly authorizeSidecarUpdate?: (previous: MdfnSidecar | undefined, next: MdfnSidecar | undefined, origin: unknown) => boolean | Promise<boolean>;
   readonly profileId?: string;
   readonly protocolVersion?: number;
+  /** Maximum valid UTF-8 Markdown size; used to derive safe Yjs update limits. */
+  readonly maxDocumentBytes?: number;
   readonly maxUpdateBytes?: number;
   readonly online?: boolean;
   readonly sendUpdate?: (update: Uint8Array) => void | Promise<void>;
@@ -89,6 +91,8 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
   let flushing: Promise<void> | null = null;
   let remoteApplication: Promise<void> = Promise.resolve();
   let documentGeneration = 0;
+  const maxDocumentBytes = options.maxDocumentBytes ?? 2 * 1024 * 1024;
+  const maxUpdateBytes = options.maxUpdateBytes ?? maxDocumentBytes + Math.max(64 * 1024, Math.ceil(maxDocumentBytes / 16));
 
   const emitAudit = (event: Omit<CollaborationAuditEvent, "documentId" | "userId">): void => {
     options.onAudit?.({ ...event, documentId: options.documentId, userId: options.user.id });
@@ -263,7 +267,6 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
     async applyUpdate(update, origin = "transport") {
       if (destroyed) throw new Error("MDFN_COLLAB_DESTROYED");
       const apply = async (): Promise<void> => {
-        const maxUpdateBytes = options.maxUpdateBytes ?? 1024 * 1024;
         try {
           if (destroyed) throw new Error("MDFN_COLLAB_DESTROYED");
           if (update.byteLength > maxUpdateBytes) throw new RangeError(`MDFN_COLLAB_UPDATE_TOO_LARGE:${maxUpdateBytes}`);

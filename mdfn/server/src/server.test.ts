@@ -39,6 +39,39 @@ describe("mdfn server", () => {
     await expect(service.appendCollaborationUpdate({ id: "a", tenantId: "tenant-a" }, created.id, "12345")).rejects.toMatchObject({ code: "MDFN_COLLAB_UPDATE_TOO_LARGE", status: 413 });
   });
 
+  it("derives the default collaboration limit from valid document sizes", async () => {
+    const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true });
+    const principal = { id: "author" };
+    const document = await service.create(principal, { markdown: "valid" });
+
+    await expect(service.appendCollaborationUpdate(principal, document.id, "x".repeat(1024 * 1024 + 1)))
+      .resolves.toBeTypeOf("string");
+  });
+
+  it("paginates collaboration reads by row count and aggregate bytes", async () => {
+    const service = createMdfnService({
+      database: memoryAdapter(),
+      durability: "ephemeral",
+      authorize: () => true,
+      maxCollaborationUpdateBytes: 8,
+      maxCollaborationBatchBytes: 8,
+      maxCollaborationBatchUpdates: 2,
+      createId: (() => { let id = 0; return () => `batch-${id++}`; })(),
+    });
+    const principal = { id: "author" };
+    const document = await service.create(principal, { markdown: "valid" });
+    await service.appendCollaborationUpdate(principal, document.id, "1234");
+    await service.appendCollaborationUpdate(principal, document.id, "5678");
+    await service.appendCollaborationUpdate(principal, document.id, "90");
+
+    const first = await service.collaborationUpdates(principal, document.id);
+    expect(first).toMatchObject({ updates: ["1234", "5678"], nextCursor: "2" });
+    await expect(service.collaborationUpdates(principal, document.id, { cursor: first.nextCursor }))
+      .resolves.toMatchObject({ updates: ["90"] });
+    await expect(service.collaborationUpdates(principal, document.id, { cursor: "invalid" }))
+      .rejects.toMatchObject({ code: "MDFN_COLLAB_CURSOR_INVALID", status: 422 });
+  });
+
   it("fails closed when durable storage lacks transaction support", () => {
     const database = memoryAdapter();
     database.capabilities.transactions = {
