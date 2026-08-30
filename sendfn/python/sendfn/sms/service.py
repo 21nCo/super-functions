@@ -15,6 +15,7 @@ class SmsService:
         self,
         provider: SmsProvider,
         db: Adapter,
+        event_tracking: bool = True,
     ) -> None:
         """Initialize SMS service.
 
@@ -24,6 +25,7 @@ class SmsService:
         """
         self.provider = provider
         self.db = db
+        self.event_tracking = event_tracking
 
     async def send_sms(self, params: SendSmsParams) -> SmsTransaction:
         """Send an SMS.
@@ -82,21 +84,22 @@ class SmsService:
             )
 
             # Record event
-            await record_event(
-                self.db,
-                {
-                    "referenceId": str(transaction.id),
-                    "referenceType": "sms",
-                    "eventType": "sent" if response.success else "failed",
-                    "provider": self.provider.name,
-                    "providerEventId": response.provider_message_id,
-                    "recipientEmail": None,
-                    "recipientPhone": params.to,
-                    "deviceToken": None,
-                    "metadata": {"error": response.error} if response.error else {},
-                    "eventTimestamp": response.timestamp,
-                },
-            )
+            if self.event_tracking:
+                await record_event(
+                    self.db,
+                    {
+                        "referenceId": str(transaction.id),
+                        "referenceType": "sms",
+                        "eventType": "sent" if response.success else "failed",
+                        "provider": self.provider.name,
+                        "providerEventId": response.provider_message_id,
+                        "recipientEmail": None,
+                        "recipientPhone": params.to,
+                        "deviceToken": None,
+                        "metadata": {"error": response.error} if response.error else {},
+                        "eventTimestamp": response.timestamp,
+                    },
+                )
 
             # Get updated transaction
             updated_transaction = await get_sms_transaction(self.db, str(transaction.id))
@@ -117,20 +120,21 @@ class SmsService:
             )
 
             # Record failed event
-            await record_event(
-                self.db,
-                {
-                    "referenceId": str(transaction.id),
-                    "referenceType": "sms",
-                    "eventType": "failed",
-                    "provider": self.provider.name,
-                    "providerEventId": None,
-                    "recipientEmail": None,
-                    "recipientPhone": params.to,
-                    "deviceToken": None,
-                    "metadata": {"error": str(error)},
-                    "eventTimestamp": datetime.now(),
-                },
-            )
+            if self.event_tracking:
+                await record_event(
+                    self.db,
+                    {
+                        "referenceId": str(transaction.id),
+                        "referenceType": "sms",
+                        "eventType": "failed",
+                        "provider": self.provider.name,
+                        "providerEventId": None,
+                        "recipientEmail": None,
+                        "recipientPhone": params.to,
+                        "deviceToken": None,
+                        "metadata": {"error": str(error)},
+                        "eventTimestamp": datetime.now(),
+                    },
+                )
 
             raise error

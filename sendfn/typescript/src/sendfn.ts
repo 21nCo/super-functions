@@ -66,6 +66,27 @@ function isPlatform(value: string): value is Platform {
   return (SUPPORTED_PUSH_PLATFORMS as readonly string[]).includes(value);
 }
 
+function validateSmsParams(value: unknown): SendSmsParams {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new ValidationError('SMS request body must be a JSON object');
+  }
+  const input = value as Record<string, unknown>;
+  for (const field of ['userId', 'to', 'message'] as const) {
+    if (typeof input[field] !== 'string' || input[field].trim().length === 0) {
+      throw new ValidationError(`\`${field}\` must be a non-empty string`);
+    }
+  }
+  if (input.metadata !== undefined && (!input.metadata || typeof input.metadata !== 'object' || Array.isArray(input.metadata))) {
+    throw new ValidationError('`metadata` must be a JSON object');
+  }
+  return {
+    userId: input.userId as string,
+    to: input.to as string,
+    message: input.message as string,
+    metadata: input.metadata as Record<string, unknown> | undefined,
+  };
+}
+
 function createRequestId(request: Request): string {
   return request.headers.get('x-request-id') ?? `req_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
@@ -384,7 +405,7 @@ export class Sendfn implements SendfnClient {
                   handler: async (req: Request, ctx: any) =>
                     withEnvelope(
                       req,
-                      async () => this.sms(await ctx.json()),
+                      async () => this.sms(validateSmsParams(await ctx.json())),
                       { successStatus: 201, validationMessage: 'Request body failed validation' }
                     )
               },

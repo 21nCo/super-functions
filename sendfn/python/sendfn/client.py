@@ -221,6 +221,7 @@ class Sendfn:
         self.sms_service = SmsService(
             provider=sms_provider,
             db=self.db,
+            event_tracking=self.config.options.event_tracking if self.config.options else True,
         )
 
     # --- Email Methods ---

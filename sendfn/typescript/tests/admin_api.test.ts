@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EmailProvider, SendEmailRequest, SendEmailResponse } from '../src/email/provider';
 import type { PushProvider, SendPushRequest, SendPushResponse } from '../src/push/provider';
+import type { SendSmsRequest, SendSmsResponse, SmsProvider } from '../src/sms/provider';
 import { sendfn, type SendfnConfig } from '../src/sendfn';
 import { StrongMockAdapter } from './mock-adapter';
 
@@ -80,6 +81,21 @@ class FakePushProvider implements PushProvider {
     return true;
   }
 
+  async close(): Promise<void> {}
+}
+
+class FakeSmsProvider implements SmsProvider {
+  readonly name = 'fake-sms';
+  sendCalls = 0;
+
+  async initialize(): Promise<void> {}
+
+  async sendSms(_params: SendSmsRequest): Promise<SendSmsResponse> {
+    this.sendCalls += 1;
+    return { success: true, providerMessageId: 'sms-admin-1', timestamp: new Date('2026-04-05T00:00:00Z') };
+  }
+
+  async isHealthy(): Promise<boolean> { return true; }
   async close(): Promise<void> {}
 }
 
@@ -199,6 +215,30 @@ describe('admin API envelopes', () => {
         version: 'v0',
       },
     });
+  });
+
+  it('rejects malformed SMS bodies before persistence or provider dispatch', async () => {
+    const provider = new FakeSmsProvider();
+    const client = sendfn({
+      database: new StrongMockAdapter() as any,
+      smsProvider: provider,
+      enableApi: true,
+      apiConfig: { adminKey: 'top-secret' },
+    } satisfies SendfnConfig);
+
+    const response = await (client.router as any).handle(new Request('http://localhost/sms', {
+      method: 'POST',
+      headers: { authorization: 'Bearer top-secret', 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: 'user-1', to: 15551234567 }),
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'SENDFN_VALIDATION_ERROR', message: 'Request body failed validation' },
+    });
+    expect(provider.sendCalls).toBe(0);
+    await client.close();
   });
 
   it('rejects unsupported runtime push-provider keys', () => {
