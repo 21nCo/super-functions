@@ -43,6 +43,17 @@ describe("markdown content", () => {
     expect(result.diagnostics[0]?.code).toBe("MDFN_CONTENT_RICHTEXT_LOSSY");
   });
 
+  it("retains metadata discarded from nested rich nodes with children", () => {
+    const result = migrateToMarkdownContent([
+      { type: "paragraph", children: [{ type: "link", url: "https://example.com", children: [{ text: "label" }] }] },
+    ]);
+
+    expect(result.lossy).toBe(true);
+    expect(result.content.markdown).toContain("label");
+    expect(result.content.markdown).toContain("mdfn-migration-opaque");
+    expect(result.diagnostics[0]?.code).toBe("MDFN_CONTENT_RICHTEXT_LOSSY");
+  });
+
   it("escapes projected rich text and chooses a collision-free code fence", () => {
     const result = migrateToMarkdownContent([
       { type: "paragraph", children: [{ text: "# heading *emphasis*" }] },

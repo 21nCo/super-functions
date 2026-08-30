@@ -145,6 +145,39 @@ describe("collaboration", () => {
     session.destroy(); controller.destroy(); peer.destroy();
   });
 
+  it("revalidates an authorized remote update when the live document changes", async () => {
+    let signalAuthorization!: () => void;
+    let releaseAuthorization!: () => void;
+    const authorizationStarted = new Promise<void>((resolve) => { signalAuthorization = resolve; });
+    const authorizationGate = new Promise<void>((resolve) => { releaseAuthorization = resolve; });
+    const controller = createEditor({ markdown: "a", projector: createMarkdownProjector({ maxBytes: 2 }) });
+    const session = createCollaborationSession({
+      controller,
+      documentId: "authorization-race",
+      user: { id: "owner" },
+      authorizeSidecarUpdate: async () => {
+        signalAuthorization();
+        await authorizationGate;
+        return true;
+      },
+    });
+    const baseline = session.encodeStateVector();
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, session.encodeUpdate());
+    peer.getText("markdown").insert(1, "r");
+    peer.getMap("sidecar").set("value", JSON.stringify({ reviewState: "approved" }));
+
+    const applying = session.applyUpdate(Y.encodeStateAsUpdate(peer, baseline), "peer");
+    await authorizationStarted;
+    controller.dispatch(new Transaction().replaceSource(1, 1, "l").withSource("test"));
+    releaseAuthorization();
+
+    await expect(applying).rejects.toThrowError(/MDFN_COLLAB_MARKDOWN_INVALID/);
+    expect(controller.getState().markdown).toBe("al");
+    expect(session.doc.getText("markdown").toString()).toBe("al");
+    session.destroy(); controller.destroy(); peer.destroy();
+  });
+
   it("rejects malformed sidecars, unauthorized updates, and oversized payloads", async () => {
     const projector = createMarkdownProjector();
     const controller = createEditor({ markdown: "safe", projector });

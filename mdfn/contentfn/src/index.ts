@@ -107,7 +107,12 @@ interface RichTextProjection {
   readonly unsupported: number;
 }
 
-function textFromRichNode(value: unknown, ancestors = new WeakSet<object>(), depth = 0): RichTextProjection {
+function textFromRichNode(
+  value: unknown,
+  ancestors = new WeakSet<object>(),
+  depth = 0,
+  allowedMetadata = new Set<string>(),
+): RichTextProjection {
   if (typeof value === "string") return { text: value, opaque: [], unsupported: 0 };
   if (!value || typeof value !== "object") return { text: "", opaque: [opaqueMigrationComment(value)], unsupported: 1 };
   if (depth >= 64 || ancestors.has(value)) return { text: "", opaque: [opaqueMigrationComment(value)], unsupported: 1 };
@@ -117,7 +122,7 @@ function textFromRichNode(value: unknown, ancestors = new WeakSet<object>(), dep
   try {
     const ownText = typeof node.text === "string" ? node.text : "";
     if (node.children === undefined) {
-      const discardedMetadata = Object.keys(node).some((key) => key !== "text");
+      const discardedMetadata = Object.keys(node).some((key) => key !== "text" && !allowedMetadata.has(key));
       return ownText
         ? {
             text: ownText,
@@ -127,11 +132,12 @@ function textFromRichNode(value: unknown, ancestors = new WeakSet<object>(), dep
         : { text: "", opaque: [opaqueMigrationComment(value)], unsupported: 1 };
     }
     if (!Array.isArray(node.children)) return { text: ownText, opaque: [opaqueMigrationComment(node.children)], unsupported: 1 };
+    const discardedMetadata = Object.keys(node).some((key) => key !== "text" && key !== "children" && !allowedMetadata.has(key));
     const children = node.children.map((child) => textFromRichNode(child, ancestors, depth + 1));
     return {
       text: ownText + children.map((child) => child.text).join(""),
-      opaque: children.flatMap((child) => child.opaque),
-      unsupported: children.reduce((total, child) => total + child.unsupported, 0),
+      opaque: [...(discardedMetadata ? [opaqueMigrationComment(value)] : []), ...children.flatMap((child) => child.opaque)],
+      unsupported: (discardedMetadata ? 1 : 0) + children.reduce((total, child) => total + child.unsupported, 0),
     };
   } finally {
     ancestors.delete(value);
@@ -161,7 +167,12 @@ function richBlocksToMarkdown(value: readonly unknown[]): { markdown: string; un
       unsupported += 1;
       return opaqueMigrationComment(entry);
     }
-    const projected = textFromRichNode(block);
+    const projected = textFromRichNode(
+      block,
+      new WeakSet<object>(),
+      0,
+      new Set(type === "code" ? ["type", "language"] : ["type"]),
+    );
     unsupported += projected.unsupported;
     const retained = projected.opaque.join("\n\n");
     const withOpaque = (markdown: string): string => retained ? `${markdown}\n\n${retained}` : markdown;

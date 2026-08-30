@@ -87,6 +87,7 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
   let pendingUpdates: PendingUpdate[] = [];
   let inFlight: PendingUpdate | null = null;
   let flushing: Promise<void> | null = null;
+  let remoteApplication: Promise<void> = Promise.resolve();
 
   const emitAudit = (event: Omit<CollaborationAuditEvent, "documentId" | "userId">): void => {
     options.onAudit?.({ ...event, documentId: options.documentId, userId: options.user.id });
@@ -132,7 +133,11 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
     audit: value?.audit ?? [],
   });
 
-  const validateUpdate = async (update: Uint8Array, origin: unknown): Promise<void> => {
+  const stateVectorsMatch = (left: Uint8Array, right: Uint8Array): boolean =>
+    left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
+
+  const validateUpdate = async (update: Uint8Array, origin: unknown): Promise<Uint8Array> => {
+    const baseline = Y.encodeStateVector(doc);
     const candidate = new Y.Doc({ guid: expectedDocumentId });
     try {
       Y.applyUpdate(candidate, Y.encodeStateAsUpdate(doc), "validation:baseline");
@@ -145,6 +150,7 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
           throw new Error("MDFN_COLLAB_EDITORIAL_UPDATE_FORBIDDEN");
         }
       }
+      return baseline;
     } finally {
       candidate.destroy();
     }
@@ -255,17 +261,28 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
     encodeStateVector: () => Y.encodeStateVector(doc),
     async applyUpdate(update, origin = "transport") {
       if (destroyed) throw new Error("MDFN_COLLAB_DESTROYED");
-      const maxUpdateBytes = options.maxUpdateBytes ?? 1024 * 1024;
-      try {
-        if (update.byteLength > maxUpdateBytes) throw new RangeError(`MDFN_COLLAB_UPDATE_TOO_LARGE:${maxUpdateBytes}`);
-        if (options.authorizeUpdate && !(await options.authorizeUpdate(update, origin))) throw new Error("MDFN_COLLAB_UPDATE_FORBIDDEN");
-        await validateUpdate(update, origin);
-        Y.applyUpdate(doc, update, origin);
-        emitAudit({ type: "remote-update", byteLength: update.byteLength });
-      } catch (error) {
-        emitAudit({ type: "remote-rejected", byteLength: update.byteLength, error: error instanceof Error ? error.message : String(error) });
-        throw error;
-      }
+      const apply = async (): Promise<void> => {
+        const maxUpdateBytes = options.maxUpdateBytes ?? 1024 * 1024;
+        try {
+          if (destroyed) throw new Error("MDFN_COLLAB_DESTROYED");
+          if (update.byteLength > maxUpdateBytes) throw new RangeError(`MDFN_COLLAB_UPDATE_TOO_LARGE:${maxUpdateBytes}`);
+          if (options.authorizeUpdate && !(await options.authorizeUpdate(update, origin))) throw new Error("MDFN_COLLAB_UPDATE_FORBIDDEN");
+          for (;;) {
+            const baseline = await validateUpdate(update, origin);
+            if (!stateVectorsMatch(baseline, Y.encodeStateVector(doc))) continue;
+            if (destroyed) throw new Error("MDFN_COLLAB_DESTROYED");
+            Y.applyUpdate(doc, update, origin);
+            emitAudit({ type: "remote-update", byteLength: update.byteLength });
+            return;
+          }
+        } catch (error) {
+          emitAudit({ type: "remote-rejected", byteLength: update.byteLength, error: error instanceof Error ? error.message : String(error) });
+          throw error;
+        }
+      };
+      const queued = remoteApplication.then(apply, apply);
+      remoteApplication = queued.catch(() => undefined);
+      return queued;
     },
     setPresence(value) { if (destroyed) throw new Error("MDFN_COLLAB_DESTROYED"); awareness.setLocalStateField("presence", value); },
     getPresence: () => awareness.getStates(),
