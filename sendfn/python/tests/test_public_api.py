@@ -12,6 +12,7 @@ from sendfn import (
     SendEmailParams,
     Sendfn,
     SendfnConfig,
+    ValidationError,
 )
 from sendfn.database.memory import MemoryAdapter
 
@@ -31,7 +32,12 @@ class TrackingMemoryAdapter(MemoryAdapter):
 @pytest.mark.asyncio
 async def test_public_api_surface_and_helpers() -> None:
     """The Python SDK should expose the same phase-1 surface and helper flows."""
-    client = Sendfn(SendfnConfig(database=TrackingMemoryAdapter()))
+    client = Sendfn(
+        SendfnConfig(
+            database=TrackingMemoryAdapter(),
+            aws_sns_topic_arns=["arn:aws:sns:us-east-1:123456789012:sendfn"],
+        )
+    )
 
     expected_methods = [
         "send_email",
@@ -97,6 +103,9 @@ async def test_typed_errors_and_close_are_idempotent() -> None:
     """Missing providers should raise typed errors and close should be idempotent."""
     adapter = TrackingMemoryAdapter()
     client = Sendfn(SendfnConfig(database=adapter))
+
+    with pytest.raises(ValidationError, match="aws_sns_topic_arns"):
+        client.get_webhook_handlers()
 
     with pytest.raises(EmailProviderError) as exc_info:
         await client.send_email(

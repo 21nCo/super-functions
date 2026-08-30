@@ -386,6 +386,21 @@ def create_sendfn_routes(
 
         return await execute(request, operation, request_id=request_id)
 
+    webhook_routes = (
+        [
+            Route(
+                method=HttpMethod.POST,
+                path="/webhooks/aws-ses",
+                handler=aws_ses_webhook_handler,
+            )
+        ]
+        if any(
+            isinstance(topic_arn, str) and topic_arn.strip()
+            for topic_arn in sendfn_client.config.aws_sns_topic_arns
+        )
+        else []
+    )
+
     # Define routes
     return [
         # Email routes
@@ -437,10 +452,5 @@ def create_sendfn_routes(
             path="/suppression/{email}",
             handler=remove_from_suppression_handler,
         ),
-        # Webhook route (no auth)
-        Route(
-            method=HttpMethod.POST,
-            path="/webhooks/aws-ses",
-            handler=aws_ses_webhook_handler,
-        ),
+        *webhook_routes,
     ]

@@ -186,7 +186,18 @@ await client.push({
 
 ### AWS SES Webhooks
 
-To handle bounces and complaints automatically, mount the webhook handler. Preserve the raw SNS envelope JSON exactly as AWS sends it; production deployments must keep the full SNS signature fields intact so the webhook handler can perform signature verification before any delivery, bounce, or complaint event mutates state.
+To handle bounces and complaints automatically, authorize every SNS topic that may deliver SES lifecycle events when constructing the client. SendFn does not expose the handler or built-in route with an empty allowlist.
+
+```typescript
+const client = sendfn({
+  database,
+  awsSns: {
+    topicArns: ['arn:aws:sns:us-east-1:123456789012:sendfn-production'],
+  },
+});
+```
+
+Then mount the webhook handler. Preserve the raw SNS envelope JSON exactly as AWS sends it; production deployments must keep the full SNS signature fields intact so the webhook handler can perform signature verification before any delivery, bounce, or complaint event mutates state.
 
 ```typescript
 app.post('/webhooks/aws-ses', async (req, res) => {

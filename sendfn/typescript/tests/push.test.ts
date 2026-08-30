@@ -10,6 +10,7 @@ import { ValidationError, SendfnError } from '../src/errors';
 import { FcmProvider } from '../src/push/fcm';
 import { ApnsProvider } from '../src/push/apns';
 import { StrongMockAdapter } from './mock-adapter';
+import { sendfn } from '../src';
 
 class FakePushProvider implements PushProvider {
   readonly capabilities = {
@@ -158,13 +159,15 @@ describe('push and device phase 5 contracts', () => {
 
   it('chunks FCM requests at 500 tokens', async () => {
     const provider = Object.create(FcmProvider.prototype) as FcmProvider & {
-      app: { messaging(): { sendEachForMulticast(message: { tokens: string[] }): Promise<any> } };
+      app: { messaging(): { sendEachForMulticast(message: { tokens: string[]; data?: Record<string, string> }): Promise<any> } };
     };
     const chunkSizes: number[] = [];
+    const payloads: Array<Record<string, string> | undefined> = [];
     provider.app = {
       messaging: () => ({
         sendEachForMulticast: async (message) => {
           chunkSizes.push(message.tokens.length);
+          payloads.push(message.data);
           return {
             successCount: message.tokens.length,
             failureCount: 0,
@@ -178,11 +181,28 @@ describe('push and device phase 5 contracts', () => {
       deviceTokens: Array.from({ length: 501 }, (_, index) => `tok-${index}`),
       title: 'Hello',
       body: 'World',
+      data: { screen: 'inbox', attempt: 2, enabled: true },
     });
 
     expect(chunkSizes).toEqual([500, 1]);
     expect(response.successCount).toBe(501);
     expect(response.failedCount).toBe(0);
+    expect(payloads).toEqual([
+      { screen: 'inbox', attempt: '2', enabled: 'true' },
+      { screen: 'inbox', attempt: '2', enabled: 'true' },
+    ]);
+  });
+
+  it('does not instantiate an unused configured FCM fallback', async () => {
+    const client = sendfn({
+      database: adapter as any,
+      pushProviders: {
+        android: new FakePushProvider('android-custom', 'android'),
+        web: new FakePushProvider('web-custom', 'web'),
+      },
+      push: { providers: { fcm: { serviceAccountKey: {} } } },
+    });
+    await expect(client.close()).resolves.toBeUndefined();
   });
 
   it('caps APNS in-flight concurrency at 10', async () => {
@@ -451,6 +471,22 @@ describe('push and device phase 5 contracts', () => {
 
     const activeTokens = await deviceManager.getActiveDevices('user-123', 'android');
     expect(activeTokens.map((device) => device.token)).toEqual(['old-token']);
+  });
+
+  it('keeps a no-op token refresh active', async () => {
+    const initial = await deviceManager.registerDevice({
+      userId: 'user-123',
+      token: 'same-token',
+      platform: 'android',
+    });
+    const refreshed = await deviceManager.refreshDeviceToken(
+      'same-token',
+      'same-token',
+      'user-123',
+      'android'
+    );
+    expect(refreshed.id).toBe(initial.id);
+    expect((await deviceManager.getActiveDevices('user-123', 'android')).map((device) => device.token)).toEqual(['same-token']);
   });
 
   it('refreshes only the matched user token when token strings are shared', async () => {

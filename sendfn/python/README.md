@@ -211,6 +211,19 @@ python -m pytest sendfn/python/tests
 
 ## Webhook Setup
 
+Authorize every SNS topic that may deliver SES lifecycle events. SendFn does not expose the handler with an empty allowlist.
+
+```python
+config = SendfnConfig(
+    database=adapter,
+    aws_sns_topic_arns=[
+        "arn:aws:sns:us-east-1:123456789012:sendfn-production",
+    ],
+)
+sendfn = create_sendfn(config)
+handler = sendfn.get_webhook_handlers()["awsSes"]
+```
+
 AWS SES webhook endpoints must receive the full SNS envelope unchanged. The handler contract expects the original SNS signature fields (`Signature`, `SigningCertURL`, `Timestamp`, and `Message`) so signature verification can run before lifecycle events are trusted. Do not strip the SNS wrapper or forward only the inner SES JSON.
 
 ## Examples

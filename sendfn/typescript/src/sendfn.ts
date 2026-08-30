@@ -232,7 +232,7 @@ export class Sendfn implements SendfnClient {
         }
     }
 
-    if (config.push?.providers.fcm) {
+    if (config.push?.providers.fcm && (!pushProvidersToInitialize.has('android') || !pushProvidersToInitialize.has('web'))) {
         const fcmProvider = new FcmProvider(config.push.providers.fcm);
         if (!pushProvidersToInitialize.has('android')) {
           pushProvidersToInitialize.set('android', fcmProvider);
@@ -517,8 +517,8 @@ export class Sendfn implements SendfnClient {
                       return { events: await this.queryEvents(params) };
                     })
               },
-              {
-                  method: 'POST',
+              ...(this.hasAuthorizedAwsSnsTopics() ? [{
+                  method: 'POST' as const,
                   path: '/webhooks/aws-ses',
                   handler: async (req: Request, ctx: any) => {
                     const requestId = createRequestId(req);
@@ -531,7 +531,7 @@ export class Sendfn implements SendfnClient {
                       { requestId }
                     );
                   }
-              }
+              }] : [])
           ]
       });
   }
@@ -725,9 +725,16 @@ export class Sendfn implements SendfnClient {
 
   // Webhooks
   getWebhookHandlers() {
+    if (!this.hasAuthorizedAwsSnsTopics()) {
+      throw new ValidationError('Configure at least one `awsSns.topicArns` entry before exposing AWS SES webhooks');
+    }
     return {
       awsSes: this.awsSesWebhookHandler,
     };
+  }
+
+  private hasAuthorizedAwsSnsTopics(): boolean {
+    return this.config.awsSns?.topicArns.some((topicArn) => typeof topicArn === 'string' && topicArn.trim().length > 0) === true;
   }
 
   async close(): Promise<void> {

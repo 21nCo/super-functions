@@ -9,6 +9,13 @@ if (!rawServiceAccountKey) {
 }
 
 const serviceAccountKey = JSON.parse(rawServiceAccountKey) as object;
+const apnsPrivateKey = process.env.APNS_PRIVATE_KEY;
+
+function requiredEnvironment(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Set ${name} before enabling the APNS example.`);
+  return value;
+}
 
 export async function main() {
   const client = sendfn({
@@ -20,14 +27,14 @@ export async function main() {
         },
       },
     },
-    pushProviders: process.env.APNS_PRIVATE_KEY
+    pushProviders: apnsPrivateKey
       ? {
           ios: apnsAdapter({
-            bundleId: process.env.APNS_BUNDLE_ID!,
-            key: process.env.APNS_PRIVATE_KEY,
-            keyId: process.env.APNS_KEY_ID!,
+            bundleId: requiredEnvironment('APNS_BUNDLE_ID'),
+            key: apnsPrivateKey,
+            keyId: requiredEnvironment('APNS_KEY_ID'),
             production: process.env.APNS_PRODUCTION === 'true',
-            teamId: process.env.APNS_TEAM_ID!,
+            teamId: requiredEnvironment('APNS_TEAM_ID'),
           }),
         }
       : undefined,

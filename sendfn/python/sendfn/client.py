@@ -15,6 +15,7 @@ from .errors import (
     SmsProviderError,
     SuppressionError,
     TemplateError,
+    ValidationError,
 )
 from .events.aws_sns_verifier import AwsSnsVerifier
 from .events.tracker import EventTracker
@@ -572,6 +573,13 @@ class Sendfn:
         Returns:
             Dictionary of webhook handlers
         """
+        if not any(
+            isinstance(topic_arn, str) and topic_arn.strip()
+            for topic_arn in self.config.aws_sns_topic_arns
+        ):
+            raise ValidationError(
+                "Configure at least one `aws_sns_topic_arns` entry before exposing AWS SES webhooks"
+            )
         return {
             "awsSes": self.webhook_handler,
         }

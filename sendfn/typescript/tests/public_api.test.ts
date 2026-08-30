@@ -16,8 +16,16 @@ describe('sendfn public API parity', () => {
     adapter = new StrongMockAdapter();
     const config: SendfnConfig = {
       database: adapter as any,
+      awsSns: { topicArns: ['arn:aws:sns:us-east-1:123456789012:sendfn'] },
     };
     client = sendfn(config);
+  });
+
+  it('does not expose an AWS SES webhook handler without authorized topics', () => {
+    const unconfigured = sendfn({ database: adapter as any });
+    expect(() => unconfigured.getWebhookHandlers()).toThrowError(
+      'Configure at least one `awsSns.topicArns` entry before exposing AWS SES webhooks'
+    );
   });
 
   it('exposes the phase 1 lifecycle surface', () => {

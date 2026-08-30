@@ -205,7 +205,7 @@ async def test_apns_caps_in_flight_concurrency_at_ten() -> None:
 
 
 @pytest.mark.asyncio
-async def test_apns_passes_topic_and_reports_unsuccessful_responses() -> None:
+async def test_apns_uses_client_topic_and_reports_unsuccessful_responses() -> None:
     provider = object.__new__(ApnsProvider)
     provider.config = type("Config", (), {"bundle_id": "org.example.app"})()
     captured: list[dict[str, Any]] = []
@@ -234,7 +234,7 @@ async def test_apns_passes_topic_and_reports_unsuccessful_responses() -> None:
     )
 
     assert captured[0]["collapse_key"] == "thread-1"
-    assert captured[0]["apns_topic"] == "org.example.app"
+    assert "apns_topic" not in captured[0]
     assert response.success is False
     assert response.invalid_tokens == ["invalid-token"]
 

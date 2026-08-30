@@ -6,6 +6,11 @@ import { PushProviderError } from '../errors';
 const MAX_FCM_BATCH_SIZE = 500;
 let nextAppId = 1;
 
+function stringifyData(data: SendPushRequest['data']): Record<string, string> | undefined {
+  if (!data) return undefined;
+  return Object.fromEntries(Object.entries(data).map(([key, value]) => [key, String(value)]));
+}
+
 export class FcmProvider implements PushProvider {
   readonly name = 'fcm';
   readonly platform = 'android'; // Also supports web, but spec says Android primarily for FCM
@@ -46,7 +51,7 @@ export class FcmProvider implements PushProvider {
         body: params.body,
         imageUrl: params.imageUrl,
       },
-      data: params.data as { [key: string]: string },
+      data: stringifyData(params.data),
       android: {
         priority: params.priority === 'high' ? 'high' : 'normal',
         ttl: params.ttl ? params.ttl * 1000 : undefined, // ms

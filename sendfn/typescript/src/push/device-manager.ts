@@ -55,7 +55,9 @@ export class DeviceTokenManager {
       appVersion: existing.appVersion ?? undefined,
       deviceInfo: existing.deviceInfo ?? undefined,
     });
-    await this.adapter.deactivateDeviceTokenById(existing.id);
+    if (replacement.id !== existing.id) {
+      await this.adapter.deactivateDeviceTokenById(existing.id);
+    }
     return replacement;
   }
 

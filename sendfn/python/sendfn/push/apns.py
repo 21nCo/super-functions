@@ -132,7 +132,6 @@ class ApnsProvider:
                     priority=(10 if request.priority == "high" else 5),
                     time_to_live=request.ttl,
                     collapse_key=request.collapse_key,
-                    apns_topic=self.config.bundle_id,
                 )
 
                 response = await client.send_notification(notification)

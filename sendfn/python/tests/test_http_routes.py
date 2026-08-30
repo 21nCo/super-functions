@@ -142,6 +142,13 @@ def find_route(sendfn_client: Sendfn, path: str) -> Any:
     return next(route for route in routes if route.path == path)
 
 
+def test_webhook_route_is_absent_without_an_authorized_topic() -> None:
+    for topic_arns in (None, ["  "]):
+        client = Sendfn(SendfnConfig(database=MemoryAdapter(), aws_sns_topic_arns=topic_arns))
+        paths = [route.path for route in create_sendfn_routes(client, admin_key="top-secret")]
+        assert "/webhooks/aws-ses" not in paths
+
+
 def build_context(request: FakeRequest) -> RouteContext:
     return RouteContext(
         params={},
@@ -154,7 +161,12 @@ def build_context(request: FakeRequest) -> RouteContext:
 
 @pytest.mark.asyncio
 async def test_webhook_route_returns_canonical_success_and_signature_error_envelopes() -> None:
-    client = Sendfn(SendfnConfig(database=MemoryAdapter()))
+    client = Sendfn(
+        SendfnConfig(
+            database=MemoryAdapter(),
+            aws_sns_topic_arns=["arn:aws:sns:us-east-1:123456789012:sendfn"],
+        )
+    )
     client.get_webhook_handlers()["awsSes"].verifier = FakeVerifier()
     route = find_route(client, "/webhooks/aws-ses")
 

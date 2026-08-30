@@ -443,6 +443,7 @@ describe('AWS SES webhook processing', () => {
     const client = sendfn({
       database: adapter as any,
       enableApi: true,
+      awsSns: { topicArns: ['arn:aws:sns:us-east-1:123456789012:sendfn'] },
       apiConfig: {
         adminKey: 'top-secret',
       },
