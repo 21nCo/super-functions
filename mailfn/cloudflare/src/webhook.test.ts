@@ -133,6 +133,13 @@ describe('Cloudflare webhook delivery', () => {
     }
   });
 
+  it('rejects the IANA 6a44 relay address as non-global', async () => {
+    const dispatcher = new CloudflareWebhookDispatcher({ resolveHostname: async () => ['192.88.99.2'] });
+    await expect(dispatcher.validateUrl(new URL('https://example.com/hook'))).rejects.toThrow(
+      'Webhook host must resolve only to public IP addresses',
+    );
+  });
+
   it('rejects Cloudflare address ranges that the pinned socket transport cannot connect to', async () => {
     for (const address of ['104.16.0.1', '2606:4700::1']) {
       const dispatcher = new CloudflareWebhookDispatcher({ resolveHostname: async () => [address] });

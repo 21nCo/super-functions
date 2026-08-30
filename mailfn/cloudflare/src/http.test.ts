@@ -101,4 +101,36 @@ describe('MailFn Cloudflare HTTP API', () => {
     expect(missing.status).toBe(404);
     await expect(missing.json()).resolves.toMatchObject({ error: { code: 'MAILFN_NOT_FOUND' } });
   });
+
+  it('lets token-manage-only credentials revoke inbox tokens without inbox-read scope', async () => {
+    const mailfn = new MailFn({
+      store: new MemoryMailFnStore(), objects: new MemoryMailFnObjectStore(), defaultDomain: 'inbound.example.com',
+    });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'token-manager', displayName: 'Token Manager' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const first = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'expiring', requestedLocalPart: 'managed', expirySeconds: 3_600,
+    });
+    const second = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'expiring', requestedLocalPart: 'other', expirySeconds: 3_600,
+    });
+    const manager = await mailfn.createCredential(admin, {
+      projectId: bootstrap.project.id, permissions: ['token:manage'],
+    });
+    const handler = createMailFnHttpHandler({ mailfn });
+    const request = (path: string, init: RequestInit = {}) => handler(new Request(`https://mailfn.test${path}`, {
+      ...init,
+      headers: { Authorization: `Bearer ${manager.token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
+    }));
+    const createResponse = await request(`/v1/inboxes/${first.inbox.id}/tokens`, {
+      method: 'POST', body: JSON.stringify({ permissions: ['token:manage'] }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = (await createResponse.json() as { data: { credential: { id: string } } }).data;
+
+    expect((await request(`/v1/inboxes/${second.inbox.id}/tokens/${created.credential.id}`, { method: 'DELETE' })).status).toBe(404);
+    const revokeResponse = await request(`/v1/inboxes/${first.inbox.id}/tokens/${created.credential.id}`, { method: 'DELETE' });
+    expect(revokeResponse.status).toBe(200);
+    await expect(revokeResponse.json()).resolves.toMatchObject({ data: { id: created.credential.id, status: 'revoked' } });
+  });
 });

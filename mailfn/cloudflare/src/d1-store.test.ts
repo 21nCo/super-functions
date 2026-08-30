@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Message } from '@mailfn/core';
+import type { Message, Webhook } from '@mailfn/core';
 
 import type { D1Database, D1PreparedStatement, D1Result } from './bindings.js';
 import { D1MailFnStore } from './d1-store.js';
@@ -68,5 +68,18 @@ describe('D1MailFnStore', () => {
     expect(statement.query).toContain('raw_retention_expires_at');
     expect(statement.query).toContain('attachment_retention_expires_at');
     expect(JSON.parse(String(statement.values.at(-1)))).toEqual(message);
+  });
+
+  it('guards webhook creation with the active project quota in one statement', async () => {
+    const database = new RecordingDatabase();
+    const store = new D1MailFnStore(database);
+    const now = '2026-08-30T00:00:00.000Z';
+    await store.createWebhookWithQuota({
+      id: 'whk_1', projectId: 'prj_1', url: 'https://example.test/hook', eventTypes: ['message.received'],
+      secretHash: 'hash', status: 'active', consecutiveFailures: 0, createdAt: now, updatedAt: now,
+    } as Webhook, 3);
+
+    expect(database.statements[0]?.query).toContain("SELECT COUNT(*) FROM mailfn_webhooks WHERE project_id = ? AND status <> 'disabled'");
+    expect(database.statements[0]?.values.slice(-2)).toEqual(['prj_1', 3]);
   });
 });

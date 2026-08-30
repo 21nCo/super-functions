@@ -250,8 +250,9 @@ export class MailFn {
     return created;
   }
 
-  public async revokeCredential(actor: Actor, credentialId: string): Promise<Credential> {
+  public async revokeCredential(actor: Actor, credentialId: string, expectedInboxId?: string): Promise<Credential> {
     const credential = await this.requireCredential(credentialId);
+    if (expectedInboxId !== undefined && credential.inboxId !== expectedInboxId) throw notFound('Credential');
     await this.authorize(actor, 'token:manage', credential.projectId, credential.inboxId);
     const updated: Credential = {
       ...credential,
@@ -1401,9 +1402,6 @@ export class MailFn {
       status: 500,
     });
     const project = await this.requireProject(actor.projectId);
-    const activeWebhookCount = (await this.store.listWebhooks(project.id))
-      .filter((webhook) => webhook.status !== 'disabled').length;
-    if (activeWebhookCount >= project.quota.maxWebhooks) throw quotaExceeded('webhooks');
     if (input.inboxId) await this.requireInbox(project.id, input.inboxId);
     const url = parseWebhookUrl(input.url);
     if (this.webhookDispatcher?.validateUrl) {
@@ -1434,7 +1432,7 @@ export class MailFn {
       createdAt: now,
       updatedAt: now,
     };
-    await this.store.saveWebhook(webhook);
+    if (!(await this.store.createWebhookWithQuota(webhook, project.quota.maxWebhooks))) throw quotaExceeded('webhooks');
     await this.audit(actor, 'webhook.created', 'webhook', id, { inboxId: input.inboxId ?? null });
     return { webhook: { ...webhook, secretCiphertext: undefined }, secret: created.token };
   }
@@ -1519,9 +1517,9 @@ export class MailFn {
     const domain = await this.store.getDomain(domainId);
     if (!domain) throw notFound('Domain');
     await this.authorize(actor, 'domain:manage', domain.projectId);
-    await this.domainAdapter?.disableRouting(domain);
     const updated = { ...domain, status: 'disabled' as const, updatedAt: this.now() };
     await this.store.saveDomain(updated);
+    await this.domainAdapter?.disableRouting(updated);
     return updated;
   }
 
@@ -1533,7 +1531,7 @@ export class MailFn {
       const compliance = await this.store.getComplianceProfile(project.id);
       for (const inbox of await this.store.listInboxes(project.id)) {
         let effectiveInbox = inbox;
-        if (inbox.status === 'active' && inbox.expiresAt && inbox.expiresAt <= now) {
+        if (!['expired', 'deleting', 'deleted'].includes(inbox.status) && inbox.expiresAt && inbox.expiresAt <= now) {
           effectiveInbox = { ...inbox, status: 'expired', updatedAt: now };
           await this.store.saveInbox(effectiveInbox);
           result.expiredInboxes += 1;

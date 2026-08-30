@@ -9,7 +9,7 @@ import {
 } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { ParseJob } from '@mailfn/core';
+import type { ParseJob, Webhook } from '@mailfn/core';
 import type { D1Database, Queue, R2Bucket } from './bindings.js';
 import { D1MailFnStore } from './d1-store.js';
 import { applyMailFnMigrations } from './migrations.js';
@@ -220,6 +220,24 @@ describe('MailFn in workerd', () => {
       reason: { code: 'MAILFN_QUOTA_EXCEEDED' },
     }]);
     expect(await new D1MailFnStore(env.MAILFN_DB).listInboxes(bootstrap.project.id)).toHaveLength(1);
+  });
+
+  it('enforces the active-webhook quota atomically in D1', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'webhook-quota-workerd', displayName: 'Webhook Quota Workerd' });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const now = new Date().toISOString();
+    const webhook = (id: string): Webhook => ({
+      id, projectId: bootstrap.project.id, url: `https://${id}.example.test/hook`, eventTypes: ['message.received'],
+      secretHash: `hash-${id}`, status: 'active', consecutiveFailures: 0, createdAt: now, updatedAt: now,
+    });
+    const results = await Promise.all([
+      store.createWebhookWithQuota(webhook('whk_one'), 1),
+      store.createWebhookWithQuota(webhook('whk_two'), 1),
+    ]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(await store.listWebhooks(bootstrap.project.id)).toHaveLength(1);
   });
 
   it('enforces the active-inbox quota during concurrent D1 reactivation', async () => {

@@ -94,6 +94,13 @@ class FailingActiveDomainStore extends MemoryMailFnStore {
   }
 }
 
+class FailingDisabledDomainStore extends MemoryMailFnStore {
+  override async saveDomain(domain: Parameters<MemoryMailFnStore['saveDomain']>[0]): Promise<void> {
+    if (domain.status === 'disabled') throw new Error('disabled state unavailable');
+    await super.saveDomain(domain);
+  }
+}
+
 class RetryableCancelStore extends MemoryMailFnStore {
   public releaseAttempts = 0;
   override async releaseStorage(reservationId: string): Promise<void> {
@@ -555,6 +562,25 @@ describe('MailFn domain service', () => {
     await expect(context.mailfn.authenticate(created.credential.token)).rejects.toMatchObject({ code: 'MAILFN_UNAUTHORIZED' });
   });
 
+  it('expires disabled inboxes at their deadline and applies expiry deletion', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'expiring', requestedLocalPart: 'disabled-expiry', expirySeconds: 60,
+    });
+    const value = raw();
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'disabled-expiry-1', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    await context.mailfn.updateInbox(context.admin, created.inbox.id, { status: 'disabled' });
+    clock.advance(61_000);
+
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({ expiredInboxes: 1, deletedMessages: 1 });
+    await expect(context.store.getInbox(created.inbox.id)).resolves.toMatchObject({ status: 'expired' });
+    await expect(context.store.getMessage(message.id)).resolves.toBeNull();
+  });
+
   it('applies raw, attachment, and message retention independently', async () => {
     const clock = new MutableClock();
     const context = await setup({
@@ -659,6 +685,26 @@ describe('MailFn domain service', () => {
     await expect(context.mailfn.createWebhook(context.admin, {
       url: 'https://consumer.example.test/project-hook', eventTypes: ['message.received'],
     })).resolves.toMatchObject({ webhook: { status: 'active' } });
+  });
+
+  it('enforces webhook quotas atomically across concurrent creations', async () => {
+    const context = await setup({
+      quota: { maxWebhooks: 1 },
+      webhookDispatcher: {
+        async validateUrl() { await Promise.resolve(); },
+        async deliver() { return { ok: true, status: 204, retryable: false }; },
+      },
+    });
+    const results = await Promise.allSettled([
+      context.mailfn.createWebhook(context.admin, { url: 'https://one.example.test/hook', eventTypes: ['message.received'] }),
+      context.mailfn.createWebhook(context.admin, { url: 'https://two.example.test/hook', eventTypes: ['message.received'] }),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toMatchObject([{
+      reason: { code: 'MAILFN_QUOTA_EXCEEDED' },
+    }]);
+    await expect(context.store.listWebhooks(context.project.id)).resolves.toHaveLength(1);
   });
 
   it('accepts tagged senders and SMTP null reverse paths on inbound mail', async () => {
@@ -842,6 +888,25 @@ describe('MailFn domain service', () => {
     })).inbox.address).toBe('custom@mail.example.com');
     await expect(context.mailfn.disableDomain(context.admin, pending.id)).resolves.toMatchObject({ status: 'disabled' });
     expect(disableRouting).toHaveBeenCalledOnce();
+  });
+
+  it('does not remove provider routing before disabled domain state is durable', async () => {
+    const disableRouting = vi.fn(async () => undefined);
+    const context = await setup({
+      store: new FailingDisabledDomainStore(),
+      domainAdapter: {
+        getRequiredDnsRecords: async (domain) => [{ type: 'MX', name: domain, value: 'mx.provider.test' }],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'routing-safe-disable' }),
+        disableRouting,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'safe-disable.example.com');
+    await context.mailfn.verifyDomain(context.admin, pending.id);
+
+    await expect(context.mailfn.disableDomain(context.admin, pending.id)).rejects.toThrow('disabled state unavailable');
+    expect(disableRouting).not.toHaveBeenCalled();
+    await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({ status: 'active' });
   });
 
   it('compensates provider routing when active custom-domain state cannot be persisted', async () => {

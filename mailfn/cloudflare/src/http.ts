@@ -85,8 +85,7 @@ function createMailFnRoutes(config: MailFnHttpHandlerConfig): Route<MailFnHttpCo
       return success(context, await config.mailfn.createCredential(actor, { projectId: actor.projectId, inboxId: context.params.inboxId, ...input }), 201);
     }),
     route('DELETE', '/v1/inboxes/:inboxId/tokens/:tokenId', async (_request, context, actor) => {
-      await config.mailfn.getInbox(actor, context.params.inboxId);
-      return success(context, await config.mailfn.revokeCredential(actor, context.params.tokenId));
+      return success(context, await config.mailfn.revokeCredential(actor, context.params.tokenId, context.params.inboxId));
     }),
     route('GET', '/v1/inboxes/:inboxId/messages', async (_request, context, actor) => success(context, await config.mailfn.listMessages(actor, {
       inboxId: context.params.inboxId, ...messageFilter(context.query), cursor: context.query.get('cursor') ?? undefined,

@@ -455,6 +455,18 @@ export class D1MailFnStore implements MailFnStore {
       ? this.many('SELECT data_json FROM mailfn_webhooks WHERE project_id = ? AND inbox_id = ? ORDER BY created_at', [projectId, inboxId])
       : this.many('SELECT data_json FROM mailfn_webhooks WHERE project_id = ? ORDER BY created_at', [projectId]);
   }
+  async createWebhookWithQuota(value: Webhook, maxWebhooks: number): Promise<boolean> {
+    const result = await bind(this.database.prepare(
+      `INSERT INTO mailfn_webhooks(id, project_id, inbox_id, url, event_types, secret_hash, status, created_at, updated_at, data_json)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE (SELECT COUNT(*) FROM mailfn_webhooks WHERE project_id = ? AND status <> 'disabled') < ?`,
+    ), [
+      value.id, value.projectId, value.inboxId ?? null, value.url, JSON.stringify(value.eventTypes), value.secretHash,
+      value.status, value.createdAt, value.updatedAt, json(value), value.projectId, maxWebhooks,
+    ]).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
+  }
   async saveWebhook(value: Webhook): Promise<void> {
     await this.run(
       `INSERT INTO mailfn_webhooks(id, project_id, inbox_id, url, event_types, secret_hash, status, created_at, updated_at, data_json)

@@ -290,6 +290,15 @@ export class MemoryMailFnStore implements MailFnStore {
       (webhook) => webhook.projectId === projectId && (inboxId === undefined || webhook.inboxId === inboxId),
     );
   }
+  async createWebhookWithQuota(webhook: Webhook, maxWebhooks: number): Promise<boolean> {
+    if (this.webhooks.has(webhook.id)) return false;
+    const activeCount = values(this.webhooks).filter(
+      (entry) => entry.projectId === webhook.projectId && entry.status !== 'disabled',
+    ).length;
+    if (activeCount >= maxWebhooks) return false;
+    this.webhooks.set(webhook.id, copy(webhook));
+    return true;
+  }
   async saveWebhook(webhook: Webhook): Promise<void> {
     this.webhooks.set(webhook.id, copy(webhook));
   }
