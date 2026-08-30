@@ -476,6 +476,33 @@ export class D1MailFnStore implements MailFnStore {
       [value.id, value.projectId, value.inboxId ?? null, value.url, JSON.stringify(value.eventTypes), value.secretHash, value.status, value.createdAt, value.updatedAt, json(value)],
     );
   }
+  async recordWebhookDeliveryResult(webhookId: string, succeeded: boolean, updatedAt: string): Promise<void> {
+    const success = succeeded ? 1 : 0;
+    await this.run(
+      `UPDATE mailfn_webhooks
+       SET status = CASE
+             WHEN ? = 0 AND COALESCE(CAST(json_extract(data_json, '$.consecutiveFailures') AS INTEGER), 0) + 1 >= 10
+               THEN 'quarantined'
+             ELSE status
+           END,
+           updated_at = ?,
+           data_json = json_set(
+             data_json,
+             '$.consecutiveFailures', CASE
+               WHEN ? = 1 THEN 0
+               ELSE COALESCE(CAST(json_extract(data_json, '$.consecutiveFailures') AS INTEGER), 0) + 1
+             END,
+             '$.status', CASE
+               WHEN ? = 0 AND COALESCE(CAST(json_extract(data_json, '$.consecutiveFailures') AS INTEGER), 0) + 1 >= 10
+                 THEN 'quarantined'
+               ELSE status
+             END,
+             '$.updatedAt', ?
+           )
+       WHERE id = ? AND status = 'active'`,
+      [success, updatedAt, success, success, updatedAt, webhookId],
+    );
+  }
   async saveWebhookDelivery(value: WebhookDelivery): Promise<void> {
     await this.run(
       `INSERT INTO mailfn_webhook_deliveries(id, webhook_id, event_id, attempt, status, next_attempt_at, created_at, updated_at, data_json)

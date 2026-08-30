@@ -107,6 +107,10 @@ export interface CreatedWebhook {
 const PARSE_LEASE_MS = 15 * 60 * 1000;
 const WEBHOOK_DELIVERY_LEASE_MS = 5 * 60 * 1000;
 
+function isExpiredAt(expiresAt: string, now: string): boolean {
+  return Date.parse(expiresAt) <= Date.parse(now);
+}
+
 export class MailFn {
   private readonly store: MailFnStore;
   private readonly objects: MailFnObjectStore;
@@ -209,7 +213,7 @@ export class MailFn {
     const credential = await this.store.getCredential(match[1]);
     if (!credential || credential.status !== 'active') throw unauthorized();
     const now = this.now();
-    if (credential.expiresAt && credential.expiresAt <= now) {
+    if (credential.expiresAt && isExpiredAt(credential.expiresAt, now)) {
       await this.store.saveCredential({ ...credential, status: 'expired' });
       throw unauthorized();
     }
@@ -274,7 +278,7 @@ export class MailFn {
     });
     const key = `credential.rotate:${idempotencyKey}`;
     const stored = await this.store.getIdempotency(credential.projectId, key);
-    if (stored && stored.expiresAt > this.now()) {
+    if (stored && !isExpiredAt(stored.expiresAt, this.now())) {
       return this.completeCredentialRotation(actor, credential, stored);
     }
     if (stored) await this.store.deleteExpiredIdempotency(credential.projectId, key, this.now());
@@ -536,7 +540,7 @@ export class MailFn {
     const inbox = await this.store.getInboxByAddress(recipient);
     if (!inbox) throw unknownRecipient();
     const now = this.now();
-    if (inbox.status !== 'active' || (inbox.expiresAt && inbox.expiresAt <= now)) {
+    if (inbox.status !== 'active' || (inbox.expiresAt && isExpiredAt(inbox.expiresAt, now))) {
       throw new MailFnError({
         code: 'MAILFN_INBOX_INACTIVE',
         message: 'Recipient inbox is not active',
@@ -676,7 +680,7 @@ export class MailFn {
         status: 400,
       });
     }
-    if (inbox.status !== 'active' || (inbox.expiresAt && inbox.expiresAt <= now)) {
+    if (inbox.status !== 'active' || (inbox.expiresAt && isExpiredAt(inbox.expiresAt, now))) {
       await this.cancelInbound(reservation);
       throw new MailFnError({ code: 'MAILFN_INBOX_INACTIVE', message: 'Recipient inbox is not active', status: 410 });
     }
@@ -1365,7 +1369,7 @@ export class MailFn {
     if (!draft) throw notFound('Draft');
     await this.authorize(actor, 'send:write', draft.projectId, draft.inboxId);
     const inbox = await this.requireDraftInbox(draft.projectId, draft.inboxId);
-    assertMailFn(inbox.status === 'active' && (!inbox.expiresAt || Date.parse(inbox.expiresAt) > Date.parse(this.now())), {
+    assertMailFn(inbox.status === 'active' && (!inbox.expiresAt || !isExpiredAt(inbox.expiresAt, this.now())), {
       code: 'MAILFN_INBOX_INACTIVE', message: 'Inbox is not active', status: 410,
     });
     if (draft.status === 'sent') return draft;
@@ -1668,7 +1672,7 @@ export class MailFn {
       const compliance = await this.store.getComplianceProfile(project.id);
       for (const inbox of await this.store.listInboxes(project.id)) {
         let effectiveInbox = inbox;
-        if (!['expired', 'deleting', 'deleted'].includes(inbox.status) && inbox.expiresAt && inbox.expiresAt <= now) {
+        if (!['expired', 'deleting', 'deleted'].includes(inbox.status) && inbox.expiresAt && isExpiredAt(inbox.expiresAt, now)) {
           effectiveInbox = { ...inbox, status: 'expired', updatedAt: now };
           await this.store.saveInbox(effectiveInbox);
           result.expiredInboxes += 1;
@@ -2021,7 +2025,7 @@ export class MailFn {
 
   private async replayInboxCreate(projectId: string, key: string, requestHash: string): Promise<CreatedInbox | null> {
     const stored = await this.store.getIdempotency(projectId, key);
-    const existing = stored && stored.expiresAt > this.now() ? stored : null;
+    const existing = stored && !isExpiredAt(stored.expiresAt, this.now()) ? stored : null;
     if (!existing) {
       if (stored) await this.store.deleteExpiredIdempotency(projectId, key, this.now());
       return null;
@@ -2036,7 +2040,7 @@ export class MailFn {
     const inbox = await this.requireInbox(projectId, existing.resourceId);
     if (existing.credentialId && existing.responseCiphertext && this.secretProtector) {
       const credential = await this.requireCredential(existing.credentialId);
-      assertMailFn(credential.status === 'active' && (!credential.expiresAt || credential.expiresAt > this.now()), {
+      assertMailFn(credential.status === 'active' && (!credential.expiresAt || !isExpiredAt(credential.expiresAt, this.now())), {
         code: 'MAILFN_CONFLICT',
         message: 'Inbox exists but its original credential is no longer active',
         status: 409,
@@ -2313,14 +2317,8 @@ export class MailFn {
         result = { ok: false, retryable: true };
       }
     }
-    const failures = result.ok ? 0 : webhook.consecutiveFailures + 1;
     const retryable = !result.ok && result.retryable && delivery.attempt < 8;
-    await this.store.saveWebhook({
-      ...webhook,
-      consecutiveFailures: failures,
-      status: failures >= 10 ? 'quarantined' : webhook.status,
-      updatedAt: this.now(),
-    });
+    await this.store.recordWebhookDeliveryResult(webhook.id, result.ok, this.now());
     await this.store.saveWebhookDelivery({
       ...delivery,
       status: result.ok ? 'delivered' : retryable ? 'failed' : 'dead_letter',

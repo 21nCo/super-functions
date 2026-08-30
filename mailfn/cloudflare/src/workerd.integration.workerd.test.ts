@@ -473,6 +473,39 @@ describe('MailFn in workerd', () => {
     await expect(replayStore.consume('workerd-delivery-once', expiresAt)).resolves.toBe(false);
   });
 
+  it('atomically counts webhook failures and does not revive a quarantined webhook in D1', async () => {
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const now = '2026-08-10T00:00:00.000Z';
+    const webhook: Webhook = {
+      id: 'whk_atomic_failures',
+      projectId: 'prj_atomic_failures',
+      url: 'https://consumer.example.test/atomic-failures',
+      eventTypes: ['message.received'],
+      secretHash: 'hash',
+      status: 'active',
+      consecutiveFailures: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await store.saveWebhook(webhook);
+
+    await Promise.all(Array.from({ length: 10 }, (_, index) => (
+      store.recordWebhookDeliveryResult(
+        webhook.id,
+        false,
+        new Date(Date.parse(now) + index + 1).toISOString(),
+      )
+    )));
+    await expect(store.getWebhook(webhook.id)).resolves.toMatchObject({
+      status: 'quarantined', consecutiveFailures: 10,
+    });
+
+    await store.recordWebhookDeliveryResult(webhook.id, true, '2026-08-10T00:00:01.000Z');
+    await expect(store.getWebhook(webhook.id)).resolves.toMatchObject({
+      status: 'quarantined', consecutiveFailures: 10,
+    });
+  });
+
   it('enforces the project ingress counter atomically across D1 inboxes', async () => {
     const testEnv: MailFnCloudflareEnv = {
       ...env,

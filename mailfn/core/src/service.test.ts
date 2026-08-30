@@ -980,12 +980,48 @@ describe('MailFn domain service', () => {
     expect(await context.store.listWebhookDeliveries(webhook.webhook.id)).toMatchObject([{
       status: 'failed', attempt: 1, nextAttemptAt: '2026-08-10T00:00:02.000Z',
     }]);
+    await expect(context.store.getWebhook(webhook.webhook.id)).resolves.toMatchObject({
+      status: 'active', consecutiveFailures: 1,
+    });
     available = true;
     clock.advance(2_100);
     expect(await context.mailfn.retryWebhookDeliveries(context.project.id)).toBe(1);
     expect(await context.store.listWebhookDeliveries(webhook.webhook.id)).toMatchObject([{
       status: 'delivered', attempt: 2, nextAttemptAt: undefined,
     }]);
+    await expect(context.store.getWebhook(webhook.webhook.id)).resolves.toMatchObject({
+      status: 'active', consecutiveFailures: 0,
+    });
+  });
+
+  it('atomically counts concurrent webhook failures and preserves quarantine', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'webhook-failure-count');
+    const webhook = await context.mailfn.createWebhook(context.admin, {
+      inboxId: created.inbox.id,
+      url: 'https://consumer.example.test/failure-count',
+      eventTypes: ['message.received'],
+    });
+
+    await Promise.all(Array.from({ length: 10 }, (_, index) => (
+      context.store.recordWebhookDeliveryResult(
+        webhook.webhook.id,
+        false,
+        new Date(Date.parse(webhook.webhook.updatedAt) + index + 1).toISOString(),
+      )
+    )));
+    await expect(context.store.getWebhook(webhook.webhook.id)).resolves.toMatchObject({
+      status: 'quarantined', consecutiveFailures: 10,
+    });
+
+    await context.store.recordWebhookDeliveryResult(
+      webhook.webhook.id,
+      true,
+      new Date(Date.parse(webhook.webhook.updatedAt) + 20).toISOString(),
+    );
+    await expect(context.store.getWebhook(webhook.webhook.id)).resolves.toMatchObject({
+      status: 'quarantined', consecutiveFailures: 10,
+    });
   });
 
   it('reclaims one abandoned pending webhook delivery with a conditional lease', async () => {
@@ -1304,12 +1340,36 @@ describe('MailFn domain service', () => {
   });
 
   it('compares credential expirations by instant instead of ISO spelling', async () => {
-    const context = await setup({ clock: new MutableClock(new Date('2026-08-10T00:00:00.000Z')) });
-    await expect(context.mailfn.createCredential(context.admin, {
+    const clock = new MutableClock(new Date('2026-08-10T00:00:00.000Z'));
+    const context = await setup({ clock });
+    const issued = await context.mailfn.createCredential(context.admin, {
       projectId: context.project.id,
       permissions: ['inbox:read'],
-      expiresAt: '2026-08-09T20:00:01-04:00',
-    })).resolves.toMatchObject({ credential: { status: 'active' } });
+      expiresAt: '2026-08-10T04:00:01+04:00',
+    });
+    await expect(context.mailfn.authenticate(issued.token)).resolves.toMatchObject({ actorId: issued.credential.id });
+
+    clock.advance(2_000);
+    await expect(context.mailfn.authenticate(issued.token)).rejects.toMatchObject({ code: 'MAILFN_UNAUTHORIZED' });
+    await expect(context.store.getCredential(issued.credential.id)).resolves.toMatchObject({ status: 'expired' });
+  });
+
+  it('rejects offset-bearing inbox expirations by instant during inbound preflight', async () => {
+    const clock = new MutableClock(new Date('2026-08-10T00:00:00.000Z'));
+    const context = await setup({ clock });
+    const created = await createInbox(context, 'offset-inbound-expiry');
+    await context.store.saveInbox({
+      ...created.inbox,
+      expiresAt: '2026-08-10T04:00:01+04:00',
+      updatedAt: clock.now().toISOString(),
+    });
+
+    clock.advance(2_000);
+    await expect(context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com',
+      envelopeTo: created.inbox.address,
+      rawSize: 10,
+    })).rejects.toMatchObject({ code: 'MAILFN_INBOX_INACTIVE' });
   });
 
   it('enforces retention locks and supports gated compliance export and case-management workflows', async () => {

@@ -92,6 +92,7 @@ export interface MailFnStore {
   listWebhooks(projectId: string, inboxId?: string): Promise<Webhook[]>;
   createWebhookWithQuota(webhook: Webhook, maxWebhooks: number): Promise<boolean>;
   saveWebhook(webhook: Webhook): Promise<void>;
+  recordWebhookDeliveryResult(webhookId: string, succeeded: boolean, updatedAt: string): Promise<void>;
   saveWebhookDelivery(delivery: WebhookDelivery): Promise<void>;
   claimWebhookDelivery(
     deliveryId: string,
