@@ -270,6 +270,12 @@ export class MemoryMailFnStore implements MailFnStore {
   async saveThreadIfUnchanged(thread: Thread, expected: Thread | null): Promise<boolean> {
     const current = this.threads.get(thread.id) ?? null;
     if (JSON.stringify(current) !== JSON.stringify(expected)) return false;
+    if (!expected && values(this.threads).some((entry) => (
+      entry.id !== thread.id &&
+      entry.projectId === thread.projectId &&
+      entry.inboxId === thread.inboxId &&
+      entry.normalizedSubject === thread.normalizedSubject
+    ))) return false;
     this.threads.set(thread.id, copy(thread));
     return true;
   }
@@ -384,7 +390,9 @@ export class MemoryMailFnStore implements MailFnStore {
     let deleted = 0;
     for (const [id, delivery] of this.webhookDeliveries) {
       const webhook = this.webhooks.get(delivery.webhookId);
-      if (webhook?.projectId === projectId && ['delivered', 'dead_letter'].includes(delivery.status) && delivery.updatedAt <= before) {
+      const terminal = ['delivered', 'dead_letter'].includes(delivery.status)
+        || (delivery.status === 'failed' && webhook?.status !== 'active');
+      if (webhook?.projectId === projectId && terminal && delivery.updatedAt <= before) {
         this.webhookDeliveries.delete(id);
         deleted += 1;
       }

@@ -1029,16 +1029,16 @@ export class MailFn {
   public async listMessages(actor: Actor, input: Omit<ListMessagesInput, 'projectId'>): Promise<Page<Message>> {
     await this.authorize(actor, 'message:read', actor.projectId, input.inboxId);
     await this.requireInbox(actor.projectId, input.inboxId);
-    validateMessageFilter(input);
+    const filter = normalizeMessageFilter(input);
     const limit = boundedInteger(input.limit, 25, 1, 100, 'limit');
     const cursorContext = {
       kind: 'list' as const,
       projectId: actor.projectId,
       inboxId: input.inboxId,
-      scope: listCursorScope(input),
+      scope: listCursorScope(filter),
     };
     const cursorId = input.cursor ? decodeCursor(input.cursor, cursorContext) : undefined;
-    const page = await this.store.listMessagesPage(actor.projectId, input.inboxId, input, cursorId, limit);
+    const page = await this.store.listMessagesPage(actor.projectId, input.inboxId, filter, cursorId, limit);
     if (!page.cursorFound) {
       throw new MailFnError({
         code: 'MAILFN_VALIDATION_FAILED', message: 'Cursor no longer identifies this result set', status: 400,
@@ -1090,7 +1090,7 @@ export class MailFn {
   public async waitForMessages(actor: Actor, input: Omit<WaitForMessageInput, 'projectId'>): Promise<WaitForMessageResult> {
     await this.authorize(actor, 'message:wait', actor.projectId, input.inboxId);
     await this.requireInbox(actor.projectId, input.inboxId);
-    validateMessageFilter(input);
+    const filter = normalizeMessageFilter(input);
     validateIsoFilter(input.after, 'after');
     const timeoutMs = boundedNumber(input.timeoutMs, 30_000, 0, 120_000, 'timeoutMs');
     const pollIntervalMs = boundedNumber(input.pollIntervalMs, 250, 50, 5_000, 'pollIntervalMs');
@@ -1101,7 +1101,7 @@ export class MailFn {
         throw new MailFnError({ code: 'MAILFN_ABORTED', message: 'Wait was cancelled', status: 499 });
       }
       const messages = await this.store.listMessages(actor.projectId, input.inboxId, {
-        ...input,
+        ...filter,
         receivedAfter: input.after ?? input.receivedAfter,
         status: input.status ?? 'ready',
       });
@@ -1415,10 +1415,11 @@ export class MailFn {
       result = await this.sendAdapter.send(request);
     } catch (error) {
       if (outboundReservation === 'created') await this.store.releaseUsage(outboundUsage.id).catch(() => undefined);
-      const latest = await this.store.getDraft(draft.id).catch(() => null);
-      if (latest?.status === 'sending') {
-        await this.store.saveDraftIfInboxWritable({ ...draft, status: 'draft', updatedAt: this.now() }).catch(() => undefined);
-      }
+      await this.store.claimDraft(
+        draft.id,
+        'sending',
+        { ...draft, status: 'draft', updatedAt: this.now() },
+      ).catch(() => undefined);
       throw error;
     }
     const updated: Draft = {
@@ -2498,6 +2499,9 @@ export class MailFn {
 
 function mergeRetention(base: RetentionPolicy, input?: Partial<RetentionPolicy>): RetentionPolicy {
   const result = { ...base, ...input };
+  if (typeof result.deleteOnInboxExpiry !== 'boolean') {
+    throw new MailFnError({ code: 'MAILFN_VALIDATION_FAILED', message: 'Invalid retention value deleteOnInboxExpiry', status: 400 });
+  }
   for (const [key, value] of Object.entries(result)) {
     if (key === 'deleteOnInboxExpiry') continue;
     if (!Number.isInteger(value) || Number(value) <= 0) {
@@ -2587,15 +2591,15 @@ function normalizeAddressList(addresses: string[]): string[] {
   return Array.from(new Set(addresses.map(normalizeAddress)));
 }
 
-function validateMessageFilter(filter: MessageFilter): void {
+function normalizeMessageFilter<T extends MessageFilter>(filter: T): T {
   validateIsoFilter(filter.receivedAfter, 'receivedAfter');
   validateIsoFilter(filter.receivedBefore, 'receivedBefore');
-  if (filter.labels !== undefined) normalizeLabels(filter.labels);
   if (filter.status !== undefined) {
     assertMailFn(['pending', 'ready', 'parse_failed', 'queue_failed', 'deleted'].includes(filter.status), {
       code: 'MAILFN_VALIDATION_FAILED', message: 'Message status filter is invalid', status: 400,
     });
   }
+  return filter.labels === undefined ? filter : { ...filter, labels: normalizeLabels(filter.labels) };
 }
 
 function validateIsoFilter(value: string | undefined, field: string): void {

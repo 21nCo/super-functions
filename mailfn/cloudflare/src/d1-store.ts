@@ -599,7 +599,9 @@ export class D1MailFnStore implements MailFnStore {
     const ids = await this.rawMany<{ id: string }>(
       `SELECT delivery.id FROM mailfn_webhook_deliveries AS delivery
        JOIN mailfn_webhooks AS webhook ON webhook.id = delivery.webhook_id
-       WHERE webhook.project_id = ? AND delivery.status IN ('delivered', 'dead_letter') AND delivery.updated_at <= ?`,
+       WHERE webhook.project_id = ?
+         AND (delivery.status IN ('delivered', 'dead_letter') OR (delivery.status = 'failed' AND webhook.status != 'active'))
+         AND delivery.updated_at <= ?`,
       [projectId, before],
     );
     if (ids.length) await this.database.batch(ids.map(({ id }) => this.database.prepare('DELETE FROM mailfn_webhook_deliveries WHERE id = ?').bind(id)));

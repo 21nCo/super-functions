@@ -89,7 +89,7 @@ describe('D1MailFnStore', () => {
     await store.deleteTerminalWebhookDeliveriesBefore('prj_1', '2026-08-30T00:00:00.000Z');
     await store.deleteEventsBefore('prj_1', '2026-08-30T00:00:00.000Z');
 
-    expect(database.statements[0]?.query).toContain("delivery.status IN ('delivered', 'dead_letter')");
+    expect(database.statements[0]?.query).toContain("delivery.status = 'failed' AND webhook.status != 'active'");
     expect(database.statements[1]?.query).toContain("delivery.status IN ('pending', 'failed')");
   });
 

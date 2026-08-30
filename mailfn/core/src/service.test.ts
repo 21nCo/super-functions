@@ -131,6 +131,17 @@ class QuiescingInboundStore extends MemoryMailFnStore {
   }
 }
 
+class CompletingDraftResetStore extends MemoryMailFnStore {
+  override async claimDraft(...args: Parameters<MemoryMailFnStore['claimDraft']>): Promise<boolean> {
+    const [draftId, expectedStatus, value] = args;
+    if (expectedStatus === 'sending' && value.status === 'draft') {
+      const current = await this.getDraft(draftId);
+      if (current) await this.saveDraft({ ...current, status: 'sent', providerMessageId: 'concurrent-send' });
+    }
+    return super.claimDraft(...args);
+  }
+}
+
 class RecoveringAttachmentStore extends MemoryMailFnStore {
   public failNextAttachment = true;
   override async saveAttachment(attachment: Parameters<MemoryMailFnStore['saveAttachment']>[0]): Promise<void> {
@@ -216,6 +227,12 @@ describe('MailFn domain service', () => {
     await expect(mailfn.authenticate(bootstrap.credential.token)).resolves.toMatchObject({
       projectId: bootstrap.project.id,
     });
+  });
+
+  it('rejects non-boolean inbox-expiry retention flags', async () => {
+    await expect(setup({
+      retentionPolicy: { deleteOnInboxExpiry: 'false' as unknown as boolean },
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
   });
 
   it('rechecks the active-inbox quota before reactivation', async () => {
@@ -679,13 +696,28 @@ describe('MailFn domain service', () => {
       id: 'delivery_history', webhookId: 'whk_history', eventId: 'evt_history', attempt: 1,
       status: 'delivered', createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString(),
     });
+    await context.store.saveWebhook({
+      id: 'whk_quarantined', projectId: context.project.id, url: 'https://example.test/quarantined',
+      eventTypes: ['message.received'], secretHash: 'hash', status: 'quarantined', consecutiveFailures: 10,
+      createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString(),
+    });
+    await context.store.appendEvent({
+      id: 'evt_quarantined', version: 1, type: 'message.received', projectId: context.project.id,
+      occurredAt: clock.now().toISOString(), payload: {},
+    });
+    await context.store.saveWebhookDelivery({
+      id: 'delivery_quarantined', webhookId: 'whk_quarantined', eventId: 'evt_quarantined', attempt: 4,
+      status: 'failed', nextAttemptAt: clock.now().toISOString(),
+      createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString(),
+    });
     clock.advance(2_000);
 
     await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({
-      webhookDeliveriesDeleted: 1,
-      eventRecordsDeleted: 1,
+      webhookDeliveriesDeleted: 2,
+      eventRecordsDeleted: 2,
     });
     await expect(context.store.listWebhookDeliveries('whk_history')).resolves.toEqual([]);
+    await expect(context.store.listWebhookDeliveries('whk_quarantined')).resolves.toEqual([]);
     await expect(context.store.listEvents(context.project.id)).resolves.toEqual([]);
   });
 
@@ -1298,8 +1330,12 @@ describe('MailFn domain service', () => {
     });
     const thread = await context.mailfn.labelThread(context.admin, created.inbox.id, message.threadId!, ['important']);
     expect(thread.labels).toEqual(['important']);
-    await context.mailfn.labelMessage(context.admin, created.inbox.id, message.id, ['message-only']);
+    await context.mailfn.labelMessage(context.admin, created.inbox.id, message.id, ['Message-Only']);
     expect((await context.mailfn.listThreads(context.admin, created.inbox.id))[0]?.labels).toEqual(['important']);
+    await expect(context.mailfn.listMessages(context.admin, {
+      inboxId: created.inbox.id,
+      labels: [' MESSAGE-ONLY '],
+    })).resolves.toMatchObject({ items: [expect.objectContaining({ id: message.id })] });
 
     const draft = await context.mailfn.createDraft(context.admin, {
       inboxId: created.inbox.id, to: ['first@example.com'], subject: 'Draft', text: 'body',
@@ -1339,6 +1375,21 @@ describe('MailFn domain service', () => {
     await expect(first).resolves.toMatchObject({ status: 'sent', providerMessageId: 'provider-once' });
     await expect(context.mailfn.sendDraft(context.admin, draft.id)).resolves.toMatchObject({ status: 'sent' });
     expect(providerCalls).toBe(1);
+  });
+
+  it('does not overwrite a concurrently completed send while resetting a provider failure', async () => {
+    const store = new CompletingDraftResetStore();
+    const context = await setup({
+      store,
+      sendAdapter: { async send() { throw new Error('provider unavailable'); } },
+    });
+    const created = await createInbox(context, 'conditional-reset');
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Conditional reset', text: 'body',
+    });
+
+    await expect(context.mailfn.sendDraft(context.admin, draft.id)).rejects.toThrow('provider unavailable');
+    await expect(store.getDraft(draft.id)).resolves.toMatchObject({ status: 'sent', providerMessageId: 'concurrent-send' });
   });
 
   it('reserves the daily outbound quota atomically and compensates provider failures', async () => {
@@ -1557,5 +1608,25 @@ describe('MailFn domain service', () => {
     await expect(context.store.saveThreadIfUnchanged(firstUpdate, thread)).resolves.toBe(true);
     await expect(context.store.saveThreadIfUnchanged(staleUpdate, thread)).resolves.toBe(false);
     await expect(context.store.getThread(thread.id)).resolves.toMatchObject({ messageIds: expect.arrayContaining(['extra-1']) });
+  });
+
+  it('serializes concurrent subject-fallback thread creation', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'thread-race');
+    const messages = await Promise.all(['race-1', 'race-2'].map((providerDeliveryId) => {
+      const value = raw({ subject: 'Concurrent Subject' });
+      return context.mailfn.receiveInbound({
+        providerDeliveryId,
+        envelopeFrom: 'sender@example.com',
+        envelopeTo: created.inbox.address,
+        raw: value,
+        rawSize: value.byteLength,
+      });
+    }));
+
+    expect(new Set(messages.map((message) => message.threadId)).size).toBe(1);
+    await expect(context.mailfn.listThreads(context.admin, created.inbox.id)).resolves.toMatchObject([
+      { normalizedSubject: 'concurrent subject', messageIds: expect.arrayContaining(messages.map((message) => message.id)) },
+    ]);
   });
 });

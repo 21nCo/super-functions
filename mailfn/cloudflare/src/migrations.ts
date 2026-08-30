@@ -53,6 +53,7 @@ export const MAILFN_D1_MIGRATIONS = [
     last_message_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, data_json TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS mailfn_threads_inbox ON mailfn_threads(project_id, inbox_id, last_message_at DESC)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS mailfn_threads_subject ON mailfn_threads(project_id, inbox_id, normalized_subject)`,
   `CREATE TABLE IF NOT EXISTS mailfn_webhooks (
     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, inbox_id TEXT, url TEXT NOT NULL, event_types TEXT NOT NULL,
     secret_hash TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, data_json TEXT NOT NULL

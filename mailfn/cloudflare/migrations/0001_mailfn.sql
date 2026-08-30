@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS mailfn_threads (
   data_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS mailfn_threads_inbox ON mailfn_threads(project_id, inbox_id, last_message_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS mailfn_threads_subject ON mailfn_threads(project_id, inbox_id, normalized_subject);
 
 CREATE TABLE IF NOT EXISTS mailfn_webhooks (
   id TEXT PRIMARY KEY,
