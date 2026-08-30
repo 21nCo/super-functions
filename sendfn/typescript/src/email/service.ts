@@ -38,6 +38,7 @@ export class EmailService {
       ? uuidv5(JSON.stringify([params.userId, params.idempotencyKey]), IDEMPOTENCY_NAMESPACE)
       : undefined;
     let transaction: EmailTransaction | undefined;
+    let staleTransaction: EmailTransaction | undefined;
     if (transactionId) {
       const existing = await this.adapter.getEmailTransaction(transactionId);
       if (existing && existing.status !== 'pending') return existing;
@@ -53,18 +54,14 @@ export class EmailService {
             },
           });
         }
-        transaction = await this.adapter.claimStalePendingEmailTransaction(
-          existing.id,
-          new Date(Date.now() - IDEMPOTENCY_PENDING_RECLAIM_MS),
-        ) ?? undefined;
-        if (!transaction) return (await this.adapter.getEmailTransaction(existing.id)) ?? existing;
+        staleTransaction = existing;
       }
     }
 
     const recipients = this.normalizeRecipients(params);
     const rendered = this.resolveContent(params);
     this.assertTransportHeaders(params, recipients, rendered.subject);
-    if (!transaction) {
+    if (!staleTransaction) {
       this.assertResolvedContent(rendered.subject, rendered.html, rendered.text);
       this.assertProviderLimits(recipients, params.attachments);
     }
@@ -73,6 +70,14 @@ export class EmailService {
       ...recipients.cc,
       ...recipients.bcc,
     ]);
+
+    if (staleTransaction) {
+      transaction = await this.adapter.claimStalePendingEmailTransaction(
+        staleTransaction.id,
+        new Date(Date.now() - IDEMPOTENCY_PENDING_RECLAIM_MS),
+      ) ?? undefined;
+      if (!transaction) return (await this.adapter.getEmailTransaction(staleTransaction.id)) ?? staleTransaction;
+    }
 
     if (!transaction) try {
       transaction = await this.adapter.createEmailTransaction({

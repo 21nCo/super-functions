@@ -159,17 +159,19 @@ describe('push and device phase 5 contracts', () => {
 
   it('chunks FCM requests at 500 tokens', async () => {
     const provider = Object.create(FcmProvider.prototype) as FcmProvider & {
-      app: { messaging(): { sendEachForMulticast(message: { tokens: string[]; data?: Record<string, string>; android?: { ttl?: number } }): Promise<any> } };
+      app: { messaging(): { sendEachForMulticast(message: { tokens: string[]; data?: Record<string, string>; android?: { ttl?: number }; webpush?: { headers?: Record<string, string>; data?: Record<string, string> } }): Promise<any> } };
     };
     const chunkSizes: number[] = [];
     const payloads: Array<Record<string, string> | undefined> = [];
     const timeToLive: Array<number | undefined> = [];
+    const webPushPayloads: Array<{ headers?: Record<string, string>; data?: Record<string, string> } | undefined> = [];
     provider.app = {
       messaging: () => ({
         sendEachForMulticast: async (message) => {
           chunkSizes.push(message.tokens.length);
           payloads.push(message.data);
           timeToLive.push(message.android?.ttl);
+          webPushPayloads.push(message.webpush);
           return {
             successCount: message.tokens.length,
             failureCount: 0,
@@ -195,6 +197,22 @@ describe('push and device phase 5 contracts', () => {
       { screen: 'inbox', attempt: '2', enabled: 'true' },
     ]);
     expect(timeToLive).toEqual([0, 0]);
+
+    await provider.sendPush({
+      platform: 'web',
+      deviceTokens: ['web-token'],
+      title: 'Web',
+      body: 'Push',
+      ttl: 60,
+      collapseKey: 'thread-1',
+      priority: 'high',
+      sound: 'default',
+    });
+    expect(webPushPayloads.at(-1)).toEqual({
+      headers: { TTL: '60', Topic: 'thread-1', Urgency: 'high' },
+      data: { sound: 'default' },
+    });
+    expect(timeToLive.at(-1)).toBeUndefined();
 
     await expect(provider.sendPush({
       deviceTokens: ['tok'],

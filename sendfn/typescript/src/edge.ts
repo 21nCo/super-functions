@@ -69,11 +69,19 @@ export function createSendFn(config: SendFnEdgeConfig): SendFnEdgeClient {
 
   return {
     async email(params) {
-      await ensureEmailInitialized();
-      const emailProvider = config.emailProvider!;
+      const emailProvider = config.emailProvider;
+      if (!emailProvider) throw new Error('SendFn email provider not configured');
+      if (params.templateId !== undefined || params.templateData !== undefined) {
+        throw new Error('The SendFn edge client does not render templates; provide subject and inline content.');
+      }
+      if (params.idempotencyKey && emailProvider.capabilities.supportsIdempotency !== true) {
+        throw new Error('The configured edge email provider does not support idempotency keys.');
+      }
       const now = new Date();
       const recipients = toArray(params.to) ?? [];
-      const sender = resolveSender(config.email);
+      const sender = params.from !== undefined
+        ? parseSender(params.from.trim(), 'from')
+        : resolveSender(config.email);
       if (params.replyTo !== undefined && (
         /[\r\n,]/.test(params.replyTo) ||
         !emailProvider.validateEmail(params.replyTo)
@@ -81,6 +89,7 @@ export function createSendFn(config: SendFnEdgeConfig): SendFnEdgeClient {
         throw new Error('Invalid replyTo. Use a single valid mailbox without control characters.');
       }
       assertCustomEmailHeaders(params.headers);
+      await ensureEmailInitialized();
       const response = await emailProvider.sendEmail({
         idempotencyKey: params.idempotencyKey,
         from: sender.header,

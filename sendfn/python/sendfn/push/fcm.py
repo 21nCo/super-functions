@@ -111,7 +111,7 @@ class FcmProvider:
                         image=request.image_url,
                     ),
                     data=data_str if data_str else None,
-                    android=self._messaging.AndroidConfig(
+                    android=None if request.platform == "web" else self._messaging.AndroidConfig(
                         priority=request.priority,
                         ttl=timedelta(seconds=request.ttl) if request.ttl else None,
                         collapse_key=request.collapse_key,
@@ -119,6 +119,14 @@ class FcmProvider:
                             sound=request.sound or "default",
                         ),
                     ),
+                    webpush=self._messaging.WebpushConfig(
+                        headers={
+                            **({"TTL": str(request.ttl)} if request.ttl is not None else {}),
+                            **({"Topic": request.collapse_key} if request.collapse_key else {}),
+                            **({"Urgency": "high" if request.priority == "high" else "normal"} if request.priority else {}),
+                        },
+                        data={"sound": request.sound} if request.sound else None,
+                    ) if request.platform == "web" else None,
                 )
                 response = await asyncio.to_thread(
                     self._messaging.send_each_for_multicast,

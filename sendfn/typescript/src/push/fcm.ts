@@ -63,7 +63,7 @@ export class FcmProvider implements PushProvider {
         imageUrl: params.imageUrl,
       },
       data: stringifyData(params.data),
-      android: {
+      android: params.platform === 'web' ? undefined : {
         priority: params.priority === 'high' ? 'high' : 'normal',
         ttl: params.ttl === undefined ? undefined : params.ttl * 1000, // ms
         collapseKey: params.collapseKey,
@@ -71,7 +71,14 @@ export class FcmProvider implements PushProvider {
             sound: params.sound || 'default',
         }
       },
-      // Also add webpush config if needed
+      webpush: params.platform === 'web' ? {
+        headers: {
+          ...(params.ttl === undefined ? {} : { TTL: String(params.ttl) }),
+          ...(params.collapseKey ? { Topic: params.collapseKey } : {}),
+          ...(params.priority ? { Urgency: params.priority === 'high' ? 'high' : 'normal' } : {}),
+        },
+        ...(params.sound ? { data: { sound: params.sound } } : {}),
+      } : undefined,
     };
 
     try {

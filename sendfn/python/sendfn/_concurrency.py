@@ -33,8 +33,17 @@ async def map_with_concurrency(
         async with semaphore:
             results[index] = await worker(item, index)
 
-    await asyncio.gather(
-        *(run(item, index) for index, item in enumerate(indexed_items))
-    )
+    tasks = [
+        asyncio.create_task(run(item, index))
+        for index, item in enumerate(indexed_items)
+    ]
+    try:
+        await asyncio.gather(*tasks)
+    except BaseException:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
 
     return cast(list[R], results)

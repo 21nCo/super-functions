@@ -118,6 +118,7 @@ export class PushService {
         let response: Awaited<ReturnType<PushProvider['sendPush']>>;
         try {
             response = await provider.sendPush({
+                platform,
                 deviceTokens: pTokens,
                 title: params.title,
                 body: params.body,

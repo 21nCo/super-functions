@@ -27,6 +27,7 @@ export interface PushProviderCapabilities {
 }
 
 export interface SendPushRequest {
+  platform?: 'ios' | 'android' | 'web';
   deviceTokens: string[];
   title: string;
   body: string;

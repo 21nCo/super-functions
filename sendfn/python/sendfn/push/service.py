@@ -103,10 +103,13 @@ class PushService:
                 retryable=False,
             )
         logical_notification_id: Optional[str] = None
+        first_notification_id: Optional[str] = None
         notification_ids: list[str] = []
         aggregate_sent_count = 0
         aggregate_failed_count = 0
         logical_sent_at: Optional[datetime] = None
+        first_provider_error: Optional[Exception] = None
+        provider_errors: list[dict[str, str]] = []
 
         for platform in ordered_platforms:
             p_tokens = platform_tokens[platform]
@@ -133,8 +136,8 @@ class PushService:
                 },
             )
             notification_ids.append(str(notification.id))
-            if logical_notification_id is None:
-                logical_notification_id = str(notification.id)
+            if first_notification_id is None:
+                first_notification_id = str(notification.id)
 
             try:
                 # Send via provider
@@ -145,6 +148,7 @@ class PushService:
                         device_tokens=p_tokens,
                         title=params.title,
                         body=params.body,
+                        platform=platform,
                         data=params.data,
                         image_url=params.image_url,
                         badge=params.badge,
@@ -199,6 +203,8 @@ class PushService:
 
                 aggregate_sent_count += response.success_count
                 aggregate_failed_count += response.failed_count
+                if delivered and logical_notification_id is None:
+                    logical_notification_id = str(notification.id)
                 if logical_sent_at is None:
                     logical_sent_at = response.timestamp
 
@@ -231,8 +237,15 @@ class PushService:
                         },
                     )
 
-                raise error
+                aggregate_failed_count += len(p_tokens)
+                if first_provider_error is None:
+                    first_provider_error = error
+                provider_errors.append(
+                    {"platform": platform, "provider": provider.name, "error": str(error)}
+                )
+                continue
 
+        logical_notification_id = logical_notification_id or first_notification_id
         if not logical_notification_id:
             raise PushProviderError("Failed to process push for any platform")
 
@@ -252,10 +265,13 @@ class PushService:
                     **(existing_logical_notification.metadata if existing_logical_notification else {}),
                     **(params.metadata or {}),
                     "notificationIds": notification_ids,
+                    **({"providerErrors": provider_errors} if provider_errors else {}),
                 },
             },
         )
 
+        if aggregate_sent_count == 0 and first_provider_error is not None:
+            raise first_provider_error
         return logical_notification
 
     async def send_bulk_push(

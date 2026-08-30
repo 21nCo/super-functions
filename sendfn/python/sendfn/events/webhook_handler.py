@@ -94,8 +94,18 @@ class AwsSesWebhookHandler:
 
         try:
             await self.verifier.verify(sns_message)
-            event = self._parse_ses_event(sns_message["Message"])
-            result = await self._process_event(event)
+            if sns_message.get("Type") == "SubscriptionConfirmation":
+                await self.verifier.confirm_subscription(sns_message)
+                result = {
+                    "accepted": True,
+                    "matchedTransactions": 0,
+                    "createdSuppressionEntries": 0,
+                    "orphanEvents": 0,
+                    "subscriptionConfirmed": True,
+                }
+            else:
+                event = self._parse_ses_event(sns_message["Message"])
+                result = await self._process_event(event)
         except Exception as exc:
             sendfn_error = (
                 exc if isinstance(exc, SendfnError) else create_webhook_error("SENDFN_INTERNAL_ERROR", "Unexpected webhook failure")

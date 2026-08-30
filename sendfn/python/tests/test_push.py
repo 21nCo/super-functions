@@ -127,6 +127,27 @@ async def test_map_with_concurrency_preserves_none_results_and_order() -> None:
 
 
 @pytest.mark.asyncio
+async def test_map_with_concurrency_cancels_and_settles_remaining_work_on_failure() -> None:
+    cancelled: list[int] = []
+    release = asyncio.Event()
+
+    async def worker(value: int, _index: int) -> int:
+        if value == 0:
+            raise RuntimeError("bulk failed")
+        try:
+            await release.wait()
+        except asyncio.CancelledError:
+            cancelled.append(value)
+            raise
+        return value
+
+    with pytest.raises(RuntimeError, match="bulk failed"):
+        await map_with_concurrency([0, 1, 2], 3, worker)
+
+    assert sorted(cancelled) == [1, 2]
+
+
+@pytest.mark.asyncio
 async def test_fcm_chunks_batches_at_500(monkeypatch: pytest.MonkeyPatch) -> None:
     provider = object.__new__(FcmProvider)
     provider.config = None
@@ -158,6 +179,7 @@ async def test_fcm_chunks_batches_at_500(monkeypatch: pytest.MonkeyPatch) -> Non
     provider._messaging.Notification = lambda **kwargs: type("Notification", (), kwargs)()
     provider._messaging.AndroidConfig = lambda **kwargs: type("AndroidConfig", (), kwargs)()
     provider._messaging.AndroidNotification = lambda **kwargs: type("AndroidNotification", (), kwargs)()
+    provider._messaging.WebpushConfig = lambda **kwargs: type("WebpushConfig", (), kwargs)()
 
     response = await provider.send_push(
         SendPushRequest(
@@ -171,6 +193,41 @@ async def test_fcm_chunks_batches_at_500(monkeypatch: pytest.MonkeyPatch) -> Non
     assert to_thread_calls == 2
     assert response.success_count == 501
     assert response.failed_count == 0
+
+
+@pytest.mark.asyncio
+async def test_fcm_applies_delivery_options_to_web_push(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider = object.__new__(FcmProvider)
+    provider.config = None
+    provider._app = object()
+    provider._messaging = type("Messaging", (), {})()
+    provider._firebase_admin = None
+    captured: list[Any] = []
+
+    async def fake_to_thread(function: Any, *args: Any) -> Any:
+        return function(*args)
+
+    monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
+    response = type("Response", (), {
+        "success_count": 1,
+        "failure_count": 0,
+        "responses": [type("SendResponse", (), {"success": True, "exception": None})()],
+    })()
+    provider._messaging.send_each_for_multicast = lambda message: captured.append(message) or response
+    provider._messaging.MulticastMessage = lambda **kwargs: type("Msg", (), kwargs)()
+    provider._messaging.Notification = lambda **kwargs: type("Notification", (), kwargs)()
+    provider._messaging.AndroidConfig = lambda **kwargs: type("AndroidConfig", (), kwargs)()
+    provider._messaging.AndroidNotification = lambda **kwargs: type("AndroidNotification", (), kwargs)()
+    provider._messaging.WebpushConfig = lambda **kwargs: type("WebpushConfig", (), kwargs)()
+
+    await provider.send_push(SendPushRequest(
+        device_tokens=["web-token"], title="Web", body="Push", platform="web",
+        ttl=60, collapse_key="thread-1", priority="high", sound="default",
+    ))
+
+    assert captured[0].android is None
+    assert captured[0].webpush.headers == {"TTL": "60", "Topic": "thread-1", "Urgency": "high"}
+    assert captured[0].webpush.data == {"sound": "default"}
 
 
 @pytest.mark.asyncio
@@ -324,6 +381,42 @@ async def test_push_service_returns_stable_platform_result_and_deactivates_inval
 
     active_devices = await device_manager.get_active_devices("user-1")
     assert [device.token for device in active_devices] == ["android-good", "web-good"]
+
+
+@pytest.mark.asyncio
+async def test_push_service_returns_persisted_partial_outcomes_after_provider_failures() -> None:
+    db = MemoryAdapter()
+    device_manager = DeviceTokenManager(db)
+    await device_manager.register_device(
+        RegisterDeviceParams(userId="partial-user", token="android-good", platform="android")
+    )
+    await device_manager.register_device(
+        RegisterDeviceParams(userId="partial-user", token="ios-failed", platform="ios")
+    )
+    android = FakePushProvider("android-provider", "android", delay=0)
+    ios = FakePushProvider("ios-provider", "ios", delay=0)
+
+    async def fail_ios(_request: SendPushRequest) -> SendPushResponse:
+        raise RuntimeError("APNS unavailable")
+
+    ios.send_push = fail_ios  # type: ignore[method-assign]
+    service = PushService(
+        providers={"android": android, "ios": ios},
+        db=db,
+        device_manager=device_manager,
+    )
+
+    result = await service.send_push(
+        SendPushParams(userId="partial-user", title="Hello", body="World")
+    )
+
+    assert result.status == "sent"
+    assert result.sent_count == 1
+    assert result.failed_count == 1
+    assert result.metadata["providerErrors"] == [
+        {"platform": "ios", "provider": "ios-provider", "error": "APNS unavailable"}
+    ]
+    assert [record["status"] for record in get_records(db, "push_notifications")] == ["sent", "failed"]
 
 
 @pytest.mark.asyncio

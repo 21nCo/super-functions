@@ -23,6 +23,7 @@ describe('email address validation', () => {
       emailProvider: {
         name: 'test',
         capabilities: {
+          supportsIdempotency: true,
           supportsTemplates: false,
           supportsAttachments: false,
           supportsBulkSend: false,
@@ -62,6 +63,7 @@ describe('email address validation', () => {
       emailProvider: {
         name: 'test',
         capabilities: {
+          supportsIdempotency: true,
           supportsTemplates: false,
           supportsAttachments: false,
           supportsBulkSend: false,
@@ -140,5 +142,35 @@ describe('email address validation', () => {
     await expect(client.email({ userId: 'user_1', to: 'recipient@example.com', subject: 'Hello', headers }))
       .rejects.toThrow(`Custom email header ${rejectedName} is not allowed`);
     expect(sendCalls).toBe(0);
+  });
+
+  it('honors per-message senders and rejects unsupported edge-only contracts', async () => {
+    const requests: Array<{ from: string }> = [];
+    const client = createSendFn({
+      email: { from: 'Configured <configured@example.com>' },
+      emailProvider: {
+        name: 'test',
+        capabilities: { supportsIdempotency: false, supportsTemplates: false, supportsAttachments: false, supportsBulkSend: false, supportsScheduling: false, maxRecipientsPerEmail: 1, maxAttachmentSize: 0 },
+        async initialize() {},
+        async sendEmail(request) { requests.push(request); return { success: true, messageId: 'sent', timestamp: new Date() }; },
+        async sendBulkEmail() { return []; },
+        validateEmail: isBareEmail,
+        async isHealthy() { return true; },
+        async close() {},
+      },
+    });
+
+    await expect(client.email({
+      userId: 'user_1', from: 'Message <message@example.com>', to: 'recipient@example.com', subject: 'Hello', text: 'Body',
+    })).resolves.toMatchObject({ from: 'message@example.com' });
+    expect(requests[0]?.from).toBe('Message <message@example.com>');
+
+    await expect(client.email({
+      userId: 'user_1', to: 'recipient@example.com', templateId: 'welcome', templateData: { name: 'Agent' },
+    })).rejects.toThrow('does not render templates');
+    await expect(client.email({
+      idempotencyKey: 'edge-key', userId: 'user_1', to: 'recipient@example.com', subject: 'Hello', text: 'Body',
+    })).rejects.toThrow('does not support idempotency keys');
+    expect(requests).toHaveLength(1);
   });
 });

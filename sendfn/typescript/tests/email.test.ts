@@ -424,6 +424,16 @@ describe('EmailService', () => {
       subject: 'Recover', text: 'body',
     })).rejects.toMatchObject({ code: 'SENDFN_SUPPRESSED' });
     expect(provider.sendCalls).toBe(0);
+    await expect(db.getEmailTransaction(transactionId)).resolves.toMatchObject({
+      status: 'pending', updatedAt: record.updatedAt,
+    });
+
+    await db.removeFromSuppressionList('recipient@example.com');
+    await expect(service.sendEmail({
+      idempotencyKey, userId: 'project-1', from: 'agent@example.com', to: 'recipient@example.com',
+      subject: 'Recover', text: 'body',
+    })).resolves.toMatchObject({ status: 'sent' });
+    expect(provider.sendCalls).toBe(1);
   });
 
   it('closes an ambiguous stale pending transaction without duplicating through a non-idempotent provider', async () => {

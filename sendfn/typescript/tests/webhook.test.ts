@@ -238,6 +238,24 @@ describe('AWS SES webhook processing', () => {
     expect(canonicalMessage).toContain('Token\ntoken-1\n');
   });
 
+  it('bounds subscription confirmation and maps transport failures to the stable webhook code', async () => {
+    const fetchMock = vi.fn((_url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error('confirmation timed out')), { once: true });
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const verifier = new AwsSnsVerifier({ confirmationTimeoutMs: 1 });
+
+    await expect(verifier.confirmSubscription({
+      Type: 'SubscriptionConfirmation',
+      SubscribeURL: 'https://sns.us-east-1.amazonaws.com/?Action=ConfirmSubscription&Token=token-1',
+    })).rejects.toMatchObject({
+      code: 'SENDFN_WEBHOOK_CONFIRMATION_FAILED',
+      cause: expect.any(Error),
+    });
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+    vi.unstubAllGlobals();
+  });
+
   it('correlates delivery events and keeps duplicate deliveries idempotent', async () => {
     await seedEmailTransaction(adapter);
     const logger = {

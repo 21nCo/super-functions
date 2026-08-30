@@ -32,6 +32,7 @@ from .helpers import (
     update_email_transaction,
 )
 from .memory import MemoryAdapter
+from .sqlalchemy import build_sqlalchemy_metadata, create_sqlalchemy_schema
 
 __all__ = [
     # Re-exported from superfunctions.db
@@ -46,6 +47,8 @@ __all__ = [
     "Operator",
     # Local implementations
     "MemoryAdapter",
+    "build_sqlalchemy_metadata",
+    "create_sqlalchemy_schema",
     # Helper functions
     "create_email_transaction",
     "update_email_transaction",

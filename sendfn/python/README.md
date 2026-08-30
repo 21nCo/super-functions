@@ -200,11 +200,17 @@ python -m pip install 'sendfn[database]' psycopg
 
 ```python
 from sqlalchemy import create_engine
+from sendfn.database import create_sqlalchemy_schema
 from superfunctions_sqlalchemy import create_adapter
 
 engine = create_engine("postgresql+psycopg://user:password@localhost/sendfn")
+create_sqlalchemy_schema(engine)  # New installations; use this metadata in migrations for existing databases.
 adapter = create_adapter(engine)
 ```
+
+For Alembic or another migration runner, import `build_sqlalchemy_metadata()` from
+`sendfn.database` and use the returned metadata as the migration target. When the
+adapter uses a `namespace_prefix`, pass the same prefix to the schema helper.
 
 ## Development
 

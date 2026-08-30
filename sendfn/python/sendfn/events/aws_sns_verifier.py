@@ -33,12 +33,14 @@ class AwsSnsVerifier:
         now: Optional[Callable[[], datetime]] = None,
         fetch_certificate: Optional[Callable[[str], str]] = None,
         verify_signature: Optional[Callable[[str, str, str], bool]] = None,
+        confirm_subscription: Optional[Callable[[str], None]] = None,
         max_age_seconds: Optional[int] = None,
         topic_arns: Optional[Iterable[str]] = None,
     ) -> None:
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.fetch_certificate = fetch_certificate or self._default_fetch_certificate
         self.verify_signature = verify_signature or self._default_verify_signature
+        self._confirm_subscription = confirm_subscription or self._default_confirm_subscription
         self.max_age_seconds = max_age_seconds
         self.topic_arns = set(topic_arns or ())
 
@@ -74,6 +76,24 @@ class AwsSnsVerifier:
                 "SNS signature verification failed",
             )
 
+    async def confirm_subscription(self, message: dict[str, Any]) -> None:
+        """Confirm a verified SNS subscription handshake."""
+        if message.get("Type") != "SubscriptionConfirmation" or not message.get("SubscribeURL"):
+            raise create_webhook_error(
+                "SENDFN_WEBHOOK_MESSAGE_INVALID",
+                "SNS message is malformed",
+            )
+        self._validate_sns_url(str(message["SubscribeURL"]))
+        try:
+            self._confirm_subscription(str(message["SubscribeURL"]))
+        except SendfnError:
+            raise
+        except Exception as exc:
+            raise create_webhook_error(
+                "SENDFN_WEBHOOK_CONFIRMATION_FAILED",
+                "SNS subscription confirmation failed",
+            ) from exc
+
     def _validate_envelope_shape(self, message: dict[str, Any]) -> None:
         required_fields = [
             "Type",
@@ -93,11 +113,20 @@ class AwsSnsVerifier:
                     "SNS message is malformed",
                 )
 
-        if message["Type"] != "Notification" or message["SignatureVersion"] != "1":
+        if message["Type"] not in {"Notification", "SubscriptionConfirmation"} or message["SignatureVersion"] != "1":
             raise create_webhook_error(
                 "SENDFN_WEBHOOK_MESSAGE_INVALID",
                 "SNS message is malformed",
             )
+        if message["Type"] == "SubscriptionConfirmation":
+            for field in ("Token", "SubscribeURL"):
+                value = message.get(field)
+                if not isinstance(value, str) or not value.strip():
+                    raise create_webhook_error(
+                        "SENDFN_WEBHOOK_MESSAGE_INVALID",
+                        "SNS message is malformed",
+                    )
+            self._validate_sns_url(message["SubscribeURL"])
 
     def _validate_signing_cert_url(self, signing_cert_url: str) -> None:
         parsed = urlparse(signing_cert_url)
@@ -131,11 +160,32 @@ class AwsSnsVerifier:
         return parsed.astimezone(timezone.utc)
 
     def _build_canonical_message(self, message: dict[str, Any]) -> str:
-        ordered_fields = ["Message", "MessageId"]
-        if message.get("Subject"):
-            ordered_fields.append("Subject")
-        ordered_fields.extend(["Timestamp", "TopicArn", "Type"])
+        if message["Type"] == "SubscriptionConfirmation":
+            ordered_fields = ["Message", "MessageId", "SubscribeURL", "Timestamp", "Token", "TopicArn", "Type"]
+        else:
+            ordered_fields = ["Message", "MessageId"]
+            if message.get("Subject"):
+                ordered_fields.append("Subject")
+            ordered_fields.extend(["Timestamp", "TopicArn", "Type"])
         return "\n".join(f"{field}\n{message.get(field, '')}" for field in ordered_fields) + "\n"
+
+    def _validate_sns_url(self, value: str) -> None:
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or not CERT_HOST_PATTERN.match(parsed.hostname or ""):
+            raise create_webhook_error(
+                "SENDFN_WEBHOOK_MESSAGE_INVALID",
+                "SNS message is malformed",
+            )
+
+    def _default_confirm_subscription(self, url: str) -> None:
+        try:
+            with urlopen(url, timeout=5) as response:
+                response.read()
+        except Exception as exc:  # pragma: no cover - network failure
+            raise create_webhook_error(
+                "SENDFN_WEBHOOK_CONFIRMATION_FAILED",
+                "SNS subscription confirmation failed",
+            ) from exc
 
     def _default_fetch_certificate(self, url: str) -> str:
         try:

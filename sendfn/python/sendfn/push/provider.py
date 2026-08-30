@@ -37,10 +37,12 @@ class SendPushRequest:
         ttl: Optional[int] = None,
         collapse_key: Optional[str] = None,
         category: Optional[str] = None,
+        platform: Optional[str] = None,
     ) -> None:
         self.device_tokens = device_tokens
         self.title = title
         self.body = body
+        self.platform = platform
         self.data = data or {}
         self.image_url = image_url
         self.badge = badge

@@ -23,14 +23,16 @@ export interface AwsSnsVerifierOptions {
   maxAgeMs?: number;
   topicArns?: readonly string[];
   confirmSubscription?: (url: string) => Promise<void>;
+  confirmationTimeoutMs?: number;
 }
 
 const CERT_HOST_PATTERN = /^sns\.[a-z0-9-]+\.amazonaws\.com$/i;
 
-function createWebhookError(code: string, message: string): SendfnError {
+function createWebhookError(code: string, message: string, cause?: unknown): SendfnError {
   return new SendfnError(message, {
     code,
     retryable: false,
+    cause,
   });
 }
 
@@ -41,6 +43,7 @@ export class AwsSnsVerifier {
   private readonly maxAgeMs?: number;
   private readonly topicArns: Set<string>;
   private readonly confirm: (url: string) => Promise<void>;
+  private readonly confirmationTimeoutMs: number;
 
   constructor(options: AwsSnsVerifierOptions = {}) {
     this.now = options.now ?? (() => new Date());
@@ -48,7 +51,8 @@ export class AwsSnsVerifier {
     this.verifySignature = options.verifySignature ?? this.defaultVerifySignature;
     this.maxAgeMs = options.maxAgeMs;
     this.topicArns = new Set(options.topicArns ?? []);
-    this.confirm = options.confirmSubscription ?? this.defaultConfirmSubscription;
+    this.confirmationTimeoutMs = Math.max(1, options.confirmationTimeoutMs ?? 5_000);
+    this.confirm = options.confirmSubscription ?? ((url) => this.defaultConfirmSubscription(url));
   }
 
   async confirmSubscription(message: SnsMessage): Promise<void> {
@@ -165,7 +169,20 @@ export class AwsSnsVerifier {
   }
 
   private async defaultConfirmSubscription(url: string): Promise<void> {
-    const response = await fetch(url, { redirect: 'error' });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.confirmationTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(url, { redirect: 'error', signal: controller.signal });
+    } catch (error) {
+      throw createWebhookError(
+        'SENDFN_WEBHOOK_CONFIRMATION_FAILED',
+        'SNS subscription confirmation failed',
+        error,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!response.ok) {
       throw createWebhookError('SENDFN_WEBHOOK_CONFIRMATION_FAILED', 'SNS subscription confirmation failed');
     }

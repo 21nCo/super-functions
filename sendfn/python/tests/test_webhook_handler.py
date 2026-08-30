@@ -240,6 +240,35 @@ async def test_verifier_rejects_invalid_hosts_stale_timestamps_and_malformed_env
     assert untrusted_topic.value.code == "SENDFN_WEBHOOK_MESSAGE_INVALID"
 
 
+@pytest.mark.asyncio
+async def test_verifies_and_confirms_subscription_handshakes() -> None:
+    canonical_messages: list[str] = []
+    confirmed: list[str] = []
+    verifier = AwsSnsVerifier(
+        fetch_certificate=lambda _url: "certificate",
+        verify_signature=lambda canonical, *_args: canonical_messages.append(canonical) or True,
+        confirm_subscription=confirmed.append,
+        topic_arns=["arn:aws:sns:us-east-1:123456789012:sendfn"],
+    )
+    db = MemoryAdapter()
+    handler = AwsSesWebhookHandler(db, SuppressionManager(db), verifier=verifier)
+    subscribe_url = "https://sns.us-east-1.amazonaws.com/?Action=ConfirmSubscription&Token=token-1"
+    envelope = create_envelope(
+        {},
+        Type="SubscriptionConfirmation",
+        Token="token-1",
+        SubscribeURL=subscribe_url,
+        Message="Confirm this subscription",
+    )
+
+    result = await handler.handle_webhook(envelope)
+    assert result["accepted"] is True
+    assert result["subscriptionConfirmed"] is True
+    assert confirmed == [subscribe_url]
+    assert f"SubscribeURL\n{subscribe_url}\n" in canonical_messages[0]
+    assert "Token\ntoken-1\n" in canonical_messages[0]
+
+
 def test_default_sns_verifier_checks_rsa_signatures_without_an_openssl_process() -> None:
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "sns.amazonaws.com")])
