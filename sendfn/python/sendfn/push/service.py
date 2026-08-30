@@ -23,6 +23,7 @@ class PushService:
         db: Adapter,
         device_manager: DeviceTokenManager,
         bulk_concurrency: int = 5,
+        event_tracking: bool = True,
     ) -> None:
         """Initialize push service.
 
@@ -35,6 +36,7 @@ class PushService:
         self.db = db
         self.device_manager = device_manager
         self.bulk_concurrency = resolve_concurrency(bulk_concurrency, 5)
+        self.event_tracking = event_tracking
 
     async def send_push(self, params: SendPushParams) -> PushNotification:
         """Send a push notification.
@@ -150,11 +152,12 @@ class PushService:
                     await self.device_manager.deactivate_tokens(response.invalid_tokens)
 
                 # Update record
+                delivered = response.success_count > 0
                 await update_push_notification(
                     self.db,
                     str(notification.id),
                     {
-                        "status": "sent" if response.success else "failed",
+                        "status": "sent" if delivered else "failed",
                         "sentCount": response.success_count,
                         "failedCount": response.failed_count,
                         "sentAt": response.timestamp,
@@ -166,24 +169,25 @@ class PushService:
                 )
 
                 # Record event
-                await record_event(
-                    self.db,
-                    {
-                        "referenceId": str(notification.id),
-                        "referenceType": "push",
-                        "eventType": "sent" if response.success else "failed",
-                        "provider": provider.name,
-                        "providerEventId": None,
-                        "recipientEmail": None,
-                        "recipientPhone": None,
-                        "deviceToken": None,  # Multiple tokens
-                        "metadata": {
-                            "successCount": response.success_count,
-                            "failedCount": response.failed_count,
+                if self.event_tracking:
+                    await record_event(
+                        self.db,
+                        {
+                            "referenceId": str(notification.id),
+                            "referenceType": "push",
+                            "eventType": "sent" if delivered else "failed",
+                            "provider": provider.name,
+                            "providerEventId": None,
+                            "recipientEmail": None,
+                            "recipientPhone": None,
+                            "deviceToken": None,  # Multiple tokens
+                            "metadata": {
+                                "successCount": response.success_count,
+                                "failedCount": response.failed_count,
+                            },
+                            "eventTimestamp": response.timestamp,
                         },
-                        "eventTimestamp": response.timestamp,
-                    },
-                )
+                    )
 
                 aggregate_sent_count += response.success_count
                 aggregate_failed_count += response.failed_count
@@ -202,21 +206,22 @@ class PushService:
                 )
 
                 # Record failed event
-                await record_event(
-                    self.db,
-                    {
-                        "referenceId": str(notification.id),
-                        "referenceType": "push",
-                        "eventType": "failed",
-                        "provider": provider.name,
-                        "providerEventId": None,
-                        "recipientEmail": None,
-                        "recipientPhone": None,
-                        "deviceToken": None,
-                        "metadata": {"error": str(error)},
-                        "eventTimestamp": datetime.now(),
-                    },
-                )
+                if self.event_tracking:
+                    await record_event(
+                        self.db,
+                        {
+                            "referenceId": str(notification.id),
+                            "referenceType": "push",
+                            "eventType": "failed",
+                            "provider": provider.name,
+                            "providerEventId": None,
+                            "recipientEmail": None,
+                            "recipientPhone": None,
+                            "deviceToken": None,
+                            "metadata": {"error": str(error)},
+                            "eventTimestamp": datetime.now(),
+                        },
+                    )
 
                 raise error
 

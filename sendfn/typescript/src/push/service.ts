@@ -75,6 +75,12 @@ export class PushService {
     // Let's iterate platforms and send.
 
     const platforms = PLATFORM_ORDER.filter((platform) => (platformTokens.get(platform)?.length ?? 0) > 0);
+    const missingPlatform = platforms.find((platform) => !this.providers.has(platform));
+    if (missingPlatform) {
+      throw new PushProviderError(`No push provider configured for platform ${missingPlatform}`, {
+        retryable: false,
+      });
+    }
     let logicalNotificationId: string | null = null;
     let aggregateSentCount = 0;
     let aggregateFailedCount = 0;
@@ -86,13 +92,7 @@ export class PushService {
 
     for (const platform of platforms) {
         const pTokens = platformTokens.get(platform)!;
-        const provider = this.providers.get(platform);
-
-        if (!provider) {
-            throw new PushProviderError(`No push provider configured for platform ${platform}`, {
-              retryable: false,
-            });
-        }
+        const provider = this.providers.get(platform)!;
 
         const notification = await this.adapter.createPushNotification({
             userId: userIds.join(','),
@@ -134,8 +134,9 @@ export class PushService {
             }
 
             // Update record
+            const delivered = response.successCount > 0;
             await this.adapter.updatePushNotification(notification.id, {
-                status: response.success ? 'sent' : 'failed', // Partial success is sent
+                status: delivered ? 'sent' : 'failed',
                 sentCount: response.successCount,
                 failedCount: response.failedCount,
                 sentAt: response.timestamp,
@@ -149,7 +150,7 @@ export class PushService {
             if (this.options.eventTracking !== false) await this.adapter.recordEvent({
                 referenceId: notification.id,
                 referenceType: 'push',
-                eventType: response.success ? 'sent' : 'failed',
+                eventType: delivered ? 'sent' : 'failed',
                 provider: provider.name,
                 providerEventId: null,
                 recipientEmail: null,

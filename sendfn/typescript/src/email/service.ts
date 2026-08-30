@@ -103,8 +103,9 @@ export class EmailService {
       return existing;
     }
 
+    let response: SendEmailResponse;
     try {
-      const response = await this.sendWithRetry({
+      response = await this.sendWithRetry({
         idempotencyKey: params.idempotencyKey,
         from: params.from ?? this.config.fromEmail,
         to: recipients.to,
@@ -121,27 +122,6 @@ export class EmailService {
           : undefined,
         metadata: params.metadata,
       });
-
-      await this.adapter.updateEmailTransaction(transaction.id, {
-        status: 'sent',
-        providerMessageId: response.providerMessageId,
-        sentAt: response.timestamp,
-      });
-
-      if (this.options.eventTracking !== false) await this.adapter.recordEvent({
-        referenceId: transaction.id,
-        referenceType: 'email',
-        eventType: 'sent',
-        provider: this.provider.name,
-        providerEventId: response.providerMessageId || null,
-        recipientEmail: recipients.to[0] || null,
-        recipientPhone: null,
-        deviceToken: null,
-        metadata: {},
-        eventTimestamp: response.timestamp,
-      });
-
-      return (await this.adapter.getEmailTransaction(transaction.id)) as EmailTransaction;
     } catch (error) {
       const sendError =
         error instanceof EmailProviderError
@@ -184,6 +164,27 @@ export class EmailService {
 
       throw sendError;
     }
+
+    const sentTransaction = await this.adapter.updateEmailTransaction(transaction.id, {
+      status: 'sent',
+      providerMessageId: response.providerMessageId,
+      sentAt: response.timestamp,
+    });
+
+    if (this.options.eventTracking !== false) await this.adapter.recordEvent({
+      referenceId: transaction.id,
+      referenceType: 'email',
+      eventType: 'sent',
+      provider: this.provider.name,
+      providerEventId: response.providerMessageId || null,
+      recipientEmail: recipients.to[0] || null,
+      recipientPhone: null,
+      deviceToken: null,
+      metadata: {},
+      eventTimestamp: response.timestamp,
+    });
+
+    return (await this.adapter.getEmailTransaction(transaction.id)) ?? sentTransaction;
   }
 
   async sendBulkEmail(recipients: SendEmailParams[]): Promise<EmailTransaction[]> {

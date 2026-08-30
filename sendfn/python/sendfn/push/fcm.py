@@ -1,5 +1,6 @@
 """FCM (Firebase Cloud Messaging) provider for push notifications."""
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -123,7 +124,10 @@ class FcmProvider:
                         ),
                     ),
                 )
-                response = self._messaging.send_each_for_multicast(message)
+                response = await asyncio.to_thread(
+                    self._messaging.send_each_for_multicast,
+                    message,
+                )
                 success_count += response.success_count
                 failed_count += response.failure_count
 

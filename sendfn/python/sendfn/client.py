@@ -209,6 +209,7 @@ class Sendfn:
             db=self.db,
             device_manager=self.device_manager,
             bulk_concurrency=self.config.options.bulk_concurrency if self.config.options else 5,
+            event_tracking=self.config.options.event_tracking if self.config.options else True,
         )
 
     def _initialize_sms_service(self, sms_provider: SmsProvider) -> None:

@@ -130,6 +130,14 @@ async def test_fcm_chunks_batches_at_500(monkeypatch: pytest.MonkeyPatch) -> Non
     provider._messaging = type("Messaging", (), {})()
     provider._firebase_admin = None
     chunk_sizes: list[int] = []
+    to_thread_calls = 0
+
+    async def fake_to_thread(function: Any, *args: Any) -> Any:
+        nonlocal to_thread_calls
+        to_thread_calls += 1
+        return function(*args)
+
+    monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
 
     class FakeResponse:
         def __init__(self, size: int) -> None:
@@ -156,6 +164,7 @@ async def test_fcm_chunks_batches_at_500(monkeypatch: pytest.MonkeyPatch) -> Non
     )
 
     assert chunk_sizes == [500, 1]
+    assert to_thread_calls == 2
     assert response.success_count == 501
     assert response.failed_count == 0
 
@@ -278,6 +287,28 @@ async def test_push_service_returns_stable_platform_result_and_deactivates_inval
 
     active_devices = await device_manager.get_active_devices("user-1")
     assert [device.token for device in active_devices] == ["android-good", "web-good"]
+
+
+@pytest.mark.asyncio
+async def test_push_service_honors_disabled_event_tracking() -> None:
+    db = MemoryAdapter()
+    device_manager = DeviceTokenManager(db)
+    await device_manager.register_device(
+        RegisterDeviceParams(userId="user-1", token="android-good", platform="android")
+    )
+    service = PushService(
+        providers={"android": FakePushProvider("android-provider", "android")},
+        db=db,
+        device_manager=device_manager,
+        event_tracking=False,
+    )
+
+    result = await service.send_push(
+        SendPushParams(userId="user-1", title="Hello", body="World")
+    )
+
+    assert result.status == "sent"
+    assert get_records(db, "communication_events") == []
 
 
 @pytest.mark.asyncio

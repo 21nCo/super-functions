@@ -1,14 +1,25 @@
 import * as admin from 'firebase-admin';
 import { PushProvider, PushProviderCapabilities, SendPushRequest, SendPushResponse } from './provider';
 import { FcmConfig } from '../types';
-import { PushProviderError } from '../errors';
+import { PushProviderError, ValidationError } from '../errors';
 
 const MAX_FCM_BATCH_SIZE = 500;
 let nextAppId = 1;
 
 function stringifyData(data: SendPushRequest['data']): Record<string, string> | undefined {
   if (!data) return undefined;
-  return Object.fromEntries(Object.entries(data).map(([key, value]) => [key, String(value)]));
+  return Object.fromEntries(Object.entries(data).map(([key, value]) => {
+    if (
+      (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean')
+      || (typeof value === 'number' && !Number.isFinite(value))
+    ) {
+      throw new ValidationError(`Push data value for \`${key}\` must be a string, finite number, or boolean`, {
+        code: 'SENDFN_VALIDATION_ERROR',
+        retryable: false,
+      });
+    }
+    return [key, String(value)];
+  }));
 }
 
 export class FcmProvider implements PushProvider {

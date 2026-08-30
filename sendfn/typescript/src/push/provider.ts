@@ -1,3 +1,5 @@
+import type { PushData } from '../types';
+
 export interface PushProvider {
   readonly name: string;
   readonly platform: 'ios' | 'android' | 'web';
@@ -28,7 +30,7 @@ export interface SendPushRequest {
   deviceTokens: string[];
   title: string;
   body: string;
-  data?: Record<string, any>;
+  data?: PushData;
   imageUrl?: string;
   badge?: number;
   sound?: string;

@@ -191,6 +191,16 @@ describe('push and device phase 5 contracts', () => {
       { screen: 'inbox', attempt: '2', enabled: 'true' },
       { screen: 'inbox', attempt: '2', enabled: 'true' },
     ]);
+
+    await expect(provider.sendPush({
+      deviceTokens: ['tok'],
+      title: 'Invalid',
+      body: 'Payload',
+      data: { nested: { unsafe: true } } as any,
+    })).rejects.toMatchObject({
+      code: 'SENDFN_VALIDATION_ERROR',
+      message: 'Push data value for `nested` must be a string, finite number, or boolean',
+    });
   });
 
   it('does not instantiate an unused configured FCM fallback', async () => {
@@ -370,6 +380,41 @@ describe('push and device phase 5 contracts', () => {
       code: 'SENDFN_PUSH_PROVIDER_ERROR',
       message: 'No push provider configured for platform ios',
     });
+  });
+
+  it('preflights every active platform before sending any push', async () => {
+    await deviceManager.registerDevice({ userId: 'mixed-user', token: 'android-token', platform: 'android' });
+    await deviceManager.registerDevice({ userId: 'mixed-user', token: 'ios-token', platform: 'ios' });
+    const androidProvider = new FakePushProvider('android-provider', 'android');
+    const send = vi.spyOn(androidProvider, 'sendPush');
+    const service = new PushService(new Map([['android', androidProvider]]), db, deviceManager, {});
+    await expect(service.sendPush({ userId: 'mixed-user', title: 'Hello', body: 'World' }))
+      .rejects.toMatchObject({ message: 'No push provider configured for platform ios' });
+    expect(send).not.toHaveBeenCalled();
+    expect(adapter.records('push_notifications')).toHaveLength(0);
+  });
+
+  it('records partial provider delivery as sent when at least one token succeeds', async () => {
+    await deviceManager.registerDevice({ userId: 'partial-user', token: 'good', platform: 'android' });
+    await deviceManager.registerDevice({ userId: 'partial-user', token: 'bad', platform: 'android' });
+    const provider = new FakePushProvider('android-provider', 'android');
+    vi.spyOn(provider, 'sendPush').mockResolvedValue({
+      success: false,
+      successCount: 1,
+      failedCount: 1,
+      invalidTokens: ['bad'],
+      results: [
+        { token: 'good', success: true },
+        { token: 'bad', success: false, error: 'invalid token' },
+      ],
+      timestamp: new Date('2026-04-05T00:00:00Z'),
+    });
+    const service = new PushService(new Map([['android', provider]]), db, deviceManager, {});
+    const result = await service.sendPush({ userId: 'partial-user', title: 'Hello', body: 'World' });
+    expect(result).toMatchObject({ status: 'sent', sentCount: 1, failedCount: 1 });
+    expect(adapter.records('communication_events')).toEqual([
+      expect.objectContaining({ eventType: 'sent' }),
+    ]);
   });
 
   it('validates device registrations before persistence', async () => {

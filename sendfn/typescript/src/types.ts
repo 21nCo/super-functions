@@ -151,11 +151,14 @@ export interface SendWhatsAppParams {
 
 // --- Push ---
 
+export type PushDataValue = string | number | boolean;
+export type PushData = Record<string, PushDataValue>;
+
 export interface SendPushParams {
   userId: string | string[];
   title: string;
   body: string;
-  data?: Record<string, any>;
+  data?: PushData;
   imageUrl?: string;
   badge?: number;
   sound?: string;

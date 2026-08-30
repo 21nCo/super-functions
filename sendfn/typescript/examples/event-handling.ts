@@ -3,9 +3,10 @@ import { sendfn } from '../src';
 
 const database = {} as Adapter;
 const adminKey = process.env.SENDFN_ADMIN_KEY;
+const awsSnsTopicArn = process.env.AWS_SNS_TOPIC_ARN;
 
-if (!adminKey) {
-  throw new Error('Set SENDFN_ADMIN_KEY before running this example.');
+if (!adminKey || !awsSnsTopicArn) {
+  throw new Error('Set SENDFN_ADMIN_KEY and AWS_SNS_TOPIC_ARN before running this example.');
 }
 
 export async function main() {
@@ -14,6 +15,9 @@ export async function main() {
     enableApi: true,
     apiConfig: {
       adminKey,
+    },
+    awsSns: {
+      topicArns: [awsSnsTopicArn],
     },
   });
 

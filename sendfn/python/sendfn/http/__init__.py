@@ -11,9 +11,8 @@ from .routes import create_sendfn_routes
 __all__ = ["create_sendfn_routes", "create_sendfn_router"]
 
 
-def __getattr__(name: str) -> Any:
-    if name == "create_sendfn_router":
-        from .fastapi import create_sendfn_router
+def create_sendfn_router(*args: Any, **kwargs: Any) -> Any:
+    """Create the optional FastAPI router without importing FastAPI eagerly."""
+    from .fastapi import create_sendfn_router as create_router
 
-        return create_sendfn_router
-    raise AttributeError(f"module 'sendfn.http' has no attribute {name!r}")
+    return create_router(*args, **kwargs)

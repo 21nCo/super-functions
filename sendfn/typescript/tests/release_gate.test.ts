@@ -30,6 +30,7 @@ describe('release gate metadata', () => {
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
     );
     const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const eventExample = readFileSync(new URL('../examples/event-handling.ts', import.meta.url), 'utf8');
 
     expect(packageJson.scripts).toMatchObject({
       build: 'tsup',
@@ -52,6 +53,9 @@ describe('release gate metadata', () => {
     expect(readme).toContain("import { sendfn, awsSesAdapter, consoleSmsAdapter } from 'sendfn';");
     expect(readme).toContain("import { apnsAdapter } from 'sendfn/adapters/apns';");
     expect(readme).toContain("app.post('/webhooks/aws-ses'");
+    expect(readme).toContain('Present only when awsSns.topicArns is configured');
+    expect(eventExample).toContain('AWS_SNS_TOPIC_ARN');
+    expect(eventExample).toContain('topicArns: [awsSnsTopicArn]');
     expect(readme).not.toContain('@sendfn/core');
     expect(readme).not.toContain('Twilio');
   });

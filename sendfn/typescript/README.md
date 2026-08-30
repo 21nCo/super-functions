@@ -108,7 +108,7 @@ app.listen(3000);
 // POST /devices/refresh  - Refresh a native/web device token
 // DELETE /devices        - Deactivate a device token
 // GET  /events           - Query communication events
-// POST /webhooks/aws-ses - Process verified SES lifecycle events
+// POST /webhooks/aws-ses - Present only when awsSns.topicArns is configured
 ```
 
 ## Configuration

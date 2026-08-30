@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   Attachment,
   AwsSesAdapter,
@@ -141,6 +141,20 @@ describe('EmailService', () => {
     expect(rawAdapter.records('communication_events')).toHaveLength(0);
   });
 
+  it('does not rewrite an accepted email as failed when event persistence fails', async () => {
+    vi.spyOn(db, 'recordEvent').mockRejectedValueOnce(new Error('event store unavailable'));
+    await expect(service.sendEmail({
+      userId: 'user-1',
+      to: 'user@example.com',
+      subject: 'Hello',
+      text: 'body',
+    })).rejects.toThrow('event store unavailable');
+    expect(rawAdapter.records('email_transactions')).toEqual([
+      expect.objectContaining({ status: 'sent', providerMessageId: 'msg-1' }),
+    ]);
+    expect(rawAdapter.records('communication_events')).toHaveLength(0);
+  });
+
   it('fails with stable template and validation errors before provider invocation', async () => {
     await expect(
       service.sendEmail({
@@ -277,13 +291,31 @@ describe('EmailService', () => {
     await expect(adapter.sendEmail({
       idempotencyKey: 'mailfn:draft:1', from: 'agent@example.com', to: ['to@example.com'],
       cc: ['cc@example.com'], bcc: ['hidden@example.com'], subject: 'Raw', text: 'body',
+      tags: { transactional: 'transactional' },
       attachments: [{ filename: 'proof"\r\nX-Injected: yes;.txt', content: Buffer.from('proof') }],
     })).resolves.toMatchObject({ success: true, providerMessageId: 'ses-raw' });
     expect(inputs[0].Destinations).toEqual(['to@example.com', 'cc@example.com', 'hidden@example.com']);
+    expect(inputs[0].Tags).toEqual([{ Name: 'transactional', Value: 'transactional' }]);
     const raw = Buffer.from(inputs[0].RawMessage.Data).toString('utf8');
     expect(raw).not.toContain('\nBcc:');
     expect(raw).not.toContain('\nX-Injected:');
     expect(raw).toContain('filename="proof___X-Injected: yes_.txt"');
+  });
+
+  it('forwards tags through the SES simple-send path', async () => {
+    const adapter = new AwsSesAdapter({ accessKeyId: 'key', secretAccessKey: 'secret', region: 'us-east-1' });
+    const inputs: any[] = [];
+    (adapter as any).sesClient = {
+      async send(command: { input: unknown }) {
+        inputs.push(command.input);
+        return { MessageId: 'ses-simple' };
+      },
+    };
+    await adapter.sendEmail({
+      from: 'agent@example.com', to: ['to@example.com'], subject: 'Simple', text: 'body',
+      tags: { campaign: 'spring' },
+    });
+    expect(inputs[0].Tags).toEqual([{ Name: 'campaign', Value: 'spring' }]);
   });
 
   it('surfaces retry exhaustion with a stable code', async () => {

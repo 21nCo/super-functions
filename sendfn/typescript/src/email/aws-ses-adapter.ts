@@ -71,6 +71,7 @@ export class AwsSesAdapter implements EmailProvider {
       },
       ConfigurationSetName: this.config.configurationSetName,
       ReplyToAddresses: params.replyTo ? [params.replyTo] : undefined,
+      Tags: Object.entries(params.tags ?? {}).map(([Name, Value]) => ({ Name, Value })),
     });
 
     const result = await this.sesClient.send(command);
@@ -149,6 +150,7 @@ export class AwsSesAdapter implements EmailProvider {
       RawMessage: { Data: Buffer.from(rawMessage) },
       Destinations: [...params.to, ...(params.cc ?? []), ...(params.bcc ?? [])],
       ConfigurationSetName: this.config.configurationSetName,
+      Tags: Object.entries(params.tags ?? {}).map(([Name, Value]) => ({ Name, Value })),
     });
 
     const result = await this.sesClient.send(command);
