@@ -6,6 +6,7 @@ import {
   createAdminDispatcher,
   createAdminRegistry,
   type AdminOperationContext,
+  validateAdminValue,
 } from "@superfunctions/admin";
 import { consoleSmsAdapter, sendfn, type PushProvider, type SendfnClient } from "sendfn";
 import {
@@ -105,6 +106,11 @@ describe("@sendfn/admin", () => {
     expect(sendFnAdminCapability.operations.find(
       (operation) => operation.id === "sendfn.device-tokens.deactivate",
     )?.redaction?.outputFields).toContain("deactivatedToken");
+    const emailOutput = sendFnAdminCapability.operations.find(
+      (operation) => operation.id === "sendfn.messages.send-email",
+    )?.outputSchema?.properties?.item;
+    expect(validateAdminValue(emailOutput?.properties?.to ?? {}, ["a@example.com", "b@example.com"]))
+      .toEqual([]);
   });
 
   it("uses the real SendFn template, suppression, and device services", async () => {

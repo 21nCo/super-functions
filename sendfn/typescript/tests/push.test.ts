@@ -499,6 +499,23 @@ describe('push and device phase 5 contracts', () => {
     ]);
   });
 
+  it('preserves accepted push counts when event persistence fails', async () => {
+    await deviceManager.registerDevice({ userId: 'bookkeeping-user', token: 'good', platform: 'android' });
+    const provider = new FakePushProvider('android-provider', 'android');
+    vi.spyOn(db, 'recordEvent').mockRejectedValueOnce(new Error('event store unavailable'));
+    const service = new PushService(new Map([['android', provider]]), db, deviceManager, {});
+
+    const result = await service.sendPush({ userId: 'bookkeeping-user', title: 'Hello', body: 'World' });
+
+    expect(result).toMatchObject({ status: 'sent', sentCount: 1, failedCount: 0 });
+    expect(result.metadata.bookkeepingErrors).toEqual([{
+      platform: 'android', provider: 'android-provider', stage: 'event:sent', error: 'event store unavailable',
+    }]);
+    expect(adapter.records('push_notifications')).toEqual([
+      expect.objectContaining({ status: 'sent', sentCount: 1, failedCount: 0 }),
+    ]);
+  });
+
   it('returns aggregate success when a later platform provider throws', async () => {
     await deviceManager.registerDevice({ userId: 'partial-platform-user', token: 'android-good', platform: 'android' });
     await deviceManager.registerDevice({ userId: 'partial-platform-user', token: 'ios-failed', platform: 'ios' });

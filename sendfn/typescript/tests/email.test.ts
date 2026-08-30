@@ -389,6 +389,28 @@ describe('EmailService', () => {
     expect(inputs[0].Tags).toEqual([{ Name: 'campaign', Value: 'spring' }]);
   });
 
+  it('MIME-encodes Unicode sender names in SES simple and raw messages', async () => {
+    const adapter = new AwsSesAdapter({ accessKeyId: 'key', secretAccessKey: 'secret', region: 'us-east-1' });
+    const inputs: any[] = [];
+    (adapter as any).sesClient = {
+      async send(command: { input: unknown }) {
+        inputs.push(command.input);
+        return { MessageId: `ses-${inputs.length}` };
+      },
+    };
+    const from = '"José" <agent@example.com>';
+    const encodedFrom = '=?UTF-8?B?Sm9zw6k=?= <agent@example.com>';
+
+    await adapter.sendEmail({ from, to: ['to@example.com'], subject: 'Simple', text: 'body' });
+    await adapter.sendEmail({
+      from, to: ['to@example.com'], subject: 'Raw', text: 'body',
+      attachments: [{ filename: 'proof.txt', content: Buffer.from('proof') }],
+    });
+
+    expect(inputs[0].Source).toBe(encodedFrom);
+    expect(Buffer.from(inputs[1].RawMessage.Data).toString('utf8')).toContain(`From: ${encodedFrom}\n`);
+  });
+
   it('surfaces retry exhaustion with a stable code', async () => {
     provider.responses = [
       { success: false, timestamp: new Date(), error: { code: 'Throttling', message: 'slow down', retryable: true } },

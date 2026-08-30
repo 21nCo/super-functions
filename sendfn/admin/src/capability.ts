@@ -51,6 +51,9 @@ const nullableDateSchema: AdminJsonSchema = { type: ["string", "null"] };
 const metadataSchema = { type: "object", additionalProperties: true } as const;
 const nullableMetadataSchema: AdminJsonSchema = { type: ["object", "null"], additionalProperties: true };
 const platformSchema = { type: "string", enum: ["ios", "android", "web"] } as const;
+const recipientOutputSchema: AdminJsonSchema = {
+  oneOf: [stringSchema, { type: "array", items: stringSchema, minItems: 1, maxItems: 1000 }],
+};
 
 const templateSchema: AdminObjectSchema = {
   type: "object",
@@ -72,7 +75,7 @@ const emailTransactionSchema: AdminObjectSchema = {
   properties: {
     id: stringSchema,
     userId: stringSchema,
-    to: stringSchema,
+    to: recipientOutputSchema,
     from: stringSchema,
     subject: { type: "string" },
     templateId: nullableStringSchema,

@@ -95,6 +95,15 @@ export class PushService {
     let logicalSentAt: Date | null = null;
     let firstProviderError: unknown;
     const providerErrors: Array<{ platform: Platform; provider: string; error: string }> = [];
+    const bookkeepingErrors: Array<{ platform: Platform; provider: string; stage: string; error: string }> = [];
+    const recordBookkeepingError = (platform: Platform, provider: string, stage: string, error: unknown): void => {
+      bookkeepingErrors.push({
+        platform,
+        provider,
+        stage,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    };
 
     for (const platform of platforms) {
         const pTokens = [...platformTokenSets.get(platform)!];
@@ -143,7 +152,7 @@ export class PushService {
              await this.adapter.updatePushNotification(notification.id, {
                 status: 'failed',
                 metadata: { ...platformMetadata, error: error.message }
-            });
+            }).catch((bookkeepingError) => recordBookkeepingError(platform, provider.name, 'notification:update-failed', bookkeepingError));
 
              if (this.options.eventTracking !== false) await this.adapter.recordEvent({
                 referenceId: notification.id,
@@ -156,7 +165,7 @@ export class PushService {
                 deviceToken: null,
                 metadata: { error: error.message },
                 eventTimestamp: new Date()
-            });
+            }).catch((bookkeepingError) => recordBookkeepingError(platform, provider.name, 'event:failed', bookkeepingError));
 
             aggregateFailedCount += pTokens.length;
             firstProviderError ??= error;
@@ -164,11 +173,17 @@ export class PushService {
             continue;
         }
 
+        const delivered = response.successCount > 0;
+        aggregateSentCount += response.successCount;
+        aggregateFailedCount += response.failedCount;
+        if (delivered) logicalNotificationId ??= notification.id;
+        if (!logicalSentAt) logicalSentAt = response.timestamp;
+
         if (response.invalidTokens.length > 0) {
-            await this.deviceManager.deactivateTokens(response.invalidTokens);
+            await this.deviceManager.deactivateTokens(response.invalidTokens)
+              .catch((error) => recordBookkeepingError(platform, provider.name, 'tokens:deactivate', error));
         }
 
-        const delivered = response.successCount > 0;
         await this.adapter.updatePushNotification(notification.id, {
             status: delivered ? 'sent' : 'failed',
             sentCount: response.successCount,
@@ -178,7 +193,7 @@ export class PushService {
                 ...platformMetadata,
                 results: response.results
             }
-        });
+        }).catch((error) => recordBookkeepingError(platform, provider.name, 'notification:update-sent', error));
 
         if (this.options.eventTracking !== false) await this.adapter.recordEvent({
             referenceId: notification.id,
@@ -194,14 +209,7 @@ export class PushService {
                 failedCount: response.failedCount
             },
             eventTimestamp: response.timestamp
-        });
-
-        aggregateSentCount += response.successCount;
-        aggregateFailedCount += response.failedCount;
-        if (delivered) logicalNotificationId ??= notification.id;
-        if (!logicalSentAt) {
-          logicalSentAt = response.timestamp;
-        }
+        }).catch((error) => recordBookkeepingError(platform, provider.name, 'event:sent', error));
     }
 
     logicalNotificationId ??= firstNotificationId;
@@ -220,6 +228,7 @@ export class PushService {
         ...(existingLogicalNotification?.metadata || {}),
         notificationIds: logicalMetadata.notificationIds,
         ...(providerErrors.length > 0 ? { providerErrors } : {}),
+        ...(bookkeepingErrors.length > 0 ? { bookkeepingErrors } : {}),
       },
     });
 

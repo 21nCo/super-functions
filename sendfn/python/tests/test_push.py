@@ -39,6 +39,7 @@ class FakePushProvider:
         self.active = 0
         self.observed_max_concurrency = 0
         self.send_calls = 0
+        self.requests: list[SendPushRequest] = []
 
     @property
     def name(self) -> str:
@@ -57,6 +58,7 @@ class FakePushProvider:
 
     async def send_push(self, request: SendPushRequest) -> SendPushResponse:
         self.send_calls += 1
+        self.requests.append(request)
         self.active += 1
         self.observed_max_concurrency = max(self.observed_max_concurrency, self.active)
         await asyncio.sleep(self.delay)
@@ -168,7 +170,9 @@ async def test_fcm_chunks_batches_at_500(monkeypatch: pytest.MonkeyPatch) -> Non
         def __init__(self, size: int) -> None:
             self.success_count = size
             self.failure_count = 0
-            self.responses = [type("Resp", (), {"success": True, "exception": None})() for _ in range(size)]
+            self.responses = [
+                type("Resp", (), {"success": True, "exception": None})() for _ in range(size)
+            ]
 
     def fake_send_each_for_multicast(message: Any) -> FakeResponse:
         chunk_sizes.append(len(message.tokens))
@@ -178,7 +182,9 @@ async def test_fcm_chunks_batches_at_500(monkeypatch: pytest.MonkeyPatch) -> Non
     provider._messaging.MulticastMessage = lambda **kwargs: type("Msg", (), kwargs)()
     provider._messaging.Notification = lambda **kwargs: type("Notification", (), kwargs)()
     provider._messaging.AndroidConfig = lambda **kwargs: type("AndroidConfig", (), kwargs)()
-    provider._messaging.AndroidNotification = lambda **kwargs: type("AndroidNotification", (), kwargs)()
+    provider._messaging.AndroidNotification = lambda **kwargs: type(
+        "AndroidNotification", (), kwargs
+    )()
     provider._messaging.WebpushConfig = lambda **kwargs: type("WebpushConfig", (), kwargs)()
 
     response = await provider.send_push(
@@ -236,30 +242,52 @@ async def test_fcm_applies_delivery_options_to_web_push(monkeypatch: pytest.Monk
         return function(*args)
 
     monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
-    response = type("Response", (), {
-        "success_count": 1,
-        "failure_count": 0,
-        "responses": [type("SendResponse", (), {"success": True, "exception": None})()],
-    })()
-    provider._messaging.send_each_for_multicast = lambda message: captured.append(message) or response
+    response = type(
+        "Response",
+        (),
+        {
+            "success_count": 1,
+            "failure_count": 0,
+            "responses": [type("SendResponse", (), {"success": True, "exception": None})()],
+        },
+    )()
+    provider._messaging.send_each_for_multicast = (
+        lambda message: captured.append(message) or response
+    )
     provider._messaging.MulticastMessage = lambda **kwargs: type("Msg", (), kwargs)()
     provider._messaging.Notification = lambda **kwargs: type("Notification", (), kwargs)()
     provider._messaging.AndroidConfig = lambda **kwargs: type("AndroidConfig", (), kwargs)()
-    provider._messaging.AndroidNotification = lambda **kwargs: type("AndroidNotification", (), kwargs)()
+    provider._messaging.AndroidNotification = lambda **kwargs: type(
+        "AndroidNotification", (), kwargs
+    )()
     provider._messaging.WebpushConfig = lambda **kwargs: type("WebpushConfig", (), kwargs)()
 
-    await provider.send_push(SendPushRequest(
-        device_tokens=["web-token"], title="Web", body="Push", platform="web",
-        ttl=60, collapse_key="thread-1", priority="high", sound="default",
-    ))
+    await provider.send_push(
+        SendPushRequest(
+            device_tokens=["web-token"],
+            title="Web",
+            body="Push",
+            platform="web",
+            ttl=60,
+            collapse_key="thread-1",
+            priority="high",
+            sound="default",
+        )
+    )
 
     assert captured[0].android is None
     assert captured[0].webpush.headers == {"TTL": "60", "Topic": "thread-1", "Urgency": "high"}
     assert captured[0].webpush.data == {"sound": "default"}
 
-    await provider.send_push(SendPushRequest(
-        device_tokens=["android-token"], title="Android", body="Push", platform="android", ttl=0,
-    ))
+    await provider.send_push(
+        SendPushRequest(
+            device_tokens=["android-token"],
+            title="Android",
+            body="Push",
+            platform="android",
+            ttl=0,
+        )
+    )
     assert captured[1].android.ttl == timedelta(seconds=0)
 
 
@@ -287,11 +315,13 @@ async def test_fcm_owns_a_named_app_without_reusing_the_host_default(
     await provider.initialize()
     await provider.close()
 
-    assert initialized == [{
-        "credential": ("credential", {"project_id": "sendfn"}),
-        "options": None,
-        "name": provider._app_name,
-    }]
+    assert initialized == [
+        {
+            "credential": ("credential", {"project_id": "sendfn"}),
+            "options": None,
+            "name": provider._app_name,
+        }
+    ]
     assert provider._app_name != "[DEFAULT]"
     assert deleted == [owned_app]
 
@@ -379,9 +409,15 @@ async def test_apns_uses_client_topic_and_reports_unsuccessful_responses() -> No
 async def test_push_service_returns_stable_platform_result_and_deactivates_invalid_tokens() -> None:
     db = MemoryAdapter()
     device_manager = DeviceTokenManager(db)
-    await device_manager.register_device(RegisterDeviceParams(userId="user-1", token="android-good", platform="android"))
-    await device_manager.register_device(RegisterDeviceParams(userId="user-1", token="ios-bad", platform="ios"))
-    await device_manager.register_device(RegisterDeviceParams(userId="user-1", token="web-good", platform="web"))
+    await device_manager.register_device(
+        RegisterDeviceParams(userId="user-1", token="android-good", platform="android")
+    )
+    await device_manager.register_device(
+        RegisterDeviceParams(userId="user-1", token="ios-bad", platform="ios")
+    )
+    await device_manager.register_device(
+        RegisterDeviceParams(userId="user-1", token="web-good", platform="web")
+    )
 
     service = PushService(
         providers={
@@ -417,6 +453,66 @@ async def test_push_service_returns_stable_platform_result_and_deactivates_inval
 
 
 @pytest.mark.asyncio
+async def test_push_service_deduplicates_shared_tokens_across_users() -> None:
+    db = MemoryAdapter()
+    device_manager = DeviceTokenManager(db)
+    await device_manager.register_device(
+        RegisterDeviceParams(userId="user-a", token="shared-token", platform="android")
+    )
+    await device_manager.register_device(
+        RegisterDeviceParams(userId="user-b", token="shared-token", platform="android")
+    )
+    provider = FakePushProvider("android-provider", "android")
+    service = PushService(
+        providers={"android": provider},
+        db=db,
+        device_manager=device_manager,
+    )
+
+    result = await service.send_push(
+        SendPushParams(userId=["user-a", "user-b"], title="Hello", body="World")
+    )
+
+    assert provider.requests[0].device_tokens == ["shared-token"]
+    assert result.device_tokens == ["shared-token"]
+
+
+@pytest.mark.asyncio
+async def test_push_service_preserves_provider_success_when_event_persistence_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = MemoryAdapter()
+    device_manager = DeviceTokenManager(db)
+    await device_manager.register_device(
+        RegisterDeviceParams(userId="user-1", token="android-good", platform="android")
+    )
+
+    async def fail_event(*_args: Any, **_kwargs: Any) -> Any:
+        raise RuntimeError("event store unavailable")
+
+    monkeypatch.setattr("sendfn.database.helpers.record_event", fail_event)
+    service = PushService(
+        providers={"android": FakePushProvider("android-provider", "android")},
+        db=db,
+        device_manager=device_manager,
+    )
+
+    result = await service.send_push(SendPushParams(userId="user-1", title="Hello", body="World"))
+
+    assert result.status == "sent"
+    assert result.sent_count == 1
+    assert result.failed_count == 0
+    assert result.metadata["bookkeepingErrors"] == [
+        {
+            "platform": "android",
+            "provider": "android-provider",
+            "stage": "event:sent",
+            "error": "event store unavailable",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_push_service_returns_persisted_partial_outcomes_after_provider_failures() -> None:
     db = MemoryAdapter()
     device_manager = DeviceTokenManager(db)
@@ -449,7 +545,10 @@ async def test_push_service_returns_persisted_partial_outcomes_after_provider_fa
     assert result.metadata["providerErrors"] == [
         {"platform": "ios", "provider": "ios-provider", "error": "APNS unavailable"}
     ]
-    assert [record["status"] for record in get_records(db, "push_notifications")] == ["sent", "failed"]
+    assert [record["status"] for record in get_records(db, "push_notifications")] == [
+        "sent",
+        "failed",
+    ]
 
 
 @pytest.mark.asyncio
@@ -470,9 +569,7 @@ async def test_push_service_preflights_all_platforms_before_sending() -> None:
     )
 
     with pytest.raises(SendfnError) as exc_info:
-        await service.send_push(
-            SendPushParams(userId="mixed-user", title="Hello", body="World")
-        )
+        await service.send_push(SendPushParams(userId="mixed-user", title="Hello", body="World"))
 
     assert str(exc_info.value) == "No push provider configured for platform ios"
     assert exc_info.value.retryable is False
@@ -494,9 +591,7 @@ async def test_push_service_honors_disabled_event_tracking() -> None:
         event_tracking=False,
     )
 
-    result = await service.send_push(
-        SendPushParams(userId="user-1", title="Hello", body="World")
-    )
+    result = await service.send_push(SendPushParams(userId="user-1", title="Hello", body="World"))
 
     assert result.status == "sent"
     assert get_records(db, "communication_events") == []
@@ -550,7 +645,9 @@ async def test_device_refresh_preserves_metadata_and_rejects_missing_tokens(
         )
 
     assert exc_info.value.code == "SENDFN_VALIDATION_ERROR"
-    assert str(exc_info.value) == "Old device token was not found for the supplied user and platform"
+    assert (
+        str(exc_info.value) == "Old device token was not found for the supplied user and platform"
+    )
 
     await device_manager.register_device(
         RegisterDeviceParams(
@@ -617,8 +714,8 @@ async def test_re_registration_cleanup_and_bulk_push_are_bounded() -> None:
     )
     await service.send_bulk_push(
         [
-          SendPushParams(userId=f"bulk-user-{index}", title="Hello", body="World")
-          for index in range(20)
+            SendPushParams(userId=f"bulk-user-{index}", title="Hello", body="World")
+            for index in range(20)
         ]
     )
 

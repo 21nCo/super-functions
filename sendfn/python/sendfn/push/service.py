@@ -55,15 +55,22 @@ class PushService:
         )
 
         # Normalize user IDs
-        user_ids = params.user_id if isinstance(params.user_id, list) else [params.user_id]
+        user_ids = list(
+            dict.fromkeys(params.user_id if isinstance(params.user_id, list) else [params.user_id])
+        )
 
         # Resolve user IDs to device tokens
         tokens: list[str] = []
         platform_tokens: dict[Platform, list[str]] = {}
+        platform_token_sets: dict[Platform, set[str]] = {}
 
         for user_id in user_ids:
             devices = await self.device_manager.get_active_devices(user_id)
             for device in devices:
+                seen_tokens = platform_token_sets.setdefault(device.platform, set())
+                if device.token in seen_tokens:
+                    continue
+                seen_tokens.add(device.token)
                 tokens.append(device.token)
                 if device.platform not in platform_tokens:
                     platform_tokens[device.platform] = []
@@ -110,6 +117,22 @@ class PushService:
         logical_sent_at: Optional[datetime] = None
         first_provider_error: Optional[Exception] = None
         provider_errors: list[dict[str, str]] = []
+        bookkeeping_errors: list[dict[str, str]] = []
+
+        def record_bookkeeping_error(
+            platform: Platform,
+            provider: str,
+            stage: str,
+            error: Exception,
+        ) -> None:
+            bookkeeping_errors.append(
+                {
+                    "platform": platform,
+                    "provider": provider,
+                    "stage": stage,
+                    "error": str(error),
+                }
+            )
 
         for platform in ordered_platforms:
             p_tokens = platform_tokens[platform]
@@ -139,10 +162,9 @@ class PushService:
             if first_notification_id is None:
                 first_notification_id = str(notification.id)
 
-            try:
-                # Send via provider
-                from .provider import SendPushRequest
+            from .provider import SendPushRequest
 
+            try:
                 response = await provider.send_push(
                     SendPushRequest(
                         device_tokens=p_tokens,
@@ -160,11 +182,68 @@ class PushService:
                     )
                 )
 
-                if response.invalid_tokens:
-                    await self.device_manager.deactivate_tokens(response.invalid_tokens)
+            except Exception as error:
+                try:
+                    await update_push_notification(
+                        self.db,
+                        str(notification.id),
+                        {
+                            "status": "failed",
+                            "metadata": {**(params.metadata or {}), "error": str(error)},
+                        },
+                    )
+                except Exception as bookkeeping_error:
+                    record_bookkeeping_error(
+                        platform, provider.name, "notification:update-failed", bookkeeping_error
+                    )
 
-                # Update record
-                delivered = response.success_count > 0
+                if self.event_tracking:
+                    try:
+                        await record_event(
+                            self.db,
+                            {
+                                "referenceId": str(notification.id),
+                                "referenceType": "push",
+                                "eventType": "failed",
+                                "provider": provider.name,
+                                "providerEventId": None,
+                                "recipientEmail": None,
+                                "recipientPhone": None,
+                                "deviceToken": None,
+                                "metadata": {"error": str(error)},
+                                "eventTimestamp": datetime.now(),
+                            },
+                        )
+                    except Exception as bookkeeping_error:
+                        record_bookkeeping_error(
+                            platform, provider.name, "event:failed", bookkeeping_error
+                        )
+
+                aggregate_failed_count += len(p_tokens)
+                if first_provider_error is None:
+                    first_provider_error = error
+                provider_errors.append(
+                    {"platform": platform, "provider": provider.name, "error": str(error)}
+                )
+                continue
+
+            delivered = response.success_count > 0
+            aggregate_sent_count += response.success_count
+            aggregate_failed_count += response.failed_count
+            if delivered and logical_notification_id is None:
+                logical_notification_id = str(notification.id)
+            if logical_sent_at is None:
+                logical_sent_at = response.timestamp
+
+            if response.invalid_tokens:
+                try:
+                    await self.device_manager.deactivate_tokens(response.invalid_tokens)
+                except Exception as bookkeeping_error:
+                    record_bookkeeping_error(
+                        platform, provider.name, "tokens:deactivate", bookkeeping_error
+                    )
+
+            try:
                 await update_push_notification(
                     self.db,
                     str(notification.id),
@@ -179,9 +258,13 @@ class PushService:
                         },
                     },
                 )
+            except Exception as bookkeeping_error:
+                record_bookkeeping_error(
+                    platform, provider.name, "notification:update-sent", bookkeeping_error
+                )
 
-                # Record event
-                if self.event_tracking:
+            if self.event_tracking:
+                try:
                     await record_event(
                         self.db,
                         {
@@ -200,50 +283,10 @@ class PushService:
                             "eventTimestamp": response.timestamp,
                         },
                     )
-
-                aggregate_sent_count += response.success_count
-                aggregate_failed_count += response.failed_count
-                if delivered and logical_notification_id is None:
-                    logical_notification_id = str(notification.id)
-                if logical_sent_at is None:
-                    logical_sent_at = response.timestamp
-
-            except Exception as error:
-                # Update notification as failed
-                await update_push_notification(
-                    self.db,
-                    str(notification.id),
-                    {
-                        "status": "failed",
-                        "metadata": {**(params.metadata or {}), "error": str(error)},
-                    },
-                )
-
-                # Record failed event
-                if self.event_tracking:
-                    await record_event(
-                        self.db,
-                        {
-                            "referenceId": str(notification.id),
-                            "referenceType": "push",
-                            "eventType": "failed",
-                            "provider": provider.name,
-                            "providerEventId": None,
-                            "recipientEmail": None,
-                            "recipientPhone": None,
-                            "deviceToken": None,
-                            "metadata": {"error": str(error)},
-                            "eventTimestamp": datetime.now(),
-                        },
+                except Exception as bookkeeping_error:
+                    record_bookkeeping_error(
+                        platform, provider.name, "event:sent", bookkeeping_error
                     )
-
-                aggregate_failed_count += len(p_tokens)
-                if first_provider_error is None:
-                    first_provider_error = error
-                provider_errors.append(
-                    {"platform": platform, "provider": provider.name, "error": str(error)}
-                )
-                continue
 
         logical_notification_id = logical_notification_id or first_notification_id
         if not logical_notification_id:
@@ -262,10 +305,15 @@ class PushService:
                 "failedCount": aggregate_failed_count,
                 "sentAt": logical_sent_at,
                 "metadata": {
-                    **(existing_logical_notification.metadata if existing_logical_notification else {}),
+                    **(
+                        existing_logical_notification.metadata
+                        if existing_logical_notification
+                        else {}
+                    ),
                     **(params.metadata or {}),
                     "notificationIds": notification_ids,
                     **({"providerErrors": provider_errors} if provider_errors else {}),
+                    **({"bookkeepingErrors": bookkeeping_errors} if bookkeeping_errors else {}),
                 },
             },
         )
@@ -274,9 +322,7 @@ class PushService:
             raise first_provider_error
         return logical_notification
 
-    async def send_bulk_push(
-        self, notifications: list[SendPushParams]
-    ) -> list[PushNotification]:
+    async def send_bulk_push(self, notifications: list[SendPushParams]) -> list[PushNotification]:
         """Send multiple push notifications.
 
         Args:

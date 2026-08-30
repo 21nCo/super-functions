@@ -14,6 +14,19 @@ import {
 } from '@aws-sdk/client-ses';
 import { isBareEmail } from './address';
 
+function encodeSesAddress(value: string): string {
+  if (/[\r\n]/.test(value)) throw new Error('Invalid sender address');
+  if (/^[\x00-\x7f]*$/.test(value)) return value;
+  const match = /^(.*?)(\s*<[^<>]+>)$/.exec(value);
+  if (!match) return value;
+  let displayName = match[1]!.trim();
+  if (displayName.startsWith('"') && displayName.endsWith('"')) {
+    displayName = displayName.slice(1, -1).replace(/\\([\\"])/g, '$1');
+  }
+  const encodedName = `=?UTF-8?B?${Buffer.from(displayName, 'utf8').toString('base64')}?=`;
+  return `${encodedName}${match[2]}`;
+}
+
 export class AwsSesAdapter implements EmailProvider {
   readonly name = 'aws-ses';
   readonly capabilities: EmailProviderCapabilities = {
@@ -56,7 +69,7 @@ export class AwsSesAdapter implements EmailProvider {
 
   private async sendSimpleEmail(params: SendEmailRequest): Promise<SendEmailResponse> {
     const command = new SendEmailCommand({
-      Source: params.from,
+      Source: encodeSesAddress(params.from),
       Destination: {
         ToAddresses: params.to,
         CcAddresses: params.cc,
@@ -89,7 +102,7 @@ export class AwsSesAdapter implements EmailProvider {
     let rawMessage = '';
 
     // Headers
-    rawMessage += `From: ${params.from}\n`;
+    rawMessage += `From: ${encodeSesAddress(params.from)}\n`;
     rawMessage += `To: ${params.to.join(', ')}\n`;
     if (params.cc?.length) rawMessage += `Cc: ${params.cc.join(', ')}\n`;
     rawMessage += `Subject: ${params.subject}\n`;
