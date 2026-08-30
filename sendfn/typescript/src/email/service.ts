@@ -106,7 +106,7 @@ export class EmailService {
     let response: SendEmailResponse;
     try {
       response = await this.sendWithRetry({
-        idempotencyKey: params.idempotencyKey,
+        idempotencyKey: params.idempotencyKey ? transaction.id : undefined,
         from: params.from ?? this.config.fromEmail,
         to: recipients.to,
         cc: recipients.cc,

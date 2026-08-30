@@ -82,6 +82,7 @@ export class PushService {
       });
     }
     let logicalNotificationId: string | null = null;
+    let firstNotificationId: string | null = null;
     let aggregateSentCount = 0;
     let aggregateFailedCount = 0;
     let logicalMetadata: Record<string, any> = {
@@ -112,9 +113,7 @@ export class PushService {
         });
 
         (logicalMetadata.notificationIds as string[]).push(notification.id);
-        if (!logicalNotificationId) {
-          logicalNotificationId = notification.id;
-        }
+        firstNotificationId ??= notification.id;
 
         let response: Awaited<ReturnType<PushProvider['sendPush']>>;
         try {
@@ -191,11 +190,13 @@ export class PushService {
 
         aggregateSentCount += response.successCount;
         aggregateFailedCount += response.failedCount;
+        if (delivered) logicalNotificationId ??= notification.id;
         if (!logicalSentAt) {
           logicalSentAt = response.timestamp;
         }
     }
 
+    logicalNotificationId ??= firstNotificationId;
     if (!logicalNotificationId) {
         throw new PushProviderError("Failed to process push for any platform");
     }

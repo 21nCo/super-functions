@@ -345,13 +345,15 @@ def create_sendfn_routes(
         """Add an email to the suppression list."""
         async def operation() -> dict[str, Any]:
             verify_admin(request, context)
-            body = await request.json()
+            from ..models import AddSuppressionRequest
+
+            body = AddSuppressionRequest.model_validate(await request.json())
             entry = await sendfn_client.add_to_suppression_list(
-                email=body["email"],
-                reason=body["reason"],
-                source=body.get("source", "manual"),
-                bounce_type=body.get("bounceType"),
-                metadata=body.get("metadata"),
+                email=str(body.email),
+                reason=body.reason,
+                source=body.source,
+                bounce_type=body.bounce_type,
+                metadata=body.metadata,
             )
             return entry.model_dump(mode="json")
 

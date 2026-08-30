@@ -444,6 +444,30 @@ describe('push and device phase 5 contracts', () => {
     ]);
   });
 
+  it('keeps a first-platform provider failure failed when a later platform succeeds', async () => {
+    await deviceManager.registerDevice({ userId: 'reverse-partial-user', token: 'android-failed', platform: 'android' });
+    await deviceManager.registerDevice({ userId: 'reverse-partial-user', token: 'ios-good', platform: 'ios' });
+    const androidProvider = new FakePushProvider('android-provider', 'android');
+    const iosProvider = new FakePushProvider('ios-provider', 'ios');
+    vi.spyOn(androidProvider, 'sendPush').mockRejectedValue(new Error('FCM unavailable'));
+    const service = new PushService(new Map([
+      ['android', androidProvider],
+      ['ios', iosProvider],
+    ]), db, deviceManager, {});
+
+    const result = await service.sendPush({
+      userId: 'reverse-partial-user',
+      title: 'Hello',
+      body: 'World',
+    });
+
+    expect(result).toMatchObject({ platform: 'ios', status: 'sent', sentCount: 1, failedCount: 1 });
+    expect(adapter.records('push_notifications')).toEqual([
+      expect.objectContaining({ platform: 'android', status: 'failed' }),
+      expect.objectContaining({ platform: 'ios', status: 'sent' }),
+    ]);
+  });
+
   it('validates device registrations before persistence', async () => {
     await expect(
       deviceManager.registerDevice({

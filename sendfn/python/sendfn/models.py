@@ -222,6 +222,18 @@ class Attachment(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class AddSuppressionRequest(BaseModel):
+    """Validated HTTP request for adding a suppression entry."""
+
+    email: EmailStr
+    reason: Literal["bounce", "complaint", "unsubscribe", "manual"]
+    source: str = "manual"
+    bounce_type: Optional[str] = Field(None, alias="bounceType")
+    metadata: Optional[dict[str, Any]] = None
+
+    model_config = {"populate_by_name": True}
+
+
 class SendEmailParams(BaseModel):
     """Parameters for sending an email."""
 

@@ -1,6 +1,9 @@
 """Email service regression tests."""
 
+import base64
 from datetime import datetime
+from email import policy
+from email.parser import Parser
 
 import pytest
 
@@ -8,6 +11,7 @@ from sendfn.database.memory import MemoryAdapter
 from sendfn.email.aws_ses import AwsSesProvider
 from sendfn.email.provider import (
     EmailProviderCapabilities,
+    SendEmailRequest,
     SendEmailResponse,
 )
 from sendfn.email.service import EmailService
@@ -304,3 +308,48 @@ def test_aws_ses_provider_uses_boto_error_codes_when_present() -> None:
     assert provider._is_retryable_error(rejected) is False
     assert provider._error_code(throttled) == "THROTTLING"
     assert provider._is_retryable_error(throttled) is True
+
+
+@pytest.mark.asyncio
+async def test_aws_ses_decodes_string_attachments_and_forwards_tags() -> None:
+    provider = AwsSesProvider(
+        AwsSesConfig(accessKeyId="key", secretAccessKey="secret", region="us-east-1")
+    )
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.simple_kwargs = None
+            self.raw_kwargs = None
+
+        def send_email(self, **kwargs):
+            self.simple_kwargs = kwargs
+            return {"MessageId": "simple"}
+
+        def send_raw_email(self, **kwargs):
+            self.raw_kwargs = kwargs
+            return {"MessageId": "raw"}
+
+    client = FakeClient()
+    provider._client = client
+    tags = {"campaign": "launch", "userId": "user-1"}
+    simple = SendEmailRequest(
+        from_email="from@example.com", to=["to@example.com"], subject="Simple",
+        html="<p>Simple</p>", tags=tags,
+    )
+    await provider._send_simple_email(simple)
+    assert client.simple_kwargs["Tags"] == [
+        {"Name": "campaign", "Value": "launch"},
+        {"Name": "userId", "Value": "user-1"},
+    ]
+
+    payload = b"binary\x00payload"
+    raw = SendEmailRequest(
+        from_email="from@example.com", to=["to@example.com"], subject="Raw",
+        html="<p>Raw</p>", tags=tags,
+        attachments=[Attachment(filename="payload.bin", content=base64.b64encode(payload).decode(), encoding="base64")],
+    )
+    await provider._send_raw_email(raw)
+    message = Parser(policy=policy.default).parsestr(client.raw_kwargs["RawMessage"]["Data"])
+    attachment = next(message.iter_attachments())
+    assert attachment.get_payload(decode=True) == payload
+    assert client.raw_kwargs["Tags"] == client.simple_kwargs["Tags"]

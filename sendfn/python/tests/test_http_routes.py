@@ -359,3 +359,25 @@ async def test_admin_route_returns_validation_error_envelope_for_bad_request_bod
         "requestId": "req_admin_invalid",
         "version": "v0",
     }
+
+
+@pytest.mark.asyncio
+async def test_suppression_route_validates_before_persistence() -> None:
+    client = Sendfn(SendfnConfig(database=MemoryAdapter()))
+    route = find_route(client, "/suppression")
+
+    for index, body in enumerate(([], {"reason": "manual"}, {"email": "invalid", "reason": "unknown"})):
+        request = FakeRequest(
+            method="POST",
+            path="/suppression",
+            headers={
+                "authorization": "Bearer top-secret",
+                "x-request-id": f"req_suppression_invalid_{index}",
+            },
+            json_body=body,
+        )
+        response = await route.handler(request, build_context(request))
+        assert response.status == 400
+        assert response.body["error"]["code"] == "SENDFN_VALIDATION_ERROR"
+
+    assert await client.export_suppression_list() == []

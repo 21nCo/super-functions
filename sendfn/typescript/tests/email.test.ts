@@ -211,6 +211,20 @@ describe('EmailService', () => {
     expect(provider.sendCalls).toBe(2);
   });
 
+  it('namespaces provider idempotency keys by user', async () => {
+    await service.sendEmail({
+      idempotencyKey: 'shared-key', userId: 'user-a', to: 'user@example.com', subject: 'One', text: 'body',
+    });
+    await service.sendEmail({
+      idempotencyKey: 'shared-key', userId: 'user-b', to: 'user@example.com', subject: 'Two', text: 'body',
+    });
+
+    expect(provider.requests.map((request) => request.idempotencyKey)).toEqual([
+      uuidv5(JSON.stringify(['user-a', 'shared-key']), IDEMPOTENCY_NAMESPACE),
+      uuidv5(JSON.stringify(['user-b', 'shared-key']), IDEMPOTENCY_NAMESPACE),
+    ]);
+  });
+
   it('enforces provider limits before sending', async () => {
     const recipients = Array.from({ length: 51 }, (_, index) => `user${index}@example.com`);
     const oversized: Attachment = {
@@ -363,7 +377,7 @@ describe('EmailService', () => {
     expect(replay.id).toBe(sent.id);
     expect(replay.providerMessageId).toBe('provider-idempotent');
     expect(provider.requests[0]).toMatchObject({
-      idempotencyKey: input.idempotencyKey, from: input.from, replyTo: input.replyTo,
+      idempotencyKey: sent.id, from: input.from, replyTo: input.replyTo,
       headers: input.headers, attachments: [expect.objectContaining({ filename: 'proof.txt' })],
     });
     expect(provider.sendCalls).toBe(1);

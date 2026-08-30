@@ -1,6 +1,7 @@
 """AWS SES email provider implementation."""
 
 import asyncio
+import base64
 import re
 from datetime import datetime
 from email.mime.application import MIMEApplication
@@ -177,6 +178,10 @@ class AwsSesProvider:
 
         if self.config.configuration_set_name:
             kwargs["ConfigurationSetName"] = self.config.configuration_set_name
+        if request.tags:
+            kwargs["Tags"] = [
+                {"Name": name, "Value": value} for name, value in request.tags.items()
+            ]
 
         client = self._client
         assert client is not None
@@ -208,11 +213,18 @@ class AwsSesProvider:
         # Add attachments
         if request.attachments:
             for attachment in request.attachments:
-                part = MIMEApplication(
-                    attachment.content
-                    if isinstance(attachment.content, bytes)
-                    else attachment.content.encode("utf-8")
-                )
+                content = attachment.content
+                if isinstance(content, str):
+                    encoding = (attachment.encoding or "utf-8").lower()
+                    if encoding == "base64":
+                        content = base64.b64decode(content, validate=True)
+                    elif encoding == "base64url":
+                        content = base64.urlsafe_b64decode(
+                            content + "=" * (-len(content) % 4)
+                        )
+                    else:
+                        content = content.encode("utf-8" if encoding == "utf8" else encoding)
+                part = MIMEApplication(content)
                 part.add_header(
                     "Content-Disposition",
                     "attachment",
@@ -237,6 +249,10 @@ class AwsSesProvider:
 
         if self.config.configuration_set_name:
             kwargs["ConfigurationSetName"] = self.config.configuration_set_name
+        if request.tags:
+            kwargs["Tags"] = [
+                {"Name": name, "Value": value} for name, value in request.tags.items()
+            ]
 
         client = self._client
         assert client is not None
