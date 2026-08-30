@@ -293,7 +293,7 @@ export class MemoryMailFnStore implements MailFnStore {
   async createWebhookWithQuota(webhook: Webhook, maxWebhooks: number): Promise<boolean> {
     if (this.webhooks.has(webhook.id)) return false;
     const activeCount = values(this.webhooks).filter(
-      (entry) => entry.projectId === webhook.projectId && entry.status !== 'disabled',
+      (entry) => entry.projectId === webhook.projectId && entry.status === 'active',
     ).length;
     if (activeCount >= maxWebhooks) return false;
     this.webhooks.set(webhook.id, copy(webhook));
@@ -379,6 +379,30 @@ export class MemoryMailFnStore implements MailFnStore {
     return values(this.events)
       .filter((event) => event.projectId === projectId && (!after || event.occurredAt > after))
       .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
+  }
+  async deleteTerminalWebhookDeliveriesBefore(projectId: string, before: string): Promise<number> {
+    let deleted = 0;
+    for (const [id, delivery] of this.webhookDeliveries) {
+      const webhook = this.webhooks.get(delivery.webhookId);
+      if (webhook?.projectId === projectId && ['delivered', 'dead_letter'].includes(delivery.status) && delivery.updatedAt <= before) {
+        this.webhookDeliveries.delete(id);
+        deleted += 1;
+      }
+    }
+    return deleted;
+  }
+  async deleteEventsBefore(projectId: string, before: string): Promise<number> {
+    const retryEventIds = new Set(values(this.webhookDeliveries)
+      .filter((delivery) => delivery.status === 'pending' || delivery.status === 'failed')
+      .map((delivery) => delivery.eventId));
+    let deleted = 0;
+    for (const [id, event] of this.events) {
+      if (event.projectId === projectId && event.occurredAt <= before && !retryEventIds.has(id)) {
+        this.events.delete(id);
+        deleted += 1;
+      }
+    }
+    return deleted;
   }
   async appendAudit(event: AuditEvent): Promise<void> {
     this.audits.set(event.id, copy(event));

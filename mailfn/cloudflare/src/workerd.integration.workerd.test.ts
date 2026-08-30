@@ -9,7 +9,7 @@ import {
 } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { MailDomain, ParseJob, Webhook } from '@mailfn/core';
+import type { MailDomain, Message, ParseJob, Webhook } from '@mailfn/core';
 import type { D1Database, Queue, R2Bucket } from './bindings.js';
 import { D1MailFnStore } from './d1-store.js';
 import { applyMailFnMigrations } from './migrations.js';
@@ -53,6 +53,30 @@ describe('MailFn in workerd', () => {
         .bind(entry.id, entry.projectId, 'shared.example.com', entry.createdAt, entry.createdAt, JSON.stringify(entry))
         .run();
     }
+    for (const projectId of ['prj_1', 'prj_2']) {
+      await env.MAILFN_DB.prepare(`INSERT OR REPLACE INTO mailfn_projects(
+        id, slug, display_name, status, default_retention_policy, data_region, created_at, updated_at, data_json
+      ) VALUES (?, ?, ?, 'active', '{}', 'global', ?, ?, '{}')`)
+        .bind(projectId, projectId, projectId, '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z')
+        .run();
+    }
+    for (const inbox of [
+      { id: 'inb_owner', projectId: 'prj_1', address: 'owner@shared.example.com' },
+      { id: 'inb_conflict', projectId: 'prj_2', address: 'conflict@shared.example.com' },
+    ]) {
+      await env.MAILFN_DB.prepare(`INSERT OR REPLACE INTO mailfn_inboxes(
+        id, project_id, address, kind, status, created_at, updated_at, data_json
+      ) VALUES (?, ?, ?, 'stable', 'active', ?, ?, ?)`)
+        .bind(
+          inbox.id,
+          inbox.projectId,
+          inbox.address,
+          '2026-08-29T00:00:00.000Z',
+          '2026-08-29T00:00:00.000Z',
+          JSON.stringify({ ...inbox, kind: 'stable', status: 'active' }),
+        )
+        .run();
+    }
 
     await expect(applyMailFnMigrations(env.MAILFN_DB)).resolves.toBeUndefined();
     const domains = await env.MAILFN_DB.prepare(
@@ -65,6 +89,30 @@ describe('MailFn in workerd', () => {
     await expect(env.MAILFN_DB.prepare(
       'SELECT version FROM mailfn_schema_migrations WHERE version = 2',
     ).first()).resolves.toEqual({ version: 2 });
+    await expect(env.MAILFN_DB.prepare(
+      'SELECT id, status FROM mailfn_inboxes WHERE id IN (?, ?) ORDER BY id',
+    ).bind('inb_owner', 'inb_conflict').all()).resolves.toMatchObject({
+      results: [
+        { id: 'inb_conflict', status: 'deleted' },
+        { id: 'inb_owner', status: 'active' },
+      ],
+    });
+
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const message = (id: string, projectId: string, inboxId: string, envelopeTo: string): Message => ({
+      id, projectId, inboxId, providerDeliveryId: id, envelopeFrom: 'sender@example.com', envelopeTo,
+      from: [{ address: 'sender@example.com' }], to: [{ address: envelopeTo }], cc: [], bcc: [], replyTo: [],
+      subject: 'Migration delivery', receivedAt: '2026-08-30T00:00:00.000Z', headers: {}, rawObjectKey: `raw/${id}`,
+      rawRetentionExpiresAt: '2026-09-01T00:00:00.000Z', attachmentRetentionExpiresAt: '2026-09-01T00:00:00.000Z',
+      references: [], authenticationResults: {}, sizeBytes: 1, status: 'pending', labels: [],
+      retentionExpiresAt: '2026-09-01T00:00:00.000Z', createdAt: '2026-08-30T00:00:00.000Z', updatedAt: '2026-08-30T00:00:00.000Z',
+    });
+    await expect(store.createInboundMessageIfInboxActive(message(
+      'msg_owner', 'prj_1', 'inb_owner', 'owner@shared.example.com',
+    ))).resolves.toBe(true);
+    await expect(store.createInboundMessageIfInboxActive(message(
+      'msg_conflict', 'prj_2', 'inb_conflict', 'conflict@shared.example.com',
+    ))).resolves.toBe(false);
   });
 
   it('runs the Worker fetch surface with real workerd bindings', async () => {

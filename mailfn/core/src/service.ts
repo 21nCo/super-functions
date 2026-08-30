@@ -1574,7 +1574,13 @@ export class MailFn {
     await this.authorize(actor, 'domain:manage', domain.projectId);
     if (domain.status === 'disabled' && !domain.routingRuleId) return domain;
     if (domain.status === 'disabled') {
-      await this.domainAdapter?.disableRouting(domain);
+      if (!this.domainAdapter) throw new MailFnError({
+        code: 'MAILFN_DOMAIN_ROUTING_FAILED',
+        message: 'Domain routing teardown requires the configured provider adapter',
+        status: 503,
+        retryable: true,
+      });
+      await this.domainAdapter.disableRouting(domain);
       const reconciled = { ...domain, routingRuleId: undefined, updatedAt: this.now() };
       await this.store.saveDomain(reconciled);
       return reconciled;
@@ -1582,7 +1588,10 @@ export class MailFn {
     const disabling = { ...domain, status: 'disabling' as const, updatedAt: this.now() };
     await this.store.saveDomain(disabling);
     try {
-      await this.domainAdapter?.disableRouting(disabling);
+      if (disabling.routingRuleId && !this.domainAdapter) {
+        throw new Error('MAILFN_DOMAIN_ADAPTER_UNAVAILABLE');
+      }
+      if (disabling.routingRuleId) await this.domainAdapter!.disableRouting(disabling);
     } catch (cause) {
       throw new MailFnError({
         code: 'MAILFN_DOMAIN_ROUTING_FAILED',
@@ -1608,7 +1617,14 @@ export class MailFn {
   }
 
   public async runRetention(projectId?: string): Promise<RetentionResult> {
-    const result: RetentionResult = { expiredInboxes: 0, deletedMessages: 0, deletedObjects: 0, auditEventsDeleted: 0 };
+    const result: RetentionResult = {
+      expiredInboxes: 0,
+      deletedMessages: 0,
+      deletedObjects: 0,
+      auditEventsDeleted: 0,
+      eventRecordsDeleted: 0,
+      webhookDeliveriesDeleted: 0,
+    };
     const projects = projectId ? [await this.requireProject(projectId)] : await this.store.listProjects();
     const now = this.now();
     for (const project of projects) {
@@ -1675,6 +1691,11 @@ export class MailFn {
         }
       }
       if (!compliance?.retentionLocked) {
+        const historyCutoff = new Date(
+          Date.parse(now) - project.defaultRetentionPolicy.auditTtlSeconds * 1000,
+        ).toISOString();
+        result.webhookDeliveriesDeleted += await this.store.deleteTerminalWebhookDeliveriesBefore(project.id, historyCutoff);
+        result.eventRecordsDeleted += await this.store.deleteEventsBefore(project.id, historyCutoff);
         result.auditEventsDeleted += await this.store.deleteExpiredAudits(project.id, now);
       }
     }

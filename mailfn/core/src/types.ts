@@ -553,6 +553,8 @@ export interface RetentionResult {
   deletedMessages: number;
   deletedObjects: number;
   auditEventsDeleted: number;
+  eventRecordsDeleted: number;
+  webhookDeliveriesDeleted: number;
 }
 
 export interface PublicPlatformPolicy {

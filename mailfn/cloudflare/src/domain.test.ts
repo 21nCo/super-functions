@@ -75,11 +75,25 @@ describe('CloudflareDomainAdapter', () => {
   });
 
   it('treats an already-missing routing rule as an idempotent teardown', async () => {
-    const fetcher = vi.fn(async () => Response.json({ success: false, result: null, errors: [{ code: 1001, message: 'missing' }] }, { status: 404 }));
+    const fetcher = vi.fn(async () => Response.json({ success: false, result: null, errors: [{ code: 1001, message: 'Email routing rule not found' }] }, { status: 404 }));
     const adapter = new CloudflareDomainAdapter({
       apiToken: 'secret', zoneId: 'zone_1', zoneName: 'mail.example.com', workerName: 'mailfn', fetch: fetcher,
     });
     await expect(adapter.disableRouting({ ...domain, status: 'disabled', routingRuleId: 'missing' })).resolves.toBeUndefined();
+  });
+
+  it('does not treat unrelated Cloudflare 404 responses as completed teardown', async () => {
+    const fetcher = vi.fn(async () => Response.json({
+      success: false,
+      result: null,
+      errors: [{ code: 7003, message: 'Could not route to the configured zone' }],
+    }, { status: 404 }));
+    const adapter = new CloudflareDomainAdapter({
+      apiToken: 'secret', zoneId: 'stale-zone', zoneName: 'mail.example.com', workerName: 'mailfn', fetch: fetcher,
+    });
+
+    await expect(adapter.disableRouting({ ...domain, routingRuleId: 'rule-live' }))
+      .rejects.toThrow('MAILFN_CLOUDFLARE_API_FAILED:7003');
   });
 
   it('rejects a domain that is not the exact authorized Cloudflare zone', async () => {

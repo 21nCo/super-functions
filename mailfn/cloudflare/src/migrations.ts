@@ -89,6 +89,19 @@ export const MAILFN_D1_MIGRATIONS = [
     WHERE owner.domain = losing.domain
     ORDER BY owner.created_at ASC, owner.id ASC LIMIT 1
   )`,
+  `UPDATE mailfn_inboxes
+   SET status = 'deleted',
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+       data_json = json_set(
+         data_json,
+         '$.status', 'deleted',
+         '$.updatedAt', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+       )
+   WHERE EXISTS (
+     SELECT 1 FROM mailfn_domain_conflicts AS conflict
+     WHERE conflict.project_id = mailfn_inboxes.project_id
+       AND lower(substr(mailfn_inboxes.address, instr(mailfn_inboxes.address, '@') + 1)) = lower(conflict.domain)
+   )`,
   `DELETE FROM mailfn_domains
    WHERE id IN (SELECT domain_id FROM mailfn_domain_conflicts)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS mailfn_domains_domain_unique ON mailfn_domains(domain)`,

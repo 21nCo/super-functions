@@ -663,6 +663,32 @@ describe('MailFn domain service', () => {
     expect(await context.store.getMessage(message.id)).not.toBeNull();
   });
 
+  it('prunes terminal webhook delivery history and events outside the audit retention window', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock, retentionPolicy: { auditTtlSeconds: 1 } });
+    await context.store.saveWebhook({
+      id: 'whk_history', projectId: context.project.id, url: 'https://example.test/hook',
+      eventTypes: ['message.received'], secretHash: 'hash', status: 'active', consecutiveFailures: 0,
+      createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString(),
+    });
+    await context.store.appendEvent({
+      id: 'evt_history', version: 1, type: 'message.received', projectId: context.project.id,
+      occurredAt: clock.now().toISOString(), payload: {},
+    });
+    await context.store.saveWebhookDelivery({
+      id: 'delivery_history', webhookId: 'whk_history', eventId: 'evt_history', attempt: 1,
+      status: 'delivered', createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString(),
+    });
+    clock.advance(2_000);
+
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({
+      webhookDeliveriesDeleted: 1,
+      eventRecordsDeleted: 1,
+    });
+    await expect(context.store.listWebhookDeliveries('whk_history')).resolves.toEqual([]);
+    await expect(context.store.listEvents(context.project.id)).resolves.toEqual([]);
+  });
+
   it('persists the expiring inbox audit clock independently from stable project audits', async () => {
     const clock = new MutableClock();
     const context = await setup({ clock });
@@ -1022,6 +1048,35 @@ describe('MailFn domain service', () => {
     await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({
       status: 'disabling',
       routingRuleId: 'routing-still-live',
+    });
+  });
+
+  it('preserves the routing handle when the provider adapter is unavailable during retry', async () => {
+    const context = await setup({
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'routing-needs-adapter' }),
+        disableRouting: async () => undefined,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'adapter-retry.example.com');
+    await context.mailfn.verifyDomain(context.admin, pending.id);
+    const withoutAdapter = new MailFn({
+      store: context.store,
+      objects: context.objects,
+      defaultDomain: 'inbound.example.com',
+      secretProtector: noOpSecretProtector,
+    });
+
+    await expect(withoutAdapter.disableDomain(context.admin, pending.id)).rejects.toMatchObject({
+      code: 'MAILFN_DOMAIN_ROUTING_FAILED', retryable: true,
+    });
+    await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({
+      status: 'disabling', routingRuleId: 'routing-needs-adapter',
+    });
+    await expect(withoutAdapter.disableDomain(context.admin, pending.id)).rejects.toMatchObject({
+      code: 'MAILFN_DOMAIN_ROUTING_FAILED', retryable: true,
     });
   });
 

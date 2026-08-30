@@ -79,8 +79,18 @@ describe('D1MailFnStore', () => {
       secretHash: 'hash', status: 'active', consecutiveFailures: 0, createdAt: now, updatedAt: now,
     } as Webhook, 3);
 
-    expect(database.statements[0]?.query).toContain("SELECT COUNT(*) FROM mailfn_webhooks WHERE project_id = ? AND status <> 'disabled'");
+    expect(database.statements[0]?.query).toContain("SELECT COUNT(*) FROM mailfn_webhooks WHERE project_id = ? AND status = 'active'");
     expect(database.statements[0]?.values.slice(-2)).toEqual(['prj_1', 3]);
+  });
+
+  it('prunes only terminal webhook deliveries and events that are not needed for retries', async () => {
+    const database = new RecordingDatabase();
+    const store = new D1MailFnStore(database);
+    await store.deleteTerminalWebhookDeliveriesBefore('prj_1', '2026-08-30T00:00:00.000Z');
+    await store.deleteEventsBefore('prj_1', '2026-08-30T00:00:00.000Z');
+
+    expect(database.statements[0]?.query).toContain("delivery.status IN ('delivered', 'dead_letter')");
+    expect(database.statements[1]?.query).toContain("delivery.status IN ('pending', 'failed')");
   });
 
   it('compares received filters as normalized instants', async () => {

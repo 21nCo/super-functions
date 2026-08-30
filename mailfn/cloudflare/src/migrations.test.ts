@@ -19,6 +19,8 @@ describe('MailFn D1 schema', () => {
     expect(sql).toContain('mailfn_messages_fts USING fts5');
     expect(sql).toContain('mailfn_webhook_deliveries(webhook_id, created_at)');
     expect(sql).toContain('resolved_owner_domain_id');
+    expect(sql).toContain("SET status = 'deleted'");
+    expect(sql).toContain('conflict.project_id = mailfn_inboxes.project_id');
     expect(sql).toContain('DELETE FROM mailfn_domains');
   });
 });

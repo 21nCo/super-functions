@@ -112,6 +112,8 @@ export interface MailFnStore {
 
   appendEvent(event: MailFnEvent): Promise<void>;
   listEvents(projectId: string, after?: string): Promise<MailFnEvent[]>;
+  deleteEventsBefore(projectId: string, before: string): Promise<number>;
+  deleteTerminalWebhookDeliveriesBefore(projectId: string, before: string): Promise<number>;
   appendAudit(event: AuditEvent): Promise<void>;
   listAudits(projectId: string, after?: string): Promise<AuditEvent[]>;
   deleteExpiredAudits(projectId: string, now: string): Promise<number>;

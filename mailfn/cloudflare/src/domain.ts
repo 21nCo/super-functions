@@ -123,8 +123,11 @@ export class CloudflareDomainAdapter implements MailFnDomainAdapter {
         ...init.headers,
       },
     });
-    if (ignoreNotFound && response.status === 404) return undefined as T;
     const body = (await response.json()) as CloudflareResponse<T>;
+    if (
+      ignoreNotFound && response.status === 404 &&
+      body.errors?.some((error) => error.code === 1001 && /(?:routing\s+)?rule.*not found|not found.*(?:routing\s+)?rule/i.test(error.message))
+    ) return undefined as T;
     if (!response.ok || !body.success) {
       throw new Error(`MAILFN_CLOUDFLARE_API_FAILED:${body.errors?.map((error) => error.code).join(',') ?? response.status}`);
     }

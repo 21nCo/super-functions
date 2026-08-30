@@ -459,7 +459,7 @@ export class D1MailFnStore implements MailFnStore {
     const result = await bind(this.database.prepare(
       `INSERT INTO mailfn_webhooks(id, project_id, inbox_id, url, event_types, secret_hash, status, created_at, updated_at, data_json)
        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-       WHERE (SELECT COUNT(*) FROM mailfn_webhooks WHERE project_id = ? AND status <> 'disabled') < ?`,
+       WHERE (SELECT COUNT(*) FROM mailfn_webhooks WHERE project_id = ? AND status = 'active') < ?`,
     ), [
       value.id, value.projectId, value.inboxId ?? null, value.url, JSON.stringify(value.eventTypes), value.secretHash,
       value.status, value.createdAt, value.updatedAt, json(value), value.projectId, maxWebhooks,
@@ -594,6 +594,28 @@ export class D1MailFnStore implements MailFnStore {
     return after
       ? this.many('SELECT data_json FROM mailfn_events WHERE project_id = ? AND occurred_at > ? ORDER BY occurred_at', [projectId, after])
       : this.many('SELECT data_json FROM mailfn_events WHERE project_id = ? ORDER BY occurred_at', [projectId]);
+  }
+  async deleteTerminalWebhookDeliveriesBefore(projectId: string, before: string): Promise<number> {
+    const ids = await this.rawMany<{ id: string }>(
+      `SELECT delivery.id FROM mailfn_webhook_deliveries AS delivery
+       JOIN mailfn_webhooks AS webhook ON webhook.id = delivery.webhook_id
+       WHERE webhook.project_id = ? AND delivery.status IN ('delivered', 'dead_letter') AND delivery.updated_at <= ?`,
+      [projectId, before],
+    );
+    if (ids.length) await this.database.batch(ids.map(({ id }) => this.database.prepare('DELETE FROM mailfn_webhook_deliveries WHERE id = ?').bind(id)));
+    return ids.length;
+  }
+  async deleteEventsBefore(projectId: string, before: string): Promise<number> {
+    const ids = await this.rawMany<{ id: string }>(
+      `SELECT event.id FROM mailfn_events AS event
+       WHERE event.project_id = ? AND event.occurred_at <= ? AND NOT EXISTS (
+         SELECT 1 FROM mailfn_webhook_deliveries AS delivery
+         WHERE delivery.event_id = event.id AND delivery.status IN ('pending', 'failed')
+       )`,
+      [projectId, before],
+    );
+    if (ids.length) await this.database.batch(ids.map(({ id }) => this.database.prepare('DELETE FROM mailfn_events WHERE id = ?').bind(id)));
+    return ids.length;
   }
   async appendAudit(value: AuditEvent): Promise<void> {
     const result = await auditInsert(this.database, value, true).run();
