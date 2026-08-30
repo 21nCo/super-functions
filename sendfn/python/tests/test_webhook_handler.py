@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import base64
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.x509.oid import NameOID
 
 from sendfn.database.helpers import create_email_transaction, get_suppression_list_entry
 from sendfn.database.memory import MemoryAdapter
@@ -233,6 +238,34 @@ async def test_verifier_rejects_invalid_hosts_stale_timestamps_and_malformed_env
             )
         )
     assert untrusted_topic.value.code == "SENDFN_WEBHOOK_MESSAGE_INVALID"
+
+
+def test_default_sns_verifier_checks_rsa_signatures_without_an_openssl_process() -> None:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "sns.amazonaws.com")])
+    now = datetime.now(timezone.utc)
+    certificate = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(private_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=1))
+        .not_valid_after(now + timedelta(days=1))
+        .sign(private_key, hashes.SHA256())
+    )
+    canonical = "Message\nhello\n"
+    signature = private_key.sign(canonical.encode(), padding.PKCS1v15(), hashes.SHA1())
+    encoded_signature = base64.b64encode(signature).decode()
+    certificate_pem = certificate.public_bytes(serialization.Encoding.PEM).decode()
+    verifier = AwsSnsVerifier(topic_arns=[])
+
+    assert verifier._default_verify_signature(canonical, encoded_signature, certificate_pem)
+    assert not verifier._default_verify_signature(
+        f"{canonical}tampered",
+        encoded_signature,
+        certificate_pem,
+    )
 
 
 @pytest.mark.asyncio

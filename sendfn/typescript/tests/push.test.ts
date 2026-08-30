@@ -417,6 +417,33 @@ describe('push and device phase 5 contracts', () => {
     ]);
   });
 
+  it('returns aggregate success when a later platform provider throws', async () => {
+    await deviceManager.registerDevice({ userId: 'partial-platform-user', token: 'android-good', platform: 'android' });
+    await deviceManager.registerDevice({ userId: 'partial-platform-user', token: 'ios-failed', platform: 'ios' });
+    const androidProvider = new FakePushProvider('android-provider', 'android');
+    const iosProvider = new FakePushProvider('ios-provider', 'ios');
+    vi.spyOn(iosProvider, 'sendPush').mockRejectedValue(new Error('APNS unavailable'));
+    const service = new PushService(new Map([
+      ['android', androidProvider],
+      ['ios', iosProvider],
+    ]), db, deviceManager, {});
+
+    const result = await service.sendPush({
+      userId: 'partial-platform-user',
+      title: 'Hello',
+      body: 'World',
+    });
+
+    expect(result).toMatchObject({ status: 'sent', sentCount: 1, failedCount: 1 });
+    expect(result.metadata).toMatchObject({
+      providerErrors: [{ platform: 'ios', provider: 'ios-provider', error: 'APNS unavailable' }],
+    });
+    expect(adapter.records('push_notifications')).toEqual([
+      expect.objectContaining({ platform: 'android', status: 'sent' }),
+      expect.objectContaining({ platform: 'ios', status: 'failed' }),
+    ]);
+  });
+
   it('validates device registrations before persistence', async () => {
     await expect(
       deviceManager.registerDevice({

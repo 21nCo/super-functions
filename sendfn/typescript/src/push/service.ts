@@ -89,6 +89,8 @@ export class PushService {
       notificationIds: [] as string[],
     };
     let logicalSentAt: Date | null = null;
+    let firstProviderError: unknown;
+    const providerErrors: Array<{ platform: Platform; provider: string; error: string }> = [];
 
     for (const platform of platforms) {
         const pTokens = platformTokens.get(platform)!;
@@ -114,8 +116,9 @@ export class PushService {
           logicalNotificationId = notification.id;
         }
 
+        let response: Awaited<ReturnType<PushProvider['sendPush']>>;
         try {
-            const response = await provider.sendPush({
+            response = await provider.sendPush({
                 deviceTokens: pTokens,
                 title: params.title,
                 body: params.body,
@@ -128,46 +131,6 @@ export class PushService {
                 collapseKey: params.collapseKey,
                 category: params.category
             });
-
-            if (response.invalidTokens.length > 0) {
-                await this.deviceManager.deactivateTokens(response.invalidTokens);
-            }
-
-            // Update record
-            const delivered = response.successCount > 0;
-            await this.adapter.updatePushNotification(notification.id, {
-                status: delivered ? 'sent' : 'failed',
-                sentCount: response.successCount,
-                failedCount: response.failedCount,
-                sentAt: response.timestamp,
-                metadata: {
-                    ...params.metadata,
-                    results: response.results
-                }
-            });
-
-            // Record event
-            if (this.options.eventTracking !== false) await this.adapter.recordEvent({
-                referenceId: notification.id,
-                referenceType: 'push',
-                eventType: delivered ? 'sent' : 'failed',
-                provider: provider.name,
-                providerEventId: null,
-                recipientEmail: null,
-                recipientPhone: null,
-                deviceToken: null, // Multiple tokens
-                metadata: {
-                    successCount: response.successCount,
-                    failedCount: response.failedCount
-                },
-                eventTimestamp: response.timestamp
-            });
-
-            aggregateSentCount += response.successCount;
-            aggregateFailedCount += response.failedCount;
-            if (!logicalSentAt) {
-              logicalSentAt = response.timestamp;
-            }
 
         } catch (error: any) {
              await this.adapter.updatePushNotification(notification.id, {
@@ -188,7 +151,48 @@ export class PushService {
                 eventTimestamp: new Date()
             });
 
-            throw error;
+            aggregateFailedCount += pTokens.length;
+            firstProviderError ??= error;
+            providerErrors.push({ platform, provider: provider.name, error: error.message });
+            continue;
+        }
+
+        if (response.invalidTokens.length > 0) {
+            await this.deviceManager.deactivateTokens(response.invalidTokens);
+        }
+
+        const delivered = response.successCount > 0;
+        await this.adapter.updatePushNotification(notification.id, {
+            status: delivered ? 'sent' : 'failed',
+            sentCount: response.successCount,
+            failedCount: response.failedCount,
+            sentAt: response.timestamp,
+            metadata: {
+                ...params.metadata,
+                results: response.results
+            }
+        });
+
+        if (this.options.eventTracking !== false) await this.adapter.recordEvent({
+            referenceId: notification.id,
+            referenceType: 'push',
+            eventType: delivered ? 'sent' : 'failed',
+            provider: provider.name,
+            providerEventId: null,
+            recipientEmail: null,
+            recipientPhone: null,
+            deviceToken: null,
+            metadata: {
+                successCount: response.successCount,
+                failedCount: response.failedCount
+            },
+            eventTimestamp: response.timestamp
+        });
+
+        aggregateSentCount += response.successCount;
+        aggregateFailedCount += response.failedCount;
+        if (!logicalSentAt) {
+          logicalSentAt = response.timestamp;
         }
     }
 
@@ -205,9 +209,13 @@ export class PushService {
       metadata: {
         ...(existingLogicalNotification?.metadata || {}),
         ...logicalMetadata,
+        ...(providerErrors.length > 0 ? { providerErrors } : {}),
       },
     });
 
+    if (aggregateSentCount === 0 && firstProviderError) {
+      throw firstProviderError;
+    }
     return logicalNotification;
   }
 

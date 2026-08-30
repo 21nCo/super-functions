@@ -25,6 +25,7 @@ classifiers = [
   "Topic :: Communications :: Email",
 ]
 dependencies = [
+  "cryptography>=42.0.0",
   "pydantic>=2.5.0",
   "email-validator>=2.0.0",
   "superfunctions>=0.1.1,<0.2.0",

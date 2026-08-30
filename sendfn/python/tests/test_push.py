@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -11,7 +13,7 @@ import pytest
 from sendfn._concurrency import map_with_concurrency
 from sendfn.database.memory import MemoryAdapter
 from sendfn.errors import SendfnError, ValidationError
-from sendfn.models import RegisterDeviceParams, SendPushParams
+from sendfn.models import FcmConfig, RegisterDeviceParams, SendPushParams
 from sendfn.push.apns import ApnsProvider
 from sendfn.push.device_manager import DeviceTokenManager
 from sendfn.push.fcm import FcmProvider
@@ -36,6 +38,7 @@ class FakePushProvider:
         self.delay = delay
         self.active = 0
         self.observed_max_concurrency = 0
+        self.send_calls = 0
 
     @property
     def name(self) -> str:
@@ -53,6 +56,7 @@ class FakePushProvider:
         return None
 
     async def send_push(self, request: SendPushRequest) -> SendPushResponse:
+        self.send_calls += 1
         self.active += 1
         self.observed_max_concurrency = max(self.observed_max_concurrency, self.active)
         await asyncio.sleep(self.delay)
@@ -167,6 +171,39 @@ async def test_fcm_chunks_batches_at_500(monkeypatch: pytest.MonkeyPatch) -> Non
     assert to_thread_calls == 2
     assert response.success_count == 501
     assert response.failed_count == 0
+
+
+@pytest.mark.asyncio
+async def test_fcm_owns_a_named_app_without_reusing_the_host_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    default_app = object()
+    owned_app = object()
+    initialized: list[dict[str, Any]] = []
+    deleted: list[object] = []
+    firebase_admin = SimpleNamespace(
+        _apps={"[DEFAULT]": default_app},
+        credentials=SimpleNamespace(Certificate=lambda value: ("credential", value)),
+        messaging=SimpleNamespace(),
+        initialize_app=lambda credential, *, options, name: (
+            initialized.append({"credential": credential, "options": options, "name": name})
+            or owned_app
+        ),
+        delete_app=lambda app: deleted.append(app),
+    )
+    monkeypatch.setitem(sys.modules, "firebase_admin", firebase_admin)
+
+    provider = FcmProvider(FcmConfig(serviceAccountKey={"project_id": "sendfn"}))
+    await provider.initialize()
+    await provider.close()
+
+    assert initialized == [{
+        "credential": ("credential", {"project_id": "sendfn"}),
+        "options": None,
+        "name": provider._app_name,
+    }]
+    assert provider._app_name != "[DEFAULT]"
+    assert deleted == [owned_app]
 
 
 @pytest.mark.asyncio
@@ -287,6 +324,34 @@ async def test_push_service_returns_stable_platform_result_and_deactivates_inval
 
     active_devices = await device_manager.get_active_devices("user-1")
     assert [device.token for device in active_devices] == ["android-good", "web-good"]
+
+
+@pytest.mark.asyncio
+async def test_push_service_preflights_all_platforms_before_sending() -> None:
+    db = MemoryAdapter()
+    device_manager = DeviceTokenManager(db)
+    await device_manager.register_device(
+        RegisterDeviceParams(userId="mixed-user", token="android-token", platform="android")
+    )
+    await device_manager.register_device(
+        RegisterDeviceParams(userId="mixed-user", token="ios-token", platform="ios")
+    )
+    android_provider = FakePushProvider("android-provider", "android")
+    service = PushService(
+        providers={"android": android_provider},
+        db=db,
+        device_manager=device_manager,
+    )
+
+    with pytest.raises(SendfnError) as exc_info:
+        await service.send_push(
+            SendPushParams(userId="mixed-user", title="Hello", body="World")
+        )
+
+    assert str(exc_info.value) == "No push provider configured for platform ios"
+    assert exc_info.value.retryable is False
+    assert android_provider.send_calls == 0
+    assert get_records(db, "push_notifications") == []
 
 
 @pytest.mark.asyncio

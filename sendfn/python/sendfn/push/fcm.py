@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Optional
+from uuid import uuid4
 
 from ..errors import PushProviderError
 from ..models import FcmConfig
@@ -26,6 +27,7 @@ class FcmProvider:
         self._app: Optional[Any] = None
         self._firebase_admin: Optional[Any] = None
         self._messaging: Optional[Any] = None
+        self._app_name = f"sendfn-{uuid4()}"
 
     @property
     def name(self) -> str:
@@ -51,7 +53,7 @@ class FcmProvider:
     async def initialize(self) -> None:
         """Initialize Firebase app."""
         try:
-            import firebase_admin
+            import firebase_admin  # type: ignore[import-untyped]
             from firebase_admin import credentials, messaging
         except ImportError as error:  # pragma: no cover - depends on optional extra
             raise PushProviderError(
@@ -61,23 +63,17 @@ class FcmProvider:
         self._firebase_admin = firebase_admin
         self._messaging = messaging
 
-        # Prevent multiple initializations
-        if len(firebase_admin._apps) > 0:
-            self._app = firebase_admin._apps.get("[DEFAULT]")
-        else:
-            # Load service account key
-            if isinstance(self.config.service_account_key, str):
-                # Path to JSON file
-                cred = credentials.Certificate(self.config.service_account_key)
-            else:
-                # Dict with service account data
-                cred = credentials.Certificate(self.config.service_account_key)
+        if self._app is not None:
+            return
 
-            # Initialize app
-            self._app = firebase_admin.initialize_app(
-                cred,
-                options={"projectId": self.config.project_id} if self.config.project_id else None,
-            )
+        # Each provider owns a named app so it never borrows or deletes the
+        # host application's default Firebase app.
+        cred = credentials.Certificate(self.config.service_account_key)
+        self._app = firebase_admin.initialize_app(
+            cred,
+            options={"projectId": self.config.project_id} if self.config.project_id else None,
+            name=self._app_name,
+        )
 
     async def send_push(self, request: SendPushRequest) -> SendPushResponse:
         """Send a push notification via FCM.

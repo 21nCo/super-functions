@@ -82,4 +82,38 @@ describe('email address validation', () => {
       subject: 'Hello',
     })).rejects.toThrow('Display names cannot contain control characters');
   });
+
+  it('rejects reply-to header injection before provider dispatch', async () => {
+    let sendCalls = 0;
+    const client = createSendFn({
+      emailProvider: {
+        name: 'test',
+        capabilities: {
+          supportsTemplates: false,
+          supportsAttachments: false,
+          supportsBulkSend: false,
+          supportsScheduling: false,
+          maxRecipientsPerEmail: 1,
+          maxAttachmentSize: 0,
+        },
+        async initialize() {},
+        async sendEmail() {
+          sendCalls += 1;
+          return { success: true, messageId: 'must-not-send', timestamp: new Date() };
+        },
+        async sendBulkEmail() { return []; },
+        validateEmail: isBareEmail,
+        async isHealthy() { return true; },
+        async close() {},
+      },
+    });
+
+    await expect(client.email({
+      userId: 'user_1',
+      replyTo: 'support@example.com\r\nBcc: attacker@example.com',
+      to: 'recipient@example.com',
+      subject: 'Hello',
+    })).rejects.toThrow('Invalid replyTo');
+    expect(sendCalls).toBe(0);
+  });
 });

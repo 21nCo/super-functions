@@ -73,6 +73,12 @@ export function createSendFn(config: SendFnEdgeConfig): SendFnEdgeClient {
       const now = new Date();
       const recipients = toArray(params.to) ?? [];
       const sender = resolveSender(config.email);
+      if (params.replyTo !== undefined && (
+        /[\r\n,]/.test(params.replyTo) ||
+        !emailProvider.validateEmail(params.replyTo)
+      )) {
+        throw new Error('Invalid replyTo. Use a single valid mailbox without control characters.');
+      }
       const response = await emailProvider.sendEmail({
         idempotencyKey: params.idempotencyKey,
         from: sender.header,

@@ -26,43 +26,13 @@ export class SmsService {
         metadata: params.metadata || {}
     });
 
+    let response: Awaited<ReturnType<SmsProvider['sendSms']>>;
     try {
-        // 2. Send via Provider
-        const response = await this.provider.sendSms({
+        response = await this.provider.sendSms({
             to: params.to,
             message: params.message,
             metadata: params.metadata
         });
-
-        // 3. Update Transaction
-        await this.db.updateSmsTransaction(transaction.id, {
-            status: response.success ? 'sent' : 'failed',
-            providerMessageId: response.providerMessageId,
-            sentAt: response.timestamp,
-            metadata: {
-                ...params.metadata,
-                error: response.error
-            }
-        });
-
-        // 4. Record Event
-        if (this.options.eventTracking !== false) await this.db.recordEvent({
-            referenceId: transaction.id,
-            referenceType: 'sms',
-            eventType: response.success ? 'sent' : 'failed',
-            provider: this.provider.name,
-            providerEventId: response.providerMessageId || null,
-            recipientEmail: null,
-            recipientPhone: params.to,
-            deviceToken: null,
-            metadata: {
-                error: response.error
-            },
-            eventTimestamp: response.timestamp
-        });
-
-        return await this.db.getSmsTransaction(transaction.id) as SmsTransaction;
-
     } catch (error: any) {
          await this.db.updateSmsTransaction(transaction.id, {
             status: 'failed',
@@ -84,5 +54,32 @@ export class SmsService {
 
         throw error;
     }
+
+    const updated = await this.db.updateSmsTransaction(transaction.id, {
+        status: response.success ? 'sent' : 'failed',
+        providerMessageId: response.providerMessageId,
+        sentAt: response.timestamp,
+        metadata: {
+            ...params.metadata,
+            error: response.error
+        }
+    });
+
+    if (this.options.eventTracking !== false) await this.db.recordEvent({
+        referenceId: transaction.id,
+        referenceType: 'sms',
+        eventType: response.success ? 'sent' : 'failed',
+        provider: this.provider.name,
+        providerEventId: response.providerMessageId || null,
+        recipientEmail: null,
+        recipientPhone: params.to,
+        deviceToken: null,
+        metadata: {
+            error: response.error
+        },
+        eventTimestamp: response.timestamp
+    });
+
+    return (await this.db.getSmsTransaction(transaction.id)) ?? updated;
   }
 }

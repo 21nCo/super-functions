@@ -93,6 +93,15 @@ class PushService:
         ordered_platforms = [
             platform for platform in PLATFORM_ORDER if platform_tokens.get(platform)
         ]
+        missing_platform = next(
+            (platform for platform in ordered_platforms if platform not in self.providers),
+            None,
+        )
+        if missing_platform is not None:
+            raise PushProviderError(
+                f"No push provider configured for platform {missing_platform}",
+                retryable=False,
+            )
         logical_notification_id: Optional[str] = None
         notification_ids: list[str] = []
         aggregate_sent_count = 0
@@ -103,8 +112,7 @@ class PushService:
             p_tokens = platform_tokens[platform]
             provider = self.providers.get(platform)
 
-            if not provider:
-                continue
+            assert provider is not None
 
             # Create notification record
             notification = await create_push_notification(

@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import base64
-import os
 import re
-import subprocess
-import tempfile
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterable, Optional
 from urllib.parse import urlparse
 from urllib.request import urlopen
+
+from cryptography import x509
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from ..errors import SendfnError
 
@@ -149,46 +151,18 @@ class AwsSnsVerifier:
     def _default_verify_signature(
         self, canonical_message: str, signature: str, certificate: str
     ) -> bool:
-        signature_bytes = base64.b64decode(signature)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cert_path = os.path.join(tmpdir, "cert.pem")
-            pubkey_path = os.path.join(tmpdir, "pubkey.pem")
-            payload_path = os.path.join(tmpdir, "payload.txt")
-            signature_path = os.path.join(tmpdir, "signature.bin")
-
-            with open(cert_path, "w", encoding="utf-8") as cert_file:
-                cert_file.write(certificate)
-            with open(payload_path, "w", encoding="utf-8") as payload_file:
-                payload_file.write(canonical_message)
-            with open(signature_path, "wb") as signature_file:
-                signature_file.write(signature_bytes)
-
-            extract = subprocess.run(
-                ["openssl", "x509", "-pubkey", "-noout", "-in", cert_path],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if extract.returncode != 0:
+        try:
+            signature_bytes = base64.b64decode(signature, validate=True)
+            parsed_certificate = x509.load_pem_x509_certificate(certificate.encode("utf-8"))
+            public_key = parsed_certificate.public_key()
+            if not isinstance(public_key, rsa.RSAPublicKey):
                 return False
-
-            with open(pubkey_path, "w", encoding="utf-8") as pubkey_file:
-                pubkey_file.write(extract.stdout)
-
-            verify = subprocess.run(
-                [
-                    "openssl",
-                    "dgst",
-                    "-sha1",
-                    "-verify",
-                    pubkey_path,
-                    "-signature",
-                    signature_path,
-                    payload_path,
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
+            public_key.verify(
+                signature_bytes,
+                canonical_message.encode("utf-8"),
+                padding.PKCS1v15(),
+                hashes.SHA1(),
             )
-            return verify.returncode == 0
+            return True
+        except (InvalidSignature, TypeError, ValueError):
+            return False
