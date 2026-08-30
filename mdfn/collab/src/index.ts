@@ -88,6 +88,7 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
   let inFlight: PendingUpdate | null = null;
   let flushing: Promise<void> | null = null;
   let remoteApplication: Promise<void> = Promise.resolve();
+  let documentGeneration = 0;
 
   const emitAudit = (event: Omit<CollaborationAuditEvent, "documentId" | "userId">): void => {
     options.onAudit?.({ ...event, documentId: options.documentId, userId: options.user.id });
@@ -133,11 +134,8 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
     audit: value?.audit ?? [],
   });
 
-  const stateVectorsMatch = (left: Uint8Array, right: Uint8Array): boolean =>
-    left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
-
-  const validateUpdate = async (update: Uint8Array, origin: unknown): Promise<Uint8Array> => {
-    const baseline = Y.encodeStateVector(doc);
+  const validateUpdate = async (update: Uint8Array, origin: unknown): Promise<number> => {
+    const baseline = documentGeneration;
     const candidate = new Y.Doc({ guid: expectedDocumentId });
     try {
       Y.applyUpdate(candidate, Y.encodeStateAsUpdate(doc), "validation:baseline");
@@ -171,6 +169,9 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
   }
 
   awareness.setLocalState({ user: options.user, documentId: options.documentId });
+
+  const trackDocumentGeneration = (): void => { documentGeneration += 1; };
+  doc.on("afterTransaction", trackDocumentGeneration);
 
   const unsubscribe = options.controller.subscribe((change) => {
     if (applyingRemote || destroyed) return;
@@ -269,7 +270,7 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
           if (options.authorizeUpdate && !(await options.authorizeUpdate(update, origin))) throw new Error("MDFN_COLLAB_UPDATE_FORBIDDEN");
           for (;;) {
             const baseline = await validateUpdate(update, origin);
-            if (!stateVectorsMatch(baseline, Y.encodeStateVector(doc))) continue;
+            if (baseline !== documentGeneration) continue;
             if (destroyed) throw new Error("MDFN_COLLAB_DESTROYED");
             Y.applyUpdate(doc, update, origin);
             emitAudit({ type: "remote-update", byteLength: update.byteLength });
@@ -301,6 +302,7 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
       destroyed = true;
       unsubscribe();
       doc.off("afterTransaction", applySharedState);
+      doc.off("afterTransaction", trackDocumentGeneration);
       doc.off("update", queueLocalUpdate);
       pendingUpdates = [];
       awareness.setLocalState(null);

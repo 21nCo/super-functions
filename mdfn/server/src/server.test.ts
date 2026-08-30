@@ -73,6 +73,16 @@ describe("mdfn server", () => {
     expect(updated.sidecar?.comments?.[0]?.anchor).toEqual({ from: 4, to: 10 });
   });
 
+  it("preserves disjoint ranges when the exact diff exceeds the quadratic cutoff", async () => {
+    const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `large-mapping-${id++}`; })() });
+    const principal = { id: "author" };
+    const middle = "m".repeat(500);
+    const created = await service.create(principal, { markdown: `a${middle}z` });
+    const commented = await service.createComment(principal, created.id, { expectedVersion: 1, anchor: { from: 200, to: 300 }, body: "Keep mapped" });
+    const updated = await service.update(principal, created.id, { expectedVersion: commented.version, markdown: `A${middle}Z` });
+    expect(updated.sidecar?.comments?.[0]?.anchor).toEqual({ from: 200, to: 300 });
+  });
+
   it("restores the complete historical title, Markdown, and sidecar snapshot", async () => {
     const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `restore-${id++}`; })() });
     const principal = { id: "author" };

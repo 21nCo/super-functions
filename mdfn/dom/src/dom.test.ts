@@ -227,6 +227,8 @@ describe("@mdfn/dom", () => {
     editor.view.dispatch(editor.view.state.tr.setSelection(TextSelection.create(editor.view.state.doc, 1, 5)));
     expect(editor.setLink("java%0ascript:alert(1)")).toBe(false);
     expect(editor.setLink("https://example.com")).toBe(true);
+    expect(editor.setLink("https://updated.example", "Updated")).toBe(true);
+    expect(editor.view.state.doc.firstChild?.firstChild?.marks[0]?.attrs).toMatchObject({ href: "https://updated.example", title: "Updated" });
     expect(editor.insertTable(2, 2)).toBe(true);
     const file = new File(["x"], "x.txt", { type: "text/plain" });
     const event = new Event("drop", { bubbles: true, cancelable: true });

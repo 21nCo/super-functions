@@ -153,6 +153,52 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     reviewState: value?.reviewState ?? "draft",
     audit: value?.audit ?? [],
   });
+  const coarseChangedRanges = (before: string, after: string, offset: number): Array<{ from: number; to: number; insertedLength: number }> => {
+    const ranges: Array<{ from: number; to: number; insertedLength: number }> = [];
+    const syncLength = 16;
+    const lookahead = 2_048;
+    let remainingSearchWork = 100_000;
+    let left = 0;
+    let right = 0;
+    let position = offset;
+    while (left < before.length || right < after.length) {
+      while (left < before.length && right < after.length && before.charCodeAt(left) === after.charCodeAt(right)) {
+        left += 1;
+        right += 1;
+        position += 1;
+      }
+      if (left === before.length && right === after.length) break;
+      const from = position;
+      const beforeAnchors = new Map<string, number>();
+      const beforeLimit = Math.min(before.length - syncLength, left + lookahead);
+      for (let candidate = left; candidate <= beforeLimit && remainingSearchWork > 0; candidate += 1) {
+        const key = before.slice(candidate, candidate + syncLength);
+        if (!beforeAnchors.has(key)) beforeAnchors.set(key, candidate);
+        remainingSearchWork -= 1;
+      }
+      let match: { left: number; right: number; cost: number } | undefined;
+      const afterLimit = Math.min(after.length - syncLength, right + lookahead);
+      for (let candidate = right; candidate <= afterLimit && remainingSearchWork > 0; candidate += 1) {
+        const matchingLeft = beforeAnchors.get(after.slice(candidate, candidate + syncLength));
+        remainingSearchWork -= 1;
+        if (matchingLeft === undefined) continue;
+        const cost = matchingLeft - left + candidate - right;
+        if (!match || cost < match.cost) match = { left: matchingLeft, right: candidate, cost };
+        if (cost === 1) break;
+      }
+      if (!match || match.cost === 0) {
+        ranges.push({ from, to: from + before.length - left, insertedLength: after.length - right });
+        break;
+      }
+      const removed = match.left - left;
+      const insertedLength = match.right - right;
+      ranges.push({ from, to: from + removed, insertedLength });
+      left = match.left;
+      right = match.right;
+      position += insertedLength;
+    }
+    return ranges;
+  };
   const changedRanges = (previous: string, next: string): Array<{ from: number; to: number; insertedLength: number }> => {
     if (previous === next) return [];
     let prefix = 0;
@@ -162,7 +208,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     while (previousEnd > prefix && nextEnd > prefix && previous.charCodeAt(previousEnd - 1) === next.charCodeAt(nextEnd - 1)) { previousEnd -= 1; nextEnd -= 1; }
     const before = previous.slice(prefix, previousEnd);
     const after = next.slice(prefix, nextEnd);
-    if (before.length * after.length > 250_000) return [{ from: prefix, to: previousEnd, insertedLength: after.length }];
+    if (before.length * after.length > 250_000) return coarseChangedRanges(before, after, prefix);
     const width = after.length + 1;
     const lcs = new Uint32Array((before.length + 1) * width);
     for (let left = before.length - 1; left >= 0; left -= 1) {

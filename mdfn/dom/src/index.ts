@@ -351,7 +351,13 @@ export function createDomEditor(options: DomEditorOptions): DomEditor {
     },
     setLink(href, title) {
       if (readOnly || !inspectMdfnUrl(href, { allowedSchemes: ["http", "https", "mailto"], allowRelative: true }).safe) return false;
-      return toggleMark(mdfnSchema.marks.link, { href, title: title ?? null })(view.state, view.dispatch, view);
+      const mark = mdfnSchema.marks.link.create({ href, title: title ?? null });
+      const { from, to } = view.state.selection;
+      const transaction = from === to
+        ? view.state.tr.addStoredMark(mark)
+        : view.state.tr.removeMark(from, to, mdfnSchema.marks.link).addMark(from, to, mark);
+      view.dispatch(transaction.scrollIntoView());
+      return true;
     },
     removeLink() {
       if (readOnly) return false;

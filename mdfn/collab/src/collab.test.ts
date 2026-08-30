@@ -178,6 +178,42 @@ describe("collaboration", () => {
     session.destroy(); controller.destroy(); peer.destroy();
   });
 
+  it("revalidates an authorized sidecar update after a delete-only live transaction", async () => {
+    let signalAuthorization!: () => void;
+    let releaseAuthorization!: () => void;
+    const authorizationStarted = new Promise<void>((resolve) => { signalAuthorization = resolve; });
+    const authorizationGate = new Promise<void>((resolve) => { releaseAuthorization = resolve; });
+    const controller = createEditor({ markdown: "ab", projector: createMarkdownProjector() });
+    const session = createCollaborationSession({
+      controller,
+      documentId: "delete-authorization-race",
+      user: { id: "owner" },
+      authorizeSidecarUpdate: async () => {
+        signalAuthorization();
+        await authorizationGate;
+        return true;
+      },
+    });
+    const baseline = session.encodeStateVector();
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, session.encodeUpdate());
+    peer.getMap("sidecar").set("value", JSON.stringify({
+      reviewState: "approved",
+      comments: [{ id: "thread", anchor: { from: 1, to: 2 }, resolved: false, messages: [{ id: "message", authorId: "peer", body: "note", createdAt: "2026-08-30T00:00:00.000Z" }] }],
+    }));
+
+    const applying = session.applyUpdate(Y.encodeStateAsUpdate(peer, baseline), "peer");
+    await authorizationStarted;
+    controller.dispatch(new Transaction().replaceSource(1, 2, "").withSource("test"));
+    releaseAuthorization();
+
+    await expect(applying).rejects.toThrowError(/MDFN_COLLAB_SIDECAR_INVALID/);
+    expect(controller.getState().markdown).toBe("a");
+    expect(session.doc.getText("markdown").toString()).toBe("a");
+    expect(session.doc.getMap("sidecar").has("value")).toBe(false);
+    session.destroy(); controller.destroy(); peer.destroy();
+  });
+
   it("rejects malformed sidecars, unauthorized updates, and oversized payloads", async () => {
     const projector = createMarkdownProjector();
     const controller = createEditor({ markdown: "safe", projector });

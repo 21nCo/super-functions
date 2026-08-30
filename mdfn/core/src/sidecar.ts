@@ -30,12 +30,13 @@ function anchor(value: unknown, markdownLength: number | undefined): SidecarAnch
   return value as unknown as SidecarAnchor;
 }
 
-function json(value: unknown, depth = 0): value is MdfnJsonValue {
+function json(value: unknown, count: (textLength: number) => boolean, countKey: (textLength: number) => boolean, depth = 0): value is MdfnJsonValue {
+  if (!count(typeof value === "string" ? value.length : 0)) return false;
   if (value === null || typeof value === "string" || typeof value === "boolean") return true;
   if (typeof value === "number") return Number.isFinite(value);
   if (depth >= 32) return false;
-  if (Array.isArray(value)) return value.every((entry) => json(entry, depth + 1));
-  return record(value) && Object.values(value).every((entry) => json(entry, depth + 1));
+  if (Array.isArray(value)) return value.every((entry) => json(entry, count, countKey, depth + 1));
+  return record(value) && Object.entries(value).every(([key, entry]) => countKey(key.length) && json(entry, count, countKey, depth + 1));
 }
 
 /** Validates untrusted persisted or collaborative sidecar data before it enters editor state. */
@@ -45,6 +46,7 @@ export function validateMdfnSidecar(value: unknown, options: SidecarValidationOp
   const maxEntries = options.maxEntries ?? 10_000;
   const maxText = options.maxTextLength ?? 256 * 1024;
   let entryCount = 0;
+  let jsonTextLength = 0;
   const countEntry = (): void => {
     entryCount += 1;
     if (entryCount > maxEntries) throw new Error("MDFN_SIDECAR_ENTRY_LIMIT_EXCEEDED");
@@ -59,6 +61,14 @@ export function validateMdfnSidecar(value: unknown, options: SidecarValidationOp
     if (!Array.isArray(entry) || entry.length > maxEntries) throw new Error(code);
     return entry;
   };
+  const countJsonText = (length: number): boolean => {
+    jsonTextLength += length;
+    return jsonTextLength <= maxText;
+  };
+  const boundedJson = (entry: unknown): entry is MdfnJsonValue => json(entry, (length) => {
+    countEntry();
+    return countJsonText(length);
+  }, countJsonText);
 
   for (const candidate of bounded(value.comments, "MDFN_SIDECAR_COMMENTS_INVALID")) {
     countEntry();
@@ -95,7 +105,7 @@ export function validateMdfnSidecar(value: unknown, options: SidecarValidationOp
     text(candidate.mediaType, "MDFN_SIDECAR_ASSET_INVALID", 256);
     if (candidate.name !== undefined) text(candidate.name, "MDFN_SIDECAR_ASSET_INVALID", 4_096, true);
     if (candidate.byteSize !== undefined && (!Number.isSafeInteger(candidate.byteSize) || (candidate.byteSize as number) < 0)) throw new Error("MDFN_SIDECAR_ASSET_INVALID");
-    if (candidate.metadata !== undefined && (!record(candidate.metadata) || !json(candidate.metadata))) throw new Error("MDFN_SIDECAR_ASSET_INVALID");
+    if (candidate.metadata !== undefined && (!record(candidate.metadata) || !boundedJson(candidate.metadata))) throw new Error("MDFN_SIDECAR_ASSET_INVALID");
   }
 
   for (const candidate of bounded(value.audit, "MDFN_SIDECAR_AUDIT_INVALID")) {
@@ -105,7 +115,7 @@ export function validateMdfnSidecar(value: unknown, options: SidecarValidationOp
     text(candidate.actorId, "MDFN_SIDECAR_AUDIT_ENTRY_INVALID", 256);
     if (candidate.targetId !== undefined) text(candidate.targetId, "MDFN_SIDECAR_AUDIT_ENTRY_INVALID", 256);
     timestamp(candidate.createdAt, "MDFN_SIDECAR_AUDIT_ENTRY_INVALID");
-    if (candidate.details !== undefined && (!record(candidate.details) || !json(candidate.details))) throw new Error("MDFN_SIDECAR_AUDIT_ENTRY_INVALID");
+    if (candidate.details !== undefined && (!record(candidate.details) || !boundedJson(candidate.details))) throw new Error("MDFN_SIDECAR_AUDIT_ENTRY_INVALID");
   }
 
   if (value.historyRef !== undefined) text(value.historyRef, "MDFN_SIDECAR_HISTORY_REF_INVALID", 4_096);
