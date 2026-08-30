@@ -166,6 +166,15 @@ CREATE TABLE IF NOT EXISTS mailfn_domains (
   UNIQUE(domain)
 );
 
+CREATE TABLE IF NOT EXISTS mailfn_domain_conflicts (
+  domain_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  domain TEXT NOT NULL,
+  resolved_owner_domain_id TEXT NOT NULL,
+  detected_at TEXT NOT NULL,
+  data_json TEXT NOT NULL
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS mailfn_domains_domain_unique ON mailfn_domains(domain);
 
 CREATE TABLE IF NOT EXISTS mailfn_events (

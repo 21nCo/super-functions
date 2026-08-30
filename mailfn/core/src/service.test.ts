@@ -937,6 +937,26 @@ describe('MailFn domain service', () => {
     expect(disableRouting).toHaveBeenCalledOnce();
   });
 
+  it('reconciles a durably disabled domain that still retains live routing state', async () => {
+    const disableRouting = vi.fn(async () => undefined);
+    const context = await setup({
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'routing-live' }),
+        disableRouting,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'retry.example.com');
+    await context.store.saveDomain({ ...pending, status: 'disabled', routingRuleId: 'routing-live' });
+
+    await expect(context.mailfn.disableDomain(context.admin, pending.id)).resolves.toMatchObject({
+      status: 'disabled', routingRuleId: undefined,
+    });
+    expect(disableRouting).toHaveBeenCalledOnce();
+    expect((await context.store.getDomain(pending.id))?.routingRuleId).toBeUndefined();
+  });
+
   it('enforces custom-domain ownership across projects', async () => {
     const context = await setup({
       domainAdapter: {
@@ -961,7 +981,7 @@ describe('MailFn domain service', () => {
     await expect(context.store.getDomainByNameAcrossProjects('owned.example.com')).resolves.not.toBeNull();
   });
 
-  it('does not remove provider routing before disabled domain state is durable', async () => {
+  it('retains retryable disabling state when final disabled persistence fails', async () => {
     const disableRouting = vi.fn(async () => undefined);
     const context = await setup({
       store: new FailingDisabledDomainStore(),
@@ -975,12 +995,16 @@ describe('MailFn domain service', () => {
     const pending = await context.mailfn.createDomain(context.admin, 'safe-disable.example.com');
     await context.mailfn.verifyDomain(context.admin, pending.id);
 
-    await expect(context.mailfn.disableDomain(context.admin, pending.id)).rejects.toThrow('disabled state unavailable');
-    expect(disableRouting).not.toHaveBeenCalled();
-    await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({ status: 'active' });
+    await expect(context.mailfn.disableDomain(context.admin, pending.id)).rejects.toMatchObject({
+      code: 'MAILFN_STORAGE_FAILED', retryable: true,
+    });
+    expect(disableRouting).toHaveBeenCalledOnce();
+    await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({
+      status: 'disabling', routingRuleId: 'routing-safe-disable',
+    });
   });
 
-  it('restores active domain state when provider routing teardown fails', async () => {
+  it('retains retryable disabling state when provider routing teardown fails', async () => {
     const context = await setup({
       domainAdapter: {
         getRequiredDnsRecords: async (domain) => [{ type: 'MX', name: domain, value: 'mx.provider.test' }],
@@ -992,9 +1016,11 @@ describe('MailFn domain service', () => {
     const pending = await context.mailfn.createDomain(context.admin, 'rollback-disable.example.com');
     await context.mailfn.verifyDomain(context.admin, pending.id);
 
-    await expect(context.mailfn.disableDomain(context.admin, pending.id)).rejects.toThrow('provider teardown unavailable');
+    await expect(context.mailfn.disableDomain(context.admin, pending.id)).rejects.toMatchObject({
+      code: 'MAILFN_DOMAIN_ROUTING_FAILED', retryable: true,
+    });
     await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({
-      status: 'active',
+      status: 'disabling',
       routingRuleId: 'routing-still-live',
     });
   });
@@ -1050,6 +1076,13 @@ describe('MailFn domain service', () => {
     await expect(context.mailfn.reportAbuse(context.admin, {
       kind: 'invented' as never, resourceType: 'project', resourceId: context.project.id, reason: 'invalid kind',
     })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+    await expect(context.mailfn.configureCompliance(context.admin, {
+      dataRegion: 'global', retentionLocked: 'false' as never, exportEnabled: false, deletionSlaHours: 24,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+    await expect(context.mailfn.configureCompliance(context.admin, {
+      dataRegion: 'global', retentionLocked: false, exportEnabled: 'false' as never, deletionSlaHours: 24,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+    expect(await context.store.getComplianceProfile(context.project.id)).toBeNull();
     await expect(context.mailfn.configureCompliance(context.admin, {
       dataRegion: 'global', retentionLocked: true, exportEnabled: false, deletionSlaHours: 24,
     })).resolves.toMatchObject({ projectId: context.project.id, retentionLocked: true });

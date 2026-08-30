@@ -71,6 +71,26 @@ export const MAILFN_D1_MIGRATIONS = [
     verified_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, data_json TEXT NOT NULL,
     UNIQUE(domain)
   )`,
+  `CREATE TABLE IF NOT EXISTS mailfn_domain_conflicts (
+    domain_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, domain TEXT NOT NULL,
+    resolved_owner_domain_id TEXT NOT NULL, detected_at TEXT NOT NULL, data_json TEXT NOT NULL
+  )`,
+  `INSERT OR IGNORE INTO mailfn_domain_conflicts(
+    domain_id, project_id, domain, resolved_owner_domain_id, detected_at, data_json
+  )
+  SELECT losing.id, losing.project_id, losing.domain,
+    (SELECT owner.id FROM mailfn_domains AS owner
+      WHERE owner.domain = losing.domain
+      ORDER BY owner.created_at ASC, owner.id ASC LIMIT 1),
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), losing.data_json
+  FROM mailfn_domains AS losing
+  WHERE losing.id <> (
+    SELECT owner.id FROM mailfn_domains AS owner
+    WHERE owner.domain = losing.domain
+    ORDER BY owner.created_at ASC, owner.id ASC LIMIT 1
+  )`,
+  `DELETE FROM mailfn_domains
+   WHERE id IN (SELECT domain_id FROM mailfn_domain_conflicts)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS mailfn_domains_domain_unique ON mailfn_domains(domain)`,
   `CREATE TABLE IF NOT EXISTS mailfn_events (
     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, inbox_id TEXT, message_id TEXT, type TEXT NOT NULL,
@@ -135,9 +155,10 @@ export async function applyMailFnMigrations(database: D1Database): Promise<void>
   await database.prepare(MAILFN_D1_MIGRATIONS[0]).run();
   const applied = await database.prepare('SELECT version FROM mailfn_schema_migrations WHERE version = ?').bind(MAILFN_D1_SCHEMA_VERSION).first();
   if (applied) return;
-  for (const statement of MAILFN_D1_MIGRATIONS.slice(1)) await database.prepare(statement).run();
-  await database
-    .prepare('INSERT OR IGNORE INTO mailfn_schema_migrations(version, applied_at) VALUES (?, ?)')
-    .bind(MAILFN_D1_SCHEMA_VERSION, new Date().toISOString())
-    .run();
+  await database.batch([
+    ...MAILFN_D1_MIGRATIONS.slice(1).map((statement) => database.prepare(statement)),
+    database
+      .prepare('INSERT OR IGNORE INTO mailfn_schema_migrations(version, applied_at) VALUES (?, ?)')
+      .bind(MAILFN_D1_SCHEMA_VERSION, new Date().toISOString()),
+  ]);
 }

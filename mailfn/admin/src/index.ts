@@ -266,8 +266,14 @@ export const mailFnAdminActions = [
     title: "Create Inbox",
     description: "Create Inbox for inboxes.",
     classification: "write",
-    requiresConfirmation: false,
-    idempotent: true,
+    requiresConfirmation: true,
+    confirmation: {
+      risk: "high",
+      method: "recent-auth",
+      reason: "Inbox creation issues a one-time scoped credential that must be revealed only to a confirmed operator.",
+      maxAgeSeconds: 300,
+    },
+    idempotent: false,
     target: "collection",
   },
   {
@@ -588,6 +594,36 @@ const credentialIssueOutputSchema: AdminObjectSchema = {
   required: ["accepted", "item"],
   additionalProperties: false,
 };
+const inboxIssueOutputSchema: AdminObjectSchema = {
+  type: "object",
+  properties: {
+    accepted: { type: "boolean", enum: [true] },
+    item: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        projectId: { type: "string" },
+        address: { type: "string" },
+        displayName: { type: "string" },
+        kind: { type: "string" },
+        status: { type: "string" },
+        metadata: { type: "object", additionalProperties: { type: "string" } },
+        labels: { type: "array", items: { type: "string" } },
+        expiresAt: { type: "string" },
+        createdAt: { type: "string" },
+        updatedAt: { type: "string" },
+        credentialId: { type: "string" },
+        tokenPrefix: { type: "string" },
+        permissions: { type: "array", items: { type: "string" } },
+        token: { type: "string" },
+      },
+      required: ["id", "projectId", "address", "kind", "status", "metadata", "labels", "createdAt", "updatedAt", "credentialId", "tokenPrefix", "permissions", "token"],
+      additionalProperties: false,
+    },
+  },
+  required: ["accepted", "item"],
+  additionalProperties: false,
+};
 const payloadSchema = (
   properties: NonNullable<AdminObjectSchema["properties"]>,
   required: string[] = [],
@@ -726,11 +762,13 @@ function actionOperation(
   const sensitiveFields =
     mailFnAdminResources.find((resource) => resource.id === action.resource)
       ?.sensitiveFields ?? [];
-  const oneTimeOutput = action.id === "create-webhook"
-    ? { path: "$.item.secret", field: "secret", schema: webhookIssueOutputSchema }
-    : action.id === "rotate-credential"
-      ? { path: "$.item.token", field: "token", schema: credentialIssueOutputSchema }
-      : undefined;
+  const oneTimeOutput = action.id === "create-inbox"
+    ? { path: "$.item.token", field: "token", schema: inboxIssueOutputSchema }
+    : action.id === "create-webhook"
+      ? { path: "$.item.secret", field: "secret", schema: webhookIssueOutputSchema }
+      : action.id === "rotate-credential"
+        ? { path: "$.item.token", field: "token", schema: credentialIssueOutputSchema }
+        : undefined;
   return {
     id: "mailfn." + action.resource + "." + action.id,
     title: action.title,

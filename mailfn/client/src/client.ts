@@ -242,6 +242,10 @@ export class MailFnClient {
     return this.request(`/v1/domains/${segment(domainId)}/verify`, { method: 'POST', body: {}, ...options });
   }
 
+  public disableDomain(domainId: string, options?: RequestOptions): Promise<MailDomain> {
+    return this.request(`/v1/domains/${segment(domainId)}`, { method: 'DELETE', ...options });
+  }
+
   public getAuditEvents(after?: string, options?: RequestOptions): Promise<AuditEvent[]> {
     return this.request(`/v1/audit${queryString({ after })}`, { ...options });
   }

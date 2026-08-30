@@ -1527,6 +1527,9 @@ export class MailFn {
     const domain = await this.store.getDomain(domainId);
     if (!domain) throw notFound('Domain');
     await this.authorize(actor, 'domain:manage', domain.projectId);
+    assertMailFn(!domain.routingRuleId || this.domainAdapter, {
+      code: 'MAILFN_VALIDATION_FAILED', message: 'No domain adapter is configured', status: 501,
+    });
     assertMailFn(this.domainAdapter, {
       code: 'MAILFN_VALIDATION_FAILED',
       message: 'No domain adapter is configured',
@@ -1569,25 +1572,37 @@ export class MailFn {
     const domain = await this.store.getDomain(domainId);
     if (!domain) throw notFound('Domain');
     await this.authorize(actor, 'domain:manage', domain.projectId);
-    if (domain.status === 'disabled') return domain;
-    const updated = { ...domain, status: 'disabled' as const, updatedAt: this.now() };
-    await this.store.saveDomain(updated);
+    if (domain.status === 'disabled' && !domain.routingRuleId) return domain;
+    if (domain.status === 'disabled') {
+      await this.domainAdapter?.disableRouting(domain);
+      const reconciled = { ...domain, routingRuleId: undefined, updatedAt: this.now() };
+      await this.store.saveDomain(reconciled);
+      return reconciled;
+    }
+    const disabling = { ...domain, status: 'disabling' as const, updatedAt: this.now() };
+    await this.store.saveDomain(disabling);
     try {
-      await this.domainAdapter?.disableRouting(updated);
+      await this.domainAdapter?.disableRouting(disabling);
     } catch (cause) {
-      try {
-        await this.store.saveDomain(domain);
-      } catch (rollbackCause) {
-        throw new MailFnError({
-          code: 'MAILFN_STORAGE_FAILED',
-          message: 'Domain routing teardown failed and active state could not be restored',
-          status: 503,
-          retryable: true,
-          details: { rollbackError: rollbackCause instanceof Error ? rollbackCause.message : String(rollbackCause) },
-          cause,
-        });
-      }
-      throw cause;
+      throw new MailFnError({
+        code: 'MAILFN_DOMAIN_ROUTING_FAILED',
+        message: 'Domain routing teardown failed and remains retryable',
+        status: 503,
+        retryable: true,
+        cause,
+      });
+    }
+    const updated = { ...disabling, status: 'disabled' as const, routingRuleId: undefined, updatedAt: this.now() };
+    try {
+      await this.store.saveDomain(updated);
+    } catch (cause) {
+      throw new MailFnError({
+        code: 'MAILFN_STORAGE_FAILED',
+        message: 'Domain routing was disabled but final state could not be persisted',
+        status: 503,
+        retryable: true,
+        cause,
+      });
     }
     return updated;
   }
@@ -1722,6 +1737,9 @@ export class MailFn {
     });
     assertMailFn(Number.isInteger(input.deletionSlaHours) && input.deletionSlaHours > 0, {
       code: 'MAILFN_VALIDATION_FAILED', message: 'Compliance deletionSlaHours must be a positive integer', status: 400,
+    });
+    assertMailFn(typeof input.retentionLocked === 'boolean' && typeof input.exportEnabled === 'boolean', {
+      code: 'MAILFN_VALIDATION_FAILED', message: 'Compliance flags must be booleans', status: 400,
     });
     const profile: ComplianceProfile = { ...input, projectId: actor.projectId, updatedAt: this.now() };
     await this.store.saveComplianceProfile(profile);

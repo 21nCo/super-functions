@@ -91,7 +91,7 @@ export class CloudflareDomainAdapter implements MailFnDomainAdapter {
   public async disableRouting(domain: MailDomain): Promise<void> {
     this.assertZone(domain);
     if (!domain.routingRuleId) return;
-    await this.call(`/zones/${this.config.zoneId}/email/routing/rules/${domain.routingRuleId}`, { method: 'DELETE' });
+    await this.call(`/zones/${this.config.zoneId}/email/routing/rules/${domain.routingRuleId}`, { method: 'DELETE' }, true);
   }
 
   private assertZone(domain: MailDomain): void {
@@ -114,7 +114,7 @@ export class CloudflareDomainAdapter implements MailFnDomainAdapter {
     await this.call(`/zones/${this.config.zoneId}/email/routing/enable`, { method: 'POST' });
   }
 
-  private async call<T = unknown>(path: string, init: RequestInit): Promise<T> {
+  private async call<T = unknown>(path: string, init: RequestInit, ignoreNotFound = false): Promise<T> {
     const response = await this.fetcher(`https://api.cloudflare.com/client/v4${path}`, {
       ...init,
       headers: {
@@ -123,6 +123,7 @@ export class CloudflareDomainAdapter implements MailFnDomainAdapter {
         ...init.headers,
       },
     });
+    if (ignoreNotFound && response.status === 404) return undefined as T;
     const body = (await response.json()) as CloudflareResponse<T>;
     if (!response.ok || !body.success) {
       throw new Error(`MAILFN_CLOUDFLARE_API_FAILED:${body.errors?.map((error) => error.code).join(',') ?? response.status}`);

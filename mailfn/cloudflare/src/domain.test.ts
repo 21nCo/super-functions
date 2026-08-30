@@ -74,6 +74,14 @@ describe('CloudflareDomainAdapter', () => {
     expect(fetcher.mock.calls.every((call) => call[1]?.method === 'GET')).toBe(true);
   });
 
+  it('treats an already-missing routing rule as an idempotent teardown', async () => {
+    const fetcher = vi.fn(async () => Response.json({ success: false, result: null, errors: [{ code: 1001, message: 'missing' }] }, { status: 404 }));
+    const adapter = new CloudflareDomainAdapter({
+      apiToken: 'secret', zoneId: 'zone_1', zoneName: 'mail.example.com', workerName: 'mailfn', fetch: fetcher,
+    });
+    await expect(adapter.disableRouting({ ...domain, status: 'disabled', routingRuleId: 'missing' })).resolves.toBeUndefined();
+  });
+
   it('rejects a domain that is not the exact authorized Cloudflare zone', async () => {
     const fetcher = vi.fn();
     const adapter = new CloudflareDomainAdapter({

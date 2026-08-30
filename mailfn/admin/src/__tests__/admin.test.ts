@@ -58,8 +58,12 @@ describe("@mailfn/admin", () => {
     expect(mutation).toMatchObject({
       safety: {
         audit: "required",
-        idempotent: true,
       },
+    });
+    expect(mailFnAdminCapability.operations.find((operation) => operation.id === "mailfn.inboxes.create-inbox")?.safety).toMatchObject({
+      idempotent: false,
+      requiresConfirmation: true,
+      confirmation: { risk: "high", method: "recent-auth", maxAgeSeconds: 300 },
     });
     expect(mailFnAdminCapability.operations.find((operation) => operation.id === "mailfn.credentials.rotate-credential")?.safety).toMatchObject({
       idempotent: false,
@@ -67,6 +71,7 @@ describe("@mailfn/admin", () => {
       confirmation: { risk: "critical", method: "mfa", maxAgeSeconds: 300 },
     });
     for (const operationId of [
+      "mailfn.inboxes.create-inbox",
       "mailfn.inboxes.expire-inbox",
       "mailfn.drafts.send-draft",
       "mailfn.domains-routes.manage-domain",
@@ -77,8 +82,20 @@ describe("@mailfn/admin", () => {
     }
   });
 
-  it("reveals declared one-time webhook and credential secrets while redacting audit records", async () => {
+  it("reveals declared one-time inbox, webhook, and credential secrets while redacting audit records", async () => {
     const service = {
+      createInbox: vi.fn(async () => ({
+        ok: true as const,
+        data: {
+          accepted: true as const,
+          item: {
+            id: "inbox_1", projectId: "project_1", address: "agent@example.test", kind: "stable",
+            status: "active", metadata: {}, labels: [], createdAt: "2026-08-30T00:00:00.000Z",
+            updatedAt: "2026-08-30T00:00:00.000Z", credentialId: "credential_1",
+            tokenPrefix: "mfn_credential_1", permissions: ["inbox:read"], token: "one-time-inbox-token",
+          },
+        },
+      })),
       createWebhook: vi.fn(async () => ({
         ok: true as const,
         data: {
@@ -115,6 +132,11 @@ describe("@mailfn/admin", () => {
     });
     const confirmedContext = { ...context, confirmationToken: "confirmed" };
     await expect(dispatcher.dispatch({
+      operationId: "mailfn.inboxes.create-inbox",
+      input: { payload: { kind: "stable" } },
+      context: confirmedContext,
+    })).resolves.toMatchObject({ data: { item: { token: "one-time-inbox-token" } } });
+    await expect(dispatcher.dispatch({
       operationId: "mailfn.webhooks.create-webhook",
       input: { payload: { url: "https://example.test/hook", eventTypes: ["message.received"] } },
       context: confirmedContext,
@@ -126,6 +148,7 @@ describe("@mailfn/admin", () => {
     })).resolves.toMatchObject({ data: { item: { token: "one-time-token" } } });
     expect(JSON.stringify(audit.events)).not.toContain("one-time-secret");
     expect(JSON.stringify(audit.events)).not.toContain("one-time-token");
+    expect(JSON.stringify(audit.events)).not.toContain("one-time-inbox-token");
   });
 
   it("delegates the operation and complete scope to the injected domain service", async () => {
@@ -222,6 +245,33 @@ describe("@mailfn/admin", () => {
     expect(rotateCredential).toHaveBeenCalledWith(expect.anything(), "credential_old", "idempotency_1");
   });
 
+  it("skips deleted inboxes in aggregate message and draft reads", async () => {
+    const listMessages = vi.fn(async (_actor, input: { inboxId: string }) => ({
+      items: [{ id: `message_${input.inboxId}` }], nextCursor: undefined,
+    }));
+    const listDrafts = vi.fn(async (_actor, inboxId: string) => [{ id: `draft_${inboxId}` }]);
+    const service = createMailFnDomainAdminService({
+      mailfn: {
+        listInboxes: vi.fn(async () => [
+          { id: "inbox_active", status: "active" },
+          { id: "inbox_deleted", status: "deleted" },
+        ]),
+        listMessages,
+        listDrafts,
+      } as unknown as MailFn,
+      store: {} as MemoryMailFnStore,
+    });
+
+    await expect(service.listMessages({}, context)).resolves.toMatchObject({
+      data: { items: [{ id: "message_inbox_active" }] },
+    });
+    await expect(service.listDrafts({}, context)).resolves.toMatchObject({
+      data: { items: [{ id: "draft_inbox_active" }] },
+    });
+    expect(listMessages).toHaveBeenCalledOnce();
+    expect(listDrafts).toHaveBeenCalledOnce();
+  });
+
   it("binds project-scoped reads and writes to the real MailFn service", async () => {
     const store = new MemoryMailFnStore();
     await store.saveProject({
@@ -267,6 +317,7 @@ describe("@mailfn/admin", () => {
       item: {
         projectId: "project_1",
         address: "operators@mail.example.test",
+        token: expect.stringMatching(/^mfn_/),
       },
     });
 
@@ -279,7 +330,7 @@ describe("@mailfn/admin", () => {
       items: [{ address: "operators@mail.example.test" }],
       nextCursor: null,
     });
-    expect(JSON.stringify(created.data)).not.toContain("token");
+    expect(JSON.stringify(created.data)).not.toContain("tokenHash");
   });
 
   it("does not expose a MailFn object outside the active project", async () => {

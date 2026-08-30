@@ -115,7 +115,7 @@ describe('MailFnClient', () => {
     ]);
   });
 
-  it('exposes compliance export plus abuse and support management routes', async () => {
+  it('exposes domain disablement, compliance export, abuse, and support management routes', async () => {
     const paths: string[] = [];
     const client = new MailFnClient({
       baseUrl: 'https://mailfn.test', token: 'admin',
@@ -124,6 +124,7 @@ describe('MailFnClient', () => {
         return envelope(String(requestUrl).endsWith('/export') ? { generatedAt: 'now' } : []);
       },
     });
+    await client.disableDomain('dom_1');
     await client.configureCompliance({ dataRegion: 'global', retentionLocked: false, exportEnabled: true, deletionSlaHours: 24 });
     await client.exportCompliance();
     await client.listAbuseCases();
@@ -133,6 +134,7 @@ describe('MailFnClient', () => {
     await client.listSupportCases();
     await client.updateSupportCase('sup_1', { status: 'waiting' });
     expect(paths).toEqual([
+      'DELETE /v1/domains/dom_1',
       'PUT /v1/compliance',
       'GET /v1/compliance/export',
       'GET /v1/abuse',

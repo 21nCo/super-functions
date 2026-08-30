@@ -31,6 +31,42 @@ beforeEach(async () => {
 });
 
 describe('MailFn in workerd', () => {
+  it('upgrades schema-v1 duplicate domains without blocking Worker startup', async () => {
+    await env.MAILFN_DB.prepare('DROP TABLE IF EXISTS mailfn_domain_conflicts').run();
+    await env.MAILFN_DB.prepare('DROP TABLE mailfn_domains').run();
+    await env.MAILFN_DB.prepare(`CREATE TABLE mailfn_domains (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, domain TEXT NOT NULL, status TEXT NOT NULL,
+      verification_token TEXT NOT NULL, verified_at TEXT, created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL, data_json TEXT NOT NULL, UNIQUE(project_id, domain)
+    )`).run();
+    await env.MAILFN_DB.prepare('DELETE FROM mailfn_schema_migrations').run();
+    await env.MAILFN_DB.prepare(
+      'INSERT INTO mailfn_schema_migrations(version, applied_at) VALUES (1, ?)',
+    ).bind('2026-08-29T00:00:00.000Z').run();
+    for (const entry of [
+      { id: 'dom_owner', projectId: 'prj_1', createdAt: '2026-08-29T00:00:00.000Z' },
+      { id: 'dom_conflict', projectId: 'prj_2', createdAt: '2026-08-30T00:00:00.000Z' },
+    ]) {
+      await env.MAILFN_DB.prepare(`INSERT INTO mailfn_domains(
+        id, project_id, domain, status, verification_token, created_at, updated_at, data_json
+      ) VALUES (?, ?, ?, 'active', 'verify', ?, ?, ?)`)
+        .bind(entry.id, entry.projectId, 'shared.example.com', entry.createdAt, entry.createdAt, JSON.stringify(entry))
+        .run();
+    }
+
+    await expect(applyMailFnMigrations(env.MAILFN_DB)).resolves.toBeUndefined();
+    const domains = await env.MAILFN_DB.prepare(
+      'SELECT id FROM mailfn_domains WHERE domain = ? ORDER BY id',
+    ).bind('shared.example.com').all<{ id: string }>();
+    expect(domains.results).toEqual([{ id: 'dom_owner' }]);
+    await expect(env.MAILFN_DB.prepare(
+      'SELECT resolved_owner_domain_id FROM mailfn_domain_conflicts WHERE domain_id = ?',
+    ).bind('dom_conflict').first()).resolves.toEqual({ resolved_owner_domain_id: 'dom_owner' });
+    await expect(env.MAILFN_DB.prepare(
+      'SELECT version FROM mailfn_schema_migrations WHERE version = 2',
+    ).first()).resolves.toEqual({ version: 2 });
+  });
+
   it('runs the Worker fetch surface with real workerd bindings', async () => {
     const response = await SELF.fetch('https://mailfn.test/health');
     expect(response.status).toBe(200);

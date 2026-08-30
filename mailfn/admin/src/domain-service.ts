@@ -163,7 +163,7 @@ async function allProjectMessages(
   filter: MessageFilter = {},
 ): Promise<Message[]> {
   const messages: Message[] = [];
-  for (const inbox of await mailfn.listInboxes(adminActor)) {
+  for (const inbox of await readableProjectInboxes(mailfn, adminActor)) {
     let cursor: string | undefined;
     const seenCursors = new Set<string>();
     do {
@@ -182,6 +182,10 @@ async function allProjectMessages(
     } while (cursor);
   }
   return messages;
+}
+
+async function readableProjectInboxes(mailfn: MailFn, adminActor: Actor) {
+  return (await mailfn.listInboxes(adminActor)).filter((inbox) => inbox.status !== "deleted");
 }
 
 function mapMailFnError(error: unknown): never {
@@ -283,7 +287,7 @@ export function createMailFnDomainAdminService(
     async listThreads(input, context) {
       const { adminActor } = state(context);
       const threads = [];
-      for (const inbox of await mailfn.listInboxes(adminActor)) {
+      for (const inbox of await readableProjectInboxes(mailfn, adminActor)) {
         threads.push(...await mailfn.listThreads(adminActor, inbox.id));
       }
       return page(threads, input, context);
@@ -299,7 +303,7 @@ export function createMailFnDomainAdminService(
     async listDrafts(input, context) {
       const { adminActor } = state(context);
       const drafts = [];
-      for (const inbox of await mailfn.listInboxes(adminActor)) {
+      for (const inbox of await readableProjectInboxes(mailfn, adminActor)) {
         drafts.push(...await mailfn.listDrafts(adminActor, inbox.id));
       }
       return page(drafts, input, context);
@@ -411,7 +415,13 @@ export function createMailFnDomainAdminService(
         metadata: optionalRecord(payload.metadata, "payload.metadata") as Record<string, string> | undefined,
         idempotencyKey: context.idempotencyKey,
       });
-      return accepted(created.inbox);
+      return accepted({
+        ...created.inbox,
+        credentialId: created.credential.credential.id,
+        tokenPrefix: created.credential.credential.tokenPrefix,
+        permissions: created.credential.credential.permissions,
+        token: created.credential.token,
+      });
     },
     async expireInbox(input, context) {
       const { adminActor } = state(context);
