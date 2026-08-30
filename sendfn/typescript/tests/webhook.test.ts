@@ -281,8 +281,10 @@ describe('AWS SES webhook processing', () => {
       },
     });
 
-    const first = await handler.handleSnsNotification(envelope, { requestId: 'req_delivery' });
-    const second = await handler.handleSnsNotification(envelope, { requestId: 'req_delivery_repeat' });
+    const [first, second] = await Promise.all([
+      handler.handleSnsNotification(envelope, { requestId: 'req_delivery' }),
+      handler.handleSnsNotification(envelope, { requestId: 'req_delivery_repeat' }),
+    ]);
 
     expect(first).toMatchObject({
       accepted: true,
@@ -313,17 +315,20 @@ describe('AWS SES webhook processing', () => {
       },
     });
     expect(logger.info).toHaveBeenCalled();
-    expect(logger.info.mock.calls[0][0]).toMatchObject({
-      requestId: 'req_delivery',
-      operation: 'webhook.process',
-      provider: 'aws-ses',
-      snsMessageId: 'sns-1',
-      status: 'accepted',
-      verificationResult: 'verified',
-      matchedTransactions: 1,
-      orphanEvents: 0,
-      createdSuppressionEntries: 0,
-    });
+    expect(logger.info.mock.calls.map(([entry]) => entry)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        requestId: 'req_delivery',
+        operation: 'webhook.process',
+        provider: 'aws-ses',
+        snsMessageId: 'sns-1',
+        status: 'accepted',
+        verificationResult: 'verified',
+        matchedTransactions: 1,
+        orphanEvents: 0,
+        createdSuppressionEntries: 0,
+      }),
+      expect.objectContaining({ requestId: 'req_delivery_repeat' }),
+    ]));
   });
 
   it('updates bounce and complaint lifecycle state, suppression state, and keeps duplicate complaints idempotent', async () => {

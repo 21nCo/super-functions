@@ -2,17 +2,29 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   Attachment,
   AwsSesAdapter,
+  EmailTransactionSchema,
   EmailProviderError,
   SendEmailParams,
   SendfnDatabaseAdapter,
   ValidationError,
 } from '../src';
-import { EmailService } from '../src/email/service';
+import { createEmailRequestFingerprint, EmailService } from '../src/email/service';
 import { TemplateEngine, TemplateRegistry } from '../src/templates/engine';
 import { StrongMockAdapter } from './mock-adapter';
 import { v5 as uuidv5 } from 'uuid';
 
 const IDEMPOTENCY_NAMESPACE = 'f6ff2eac-697c-4df6-8d11-e5c37f652f53';
+
+function staleRequestFingerprint(subject: string): string {
+  return createEmailRequestFingerprint({
+    from: 'agent@example.com',
+    to: ['recipient@example.com'],
+    cc: [],
+    bcc: [],
+    subject,
+    text: 'body',
+  });
+}
 
 class MockProvider {
   readonly name = 'mock-email';
@@ -257,6 +269,18 @@ describe('EmailService', () => {
     expect(provider.sendCalls).toBe(0);
   });
 
+  it('stores multi-recipient transactions in their exported schema shape', async () => {
+    const transaction = await service.sendEmail({
+      userId: 'user-1',
+      to: ['first@example.com', 'second@example.com'],
+      subject: 'Hello',
+      text: 'body',
+    });
+
+    expect(transaction.to).toEqual(['first@example.com', 'second@example.com']);
+    expect(() => EmailTransactionSchema.parse(transaction)).not.toThrow();
+  });
+
   it('uses bounded retry behavior for retryable failures and does not retry non-retryable ones', async () => {
     provider.responses = [
       { success: false, timestamp: new Date(), error: { code: 'Throttling', message: 'slow down', retryable: true } },
@@ -401,7 +425,8 @@ describe('EmailService', () => {
     await db.createEmailTransaction({
       userId: 'project-1', to: 'recipient@example.com', from: 'agent@example.com', subject: 'Recover',
       templateId: null, templateData: null, provider: provider.name, providerMessageId: null, status: 'pending',
-      sentAt: null, deliveredAt: null, bouncedAt: null, complainedAt: null, metadata: { idempotencyKey },
+      sentAt: null, deliveredAt: null, bouncedAt: null, complainedAt: null,
+      metadata: { idempotencyKey, requestFingerprint: staleRequestFingerprint('Recover') },
     }, transactionId);
     const [record] = rawAdapter.records<any>('email_transactions');
     record.updatedAt = new Date(Date.now() - 10 * 60 * 1000);
@@ -416,13 +441,32 @@ describe('EmailService', () => {
     await expect(db.getEmailTransaction(transactionId)).resolves.toMatchObject({ status: 'sent', providerMessageId: 'msg-1' });
   });
 
+  it('rejects a stale reclaim when the email payload differs from the original request', async () => {
+    const idempotencyKey = 'mailfn:draft:stale-mismatch';
+    const transactionId = uuidv5(JSON.stringify(['project-1', idempotencyKey]), IDEMPOTENCY_NAMESPACE);
+    await db.createEmailTransaction({
+      userId: 'project-1', to: 'recipient@example.com', from: 'agent@example.com', subject: 'Original',
+      templateId: null, templateData: null, provider: provider.name, providerMessageId: null, status: 'pending',
+      sentAt: null, deliveredAt: null, bouncedAt: null, complainedAt: null,
+      metadata: { idempotencyKey, requestFingerprint: staleRequestFingerprint('Original') },
+    }, transactionId);
+    rawAdapter.records<any>('email_transactions')[0].updatedAt = new Date(Date.now() - 10 * 60 * 1000);
+
+    await expect(service.sendEmail({
+      idempotencyKey, userId: 'project-1', from: 'agent@example.com', to: 'recipient@example.com',
+      subject: 'Changed', text: 'body',
+    })).rejects.toMatchObject({ code: 'SENDFN_IDEMPOTENCY_CONFLICT' });
+    expect(provider.sendCalls).toBe(0);
+  });
+
   it('rechecks suppression before reclaiming a stale pending transaction', async () => {
     const idempotencyKey = 'mailfn:draft:suppressed-reclaim';
     const transactionId = uuidv5(JSON.stringify(['project-1', idempotencyKey]), IDEMPOTENCY_NAMESPACE);
     await db.createEmailTransaction({
       userId: 'project-1', to: 'recipient@example.com', from: 'agent@example.com', subject: 'Recover',
       templateId: null, templateData: null, provider: provider.name, providerMessageId: null, status: 'pending',
-      sentAt: null, deliveredAt: null, bouncedAt: null, complainedAt: null, metadata: { idempotencyKey },
+      sentAt: null, deliveredAt: null, bouncedAt: null, complainedAt: null,
+      metadata: { idempotencyKey, requestFingerprint: staleRequestFingerprint('Recover') },
     }, transactionId);
     const [record] = rawAdapter.records<any>('email_transactions');
     record.updatedAt = new Date(Date.now() - 10 * 60 * 1000);
@@ -455,7 +499,8 @@ describe('EmailService', () => {
     await db.createEmailTransaction({
       userId: 'project-1', to: 'recipient@example.com', from: 'agent@example.com', subject: 'Ambiguous',
       templateId: null, templateData: null, provider: provider.name, providerMessageId: null, status: 'pending',
-      sentAt: null, deliveredAt: null, bouncedAt: null, complainedAt: null, metadata: { idempotencyKey },
+      sentAt: null, deliveredAt: null, bouncedAt: null, complainedAt: null,
+      metadata: { idempotencyKey, requestFingerprint: staleRequestFingerprint('Ambiguous') },
     }, transactionId);
     const [record] = rawAdapter.records<any>('email_transactions');
     record.updatedAt = new Date(Date.now() - 10 * 60 * 1000);

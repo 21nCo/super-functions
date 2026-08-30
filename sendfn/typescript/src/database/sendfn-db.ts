@@ -1,5 +1,5 @@
 import { Adapter } from '@superfunctions/db';
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4, v5 as uuidv5 } from 'uuid';
 import { ValidationError } from '../errors';
 import {
   EmailTransaction,
@@ -68,6 +68,7 @@ export interface FindEventParams {
 }
 
 const DEFAULT_EVENT_QUERY_LIMIT = 50;
+const EVENT_IDEMPOTENCY_NAMESPACE = 'bfbc0bcb-8cf7-4d9a-8cc5-7d4196909d50';
 const MAX_EVENT_QUERY_LIMIT = 200;
 
 export class SendfnDb {
@@ -496,14 +497,33 @@ export class SendfnDb {
   // --- Events ---
 
   async recordEvent(data: CreateEvent): Promise<CommunicationEvent> {
-    return this.adapter.create<CommunicationEvent>({
-      model: 'communication_events',
-      data: {
-        ...data,
-        id: uuidv4(),
-        createdAt: new Date(),
+    const id = data.providerEventId
+      ? uuidv5(JSON.stringify([
+          data.referenceId,
+          data.referenceType,
+          data.eventType,
+          data.provider,
+          data.providerEventId,
+          data.recipientEmail,
+          data.recipientPhone,
+          data.deviceToken,
+        ]), EVENT_IDEMPOTENCY_NAMESPACE)
+      : uuidv4();
+    try {
+      return await this.adapter.create<CommunicationEvent>({
+        model: 'communication_events',
+        data: { ...data, id, createdAt: new Date() }
+      });
+    } catch (error) {
+      if (data.providerEventId) {
+        const existing = await this.adapter.findOne<CommunicationEvent>({
+          model: 'communication_events',
+          where: [{ field: 'id', operator: 'eq', value: id }],
+        });
+        if (existing) return existing;
       }
-    });
+      throw error;
+    }
   }
 
   async getEventsByReference(

@@ -368,6 +368,24 @@ describe('push and device phase 5 contracts', () => {
     await expect(db.findEvents({ referenceType: 'push', userId: 'user-b' })).resolves.toHaveLength(1);
   });
 
+  it('scopes mixed-platform push events to users targeted on that platform', async () => {
+    await deviceManager.registerDevice({ userId: 'android-user', token: 'android-token', platform: 'android' });
+    await deviceManager.registerDevice({ userId: 'ios-user', token: 'ios-token', platform: 'ios' });
+    const service = new PushService(new Map([
+      ['android', new FakePushProvider('android-provider', 'android')],
+      ['ios', new FakePushProvider('ios-provider', 'ios')],
+    ]), db, deviceManager, {});
+
+    await service.sendPush({ userId: ['android-user', 'ios-user'], title: 'Hello', body: 'World' });
+
+    const androidEvents = await db.findEvents({ referenceType: 'push', userId: 'android-user' });
+    const iosEvents = await db.findEvents({ referenceType: 'push', userId: 'ios-user' });
+    expect(androidEvents).toHaveLength(1);
+    expect(iosEvents).toHaveLength(1);
+    await expect(db.getPushNotification(androidEvents[0]!.referenceId)).resolves.toMatchObject({ platform: 'android' });
+    await expect(db.getPushNotification(iosEvents[0]!.referenceId)).resolves.toMatchObject({ platform: 'ios' });
+  });
+
   it('supports injected push providers without legacy credential config', async () => {
     await deviceManager.registerDevice({
       userId: 'ios-user',

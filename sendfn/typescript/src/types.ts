@@ -182,7 +182,7 @@ export interface RegisterDeviceParams {
 export const EmailTransactionSchema = z.object({
   id: z.string().uuid(),
   userId: z.string(),
-  to: z.string().email(),
+  to: z.union([z.string().email(), z.array(z.string().email()).min(1)]),
   from: z.string().email(),
   subject: z.string(),
   templateId: z.string().nullable(),

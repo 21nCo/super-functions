@@ -23,6 +23,27 @@ const DEFAULT_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_BULK_CONCURRENCY = 5;
 const IDEMPOTENCY_NAMESPACE = 'f6ff2eac-697c-4df6-8d11-e5c37f652f53';
 const IDEMPOTENCY_PENDING_RECLAIM_MS = 5 * 60 * 1000;
+
+function canonicalize(value: unknown): unknown {
+  if (value instanceof Uint8Array) {
+    return { bytes: Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join('') };
+  }
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalize(entry)])
+    );
+  }
+  return value;
+}
+
+export function createEmailRequestFingerprint(request: SendEmailRequest): string {
+  const { idempotencyKey: _idempotencyKey, ...payload } = request;
+  return uuidv5(JSON.stringify(canonicalize(payload)), IDEMPOTENCY_NAMESPACE);
+}
+
 export class EmailService {
   constructor(
     private provider: EmailProvider,
@@ -61,9 +82,29 @@ export class EmailService {
     const recipients = this.normalizeRecipients(params);
     const rendered = this.resolveContent(params);
     this.assertTransportHeaders(params, recipients, rendered.subject);
-    if (!staleTransaction) {
-      this.assertResolvedContent(rendered.subject, rendered.html, rendered.text);
-      this.assertProviderLimits(recipients, params.attachments);
+    this.assertResolvedContent(rendered.subject, rendered.html, rendered.text);
+    this.assertProviderLimits(recipients, params.attachments);
+    const providerRequest: SendEmailRequest = {
+      from: params.from ?? this.config.fromEmail,
+      to: recipients.to,
+      cc: recipients.cc,
+      bcc: recipients.bcc,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+      attachments: params.attachments,
+      replyTo: params.replyTo ?? this.config.replyTo,
+      headers: params.headers,
+      tags: params.tags
+        ? Object.fromEntries(params.tags.map((tag) => [tag, tag]))
+        : undefined,
+      metadata: params.metadata,
+    };
+    const requestFingerprint = createEmailRequestFingerprint(providerRequest);
+    if (staleTransaction && staleTransaction.metadata.requestFingerprint !== requestFingerprint) {
+      throw new ValidationError('Idempotency key was used with a different email request', {
+        code: 'SENDFN_IDEMPOTENCY_CONFLICT', retryable: false,
+      });
     }
     await this.assertRecipientsNotSuppressed([
       ...recipients.to,
@@ -82,7 +123,7 @@ export class EmailService {
     if (!transaction) try {
       transaction = await this.adapter.createEmailTransaction({
       userId: params.userId,
-      to: recipients.to.join(','),
+      to: recipients.to.length === 1 ? recipients.to[0]! : recipients.to,
       from: params.from ?? this.config.fromEmail,
       subject: rendered.subject,
       templateId: params.templateId || null,
@@ -94,7 +135,7 @@ export class EmailService {
       deliveredAt: null,
       bouncedAt: null,
       complainedAt: null,
-      metadata: { ...(params.metadata || {}), ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}) },
+      metadata: { ...(params.metadata || {}), requestFingerprint, ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}) },
       }, transactionId);
     } catch (error) {
       if (!transactionId) throw error;
@@ -106,21 +147,8 @@ export class EmailService {
     let response: SendEmailResponse;
     try {
       response = await this.sendWithRetry({
+        ...providerRequest,
         idempotencyKey: params.idempotencyKey ? transaction.id : undefined,
-        from: params.from ?? this.config.fromEmail,
-        to: recipients.to,
-        cc: recipients.cc,
-        bcc: recipients.bcc,
-        subject: rendered.subject,
-        html: rendered.html,
-        text: rendered.text,
-        attachments: params.attachments,
-        replyTo: params.replyTo ?? this.config.replyTo,
-        headers: params.headers,
-        tags: params.tags
-          ? Object.fromEntries(params.tags.map((tag) => [tag, tag]))
-          : undefined,
-        metadata: params.metadata,
       });
     } catch (error) {
       const sendError =

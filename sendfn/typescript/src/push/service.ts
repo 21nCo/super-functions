@@ -24,6 +24,7 @@ export class PushService {
   async sendPush(params: SendPushParams): Promise<PushNotification> {
     // 1. Resolve tokens
     const platformTokenSets = new Map<Platform, Set<string>>();
+    const platformRecipientSets = new Map<Platform, Set<string>>();
 
     // If userId provided, fetch tokens
     const userIds = Array.isArray(params.userId) ? params.userId : [params.userId];
@@ -36,6 +37,9 @@ export class PushService {
             const tokens = platformTokenSets.get(device.platform) ?? new Set<string>();
             tokens.add(device.token);
             platformTokenSets.set(device.platform, tokens);
+            const recipients = platformRecipientSets.get(device.platform) ?? new Set<string>();
+            recipients.add(uid);
+            platformRecipientSets.set(device.platform, recipients);
         }
     }
 
@@ -85,7 +89,7 @@ export class PushService {
     let aggregateSentCount = 0;
     let aggregateFailedCount = 0;
     let logicalMetadata: Record<string, any> = {
-      ...recipientMetadata,
+      ...(params.metadata || {}),
       notificationIds: [] as string[],
     };
     let logicalSentAt: Date | null = null;
@@ -95,6 +99,10 @@ export class PushService {
     for (const platform of platforms) {
         const pTokens = [...platformTokenSets.get(platform)!];
         const provider = this.providers.get(platform)!;
+        const platformMetadata = {
+          ...(params.metadata || {}),
+          recipientUserIds: [...(platformRecipientSets.get(platform) ?? [])],
+        };
 
         const notification = await this.adapter.createPushNotification({
             userId: userIds.join(','),
@@ -108,7 +116,7 @@ export class PushService {
             sentCount: 0,
             failedCount: 0,
             sentAt: null,
-            metadata: recipientMetadata
+            metadata: platformMetadata
         });
 
         (logicalMetadata.notificationIds as string[]).push(notification.id);
@@ -134,7 +142,7 @@ export class PushService {
         } catch (error: any) {
              await this.adapter.updatePushNotification(notification.id, {
                 status: 'failed',
-                metadata: { ...recipientMetadata, error: error.message }
+                metadata: { ...platformMetadata, error: error.message }
             });
 
              if (this.options.eventTracking !== false) await this.adapter.recordEvent({
@@ -167,7 +175,7 @@ export class PushService {
             failedCount: response.failedCount,
             sentAt: response.timestamp,
             metadata: {
-                ...recipientMetadata,
+                ...platformMetadata,
                 results: response.results
             }
         });
@@ -208,8 +216,9 @@ export class PushService {
       failedCount: aggregateFailedCount,
       sentAt: logicalSentAt,
       metadata: {
-        ...(existingLogicalNotification?.metadata || {}),
         ...logicalMetadata,
+        ...(existingLogicalNotification?.metadata || {}),
+        notificationIds: logicalMetadata.notificationIds,
         ...(providerErrors.length > 0 ? { providerErrors } : {}),
       },
     });
