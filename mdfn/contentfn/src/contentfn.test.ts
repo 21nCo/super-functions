@@ -32,6 +32,17 @@ describe("markdown content", () => {
     expect(result.diagnostics[0]?.code).toBe("MDFN_CONTENT_RICHTEXT_LOSSY");
   });
 
+  it("marks discarded rich-text leaf metadata as lossy", () => {
+    const result = migrateToMarkdownContent([
+      { type: "paragraph", children: [{ text: "bold", bold: true, link: "https://example.com" }] },
+    ]);
+
+    expect(result.lossy).toBe(true);
+    expect(result.content.markdown).toContain("bold");
+    expect(result.content.markdown).toContain("mdfn-migration-opaque");
+    expect(result.diagnostics[0]?.code).toBe("MDFN_CONTENT_RICHTEXT_LOSSY");
+  });
+
   it("escapes projected rich text and chooses a collision-free code fence", () => {
     const result = migrateToMarkdownContent([
       { type: "paragraph", children: [{ text: "# heading *emphasis*" }] },

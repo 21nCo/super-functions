@@ -55,17 +55,52 @@ export function createEditor(input: CreateEditorInput): EditorController {
     for (const listener of [...listeners]) listener(change);
   };
 
-  const changedRange = (previous: string, next: string): StateChange["changedRanges"] => {
+  const changedRanges = (previous: string, next: string): StateChange["changedRanges"] => {
     if (previous === next) return [];
-    let from = 0;
-    while (from < previous.length && from < next.length && previous.charCodeAt(from) === next.charCodeAt(from)) from += 1;
+    let prefix = 0;
+    while (prefix < previous.length && prefix < next.length && previous.charCodeAt(prefix) === next.charCodeAt(prefix)) prefix += 1;
     let previousEnd = previous.length;
     let nextEnd = next.length;
-    while (previousEnd > from && nextEnd > from && previous.charCodeAt(previousEnd - 1) === next.charCodeAt(nextEnd - 1)) {
+    while (previousEnd > prefix && nextEnd > prefix && previous.charCodeAt(previousEnd - 1) === next.charCodeAt(nextEnd - 1)) {
       previousEnd -= 1;
       nextEnd -= 1;
     }
-    return [{ from, to: previousEnd, insertedLength: nextEnd - from }];
+    const before = previous.slice(prefix, previousEnd);
+    const after = next.slice(prefix, nextEnd);
+    if (before.length * after.length > 250_000) return [{ from: prefix, to: previousEnd, insertedLength: after.length }];
+    const width = after.length + 1;
+    const lcs = new Uint32Array((before.length + 1) * width);
+    for (let left = before.length - 1; left >= 0; left -= 1) {
+      for (let right = after.length - 1; right >= 0; right -= 1) {
+        const index = left * width + right;
+        lcs[index] = before.charCodeAt(left) === after.charCodeAt(right)
+          ? lcs[(left + 1) * width + right + 1] + 1
+          : Math.max(lcs[(left + 1) * width + right], lcs[index + 1]);
+      }
+    }
+    const ranges: Array<{ from: number; to: number; insertedLength: number }> = [];
+    let left = 0;
+    let right = 0;
+    let position = prefix;
+    while (left < before.length || right < after.length) {
+      if (left < before.length && right < after.length && before.charCodeAt(left) === after.charCodeAt(right)) {
+        left += 1; right += 1; position += 1; continue;
+      }
+      const from = position;
+      let removed = 0;
+      let insertedLength = 0;
+      while (left < before.length || right < after.length) {
+        if (left < before.length && right < after.length && before.charCodeAt(left) === after.charCodeAt(right)) break;
+        if (right < after.length && (left === before.length || lcs[left * width + right + 1] >= lcs[(left + 1) * width + right])) {
+          right += 1; insertedLength += 1;
+        } else {
+          left += 1; removed += 1;
+        }
+      }
+      ranges.push({ from, to: from + removed, insertedLength });
+      position += insertedLength;
+    }
+    return ranges;
   };
 
   const restore = (next: EditorState, source: string): boolean => {
@@ -75,7 +110,7 @@ export function createEditor(input: CreateEditorInput): EditorController {
     notify({
       previous,
       current: state,
-      changedRanges: changedRange(previous.markdown, state.markdown),
+      changedRanges: changedRanges(previous.markdown, state.markdown),
       documentChanged: previous.markdown !== state.markdown,
       selectionChanged: previous.selection !== state.selection,
       sidecarChanged: previous.sidecar !== state.sidecar,

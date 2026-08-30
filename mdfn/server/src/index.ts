@@ -222,9 +222,20 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     if (!options.trustedEditorial && input.sidecar && protectedSidecar(input.sidecar) !== protectedSidecar(current.sidecar)) {
       throw new MdfnServerError("MDFN_EDITORIAL_MUTATION_FORBIDDEN", 403);
     }
+    const mappedSidecar = mapForMarkdownChange(current.sidecar, current.markdown, markdown);
     const sidecar = options.restoreSnapshot
       ? options.restoreSnapshot.sidecar
-      : input.sidecar ?? mapForMarkdownChange(current.sidecar, current.markdown, markdown);
+      : options.trustedEditorial
+        ? input.sidecar ?? mappedSidecar
+      : input.sidecar
+        ? {
+            ...input.sidecar,
+            comments: mappedSidecar?.comments,
+            suggestions: mappedSidecar?.suggestions,
+            reviewState: mappedSidecar?.reviewState,
+            audit: mappedSidecar?.audit,
+          }
+        : mappedSidecar;
     parse(markdown, sidecar);
     const title = options.restoreSnapshot ? options.restoreSnapshot.title : input.title ?? current.title;
     const next: MdfnDocumentRecord = { ...current, title, markdown, sourceHash: hashString(markdown), schemaHash: registry.schemaHash, sidecar, version: current.version + 1, updatedAt: new Date() };

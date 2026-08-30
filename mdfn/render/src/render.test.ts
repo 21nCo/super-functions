@@ -95,4 +95,19 @@ describe("@mdfn/render", () => {
     expect(extractChunks(long, 64).map((chunk) => chunk.text.length)).toEqual([64, 64, 22]);
     expect(extractDocument(long, { maxChunkLength: 64 }).chunks.map((chunk) => chunk.text.length)).toEqual([64, 64, 22]);
   });
+
+  it("keeps skipped heading levels dense in extraction paths", () => {
+    const document: MdfnDocument = {
+      type: "doc",
+      schemaVersion: 1,
+      content: [
+        { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "Parent" }] },
+        { type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "Child" }] },
+        { type: "paragraph", content: [{ type: "text", text: "Body" }] },
+      ],
+    };
+
+    expect(extractDocument(document).chunks[0]?.headingPath).toEqual(["Parent", "Child"]);
+    expect(JSON.stringify(extractDocument(document).chunks[0]?.headingPath)).toBe('["Parent","Child"]');
+  });
 });

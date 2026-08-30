@@ -84,4 +84,17 @@ describe("toolbar model", () => {
     insertion.insert("asset");
     expect(controller.getState().markdown).toBe("before asset");
   });
+
+  it("preserves pending interior selections across disjoint history changes", () => {
+    const controller = createEditor({
+      markdown: "A middle Z",
+      projector: createMarkdownProjector(),
+      selection: { kind: "text", anchor: 2, head: 8 },
+    });
+    controller.dispatch(new Transaction().replaceSource(0, 1, "B").replaceSource(9, 10, "Y"));
+    const insertion = captureMarkdownInsertion(controller);
+    expect(controller.undo()).toBe(true);
+    insertion.insert("asset");
+    expect(controller.getState().markdown).toBe("A asset Z");
+  });
 });

@@ -173,6 +173,30 @@ describe("mdfn server", () => {
     expect(stored.sidecar?.audit).toHaveLength(1);
   });
 
+  it("maps protected anchors while accepting unprotected sidecar updates", async () => {
+    const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `sidecar-${id++}`; })() });
+    const principal = { id: "author" };
+    const created = await service.create(principal, { markdown: "hello world" });
+    const commented = await service.createComment(principal, created.id, {
+      expectedVersion: created.version,
+      anchor: { from: 6, to: 11 },
+      body: "review",
+    });
+    const updated = await service.update(principal, created.id, {
+      expectedVersion: commented.version,
+      markdown: "say hello world",
+      sidecar: {
+        ...commented.sidecar,
+        assets: [{ id: "asset-1", mediaType: "image/png", name: "proof.png" }],
+        historyRef: "history-2",
+      },
+    });
+
+    expect(updated.sidecar?.comments?.[0]?.anchor).toEqual({ from: 10, to: 15 });
+    expect(updated.sidecar?.assets).toEqual([{ id: "asset-1", mediaType: "image/png", name: "proof.png" }]);
+    expect(updated.sidecar?.historyRef).toBe("history-2");
+  });
+
   it("rejects protected editorial state during document creation", async () => {
     const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true });
     const principal = { id: "author" };

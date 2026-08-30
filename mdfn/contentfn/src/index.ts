@@ -117,8 +117,13 @@ function textFromRichNode(value: unknown, ancestors = new WeakSet<object>(), dep
   try {
     const ownText = typeof node.text === "string" ? node.text : "";
     if (node.children === undefined) {
+      const discardedMetadata = Object.keys(node).some((key) => key !== "text");
       return ownText
-        ? { text: ownText, opaque: [], unsupported: 0 }
+        ? {
+            text: ownText,
+            opaque: discardedMetadata ? [opaqueMigrationComment(value)] : [],
+            unsupported: discardedMetadata ? 1 : 0,
+          }
         : { text: "", opaque: [opaqueMigrationComment(value)], unsupported: 1 };
     }
     if (!Array.isArray(node.children)) return { text: ownText, opaque: [opaqueMigrationComment(node.children)], unsupported: 1 };

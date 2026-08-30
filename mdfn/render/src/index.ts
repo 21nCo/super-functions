@@ -415,8 +415,8 @@ export function extractDocument(document: MdfnDocument, options: { readonly maxC
     if (node.type === "heading") {
       flush();
       const level = numberAttr(node, "level", 1);
-      headingPath.length = Math.max(0, level - 1);
-      headingPath[level - 1] = plainText(node).trim();
+      headingPath.length = Math.min(headingPath.length, Math.max(0, level - 1));
+      headingPath.push(plainText(node).trim());
       continue;
     }
     const value = plainText(node).trim();
