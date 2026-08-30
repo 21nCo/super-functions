@@ -90,6 +90,14 @@ describe("@mdfn/markdown", () => {
     expect(serializeMarkdown({ document: parsed.document, originalSource: source, options: { dialect: "commonmark" } }).markdown).toBe(source);
   });
 
+  it("keeps the first duplicate reference definition authoritative", () => {
+    const parsed = parseMarkdown("[label][ref]\n\n[ref]: https://first.example\n[ref]: https://second.example\n", { dialect: "commonmark" });
+    expect(parsed.document.content[0].content?.[0]).toMatchObject({
+      type: "link",
+      attrs: { url: "https://first.example" },
+    });
+  });
+
   it("recognizes durable asset identifiers before generic URL rejection", () => {
     const source = "![asset](mdfn-asset:filefn/asset-1?document=doc&version=v1)";
     const parsed = parseMarkdown(source);

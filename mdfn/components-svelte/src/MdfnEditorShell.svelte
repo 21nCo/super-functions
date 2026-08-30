@@ -8,6 +8,13 @@
   import type { EditorialActor } from '@mdfn/core';
   let { toolbarGroups, hideToolbar = false, hideAuthoringChrome = false, actor, onSelectFiles, onModeChange, versions, onRestoreVersion, class: className = '', ...editorProps }: MdfnEditorProps & { toolbarGroups?: readonly ToolbarGroup[]; hideToolbar?: boolean; hideAuthoringChrome?: boolean; actor?: EditorialActor; onSelectFiles?: (files: readonly File[]) => Promise<string | undefined>; onModeChange?: (mode: NonNullable<MdfnEditorProps['mode']>) => void; versions?: readonly AuthoringVersion[]; onRestoreVersion?: (version: number) => void | Promise<void> } = $props();
   let editor = $state<MdfnEditorHandle | null>(null);
+  let insertionLifecycle = new AbortController();
+  $effect(() => {
+    editorProps.controller;
+    const lifecycle = new AbortController();
+    insertionLifecycle = lifecycle;
+    return () => lifecycle.abort();
+  });
   const readOnly = $derived(editorProps.readOnly === true || editorProps.mode === 'read-only');
   const commandTarget = $derived.by<ToolbarCommandTarget | null>(() => editor ? ({
     can: (command: string) => editor?.can(command as Parameters<MdfnEditorHandle['can']>[0]) ?? false,
@@ -18,7 +25,7 @@
     editorProps.editorRef?.(value);
   }
   async function handleFiles(files: readonly File[]) {
-    const insertion = captureMarkdownInsertion(editorProps.controller);
+    const insertion = captureMarkdownInsertion(editorProps.controller, insertionLifecycle.signal);
     try {
       const markdown = await onSelectFiles?.(files);
       if (markdown) insertion.insert(markdown);

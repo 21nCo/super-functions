@@ -72,6 +72,19 @@ describe("toolbar model", () => {
     });
   });
 
+  it("cancels a pending insertion when its component lifecycle ends", () => {
+    const controller = createEditor({
+      markdown: "before after",
+      projector: createMarkdownProjector(),
+      selection: { kind: "text", anchor: 7, head: 12 },
+    });
+    const lifecycle = new AbortController();
+    const insertion = captureMarkdownInsertion(controller, lifecycle.signal);
+    lifecycle.abort();
+    insertion.insert("asset");
+    expect(controller.getState().markdown).toBe("before after");
+  });
+
   it("keeps pending insertion anchors stable across history restoration", () => {
     const controller = createEditor({
       markdown: "before after",

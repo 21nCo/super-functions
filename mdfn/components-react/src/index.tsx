@@ -46,6 +46,8 @@ export const MdfnEditorShell = React.forwardRef<React.ElementRef<typeof MdfnEdit
   { toolbarGroups, hideToolbar, hideAuthoringChrome, actor, onSelectFiles, onModeChange, versions, onRestoreVersion, className, onReady, ...props }, forwardedRef,
 ) {
   const readOnly = props.readOnly === true || props.mode === "read-only";
+  const insertionLifecycle = React.useMemo(() => new AbortController(), [props.controller]);
+  React.useEffect(() => () => insertionLifecycle.abort(), [insertionLifecycle]);
   const [commandTarget, setCommandTarget] = React.useState<ToolbarCommandTarget | null>(null);
   const [editorHandle, setEditorHandle] = React.useState<MdfnEditorHandle | null>(null);
   const editorHandleRef = React.useRef<MdfnEditorHandle | null>(null);
@@ -67,7 +69,7 @@ export const MdfnEditorShell = React.forwardRef<React.ElementRef<typeof MdfnEdit
     onReady?.(handle);
   }, [onReady]);
   const handleFiles = React.useCallback(async (files: readonly File[]) => {
-    const insertion = captureMarkdownInsertion(props.controller);
+    const insertion = captureMarkdownInsertion(props.controller, insertionLifecycle.signal);
     try {
       const markdown = await onSelectFiles?.(files);
       if (markdown) insertion.insert(markdown);
@@ -77,7 +79,7 @@ export const MdfnEditorShell = React.forwardRef<React.ElementRef<typeof MdfnEdit
       insertion.cancel();
       throw error;
     }
-  }, [onSelectFiles, props.controller, props.onFiles]);
+  }, [insertionLifecycle, onSelectFiles, props.controller, props.onFiles]);
   return (
     <div className={className} data-mdfn-component="editor-shell">
       {!hideToolbar && !readOnly && <MdfnToolbar controller={props.controller} groups={toolbarGroups} commandTarget={commandTarget} />}
@@ -105,6 +107,8 @@ const modes = ["visual", "source", "split", "preview", "read-only"] as const;
 export function MdfnAuthoringChrome({ controller, editor, mode = "visual", readOnly, compact, actor, onSelectFiles, onModeChange, versions = [], onRestoreVersion }: MdfnAuthoringChromeProps): React.ReactElement {
   const isReadOnly = readOnly === true || mode === "read-only";
   useMdfn(controller);
+  const insertionLifecycle = React.useMemo(() => new AbortController(), [controller]);
+  React.useEffect(() => () => insertionLifecycle.abort(), [insertionLifecycle]);
   const [slashQuery, setSlashQuery] = React.useState("");
   const [link, setLink] = React.useState("");
   const [rows, setRows] = React.useState(2);
@@ -171,7 +175,7 @@ export function MdfnAuthoringChrome({ controller, editor, mode = "visual", readO
         <Card.Header><Card.Title>Files</Card.Title></Card.Header>
         <Card.Content><Input type="file" aria-label="Select files" multiple onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
           const files = [...(event.currentTarget.files ?? [])];
-          const insertion = captureMarkdownInsertion(controller);
+          const insertion = captureMarkdownInsertion(controller, insertionLifecycle.signal);
           const upload = onSelectFiles?.(files);
           if (!upload) { insertion.cancel(); return; }
           void upload.then((markdown) => {

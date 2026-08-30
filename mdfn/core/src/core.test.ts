@@ -268,6 +268,12 @@ describe("@mdfn/core", () => {
     ] }, { maxTextLength: 8, maxAggregateTextLength: 10 })).toThrowError("MDFN_SIDECAR_TEXT_LIMIT_EXCEEDED");
     expect(() => validateMdfnSidecar({ extra: "x".repeat(1_000_000) })).toThrowError("MDFN_SIDECAR_INVALID");
     expect(() => validateMdfnSidecar({ assets: [{ id: "asset", mediaType: "text/plain", extra: "unbounded" }] })).toThrowError("MDFN_SIDECAR_ASSET_INVALID");
+
+    const input = { assets: [{ id: "asset", mediaType: "text/plain", metadata: { nested: ["original"] } }] };
+    const validated = validateMdfnSidecar(input)!;
+    input.assets[0]!.metadata.nested[0] = "mutated";
+    input.assets.push({ id: "later", mediaType: "text/plain", metadata: { nested: [] } });
+    expect(validated.assets).toEqual([{ id: "asset", mediaType: "text/plain", metadata: { nested: ["original"] } }]);
   });
 
   it("reports sidecar changes caused by source anchor mapping", () => {

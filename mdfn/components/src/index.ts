@@ -54,7 +54,7 @@ export function insertMarkdownAtSelection(
 }
 
 /** Keep an asynchronous file insertion anchored to the selection where it started. */
-export function captureMarkdownInsertion(controller: EditorController): {
+export function captureMarkdownInsertion(controller: EditorController, signal?: AbortSignal): {
   insert(markdown: string): void;
   cancel(): void;
 } {
@@ -72,7 +72,10 @@ export function captureMarkdownInsertion(controller: EditorController): {
     if (!active) return;
     active = false;
     unsubscribe();
+    signal?.removeEventListener("abort", cancel);
   };
+  if (signal?.aborted) cancel();
+  else signal?.addEventListener("abort", cancel, { once: true });
   return {
     insert(markdown) {
       if (!active) return;

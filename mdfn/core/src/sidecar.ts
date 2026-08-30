@@ -11,6 +11,12 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function cloneValidated(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(cloneValidated);
+  if (record(value)) return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, cloneValidated(entry)]));
+  return value;
+}
+
 function knownFields(value: Record<string, unknown>, allowed: readonly string[], code: string): void {
   const fields = new Set(allowed);
   if (Object.keys(value).some((key) => !fields.has(key))) throw new Error(code);
@@ -144,5 +150,5 @@ export function validateMdfnSidecar(value: unknown, options: SidecarValidationOp
 
   if (value.historyRef !== undefined) text(value.historyRef, "MDFN_SIDECAR_HISTORY_REF_INVALID", 4_096);
   if (value.reviewState !== undefined && !(["draft", "in-review", "changes-requested", "approved"] satisfies ReviewState[]).includes(value.reviewState as ReviewState)) throw new Error("MDFN_SIDECAR_REVIEW_STATE_INVALID");
-  return value as unknown as MdfnSidecar;
+  return cloneValidated(value) as MdfnSidecar;
 }

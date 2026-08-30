@@ -28,6 +28,13 @@
   let suggestion = $state('');
   let replies = $state<Record<string, string>>({});
   let slashOpen = $state(false);
+  let insertionLifecycle = new AbortController();
+  $effect(() => {
+    controller;
+    const lifecycle = new AbortController();
+    insertionLifecycle = lifecycle;
+    return () => lifecycle.abort();
+  });
   const modes: readonly EditorMode[] = ['visual', 'source', 'split', 'preview', 'read-only'];
   $effect(() => {
     version = controller.getState().version;
@@ -69,7 +76,7 @@
   }
   function selectFiles(event: Event) {
     const files = [...((event.currentTarget as HTMLInputElement).files ?? [])];
-    const insertion = captureMarkdownInsertion(controller);
+    const insertion = captureMarkdownInsertion(controller, insertionLifecycle.signal);
     const upload = onSelectFiles?.(files);
     if (!upload) { insertion.cancel(); return; }
     void upload.then((markdown) => {

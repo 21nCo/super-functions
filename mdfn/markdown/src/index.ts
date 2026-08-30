@@ -337,7 +337,9 @@ export function parseMarkdown(source: string, options: MarkdownOptions = {}): Ma
   while (pendingDefinitions.length > 0) {
     const node = pendingDefinitions.pop()!;
     if (node.type === "definition" && node.identifier && !definitions.has(node.identifier.toLocaleLowerCase())) definitions.set(node.identifier.toLocaleLowerCase(), node);
-    if (node.children) pendingDefinitions.push(...node.children);
+    if (node.children) {
+      for (let index = node.children.length - 1; index >= 0; index -= 1) pendingDefinitions.push(node.children[index]!);
+    }
   }
   const maxDepth = options.maxDepth ?? DEFAULT_LIMITS.maxDepth;
   const maxNodes = options.maxNodes ?? DEFAULT_LIMITS.maxNodes;
