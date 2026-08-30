@@ -58,7 +58,7 @@ describe("filefn bridge", () => {
         source: { mode: "placeholder", placeholderKind: "pdf-processing" },
       }),
     };
-    const provider = createFileFnAssetProvider({ client: client as never, uploadPolicy: "documents" });
+    const provider = createFileFnAssetProvider({ client: client as never, uploadPolicy: "documents", resolveDocumentId: async () => "document" });
     const resolved = await provider.resolve!({ id: "asset", provider: "filefn", documentId: "document" }, { documentId: "document" });
     expect(resolved.embed).toBe("placeholder");
     expect(resolvedAssetRenderNode(resolved)).toMatchObject({ tag: "span", attrs: { "data-mdfn-asset-state": "pending-local" } });
@@ -75,5 +75,26 @@ describe("filefn bridge", () => {
       resolve: async () => ({ reference, state: "ready", url: "blob:durable", embed: "image" }),
     });
     await expect(durable.resolve(reference, { documentId: "document" })).rejects.toThrow("MDFN_ASSET_URL_FORBIDDEN");
+  });
+
+  it("binds deletion authorization to the provider's authoritative document ownership", async () => {
+    const authorize = vi.fn();
+    const remove = vi.fn();
+    const gateway = createAssetGateway({
+      authorize,
+      resolve: async (reference) => ({
+        reference: { ...reference, documentId: "document-a" },
+        state: "ready",
+        embed: "download",
+      }),
+      delete: remove,
+    });
+
+    await expect(gateway.delete(
+      { id: "asset-a", provider: "filefn", documentId: "document-b" },
+      { documentId: "document-b" },
+    )).rejects.toThrow("MDFN_ASSET_DOCUMENT_MISMATCH");
+    expect(authorize).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
   });
 });

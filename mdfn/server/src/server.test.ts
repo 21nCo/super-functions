@@ -1,8 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import { createMdfnService } from "./index";
+import { createMdfnRouter, createMdfnService } from "./index";
 
 describe("mdfn server", () => {
+  it("rejects oversized JSON bodies before document parsing", async () => {
+    const router = createMdfnRouter({
+      database: memoryAdapter(),
+      durability: "ephemeral",
+      authorize: () => true,
+      resolvePrincipal: () => ({ id: "author" }),
+      maxRequestBodyBytes: 32,
+    });
+    const result = await router.handle(new Request("https://example.test/api/mdfn/documents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ markdown: "x".repeat(64) }),
+    }));
+
+    expect(result.status).toBe(413);
+  });
+
   it("wraps the adapter and enforces optimistic versions", async () => {
     const database = memoryAdapter();
     const service = createMdfnService({ database, durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `id-${id++}`; })() });

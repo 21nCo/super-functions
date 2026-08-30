@@ -76,6 +76,20 @@ describe("@mdfn/render", () => {
     expect(customized).not.toContain('target="_blank"');
   });
 
+  it("rejects extension attribute names that can break out of structured serialization", () => {
+    const extension: MdfnExtension = {
+      name: "unsafe-attribute-name",
+      version: "1.0.0",
+      preservation: { noEdit: "exact", edited: "semantic", unsupported: "opaque" },
+      render: ({ node }) => node.type === "heading"
+        ? { tag: "span", attrs: { 'data-x onmouseover': "alert(1)" }, text: "Unsafe" }
+        : null,
+    };
+
+    expect(() => renderHtml(document, { extensions: [extension] }))
+      .toThrowError("MDFN_EXTENSION_RENDER_ATTRIBUTE_FORBIDDEN");
+  });
+
   it("enforces node limits for manually rendered empty list items", () => {
     const list: MdfnDocument = {
       type: "doc",

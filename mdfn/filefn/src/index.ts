@@ -64,9 +64,13 @@ export function createAssetGateway(provider: MdfnAssetProvider): Required<Pick<M
       return resolved;
     },
     async delete(reference, context) {
-      await authorized(provider, "delete", reference, context);
       if (!provider.delete) throw new Error("MDFN_ASSET_DELETE_UNAVAILABLE");
-      await provider.delete(reference, context);
+      const resolved = await provider.resolve(reference, { ...context, purpose: "manage" });
+      if (resolved.reference.id !== reference.id || resolved.reference.documentId !== context.documentId) {
+        throw new Error("MDFN_ASSET_DOCUMENT_MISMATCH");
+      }
+      await authorized(provider, "delete", resolved.reference, context);
+      await provider.delete(resolved.reference, context);
     },
   };
 }
@@ -93,6 +97,8 @@ function fileFnResolved(reference: AssetReference, descriptor: RenderDescriptor)
 export function createFileFnAssetProvider(input: {
   readonly client: FileFnClient;
   readonly uploadPolicy: string;
+  /** Resolve the durable FileFn upload metadata written by this adapter. */
+  readonly resolveDocumentId: (fileId: string) => Promise<string | undefined>;
   readonly select?: (context: AssetContext) => Promise<AssetReference | null>;
   readonly authorize?: MdfnAssetProvider["authorize"];
 }): MdfnAssetProvider {
@@ -118,8 +124,10 @@ export function createFileFnAssetProvider(input: {
       };
     },
     async resolve(reference) {
+      const documentId = await input.resolveDocumentId(reference.id);
+      if (!documentId) throw new Error(`MDFN_ASSET_OWNERSHIP_MISSING:${reference.id}`);
       const descriptor = await input.client.resolveRenderable({ fileId: reference.id, versionId: reference.versionId, intent: "preview", preferLocal: true });
-      return fileFnResolved(reference, descriptor);
+      return fileFnResolved({ ...reference, documentId }, descriptor);
     },
     async delete(reference) { await input.client.deleteFile(reference.id); },
   };

@@ -17,7 +17,7 @@ import {
 } from "@mdfn/core";
 import { createMarkdownProjector, parseMarkdown, type MarkdownOptions } from "@mdfn/markdown";
 import { wrapWithSchema, type Adapter, type TableSchema } from "@superfunctions/db";
-import { createRouter, type Router } from "@superfunctions/http";
+import { createRouter, RouterError, type Router } from "@superfunctions/http";
 
 const DOCUMENTS = "mdfnDocuments";
 const VERSIONS = "mdfnVersions";
@@ -59,6 +59,8 @@ export interface MdfnServerConfig {
   readonly basePath?: string;
   readonly createId?: () => string;
   readonly maxCollaborationUpdateBytes?: number;
+  /** Maximum encoded request body accepted by JSON-writing routes. */
+  readonly maxRequestBodyBytes?: number;
   /** Durable storage requires adapter transactions. Ephemeral is intended only for in-memory/test hosts. */
   readonly durability?: "required" | "ephemeral";
 }
@@ -438,8 +440,13 @@ export function createMdfnRouter(config: MdfnServerConfig, service = createMdfnS
   const principal = config.resolvePrincipal ?? (() => { throw new MdfnServerError("MDFN_UNAUTHENTICATED", 401); });
   return createRouter({
     basePath: config.basePath ?? "/api/mdfn",
+    maxBodyBytes: config.maxRequestBodyBytes ?? (config.markdown?.maxBytes ?? 2 * 1024 * 1024) + 4 * 1024 * 1024,
     context: async (request) => ({ principal: await principal(request) }),
-    onError: (error) => error instanceof MdfnServerError ? Response.json({ error: error.code }, { status: error.status }) : Response.json({ error: "MDFN_INTERNAL_ERROR" }, { status: 500 }),
+    onError: (error) => error instanceof MdfnServerError
+      ? Response.json({ error: error.code }, { status: error.status })
+      : error instanceof RouterError
+        ? error.toResponse()
+        : Response.json({ error: "MDFN_INTERNAL_ERROR" }, { status: 500 }),
     routes: [
       { method: "GET", path: "/documents", handler: (_request, context) => service.list(context.principal, { limit: Number(context.query.get("limit") ?? 50), offset: Number(context.query.get("offset") ?? 0) }).then((documents) => Response.json({ documents })) },
       { method: "POST", path: "/documents", handler: async (_request, context) => response(await service.create(context.principal, await context.json()), 201) },

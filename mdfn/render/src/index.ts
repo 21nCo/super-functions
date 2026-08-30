@@ -132,6 +132,7 @@ function renderExtensionNode(node: ExtensionRenderNode, context: RenderContext, 
   let linkHref: string | undefined;
   for (const [name, rawValue] of Object.entries(node.attrs ?? {})) {
     const normalizedName = name.toLowerCase();
+    if (!/^[a-z][a-z0-9_.:-]*$/.test(normalizedName)) throw new Error("MDFN_EXTENSION_RENDER_ATTRIBUTE_FORBIDDEN");
     if (/^on/.test(normalizedName) || normalizedName === "style" || normalizedName === "srcdoc") throw new Error("MDFN_EXTENSION_RENDER_ATTRIBUTE_FORBIDDEN");
     const allowed = EXTENSION_ATTRS.has(normalizedName) || normalizedName.startsWith("aria-") || normalizedName.startsWith("data-") || normalizedName === "href" || normalizedName === "src";
     if (!allowed) throw new Error(`MDFN_EXTENSION_RENDER_ATTRIBUTE_FORBIDDEN:${normalizedName}`);

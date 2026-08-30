@@ -245,6 +245,10 @@ describe("@mdfn/core", () => {
     ] }] }, { maxEntries: 2 })).toThrowError("MDFN_SIDECAR_ENTRY_LIMIT_EXCEEDED");
     expect(() => validateMdfnSidecar({ assets: [{ id: "asset", mediaType: "text/plain", metadata: { nested: "x".repeat(33) } }] }, { maxTextLength: 32 })).toThrowError("MDFN_SIDECAR_ASSET_INVALID");
     expect(() => validateMdfnSidecar({ assets: [{ id: "asset", mediaType: "text/plain", metadata: { values: [1, 2, 3] } }] }, { maxEntries: 4 })).toThrowError("MDFN_SIDECAR_ENTRY_LIMIT_EXCEEDED");
+    expect(() => validateMdfnSidecar({ comments: [
+      { id: "one", anchor: { from: 0, to: 0 }, resolved: false, messages: [{ id: "m1", authorId: "a", body: "123456", createdAt: "2026-08-12T00:00:00.000Z" }] },
+      { id: "two", anchor: { from: 0, to: 0 }, resolved: false, messages: [{ id: "m2", authorId: "a", body: "789012", createdAt: "2026-08-12T00:00:00.000Z" }] },
+    ] }, { maxTextLength: 8, maxAggregateTextLength: 10 })).toThrowError("MDFN_SIDECAR_TEXT_LIMIT_EXCEEDED");
     expect(() => validateMdfnSidecar({ extra: "x".repeat(1_000_000) })).toThrowError("MDFN_SIDECAR_INVALID");
     expect(() => validateMdfnSidecar({ assets: [{ id: "asset", mediaType: "text/plain", extra: "unbounded" }] })).toThrowError("MDFN_SIDECAR_ASSET_INVALID");
   });

@@ -82,6 +82,7 @@
         };
         currentEditorRef?.(handle);
       } catch (error) {
+        if (cancelled) return;
         try { visual?.destroy(); } catch { /* Preserve the original mount error. */ }
         try { source?.destroy(); } catch { /* Preserve the original mount error. */ }
         visual = undefined;

@@ -4,6 +4,7 @@ export interface SidecarValidationOptions {
   readonly markdownLength?: number;
   readonly maxEntries?: number;
   readonly maxTextLength?: number;
+  readonly maxAggregateTextLength?: number;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -52,8 +53,10 @@ export function validateMdfnSidecar(value: unknown, options: SidecarValidationOp
   knownFields(value, ["comments", "suggestions", "assets", "historyRef", "reviewState", "audit"], "MDFN_SIDECAR_INVALID");
   const maxEntries = options.maxEntries ?? 10_000;
   const maxText = options.maxTextLength ?? 256 * 1024;
+  const maxAggregateText = options.maxAggregateTextLength ?? maxText;
   let entryCount = 0;
   let jsonTextLength = 0;
+  let aggregateTextLength = 0;
   const countEntry = (): void => {
     entryCount += 1;
     if (entryCount > maxEntries) throw new Error("MDFN_SIDECAR_ENTRY_LIMIT_EXCEEDED");
@@ -71,6 +74,12 @@ export function validateMdfnSidecar(value: unknown, options: SidecarValidationOp
   const countJsonText = (length: number): boolean => {
     jsonTextLength += length;
     return jsonTextLength <= maxText;
+  };
+  const editorialText = (value: unknown, code: string, allowEmpty = false): string => {
+    const resolved = text(value, code, maxText, allowEmpty);
+    aggregateTextLength += resolved.length;
+    if (aggregateTextLength > maxAggregateText) throw new Error("MDFN_SIDECAR_TEXT_LIMIT_EXCEEDED");
+    return resolved;
   };
   const boundedJson = (entry: unknown): entry is MdfnJsonValue => json(entry, (length) => {
     countEntry();
@@ -92,7 +101,7 @@ export function validateMdfnSidecar(value: unknown, options: SidecarValidationOp
       knownFields(message, ["id", "authorId", "body", "createdAt", "updatedAt"], "MDFN_SIDECAR_COMMENT_MESSAGE_INVALID");
       unique(text(message.id, "MDFN_SIDECAR_COMMENT_MESSAGE_INVALID", 256));
       text(message.authorId, "MDFN_SIDECAR_COMMENT_MESSAGE_INVALID", 256);
-      text(message.body, "MDFN_SIDECAR_COMMENT_MESSAGE_INVALID", maxText);
+      editorialText(message.body, "MDFN_SIDECAR_COMMENT_MESSAGE_INVALID");
       timestamp(message.createdAt, "MDFN_SIDECAR_COMMENT_MESSAGE_INVALID");
       if (message.updatedAt !== undefined) timestamp(message.updatedAt, "MDFN_SIDECAR_COMMENT_MESSAGE_INVALID");
     }
@@ -105,7 +114,7 @@ export function validateMdfnSidecar(value: unknown, options: SidecarValidationOp
     if (!["pending", "accepted", "rejected"].includes(String(candidate.status))) throw new Error("MDFN_SIDECAR_SUGGESTION_INVALID");
     unique(text(candidate.id, "MDFN_SIDECAR_SUGGESTION_INVALID", 256));
     anchor(candidate.anchor, options.markdownLength);
-    text(candidate.replacement, "MDFN_SIDECAR_SUGGESTION_INVALID", maxText, true);
+    editorialText(candidate.replacement, "MDFN_SIDECAR_SUGGESTION_INVALID", true);
     text(candidate.authorId, "MDFN_SIDECAR_SUGGESTION_INVALID", 256);
     timestamp(candidate.createdAt, "MDFN_SIDECAR_SUGGESTION_INVALID");
   }
