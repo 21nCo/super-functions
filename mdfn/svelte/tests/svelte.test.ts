@@ -7,6 +7,20 @@ import MdfnEditor from "../src/MdfnEditor.svelte";
 import ReactiveHarness from "./ReactiveHarness.svelte";
 
 const sourceMount = vi.hoisted(() => ({ failNext: false }));
+const domMount = vi.hoisted(() => ({ destroy: vi.fn() }));
+
+vi.mock("@mdfn/dom", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@mdfn/dom")>();
+  return {
+    ...actual,
+    createDomEditor: (...args: Parameters<typeof actual.createDomEditor>) => {
+      const editor = actual.createDomEditor(...args);
+      const destroy = editor.destroy.bind(editor);
+      editor.destroy = () => { domMount.destroy(); destroy(); };
+      return editor;
+    },
+  };
+});
 
 vi.mock("@mdfn/source", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@mdfn/source")>();
@@ -97,6 +111,21 @@ describe("@mdfn/svelte", () => {
     await tick();
     expect(target.querySelector('[data-mdfn-source-fallback="true"]')).toBeNull();
     expect(target.querySelector('[aria-label="Updated editor source"]')).not.toBeNull();
+    await unmount(component);
+  });
+
+  it("destroys a partially mounted visual editor when split-mode source loading fails", async () => {
+    const controller = createEditor({ markdown: "first", projector: createMarkdownProjector() });
+    const target = document.createElement("div");
+    document.body.append(target);
+    domMount.destroy.mockClear();
+    sourceMount.failNext = true;
+    const component = mount(MdfnEditor, { target, props: { controller, mode: "split" } });
+
+    await vi.waitFor(() => {
+      expect(target.querySelector('[data-mdfn-source-fallback="true"]')).not.toBeNull();
+      expect(domMount.destroy).toHaveBeenCalledOnce();
+    });
     await unmount(component);
   });
 });

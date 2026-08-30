@@ -82,6 +82,11 @@
         };
         currentEditorRef?.(handle);
       } catch (error) {
+        try { visual?.destroy(); } catch { /* Preserve the original mount error. */ }
+        try { source?.destroy(); } catch { /* Preserve the original mount error. */ }
+        visual = undefined;
+        source = undefined;
+        currentEditorRef?.(null);
         loadError = error instanceof Error ? error : new Error(String(error));
         currentOnLoadError?.(loadError);
       }

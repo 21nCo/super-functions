@@ -245,6 +245,8 @@ describe("@mdfn/core", () => {
     ] }] }, { maxEntries: 2 })).toThrowError("MDFN_SIDECAR_ENTRY_LIMIT_EXCEEDED");
     expect(() => validateMdfnSidecar({ assets: [{ id: "asset", mediaType: "text/plain", metadata: { nested: "x".repeat(33) } }] }, { maxTextLength: 32 })).toThrowError("MDFN_SIDECAR_ASSET_INVALID");
     expect(() => validateMdfnSidecar({ assets: [{ id: "asset", mediaType: "text/plain", metadata: { values: [1, 2, 3] } }] }, { maxEntries: 4 })).toThrowError("MDFN_SIDECAR_ENTRY_LIMIT_EXCEEDED");
+    expect(() => validateMdfnSidecar({ extra: "x".repeat(1_000_000) })).toThrowError("MDFN_SIDECAR_INVALID");
+    expect(() => validateMdfnSidecar({ assets: [{ id: "asset", mediaType: "text/plain", extra: "unbounded" }] })).toThrowError("MDFN_SIDECAR_ASSET_INVALID");
   });
 
   it("reports sidecar changes caused by source anchor mapping", () => {
