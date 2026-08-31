@@ -161,6 +161,43 @@ describe("collaboration", () => {
     session.destroy(); controller.destroy(); peer.destroy();
   });
 
+  it("accepts semantically unchanged protected sidecars with reordered object keys", async () => {
+    let authorizationCalls = 0;
+    const sidecar = {
+      audit: [{
+        id: "audit",
+        action: "review-transitioned" as const,
+        actorId: "owner",
+        createdAt: "2026-08-31T00:00:00.000Z",
+        details: { before: "draft", after: "approved" },
+      }],
+    };
+    const controller = createEditor({ markdown: "safe", projector: createMarkdownProjector(), sidecar });
+    const session = createCollaborationSession({
+      controller,
+      documentId: "canonical-sidecar",
+      user: { id: "owner" },
+      authorizeSidecarUpdate: () => { authorizationCalls += 1; return false; },
+    });
+    const baseline = session.encodeStateVector();
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, session.encodeUpdate());
+    peer.getMap("sidecar").set("value", JSON.stringify({
+      audit: [{
+        details: { after: "approved", before: "draft" },
+        createdAt: "2026-08-31T00:00:00.000Z",
+        actorId: "owner",
+        action: "review-transitioned",
+        id: "audit",
+      }],
+    }));
+
+    await expect(session.applyUpdate(Y.encodeStateAsUpdate(peer, baseline), "peer")).resolves.toBeUndefined();
+    expect(authorizationCalls).toBe(0);
+    expect(controller.getState().sidecar).toEqual(sidecar);
+    session.destroy(); controller.destroy(); peer.destroy();
+  });
+
   it("revalidates an authorized remote update when the live document changes", async () => {
     let signalAuthorization!: () => void;
     let releaseAuthorization!: () => void;

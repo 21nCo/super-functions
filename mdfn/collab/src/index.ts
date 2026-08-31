@@ -131,12 +131,21 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
     parseSidecar(candidate.getMap<string>("sidecar").get("value"), markdown.length);
   };
 
-  const protectedSidecar = (value: MdfnSidecar | undefined): string => JSON.stringify({
+  const canonicalJson = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonicalJson);
+    if (value === null || typeof value !== "object") return value;
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+        .map(([key, entry]) => [key, canonicalJson(entry)]),
+    );
+  };
+  const protectedSidecar = (value: MdfnSidecar | undefined): string => JSON.stringify(canonicalJson({
     comments: value?.comments ?? [],
     suggestions: value?.suggestions ?? [],
     reviewState: value?.reviewState ?? "draft",
     audit: value?.audit ?? [],
-  });
+  }));
 
   const validateUpdate = async (update: Uint8Array, origin: unknown): Promise<number> => {
     const baseline = documentGeneration;

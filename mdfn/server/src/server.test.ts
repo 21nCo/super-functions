@@ -40,6 +40,23 @@ describe("mdfn server", () => {
     expect((await service.versions(principal, created.id)).versions).toHaveLength(2);
   });
 
+  it("replays idempotent updates with semantically identical reordered payload keys", async () => {
+    const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true });
+    const principal = { id: "author" };
+    const created = await service.create(principal, { markdown: "body" });
+    const updated = await service.update(principal, created.id, {
+      expectedVersion: 1,
+      title: "Canonical payload",
+      idempotencyKey: "canonical-update",
+    });
+
+    await expect(service.update(principal, created.id, {
+      idempotencyKey: "canonical-update",
+      title: "Canonical payload",
+      expectedVersion: 1,
+    })).resolves.toEqual(updated);
+  });
+
   it("enforces tenant scope before host authorization and collaboration limits", async () => {
     const database = memoryAdapter();
     const service = createMdfnService({ database, durability: "ephemeral", authorize: () => true, maxCollaborationUpdateBytes: 4, createId: (() => { let id = 0; return () => `tenant-id-${id++}`; })() });
@@ -229,7 +246,12 @@ describe("mdfn server", () => {
     const commented = await service.createComment(principal, created.id, { expectedVersion: 1, anchor: { from: 2, to: 5 }, body: "Please revise", idempotencyKey: "comment" });
     const threadId = commented.sidecar?.comments?.[0]?.id;
     expect(threadId).toBeTruthy();
-    expect((await service.createComment(principal, created.id, { expectedVersion: 1, anchor: { from: 2, to: 5 }, body: "Please revise", idempotencyKey: "comment" })).version).toBe(2);
+    expect((await service.createComment(principal, created.id, reorderObjectKeys({
+      expectedVersion: 1,
+      anchor: { from: 2, to: 5 },
+      body: "Please revise",
+      idempotencyKey: "comment",
+    }))).version).toBe(2);
     await expect(service.createComment(principal, created.id, { expectedVersion: 1, anchor: { from: 2, to: 5 }, body: "different payload", idempotencyKey: "comment" })).rejects.toMatchObject({ code: "MDFN_IDEMPOTENCY_KEY_REUSED" });
     const replied = await service.replyComment(principal, created.id, threadId!, { expectedVersion: 2, body: "Working on it" });
     const resolved = await service.resolveComment(principal, created.id, threadId!, { expectedVersion: 3, resolved: true });

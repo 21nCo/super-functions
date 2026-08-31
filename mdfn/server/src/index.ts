@@ -295,6 +295,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
         .map(([key, entry]) => [key, canonicalJson(entry)]),
     );
   };
+  const hashValue = (value: unknown): string => hashString(JSON.stringify(canonicalJson(value)));
   const protectedSidecar = (value: MdfnSidecar | undefined): string => JSON.stringify(canonicalJson({
     comments: value?.comments ?? [],
     suggestions: value?.suggestions ?? [],
@@ -430,7 +431,11 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     const current = await loadScoped(principal, id);
     await allowed(config, options.authorizationAction ?? "update", principal, current);
     const operation = options.idempotencyOperation ?? "document:update";
-    const payloadHash = hashString(JSON.stringify(options.idempotencyPayload ?? { ...input, idempotencyKey: undefined, restoreSnapshot: options.restoreSnapshot }));
+    const payloadHash = hashValue(options.idempotencyPayload ?? {
+      ...input,
+      idempotencyKey: undefined,
+      restoreSnapshot: options.restoreSnapshot,
+    });
     if (input.idempotencyKey) {
       const replay = await replayReceipt(database, id, input.idempotencyKey, operation, payloadHash);
       if (replay) return replay;
@@ -483,7 +488,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     const current = await loadScoped(principal, id);
     await allowed(config, authorizationAction, principal, current);
     if (idempotencyKey) {
-      const replay = await replayReceipt(database, id, idempotencyKey, changeSource, hashString(JSON.stringify(idempotencyPayload)));
+      const replay = await replayReceipt(database, id, idempotencyKey, changeSource, hashValue(idempotencyPayload));
       if (replay) return replay;
     }
     if (current.version !== expectedVersion) throw new MdfnServerError("MDFN_VERSION_CONFLICT", 409);
