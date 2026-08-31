@@ -34,6 +34,8 @@ describe("filefn bridge", () => {
       .toBe("![Image](mdfn-asset:filefn/asset?document=document&version=v1)");
     expect(assetReferenceMarkdown({ id: "asset", provider: "filefn", documentId: "document", mediaType: "image/png" }, "x\\]y"))
       .toBe(String.raw`![x\\\]y](mdfn-asset:filefn/asset?document=document)`);
+    expect(assetReferenceMarkdown({ id: "asset", provider: "filefn", documentId: "document", mediaType: "image/png" }, "safe\n\n# injected"))
+      .toBe("![safe # injected](mdfn-asset:filefn/asset?document=document)");
   });
 
   it("adapts an asset provider to the shared authoring file callback", async () => {
@@ -145,6 +147,21 @@ describe("filefn bridge", () => {
     const resolved = await provider.resolve!({ id: "asset", provider: "filefn", documentId: "document" }, { documentId: "document" });
     expect(resolved.embed).toBe("placeholder");
     expect(resolvedAssetRenderNode(resolved)).toMatchObject({ tag: "span", attrs: { "data-mdfn-asset-state": "pending-local" } });
+  });
+
+  it("rejects forged FileFn ownership before resolving delivery", async () => {
+    const resolveRenderable = vi.fn();
+    const provider = createFileFnAssetProvider({
+      client: { resolveRenderable } as never,
+      uploadPolicy: "documents",
+      resolveDocumentId: async () => "document-a",
+    });
+
+    await expect(provider.resolve!(
+      { id: "foreign", provider: "filefn", documentId: "document-b" },
+      { documentId: "document-b" },
+    )).rejects.toThrow("MDFN_ASSET_DOCUMENT_MISMATCH");
+    expect(resolveRenderable).not.toHaveBeenCalled();
   });
 
   it("allows blob delivery URLs only for pending-local assets", async () => {

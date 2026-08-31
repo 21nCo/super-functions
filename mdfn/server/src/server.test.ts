@@ -46,6 +46,13 @@ describe("mdfn server", () => {
     await expect(service.read(principal, created.id)).resolves.toMatchObject({ title: "🌍", version: 1 });
   });
 
+  it("rejects empty client-supplied document ids", async () => {
+    const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true });
+
+    await expect(service.create({ id: "author" }, { id: "", markdown: "body" }))
+      .rejects.toMatchObject({ code: "MDFN_DOCUMENT_ID_INVALID", status: 422 });
+  });
+
   it("wraps the adapter and enforces optimistic versions", async () => {
     const database = memoryAdapter();
     const service = createMdfnService({ database, durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `id-${id++}`; })() });
@@ -226,6 +233,32 @@ describe("mdfn server", () => {
     await expect(append).rejects.toMatchObject({ code: "MDFN_DOCUMENT_NOT_FOUND" });
     await writer.create(principal, { id: document.id, markdown: "recreated" });
     expect((await writer.collaborationUpdates(principal, document.id)).updates).toEqual([]);
+  });
+
+  it("does not expose a stale cross-instance collaboration commit after document recreation", async () => {
+    const database = memoryAdapter();
+    const writer = createMdfnService({ database, durability: "ephemeral", authorize: () => true });
+    const deleter = createMdfnService({ database, durability: "ephemeral", authorize: () => true });
+    const principal = { id: "author" };
+    const document = await writer.create(principal, { id: "recreated-race", markdown: "original" });
+    await deleter.delete(principal, document.id);
+    await deleter.create(principal, { id: document.id, markdown: "recreated" });
+    await database.create({
+      model: "mdfnCollaborationUpdates",
+      data: {
+        id: "late-stale-update",
+        documentId: document.id,
+        documentGeneration: document.collaborationGeneration,
+        authorId: principal.id,
+        update: "stale-update",
+        cursorKey: "v2:00000000000000000001",
+        createdAt: new Date(),
+      },
+    });
+
+    await expect(writer.collaborationUpdates(principal, document.id)).resolves.toMatchObject({ updates: [] });
+    await writer.appendCollaborationUpdate(principal, document.id, "current-update");
+    await expect(writer.collaborationUpdates(principal, document.id)).resolves.toMatchObject({ updates: ["current-update"] });
   });
 
   it("paginates lightweight immutable version history", async () => {

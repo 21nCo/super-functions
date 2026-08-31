@@ -128,6 +128,7 @@ export function createFileFnAssetProvider(input: {
     async resolve(reference) {
       const documentId = await input.resolveDocumentId(reference.id);
       if (!documentId) throw new Error(`MDFN_ASSET_OWNERSHIP_MISSING:${reference.id}`);
+      if (documentId !== reference.documentId) throw new Error("MDFN_ASSET_DOCUMENT_MISMATCH");
       const descriptor = await input.client.resolveRenderable({ fileId: reference.id, versionId: reference.versionId, intent: "preview", preferLocal: true });
       return fileFnResolved({ ...reference, documentId }, descriptor);
     },
@@ -136,7 +137,7 @@ export function createFileFnAssetProvider(input: {
 }
 
 export function assetReferenceMarkdown(reference: AssetReference, alt = reference.name ?? "asset"): string {
-  const label = alt.replaceAll("\\", "\\\\").replaceAll("]", "\\]");
+  const label = alt.replace(/[\r\n]+/g, " ").replaceAll("\\", "\\\\").replaceAll("]", "\\]");
   const url = formatMdfnAssetUrl({ provider: reference.provider, id: reference.id, documentId: reference.documentId, versionId: reference.versionId });
   return `![${label}](${url})`;
 }
