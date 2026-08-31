@@ -123,18 +123,30 @@ export class D1MailFnStore implements MailFnStore {
       [value.id, value.projectId, value.address, value.kind, value.status, value.expiresAt ?? null, value.createdAt, value.updatedAt, json(value)],
     );
   }
-  async saveInboxWithActiveQuota(value: Inbox, maxActiveInboxes: number): Promise<boolean> {
+  async saveInboxIfUnchanged(value: Inbox, expected: Inbox): Promise<boolean> {
     const result = await bind(this.database.prepare(
       `UPDATE mailfn_inboxes
        SET address = ?, kind = ?, status = ?, expires_at = ?, updated_at = ?, data_json = ?
-       WHERE id = ? AND project_id = ? AND status NOT IN ('deleting', 'deleted')
+       WHERE id = ? AND project_id = ? AND data_json = ? AND status NOT IN ('deleting', 'deleted')`,
+    ), [
+      value.address, value.kind, value.status, value.expiresAt ?? null, value.updatedAt, json(value),
+      value.id, value.projectId, json(expected),
+    ]).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
+  }
+  async saveInboxWithActiveQuota(value: Inbox, expected: Inbox, maxActiveInboxes: number): Promise<boolean> {
+    const result = await bind(this.database.prepare(
+      `UPDATE mailfn_inboxes
+       SET address = ?, kind = ?, status = ?, expires_at = ?, updated_at = ?, data_json = ?
+       WHERE id = ? AND project_id = ? AND data_json = ? AND status NOT IN ('deleting', 'deleted')
          AND (status = 'active' OR (
            SELECT COUNT(*) FROM mailfn_inboxes
            WHERE project_id = ? AND id <> ? AND status = 'active'
          ) < ?)`,
     ), [
       value.address, value.kind, value.status, value.expiresAt ?? null, value.updatedAt, json(value),
-      value.id, value.projectId, value.projectId, value.id, maxActiveInboxes,
+      value.id, value.projectId, json(expected), value.projectId, value.id, maxActiveInboxes,
     ]).run();
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;
@@ -823,6 +835,49 @@ export class D1MailFnStore implements MailFnStore {
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;
   }
+  async completeDraftSend(
+    draftId: string,
+    providerMessageId: string,
+    updatedAt: string,
+    usage: UsageRecord,
+  ): Promise<{ draft: Draft; committed: boolean } | null> {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const current = await this.getDraft(draftId);
+      if (!current) {
+        await this.appendUsage(usage);
+        return null;
+      }
+      if (current.status === 'sent') {
+        await this.appendUsage(usage);
+        return { draft: current, committed: false };
+      }
+      const draft: Draft = {
+        ...current,
+        status: 'sent',
+        sendLeaseId: undefined,
+        sendLeaseExpiresAt: undefined,
+        providerMessageId,
+        updatedAt,
+      };
+      const results = await this.database.batch([
+        bind(this.database.prepare(
+          `UPDATE mailfn_drafts SET status = ?, updated_at = ?, data_json = ?
+           WHERE id = ? AND data_json = ?`,
+        ), [draft.status, draft.updatedAt, json(draft), draftId, json(current)]),
+        bind(this.database.prepare(
+          `INSERT OR IGNORE INTO mailfn_usage
+           (id, project_id, metric, quantity, period, created_at, data_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ), [
+          usage.id, usage.projectId, usage.metric, usage.quantity, usage.period,
+          usage.createdAt, json(usage),
+        ]),
+      ]);
+      if (results.some((result) => !result.success)) throw new Error('MAILFN_D1_WRITE_FAILED');
+      if (Number(results[0]?.meta?.changes ?? 0) === 1) return { draft, committed: true };
+    }
+    throw new Error('MAILFN_DRAFT_COMPLETION_CONFLICT');
+  }
   async deleteDrafts(projectId: string, inboxId: string): Promise<void> {
     await this.run('DELETE FROM mailfn_drafts WHERE project_id = ? AND inbox_id = ?', [projectId, inboxId]);
   }
@@ -1130,6 +1185,44 @@ export class D1MailFnStore implements MailFnStore {
        updated_at=excluded.updated_at, data_json=excluded.data_json`,
       [value.projectId, value.sender, value.status, value.score, value.complaintCount, value.bounceCount, value.updatedAt, json(value)],
     );
+  }
+  async applySenderReputationSignal(
+    signal: Parameters<MailFnStore['applySenderReputationSignal']>[0],
+  ): Promise<void> {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const existing = await this.getSenderReputation(signal.projectId, signal.sender);
+      const score = Math.max(0, (existing?.score ?? 100) - signal.penalty);
+      const value: SenderReputation = {
+        projectId: signal.projectId,
+        sender: signal.sender,
+        status: signal.forceBlock || score <= 20 ? 'block' : score < 80 ? 'monitor' : 'allow',
+        score,
+        complaintCount: (existing?.complaintCount ?? 0) + signal.complaintIncrement,
+        bounceCount: (existing?.bounceCount ?? 0) + signal.bounceIncrement,
+        reason: signal.reason,
+        updatedAt: signal.updatedAt,
+      };
+      const result = existing
+        ? await bind(this.database.prepare(
+          `UPDATE mailfn_sender_reputation
+           SET status = ?, score = ?, complaint_count = ?, bounce_count = ?, updated_at = ?, data_json = ?
+           WHERE project_id = ? AND sender = ? AND data_json = ?`,
+        ), [
+          value.status, value.score, value.complaintCount, value.bounceCount, value.updatedAt, json(value),
+          value.projectId, value.sender, json(existing),
+        ]).run()
+        : await bind(this.database.prepare(
+          `INSERT OR IGNORE INTO mailfn_sender_reputation
+           (project_id, sender, status, score, complaint_count, bounce_count, updated_at, data_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        ), [
+          value.projectId, value.sender, value.status, value.score, value.complaintCount,
+          value.bounceCount, value.updatedAt, json(value),
+        ]).run();
+      if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+      if (Number(result.meta?.changes ?? 0) === 1) return;
+    }
+    throw new Error('MAILFN_REPUTATION_CONFLICT');
   }
   async saveSupportCase(value: SupportCase): Promise<void> {
     await this.run(

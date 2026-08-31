@@ -88,9 +88,17 @@ export class MemoryMailFnStore implements MailFnStore {
   async saveInbox(inbox: Inbox): Promise<void> {
     this.inboxes.set(inbox.id, copy(inbox));
   }
-  async saveInboxWithActiveQuota(inbox: Inbox, maxActiveInboxes: number): Promise<boolean> {
+  async saveInboxIfUnchanged(inbox: Inbox, expected: Inbox): Promise<boolean> {
+    const current = this.inboxes.get(inbox.id);
+    if (!current || JSON.stringify(current) !== JSON.stringify(expected)) return false;
+    if (current.status === 'deleting' || current.status === 'deleted') return false;
+    this.inboxes.set(inbox.id, copy(inbox));
+    return true;
+  }
+  async saveInboxWithActiveQuota(inbox: Inbox, expected: Inbox, maxActiveInboxes: number): Promise<boolean> {
     const current = this.inboxes.get(inbox.id);
     if (!current || current.projectId !== inbox.projectId) return false;
+    if (JSON.stringify(current) !== JSON.stringify(expected)) return false;
     if (current.status === 'deleting' || current.status === 'deleted') return false;
     if (current.status !== 'active' && values(this.inboxes).filter(
       (entry) => entry.projectId === inbox.projectId && entry.id !== inbox.id && entry.status === 'active',
@@ -487,6 +495,33 @@ export class MemoryMailFnStore implements MailFnStore {
     this.drafts.set(draftId, copy(draft));
     return true;
   }
+  async completeDraftSend(
+    draftId: string,
+    providerMessageId: string,
+    updatedAt: string,
+    usage: UsageRecord,
+  ): Promise<{ draft: Draft; committed: boolean } | null> {
+    const current = this.drafts.get(draftId);
+    if (!current) {
+      this.usage.set(usage.id, copy(usage));
+      return null;
+    }
+    if (current.status === 'sent') {
+      this.usage.set(usage.id, copy(usage));
+      return { draft: copy(current), committed: false };
+    }
+    const draft = copy({
+      ...current,
+      status: 'sent' as const,
+      sendLeaseId: undefined,
+      sendLeaseExpiresAt: undefined,
+      providerMessageId,
+      updatedAt,
+    });
+    this.drafts.set(draftId, draft);
+    this.usage.set(usage.id, copy(usage));
+    return { draft: copy(draft), committed: true };
+  }
   async deleteDrafts(projectId: string, inboxId: string): Promise<void> {
     for (const [id, draft] of this.drafts) {
       if (draft.projectId === projectId && draft.inboxId === inboxId) this.drafts.delete(id);
@@ -719,6 +754,23 @@ export class MemoryMailFnStore implements MailFnStore {
   }
   async saveSenderReputation(reputation: SenderReputation): Promise<void> {
     this.senderReputations.set(`${reputation.projectId}:${reputation.sender}`, copy(reputation));
+  }
+  async applySenderReputationSignal(
+    signal: Parameters<MailFnStore['applySenderReputationSignal']>[0],
+  ): Promise<void> {
+    const key = `${signal.projectId}:${signal.sender}`;
+    const existing = this.senderReputations.get(key);
+    const score = Math.max(0, (existing?.score ?? 100) - signal.penalty);
+    this.senderReputations.set(key, copy({
+      projectId: signal.projectId,
+      sender: signal.sender,
+      status: signal.forceBlock || score <= 20 ? 'block' : score < 80 ? 'monitor' : 'allow',
+      score,
+      complaintCount: (existing?.complaintCount ?? 0) + signal.complaintIncrement,
+      bounceCount: (existing?.bounceCount ?? 0) + signal.bounceIncrement,
+      reason: signal.reason,
+      updatedAt: signal.updatedAt,
+    }));
   }
   async saveSupportCase(supportCase: SupportCase): Promise<void> {
     this.supportCases.set(supportCase.id, copy(supportCase));

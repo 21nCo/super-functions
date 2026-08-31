@@ -53,7 +53,8 @@ export interface MailFnStore {
   getInboxByAddress(address: string): Promise<Inbox | null>;
   listInboxes(projectId: string): Promise<Inbox[]>;
   saveInbox(inbox: Inbox): Promise<void>;
-  saveInboxWithActiveQuota(inbox: Inbox, maxActiveInboxes: number): Promise<boolean>;
+  saveInboxIfUnchanged(inbox: Inbox, expected: Inbox): Promise<boolean>;
+  saveInboxWithActiveQuota(inbox: Inbox, expected: Inbox, maxActiveInboxes: number): Promise<boolean>;
   claimInboxDeletion(inbox: Inbox, expected: Inbox): Promise<boolean>;
   createInboxWithCredential(
     inbox: Inbox,
@@ -140,6 +141,12 @@ export interface MailFnStore {
   saveDraft(draft: Draft): Promise<void>;
   saveDraftIfInboxWritable(draft: Draft, expected?: Draft): Promise<boolean>;
   claimDraft(draftId: string, expected: Draft, draft: Draft): Promise<boolean>;
+  completeDraftSend(
+    draftId: string,
+    providerMessageId: string,
+    updatedAt: string,
+    usage: UsageRecord,
+  ): Promise<{ draft: Draft; committed: boolean } | null>;
   deleteDrafts(projectId: string, inboxId: string): Promise<void>;
 
   getDomain(id: string): Promise<MailDomain | null>;
@@ -189,6 +196,16 @@ export interface MailFnStore {
   getSenderReputation(projectId: string, sender: string): Promise<SenderReputation | null>;
   listSenderReputations(projectId: string): Promise<SenderReputation[]>;
   saveSenderReputation(reputation: SenderReputation): Promise<void>;
+  applySenderReputationSignal(signal: {
+    projectId: string;
+    sender: string;
+    penalty: number;
+    forceBlock: boolean;
+    complaintIncrement: number;
+    bounceIncrement: number;
+    reason: string;
+    updatedAt: string;
+  }): Promise<void>;
   saveSupportCase(supportCase: SupportCase): Promise<void>;
   listSupportCases(projectId: string): Promise<SupportCase[]>;
   getComplianceProfile(projectId: string): Promise<ComplianceProfile | null>;

@@ -499,18 +499,25 @@ export class MailFn {
       expiresAt,
       updatedAt: this.now(),
     };
+    let saved: boolean;
     if (updated.status === 'active') {
       const project = await this.requireProject(inbox.projectId);
-      if (!(await this.store.saveInboxWithActiveQuota(updated, project.quota.maxActiveInboxes))) {
-        const latest = await this.store.getInbox(inbox.id);
-        if (!latest || latest.status === 'deleted') throw notFound('Inbox');
-        assertMailFn(latest.status !== 'deleting', {
-          code: 'MAILFN_CONFLICT', message: 'Inbox deletion is already in progress', status: 409,
-        });
+      saved = await this.store.saveInboxWithActiveQuota(updated, inbox, project.quota.maxActiveInboxes);
+    } else {
+      saved = await this.store.saveInboxIfUnchanged(updated, inbox);
+    }
+    if (!saved) {
+      const latest = await this.store.getInbox(inbox.id);
+      if (!latest || latest.status === 'deleted') throw notFound('Inbox');
+      assertMailFn(latest.status !== 'deleting', {
+        code: 'MAILFN_CONFLICT', message: 'Inbox deletion is already in progress', status: 409,
+      });
+      if (updated.status === 'active' && JSON.stringify(latest) === JSON.stringify(inbox)) {
         throw quotaExceeded('active inboxes');
       }
-    } else {
-      await this.store.saveInbox(updated);
+      throw new MailFnError({
+        code: 'MAILFN_CONFLICT', message: 'Inbox changed while the update was in progress', status: 409,
+      });
     }
     await this.audit(actor, 'inbox.updated', 'inbox', inbox.id, { status: updated.status });
     return updated;
@@ -1627,7 +1634,7 @@ export class MailFn {
       result = await this.sendAdapter.send(request);
     } catch (error) {
       const reset = await resetClaim().catch(() => false);
-      if (reset && outboundReservation === 'created') {
+      if (reset) {
         await this.store.releaseUsage(outboundUsage.id).catch(() => undefined);
       }
       throw error;
@@ -1640,14 +1647,25 @@ export class MailFn {
       providerMessageId: result.providerMessageId,
       updatedAt: this.now(),
     };
+    if (result.status === 'sent') {
+      const completed = await this.store.completeDraftSend(
+        draft.id,
+        result.providerMessageId,
+        updated.updatedAt,
+        outboundUsage,
+      );
+      if (!completed) return updated;
+      if (completed.committed) {
+        await this.event('draft.sent', project.id, {
+          inboxId: completed.draft.inboxId,
+          payload: { draftId: completed.draft.id, providerMessageId: result.providerMessageId },
+        });
+      }
+      return completed.draft;
+    }
     if (!(await this.store.claimDraft(draft.id, claimedDraft, updated))) {
       return (await this.store.getDraft(draft.id)) ?? updated;
     }
-    if (result.status === 'queued') return updated;
-    await this.event('draft.sent', project.id, {
-      inboxId: draft.inboxId,
-      payload: { draftId: draft.id, providerMessageId: result.providerMessageId },
-    });
     return updated;
   }
 
@@ -2478,7 +2496,6 @@ export class MailFn {
     const message = await this.store.getMessage(abuseCase.resourceId);
     if (!message || message.projectId !== abuseCase.projectId) return;
     const sender = message.envelopeFrom;
-    const existing = await this.store.getSenderReputation(abuseCase.projectId, sender);
     const penalty: Record<AbuseCase['kind'], number> = {
       spam: 30,
       phishing: 100,
@@ -2487,20 +2504,13 @@ export class MailFn {
       bounce: 10,
       policy: 20,
     };
-    const score = Math.max(0, (existing?.score ?? 100) - penalty[abuseCase.kind]);
-    const status: SenderReputation['status'] =
-      abuseCase.kind === 'phishing' || abuseCase.kind === 'malware' || score <= 20
-        ? 'block'
-        : score < 80
-          ? 'monitor'
-          : 'allow';
-    await this.store.saveSenderReputation({
+    await this.store.applySenderReputationSignal({
       projectId: abuseCase.projectId,
       sender,
-      status,
-      score,
-      complaintCount: (existing?.complaintCount ?? 0) + (abuseCase.kind === 'bounce' ? 0 : 1),
-      bounceCount: (existing?.bounceCount ?? 0) + (abuseCase.kind === 'bounce' ? 1 : 0),
+      penalty: penalty[abuseCase.kind],
+      forceBlock: abuseCase.kind === 'phishing' || abuseCase.kind === 'malware',
+      complaintIncrement: abuseCase.kind === 'bounce' ? 0 : 1,
+      bounceIncrement: abuseCase.kind === 'bounce' ? 1 : 0,
       reason: `abuse:${abuseCase.id}`,
       updatedAt: this.now(),
     });
@@ -2856,7 +2866,7 @@ export class MailFn {
             ...entry.cc.map((address) => address.address),
           ]))).sort(),
           lastMessageAt: remainingMessages.reduce(
-            (latest, entry) => entry.receivedAt > latest ? entry.receivedAt : latest,
+            (latest, entry) => Date.parse(entry.receivedAt) > Date.parse(latest) ? entry.receivedAt : latest,
             remainingMessages[0]!.receivedAt,
           ),
           updatedAt: this.now(),

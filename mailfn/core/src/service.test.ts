@@ -104,6 +104,23 @@ class PausedInboxDeletionStore extends MemoryMailFnStore {
   }
 }
 
+class PausedInboxUpdateStore extends MemoryMailFnStore {
+  private resolveStarted!: () => void;
+  private resumeUpdate!: () => void;
+  public readonly started = new Promise<void>((resolve) => { this.resolveStarted = resolve; });
+  private readonly updateResume = new Promise<void>((resolve) => { this.resumeUpdate = resolve; });
+
+  public continueUpdate(): void { this.resumeUpdate(); }
+
+  override async saveInboxIfUnchanged(
+    ...args: Parameters<MemoryMailFnStore['saveInboxIfUnchanged']>
+  ): Promise<boolean> {
+    this.resolveStarted();
+    await this.updateResume;
+    return super.saveInboxIfUnchanged(...args);
+  }
+}
+
 class PausedRawDeletionStore extends MemoryMailFnStore {
   private resolveClaimStarted!: () => void;
   private resumeClaim!: () => void;
@@ -452,6 +469,20 @@ describe('MailFn domain service', () => {
     await context.mailfn.updateInbox(context.admin, second.inbox.id, { status: 'disabled' });
     await expect(context.mailfn.updateInbox(context.admin, first.inbox.id, { status: 'active' }))
       .resolves.toMatchObject({ status: 'active' });
+  });
+
+  it('does not let a stale disabled update resurrect a deleted inbox', async () => {
+    const store = new PausedInboxUpdateStore();
+    const context = await setup({ store });
+    const created = await createInbox(context, 'disabled-delete-race');
+
+    const update = context.mailfn.updateInbox(context.admin, created.inbox.id, { status: 'disabled' });
+    await store.started;
+    await expect(context.mailfn.deleteInbox(context.admin, created.inbox.id)).resolves.toMatchObject({ status: 'deleted' });
+    store.continueUpdate();
+
+    await expect(update).rejects.toMatchObject({ code: 'MAILFN_NOT_FOUND' });
+    await expect(store.getInbox(created.inbox.id)).resolves.toMatchObject({ status: 'deleted' });
   });
 
   it('creates stable and expiring inboxes with replayable one-time scoped credentials', async () => {
@@ -1008,6 +1039,48 @@ describe('MailFn domain service', () => {
     expect(await context.mailfn.runRetention(context.project.id)).toMatchObject({ deletedMessages: 0, deletedObjects: 1 });
     expect(await context.store.listAttachments(message.id)).toHaveLength(0);
     expect(await context.store.getMessage(message.id)).not.toBeNull();
+  });
+
+  it('orders retained thread activity by instant when timestamps use different offsets', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const created = await createInbox(context, 'retention-thread-instant');
+    const messages = [];
+    for (const [providerDeliveryId, sender] of [
+      ['retention-thread-delete', 'delete@example.com'],
+      ['retention-thread-offset', 'offset@example.com'],
+      ['retention-thread-zulu', 'zulu@example.com'],
+    ]) {
+      const value = raw({ subject: 'Retention ordering', from: [{ address: sender }] });
+      messages.push(await context.mailfn.receiveInbound({
+        providerDeliveryId,
+        envelopeFrom: sender,
+        envelopeTo: created.inbox.address,
+        raw: value,
+        rawSize: value.byteLength,
+      }));
+    }
+    const [expired, offset, zulu] = messages;
+    await context.store.saveMessage({
+      ...expired!,
+      retentionExpiresAt: '2026-08-09T23:59:59.000Z',
+    });
+    await context.store.saveMessage({
+      ...offset!,
+      receivedAt: '2026-08-10T01:00:00.000+02:00',
+      retentionExpiresAt: '2026-08-11T00:00:00.000Z',
+    });
+    await context.store.saveMessage({
+      ...zulu!,
+      receivedAt: '2026-08-10T00:30:00.000Z',
+      retentionExpiresAt: '2026-08-11T00:00:00.000Z',
+    });
+
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({ deletedMessages: 1 });
+    await expect(context.store.getThread(expired!.threadId!)).resolves.toMatchObject({
+      messageIds: expect.arrayContaining([offset!.id, zulu!.id]),
+      lastMessageAt: '2026-08-10T00:30:00.000Z',
+    });
   });
 
   it('prunes terminal webhook delivery history and events outside the audit retention window', async () => {
@@ -1873,6 +1946,36 @@ describe('MailFn domain service', () => {
     })).resolves.toMatchObject({ projectId: context.project.id, retentionLocked: true });
   });
 
+  it('applies concurrent abuse penalties atomically to sender reputation', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'concurrent-abuse-reputation');
+    const value = raw({ from: [{ address: 'repeat-abuser@example.com' }] });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'concurrent-abuse-reputation',
+      envelopeFrom: 'repeat-abuser@example.com',
+      envelopeTo: created.inbox.address,
+      raw: value,
+      rawSize: value.byteLength,
+    });
+
+    await Promise.all(Array.from({ length: 3 }, (_, index) => context.mailfn.reportAbuse(context.admin, {
+      kind: 'spam',
+      resourceType: 'message',
+      resourceId: message.id,
+      reason: `complaint ${index + 1}`,
+    })));
+
+    await expect(context.store.getSenderReputation(
+      context.project.id,
+      'repeat-abuser@example.com',
+    )).resolves.toMatchObject({
+      score: 10,
+      status: 'block',
+      complaintCount: 3,
+      bounceCount: 0,
+    });
+  });
+
   it('rejects non-boolean abuse enforcement flags before changing the resource', async () => {
     const context = await setup();
     const created = await createInbox(context, 'abuse-boolean');
@@ -2275,6 +2378,81 @@ describe('MailFn domain service', () => {
     });
     expect(calls).toBe(2);
     expect((await context.store.listUsage(context.project.id)).filter((record) => record.metric === 'outbound_message')).toHaveLength(1);
+  });
+
+  it('preserves a successful send result after an expired lease is taken over', async () => {
+    const clock = new MutableClock();
+    const controls: Array<{
+      resolve: (value: { providerMessageId: string; status: 'sent' }) => void;
+      reject: (reason: Error) => void;
+    }> = [];
+    const context = await setup({
+      clock,
+      quota: { maxOutboundPerDay: 1 },
+      sendAdapter: {
+        send: () => new Promise((resolve, reject) => { controls.push({ resolve, reject }); }),
+      },
+    });
+    const created = await createInbox(context, 'expired-send-result');
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Lease result', text: 'body',
+    });
+
+    const stale = context.mailfn.sendDraft(context.admin, draft.id);
+    await vi.waitFor(() => expect(controls).toHaveLength(1));
+    clock.advance(5 * 60 * 1000 + 1);
+    const takeover = context.mailfn.sendDraft(context.admin, draft.id);
+    await vi.waitFor(() => expect(controls).toHaveLength(2));
+
+    controls[1]!.reject(new Error('takeover provider failure'));
+    await expect(takeover).rejects.toThrow('takeover provider failure');
+    expect(await context.store.listUsage(context.project.id))
+      .not.toContainEqual(expect.objectContaining({ metric: 'outbound_message' }));
+    controls[0]!.resolve({ providerMessageId: 'provider-stale-success', status: 'sent' });
+    await expect(stale).resolves.toMatchObject({
+      status: 'sent', providerMessageId: 'provider-stale-success',
+    });
+
+    await expect(context.store.getDraft(draft.id)).resolves.toMatchObject({
+      status: 'sent', providerMessageId: 'provider-stale-success',
+    });
+    expect((await context.store.listUsage(context.project.id))
+      .filter((record) => record.metric === 'outbound_message')).toHaveLength(1);
+  });
+
+  it('releases outbound quota when both expired send-lease owners fail', async () => {
+    const clock = new MutableClock();
+    const controls: Array<{ reject: (reason: Error) => void }> = [];
+    const context = await setup({
+      clock,
+      quota: { maxOutboundPerDay: 1 },
+      sendAdapter: {
+        send: () => new Promise((_resolve, reject) => { controls.push({ reject }); }),
+      },
+    });
+    const created = await createInbox(context, 'expired-send-quota');
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Lease quota', text: 'body',
+    });
+
+    const stale = context.mailfn.sendDraft(context.admin, draft.id);
+    await vi.waitFor(() => expect(controls).toHaveLength(1));
+    clock.advance(5 * 60 * 1000 + 1);
+    const takeover = context.mailfn.sendDraft(context.admin, draft.id);
+    await vi.waitFor(() => expect(controls).toHaveLength(2));
+
+    controls[1]!.reject(new Error('takeover provider failure'));
+    await expect(takeover).rejects.toThrow('takeover provider failure');
+    controls[0]!.reject(new Error('stale provider failure'));
+    await expect(stale).rejects.toThrow('stale provider failure');
+
+    await expect(context.store.getDraft(draft.id)).resolves.toMatchObject({
+      status: 'sending',
+      sendLeaseId: undefined,
+      sendLeaseExpiresAt: undefined,
+    });
+    expect(await context.store.listUsage(context.project.id))
+      .not.toContainEqual(expect.objectContaining({ metric: 'outbound_message' }));
   });
 
   it('does not overwrite a concurrently completed send while resetting a provider failure', async () => {
