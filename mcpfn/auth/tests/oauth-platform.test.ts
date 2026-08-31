@@ -51,6 +51,11 @@ describe("McpFn OAuth client compatibility", () => {
       "com.example.app:/callback",
       ["com.example.app:/callback"],
     ).kind).toBe("exact");
+    expect(() => matchMcpRedirectUri(
+      "com.example.app:/callback",
+      ["com.example.app:/callback"],
+      { privateUseSchemePolicy: "disabled" },
+    )).toThrow(/not registered/);
     expect(matchMcpRedirectUri(
       "com.example.app:/callback",
       ["com.example.app:/callback"],
@@ -90,6 +95,10 @@ describe("McpFn OAuth client compatibility", () => {
       "javascript:alert(1)",
       "data:text/plain,callback",
       "file:///tmp/callback",
+      "intent://anysphere.cursor-mcp/oauth/callback",
+      "android-app://anysphere.cursor-mcp/oauth/callback",
+      "market://anysphere.cursor-mcp/oauth/callback",
+      "gopher://anysphere.cursor-mcp/oauth/callback",
       "vbscript:msgbox(1)",
       "cursor://user:password@anysphere.cursor-mcp/oauth/callback",
       "cursor://anysphere.cursor-mcp/oauth/callback#fragment",

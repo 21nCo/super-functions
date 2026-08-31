@@ -625,10 +625,13 @@ async function handleRegistrationRequest(
     redirectPolicy: options.redirectPolicy,
   });
   assertCompatibleClientRegistration(registration, supportedMethods, options.supportedScopes);
+  const compatibilityRedirects = registration.redirectUris.filter(
+    isMcpFnCompatiblePrivateUseRedirect,
+  );
   const compatibilityRedirectSchemes = unique(
-    registration.redirectUris
-      .filter(isMcpFnCompatiblePrivateUseRedirect)
-      .map((redirect) => new URL(redirect).protocol.slice(0, -1)),
+    compatibilityRedirects.map(
+      (redirect) => new URL(redirect).protocol.slice(0, -1),
+    ),
   );
   await emit(options, "client-registration", "succeeded", undefined, {
     clientId: registration.clientId,
@@ -637,9 +640,7 @@ async function handleRegistrationRequest(
       ? {
           privateUseSchemePolicy: "compatible",
           compatibilityRedirectSchemes,
-          compatibilityRedirectCount: registration.redirectUris.filter(
-            isMcpFnCompatiblePrivateUseRedirect,
-          ).length,
+          compatibilityRedirectCount: compatibilityRedirects.length,
         }
       : {}),
   });

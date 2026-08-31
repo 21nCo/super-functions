@@ -45,12 +45,14 @@ registered URI omits the port. Other redirect URIs require exact equality.
 
 Native private-use redirects use RFC 8252's reverse-domain scheme policy by
 default, accepting values such as `com.example.app:/oauth/callback`. Hosts can
-opt into `redirectPolicy.privateUseSchemePolicy: "compatible"` for well-formed
-non-web schemes used by native clients such as
+set `redirectPolicy.privateUseSchemePolicy: "disabled"` to reject all native
+schemes, or opt into `"compatible"` for well-formed non-web schemes used by
+native clients such as
 `cursor://anysphere.cursor-mcp/oauth/callback`. Compatibility mode still rejects
-web and dangerous schemes, non-loopback HTTP, credentials, fragments, wildcards,
-and malformed or opaque callbacks. Authorization always requires exact matching;
-dynamic-port matching remains restricted to loopback HTTP. Successful dynamic
+web, network, launcher, and dangerous schemes, non-loopback HTTP, credentials,
+fragments, wildcards, and malformed or opaque callbacks. Authorization always
+requires exact matching; dynamic-port matching remains restricted to loopback
+HTTP. Successful dynamic
 registrations expose compatibility scheme names and counts through the hosted
 authorization diagnostics hook so hosts can audit use without recording callback
 queries.

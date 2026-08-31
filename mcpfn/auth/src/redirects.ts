@@ -1,4 +1,5 @@
 export type McpFnPrivateUseSchemePolicy =
+  | "disabled"
   | "rfc8252"
   | "compatible";
 
@@ -7,8 +8,9 @@ export interface McpFnRedirectPolicy {
   allowLocalhostLoopback?: boolean;
   /**
    * Private-use native-app redirect handling. Defaults to `rfc8252`.
-   * `rfc8252` requires a reverse-domain scheme. `compatible` additionally
-   * accepts well-formed non-web schemes such as Cursor's `cursor:` callback.
+   * `disabled` rejects all private-use schemes. `rfc8252` requires a
+   * reverse-domain scheme. `compatible` additionally accepts well-formed
+   * non-web schemes such as Cursor's `cursor:` callback.
    */
   privateUseSchemePolicy?: McpFnPrivateUseSchemePolicy;
 }
@@ -89,6 +91,7 @@ export function matchMcpRedirectUri(
   throw new McpFnRedirectMismatchError(actual.toString());
 }
 
+/** True when a redirect needs `compatible` rather than RFC 8252 policy. */
 export function isMcpFnCompatiblePrivateUseRedirect(
   value: string | URL,
 ): boolean {
@@ -106,17 +109,31 @@ export function isMcpFnCompatiblePrivateUseRedirect(
 
 const unsafeNativeProtocols = new Set([
   "about:",
+  "android-app:",
   "blob:",
   "chrome:",
   "chrome-extension:",
   "data:",
+  "facetime:",
   "file:",
   "filesystem:",
   "ftp:",
+  "ftps:",
+  "geo:",
+  "gopher:",
+  "intent:",
   "javascript:",
+  "ldap:",
+  "ldaps:",
   "mailto:",
+  "market:",
+  "nntp:",
   "resource:",
+  "sftp:",
+  "shell:",
+  "smb:",
   "sms:",
+  "ssh:",
   "tel:",
   "urn:",
   "vbscript:",
@@ -130,6 +147,7 @@ function isAllowedPrivateUseRedirect(
   policy: McpFnPrivateUseSchemePolicy | undefined,
 ): boolean {
   const effectivePolicy = policy ?? "rfc8252";
+  if (effectivePolicy === "disabled") return false;
   if (
     url.username ||
     url.password ||
