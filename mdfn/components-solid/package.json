@@ -1,0 +1,11 @@
+{
+  "name": "@mdfn/components-solid", "version": "0.1.0", "description": "UIFn-styled Solid editor chrome for mdfn", "type": "module",
+  "main": "dist/index.cjs", "module": "dist/index.js", "types": "dist/index.d.ts", "solid": "dist/index.js", "exports": { ".": { "types": "./dist/index.d.ts", "browser": { "import": "./dist/index.js", "require": "./dist/index.cjs" }, "node": { "import": "./dist/index.node.js", "require": "./dist/index.node.cjs" }, "solid": "./dist/index.js", "import": "./dist/index.js", "require": "./dist/index.cjs" } },
+  "scripts": { "build": "vite build && vite build --config vite.ssr.config.ts && vite build --config vite.ssr.config.ts --mode ssr-cjs && tsc --project tsconfig.build.json", "test": "vitest run --config vitest.config.ts --root .", "typecheck": "tsc --noEmit -p tsconfig.json", "lint": "tsc --noEmit -p tsconfig.json", "prepack": "npm run build" },
+  "dependencies": { "@mdfn/core": "0.1.0", "@mdfn/solid": "0.1.0", "@mdfn/components": "0.1.0", "@uifn/components-solid": "0.0.1" },
+  "peerDependencies": { "solid-js": ">=1.8.0 <2" },
+  "devDependencies": { "@mdfn/markdown": "0.1.0", "jsdom": "^26.0.0", "solid-js": "1.9.13", "typescript": "^5.3.0", "vite": "^5.4.21", "vite-plugin-solid": "^2.11.12", "vitest": "3.2.4" },
+  "files": ["dist", "README.md"], "sideEffects": false, "license": "MIT", "engines": { "node": ">=20 <25" },
+  "repository": { "type": "git", "url": "git+https://github.com/21nCo/super-functions.git", "directory": "mdfn/components-solid" }, "publishConfig": { "access": "public" },
+  "mdfn": { "status": "stable-candidate", "layer": "components-adapter", "framework": "solid", "schemaVersion": 1, "chromeOwner": "uifn" }
+}
