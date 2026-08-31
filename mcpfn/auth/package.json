@@ -1,6 +1,6 @@
 {
   "name": "@mcpfn/auth",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Web Standard OAuth protected-resource middleware and enterprise-managed authorization helpers for MCP",
   "type": "module",
   "main": "dist/index.cjs",
