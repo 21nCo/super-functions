@@ -138,6 +138,7 @@ export interface MailFnStore {
   createDomain(domain: MailDomain): Promise<boolean>;
   createDomainWithQuota(domain: MailDomain, maxDomains: number): Promise<boolean>;
   saveDomain(domain: MailDomain): Promise<void>;
+  saveDomainIfUnchanged(domain: MailDomain, expected: MailDomain): Promise<boolean>;
 
   appendEvent(event: MailFnEvent): Promise<void>;
   listEvents(projectId: string, after?: string): Promise<MailFnEvent[]>;

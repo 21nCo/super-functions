@@ -80,6 +80,19 @@ describe('D1MailFnStore', () => {
     ]);
   });
 
+  it('sorts project attachments by timestamp instant in D1', async () => {
+    const database = new RecordingDatabase();
+    const store = new D1MailFnStore(database);
+
+    await store.listProjectAttachmentsPage('prj_1', {
+      offset: 0,
+      limit: 25,
+      sort: [{ field: 'createdAt', direction: 'desc' }],
+    });
+
+    expect(database.statements[0]?.query).toContain('ORDER BY julianday(mailfn_attachments.created_at) DESC');
+  });
+
   it('keeps inbox-scoped webhook queries separate from project-wide webhooks', async () => {
     const database = new RecordingDatabase();
     const store = new D1MailFnStore(database);
@@ -198,5 +211,29 @@ describe('D1MailFnStore', () => {
     expect(database.statements[0]?.query).toContain('SELECT COUNT(*) FROM mailfn_domains WHERE project_id = ?');
     expect(database.statements[0]?.query).toContain('NOT EXISTS (SELECT 1 FROM mailfn_domains WHERE domain = ?)');
     expect(database.statements[0]?.values.slice(-3)).toEqual(['mail.example.test', 'prj_1', 2]);
+  });
+
+  it('claims domain verification with a compare-and-set update', async () => {
+    const database = new RecordingDatabase();
+    const store = new D1MailFnStore(database);
+    const expected = {
+      id: 'dom_1', projectId: 'prj_1', domain: 'mail.example.test', status: 'pending',
+      verificationToken: 'verify', expectedRecords: [],
+      createdAt: '2026-08-30T00:00:00.000Z', updatedAt: '2026-08-30T00:00:00.000Z',
+    } satisfies MailDomain;
+    const claimed = {
+      ...expected,
+      status: 'verifying' as const,
+      lastCheckedAt: '2026-08-30T00:00:01.000Z',
+      updatedAt: '2026-08-30T00:00:01.000Z',
+    };
+
+    await expect(store.saveDomainIfUnchanged(claimed, expected)).resolves.toBe(true);
+
+    expect(database.statements[0]?.query).toContain('UPDATE mailfn_domains');
+    expect(database.statements[0]?.query).toContain('WHERE id = ? AND data_json = ?');
+    expect(database.statements[0]?.values.slice(-2)).toEqual([
+      'dom_1', JSON.stringify(expected),
+    ]);
   });
 });

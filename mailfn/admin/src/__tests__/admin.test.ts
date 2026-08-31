@@ -403,6 +403,39 @@ describe("@mailfn/admin", () => {
     }));
   });
 
+  it("normalizes typed message filters before store paging", async () => {
+    const listProjectMessagesPage = vi.fn(async () => ({ items: [], hasMore: false }));
+    const service = createMailFnDomainAdminService({
+      mailfn: {} as MailFn,
+      store: { listProjectMessagesPage } as unknown as MemoryMailFnStore,
+    });
+
+    await service.listMessages({
+      filter: { labels: [" Important ", "important", ""], unreadOnly: true },
+    }, context);
+
+    expect(listProjectMessagesPage).toHaveBeenCalledWith("project_1", expect.objectContaining({
+      filter: { labels: ["important"], unreadOnly: true },
+    }));
+  });
+
+  it.each([
+    { labels: "important" },
+    { status: "invented" },
+    { receivedAfter: "not-a-timestamp" },
+    { unreadOnly: "yes" },
+    { sender: 42 },
+  ])("rejects malformed typed message filters before store paging: %j", async (filter) => {
+    const listProjectMessagesPage = vi.fn(async () => ({ items: [], hasMore: false }));
+    const service = createMailFnDomainAdminService({
+      mailfn: {} as MailFn,
+      store: { listProjectMessagesPage } as unknown as MemoryMailFnStore,
+    });
+
+    await expect(service.listMessages({ filter }, context)).rejects.toMatchObject({ code: "invalid_argument" });
+    expect(listProjectMessagesPage).not.toHaveBeenCalled();
+  });
+
   it("loads one bounded attachment page without traversing project messages", async () => {
     const listProjectAttachmentsPage = vi.fn(async () => ({
       items: [{

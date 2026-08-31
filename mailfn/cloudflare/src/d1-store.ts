@@ -703,6 +703,18 @@ export class D1MailFnStore implements MailFnStore {
       [value.id, value.projectId, value.domain, value.status, value.verificationToken, value.verifiedAt ?? null, value.createdAt, value.updatedAt, json(value)],
     );
   }
+  async saveDomainIfUnchanged(value: MailDomain, expected: MailDomain): Promise<boolean> {
+    const result = await bind(this.database.prepare(
+      `UPDATE mailfn_domains
+       SET status = ?, verification_token = ?, verified_at = ?, updated_at = ?, data_json = ?
+       WHERE id = ? AND data_json = ?`,
+    ), [
+      value.status, value.verificationToken, value.verifiedAt ?? null, value.updatedAt, json(value),
+      value.id, json(expected),
+    ]).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
+  }
 
   async appendEvent(value: MailFnEvent): Promise<void> {
     await this.run(

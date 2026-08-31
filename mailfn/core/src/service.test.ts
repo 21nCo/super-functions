@@ -1129,6 +1129,28 @@ describe('MailFn domain service', () => {
       subject: 'Cross-inbox attachment',
       attachmentIds: [attachment!.id],
     })).rejects.toMatchObject({ code: 'MAILFN_NOT_FOUND' });
+
+    const draftWriter = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: first.inbox.id,
+      permissions: ['draft:write'],
+    });
+    const draftWriterActor = await context.mailfn.authenticate(draftWriter.token);
+    await expect(context.mailfn.createDraft(draftWriterActor, {
+      inboxId: first.inbox.id,
+      to: ['recipient@example.com'],
+      subject: 'Unauthorized attachment import',
+      attachmentIds: [attachment!.id],
+    })).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN' });
+    const imported = await context.mailfn.createDraft(context.admin, {
+      inboxId: first.inbox.id,
+      to: ['recipient@example.com'],
+      subject: 'Authorized attachment import',
+      attachmentIds: [attachment!.id],
+    });
+    await expect(context.mailfn.updateDraft(draftWriterActor, imported.id, {
+      subject: 'Keep inaccessible attachment',
+    })).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN' });
   });
 
   it('records webhook outages without rejecting mail and retries from durable delivery state', async () => {
@@ -1274,6 +1296,34 @@ describe('MailFn domain service', () => {
     await expect(context.mailfn.disableDomain(context.admin, pending.id)).resolves.toMatchObject({ status: 'disabled' });
     await expect(context.mailfn.disableDomain(context.admin, pending.id)).resolves.toMatchObject({ status: 'disabled' });
     expect(disableRouting).toHaveBeenCalledOnce();
+  });
+
+  it('claims domain verification before provisioning one provider routing rule', async () => {
+    let releaseRouting!: () => void;
+    const createRouting = vi.fn(() => new Promise<{ routingRuleId: string }>((resolve) => {
+      releaseRouting = () => resolve({ routingRuleId: 'routing-once' });
+    }));
+    const context = await setup({
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting,
+        disableRouting: async () => undefined,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'serialized.example.com');
+
+    const first = context.mailfn.verifyDomain(context.admin, pending.id);
+    await vi.waitFor(() => expect(createRouting).toHaveBeenCalledOnce());
+    await expect(context.mailfn.verifyDomain(context.admin, pending.id)).rejects.toMatchObject({
+      code: 'MAILFN_CONFLICT', retryable: true,
+    });
+    releaseRouting();
+
+    await expect(first).resolves.toMatchObject({ status: 'active', routingRuleId: 'routing-once' });
+    expect(createRouting).toHaveBeenCalledOnce();
+    const active = await context.store.getDomain(pending.id);
+    expect(active).toMatchObject({ status: 'active', routingRuleId: 'routing-once' });
   });
 
   it('reconciles a durably disabled domain that still retains live routing state', async () => {
@@ -1962,6 +2012,39 @@ describe('MailFn domain service', () => {
     await expect(context.store.saveThreadIfUnchanged(firstUpdate, thread)).resolves.toBe(true);
     await expect(context.store.saveThreadIfUnchanged(staleUpdate, thread)).resolves.toBe(false);
     await expect(context.store.getThread(thread.id)).resolves.toMatchObject({ messageIds: expect.arrayContaining(['extra-1']) });
+  });
+
+  it('sorts project message and attachment timestamps by instant in memory', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'instant-sort');
+    const messages = [];
+    const attachments = [];
+    for (const [index, content] of ['first', 'second'].entries()) {
+      const value = raw({
+        subject: content,
+        attachments: [{ filename: `${content}.txt`, contentType: 'text/plain', content } as never],
+      });
+      const message = await context.mailfn.receiveInbound({
+        providerDeliveryId: `instant-${index}`,
+        envelopeFrom: 'sender@example.com',
+        envelopeTo: created.inbox.address,
+        raw: value,
+        rawSize: value.byteLength,
+      });
+      messages.push(message);
+      attachments.push((await context.store.listAttachments(message.id))[0]!);
+    }
+    await context.store.saveMessage({ ...messages[0]!, receivedAt: '2026-08-10T01:00:00+02:00' });
+    await context.store.saveMessage({ ...messages[1]!, receivedAt: '2026-08-10T00:30:00Z' });
+    await context.store.saveAttachment({ ...attachments[0]!, createdAt: '2026-08-10T01:00:00+02:00' });
+    await context.store.saveAttachment({ ...attachments[1]!, createdAt: '2026-08-10T00:30:00Z' });
+
+    await expect(context.store.listProjectMessagesPage(context.project.id, {
+      offset: 0, limit: 10, sort: [{ field: 'receivedAt', direction: 'desc' }],
+    })).resolves.toMatchObject({ items: [{ id: messages[1]!.id }, { id: messages[0]!.id }] });
+    await expect(context.store.listProjectAttachmentsPage(context.project.id, {
+      offset: 0, limit: 10, sort: [{ field: 'createdAt', direction: 'desc' }],
+    })).resolves.toMatchObject({ items: [{ id: attachments[1]!.id }, { id: attachments[0]!.id }] });
   });
 
   it('serializes concurrent subject-fallback thread creation', async () => {

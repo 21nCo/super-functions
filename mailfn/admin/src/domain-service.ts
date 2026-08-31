@@ -71,6 +71,40 @@ function strings(value: unknown, label: string): string[] {
   return value;
 }
 
+function normalizeMessageAdminFilter(value: JsonRecord | undefined): JsonRecord | undefined {
+  if (!value) return undefined;
+  const normalized = { ...value };
+  for (const field of ["sender", "senderDomain", "recipient", "subject", "text", "threadId"] as const) {
+    if (normalized[field] !== undefined && typeof normalized[field] !== "string") {
+      throw new AdminError("invalid_argument", `filter.${field} must be a string.`);
+    }
+  }
+  for (const field of ["receivedAfter", "receivedBefore"] as const) {
+    const timestamp = normalized[field];
+    if (timestamp !== undefined && (typeof timestamp !== "string" || !Number.isFinite(Date.parse(timestamp)))) {
+      throw new AdminError("invalid_argument", `filter.${field} must be an ISO timestamp.`);
+    }
+  }
+  if (normalized.unreadOnly !== undefined && typeof normalized.unreadOnly !== "boolean") {
+    throw new AdminError("invalid_argument", "filter.unreadOnly must be a boolean.");
+  }
+  if (
+    normalized.status !== undefined &&
+    (typeof normalized.status !== "string" || !["pending", "ready", "parse_failed", "queue_failed", "deleted"].includes(normalized.status))
+  ) {
+    throw new AdminError("invalid_argument", "filter.status is invalid.");
+  }
+  if (normalized.labels !== undefined) {
+    if (!Array.isArray(normalized.labels) || normalized.labels.some((label) => typeof label !== "string")) {
+      throw new AdminError("invalid_argument", "filter.labels must be an array of strings.");
+    }
+    normalized.labels = Array.from(new Set(
+      normalized.labels.map((label) => label.trim().toLowerCase()).filter(Boolean),
+    )).sort();
+  }
+  return normalized;
+}
+
 function projectId(context: AdminOperationContext): string {
   const id = context.scope.projectId;
   if (!id) throw new AdminError("invalid_argument", "MailFn administration requires project scope.");
@@ -316,7 +350,7 @@ export function createMailFnDomainAdminService(
     },
     async listMessages(input, context) {
       const { activeProjectId } = state(context);
-      const filter = optionalRecord(input.filter, "filter");
+      const filter = normalizeMessageAdminFilter(optionalRecord(input.filter, "filter"));
       const filterAllowed = new Set([
         "id", "projectId", "inboxId", "providerDeliveryId", "envelopeFrom", "envelopeTo",
         "subject", "receivedAt", "parsedAt", "threadId", "sizeBytes", "status", "readAt",
@@ -331,7 +365,7 @@ export function createMailFnDomainAdminService(
       for (const key of Object.keys(filter ?? {})) {
         if (!filterAllowed.has(key)) throw new AdminError("invalid_argument", `Unsupported MailFn message filter: ${key}.`);
       }
-      const resolved = resolveListPage(input, context, "mailfn.messages.list");
+      const resolved = resolveListPage({ ...input, ...(filter ? { filter } : {}) }, context, "mailfn.messages.list");
       for (const descriptor of resolved.sort ?? []) {
         if (!sortAllowed.has(descriptor.field)) throw new AdminError("invalid_argument", `Unsupported MailFn message sort: ${descriptor.field}.`);
       }

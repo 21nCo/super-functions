@@ -108,6 +108,7 @@ const PARSE_LEASE_MS = 15 * 60 * 1000;
 const WEBHOOK_DELIVERY_LEASE_MS = 5 * 60 * 1000;
 const STORAGE_RESERVATION_LEASE_MS = 15 * 60 * 1000;
 const STORAGE_WRITE_LEASE_MS = 60 * 60 * 1000;
+const DOMAIN_VERIFICATION_LEASE_MS = 5 * 60 * 1000;
 
 function isExpiredAt(expiresAt: string, now: string): boolean {
   return Date.parse(expiresAt) <= Date.parse(now);
@@ -1284,7 +1285,9 @@ export class MailFn {
     if (input.inReplyToMessageId) {
       await this.requireMessage(actor.projectId, input.inboxId, input.inReplyToMessageId);
     }
-    for (const attachmentId of input.attachmentIds ?? []) {
+    const attachmentIds = input.attachmentIds ?? [];
+    if (attachmentIds.length) await this.authorize(actor, 'message:read', actor.projectId, input.inboxId);
+    for (const attachmentId of attachmentIds) {
       const attachment = await this.store.getAttachment(attachmentId);
       if (!attachment || attachment.projectId !== actor.projectId || attachment.inboxId !== input.inboxId) {
         throw notFound('Attachment');
@@ -1303,7 +1306,7 @@ export class MailFn {
       subject: requireText(input.subject, 'subject'),
       text: input.text,
       html: input.html ? sanitizeHtml(input.html) : undefined,
-      attachmentIds: [...(input.attachmentIds ?? [])],
+      attachmentIds: [...attachmentIds],
       status: 'draft',
       createdAt: now,
       updatedAt: now,
@@ -1333,6 +1336,7 @@ export class MailFn {
       code: 'MAILFN_CONFLICT', message: 'Only draft messages can be updated', status: 409,
     });
     const attachmentIds = input.attachmentIds ?? draft.attachmentIds;
+    if (attachmentIds.length) await this.authorize(actor, 'message:read', draft.projectId, draft.inboxId);
     for (const attachmentId of attachmentIds) {
       const attachment = await this.store.getAttachment(attachmentId);
       if (!attachment || attachment.projectId !== draft.projectId || attachment.inboxId !== draft.inboxId) throw notFound('Attachment');
@@ -1616,24 +1620,81 @@ export class MailFn {
     const domain = await this.store.getDomain(domainId);
     if (!domain) throw notFound('Domain');
     await this.authorize(actor, 'domain:manage', domain.projectId);
-    assertMailFn(!domain.routingRuleId || this.domainAdapter, {
-      code: 'MAILFN_VALIDATION_FAILED', message: 'No domain adapter is configured', status: 501,
-    });
+    if (domain.status === 'active' && domain.routingRuleId) return domain;
     assertMailFn(this.domainAdapter, {
       code: 'MAILFN_VALIDATION_FAILED',
       message: 'No domain adapter is configured',
       status: 501,
     });
-    const result = await this.domainAdapter.verifyDns(domain);
+    const claimedAt = this.now();
+    if (
+      domain.status === 'verifying' &&
+      domain.lastCheckedAt &&
+      Date.parse(domain.lastCheckedAt) + DOMAIN_VERIFICATION_LEASE_MS > Date.parse(claimedAt)
+    ) {
+      throw new MailFnError({
+        code: 'MAILFN_CONFLICT', message: 'Domain verification is already in progress', status: 409, retryable: true,
+      });
+    }
+    const claimed: MailDomain = {
+      ...domain,
+      status: 'verifying',
+      lastCheckedAt: claimedAt,
+      updatedAt: claimedAt,
+    };
+    if (!(await this.store.saveDomainIfUnchanged(claimed, domain))) {
+      const current = await this.store.getDomain(domain.id);
+      if (current?.status === 'active' && current.routingRuleId) return current;
+      throw new MailFnError({
+        code: 'MAILFN_CONFLICT', message: 'Domain verification is already in progress', status: 409, retryable: true,
+      });
+    }
+    let result: Awaited<ReturnType<MailFnDomainAdapter['verifyDns']>>;
+    try {
+      result = await this.domainAdapter.verifyDns(claimed);
+    } catch (cause) {
+      const failed = {
+        ...claimed,
+        status: 'failed' as const,
+        failureReason: cause instanceof Error ? cause.message : 'Domain DNS verification failed',
+        lastCheckedAt: this.now(),
+        updatedAt: this.now(),
+      };
+      await this.store.saveDomainIfUnchanged(failed, claimed).catch(() => false);
+      throw cause;
+    }
     const now = this.now();
     if (!result.verified) {
-      const failed = { ...domain, status: 'failed' as const, failureReason: result.diagnostics.join('; '), lastCheckedAt: now, updatedAt: now };
-      await this.store.saveDomain(failed);
+      const failed = {
+        ...claimed,
+        status: 'failed' as const,
+        failureReason: result.diagnostics.join('; '),
+        lastCheckedAt: now,
+        updatedAt: now,
+      };
+      if (!(await this.store.saveDomainIfUnchanged(failed, claimed))) {
+        throw new MailFnError({
+          code: 'MAILFN_CONFLICT', message: 'Domain verification state changed concurrently', status: 409, retryable: true,
+        });
+      }
       return failed;
     }
-    const routing = await this.domainAdapter.createRouting(domain);
+    let routing: Awaited<ReturnType<MailFnDomainAdapter['createRouting']>>;
+    try {
+      routing = await this.domainAdapter.createRouting(claimed);
+    } catch (cause) {
+      const failed = {
+        ...claimed,
+        status: 'failed' as const,
+        failureReason: cause instanceof Error ? cause.message : 'Domain routing activation failed',
+        lastCheckedAt: now,
+        updatedAt: now,
+      };
+      await this.store.saveDomainIfUnchanged(failed, claimed).catch(() => false);
+      throw cause;
+    }
     const active: MailDomain = {
-      ...domain,
+      ...claimed,
       status: 'active',
       routingRuleId: routing.routingRuleId,
       verifiedAt: now,
@@ -1642,9 +1703,12 @@ export class MailFn {
       updatedAt: now,
     };
     try {
-      await this.store.saveDomain(active);
+      if (!(await this.store.saveDomainIfUnchanged(active, claimed))) {
+        throw new Error('MAILFN_DOMAIN_VERIFICATION_CLAIM_LOST');
+      }
     } catch (cause) {
       await this.domainAdapter.disableRouting(active).catch(() => undefined);
+      await this.store.saveDomainIfUnchanged({ ...domain, updatedAt: this.now() }, claimed).catch(() => false);
       throw new MailFnError({
         code: 'MAILFN_STORAGE_FAILED',
         message: 'Domain routing was rolled back because active state could not be persisted',

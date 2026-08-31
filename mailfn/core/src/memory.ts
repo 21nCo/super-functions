@@ -439,6 +439,12 @@ export class MemoryMailFnStore implements MailFnStore {
   async saveDomain(domain: MailDomain): Promise<void> {
     this.domains.set(domain.id, copy(domain));
   }
+  async saveDomainIfUnchanged(domain: MailDomain, expected: MailDomain): Promise<boolean> {
+    const current = this.domains.get(domain.id);
+    if (!current || JSON.stringify(current) !== JSON.stringify(expected)) return false;
+    await this.saveDomain(domain);
+    return true;
+  }
 
   async appendEvent(event: MailFnEvent): Promise<void> {
     this.events.set(event.id, copy(event));
@@ -694,7 +700,7 @@ function projectPage<T extends object>(
     for (const descriptor of input.sort ?? []) {
       const leftValue = (left as Record<string, unknown>)[descriptor.field];
       const rightValue = (right as Record<string, unknown>)[descriptor.field];
-      const compared = compareStoreValues(leftValue, rightValue);
+      const compared = compareStoreValues(descriptor.field, leftValue, rightValue);
       if (compared !== 0) return compared * (descriptor.direction === 'desc' ? -1 : 1);
     }
     return String((left as Record<string, unknown>).id ?? '')
@@ -704,7 +710,16 @@ function projectPage<T extends object>(
   return { items: selected.slice(0, input.limit), hasMore: selected.length > input.limit };
 }
 
-function compareStoreValues(left: unknown, right: unknown): number {
+const STORE_TIMESTAMP_FIELDS = new Set([
+  'receivedAt', 'parsedAt', 'readAt', 'createdAt', 'updatedAt',
+]);
+
+function compareStoreValues(field: string, left: unknown, right: unknown): number {
   if (typeof left === 'number' && typeof right === 'number') return left - right;
+  if (STORE_TIMESTAMP_FIELDS.has(field) && typeof left === 'string' && typeof right === 'string') {
+    const leftInstant = Date.parse(left);
+    const rightInstant = Date.parse(right);
+    if (Number.isFinite(leftInstant) && Number.isFinite(rightInstant)) return leftInstant - rightInstant;
+  }
   return String(left ?? '').localeCompare(String(right ?? ''));
 }
