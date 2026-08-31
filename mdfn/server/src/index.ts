@@ -286,12 +286,21 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     readonly idempotencyOperation?: string;
     readonly idempotencyPayload?: unknown;
   }
-  const protectedSidecar = (value: MdfnSidecar | undefined): string => JSON.stringify({
+  const canonicalJson = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonicalJson);
+    if (value === null || typeof value !== "object") return value;
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+        .map(([key, entry]) => [key, canonicalJson(entry)]),
+    );
+  };
+  const protectedSidecar = (value: MdfnSidecar | undefined): string => JSON.stringify(canonicalJson({
     comments: value?.comments ?? [],
     suggestions: value?.suggestions ?? [],
     reviewState: value?.reviewState ?? "draft",
     audit: value?.audit ?? [],
-  });
+  }));
   const coarseChangedRanges = (before: string, after: string, offset: number): Array<{ from: number; to: number; insertedLength: number }> => {
     const ranges: Array<{ from: number; to: number; insertedLength: number }> = [];
     const syncLength = 16;
@@ -582,12 +591,25 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     async restoreVersion(principal, id, input) {
       const current = await loadScoped(principal, id);
       await allowed(config, "history:restore", principal, current);
-      const restored = await service.version(principal, id, input.version);
+      const restored = await database.findOne<MdfnVersionRecord>({
+        model: VERSIONS,
+        where: [
+          { field: "documentId", operator: "eq", value: id },
+          { field: "version", operator: "eq", value: input.version },
+        ],
+      });
+      if (!restored) throw new MdfnServerError("MDFN_VERSION_NOT_FOUND", 404);
       return writeUpdate(
         principal,
         id,
         { expectedVersion: input.expectedVersion, changeSource: `restore:${input.version}`, idempotencyKey: input.idempotencyKey },
-        { trustedEditorial: true, restoreSnapshot: restored, idempotencyOperation: "document:restore", idempotencyPayload: input },
+        {
+          trustedEditorial: true,
+          authorizationAction: "history:restore",
+          restoreSnapshot: restored,
+          idempotencyOperation: "document:restore",
+          idempotencyPayload: input,
+        },
       );
     },
     async createComment(principal, id, input) {

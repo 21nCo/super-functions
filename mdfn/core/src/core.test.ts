@@ -79,6 +79,40 @@ describe("@mdfn/core", () => {
     expect(mapAnchor({ from: 8, to: 11 }, [{ from: 6, to: 11, insertedLength: 4 }])).toEqual({ from: 10, to: 10 });
   });
 
+  it("keeps same-text source replacements out of mapping and history", () => {
+    let id = 0;
+    const comment = createCommentThread({
+      anchor: { from: 6, to: 11 },
+      body: "Keep this anchor",
+      actor: { id: "author", now: () => "2026-08-31T00:00:00.000Z", createId: () => `same-text-${++id}` },
+      markdownLength: 11,
+    });
+    const editor = createEditor({
+      markdown: "hello world",
+      projector,
+      selection: { kind: "text", anchor: 8, head: 8 },
+      sidecar: comment.sidecar,
+    });
+    const previous = editor.getState();
+    const listener = vi.fn();
+    editor.subscribe(listener);
+
+    const change = editor.dispatch(new Transaction().replaceSource(0, 11, "hello world"));
+
+    expect(change).toMatchObject({
+      previous,
+      current: previous,
+      changedRanges: [],
+      documentChanged: false,
+      selectionChanged: false,
+      sidecarChanged: false,
+    });
+    expect(editor.getState().selection).toEqual({ kind: "text", anchor: 8, head: 8 });
+    expect(editor.getState().sidecar?.comments?.[0]?.anchor).toEqual({ from: 6, to: 11 });
+    expect(editor.canUndo()).toBe(false);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it("publishes the minimal changed range when restoring history", () => {
     const editor = createEditor({ markdown: "before after", projector });
     const listener = vi.fn();

@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
 import { createMdfnRouter, createMdfnService } from "./index";
 
+function reorderObjectKeys<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(reorderObjectKeys) as T;
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).reverse()
+      .map(([key, entry]) => [key, reorderObjectKeys(entry)]),
+  ) as T;
+}
+
 describe("mdfn server", () => {
   it("rejects oversized JSON bodies before document parsing", async () => {
     const router = createMdfnRouter({
@@ -480,17 +489,54 @@ describe("mdfn server", () => {
       expectedVersion: reviewing.version,
       markdown: "updated",
     });
+    actions.length = 0;
     await expect(service.restoreVersion(principal, document.id, {
       version: 1,
       expectedVersion: updated.version,
     })).rejects.toMatchObject({ code: "MDFN_FORBIDDEN", status: 403 });
+    expect(actions).toEqual(["history:restore"]);
 
     await expect(service.read(principal, document.id)).resolves.toMatchObject({
       markdown: "updated",
       version: updated.version,
       sidecar: { reviewState: "in-review" },
     });
-    expect(actions).toEqual(expect.arrayContaining(["history", "update", "history:restore"]));
+  });
+
+  it("allows history restore without ordinary history or update permission", async () => {
+    const actions: string[] = [];
+    let restoreOnly = false;
+    const service = createMdfnService({
+      database: memoryAdapter(),
+      durability: "ephemeral",
+      authorize: (action) => {
+        actions.push(action);
+        return !restoreOnly || action === "history:restore";
+      },
+      createId: (() => { let id = 0; return () => `restore-only-${id++}`; })(),
+    });
+    const principal = { id: "author" };
+    const document = await service.create(principal, { markdown: "original" });
+    const reviewing = await service.transitionReview(principal, document.id, {
+      expectedVersion: document.version,
+      state: "in-review",
+    });
+    const updated = await service.update(principal, document.id, {
+      expectedVersion: reviewing.version,
+      markdown: "updated",
+    });
+    restoreOnly = true;
+    actions.length = 0;
+
+    await expect(service.restoreVersion(principal, document.id, {
+      version: reviewing.version,
+      expectedVersion: updated.version,
+    })).resolves.toMatchObject({
+      markdown: "original",
+      sidecar: { reviewState: "in-review" },
+      version: updated.version + 1,
+    });
+    expect(actions).toEqual(["history:restore", "history:restore"]);
   });
 
   it("keeps editorial state and audit history server-authoritative", async () => {
@@ -518,7 +564,7 @@ describe("mdfn server", () => {
       expectedVersion: commented.version,
       markdown: "say hello world",
       sidecar: {
-        ...commented.sidecar,
+        ...reorderObjectKeys(commented.sidecar),
         assets: [{ id: "asset-1", mediaType: "image/png", name: "proof.png" }],
         historyRef: "history-2",
       },

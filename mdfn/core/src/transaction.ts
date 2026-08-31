@@ -76,7 +76,9 @@ export function applyTransaction(state: EditorState, transaction: Transaction, p
   for (const operation of transaction.operations) {
     if (operation.kind === "replace-source") {
       if (operation.to > markdown.length) throw new RangeError("MDFN_TRANSACTION_RANGE_OUT_OF_BOUNDS");
-      markdown = `${markdown.slice(0, operation.from)}${operation.text}${markdown.slice(operation.to)}`;
+      const nextMarkdown = `${markdown.slice(0, operation.from)}${operation.text}${markdown.slice(operation.to)}`;
+      if (nextMarkdown === markdown) continue;
+      markdown = nextMarkdown;
       const range = { from: operation.from, to: operation.to, insertedLength: operation.text.length };
       ranges.push(range);
       const mappedSelection = mapSelection(selection, [range]);
@@ -129,7 +131,7 @@ export function applyTransaction(state: EditorState, transaction: Transaction, p
     sidecarChanged = true;
   }
 
-  if (transaction.operations.length === 0) {
+  if (transaction.operations.length === 0 || (!documentChanged && !selectionChanged && !sidecarChanged)) {
     return {
       previous: state,
       current: state,
