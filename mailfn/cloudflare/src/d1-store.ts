@@ -12,6 +12,7 @@ import type {
   MailDomain,
   MailFnEvent,
   MailFnStore,
+  MailFnStorePageInput,
   Message,
   MessageFilter,
   Project,
@@ -29,6 +30,47 @@ import type { D1Database, D1PreparedStatement } from './bindings.js';
 interface JsonRow {
   data_json: string;
 }
+
+const MESSAGE_ADMIN_FIELDS = new Set([
+  'id', 'projectId', 'inboxId', 'providerDeliveryId', 'envelopeFrom', 'envelopeTo',
+  'subject', 'receivedAt', 'parsedAt', 'threadId', 'sizeBytes', 'status', 'readAt',
+  'createdAt', 'updatedAt', 'sender', 'senderDomain', 'recipient', 'text',
+  'receivedAfter', 'receivedBefore', 'unreadOnly', 'labels',
+]);
+const MESSAGE_ADMIN_SORTS: Readonly<Record<string, string>> = {
+  id: 'mailfn_messages.id',
+  projectId: 'mailfn_messages.project_id',
+  inboxId: 'mailfn_messages.inbox_id',
+  providerDeliveryId: 'mailfn_messages.provider_delivery_id',
+  envelopeFrom: 'mailfn_messages.envelope_from',
+  envelopeTo: 'mailfn_messages.envelope_to',
+  subject: 'mailfn_messages.subject',
+  receivedAt: 'julianday(mailfn_messages.received_at)',
+  parsedAt: "julianday(json_extract(mailfn_messages.data_json, '$.parsedAt'))",
+  threadId: 'mailfn_messages.thread_id',
+  sizeBytes: 'mailfn_messages.size_bytes',
+  status: 'mailfn_messages.status',
+  readAt: "julianday(json_extract(mailfn_messages.data_json, '$.readAt'))",
+  createdAt: 'julianday(mailfn_messages.created_at)',
+  updatedAt: 'julianday(mailfn_messages.updated_at)',
+};
+const ATTACHMENT_ADMIN_FIELDS = new Set([
+  'id', 'projectId', 'inboxId', 'messageId', 'filename', 'contentType', 'sizeBytes',
+  'sha256', 'contentId', 'disposition', 'createdAt',
+]);
+const ATTACHMENT_ADMIN_SORTS: Readonly<Record<string, string>> = {
+  id: 'mailfn_attachments.id',
+  projectId: 'mailfn_attachments.project_id',
+  inboxId: 'mailfn_attachments.inbox_id',
+  messageId: 'mailfn_attachments.message_id',
+  filename: 'mailfn_attachments.filename',
+  contentType: 'mailfn_attachments.content_type',
+  sizeBytes: 'mailfn_attachments.size_bytes',
+  sha256: 'mailfn_attachments.sha256',
+  contentId: "json_extract(mailfn_attachments.data_json, '$.contentId')",
+  disposition: "json_extract(mailfn_attachments.data_json, '$.disposition')",
+  createdAt: 'julianday(mailfn_attachments.created_at)',
+};
 
 export class D1MailFnStore implements MailFnStore {
   public constructor(private readonly database: D1Database) {}
@@ -141,6 +183,25 @@ export class D1MailFnStore implements MailFnStore {
       [value.id, value.projectId, value.inboxId ?? null, value.tokenHash, value.tokenPrefix, JSON.stringify(value.permissions), value.status, value.expiresAt ?? null, value.revokedAt ?? null, value.createdAt, json(value)],
     );
   }
+  async saveCredentialIfInboxActive(value: Credential, now: string): Promise<boolean> {
+    if (!value.inboxId) return false;
+    const result = await bind(this.database.prepare(
+      `INSERT INTO mailfn_credentials(id, project_id, inbox_id, token_hash, token_prefix, permissions, status, expires_at, revoked_at, created_at, data_json)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       FROM mailfn_inboxes
+       WHERE id = ? AND project_id = ? AND status = 'active'
+         AND (expires_at IS NULL OR julianday(expires_at) > julianday(?))
+       ON CONFLICT(id) DO UPDATE SET token_hash=excluded.token_hash, token_prefix=excluded.token_prefix,
+       permissions=excluded.permissions, status=excluded.status, expires_at=excluded.expires_at,
+       revoked_at=excluded.revoked_at, data_json=excluded.data_json`,
+    ), [
+      value.id, value.projectId, value.inboxId, value.tokenHash, value.tokenPrefix,
+      JSON.stringify(value.permissions), value.status, value.expiresAt ?? null,
+      value.revokedAt ?? null, value.createdAt, json(value), value.inboxId, value.projectId, now,
+    ]).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
+  }
   async touchCredentialIfActive(id: string, lastUsedAt: string): Promise<boolean> {
     const result = await this.database.prepare(
       `UPDATE mailfn_credentials
@@ -233,6 +294,14 @@ export class D1MailFnStore implements MailFnStore {
       hasMore: messages.length > limit,
       cursorFound: true,
     };
+  }
+  async listProjectMessagesPage(
+    projectId: string,
+    input: MailFnStorePageInput,
+  ): Promise<{ items: Message[]; hasMore: boolean }> {
+    return this.listProjectPage<Message>(
+      'mailfn_messages', projectId, input, MESSAGE_ADMIN_FIELDS, MESSAGE_ADMIN_SORTS,
+    );
   }
   async searchMessages(
     projectId: string,
@@ -375,6 +444,14 @@ export class D1MailFnStore implements MailFnStore {
   }
   async listAttachments(messageId: string): Promise<Attachment[]> {
     return this.many('SELECT data_json FROM mailfn_attachments WHERE message_id = ? ORDER BY created_at', [messageId]);
+  }
+  async listProjectAttachmentsPage(
+    projectId: string,
+    input: MailFnStorePageInput,
+  ): Promise<{ items: Attachment[]; hasMore: boolean }> {
+    return this.listProjectPage<Attachment>(
+      'mailfn_attachments', projectId, input, ATTACHMENT_ADMIN_FIELDS, ATTACHMENT_ADMIN_SORTS,
+    );
   }
   async saveAttachment(value: Attachment): Promise<void> {
     await this.run(
@@ -885,6 +962,112 @@ export class D1MailFnStore implements MailFnStore {
   private async many<T>(query: string, values: unknown[]): Promise<T[]> {
     const rows = await this.rawMany<JsonRow>(query, values);
     return rows.map((row) => parse<T>(row.data_json));
+  }
+
+  private async listProjectPage<T>(
+    table: 'mailfn_messages' | 'mailfn_attachments',
+    projectId: string,
+    input: MailFnStorePageInput,
+    allowedFields: ReadonlySet<string>,
+    sortExpressions: Readonly<Record<string, string>>,
+  ): Promise<{ items: T[]; hasMore: boolean }> {
+    const clauses = [
+      `${table}.project_id = ?`,
+      `NOT EXISTS (
+        SELECT 1 FROM mailfn_inboxes AS admin_inbox
+        WHERE admin_inbox.id = ${table}.inbox_id AND admin_inbox.status = 'deleted'
+      )`,
+    ];
+    const values: unknown[] = [projectId];
+    const search = input.search?.trim().toLowerCase();
+    if (search) {
+      clauses.push(`instr(lower(${table}.data_json), ?) > 0`);
+      values.push(search);
+    }
+    for (const [field, expected] of Object.entries(input.filter ?? {})) {
+      if (!allowedFields.has(field)) throw new Error('MAILFN_D1_INVALID_LIST_FIELD');
+      if (table === 'mailfn_messages') {
+        if (field === 'sender') {
+          clauses.push(`(lower(mailfn_messages.envelope_from) = ? OR EXISTS (
+            SELECT 1 FROM json_each(mailfn_messages.data_json, '$.from') AS sender_entry
+            WHERE lower(json_extract(sender_entry.value, '$.address')) = ?
+          ))`);
+          values.push(String(expected).toLowerCase(), String(expected).toLowerCase());
+          continue;
+        }
+        if (field === 'senderDomain') {
+          const suffix = `@${String(expected).toLowerCase()}`;
+          clauses.push(`EXISTS (
+            SELECT 1 FROM json_each(mailfn_messages.data_json, '$.from') AS sender_entry
+            WHERE substr(lower(json_extract(sender_entry.value, '$.address')), -length(?)) = ?
+          )`);
+          values.push(suffix, suffix);
+          continue;
+        }
+        if (field === 'recipient') {
+          clauses.push('lower(mailfn_messages.envelope_to) = ?');
+          values.push(String(expected).toLowerCase());
+          continue;
+        }
+        if (field === 'subject') {
+          clauses.push('instr(lower(mailfn_messages.subject), ?) > 0');
+          values.push(String(expected).toLowerCase());
+          continue;
+        }
+        if (field === 'text') {
+          clauses.push(`instr(lower(coalesce(json_extract(mailfn_messages.data_json, '$.textBody'), '') || char(10) || coalesce(json_extract(mailfn_messages.data_json, '$.htmlBody'), '')), ?) > 0`);
+          values.push(String(expected).toLowerCase());
+          continue;
+        }
+        if (field === 'receivedAfter' || field === 'receivedBefore') {
+          clauses.push(`julianday(mailfn_messages.received_at) ${field === 'receivedAfter' ? '>' : '<'} julianday(?)`);
+          values.push(normalizeInstant(String(expected)));
+          continue;
+        }
+        if (field === 'unreadOnly') {
+          if (expected) clauses.push(`json_type(mailfn_messages.data_json, '$.readAt') IS NULL`);
+          continue;
+        }
+        if (field === 'threadId' || field === 'status') {
+          clauses.push(`mailfn_messages.${field === 'threadId' ? 'thread_id' : 'status'} = ?`);
+          values.push(expected);
+          continue;
+        }
+        if (field === 'labels') {
+          for (const label of Array.isArray(expected) ? expected : []) {
+            clauses.push(`EXISTS (
+              SELECT 1 FROM json_each(mailfn_messages.data_json, '$.labels') AS label_entry
+              WHERE label_entry.value = ?
+            )`);
+            values.push(label);
+          }
+          continue;
+        }
+      }
+      const path = `$.${field}`;
+      if (expected !== null && typeof expected === 'object') {
+        clauses.push(`json(json_extract(${table}.data_json, ?)) = json(?)`);
+        values.push(path, JSON.stringify(expected));
+      } else {
+        clauses.push(`json_extract(${table}.data_json, ?) IS ?`);
+        values.push(path, typeof expected === 'boolean' ? Number(expected) : expected);
+      }
+    }
+    const order = (input.sort ?? []).map((descriptor) => {
+      const expression = sortExpressions[descriptor.field];
+      if (!expression) throw new Error('MAILFN_D1_INVALID_LIST_FIELD');
+      return `${expression} ${descriptor.direction === 'desc' ? 'DESC' : 'ASC'}`;
+    });
+    if (!(input.sort ?? []).some((descriptor) => descriptor.field === 'id')) {
+      order.push(`${table}.id ASC`);
+    }
+    const selected = await this.many<T>(
+      `SELECT ${table}.data_json FROM ${table}
+       WHERE ${clauses.join(' AND ')}
+       ORDER BY ${order.join(', ')} LIMIT ? OFFSET ?`,
+      [...values, input.limit + 1, input.offset],
+    );
+    return { items: selected.slice(0, input.limit), hasMore: selected.length > input.limit };
   }
 
   private async rawMany<T>(query: string, values: unknown[]): Promise<T[]> {

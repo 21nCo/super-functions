@@ -314,7 +314,7 @@ export class MailFn {
       createdAt: now,
     };
     if (await this.store.createIdempotency(record)) {
-      await this.store.saveCredential(replacement.credential);
+      await this.saveIssuedCredential(replacement.credential);
       await this.audit(actor, 'credential.created', 'credential', replacement.credential.id, {
         inboxId: credential.inboxId ?? null,
         scopeCount: credential.permissions.length,
@@ -355,6 +355,13 @@ export class MailFn {
     );
     await this.authorize(actor, 'inbox:create', input.projectId);
     const project = await this.requireProject(input.projectId);
+    if (input.idempotencyKey) {
+      assertMailFn(this.secretProtector, {
+        code: 'MAILFN_VALIDATION_FAILED',
+        message: 'Secret protection must be configured before creating an idempotent inbox',
+        status: 500,
+      });
+    }
     const requestHash = await this.tokens.hash(JSON.stringify(normalizeIdempotentInboxInput(input)));
     if (input.idempotencyKey) {
       const replay = await this.replayInboxCreate(input.projectId, input.idempotencyKey, requestHash);
@@ -416,9 +423,7 @@ export class MailFn {
         resourceId: inbox.id,
         requestHash,
         credentialId: credential.credential.id,
-        responseCiphertext: this.secretProtector
-          ? await this.secretProtector.protect(credential.token)
-          : undefined,
+        responseCiphertext: await this.secretProtector!.protect(credential.token),
         expiresAt: new Date(Date.parse(now) + 24 * 60 * 60 * 1000).toISOString(),
         createdAt: now,
       }
@@ -2142,7 +2147,7 @@ export class MailFn {
         expiresAt: credential.expiresAt,
         createdAt: record.createdAt,
       };
-      await this.store.saveCredential(replacement);
+      await this.saveIssuedCredential(replacement);
     }
     if (credential.status === 'active') await this.revokeCredential(actor, credential.id);
     return { credential: replacement, token };
@@ -2173,8 +2178,20 @@ export class MailFn {
 
   private async issueCredential(input: CreateCredentialInput): Promise<CreatedCredential> {
     const created = await this.buildCredential(input);
-    await this.store.saveCredential(created.credential);
+    await this.saveIssuedCredential(created.credential);
     return created;
+  }
+
+  private async saveIssuedCredential(credential: Credential): Promise<void> {
+    if (!credential.inboxId) {
+      await this.store.saveCredential(credential);
+      return;
+    }
+    assertMailFn(await this.store.saveCredentialIfInboxActive(credential, this.now()), {
+      code: 'MAILFN_INBOX_INACTIVE',
+      message: 'Inbox is not active',
+      status: 410,
+    });
   }
 
   private async disableAbuseResource(actor: Actor, abuseCase: AbuseCase): Promise<void> {

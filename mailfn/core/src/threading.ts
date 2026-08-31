@@ -35,7 +35,9 @@ export function resolveThread(
       ...found,
       messageIds: Array.from(new Set([...found.messageIds, message.id])),
       participants: Array.from(new Set([...found.participants, ...participants])).sort(),
-      lastMessageAt: message.receivedAt > found.lastMessageAt ? message.receivedAt : found.lastMessageAt,
+      lastMessageAt: Date.parse(message.receivedAt) > Date.parse(found.lastMessageAt)
+        ? message.receivedAt
+        : found.lastMessageAt,
       updatedAt: now,
     };
   }

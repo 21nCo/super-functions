@@ -176,6 +176,29 @@ class PausedInboundStore extends MemoryMailFnStore {
   }
 }
 
+class PausedCredentialStore extends MemoryMailFnStore {
+  private resolveCredentialSaveStarted!: () => void;
+  private resumeCredentialSave!: () => void;
+  public readonly credentialSaveStarted = new Promise<void>((resolve) => {
+    this.resolveCredentialSaveStarted = resolve;
+  });
+  private readonly credentialSaveResume = new Promise<void>((resolve) => {
+    this.resumeCredentialSave = resolve;
+  });
+
+  public continueCredentialSave(): void {
+    this.resumeCredentialSave();
+  }
+
+  override async saveCredentialIfInboxActive(
+    ...args: Parameters<MemoryMailFnStore['saveCredentialIfInboxActive']>
+  ): Promise<boolean> {
+    this.resolveCredentialSaveStarted();
+    await this.credentialSaveResume;
+    return super.saveCredentialIfInboxActive(...args);
+  }
+}
+
 async function setup(options: {
   clock?: MutableClock;
   queue?: MailFnQueue;
@@ -229,6 +252,47 @@ function raw(input: Partial<ParsedMessage> = {}): Uint8Array {
 }
 
 describe('MailFn domain service', () => {
+  it('requires secret protection before claiming an idempotent inbox creation', async () => {
+    const context = await setup();
+    const mailfn = new MailFn({
+      store: context.store,
+      objects: context.objects,
+      defaultDomain: 'inbound.example.com',
+    });
+
+    await expect(mailfn.createInbox(context.admin, {
+      projectId: context.project.id,
+      kind: 'stable',
+      requestedLocalPart: 'missing-protector',
+      idempotencyKey: 'missing-protector',
+    })).rejects.toMatchObject({
+      code: 'MAILFN_VALIDATION_FAILED',
+      message: 'Secret protection must be configured before creating an idempotent inbox',
+    });
+    await expect(context.store.getInboxByAddress('missing-protector@inbound.example.com')).resolves.toBeNull();
+  });
+
+  it('does not issue an inbox credential after deletion has quiesced the inbox', async () => {
+    const store = new PausedCredentialStore();
+    const context = await setup({ store });
+    const created = await createInbox(context, 'credential-delete-race');
+    const issuance = context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: created.inbox.id,
+      permissions: ['inbox:read'],
+    });
+    const rejected = expect(issuance).rejects.toMatchObject({ code: 'MAILFN_INBOX_INACTIVE' });
+
+    await store.credentialSaveStarted;
+    await context.mailfn.deleteInbox(context.admin, created.inbox.id);
+    store.continueCredentialSave();
+
+    await rejected;
+    await expect(store.listCredentials(context.project.id, created.inbox.id)).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ permissions: ['inbox:read'], status: 'active' })]),
+    );
+  });
+
   it('creates the bootstrap audit atomically and permits a clean retry after transaction failure', async () => {
     const store = new FailingAtomicProjectStore();
     const mailfn = new MailFn({

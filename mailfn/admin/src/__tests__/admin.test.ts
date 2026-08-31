@@ -19,6 +19,7 @@ import {
   MailFnError,
   MemoryMailFnObjectStore,
   MemoryMailFnStore,
+  noOpSecretProtector,
 } from "@mailfn/core";
 
 const context = {
@@ -249,9 +250,9 @@ describe("@mailfn/admin", () => {
     expect(rotateCredential).toHaveBeenCalledWith(expect.anything(), "credential_old", "idempotency_1");
   });
 
-  it("skips deleted inboxes in aggregate message and draft reads", async () => {
-    const listMessages = vi.fn(async (_actor, input: { inboxId: string }) => ({
-      items: [{ id: `message_${input.inboxId}` }], nextCursor: undefined,
+  it("uses bounded project message paging and skips deleted inboxes in aggregate draft reads", async () => {
+    const listProjectMessagesPage = vi.fn(async () => ({
+      items: [{ id: "message_inbox_active" }], hasMore: false,
     }));
     const listDrafts = vi.fn(async (_actor, inboxId: string) => [{ id: `draft_${inboxId}` }]);
     const service = createMailFnDomainAdminService({
@@ -260,10 +261,9 @@ describe("@mailfn/admin", () => {
           { id: "inbox_active", status: "active" },
           { id: "inbox_deleted", status: "deleted" },
         ]),
-        listMessages,
         listDrafts,
       } as unknown as MailFn,
-      store: {} as MemoryMailFnStore,
+      store: { listProjectMessagesPage } as unknown as MemoryMailFnStore,
     });
 
     await expect(service.listMessages({}, context)).resolves.toMatchObject({
@@ -272,7 +272,11 @@ describe("@mailfn/admin", () => {
     await expect(service.listDrafts({}, context)).resolves.toMatchObject({
       data: { items: [{ id: "draft_inbox_active" }] },
     });
-    expect(listMessages).toHaveBeenCalledOnce();
+    expect(listProjectMessagesPage).toHaveBeenCalledOnce();
+    expect(listProjectMessagesPage).toHaveBeenCalledWith("project_1", expect.objectContaining({
+      offset: 0,
+      limit: 50,
+    }));
     expect(listDrafts).toHaveBeenCalledOnce();
   });
 
@@ -294,6 +298,7 @@ describe("@mailfn/admin", () => {
       store,
       objects: new MemoryMailFnObjectStore(),
       defaultDomain: "mail.example.test",
+      secretProtector: noOpSecretProtector,
       ids: {
         generate: (() => {
           let sequence = 0;
@@ -367,32 +372,91 @@ describe("@mailfn/admin", () => {
     ).rejects.toMatchObject({ code: "not_found" });
   });
 
-  it("exhausts domain message pages before applying the declared admin search", async () => {
-    const firstPage = Array.from({ length: 100 }, (_, index) => ({
-      id: `message_${index}`,
-      subject: `Routine message ${index}`,
+  it("passes the complete admin query into one bounded project message page", async () => {
+    const listProjectMessagesPage = vi.fn(async () => ({
+      items: [{ id: "message_needle", subject: "Needle in the bounded page" }],
+      hasMore: false,
     }));
-    const listMessages = vi.fn(async (_actor, input: { cursor?: string }) => (
-      input.cursor
-        ? { items: [{ id: "message_needle", subject: "Needle on the later page" }] }
-        : { items: firstPage, nextCursor: "domain-page-2" }
-    ));
+    const service = createMailFnDomainAdminService({
+      mailfn: {} as MailFn,
+      store: { listProjectMessagesPage } as unknown as MemoryMailFnStore,
+    });
+
+    const result = await service.listMessages({
+      search: "needle",
+      filter: { status: "ready" },
+      sort: [{ field: "receivedAt", direction: "desc" }],
+      limit: 10,
+    }, context);
+
+    expect(result.data).toEqual({
+      items: [{ id: "message_needle", subject: "Needle in the bounded page" }],
+      nextCursor: null,
+    });
+    expect(listProjectMessagesPage).toHaveBeenCalledOnce();
+    expect(listProjectMessagesPage).toHaveBeenCalledWith("project_1", expect.objectContaining({
+      offset: 0,
+      limit: 10,
+      search: "needle",
+      filter: { status: "ready" },
+      sort: [{ field: "receivedAt", direction: "desc" }],
+    }));
+  });
+
+  it("loads one bounded attachment page without traversing project messages", async () => {
+    const listProjectAttachmentsPage = vi.fn(async () => ({
+      items: [{
+        id: "attachment_1", projectId: "project_1", inboxId: "inbox_1",
+        messageId: "message_1", filename: "proof.txt", contentType: "text/plain",
+        sizeBytes: 5, sha256: "sha", objectKey: "private/object", createdAt: "2026-08-30T00:00:00.000Z",
+      }],
+      hasMore: false,
+    }));
+    const service = createMailFnDomainAdminService({
+      mailfn: {} as MailFn,
+      store: { listProjectAttachmentsPage } as unknown as MemoryMailFnStore,
+    });
+
+    const result = await service.listAttachments({
+      filter: { contentType: "text/plain" },
+      sort: [{ field: "sizeBytes", direction: "desc" }],
+      limit: 20,
+    }, context);
+
+    expect(result.data.items).toEqual([expect.objectContaining({ id: "attachment_1" })]);
+    expect(JSON.stringify(result.data.items)).not.toContain("private/object");
+    expect(listProjectAttachmentsPage).toHaveBeenCalledOnce();
+    expect(listProjectAttachmentsPage).toHaveBeenCalledWith("project_1", expect.objectContaining({
+      offset: 0,
+      limit: 20,
+      filter: { contentType: "text/plain" },
+      sort: [{ field: "sizeBytes", direction: "desc" }],
+    }));
+  });
+
+  it("applies generic filters and sorting and binds cursors to the complete query", async () => {
     const service = createMailFnDomainAdminService({
       mailfn: {
-        listInboxes: vi.fn(async () => [{ id: "inbox_1" }]),
-        listMessages,
+        listInboxes: vi.fn(async () => [
+          { id: "inbox_1", status: "active", createdAt: "2026-08-01T00:00:00.000Z" },
+          { id: "inbox_2", status: "disabled", createdAt: "2026-08-03T00:00:00.000Z" },
+          { id: "inbox_3", status: "active", createdAt: "2026-08-02T00:00:00.000Z" },
+        ]),
       } as unknown as MailFn,
       store: new MemoryMailFnStore(),
     });
+    const query = {
+      filter: { status: "active" },
+      sort: [{ field: "createdAt", direction: "desc" }],
+      limit: 1,
+    } as const;
 
-    const result = await service.listMessages({ search: "needle", limit: 10 }, context);
-
-    expect(result.data).toEqual({
-      items: [{ id: "message_needle", subject: "Needle on the later page" }],
-      nextCursor: null,
-    });
-    expect(listMessages).toHaveBeenCalledTimes(2);
-    expect(listMessages.mock.calls[1]?.[1]).toMatchObject({ cursor: "domain-page-2", limit: 100 });
+    const first = await service.listInboxes(query, context);
+    expect(first.data.items).toEqual([expect.objectContaining({ id: "inbox_3" })]);
+    const second = await service.listInboxes({ ...query, cursor: first.data.nextCursor! }, context);
+    expect(second.data.items).toEqual([expect.objectContaining({ id: "inbox_1" })]);
+    await expect(service.listInboxes({ ...query, search: "changed", cursor: first.data.nextCursor! }, context))
+      .rejects.toMatchObject({ code: "invalid_argument" });
   });
 
   it("translates MailFn domain failures into canonical admin errors", async () => {

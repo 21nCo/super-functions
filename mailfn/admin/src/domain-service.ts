@@ -4,8 +4,8 @@ import {
   type MailFn,
   MailFnError,
   type MailFnStore,
-  type Message,
-  type MessageFilter,
+  type MailFnStorePageInput,
+  type MailFnStoreSort,
 } from "@mailfn/core";
 import {
   AdminError,
@@ -35,6 +35,11 @@ interface ListInput {
   limit?: number;
   search?: string;
   filter?: JsonRecord;
+  sort?: readonly JsonRecord[];
+}
+
+interface ResolvedListPage extends MailFnStorePageInput {
+  identity: string;
 }
 
 function record(value: unknown, label: string): JsonRecord {
@@ -100,42 +105,113 @@ function safeDomain(value: JsonRecord): JsonRecord {
   return safe;
 }
 
+function safeAttachment(value: JsonRecord): JsonRecord {
+  const { objectKey: _objectKey, projectId: _projectId, ...safe } = value;
+  return safe;
+}
+
 function asJson(value: object): JsonRecord {
   return { ...value };
+}
+
+function compareAdminValues(left: unknown, right: unknown): number {
+  if (typeof left === "number" && typeof right === "number") return left - right;
+  return String(left ?? "").localeCompare(String(right ?? ""));
+}
+
+function resolveListPage(
+  input: ListInput,
+  context: AdminOperationContext,
+  operationId: string,
+): ResolvedListPage {
+  const search = optionalString(input.search, "search")?.trim().toLowerCase();
+  const filter = optionalRecord(input.filter, "filter");
+  if (input.sort !== undefined && !Array.isArray(input.sort)) {
+    throw new AdminError("invalid_argument", "sort must be an array.");
+  }
+  const sort: MailFnStoreSort[] = (input.sort ?? []).map((value, index) => {
+    const descriptor = record(value, `sort[${index}]`);
+    const field = string(descriptor.field, `sort[${index}].field`);
+    const direction = descriptor.direction ?? "asc";
+    if (direction !== "asc" && direction !== "desc") {
+      throw new AdminError("invalid_argument", `sort[${index}].direction must be asc or desc.`);
+    }
+    return { field, direction };
+  });
+  const identity = JSON.stringify([
+    operationId,
+    search ?? null,
+    Object.entries(filter ?? {}).sort(([left], [right]) => left.localeCompare(right)),
+    sort.map((descriptor) => [descriptor.field, descriptor.direction]),
+  ]);
+  const decoded = input.cursor
+    ? decodeAdminCursor<{ identity?: unknown; offset?: unknown }>(input.cursor, context.scope)
+    : { identity, offset: 0 };
+  if (!decoded || typeof decoded !== "object" || Array.isArray(decoded) || decoded.identity !== identity) {
+    throw new AdminError("invalid_argument", "The pagination cursor does not belong to this collection query.");
+  }
+  const offset = decoded.offset ?? 0;
+  if (!Number.isSafeInteger(offset) || (offset as number) < 0) {
+    throw new AdminError("invalid_argument", "The pagination cursor is invalid.");
+  }
+  return {
+    identity,
+    offset: offset as number,
+    limit: normalizeAdminPageLimit(input.limit),
+    ...(search ? { search } : {}),
+    ...(filter ? { filter } : {}),
+    ...(sort.length ? { sort } : {}),
+  };
+}
+
+function pageResult<T extends object>(
+  items: T[],
+  hasMore: boolean,
+  resolved: ResolvedListPage,
+  context: AdminOperationContext,
+): AdminOperationResult<MailFnListOutput> {
+  const nextOffset = resolved.offset + items.length;
+  const nextCursor = hasMore
+    ? encodeAdminCursor(context.scope, { identity: resolved.identity, offset: nextOffset })
+    : null;
+  return {
+    ok: true,
+    data: {
+      items: items.map(asJson) as MailFnAdminRecord[],
+      nextCursor,
+    },
+    page: {
+      nextCursor,
+      hasMore,
+    },
+  };
 }
 
 function page<T extends object>(
   items: T[],
   input: ListInput,
   context: AdminOperationContext,
+  operationId: string,
 ): AdminOperationResult<MailFnListOutput> {
-  const query = optionalString(input.search, "search")?.trim().toLowerCase();
-  const filtered = query
-    ? items.filter((value) => JSON.stringify(value).toLowerCase().includes(query))
-    : items;
-  const limit = normalizeAdminPageLimit(input.limit);
-  const position = input.cursor
-    ? decodeAdminCursor<{ offset: number; search: string | null }>(input.cursor, context.scope)
-    : { offset: 0, search: query ?? null };
-  if (!Number.isInteger(position.offset) || position.offset < 0 || position.search !== (query ?? null)) {
-    throw new AdminError("invalid_argument", "The pagination cursor is invalid.");
+  const resolved = resolveListPage(input, context, operationId);
+  let records = items.map(asJson);
+  if (resolved.search) {
+    records = records.filter((value) => JSON.stringify(value).toLowerCase().includes(resolved.search!));
   }
-  const selected = filtered.slice(position.offset, position.offset + limit);
-  const nextOffset = position.offset + selected.length;
-  const nextCursor = nextOffset < filtered.length
-    ? encodeAdminCursor(context.scope, { offset: nextOffset, search: query ?? null })
-    : null;
-  return {
-    ok: true,
-    data: {
-      items: selected.map(asJson) as MailFnAdminRecord[],
-      nextCursor,
-    },
-    page: {
-      nextCursor,
-      hasMore: nextOffset < filtered.length,
-    },
-  };
+  if (resolved.filter) {
+    records = records.filter((value) => Object.entries(resolved.filter!).every(
+      ([field, expected]) => JSON.stringify(value[field]) === JSON.stringify(expected),
+    ));
+  }
+  records.sort((left, right) => {
+    for (const descriptor of resolved.sort ?? []) {
+      const compared = compareAdminValues(left[descriptor.field], right[descriptor.field]);
+      if (compared !== 0) return compared * (descriptor.direction === "desc" ? -1 : 1);
+    }
+    return String(left.id ?? "").localeCompare(String(right.id ?? ""));
+  });
+  const selected = records.slice(resolved.offset, resolved.offset + resolved.limit);
+  return pageResult(selected, resolved.offset + selected.length < records.length, resolved, context);
 }
 
 function item(value: object): AdminOperationResult<MailFnItemOutput> {
@@ -155,33 +231,6 @@ function notFound(label: string): never {
 
 function assertProject(value: { projectId: string }, expected: string, label: string): void {
   if (value.projectId !== expected) notFound(label);
-}
-
-async function allProjectMessages(
-  mailfn: MailFn,
-  adminActor: Actor,
-  filter: MessageFilter = {},
-): Promise<Message[]> {
-  const messages: Message[] = [];
-  for (const inbox of await readableProjectInboxes(mailfn, adminActor)) {
-    let cursor: string | undefined;
-    const seenCursors = new Set<string>();
-    do {
-      const result = await mailfn.listMessages(adminActor, {
-        inboxId: inbox.id,
-        limit: 100,
-        ...filter,
-        ...(cursor ? { cursor } : {}),
-      });
-      messages.push(...result.items);
-      cursor = result.nextCursor;
-      if (cursor && seenCursors.has(cursor)) {
-        throw new AdminError("dependency_unavailable", "MailFn returned a repeated message cursor.");
-      }
-      if (cursor) seenCursors.add(cursor);
-    } while (cursor);
-  }
-  return messages;
 }
 
 async function readableProjectInboxes(mailfn: MailFn, adminActor: Actor) {
@@ -249,7 +298,7 @@ export function createMailFnDomainAdminService(
     async listProjects(input, context) {
       const { activeProjectId } = state(context);
       const project = await store.getProject(activeProjectId);
-      return page(project ? [project] : [], input, context);
+      return page(project ? [project] : [], input, context, "mailfn.projects.list");
     },
     async getProject(input, context) {
       const { activeProjectId } = state(context);
@@ -259,23 +308,35 @@ export function createMailFnDomainAdminService(
     },
     async listInboxes(input, context) {
       const { adminActor } = state(context);
-      return page(await mailfn.listInboxes(adminActor), input, context);
+      return page(await mailfn.listInboxes(adminActor), input, context, "mailfn.inboxes.list");
     },
     async getInbox(input, context) {
       const { adminActor } = state(context);
       return item(await mailfn.getInbox(adminActor, string(input.id, "id")));
     },
     async listMessages(input, context) {
-      const { adminActor } = state(context);
+      const { activeProjectId } = state(context);
       const filter = optionalRecord(input.filter, "filter");
-      const allowed = new Set([
-        "sender", "senderDomain", "recipient", "subject", "text", "receivedAfter",
-        "receivedBefore", "unreadOnly", "threadId", "labels", "status",
+      const filterAllowed = new Set([
+        "id", "projectId", "inboxId", "providerDeliveryId", "envelopeFrom", "envelopeTo",
+        "subject", "receivedAt", "parsedAt", "threadId", "sizeBytes", "status", "readAt",
+        "createdAt", "updatedAt", "sender", "senderDomain", "recipient", "text",
+        "receivedAfter", "receivedBefore", "unreadOnly", "labels",
+      ]);
+      const sortAllowed = new Set([
+        "id", "projectId", "inboxId", "providerDeliveryId", "envelopeFrom", "envelopeTo",
+        "subject", "receivedAt", "parsedAt", "threadId", "sizeBytes", "status", "readAt",
+        "createdAt", "updatedAt",
       ]);
       for (const key of Object.keys(filter ?? {})) {
-        if (!allowed.has(key)) throw new AdminError("invalid_argument", `Unsupported MailFn message filter: ${key}.`);
+        if (!filterAllowed.has(key)) throw new AdminError("invalid_argument", `Unsupported MailFn message filter: ${key}.`);
       }
-      return page(await allProjectMessages(mailfn, adminActor, (filter ?? {}) as MessageFilter), input, context);
+      const resolved = resolveListPage(input, context, "mailfn.messages.list");
+      for (const descriptor of resolved.sort ?? []) {
+        if (!sortAllowed.has(descriptor.field)) throw new AdminError("invalid_argument", `Unsupported MailFn message sort: ${descriptor.field}.`);
+      }
+      const result = await store.listProjectMessagesPage(activeProjectId, resolved);
+      return pageResult(result.items, result.hasMore, resolved, context);
     },
     async getMessage(input, context) {
       const { activeProjectId, adminActor } = state(context);
@@ -290,7 +351,7 @@ export function createMailFnDomainAdminService(
       for (const inbox of await readableProjectInboxes(mailfn, adminActor)) {
         threads.push(...await mailfn.listThreads(adminActor, inbox.id));
       }
-      return page(threads, input, context);
+      return page(threads, input, context, "mailfn.threads.list");
     },
     async getThread(input, context) {
       const { activeProjectId, adminActor } = state(context);
@@ -306,20 +367,28 @@ export function createMailFnDomainAdminService(
       for (const inbox of await readableProjectInboxes(mailfn, adminActor)) {
         drafts.push(...await mailfn.listDrafts(adminActor, inbox.id));
       }
-      return page(drafts, input, context);
+      return page(drafts, input, context, "mailfn.drafts.list");
     },
     async getDraft(input, context) {
       const { adminActor } = state(context);
       return item(await mailfn.getDraft(adminActor, string(input.id, "id")));
     },
     async listAttachments(input, context) {
-      const { adminActor } = state(context);
-      const attachments = [];
-      for (const message of await allProjectMessages(mailfn, adminActor)) {
-        const value = message as { id: string; inboxId: string };
-        attachments.push(...await mailfn.listAttachments(adminActor, value.inboxId, value.id));
+      const { activeProjectId } = state(context);
+      const filter = optionalRecord(input.filter, "filter");
+      const allowed = new Set([
+        "id", "projectId", "inboxId", "messageId", "filename", "contentType", "sizeBytes",
+        "sha256", "contentId", "disposition", "createdAt",
+      ]);
+      for (const key of Object.keys(filter ?? {})) {
+        if (!allowed.has(key)) throw new AdminError("invalid_argument", `Unsupported MailFn attachment filter: ${key}.`);
       }
-      return page(attachments, input, context);
+      const resolved = resolveListPage(input, context, "mailfn.attachments.list");
+      for (const descriptor of resolved.sort ?? []) {
+        if (!allowed.has(descriptor.field)) throw new AdminError("invalid_argument", `Unsupported MailFn attachment sort: ${descriptor.field}.`);
+      }
+      const result = await store.listProjectAttachmentsPage(activeProjectId, resolved);
+      return pageResult(result.items.map((entry) => safeAttachment(asJson(entry))), result.hasMore, resolved, context);
     },
     async getAttachment(input, context) {
       const { activeProjectId, adminActor } = state(context);
@@ -332,7 +401,7 @@ export function createMailFnDomainAdminService(
     },
     async listCredentials(input, context) {
       const { activeProjectId } = state(context);
-      return page((await store.listCredentials(activeProjectId)).map((entry) => safeCredential(asJson(entry))), input, context);
+      return page((await store.listCredentials(activeProjectId)).map((entry) => safeCredential(asJson(entry))), input, context, "mailfn.credentials.list");
     },
     async getCredential(input, context) {
       const { activeProjectId } = state(context);
@@ -343,7 +412,7 @@ export function createMailFnDomainAdminService(
     },
     async listDomains(input, context) {
       const { activeProjectId } = state(context);
-      return page((await store.listDomains(activeProjectId)).map((entry) => safeDomain(asJson(entry))), input, context);
+      return page((await store.listDomains(activeProjectId)).map((entry) => safeDomain(asJson(entry))), input, context, "mailfn.domains-routes.list");
     },
     async getDomain(input, context) {
       const { activeProjectId } = state(context);
@@ -354,7 +423,7 @@ export function createMailFnDomainAdminService(
     },
     async listWebhooks(input, context) {
       const { activeProjectId } = state(context);
-      return page((await store.listWebhooks(activeProjectId)).map((entry) => safeWebhook(asJson(entry))), input, context);
+      return page((await store.listWebhooks(activeProjectId)).map((entry) => safeWebhook(asJson(entry))), input, context, "mailfn.webhooks.list");
     },
     async getWebhook(input, context) {
       const { activeProjectId } = state(context);
@@ -367,7 +436,7 @@ export function createMailFnDomainAdminService(
       const { activeProjectId } = state(context);
       const project = await store.getProject(activeProjectId);
       if (!project) notFound("Project");
-      return page([{ id: project.id, ...project.defaultRetentionPolicy }], input, context);
+      return page([{ id: project.id, ...project.defaultRetentionPolicy }], input, context, "mailfn.retention.list");
     },
     async getRetention(input, context) {
       const { activeProjectId } = state(context);
@@ -380,7 +449,7 @@ export function createMailFnDomainAdminService(
       const { activeProjectId } = state(context);
       const project = await store.getProject(activeProjectId);
       if (!project) notFound("Project");
-      return page([{ id: project.id, ...project.quota }], input, context);
+      return page([{ id: project.id, ...project.quota }], input, context, "mailfn.quotas.list");
     },
     async getQuota(input, context) {
       const { activeProjectId } = state(context);
@@ -391,7 +460,7 @@ export function createMailFnDomainAdminService(
     },
     async listAuditEvents(input, context) {
       const { adminActor } = state(context);
-      return page(await mailfn.getAuditEvents(adminActor), input, context);
+      return page(await mailfn.getAuditEvents(adminActor), input, context, "mailfn.compliance-audit.list");
     },
     async getAuditEvent(input, context) {
       const { adminActor } = state(context);

@@ -1,4 +1,4 @@
-import type { MailFnObjectStore, MailFnStore } from './contracts.js';
+import type { MailFnObjectStore, MailFnStore, MailFnStorePageInput } from './contracts.js';
 import type {
   AbuseCase,
   Attachment,
@@ -127,6 +127,16 @@ export class MemoryMailFnStore implements MailFnStore {
   async saveCredential(credential: Credential): Promise<void> {
     this.credentials.set(credential.id, copy(credential));
   }
+  async saveCredentialIfInboxActive(credential: Credential, now: string): Promise<boolean> {
+    if (!credential.inboxId) return false;
+    const inbox = this.inboxes.get(credential.inboxId);
+    if (
+      !inbox || inbox.projectId !== credential.projectId || inbox.status !== 'active' ||
+      (inbox.expiresAt !== undefined && Date.parse(inbox.expiresAt) <= Date.parse(now))
+    ) return false;
+    this.credentials.set(credential.id, copy(credential));
+    return true;
+  }
   async touchCredentialIfActive(id: string, lastUsedAt: string): Promise<boolean> {
     const credential = this.credentials.get(id);
     if (!credential || credential.status !== 'active') return false;
@@ -166,6 +176,24 @@ export class MemoryMailFnStore implements MailFnStore {
       hasMore: start + limit < messages.length,
       cursorFound: true,
     };
+  }
+  async listProjectMessagesPage(
+    projectId: string,
+    input: MailFnStorePageInput,
+  ): Promise<{ items: Message[]; hasMore: boolean }> {
+    const messageFilter = Object.fromEntries(
+      Object.entries(input.filter ?? {}).filter(([field]) => MESSAGE_FILTER_FIELDS.has(field)),
+    ) as MessageFilter;
+    const recordFilter = Object.fromEntries(
+      Object.entries(input.filter ?? {}).filter(([field]) => !MESSAGE_FILTER_FIELDS.has(field)),
+    );
+    return projectPage(
+      values(this.messages).filter((message) =>
+        message.projectId === projectId && this.inboxes.get(message.inboxId)?.status !== 'deleted' &&
+        matchesMessage(message, messageFilter)
+      ),
+      { ...input, filter: recordFilter },
+    );
   }
   async searchMessages(
     projectId: string,
@@ -249,6 +277,17 @@ export class MemoryMailFnStore implements MailFnStore {
   }
   async listAttachments(messageId: string): Promise<Attachment[]> {
     return values(this.attachments).filter((attachment) => attachment.messageId === messageId);
+  }
+  async listProjectAttachmentsPage(
+    projectId: string,
+    input: MailFnStorePageInput,
+  ): Promise<{ items: Attachment[]; hasMore: boolean }> {
+    return projectPage(
+      values(this.attachments).filter((attachment) =>
+        attachment.projectId === projectId && this.inboxes.get(attachment.inboxId)?.status !== 'deleted'
+      ),
+      input,
+    );
   }
   async saveAttachment(attachment: Attachment): Promise<void> {
     this.attachments.set(attachment.id, copy(attachment));
@@ -630,4 +669,42 @@ function matchesMessage(message: Message, filter: MessageFilter): boolean {
   if (filter.labels?.some((label) => !message.labels.includes(label))) return false;
   if (filter.status && message.status !== filter.status) return false;
   return true;
+}
+
+const MESSAGE_FILTER_FIELDS = new Set([
+  'sender', 'senderDomain', 'recipient', 'subject', 'text', 'receivedAfter', 'receivedBefore',
+  'unreadOnly', 'threadId', 'labels', 'status',
+]);
+
+function projectPage<T extends object>(
+  items: T[],
+  input: MailFnStorePageInput,
+): { items: T[]; hasMore: boolean } {
+  const query = input.search?.trim().toLowerCase();
+  let records = items.map(copy);
+  if (query) {
+    records = records.filter((value) => JSON.stringify(value).toLowerCase().includes(query));
+  }
+  if (input.filter) {
+    records = records.filter((value) => Object.entries(input.filter!).every(
+      ([field, expected]) => JSON.stringify((value as Record<string, unknown>)[field]) === JSON.stringify(expected),
+    ));
+  }
+  records.sort((left, right) => {
+    for (const descriptor of input.sort ?? []) {
+      const leftValue = (left as Record<string, unknown>)[descriptor.field];
+      const rightValue = (right as Record<string, unknown>)[descriptor.field];
+      const compared = compareStoreValues(leftValue, rightValue);
+      if (compared !== 0) return compared * (descriptor.direction === 'desc' ? -1 : 1);
+    }
+    return String((left as Record<string, unknown>).id ?? '')
+      .localeCompare(String((right as Record<string, unknown>).id ?? ''));
+  });
+  const selected = records.slice(input.offset, input.offset + input.limit + 1);
+  return { items: selected.slice(0, input.limit), hasMore: selected.length > input.limit };
+}
+
+function compareStoreValues(left: unknown, right: unknown): number {
+  if (typeof left === 'number' && typeof right === 'number') return left - right;
+  return String(left ?? '').localeCompare(String(right ?? ''));
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { MailDomain, Message, Webhook } from '@mailfn/core';
+import type { Credential, MailDomain, Message, Webhook } from '@mailfn/core';
 
 import type { D1Database, D1PreparedStatement, D1Result } from './bindings.js';
 import { D1MailFnStore } from './d1-store.js';
@@ -36,6 +36,50 @@ class RecordingDatabase implements D1Database {
 }
 
 describe('D1MailFnStore', () => {
+  it('inserts inbox credentials only while the owning inbox is active and unexpired', async () => {
+    const database = new RecordingDatabase();
+    const store = new D1MailFnStore(database);
+    const credential = {
+      id: 'cred_1', projectId: 'prj_1', inboxId: 'inb_1', tokenHash: 'hash',
+      tokenPrefix: 'mfn_cred_1', permissions: ['inbox:read'], status: 'active',
+      createdAt: '2026-08-30T00:00:00.000Z',
+    } satisfies Credential;
+
+    await expect(store.saveCredentialIfInboxActive(
+      credential,
+      '2026-08-30T00:00:01.000Z',
+    )).resolves.toBe(true);
+
+    expect(database.statements[0]?.query).toContain('FROM mailfn_inboxes');
+    expect(database.statements[0]?.query).toContain("status = 'active'");
+    expect(database.statements[0]?.query).toContain('julianday(expires_at) > julianday(?)');
+    expect(database.statements[0]?.values.slice(-3)).toEqual([
+      'inb_1', 'prj_1', '2026-08-30T00:00:01.000Z',
+    ]);
+  });
+
+  it('pages project messages in the database with the complete admin query', async () => {
+    const database = new RecordingDatabase();
+    const store = new D1MailFnStore(database);
+
+    await store.listProjectMessagesPage('prj_1', {
+      offset: 50,
+      limit: 25,
+      search: 'needle',
+      filter: { status: 'ready' },
+      sort: [{ field: 'receivedAt', direction: 'desc' }],
+    });
+
+    expect(database.statements[0]?.query).toContain('mailfn_messages.project_id = ?');
+    expect(database.statements[0]?.query).toContain("admin_inbox.status = 'deleted'");
+    expect(database.statements[0]?.query).toContain('mailfn_messages.status = ?');
+    expect(database.statements[0]?.query).toContain('ORDER BY julianday(mailfn_messages.received_at) DESC');
+    expect(database.statements[0]?.query).toContain('LIMIT ? OFFSET ?');
+    expect(database.statements[0]?.values).toEqual([
+      'prj_1', 'needle', 'ready', 26, 50,
+    ]);
+  });
+
   it('keeps inbox-scoped webhook queries separate from project-wide webhooks', async () => {
     const database = new RecordingDatabase();
     const store = new D1MailFnStore(database);

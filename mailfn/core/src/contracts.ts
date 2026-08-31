@@ -28,6 +28,19 @@ import type {
   WebhookDelivery,
 } from './types.js';
 
+export interface MailFnStoreSort {
+  field: string;
+  direction: 'asc' | 'desc';
+}
+
+export interface MailFnStorePageInput {
+  offset: number;
+  limit: number;
+  search?: string;
+  filter?: Record<string, unknown>;
+  sort?: readonly MailFnStoreSort[];
+}
+
 export interface MailFnStore {
   getProject(id: string): Promise<Project | null>;
   getProjectBySlug(slug: string): Promise<Project | null>;
@@ -50,6 +63,7 @@ export interface MailFnStore {
   getCredential(id: string): Promise<Credential | null>;
   listCredentials(projectId: string, inboxId?: string): Promise<Credential[]>;
   saveCredential(credential: Credential): Promise<void>;
+  saveCredentialIfInboxActive(credential: Credential, now: string): Promise<boolean>;
   touchCredentialIfActive(id: string, lastUsedAt: string): Promise<boolean>;
 
   getMessage(id: string): Promise<Message | null>;
@@ -62,6 +76,10 @@ export interface MailFnStore {
     cursorId: string | undefined,
     limit: number,
   ): Promise<{ items: Message[]; hasMore: boolean; cursorFound: boolean }>;
+  listProjectMessagesPage(
+    projectId: string,
+    input: MailFnStorePageInput,
+  ): Promise<{ items: Message[]; hasMore: boolean }>;
   searchMessages(projectId: string, inboxId: string, input: Omit<SearchMessagesInput, 'projectId' | 'inboxId'>): Promise<Message[]>;
   searchMessagesPage(
     projectId: string,
@@ -79,6 +97,10 @@ export interface MailFnStore {
 
   getAttachment(id: string): Promise<Attachment | null>;
   listAttachments(messageId: string): Promise<Attachment[]>;
+  listProjectAttachmentsPage(
+    projectId: string,
+    input: MailFnStorePageInput,
+  ): Promise<{ items: Attachment[]; hasMore: boolean }>;
   saveAttachment(attachment: Attachment): Promise<void>;
   deleteAttachment(id: string): Promise<void>;
 
