@@ -15,10 +15,13 @@ export interface MdfnRemoteDocument {
 }
 
 export interface MdfnRemoteVersion extends MdfnRemoteDocument { readonly documentId: string; readonly authorId: string; readonly changeSource: string; }
+export type MdfnRemoteVersionSummary = Omit<MdfnRemoteVersion, "markdown" | "sidecar">;
+export interface MdfnRemoteVersionBatch { readonly versions: readonly MdfnRemoteVersionSummary[]; readonly nextCursor?: string; }
 
 export interface MdfnRemoteCollaborationUpdateBatch {
   readonly updates: readonly string[];
   readonly includedUpdateIds: readonly string[];
+  readonly nextCursor?: string;
 }
 
 export class MdfnClientError extends Error {
@@ -37,7 +40,7 @@ export interface MdfnClient {
   listDocuments(options?: { readonly limit?: number; readonly offset?: number }): Promise<readonly MdfnRemoteDocument[]>;
   updateDocument(id: string, input: { readonly expectedVersion: number; readonly markdown?: string; readonly title?: string; readonly sidecar?: MdfnSidecar; readonly changeSource?: string; readonly idempotencyKey?: string }): Promise<MdfnRemoteDocument>;
   deleteDocument(id: string): Promise<void>;
-  listVersions(id: string): Promise<readonly MdfnRemoteVersion[]>;
+  listVersions(id: string, options?: { readonly cursor?: string; readonly limit?: number }): Promise<MdfnRemoteVersionBatch>;
   getVersion(id: string, version: number): Promise<MdfnRemoteVersion>;
   restoreVersion(id: string, version: number, expectedVersion: number, idempotencyKey?: string): Promise<MdfnRemoteDocument>;
   getSidecar(id: string): Promise<MdfnSidecar>;
@@ -50,7 +53,7 @@ export interface MdfnClient {
   decideSuggestion(id: string, suggestionId: string, input: { readonly expectedVersion: number; readonly decision: "accepted" | "rejected"; readonly idempotencyKey?: string }): Promise<MdfnRemoteDocument>;
   transitionReview(id: string, input: { readonly expectedVersion: number; readonly state: ReviewState; readonly idempotencyKey?: string }): Promise<MdfnRemoteDocument>;
   appendCollaborationUpdate(id: string, update: string): Promise<string>;
-  getCollaborationUpdates(id: string): Promise<MdfnRemoteCollaborationUpdateBatch>;
+  getCollaborationUpdates(id: string, options?: { readonly cursor?: string; readonly limit?: number }): Promise<MdfnRemoteCollaborationUpdateBatch>;
   compactCollaborationUpdates(id: string, snapshot: string, includedUpdateIds: readonly string[]): Promise<string>;
 }
 
@@ -79,7 +82,7 @@ export function createMdfnClient(options: MdfnClientOptions = {}): MdfnClient {
     async listDocuments(list = {}) { const query = new URLSearchParams(); if (list.limit !== undefined) query.set("limit", String(list.limit)); if (list.offset !== undefined) query.set("offset", String(list.offset)); const result = await request<{ documents: MdfnRemoteDocument[] }>(`/documents?${query}`); return result.documents; },
     updateDocument: (id, input) => request(`/documents/${encode(id)}`, { method: "PATCH", headers: input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : undefined, body: JSON.stringify(input) }),
     deleteDocument: (id) => request(`/documents/${encode(id)}`, { method: "DELETE" }),
-    async listVersions(id) { return (await request<{ versions: MdfnRemoteVersion[] }>(`/documents/${encode(id)}/versions`)).versions; },
+    async listVersions(id, list = {}) { const query = new URLSearchParams(); if (list.cursor !== undefined) query.set("cursor", list.cursor); if (list.limit !== undefined) query.set("limit", String(list.limit)); return request<MdfnRemoteVersionBatch>(`/documents/${encode(id)}/versions?${query}`); },
     getVersion: (id, version) => request(`/documents/${encode(id)}/versions/${version}`),
     restoreVersion: (id, version, expectedVersion, idempotencyKey) => request(`/documents/${encode(id)}/restore`, { method: "POST", headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined, body: JSON.stringify({ version, expectedVersion }) }),
     getSidecar: (id) => request(`/documents/${encode(id)}/sidecar`),
@@ -92,7 +95,7 @@ export function createMdfnClient(options: MdfnClientOptions = {}): MdfnClient {
     decideSuggestion: (id, suggestionId, input) => request(`/documents/${encode(id)}/suggestions/${encode(suggestionId)}`, { method: "PATCH", headers: input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : undefined, body: JSON.stringify(input) }),
     transitionReview: (id, input) => request(`/documents/${encode(id)}/review`, { method: "PUT", headers: input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : undefined, body: JSON.stringify(input) }),
     async appendCollaborationUpdate(id, update) { return (await request<{ id: string }>(`/documents/${encode(id)}/collaboration-updates`, { method: "POST", body: JSON.stringify({ update }) })).id; },
-    getCollaborationUpdates: (id) => request(`/documents/${encode(id)}/collaboration-updates`),
+    async getCollaborationUpdates(id, list = {}) { const query = new URLSearchParams(); if (list.cursor !== undefined) query.set("cursor", list.cursor); if (list.limit !== undefined) query.set("limit", String(list.limit)); return request<MdfnRemoteCollaborationUpdateBatch>(`/documents/${encode(id)}/collaboration-updates?${query}`); },
     async compactCollaborationUpdates(id, snapshot, includedUpdateIds) { return (await request<{ id: string }>(`/documents/${encode(id)}/collaboration-updates/compact`, { method: "PUT", body: JSON.stringify({ snapshot, includedUpdateIds }) })).id; },
   };
 }

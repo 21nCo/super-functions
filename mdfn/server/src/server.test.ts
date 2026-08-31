@@ -28,7 +28,7 @@ describe("mdfn server", () => {
     const updated = await service.update(principal, created.id, { expectedVersion: 1, markdown: "# Two" });
     expect(updated.version).toBe(2);
     await expect(service.update(principal, created.id, { expectedVersion: 1, markdown: "# Three" })).rejects.toMatchObject({ code: "MDFN_VERSION_CONFLICT" });
-    expect(await service.versions(principal, created.id)).toHaveLength(2);
+    expect((await service.versions(principal, created.id)).versions).toHaveLength(2);
   });
 
   it("enforces tenant scope before host authorization and collaboration limits", async () => {
@@ -65,11 +65,53 @@ describe("mdfn server", () => {
     await service.appendCollaborationUpdate(principal, document.id, "90");
 
     const first = await service.collaborationUpdates(principal, document.id);
-    expect(first).toMatchObject({ updates: ["1234", "5678"], nextCursor: "2" });
+    expect(first).toMatchObject({ updates: ["1234", "5678"], nextCursor: expect.any(String) });
     await expect(service.collaborationUpdates(principal, document.id, { cursor: first.nextCursor }))
       .resolves.toMatchObject({ updates: ["90"] });
     await expect(service.collaborationUpdates(principal, document.id, { cursor: "invalid" }))
       .rejects.toMatchObject({ code: "MDFN_COLLAB_CURSOR_INVALID", status: 422 });
+  });
+
+  it("keeps collaboration continuation stable across compaction", async () => {
+    const service = createMdfnService({
+      database: memoryAdapter(),
+      durability: "ephemeral",
+      authorize: () => true,
+      maxCollaborationBatchUpdates: 2,
+      createId: (() => { let id = 0; return () => `stable-${String(id++).padStart(3, "0")}`; })(),
+    });
+    const principal = { id: "author" };
+    const document = await service.create(principal, { markdown: "valid" });
+    for (const update of ["one", "two", "three", "four"]) {
+      await service.appendCollaborationUpdate(principal, document.id, update);
+    }
+
+    const first = await service.collaborationUpdates(principal, document.id);
+    await service.compactCollaborationUpdates(principal, document.id, "snapshot", first.includedUpdateIds);
+    const second = await service.collaborationUpdates(principal, document.id, { cursor: first.nextCursor });
+    const third = await service.collaborationUpdates(principal, document.id, { cursor: second.nextCursor });
+
+    expect(first.updates).toEqual(["one", "two"]);
+    expect(second.updates).toEqual(["three", "four"]);
+    expect(third.updates).toEqual(["snapshot"]);
+  });
+
+  it("paginates lightweight immutable version history", async () => {
+    const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true });
+    const principal = { id: "author" };
+    const created = await service.create(principal, { markdown: "one", sidecar: { audit: [] } });
+    await service.update(principal, created.id, { expectedVersion: 1, markdown: "two" });
+    await service.update(principal, created.id, { expectedVersion: 2, markdown: "three" });
+
+    const first = await service.versions(principal, created.id, { limit: 2 });
+    const second = await service.versions(principal, created.id, { cursor: first.nextCursor, limit: 2 });
+
+    expect(first.versions.map((version) => version.version)).toEqual([3, 2]);
+    expect(first.versions[0]).not.toHaveProperty("markdown");
+    expect(first.versions[0]).not.toHaveProperty("sidecar");
+    expect(first.nextCursor).toBe("2");
+    expect(second.versions.map((version) => version.version)).toEqual([1]);
+    expect(second.nextCursor).toBeUndefined();
   });
 
   it("fails closed when durable storage lacks transaction support", () => {
@@ -107,7 +149,7 @@ describe("mdfn server", () => {
     expect((await service.collaborationUpdates(principal, created.id)).updates).toEqual(["snapshot"]);
     const restored = await service.restoreVersion(principal, created.id, { version: 1, expectedVersion: 7 });
     expect(restored).toMatchObject({ markdown: "# One", version: 8 });
-    expect(await service.versions(principal, created.id)).toHaveLength(8);
+    expect((await service.versions(principal, created.id)).versions).toHaveLength(8);
     await service.delete(principal, created.id);
     await expect(service.read(principal, created.id)).rejects.toMatchObject({ code: "MDFN_DOCUMENT_NOT_FOUND" });
     void replied;

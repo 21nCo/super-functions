@@ -57,6 +57,13 @@ export interface MdfnDocumentRecord {
 
 export interface MdfnVersionRecord extends MdfnDocumentRecord { readonly documentId: string; readonly authorId: string; readonly changeSource: string; }
 
+export type MdfnVersionSummary = Omit<MdfnVersionRecord, "markdown" | "sidecar">;
+
+export interface MdfnVersionBatch {
+  readonly versions: readonly MdfnVersionSummary[];
+  readonly nextCursor?: string;
+}
+
 export interface MdfnCollaborationUpdateBatch {
   readonly updates: readonly string[];
   /** Exact persisted update ids represented by `updates` and therefore safe to compact. */
@@ -97,13 +104,38 @@ function configuredCollaborationUpdateBytes(config: MdfnServerConfig): number {
   return 4 * Math.ceil((documentBytes + yjsOverhead) / 3);
 }
 
+interface CollaborationCursor {
+  readonly documentId: string;
+  readonly key: string;
+}
+
+function collaborationCursorKey(createdAt: Date, id: string): string {
+  return `${createdAt.toISOString()}:${id}`;
+}
+
+function encodeCollaborationCursor(documentId: string, key: string): string {
+  return encodeURIComponent(JSON.stringify({ documentId, key }));
+}
+
+function decodeCollaborationCursor(cursor: string, documentId: string): string {
+  try {
+    const parsed = JSON.parse(decodeURIComponent(cursor)) as Partial<CollaborationCursor>;
+    if (parsed.documentId !== documentId || typeof parsed.key !== "string" || !parsed.key) {
+      throw new Error("invalid cursor");
+    }
+    return parsed.key;
+  } catch {
+    throw new MdfnServerError("MDFN_COLLAB_CURSOR_INVALID", 422);
+  }
+}
+
 export function getSchema(): { version: number; schemas: TableSchema[] } {
   const date = { type: "date" as const, required: true, dateValueType: "date" as const };
   return { version: MDFN_SERVER_SCHEMA_VERSION, schemas: [
     { modelName: DOCUMENTS, fields: { id: { type: "string", required: true }, ownerId: { type: "string", required: true }, tenantId: { type: "string" }, title: { type: "string" }, markdown: { type: "string", required: true }, sourceHash: { type: "string", required: true }, schemaHash: { type: "string", required: true }, sidecar: { type: "json" }, version: { type: "number", required: true }, createdAt: date, updatedAt: date }, indexes: [{ name: "idx_mdfn_documents_owner", fields: ["ownerId"] }, { name: "idx_mdfn_documents_tenant", fields: ["tenantId"] }] },
     { modelName: VERSIONS, fields: { id: { type: "string", required: true }, documentId: { type: "string", required: true }, ownerId: { type: "string", required: true }, tenantId: { type: "string" }, title: { type: "string" }, markdown: { type: "string", required: true }, sourceHash: { type: "string", required: true }, schemaHash: { type: "string", required: true }, sidecar: { type: "json" }, version: { type: "number", required: true }, authorId: { type: "string", required: true }, changeSource: { type: "string", required: true }, createdAt: date, updatedAt: date }, indexes: [{ name: "idx_mdfn_versions_document_version", fields: ["documentId", "version"], unique: true }] },
     { modelName: RECEIPTS, fields: { id: { type: "string", required: true }, documentId: { type: "string", required: true }, idempotencyKey: { type: "string", required: true }, operation: { type: "string", required: true }, payloadHash: { type: "string", required: true }, result: { type: "json", required: true }, createdAt: date }, indexes: [{ name: "idx_mdfn_receipts_key", fields: ["documentId", "idempotencyKey"], unique: true }] },
-    { modelName: COLLAB_UPDATES, fields: { id: { type: "string", required: true }, documentId: { type: "string", required: true }, authorId: { type: "string", required: true }, update: { type: "string", required: true }, createdAt: date }, indexes: [{ name: "idx_mdfn_collab_document", fields: ["documentId", "createdAt"] }] },
+    { modelName: COLLAB_UPDATES, fields: { id: { type: "string", required: true }, documentId: { type: "string", required: true }, authorId: { type: "string", required: true }, update: { type: "string", required: true }, cursorKey: { type: "string", required: true }, createdAt: date }, indexes: [{ name: "idx_mdfn_collab_document_cursor", fields: ["documentId", "cursorKey"] }] },
   ] };
 }
 
@@ -113,7 +145,11 @@ export interface MdfnService {
   list(principal: MdfnPrincipal, options?: { readonly limit?: number; readonly offset?: number }): Promise<readonly MdfnDocumentRecord[]>;
   update(principal: MdfnPrincipal, id: string, input: { readonly expectedVersion: number; readonly markdown?: string; readonly title?: string; readonly sidecar?: MdfnSidecar; readonly changeSource?: string; readonly idempotencyKey?: string }): Promise<MdfnDocumentRecord>;
   delete(principal: MdfnPrincipal, id: string): Promise<void>;
-  versions(principal: MdfnPrincipal, id: string): Promise<readonly MdfnVersionRecord[]>;
+  versions(
+    principal: MdfnPrincipal,
+    id: string,
+    options?: { readonly cursor?: string; readonly limit?: number },
+  ): Promise<MdfnVersionBatch>;
   version(principal: MdfnPrincipal, id: string, version: number): Promise<MdfnVersionRecord>;
   restoreVersion(principal: MdfnPrincipal, id: string, input: { readonly version: number; readonly expectedVersion: number; readonly idempotencyKey?: string }): Promise<MdfnDocumentRecord>;
   createComment(principal: MdfnPrincipal, id: string, input: { readonly expectedVersion: number; readonly anchor: SidecarAnchor; readonly body: string; readonly idempotencyKey?: string }): Promise<MdfnDocumentRecord>;
@@ -405,7 +441,36 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
         await storage.delete({ model: DOCUMENTS, where: whereId(id) });
       });
     },
-    async versions(principal, id) { const document = await loadScoped(principal, id); await allowed(config, "history", principal, document); return database.findMany<MdfnVersionRecord>({ model: VERSIONS, where: [{ field: "documentId", operator: "eq", value: id }], orderBy: [{ field: "version", direction: "desc" }] }); },
+    async versions(principal, id, options = {}) {
+      const document = await loadScoped(principal, id);
+      await allowed(config, "history", principal, document);
+      const cursor = options.cursor === undefined ? undefined : Number(options.cursor);
+      const requestedLimit = options.limit ?? 50;
+      if ((cursor !== undefined && (!Number.isSafeInteger(cursor) || cursor < 1)) ||
+        !Number.isSafeInteger(requestedLimit) || requestedLimit < 1) {
+        throw new MdfnServerError("MDFN_VERSION_CURSOR_INVALID", 422);
+      }
+      const limit = Math.min(100, requestedLimit);
+      const where = [
+        { field: "documentId", operator: "eq" as const, value: id },
+        ...(cursor === undefined ? [] : [{ field: "version", operator: "lt" as const, value: cursor }]),
+      ];
+      const rows = await database.findMany<MdfnVersionSummary>({
+        model: VERSIONS,
+        where,
+        select: [
+          "id", "documentId", "ownerId", "tenantId", "title", "sourceHash", "schemaHash",
+          "version", "authorId", "changeSource", "createdAt", "updatedAt",
+        ],
+        orderBy: [{ field: "version", direction: "desc" }],
+        limit: limit + 1,
+      });
+      const versions = rows.slice(0, limit);
+      return {
+        versions,
+        ...(rows.length > limit ? { nextCursor: String(versions.at(-1)!.version) } : {}),
+      };
+    },
     async version(principal, id, version) { const document = await loadScoped(principal, id); await allowed(config, "history", principal, document); const result = await database.findOne<MdfnVersionRecord>({ model: VERSIONS, where: [{ field: "documentId", operator: "eq", value: id }, { field: "version", operator: "eq", value: version }] }); if (!result) throw new MdfnServerError("MDFN_VERSION_NOT_FOUND", 404); return result; },
     async restoreVersion(principal, id, input) {
       const restored = await service.version(principal, id, input.version);
@@ -441,24 +506,27 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     async transitionReview(principal, id, input) {
       return mutateEditorial(principal, id, input.expectedVersion, "review:transition", "editorial:review-transitioned", input.idempotencyKey, input, (document) => ({ sidecar: transitionReview({ sidecar: document.sidecar, to: input.state, actor: editorialActor(principal) }) }));
     },
-    async appendCollaborationUpdate(principal, id, update) { const document = await loadScoped(principal, id); await allowed(config, "collaborate", principal, document); if (new TextEncoder().encode(update).byteLength > collaborationUpdateBytes) throw new MdfnServerError("MDFN_COLLAB_UPDATE_TOO_LARGE", 413); const updateId = createId(); await database.create({ model: COLLAB_UPDATES, data: { id: updateId, documentId: id, authorId: principal.id, update, createdAt: new Date() } }); return updateId; },
+    async appendCollaborationUpdate(principal, id, update) { const document = await loadScoped(principal, id); await allowed(config, "collaborate", principal, document); if (new TextEncoder().encode(update).byteLength > collaborationUpdateBytes) throw new MdfnServerError("MDFN_COLLAB_UPDATE_TOO_LARGE", 413); const updateId = createId(); const createdAt = new Date(); await database.create({ model: COLLAB_UPDATES, data: { id: updateId, documentId: id, authorId: principal.id, update, cursorKey: collaborationCursorKey(createdAt, updateId), createdAt } }); return updateId; },
     async collaborationUpdates(principal, id, options = {}) {
       const document = await loadScoped(principal, id);
       await allowed(config, "collaborate", principal, document);
-      const offset = options.cursor === undefined ? 0 : Number(options.cursor);
       const requestedLimit = options.limit ?? collaborationBatchUpdates;
-      if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(requestedLimit) || requestedLimit < 1) {
+      if (!Number.isSafeInteger(requestedLimit) || requestedLimit < 1) {
         throw new MdfnServerError("MDFN_COLLAB_CURSOR_INVALID", 422);
       }
       const limit = Math.min(collaborationBatchUpdates, requestedLimit);
-      const rows = await database.findMany<{ id: string; update: string }>({
+      type CollaborationRow = { readonly id: string; readonly update: string; readonly cursorKey: string };
+      const cursor = options.cursor === undefined ? undefined : decodeCollaborationCursor(options.cursor, id);
+      const rows = await database.findMany<CollaborationRow>({
         model: COLLAB_UPDATES,
-        where: [{ field: "documentId", operator: "eq", value: id }],
-        orderBy: [{ field: "createdAt", direction: "asc" }, { field: "id", direction: "asc" }],
-        offset,
+        where: [
+          { field: "documentId", operator: "eq", value: id },
+          ...(cursor === undefined ? [] : [{ field: "cursorKey", operator: "gt" as const, value: cursor }]),
+        ],
+        orderBy: [{ field: "cursorKey", direction: "asc" }],
         limit: limit + 1,
       });
-      const included: Array<{ id: string; update: string }> = [];
+      const included: CollaborationRow[] = [];
       let encodedBytes = 0;
       for (const row of rows.slice(0, limit)) {
         const rowBytes = new TextEncoder().encode(row.update).byteLength;
@@ -470,7 +538,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
       return {
         updates: included.map((row) => row.update),
         includedUpdateIds: included.map((row) => row.id),
-        ...(hasMore ? { nextCursor: String(offset + included.length) } : {}),
+        ...(hasMore ? { nextCursor: encodeCollaborationCursor(id, included.at(-1)!.cursorKey) } : {}),
       };
     },
     async compactCollaborationUpdates(principal, id, snapshot, includedUpdateIds) {
@@ -482,11 +550,12 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
       }
       const uniqueUpdateIds = [...new Set(includedUpdateIds)];
       const updateId = createId();
+      const createdAt = new Date();
       await withStorage(async (storage) => {
         if (uniqueUpdateIds.length > 0) {
           await storage.deleteMany({ model: COLLAB_UPDATES, where: [{ field: "documentId", operator: "eq", value: id }, { field: "id", operator: "in", value: uniqueUpdateIds }] });
         }
-        await storage.create({ model: COLLAB_UPDATES, data: { id: updateId, documentId: id, authorId: principal.id, update: snapshot, createdAt: new Date() } });
+        await storage.create({ model: COLLAB_UPDATES, data: { id: updateId, documentId: id, authorId: principal.id, update: snapshot, cursorKey: collaborationCursorKey(createdAt, updateId), createdAt } });
       });
       return updateId;
     },
@@ -521,7 +590,7 @@ export function createMdfnRouter(config: MdfnServerConfig, service = createMdfnS
       { method: "GET", path: "/documents/:id", handler: async (_request, context) => response(await service.read(context.principal, context.params.id!)) },
       { method: "PATCH", path: "/documents/:id", handler: async (request, context) => response(await service.update(context.principal, context.params.id!, idempotent(request, await context.json()))) },
       { method: "DELETE", path: "/documents/:id", handler: async (_request, context) => { await service.delete(context.principal, context.params.id!); return new Response(null, { status: 204 }); } },
-      { method: "GET", path: "/documents/:id/versions", handler: async (_request, context) => Response.json({ versions: await service.versions(context.principal, context.params.id!) }) },
+      { method: "GET", path: "/documents/:id/versions", handler: async (_request, context) => Response.json(await service.versions(context.principal, context.params.id!, { cursor: context.query.get("cursor") ?? undefined, limit: context.query.has("limit") ? Number(context.query.get("limit")) : undefined })) },
       { method: "GET", path: "/documents/:id/versions/:version", handler: async (_request, context) => Response.json(await service.version(context.principal, context.params.id!, Number(context.params.version))) },
       { method: "POST", path: "/documents/:id/restore", handler: async (request, context) => response(await service.restoreVersion(context.principal, context.params.id!, idempotent(request, await context.json()))) },
       { method: "GET", path: "/documents/:id/sidecar", handler: async (_request, context) => Response.json((await service.read(context.principal, context.params.id!)).sidecar ?? {}) },
