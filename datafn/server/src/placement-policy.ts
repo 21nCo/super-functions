@@ -21,7 +21,10 @@ export type DatafnPlacementConstraint = (
 ) => boolean;
 
 export type DatafnPlacementDecisionSource =
-  "preferred" | "coordinates" | "continent" | "stable-fallback";
+  | "preferred"
+  | "coordinates"
+  | "continent"
+  | "stable-fallback";
 
 export interface DatafnPlacementDecision {
   readonly regionId: string;
@@ -36,7 +39,8 @@ export interface DatafnPlacementRankingInput {
   readonly constraints?: readonly DatafnPlacementConstraint[];
 }
 
-export interface DatafnPlacementSelectionInput extends DatafnPlacementRankingInput {
+export interface DatafnPlacementSelectionInput
+  extends DatafnPlacementRankingInput {
   /**
    * Optional stable key used only when neither a preferred region nor trusted
    * geographic signal can select an eligible region.
@@ -72,7 +76,7 @@ function normalizedCandidates(
 ): readonly DatafnPlacementRegionCandidate[] {
   const context: DatafnPlacementConstraintContext = {
     location: input.location ?? null,
-    preferredRegionId: input.preferredRegionId ?? null,
+    preferredRegionId: normalizedPreferredRegionId(input.preferredRegionId),
   };
   const seen = new Set<string>();
   const candidates = input.candidates.map((candidate) => {
@@ -91,6 +95,16 @@ function normalizedCandidates(
       constraint(candidate, context),
     ),
   );
+}
+
+function normalizedPreferredRegionId(
+  preferredRegionId: string | null | undefined,
+): string | null {
+  return preferredRegionId?.trim() || null;
+}
+
+function compareRegionIds(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function sourceCoordinates(location: DatafnPlacementLocation | null): {
@@ -167,7 +181,7 @@ export function rankDatafnPlacementRegions(
     .sort(
       (left, right) =>
         (left.distanceKilometers ?? 0) - (right.distanceKilometers ?? 0) ||
-        left.regionId.localeCompare(right.regionId),
+        compareRegionIds(left.regionId, right.regionId),
     );
 }
 
@@ -189,7 +203,9 @@ export function selectDatafnPlacementRegion(
   input: DatafnPlacementSelectionInput,
 ): DatafnPlacementDecision | null {
   const candidates = normalizedCandidates(input);
-  const preferredRegionId = input.preferredRegionId?.trim();
+  const preferredRegionId = normalizedPreferredRegionId(
+    input.preferredRegionId,
+  );
   if (
     preferredRegionId &&
     candidates.some((candidate) => candidate.regionId === preferredRegionId)
@@ -206,7 +222,7 @@ export function selectDatafnPlacementRegion(
 
   if (input.stableKey !== undefined && candidates.length > 0) {
     const stableCandidates = [...candidates].sort((left, right) =>
-      left.regionId.localeCompare(right.regionId),
+      compareRegionIds(left.regionId, right.regionId),
     );
     const selected =
       stableCandidates[stableIndex(input.stableKey, stableCandidates.length)];

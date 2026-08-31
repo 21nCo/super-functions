@@ -78,6 +78,19 @@ describe("DataFn placement policy", () => {
     expect(constraint).toHaveBeenCalledTimes(regions.length);
   });
 
+  it("passes the normalized preferred region to product constraints", () => {
+    expect(
+      selectDatafnPlacementRegion({
+        candidates: regions,
+        preferredRegionId: " in-south ",
+        constraints: [
+          (candidate, context) =>
+            candidate.regionId === context.preferredRegionId,
+        ],
+      }),
+    ).toEqual({ regionId: "in-south", source: "preferred" });
+  });
+
   it("ranks by distance with a deterministic region-ID tie-breaker", () => {
     const ranked = rankDatafnPlacementRegions({
       candidates: [
@@ -111,6 +124,38 @@ describe("DataFn placement policy", () => {
     expect(
       ranked.every((decision) => Number.isFinite(decision.distanceKilometers)),
     ).toBe(true);
+  });
+
+  it("uses locale-independent total ordering for ties and stable fallback", () => {
+    const localeSensitiveRegions = [
+      { regionId: "ä-region", latitude: 0, longitude: 0 },
+      { regionId: "z-region", latitude: 0, longitude: 0 },
+      { regionId: "é", latitude: 0, longitude: 0 },
+      { regionId: "e\u0301", latitude: 0, longitude: 0 },
+    ];
+    const reversed = [...localeSensitiveRegions].reverse();
+    const ranked = rankDatafnPlacementRegions({
+      candidates: localeSensitiveRegions,
+      location: { latitude: 0, longitude: 0 },
+    });
+    const reranked = rankDatafnPlacementRegions({
+      candidates: reversed,
+      location: { latitude: 0, longitude: 0 },
+    });
+    expect(reranked.map((decision) => decision.regionId)).toEqual(
+      ranked.map((decision) => decision.regionId),
+    );
+    expect(
+      selectDatafnPlacementRegion({
+        candidates: localeSensitiveRegions,
+        stableKey: "tenant:stable",
+      }),
+    ).toEqual(
+      selectDatafnPlacementRegion({
+        candidates: reversed,
+        stableKey: "tenant:stable",
+      }),
+    );
   });
 
   it("uses stable fallback only when a caller explicitly supplies a key", () => {

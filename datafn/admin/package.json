@@ -33,7 +33,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@datafn/server": "0.1.0",
+    "@datafn/server": "0.1.1",
     "@superfunctions/admin": "0.1.0"
   },
   "devDependencies": {
