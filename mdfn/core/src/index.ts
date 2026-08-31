@@ -2,6 +2,7 @@ export * from "./types";
 export * from "./hash";
 export * from "./url";
 export * from "./sidecar";
+export * from "./selection";
 export * from "./anchors";
 export * from "./extensions";
 export * from "./state";

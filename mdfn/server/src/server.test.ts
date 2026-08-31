@@ -29,6 +29,23 @@ describe("mdfn server", () => {
     expect(result.status).toBe(413);
   });
 
+  it("bounds UTF-8 document titles on creation and update", async () => {
+    const service = createMdfnService({
+      database: memoryAdapter(),
+      durability: "ephemeral",
+      authorize: () => true,
+      maxTitleBytes: 4,
+    });
+    const principal = { id: "author" };
+
+    await expect(service.create(principal, { title: "🌍🌍", markdown: "body" }))
+      .rejects.toMatchObject({ code: "MDFN_TITLE_TOO_LARGE", status: 413 });
+    const created = await service.create(principal, { title: "🌍", markdown: "body" });
+    await expect(service.update(principal, created.id, { expectedVersion: 1, title: "abcde" }))
+      .rejects.toMatchObject({ code: "MDFN_TITLE_TOO_LARGE", status: 413 });
+    await expect(service.read(principal, created.id)).resolves.toMatchObject({ title: "🌍", version: 1 });
+  });
+
   it("wraps the adapter and enforces optimistic versions", async () => {
     const database = memoryAdapter();
     const service = createMdfnService({ database, durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `id-${id++}`; })() });

@@ -1,6 +1,7 @@
 import { mapSelection, mapSidecar } from "./anchors";
 import { hashString } from "./hash";
 import { immutableDocument } from "./immutable";
+import { validateMdfnSelection } from "./selection";
 import { validateMdfnSidecar } from "./sidecar";
 import type {
   ChangedRange,
@@ -123,7 +124,7 @@ export function applyTransaction(state: EditorState, transaction: Transaction, p
       continue;
     }
     if (operation.kind === "selection") {
-      selection = operation.selection;
+      selection = validateMdfnSelection(operation.selection, markdown.length);
       selectionChanged = true;
       continue;
     }

@@ -88,6 +88,8 @@ export interface MdfnServerConfig {
   readonly maxCollaborationBatchUpdates?: number;
   /** Maximum encoded request body accepted by JSON-writing routes. */
   readonly maxRequestBodyBytes?: number;
+  /** Maximum UTF-8 bytes accepted for a persisted document title. */
+  readonly maxTitleBytes?: number;
   /** Durable storage requires adapter transactions. Ephemeral is intended only for in-memory/test hosts. */
   readonly durability?: "required" | "ephemeral";
 }
@@ -277,6 +279,15 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
   );
   let service!: MdfnService;
   const editorialActor = (principal: MdfnPrincipal) => ({ id: principal.id, createId, now: () => now().toISOString() });
+  const maxTitleBytes = config.maxTitleBytes ?? 512;
+  if (!Number.isSafeInteger(maxTitleBytes) || maxTitleBytes < 1) {
+    throw new MdfnServerError("MDFN_TITLE_LIMIT_INVALID", 500);
+  }
+  const validateTitle = (title: string | undefined): void => {
+    if (title !== undefined && new TextEncoder().encode(title).byteLength > maxTitleBytes) {
+      throw new MdfnServerError("MDFN_TITLE_TOO_LARGE", 413);
+    }
+  };
   type UpdateInput = Parameters<MdfnService["update"]>[2];
   type RestoreSnapshot = Pick<MdfnVersionRecord, "title" | "markdown" | "sidecar">;
   interface WriteUpdateOptions {
@@ -461,6 +472,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
         : mappedSidecar;
     parse(markdown, sidecar);
     const title = options.restoreSnapshot ? options.restoreSnapshot.title : input.title ?? current.title;
+    validateTitle(title);
     const next: MdfnDocumentRecord = { ...current, title, markdown, sourceHash: hashString(markdown), schemaHash: registry.schemaHash, sidecar, version: current.version + 1, updatedAt: now() };
     return withStorage(async (storage) => {
       if (input.idempotencyKey) {
@@ -504,6 +516,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     async create(principal, input) {
       await allowed(config, "create", principal);
       parse(input.markdown, input.sidecar);
+      validateTitle(input.title);
       if (input.sidecar && protectedSidecar(input.sidecar) !== protectedSidecar(undefined)) {
         throw new MdfnServerError("MDFN_EDITORIAL_MUTATION_FORBIDDEN", 403);
       }

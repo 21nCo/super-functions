@@ -211,6 +211,24 @@ describe("@mdfn/core", () => {
     expect(editor.getState().selection).toBeNull();
   });
 
+  it("rejects invalid text selections during creation and transactions", () => {
+    expect(() => createEditor({
+      markdown: "abc",
+      projector,
+      selection: { kind: "text", anchor: -1, head: 0 },
+    })).toThrowError("MDFN_SELECTION_RANGE_INVALID");
+
+    const editor = createEditor({ markdown: "abc", projector });
+    for (const selection of [
+      { kind: "text" as const, anchor: 0.5, head: 0 },
+      { kind: "text" as const, anchor: 0, head: 4 },
+    ]) {
+      expect(() => editor.dispatch(new Transaction().setSelection(selection)))
+        .toThrowError("MDFN_SELECTION_RANGE_INVALID");
+    }
+    expect(editor.getState().selection).toBeNull();
+  });
+
   it("validates extension dependencies, conflicts, and deterministic schema identity", () => {
     const base = {
       name: "base",

@@ -1,5 +1,6 @@
 import { hashString, hashValue } from "./hash";
 import { immutableDocument } from "./immutable";
+import { validateMdfnSelection } from "./selection";
 import { validateMdfnSidecar } from "./sidecar";
 import type { EditorProjector, EditorState, MdfnSelection, MdfnSidecar, MdfnSnapshot } from "./types";
 
@@ -20,7 +21,7 @@ export function createEditorState(input: CreateEditorStateInput): EditorState {
     document: immutableDocument(parsed.document),
     schemaHash: input.schemaHash,
     sourceHash: parsed.sourceHash ?? hashString(input.markdown),
-    selection: input.selection ?? null,
+    selection: validateMdfnSelection(input.selection ?? null, input.markdown.length),
     diagnostics: Object.freeze([...parsed.diagnostics]),
     sidecar: validateMdfnSidecar(input.sidecar, { markdownLength: input.markdown.length }),
     dirty: false,
