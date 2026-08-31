@@ -151,7 +151,14 @@ export const MdfnEditor: Component<MdfnEditorProps> = (props) => {
     const markdown = event.currentTarget.value;
     const current = local.controller.getState().markdown;
     const change = smallestSourceChange(current, markdown);
-    if (change) local.controller.dispatch(new Transaction().replaceSource(change.from, change.to, change.insert).withSource("solid:fallback"));
+    if (!change) return;
+    try {
+      local.controller.dispatch(new Transaction().replaceSource(change.from, change.to, change.insert).withSource("solid:fallback"));
+    } catch {
+      const canonical = local.controller.getState().markdown;
+      setFallbackValue(canonical);
+      event.currentTarget.value = canonical;
+    }
   };
 
   return (

@@ -295,6 +295,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     const ranges: Array<{ from: number; to: number; insertedLength: number }> = [];
     const syncLength = 16;
     const initialLookahead = 2_048;
+    let remainingSearchWork = 65_536;
     let left = 0;
     let right = 0;
     let position = offset;
@@ -308,24 +309,40 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
       const from = position;
       let match: { left: number; right: number; cost: number } | undefined;
       let lookahead = initialLookahead;
+      const beforeAnchors = new Map<string, number>();
+      const afterAnchors = new Map<string, number>();
+      let beforeScannedTo = left - 1;
+      let afterScannedTo = right - 1;
       while (!match) {
-        const beforeAnchors = new Map<string, number>();
         const beforeLimit = Math.min(before.length - syncLength, left + lookahead);
-        for (let candidate = left; candidate <= beforeLimit; candidate += 1) {
+        for (let candidate = beforeScannedTo + 1; candidate <= beforeLimit; candidate += 1) {
+          if (remainingSearchWork === 0) break;
+          remainingSearchWork -= 1;
           const key = before.slice(candidate, candidate + syncLength);
           if (!beforeAnchors.has(key)) beforeAnchors.set(key, candidate);
+          const matchingRight = afterAnchors.get(key);
+          if (matchingRight !== undefined) {
+            const cost = candidate - left + matchingRight - right;
+            if (!match || cost < match.cost) match = { left: candidate, right: matchingRight, cost };
+          }
+          beforeScannedTo = candidate;
         }
         const afterLimit = Math.min(after.length - syncLength, right + lookahead);
-        for (let candidate = right; candidate <= afterLimit; candidate += 1) {
-          const matchingLeft = beforeAnchors.get(after.slice(candidate, candidate + syncLength));
-          if (matchingLeft === undefined) continue;
-          const cost = matchingLeft - left + candidate - right;
-          if (!match || cost < match.cost) match = { left: matchingLeft, right: candidate, cost };
-          if (cost === 1) break;
+        for (let candidate = afterScannedTo + 1; candidate <= afterLimit; candidate += 1) {
+          if (remainingSearchWork === 0) break;
+          remainingSearchWork -= 1;
+          const key = after.slice(candidate, candidate + syncLength);
+          if (!afterAnchors.has(key)) afterAnchors.set(key, candidate);
+          const matchingLeft = beforeAnchors.get(key);
+          if (matchingLeft !== undefined) {
+            const cost = matchingLeft - left + candidate - right;
+            if (!match || cost < match.cost) match = { left: matchingLeft, right: candidate, cost };
+          }
+          afterScannedTo = candidate;
         }
-        const searchedAllBefore = beforeLimit >= before.length - syncLength;
-        const searchedAllAfter = afterLimit >= after.length - syncLength;
-        if (match || (searchedAllBefore && searchedAllAfter)) break;
+        const searchedAllBefore = before.length - left < syncLength || beforeScannedTo >= before.length - syncLength;
+        const searchedAllAfter = after.length - right < syncLength || afterScannedTo >= after.length - syncLength;
+        if (match || remainingSearchWork === 0 || (searchedAllBefore && searchedAllAfter)) break;
         lookahead = Math.min(
           Math.max(before.length - left, after.length - right),
           lookahead * 2,

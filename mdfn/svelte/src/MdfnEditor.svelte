@@ -119,7 +119,14 @@
     const markdown = (event.currentTarget as HTMLTextAreaElement).value;
     const current = controller.getState().markdown;
     const change = smallestSourceChange(current, markdown);
-    if (change) controller.dispatch(new Transaction().replaceSource(change.from, change.to, change.insert).withSource('svelte:fallback'));
+    if (!change) return;
+    try {
+      controller.dispatch(new Transaction().replaceSource(change.from, change.to, change.insert).withSource('svelte:fallback'));
+    } catch {
+      const canonical = controller.getState().markdown;
+      value = canonical;
+      (event.currentTarget as HTMLTextAreaElement).value = canonical;
+    }
   }
 </script>
 

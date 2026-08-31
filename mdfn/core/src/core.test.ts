@@ -36,6 +36,35 @@ const projector: EditorProjector = {
 };
 
 describe("@mdfn/core", () => {
+  it("detaches and deep-freezes projected documents before exposing editor state", () => {
+    const projected: MdfnDocument = {
+      type: "doc",
+      schemaVersion: 1,
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "mutable" }],
+        source: { from: 0, to: 7, raw: "mutable", preservation: "exact" },
+      }],
+    };
+    const mutableProjector: EditorProjector = {
+      parse: () => ({ document: projected, diagnostics: [] }),
+      serialize: projector.serialize,
+    };
+    const editor = createEditor({ markdown: "mutable", projector: mutableProjector });
+    const state = editor.getState();
+
+    expect(state.document).not.toBe(projected);
+    expect(Object.isFrozen(state.document)).toBe(true);
+    expect(Object.isFrozen(state.document.content)).toBe(true);
+    expect(Object.isFrozen(state.document.content[0])).toBe(true);
+    expect(Object.isFrozen(state.document.content[0]?.source)).toBe(true);
+
+    const originalText = state.document.content[0]?.content?.[0]?.text;
+    const projectedText = projected.content[0]?.content?.[0];
+    if (projectedText) (projectedText as { text?: string }).text = "changed elsewhere";
+    expect(editor.getState().document.content[0]?.content?.[0]?.text).toBe(originalText);
+  });
+
   it("applies source transactions, maps anchors, and supports history", () => {
     const editor = createEditor({ markdown: "hello world", projector });
     const listener = vi.fn();

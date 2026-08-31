@@ -1,5 +1,6 @@
 import { mapSelection, mapSidecar } from "./anchors";
 import { hashString } from "./hash";
+import { immutableDocument } from "./immutable";
 import { validateMdfnSidecar } from "./sidecar";
 import type {
   ChangedRange,
@@ -85,7 +86,7 @@ export function applyTransaction(state: EditorState, transaction: Transaction, p
       sidecarChanged ||= mappedSidecar !== sidecar;
       sidecar = mappedSidecar;
       const parsed = projector.parse(markdown);
-      document = parsed.document;
+      document = immutableDocument(parsed.document);
       diagnostics = parsed.diagnostics;
       documentChanged = true;
       continue;
@@ -95,7 +96,7 @@ export function applyTransaction(state: EditorState, transaction: Transaction, p
       const previousMarkdown = markdown;
       markdown = serialized.markdown;
       const parsed = projector.parse(markdown);
-      document = parsed.document;
+      document = immutableDocument(parsed.document);
       diagnostics = Object.freeze([...serialized.diagnostics, ...parsed.diagnostics]);
       if (previousMarkdown !== markdown) {
         let from = 0;

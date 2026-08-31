@@ -128,4 +128,22 @@ describe("@mdfn/svelte", () => {
     });
     await unmount(component);
   });
+
+  it("restores the fallback textarea when the controller rejects an edit", async () => {
+    const controller = createEditor({ markdown: "safe", projector: createMarkdownProjector({ maxBytes: 4 }) });
+    const target = document.createElement("div");
+    document.body.append(target);
+    sourceMount.failNext = true;
+    const component = mount(MdfnEditor, { target, props: { controller, mode: "source" } });
+
+    await vi.waitFor(() => expect(target.querySelector('[data-mdfn-source-fallback="true"]')).not.toBeNull());
+    const textarea = target.querySelector("textarea")!;
+    textarea.value = "unsafe";
+    textarea.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "unsafe" }));
+    await tick();
+
+    expect(controller.getState().markdown).toBe("safe");
+    expect(textarea.value).toBe("safe");
+    await unmount(component);
+  });
 });

@@ -1,11 +1,27 @@
 import { createRoot, createSignal, type Accessor } from "solid-js";
 import type { AdapterSnapshot } from "@mdfn/adapter-kit";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createEditor, Transaction } from "@mdfn/core";
 import { createMarkdownProjector } from "@mdfn/markdown";
 import { createMdfnSignal } from "./index";
 import { MdfnEditor } from "./index";
 import { render } from "solid-js/web";
+
+const sourceMount = vi.hoisted(() => ({ failNext: false }));
+
+vi.mock("@mdfn/source", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@mdfn/source")>();
+  return {
+    ...actual,
+    createSourceEditor: (...args: Parameters<typeof actual.createSourceEditor>) => {
+      if (sourceMount.failNext) {
+        sourceMount.failNext = false;
+        throw new Error("transient source mount failure");
+      }
+      return actual.createSourceEditor(...args);
+    },
+  };
+});
 
 describe("@mdfn/solid", () => {
   it("updates and tears down its shared-state signal", () => {
@@ -92,6 +108,23 @@ describe("@mdfn/solid", () => {
     setActive(alternate);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(target.textContent).toContain("second");
+    dispose();
+  });
+
+  it("restores the fallback textarea when the controller rejects an edit", async () => {
+    const controller = createEditor({ markdown: "safe", projector: createMarkdownProjector({ maxBytes: 4 }) });
+    const target = document.createElement("div");
+    document.body.append(target);
+    sourceMount.failNext = true;
+    const dispose = render(() => <MdfnEditor controller={controller} mode="source" />, target);
+
+    await vi.waitFor(() => expect(target.querySelector('[data-mdfn-source-fallback="true"]')).not.toBeNull());
+    const textarea = target.querySelector("textarea")!;
+    textarea.value = "unsafe";
+    textarea.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "unsafe" }));
+
+    expect(controller.getState().markdown).toBe("safe");
+    expect(textarea.value).toBe("safe");
     dispose();
   });
 });

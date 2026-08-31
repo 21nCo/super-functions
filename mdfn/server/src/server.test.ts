@@ -281,6 +281,34 @@ describe("mdfn server", () => {
     expect(updated.sidecar?.comments?.[0]?.anchor).toEqual({ from: expectedFrom, to: expectedFrom + 6 });
   });
 
+  it("bounds coarse resynchronization when large replacements share no anchors", async () => {
+    const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `bounded-resync-${id++}`; })() });
+    const principal = { id: "author" };
+    const before = `${`${"x".repeat(200)}\n`.repeat(2_500)}tail`;
+    const after = `${`${"y".repeat(200)}\n`.repeat(2_500)}tail`;
+    const created = await service.create(principal, { markdown: before });
+    const commented = await service.createComment(principal, created.id, { expectedVersion: 1, anchor: { from: 100, to: 110 }, body: "Bound the search" });
+
+    const updated = await service.update(principal, created.id, { expectedVersion: commented.version, markdown: after });
+
+    expect(updated.markdown).toBe(after);
+    expect(updated.sidecar?.comments?.[0]?.anchor.to).toBeLessThanOrEqual(after.length);
+  });
+
+  it("shares the coarse resynchronization budget across many short stable runs", async () => {
+    const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `bounded-runs-${id++}`; })() });
+    const principal = { id: "author" };
+    const before = Array.from({ length: 4_000 }, (_, index) => `stable-${String(index).padStart(6, "0")}-segment old\n`).join("");
+    const after = Array.from({ length: 4_000 }, (_, index) => `stable-${String(index).padStart(6, "0")}-segment new\n`).join("");
+    const created = await service.create(principal, { markdown: before });
+    const commented = await service.createComment(principal, created.id, { expectedVersion: 1, anchor: { from: 20, to: 30 }, body: "Bound aggregate work" });
+
+    const updated = await service.update(principal, created.id, { expectedVersion: commented.version, markdown: after });
+
+    expect(updated.markdown).toBe(after);
+    expect(updated.sidecar?.comments?.[0]?.anchor.to).toBeLessThanOrEqual(after.length);
+  });
+
   it("restores the complete historical title, Markdown, and sidecar snapshot", async () => {
     const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `restore-${id++}`; })() });
     const principal = { id: "author" };

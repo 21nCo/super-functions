@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calloutExtension, commonmarkExtension } from "@mdfn/extensions";
+import type { MdfnExtension } from "@mdfn/core";
 import { formatMarkdown, parseMarkdown, serializeMarkdown } from "./index";
 
 describe("@mdfn/markdown", () => {
@@ -37,7 +38,25 @@ describe("@mdfn/markdown", () => {
   it("enforces resource limits and supports explicit formatting", () => {
     expect(() => parseMarkdown("12345", { maxBytes: 4 })).toThrowError(/MDFN_SOURCE_TOO_LARGE/);
     expect(() => parseMarkdown(`${"> ".repeat(32)}deep`, { maxDepth: 8 })).toThrowError(/MDFN_DEPTH_LIMIT_EXCEEDED:8/);
+    expect(() => parseMarkdown("***many*** nodes", { maxNodes: 4 })).toThrowError(/MDFN_NODE_LIMIT_EXCEEDED:4/);
     expect(formatMarkdown("# title\n\ntext").markdown).toContain("# title");
+  });
+
+  it("rejects the node budget before running extension diagnostics", () => {
+    let diagnosed = false;
+    const extension: MdfnExtension = {
+      name: "budget-observer",
+      version: "1.0.0",
+      diagnostics: () => {
+        diagnosed = true;
+        return [];
+      },
+      preservation: { noEdit: "exact", edited: "touched-region", unsupported: "opaque" },
+    };
+
+    expect(() => parseMarkdown("**one** *two* ~~three~~", { maxNodes: 4, extensions: [extension] }))
+      .toThrowError(/MDFN_NODE_LIMIT_EXCEEDED:4/);
+    expect(diagnosed).toBe(false);
   });
 
   it("keeps opted-in raw HTML opaque without a disabled-policy diagnostic", () => {

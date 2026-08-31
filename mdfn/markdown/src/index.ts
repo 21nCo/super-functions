@@ -326,29 +326,37 @@ export function parseMarkdown(source: string, options: MarkdownOptions = {}): Ma
   validateLimits(source, options);
   const dialect = options.dialect ?? "gfm";
   const registry = resolveRegistry(options);
+  const maxDepth = options.maxDepth ?? DEFAULT_LIMITS.maxDepth;
+  const maxNodes = options.maxNodes ?? DEFAULT_LIMITS.maxNodes;
   const extensionScan = scanExtensionBlocks(source, registry, dialect !== "commonmark");
   const mdast = fromMarkdown(extensionScan.masked, dialect === "gfm" ? {
     extensions: [gfm()],
     mdastExtensions: [gfmFromMarkdown()],
   } : undefined) as MdastNode;
   const diagnostics = [...extensionScan.diagnostics];
+  const normalMdastNodes = (mdast.children ?? []).filter((node) => {
+    const span = sourceSpan(node, source);
+    return !span || (span.raw ?? source.slice(span.from, span.to)).trim().length > 0;
+  });
+  const extensionDocument: MdfnDocument = {
+    type: "doc",
+    schemaVersion: options.schemaVersion ?? 1,
+    content: extensionScan.nodes,
+  };
+  const extensionShape = countAndDepth(extensionDocument, maxNodes, maxDepth);
+  let projectedNodeCount = extensionShape.count;
   const definitions = new Map<string, MdastNode>();
-  const pendingDefinitions = [mdast];
+  const pendingDefinitions = [...normalMdastNodes].reverse();
   while (pendingDefinitions.length > 0) {
     const node = pendingDefinitions.pop()!;
+    projectedNodeCount += 1;
+    if (projectedNodeCount > maxNodes) throw new RangeError(`MDFN_NODE_LIMIT_EXCEEDED:${maxNodes}`);
     if (node.type === "definition" && node.identifier && !definitions.has(node.identifier.toLocaleLowerCase())) definitions.set(node.identifier.toLocaleLowerCase(), node);
     if (node.children) {
       for (let index = node.children.length - 1; index >= 0; index -= 1) pendingDefinitions.push(node.children[index]!);
     }
   }
-  const maxDepth = options.maxDepth ?? DEFAULT_LIMITS.maxDepth;
-  const maxNodes = options.maxNodes ?? DEFAULT_LIMITS.maxNodes;
-  const normalNodes = (mdast.children ?? [])
-    .filter((node) => {
-      const span = sourceSpan(node, source);
-      return !span || (span.raw ?? source.slice(span.from, span.to)).trim().length > 0;
-    })
-    .map((node) => convertMdastNode(node, source, diagnostics, 2, maxDepth, options.allowRawHtml === true, definitions));
+  const normalNodes = normalMdastNodes.map((node) => convertMdastNode(node, source, diagnostics, 2, maxDepth, options.allowRawHtml === true, definitions));
   const content = [...normalNodes, ...extensionScan.nodes].sort((a, b) => (a.source?.from ?? Number.MAX_SAFE_INTEGER) - (b.source?.from ?? Number.MAX_SAFE_INTEGER));
   const document: MdfnDocument = {
     type: "doc",
@@ -356,8 +364,8 @@ export function parseMarkdown(source: string, options: MarkdownOptions = {}): Ma
     content,
     source: { from: 0, to: source.length, raw: source, preservation: "exact" },
   };
-  diagnostics.push(...registry.diagnose(document));
   const shape = countAndDepth(document, maxNodes, maxDepth);
+  diagnostics.push(...registry.diagnose(document));
   return {
     source,
     document,
