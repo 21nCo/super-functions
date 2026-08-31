@@ -153,6 +153,38 @@ describe("mdfn server", () => {
     expect((await service.collaborationUpdates(principal, document.id)).updates).toEqual([]);
   });
 
+  it("revalidates collaboration writes against deletion from another service instance", async () => {
+    const database = memoryAdapter();
+    let releaseCollaboration!: () => void;
+    let collaborationAuthorizationStarted!: () => void;
+    const collaborationGate = new Promise<void>((resolve) => { releaseCollaboration = resolve; });
+    const authorizationStarted = new Promise<void>((resolve) => { collaborationAuthorizationStarted = resolve; });
+    const writer = createMdfnService({
+      database,
+      durability: "ephemeral",
+      authorize: async (action) => {
+        if (action === "collaborate") {
+          collaborationAuthorizationStarted();
+          await collaborationGate;
+        }
+        return true;
+      },
+      createId: (() => { let id = 0; return () => `cross-service-writer-${id++}`; })(),
+    });
+    const deleter = createMdfnService({ database, durability: "ephemeral", authorize: () => true });
+    const principal = { id: "author" };
+    const document = await writer.create(principal, { id: "cross-service-document", markdown: "body" });
+    const append = writer.appendCollaborationUpdate(principal, document.id, "racing-update");
+    await authorizationStarted;
+
+    await deleter.delete(principal, document.id);
+    releaseCollaboration();
+
+    await expect(append).rejects.toMatchObject({ code: "MDFN_DOCUMENT_NOT_FOUND" });
+    await writer.create(principal, { id: document.id, markdown: "recreated" });
+    expect((await writer.collaborationUpdates(principal, document.id)).updates).toEqual([]);
+  });
+
   it("paginates lightweight immutable version history", async () => {
     const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true });
     const principal = { id: "author" };
@@ -230,6 +262,23 @@ describe("mdfn server", () => {
     const commented = await service.createComment(principal, created.id, { expectedVersion: 1, anchor: { from: 200, to: 300 }, body: "Keep mapped" });
     const updated = await service.update(principal, created.id, { expectedVersion: commented.version, markdown: `A${middle}Z` });
     expect(updated.sidecar?.comments?.[0]?.anchor).toEqual({ from: 200, to: 300 });
+  });
+
+  it("resynchronizes editorial anchors after a changed region exceeds the initial coarse window", async () => {
+    const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `large-resync-${id++}`; })() });
+    const principal = { id: "author" };
+    const deleted = "x".repeat(3_072);
+    const stable = `${"u".repeat(1_500)}ANCHOR${"v".repeat(1_500)}`;
+    const before = `start\n${deleted}\n${stable}\nlater old`;
+    const after = `start\n${stable}\nlater new`;
+    const anchorFrom = before.indexOf("ANCHOR");
+    const created = await service.create(principal, { markdown: before });
+    const commented = await service.createComment(principal, created.id, { expectedVersion: 1, anchor: { from: anchorFrom, to: anchorFrom + 6 }, body: "Keep mapped" });
+
+    const updated = await service.update(principal, created.id, { expectedVersion: commented.version, markdown: after });
+    const expectedFrom = after.indexOf("ANCHOR");
+
+    expect(updated.sidecar?.comments?.[0]?.anchor).toEqual({ from: expectedFrom, to: expectedFrom + 6 });
   });
 
   it("restores the complete historical title, Markdown, and sidecar snapshot", async () => {

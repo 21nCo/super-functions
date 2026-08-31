@@ -148,7 +148,7 @@ export function getSchema(): { version: number; schemas: TableSchema[] } {
     { modelName: DOCUMENTS, fields: { id: { type: "string", required: true }, ownerId: { type: "string", required: true }, tenantId: { type: "string" }, title: { type: "string" }, markdown: { type: "string", required: true }, sourceHash: { type: "string", required: true }, schemaHash: { type: "string", required: true }, sidecar: { type: "json" }, version: { type: "number", required: true }, createdAt: date, updatedAt: date }, indexes: [{ name: "idx_mdfn_documents_owner", fields: ["ownerId"] }, { name: "idx_mdfn_documents_tenant", fields: ["tenantId"] }] },
     { modelName: VERSIONS, fields: { id: { type: "string", required: true }, documentId: { type: "string", required: true }, ownerId: { type: "string", required: true }, tenantId: { type: "string" }, title: { type: "string" }, markdown: { type: "string", required: true }, sourceHash: { type: "string", required: true }, schemaHash: { type: "string", required: true }, sidecar: { type: "json" }, version: { type: "number", required: true }, authorId: { type: "string", required: true }, changeSource: { type: "string", required: true }, createdAt: date, updatedAt: date }, indexes: [{ name: "idx_mdfn_versions_document_version", fields: ["documentId", "version"], unique: true }] },
     { modelName: RECEIPTS, fields: { id: { type: "string", required: true }, documentId: { type: "string", required: true }, idempotencyKey: { type: "string", required: true }, operation: { type: "string", required: true }, payloadHash: { type: "string", required: true }, result: { type: "json", required: true }, createdAt: date }, indexes: [{ name: "idx_mdfn_receipts_key", fields: ["documentId", "idempotencyKey"], unique: true }] },
-    { modelName: COLLAB_UPDATES, fields: { id: { type: "string", required: true }, documentId: { type: "string", required: true }, authorId: { type: "string", required: true }, update: { type: "string", required: true }, cursorKey: { type: "string", required: true }, createdAt: date }, indexes: [{ name: "idx_mdfn_collab_document_cursor", fields: ["documentId", "cursorKey"], unique: true }] },
+    { modelName: COLLAB_UPDATES, fields: { id: { type: "string", required: true }, documentId: { type: "string", required: true, references: { model: DOCUMENTS, field: "id", onDelete: "cascade" } }, authorId: { type: "string", required: true }, update: { type: "string", required: true }, cursorKey: { type: "string", required: true }, createdAt: date }, indexes: [{ name: "idx_mdfn_collab_document_cursor", fields: ["documentId", "cursorKey"], unique: true }] },
   ] };
 }
 
@@ -209,21 +209,23 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
       throw new MdfnServerError("MDFN_DOCUMENT_INVALID", 422);
     }
   };
-  const load = async (id: string): Promise<MdfnDocumentRecord> => {
-    const result = await database.findOne<MdfnDocumentRecord>({ model: DOCUMENTS, where: whereId(id) });
+  type Storage = Pick<Adapter, "create" | "findOne" | "findMany" | "update" | "delete" | "deleteMany">;
+  const loadFrom = async (storage: Pick<Adapter, "findOne">, id: string): Promise<MdfnDocumentRecord> => {
+    const result = await storage.findOne<MdfnDocumentRecord>({ model: DOCUMENTS, where: whereId(id) });
     if (!result) throw new MdfnServerError("MDFN_DOCUMENT_NOT_FOUND", 404);
     return result;
   };
-  const loadScoped = async (principal: MdfnPrincipal, id: string): Promise<MdfnDocumentRecord> => {
-    const document = await load(id);
+  const load = (id: string): Promise<MdfnDocumentRecord> => loadFrom(database, id);
+  const loadScopedFrom = async (storage: Pick<Adapter, "findOne">, principal: MdfnPrincipal, id: string): Promise<MdfnDocumentRecord> => {
+    const document = await loadFrom(storage, id);
     const inScope = principal.tenantId
       ? document.tenantId === principal.tenantId
       : document.tenantId === undefined && document.ownerId === principal.id;
     if (!inScope) throw new MdfnServerError("MDFN_DOCUMENT_NOT_FOUND", 404);
     return document;
   };
+  const loadScoped = (principal: MdfnPrincipal, id: string): Promise<MdfnDocumentRecord> => loadScopedFrom(database, principal, id);
   const revision = (document: MdfnDocumentRecord, authorId: string, changeSource: string): MdfnVersionRecord => ({ ...document, id: `${document.id}:${document.version}`, documentId: document.id, authorId, changeSource });
-  type Storage = Pick<Adapter, "create" | "findOne" | "findMany" | "update" | "delete" | "deleteMany">;
   const withStorage = <T>(callback: (storage: Storage) => Promise<T>): Promise<T> => database.capabilities.transactions.supported
     ? database.transaction((transaction) => callback(transaction))
     : callback(database);
@@ -246,6 +248,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     documentId: string,
     callback: (storage: Storage, cursorKey: string) => Promise<T>,
     revalidate?: () => Promise<void>,
+    revalidateStoredDocument?: (storage: Storage) => Promise<void>,
   ): Promise<T> => (
     serializeCollaborationWrite(documentId, async () => {
       await revalidate?.();
@@ -253,6 +256,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
       for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
           return await withStorage(async (storage) => {
+            await revalidateStoredDocument?.(storage);
             const latest = await storage.findMany<{ readonly cursorKey: string }>({
               model: COLLAB_UPDATES,
               where: [{ field: "documentId", operator: "eq", value: documentId }],
@@ -290,8 +294,7 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
   const coarseChangedRanges = (before: string, after: string, offset: number): Array<{ from: number; to: number; insertedLength: number }> => {
     const ranges: Array<{ from: number; to: number; insertedLength: number }> = [];
     const syncLength = 16;
-    const lookahead = 2_048;
-    let remainingSearchWork = 100_000;
+    const initialLookahead = 2_048;
     let left = 0;
     let right = 0;
     let position = offset;
@@ -303,22 +306,30 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
       }
       if (left === before.length && right === after.length) break;
       const from = position;
-      const beforeAnchors = new Map<string, number>();
-      const beforeLimit = Math.min(before.length - syncLength, left + lookahead);
-      for (let candidate = left; candidate <= beforeLimit && remainingSearchWork > 0; candidate += 1) {
-        const key = before.slice(candidate, candidate + syncLength);
-        if (!beforeAnchors.has(key)) beforeAnchors.set(key, candidate);
-        remainingSearchWork -= 1;
-      }
       let match: { left: number; right: number; cost: number } | undefined;
-      const afterLimit = Math.min(after.length - syncLength, right + lookahead);
-      for (let candidate = right; candidate <= afterLimit && remainingSearchWork > 0; candidate += 1) {
-        const matchingLeft = beforeAnchors.get(after.slice(candidate, candidate + syncLength));
-        remainingSearchWork -= 1;
-        if (matchingLeft === undefined) continue;
-        const cost = matchingLeft - left + candidate - right;
-        if (!match || cost < match.cost) match = { left: matchingLeft, right: candidate, cost };
-        if (cost === 1) break;
+      let lookahead = initialLookahead;
+      while (!match) {
+        const beforeAnchors = new Map<string, number>();
+        const beforeLimit = Math.min(before.length - syncLength, left + lookahead);
+        for (let candidate = left; candidate <= beforeLimit; candidate += 1) {
+          const key = before.slice(candidate, candidate + syncLength);
+          if (!beforeAnchors.has(key)) beforeAnchors.set(key, candidate);
+        }
+        const afterLimit = Math.min(after.length - syncLength, right + lookahead);
+        for (let candidate = right; candidate <= afterLimit; candidate += 1) {
+          const matchingLeft = beforeAnchors.get(after.slice(candidate, candidate + syncLength));
+          if (matchingLeft === undefined) continue;
+          const cost = matchingLeft - left + candidate - right;
+          if (!match || cost < match.cost) match = { left: matchingLeft, right: candidate, cost };
+          if (cost === 1) break;
+        }
+        const searchedAllBefore = beforeLimit >= before.length - syncLength;
+        const searchedAllAfter = afterLimit >= after.length - syncLength;
+        if (match || (searchedAllBefore && searchedAllAfter)) break;
+        lookahead = Math.min(
+          Math.max(before.length - left, after.length - right),
+          lookahead * 2,
+        );
       }
       if (!match || match.cost === 0) {
         ranges.push({ from, to: from + before.length - left, insertedLength: after.length - right });
@@ -596,6 +607,8 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
       }, async () => {
         const document = await loadScoped(principal, id);
         await allowed(config, "collaborate", principal, document);
+      }, async (storage) => {
+        await loadScopedFrom(storage, principal, id);
       });
       return updateId;
     },
@@ -649,6 +662,8 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
       }, async () => {
         const document = await loadScoped(principal, id);
         await allowed(config, "compact-collaboration", principal, document);
+      }, async (storage) => {
+        await loadScopedFrom(storage, principal, id);
       });
       return updateId;
     },

@@ -163,4 +163,33 @@ describe("markdown content", () => {
     expect(result.content.sidecar?.assets?.[0]?.metadata).toEqual({ nested: { value: "original" } });
     expect(isMarkdownContent(result.content)).toBe(true);
   });
+
+  it("detaches already-versioned content from caller-owned profile and sidecar objects", () => {
+    const source = {
+      type: "text/markdown" as const,
+      version: 1 as const,
+      markdown: "text",
+      profile: {
+        id: "custom",
+        dialect: "gfm" as const,
+        allowRawHtml: false,
+        extensions: ["tables"],
+        schemaVersion: 1,
+      },
+      sidecar: {
+        assets: [{ id: "asset", mediaType: "image/png", metadata: { nested: { value: "original" } } }],
+      },
+    };
+
+    const result = migrateToMarkdownContent(source);
+    source.profile.id = "mutated";
+    source.profile.extensions.push("mutated");
+    source.sidecar.assets[0]!.metadata.nested.value = "mutated";
+
+    expect(result.content).not.toBe(source);
+    expect(result.content.profile).toMatchObject({ id: "custom", extensions: ["tables"] });
+    expect(result.content.sidecar?.assets?.[0]?.metadata).toEqual({ nested: { value: "original" } });
+    expect(Object.isFrozen(result.content.profile.extensions)).toBe(true);
+    expect(Object.isFrozen(result.content.sidecar?.assets?.[0]?.metadata)).toBe(true);
+  });
 });

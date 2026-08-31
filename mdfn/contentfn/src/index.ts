@@ -25,17 +25,31 @@ export const defaultMarkdownContentProfile: MarkdownContentProfile = Object.free
   schemaVersion: 1,
 });
 
+function freezeDetached<T>(value: T): T {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const nested of Object.values(value as Record<string, unknown>)) freezeDetached(nested);
+    Object.freeze(value);
+  }
+  return value;
+}
+
 export function markdownContent(
   markdown: string,
   options: Partial<Omit<MarkdownContent, "type" | "version" | "markdown">> = {},
 ): MarkdownContent {
+  const selectedProfile = { ...defaultMarkdownContentProfile, ...(options.profile ?? {}) };
+  const profile = Object.freeze({
+    ...selectedProfile,
+    extensions: Object.freeze([...(selectedProfile.extensions ?? [])]),
+  });
+  const sidecar = freezeDetached(validateMdfnSidecar(options.sidecar, { markdownLength: markdown.length }));
   return Object.freeze({
     type: "text/markdown",
     version: 1,
     markdown,
-    profile: Object.freeze({ ...defaultMarkdownContentProfile, ...(options.profile ?? {}) }),
+    profile,
     schemaHash: options.schemaHash,
-    sidecar: options.sidecar,
+    sidecar,
   });
 }
 
@@ -214,7 +228,15 @@ export function migrateToMarkdownContent(
   profile: MarkdownContentProfile = defaultMarkdownContentProfile,
 ): ContentMigrationResult {
   if (isMarkdownContent(value)) {
-    return { content: value, diagnostics: [], lossy: false };
+    return {
+      content: markdownContent(value.markdown, {
+        profile: value.profile,
+        schemaHash: value.schemaHash,
+        sidecar: value.sidecar,
+      }),
+      diagnostics: [],
+      lossy: false,
+    };
   }
   if (typeof value === "string") {
     return {
