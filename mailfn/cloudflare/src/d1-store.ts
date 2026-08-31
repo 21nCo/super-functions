@@ -1054,7 +1054,10 @@ export class D1MailFnStore implements MailFnStore {
          )
          AND NOT EXISTS (
            SELECT 1 FROM mailfn_attachments
-           WHERE mailfn_attachments.id = mailfn_storage_reservations.id
+           WHERE COALESCE(
+             json_extract(mailfn_attachments.data_json, '$.storageReservationId'),
+             mailfn_attachments.id
+           ) = mailfn_storage_reservations.id
          )`,
     ), [projectId, reservationBefore, claimBefore]).run();
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');

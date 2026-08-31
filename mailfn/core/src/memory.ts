@@ -659,12 +659,17 @@ export class MemoryMailFnStore implements MailFnStore {
     claimBefore: string,
   ): Promise<number> {
     let released = 0;
+    const attachmentReservationIds = new Set(
+      values(this.attachments)
+        .filter((attachment) => attachment.projectId === projectId)
+        .map((attachment) => attachment.storageReservationId ?? attachment.id),
+    );
     for (const [id, reservation] of this.storageReservations) {
       const claimedAt = this.storageClaims.get(id);
       if (
         reservation.projectId === projectId && reservation.createdAt <= reservationBefore &&
         (!claimedAt || claimedAt <= claimBefore) &&
-        !this.messages.has(id) && !this.attachments.has(id)
+        !this.messages.has(id) && !attachmentReservationIds.has(id)
       ) {
         this.storageClaims.delete(id);
         this.storageReservations.delete(id);

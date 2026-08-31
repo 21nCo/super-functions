@@ -1032,6 +1032,28 @@ describe('MailFn domain service', () => {
     await context.mailfn.cancelInbound(replacement);
   });
 
+  it('keeps a parsed attachment reservation after its write claim and orphan cutoff expire', async () => {
+    const clock = new MutableClock();
+    const value = raw({ attachments: [{ filename: 'quota.txt', contentType: 'text/plain', content: 'proof' } as never] });
+    const context = await setup({ clock, quota: { maxStoredBytes: value.byteLength + 5 } });
+    const created = await createInbox(context, 'attachment-reservation');
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'attachment-reservation', envelopeFrom: 'sender@example.com',
+      envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength,
+    });
+    const [attachment] = await context.store.listAttachments(message.id);
+    expect(attachment?.storageReservationId).toBeTruthy();
+    expect(attachment?.storageReservationId).not.toBe(attachment?.id);
+
+    clock.advance(15 * 60 * 1000 + 1);
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({
+      releasedStorageReservations: 0,
+    });
+    await expect(context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: 1,
+    })).rejects.toMatchObject({ code: 'MAILFN_QUOTA_EXCEEDED' });
+  });
+
   it('keeps claimed storage reserved while inbound metadata persistence is in flight', async () => {
     const clock = new MutableClock();
     const store = new PausedInboundStore();

@@ -206,7 +206,8 @@ describe('D1MailFnStore', () => {
     expect(database.statements[0]?.query).toContain('NOT EXISTS');
     expect(database.statements[0]?.query).toContain('mailfn_storage_claims.claimed_at > ?');
     expect(database.statements[0]?.query).toContain('mailfn_messages.id = mailfn_storage_reservations.id');
-    expect(database.statements[0]?.query).toContain('mailfn_attachments.id = mailfn_storage_reservations.id');
+    expect(database.statements[0]?.query).toContain("json_extract(mailfn_attachments.data_json, '$.storageReservationId')");
+    expect(database.statements[0]?.query).toContain('mailfn_attachments.id');
     expect(database.statements[0]?.values).toEqual([
       'prj_1',
       '2026-08-30T00:00:00.000Z',

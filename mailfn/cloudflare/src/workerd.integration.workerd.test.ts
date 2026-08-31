@@ -334,9 +334,19 @@ describe('MailFn in workerd', () => {
       id: 'att_parse_delete_cas', projectId: bootstrap.project.id, inboxId: created.inbox.id,
       messageId: pending.id, filename: 'owned.txt', contentType: 'text/plain', sizeBytes: 1,
       objectKey: 'attachments/parse-owner-1', sha256: 'hash', createdAt: '2026-08-31T00:00:01.000Z',
+      storageReservationId: 'att_parse_delete_cas:parse-owner-1',
     };
+    await expect(store.reserveStorage({
+      id: attachment.storageReservationId!, projectId: bootstrap.project.id, bytes: 1,
+      createdAt: '2026-08-31T00:00:01.000Z',
+    }, 10)).resolves.toBe('created');
+    await expect(store.claimStorage(attachment.storageReservationId!, '2026-08-31T00:00:01.000Z')).resolves.toBe(true);
     await expect(store.saveAttachmentIfMessageParseOwned(attachment, 'wrong-owner')).resolves.toBe(false);
     await expect(store.saveAttachmentIfMessageParseOwned(attachment, 'parse-owner-1')).resolves.toBe(true);
+    await store.releaseStorageClaim(attachment.storageReservationId!);
+    await expect(store.releaseOrphanedStorageReservations(
+      bootstrap.project.id, '2026-08-31T00:20:00.000Z', '2026-08-31T00:10:00.000Z',
+    )).resolves.toBe(0);
     await expect(store.deleteAttachmentIfUnchanged(attachment.id, 'attachments/wrong-owner')).resolves.toBe(false);
     await expect(store.getAttachment(attachment.id)).resolves.toMatchObject({ objectKey: attachment.objectKey });
     const ready: Message = {
