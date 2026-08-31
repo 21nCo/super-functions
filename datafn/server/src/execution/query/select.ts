@@ -52,6 +52,14 @@ function filterAncestorInactiveRecords(
   return records.filter((record) => record.isAncestorInactive !== true);
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 /**
  * Apply omit to a record, removing specified fields (but never id)
  */
@@ -70,18 +78,17 @@ function applyOmit(
       // Recursively apply omit to arrays of records
       if (Array.isArray(value)) {
         result[key] = value.map((item) => {
-          if (typeof item === "object" && item !== null) {
-            return applyOmit(item as Record<string, unknown>, omit);
+          if (isPlainRecord(item)) {
+            return applyOmit(item, omit);
           }
           return item;
         });
       } else if (
-        typeof value === "object" &&
-        value !== null &&
+        isPlainRecord(value) &&
         key !== "$relation_metadata"
       ) {
         // Recursively apply omit to nested objects (except metadata)
-        result[key] = applyOmit(value as Record<string, unknown>, omit);
+        result[key] = applyOmit(value, omit);
       } else {
         result[key] = value;
       }

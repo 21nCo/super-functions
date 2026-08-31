@@ -59,6 +59,9 @@ describe("FIX-EXE-014: FK omit-set caching", () => {
         fields: [
           { name: "label", type: "string", required: true },
           { name: "userId", type: "string", required: false },
+          { name: "createdAt", type: "date", required: false },
+          { name: "metadata", type: "json", required: false },
+          { name: "history", type: "array", required: false },
         ],
       },
     ],
@@ -144,6 +147,41 @@ describe("FIX-EXE-014: FK omit-set caching", () => {
       label: "Task 2",
       user: { id: "user:2", name: "Bob" },
     });
+  });
+
+  it("preserves non-record values while recursively omitting relation fields", () => {
+    const createdAt = new Date("2026-08-31T12:00:00.000Z");
+    const task = {
+      id: "task:1",
+      label: "Task 1",
+      userId: "user:1",
+      createdAt,
+      metadata: { userId: "private", visible: true },
+      history: [createdAt, { userId: "private", visible: true }],
+    };
+    const records = new Map<string, Record<string, unknown>[]>([
+      ["task", [task]],
+      ["user", [{ id: "user:1", name: "Alice" }]],
+    ]);
+
+    const result = materializeSelect(
+      task,
+      "task",
+      ["*", "user.*"],
+      schema,
+      createMockStore(records),
+    );
+
+    expect(result).toMatchObject({
+      id: "task:1",
+      createdAt,
+      metadata: { visible: true },
+      history: [createdAt, { visible: true }],
+      user: { id: "user:1", name: "Alice" },
+    });
+    expect(result).not.toHaveProperty("userId");
+    expect(result.createdAt).toBe(createdAt);
+    expect(result.history).toEqual([createdAt, { visible: true }]);
   });
 });
 
