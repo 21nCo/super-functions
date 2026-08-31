@@ -256,6 +256,20 @@ describe("mdfn server", () => {
     expect(() => createMdfnService({ database, authorize: () => true })).toThrowError("MDFN_TRANSACTIONAL_DATABASE_REQUIRED");
   });
 
+  it("fails closed when durable storage cannot enforce document collaboration constraints", () => {
+    const database = memoryAdapter();
+    database.capabilities.schema = {
+      ...database.capabilities.schema,
+      constraints: false,
+    };
+    database.capabilities.transactions = {
+      ...database.capabilities.transactions,
+      supported: true,
+    };
+
+    expect(() => createMdfnService({ database, authorize: () => true })).toThrowError("MDFN_RELATIONAL_CONSTRAINTS_REQUIRED");
+  });
+
   it("persists editorial workflows, restores revisions, and compacts collaboration state", async () => {
     const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `workflow-${id++}`; })() });
     const principal = { id: "author" };

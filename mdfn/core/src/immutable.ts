@@ -20,6 +20,10 @@ function detachAndDeepFreeze<T>(value: T, seen: WeakMap<object, unknown>): T {
   return Object.freeze(detached) as T;
 }
 
+export function immutableValue<T>(value: T): T {
+  return detachAndDeepFreeze(value, new WeakMap<object, unknown>());
+}
+
 export function immutableDocument(document: MdfnDocument): MdfnDocument {
-  return detachAndDeepFreeze(document, new WeakMap<object, unknown>());
+  return immutableValue(document);
 }

@@ -2,10 +2,16 @@
 import React, { act } from "react";
 import { createRoot, hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createEditor, Transaction } from "@mdfn/core";
 import { createMarkdownProjector } from "@mdfn/markdown";
 import { MdfnEditor } from "./index";
+
+vi.mock("@mdfn/dom", () => ({
+  createDomEditor() {
+    throw new Error("visual editor failed to load");
+  },
+}));
 
 describe("@mdfn/react", () => {
   it("binds the shared controller without framework-owned semantics", async () => {
@@ -35,5 +41,27 @@ describe("@mdfn/react", () => {
     expect(host.textContent).toContain("After");
     await act(async () => { root!.unmount(); });
     expect(host.children).toHaveLength(0);
+  });
+
+  it("restores fallback source text when the controller rejects an edit", async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const controller = createEditor({ markdown: "ok", projector: createMarkdownProjector({ maxBytes: 4 }) });
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(<MdfnEditor controller={controller} mode="visual" />);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    const textarea = host.querySelector("textarea")!;
+    expect(textarea).not.toBeNull();
+
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "invalid");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(controller.getState().markdown).toBe("ok");
+    expect(textarea.value).toBe("ok");
+    await act(async () => { root.unmount(); });
   });
 });

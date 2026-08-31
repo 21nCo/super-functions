@@ -148,9 +148,15 @@ function SourceFallback({ controller, ariaLabel, readOnly, error }: { controller
         value={snapshot.markdown}
         readOnly={readOnly}
         onChange={(event) => {
+          const textarea = event.currentTarget;
           const current = controller.getState().markdown;
-          const change = smallestSourceChange(current, event.currentTarget.value);
-          if (change) controller.dispatch(new Transaction().replaceSource(change.from, change.to, change.insert).withSource("react:fallback"));
+          const change = smallestSourceChange(current, textarea.value);
+          if (!change) return;
+          try {
+            controller.dispatch(new Transaction().replaceSource(change.from, change.to, change.insert).withSource("react:fallback"));
+          } catch {
+            textarea.value = controller.getState().markdown;
+          }
         }}
       />
     </div>

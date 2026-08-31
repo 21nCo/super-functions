@@ -6,8 +6,8 @@ authorization hooks, and a Web Standard router. The incoming
 `@superfunctions/db` adapter is always wrapped internally with the MDFN schema.
 
 Durable mode is the default and rejects database adapters without transaction
-support. Create/update/restore/editorial writes validate both Markdown and the
-complete sidecar, run atomically, and support idempotency through the
+and relational-constraint support. Create/update/restore/editorial writes
+validate both Markdown and the complete sidecar, run atomically, and support idempotency through the
 `Idempotency-Key` header or request body. Delete atomically removes the
 document, revisions, receipts, and collaboration updates. Ephemeral mode must
 be selected explicitly and is intended only for memory-backed tests.

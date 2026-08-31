@@ -191,8 +191,13 @@ function whereId(id: string) { return [{ field: "id", operator: "eq" as const, v
 
 export function createMdfnService(config: MdfnServerConfig): MdfnService {
   const database = wrapWithSchema(config.database, getSchema());
-  if (!database.capabilities.transactions.supported && (config.durability ?? "required") === "required") {
-    throw new MdfnServerError("MDFN_TRANSACTIONAL_DATABASE_REQUIRED", 500);
+  if ((config.durability ?? "required") === "required") {
+    if (!database.capabilities.transactions.supported) {
+      throw new MdfnServerError("MDFN_TRANSACTIONAL_DATABASE_REQUIRED", 500);
+    }
+    if (!database.capabilities.schema.constraints) {
+      throw new MdfnServerError("MDFN_RELATIONAL_CONSTRAINTS_REQUIRED", 500);
+    }
   }
   const registry = resolveExtensions(config.extensions ?? []);
   const markdownOptions: MarkdownOptions = { ...config.markdown, extensions: registry };

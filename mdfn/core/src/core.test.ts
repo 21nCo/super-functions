@@ -229,6 +229,27 @@ describe("@mdfn/core", () => {
     expect(editor.getState().selection).toBeNull();
   });
 
+  it("validates, detaches, and freezes every selection variant", () => {
+    for (const selection of [
+      { kind: "unknown" },
+      { kind: "node" },
+      { kind: "node", nodeId: "" },
+      { kind: "node", nodeId: "paragraph-1", extra: true },
+      { kind: "text", anchor: 0, head: 0, extra: true },
+    ]) {
+      expect(() => createEditor({ markdown: "abc", projector, selection: selection as never }))
+        .toThrowError("MDFN_SELECTION_INVALID");
+    }
+
+    const selection = { kind: "node" as const, nodeId: "paragraph-1" };
+    const editor = createEditor({ markdown: "abc", projector, selection });
+    expect(() => editor.dispatch(new Transaction().setSelection(undefined as never)))
+      .toThrowError("MDFN_SELECTION_INVALID");
+    expect(editor.getState().selection).toEqual(selection);
+    expect(editor.getState().selection).not.toBe(selection);
+    expect(Object.isFrozen(editor.getState().selection)).toBe(true);
+  });
+
   it("validates extension dependencies, conflicts, and deterministic schema identity", () => {
     const base = {
       name: "base",
@@ -400,6 +421,10 @@ describe("@mdfn/core", () => {
     input.assets[0]!.metadata.nested[0] = "mutated";
     input.assets.push({ id: "later", mediaType: "text/plain", metadata: { nested: [] } });
     expect(validated.assets).toEqual([{ id: "asset", mediaType: "text/plain", metadata: { nested: ["original"] } }]);
+    expect(Object.isFrozen(validated)).toBe(true);
+    expect(Object.isFrozen(validated.assets)).toBe(true);
+    expect(Object.isFrozen(validated.assets?.[0]?.metadata)).toBe(true);
+    expect(Object.isFrozen(validated.assets?.[0]?.metadata?.nested)).toBe(true);
   });
 
   it("reports sidecar changes caused by source anchor mapping", () => {
