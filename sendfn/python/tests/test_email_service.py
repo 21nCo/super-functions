@@ -39,6 +39,7 @@ class MockEmailProvider:
         )
         self.name = "mock-email"
         self.send_calls = 0
+        self.requests: list[SendEmailRequest] = []
         self.responses: list[SendEmailResponse] = []
 
     async def initialize(self) -> None:
@@ -46,6 +47,7 @@ class MockEmailProvider:
 
     async def send_email(self, request) -> SendEmailResponse:
         self.send_calls += 1
+        self.requests.append(request)
         if self.responses:
             return self.responses.pop(0)
         return SendEmailResponse(
@@ -177,6 +179,24 @@ async def test_persists_every_primary_email_recipient() -> None:
     )
 
     assert transaction.to == ["first@example.com", "second@example.com"]
+
+
+@pytest.mark.asyncio
+async def test_accepts_text_only_email_content() -> None:
+    service, provider = create_service()
+
+    transaction = await service.send_email(
+        SendEmailParams(
+            userId="user-1",
+            to="recipient@example.com",
+            subject="Plain text",
+            text="A plain-text body",
+        )
+    )
+
+    assert transaction.status == "sent"
+    assert provider.requests[0].html == ""
+    assert provider.requests[0].text == "A plain-text body"
 
 
 @pytest.mark.asyncio
@@ -461,6 +481,19 @@ async def test_aws_ses_decodes_string_attachments_and_forwards_tags() -> None:
         {"Name": "campaign", "Value": "launch"},
         {"Name": "userId", "Value": "user-1"},
     ]
+
+    text_only = SendEmailRequest(
+        from_email="from@example.com",
+        to=["to@example.com"],
+        subject="Plain",
+        html="",
+        text="Plain text",
+        tags=tags,
+    )
+    await provider._send_simple_email(text_only)
+    assert client.simple_kwargs["Message"]["Body"] == {
+        "Text": {"Data": "Plain text", "Charset": "UTF-8"}
+    }
 
     payload = b"binary\x00payload"
     raw = SendEmailRequest(

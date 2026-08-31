@@ -197,7 +197,7 @@ describe('WhatsApp channel', () => {
     expect(failureAdapter.records('communication_events')).toHaveLength(0);
   });
 
-  it('throws when the updated transaction cannot be loaded', async () => {
+  it('returns the accepted transaction when the updated transaction cannot be loaded', async () => {
     class MissingWhatsAppReadAdapter extends StrongMockAdapter {
       override async findOne<T = any>(params: any): Promise<T | null> {
         if (params.model === 'whatsapp_transactions') {
@@ -215,13 +215,14 @@ describe('WhatsApp channel', () => {
       }),
     } satisfies SendfnConfig);
 
-    await expect(
-      client.whatsapp({
+    await expect(client.whatsapp({
         userId: 'user-1',
         to: '+15551234567',
         message: 'Hello missing transaction',
-      })
-    ).rejects.toThrow(/Could not find WhatsApp transaction .* after creation/);
+      })).resolves.toMatchObject({
+        status: 'sent',
+        metadata: { bookkeepingErrors: [expect.objectContaining({ stage: 'transaction:read-result' })] },
+      });
   });
 
   it('does not rewrite an accepted delivery as failed when persistence fails', async () => {
@@ -240,8 +241,12 @@ describe('WhatsApp channel', () => {
 
     await expect(service.sendWhatsApp({
       userId: 'user-1', to: '+15551234567', message: 'Accepted',
-    })).rejects.toThrow('database unavailable');
-    expect(updateWhatsAppTransaction).toHaveBeenCalledTimes(1);
+    })).resolves.toMatchObject({
+      status: 'sent',
+      providerMessageId: 'wamid.accepted',
+      metadata: { bookkeepingErrors: expect.arrayContaining([expect.objectContaining({ stage: 'transaction:update-result' })]) },
+    });
+    expect(updateWhatsAppTransaction).toHaveBeenCalledTimes(2);
     expect(updateWhatsAppTransaction).toHaveBeenCalledWith('wa_1', expect.objectContaining({ status: 'sent' }));
   });
 

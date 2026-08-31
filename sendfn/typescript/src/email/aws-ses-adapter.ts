@@ -30,9 +30,11 @@ function encodeSesAddress(value: string, foldLongHeader = false): string {
   const chunks: string[] = [];
   let chunk = '';
   let chunkBytes = 0;
+  // Raw headers reserve six characters for `From: ` on the first physical line.
+  const maxChunkBytes = foldLongHeader ? 42 : 45;
   for (const character of displayName) {
     const bytes = Buffer.byteLength(character, 'utf8');
-    if (chunk && chunkBytes + bytes > 45) {
+    if (chunk && chunkBytes + bytes > maxChunkBytes) {
       chunks.push(chunk);
       chunk = '';
       chunkBytes = 0;

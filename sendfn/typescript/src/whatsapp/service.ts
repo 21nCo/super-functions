@@ -57,7 +57,7 @@ export class WhatsAppService {
       throw error;
     }
 
-    await this.db.updateWhatsAppTransaction(transaction.id, {
+    const acceptedData = {
       status: response.success ? 'sent' : 'failed',
       providerMessageId: response.providerMessageId ?? response.messageId ?? null,
       sentAt: response.success ? response.timestamp : null,
@@ -66,32 +66,60 @@ export class WhatsAppService {
         raw: response.raw,
         error: response.error,
       },
-    });
+    } as const;
+    let accepted = { ...transaction, ...acceptedData } as WhatsAppTransaction;
+    const bookkeepingErrors: Array<{ stage: string; error: string }> = [];
+
+    try {
+      accepted = await this.db.updateWhatsAppTransaction(transaction.id, acceptedData);
+    } catch (error) {
+      bookkeepingErrors.push({ stage: 'transaction:update-result', error: error instanceof Error ? error.message : String(error) });
+    }
 
     if (this.options.eventTracking !== false) {
-      await this.db.recordEvent({
-        referenceId: transaction.id,
-        referenceType: 'whatsapp',
-        eventType: response.success ? 'sent' : 'failed',
-        provider: this.provider.name,
-        providerEventId: response.providerMessageId ?? response.messageId ?? null,
-        recipientEmail: null,
-        recipientPhone: params.to,
-        deviceToken: null,
-        metadata: {
-          error: response.error,
-          raw: response.raw,
-        },
-        eventTimestamp: response.timestamp,
-      });
+      try {
+        await this.db.recordEvent({
+          referenceId: transaction.id,
+          referenceType: 'whatsapp',
+          eventType: response.success ? 'sent' : 'failed',
+          provider: this.provider.name,
+          providerEventId: response.providerMessageId ?? response.messageId ?? null,
+          recipientEmail: null,
+          recipientPhone: params.to,
+          deviceToken: null,
+          metadata: {
+            error: response.error,
+            raw: response.raw,
+          },
+          eventTimestamp: response.timestamp,
+        });
+      } catch (error) {
+        bookkeepingErrors.push({ stage: 'event:result', error: error instanceof Error ? error.message : String(error) });
+      }
     }
 
-    const updatedTransaction = await this.db.getWhatsAppTransaction(transaction.id);
-    if (!updatedTransaction) {
-      throw new Error(
-        `Could not find WhatsApp transaction ${transaction.id} after creation.`
-      );
+    try {
+      const stored = await this.db.getWhatsAppTransaction(transaction.id);
+      if (stored) accepted = { ...stored, ...acceptedData } as WhatsAppTransaction;
+      else bookkeepingErrors.push({ stage: 'transaction:read-result', error: `Could not find WhatsApp transaction ${transaction.id} after creation.` });
+    } catch (error) {
+      bookkeepingErrors.push({ stage: 'transaction:read-result', error: error instanceof Error ? error.message : String(error) });
     }
-    return updatedTransaction;
+
+    if (bookkeepingErrors.length > 0) {
+      accepted = {
+        ...accepted,
+        metadata: { ...(accepted.metadata ?? {}), bookkeepingErrors },
+      };
+      try {
+        accepted = await this.db.updateWhatsAppTransaction(transaction.id, {
+          ...acceptedData,
+          metadata: accepted.metadata,
+        });
+      } catch {
+        // The accepted provider result remains authoritative even if diagnostics cannot be persisted.
+      }
+    }
+    return accepted;
   }
 }

@@ -88,6 +88,9 @@ export function createSendFn(config: SendFnEdgeConfig): SendFnEdgeClient {
       )) {
         throw new Error('Invalid replyTo. Use a single valid mailbox without control characters.');
       }
+      if (/\r|\n/.test(params.subject ?? '')) {
+        throw new Error('Invalid subject. Email header values cannot contain line breaks.');
+      }
       assertCustomEmailHeaders(params.headers);
       await ensureEmailInitialized();
       const response = await emailProvider.sendEmail({
@@ -115,7 +118,7 @@ export function createSendFn(config: SendFnEdgeConfig): SendFnEdgeClient {
       return {
         id: crypto.randomUUID(),
         userId: params.userId,
-        to: recipients[0] ?? '',
+        to: recipients.length === 1 ? recipients[0]! : recipients,
         from: sender.email,
         subject: params.subject ?? '',
         templateId: params.templateId ?? null,

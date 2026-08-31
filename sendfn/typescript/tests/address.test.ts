@@ -124,6 +124,32 @@ describe('email address validation', () => {
     expect(sendCalls).toBe(0);
   });
 
+  it('rejects subject injection and preserves every edge recipient', async () => {
+    let sendCalls = 0;
+    const client = createSendFn({
+      emailProvider: {
+        name: 'test',
+        capabilities: { supportsTemplates: false, supportsAttachments: true, supportsBulkSend: false, supportsScheduling: false, maxRecipientsPerEmail: 5, maxAttachmentSize: 1024 },
+        async initialize() {},
+        async sendEmail() { sendCalls += 1; return { success: true, messageId: 'sent', timestamp: new Date() }; },
+        async sendBulkEmail() { return []; },
+        validateEmail: isBareEmail,
+        async isHealthy() { return true; },
+        async close() {},
+      },
+    });
+
+    await expect(client.email({
+      userId: 'user_1', to: 'recipient@example.com', subject: 'Hello\r\nBcc: attacker@example.com',
+      attachments: [{ filename: 'proof.txt', content: 'proof' }],
+    })).rejects.toThrow('Invalid subject');
+    expect(sendCalls).toBe(0);
+
+    await expect(client.email({
+      userId: 'user_1', to: ['one@example.com', 'two@example.com'], subject: 'Hello', text: 'Body',
+    })).resolves.toMatchObject({ to: ['one@example.com', 'two@example.com'] });
+  });
+
   it.each([
     [{ Bcc: 'attacker@example.com' }, 'Bcc'],
     [{ 'X-Safe': 'ok\r\nBcc: attacker@example.com' }, 'X-Safe'],

@@ -92,7 +92,11 @@ class PushService:
                     "sentCount": 0,
                     "failedCount": 0,
                     "sentAt": None,
-                    "metadata": {"error": "No active devices found"},
+                    "metadata": {
+                        **(params.metadata or {}),
+                        "recipientUserIds": user_ids,
+                        "error": "No active devices found",
+                    },
                 },
             )
             return notification
@@ -155,7 +159,10 @@ class PushService:
                     "sentCount": 0,
                     "failedCount": 0,
                     "sentAt": None,
-                    "metadata": params.metadata or {},
+                    "metadata": {
+                        **(params.metadata or {}),
+                        "recipientUserIds": user_ids,
+                    },
                 },
             )
             notification_ids.append(str(notification.id))
@@ -189,7 +196,11 @@ class PushService:
                         str(notification.id),
                         {
                             "status": "failed",
-                            "metadata": {**(params.metadata or {}), "error": str(error)},
+                            "metadata": {
+                                **(params.metadata or {}),
+                                "recipientUserIds": user_ids,
+                                "error": str(error),
+                            },
                         },
                     )
                 except Exception as bookkeeping_error:
@@ -210,7 +221,10 @@ class PushService:
                                 "recipientEmail": None,
                                 "recipientPhone": None,
                                 "deviceToken": None,
-                                "metadata": {"error": str(error)},
+                                "metadata": {
+                                    "recipientUserIds": user_ids,
+                                    "error": str(error),
+                                },
                                 "eventTimestamp": datetime.now(),
                             },
                         )
@@ -254,6 +268,7 @@ class PushService:
                         "sentAt": response.timestamp,
                         "metadata": {
                             **(params.metadata or {}),
+                            "recipientUserIds": user_ids,
                             "results": response.results,
                         },
                     },
@@ -277,6 +292,7 @@ class PushService:
                             "recipientPhone": None,
                             "deviceToken": None,  # Multiple tokens
                             "metadata": {
+                                "recipientUserIds": user_ids,
                                 "successCount": response.success_count,
                                 "failedCount": response.failed_count,
                             },
@@ -311,6 +327,7 @@ class PushService:
                         else {}
                     ),
                     **(params.metadata or {}),
+                    "recipientUserIds": user_ids,
                     "notificationIds": notification_ids,
                     **({"providerErrors": provider_errors} if provider_errors else {}),
                     **({"bookkeepingErrors": bookkeeping_errors} if bookkeeping_errors else {}),

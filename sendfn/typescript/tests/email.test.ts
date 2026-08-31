@@ -426,6 +426,8 @@ describe('EmailService', () => {
     });
     const longRaw = Buffer.from(inputs[3].RawMessage.Data).toString('utf8');
     expect(longRaw).toMatch(/^From: =\?UTF-8\?B\?[^?]+\?=\n =\?UTF-8\?B\?[^?]+\?=\n <agent@example\.com>$/m);
+    const rawFromLines = longRaw.match(/^From: .*$(?:\n^ .*$)*/m)?.[0].split('\n') ?? [];
+    expect(rawFromLines.every((line) => line.length <= 76)).toBe(true);
   });
 
   it('surfaces retry exhaustion with a stable code', async () => {

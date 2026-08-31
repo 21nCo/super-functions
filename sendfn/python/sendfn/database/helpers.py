@@ -226,17 +226,21 @@ async def find_events(db: Adapter, params: dict) -> list[CommunicationEvent]:
     _validate_event_window(start_at, end_at)
     limit = _resolve_event_limit(params.get("limit"))
     offset = _resolve_offset(params.get("offset")) or 0
-    requires_reference_filtering = bool(
-        params.get("provider_message_id") or params.get("user_id")
-    )
+    requires_reference_filtering = bool(params.get("provider_message_id") or params.get("user_id"))
 
     where = []
     if params.get("reference_id"):
-        where.append(WhereClause(field="referenceId", operator=Operator.EQ, value=params["reference_id"]))
+        where.append(
+            WhereClause(field="referenceId", operator=Operator.EQ, value=params["reference_id"])
+        )
     if params.get("reference_type"):
-        where.append(WhereClause(field="referenceType", operator=Operator.EQ, value=params["reference_type"]))
+        where.append(
+            WhereClause(field="referenceType", operator=Operator.EQ, value=params["reference_type"])
+        )
     if params.get("event_type"):
-        where.append(WhereClause(field="eventType", operator=Operator.EQ, value=params["event_type"]))
+        where.append(
+            WhereClause(field="eventType", operator=Operator.EQ, value=params["event_type"])
+        )
     if params.get("provider"):
         where.append(WhereClause(field="provider", operator=Operator.EQ, value=params["provider"]))
     if start_at:
@@ -278,8 +282,13 @@ async def find_events(db: Adapter, params: dict) -> list[CommunicationEvent]:
         if provider_message_id and reference.get("providerMessageId") != provider_message_id:
             continue
 
-        if user_id and reference.get("userId") != user_id:
-            continue
+        if user_id:
+            metadata = reference.get("metadata")
+            recipient_user_ids = (
+                metadata.get("recipientUserIds", []) if isinstance(metadata, dict) else []
+            )
+            if reference.get("userId") != user_id and user_id not in recipient_user_ids:
+                continue
 
         filtered_results.append(result)
 
@@ -518,9 +527,7 @@ async def create_push_notification(db: Adapter, data: dict) -> PushNotification:
     return PushNotification.model_validate(result)
 
 
-async def update_push_notification(
-    db: Adapter, id: str, data: dict
-) -> PushNotification:
+async def update_push_notification(db: Adapter, id: str, data: dict) -> PushNotification:
     """Update a push notification."""
     result = await db.update(
         UpdateParams(

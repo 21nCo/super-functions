@@ -53,9 +53,7 @@ class ApnsProvider:
         try:
             from aioapns import APNs, NotificationRequest
         except ImportError as error:  # pragma: no cover - depends on optional extra
-            raise PushProviderError(
-                "APNS provider requires the aioapns dependency"
-            ) from error
+            raise PushProviderError("APNS provider requires the aioapns dependency") from error
 
         self._apns_class = APNs
         self._notification_request_cls = NotificationRequest
@@ -117,6 +115,11 @@ class ApnsProvider:
 
         # Add custom data
         if request.data:
+            if "aps" in request.data:
+                raise PushProviderError(
+                    "Custom push data cannot include the reserved aps key",
+                    retryable=False,
+                )
             payload.update(request.data)
 
         # Add image URL to custom data if provided
@@ -180,9 +183,7 @@ class ApnsProvider:
             timestamp=datetime.now(),
         )
 
-    async def send_bulk_push(
-        self, requests: list[SendPushRequest]
-    ) -> list[SendPushResponse]:
+    async def send_bulk_push(self, requests: list[SendPushRequest]) -> list[SendPushResponse]:
         """Send multiple push notifications.
 
         Args:

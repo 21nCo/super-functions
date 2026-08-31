@@ -13,6 +13,7 @@ import pytest
 from sendfn._concurrency import map_with_concurrency
 from sendfn.database.memory import MemoryAdapter
 from sendfn.errors import SendfnError, ValidationError
+from sendfn.events.tracker import EventTracker
 from sendfn.models import FcmConfig, RegisterDeviceParams, SendPushParams
 from sendfn.push.apns import ApnsProvider
 from sendfn.push.device_manager import DeviceTokenManager
@@ -406,6 +407,27 @@ async def test_apns_uses_client_topic_and_reports_unsuccessful_responses() -> No
 
 
 @pytest.mark.asyncio
+async def test_apns_rejects_custom_data_that_overwrites_aps() -> None:
+    provider = object.__new__(ApnsProvider)
+    provider.config = type("Config", (), {"bundle_id": "org.example.app"})()
+    provider._client = object()
+    provider._notification_request_cls = object()
+
+    with pytest.raises(SendfnError, match="reserved aps key") as exc_info:
+        await provider.send_push(
+            SendPushRequest(
+                device_tokens=["ios-token"],
+                title="Hello",
+                body="World",
+                data={"aps": {"alert": "overwritten"}},
+            )
+        )
+
+    assert exc_info.value.code == "SENDFN_PUSH_PROVIDER_ERROR"
+    assert exc_info.value.retryable is False
+
+
+@pytest.mark.asyncio
 async def test_push_service_returns_stable_platform_result_and_deactivates_invalid_tokens() -> None:
     db = MemoryAdapter()
     device_manager = DeviceTokenManager(db)
@@ -475,6 +497,9 @@ async def test_push_service_deduplicates_shared_tokens_across_users() -> None:
 
     assert provider.requests[0].device_tokens == ["shared-token"]
     assert result.device_tokens == ["shared-token"]
+    assert result.metadata["recipientUserIds"] == ["user-a", "user-b"]
+    assert await EventTracker(db).query_events(user_id="user-a", reference_type="push")
+    assert await EventTracker(db).query_events(user_id="user-b", reference_type="push")
 
 
 @pytest.mark.asyncio

@@ -70,7 +70,7 @@ class EmailService:
         )
 
         rendered = self._resolve_content(params)
-        self._assert_resolved_content(rendered["subject"], rendered["html"])
+        self._assert_resolved_content(rendered["subject"], rendered["html"], rendered["text"])
         self._assert_provider_limits(recipients, params.attachments)
 
         transaction = await db_helpers.create_email_transaction(
@@ -200,6 +200,7 @@ class EmailService:
                     {**accepted_data, "metadata": metadata},
                 )
             except Exception:
+                # The returned accepted result already carries these diagnostics.
                 pass
 
         return accepted
@@ -274,10 +275,12 @@ class EmailService:
             "text": text,
         }
 
-    def _assert_resolved_content(self, subject: str, html_body: str) -> None:
-        if not subject or not html_body:
+    def _assert_resolved_content(
+        self, subject: str, html_body: str, text_body: Optional[str]
+    ) -> None:
+        if not subject or (not html_body and not (text_body and text_body.strip())):
             raise ValidationError(
-                "Email must include a subject and HTML body",
+                "Email must include a subject and an HTML or text body",
                 code="SENDFN_VALIDATION_ERROR",
                 retryable=False,
             )

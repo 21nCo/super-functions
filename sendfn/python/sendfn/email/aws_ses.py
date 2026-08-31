@@ -159,9 +159,11 @@ class AwsSesProvider:
 
         message: dict[str, Any] = {
             "Subject": {"Data": request.subject, "Charset": "UTF-8"},
-            "Body": {"Html": {"Data": request.html, "Charset": "UTF-8"}},
+            "Body": {},
         }
 
+        if request.html:
+            message["Body"]["Html"] = {"Data": request.html, "Charset": "UTF-8"}
         if request.text:
             message["Body"]["Text"] = {"Data": request.text, "Charset": "UTF-8"}
 
@@ -207,7 +209,8 @@ class AwsSesProvider:
         alternatives = MIMEMultipart("alternative")
         if request.text:
             alternatives.attach(MIMEText(request.text, "plain", "utf-8"))
-        alternatives.attach(MIMEText(request.html, "html", "utf-8"))
+        if request.html:
+            alternatives.attach(MIMEText(request.html, "html", "utf-8"))
         msg.attach(alternatives)
 
         # Add attachments
