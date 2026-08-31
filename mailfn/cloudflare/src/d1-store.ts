@@ -230,6 +230,38 @@ export class D1MailFnStore implements MailFnStore {
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;
   }
+  async createCredentialWithAudit(value: Credential, audit: AuditEvent, now: string): Promise<boolean> {
+    const results = await this.database.batch([
+      bind(this.database.prepare(
+        `INSERT INTO mailfn_credentials(id, project_id, inbox_id, token_hash, token_prefix, permissions, status, expires_at, revoked_at, created_at, data_json)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE ? IS NULL OR EXISTS (
+           SELECT 1 FROM mailfn_inboxes
+           WHERE id = ? AND project_id = ? AND status = 'active'
+             AND (expires_at IS NULL OR julianday(expires_at) > julianday(?))
+         )`,
+      ), [
+        value.id, value.projectId, value.inboxId ?? null, value.tokenHash, value.tokenPrefix,
+        JSON.stringify(value.permissions), value.status, value.expiresAt ?? null,
+        value.revokedAt ?? null, value.createdAt, json(value), value.inboxId ?? null,
+        value.inboxId ?? null, value.projectId, now,
+      ]),
+      bind(this.database.prepare(
+        `INSERT INTO mailfn_audits(
+           id, project_id, actor_type, actor_id, action, resource_type, resource_id, created_at, retention_expires_at, data_json
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE changes() = 1 AND EXISTS (SELECT 1 FROM mailfn_credentials WHERE id = ?)`,
+      ), [
+        audit.id, audit.projectId, audit.actorType, audit.actorId, audit.action, audit.resourceType,
+        audit.resourceId, audit.createdAt, audit.retentionExpiresAt, json(audit), value.id,
+      ]),
+    ]);
+    if (results.some((result) => !result.success)) throw new Error('MAILFN_D1_WRITE_FAILED');
+    const created = Number(results[0]?.meta?.changes ?? 0) === 1;
+    if (created && Number(results[1]?.meta?.changes ?? 0) !== 1) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return created;
+  }
   async touchCredentialIfActive(id: string, lastUsedAt: string): Promise<boolean> {
     const result = await this.database.prepare(
       `UPDATE mailfn_credentials

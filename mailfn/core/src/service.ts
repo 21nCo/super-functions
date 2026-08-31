@@ -268,10 +268,27 @@ export class MailFn {
         credentialInput = { ...input, expiresAt: inbox.expiresAt };
       }
     }
-    const created = await this.issueCredential(credentialInput);
-    await this.audit(actor, 'credential.created', 'credential', created.credential.id, {
+    const created = await this.buildCredential(credentialInput);
+    const audit = await this.buildAuditEvent(actor, 'credential.created', 'credential', created.credential.id, {
       inboxId: input.inboxId ?? null,
       scopeCount: input.permissions.length,
+    });
+    let saved: boolean;
+    try {
+      saved = await this.store.createCredentialWithAudit(created.credential, audit, this.now());
+    } catch (cause) {
+      throw new MailFnError({
+        code: 'MAILFN_STORAGE_FAILED',
+        message: 'Credential and audit could not be created atomically',
+        status: 503,
+        retryable: true,
+        cause,
+      });
+    }
+    assertMailFn(saved, {
+      code: 'MAILFN_INBOX_INACTIVE',
+      message: 'Inbox is not active',
+      status: 410,
     });
     return created;
   }
@@ -1273,6 +1290,7 @@ export class MailFn {
 
   public async waitForMessages(actor: Actor, input: Omit<WaitForMessageInput, 'projectId'>): Promise<WaitForMessageResult> {
     await this.authorize(actor, 'message:wait', actor.projectId, input.inboxId);
+    await this.authorize(actor, 'message:read', actor.projectId, input.inboxId);
     await this.requireInbox(actor.projectId, input.inboxId);
     const filter = normalizeMessageFilter(input);
     validateIsoFilter(input.after, 'after');
@@ -1975,10 +1993,16 @@ export class MailFn {
         let effectiveInbox = inbox;
         let expiredNow = false;
         if (!['expired', 'deleting', 'deleted'].includes(inbox.status) && inbox.expiresAt && isExpiredAt(inbox.expiresAt, now)) {
-          effectiveInbox = { ...inbox, status: 'expired', updatedAt: now };
-          await this.store.saveInbox(effectiveInbox);
-          result.expiredInboxes += 1;
-          expiredNow = true;
+          const expired = { ...inbox, status: 'expired' as const, updatedAt: now };
+          if (await this.store.saveInboxIfUnchanged(expired, inbox)) {
+            effectiveInbox = expired;
+            result.expiredInboxes += 1;
+            expiredNow = true;
+          } else {
+            const latest = await this.store.getInbox(inbox.id);
+            if (!latest || latest.projectId !== project.id) continue;
+            effectiveInbox = latest;
+          }
         }
         if (effectiveInbox.status === 'expired') {
           for (const credential of await this.store.listCredentials(project.id, inbox.id)) {
@@ -2447,12 +2471,6 @@ export class MailFn {
     return { credential, token: created.token };
   }
 
-  private async issueCredential(input: CreateCredentialInput): Promise<CreatedCredential> {
-    const created = await this.buildCredential(input);
-    await this.saveIssuedCredential(created.credential);
-    return created;
-  }
-
   private async saveIssuedCredential(credential: Credential): Promise<void> {
     if (!credential.inboxId) {
       await this.store.saveCredential(credential);
@@ -2648,7 +2666,12 @@ export class MailFn {
     if (this.queue?.enqueueWebhook) {
       await Promise.allSettled(jobs.map((job) => this.queue!.enqueueWebhook!(job)));
     } else {
-      for (const job of jobs) await this.processWebhookDelivery(job);
+      const results = await Promise.allSettled(jobs.map((job) => this.processWebhookDelivery(job)));
+      await Promise.all(results.map((result, index) => result.status === 'rejected'
+        ? this.systemAudit(event.projectId, 'webhook.processing_failed', 'webhook_delivery', jobs[index]!.deliveryId, {
+          eventType: event.type,
+        }).catch(() => undefined)
+        : Promise.resolve()));
     }
     return event;
   }

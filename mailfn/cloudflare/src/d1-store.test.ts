@@ -58,6 +58,28 @@ describe('D1MailFnStore', () => {
     ]);
   });
 
+  it('creates a credential and its audit in one conditional D1 batch', async () => {
+    const database = new RecordingDatabase();
+    const store = new D1MailFnStore(database);
+    const now = '2026-08-30T00:00:00.000Z';
+    const credential = {
+      id: 'cred_atomic', projectId: 'prj_1', inboxId: 'inb_1', tokenHash: 'hash',
+      tokenPrefix: 'mfn_cred_atomic', permissions: ['inbox:read'], status: 'active', createdAt: now,
+    } satisfies Credential;
+    const audit = {
+      id: 'aud_atomic_credential', projectId: 'prj_1', actorType: 'admin', actorId: 'admin',
+      action: 'credential.created', resourceType: 'credential', resourceId: credential.id,
+      metadata: { inboxId: 'inb_1' }, createdAt: now, retentionExpiresAt: '2027-08-30T00:00:00.000Z',
+    } satisfies AuditEvent;
+
+    await expect(store.createCredentialWithAudit(credential, audit, now)).resolves.toBe(true);
+
+    expect(database.statements[0]?.query).toContain("status = 'active'");
+    expect(database.statements[0]?.query).toContain('julianday(expires_at) > julianday(?)');
+    expect(database.statements[1]?.query).toContain('WHERE changes() = 1 AND EXISTS');
+    expect(database.statements[1]?.values.at(-1)).toBe(credential.id);
+  });
+
   it('pages project messages in the database with the complete admin query', async () => {
     const database = new RecordingDatabase();
     const store = new D1MailFnStore(database);

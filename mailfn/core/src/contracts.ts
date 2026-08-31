@@ -67,6 +67,7 @@ export interface MailFnStore {
   listCredentials(projectId: string, inboxId?: string): Promise<Credential[]>;
   saveCredential(credential: Credential): Promise<void>;
   saveCredentialIfInboxActive(credential: Credential, now: string): Promise<boolean>;
+  createCredentialWithAudit(credential: Credential, audit: AuditEvent, now: string): Promise<boolean>;
   touchCredentialIfActive(id: string, lastUsedAt: string): Promise<boolean>;
 
   getMessage(id: string): Promise<Message | null>;

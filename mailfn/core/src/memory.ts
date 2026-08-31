@@ -152,6 +152,19 @@ export class MemoryMailFnStore implements MailFnStore {
     this.credentials.set(credential.id, copy(credential));
     return true;
   }
+  async createCredentialWithAudit(credential: Credential, audit: AuditEvent, now: string): Promise<boolean> {
+    if (this.credentials.has(credential.id) || this.audits.has(audit.id)) throw new Error('MAILFN_UNIQUE_CONSTRAINT');
+    if (credential.inboxId) {
+      const inbox = this.inboxes.get(credential.inboxId);
+      if (
+        !inbox || inbox.projectId !== credential.projectId || inbox.status !== 'active' ||
+        (inbox.expiresAt !== undefined && Date.parse(inbox.expiresAt) <= Date.parse(now))
+      ) return false;
+    }
+    this.credentials.set(credential.id, copy(credential));
+    this.audits.set(audit.id, copy(audit));
+    return true;
+  }
   async touchCredentialIfActive(id: string, lastUsedAt: string): Promise<boolean> {
     const credential = this.credentials.get(id);
     if (!credential || credential.status !== 'active') return false;

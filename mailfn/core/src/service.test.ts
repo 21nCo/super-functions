@@ -164,6 +164,21 @@ class FailingAtomicProjectStore extends MemoryMailFnStore {
   }
 }
 
+class FailingAtomicCredentialStore extends MemoryMailFnStore {
+  override async createCredentialWithAudit(): Promise<boolean> {
+    throw new Error('atomic credential transaction failed');
+  }
+}
+
+class FailingWebhookFailureEventStore extends MemoryMailFnStore {
+  override async appendEventWithDeliveries(
+    ...args: Parameters<MemoryMailFnStore['appendEventWithDeliveries']>
+  ): Promise<void> {
+    if (args[0].type === 'webhook.delivery_failed') throw new Error('failure event unavailable');
+    await super.appendEventWithDeliveries(...args);
+  }
+}
+
 class FailingActiveDomainStore extends MemoryMailFnStore {
   override async saveDomain(domain: Parameters<MemoryMailFnStore['saveDomain']>[0]): Promise<void> {
     if (domain.status === 'active') throw new Error('domain state unavailable');
@@ -352,12 +367,12 @@ class PausedCredentialStore extends MemoryMailFnStore {
     this.resumeCredentialSave();
   }
 
-  override async saveCredentialIfInboxActive(
-    ...args: Parameters<MemoryMailFnStore['saveCredentialIfInboxActive']>
+  override async createCredentialWithAudit(
+    ...args: Parameters<MemoryMailFnStore['createCredentialWithAudit']>
   ): Promise<boolean> {
     this.resolveCredentialSaveStarted();
     await this.credentialSaveResume;
-    return super.saveCredentialIfInboxActive(...args);
+    return super.createCredentialWithAudit(...args);
   }
 }
 
@@ -476,6 +491,19 @@ describe('MailFn domain service', () => {
     await expect(mailfn.authenticate(bootstrap.credential.token)).resolves.toMatchObject({
       projectId: bootstrap.project.id,
     });
+  });
+
+  it('does not persist a credential when its audit cannot be created atomically', async () => {
+    const store = new FailingAtomicCredentialStore();
+    const context = await setup({ store });
+
+    await expect(context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      permissions: ['inbox:read'],
+    })).rejects.toMatchObject({ code: 'MAILFN_STORAGE_FAILED', retryable: true });
+
+    await expect(store.listCredentials(context.project.id)).resolves.toHaveLength(1);
+    expect((await store.listAudits(context.project.id)).some((event) => event.action === 'credential.created')).toBe(false);
   });
 
   it('rejects non-boolean inbox-expiry retention flags', async () => {
@@ -775,6 +803,27 @@ describe('MailFn domain service', () => {
     }
   });
 
+  it('requires message read scope before a wait can return message bodies', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'wait-read-scope');
+    const value = raw({ subject: 'Sensitive', text: 'one-time secret' });
+    await context.mailfn.receiveInbound({
+      providerDeliveryId: 'wait-read-scope', envelopeFrom: 'sender@example.com',
+      envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength,
+    });
+    const credential = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: created.inbox.id,
+      permissions: ['message:wait'],
+    });
+    const actor = await context.mailfn.authenticate(credential.token);
+
+    await expect(context.mailfn.waitForMessages(actor, {
+      inboxId: created.inbox.id,
+      timeoutMs: 0,
+    })).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN', status: 403 });
+  });
+
   it('preserves raw evidence and marks queue failure for reconciliation', async () => {
     let fail = true;
     const jobs: ParseJob[] = [];
@@ -1047,6 +1096,29 @@ describe('MailFn domain service', () => {
 
     store.failExpiryEvent = false;
     await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({ expiredInboxes: 0 });
+  });
+
+  it('does not overwrite a concurrent inbox lifecycle update during expiration', async () => {
+    const clock = new MutableClock();
+    const store = new PausedInboxUpdateStore();
+    const context = await setup({ clock, store });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'expiring', requestedLocalPart: 'expiry-cas', expirySeconds: 60,
+    });
+    clock.advance(61_000);
+
+    const retention = context.mailfn.runRetention(context.project.id);
+    await store.started;
+    await store.saveInbox({
+      ...created.inbox,
+      status: 'disabled',
+      expiresAt: new Date(clock.now().getTime() + 60_000).toISOString(),
+      updatedAt: clock.now().toISOString(),
+    });
+    store.continueUpdate();
+
+    await expect(retention).resolves.toMatchObject({ expiredInboxes: 0 });
+    await expect(store.getInbox(created.inbox.id)).resolves.toMatchObject({ status: 'disabled' });
   });
 
   it('applies raw, attachment, and message retention independently', async () => {
@@ -2043,6 +2115,31 @@ describe('MailFn domain service', () => {
       && event.resourceType === 'abuse_case'
       && event.metadata.eventType === 'abuse.reported'
     )).toBe(true);
+  });
+
+  it('does not classify post-commit webhook processing failure as an abuse event append failure', async () => {
+    const store = new FailingWebhookFailureEventStore();
+    const context = await setup({
+      store,
+      webhookDispatcher: { deliver: async () => ({ ok: false, retryable: false }) },
+    });
+    await context.mailfn.createWebhook(context.admin, {
+      url: 'https://hooks.example.test/abuse',
+      eventTypes: ['abuse.reported'],
+    });
+
+    const abuseCase = await context.mailfn.reportAbuse(context.admin, {
+      kind: 'spam', resourceType: 'project', resourceId: context.project.id, reason: 'reported once',
+    });
+
+    await expect(store.listEvents(context.project.id)).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'abuse.reported' })]),
+    );
+    const audits = await store.listAudits(context.project.id);
+    expect(audits.some((event) =>
+      event.action === 'event.append_failed' && event.resourceId === abuseCase.id
+    )).toBe(false);
+    expect(audits.some((event) => event.action === 'webhook.processing_failed')).toBe(true);
   });
 
   it('preserves terminal inbox state when abuse enforcement races expiration', async () => {
