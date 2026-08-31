@@ -10,7 +10,6 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from superfunctions.db import (
     Adapter,
     AdapterCapabilities,
-    ConnectionError,
     ConstraintViolationError,
     CountParams,
     CreateManyParams,
@@ -33,6 +32,7 @@ from superfunctions.db import (
     ValidationResult,
     WhereClause,
 )
+from superfunctions.db import AdapterConnectionError as ConnectionError
 
 
 class SQLAlchemyAdapter:

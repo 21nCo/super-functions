@@ -469,9 +469,13 @@ export class MemoryMailFnStore implements MailFnStore {
   async saveDraft(draft: Draft): Promise<void> {
     this.drafts.set(draft.id, copy(draft));
   }
-  async saveDraftIfInboxWritable(draft: Draft): Promise<boolean> {
+  async saveDraftIfInboxWritable(draft: Draft, expected?: Draft): Promise<boolean> {
     const inbox = this.inboxes.get(draft.inboxId);
     if (!inbox || inbox.projectId !== draft.projectId || inbox.status === 'deleting' || inbox.status === 'deleted') return false;
+    if (expected) {
+      const current = this.drafts.get(draft.id);
+      if (!current || JSON.stringify(current) !== JSON.stringify(expected)) return false;
+    }
     this.drafts.set(draft.id, copy(draft));
     return true;
   }

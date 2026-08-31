@@ -70,16 +70,22 @@ describe('SendFn composition', () => {
       email: { fromEmail: 'fallback@example.com' },
       options: { suppressionEnabled: false, retryAttempts: 1, retryDelay: 0 },
     });
-    await expect(createSendFnAdapter(actualSendFn).send(request)).resolves.toEqual({
+    const adapter = createSendFnAdapter(actualSendFn);
+    await expect(adapter.send(request)).resolves.toEqual({
+      providerMessageId: 'actual-sendfn-provider', status: 'sent',
+    });
+    await expect(adapter.send(request)).resolves.toEqual({
       providerMessageId: 'actual-sendfn-provider', status: 'sent',
     });
     expect(providerRequests).toMatchObject([{
-      idempotencyKey: request.idempotencyKey,
+      idempotencyKey: expect.stringMatching(/^[0-9a-f-]{36}$/),
       from: request.from,
       replyTo: request.from,
       headers: request.headers,
       attachments: [{ filename: 'proof.txt', contentType: 'text/plain' }],
+      metadata: expect.objectContaining({ mailfnIdempotencyKey: request.idempotencyKey }),
     }]);
+    expect(providerRequests[0]?.idempotencyKey).not.toBe(request.idempotencyKey);
     await actualSendFn.close();
   });
 });

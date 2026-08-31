@@ -202,6 +202,29 @@ class CompletingDraftResetStore extends MemoryMailFnStore {
   }
 }
 
+class RacingDraftWriteStore extends MemoryMailFnStore {
+  public completeBeforeWrite = false;
+
+  override async saveDraftIfInboxWritable(
+    ...args: Parameters<MemoryMailFnStore['saveDraftIfInboxWritable']>
+  ): Promise<boolean> {
+    const [draft, expected] = args;
+    if (this.completeBeforeWrite && expected) {
+      this.completeBeforeWrite = false;
+      const current = await this.getDraft(draft.id);
+      if (current) {
+        await this.saveDraft({
+          ...current,
+          status: 'sent',
+          providerMessageId: 'concurrent-send',
+          updatedAt: new Date(Date.parse(current.updatedAt) + 1).toISOString(),
+        });
+      }
+    }
+    return super.saveDraftIfInboxWritable(...args);
+  }
+}
+
 class RecoveringAttachmentStore extends MemoryMailFnStore {
   public failNextAttachment = true;
   override async saveAttachmentIfMessageParseOwned(
@@ -673,6 +696,47 @@ describe('MailFn domain service', () => {
     expect(await context.mailfn.retryPendingMessages(context.project.id)).toBe(1);
     expect(jobs).toHaveLength(1);
     expect((await context.store.getMessage(stored!.id))?.status).toBe('pending');
+  });
+
+  it('does not recreate messages deleted while parse retries are being queued', async () => {
+    const store = new MemoryMailFnStore();
+    let deleteDuringEnqueue = false;
+    let failAfterDelete = false;
+    const queue: MailFnQueue = {
+      async enqueue(job) {
+        if (!deleteDuringEnqueue) return;
+        await store.deleteMessage(job.messageId);
+        if (failAfterDelete) throw new Error('queue down after retention');
+      },
+    };
+    const context = await setup({ store, queue });
+    const created = await createInbox(context, 'requeue-retention-race');
+
+    const retry = async (providerDeliveryId: string) => {
+      deleteDuringEnqueue = false;
+      const value = raw({ subject: providerDeliveryId });
+      const message = await context.mailfn.receiveInbound({
+        providerDeliveryId,
+        envelopeFrom: 'sender@example.com',
+        envelopeTo: created.inbox.address,
+        raw: value,
+        rawSize: value.byteLength,
+      });
+      await store.saveMessage({ ...message, status: 'queue_failed' });
+      deleteDuringEnqueue = true;
+      return message;
+    };
+
+    const queued = await retry('requeue-deleted-after-success');
+    await expect(context.mailfn.retryPendingMessages(context.project.id)).resolves.toBe(1);
+    await expect(store.getMessage(queued.id)).resolves.toBeNull();
+
+    const failed = await retry('requeue-deleted-after-failure');
+    failAfterDelete = true;
+    await expect(context.mailfn.retryPendingMessages(context.project.id)).rejects.toMatchObject({
+      code: 'MAILFN_QUEUE_FAILED',
+    });
+    await expect(store.getMessage(failed.id)).resolves.toBeNull();
   });
 
   it('does not requeue permanent MIME parse failures', async () => {
@@ -2034,6 +2098,34 @@ describe('MailFn domain service', () => {
     expect(updated).toMatchObject({ to: ['second@example.com'], subject: 'Updated' });
     await expect(context.mailfn.discardDraft(context.admin, draft.id)).resolves.toMatchObject({ status: 'discarded' });
     await expect(context.mailfn.updateDraft(context.admin, draft.id, { subject: 'Too late' })).rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+  });
+
+  it('does not let stale draft edits or discards revert a completed send', async () => {
+    const store = new RacingDraftWriteStore();
+    const context = await setup({ store });
+    const created = await createInbox(context, 'draft-write-race');
+    const createDraft = (subject: string) => context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id,
+      to: ['recipient@example.com'],
+      subject,
+      text: 'body',
+    });
+
+    const edited = await createDraft('Edit race');
+    store.completeBeforeWrite = true;
+    await expect(context.mailfn.updateDraft(context.admin, edited.id, { subject: 'Stale edit' }))
+      .rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+    await expect(store.getDraft(edited.id)).resolves.toMatchObject({
+      status: 'sent', subject: 'Edit race', providerMessageId: 'concurrent-send',
+    });
+
+    const discarded = await createDraft('Discard race');
+    store.completeBeforeWrite = true;
+    await expect(context.mailfn.discardDraft(context.admin, discarded.id))
+      .rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+    await expect(store.getDraft(discarded.id)).resolves.toMatchObject({
+      status: 'sent', subject: 'Discard race', providerMessageId: 'concurrent-send',
+    });
   });
 
   it('recovers concurrent draft sends through the stable adapter idempotency key', async () => {

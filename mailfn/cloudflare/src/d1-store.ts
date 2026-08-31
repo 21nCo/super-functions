@@ -780,8 +780,20 @@ export class D1MailFnStore implements MailFnStore {
       [value.id, value.projectId, value.inboxId, value.threadId ?? null, value.status, value.createdAt, value.updatedAt, json(value)],
     );
   }
-  async saveDraftIfInboxWritable(value: Draft): Promise<boolean> {
-    const result = await bind(this.database.prepare(
+  async saveDraftIfInboxWritable(value: Draft, expected?: Draft): Promise<boolean> {
+    const result = expected
+      ? await bind(this.database.prepare(
+        `UPDATE mailfn_drafts
+         SET thread_id = ?, status = ?, updated_at = ?, data_json = ?
+         WHERE id = ? AND data_json = ? AND EXISTS (
+           SELECT 1 FROM mailfn_inboxes
+           WHERE id = ? AND project_id = ? AND status NOT IN ('deleting', 'deleted')
+         )`,
+      ), [
+        value.threadId ?? null, value.status, value.updatedAt, json(value), value.id, json(expected),
+        value.inboxId, value.projectId,
+      ]).run()
+      : await bind(this.database.prepare(
       `INSERT INTO mailfn_drafts(id, project_id, inbox_id, thread_id, status, created_at, updated_at, data_json)
        SELECT ?, ?, ?, ?, ?, ?, ?, ?
        WHERE EXISTS (

@@ -19,6 +19,14 @@
   { "slug": "authfn-social-oauth", "path": "authfn/social-oauth", "name": "@authfn/social-oauth" },
   { "slug": "authfn-two-factor", "path": "authfn/two-factor", "name": "@authfn/two-factor" },
   { "slug": "clifn-core", "path": "clifn/core", "name": "@clifn/core" },
+  { "slug": "devfn-cli", "path": "devfn/cli", "name": "@devfn/cli" },
+  { "slug": "devfn-compose", "path": "devfn/compose", "name": "@devfn/compose" },
+  { "slug": "devfn-config", "path": "devfn/config", "name": "@devfn/config" },
+  { "slug": "devfn-core", "path": "devfn/core", "name": "@devfn/core" },
+  { "slug": "devfn-ports", "path": "devfn/ports", "name": "@devfn/ports" },
+  { "slug": "devfn-processes", "path": "devfn/processes", "name": "@devfn/processes" },
+  { "slug": "devfn-proxy", "path": "devfn/proxy", "name": "@devfn/proxy" },
+  { "slug": "devfn-testing", "path": "devfn/testing", "name": "@devfn/testing" },
   { "slug": "datafn-cli", "path": "datafn/cli", "name": "@datafn/cli" },
   { "slug": "datafn-client", "path": "datafn/client", "name": "@datafn/client" },
   { "slug": "datafn-core", "path": "datafn/core", "name": "@datafn/core" },
@@ -117,5 +125,7 @@
   { "slug": "mailfn-mcp", "path": "mailfn/mcp", "name": "@mailfn/mcp" },
   { "slug": "mailfn-sendfn", "path": "mailfn/sendfn", "name": "@mailfn/sendfn" },
   { "slug": "mailfn", "path": "mailfn/facade", "name": "mailfn" },
-  { "slug": "mailfn-admin", "path": "mailfn/admin", "name": "@mailfn/admin" }
+  { "slug": "mailfn-admin", "path": "mailfn/admin", "name": "@mailfn/admin" },
+  { "slug": "sendfn", "path": "sendfn/typescript", "name": "sendfn" },
+  { "slug": "sendfn-admin", "path": "sendfn/admin", "name": "@sendfn/admin" }
 ]

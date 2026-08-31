@@ -1450,7 +1450,7 @@ export class MailFn {
       attachmentIds: [...attachmentIds],
       updatedAt: this.now(),
     };
-    if (!(await this.store.saveDraftIfInboxWritable(updated))) throw notFound('Inbox');
+    if (!(await this.store.saveDraftIfInboxWritable(updated, draft))) throw draftChanged();
     return updated;
   }
 
@@ -1460,7 +1460,7 @@ export class MailFn {
       code: 'MAILFN_CONFLICT', message: 'Only draft messages can be discarded', status: 409,
     });
     const discarded = { ...draft, status: 'discarded' as const, updatedAt: this.now() };
-    if (!(await this.store.saveDraftIfInboxWritable(discarded))) throw notFound('Inbox');
+    if (!(await this.store.saveDraftIfInboxWritable(discarded, draft))) throw draftChanged();
     return discarded;
   }
 
@@ -2494,16 +2494,19 @@ export class MailFn {
     try {
       await this.queue.enqueue(this.parseJob(message));
       if (message.status === 'queue_failed' || message.status === 'parse_failed') {
-        await this.store.saveMessage({
+        await this.store.saveMessageIfUnchanged({
           ...message,
           status: 'pending',
           parseErrorCode: undefined,
           parseRetryable: undefined,
           updatedAt: this.now(),
-        });
+        }, message);
       }
     } catch (error) {
-      await this.store.saveMessage({ ...message, status: 'queue_failed', updatedAt: this.now() });
+      await this.store.saveMessageIfUnchanged(
+        { ...message, status: 'queue_failed', updatedAt: this.now() },
+        message,
+      );
       throw new MailFnError({
         code: 'MAILFN_QUEUE_FAILED',
         message: 'Message was stored but parse work could not be queued',
@@ -3157,6 +3160,15 @@ function notFound(resource: string): MailFnError {
 
 function unauthorized(): MailFnError {
   return new MailFnError({ code: 'MAILFN_UNAUTHORIZED', message: 'Invalid or expired MailFn credential', status: 401 });
+}
+
+function draftChanged(): MailFnError {
+  return new MailFnError({
+    code: 'MAILFN_CONFLICT',
+    message: 'Draft changed while the operation was in progress',
+    status: 409,
+    retryable: true,
+  });
 }
 
 function unknownRecipient(): MailFnError {

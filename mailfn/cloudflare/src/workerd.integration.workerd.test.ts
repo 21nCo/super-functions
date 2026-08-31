@@ -598,6 +598,24 @@ describe('MailFn in workerd', () => {
     await expect(store.listDrafts(bootstrap.project.id, created.inbox.id)).resolves.toHaveLength(0);
   });
 
+  it('rejects stale D1 draft writes after a concurrent send claim', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'draft-cas-workerd', displayName: 'Draft CAS Workerd' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const created = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'expiring', requestedLocalPart: 'draft-cas', expirySeconds: 3_600,
+    });
+    const draft = await mailfn.createDraft(admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Original', text: 'body',
+    });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const sending = { ...draft, status: 'sending' as const, updatedAt: new Date(Date.parse(draft.updatedAt) + 1).toISOString() };
+
+    await expect(store.claimDraft(draft.id, 'draft', sending)).resolves.toBe(true);
+    await expect(store.saveDraftIfInboxWritable({ ...draft, subject: 'Stale edit' }, draft)).resolves.toBe(false);
+    await expect(store.getDraft(draft.id)).resolves.toMatchObject({ status: 'sending', subject: 'Original' });
+  });
+
   it('atomically rejects a repeated webhook delivery identifier in D1', async () => {
     const replayStore = new D1WebhookReplayStore(env.MAILFN_DB);
     const expiresAt = new Date(Date.now() + 300_000).toISOString();
