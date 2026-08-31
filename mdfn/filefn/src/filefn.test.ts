@@ -60,6 +60,20 @@ describe("filefn bridge", () => {
     expect(deleted).toEqual(["orphan"]);
   });
 
+  it("rejects single-file authoring uploads when rollback is unavailable", async () => {
+    const upload = vi.fn(async (_file: File | Blob, context: { documentId: string }) => ({
+      id: "orphan", provider: "test", documentId: context.documentId,
+    }));
+    const handler = createAuthoringAssetHandler({
+      provider: { upload },
+      context: { documentId: "document" },
+    });
+
+    await expect(handler([new Blob(["image"], { type: "image/png" })]))
+      .rejects.toThrow("MDFN_ASSET_DELETE_UNAVAILABLE");
+    expect(upload).not.toHaveBeenCalled();
+  });
+
   it("rolls back earlier uploads when a later file fails", async () => {
     const uploaded: string[] = [];
     const deleted: string[] = [];

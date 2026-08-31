@@ -308,6 +308,26 @@ describe("@mdfn/core", () => {
     expect(() => resolveExtensions([extension, { ...extension, name: "other" }])).toThrowError(/Duplicate key binding/);
   });
 
+  it("unwinds initialized plugins in reverse order when later setup fails", () => {
+    const lifecycle: string[] = [];
+    const extension: MdfnExtension = {
+      name: "setup-failure",
+      version: "1.0.0",
+      preservation: { noEdit: "exact", edited: "semantic", unsupported: "opaque" },
+      plugins: [
+        { name: "first", setup: () => { lifecycle.push("setup:first"); return () => { lifecycle.push("cleanup:first"); }; } },
+        { name: "second", setup: () => { lifecycle.push("setup:second"); return () => { lifecycle.push("cleanup:second"); }; } },
+        { name: "failing", setup: () => { lifecycle.push("setup:failing"); throw new Error("plugin setup failed"); } },
+      ],
+    };
+
+    expect(() => createEditor({ markdown: "", projector, extensions: [extension] }))
+      .toThrow("plugin setup failed");
+    expect(lifecycle).toEqual([
+      "setup:first", "setup:second", "setup:failing", "cleanup:second", "cleanup:first",
+    ]);
+  });
+
   it("checks dispatching commands without mutating editor state", () => {
     const extension = {
       name: "dispatching-command",

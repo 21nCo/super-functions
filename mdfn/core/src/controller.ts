@@ -198,9 +198,20 @@ export function createEditor(input: CreateEditorInput): EditorController {
     },
   };
   const pluginCleanups: Array<() => void> = [];
-  for (const plugin of extensions.plugins) {
-    const cleanup = plugin.setup({ getState: controller.getState, dispatch: (transaction) => controller.dispatch(transaction as Transaction), subscribe: controller.subscribe });
-    if (cleanup) pluginCleanups.push(cleanup);
+  try {
+    for (const plugin of extensions.plugins) {
+      const cleanup = plugin.setup({ getState: controller.getState, dispatch: (transaction) => controller.dispatch(transaction as Transaction), subscribe: controller.subscribe });
+      if (cleanup) pluginCleanups.push(cleanup);
+    }
+  } catch (error) {
+    destroyed = true;
+    for (const cleanup of pluginCleanups.splice(0).reverse()) {
+      try { cleanup(); } catch { /* Preserve the plugin setup failure after best-effort unwind. */ }
+    }
+    listeners.clear();
+    undoStack.length = 0;
+    redoStack.length = 0;
+    throw error;
   }
   return controller;
 }

@@ -184,7 +184,7 @@ export function createAuthoringAssetHandler(input: {
   };
   return async (files) => {
     if (files.length === 0) return undefined;
-    if (files.length > 1 && !input.provider.delete) throw new Error("MDFN_ASSET_DELETE_UNAVAILABLE");
+    if (!input.provider.delete) throw new Error("MDFN_ASSET_DELETE_UNAVAILABLE");
     const references: AssetReference[] = [];
     try {
       for (const file of files) references.push(await gateway.upload(file, { ...input.context, purpose: "insert" }));
