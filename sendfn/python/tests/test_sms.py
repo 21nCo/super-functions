@@ -50,9 +50,18 @@ class FailingPostSendStore(MemoryAdapter):
     async def update(self, params: Any) -> dict[str, Any]:
         if params.model == "sms_transactions":
             self.sms_update_attempts += 1
-            if self.sms_update_attempts == 1:
-                raise RuntimeError("persistence unavailable after provider acceptance")
+            raise RuntimeError("persistence unavailable after provider acceptance")
         return await super().update(params)
+
+    async def create(self, params: Any) -> dict[str, Any]:
+        if params.model == "communication_events":
+            raise RuntimeError("event store unavailable")
+        return await super().create(params)
+
+    async def find_one(self, params: Any) -> dict[str, Any] | None:
+        if params.model == "sms_transactions":
+            raise RuntimeError("transaction read unavailable")
+        return await super().find_one(params)
 
 
 def get_records(db: MemoryAdapter, model: str) -> list[dict[str, Any]]:
@@ -65,7 +74,9 @@ async def test_sms_service_honors_disabled_event_tracking() -> None:
     provider = FakeSmsProvider()
     service = SmsService(provider, db, event_tracking=False)
 
-    result = await service.send_sms(SendSmsParams(userId="user-1", to="+15551234567", message="Hello"))
+    result = await service.send_sms(
+        SendSmsParams(userId="user-1", to="+15551234567", message="Hello")
+    )
     await service.send_sms(SendSmsParams(userId="user-1", to="+15551234568", message="Again"))
 
     assert result.status == "sent"
@@ -79,10 +90,21 @@ async def test_sms_service_does_not_reclassify_accepted_delivery_when_persistenc
     provider = FakeSmsProvider()
     service = SmsService(provider, db)
 
-    with pytest.raises(RuntimeError, match="persistence unavailable"):
-        await service.send_sms(SendSmsParams(userId="user-1", to="+15551234567", message="Hello"))
+    result = await service.send_sms(
+        SendSmsParams(userId="user-1", to="+15551234567", message="Hello")
+    )
 
+    assert result.status == "sent"
+    assert result.provider_message_id == "sent:+15551234567"
+    assert result.metadata["bookkeepingErrors"] == [
+        {
+            "stage": "transaction:update-result",
+            "error": "persistence unavailable after provider acceptance",
+        },
+        {"stage": "event:result", "error": "event store unavailable"},
+        {"stage": "transaction:read-result", "error": "transaction read unavailable"},
+    ]
     assert provider.send_calls == 1
-    assert db.sms_update_attempts == 1
+    assert db.sms_update_attempts == 2
     assert get_records(db, "sms_transactions")[0]["status"] == "pending"
     assert get_records(db, "communication_events") == []

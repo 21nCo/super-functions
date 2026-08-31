@@ -287,6 +287,10 @@ async def find_events(db: Adapter, params: dict) -> list[CommunicationEvent]:
             recipient_user_ids = (
                 metadata.get("recipientUserIds", []) if isinstance(metadata, dict) else []
             )
+            if not isinstance(recipient_user_ids, list) or not all(
+                isinstance(recipient_id, str) for recipient_id in recipient_user_ids
+            ):
+                recipient_user_ids = []
             if reference.get("userId") != user_id and user_id not in recipient_user_ids:
                 continue
 

@@ -17,7 +17,23 @@ def test_template_engine_renders_variables_conditionals_and_loops() -> None:
         },
     )
 
-    assert rendered == '<ul><li>&lt;Alice&gt;</li><li>Bob</li></ul><a href="https://example.com">Go</a>'
+    assert (
+        rendered
+        == '<ul><li>&lt;Alice&gt;</li><li>Bob</li></ul><a href="https://example.com">Go</a>'
+    )
+
+
+def test_template_engine_leaves_subject_and_text_variables_unescaped_when_requested() -> None:
+    engine = TemplateEngine()
+    data = {"name": "A&B", "url": "https://example.com/reset?a=1&b=2"}
+
+    assert (
+        engine.render("{{name}}: {{url}}", data, escape_html=False)
+        == "A&B: https://example.com/reset?a=1&b=2"
+    )
+    assert engine.render('<a href="{{url}}">{{name}}</a>', data) == (
+        '<a href="https://example.com/reset?a=1&amp;b=2">A&amp;B</a>'
+    )
 
 
 def test_template_engine_rejects_malformed_block_syntax() -> None:

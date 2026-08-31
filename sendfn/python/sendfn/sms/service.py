@@ -109,39 +109,79 @@ class SmsService:
 
             raise error
 
-        await update_sms_transaction(
-            self.db,
-            str(transaction.id),
-            {
+        accepted_data = {
+            "status": "sent" if response.success else "failed",
+            "providerMessageId": response.provider_message_id,
+            "sentAt": response.timestamp if response.success else None,
+            "metadata": {**(params.metadata or {}), "error": response.error},
+        }
+        accepted = transaction.model_copy(
+            update={
                 "status": "sent" if response.success else "failed",
-                "providerMessageId": response.provider_message_id,
-                "sentAt": response.timestamp,
-                "metadata": {
-                    **(params.metadata or {}),
-                    "error": response.error,
-                },
-            },
+                "provider_message_id": response.provider_message_id,
+                "sent_at": response.timestamp if response.success else None,
+                "metadata": accepted_data["metadata"],
+            }
         )
+        bookkeeping_errors: list[dict[str, str]] = []
+
+        try:
+            accepted = await update_sms_transaction(self.db, str(transaction.id), accepted_data)
+        except Exception as error:
+            bookkeeping_errors.append({"stage": "transaction:update-result", "error": str(error)})
 
         if self.event_tracking:
-            await record_event(
-                self.db,
-                {
-                    "referenceId": str(transaction.id),
-                    "referenceType": "sms",
-                    "eventType": "sent" if response.success else "failed",
-                    "provider": self.provider.name,
-                    "providerEventId": response.provider_message_id,
-                    "recipientEmail": None,
-                    "recipientPhone": params.to,
-                    "deviceToken": None,
-                    "metadata": {"error": response.error} if response.error else {},
-                    "eventTimestamp": response.timestamp,
-                },
-            )
+            try:
+                await record_event(
+                    self.db,
+                    {
+                        "referenceId": str(transaction.id),
+                        "referenceType": "sms",
+                        "eventType": "sent" if response.success else "failed",
+                        "provider": self.provider.name,
+                        "providerEventId": response.provider_message_id,
+                        "recipientEmail": None,
+                        "recipientPhone": params.to,
+                        "deviceToken": None,
+                        "metadata": {"error": response.error} if response.error else {},
+                        "eventTimestamp": response.timestamp,
+                    },
+                )
+            except Exception as error:
+                bookkeeping_errors.append({"stage": "event:result", "error": str(error)})
 
-        updated_transaction = await get_sms_transaction(self.db, str(transaction.id))
-        if not updated_transaction:
-            raise ValueError(f"Transaction {transaction.id} not found after update")
+        try:
+            stored = await get_sms_transaction(self.db, str(transaction.id))
+            if stored:
+                accepted = stored.model_copy(
+                    update={
+                        "status": "sent" if response.success else "failed",
+                        "provider_message_id": response.provider_message_id,
+                        "sent_at": response.timestamp if response.success else None,
+                        "metadata": accepted_data["metadata"],
+                    }
+                )
+            else:
+                bookkeeping_errors.append(
+                    {
+                        "stage": "transaction:read-result",
+                        "error": f"Could not find SMS transaction {transaction.id} after creation.",
+                    }
+                )
+        except Exception as error:
+            bookkeeping_errors.append({"stage": "transaction:read-result", "error": str(error)})
 
-        return updated_transaction
+        if bookkeeping_errors:
+            metadata = {**accepted.metadata, "bookkeepingErrors": bookkeeping_errors}
+            accepted = accepted.model_copy(update={"metadata": metadata})
+            try:
+                accepted = await update_sms_transaction(
+                    self.db,
+                    str(transaction.id),
+                    {**accepted_data, "metadata": metadata},
+                )
+            except Exception:
+                # The provider result remains authoritative when diagnostics cannot be persisted.
+                pass
+
+        return accepted

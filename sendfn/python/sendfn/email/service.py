@@ -264,10 +264,12 @@ class EmailService:
                     details={"errors": validation["errors"]},
                 )
 
-            subject = self.template_engine.render(template.subject, template_data)
+            subject = self.template_engine.render(
+                template.subject, template_data, escape_html=False
+            )
             html = self.template_engine.render(template.html, template_data)
             if template.text:
-                text = self.template_engine.render(template.text, template_data)
+                text = self.template_engine.render(template.text, template_data, escape_html=False)
 
         return {
             "subject": subject.strip() if subject else "",

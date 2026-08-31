@@ -43,11 +43,12 @@ function encodeSesAddress(value: string, foldLongHeader = false): string {
     chunkBytes += bytes;
   }
   if (chunk) chunks.push(chunk);
-  const separator = foldLongHeader && chunks.length > 1 ? '\n ' : ' ';
-  const encodedName = chunks
-    .map((part) => `=?UTF-8?B?${Buffer.from(part, 'utf8').toString('base64')}?=`)
-    .join(separator);
-  return `${encodedName}${separator}${mailbox}`;
+  const encodedWords = chunks.map((part) => `=?UTF-8?B?${Buffer.from(part, 'utf8').toString('base64')}?=`);
+  if (foldLongHeader) {
+    if (encodedWords.length > 1) return `${encodedWords.join('\n ')}\n ${mailbox}`;
+    if (`From: ${encodedWords[0]} ${mailbox}`.length > 76) return `${encodedWords[0]}\n ${mailbox}`;
+  }
+  return `${encodedWords.join(' ')} ${mailbox}`;
 }
 
 export class AwsSesAdapter implements EmailProvider {

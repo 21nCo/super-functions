@@ -79,6 +79,17 @@ export function createSendFn(config: SendFnEdgeConfig): SendFnEdgeClient {
       }
       const now = new Date();
       const recipients = toArray(params.to) ?? [];
+      const ccRecipients = toArray(params.cc);
+      const bccRecipients = toArray(params.bcc);
+      for (const [field, addresses] of [
+        ['to', recipients],
+        ['cc', ccRecipients ?? []],
+        ['bcc', bccRecipients ?? []],
+      ] as const) {
+        if (addresses.some((address) => /[\r\n]/.test(address) || !emailProvider.validateEmail(address))) {
+          throw new Error(`Invalid ${field} recipient. Use bare mailboxes without control characters.`);
+        }
+      }
       const sender = params.from !== undefined
         ? parseSender(params.from.trim(), 'from')
         : resolveSender(config.email);
@@ -97,8 +108,8 @@ export function createSendFn(config: SendFnEdgeConfig): SendFnEdgeClient {
         idempotencyKey: params.idempotencyKey,
         from: sender.header,
         to: recipients,
-        cc: toArray(params.cc),
-        bcc: toArray(params.bcc),
+        cc: ccRecipients,
+        bcc: bccRecipients,
         subject: params.subject ?? '',
         html: params.html ?? '',
         text: params.text,

@@ -428,6 +428,20 @@ describe('EmailService', () => {
     expect(longRaw).toMatch(/^From: =\?UTF-8\?B\?[^?]+\?=\n =\?UTF-8\?B\?[^?]+\?=\n <agent@example\.com>$/m);
     const rawFromLines = longRaw.match(/^From: .*$(?:\n^ .*$)*/m)?.[0].split('\n') ?? [];
     expect(rawFromLines.every((line) => line.length <= 76)).toBe(true);
+
+    const singleWordName = 'é'.repeat(14);
+    await adapter.sendEmail({
+      from: `"${singleWordName}" <agent@example.com>`, to: ['to@example.com'], subject: 'Boundary raw', text: 'body',
+      attachments: [{ filename: 'proof.txt', content: Buffer.from('proof') }],
+    });
+    const boundaryRaw = Buffer.from(inputs[4].RawMessage.Data).toString('utf8');
+    const boundaryHeader = boundaryRaw.match(/^From: .*$(?:\n^ .*$)*/m)?.[0] ?? '';
+    const boundaryLines = boundaryHeader.split('\n');
+    expect(boundaryLines).toHaveLength(2);
+    expect(boundaryLines.every((line) => line.length <= 76)).toBe(true);
+    expect(boundaryLines[1]).toBe(' <agent@example.com>');
+    const [encodedBoundary] = boundaryHeader.match(/=\?UTF-8\?B\?[^?]+\?=/g) ?? [];
+    expect(Buffer.from(encodedBoundary!.slice(10, -2), 'base64').toString('utf8')).toBe(singleWordName);
   });
 
   it('surfaces retry exhaustion with a stable code', async () => {

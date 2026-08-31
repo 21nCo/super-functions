@@ -10,10 +10,10 @@ type TemplateNode =
 type ParseFrame = { type: 'root' | 'if' | 'each'; name?: string; children: TemplateNode[] };
 
 export class TemplateEngine {
-  render(template: string, data: Record<string, any>): string {
+  render(template: string, data: Record<string, any>, options: { readonly escapeHtml?: boolean } = {}): string {
     try {
       const nodes = this.parse(template);
-      return this.renderNodes(nodes, [data]);
+      return this.renderNodes(nodes, [data], options.escapeHtml !== false);
     } catch (error) {
       if (error instanceof TemplateError) {
         throw error;
@@ -133,7 +133,7 @@ export class TemplateEngine {
     return frames[0].children;
   }
 
-  private renderNodes(nodes: TemplateNode[], scopes: Array<Record<string, any>>): string {
+  private renderNodes(nodes: TemplateNode[], scopes: Array<Record<string, any>>, escapeHtml: boolean): string {
     return nodes
       .map((node) => {
         switch (node.type) {
@@ -141,11 +141,12 @@ export class TemplateEngine {
             return node.value;
           case 'variable': {
             const value = this.resolveValue(node.name, scopes);
-            return value === undefined || value === null ? '' : this.escapeHtml(String(value));
+            if (value === undefined || value === null) return '';
+            return escapeHtml ? this.escapeHtml(String(value)) : String(value);
           }
           case 'if':
             return this.resolveValue(node.name, scopes)
-              ? this.renderNodes(node.children, scopes)
+              ? this.renderNodes(node.children, scopes, escapeHtml)
               : '';
           case 'each': {
             const value = this.resolveValue(node.name, scopes);
@@ -161,7 +162,8 @@ export class TemplateEngine {
                       ? ({ ...item, this: item } as Record<string, any>)
                       : ({ this: item } as Record<string, any>),
                     ...scopes,
-                  ]
+                  ],
+                  escapeHtml
                 )
               )
               .join('');

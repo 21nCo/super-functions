@@ -5,14 +5,18 @@ import { SmsService } from '../src/sms/service';
 import { StrongMockAdapter } from './mock-adapter';
 
 describe('SmsService', () => {
-  it('does not rewrite an accepted SMS as failed when event persistence fails', async () => {
+  it('returns an accepted SMS with diagnostics when result bookkeeping fails', async () => {
     const rawAdapter = new StrongMockAdapter();
     const db = new SendfnDb(rawAdapter as any);
-    vi.spyOn(db, 'recordEvent').mockRejectedValueOnce(new Error('event store unavailable'));
+    vi.spyOn(db, 'updateSmsTransaction').mockRejectedValue(new Error('transaction store unavailable'));
+    vi.spyOn(db, 'recordEvent').mockRejectedValue(new Error('event store unavailable'));
+    vi.spyOn(db, 'getSmsTransaction').mockRejectedValue(new Error('transaction read unavailable'));
+    let sendCalls = 0;
     const service = new SmsService({
       name: 'test-sms',
       async initialize() {},
       async sendSms() {
+        sendCalls += 1;
         return {
           success: true,
           providerMessageId: 'sms-1',
@@ -23,13 +27,26 @@ describe('SmsService', () => {
       async close() {},
     }, db, {});
 
-    await expect(service.sendSms({
+    const result = await service.sendSms({
       userId: 'user-1',
       to: '+15555550100',
       message: 'Hello',
-    })).rejects.toThrow('event store unavailable');
+    });
+
+    expect(result).toMatchObject({
+      status: 'sent',
+      providerMessageId: 'sms-1',
+      metadata: {
+        bookkeepingErrors: [
+          { stage: 'transaction:update-result', error: 'transaction store unavailable' },
+          { stage: 'event:result', error: 'event store unavailable' },
+          { stage: 'transaction:read-result', error: 'transaction read unavailable' },
+        ],
+      },
+    });
+    expect(sendCalls).toBe(1);
     expect(rawAdapter.records('sms_transactions')).toEqual([
-      expect.objectContaining({ status: 'sent', providerMessageId: 'sms-1' }),
+      expect.objectContaining({ status: 'pending' }),
     ]);
   });
 });

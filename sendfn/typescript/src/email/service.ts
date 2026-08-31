@@ -294,9 +294,9 @@ export class EmailService {
       this.templateEngine.validate(template, data);
 
       try {
-        subject = this.templateEngine.render(template.subject, data);
+        subject = this.templateEngine.render(template.subject, data, { escapeHtml: false });
         html = this.templateEngine.render(template.html, data);
-        text = template.text ? this.templateEngine.render(template.text, data) : text;
+        text = template.text ? this.templateEngine.render(template.text, data, { escapeHtml: false }) : text;
       } catch (error) {
         if (error instanceof TemplateError) {
           throw error;

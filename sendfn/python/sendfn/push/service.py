@@ -63,10 +63,12 @@ class PushService:
         tokens: list[str] = []
         platform_tokens: dict[Platform, list[str]] = {}
         platform_token_sets: dict[Platform, set[str]] = {}
+        platform_recipient_sets: dict[Platform, set[str]] = {}
 
         for user_id in user_ids:
             devices = await self.device_manager.get_active_devices(user_id)
             for device in devices:
+                platform_recipient_sets.setdefault(device.platform, set()).add(user_id)
                 seen_tokens = platform_token_sets.setdefault(device.platform, set())
                 if device.token in seen_tokens:
                     continue
@@ -122,6 +124,7 @@ class PushService:
         first_provider_error: Optional[Exception] = None
         provider_errors: list[dict[str, str]] = []
         bookkeeping_errors: list[dict[str, str]] = []
+        notification_recipient_ids: dict[str, list[str]] = {}
 
         def record_bookkeeping_error(
             platform: Platform,
@@ -140,6 +143,11 @@ class PushService:
 
         for platform in ordered_platforms:
             p_tokens = platform_tokens[platform]
+            platform_recipient_ids = [
+                user_id
+                for user_id in user_ids
+                if user_id in platform_recipient_sets.get(platform, set())
+            ]
             provider = self.providers.get(platform)
 
             assert provider is not None
@@ -161,11 +169,12 @@ class PushService:
                     "sentAt": None,
                     "metadata": {
                         **(params.metadata or {}),
-                        "recipientUserIds": user_ids,
+                        "recipientUserIds": platform_recipient_ids,
                     },
                 },
             )
             notification_ids.append(str(notification.id))
+            notification_recipient_ids[str(notification.id)] = platform_recipient_ids
             if first_notification_id is None:
                 first_notification_id = str(notification.id)
 
@@ -198,7 +207,7 @@ class PushService:
                             "status": "failed",
                             "metadata": {
                                 **(params.metadata or {}),
-                                "recipientUserIds": user_ids,
+                                "recipientUserIds": platform_recipient_ids,
                                 "error": str(error),
                             },
                         },
@@ -222,7 +231,7 @@ class PushService:
                                 "recipientPhone": None,
                                 "deviceToken": None,
                                 "metadata": {
-                                    "recipientUserIds": user_ids,
+                                    "recipientUserIds": platform_recipient_ids,
                                     "error": str(error),
                                 },
                                 "eventTimestamp": datetime.now(),
@@ -268,7 +277,7 @@ class PushService:
                         "sentAt": response.timestamp,
                         "metadata": {
                             **(params.metadata or {}),
-                            "recipientUserIds": user_ids,
+                            "recipientUserIds": platform_recipient_ids,
                             "results": response.results,
                         },
                     },
@@ -292,7 +301,7 @@ class PushService:
                             "recipientPhone": None,
                             "deviceToken": None,  # Multiple tokens
                             "metadata": {
-                                "recipientUserIds": user_ids,
+                                "recipientUserIds": platform_recipient_ids,
                                 "successCount": response.success_count,
                                 "failedCount": response.failed_count,
                             },
@@ -327,7 +336,7 @@ class PushService:
                         else {}
                     ),
                     **(params.metadata or {}),
-                    "recipientUserIds": user_ids,
+                    "recipientUserIds": notification_recipient_ids.get(logical_notification_id, []),
                     "notificationIds": notification_ids,
                     **({"providerErrors": provider_errors} if provider_errors else {}),
                     **({"bookkeepingErrors": bookkeeping_errors} if bookkeeping_errors else {}),

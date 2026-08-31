@@ -13,11 +13,11 @@ TemplateNode = dict[str, Any]
 class TemplateEngine:
     """Lightweight template engine for email templates."""
 
-    def render(self, template: str, data: dict[str, Any]) -> str:
+    def render(self, template: str, data: dict[str, Any], *, escape_html: bool = True) -> str:
         """Render a template with data."""
         try:
             nodes = self._parse(template)
-            return self._render_nodes(nodes, [data])
+            return self._render_nodes(nodes, [data], escape_html=escape_html)
         except TemplateError:
             raise
         except Exception as exc:
@@ -110,7 +110,13 @@ class TemplateEngine:
 
         return cast(list[TemplateNode], frames[0]["children"])
 
-    def _render_nodes(self, nodes: list[TemplateNode], scopes: list[dict[str, Any]]) -> str:
+    def _render_nodes(
+        self,
+        nodes: list[TemplateNode],
+        scopes: list[dict[str, Any]],
+        *,
+        escape_html: bool,
+    ) -> str:
         result: list[str] = []
         for node in nodes:
             node_type = node["type"]
@@ -118,10 +124,16 @@ class TemplateEngine:
                 result.append(node["value"])
             elif node_type == "variable":
                 value = self._resolve_value(node["name"], scopes)
-                result.append("" if value is None else html.escape(str(value)))
+                if value is None:
+                    result.append("")
+                else:
+                    rendered = str(value)
+                    result.append(html.escape(rendered) if escape_html else rendered)
             elif node_type == "if":
                 if self._resolve_value(node["name"], scopes):
-                    result.append(self._render_nodes(node["children"], scopes))
+                    result.append(
+                        self._render_nodes(node["children"], scopes, escape_html=escape_html)
+                    )
             elif node_type == "each":
                 value = self._resolve_value(node["name"], scopes)
                 if isinstance(value, list):
@@ -129,7 +141,11 @@ class TemplateEngine:
                         scope = {"this": item}
                         if isinstance(item, dict):
                             scope.update(item)
-                        result.append(self._render_nodes(node["children"], [scope, *scopes]))
+                        result.append(
+                            self._render_nodes(
+                                node["children"], [scope, *scopes], escape_html=escape_html
+                            )
+                        )
         return "".join(result)
 
     def _resolve_value(self, path: str, scopes: list[dict[str, Any]]) -> Any:

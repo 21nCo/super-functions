@@ -55,31 +55,59 @@ export class SmsService {
         throw error;
     }
 
-    const updated = await this.db.updateSmsTransaction(transaction.id, {
+    const acceptedData = {
         status: response.success ? 'sent' : 'failed',
-        providerMessageId: response.providerMessageId,
-        sentAt: response.timestamp,
+        providerMessageId: response.providerMessageId ?? response.messageId ?? null,
+        sentAt: response.success ? response.timestamp : null,
         metadata: {
-            ...params.metadata,
+            ...(params.metadata ?? {}),
             error: response.error
         }
-    });
+    } as const;
+    let accepted = { ...transaction, ...acceptedData } as SmsTransaction;
+    const bookkeepingErrors: Array<{ stage: string; error: string }> = [];
 
-    if (this.options.eventTracking !== false) await this.db.recordEvent({
-        referenceId: transaction.id,
-        referenceType: 'sms',
-        eventType: response.success ? 'sent' : 'failed',
-        provider: this.provider.name,
-        providerEventId: response.providerMessageId || null,
-        recipientEmail: null,
-        recipientPhone: params.to,
-        deviceToken: null,
-        metadata: {
-            error: response.error
-        },
-        eventTimestamp: response.timestamp
-    });
+    try {
+      accepted = await this.db.updateSmsTransaction(transaction.id, acceptedData);
+    } catch (error) {
+      bookkeepingErrors.push({ stage: 'transaction:update-result', error: error instanceof Error ? error.message : String(error) });
+    }
 
-    return (await this.db.getSmsTransaction(transaction.id)) ?? updated;
+    if (this.options.eventTracking !== false) {
+      try {
+        await this.db.recordEvent({
+          referenceId: transaction.id,
+          referenceType: 'sms',
+          eventType: response.success ? 'sent' : 'failed',
+          provider: this.provider.name,
+          providerEventId: response.providerMessageId ?? response.messageId ?? null,
+          recipientEmail: null,
+          recipientPhone: params.to,
+          deviceToken: null,
+          metadata: { error: response.error },
+          eventTimestamp: response.timestamp,
+        });
+      } catch (error) {
+        bookkeepingErrors.push({ stage: 'event:result', error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+
+    try {
+      const stored = await this.db.getSmsTransaction(transaction.id);
+      if (stored) accepted = { ...stored, ...acceptedData } as SmsTransaction;
+      else bookkeepingErrors.push({ stage: 'transaction:read-result', error: `Could not find SMS transaction ${transaction.id} after creation.` });
+    } catch (error) {
+      bookkeepingErrors.push({ stage: 'transaction:read-result', error: error instanceof Error ? error.message : String(error) });
+    }
+
+    if (bookkeepingErrors.length > 0) {
+      accepted = { ...accepted, metadata: { ...(accepted.metadata ?? {}), bookkeepingErrors } };
+      try {
+        accepted = await this.db.updateSmsTransaction(transaction.id, { ...acceptedData, metadata: accepted.metadata });
+      } catch {
+        // The provider result remains authoritative when diagnostics cannot be persisted.
+      }
+    }
+    return accepted;
   }
 }

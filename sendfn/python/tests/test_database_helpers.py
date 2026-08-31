@@ -172,6 +172,45 @@ async def test_query_events_uses_default_and_maximum_limits() -> None:
 
 
 @pytest.mark.asyncio
+async def test_query_events_ignores_malformed_recipient_user_metadata() -> None:
+    db = MemoryAdapter()
+    tracker = EventTracker(db)
+    notification_id = "00000000-0000-4000-8000-000000000020"
+    await db.create(
+        CreateParams(
+            model="push_notifications",
+            data={
+                "id": notification_id,
+                "userId": "owner",
+                "providerMessageId": None,
+                "metadata": {"recipientUserIds": None},
+            },
+        )
+    )
+    await db.create(
+        CreateParams(
+            model="communication_events",
+            data={
+                "id": "00000000-0000-4000-8000-000000000021",
+                "referenceId": notification_id,
+                "referenceType": "push",
+                "eventType": "sent",
+                "provider": "fcm",
+                "providerEventId": None,
+                "recipientEmail": None,
+                "recipientPhone": None,
+                "deviceToken": None,
+                "metadata": {},
+                "eventTimestamp": datetime(2026, 4, 2, 0, 0, 0),
+                "createdAt": datetime(2026, 4, 2, 0, 0, 0),
+            },
+        )
+    )
+
+    assert await tracker.query_events(user_id="other", reference_type="push") == []
+
+
+@pytest.mark.asyncio
 async def test_query_events_rejects_invalid_windows() -> None:
     """Invalid time windows should fail with the shared validation code."""
     tracker = EventTracker(MemoryAdapter())

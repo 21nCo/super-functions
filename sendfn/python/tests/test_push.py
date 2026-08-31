@@ -503,6 +503,40 @@ async def test_push_service_deduplicates_shared_tokens_across_users() -> None:
 
 
 @pytest.mark.asyncio
+async def test_push_service_scopes_mixed_platform_events_to_actual_recipients() -> None:
+    db = MemoryAdapter()
+    device_manager = DeviceTokenManager(db)
+    await device_manager.register_device(
+        RegisterDeviceParams(userId="android-user", token="android-token", platform="android")
+    )
+    await device_manager.register_device(
+        RegisterDeviceParams(userId="ios-user", token="ios-token", platform="ios")
+    )
+    service = PushService(
+        providers={
+            "android": FakePushProvider("android-provider", "android"),
+            "ios": FakePushProvider("ios-provider", "ios"),
+        },
+        db=db,
+        device_manager=device_manager,
+    )
+
+    await service.send_push(
+        SendPushParams(userId=["android-user", "ios-user"], title="Hello", body="World")
+    )
+
+    notifications = {record["platform"]: record for record in get_records(db, "push_notifications")}
+    android_events = await EventTracker(db).query_events(
+        user_id="android-user", reference_type="push"
+    )
+    ios_events = await EventTracker(db).query_events(user_id="ios-user", reference_type="push")
+    assert notifications["android"]["metadata"]["recipientUserIds"] == ["android-user"]
+    assert notifications["ios"]["metadata"]["recipientUserIds"] == ["ios-user"]
+    assert [event.reference_id for event in android_events] == [notifications["android"]["id"]]
+    assert [event.reference_id for event in ios_events] == [notifications["ios"]["id"]]
+
+
+@pytest.mark.asyncio
 async def test_push_service_preserves_provider_success_when_event_persistence_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

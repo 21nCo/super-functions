@@ -151,6 +151,33 @@ describe('email address validation', () => {
   });
 
   it.each([
+    ['to', { to: ['safe@example.com', 'victim@example.com\r\nBcc: attacker@example.com'] }],
+    ['cc', { to: 'safe@example.com', cc: ['copy@example.com\nBcc: attacker@example.com'] }],
+    ['bcc', { to: 'safe@example.com', bcc: ['blind@example.com\rX-Injected: yes'] }],
+  ])('rejects control characters in edge %s recipients before provider dispatch', async (field, recipients) => {
+    let sendCalls = 0;
+    const client = createSendFn({
+      emailProvider: {
+        name: 'test',
+        capabilities: { supportsTemplates: false, supportsAttachments: true, supportsBulkSend: false, supportsScheduling: false, maxRecipientsPerEmail: 5, maxAttachmentSize: 1024 },
+        async initialize() {},
+        async sendEmail() { sendCalls += 1; return { success: true, messageId: 'must-not-send', timestamp: new Date() }; },
+        async sendBulkEmail() { return []; },
+        validateEmail: isBareEmail,
+        async isHealthy() { return true; },
+        async close() {},
+      },
+    });
+
+    await expect(client.email({
+      userId: 'user_1', subject: 'Hello', text: 'Body',
+      attachments: [{ filename: 'proof.txt', content: 'proof' }],
+      ...recipients,
+    })).rejects.toThrow(`Invalid ${field} recipient`);
+    expect(sendCalls).toBe(0);
+  });
+
+  it.each([
     [{ Bcc: 'attacker@example.com' }, 'Bcc'],
     [{ 'X-Safe': 'ok\r\nBcc: attacker@example.com' }, 'X-Safe'],
   ])('rejects unsafe edge custom headers before provider dispatch', async (headers, rejectedName) => {
