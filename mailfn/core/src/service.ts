@@ -2217,7 +2217,11 @@ export class MailFn {
     };
     await this.store.saveAbuseCase(abuseCase);
     await this.applyReputationSignal(abuseCase);
-    await this.event('abuse.reported', actor.projectId, { payload: { abuseCaseId: abuseCase.id, kind: abuseCase.kind } });
+    await this.event('abuse.reported', actor.projectId, {
+      payload: { abuseCaseId: abuseCase.id, kind: abuseCase.kind },
+    }).catch(() => this.systemAudit(actor.projectId, 'event.append_failed', 'abuse_case', abuseCase.id, {
+      eventType: 'abuse.reported',
+    }).catch(() => undefined));
     return abuseCase;
   }
 
@@ -2463,8 +2467,25 @@ export class MailFn {
 
   private async disableAbuseResource(actor: Actor, abuseCase: AbuseCase): Promise<void> {
     if (abuseCase.resourceType === 'inbox') {
-      const inbox = await this.requireInbox(actor.projectId, abuseCase.resourceId);
-      await this.store.saveInbox({ ...inbox, status: 'disabled', updatedAt: this.now() });
+      let inbox = await this.requireInbox(actor.projectId, abuseCase.resourceId);
+      for (let attempt = 0; inbox.status === 'active' && attempt < 10; attempt += 1) {
+        const disabled: Inbox = { ...inbox, status: 'disabled', updatedAt: this.now() };
+        if (await this.store.saveInboxIfUnchanged(disabled, inbox)) {
+          inbox = disabled;
+          break;
+        }
+        const latest = await this.store.getInbox(inbox.id);
+        if (!latest || latest.projectId !== actor.projectId) throw notFound('Inbox');
+        inbox = latest;
+        if (attempt === 9 && inbox.status === 'active') {
+          throw new MailFnError({
+            code: 'MAILFN_STORAGE_FAILED',
+            message: 'Inbox changed repeatedly during abuse enforcement',
+            status: 503,
+            retryable: true,
+          });
+        }
+      }
       for (const credential of await this.store.listCredentials(actor.projectId, inbox.id)) {
         if (credential.status === 'active') {
           await this.store.saveCredential({ ...credential, status: 'revoked', revokedAt: this.now() });

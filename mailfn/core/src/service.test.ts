@@ -2020,6 +2020,54 @@ describe('MailFn domain service', () => {
     });
   });
 
+  it('does not expose a committed abuse report as failed when its event cannot be stored', async () => {
+    const context = await setup({ store: new NoncriticalFailureStore() });
+    const created = await createInbox(context, 'abuse-event-failure');
+    const value = raw({ from: [{ address: 'event-failure@example.com' }] });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'abuse-event-failure',
+      envelopeFrom: 'event-failure@example.com',
+      envelopeTo: created.inbox.address,
+      raw: value,
+      rawSize: value.byteLength,
+    });
+
+    await expect(context.mailfn.reportAbuse(context.admin, {
+      kind: 'spam', resourceType: 'message', resourceId: message.id, reason: 'reported once',
+    })).resolves.toMatchObject({ status: 'open' });
+    await expect(context.mailfn.listAbuseCases(context.admin)).resolves.toHaveLength(1);
+    await expect(context.store.getSenderReputation(context.project.id, 'event-failure@example.com'))
+      .resolves.toMatchObject({ score: 70, complaintCount: 1 });
+    expect((await context.store.listAudits(context.project.id)).some((event) =>
+      event.action === 'event.append_failed'
+      && event.resourceType === 'abuse_case'
+      && event.metadata.eventType === 'abuse.reported'
+    )).toBe(true);
+  });
+
+  it('preserves terminal inbox state when abuse enforcement races expiration', async () => {
+    const store = new PausedInboxUpdateStore();
+    const context = await setup({ store });
+    const created = await createInbox(context, 'abuse-expiry-race');
+    const abuseCase = await context.mailfn.reportAbuse(context.admin, {
+      kind: 'spam', resourceType: 'inbox', resourceId: created.inbox.id, reason: 'reported',
+    });
+
+    const enforcement = context.mailfn.updateAbuseCase(context.admin, abuseCase.id, {
+      status: 'investigating', disableResource: true,
+    });
+    await store.started;
+    await store.saveInbox({
+      ...created.inbox,
+      status: 'expired',
+      updatedAt: '2026-08-10T00:00:01.000Z',
+    });
+    store.continueUpdate();
+
+    await expect(enforcement).resolves.toMatchObject({ status: 'investigating' });
+    await expect(store.getInbox(created.inbox.id)).resolves.toMatchObject({ status: 'expired' });
+  });
+
   it('rejects non-boolean abuse enforcement flags before changing the resource', async () => {
     const context = await setup();
     const created = await createInbox(context, 'abuse-boolean');
@@ -2143,7 +2191,7 @@ describe('MailFn domain service', () => {
     await expect(context.mailfn.updateAbuseCase(context.admin, abuseCase.id, {
       status: 'investigating', disableResource: true,
     })).resolves.toMatchObject({ status: 'investigating' });
-    expect((await context.store.getInbox(created.inbox.id))?.status).toBe('disabled');
+    expect((await context.store.getInbox(created.inbox.id))?.status).toBe('expired');
     const reputationInbox = await context.mailfn.createInbox(context.admin, {
       projectId: context.project.id, kind: 'stable', requestedLocalPart: 'reputation',
     });
