@@ -63,6 +63,33 @@ describe("@mdfn/core", () => {
     }));
   });
 
+  it("replays exact disjoint ranges when restoring large history entries", () => {
+    const markdown = `A${"x".repeat(600)}Z`;
+    const editor = createEditor({ markdown, projector });
+    const listener = vi.fn();
+    editor.subscribe(listener);
+    editor.dispatch(new Transaction()
+      .replaceSource(0, 1, "B")
+      .replaceSource(markdown.length - 1, markdown.length, "Y"));
+    listener.mockClear();
+
+    expect(editor.undo()).toBe(true);
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      changedRanges: [
+        { from: markdown.length - 1, to: markdown.length, insertedLength: 1 },
+        { from: 0, to: 1, insertedLength: 1 },
+      ],
+    }));
+    listener.mockClear();
+    expect(editor.redo()).toBe(true);
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      changedRanges: [
+        { from: 0, to: 1, insertedLength: 1 },
+        { from: markdown.length - 1, to: markdown.length, insertedLength: 1 },
+      ],
+    }));
+  });
+
   it("invalidates local history when a non-history collaboration change arrives", () => {
     const editor = createEditor({ markdown: "shared", projector });
     editor.dispatch(new Transaction().replaceSource(6, 6, " local"));

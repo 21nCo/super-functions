@@ -65,6 +65,12 @@ export function captureMarkdownInsertion(controller: EditorController, signal?: 
   let active = true;
   const unsubscribe = controller.subscribe((change) => {
     if (!active || change.changedRanges.length === 0) return;
+    if (change.source.startsWith("history:") && change.changedRanges.some((range) =>
+      range.from === 0 && range.to === change.previous.markdown.length && range.insertedLength === change.current.markdown.length
+    )) {
+      cancel();
+      return;
+    }
     const mapped = mapSelection(selection, change.changedRanges);
     if (mapped?.kind === "text") selection = mapped;
   });

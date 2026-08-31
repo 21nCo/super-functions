@@ -1,5 +1,6 @@
 import { applyTransaction, Transaction } from "./transaction";
 import type {
+  ChangedRange,
   EditorCommand,
   EditorListener,
   EditorProjector,
@@ -51,12 +52,25 @@ export function smallestSourceChange(previous: string, next: string): { from: nu
   return { from, to: previousTo, insert: next.slice(from, nextTo) };
 }
 
+interface HistoryEntry {
+  readonly state: EditorState;
+  readonly changedRanges: readonly ChangedRange[];
+}
+
+function invertChangedRanges(ranges: readonly ChangedRange[]): readonly ChangedRange[] {
+  return Object.freeze([...ranges].reverse().map((range) => Object.freeze({
+    from: range.from,
+    to: range.from + range.insertedLength,
+    insertedLength: range.to - range.from,
+  })));
+}
+
 export function createEditor(input: CreateEditorInput): EditorController {
   const extensions = resolveExtensions(input.extensions ?? []);
   let state = createEditorState({ markdown: input.markdown, projector: input.projector, schemaHash: extensions.schemaHash, selection: input.selection, sidecar: input.sidecar });
   const listeners = new Set<EditorListener>();
-  const undoStack: EditorState[] = [];
-  const redoStack: EditorState[] = [];
+  const undoStack: HistoryEntry[] = [];
+  const redoStack: HistoryEntry[] = [];
   const historyLimit = Math.max(1, input.historyLimit ?? 100);
   let savedRevision = { sourceHash: state.sourceHash, sidecar: JSON.stringify(state.sidecar) };
   let destroyed = false;
@@ -69,62 +83,14 @@ export function createEditor(input: CreateEditorInput): EditorController {
     for (const listener of [...listeners]) listener(change);
   };
 
-  const changedRanges = (previous: string, next: string): StateChange["changedRanges"] => {
-    if (previous === next) return [];
-    let prefix = 0;
-    while (prefix < previous.length && prefix < next.length && previous.charCodeAt(prefix) === next.charCodeAt(prefix)) prefix += 1;
-    let previousEnd = previous.length;
-    let nextEnd = next.length;
-    while (previousEnd > prefix && nextEnd > prefix && previous.charCodeAt(previousEnd - 1) === next.charCodeAt(nextEnd - 1)) {
-      previousEnd -= 1;
-      nextEnd -= 1;
-    }
-    const before = previous.slice(prefix, previousEnd);
-    const after = next.slice(prefix, nextEnd);
-    if (before.length * after.length > 250_000) return [{ from: prefix, to: previousEnd, insertedLength: after.length }];
-    const width = after.length + 1;
-    const lcs = new Uint32Array((before.length + 1) * width);
-    for (let left = before.length - 1; left >= 0; left -= 1) {
-      for (let right = after.length - 1; right >= 0; right -= 1) {
-        const index = left * width + right;
-        lcs[index] = before.charCodeAt(left) === after.charCodeAt(right)
-          ? lcs[(left + 1) * width + right + 1] + 1
-          : Math.max(lcs[(left + 1) * width + right], lcs[index + 1]);
-      }
-    }
-    const ranges: Array<{ from: number; to: number; insertedLength: number }> = [];
-    let left = 0;
-    let right = 0;
-    let position = prefix;
-    while (left < before.length || right < after.length) {
-      if (left < before.length && right < after.length && before.charCodeAt(left) === after.charCodeAt(right)) {
-        left += 1; right += 1; position += 1; continue;
-      }
-      const from = position;
-      let removed = 0;
-      let insertedLength = 0;
-      while (left < before.length || right < after.length) {
-        if (left < before.length && right < after.length && before.charCodeAt(left) === after.charCodeAt(right)) break;
-        if (right < after.length && (left === before.length || lcs[left * width + right + 1] >= lcs[(left + 1) * width + right])) {
-          right += 1; insertedLength += 1;
-        } else {
-          left += 1; removed += 1;
-        }
-      }
-      ranges.push({ from, to: from + removed, insertedLength });
-      position += insertedLength;
-    }
-    return ranges;
-  };
-
-  const restore = (next: EditorState, source: string): boolean => {
+  const restore = (next: EditorState, source: string, changedRanges: readonly ChangedRange[]): boolean => {
     const previous = state;
     const dirty = next.sourceHash !== savedRevision.sourceHash || JSON.stringify(next.sidecar) !== savedRevision.sidecar;
     state = Object.freeze({ ...next, dirty, version: previous.version + 1 });
     notify({
       previous,
       current: state,
-      changedRanges: changedRanges(previous.markdown, state.markdown),
+      changedRanges,
       documentChanged: previous.markdown !== state.markdown,
       selectionChanged: previous.selection !== state.selection,
       sidecarChanged: previous.sidecar !== state.sidecar,
@@ -150,7 +116,7 @@ export function createEditor(input: CreateEditorInput): EditorController {
       if (change.current !== state) {
         if (change.documentChanged || change.sidecarChanged) {
           if (transaction.metadata.addToHistory !== false) {
-            undoStack.push(state);
+            undoStack.push({ state, changedRanges: invertChangedRanges(change.changedRanges) });
             if (undoStack.length > historyLimit) undoStack.shift();
             redoStack.length = 0;
           } else {
@@ -195,15 +161,15 @@ export function createEditor(input: CreateEditorInput): EditorController {
       assertAlive();
       const previous = undoStack.pop();
       if (!previous) return false;
-      redoStack.push(state);
-      return restore(previous, "history:undo");
+      redoStack.push({ state, changedRanges: invertChangedRanges(previous.changedRanges) });
+      return restore(previous.state, "history:undo", previous.changedRanges);
     },
     redo() {
       assertAlive();
       const next = redoStack.pop();
       if (!next) return false;
-      undoStack.push(state);
-      return restore(next, "history:redo");
+      undoStack.push({ state, changedRanges: invertChangedRanges(next.changedRanges) });
+      return restore(next.state, "history:redo", next.changedRanges);
     },
     markSaved() {
       assertAlive();

@@ -99,7 +99,24 @@ export function createSourceEditor(options: SourceEditorOptions): SourceEditor {
       }
       const main = update.view.state.selection.main;
       transaction = transaction.setSelection({ kind: "text", anchor: main.anchor, head: main.head });
-      options.controller.dispatch(transaction);
+      try {
+        options.controller.dispatch(transaction);
+      } catch {
+        const canonical = options.controller.getState();
+        const current = update.view.state.doc.toString();
+        const selection = canonical.selection?.kind === "text"
+          ? {
+              anchor: Math.min(canonical.selection.anchor, canonical.markdown.length),
+              head: Math.min(canonical.selection.head, canonical.markdown.length),
+            }
+          : undefined;
+        syncing = true;
+        update.view.dispatch({
+          changes: { from: 0, to: current.length, insert: canonical.markdown },
+          ...(selection ? { selection } : {}),
+        });
+        syncing = false;
+      }
     }),
   ];
   const controllerSelection = options.controller.getState().selection;

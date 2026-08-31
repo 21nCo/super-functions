@@ -56,6 +56,25 @@ describe("@mdfn/source", () => {
     editor.destroy();
   });
 
+  it("rolls CodeMirror back to canonical state when a source edit is rejected", () => {
+    const controller = createEditor({
+      markdown: "1234",
+      projector: createMarkdownProjector({ maxBytes: 4 }),
+      selection: { kind: "text", anchor: 4, head: 4 },
+    });
+    const editor = createSourceEditor({ target: document.createElement("div"), controller });
+
+    editor.view.dispatch({ changes: { from: 4, insert: "5" }, selection: { anchor: 5 } });
+    expect(controller.getState().markdown).toBe("1234");
+    expect(editor.view.state.doc.toString()).toBe("1234");
+    expect(editor.view.state.selection.main).toMatchObject({ anchor: 4, head: 4 });
+
+    editor.view.dispatch({ changes: { from: 3, to: 4, insert: "x" } });
+    expect(controller.getState().markdown).toBe("123x");
+    expect(editor.view.state.doc.toString()).toBe("123x");
+    editor.destroy();
+  });
+
   it("provides deterministic mode state", () => {
     const modes = createModeController();
     modes.setMode("split");

@@ -110,4 +110,37 @@ describe("toolbar model", () => {
     insertion.insert("asset");
     expect(controller.getState().markdown).toBe("A asset Z");
   });
+
+  it("preserves pending interior selections across large disjoint history changes", () => {
+    const middle = "x".repeat(600);
+    const controller = createEditor({
+      markdown: `A${middle}Z`,
+      projector: createMarkdownProjector(),
+      selection: { kind: "text", anchor: 301, head: 302 },
+    });
+    controller.dispatch(new Transaction()
+      .replaceSource(0, 1, "B")
+      .replaceSource(middle.length + 1, middle.length + 2, "Y"));
+    const insertion = captureMarkdownInsertion(controller);
+
+    expect(controller.undo()).toBe(true);
+    insertion.insert("asset");
+
+    expect(controller.getState().markdown).toBe(`A${middle.slice(0, 300)}asset${middle.slice(301)}Z`);
+  });
+
+  it("cancels a pending insertion when history replaces the whole document", () => {
+    const controller = createEditor({
+      markdown: "before",
+      projector: createMarkdownProjector(),
+      selection: { kind: "text", anchor: 3, head: 3 },
+    });
+    controller.dispatch(new Transaction().replaceSource(0, 6, "after"));
+    const insertion = captureMarkdownInsertion(controller);
+
+    expect(controller.undo()).toBe(true);
+    insertion.insert("asset");
+
+    expect(controller.getState().markdown).toBe("before");
+  });
 });
