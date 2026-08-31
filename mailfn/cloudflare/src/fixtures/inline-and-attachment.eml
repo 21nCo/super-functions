@@ -1,0 +1,26 @@
+From: Sender <sender@example.com>
+To: target@inbound.example.com
+Reply-To: Support <support@example.com>
+Subject: Inline and attachment
+Message-ID: <attachments@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary="related"
+
+--related
+Content-Type: text/html; charset=utf-8
+
+<p>Logo <img src="cid:logo@example.com"></p>
+--related
+Content-Type: image/png; name="logo.png"
+Content-Disposition: inline; filename="logo.png"
+Content-ID: <logo@example.com>
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgo=
+--related
+Content-Type: application/octet-stream; name="proof.bin"
+Content-Disposition: attachment; filename="proof.bin"
+Content-Transfer-Encoding: base64
+
+AAECAwQ=
+--related--

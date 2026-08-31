@@ -1,0 +1,816 @@
+/// <reference types="@cloudflare/vitest-pool-workers" />
+
+import {
+  createExecutionContext,
+  createMessageBatch,
+  env,
+  getQueueResult,
+  SELF,
+} from 'cloudflare:test';
+import { beforeEach, describe, expect, it } from 'vitest';
+
+import type { Attachment, AuditEvent, ComplianceProfile, MailDomain, Message, ParseJob, Thread, Webhook, WebhookDeliveryJob } from '@mailfn/core';
+import type { D1Database, Queue, R2Bucket } from './bindings.js';
+import { D1MailFnStore } from './d1-store.js';
+import { applyMailFnMigrations } from './migrations.js';
+import { createCloudflareMailFn, createMailFnCloudflareHandlers, deriveCloudflareDeliveryId, type MailFnCloudflareEnv } from './worker.js';
+import { D1WebhookReplayStore } from './webhook.js';
+
+declare module 'cloudflare:test' {
+  interface ProvidedEnv extends MailFnCloudflareEnv {
+    MAILFN_DB: D1Database;
+    MAILFN_OBJECTS: R2Bucket;
+    MAILFN_PARSE_QUEUE: Queue<ParseJob>;
+    MAILFN_WEBHOOK_QUEUE: Queue<WebhookDeliveryJob>;
+    MAILFN_DOMAIN: string;
+    MAILFN_SECRET_KEY: string;
+  }
+}
+
+beforeEach(async () => {
+  await applyMailFnMigrations(env.MAILFN_DB);
+});
+
+describe('MailFn in workerd', () => {
+  it('upgrades schema-v1 duplicate domains without blocking Worker startup', async () => {
+    await env.MAILFN_DB.prepare('DROP TABLE IF EXISTS mailfn_domain_conflicts').run();
+    await env.MAILFN_DB.prepare('DROP TABLE mailfn_domains').run();
+    await env.MAILFN_DB.prepare(`CREATE TABLE mailfn_domains (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, domain TEXT NOT NULL, status TEXT NOT NULL,
+      verification_token TEXT NOT NULL, verified_at TEXT, created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL, data_json TEXT NOT NULL, UNIQUE(project_id, domain)
+    )`).run();
+    await env.MAILFN_DB.prepare('DELETE FROM mailfn_schema_migrations').run();
+    await env.MAILFN_DB.prepare(
+      'INSERT INTO mailfn_schema_migrations(version, applied_at) VALUES (1, ?)',
+    ).bind('2026-08-29T00:00:00.000Z').run();
+    for (const entry of [
+      { id: 'dom_owner', projectId: 'prj_1', createdAt: '2026-08-29T00:00:00.000Z' },
+      { id: 'dom_conflict', projectId: 'prj_2', createdAt: '2026-08-30T00:00:00.000Z' },
+    ]) {
+      await env.MAILFN_DB.prepare(`INSERT INTO mailfn_domains(
+        id, project_id, domain, status, verification_token, created_at, updated_at, data_json
+      ) VALUES (?, ?, ?, 'active', 'verify', ?, ?, ?)`)
+        .bind(entry.id, entry.projectId, 'shared.example.com', entry.createdAt, entry.createdAt, JSON.stringify(entry))
+        .run();
+    }
+    for (const projectId of ['prj_1', 'prj_2']) {
+      await env.MAILFN_DB.prepare(`INSERT OR REPLACE INTO mailfn_projects(
+        id, slug, display_name, status, default_retention_policy, data_region, created_at, updated_at, data_json
+      ) VALUES (?, ?, ?, 'active', '{}', 'global', ?, ?, '{}')`)
+        .bind(projectId, projectId, projectId, '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z')
+        .run();
+    }
+    for (const inbox of [
+      { id: 'inb_owner', projectId: 'prj_1', address: 'owner@shared.example.com' },
+      { id: 'inb_conflict', projectId: 'prj_2', address: 'conflict@shared.example.com' },
+    ]) {
+      await env.MAILFN_DB.prepare(`INSERT OR REPLACE INTO mailfn_inboxes(
+        id, project_id, address, kind, status, created_at, updated_at, data_json
+      ) VALUES (?, ?, ?, 'stable', 'active', ?, ?, ?)`)
+        .bind(
+          inbox.id,
+          inbox.projectId,
+          inbox.address,
+          '2026-08-29T00:00:00.000Z',
+          '2026-08-29T00:00:00.000Z',
+          JSON.stringify({ ...inbox, kind: 'stable', status: 'active' }),
+        )
+        .run();
+    }
+    await env.MAILFN_DB.prepare(`INSERT OR REPLACE INTO mailfn_credentials(
+      id, project_id, inbox_id, token_hash, token_prefix, permissions, status, created_at, data_json
+    ) VALUES ('cred_conflict', 'prj_2', 'inb_conflict', 'hash', 'prefix', '["message:read"]', 'active', ?, ?)`)
+      .bind(
+        '2026-08-29T00:00:00.000Z',
+        JSON.stringify({ id: 'cred_conflict', projectId: 'prj_2', inboxId: 'inb_conflict', status: 'active' }),
+      )
+      .run();
+
+    await expect(applyMailFnMigrations(env.MAILFN_DB)).resolves.toBeUndefined();
+    const domains = await env.MAILFN_DB.prepare(
+      'SELECT id FROM mailfn_domains WHERE domain = ? ORDER BY id',
+    ).bind('shared.example.com').all<{ id: string }>();
+    expect(domains.results).toEqual([{ id: 'dom_owner' }]);
+    await expect(env.MAILFN_DB.prepare(
+      'SELECT resolved_owner_domain_id FROM mailfn_domain_conflicts WHERE domain_id = ?',
+    ).bind('dom_conflict').first()).resolves.toEqual({ resolved_owner_domain_id: 'dom_owner' });
+    await expect(env.MAILFN_DB.prepare(
+      'SELECT version FROM mailfn_schema_migrations WHERE version = 5',
+    ).first()).resolves.toEqual({ version: 5 });
+    await expect(env.MAILFN_DB.prepare(
+      'SELECT id, status FROM mailfn_inboxes WHERE id IN (?, ?) ORDER BY id',
+    ).bind('inb_owner', 'inb_conflict').all()).resolves.toMatchObject({
+      results: [
+        { id: 'inb_conflict', status: 'deleting' },
+        { id: 'inb_owner', status: 'active' },
+      ],
+    });
+    await expect(env.MAILFN_DB.prepare(
+      'SELECT status, revoked_at FROM mailfn_credentials WHERE id = ?',
+    ).bind('cred_conflict').first()).resolves.toMatchObject({ status: 'revoked', revoked_at: expect.any(String) });
+
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const message = (id: string, projectId: string, inboxId: string, envelopeTo: string): Message => ({
+      id, projectId, inboxId, providerDeliveryId: id, envelopeFrom: 'sender@example.com', envelopeTo,
+      from: [{ address: 'sender@example.com' }], to: [{ address: envelopeTo }], cc: [], bcc: [], replyTo: [],
+      subject: 'Migration delivery', receivedAt: '2026-08-30T00:00:00.000Z', headers: {}, rawObjectKey: `raw/${id}`,
+      rawRetentionExpiresAt: '2026-09-01T00:00:00.000Z', attachmentRetentionExpiresAt: '2026-09-01T00:00:00.000Z',
+      references: [], authenticationResults: {}, sizeBytes: 1, status: 'pending', labels: [],
+      retentionExpiresAt: '2026-09-01T00:00:00.000Z', createdAt: '2026-08-30T00:00:00.000Z', updatedAt: '2026-08-30T00:00:00.000Z',
+    });
+    await expect(store.createInboundMessageIfInboxActive(message(
+      'msg_owner', 'prj_1', 'inb_owner', 'owner@shared.example.com',
+    ))).resolves.toBe(true);
+    await expect(store.createInboundMessageIfInboxActive(message(
+      'msg_conflict', 'prj_2', 'inb_conflict', 'conflict@shared.example.com',
+    ))).resolves.toBe(false);
+  });
+
+  it('upgrades populated schema-v2 thread duplicates before adding subject uniqueness', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'thread-v2-upgrade', displayName: 'Thread v2 Upgrade' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const created = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'expiring', requestedLocalPart: 'thread-v2', expirySeconds: 3_600,
+    });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    await env.MAILFN_DB.prepare('DROP INDEX IF EXISTS mailfn_threads_subject').run();
+    const thread = (
+      id: string,
+      createdAt: string,
+      messageId: string,
+      participants = [`${id}@example.com`],
+      labels = [id],
+    ): Thread => ({
+      id,
+      projectId: bootstrap.project.id,
+      inboxId: created.inbox.id,
+      normalizedSubject: 'duplicate subject',
+      messageIds: [messageId],
+      participants,
+      labels,
+      lastMessageAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    const winner = thread('thr_winner', '2026-08-29T00:00:00.000Z', 'msg_winner');
+    const losing = thread('thr_losing', '2026-08-30T00:00:00.000Z', 'msg_losing');
+    await store.saveThread(winner);
+    await store.saveThread(losing);
+    const message = (id: string, threadId: string, receivedAt: string): Message => ({
+      id, projectId: bootstrap.project.id, inboxId: created.inbox.id, providerDeliveryId: id,
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      from: [{ address: 'sender@example.com' }], to: [{ address: created.inbox.address }], cc: [], bcc: [], replyTo: [],
+      subject: 'Duplicate Subject', receivedAt, parsedAt: receivedAt, headers: {}, rawObjectKey: `raw/${id}`,
+      rawRetentionExpiresAt: '2026-09-01T00:00:00.000Z', attachmentRetentionExpiresAt: '2026-09-01T00:00:00.000Z',
+      references: [], authenticationResults: {}, sizeBytes: 1, status: 'ready', labels: [], threadId,
+      retentionExpiresAt: '2026-09-01T00:00:00.000Z', createdAt: receivedAt, updatedAt: receivedAt,
+    });
+    await store.saveMessage(message('msg_winner', winner.id, winner.createdAt));
+    await store.saveMessage(message('msg_losing', losing.id, losing.createdAt));
+    const draft = await mailfn.createDraft(admin, {
+      inboxId: created.inbox.id, threadId: losing.id, to: ['recipient@example.com'], subject: 'Draft', text: 'body',
+    });
+    await env.MAILFN_DB.prepare('DELETE FROM mailfn_schema_migrations').run();
+    await env.MAILFN_DB.prepare(
+      'INSERT INTO mailfn_schema_migrations(version, applied_at) VALUES (2, ?)',
+    ).bind('2026-08-30T00:00:00.000Z').run();
+
+    await expect(applyMailFnMigrations(env.MAILFN_DB)).resolves.toBeUndefined();
+    await expect(store.listThreads(bootstrap.project.id, created.inbox.id)).resolves.toMatchObject([{
+      id: winner.id,
+      messageIds: ['msg_winner', 'msg_losing'],
+      participants: ['thr_losing@example.com', 'thr_winner@example.com'],
+      labels: ['thr_losing', 'thr_winner'],
+    }]);
+    await expect(store.getMessage('msg_winner')).resolves.toMatchObject({ threadId: winner.id });
+    await expect(store.getMessage('msg_losing')).resolves.toMatchObject({ threadId: winner.id });
+    await expect(store.getDraft(draft.id)).resolves.toMatchObject({ threadId: winner.id });
+    await expect(store.saveThread(thread(
+      'thr_duplicate', '2026-08-31T00:00:00.000Z', 'msg_duplicate',
+    ))).rejects.toBeDefined();
+  });
+
+  it('runs the Worker fetch surface with real workerd bindings', async () => {
+    const response = await SELF.fetch('https://mailfn.test/health');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ ok: true, data: { status: 'ok' } });
+  });
+
+  it('invokes Email and Queue handlers against real D1 and R2 storage', async () => {
+    const jobs: ParseJob[] = [];
+    const testEnv: MailFnCloudflareEnv = {
+      ...env,
+      MAILFN_PARSE_QUEUE: { async send(job) { jobs.push(job); } },
+    };
+    const mailfn = await createCloudflareMailFn(testEnv, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'workerd', displayName: 'Workerd' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const created = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id,
+      kind: 'expiring',
+      requestedLocalPart: 'runtime',
+      expirySeconds: 3_600,
+      idempotencyKey: 'workerd:runtime',
+    });
+    const raw = [
+      'From: Sender <sender@example.com>',
+      `To: ${created.inbox.address}`,
+      'Subject: Runtime verification 481516',
+      'Message-ID: <workerd-delivery@example.com>',
+      'MIME-Version: 1.0',
+      'Content-Type: multipart/mixed; boundary="mailfn-boundary"',
+      '',
+      '--mailfn-boundary',
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      'Your code is 481516',
+      '--mailfn-boundary',
+      'Content-Type: text/plain; name="proof.txt"',
+      'Content-Disposition: attachment; filename="proof.txt"',
+      'Content-Transfer-Encoding: base64',
+      '',
+      'ZXZpZGVuY2U=',
+      '--mailfn-boundary--',
+      '',
+    ].join('\r\n');
+    let rejected: string | undefined;
+    await createMailFnCloudflareHandlers({ migrate: false }).email({
+      from: 'sender@example.com',
+      to: created.inbox.address,
+      headers: new Headers({ 'message-id': '<workerd-delivery@example.com>', subject: 'Runtime verification 481516' }),
+      raw: new Blob([raw]).stream(),
+      rawSize: new TextEncoder().encode(raw).byteLength,
+      setReject(reason) { rejected = reason; },
+    }, testEnv, { waitUntil() {} });
+    expect(rejected).toBeUndefined();
+    expect(jobs).toHaveLength(1);
+
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    expect(await store.listAudits(bootstrap.project.id)).toContainEqual(expect.objectContaining({
+      action: 'project.created', resourceId: bootstrap.project.id,
+    }));
+    const pending = await store.getMessageByDelivery(
+      created.inbox.id,
+      await deriveCloudflareDeliveryId('sender@example.com', created.inbox.address, new TextEncoder().encode(raw)),
+    );
+    expect(pending).toMatchObject({ status: 'pending' });
+    expect(await env.MAILFN_OBJECTS.get(pending!.rawObjectKey)).not.toBeNull();
+
+    const batch = createMessageBatch('mailfn-parse', [{
+      id: 'queue-message-1',
+      timestamp: new Date(),
+      body: jobs[0]!,
+      attempts: 1,
+    }]);
+    const ctx = createExecutionContext();
+    await createMailFnCloudflareHandlers({ migrate: false }).queue(batch as never, env, ctx as never);
+    expect((await getQueueResult(batch, ctx)).explicitAcks).toContain('queue-message-1');
+    const parsed = await store.getMessage(pending!.id);
+    expect(parsed).toMatchObject({ status: 'ready', subject: 'Runtime verification 481516' });
+    expect(await store.listAttachments(pending!.id)).toMatchObject([{ filename: 'proof.txt', sizeBytes: 8 }]);
+    await Promise.all([
+      store.markMessageRead(pending!.id, '2026-08-10T00:00:02.000Z'),
+      store.setMessageLabels(pending!.id, ['important'], '2026-08-10T00:00:02.000Z'),
+    ]);
+    expect(await store.getMessage(pending!.id)).toMatchObject({
+      readAt: '2026-08-10T00:00:02.000Z', labels: ['important'],
+    });
+    const [thread] = await store.listThreads(bootstrap.project.id, created.inbox.id);
+    expect(thread?.messageIds).toEqual([pending!.id]);
+    await expect(store.deleteMessageWithThread(pending!.id, thread!, null)).resolves.toBe(true);
+    await expect(store.getMessage(pending!.id)).resolves.toBeNull();
+    await expect(store.getThread(thread!.id)).resolves.toBeNull();
+  });
+
+  it('atomically blocks inbound message creation once an inbox is quiesced', async () => {
+    const testEnv: MailFnCloudflareEnv = { ...env, MAILFN_PARSE_QUEUE: { async send() {} } };
+    const mailfn = await createCloudflareMailFn(testEnv, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'quiesce-workerd', displayName: 'Quiesce Workerd' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const created = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'expiring', requestedLocalPart: 'quiesce', expirySeconds: 3_600,
+    });
+    const body = new TextEncoder().encode('Subject: quiesce\r\n\r\nbody');
+    const accepted = await mailfn.receiveInbound({
+      providerDeliveryId: 'quiesce-accepted', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: body, rawSize: body.byteLength,
+    });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    await store.saveInbox({ ...created.inbox, status: 'deleting', updatedAt: new Date().toISOString() });
+    await expect(store.createInboundMessageIfInboxActive({
+      ...accepted,
+      id: 'msg_quiesce_blocked',
+      providerDeliveryId: 'quiesce-blocked',
+      rawObjectKey: 'blocked/raw.eml',
+    })).resolves.toBe(false);
+    await expect(store.getMessage('msg_quiesce_blocked')).resolves.toBeNull();
+  });
+
+  it('atomically arbitrates parse commits against message deletion claims', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'parse-delete-cas', displayName: 'Parse Delete CAS' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const created = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'stable', requestedLocalPart: 'parse-delete-cas',
+    });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const pending: Message = {
+      id: 'msg_parse_delete_cas', projectId: bootstrap.project.id, inboxId: created.inbox.id,
+      providerDeliveryId: 'delivery_parse_delete_cas', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      from: [{ address: 'sender@example.com' }], to: [{ address: created.inbox.address }], cc: [], bcc: [], replyTo: [],
+      subject: 'CAS', receivedAt: '2026-08-31T00:00:00.000Z', headers: {}, rawObjectKey: 'raw/cas',
+      rawRetentionExpiresAt: '2026-09-01T00:00:00.000Z', attachmentRetentionExpiresAt: '2026-09-01T00:00:00.000Z',
+      references: [], authenticationResults: {}, sizeBytes: 1, status: 'pending', labels: [],
+      retentionExpiresAt: '2026-09-01T00:00:00.000Z', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z',
+    };
+    await store.saveMessage(pending);
+    await expect(store.claimMessageForParsing(
+      pending.id, '2026-08-31T00:00:01.000Z', '2026-08-31T00:05:01.000Z', 'parse-owner-1',
+    )).resolves.toBe(true);
+    const parsing = (await store.getMessage(pending.id))!;
+    const attachment: Attachment = {
+      id: 'att_parse_delete_cas', projectId: bootstrap.project.id, inboxId: created.inbox.id,
+      messageId: pending.id, filename: 'owned.txt', contentType: 'text/plain', sizeBytes: 1,
+      objectKey: 'attachments/parse-owner-1', sha256: 'hash', createdAt: '2026-08-31T00:00:01.000Z',
+      storageReservationId: 'att_parse_delete_cas:parse-owner-1',
+    };
+    await expect(store.reserveStorage({
+      id: attachment.storageReservationId!, projectId: bootstrap.project.id, bytes: 1,
+      createdAt: '2026-08-31T00:00:01.000Z',
+    }, 10)).resolves.toBe('created');
+    await expect(store.claimStorage(attachment.storageReservationId!, '2026-08-31T00:00:01.000Z')).resolves.toBe(true);
+    await expect(store.saveAttachmentIfMessageParseOwned(attachment, 'wrong-owner')).resolves.toBe(false);
+    await expect(store.saveAttachmentIfMessageParseOwned(attachment, 'parse-owner-1')).resolves.toBe(true);
+    await store.releaseStorageClaim(attachment.storageReservationId!);
+    await expect(store.releaseOrphanedStorageReservations(
+      bootstrap.project.id, '2026-08-31T00:20:00.000Z', '2026-08-31T00:10:00.000Z',
+    )).resolves.toBe(0);
+    await expect(store.deleteAttachmentIfUnchanged(attachment.id, 'attachments/wrong-owner')).resolves.toBe(false);
+    await expect(store.getAttachment(attachment.id)).resolves.toMatchObject({ objectKey: attachment.objectKey });
+    const ready: Message = {
+      ...parsing, status: 'ready', parsedAt: '2026-08-31T00:00:02.000Z', parseLeaseId: undefined,
+      parseLeaseExpiresAt: undefined,
+      updatedAt: '2026-08-31T00:00:02.000Z',
+    };
+
+    await expect(store.saveMessageIfUnchanged(ready, pending)).resolves.toBe(false);
+    await expect(store.saveMessageIfUnchanged(ready, parsing)).resolves.toBe(true);
+    await expect(store.claimMessageRawDeletion(
+      pending.id, 'raw-owner-1', '2026-08-31T00:00:03.000Z', '2026-08-31T00:05:03.000Z',
+    )).resolves.toBe(true);
+    await expect(store.claimMessageForParsing(
+      pending.id, '2026-08-31T00:00:04.000Z', '2026-08-31T00:05:04.000Z', 'parse-owner-2',
+    )).resolves.toBe(false);
+    await expect(store.finishMessageRawDeletion(
+      pending.id, 'raw-owner-1', '2026-08-31T00:00:04.000Z',
+    )).resolves.toBe(true);
+    const retained = (await store.getMessage(pending.id))!;
+    expect(retained).toMatchObject({ status: 'ready', rawDeletedAt: '2026-08-31T00:00:04.000Z' });
+    const deleted: Message = { ...retained, status: 'deleted', updatedAt: '2026-08-31T00:00:05.000Z' };
+    await expect(store.claimMessageDeletion(deleted, parsing)).resolves.toBe(false);
+    await expect(store.claimMessageDeletion(deleted, retained)).resolves.toBe(true);
+    await expect(store.saveMessageIfUnchanged(ready, ready)).resolves.toBe(false);
+    await expect(store.getMessage(pending.id)).resolves.toMatchObject({ status: 'deleted' });
+  });
+
+  it('orders D1 thread activity by timestamp instant', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'thread-instant-order', displayName: 'Thread Instant Order' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const created = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'stable', requestedLocalPart: 'thread-instant-order',
+    });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const thread = (id: string, lastMessageAt: string): Thread => ({
+      id, projectId: bootstrap.project.id, inboxId: created.inbox.id, normalizedSubject: id,
+      messageIds: [], participants: [], labels: [], lastMessageAt, createdAt: lastMessageAt, updatedAt: lastMessageAt,
+    });
+    await store.saveThread(thread('thread-offset-earlier', '2026-08-10T01:00:00+02:00'));
+    await store.saveThread(thread('thread-offset-later', '2026-08-10T00:30:00Z'));
+
+    await expect(store.listThreads(bootstrap.project.id, created.inbox.id)).resolves.toMatchObject([
+      { id: 'thread-offset-later' }, { id: 'thread-offset-earlier' },
+    ]);
+  });
+
+  it('deduplicates Message-ID-less retries and preserves distinct mail that reuses Message-ID', async () => {
+    const testEnv: MailFnCloudflareEnv = {
+      ...env,
+      MAILFN_PARSE_QUEUE: { async send() {} },
+    };
+    const mailfn = await createCloudflareMailFn(testEnv, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'delivery-identity-workerd', displayName: 'Delivery Identity' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const created = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'expiring', requestedLocalPart: 'delivery-identity', expirySeconds: 3_600,
+    });
+    const handler = createMailFnCloudflareHandlers({ migrate: false });
+    const deliver = async (raw: string, messageId?: string) => handler.email({
+      from: 'sender@example.com',
+      to: created.inbox.address,
+      headers: new Headers(messageId ? { 'message-id': messageId } : {}),
+      raw: new Blob([raw]).stream(),
+      rawSize: new TextEncoder().encode(raw).byteLength,
+      setReject(reason) { throw new Error(`Unexpected rejection: ${reason}`); },
+    }, testEnv, { waitUntil() {} });
+
+    const withoutMessageId = 'From: sender@example.com\r\nSubject: retry\r\n\r\nsame evidence';
+    await deliver(withoutMessageId);
+    await deliver(withoutMessageId);
+    expect(await new D1MailFnStore(env.MAILFN_DB).listMessages(bootstrap.project.id, created.inbox.id)).toHaveLength(1);
+
+    await deliver('Message-ID: <shared@example.com>\r\nSubject: first\r\n\r\nfirst body', '<shared@example.com>');
+    await deliver('Message-ID: <shared@example.com>\r\nSubject: second\r\n\r\nsecond body', '<shared@example.com>');
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    expect(await store.listMessages(bootstrap.project.id, created.inbox.id)).toHaveLength(3);
+    const firstPage = await store.listMessagesPage(bootstrap.project.id, created.inbox.id, {}, undefined, 2);
+    const secondPage = await store.listMessagesPage(
+      bootstrap.project.id, created.inbox.id, {}, firstPage.items.at(-1)!.id, 2,
+    );
+    expect(firstPage).toMatchObject({ hasMore: true, cursorFound: true, items: expect.any(Array) });
+    expect(secondPage).toMatchObject({ hasMore: false, cursorFound: true, items: [expect.any(Object)] });
+  });
+
+  it('uses D1 batch atomicity for concurrent idempotent inbox creation', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'atomic-workerd', displayName: 'Atomic Workerd' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const input = {
+      projectId: bootstrap.project.id,
+      kind: 'expiring' as const,
+      requestedLocalPart: 'atomic',
+      expirySeconds: 3_600,
+      idempotencyKey: 'workerd:atomic',
+    };
+    const results = await Promise.all([mailfn.createInbox(admin, input), mailfn.createInbox(admin, input)]);
+    expect(results[0].inbox.id).toBe(results[1].inbox.id);
+    expect(await new D1MailFnStore(env.MAILFN_DB).listInboxes(bootstrap.project.id)).toHaveLength(1);
+  });
+
+  it('enforces the active-inbox quota atomically in D1', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({
+      slug: 'inbox-quota-workerd',
+      displayName: 'Inbox Quota Workerd',
+      quota: { maxActiveInboxes: 1 },
+    });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const results = await Promise.allSettled(['quota-inbox-a', 'quota-inbox-b'].map((requestedLocalPart) => mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id,
+      kind: 'expiring',
+      requestedLocalPart,
+      expirySeconds: 3_600,
+    })));
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toMatchObject([{
+      reason: { code: 'MAILFN_QUOTA_EXCEEDED' },
+    }]);
+    expect(await new D1MailFnStore(env.MAILFN_DB).listInboxes(bootstrap.project.id)).toHaveLength(1);
+  });
+
+  it('enforces the domain quota atomically in D1', async () => {
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const now = '2026-08-30T00:00:00.000Z';
+    const domain = (id: string): MailDomain => ({
+      id,
+      projectId: 'project-domain-quota',
+      domain: `${id}.example.test`,
+      status: 'pending',
+      verificationToken: `verify-${id}`,
+      expectedRecords: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const results = await Promise.all([
+      store.createDomainWithQuota(domain('domain-a'), 1),
+      store.createDomainWithQuota(domain('domain-b'), 1),
+    ]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(await store.listDomains('project-domain-quota')).toHaveLength(1);
+  });
+
+  it('enforces the active-webhook quota atomically in D1', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'webhook-quota-workerd', displayName: 'Webhook Quota Workerd' });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const now = new Date().toISOString();
+    const webhook = (id: string): Webhook => ({
+      id, projectId: bootstrap.project.id, url: `https://${id}.example.test/hook`, eventTypes: ['message.received'],
+      secretHash: `hash-${id}`, status: 'active', consecutiveFailures: 0, createdAt: now, updatedAt: now,
+    });
+    const results = await Promise.all([
+      store.createWebhookWithQuota(webhook('whk_one'), 1),
+      store.createWebhookWithQuota(webhook('whk_two'), 1),
+    ]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(await store.listWebhooks(bootstrap.project.id)).toHaveLength(1);
+  });
+
+  it('commits webhook audits and serializes retention locks with deletion in D1', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({
+      slug: 'atomic-boundaries-workerd', displayName: 'Atomic Boundaries Workerd',
+    });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const first = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'stable', requestedLocalPart: 'atomic-first',
+    });
+    const second = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'stable', requestedLocalPart: 'atomic-second',
+    });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const now = new Date().toISOString();
+    const webhook = {
+      id: 'whk_atomic_workerd', projectId: bootstrap.project.id, url: 'https://example.test/hook',
+      eventTypes: ['message.received'], secretHash: 'hash', status: 'active', consecutiveFailures: 0,
+      createdAt: now, updatedAt: now,
+    } satisfies Webhook;
+    const audit = {
+      id: 'aud_atomic_workerd', projectId: bootstrap.project.id, actorType: 'admin', actorId: admin.actorId,
+      action: 'webhook.created', resourceType: 'webhook', resourceId: webhook.id, metadata: {},
+      createdAt: now, retentionExpiresAt: new Date(Date.parse(now) + 86_400_000).toISOString(),
+    } satisfies AuditEvent;
+
+    await expect(store.createWebhookWithQuotaAndAudit(webhook, 1, audit)).resolves.toBe(true);
+    await expect(store.listAudits(bootstrap.project.id)).resolves.toContainEqual(audit);
+
+    const deleting = { ...first.inbox, status: 'deleting' as const, updatedAt: new Date(Date.parse(now) + 1).toISOString() };
+    await expect(store.claimInboxDeletion(deleting, first.inbox)).resolves.toBe(true);
+    const compliance = {
+      projectId: bootstrap.project.id, dataRegion: 'global', retentionLocked: true,
+      exportEnabled: false, deletionSlaHours: 24, updatedAt: new Date(Date.parse(now) + 2).toISOString(),
+    } satisfies ComplianceProfile;
+    await expect(store.saveComplianceProfileIfNoDeletion(compliance)).resolves.toBe(false);
+
+    await store.saveInbox({ ...deleting, status: 'deleted', updatedAt: new Date(Date.parse(now) + 3).toISOString() });
+    await expect(store.saveComplianceProfileIfNoDeletion(compliance)).resolves.toBe(true);
+    await expect(store.claimInboxDeletion(
+      { ...second.inbox, status: 'deleting', updatedAt: new Date(Date.parse(now) + 4).toISOString() },
+      second.inbox,
+    )).resolves.toBe(false);
+  });
+
+  it('enforces the active-inbox quota during concurrent D1 reactivation', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({
+      slug: 'inbox-reactivation-workerd', displayName: 'Inbox Reactivation Workerd', quota: { maxActiveInboxes: 1 },
+    });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const first = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'expiring', requestedLocalPart: 'reactivate-a', expirySeconds: 3_600,
+    });
+    await mailfn.updateInbox(admin, first.inbox.id, { status: 'disabled' });
+    const second = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'expiring', requestedLocalPart: 'reactivate-b', expirySeconds: 3_600,
+    });
+    await mailfn.updateInbox(admin, second.inbox.id, { status: 'disabled' });
+
+    const results = await Promise.allSettled([
+      mailfn.updateInbox(admin, first.inbox.id, { status: 'active' }),
+      mailfn.updateInbox(admin, second.inbox.id, { status: 'active' }),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toMatchObject([{
+      reason: { code: 'MAILFN_QUOTA_EXCEEDED' },
+    }]);
+    expect((await new D1MailFnStore(env.MAILFN_DB).listInboxes(bootstrap.project.id))
+      .filter((inbox) => inbox.status === 'active')).toHaveLength(1);
+  });
+
+  it('does not let a stale D1 inbox update resurrect a deleted inbox', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'inbox-cas-workerd', displayName: 'Inbox CAS Workerd' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const created = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'stable', requestedLocalPart: 'inbox-cas',
+    });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const deleted = {
+      ...created.inbox,
+      status: 'deleted' as const,
+      updatedAt: new Date(Date.parse(created.inbox.updatedAt) + 1).toISOString(),
+    };
+    await store.saveInbox(deleted);
+
+    await expect(store.saveInboxIfUnchanged({
+      ...created.inbox,
+      status: 'disabled',
+      updatedAt: new Date(Date.parse(created.inbox.updatedAt) + 2).toISOString(),
+    }, created.inbox)).resolves.toBe(false);
+    await expect(store.getInbox(created.inbox.id)).resolves.toEqual(deleted);
+  });
+
+  it('erases D1 drafts when deleting their inbox', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'draft-erasure-workerd', displayName: 'Draft Erasure Workerd' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const created = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'expiring', requestedLocalPart: 'draft-erasure', expirySeconds: 3_600,
+    });
+    const draft = await mailfn.createDraft(admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Erase me', text: 'sensitive body',
+    });
+    await expect(mailfn.deleteInbox(admin, created.inbox.id)).resolves.toMatchObject({ status: 'deleted' });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    await expect(store.getDraft(draft.id)).resolves.toBeNull();
+    await expect(store.listDrafts(bootstrap.project.id, created.inbox.id)).resolves.toHaveLength(0);
+  });
+
+  it('rejects a stale D1 send claim after a concurrent draft edit', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'draft-cas-workerd', displayName: 'Draft CAS Workerd' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const created = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'expiring', requestedLocalPart: 'draft-cas', expirySeconds: 3_600,
+    });
+    const draft = await mailfn.createDraft(admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Original', text: 'body',
+    });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const sending = { ...draft, status: 'sending' as const, updatedAt: new Date(Date.parse(draft.updatedAt) + 1).toISOString() };
+
+    await expect(store.saveDraftIfInboxWritable({ ...draft, subject: 'Edited' }, draft)).resolves.toBe(true);
+    await expect(store.claimDraft(draft.id, draft, sending)).resolves.toBe(false);
+    await expect(store.getDraft(draft.id)).resolves.toMatchObject({ status: 'draft', subject: 'Edited' });
+  });
+
+  it('commits send completion monotonically after a D1 lease takeover', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'send-completion-workerd', displayName: 'Send Completion Workerd' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const created = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'stable', requestedLocalPart: 'send-completion',
+    });
+    const draft = await mailfn.createDraft(admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Complete once', text: 'body',
+    });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const firstLease = {
+      ...draft,
+      status: 'sending' as const,
+      sendLeaseId: 'send-first',
+      sendLeaseExpiresAt: '2026-08-10T00:05:00.000Z',
+      updatedAt: '2026-08-10T00:00:00.000Z',
+    };
+    const takeoverLease = {
+      ...firstLease,
+      sendLeaseId: 'send-takeover',
+      sendLeaseExpiresAt: '2026-08-10T00:10:00.000Z',
+      updatedAt: '2026-08-10T00:05:00.001Z',
+    };
+    await expect(store.claimDraft(draft.id, draft, firstLease)).resolves.toBe(true);
+    await expect(store.claimDraft(draft.id, firstLease, takeoverLease)).resolves.toBe(true);
+
+    await expect(store.completeDraftSend(
+      draft.id,
+      'provider-first-success',
+      '2026-08-10T00:05:00.002Z',
+      {
+        id: `outbound_${draft.id}`,
+        projectId: bootstrap.project.id,
+        metric: 'outbound_message',
+        quantity: 1,
+        resourceId: draft.id,
+        period: '2026-08-10',
+        createdAt: '2026-08-10T00:05:00.002Z',
+      },
+    )).resolves.toMatchObject({
+      committed: true,
+      draft: { status: 'sent', providerMessageId: 'provider-first-success' },
+    });
+    await expect(store.getDraft(draft.id)).resolves.toMatchObject({
+      status: 'sent', providerMessageId: 'provider-first-success',
+    });
+    await expect(store.listUsage(bootstrap.project.id)).resolves.toContainEqual(expect.objectContaining({
+      id: `outbound_${draft.id}`, metric: 'outbound_message',
+    }));
+    await expect(store.releaseOutboundUsageIfDraftNotSent(
+      draft.id,
+      `outbound_${draft.id}`,
+    )).resolves.toBe(false);
+    await expect(store.listUsage(bootstrap.project.id)).resolves.toContainEqual(expect.objectContaining({
+      id: `outbound_${draft.id}`, metric: 'outbound_message',
+    }));
+  });
+
+  it('applies concurrent sender-reputation signals atomically in D1', async () => {
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    await Promise.all(Array.from({ length: 3 }, (_, index) => store.applySenderReputationSignal({
+      projectId: 'prj_reputation_atomic',
+      sender: 'repeat-abuser@example.com',
+      penalty: 30,
+      forceBlock: false,
+      complaintIncrement: 1,
+      bounceIncrement: 0,
+      reason: `abuse:${index + 1}`,
+      updatedAt: new Date(Date.parse('2026-08-10T00:00:00.000Z') + index).toISOString(),
+    })));
+
+    await expect(store.getSenderReputation(
+      'prj_reputation_atomic',
+      'repeat-abuser@example.com',
+    )).resolves.toMatchObject({
+      score: 10,
+      status: 'block',
+      complaintCount: 3,
+      bounceCount: 0,
+    });
+  });
+
+  it('atomically rejects a repeated webhook delivery identifier in D1', async () => {
+    const replayStore = new D1WebhookReplayStore(env.MAILFN_DB);
+    const expiresAt = new Date(Date.now() + 300_000).toISOString();
+    await expect(replayStore.consume('workerd-delivery-once', expiresAt)).resolves.toBe(true);
+    await expect(replayStore.consume('workerd-delivery-once', expiresAt)).resolves.toBe(false);
+  });
+
+  it('atomically counts webhook failures and does not revive a quarantined webhook in D1', async () => {
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const now = '2026-08-10T00:00:00.000Z';
+    const webhook: Webhook = {
+      id: 'whk_atomic_failures',
+      projectId: 'prj_atomic_failures',
+      url: 'https://consumer.example.test/atomic-failures',
+      eventTypes: ['message.received'],
+      secretHash: 'hash',
+      status: 'active',
+      consecutiveFailures: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await store.saveWebhook(webhook);
+
+    await Promise.all(Array.from({ length: 10 }, (_, index) => (
+      store.recordWebhookDeliveryResult(
+        webhook.id,
+        false,
+        new Date(Date.parse(now) + index + 1).toISOString(),
+      )
+    )));
+    await expect(store.getWebhook(webhook.id)).resolves.toMatchObject({
+      status: 'quarantined', consecutiveFailures: 10,
+    });
+
+    await store.recordWebhookDeliveryResult(webhook.id, true, '2026-08-10T00:00:01.000Z');
+    await expect(store.getWebhook(webhook.id)).resolves.toMatchObject({
+      status: 'quarantined', consecutiveFailures: 10,
+    });
+  });
+
+  it('enforces the project ingress counter atomically across D1 inboxes', async () => {
+    const testEnv: MailFnCloudflareEnv = {
+      ...env,
+      MAILFN_PARSE_QUEUE: { async send() {} },
+    };
+    const mailfn = await createCloudflareMailFn(testEnv, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({
+      slug: 'quota-workerd',
+      displayName: 'Quota Workerd',
+      quota: { maxMessagesPerHour: 1, maxMessagesPerInboxPerHour: 10, maxMessagesPerSenderPerHour: 10 },
+    });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const [first, second] = await Promise.all(['quota-a', 'quota-b'].map((requestedLocalPart) => mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id,
+      kind: 'expiring',
+      requestedLocalPart,
+      expirySeconds: 3_600,
+    })));
+    const body = new TextEncoder().encode('Subject: quota\r\n\r\nbody');
+    const results = await Promise.allSettled([
+      mailfn.receiveInbound({
+        providerDeliveryId: 'quota-delivery-a', envelopeFrom: 'one@example.com', envelopeTo: first.inbox.address,
+        raw: body, rawSize: body.byteLength,
+      }),
+      mailfn.receiveInbound({
+        providerDeliveryId: 'quota-delivery-b', envelopeFrom: 'two@example.com', envelopeTo: second.inbox.address,
+        raw: body, rawSize: body.byteLength,
+      }),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toMatchObject([{
+      reason: { code: 'MAILFN_RATE_LIMITED', details: { dimension: 'project' } },
+    }]);
+  });
+
+  it('ages completed hourly ingress reservations before accepting a new bucket', async () => {
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const base = {
+      projectId: 'quota-aging-project', inboxId: 'quota-aging-inbox', sender: 'sender@example.com',
+      projectLimit: 10, inboxLimit: 10, senderLimit: 10,
+    };
+    await expect(store.reserveIngressQuota({
+      ...base, id: 'old-reservation', bucket: '2026-08-10T00:00:00.000Z', createdAt: '2026-08-10T00:01:00.000Z',
+    })).resolves.toEqual({ allowed: true });
+    await expect(store.reserveIngressQuota({
+      ...base, id: 'current-reservation', bucket: '2026-08-10T01:00:00.000Z', createdAt: '2026-08-10T01:01:00.000Z',
+    })).resolves.toEqual({ allowed: true });
+    const count = await env.MAILFN_DB.prepare('SELECT COUNT(*) AS total FROM mailfn_ingress_reservations WHERE project_id = ?')
+      .bind(base.projectId).first<{ total: number }>();
+    expect(Number(count?.total)).toBe(1);
+  });
+});

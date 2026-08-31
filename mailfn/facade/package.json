@@ -1,0 +1,19 @@
+{
+  "name": "mailfn",
+  "version": "0.1.0",
+  "description": "High-level MailFn programmable mailbox client",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist", "README.md"],
+  "scripts": { "build": "tsc", "test": "vitest run", "typecheck": "tsc --noEmit", "lint": "tsc --noEmit", "clean": "rm -rf dist" },
+  "keywords": ["mailfn", "email", "inbox"],
+  "author": "21n",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/21nCo/super-functions.git", "directory": "mailfn/facade" },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "dependencies": { "@mailfn/client": "0.1.0", "@mailfn/core": "0.1.0" },
+  "devDependencies": { "typescript": "^5.6.0", "vitest": "3.2.4" }
+}
