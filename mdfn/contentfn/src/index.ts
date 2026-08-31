@@ -147,8 +147,12 @@ function textFromRichNode(
 function richBlocksToMarkdown(value: readonly unknown[]): { markdown: string; unsupported: number } {
   const escapeText = (text: string): string => text
     .replace(/\\/g, "\\\\")
-    .replace(/([`*_[\]{}()#+\-.!|>~<>])/g, "\\$1")
-    .replace(/(^|\n)([ \t]*)([-+>]|\d+[.)])(?=\s)/g, "$1$2\\$3");
+    .replace(/([!"#$%&'()*+,\-./:;<=>?@[\]^_`{|}~])/g, "\\$1")
+    .replace(/\r/g, "&#13;")
+    .replace(/\n/g, "&#10;")
+    .replace(/\t/g, "&#9;")
+    .replace(/^ +/, (spaces) => "&#32;".repeat(spaces.length))
+    .replace(/ +$/, (spaces) => "&#32;".repeat(spaces.length));
   const codeFence = (text: string): string => {
     let longest = 0;
     let current = 0;
@@ -174,14 +178,29 @@ function richBlocksToMarkdown(value: readonly unknown[]): { markdown: string; un
       new Set(type === "code" ? ["type", "language"] : ["type"]),
     );
     unsupported += projected.unsupported;
-    const retained = projected.opaque.join("\n\n");
-    const withOpaque = (markdown: string): string => retained ? `${markdown}\n\n${retained}` : markdown;
-    if (type === "paragraph") return withOpaque(escapeText(projected.text));
+    const retained = [...projected.opaque];
+    if (block.type !== undefined && typeof block.type !== "string") {
+      unsupported += 1;
+      retained.push(opaqueMigrationComment(entry));
+    }
+    const withOpaque = (markdown: string): string => retained.length > 0 ? `${markdown}\n\n${retained.join("\n\n")}` : markdown;
+    if (type === "paragraph") {
+      if (!projected.text && retained.length === 0) {
+        unsupported += 1;
+        return opaqueMigrationComment(entry);
+      }
+      return withOpaque(escapeText(projected.text));
+    }
     if (/^h[1-6]$/.test(type)) return withOpaque(`${"#".repeat(Number(type[1]))} ${escapeText(projected.text)}`);
     if (type === "blockquote") return withOpaque(escapeText(projected.text).split("\n").map((line) => `> ${line}`).join("\n"));
     if (type === "code") {
       const fence = codeFence(projected.text);
-      const language = typeof block.language === "string" ? block.language.replace(/[^A-Za-z0-9_+.-]/g, "") : "";
+      const rawLanguage = typeof block.language === "string" ? block.language : "";
+      const language = rawLanguage.replace(/[^A-Za-z0-9_+.-]/g, "");
+      if ((block.language !== undefined && typeof block.language !== "string") || language !== rawLanguage) {
+        unsupported += 1;
+        retained.push(opaqueMigrationComment(entry));
+      }
       return withOpaque(`${fence}${language}\n${projected.text}\n${fence}`);
     }
     if (type === "list-item") return withOpaque(`- ${escapeText(projected.text)}`);
@@ -211,8 +230,7 @@ export function migrateToMarkdownContent(
     let invalidMetadata = legacy.schemaHash !== undefined && schemaHash === undefined;
     if (legacy.sidecar !== undefined) {
       try {
-        validateMdfnSidecar(legacy.sidecar as MdfnSidecar, { markdownLength: legacy.markdown.length });
-        sidecar = legacy.sidecar as MdfnSidecar;
+        sidecar = validateMdfnSidecar(legacy.sidecar, { markdownLength: legacy.markdown.length });
       } catch {
         invalidMetadata = true;
       }

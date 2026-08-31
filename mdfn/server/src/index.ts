@@ -242,8 +242,13 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
       if (collaborationWriteTails.get(documentId) === tail) collaborationWriteTails.delete(documentId);
     }
   };
-  const withCollaborationWrite = <T>(documentId: string, callback: (storage: Storage, cursorKey: string) => Promise<T>): Promise<T> => (
+  const withCollaborationWrite = <T>(
+    documentId: string,
+    callback: (storage: Storage, cursorKey: string) => Promise<T>,
+    revalidate?: () => Promise<void>,
+  ): Promise<T> => (
     serializeCollaborationWrite(documentId, async () => {
+      await revalidate?.();
       let lastConflict: unknown;
       for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
@@ -502,14 +507,16 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     },
     async update(principal, id, input) { return writeUpdate(principal, id, input); },
     async delete(principal, id) {
-      const current = await loadScoped(principal, id);
-      await allowed(config, "delete", principal, current);
-      await withStorage(async (storage) => {
-        const documentWhere = [{ field: "documentId", operator: "eq" as const, value: id }];
-        await storage.deleteMany({ model: COLLAB_UPDATES, where: documentWhere });
-        await storage.deleteMany({ model: RECEIPTS, where: documentWhere });
-        await storage.deleteMany({ model: VERSIONS, where: documentWhere });
-        await storage.delete({ model: DOCUMENTS, where: whereId(id) });
+      await serializeCollaborationWrite(id, async () => {
+        const current = await loadScoped(principal, id);
+        await allowed(config, "delete", principal, current);
+        await withStorage(async (storage) => {
+          const documentWhere = [{ field: "documentId", operator: "eq" as const, value: id }];
+          await storage.deleteMany({ model: COLLAB_UPDATES, where: documentWhere });
+          await storage.deleteMany({ model: RECEIPTS, where: documentWhere });
+          await storage.deleteMany({ model: VERSIONS, where: documentWhere });
+          await storage.delete({ model: DOCUMENTS, where: whereId(id) });
+        });
       });
     },
     async versions(principal, id, options = {}) {
@@ -578,15 +585,18 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
       return mutateEditorial(principal, id, input.expectedVersion, "review:transition", "editorial:review-transitioned", input.idempotencyKey, input, (document) => ({ sidecar: transitionReview({ sidecar: document.sidecar, to: input.state, actor: editorialActor(principal) }) }));
     },
     async appendCollaborationUpdate(principal, id, update) {
-      const document = await loadScoped(principal, id);
-      await allowed(config, "collaborate", principal, document);
       if (new TextEncoder().encode(update).byteLength > collaborationUpdateBytes) throw new MdfnServerError("MDFN_COLLAB_UPDATE_TOO_LARGE", 413);
       const updateId = createId();
       const createdAt = now();
-      await withCollaborationWrite(id, (storage, cursorKey) => storage.create({
-        model: COLLAB_UPDATES,
-        data: { id: updateId, documentId: id, authorId: principal.id, update, cursorKey, createdAt },
-      }));
+      await withCollaborationWrite(id, async (storage, cursorKey) => {
+        await storage.create({
+          model: COLLAB_UPDATES,
+          data: { id: updateId, documentId: id, authorId: principal.id, update, cursorKey, createdAt },
+        });
+      }, async () => {
+        const document = await loadScoped(principal, id);
+        await allowed(config, "collaborate", principal, document);
+      });
       return updateId;
     },
     async collaborationUpdates(principal, id, options = {}) {
@@ -624,8 +634,6 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
       };
     },
     async compactCollaborationUpdates(principal, id, snapshot, includedUpdateIds) {
-      const document = await loadScoped(principal, id);
-      await allowed(config, "compact-collaboration", principal, document);
       if (new TextEncoder().encode(snapshot).byteLength > collaborationUpdateBytes) throw new MdfnServerError("MDFN_COLLAB_UPDATE_TOO_LARGE", 413);
       if (!Array.isArray(includedUpdateIds) || includedUpdateIds.some((updateId) => typeof updateId !== "string" || !updateId)) {
         throw new MdfnServerError("MDFN_COLLAB_COMPACTION_INVALID", 422);
@@ -638,6 +646,9 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
           await storage.deleteMany({ model: COLLAB_UPDATES, where: [{ field: "documentId", operator: "eq", value: id }, { field: "id", operator: "in", value: uniqueUpdateIds }] });
         }
         await storage.create({ model: COLLAB_UPDATES, data: { id: updateId, documentId: id, authorId: principal.id, update: snapshot, cursorKey, createdAt } });
+      }, async () => {
+        const document = await loadScoped(principal, id);
+        await allowed(config, "compact-collaboration", principal, document);
       });
       return updateId;
     },

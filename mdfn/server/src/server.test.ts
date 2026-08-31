@@ -118,6 +118,41 @@ describe("mdfn server", () => {
     expect(remainder).toMatchObject({ updates: ["second", "third"], includedUpdateIds: ["y", "a"] });
   });
 
+  it("serializes document deletion with collaboration writes", async () => {
+    let releaseCollaboration!: () => void;
+    let collaborationAuthorizationStarted!: () => void;
+    const collaborationGate = new Promise<void>((resolve) => { releaseCollaboration = resolve; });
+    const authorizationStarted = new Promise<void>((resolve) => { collaborationAuthorizationStarted = resolve; });
+    const actions: string[] = [];
+    const service = createMdfnService({
+      database: memoryAdapter(),
+      durability: "ephemeral",
+      authorize: async (action) => {
+        actions.push(action);
+        if (action === "collaborate") {
+          collaborationAuthorizationStarted();
+          await collaborationGate;
+        }
+        return true;
+      },
+      createId: (() => { let id = 0; return () => `delete-race-${id++}`; })(),
+    });
+    const principal = { id: "author" };
+    const document = await service.create(principal, { id: "shared-document", markdown: "body" });
+    const append = service.appendCollaborationUpdate(principal, document.id, "racing-update");
+    await authorizationStarted;
+
+    const deleting = service.delete(principal, document.id);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(actions).not.toContain("delete");
+
+    releaseCollaboration();
+    await append;
+    await deleting;
+    await service.create(principal, { id: document.id, markdown: "recreated" });
+    expect((await service.collaborationUpdates(principal, document.id)).updates).toEqual([]);
+  });
+
   it("paginates lightweight immutable version history", async () => {
     const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true });
     const principal = { id: "author" };
