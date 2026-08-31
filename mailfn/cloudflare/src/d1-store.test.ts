@@ -214,7 +214,7 @@ describe('D1MailFnStore', () => {
     expect(database.statements[1]?.query).toContain("delivery.status IN ('pending', 'failed')");
   });
 
-  it('atomically releases only old storage reservations without durable records', async () => {
+  it('lists only old storage reservations without durable records before releasing them', async () => {
     const database = new RecordingDatabase();
     const store = new D1MailFnStore(database);
 
@@ -224,10 +224,10 @@ describe('D1MailFnStore', () => {
       '2026-08-29T23:00:00.000Z',
     );
 
-    expect(database.statements[0]?.query).toContain('DELETE FROM mailfn_storage_reservations');
+    expect(database.statements[0]?.query).toContain('SELECT reservation.id, claim.object_key AS objectKey');
     expect(database.statements[0]?.query).toContain('NOT EXISTS');
     expect(database.statements[0]?.query).toContain('mailfn_storage_claims.claimed_at > ?');
-    expect(database.statements[0]?.query).toContain('mailfn_messages.id = mailfn_storage_reservations.id');
+    expect(database.statements[0]?.query).toContain('mailfn_messages.id = reservation.id');
     expect(database.statements[0]?.query).toContain("json_extract(mailfn_attachments.data_json, '$.storageReservationId')");
     expect(database.statements[0]?.query).toContain('mailfn_attachments.id');
     expect(database.statements[0]?.values).toEqual([
@@ -241,11 +241,19 @@ describe('D1MailFnStore', () => {
     const database = new RecordingDatabase();
     const store = new D1MailFnStore(database);
 
-    await expect(store.claimStorage('msg_1', '2026-08-30T00:00:00.000Z')).resolves.toBe(true);
+    await expect(store.claimStorage(
+      'msg_1',
+      '2026-08-30T00:00:00.000Z',
+      'projects/prj_1/inboxes/inb_1/messages/msg_1/raw.eml',
+    )).resolves.toBe(true);
 
     expect(database.statements[0]?.query).toContain('INSERT INTO mailfn_storage_claims');
-    expect(database.statements[0]?.query).toContain('SELECT id, ? FROM mailfn_storage_reservations WHERE id = ?');
-    expect(database.statements[0]?.values).toEqual(['2026-08-30T00:00:00.000Z', 'msg_1']);
+    expect(database.statements[0]?.query).toContain('SELECT id, ?, ? FROM mailfn_storage_reservations WHERE id = ?');
+    expect(database.statements[0]?.values).toEqual([
+      '2026-08-30T00:00:00.000Z',
+      'projects/prj_1/inboxes/inb_1/messages/msg_1/raw.eml',
+      'msg_1',
+    ]);
   });
 
   it('compares received filters as normalized instants', async () => {

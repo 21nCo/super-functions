@@ -25,7 +25,8 @@ describe('MailFn D1 schema', () => {
     expect(sql).toContain("SET status = 'revoked'");
     expect(sql).toContain('conflict.project_id = mailfn_inboxes.project_id');
     expect(sql).toContain('DELETE FROM mailfn_domains');
-    expect(MAILFN_D1_SCHEMA_VERSION).toBe(4);
+    expect(sql).toContain('ALTER TABLE mailfn_storage_claims ADD COLUMN object_key TEXT');
+    expect(MAILFN_D1_SCHEMA_VERSION).toBe(5);
   });
 
   it('keeps the checked-in bootstrap schema aligned with runtime migrations', async () => {

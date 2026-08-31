@@ -505,7 +505,13 @@ export class MailFn {
     assertMailFn(input.metadata === undefined || isStringRecord(input.metadata), {
       code: 'MAILFN_VALIDATION_FAILED', message: 'Inbox metadata values must be strings', status: 400,
     });
-    if (input.expiresAt) requireFutureIso(input.expiresAt, this.now(), 'expiresAt');
+    assertMailFn(
+      input.expiresAt === undefined || input.expiresAt === null || typeof input.expiresAt === 'string',
+      { code: 'MAILFN_VALIDATION_FAILED', message: 'Inbox expiresAt must be an ISO timestamp or null', status: 400 },
+    );
+    if (input.expiresAt !== undefined && input.expiresAt !== null) {
+      requireFutureIso(input.expiresAt, this.now(), 'expiresAt');
+    }
     if (actor.inboxId && input.expiresAt !== undefined && inbox.expiresAt) {
       assertMailFn(
         input.expiresAt !== null && Date.parse(input.expiresAt) <= Date.parse(inbox.expiresAt),
@@ -768,7 +774,8 @@ export class MailFn {
     }
     const messageId = reservation.reservationId;
     const storageReservation = reservation.storageReserved ? 'created' as const : 'existing' as const;
-    if (!(await this.store.claimStorage(messageId, now))) {
+    const rawObjectKey = objectKey(project.id, inbox.id, messageId, 'raw.eml');
+    if (!(await this.store.claimStorage(messageId, now, rawObjectKey))) {
       await this.store.releaseIngressQuota(messageId).catch(() => undefined);
       throw new MailFnError({
         code: 'MAILFN_CONFLICT',
@@ -777,7 +784,6 @@ export class MailFn {
         retryable: true,
       });
     }
-    const rawObjectKey = objectKey(project.id, inbox.id, messageId, 'raw.eml');
     try {
       await this.objects.put(rawObjectKey, input.raw, {
         contentType: 'message/rfc822',
@@ -964,7 +970,8 @@ export class MailFn {
           createdAt: this.now(),
         }, project.quota.maxStoredBytes);
         if (storageReservation === 'denied') throw quotaExceeded('stored bytes');
-        if (!(await this.store.claimStorage(storageReservationId, this.now()))) {
+        const key = objectKey(project.id, message.inboxId, message.id, `attachments/${parseLeaseId}/${attachmentId}`);
+        if (!(await this.store.claimStorage(storageReservationId, this.now(), key))) {
           throw new MailFnError({
             code: 'MAILFN_STORAGE_FAILED',
             message: 'Attachment storage reservation is missing or expired',
@@ -973,7 +980,6 @@ export class MailFn {
           });
         }
         reservedAttachmentIds.push(storageReservationId);
-        const key = objectKey(project.id, message.inboxId, message.id, `attachments/${parseLeaseId}/${attachmentId}`);
         const attachment: Attachment = {
           id: attachmentId,
           projectId: project.id,
@@ -2007,6 +2013,7 @@ export class MailFn {
         project.id,
         reservationCutoff,
         claimCutoff,
+        (key) => this.objects.delete(key),
       );
       for (const inbox of await this.store.listInboxes(project.id)) {
         let effectiveInbox = inbox;

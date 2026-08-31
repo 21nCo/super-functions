@@ -1124,12 +1124,12 @@ export class D1MailFnStore implements MailFnStore {
     ]);
     if (results.some((result) => !result.success)) throw new Error('MAILFN_D1_WRITE_FAILED');
   }
-  async claimStorage(reservationId: string, claimedAt: string): Promise<boolean> {
+  async claimStorage(reservationId: string, claimedAt: string, objectKey?: string): Promise<boolean> {
     const result = await bind(this.database.prepare(
-      `INSERT INTO mailfn_storage_claims(id, claimed_at)
-       SELECT id, ? FROM mailfn_storage_reservations WHERE id = ?
-       ON CONFLICT(id) DO UPDATE SET claimed_at = excluded.claimed_at`,
-    ), [claimedAt, reservationId]).run();
+      `INSERT INTO mailfn_storage_claims(id, claimed_at, object_key)
+       SELECT id, ?, ? FROM mailfn_storage_reservations WHERE id = ?
+       ON CONFLICT(id) DO UPDATE SET claimed_at = excluded.claimed_at, object_key = excluded.object_key`,
+    ), [claimedAt, objectKey ?? null, reservationId]).run();
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;
   }
@@ -1140,29 +1140,45 @@ export class D1MailFnStore implements MailFnStore {
     projectId: string,
     reservationBefore: string,
     claimBefore: string,
+    deleteObject?: (objectKey: string) => Promise<void>,
   ): Promise<number> {
-    const result = await bind(this.database.prepare(
-      `DELETE FROM mailfn_storage_reservations
-       WHERE project_id = ? AND created_at <= ?
+    const candidates = await this.rawMany<{ id: string; objectKey: string | null }>(
+      `SELECT reservation.id, claim.object_key AS objectKey
+       FROM mailfn_storage_reservations AS reservation
+       LEFT JOIN mailfn_storage_claims AS claim ON claim.id = reservation.id
+       WHERE reservation.project_id = ? AND reservation.created_at <= ?
          AND NOT EXISTS (
            SELECT 1 FROM mailfn_storage_claims
-           WHERE mailfn_storage_claims.id = mailfn_storage_reservations.id
+           WHERE mailfn_storage_claims.id = reservation.id
              AND mailfn_storage_claims.claimed_at > ?
          )
          AND NOT EXISTS (
            SELECT 1 FROM mailfn_messages
-           WHERE mailfn_messages.id = mailfn_storage_reservations.id
+           WHERE mailfn_messages.id = reservation.id
          )
          AND NOT EXISTS (
            SELECT 1 FROM mailfn_attachments
            WHERE COALESCE(
              json_extract(mailfn_attachments.data_json, '$.storageReservationId'),
              mailfn_attachments.id
-           ) = mailfn_storage_reservations.id
+           ) = reservation.id
          )`,
-    ), [projectId, reservationBefore, claimBefore]).run();
-    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
-    return Number(result.meta?.changes ?? 0);
+      [projectId, reservationBefore, claimBefore],
+    );
+    let released = 0;
+    for (const candidate of candidates) {
+      if (candidate.objectKey) {
+        if (!deleteObject) continue;
+        try {
+          await deleteObject(candidate.objectKey);
+        } catch {
+          continue;
+        }
+      }
+      await this.releaseStorage(candidate.id);
+      released += 1;
+    }
+    return released;
   }
 
   async appendUsage(value: UsageRecord): Promise<void> {

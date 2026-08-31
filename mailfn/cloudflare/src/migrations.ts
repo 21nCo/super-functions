@@ -1,6 +1,6 @@
 import type { D1Database } from './bindings.js';
 
-export const MAILFN_D1_SCHEMA_VERSION = 4;
+export const MAILFN_D1_SCHEMA_VERSION = 5;
 
 export const MAILFN_D1_MIGRATIONS = [
   `CREATE TABLE IF NOT EXISTS mailfn_schema_migrations (
@@ -309,6 +309,7 @@ export const MAILFN_D1_MIGRATIONS = [
        AND (winner.created_at < losing.created_at OR (winner.created_at = losing.created_at AND winner.id < losing.id))
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS mailfn_threads_subject ON mailfn_threads(project_id, inbox_id, normalized_subject)`,
+  `ALTER TABLE mailfn_storage_claims ADD COLUMN object_key TEXT`,
 ] as const;
 
 export async function applyMailFnMigrations(database: D1Database): Promise<void> {
@@ -316,8 +317,12 @@ export async function applyMailFnMigrations(database: D1Database): Promise<void>
   await database.prepare(MAILFN_D1_MIGRATIONS[0]).run();
   const applied = await database.prepare('SELECT version FROM mailfn_schema_migrations WHERE version = ?').bind(MAILFN_D1_SCHEMA_VERSION).first();
   if (applied) return;
+  const claimColumns = await database.prepare('PRAGMA table_info(mailfn_storage_claims)').all<{ name: string }>();
+  const hasObjectKey = (claimColumns.results ?? []).some((column) => column.name === 'object_key');
   await database.batch([
-    ...MAILFN_D1_MIGRATIONS.slice(1).map((statement) => database.prepare(statement)),
+    ...MAILFN_D1_MIGRATIONS.slice(1)
+      .filter((statement) => !hasObjectKey || !statement.startsWith('ALTER TABLE mailfn_storage_claims'))
+      .map((statement) => database.prepare(statement)),
     database
       .prepare('INSERT OR IGNORE INTO mailfn_schema_migrations(version, applied_at) VALUES (?, ?)')
       .bind(MAILFN_D1_SCHEMA_VERSION, new Date().toISOString()),

@@ -574,6 +574,15 @@ describe('MailFn domain service', () => {
       .resolves.toMatchObject({ expiresAt: undefined });
   });
 
+  it('rejects non-string inbox expirations from raw request bodies', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'invalid-expiry-type');
+
+    await expect(context.mailfn.updateInbox(context.admin, created.inbox.id, { expiresAt: 0 } as never))
+      .rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED', status: 400 });
+    await expect(context.store.getInbox(created.inbox.id)).resolves.toMatchObject({ expiresAt: created.inbox.expiresAt });
+  });
+
   it('rechecks the active-inbox quota before reactivation', async () => {
     const context = await setup({ quota: { maxActiveInboxes: 1 } });
     const first = await createInbox(context, 'reactivate-first');
@@ -1378,6 +1387,28 @@ describe('MailFn domain service', () => {
       envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
     });
     await context.mailfn.cancelInbound(replacement);
+  });
+
+  it('deletes journaled object writes when their metadata was never committed', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const reservationId = 'orphaned-raw-write';
+    const objectKey = `projects/${context.project.id}/orphaned/raw.eml`;
+    const createdAt = clock.now().toISOString();
+    await expect(context.store.reserveStorage({
+      id: reservationId,
+      projectId: context.project.id,
+      bytes: 4,
+      createdAt,
+    }, context.project.quota.maxStoredBytes)).resolves.toBe('created');
+    await expect(context.store.claimStorage(reservationId, createdAt, objectKey)).resolves.toBe(true);
+    await context.objects.put(objectKey, new Uint8Array([1, 2, 3, 4]));
+
+    clock.advance(60 * 60 * 1000 + 1);
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({
+      releasedStorageReservations: 1,
+    });
+    await expect(context.objects.get(objectKey)).resolves.toBeNull();
   });
 
   it('keeps a parsed attachment reservation after its write claim and orphan cutoff expire', async () => {

@@ -53,7 +53,7 @@ export class MemoryMailFnStore implements MailFnStore {
   private readonly compliance = new Map<string, ComplianceProfile>();
   private readonly ingressReservations = new Map<string, IngressQuotaReservation>();
   private readonly storageReservations = new Map<string, { id: string; projectId: string; bytes: number; createdAt: string }>();
-  private readonly storageClaims = new Map<string, string>();
+  private readonly storageClaims = new Map<string, { claimedAt: string; objectKey?: string }>();
 
   async getProject(id: string): Promise<Project | null> {
     return this.projects.has(id) ? copy(this.projects.get(id)!) : null;
@@ -700,9 +700,9 @@ export class MemoryMailFnStore implements MailFnStore {
     this.storageClaims.delete(reservationId);
     this.storageReservations.delete(reservationId);
   }
-  async claimStorage(reservationId: string, claimedAt: string): Promise<boolean> {
+  async claimStorage(reservationId: string, claimedAt: string, objectKey?: string): Promise<boolean> {
     if (!this.storageReservations.has(reservationId)) return false;
-    this.storageClaims.set(reservationId, claimedAt);
+    this.storageClaims.set(reservationId, { claimedAt, objectKey });
     return true;
   }
   async releaseStorageClaim(reservationId: string): Promise<void> {
@@ -712,6 +712,7 @@ export class MemoryMailFnStore implements MailFnStore {
     projectId: string,
     reservationBefore: string,
     claimBefore: string,
+    deleteObject?: (objectKey: string) => Promise<void>,
   ): Promise<number> {
     let released = 0;
     const attachmentReservationIds = new Set(
@@ -720,12 +721,20 @@ export class MemoryMailFnStore implements MailFnStore {
         .map((attachment) => attachment.storageReservationId ?? attachment.id),
     );
     for (const [id, reservation] of this.storageReservations) {
-      const claimedAt = this.storageClaims.get(id);
+      const claim = this.storageClaims.get(id);
       if (
         reservation.projectId === projectId && reservation.createdAt <= reservationBefore &&
-        (!claimedAt || claimedAt <= claimBefore) &&
+        (!claim || claim.claimedAt <= claimBefore) &&
         !this.messages.has(id) && !attachmentReservationIds.has(id)
       ) {
+        if (claim?.objectKey) {
+          if (!deleteObject) continue;
+          try {
+            await deleteObject(claim.objectKey);
+          } catch {
+            continue;
+          }
+        }
         this.storageClaims.delete(id);
         this.storageReservations.delete(id);
         released += 1;

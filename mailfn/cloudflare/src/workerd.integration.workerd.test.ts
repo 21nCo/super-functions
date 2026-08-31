@@ -96,8 +96,8 @@ describe('MailFn in workerd', () => {
       'SELECT resolved_owner_domain_id FROM mailfn_domain_conflicts WHERE domain_id = ?',
     ).bind('dom_conflict').first()).resolves.toEqual({ resolved_owner_domain_id: 'dom_owner' });
     await expect(env.MAILFN_DB.prepare(
-      'SELECT version FROM mailfn_schema_migrations WHERE version = 4',
-    ).first()).resolves.toEqual({ version: 4 });
+      'SELECT version FROM mailfn_schema_migrations WHERE version = 5',
+    ).first()).resolves.toEqual({ version: 5 });
     await expect(env.MAILFN_DB.prepare(
       'SELECT id, status FROM mailfn_inboxes WHERE id IN (?, ?) ORDER BY id',
     ).bind('inb_owner', 'inb_conflict').all()).resolves.toMatchObject({
