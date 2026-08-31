@@ -100,6 +100,21 @@ export {
   validateDatafnPlacement,
   withDatafnRoutingAssertion,
 } from "./plugins/multi-region.js";
+export type {
+  DatafnPlacementConstraint,
+  DatafnPlacementConstraintContext,
+  DatafnPlacementDecision,
+  DatafnPlacementDecisionSource,
+  DatafnPlacementLocation,
+  DatafnPlacementRankingInput,
+  DatafnPlacementRegionCandidate,
+  DatafnPlacementSelectionInput,
+} from "./placement-policy.js";
+export {
+  rankDatafnPlacementRegions,
+  readDatafnCloudflarePlacementLocation,
+  selectDatafnPlacementRegion,
+} from "./placement-policy.js";
 
 // Re-export SearchProvider for consumer use
 export type { SearchProvider } from "./search-provider.js";
