@@ -325,7 +325,7 @@ export const mailFnAdminActions = [
     description: "Create a reply draft from an existing message.",
     classification: "write",
     requiresConfirmation: false,
-    idempotent: true,
+    idempotent: false,
     target: "resource",
   },
   {

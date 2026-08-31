@@ -249,6 +249,13 @@ CREATE TABLE IF NOT EXISTS mailfn_storage_reservations (
 );
 CREATE INDEX IF NOT EXISTS mailfn_storage_project ON mailfn_storage_reservations(project_id);
 
+CREATE TABLE IF NOT EXISTS mailfn_storage_claims (
+  id TEXT PRIMARY KEY,
+  claimed_at TEXT NOT NULL,
+  FOREIGN KEY(id) REFERENCES mailfn_storage_reservations(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS mailfn_storage_claims_expiry ON mailfn_storage_claims(claimed_at);
+
 CREATE TABLE IF NOT EXISTS mailfn_webhook_replays (
   delivery_id TEXT PRIMARY KEY,
   expires_at TEXT NOT NULL,
@@ -301,4 +308,4 @@ CREATE TABLE IF NOT EXISTS mailfn_compliance (
 );
 
 INSERT OR IGNORE INTO mailfn_schema_migrations(version, applied_at)
-VALUES (2, CURRENT_TIMESTAMP);
+VALUES (4, CURRENT_TIMESTAMP);

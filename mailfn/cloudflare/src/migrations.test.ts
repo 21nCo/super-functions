@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFile } from 'node:fs/promises';
 
 import { MAILFN_D1_MIGRATIONS, MAILFN_D1_SCHEMA_VERSION } from './migrations.js';
 
@@ -25,5 +26,17 @@ describe('MailFn D1 schema', () => {
     expect(sql).toContain('conflict.project_id = mailfn_inboxes.project_id');
     expect(sql).toContain('DELETE FROM mailfn_domains');
     expect(MAILFN_D1_SCHEMA_VERSION).toBe(4);
+  });
+
+  it('keeps the checked-in bootstrap schema aligned with runtime migrations', async () => {
+    const checkedIn = await readFile(new URL('../migrations/0001_mailfn.sql', import.meta.url), 'utf8');
+    const runtime = MAILFN_D1_MIGRATIONS.join('\n');
+    const schemaObjects = (sql: string): string[] => Array.from(sql.matchAll(
+      /CREATE (?:VIRTUAL )?(?:UNIQUE )?(?:TABLE|INDEX) IF NOT EXISTS\s+([a-z0-9_]+)/gi,
+    ), (match) => match[1]!).sort();
+
+    expect(schemaObjects(checkedIn)).toEqual(schemaObjects(runtime));
+    expect(checkedIn).toContain('FOREIGN KEY(id) REFERENCES mailfn_storage_reservations(id) ON DELETE CASCADE');
+    expect(checkedIn).toContain(`VALUES (${MAILFN_D1_SCHEMA_VERSION}, CURRENT_TIMESTAMP);`);
   });
 });

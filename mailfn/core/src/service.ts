@@ -253,7 +253,13 @@ export class MailFn {
         status: 403,
       });
     }
-    if (input.inboxId) await this.requireInbox(input.projectId, input.inboxId);
+    if (input.inboxId) {
+      const inbox = await this.requireInbox(input.projectId, input.inboxId);
+      assertMailFn(
+        inbox.status === 'active' && (!inbox.expiresAt || !isExpiredAt(inbox.expiresAt, this.now())),
+        { code: 'MAILFN_INBOX_INACTIVE', message: 'Inbox is not active', status: 410 },
+      );
+    }
     const created = await this.issueCredential(input);
     await this.audit(actor, 'credential.created', 'credential', created.credential.id, {
       inboxId: input.inboxId ?? null,
@@ -1353,6 +1359,9 @@ export class MailFn {
 
   public async createReplyDraft(actor: Actor, inboxId: string, messageId: string, input: { text?: string; html?: string; replyAll?: boolean }): Promise<Draft> {
     await this.authorize(actor, 'message:read', actor.projectId, inboxId);
+    assertMailFn(input.replyAll === undefined || typeof input.replyAll === 'boolean', {
+      code: 'MAILFN_VALIDATION_FAILED', message: 'replyAll must be a boolean', status: 400,
+    });
     const message = await this.requireMessage(actor.projectId, inboxId, messageId);
     const recipients = message.replyTo.length
       ? message.replyTo.map((entry) => entry.address)

@@ -335,6 +335,32 @@ describe('MailFn domain service', () => {
     await expect(context.store.getCredential(context.admin.actorId)).resolves.toMatchObject({ status: 'active' });
   });
 
+  it('blocks credential issuance for inactive and elapsed inboxes', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const disabled = await createInbox(context, 'disabled-credential');
+    await context.store.saveInbox({ ...disabled.inbox, status: 'disabled' });
+
+    await expect(context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: disabled.inbox.id,
+      permissions: ['message:read'],
+    })).rejects.toMatchObject({ code: 'MAILFN_INBOX_INACTIVE' });
+
+    const expiring = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id,
+      kind: 'expiring',
+      requestedLocalPart: 'expired-credential',
+      expirySeconds: 60,
+    });
+    clock.advance(61_000);
+    await expect(context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: expiring.inbox.id,
+      permissions: ['message:read'],
+    })).rejects.toMatchObject({ code: 'MAILFN_INBOX_INACTIVE' });
+  });
+
   it('compares message time filters by instant across timezone offsets', async () => {
     const context = await setup();
     const created = await createInbox(context, 'timezone-filter');
@@ -1522,6 +1548,9 @@ describe('MailFn domain service', () => {
       attachments: [{ filename: 'proof.txt', contentType: 'text/plain', content: 'proof' } as never],
     });
     const message = await context.mailfn.receiveInbound({ providerDeliveryId: 'origin', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength });
+    await expect(context.mailfn.createReplyDraft(context.admin, created.inbox.id, message.id, {
+      text: 'Do not reply all', replyAll: 'false' as never,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
     const reply = await context.mailfn.createReplyDraft(context.admin, created.inbox.id, message.id, { text: 'Answer' });
     await context.mailfn.sendDraft(context.admin, reply.id);
     expect(sent[0]?.headers).toEqual({ 'In-Reply-To': '<origin@example.com>', References: '<root@example.com> <origin@example.com>' });

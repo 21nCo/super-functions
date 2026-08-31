@@ -70,6 +70,10 @@ describe("@mailfn/admin", () => {
       requiresConfirmation: true,
       confirmation: { risk: "critical", method: "mfa", maxAgeSeconds: 300 },
     });
+    expect(mailFnAdminCapability.operations.find((operation) => operation.id === "mailfn.messages.reply-draft")).toMatchObject({
+      safety: { idempotent: false },
+      mcp: { idempotentHint: false },
+    });
     for (const operationId of [
       "mailfn.inboxes.create-inbox",
       "mailfn.inboxes.expire-inbox",
