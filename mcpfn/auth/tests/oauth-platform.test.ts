@@ -71,25 +71,49 @@ describe("McpFn OAuth client compatibility", () => {
       ["cursor://anysphere.cursor-mcp/oauth/callback"],
       { privateUseSchemePolicy: "rfc8252" },
     )).toThrow(/not registered/);
-    expect(matchMcpRedirectUri(
+    expect(() => matchMcpRedirectUri(
       "cursor://anysphere.cursor-mcp/oauth/callback",
       ["cursor://anysphere.cursor-mcp/oauth/callback"],
       { privateUseSchemePolicy: "compatible" },
+    )).toThrow(/not registered/);
+    expect(matchMcpRedirectUri(
+      "cursor://anysphere.cursor-mcp/oauth/callback",
+      ["cursor://anysphere.cursor-mcp/oauth/callback"],
+      {
+        privateUseSchemePolicy: "compatible",
+        compatiblePrivateUseSchemes: ["cursor"],
+      },
     ).kind).toBe("exact");
     expect(() => matchMcpRedirectUri(
       "cursor://anysphere.cursor-mcp/oauth/other",
       ["cursor://anysphere.cursor-mcp/oauth/callback"],
-      { privateUseSchemePolicy: "compatible" },
+      {
+        privateUseSchemePolicy: "compatible",
+        compatiblePrivateUseSchemes: ["cursor"],
+      },
     )).toThrow(/not registered/);
     expect(() => matchMcpRedirectUri(
       "myapp:/callback",
       ["myapp:/callback"],
       { privateUseSchemePolicy: "rfc8252" },
     )).toThrow(/not registered/);
+    expect(() => matchMcpRedirectUri(
+      "com.example.app:/callback",
+      ["com.example.app:/callback"],
+      { allowPrivateUseSchemes: false },
+    )).toThrow(/not registered/);
+    expect(matchMcpRedirectUri(
+      "com.example.app:/callback",
+      ["com.example.app:/callback"],
+      { allowPrivateUseSchemes: true },
+    ).kind).toBe("exact");
     expect(matchMcpRedirectUri(
       "myapp:/callback",
       ["myapp:/callback"],
-      { privateUseSchemePolicy: "compatible" },
+      {
+        privateUseSchemePolicy: "compatible",
+        compatiblePrivateUseSchemes: ["myapp"],
+      },
     ).kind).toBe("exact");
     for (const unsafe of [
       "javascript:alert(1)",
@@ -98,6 +122,8 @@ describe("McpFn OAuth client compatibility", () => {
       "intent://anysphere.cursor-mcp/oauth/callback",
       "android-app://anysphere.cursor-mcp/oauth/callback",
       "market://anysphere.cursor-mcp/oauth/callback",
+      "ms-settings://privacy-webcam/",
+      "ms-windows-store://home/",
       "gopher://anysphere.cursor-mcp/oauth/callback",
       "vbscript:msgbox(1)",
       "cursor://user:password@anysphere.cursor-mcp/oauth/callback",
@@ -107,7 +133,22 @@ describe("McpFn OAuth client compatibility", () => {
       expect(() => matchMcpRedirectUri(
         unsafe,
         [unsafe],
-        { privateUseSchemePolicy: "compatible" },
+        {
+          privateUseSchemePolicy: "compatible",
+          compatiblePrivateUseSchemes: [
+            "android-app",
+            "cursor",
+            "data",
+            "file",
+            "gopher",
+            "intent",
+            "javascript",
+            "market",
+            "ms-settings",
+            "ms-windows-store",
+            "vbscript",
+          ],
+        },
       )).toThrow(/not registered/);
     }
   });
@@ -738,6 +779,7 @@ describe("McpFn hosted authorization compatibility", () => {
       allowDynamicLoopbackPort: true,
       allowLocalhostLoopback: true,
       privateUseSchemePolicy: "compatible",
+      compatiblePrivateUseSchemes: ["cursor"],
     } as const;
     let registeredClient: ReturnType<typeof normalizeMcpClientRegistration> | null = null;
     const compatibility = createMcpAuthorizationCompatibilityHandler({
@@ -825,6 +867,7 @@ describe("McpFn hosted authorization compatibility", () => {
       allowDynamicLoopbackPort: true,
       allowLocalhostLoopback: true,
       privateUseSchemePolicy: "compatible",
+      compatiblePrivateUseSchemes: ["cursor"],
     } as const;
 
     expect(matchMcpRedirectUri(

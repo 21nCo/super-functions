@@ -6,6 +6,8 @@ export type McpFnPrivateUseSchemePolicy =
 export interface McpFnRedirectPolicy {
   allowDynamicLoopbackPort?: boolean;
   allowLocalhostLoopback?: boolean;
+  /** @deprecated Use `privateUseSchemePolicy` instead. */
+  allowPrivateUseSchemes?: boolean;
   /**
    * Private-use native-app redirect handling. Defaults to `rfc8252`.
    * `disabled` rejects all private-use schemes. `rfc8252` requires a
@@ -13,6 +15,8 @@ export interface McpFnRedirectPolicy {
    * non-web schemes such as Cursor's `cursor:` callback.
    */
   privateUseSchemePolicy?: McpFnPrivateUseSchemePolicy;
+  /** Lowercase scheme names, without `:`, admitted by `compatible` mode. */
+  compatiblePrivateUseSchemes?: ReadonlyArray<string>;
 }
 
 export interface McpFnRedirectMatch {
@@ -51,7 +55,7 @@ export function normalizeMcpRedirectUri(
   }
   if (url.protocol === "https:") return url.toString();
   if (url.protocol === "http:" && isLoopback(url, policy)) return url.toString();
-  if (isAllowedPrivateUseRedirect(url, policy.privateUseSchemePolicy)) {
+  if (isAllowedPrivateUseRedirect(url, policy)) {
     return url.toString();
   }
   throw new McpFnRedirectMismatchError(url.toString());
@@ -102,7 +106,7 @@ export function isMcpFnCompatiblePrivateUseRedirect(
     return false;
   }
   return (
-    isAllowedPrivateUseRedirect(url, "compatible") &&
+    isSafePrivateUseRedirect(url) &&
     !isReverseDomainPrivateUseScheme(url.protocol)
   );
 }
@@ -127,6 +131,8 @@ const unsafeNativeProtocols = new Set([
   "ldaps:",
   "mailto:",
   "market:",
+  "ms-settings:",
+  "ms-windows-store:",
   "nntp:",
   "resource:",
   "sftp:",
@@ -144,10 +150,21 @@ const unsafeNativeProtocols = new Set([
 
 function isAllowedPrivateUseRedirect(
   url: URL,
-  policy: McpFnPrivateUseSchemePolicy | undefined,
+  policy: McpFnRedirectPolicy,
 ): boolean {
-  const effectivePolicy = policy ?? "rfc8252";
+  const effectivePolicy = policy.privateUseSchemePolicy ??
+    (policy.allowPrivateUseSchemes === false ? "disabled" : "rfc8252");
   if (effectivePolicy === "disabled") return false;
+  if (!isSafePrivateUseRedirect(url)) return false;
+  if (isReverseDomainPrivateUseScheme(url.protocol)) return true;
+  if (effectivePolicy !== "compatible") return false;
+  const scheme = url.protocol.slice(0, -1).toLowerCase();
+  return policy.compatiblePrivateUseSchemes?.some(
+    (candidate) => candidate === candidate.toLowerCase() && candidate === scheme,
+  ) === true;
+}
+
+function isSafePrivateUseRedirect(url: URL): boolean {
   if (
     url.username ||
     url.password ||
@@ -160,7 +177,7 @@ function isAllowedPrivateUseRedirect(
   ) {
     return false;
   }
-  return effectivePolicy === "compatible" || isReverseDomainPrivateUseScheme(url.protocol);
+  return true;
 }
 
 function isReverseDomainPrivateUseScheme(protocol: string): boolean {
