@@ -36,8 +36,8 @@ export interface MdfnAssetProvider {
 }
 
 async function authorized(provider: MdfnAssetProvider, operation: AssetOperation, reference: AssetReference | undefined, context: AssetContext): Promise<void> {
-  await provider.authorize?.(operation, reference, context);
   if (reference && reference.documentId !== context.documentId) throw new Error("MDFN_ASSET_DOCUMENT_MISMATCH");
+  await provider.authorize?.(operation, reference, context);
 }
 
 export function createAssetGateway(provider: MdfnAssetProvider): Required<Pick<MdfnAssetProvider, "select" | "upload" | "resolve" | "delete">> {
@@ -65,12 +65,14 @@ export function createAssetGateway(provider: MdfnAssetProvider): Required<Pick<M
     },
     async delete(reference, context) {
       if (!provider.delete) throw new Error("MDFN_ASSET_DELETE_UNAVAILABLE");
-      const resolved = await provider.resolve(reference, { ...context, purpose: "manage" });
+      const manageContext: AssetContext = { ...context, purpose: "manage" };
+      await authorized(provider, "delete", reference, manageContext);
+      const resolved = await provider.resolve(reference, manageContext);
       if (resolved.reference.id !== reference.id || resolved.reference.documentId !== context.documentId) {
         throw new Error("MDFN_ASSET_DOCUMENT_MISMATCH");
       }
-      await authorized(provider, "delete", resolved.reference, context);
-      await provider.delete(resolved.reference, context);
+      await authorized(provider, "delete", resolved.reference, manageContext);
+      await provider.delete(resolved.reference, manageContext);
     },
   };
 }

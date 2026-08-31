@@ -148,7 +148,27 @@ describe("filefn bridge", () => {
       { id: "asset-a", provider: "filefn", documentId: "document-b" },
       { documentId: "document-b" },
     )).rejects.toThrow("MDFN_ASSET_DOCUMENT_MISMATCH");
+    expect(authorize).toHaveBeenCalledOnce();
+    expect(authorize).toHaveBeenCalledWith(
+      "delete",
+      { id: "asset-a", provider: "filefn", documentId: "document-b" },
+      { documentId: "document-b", purpose: "manage" },
+    );
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("rejects cross-document deletion before invoking provider hooks", async () => {
+    const authorize = vi.fn();
+    const resolve = vi.fn();
+    const remove = vi.fn();
+    const gateway = createAssetGateway({ authorize, resolve, delete: remove });
+
+    await expect(gateway.delete(
+      { id: "foreign", provider: "filefn", documentId: "document-a" },
+      { documentId: "document-b" },
+    )).rejects.toThrow("MDFN_ASSET_DOCUMENT_MISMATCH");
     expect(authorize).not.toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
   });
 });

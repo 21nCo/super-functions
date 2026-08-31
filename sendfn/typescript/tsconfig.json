@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "baseUrl": ".",
+    "paths": {
+      "@superfunctions/db": ["../../packages/db/src/index.ts"],
+      "@superfunctions/delivery": ["../../packages/delivery/src/index.ts"],
+      "@superfunctions/http": ["../../packages/http/src/index.ts"]
+    },
+    "lib": ["ES2020", "DOM"],
+    "declaration": true,
+    "sourceMap": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "dist"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}

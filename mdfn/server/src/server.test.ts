@@ -455,6 +455,44 @@ describe("mdfn server", () => {
     expect(actions).toEqual(expect.arrayContaining(["update", "suggestion:create", "suggestion:decide", "review:transition"]));
   });
 
+  it("authorizes restoration of protected editorial snapshots separately", async () => {
+    const actions: string[] = [];
+    let restricted = false;
+    const service = createMdfnService({
+      database: memoryAdapter(),
+      durability: "ephemeral",
+      authorize: (action) => {
+        actions.push(action);
+        return !restricted || !["history:restore", "suggestion:decide", "review:transition"].includes(action);
+      },
+      createId: (() => { let id = 0; return () => `restore-auth-${id++}`; })(),
+    });
+    const principal = { id: "author" };
+    const document = await service.create(principal, { markdown: "original" });
+    const reviewing = await service.transitionReview(principal, document.id, {
+      expectedVersion: 1,
+      state: "in-review",
+    });
+    restricted = true;
+
+    await expect(service.version(principal, document.id, 1)).resolves.toMatchObject({ version: 1 });
+    const updated = await service.update(principal, document.id, {
+      expectedVersion: reviewing.version,
+      markdown: "updated",
+    });
+    await expect(service.restoreVersion(principal, document.id, {
+      version: 1,
+      expectedVersion: updated.version,
+    })).rejects.toMatchObject({ code: "MDFN_FORBIDDEN", status: 403 });
+
+    await expect(service.read(principal, document.id)).resolves.toMatchObject({
+      markdown: "updated",
+      version: updated.version,
+      sidecar: { reviewState: "in-review" },
+    });
+    expect(actions).toEqual(expect.arrayContaining(["history", "update", "history:restore"]));
+  });
+
   it("keeps editorial state and audit history server-authoritative", async () => {
     const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `integrity-${id++}`; })() });
     const principal = { id: "author" };

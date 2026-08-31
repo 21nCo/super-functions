@@ -4,7 +4,7 @@ DevFn is the local-development counterpart to HostFn: a portable command contrac
 
 ## Packages
 
-- `devfn` — independently installable CLI.
+- `@devfn/cli` — independently installable CLI exposing the `devfn` command.
 - `@devfn/core` — planning, lifecycle journals, receipts, rollback, and diagnostics.
 - `@devfn/config` — manifest/policy validation, discovery, and trust.
 - `@devfn/ports` — concurrency-safe allocations, leases, reconciliation, and inventory.

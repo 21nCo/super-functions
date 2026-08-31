@@ -32,6 +32,7 @@ export type MdfnServerAction =
   | "update"
   | "delete"
   | "history"
+  | "history:restore"
   | "collaborate"
   | "compact-collaboration"
   | "comment:create"
@@ -579,6 +580,8 @@ export function createMdfnService(config: MdfnServerConfig): MdfnService {
     },
     async version(principal, id, version) { const document = await loadScoped(principal, id); await allowed(config, "history", principal, document); const result = await database.findOne<MdfnVersionRecord>({ model: VERSIONS, where: [{ field: "documentId", operator: "eq", value: id }, { field: "version", operator: "eq", value: version }] }); if (!result) throw new MdfnServerError("MDFN_VERSION_NOT_FOUND", 404); return result; },
     async restoreVersion(principal, id, input) {
+      const current = await loadScoped(principal, id);
+      await allowed(config, "history:restore", principal, current);
       const restored = await service.version(principal, id, input.version);
       return writeUpdate(
         principal,
