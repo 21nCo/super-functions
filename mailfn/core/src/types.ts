@@ -147,6 +147,14 @@ export interface Message {
   parseRetryable?: boolean;
   /** Durable lease used to serialize at-least-once MIME parse deliveries. */
   parseLeaseExpiresAt?: string;
+  /** Ownership token for the parser holding the current durable lease. */
+  parseLeaseId?: string;
+  /** Lease-unique attachment objects whose prior best-effort cleanup must be retried. */
+  parseCleanupObjectKeys?: string[];
+  /** Ownership token for raw-object retention once destructive cleanup starts. */
+  rawDeletionLeaseId?: string;
+  /** Time after which retention may reclaim an abandoned raw-object deletion. */
+  rawDeletionLeaseExpiresAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -163,11 +171,13 @@ export interface Attachment {
   sha256: string;
   contentId?: string;
   disposition?: string;
+  /** Internal quota reservation owned by the parse attempt that wrote this attachment. */
+  storageReservationId?: string;
   createdAt: string;
 }
 
 /** Attachment metadata safe to expose through public API surfaces. */
-export type AttachmentDescriptor = Omit<Attachment, 'projectId' | 'objectKey'>;
+export type AttachmentDescriptor = Omit<Attachment, 'projectId' | 'objectKey' | 'storageReservationId'>;
 
 export interface Thread {
   id: string;

@@ -263,13 +263,36 @@ export class MemoryMailFnStore implements MailFnStore {
     this.messages.set(message.id, copy(message));
     return true;
   }
-  async claimMessageForParsing(messageId: string, claimedAt: string, leaseExpiresAt: string): Promise<boolean> {
+  async claimMessageForParsing(messageId: string, claimedAt: string, leaseExpiresAt: string, leaseId: string): Promise<boolean> {
     const message = this.messages.get(messageId);
     if (
       !message || message.status === 'ready' || message.status === 'deleted' ||
+      message.rawDeletedAt !== undefined || message.rawDeletionLeaseId !== undefined ||
       (message.parseLeaseExpiresAt !== undefined && message.parseLeaseExpiresAt > claimedAt)
     ) return false;
-    this.messages.set(messageId, copy({ ...message, parseLeaseExpiresAt: leaseExpiresAt, updatedAt: claimedAt }));
+    this.messages.set(messageId, copy({ ...message, parseLeaseId: leaseId, parseLeaseExpiresAt: leaseExpiresAt, updatedAt: claimedAt }));
+    return true;
+  }
+  async claimMessageRawDeletion(messageId: string, claimId: string, claimedAt: string, leaseExpiresAt: string): Promise<boolean> {
+    const message = this.messages.get(messageId);
+    if (
+      !message || message.status === 'deleted' || message.rawDeletedAt !== undefined ||
+      (message.parseLeaseExpiresAt !== undefined && message.parseLeaseExpiresAt > claimedAt) ||
+      (message.rawDeletionLeaseExpiresAt !== undefined && message.rawDeletionLeaseExpiresAt > claimedAt)
+    ) return false;
+    this.messages.set(messageId, copy({
+      ...message,
+      rawDeletionLeaseId: claimId,
+      rawDeletionLeaseExpiresAt: leaseExpiresAt,
+      updatedAt: claimedAt,
+    }));
+    return true;
+  }
+  async finishMessageRawDeletion(messageId: string, claimId: string, deletedAt: string): Promise<boolean> {
+    const message = this.messages.get(messageId);
+    if (!message || message.rawDeletionLeaseId !== claimId) return false;
+    const { rawDeletionLeaseId: _claimId, rawDeletionLeaseExpiresAt: _leaseExpiresAt, ...current } = message;
+    this.messages.set(messageId, copy({ ...current, rawDeletedAt: deletedAt, updatedAt: deletedAt }));
     return true;
   }
   async claimMessageDeletion(message: Message, expected: Message): Promise<boolean> {
@@ -315,8 +338,19 @@ export class MemoryMailFnStore implements MailFnStore {
   async saveAttachment(attachment: Attachment): Promise<void> {
     this.attachments.set(attachment.id, copy(attachment));
   }
+  async saveAttachmentIfMessageParseOwned(attachment: Attachment, parseLeaseId: string): Promise<boolean> {
+    if (this.messages.get(attachment.messageId)?.parseLeaseId !== parseLeaseId) return false;
+    this.attachments.set(attachment.id, copy(attachment));
+    return true;
+  }
   async deleteAttachment(id: string): Promise<void> {
     this.attachments.delete(id);
+  }
+  async deleteAttachmentIfUnchanged(id: string, objectKey: string): Promise<boolean> {
+    const attachment = this.attachments.get(id);
+    if (!attachment || attachment.objectKey !== objectKey) return false;
+    this.attachments.delete(id);
+    return true;
   }
 
   async getThread(id: string): Promise<Thread | null> {
@@ -325,7 +359,7 @@ export class MemoryMailFnStore implements MailFnStore {
   async listThreads(projectId: string, inboxId: string): Promise<Thread[]> {
     return values(this.threads)
       .filter((thread) => thread.projectId === projectId && thread.inboxId === inboxId)
-      .sort((left, right) => right.lastMessageAt.localeCompare(left.lastMessageAt));
+      .sort((left, right) => Date.parse(right.lastMessageAt) - Date.parse(left.lastMessageAt) || right.id.localeCompare(left.id));
   }
   async saveThread(thread: Thread): Promise<void> {
     this.threads.set(thread.id, copy(thread));

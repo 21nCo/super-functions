@@ -4,6 +4,7 @@ import type { MailFnEvent, Webhook } from '@mailfn/core';
 import {
   CloudflareWebhookDispatcher,
   MemoryWebhookReplayStore,
+  parseCloudflareWebhookResponseHead,
   verifyMailFnWebhook,
   verifyMailFnWebhookOnce,
 } from './webhook.js';
@@ -15,6 +16,14 @@ const resolvedFetch = (fetcher: typeof globalThis.fetch) => async (url: URL, add
 };
 
 describe('Cloudflare webhook delivery', () => {
+  it('counts only response-header bytes when a socket read also contains a large body', () => {
+    const response = `HTTP/1.1 204 No Content\r\nContent-Type: text/plain\r\n\r\n${'x'.repeat(70 * 1024)}`;
+    expect(parseCloudflareWebhookResponseHead(response)).toEqual({ complete: true, status: 204 });
+    expect(() => parseCloudflareWebhookResponseHead(
+      `HTTP/1.1 204 No Content\r\nX-Large: ${'x'.repeat(64 * 1024)}\r\n\r\n`,
+    )).toThrow('MAILFN_WEBHOOK_RESPONSE_HEADERS_TOO_LARGE');
+  });
+
   it('signs timestamped delivery payloads and permits replay checks', async () => {
     let captured: { body: string; headers: Headers } | undefined;
     const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {

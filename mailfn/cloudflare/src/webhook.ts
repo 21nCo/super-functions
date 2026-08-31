@@ -16,6 +16,28 @@ class WebhookResolutionError extends Error {
   }
 }
 
+const WEBHOOK_RESPONSE_HEADER_LIMIT = 64 * 1024;
+const HTTP_HEADER_DELIMITER = '\r\n\r\n';
+
+export function parseCloudflareWebhookResponseHead(response: string): { complete: false } | { complete: true; status: number } {
+  const headerEnd = response.indexOf(HTTP_HEADER_DELIMITER);
+  if (headerEnd < 0) {
+    // Permit a delimiter split across reads without permitting another header byte.
+    if (new TextEncoder().encode(response).byteLength > WEBHOOK_RESPONSE_HEADER_LIMIT + HTTP_HEADER_DELIMITER.length - 1) {
+      throw new Error('MAILFN_WEBHOOK_RESPONSE_HEADERS_TOO_LARGE');
+    }
+    return { complete: false };
+  }
+  if (new TextEncoder().encode(response.slice(0, headerEnd)).byteLength > WEBHOOK_RESPONSE_HEADER_LIMIT) {
+    throw new Error('MAILFN_WEBHOOK_RESPONSE_HEADERS_TOO_LARGE');
+  }
+  const status = Number(/^HTTP\/1\.[01]\s+(\d{3})/.exec(response.slice(0, headerEnd))?.[1]);
+  if (!Number.isInteger(status) || status < 200 || status > 599) {
+    throw new Error('MAILFN_WEBHOOK_RESPONSE_INVALID');
+  }
+  return { complete: true, status };
+}
+
 /**
  * Cloudflare Workers transport that connects to a vetted address while using
  * the original hostname for TLS verification and the HTTP Host header.
@@ -54,16 +76,16 @@ export async function cloudflareFetchResolved(
         const reader = socket.readable.getReader();
         const decoder = new TextDecoder();
         let responseHead = '';
-        while (!responseHead.includes('\r\n\r\n')) {
+        let parsed: ReturnType<typeof parseCloudflareWebhookResponseHead> = { complete: false };
+        while (!parsed.complete) {
           const { done, value } = await reader.read();
           if (done) break;
           responseHead += decoder.decode(value, { stream: true });
-          if (responseHead.length > 64 * 1024) throw new Error('MAILFN_WEBHOOK_RESPONSE_HEADERS_TOO_LARGE');
+          parsed = parseCloudflareWebhookResponseHead(responseHead);
         }
         await reader.cancel();
-        const status = Number(/^HTTP\/1\.[01]\s+(\d{3})/.exec(responseHead)?.[1]);
-        if (!Number.isInteger(status) || status < 200 || status > 599) throw new Error('MAILFN_WEBHOOK_RESPONSE_INVALID');
-        return new Response(null, { status });
+        if (!parsed.complete) throw new Error('MAILFN_WEBHOOK_RESPONSE_INVALID');
+        return new Response(null, { status: parsed.status });
       } finally {
         init.signal?.removeEventListener('abort', abort);
         await socket.close().catch(() => undefined);

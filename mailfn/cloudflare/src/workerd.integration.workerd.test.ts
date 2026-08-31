@@ -9,7 +9,7 @@ import {
 } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { AuditEvent, ComplianceProfile, MailDomain, Message, ParseJob, Thread, Webhook, WebhookDeliveryJob } from '@mailfn/core';
+import type { Attachment, AuditEvent, ComplianceProfile, MailDomain, Message, ParseJob, Thread, Webhook, WebhookDeliveryJob } from '@mailfn/core';
 import type { D1Database, Queue, R2Bucket } from './bindings.js';
 import { D1MailFnStore } from './d1-store.js';
 import { applyMailFnMigrations } from './migrations.js';
@@ -327,21 +327,62 @@ describe('MailFn in workerd', () => {
     };
     await store.saveMessage(pending);
     await expect(store.claimMessageForParsing(
-      pending.id, '2026-08-31T00:00:01.000Z', '2026-08-31T00:05:01.000Z',
+      pending.id, '2026-08-31T00:00:01.000Z', '2026-08-31T00:05:01.000Z', 'parse-owner-1',
     )).resolves.toBe(true);
     const parsing = (await store.getMessage(pending.id))!;
+    const attachment: Attachment = {
+      id: 'att_parse_delete_cas', projectId: bootstrap.project.id, inboxId: created.inbox.id,
+      messageId: pending.id, filename: 'owned.txt', contentType: 'text/plain', sizeBytes: 1,
+      objectKey: 'attachments/parse-owner-1', sha256: 'hash', createdAt: '2026-08-31T00:00:01.000Z',
+    };
+    await expect(store.saveAttachmentIfMessageParseOwned(attachment, 'wrong-owner')).resolves.toBe(false);
+    await expect(store.saveAttachmentIfMessageParseOwned(attachment, 'parse-owner-1')).resolves.toBe(true);
+    await expect(store.deleteAttachmentIfUnchanged(attachment.id, 'attachments/wrong-owner')).resolves.toBe(false);
+    await expect(store.getAttachment(attachment.id)).resolves.toMatchObject({ objectKey: attachment.objectKey });
     const ready: Message = {
-      ...parsing, status: 'ready', parsedAt: '2026-08-31T00:00:02.000Z', parseLeaseExpiresAt: undefined,
+      ...parsing, status: 'ready', parsedAt: '2026-08-31T00:00:02.000Z', parseLeaseId: undefined,
+      parseLeaseExpiresAt: undefined,
       updatedAt: '2026-08-31T00:00:02.000Z',
     };
 
     await expect(store.saveMessageIfUnchanged(ready, pending)).resolves.toBe(false);
     await expect(store.saveMessageIfUnchanged(ready, parsing)).resolves.toBe(true);
-    const deleted: Message = { ...ready, status: 'deleted', updatedAt: '2026-08-31T00:00:03.000Z' };
+    await expect(store.claimMessageRawDeletion(
+      pending.id, 'raw-owner-1', '2026-08-31T00:00:03.000Z', '2026-08-31T00:05:03.000Z',
+    )).resolves.toBe(true);
+    await expect(store.claimMessageForParsing(
+      pending.id, '2026-08-31T00:00:04.000Z', '2026-08-31T00:05:04.000Z', 'parse-owner-2',
+    )).resolves.toBe(false);
+    await expect(store.finishMessageRawDeletion(
+      pending.id, 'raw-owner-1', '2026-08-31T00:00:04.000Z',
+    )).resolves.toBe(true);
+    const retained = (await store.getMessage(pending.id))!;
+    expect(retained).toMatchObject({ status: 'ready', rawDeletedAt: '2026-08-31T00:00:04.000Z' });
+    const deleted: Message = { ...retained, status: 'deleted', updatedAt: '2026-08-31T00:00:05.000Z' };
     await expect(store.claimMessageDeletion(deleted, parsing)).resolves.toBe(false);
-    await expect(store.claimMessageDeletion(deleted, ready)).resolves.toBe(true);
+    await expect(store.claimMessageDeletion(deleted, retained)).resolves.toBe(true);
     await expect(store.saveMessageIfUnchanged(ready, ready)).resolves.toBe(false);
     await expect(store.getMessage(pending.id)).resolves.toMatchObject({ status: 'deleted' });
+  });
+
+  it('orders D1 thread activity by timestamp instant', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'thread-instant-order', displayName: 'Thread Instant Order' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const created = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'stable', requestedLocalPart: 'thread-instant-order',
+    });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const thread = (id: string, lastMessageAt: string): Thread => ({
+      id, projectId: bootstrap.project.id, inboxId: created.inbox.id, normalizedSubject: id,
+      messageIds: [], participants: [], labels: [], lastMessageAt, createdAt: lastMessageAt, updatedAt: lastMessageAt,
+    });
+    await store.saveThread(thread('thread-offset-earlier', '2026-08-10T01:00:00+02:00'));
+    await store.saveThread(thread('thread-offset-later', '2026-08-10T00:30:00Z'));
+
+    await expect(store.listThreads(bootstrap.project.id, created.inbox.id)).resolves.toMatchObject([
+      { id: 'thread-offset-later' }, { id: 'thread-offset-earlier' },
+    ]);
   });
 
   it('deduplicates Message-ID-less retries and preserves distinct mail that reuses Message-ID', async () => {

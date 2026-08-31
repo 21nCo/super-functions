@@ -448,13 +448,36 @@ export class D1MailFnStore implements MailFnStore {
     if (results.some((result) => !result.success)) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(results[0]?.meta?.changes ?? 0) === 1;
   }
-  async claimMessageForParsing(messageId: string, claimedAt: string, leaseExpiresAt: string): Promise<boolean> {
+  async claimMessageForParsing(messageId: string, claimedAt: string, leaseExpiresAt: string, leaseId: string): Promise<boolean> {
     const result = await this.database.prepare(
       `UPDATE mailfn_messages
-       SET updated_at = ?, data_json = json_set(data_json, '$.parseLeaseExpiresAt', ?, '$.updatedAt', ?)
-       WHERE id = ? AND status NOT IN ('ready', 'deleted')
+       SET updated_at = ?, data_json = json_set(data_json, '$.parseLeaseId', ?, '$.parseLeaseExpiresAt', ?, '$.updatedAt', ?)
+       WHERE id = ? AND status NOT IN ('ready', 'deleted') AND raw_deleted_at IS NULL
+         AND json_extract(data_json, '$.rawDeletionLeaseId') IS NULL
          AND (json_extract(data_json, '$.parseLeaseExpiresAt') IS NULL OR json_extract(data_json, '$.parseLeaseExpiresAt') <= ?)`,
-    ).bind(claimedAt, leaseExpiresAt, claimedAt, messageId, claimedAt).run();
+    ).bind(claimedAt, leaseId, leaseExpiresAt, claimedAt, messageId, claimedAt).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
+  }
+  async claimMessageRawDeletion(messageId: string, claimId: string, claimedAt: string, leaseExpiresAt: string): Promise<boolean> {
+    const result = await this.database.prepare(
+      `UPDATE mailfn_messages
+       SET updated_at = ?, data_json = json_set(data_json, '$.rawDeletionLeaseId', ?, '$.rawDeletionLeaseExpiresAt', ?, '$.updatedAt', ?)
+       WHERE id = ? AND status != 'deleted' AND raw_deleted_at IS NULL
+         AND (json_extract(data_json, '$.parseLeaseExpiresAt') IS NULL OR json_extract(data_json, '$.parseLeaseExpiresAt') <= ?)
+         AND (json_extract(data_json, '$.rawDeletionLeaseExpiresAt') IS NULL OR json_extract(data_json, '$.rawDeletionLeaseExpiresAt') <= ?)`,
+    ).bind(claimedAt, claimId, leaseExpiresAt, claimedAt, messageId, claimedAt, claimedAt).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
+  }
+  async finishMessageRawDeletion(messageId: string, claimId: string, deletedAt: string): Promise<boolean> {
+    const result = await this.database.prepare(
+      `UPDATE mailfn_messages
+       SET raw_deleted_at = ?, updated_at = ?,
+         data_json = json_remove(json_set(data_json, '$.rawDeletedAt', ?, '$.updatedAt', ?),
+           '$.rawDeletionLeaseId', '$.rawDeletionLeaseExpiresAt')
+       WHERE id = ? AND json_extract(data_json, '$.rawDeletionLeaseId') = ?`,
+    ).bind(deletedAt, deletedAt, deletedAt, deletedAt, messageId, claimId).run();
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;
   }
@@ -520,15 +543,45 @@ export class D1MailFnStore implements MailFnStore {
       [value.id, value.projectId, value.inboxId, value.messageId, value.filename, value.contentType, value.sizeBytes, value.objectKey, value.sha256, value.createdAt, json(value)],
     );
   }
+  async saveAttachmentIfMessageParseOwned(value: Attachment, parseLeaseId: string): Promise<boolean> {
+    const result = await bind(this.database.prepare(
+      `INSERT INTO mailfn_attachments(id, project_id, inbox_id, message_id, filename, content_type, size_bytes, object_key, sha256, created_at, data_json)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM mailfn_messages
+         WHERE id = ? AND json_extract(data_json, '$.parseLeaseId') = ?
+       )
+       ON CONFLICT(id) DO UPDATE SET filename=excluded.filename, content_type=excluded.content_type,
+         size_bytes=excluded.size_bytes, object_key=excluded.object_key, sha256=excluded.sha256, data_json=excluded.data_json
+       WHERE EXISTS (
+         SELECT 1 FROM mailfn_messages
+         WHERE id = ? AND json_extract(data_json, '$.parseLeaseId') = ?
+       )`,
+    ), [
+      value.id, value.projectId, value.inboxId, value.messageId, value.filename, value.contentType,
+      value.sizeBytes, value.objectKey, value.sha256, value.createdAt, json(value),
+      value.messageId, parseLeaseId, value.messageId, parseLeaseId,
+    ]).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
+  }
   async deleteAttachment(id: string): Promise<void> {
     await this.run('DELETE FROM mailfn_attachments WHERE id = ?', [id]);
+  }
+  async deleteAttachmentIfUnchanged(id: string, objectKey: string): Promise<boolean> {
+    const result = await bind(
+      this.database.prepare('DELETE FROM mailfn_attachments WHERE id = ? AND object_key = ?'),
+      [id, objectKey],
+    ).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
   }
 
   async getThread(id: string): Promise<Thread | null> {
     return this.one('SELECT data_json FROM mailfn_threads WHERE id = ?', [id]);
   }
   async listThreads(projectId: string, inboxId: string): Promise<Thread[]> {
-    return this.many('SELECT data_json FROM mailfn_threads WHERE project_id = ? AND inbox_id = ? ORDER BY last_message_at DESC', [projectId, inboxId]);
+    return this.many('SELECT data_json FROM mailfn_threads WHERE project_id = ? AND inbox_id = ? ORDER BY julianday(last_message_at) DESC, id DESC', [projectId, inboxId]);
   }
   async saveThread(value: Thread): Promise<void> {
     await this.run(

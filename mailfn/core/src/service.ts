@@ -106,6 +106,7 @@ export interface CreatedWebhook {
 }
 
 const PARSE_LEASE_MS = 15 * 60 * 1000;
+const RAW_DELETION_LEASE_MS = 15 * 60 * 1000;
 const WEBHOOK_DELIVERY_LEASE_MS = 5 * 60 * 1000;
 const STORAGE_RESERVATION_LEASE_MS = 15 * 60 * 1000;
 const STORAGE_WRITE_LEASE_MS = 60 * 60 * 1000;
@@ -255,14 +256,18 @@ export class MailFn {
         status: 403,
       });
     }
+    let credentialInput = input;
     if (input.inboxId) {
       const inbox = await this.requireInbox(input.projectId, input.inboxId);
       assertMailFn(
         inbox.status === 'active' && (!inbox.expiresAt || !isExpiredAt(inbox.expiresAt, this.now())),
         { code: 'MAILFN_INBOX_INACTIVE', message: 'Inbox is not active', status: 410 },
       );
+      if (inbox.expiresAt && (!input.expiresAt || Date.parse(input.expiresAt) > Date.parse(inbox.expiresAt))) {
+        credentialInput = { ...input, expiresAt: inbox.expiresAt };
+      }
     }
-    const created = await this.issueCredential(input);
+    const created = await this.issueCredential(credentialInput);
     await this.audit(actor, 'credential.created', 'credential', created.credential.id, {
       inboxId: input.inboxId ?? null,
       scopeCount: input.permissions.length,
@@ -884,14 +889,20 @@ export class MailFn {
     if (observed.status === 'ready') return observed;
     const claimedAt = this.now();
     const leaseExpiresAt = new Date(Date.parse(claimedAt) + PARSE_LEASE_MS).toISOString();
-    if (!(await this.store.claimMessageForParsing(observed.id, claimedAt, leaseExpiresAt))) {
+    const parseLeaseId = this.ids.generate('parse');
+    if (!(await this.store.claimMessageForParsing(observed.id, claimedAt, leaseExpiresAt, parseLeaseId))) {
       return (await this.store.getMessage(observed.id)) ?? observed;
     }
     const message = await this.requireMessage(job.projectId, job.inboxId, job.messageId);
     const written: Array<{ attachment: Attachment; key: string }> = [];
     const reservedAttachmentIds: string[] = [];
+    const cleanupObjectKeys = new Set(message.parseCleanupObjectKeys ?? []);
     let threadWrite: { current: Thread; previous: Thread | null } | undefined;
     try {
+      for (const key of [...cleanupObjectKeys]) {
+        await this.objects.delete(key);
+        cleanupObjectKeys.delete(key);
+      }
       const raw = await this.objects.get(message.rawObjectKey);
       assertMailFn(raw, {
         code: 'MAILFN_STORAGE_FAILED',
@@ -910,14 +921,15 @@ export class MailFn {
           });
         }
         const attachmentId = await deterministicAttachmentId(message.id, attachmentIndex);
+        const storageReservationId = `${attachmentId}:${parseLeaseId}`;
         const storageReservation = await this.store.reserveStorage({
-          id: attachmentId,
+          id: storageReservationId,
           projectId: project.id,
           bytes: parsedAttachment.content.byteLength,
           createdAt: this.now(),
         }, project.quota.maxStoredBytes);
         if (storageReservation === 'denied') throw quotaExceeded('stored bytes');
-        if (!(await this.store.claimStorage(attachmentId, this.now()))) {
+        if (!(await this.store.claimStorage(storageReservationId, this.now()))) {
           throw new MailFnError({
             code: 'MAILFN_STORAGE_FAILED',
             message: 'Attachment storage reservation is missing or expired',
@@ -925,8 +937,8 @@ export class MailFn {
             retryable: true,
           });
         }
-        reservedAttachmentIds.push(attachmentId);
-        const key = objectKey(project.id, message.inboxId, message.id, `attachments/${attachmentId}`);
+        reservedAttachmentIds.push(storageReservationId);
+        const key = objectKey(project.id, message.inboxId, message.id, `attachments/${parseLeaseId}/${attachmentId}`);
         const attachment: Attachment = {
           id: attachmentId,
           projectId: project.id,
@@ -939,6 +951,7 @@ export class MailFn {
           sha256: await sha256(parsedAttachment.content),
           contentId: parsedAttachment.contentId,
           disposition: parsedAttachment.disposition,
+          storageReservationId,
           createdAt: this.now(),
         };
         await this.objects.put(key, parsedAttachment.content, {
@@ -946,8 +959,13 @@ export class MailFn {
           metadata: { projectId: project.id, inboxId: message.inboxId, messageId: message.id },
         });
         written.push({ attachment, key });
-        await this.store.saveAttachment(attachment);
-        await this.store.releaseStorageClaim(attachmentId).catch(() => undefined);
+        if (!(await this.store.saveAttachmentIfMessageParseOwned(attachment, parseLeaseId))) {
+          throw new MailFnError({
+            code: 'MAILFN_CONFLICT', message: 'Message parse ownership changed while saving attachments',
+            status: 409, retryable: false,
+          });
+        }
+        await this.store.releaseStorageClaim(storageReservationId).catch(() => undefined);
         await this.usage(project.id, 'attachment_bytes', attachment.sizeBytes, attachment.id).catch(() =>
           this.systemAudit(project.id, 'usage.append_failed', 'attachment', attachment.id, { metric: 'attachment_bytes' }).catch(() => undefined),
         );
@@ -975,7 +993,9 @@ export class MailFn {
         status: 'ready',
         parseErrorCode: undefined,
         parseRetryable: undefined,
+        parseLeaseId: undefined,
         parseLeaseExpiresAt: undefined,
+        parseCleanupObjectKeys: undefined,
         updatedAt: now,
       };
       let thread: Thread | undefined;
@@ -1015,8 +1035,13 @@ export class MailFn {
       return updated;
     } catch (error) {
       for (const entry of written) {
-        await this.objects.delete(entry.key).catch(() => undefined);
-        await this.store.deleteAttachment(entry.attachment.id).catch(() => undefined);
+        try {
+          await this.objects.delete(entry.key);
+          cleanupObjectKeys.delete(entry.key);
+        } catch {
+          cleanupObjectKeys.add(entry.key);
+        }
+        await this.store.deleteAttachmentIfUnchanged(entry.attachment.id, entry.key).catch(() => false);
       }
       for (const attachmentId of reservedAttachmentIds) {
         await this.store.releaseStorage(attachmentId).catch(() => undefined);
@@ -1038,7 +1063,9 @@ export class MailFn {
         status: 'parse_failed',
         parseErrorCode: normalizedError.code,
         parseRetryable: normalizedError.retryable,
+        parseLeaseId: undefined,
         parseLeaseExpiresAt: undefined,
+        parseCleanupObjectKeys: cleanupObjectKeys.size > 0 ? [...cleanupObjectKeys] : undefined,
         updatedAt: this.now(),
       };
       if (await this.store.saveMessageIfUnchanged(failed, message)) {
@@ -1591,7 +1618,9 @@ export class MailFn {
       providerMessageId: result.providerMessageId,
       updatedAt: this.now(),
     };
-    if (!(await this.store.saveDraftIfInboxWritable(updated))) return updated;
+    if (!(await this.store.claimDraft(draft.id, 'sending', updated))) {
+      return (await this.store.getDraft(draft.id)) ?? updated;
+    }
     if (result.status === 'queued') return updated;
     await this.event('draft.sent', project.id, {
       inboxId: draft.inboxId,
@@ -1961,9 +1990,16 @@ export class MailFn {
           }
           if (!message.rawDeletedAt && message.rawRetentionExpiresAt <= now) {
             try {
+              const rawDeletionClaimId = this.ids.generate('raw');
+              const rawDeletionLeaseExpiresAt = new Date(Date.parse(now) + RAW_DELETION_LEASE_MS).toISOString();
+              if (!(await this.store.claimMessageRawDeletion(
+                message.id, rawDeletionClaimId, now, rawDeletionLeaseExpiresAt,
+              ))) continue;
               await this.objects.delete(message.rawObjectKey);
               await this.store.releaseStorage(message.id);
-              await this.store.saveMessage({ ...message, rawDeletedAt: now, updatedAt: now });
+              assertMailFn(await this.store.finishMessageRawDeletion(message.id, rawDeletionClaimId, now), {
+                code: 'MAILFN_CONFLICT', message: 'Raw retention ownership changed during cleanup', status: 409,
+              });
               result.deletedObjects += 1;
             } catch {
               await this.systemAudit(project.id, 'retention.delete_failed', 'message', message.id, {
@@ -1975,7 +2011,7 @@ export class MailFn {
             for (const attachment of await this.store.listAttachments(message.id)) {
               try {
                 await this.objects.delete(attachment.objectKey);
-                await this.store.releaseStorage(attachment.id);
+                await this.store.releaseStorage(attachment.storageReservationId ?? attachment.id);
                 await this.store.deleteAttachment(attachment.id);
                 result.deletedObjects += 1;
               } catch {
@@ -2729,7 +2765,7 @@ export class MailFn {
     }
     for (const attachment of await this.store.listAttachments(message.id)) {
       await this.objects.delete(attachment.objectKey);
-      await this.store.releaseStorage(attachment.id);
+      await this.store.releaseStorage(attachment.storageReservationId ?? attachment.id);
       count += 1;
       await this.store.deleteAttachment(attachment.id);
     }
@@ -2751,7 +2787,10 @@ export class MailFn {
       const claimed: Message = {
         ...expected,
         status: 'deleted',
+        parseLeaseId: undefined,
         parseLeaseExpiresAt: undefined,
+        rawDeletionLeaseId: undefined,
+        rawDeletionLeaseExpiresAt: undefined,
         updatedAt: this.now(),
       };
       if (await this.store.claimMessageDeletion(claimed, expected)) return claimed;
@@ -2922,7 +2961,12 @@ function normalizeLabels(labels: string[]): string[] {
 }
 
 function publicAttachment(attachment: Attachment): AttachmentDescriptor {
-  const { projectId: _projectId, objectKey: _objectKey, ...descriptor } = attachment;
+  const {
+    projectId: _projectId,
+    objectKey: _objectKey,
+    storageReservationId: _storageReservationId,
+    ...descriptor
+  } = attachment;
   return descriptor;
 }
 

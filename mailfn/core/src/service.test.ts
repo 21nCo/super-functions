@@ -104,8 +104,31 @@ class PausedInboxDeletionStore extends MemoryMailFnStore {
   }
 }
 
+class PausedRawDeletionStore extends MemoryMailFnStore {
+  private resolveClaimStarted!: () => void;
+  private resumeClaim!: () => void;
+  public readonly claimStarted = new Promise<void>((resolve) => { this.resolveClaimStarted = resolve; });
+  private readonly claimResume = new Promise<void>((resolve) => { this.resumeClaim = resolve; });
+  private pauseNextClaim = true;
+
+  public continueClaim(): void { this.resumeClaim(); }
+
+  override async claimMessageRawDeletion(
+    ...args: Parameters<MemoryMailFnStore['claimMessageRawDeletion']>
+  ): Promise<boolean> {
+    if (this.pauseNextClaim) {
+      this.pauseNextClaim = false;
+      this.resolveClaimStarted();
+      await this.claimResume;
+    }
+    return super.claimMessageRawDeletion(...args);
+  }
+}
+
 class FailingAttachmentStore extends MemoryMailFnStore {
-  override async saveAttachment(): Promise<void> { throw new Error('attachment metadata unavailable'); }
+  override async saveAttachmentIfMessageParseOwned(): Promise<boolean> {
+    throw new Error('attachment metadata unavailable');
+  }
 }
 
 class FailingAtomicInboxStore extends MemoryMailFnStore {
@@ -181,12 +204,14 @@ class CompletingDraftResetStore extends MemoryMailFnStore {
 
 class RecoveringAttachmentStore extends MemoryMailFnStore {
   public failNextAttachment = true;
-  override async saveAttachment(attachment: Parameters<MemoryMailFnStore['saveAttachment']>[0]): Promise<void> {
+  override async saveAttachmentIfMessageParseOwned(
+    ...args: Parameters<MemoryMailFnStore['saveAttachmentIfMessageParseOwned']>
+  ): Promise<boolean> {
     if (this.failNextAttachment) {
       this.failNextAttachment = false;
       throw new Error('attachment metadata unavailable');
     }
-    await super.saveAttachment(attachment);
+    return super.saveAttachmentIfMessageParseOwned(...args);
   }
 }
 
@@ -460,6 +485,33 @@ describe('MailFn domain service', () => {
       inboxId: expiring.inbox.id,
       permissions: ['message:read'],
     })).rejects.toMatchObject({ code: 'MAILFN_INBOX_INACTIVE' });
+  });
+
+  it('caps inbox-scoped credentials at the inbox expiration instant', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id,
+      kind: 'expiring',
+      requestedLocalPart: 'credential-expiry-cap',
+      expirySeconds: 60,
+    });
+    const uncapped = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: created.inbox.id,
+      permissions: ['message:read'],
+    });
+    const later = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: created.inbox.id,
+      permissions: ['message:read'],
+      expiresAt: new Date(clock.now().getTime() + 3_600_000).toISOString(),
+    });
+
+    expect(uncapped.credential.expiresAt).toBe(created.inbox.expiresAt);
+    expect(later.credential.expiresAt).toBe(created.inbox.expiresAt);
+    clock.advance(61_000);
+    await expect(context.mailfn.authenticate(uncapped.token)).rejects.toMatchObject({ code: 'MAILFN_UNAUTHORIZED' });
   });
 
   it('compares message time filters by instant across timezone offsets', async () => {
@@ -1992,6 +2044,43 @@ describe('MailFn domain service', () => {
     expect(providerCalls).toBe(1);
   });
 
+  it('does not let a stale queued send result revert a completed draft', async () => {
+    let releaseQueued!: () => void;
+    let firstCallStarted!: () => void;
+    const queuedGate = new Promise<void>((resolve) => { releaseQueued = resolve; });
+    const started = new Promise<void>((resolve) => { firstCallStarted = resolve; });
+    let calls = 0;
+    const context = await setup({
+      sendAdapter: {
+        async send() {
+          calls += 1;
+          if (calls === 1) {
+            firstCallStarted();
+            await queuedGate;
+            return { providerMessageId: 'provider-queued', status: 'queued' as const };
+          }
+          return { providerMessageId: 'provider-sent', status: 'sent' as const };
+        },
+      },
+    });
+    const created = await createInbox(context, 'queued-after-sent');
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Monotonic', text: 'body',
+    });
+    const queued = context.mailfn.sendDraft(context.admin, draft.id);
+    await started;
+
+    await expect(context.mailfn.sendDraft(context.admin, draft.id)).resolves.toMatchObject({
+      status: 'sent', providerMessageId: 'provider-sent',
+    });
+    releaseQueued();
+
+    await expect(queued).resolves.toMatchObject({ status: 'sent', providerMessageId: 'provider-sent' });
+    await expect(context.store.getDraft(draft.id)).resolves.toMatchObject({
+      status: 'sent', providerMessageId: 'provider-sent',
+    });
+  });
+
   it('does not overwrite a concurrently completed send while resetting a provider failure', async () => {
     const store = new CompletingDraftResetStore();
     const context = await setup({
@@ -2186,6 +2275,82 @@ describe('MailFn domain service', () => {
     expect(context.objects.size()).toBe(0);
   });
 
+  it('marks raw retention against current message state after parsing wins a stale snapshot race', async () => {
+    const clock = new MutableClock();
+    const store = new PausedRawDeletionStore();
+    const jobs: ParseJob[] = [];
+    const context = await setup({
+      clock,
+      store,
+      retentionPolicy: { rawTtlSeconds: 1, attachmentTtlSeconds: 10, messageTtlSeconds: 20 },
+      queue: { async enqueue(job) { jobs.push(job); } },
+    });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'stable', requestedLocalPart: 'raw-parse-race',
+    });
+    const value = raw({ subject: 'Parsed winner', text: 'preserve parsed body' });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'raw-parse-race', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    clock.advance(1_100);
+    const retention = context.mailfn.runRetention(context.project.id);
+    await store.claimStarted;
+
+    await expect(context.mailfn.parseMessage(jobs[0]!)).resolves.toMatchObject({ status: 'ready' });
+    store.continueClaim();
+    await expect(retention).resolves.toMatchObject({ deletedObjects: 1, deletedMessages: 0 });
+
+    await expect(store.getMessage(message.id)).resolves.toMatchObject({
+      status: 'ready', subject: 'Parsed winner', textBody: 'preserve parsed body', rawDeletedAt: expect.any(String),
+    });
+  });
+
+  it('fences stale parser cleanup from a newer lease owner attachment', async () => {
+    const clock = new MutableClock();
+    const jobs: ParseJob[] = [];
+    let releaseStale!: () => void;
+    let staleStarted!: () => void;
+    const staleGate = new Promise<void>((resolve) => { releaseStale = resolve; });
+    const started = new Promise<void>((resolve) => { staleStarted = resolve; });
+    const parser = new JsonMimeParser();
+    let parseCalls = 0;
+    const context = await setup({
+      clock,
+      queue: { async enqueue(job) { jobs.push(job); } },
+      mimeParser: {
+        async parse(value) {
+          parseCalls += 1;
+          if (parseCalls === 1) {
+            staleStarted();
+            await staleGate;
+          }
+          return parser.parse(value);
+        },
+      },
+    });
+    const created = await createInbox(context, 'parse-lease-takeover');
+    const value = raw({ attachments: [{ filename: 'winner.txt', contentType: 'text/plain', content: 'winner' } as never] });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'parse-lease-takeover', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    const stale = context.mailfn.parseMessage(jobs[0]!);
+    void stale.catch(() => undefined);
+    await started;
+    clock.advance(15 * 60 * 1000 + 1);
+
+    await expect(context.mailfn.parseMessage(jobs[0]!)).resolves.toMatchObject({ status: 'ready' });
+    releaseStale();
+    await expect(stale).rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+
+    const attachments = await context.store.listAttachments(message.id);
+    expect(attachments).toHaveLength(1);
+    expect(await context.objects.get(attachments[0]!.objectKey)).not.toBeNull();
+    expect(context.objects.size()).toBe(2);
+    await expect(context.store.getMessage(message.id)).resolves.toMatchObject({ status: 'ready' });
+  });
+
   it('preserves trusted authentication, Reply-To, lifecycle validation, and concurrent read labels', async () => {
     const context = await setup();
     const created = await createInbox(context, 'message-safety');
@@ -2297,6 +2462,19 @@ describe('MailFn domain service', () => {
     await expect(context.store.listProjectAttachmentsPage(context.project.id, {
       offset: 0, limit: 10, sort: [{ field: 'createdAt', direction: 'desc' }],
     })).resolves.toMatchObject({ items: [{ id: attachments[1]!.id }, { id: attachments[0]!.id }] });
+    await context.store.saveThread({
+      id: 'thread-offset-earlier', projectId: context.project.id, inboxId: created.inbox.id,
+      normalizedSubject: 'earlier', messageIds: [], participants: [], labels: [],
+      lastMessageAt: '2026-08-10T01:00:00+02:00', createdAt: '2026-08-10T01:00:00+02:00', updatedAt: '2026-08-10T01:00:00+02:00',
+    });
+    await context.store.saveThread({
+      id: 'thread-offset-later', projectId: context.project.id, inboxId: created.inbox.id,
+      normalizedSubject: 'later', messageIds: [], participants: [], labels: [],
+      lastMessageAt: '2026-08-10T00:30:00Z', createdAt: '2026-08-10T00:30:00Z', updatedAt: '2026-08-10T00:30:00Z',
+    });
+    const offsetThreads = (await context.store.listThreads(context.project.id, created.inbox.id))
+      .filter((thread) => thread.id.startsWith('thread-offset'));
+    expect(offsetThreads).toMatchObject([{ id: 'thread-offset-later' }, { id: 'thread-offset-earlier' }]);
   });
 
   it('serializes concurrent subject-fallback thread creation', async () => {

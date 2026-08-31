@@ -93,7 +93,9 @@ export interface MailFnStore {
   createInboundMessageIfInboxActive(message: Message): Promise<boolean>;
   saveMessage(message: Message): Promise<void>;
   saveMessageIfUnchanged(message: Message, expected: Message): Promise<boolean>;
-  claimMessageForParsing(messageId: string, claimedAt: string, leaseExpiresAt: string): Promise<boolean>;
+  claimMessageForParsing(messageId: string, claimedAt: string, leaseExpiresAt: string, leaseId: string): Promise<boolean>;
+  claimMessageRawDeletion(messageId: string, claimId: string, claimedAt: string, leaseExpiresAt: string): Promise<boolean>;
+  finishMessageRawDeletion(messageId: string, claimId: string, deletedAt: string): Promise<boolean>;
   claimMessageDeletion(message: Message, expected: Message): Promise<boolean>;
   markMessageRead(messageId: string, readAt: string): Promise<Message | null>;
   setMessageLabels(messageId: string, labels: string[], updatedAt: string): Promise<Message | null>;
@@ -106,7 +108,9 @@ export interface MailFnStore {
     input: MailFnStorePageInput,
   ): Promise<{ items: Attachment[]; hasMore: boolean }>;
   saveAttachment(attachment: Attachment): Promise<void>;
+  saveAttachmentIfMessageParseOwned(attachment: Attachment, parseLeaseId: string): Promise<boolean>;
   deleteAttachment(id: string): Promise<void>;
+  deleteAttachmentIfUnchanged(id: string, objectKey: string): Promise<boolean>;
 
   getThread(id: string): Promise<Thread | null>;
   listThreads(projectId: string, inboxId: string): Promise<Thread[]>;
