@@ -1,6 +1,6 @@
 <script lang="ts">
   import { ButtonRoot, CardContent, CardHeader, CardRoot, CardTitle, InputRoot } from '@uifn/components-svelte';
-  import { captureMarkdownInsertion, createAuthoringModel, type AuthoringVersion, type SlashCommand } from '@mdfn/components';
+  import { captureMarkdownInsertion, createAuthoringModel, insertUploadedMarkdown, type AuthoringVersion, type MarkdownUploadResult, type SlashCommand } from '@mdfn/components';
   import { Transaction, canTransitionReview, createCommentThread, createSuggestion, decideSuggestion, replyToComment, setCommentResolved, transitionReview, type EditorController, type EditorialActor, type ReviewState } from '@mdfn/core';
   import type { MdfnEditorHandle, MdfnEditorProps } from '@mdfn/svelte';
   import MdfnToolbar from './MdfnToolbar.svelte';
@@ -14,7 +14,7 @@
     readOnly?: boolean;
     compact?: boolean;
     actor?: EditorialActor;
-    onSelectFiles?: (files: readonly File[]) => Promise<string | undefined>;
+    onSelectFiles?: (files: readonly File[]) => Promise<MarkdownUploadResult>;
     onModeChange?: (mode: EditorMode) => void;
     versions?: readonly AuthoringVersion[];
     onRestoreVersion?: (version: number) => void | Promise<void>;
@@ -79,10 +79,7 @@
     const insertion = captureMarkdownInsertion(controller, insertionLifecycle.signal);
     const upload = onSelectFiles?.(files);
     if (!upload) { insertion.cancel(); return; }
-    void upload.then((markdown) => {
-      if (markdown) insertion.insert(markdown);
-      else insertion.cancel();
-    }, () => insertion.cancel());
+    void insertUploadedMarkdown(insertion, upload).catch(() => insertion.cancel());
   }
 </script>
 

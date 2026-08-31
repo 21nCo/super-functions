@@ -1,12 +1,12 @@
 <script lang="ts">
   import { MdfnEditor } from '@mdfn/svelte';
-  import { captureMarkdownInsertion, type AuthoringVersion, type ToolbarGroup } from '@mdfn/components';
+  import { captureMarkdownInsertion, insertUploadedMarkdown, type AuthoringVersion, type MarkdownUploadResult, type ToolbarGroup } from '@mdfn/components';
   import type { MdfnEditorHandle, MdfnEditorProps } from '@mdfn/svelte';
   import type { ToolbarCommandTarget } from '@mdfn/components';
   import MdfnToolbar from './MdfnToolbar.svelte';
   import MdfnAuthoringChrome from './MdfnAuthoringChrome.svelte';
   import type { EditorialActor } from '@mdfn/core';
-  let { toolbarGroups, hideToolbar = false, hideAuthoringChrome = false, actor, onSelectFiles, onModeChange, versions, onRestoreVersion, class: className = '', ...editorProps }: MdfnEditorProps & { toolbarGroups?: readonly ToolbarGroup[]; hideToolbar?: boolean; hideAuthoringChrome?: boolean; actor?: EditorialActor; onSelectFiles?: (files: readonly File[]) => Promise<string | undefined>; onModeChange?: (mode: NonNullable<MdfnEditorProps['mode']>) => void; versions?: readonly AuthoringVersion[]; onRestoreVersion?: (version: number) => void | Promise<void> } = $props();
+  let { toolbarGroups, hideToolbar = false, hideAuthoringChrome = false, actor, onSelectFiles, onModeChange, versions, onRestoreVersion, class: className = '', ...editorProps }: MdfnEditorProps & { toolbarGroups?: readonly ToolbarGroup[]; hideToolbar?: boolean; hideAuthoringChrome?: boolean; actor?: EditorialActor; onSelectFiles?: (files: readonly File[]) => Promise<MarkdownUploadResult>; onModeChange?: (mode: NonNullable<MdfnEditorProps['mode']>) => void; versions?: readonly AuthoringVersion[]; onRestoreVersion?: (version: number) => void | Promise<void> } = $props();
   let editor = $state<MdfnEditorHandle | null>(null);
   let insertionLifecycle = new AbortController();
   $effect(() => {
@@ -27,9 +27,7 @@
   async function handleFiles(files: readonly File[]) {
     const insertion = captureMarkdownInsertion(editorProps.controller, insertionLifecycle.signal);
     try {
-      const markdown = await onSelectFiles?.(files);
-      if (markdown) insertion.insert(markdown);
-      else insertion.cancel();
+      await insertUploadedMarkdown(insertion, Promise.resolve(onSelectFiles?.(files)));
       await editorProps.onFiles?.(files);
     } catch (error) {
       insertion.cancel();

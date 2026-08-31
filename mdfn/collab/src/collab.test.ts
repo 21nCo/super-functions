@@ -120,6 +120,27 @@ describe("collaboration", () => {
     session.destroy(); controller.destroy(); peer.destroy();
   });
 
+  it("keeps queued transport bounded instead of snapshotting retained document history", async () => {
+    const controller = createEditor({ markdown: "a", projector: createMarkdownProjector() });
+    const sent: Uint8Array[] = [];
+    const session = createCollaborationSession({
+      controller,
+      documentId: "bounded-history",
+      user: { id: "author" },
+      online: false,
+      maxUpdateBytes: 512,
+      compactionThresholdBytes: 1,
+      sendUpdate: (update) => { sent.push(update); },
+    });
+    for (let index = 0; index < 400; index += 1) {
+      controller.dispatch(new Transaction().replaceSource(0, controller.getState().markdown.length, index % 2 === 0 ? "a" : "b"));
+    }
+    await session.setOnline(true);
+    expect(sent.length).toBeGreaterThan(1);
+    expect(sent.every((update) => update.byteLength <= 512)).toBe(true);
+    session.destroy(); controller.destroy();
+  });
+
   it("rejects incompatible schema metadata before mutating the live document", async () => {
     const projector = createMarkdownProjector();
     const controller = createEditor({ markdown: "safe", projector });

@@ -31,6 +31,18 @@ export interface MarkdownInsertionTarget {
   insertMarkdown(markdown: string): boolean;
 }
 
+export interface UploadedMarkdown {
+  readonly markdown: string;
+  rollback(cause: unknown): void | Promise<void>;
+}
+
+export type MarkdownUploadResult = string | UploadedMarkdown | undefined;
+
+export interface CapturedMarkdownInsertion {
+  insert(markdown: string): boolean;
+  cancel(): void;
+}
+
 /** Insert through the active visual surface, or fall back to the canonical controller selection. */
 export function insertMarkdownAtSelection(
   controller: EditorController,
@@ -54,10 +66,7 @@ export function insertMarkdownAtSelection(
 }
 
 /** Keep an asynchronous file insertion anchored to the selection where it started. */
-export function captureMarkdownInsertion(controller: EditorController, signal?: AbortSignal): {
-  insert(markdown: string): void;
-  cancel(): void;
-} {
+export function captureMarkdownInsertion(controller: EditorController, signal?: AbortSignal): CapturedMarkdownInsertion {
   const state = controller.getState();
   let selection: TextSelection = state.selection?.kind === "text"
     ? state.selection
@@ -84,12 +93,32 @@ export function captureMarkdownInsertion(controller: EditorController, signal?: 
   else signal?.addEventListener("abort", cancel, { once: true });
   return {
     insert(markdown) {
-      if (!active) return;
+      if (!active) return false;
       cancel();
       insertMarkdownAtSelection(controller, null, markdown, selection);
+      return true;
     },
     cancel,
   };
+}
+
+/** Complete an upload and compensate durable assets if canonical insertion fails or is cancelled. */
+export async function insertUploadedMarkdown(
+  insertion: CapturedMarkdownInsertion,
+  upload: Promise<MarkdownUploadResult>,
+): Promise<void> {
+  const result = await upload;
+  if (!result) {
+    insertion.cancel();
+    return;
+  }
+  const markdown = typeof result === "string" ? result : result.markdown;
+  try {
+    if (!insertion.insert(markdown)) throw new Error("MDFN_MARKDOWN_INSERTION_CANCELLED");
+  } catch (error) {
+    if (typeof result !== "string") await result.rollback(error);
+    throw error;
+  }
 }
 
 export const defaultToolbarGroups: readonly ToolbarGroup[] = Object.freeze([

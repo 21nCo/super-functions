@@ -41,8 +41,23 @@ describe("filefn bridge", () => {
       provider: createMemoryAssetProvider({ createId: () => "inserted" }),
       context: { documentId: "document" },
     });
-    const markdown = await handler([new Blob(["image"], { type: "image/png" })]);
-    expect(markdown).toBe("![asset](mdfn-asset:memory/inserted?document=document)");
+    const uploaded = await handler([new Blob(["image"], { type: "image/png" })]);
+    expect(uploaded?.markdown).toBe("![asset](mdfn-asset:memory/inserted?document=document)");
+  });
+
+  it("rolls back successful uploads when authoring insertion is rejected", async () => {
+    const deleted: string[] = [];
+    const handler = createAuthoringAssetHandler({
+      provider: {
+        upload: async (_file, context) => ({ id: "orphan", provider: "test", documentId: context.documentId }),
+        resolve: async (reference) => ({ reference, state: "ready" as const, embed: "download" as const }),
+        delete: async (reference) => { deleted.push(reference.id); },
+      },
+      context: { documentId: "document" },
+    });
+    const uploaded = await handler([new Blob(["image"], { type: "image/png" })]);
+    await uploaded?.rollback(new Error("MDFN_DOCUMENT_TOO_LARGE"));
+    expect(deleted).toEqual(["orphan"]);
   });
 
   it("rolls back earlier uploads when a later file fails", async () => {

@@ -1,4 +1,5 @@
 import type { ChangedRange, MdfnSelection, MdfnSidecar, SidecarAnchor, TextSelection } from "./types";
+import { immutableValue } from "./immutable";
 
 function mapPosition(position: number, range: ChangedRange, affinity: "before" | "after"): number {
   const removed = range.to - range.from;
@@ -25,7 +26,7 @@ function mapTextSelection(selection: TextSelection, range: ChangedRange): TextSe
 export function mapSelection(selection: MdfnSelection, ranges: readonly ChangedRange[]): MdfnSelection {
   if (!selection || ranges.length === 0) return selection;
   if (selection.kind === "node") return null;
-  return ranges.reduce<TextSelection>((current, range) => mapTextSelection(current, range), selection);
+  return immutableValue(ranges.reduce<TextSelection>((current, range) => mapTextSelection(current, range), selection));
 }
 
 export function mapAnchor(anchor: SidecarAnchor, ranges: readonly ChangedRange[]): SidecarAnchor {
@@ -39,9 +40,9 @@ export function mapAnchor(anchor: SidecarAnchor, ranges: readonly ChangedRange[]
 
 export function mapSidecar(sidecar: MdfnSidecar | undefined, ranges: readonly ChangedRange[]): MdfnSidecar | undefined {
   if (!sidecar || ranges.length === 0) return sidecar;
-  return {
+  return immutableValue({
     ...sidecar,
     comments: sidecar.comments?.map((thread) => ({ ...thread, anchor: mapAnchor(thread.anchor, ranges) })),
     suggestions: sidecar.suggestions?.map((suggestion) => ({ ...suggestion, anchor: mapAnchor(suggestion.anchor, ranges) })),
-  };
+  });
 }

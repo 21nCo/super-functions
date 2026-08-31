@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createEditor, Transaction } from "@mdfn/core";
 import { createMarkdownProjector } from "@mdfn/markdown";
-import { captureMarkdownInsertion, createAuthoringModel, createToolbarModel, filterSlashCommands, insertMarkdownAtSelection, runToolbarAction } from "./index";
+import { captureMarkdownInsertion, createAuthoringModel, createToolbarModel, filterSlashCommands, insertMarkdownAtSelection, insertUploadedMarkdown, runToolbarAction } from "./index";
 
 describe("toolbar model", () => {
   it("reports actual history availability", () => {
@@ -83,6 +83,19 @@ describe("toolbar model", () => {
     lifecycle.abort();
     insertion.insert("asset");
     expect(controller.getState().markdown).toBe("before after");
+  });
+
+  it("compensates an uploaded asset when its captured insertion was cancelled", async () => {
+    const controller = createEditor({ markdown: "before", projector: createMarkdownProjector() });
+    const insertion = captureMarkdownInsertion(controller);
+    const causes: unknown[] = [];
+    insertion.cancel();
+    await expect(insertUploadedMarkdown(insertion, Promise.resolve({
+      markdown: "asset",
+      rollback: (cause) => { causes.push(cause); },
+    }))).rejects.toThrow("MDFN_MARKDOWN_INSERTION_CANCELLED");
+    expect(causes).toHaveLength(1);
+    expect(controller.getState().markdown).toBe("before");
   });
 
   it("keeps pending insertion anchors stable across history restoration", () => {

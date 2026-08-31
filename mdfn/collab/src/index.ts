@@ -219,7 +219,12 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
   doc.on("afterTransaction", applySharedState);
 
   const compactPending = (): Uint8Array => {
-    const update = Y.encodeStateAsUpdate(doc);
+    const compactable = pendingUpdates.filter((entry) => entry !== inFlight);
+    const update = Y.mergeUpdates(compactable.map((entry) => entry.update));
+    if (update.byteLength > maxUpdateBytes) {
+      throw new RangeError(`MDFN_COLLAB_UPDATE_TOO_LARGE:${maxUpdateBytes}`);
+    }
+    if (compactable.length === 0) return update;
     const replacement = { id: ++nextPendingId, update };
     pendingUpdates = inFlight ? [inFlight, replacement] : [replacement];
     emitAudit({ type: "compact", byteLength: update.byteLength, pending: pendingUpdates.length });
@@ -251,7 +256,13 @@ export function createCollaborationSession(options: CollaborationSessionOptions)
     pendingUpdates.push({ id: ++nextPendingId, update: update.slice() });
     emitAudit({ type: "local-update", byteLength: update.byteLength, pending: pendingUpdates.length });
     const threshold = options.compactionThresholdBytes ?? 2 * 1024 * 1024;
-    if (pendingUpdates.reduce((total, entry) => total + entry.update.byteLength, 0) > threshold) compactPending();
+    if (pendingUpdates.reduce((total, entry) => total + entry.update.byteLength, 0) > threshold) {
+      try {
+        compactPending();
+      } catch (error) {
+        if (!(error instanceof RangeError) || !error.message.startsWith("MDFN_COLLAB_UPDATE_TOO_LARGE:")) throw error;
+      }
+    }
     if (online) void flush().catch((error: unknown) => {
       online = false;
       emitAudit({ type: "offline", pending: pendingUpdates.length, error: error instanceof Error ? error.message : String(error) });

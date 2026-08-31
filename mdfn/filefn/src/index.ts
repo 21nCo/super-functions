@@ -141,7 +141,12 @@ export function assetReferenceMarkdown(reference: AssetReference, alt = referenc
   return `![${label}](${url})`;
 }
 
-export type MdfnAuthoringAssetHandler = (files: readonly (File | Blob)[]) => Promise<string | undefined>;
+export interface MdfnAuthoringAssetResult {
+  readonly markdown: string;
+  rollback(cause: unknown): Promise<void>;
+}
+
+export type MdfnAuthoringAssetHandler = (files: readonly (File | Blob)[]) => Promise<MdfnAuthoringAssetResult | undefined>;
 
 export interface MdfnAssetRollbackFailure {
   readonly reference: AssetReference;
@@ -168,23 +173,27 @@ export function createAuthoringAssetHandler(input: {
   readonly separator?: string;
 }): MdfnAuthoringAssetHandler {
   const gateway = createAssetGateway(input.provider);
+  const rollback = async (references: readonly AssetReference[], cause: unknown): Promise<void> => {
+    const outcomes = await Promise.allSettled(
+      references.map((reference) => gateway.delete(reference, { ...input.context, purpose: "manage" })),
+    );
+    const failures = outcomes.flatMap((result, index): MdfnAssetRollbackFailure[] =>
+      result.status === "rejected" ? [{ reference: references[index]!, error: result.reason }] : [],
+    );
+    if (failures.length > 0) throw new MdfnAssetRollbackError(cause, references, failures);
+  };
   return async (files) => {
     if (files.length === 0) return undefined;
     if (files.length > 1 && !input.provider.delete) throw new Error("MDFN_ASSET_DELETE_UNAVAILABLE");
     const references: AssetReference[] = [];
     try {
       for (const file of files) references.push(await gateway.upload(file, { ...input.context, purpose: "insert" }));
-      return references.map((reference) => assetReferenceMarkdown(reference)).join(input.separator ?? "\n");
+      return {
+        markdown: references.map((reference) => assetReferenceMarkdown(reference)).join(input.separator ?? "\n"),
+        rollback: (cause) => rollback(references, cause),
+      };
     } catch (error) {
-      const rollback = await Promise.allSettled(
-        references.map((reference) => gateway.delete(reference, { ...input.context, purpose: "manage" })),
-      );
-      const rollbackFailures = rollback.flatMap((result, index): MdfnAssetRollbackFailure[] =>
-        result.status === "rejected" ? [{ reference: references[index]!, error: result.reason }] : [],
-      );
-      if (rollbackFailures.length > 0) {
-        throw new MdfnAssetRollbackError(error, references, rollbackFailures);
-      }
+      await rollback(references, error);
       throw error;
     }
   };

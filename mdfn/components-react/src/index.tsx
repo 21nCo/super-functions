@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Button, Card, Input, ToolbarButton, ToolbarRoot } from "@uifn/components-react";
-import { captureMarkdownInsertion, createAuthoringModel, createToolbarModel, runToolbarAction, type AuthoringVersion, type SlashCommand, type ToolbarCommandTarget, type ToolbarGroup } from "@mdfn/components";
+import { captureMarkdownInsertion, createAuthoringModel, createToolbarModel, insertUploadedMarkdown, runToolbarAction, type AuthoringVersion, type MarkdownUploadResult, type SlashCommand, type ToolbarCommandTarget, type ToolbarGroup } from "@mdfn/components";
 import { Transaction, canTransitionReview, createCommentThread, createSuggestion, decideSuggestion, replyToComment, setCommentResolved, transitionReview, type EditorController, type EditorialActor, type ReviewState } from "@mdfn/core";
 import { MdfnEditor, useMdfn, type MdfnEditorHandle, type MdfnEditorProps } from "@mdfn/react";
 
@@ -36,7 +36,7 @@ export interface MdfnEditorShellProps extends MdfnEditorProps {
   readonly hideToolbar?: boolean;
   readonly hideAuthoringChrome?: boolean;
   readonly actor?: EditorialActor;
-  readonly onSelectFiles?: (files: readonly File[]) => Promise<string | undefined>;
+  readonly onSelectFiles?: (files: readonly File[]) => Promise<MarkdownUploadResult>;
   readonly onModeChange?: (mode: MdfnEditorProps["mode"]) => void;
   readonly versions?: readonly AuthoringVersion[];
   readonly onRestoreVersion?: (version: number) => void | Promise<void>;
@@ -78,9 +78,7 @@ export const MdfnEditorShell = React.forwardRef<React.ElementRef<typeof MdfnEdit
   const handleFiles = React.useCallback(async (files: readonly File[]) => {
     const insertion = captureMarkdownInsertion(props.controller, insertionLifecycle.current?.signal);
     try {
-      const markdown = await onSelectFiles?.(files);
-      if (markdown) insertion.insert(markdown);
-      else insertion.cancel();
+      await insertUploadedMarkdown(insertion, Promise.resolve(onSelectFiles?.(files)));
       await props.onFiles?.(files);
     } catch (error) {
       insertion.cancel();
@@ -103,7 +101,7 @@ export interface MdfnAuthoringChromeProps {
   readonly readOnly?: boolean;
   readonly compact?: boolean;
   readonly actor?: EditorialActor;
-  readonly onSelectFiles?: (files: readonly File[]) => Promise<string | undefined>;
+  readonly onSelectFiles?: (files: readonly File[]) => Promise<MarkdownUploadResult>;
   readonly onModeChange?: (mode: MdfnEditorProps["mode"]) => void;
   readonly versions?: readonly AuthoringVersion[];
   readonly onRestoreVersion?: (version: number) => void | Promise<void>;
@@ -192,10 +190,7 @@ export function MdfnAuthoringChrome({ controller, editor, mode = "visual", readO
           const insertion = captureMarkdownInsertion(controller, insertionLifecycle.current?.signal);
           const upload = onSelectFiles?.(files);
           if (!upload) { insertion.cancel(); return; }
-          void upload.then((markdown) => {
-            if (markdown) insertion.insert(markdown);
-            else insertion.cancel();
-          }, () => insertion.cancel());
+          void insertUploadedMarkdown(insertion, upload).catch(() => insertion.cancel());
         }} /></Card.Content>
       </Card>}
       <MdfnOutline controller={controller} />
