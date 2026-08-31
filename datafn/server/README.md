@@ -37,6 +37,34 @@ permission-directory projection. See
 for configuration, error, WebSocket, consistency, migration, and operations
 contracts.
 
+### Initial region placement
+
+DataFn provides reusable region selection without embedding a product's data
+residency or capacity policy:
+
+```typescript
+import {
+  readDatafnCloudflarePlacementLocation,
+  selectDatafnPlacementRegion,
+} from "@datafn/server/placement";
+
+const decision = selectDatafnPlacementRegion({
+  candidates: regions,
+  location: readDatafnCloudflarePlacementLocation(request),
+  constraints: [
+    (region) => allowedRegionIds.includes(region.regionId),
+    (region) => healthyRegionIds.has(region.regionId),
+  ],
+});
+```
+
+An eligible explicit preference wins first, trusted coordinates or continent
+metadata rank the remaining regions by distance, and an optional `stableKey`
+enables deterministic fallback. The returned decision records which source was
+used. Applications remain responsible for defining eligible regions, collecting
+explicit organization choices, and atomically claiming the resulting namespace
+through the placement directory.
+
 ---
 
 ## Quick Start
