@@ -93,9 +93,7 @@ class AwsSesProvider:
                 },
             )
 
-    async def send_bulk_email(
-        self, requests: list[SendEmailRequest]
-    ) -> list[SendEmailResponse]:
+    async def send_bulk_email(self, requests: list[SendEmailRequest]) -> list[SendEmailResponse]:
         """Send multiple emails via AWS SES.
 
         Args:
@@ -205,10 +203,12 @@ class AwsSesProvider:
         if request.reply_to:
             msg["Reply-To"] = request.reply_to
 
-        # Add text and HTML parts
+        # Keep alternative representations together before adding attachments.
+        alternatives = MIMEMultipart("alternative")
         if request.text:
-            msg.attach(MIMEText(request.text, "plain", "utf-8"))
-        msg.attach(MIMEText(request.html, "html", "utf-8"))
+            alternatives.attach(MIMEText(request.text, "plain", "utf-8"))
+        alternatives.attach(MIMEText(request.html, "html", "utf-8"))
+        msg.attach(alternatives)
 
         # Add attachments
         if request.attachments:

@@ -409,6 +409,23 @@ describe('EmailService', () => {
 
     expect(inputs[0].Source).toBe(encodedFrom);
     expect(Buffer.from(inputs[1].RawMessage.Data).toString('utf8')).toContain(`From: ${encodedFrom}\n`);
+
+    const longName = 'é'.repeat(40);
+    await adapter.sendEmail({
+      from: `"${longName}" <agent@example.com>`, to: ['to@example.com'], subject: 'Long', text: 'body',
+    });
+    const encodedWords = inputs[2].Source.match(/=\?UTF-8\?B\?[^?]+\?=/g) as string[];
+    expect(encodedWords.length).toBeGreaterThan(1);
+    expect(encodedWords.every((word) => word.length <= 75)).toBe(true);
+    expect(encodedWords.map((word) => Buffer.from(word.slice(10, -2), 'base64').toString('utf8')).join(''))
+      .toBe(longName);
+
+    await adapter.sendEmail({
+      from: `"${longName}" <agent@example.com>`, to: ['to@example.com'], subject: 'Long raw', text: 'body',
+      attachments: [{ filename: 'proof.txt', content: Buffer.from('proof') }],
+    });
+    const longRaw = Buffer.from(inputs[3].RawMessage.Data).toString('utf8');
+    expect(longRaw).toMatch(/^From: =\?UTF-8\?B\?[^?]+\?=\n =\?UTF-8\?B\?[^?]+\?=\n <agent@example\.com>$/m);
   });
 
   it('surfaces retry exhaustion with a stable code', async () => {

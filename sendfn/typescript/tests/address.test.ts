@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createSendFn } from '../src/edge';
 import { isBareEmail } from '../src/email/address';
+import { EmailTransactionSchema } from '../src/types';
 
 describe('email address validation', () => {
   it('accepts the address shape supported by SendFn providers', () => {
@@ -43,7 +44,7 @@ describe('email address validation', () => {
       },
     });
 
-    await client.email({
+    const transaction = await client.email({
       idempotencyKey: 'edge-1',
       userId: 'user_1',
       replyTo: 'support@example.com',
@@ -55,6 +56,8 @@ describe('email address validation', () => {
     expect(requests[0]?.idempotencyKey).toBe('edge-1');
     expect(requests[0]?.replyTo).toBe('support@example.com');
     expect(requests[0]?.headers).toEqual({ 'In-Reply-To': '<thread@example.com>' });
+    expect(transaction.providerMessageId).toBe('msg_1');
+    expect(() => EmailTransactionSchema.parse(transaction)).not.toThrow();
   });
 
   it('rejects control characters in edge sender display names', async () => {

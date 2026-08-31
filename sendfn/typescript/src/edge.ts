@@ -113,7 +113,7 @@ export function createSendFn(config: SendFnEdgeConfig): SendFnEdgeClient {
       }
 
       return {
-        id: response.messageId ?? response.providerMessageId ?? crypto.randomUUID(),
+        id: crypto.randomUUID(),
         userId: params.userId,
         to: recipients[0] ?? '',
         from: sender.email,

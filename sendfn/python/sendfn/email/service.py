@@ -77,11 +77,7 @@ class EmailService:
             self.db,
             {
                 "userId": params.user_id,
-                "to": (
-                    recipients["to"][0]
-                    if len(recipients["to"]) == 1
-                    else recipients["to"]
-                ),
+                "to": (recipients["to"][0] if len(recipients["to"]) == 1 else recipients["to"]),
                 "from": self.config.from_email,
                 "subject": rendered["subject"],
                 "templateId": params.template_id,
@@ -161,30 +157,54 @@ class EmailService:
                 raise
             raise send_error from error
 
-        transaction = await db_helpers.update_email_transaction(
-            self.db,
-            str(transaction.id),
-            {
+        accepted_data = {
+            "status": "sent",
+            "providerMessageId": response.provider_message_id,
+            "sentAt": response.timestamp,
+        }
+        accepted = transaction.model_copy(
+            update={
                 "status": "sent",
-                "providerMessageId": response.provider_message_id,
-                "sentAt": response.timestamp,
-            },
+                "provider_message_id": response.provider_message_id,
+                "sent_at": response.timestamp,
+            }
         )
+        bookkeeping_errors: list[dict[str, str]] = []
 
-        await self.event_tracker.record_event(
-            reference_id=str(transaction.id),
-            reference_type="email",
-            event_type="sent",
-            provider=self.provider.name,
-            provider_event_id=response.provider_message_id,
-            recipient_email=recipients["to"][0],
-        )
+        try:
+            accepted = await db_helpers.update_email_transaction(
+                self.db, str(transaction.id), accepted_data
+            )
+        except Exception as error:
+            bookkeeping_errors.append({"stage": "transaction:update-sent", "error": str(error)})
 
-        return transaction
+        try:
+            await self.event_tracker.record_event(
+                reference_id=str(transaction.id),
+                reference_type="email",
+                event_type="sent",
+                provider=self.provider.name,
+                provider_event_id=response.provider_message_id,
+                recipient_email=recipients["to"][0],
+            )
+        except Exception as error:
+            bookkeeping_errors.append({"stage": "event:sent", "error": str(error)})
 
-    async def send_bulk_email(
-        self, recipients: list[SendEmailParams]
-    ) -> list[EmailTransaction]:
+        if bookkeeping_errors:
+            metadata = {**accepted.metadata, "bookkeepingErrors": bookkeeping_errors}
+            accepted = accepted.model_copy(update={"metadata": metadata})
+            try:
+                accepted = await db_helpers.update_email_transaction(
+                    self.db,
+                    str(transaction.id),
+                    {**accepted_data, "metadata": metadata},
+                )
+            except Exception:
+                pass
+
+        return accepted
+
+    async def send_bulk_email(self, recipients: list[SendEmailParams]) -> list[EmailTransaction]:
         """Send bulk emails."""
         return await map_with_concurrency(
             recipients,
@@ -312,7 +332,11 @@ class EmailService:
             if not response.error or not response.error.get("retryable", False):
                 raise EmailProviderError(
                     response.error["message"] if response.error else "Email sending failed",
-                    code=str(response.error.get("code", "SENDFN_INTERNAL_ERROR")) if response.error else "SENDFN_INTERNAL_ERROR",
+                    code=(
+                        str(response.error.get("code", "SENDFN_INTERNAL_ERROR"))
+                        if response.error
+                        else "SENDFN_INTERNAL_ERROR"
+                    ),
                     retryable=False,
                     details={"attempts": attempt, "provider": self.provider.name},
                 )

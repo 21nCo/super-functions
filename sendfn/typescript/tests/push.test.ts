@@ -321,6 +321,21 @@ describe('push and device phase 5 contracts', () => {
       .toBe('api.sandbox.push.apple.com');
   });
 
+  it('preserves an explicit zero APNS TTL as immediate-only delivery', async () => {
+    const notifications: Array<{ options: { expiration?: number } }> = [];
+    const provider = Object.create(ApnsProvider.prototype) as ApnsProvider & {
+      client: { send(notification: { options: { expiration?: number } }): Promise<void> };
+    };
+    (provider as any).config = { bundleId: 'org.example.app' };
+    provider.client = { async send(notification) { notifications.push(notification); } };
+
+    await provider.sendPush({
+      deviceTokens: ['ios-token'], title: 'Hello', body: 'World', ttl: 0,
+    });
+
+    expect(notifications[0]?.options.expiration).toBe(0);
+  });
+
   it('returns the first stable platform notification and deactivates invalid tokens before resolution', async () => {
     await deviceManager.registerDevice({
       userId: 'user-1',

@@ -14,17 +14,38 @@ import {
 } from '@aws-sdk/client-ses';
 import { isBareEmail } from './address';
 
-function encodeSesAddress(value: string): string {
+function encodeSesAddress(value: string, foldLongHeader = false): string {
   if (/[\r\n]/.test(value)) throw new Error('Invalid sender address');
   if (/^[\x00-\x7f]*$/.test(value)) return value;
-  const match = /^(.*?)(\s*<[^<>]+>)$/.exec(value);
-  if (!match) return value;
-  let displayName = match[1]!.trim();
+  const mailboxStart = value.lastIndexOf('<');
+  if (mailboxStart <= 0 || !value.endsWith('>')) return value;
+  const mailbox = value.slice(mailboxStart);
+  let displayName = value.slice(0, mailboxStart).trim();
+  if (displayName.includes('<') || mailbox.slice(1, -1).includes('<') || mailbox.slice(1, -1).includes('>')) {
+    return value;
+  }
   if (displayName.startsWith('"') && displayName.endsWith('"')) {
     displayName = displayName.slice(1, -1).replace(/\\([\\"])/g, '$1');
   }
-  const encodedName = `=?UTF-8?B?${Buffer.from(displayName, 'utf8').toString('base64')}?=`;
-  return `${encodedName}${match[2]}`;
+  const chunks: string[] = [];
+  let chunk = '';
+  let chunkBytes = 0;
+  for (const character of displayName) {
+    const bytes = Buffer.byteLength(character, 'utf8');
+    if (chunk && chunkBytes + bytes > 45) {
+      chunks.push(chunk);
+      chunk = '';
+      chunkBytes = 0;
+    }
+    chunk += character;
+    chunkBytes += bytes;
+  }
+  if (chunk) chunks.push(chunk);
+  const separator = foldLongHeader && chunks.length > 1 ? '\n ' : ' ';
+  const encodedName = chunks
+    .map((part) => `=?UTF-8?B?${Buffer.from(part, 'utf8').toString('base64')}?=`)
+    .join(separator);
+  return `${encodedName}${separator}${mailbox}`;
 }
 
 export class AwsSesAdapter implements EmailProvider {
@@ -102,7 +123,7 @@ export class AwsSesAdapter implements EmailProvider {
     let rawMessage = '';
 
     // Headers
-    rawMessage += `From: ${encodeSesAddress(params.from)}\n`;
+    rawMessage += `From: ${encodeSesAddress(params.from, true)}\n`;
     rawMessage += `To: ${params.to.join(', ')}\n`;
     if (params.cc?.length) rawMessage += `Cc: ${params.cc.join(', ')}\n`;
     rawMessage += `Subject: ${params.subject}\n`;

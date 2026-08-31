@@ -101,7 +101,12 @@ async def test_bulk_email_honors_bounded_concurrency_and_preserves_order() -> No
 
     service.send_email = send  # type: ignore[method-assign]
     recipients = [
-        SendEmailParams(userId=f"user-{index}", to=f"user-{index}@example.com", subject="Hello", html="<p>Hello</p>")
+        SendEmailParams(
+            userId=f"user-{index}",
+            to=f"user-{index}@example.com",
+            subject="Hello",
+            html="<p>Hello</p>",
+        )
         for index in range(5)
     ]
 
@@ -264,19 +269,46 @@ async def test_accepted_delivery_is_not_marked_failed_when_persistence_fails(
     update = AsyncMock(side_effect=RuntimeError("database unavailable"))
     monkeypatch.setattr(db_helpers, "update_email_transaction", update)
 
-    with pytest.raises(RuntimeError, match="database unavailable"):
-        await service.send_email(
-            SendEmailParams(
-                userId="user-1",
-                to="user@example.com",
-                subject="Hello",
-                html="<p>Hello</p>",
-            )
+    result = await service.send_email(
+        SendEmailParams(
+            userId="user-1",
+            to="user@example.com",
+            subject="Hello",
+            html="<p>Hello</p>",
         )
+    )
 
     assert provider.send_calls == 1
-    assert update.await_count == 1
-    assert update.await_args.args[2]["status"] == "sent"
+    assert result.status == "sent"
+    assert result.provider_message_id == "msg-1"
+    assert result.metadata["bookkeepingErrors"] == [
+        {"stage": "transaction:update-sent", "error": "database unavailable"}
+    ]
+    assert all(call.args[2]["status"] == "sent" for call in update.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_accepted_delivery_survives_event_persistence_failure() -> None:
+    service, provider = create_service()
+    service.event_tracker.record_event = AsyncMock(
+        side_effect=RuntimeError("event store unavailable")
+    )
+
+    result = await service.send_email(
+        SendEmailParams(
+            userId="user-1",
+            to="user@example.com",
+            subject="Hello",
+            html="<p>Hello</p>",
+        )
+    )
+
+    assert provider.send_calls == 1
+    assert result.status == "sent"
+    assert result.provider_message_id == "msg-1"
+    assert result.metadata["bookkeepingErrors"] == [
+        {"stage": "event:sent", "error": "event store unavailable"}
+    ]
 
 
 @pytest.mark.asyncio
@@ -418,8 +450,11 @@ async def test_aws_ses_decodes_string_attachments_and_forwards_tags() -> None:
     provider._client = client
     tags = {"campaign": "launch", "userId": "user-1"}
     simple = SendEmailRequest(
-        from_email="from@example.com", to=["to@example.com"], subject="Simple",
-        html="<p>Simple</p>", tags=tags,
+        from_email="from@example.com",
+        to=["to@example.com"],
+        subject="Simple",
+        html="<p>Simple</p>",
+        tags=tags,
     )
     await provider._send_simple_email(simple)
     assert client.simple_kwargs["Tags"] == [
@@ -429,12 +464,28 @@ async def test_aws_ses_decodes_string_attachments_and_forwards_tags() -> None:
 
     payload = b"binary\x00payload"
     raw = SendEmailRequest(
-        from_email="from@example.com", to=["to@example.com"], subject="Raw",
-        html="<p>Raw</p>", tags=tags,
-        attachments=[Attachment(filename="payload.bin", content=base64.b64encode(payload).decode(), encoding="base64")],
+        from_email="from@example.com",
+        to=["to@example.com"],
+        subject="Raw",
+        html="<p>Raw</p>",
+        text="Raw text",
+        tags=tags,
+        attachments=[
+            Attachment(
+                filename="payload.bin",
+                content=base64.b64encode(payload).decode(),
+                encoding="base64",
+            )
+        ],
     )
     await provider._send_raw_email(raw)
     message = Parser(policy=policy.default).parsestr(client.raw_kwargs["RawMessage"]["Data"])
+    alternatives = message.get_payload()[0]
+    assert alternatives.get_content_subtype() == "alternative"
+    assert [part.get_content_subtype() for part in alternatives.get_payload()] == [
+        "plain",
+        "html",
+    ]
     attachment = next(message.iter_attachments())
     assert attachment.get_payload(decode=True) == payload
     assert client.raw_kwargs["Tags"] == client.simple_kwargs["Tags"]

@@ -63,7 +63,11 @@ export class ApnsProvider implements PushProvider {
             topic: bundleId,
             category: params.category,
             priority: params.priority === 'high' ? 10 : 5,
-            expiration: params.ttl ? Math.floor(Date.now() / 1000) + params.ttl : undefined,
+            expiration: params.ttl === 0
+              ? 0
+              : params.ttl !== undefined
+                ? Math.floor(Date.now() / 1000) + params.ttl
+                : undefined,
             collapseId: params.collapseKey,
         });
 
