@@ -479,10 +479,11 @@ export class MemoryMailFnStore implements MailFnStore {
     this.drafts.set(draft.id, copy(draft));
     return true;
   }
-  async claimDraft(draftId: string, expectedStatus: Draft['status'], draft: Draft): Promise<boolean> {
+  async claimDraft(draftId: string, expected: Draft, draft: Draft): Promise<boolean> {
     const inbox = this.inboxes.get(draft.inboxId);
     if (!inbox || inbox.projectId !== draft.projectId || inbox.status === 'deleting' || inbox.status === 'deleted') return false;
-    if (this.drafts.get(draftId)?.status !== expectedStatus) return false;
+    const current = this.drafts.get(draftId);
+    if (!current || JSON.stringify(current) !== JSON.stringify(expected)) return false;
     this.drafts.set(draftId, copy(draft));
     return true;
   }

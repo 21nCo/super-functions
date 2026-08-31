@@ -111,6 +111,7 @@ const WEBHOOK_DELIVERY_LEASE_MS = 5 * 60 * 1000;
 const STORAGE_RESERVATION_LEASE_MS = 15 * 60 * 1000;
 const STORAGE_WRITE_LEASE_MS = 60 * 60 * 1000;
 const DOMAIN_VERIFICATION_LEASE_MS = 5 * 60 * 1000;
+const SEND_LEASE_MS = 5 * 60 * 1000;
 
 function isExpiredAt(expiresAt: string, now: string): boolean {
   return Date.parse(expiresAt) <= Date.parse(now);
@@ -1532,6 +1533,10 @@ export class MailFn {
       message: 'Draft has already been finalized',
       status: 409,
     });
+    if (
+      draft.status === 'sending' && draft.sendLeaseExpiresAt &&
+      !isExpiredAt(draft.sendLeaseExpiresAt, this.now())
+    ) return draft;
     assertMailFn(this.sendAdapter, {
       code: 'MAILFN_SEND_UNAVAILABLE',
       message: 'SendFn adapter is not configured',
@@ -1585,40 +1590,57 @@ export class MailFn {
       period,
       createdAt: this.now(),
     };
-    const outboundReservation = await this.store.reserveOutboundUsage(outboundUsage, project.quota.maxOutboundPerDay);
-    if (outboundReservation === 'denied') throw quotaExceeded('outbound messages');
-    if (draft.status === 'draft') {
-      const claimed = await this.store.claimDraft(draft.id, 'draft', { ...draft, status: 'sending', updatedAt: this.now() });
-      if (!claimed) {
-        const latest = await this.store.getDraft(draft.id);
-        if (latest?.status !== 'sending' && latest?.status !== 'sent') {
-          if (outboundReservation === 'created') await this.store.releaseUsage(outboundUsage.id).catch(() => undefined);
-          throw new MailFnError({
-            code: 'MAILFN_CONFLICT', message: 'Draft could not be claimed for sending', status: 409,
-          });
-        }
-        if (latest.status === 'sent') return latest;
-      }
+    const claimedAt = this.now();
+    const claimedDraft: Draft = {
+      ...draft,
+      status: 'sending',
+      sendLeaseId: this.ids.generate('send'),
+      sendLeaseExpiresAt: new Date(Date.parse(claimedAt) + SEND_LEASE_MS).toISOString(),
+      updatedAt: claimedAt,
+    };
+    if (!(await this.store.claimDraft(draft.id, draft, claimedDraft))) {
+      const latest = await this.store.getDraft(draft.id);
+      if (latest?.status === 'sending' || latest?.status === 'sent') return latest;
+      throw new MailFnError({
+        code: 'MAILFN_CONFLICT', message: 'Draft could not be claimed for sending', status: 409,
+      });
+    }
+    const resetClaim = async (): Promise<boolean> => this.store.claimDraft(draft.id, claimedDraft, {
+      ...draft,
+      sendLeaseId: undefined,
+      sendLeaseExpiresAt: undefined,
+      updatedAt: this.now(),
+    });
+    let outboundReservation: Awaited<ReturnType<MailFnStore['reserveOutboundUsage']>>;
+    try {
+      outboundReservation = await this.store.reserveOutboundUsage(outboundUsage, project.quota.maxOutboundPerDay);
+    } catch (error) {
+      await resetClaim().catch(() => false);
+      throw error;
+    }
+    if (outboundReservation === 'denied') {
+      await resetClaim().catch(() => false);
+      throw quotaExceeded('outbound messages');
     }
     let result: Awaited<ReturnType<MailFnSendAdapter['send']>>;
     try {
       result = await this.sendAdapter.send(request);
     } catch (error) {
-      if (outboundReservation === 'created') await this.store.releaseUsage(outboundUsage.id).catch(() => undefined);
-      await this.store.claimDraft(
-        draft.id,
-        'sending',
-        { ...draft, status: 'draft', updatedAt: this.now() },
-      ).catch(() => undefined);
+      const reset = await resetClaim().catch(() => false);
+      if (reset && outboundReservation === 'created') {
+        await this.store.releaseUsage(outboundUsage.id).catch(() => undefined);
+      }
       throw error;
     }
     const updated: Draft = {
       ...draft,
       status: result.status === 'sent' ? 'sent' : 'sending',
+      sendLeaseId: undefined,
+      sendLeaseExpiresAt: undefined,
       providerMessageId: result.providerMessageId,
       updatedAt: this.now(),
     };
-    if (!(await this.store.claimDraft(draft.id, 'sending', updated))) {
+    if (!(await this.store.claimDraft(draft.id, claimedDraft, updated))) {
       return (await this.store.getDraft(draft.id)) ?? updated;
     }
     if (result.status === 'queued') return updated;

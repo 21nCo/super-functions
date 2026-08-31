@@ -193,10 +193,32 @@ class QuiescingInboundStore extends MemoryMailFnStore {
 
 class CompletingDraftResetStore extends MemoryMailFnStore {
   override async claimDraft(...args: Parameters<MemoryMailFnStore['claimDraft']>): Promise<boolean> {
-    const [draftId, expectedStatus, value] = args;
-    if (expectedStatus === 'sending' && value.status === 'draft') {
+    const [draftId, expected, value] = args;
+    if (expected.status === 'sending' && value.status === 'draft') {
       const current = await this.getDraft(draftId);
       if (current) await this.saveDraft({ ...current, status: 'sent', providerMessageId: 'concurrent-send' });
+    }
+    return super.claimDraft(...args);
+  }
+}
+
+class PausingDraftClaimStore extends MemoryMailFnStore {
+  public pauseBeforeClaim = false;
+  private claimStartedResolve!: () => void;
+  private continueClaimResolve!: () => void;
+  public readonly claimStarted = new Promise<void>((resolve) => { this.claimStartedResolve = resolve; });
+  private readonly continueClaim = new Promise<void>((resolve) => { this.continueClaimResolve = resolve; });
+
+  public resumeClaim(): void {
+    this.continueClaimResolve();
+  }
+
+  override async claimDraft(...args: Parameters<MemoryMailFnStore['claimDraft']>): Promise<boolean> {
+    const [, expected, value] = args;
+    if (this.pauseBeforeClaim && expected.status === 'draft' && value.status === 'sending') {
+      this.pauseBeforeClaim = false;
+      this.claimStartedResolve();
+      await this.continueClaim;
     }
     return super.claimDraft(...args);
   }
@@ -2128,6 +2150,28 @@ describe('MailFn domain service', () => {
     });
   });
 
+  it('does not let a stale send claim overwrite a successful draft edit', async () => {
+    const store = new PausingDraftClaimStore();
+    const send = vi.fn(async () => ({ providerMessageId: 'must-not-send', status: 'sent' as const }));
+    const context = await setup({ store, sendAdapter: { send } });
+    const created = await createInbox(context, 'draft-claim-race');
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Original', text: 'body',
+    });
+
+    store.pauseBeforeClaim = true;
+    const sending = context.mailfn.sendDraft(context.admin, draft.id);
+    await store.claimStarted;
+    await expect(context.mailfn.updateDraft(context.admin, draft.id, { subject: 'Edited' }))
+      .resolves.toMatchObject({ status: 'draft', subject: 'Edited' });
+    store.resumeClaim();
+
+    await expect(sending).rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+    expect(send).not.toHaveBeenCalled();
+    await expect(store.getDraft(draft.id)).resolves.toMatchObject({ status: 'draft', subject: 'Edited' });
+    expect(await store.listUsage(context.project.id)).not.toContainEqual(expect.objectContaining({ metric: 'outbound_message' }));
+  });
+
   it('recovers concurrent draft sends through the stable adapter idempotency key', async () => {
     let release!: () => void;
     let providerCalls = 0;
@@ -2158,7 +2202,7 @@ describe('MailFn domain service', () => {
     expect(providerCalls).toBe(1);
   });
 
-  it('does not let a stale queued send result revert a completed draft', async () => {
+  it('retries a queued send only after its active send lease is released', async () => {
     let releaseQueued!: () => void;
     let firstCallStarted!: () => void;
     const queuedGate = new Promise<void>((resolve) => { releaseQueued = resolve; });
@@ -2183,16 +2227,54 @@ describe('MailFn domain service', () => {
     });
     const queued = context.mailfn.sendDraft(context.admin, draft.id);
     await started;
+    releaseQueued();
+    await expect(queued).resolves.toMatchObject({ status: 'sending', providerMessageId: 'provider-queued' });
+    await expect(context.mailfn.sendDraft(context.admin, draft.id)).resolves.toMatchObject({
+      status: 'sent', providerMessageId: 'provider-sent',
+    });
+    await expect(context.store.getDraft(draft.id)).resolves.toMatchObject({
+      status: 'sent', providerMessageId: 'provider-sent',
+    });
+  });
+
+  it('does not share a releasable outbound reservation with an overlapping send', async () => {
+    let firstStarted!: () => void;
+    let releaseFirst!: () => void;
+    const started = new Promise<void>((resolve) => { firstStarted = resolve; });
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let calls = 0;
+    const context = await setup({
+      quota: { maxOutboundPerDay: 1 },
+      sendAdapter: {
+        async send() {
+          calls += 1;
+          if (calls === 1) {
+            firstStarted();
+            await firstGate;
+            throw new Error('provider unavailable');
+          }
+          return { providerMessageId: 'provider-sent', status: 'sent' as const };
+        },
+      },
+    });
+    const created = await createInbox(context, 'send-reservation-race');
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Once', text: 'body',
+    });
+
+    const first = context.mailfn.sendDraft(context.admin, draft.id);
+    await started;
+    await expect(context.mailfn.sendDraft(context.admin, draft.id)).resolves.toMatchObject({ status: 'sending' });
+    expect(calls).toBe(1);
+    releaseFirst();
+    await expect(first).rejects.toThrow('provider unavailable');
+    expect(await context.store.listUsage(context.project.id)).not.toContainEqual(expect.objectContaining({ metric: 'outbound_message' }));
 
     await expect(context.mailfn.sendDraft(context.admin, draft.id)).resolves.toMatchObject({
       status: 'sent', providerMessageId: 'provider-sent',
     });
-    releaseQueued();
-
-    await expect(queued).resolves.toMatchObject({ status: 'sent', providerMessageId: 'provider-sent' });
-    await expect(context.store.getDraft(draft.id)).resolves.toMatchObject({
-      status: 'sent', providerMessageId: 'provider-sent',
-    });
+    expect(calls).toBe(2);
+    expect((await context.store.listUsage(context.project.id)).filter((record) => record.metric === 'outbound_message')).toHaveLength(1);
   });
 
   it('does not overwrite a concurrently completed send while resetting a provider failure', async () => {

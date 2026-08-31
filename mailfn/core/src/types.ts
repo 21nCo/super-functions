@@ -272,6 +272,8 @@ export interface Draft {
   html?: string;
   attachmentIds: string[];
   status: DraftStatus;
+  sendLeaseId?: string;
+  sendLeaseExpiresAt?: string;
   providerMessageId?: string;
   createdAt: string;
   updatedAt: string;

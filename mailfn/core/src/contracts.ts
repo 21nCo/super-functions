@@ -139,7 +139,7 @@ export interface MailFnStore {
   listDrafts(projectId: string, inboxId: string): Promise<Draft[]>;
   saveDraft(draft: Draft): Promise<void>;
   saveDraftIfInboxWritable(draft: Draft, expected?: Draft): Promise<boolean>;
-  claimDraft(draftId: string, expectedStatus: Draft['status'], draft: Draft): Promise<boolean>;
+  claimDraft(draftId: string, expected: Draft, draft: Draft): Promise<boolean>;
   deleteDrafts(projectId: string, inboxId: string): Promise<void>;
 
   getDomain(id: string): Promise<MailDomain | null>;

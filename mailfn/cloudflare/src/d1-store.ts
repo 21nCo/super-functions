@@ -809,16 +809,16 @@ export class D1MailFnStore implements MailFnStore {
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;
   }
-  async claimDraft(draftId: string, expectedStatus: Draft['status'], value: Draft): Promise<boolean> {
+  async claimDraft(draftId: string, expected: Draft, value: Draft): Promise<boolean> {
     const result = await bind(
       this.database.prepare(
         `UPDATE mailfn_drafts SET status = ?, updated_at = ?, data_json = ?
-         WHERE id = ? AND status = ? AND EXISTS (
+         WHERE id = ? AND data_json = ? AND EXISTS (
            SELECT 1 FROM mailfn_inboxes
            WHERE id = ? AND project_id = ? AND status NOT IN ('deleting', 'deleted')
          )`,
       ),
-      [value.status, value.updatedAt, json(value), draftId, expectedStatus, value.inboxId, value.projectId],
+      [value.status, value.updatedAt, json(value), draftId, json(expected), value.inboxId, value.projectId],
     ).run();
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;
