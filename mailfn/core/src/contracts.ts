@@ -60,6 +60,7 @@ export interface MailFnStore {
     inbox: Inbox,
     credential: Credential,
     idempotency: IdempotencyRecord | undefined,
+    audit: AuditEvent,
     maxActiveInboxes: number,
   ): Promise<void>;
 

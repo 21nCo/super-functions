@@ -824,6 +824,27 @@ describe('MailFn domain service', () => {
     })).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN', status: 403 });
   });
 
+  it('requires message read scope before search can return message bodies', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'search-read-scope');
+    const value = raw({ subject: 'Sensitive search', text: 'one-time secret' });
+    await context.mailfn.receiveInbound({
+      providerDeliveryId: 'search-read-scope', envelopeFrom: 'sender@example.com',
+      envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength,
+    });
+    const credential = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: created.inbox.id,
+      permissions: ['message:search'],
+    });
+    const actor = await context.mailfn.authenticate(credential.token);
+
+    await expect(context.mailfn.searchMessages(actor, {
+      inboxId: created.inbox.id,
+      query: 'one-time secret',
+    })).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN', status: 403 });
+  });
+
   it('preserves raw evidence and marks queue failure for reconciliation', async () => {
     let fail = true;
     const jobs: ParseJob[] = [];

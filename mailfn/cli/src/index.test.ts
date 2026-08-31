@@ -11,6 +11,8 @@ describe('MailFn CLI', () => {
       args: ['--help'], env: {}, stdout: (value) => output.push(value), stderr: () => undefined,
     })).resolves.toBe(0);
     expect(output.join('')).toContain('MailFn commands:');
+    expect(output.join('')).toContain('--show-content');
+    expect(output.join('')).toContain('--show-secrets');
   });
 
   it('redacts message bodies by default and reveals only with an explicit flag', async () => {

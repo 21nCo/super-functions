@@ -171,6 +171,7 @@ export class D1MailFnStore implements MailFnStore {
     inbox: Inbox,
     credential: Credential,
     idempotency: IdempotencyRecord | undefined,
+    audit: AuditEvent,
     maxActiveInboxes: number,
   ): Promise<void> {
     const statements = [
@@ -190,6 +191,7 @@ export class D1MailFnStore implements MailFnStore {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       ), [idempotency.projectId, idempotency.key, idempotency.operation, idempotency.resourceId, idempotency.requestHash, idempotency.expiresAt, idempotency.createdAt, json(idempotency)]));
     }
+    statements.push(auditInsert(this.database, audit));
     const results = await this.database.batch(statements);
     if (results.some((result) => !result.success)) throw new Error('MAILFN_D1_WRITE_FAILED');
   }

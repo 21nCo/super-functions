@@ -453,8 +453,12 @@ export class MailFn {
         createdAt: now,
       }
       : undefined;
+    const audit = await this.buildAuditEvent(actor, 'inbox.created', 'inbox', inbox.id, {
+      kind: inbox.kind,
+      expiresAt: inbox.expiresAt ?? null,
+    }, project, inbox);
     try {
-      await this.store.createInboxWithCredential(inbox, credential.credential, idempotency, project.quota.maxActiveInboxes);
+      await this.store.createInboxWithCredential(inbox, credential.credential, idempotency, audit, project.quota.maxActiveInboxes);
     } catch (cause) {
       if (input.idempotencyKey) {
         const replay = await this.replayInboxCreate(project.id, input.idempotencyKey, requestHash);
@@ -468,16 +472,12 @@ export class MailFn {
       }
       throw new MailFnError({
         code: 'MAILFN_STORAGE_FAILED',
-        message: 'Inbox and credential could not be created atomically',
+        message: 'Inbox, credential, and audit could not be created atomically',
         status: 503,
         retryable: true,
         cause,
       });
     }
-    await this.audit(actor, 'inbox.created', 'inbox', inbox.id, {
-      kind: inbox.kind,
-      expiresAt: inbox.expiresAt ?? null,
-    });
     return { inbox, credential };
   }
 
@@ -1328,6 +1328,7 @@ export class MailFn {
     input: Omit<SearchMessagesInput, 'projectId'>,
   ): Promise<Page<Message>> {
     await this.authorize(actor, 'message:search', actor.projectId, input.inboxId);
+    await this.authorize(actor, 'message:read', actor.projectId, input.inboxId);
     validateIsoFilter(input.receivedAfter, 'receivedAfter');
     validateIsoFilter(input.receivedBefore, 'receivedBefore');
     const query = requireText(input.query, 'query').toLowerCase();
@@ -2779,6 +2780,7 @@ export class MailFn {
     resourceId: string,
     metadata: Record<string, string | number | boolean | null>,
     projectOverride?: Project,
+    inboxOverride?: Inbox,
   ): Promise<AuditEvent> {
     const forbidden = /body|code|otp|link|token|secret|credential|password|content/i;
     const safeMetadata = Object.fromEntries(Object.entries(metadata).filter(([key]) => !forbidden.test(key)));
@@ -2789,7 +2791,7 @@ export class MailFn {
     if (!inboxId && resourceType === 'draft') inboxId = (await this.store.getDraft(resourceId))?.inboxId;
     if (!inboxId && resourceType === 'thread') inboxId = (await this.store.getThread(resourceId))?.inboxId;
     const project = projectOverride ?? await this.store.getProject(actor.projectId);
-    const inbox = inboxId ? await this.store.getInbox(inboxId) : null;
+    const inbox = inboxOverride ?? (inboxId ? await this.store.getInbox(inboxId) : null);
     const retention = inbox?.kind === 'expiring'
       ? DEFAULT_EXPIRING_RETENTION
       : project?.defaultRetentionPolicy ?? DEFAULT_STABLE_RETENTION;

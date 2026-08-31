@@ -117,9 +117,10 @@ export class MemoryMailFnStore implements MailFnStore {
     inbox: Inbox,
     credential: Credential,
     idempotency: IdempotencyRecord | undefined,
+    audit: AuditEvent,
     maxActiveInboxes: number,
   ): Promise<void> {
-    if (values(this.inboxes).some((entry) => entry.address === inbox.address) || this.inboxes.has(inbox.id) || this.credentials.has(credential.id)) {
+    if (values(this.inboxes).some((entry) => entry.address === inbox.address) || this.inboxes.has(inbox.id) || this.credentials.has(credential.id) || this.audits.has(audit.id)) {
       throw new Error('MAILFN_UNIQUE_CONSTRAINT');
     }
     if (idempotency && this.idempotency.has(`${idempotency.projectId}:${idempotency.key}`)) throw new Error('MAILFN_UNIQUE_CONSTRAINT');
@@ -128,6 +129,7 @@ export class MemoryMailFnStore implements MailFnStore {
     }
     this.inboxes.set(inbox.id, copy(inbox));
     this.credentials.set(credential.id, copy(credential));
+    this.audits.set(audit.id, copy(audit));
     if (idempotency) this.idempotency.set(`${idempotency.projectId}:${idempotency.key}`, copy(idempotency));
   }
 

@@ -170,6 +170,7 @@ function help(): string {
     '  token revoke',
     '  domain create|verify',
     '  operations',
-    'Content and secrets are redacted unless the command is explicitly extract or --show-content is supplied.',
+    'Message content is redacted unless the command is explicitly extract or --show-content is supplied.',
+    'Credentials and other secrets are redacted unless --show-secrets is supplied.',
   ].join('\n');
 }
