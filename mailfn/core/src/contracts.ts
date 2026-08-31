@@ -26,6 +26,7 @@ import type {
   UsageRecord,
   Webhook,
   WebhookDelivery,
+  WebhookDeliveryJob,
 } from './types.js';
 
 export interface MailFnStoreSort {
@@ -53,6 +54,7 @@ export interface MailFnStore {
   listInboxes(projectId: string): Promise<Inbox[]>;
   saveInbox(inbox: Inbox): Promise<void>;
   saveInboxWithActiveQuota(inbox: Inbox, maxActiveInboxes: number): Promise<boolean>;
+  claimInboxDeletion(inbox: Inbox, expected: Inbox): Promise<boolean>;
   createInboxWithCredential(
     inbox: Inbox,
     credential: Credential,
@@ -113,6 +115,7 @@ export interface MailFnStore {
   getWebhook(id: string): Promise<Webhook | null>;
   listWebhooks(projectId: string, inboxId?: string): Promise<Webhook[]>;
   createWebhookWithQuota(webhook: Webhook, maxWebhooks: number): Promise<boolean>;
+  createWebhookWithQuotaAndAudit(webhook: Webhook, maxWebhooks: number, audit: AuditEvent): Promise<boolean>;
   saveWebhook(webhook: Webhook): Promise<void>;
   recordWebhookDeliveryResult(webhookId: string, succeeded: boolean, updatedAt: string): Promise<void>;
   saveWebhookDelivery(delivery: WebhookDelivery): Promise<void>;
@@ -122,6 +125,7 @@ export interface MailFnStore {
     expectedUpdatedAt: string,
     delivery: WebhookDelivery,
   ): Promise<boolean>;
+  getWebhookDelivery(id: string): Promise<WebhookDelivery | null>;
   listWebhookDeliveries(webhookId: string): Promise<WebhookDelivery[]>;
 
   getDraft(id: string): Promise<Draft | null>;
@@ -140,7 +144,9 @@ export interface MailFnStore {
   saveDomain(domain: MailDomain): Promise<void>;
   saveDomainIfUnchanged(domain: MailDomain, expected: MailDomain): Promise<boolean>;
 
+  getEvent(id: string): Promise<MailFnEvent | null>;
   appendEvent(event: MailFnEvent): Promise<void>;
+  appendEventWithDeliveries(event: MailFnEvent, deliveries: WebhookDelivery[]): Promise<void>;
   listEvents(projectId: string, after?: string): Promise<MailFnEvent[]>;
   deleteEventsBefore(projectId: string, before: string): Promise<number>;
   deleteTerminalWebhookDeliveriesBefore(projectId: string, before: string): Promise<number>;
@@ -180,6 +186,7 @@ export interface MailFnStore {
   listSupportCases(projectId: string): Promise<SupportCase[]>;
   getComplianceProfile(projectId: string): Promise<ComplianceProfile | null>;
   saveComplianceProfile(profile: ComplianceProfile): Promise<void>;
+  saveComplianceProfileIfNoDeletion(profile: ComplianceProfile): Promise<boolean>;
 }
 
 export interface MailFnObjectStore {
@@ -191,6 +198,7 @@ export interface MailFnObjectStore {
 
 export interface MailFnQueue {
   enqueue(job: ParseJob): Promise<void>;
+  enqueueWebhook?(job: WebhookDeliveryJob): Promise<void>;
 }
 
 export interface MailFnMimeParser {

@@ -98,6 +98,13 @@ export class MemoryMailFnStore implements MailFnStore {
     this.inboxes.set(inbox.id, copy(inbox));
     return true;
   }
+  async claimInboxDeletion(inbox: Inbox, expected: Inbox): Promise<boolean> {
+    const current = this.inboxes.get(inbox.id);
+    if (!current || JSON.stringify(current) !== JSON.stringify(expected)) return false;
+    if (this.compliance.get(inbox.projectId)?.retentionLocked) return false;
+    this.inboxes.set(inbox.id, copy(inbox));
+    return true;
+  }
   async createInboxWithCredential(
     inbox: Inbox,
     credential: Credential,
@@ -345,6 +352,22 @@ export class MemoryMailFnStore implements MailFnStore {
     this.webhooks.set(webhook.id, copy(webhook));
     return true;
   }
+  async createWebhookWithQuotaAndAudit(
+    webhook: Webhook,
+    maxWebhooks: number,
+    audit: AuditEvent,
+  ): Promise<boolean> {
+    if (this.webhooks.has(webhook.id) || this.audits.has(audit.id)) {
+      throw new Error('MAILFN_UNIQUE_CONSTRAINT');
+    }
+    const activeCount = values(this.webhooks).filter(
+      (entry) => entry.projectId === webhook.projectId && entry.status === 'active',
+    ).length;
+    if (activeCount >= maxWebhooks) return false;
+    this.webhooks.set(webhook.id, copy(webhook));
+    this.audits.set(audit.id, copy(audit));
+    return true;
+  }
   async saveWebhook(webhook: Webhook): Promise<void> {
     this.webhooks.set(webhook.id, copy(webhook));
   }
@@ -372,6 +395,9 @@ export class MemoryMailFnStore implements MailFnStore {
     if (!current || current.status !== expectedStatus || current.updatedAt !== expectedUpdatedAt) return false;
     this.webhookDeliveries.set(deliveryId, copy(delivery));
     return true;
+  }
+  async getWebhookDelivery(id: string): Promise<WebhookDelivery | null> {
+    return this.webhookDeliveries.has(id) ? copy(this.webhookDeliveries.get(id)!) : null;
   }
   async listWebhookDeliveries(webhookId: string): Promise<WebhookDelivery[]> {
     return values(this.webhookDeliveries).filter((delivery) => delivery.webhookId === webhookId);
@@ -446,8 +472,18 @@ export class MemoryMailFnStore implements MailFnStore {
     return true;
   }
 
+  async getEvent(id: string): Promise<MailFnEvent | null> {
+    return this.events.has(id) ? copy(this.events.get(id)!) : null;
+  }
   async appendEvent(event: MailFnEvent): Promise<void> {
     this.events.set(event.id, copy(event));
+  }
+  async appendEventWithDeliveries(event: MailFnEvent, deliveries: WebhookDelivery[]): Promise<void> {
+    if (this.events.has(event.id) || deliveries.some((delivery) => this.webhookDeliveries.has(delivery.id))) {
+      throw new Error('MAILFN_UNIQUE_CONSTRAINT');
+    }
+    this.events.set(event.id, copy(event));
+    for (const delivery of deliveries) this.webhookDeliveries.set(delivery.id, copy(delivery));
   }
   async listEvents(projectId: string, after?: string): Promise<MailFnEvent[]> {
     return values(this.events)
@@ -628,6 +664,13 @@ export class MemoryMailFnStore implements MailFnStore {
   }
   async saveComplianceProfile(profile: ComplianceProfile): Promise<void> {
     this.compliance.set(profile.projectId, copy(profile));
+  }
+  async saveComplianceProfileIfNoDeletion(profile: ComplianceProfile): Promise<boolean> {
+    if (values(this.inboxes).some(
+      (inbox) => inbox.projectId === profile.projectId && inbox.status === 'deleting',
+    )) return false;
+    this.compliance.set(profile.projectId, copy(profile));
+    return true;
   }
 }
 

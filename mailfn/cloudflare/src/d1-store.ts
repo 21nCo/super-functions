@@ -139,6 +139,22 @@ export class D1MailFnStore implements MailFnStore {
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;
   }
+  async claimInboxDeletion(value: Inbox, expected: Inbox): Promise<boolean> {
+    const result = await bind(this.database.prepare(
+      `UPDATE mailfn_inboxes
+       SET address = ?, kind = ?, status = ?, expires_at = ?, updated_at = ?, data_json = ?
+       WHERE id = ? AND project_id = ? AND data_json = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM mailfn_compliance
+           WHERE project_id = ? AND retention_locked = 1
+         )`,
+    ), [
+      value.address, value.kind, value.status, value.expiresAt ?? null, value.updatedAt, json(value),
+      value.id, value.projectId, json(expected), value.projectId,
+    ]).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
+  }
   async createInboxWithCredential(
     inbox: Inbox,
     credential: Credential,
@@ -544,6 +560,36 @@ export class D1MailFnStore implements MailFnStore {
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;
   }
+  async createWebhookWithQuotaAndAudit(
+    value: Webhook,
+    maxWebhooks: number,
+    audit: AuditEvent,
+  ): Promise<boolean> {
+    const results = await this.database.batch([
+      bind(this.database.prepare(
+        `INSERT INTO mailfn_webhooks(id, project_id, inbox_id, url, event_types, secret_hash, status, created_at, updated_at, data_json)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE (SELECT COUNT(*) FROM mailfn_webhooks WHERE project_id = ? AND status = 'active') < ?`,
+      ), [
+        value.id, value.projectId, value.inboxId ?? null, value.url, JSON.stringify(value.eventTypes), value.secretHash,
+        value.status, value.createdAt, value.updatedAt, json(value), value.projectId, maxWebhooks,
+      ]),
+      bind(this.database.prepare(
+        `INSERT INTO mailfn_audits(
+           id, project_id, actor_type, actor_id, action, resource_type, resource_id, created_at, retention_expires_at, data_json
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE changes() = 1 AND EXISTS (SELECT 1 FROM mailfn_webhooks WHERE id = ?)`,
+      ), [
+        audit.id, audit.projectId, audit.actorType, audit.actorId, audit.action, audit.resourceType,
+        audit.resourceId, audit.createdAt, audit.retentionExpiresAt, json(audit), value.id,
+      ]),
+    ]);
+    if (results.some((result) => !result.success)) throw new Error('MAILFN_D1_WRITE_FAILED');
+    const created = Number(results[0]?.meta?.changes ?? 0) === 1;
+    if (created && Number(results[1]?.meta?.changes ?? 0) !== 1) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return created;
+  }
   async saveWebhook(value: Webhook): Promise<void> {
     await this.run(
       `INSERT INTO mailfn_webhooks(id, project_id, inbox_id, url, event_types, secret_hash, status, created_at, updated_at, data_json)
@@ -605,6 +651,9 @@ export class D1MailFnStore implements MailFnStore {
     ]).run();
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;
+  }
+  async getWebhookDelivery(id: string): Promise<WebhookDelivery | null> {
+    return this.one('SELECT data_json FROM mailfn_webhook_deliveries WHERE id = ?', [id]);
   }
   async listWebhookDeliveries(webhookId: string): Promise<WebhookDelivery[]> {
     return this.many('SELECT data_json FROM mailfn_webhook_deliveries WHERE webhook_id = ? ORDER BY created_at', [webhookId]);
@@ -716,12 +765,30 @@ export class D1MailFnStore implements MailFnStore {
     return Number(result.meta?.changes ?? 0) === 1;
   }
 
+  async getEvent(id: string): Promise<MailFnEvent | null> {
+    return this.one('SELECT data_json FROM mailfn_events WHERE id = ?', [id]);
+  }
   async appendEvent(value: MailFnEvent): Promise<void> {
     await this.run(
       `INSERT OR IGNORE INTO mailfn_events(id, project_id, inbox_id, message_id, type, version, occurred_at, data_json)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [value.id, value.projectId, value.inboxId ?? null, value.messageId ?? null, value.type, value.version, value.occurredAt, json(value)],
     );
+  }
+  async appendEventWithDeliveries(value: MailFnEvent, deliveries: WebhookDelivery[]): Promise<void> {
+    const statements = [bind(this.database.prepare(
+      `INSERT INTO mailfn_events(id, project_id, inbox_id, message_id, type, version, occurred_at, data_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ), [value.id, value.projectId, value.inboxId ?? null, value.messageId ?? null, value.type, value.version, value.occurredAt, json(value)])];
+    statements.push(...deliveries.map((delivery) => bind(this.database.prepare(
+      `INSERT INTO mailfn_webhook_deliveries(id, webhook_id, event_id, attempt, status, next_attempt_at, created_at, updated_at, data_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ), [
+      delivery.id, delivery.webhookId, delivery.eventId, delivery.attempt, delivery.status,
+      delivery.nextAttemptAt ?? null, delivery.createdAt, delivery.updatedAt, json(delivery),
+    ])));
+    const results = await this.database.batch(statements);
+    if (results.some((result) => !result.success)) throw new Error('MAILFN_D1_WRITE_FAILED');
   }
   async listEvents(projectId: string, after?: string): Promise<MailFnEvent[]> {
     return after
@@ -964,6 +1031,26 @@ export class D1MailFnStore implements MailFnStore {
        deletion_sla_hours=excluded.deletion_sla_hours, updated_at=excluded.updated_at, data_json=excluded.data_json`,
       [value.projectId, value.dataRegion, value.retentionLocked ? 1 : 0, value.deletionSlaHours, value.updatedAt, json(value)],
     );
+  }
+  async saveComplianceProfileIfNoDeletion(value: ComplianceProfile): Promise<boolean> {
+    const result = await bind(this.database.prepare(
+      `INSERT INTO mailfn_compliance(project_id, data_region, retention_locked, deletion_sla_hours, updated_at, data_json)
+       SELECT ?, ?, ?, ?, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM mailfn_inboxes WHERE project_id = ? AND status = 'deleting'
+       )
+       ON CONFLICT(project_id) DO UPDATE SET data_region=excluded.data_region,
+         retention_locked=excluded.retention_locked, deletion_sla_hours=excluded.deletion_sla_hours,
+         updated_at=excluded.updated_at, data_json=excluded.data_json
+       WHERE NOT EXISTS (
+         SELECT 1 FROM mailfn_inboxes WHERE project_id = excluded.project_id AND status = 'deleting'
+       )`,
+    ), [
+      value.projectId, value.dataRegion, value.retentionLocked ? 1 : 0, value.deletionSlaHours,
+      value.updatedAt, json(value), value.projectId,
+    ]).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
   }
 
   private async one<T>(query: string, values: unknown[]): Promise<T | null> {

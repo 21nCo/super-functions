@@ -9,7 +9,7 @@ import {
 } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { MailDomain, Message, ParseJob, Thread, Webhook } from '@mailfn/core';
+import type { AuditEvent, ComplianceProfile, MailDomain, MailFnJob, Message, ParseJob, Thread, Webhook } from '@mailfn/core';
 import type { D1Database, Queue, R2Bucket } from './bindings.js';
 import { D1MailFnStore } from './d1-store.js';
 import { applyMailFnMigrations } from './migrations.js';
@@ -20,7 +20,7 @@ declare module 'cloudflare:test' {
   interface ProvidedEnv extends MailFnCloudflareEnv {
     MAILFN_DB: D1Database;
     MAILFN_OBJECTS: R2Bucket;
-    MAILFN_PARSE_QUEUE: Queue<ParseJob>;
+    MAILFN_PARSE_QUEUE: Queue<MailFnJob>;
     MAILFN_DOMAIN: string;
     MAILFN_SECRET_KEY: string;
   }
@@ -421,6 +421,50 @@ describe('MailFn in workerd', () => {
 
     expect(results.filter(Boolean)).toHaveLength(1);
     expect(await store.listWebhooks(bootstrap.project.id)).toHaveLength(1);
+  });
+
+  it('commits webhook audits and serializes retention locks with deletion in D1', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({
+      slug: 'atomic-boundaries-workerd', displayName: 'Atomic Boundaries Workerd',
+    });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const first = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'stable', requestedLocalPart: 'atomic-first',
+    });
+    const second = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'stable', requestedLocalPart: 'atomic-second',
+    });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const now = new Date().toISOString();
+    const webhook = {
+      id: 'whk_atomic_workerd', projectId: bootstrap.project.id, url: 'https://example.test/hook',
+      eventTypes: ['message.received'], secretHash: 'hash', status: 'active', consecutiveFailures: 0,
+      createdAt: now, updatedAt: now,
+    } satisfies Webhook;
+    const audit = {
+      id: 'aud_atomic_workerd', projectId: bootstrap.project.id, actorType: 'admin', actorId: admin.actorId,
+      action: 'webhook.created', resourceType: 'webhook', resourceId: webhook.id, metadata: {},
+      createdAt: now, retentionExpiresAt: new Date(Date.parse(now) + 86_400_000).toISOString(),
+    } satisfies AuditEvent;
+
+    await expect(store.createWebhookWithQuotaAndAudit(webhook, 1, audit)).resolves.toBe(true);
+    await expect(store.listAudits(bootstrap.project.id)).resolves.toContainEqual(audit);
+
+    const deleting = { ...first.inbox, status: 'deleting' as const, updatedAt: new Date(Date.parse(now) + 1).toISOString() };
+    await expect(store.claimInboxDeletion(deleting, first.inbox)).resolves.toBe(true);
+    const compliance = {
+      projectId: bootstrap.project.id, dataRegion: 'global', retentionLocked: true,
+      exportEnabled: false, deletionSlaHours: 24, updatedAt: new Date(Date.parse(now) + 2).toISOString(),
+    } satisfies ComplianceProfile;
+    await expect(store.saveComplianceProfileIfNoDeletion(compliance)).resolves.toBe(false);
+
+    await store.saveInbox({ ...deleting, status: 'deleted', updatedAt: new Date(Date.parse(now) + 3).toISOString() });
+    await expect(store.saveComplianceProfileIfNoDeletion(compliance)).resolves.toBe(true);
+    await expect(store.claimInboxDeletion(
+      { ...second.inbox, status: 'deleting', updatedAt: new Date(Date.parse(now) + 4).toISOString() },
+      second.inbox,
+    )).resolves.toBe(false);
   });
 
   it('enforces the active-inbox quota during concurrent D1 reactivation', async () => {

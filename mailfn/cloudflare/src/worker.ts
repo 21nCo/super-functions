@@ -2,8 +2,8 @@ import {
   createAesGcmSecretProtector,
   MailFn,
   MailFnError,
+  type MailFnJob,
   type MailFnSendAdapter,
-  type ParseJob,
   type PublicPlatformPolicy,
 } from '@mailfn/core';
 
@@ -27,7 +27,7 @@ import { CloudflareWebhookDispatcher, cloudflareFetchResolved } from './webhook.
 export interface MailFnCloudflareEnv {
   MAILFN_DB: D1Database;
   MAILFN_OBJECTS: R2Bucket;
-  MAILFN_PARSE_QUEUE: Queue<ParseJob>;
+  MAILFN_PARSE_QUEUE: Queue<MailFnJob>;
   MAILFN_DOMAIN: string;
   MAILFN_SECRET_KEY: string;
   MAILFN_ADMIN_TOKEN?: string;
@@ -134,11 +134,15 @@ export function createMailFnCloudflareHandlers(options: MailFnCloudflareFactoryO
       }
     },
 
-    async queue(batch: QueueBatch<ParseJob>, env: MailFnCloudflareEnv): Promise<void> {
+    async queue(batch: QueueBatch<MailFnJob>, env: MailFnCloudflareEnv): Promise<void> {
       const mailfn = await createCloudflareMailFn(env, options);
       for (const message of batch.messages) {
         try {
-          await mailfn.parseMessage({ ...message.body, attempt: message.attempts });
+          if (message.body.type === 'mailfn.parse') {
+            await mailfn.parseMessage({ ...message.body, attempt: message.attempts });
+          } else {
+            await mailfn.processWebhookDelivery(message.body);
+          }
           message.ack();
         } catch (error) {
           const retryable = !(error instanceof MailFnError) || error.retryable;

@@ -548,6 +548,20 @@ export interface ParseJob {
   createdAt: string;
 }
 
+export interface WebhookDeliveryJob {
+  id: string;
+  version: 1;
+  type: 'mailfn.webhook-delivery';
+  projectId: string;
+  eventId: string;
+  webhookId: string;
+  deliveryId: string;
+  expectedUpdatedAt: string;
+  createdAt: string;
+}
+
+export type MailFnJob = ParseJob | WebhookDeliveryJob;
+
 export interface RetentionResult {
   expiredInboxes: number;
   deletedMessages: number;

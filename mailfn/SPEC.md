@@ -5,7 +5,7 @@
 - Package release: `0.1.0`
 - HTTP API: `/v1`
 - Event envelope: version `1`
-- Queue job: `mailfn.parse`, version `1`
+- Queue jobs: `mailfn.parse` and `mailfn.webhook-delivery`, version `1`
 - Initial deployment adapter: Cloudflare Email Workers + Workers + D1 + R2 + Queues
 - Outbound transport owner: SendFn through `@mailfn/sendfn`
 - Protocol clients in scope: TypeScript client, CLI, MCP, test helpers
@@ -85,7 +85,8 @@ All JSON responses use `{ ok, data, error, meta: { requestId, version } }`. Bina
 | --- | --- |
 | R2 raw write fails | No D1 row or queue message; transient SMTP failure |
 | D1 message write fails | Best-effort raw cleanup; no queue message; transient failure |
-| Queue send fails | Raw and D1 row remain; message becomes `queue_failed`; retry/reconcile is idempotent |
+| Parse Queue send fails | Raw and D1 row remain; message becomes `queue_failed`; retry/reconcile is idempotent |
+| Webhook Queue send fails | Event and pending delivery remain in D1; scheduled delivery reconciliation retries it without blocking inbound mail |
 | Duplicate inbound delivery | Existing message returned; no duplicate row/event; failed queue may be retried |
 | MIME/attachment parse fails | Raw remains; partial attachment writes are cleaned; state becomes `parse_failed`; Queue retries/DLQ applies |
 | Webhook consumer fails | Accepted mail is not rolled back; delivery is failed/dead-lettered and repeated failures quarantine endpoint |

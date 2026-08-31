@@ -12,6 +12,7 @@ import type {
   ProjectQuota,
   PublicPlatformPolicy,
   RetentionPolicy,
+  WebhookDeliveryJob,
 } from './index.js';
 import {
   MailFn,
@@ -64,7 +65,32 @@ class FailingDeleteObjectStore extends MemoryMailFnObjectStore {
 
 class NoncriticalFailureStore extends MemoryMailFnStore {
   override async appendEvent(): Promise<void> { throw new Error('event store unavailable'); }
+  override async appendEventWithDeliveries(): Promise<void> { throw new Error('event store unavailable'); }
   override async appendUsage(): Promise<void> { throw new Error('usage store unavailable'); }
+}
+
+class FailingAtomicWebhookStore extends MemoryMailFnStore {
+  override async createWebhookWithQuotaAndAudit(): Promise<boolean> {
+    throw new Error('atomic webhook transaction failed');
+  }
+}
+
+class PausedInboxDeletionStore extends MemoryMailFnStore {
+  private resolveClaimed!: () => void;
+  private resumeClaim!: () => void;
+  public readonly claimed = new Promise<void>((resolve) => { this.resolveClaimed = resolve; });
+  private readonly claimResume = new Promise<void>((resolve) => { this.resumeClaim = resolve; });
+
+  public continueDeletion(): void { this.resumeClaim(); }
+
+  override async claimInboxDeletion(
+    ...args: Parameters<MemoryMailFnStore['claimInboxDeletion']>
+  ): Promise<boolean> {
+    const result = await super.claimInboxDeletion(...args);
+    this.resolveClaimed();
+    await this.claimResume;
+    return result;
+  }
 }
 
 class FailingAttachmentStore extends MemoryMailFnStore {
@@ -966,6 +992,25 @@ describe('MailFn domain service', () => {
     await expect(context.mailfn.getDraft(context.admin, draft.id)).rejects.toMatchObject({ code: 'MAILFN_NOT_FOUND' });
   });
 
+  it('serializes retention locking against the start of inbox deletion', async () => {
+    const store = new PausedInboxDeletionStore();
+    const context = await setup({ store });
+    const created = await createInbox(context, 'retention-delete-race');
+
+    const deletion = context.mailfn.deleteInbox(context.admin, created.inbox.id);
+    await store.claimed;
+    await expect(context.mailfn.configureCompliance(context.admin, {
+      dataRegion: 'global', retentionLocked: true, exportEnabled: false, deletionSlaHours: 24,
+    })).rejects.toMatchObject({
+      code: 'MAILFN_CONFLICT',
+      message: 'Retention lock cannot be enabled while inbox deletion is in progress',
+    });
+    store.continueDeletion();
+
+    await expect(deletion).resolves.toMatchObject({ status: 'deleted' });
+    await expect(context.store.getComplianceProfile(context.project.id)).resolves.toBeNull();
+  });
+
   it('disables inbox-scoped webhooks when deleting an inbox', async () => {
     const context = await setup({
       quota: { maxWebhooks: 1 },
@@ -1020,6 +1065,58 @@ describe('MailFn domain service', () => {
       reason: { code: 'MAILFN_QUOTA_EXCEEDED' },
     }]);
     await expect(context.store.listWebhooks(context.project.id)).resolves.toHaveLength(1);
+  });
+
+  it('does not persist a webhook when its atomic audit transaction fails', async () => {
+    const context = await setup({ store: new FailingAtomicWebhookStore() });
+
+    await expect(context.mailfn.createWebhook(context.admin, {
+      url: 'https://consumer.example.test/atomic-audit', eventTypes: ['message.received'],
+    })).rejects.toThrow('atomic webhook transaction failed');
+    await expect(context.store.listWebhooks(context.project.id)).resolves.toHaveLength(0);
+    expect((await context.store.listAudits(context.project.id)).some(
+      (event) => event.action === 'webhook.created',
+    )).toBe(false);
+  });
+
+  it('persists and queues webhook delivery without waiting on the consumer', async () => {
+    const parseJobs: ParseJob[] = [];
+    const webhookJobs: WebhookDeliveryJob[] = [];
+    let deliveries = 0;
+    const context = await setup({
+      queue: {
+        async enqueue(job) { parseJobs.push(job); },
+        async enqueueWebhook(job) { webhookJobs.push(job); },
+      },
+      webhookDispatcher: {
+        async deliver() { deliveries += 1; return { ok: true, status: 204, retryable: false }; },
+      },
+    });
+    const created = await createInbox(context, 'queued-webhook');
+    const webhook = await context.mailfn.createWebhook(context.admin, {
+      inboxId: created.inbox.id,
+      url: 'https://consumer.example.test/queued',
+      eventTypes: ['message.received'],
+    });
+    const value = raw();
+
+    await expect(context.mailfn.receiveInbound({
+      providerDeliveryId: 'queued-webhook', envelopeFrom: 'sender@example.com',
+      envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength,
+    })).resolves.toMatchObject({ status: 'pending' });
+
+    expect(deliveries).toBe(0);
+    expect(parseJobs).toHaveLength(1);
+    expect(webhookJobs).toHaveLength(1);
+    await expect(context.store.listWebhookDeliveries(webhook.webhook.id)).resolves.toMatchObject([{
+      status: 'pending', attempt: 1,
+    }]);
+    await expect(context.mailfn.processWebhookDelivery(webhookJobs[0]!)).resolves.toBe(true);
+    await expect(context.mailfn.processWebhookDelivery(webhookJobs[0]!)).resolves.toBe(false);
+    expect(deliveries).toBe(1);
+    await expect(context.store.listWebhookDeliveries(webhook.webhook.id)).resolves.toMatchObject([{
+      status: 'delivered', attempt: 1,
+    }]);
   });
 
   it('accepts tagged senders and SMTP null reverse paths on inbound mail', async () => {
@@ -1324,6 +1421,43 @@ describe('MailFn domain service', () => {
     expect(createRouting).toHaveBeenCalledOnce();
     const active = await context.store.getDomain(pending.id);
     expect(active).toMatchObject({ status: 'active', routingRuleId: 'routing-once' });
+  });
+
+  it('preserves a shared route committed by a newer verification lease', async () => {
+    const clock = new MutableClock();
+    let releaseStaleRouting!: () => void;
+    let routingCalls = 0;
+    const disableRouting = vi.fn(async () => undefined);
+    const context = await setup({
+      clock,
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: vi.fn(async () => {
+          routingCalls += 1;
+          if (routingCalls === 1) {
+            await new Promise<void>((resolve) => { releaseStaleRouting = resolve; });
+          }
+          return { routingRuleId: 'shared-routing-rule' };
+        }),
+        disableRouting,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'lease-takeover.example.com');
+    const stale = context.mailfn.verifyDomain(context.admin, pending.id);
+    await vi.waitFor(() => expect(routingCalls).toBe(1));
+    clock.advance(5 * 60 * 1000 + 1);
+
+    await expect(context.mailfn.verifyDomain(context.admin, pending.id)).resolves.toMatchObject({
+      status: 'active', routingRuleId: 'shared-routing-rule',
+    });
+    releaseStaleRouting();
+
+    await expect(stale).rejects.toMatchObject({ code: 'MAILFN_STORAGE_FAILED', retryable: true });
+    expect(disableRouting).not.toHaveBeenCalled();
+    await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({
+      status: 'active', routingRuleId: 'shared-routing-rule',
+    });
   });
 
   it('reconciles a durably disabled domain that still retains live routing state', async () => {

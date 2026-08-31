@@ -70,6 +70,7 @@ import type {
   WaitForMessageResult,
   Webhook,
   WebhookDelivery,
+  WebhookDeliveryJob,
 } from './types.js';
 import { MAILFN_EVENT_TYPES, MAILFN_EVENT_VERSION, MAILFN_SCOPES } from './types.js';
 
@@ -523,7 +524,21 @@ export class MailFn {
       ? new Date(Date.parse(startedAt) + compliance.deletionSlaHours * 60 * 60 * 1000).toISOString()
       : undefined;
     const quiesced: Inbox = { ...inbox, status: 'deleting', updatedAt: startedAt };
-    await this.store.saveInbox(quiesced);
+    if (!(await this.store.claimInboxDeletion(quiesced, inbox))) {
+      const [currentCompliance, currentInbox] = await Promise.all([
+        this.store.getComplianceProfile(inbox.projectId),
+        this.store.getInbox(inbox.id),
+      ]);
+      assertMailFn(!currentCompliance?.retentionLocked, {
+        code: 'MAILFN_CONFLICT', message: 'Inbox deletion is blocked by the project retention lock', status: 409,
+      });
+      assertMailFn(currentInbox?.status !== 'deleting', {
+        code: 'MAILFN_CONFLICT', message: 'Inbox deletion is already in progress', status: 409,
+      });
+      throw new MailFnError({
+        code: 'MAILFN_CONFLICT', message: 'Inbox changed while deletion was starting', status: 409, retryable: true,
+      });
+    }
     for (const credential of await this.store.listCredentials(inbox.projectId, inbox.id)) {
       if (credential.status === 'active') {
         await this.store.saveCredential({ ...credential, status: 'revoked', revokedAt: this.now() });
@@ -1052,6 +1067,49 @@ export class MailFn {
     return queued;
   }
 
+  public async processWebhookDelivery(job: WebhookDeliveryJob): Promise<boolean> {
+    assertMailFn(job.version === 1 && job.type === 'mailfn.webhook-delivery', {
+      code: 'MAILFN_VALIDATION_FAILED', message: 'Unsupported webhook delivery job', status: 400,
+    });
+    const [delivery, webhook, event] = await Promise.all([
+      this.store.getWebhookDelivery(job.deliveryId),
+      this.store.getWebhook(job.webhookId),
+      this.store.getEvent(job.eventId),
+    ]);
+    if (
+      !delivery || delivery.status !== 'pending' || delivery.updatedAt !== job.expectedUpdatedAt ||
+      delivery.webhookId !== job.webhookId || delivery.eventId !== job.eventId
+    ) return false;
+    const claimedAt = new Date(Math.max(
+      this.clock.now().getTime(),
+      Date.parse(delivery.updatedAt) + 1,
+    )).toISOString();
+    const claimed: WebhookDelivery = { ...delivery, updatedAt: claimedAt };
+    if (!(await this.store.claimWebhookDelivery(
+      delivery.id,
+      delivery.status,
+      delivery.updatedAt,
+      claimed,
+    ))) return false;
+    if (!webhook || webhook.status !== 'active' || !event || event.projectId !== job.projectId) {
+      await this.store.saveWebhookDelivery({
+        ...claimed,
+        status: 'dead_letter',
+        updatedAt: this.now(),
+      });
+      return true;
+    }
+    const result = await this.deliverWebhook(webhook, event, claimed);
+    if (!result.ok && event.type !== 'webhook.delivery_failed') {
+      await this.event('webhook.delivery_failed', event.projectId, {
+        inboxId: event.inboxId,
+        messageId: event.messageId,
+        payload: { webhookId: webhook.id, deliveryId: delivery.id, retryable: result.retryable },
+      });
+    }
+    return true;
+  }
+
   public async retryWebhookDeliveries(projectId?: string, limit = 100): Promise<number> {
     if (!this.webhookDispatcher || !this.secretProtector) return 0;
     const projects = projectId ? [await this.requireProject(projectId)] : await this.store.listProjects();
@@ -1575,8 +1633,12 @@ export class MailFn {
       createdAt: now,
       updatedAt: now,
     };
-    if (!(await this.store.createWebhookWithQuota(webhook, project.quota.maxWebhooks))) throw quotaExceeded('webhooks');
-    await this.audit(actor, 'webhook.created', 'webhook', id, { inboxId: input.inboxId ?? null });
+    const audit = await this.buildAuditEvent(actor, 'webhook.created', 'webhook', id, {
+      inboxId: input.inboxId ?? null,
+    });
+    if (!(await this.store.createWebhookWithQuotaAndAudit(webhook, project.quota.maxWebhooks, audit))) {
+      throw quotaExceeded('webhooks');
+    }
     return { webhook: { ...webhook, secretCiphertext: undefined }, secret: created.token };
   }
 
@@ -1707,11 +1769,28 @@ export class MailFn {
         throw new Error('MAILFN_DOMAIN_VERIFICATION_CLAIM_LOST');
       }
     } catch (cause) {
-      await this.domainAdapter.disableRouting(active).catch(() => undefined);
-      await this.store.saveDomainIfUnchanged({ ...domain, updatedAt: this.now() }, claimed).catch(() => false);
+      let current: MailDomain | null = null;
+      let currentReadSucceeded = false;
+      try {
+        current = await this.store.getDomain(domain.id);
+        currentReadSucceeded = true;
+      } catch {
+        // If current ownership cannot be read, preserving the provider rule is
+        // safer than deleting routing that a newer claim may already reference.
+      }
+      const routingWasCommittedByAnotherClaim = current?.status === 'active'
+        && current.routingRuleId === active.routingRuleId;
+      if (currentReadSucceeded && !routingWasCommittedByAnotherClaim) {
+        await this.domainAdapter.disableRouting(active).catch(() => undefined);
+      }
+      if (current && JSON.stringify(current) === JSON.stringify(claimed)) {
+        await this.store.saveDomainIfUnchanged({ ...domain, updatedAt: this.now() }, claimed).catch(() => false);
+      }
       throw new MailFnError({
         code: 'MAILFN_STORAGE_FAILED',
-        message: 'Domain routing was rolled back because active state could not be persisted',
+        message: routingWasCommittedByAnotherClaim
+          ? 'Domain verification was superseded by a newer active claim'
+          : 'Domain routing was rolled back because active state could not be persisted',
         status: 503,
         retryable: true,
         cause,
@@ -1957,7 +2036,15 @@ export class MailFn {
       code: 'MAILFN_VALIDATION_FAILED', message: 'Compliance flags must be booleans', status: 400,
     });
     const profile: ComplianceProfile = { ...input, projectId: actor.projectId, updatedAt: this.now() };
-    await this.store.saveComplianceProfile(profile);
+    if (profile.retentionLocked) {
+      assertMailFn(await this.store.saveComplianceProfileIfNoDeletion(profile), {
+        code: 'MAILFN_CONFLICT',
+        message: 'Retention lock cannot be enabled while inbox deletion is in progress',
+        status: 409,
+      });
+    } else {
+      await this.store.saveComplianceProfile(profile);
+    }
     return profile;
   }
 
@@ -2394,22 +2481,17 @@ export class MailFn {
       occurredAt: this.now(),
       payload: input.payload,
     };
-    await this.store.appendEvent(event);
-    await this.dispatchEvent(event);
-    return event;
-  }
-
-  private async dispatchEvent(event: MailFnEvent): Promise<void> {
-    if (!this.webhookDispatcher || !this.secretProtector) return;
-    const webhooks = (await this.store.listWebhooks(event.projectId)).filter(
-      (webhook) =>
-        webhook.status === 'active' &&
-        webhook.eventTypes.includes(event.type) &&
-        (!webhook.inboxId || webhook.inboxId === event.inboxId),
-    );
-    for (const webhook of webhooks) {
+    const webhooks = !this.webhookDispatcher || !this.secretProtector
+      ? []
+      : (await this.store.listWebhooks(event.projectId)).filter(
+        (webhook) =>
+          webhook.status === 'active' &&
+          webhook.eventTypes.includes(event.type) &&
+          (!webhook.inboxId || webhook.inboxId === event.inboxId),
+      );
+    const deliveries = webhooks.map((webhook): WebhookDelivery => {
       const now = this.now();
-      const delivery: WebhookDelivery = {
+      return {
         id: this.ids.generate('whd'),
         webhookId: webhook.id,
         eventId: event.id,
@@ -2418,16 +2500,25 @@ export class MailFn {
         createdAt: now,
         updatedAt: now,
       };
-      await this.store.saveWebhookDelivery(delivery);
-      const result = await this.deliverWebhook(webhook, event, delivery);
-      if (!result.ok && event.type !== 'webhook.delivery_failed') {
-        await this.event('webhook.delivery_failed', event.projectId, {
-          inboxId: event.inboxId,
-          messageId: event.messageId,
-          payload: { webhookId: webhook.id, deliveryId: delivery.id, retryable: result.retryable },
-        });
-      }
+    });
+    await this.store.appendEventWithDeliveries(event, deliveries);
+    const jobs = deliveries.map((delivery): WebhookDeliveryJob => ({
+      id: this.ids.generate('job'),
+      version: 1,
+      type: 'mailfn.webhook-delivery',
+      projectId: event.projectId,
+      eventId: event.id,
+      webhookId: delivery.webhookId,
+      deliveryId: delivery.id,
+      expectedUpdatedAt: delivery.updatedAt,
+      createdAt: this.now(),
+    }));
+    if (this.queue?.enqueueWebhook) {
+      await Promise.allSettled(jobs.map((job) => this.queue!.enqueueWebhook!(job)));
+    } else {
+      for (const job of jobs) await this.processWebhookDelivery(job);
     }
+    return event;
   }
 
   private async deliverWebhook(

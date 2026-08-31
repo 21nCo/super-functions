@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Credential, MailDomain, Message, Webhook } from '@mailfn/core';
+import type { AuditEvent, ComplianceProfile, Credential, Inbox, MailDomain, Message, Webhook } from '@mailfn/core';
 
 import type { D1Database, D1PreparedStatement, D1Result } from './bindings.js';
 import { D1MailFnStore } from './d1-store.js';
@@ -30,7 +30,7 @@ class RecordingDatabase implements D1Database {
   }
 
   async batch<T>(statements: D1PreparedStatement[]): Promise<Array<D1Result<T>>> {
-    return statements.map(() => ({ success: true, results: [] }));
+    return statements.map(() => ({ success: true, results: [], meta: { changes: 1 } }));
   }
   async exec(): Promise<{ count: number; duration: number }> { return { count: 0, duration: 0 }; }
 }
@@ -138,6 +138,48 @@ describe('D1MailFnStore', () => {
 
     expect(database.statements[0]?.query).toContain("SELECT COUNT(*) FROM mailfn_webhooks WHERE project_id = ? AND status = 'active'");
     expect(database.statements[0]?.values.slice(-2)).toEqual(['prj_1', 3]);
+  });
+
+  it('creates a webhook and its audit in one conditional D1 batch', async () => {
+    const database = new RecordingDatabase();
+    const store = new D1MailFnStore(database);
+    const now = '2026-08-30T00:00:00.000Z';
+    const webhook = {
+      id: 'whk_atomic', projectId: 'prj_1', url: 'https://example.test/hook', eventTypes: ['message.received'],
+      secretHash: 'hash', status: 'active', consecutiveFailures: 0, createdAt: now, updatedAt: now,
+    } satisfies Webhook;
+    const audit = {
+      id: 'aud_atomic', projectId: 'prj_1', actorType: 'admin', actorId: 'admin', action: 'webhook.created',
+      resourceType: 'webhook', resourceId: webhook.id, metadata: {}, createdAt: now,
+      retentionExpiresAt: '2027-08-30T00:00:00.000Z',
+    } satisfies AuditEvent;
+
+    await expect(store.createWebhookWithQuotaAndAudit(webhook, 3, audit)).resolves.toBe(true);
+
+    expect(database.statements[0]?.query).toContain('SELECT COUNT(*) FROM mailfn_webhooks');
+    expect(database.statements[1]?.query).toContain('WHERE changes() = 1 AND EXISTS');
+    expect(database.statements[1]?.values.at(-1)).toBe(webhook.id);
+  });
+
+  it('uses opposing D1 guards for retention locks and deletion claims', async () => {
+    const database = new RecordingDatabase();
+    const store = new D1MailFnStore(database);
+    const inbox = {
+      id: 'inb_1', projectId: 'prj_1', address: 'one@example.test', kind: 'stable', status: 'active',
+      metadata: {}, labels: [], createdAt: '2026-08-30T00:00:00.000Z', updatedAt: '2026-08-30T00:00:00.000Z',
+    } satisfies Inbox;
+    const deleting = { ...inbox, status: 'deleting' as const, updatedAt: '2026-08-30T00:00:01.000Z' };
+    const compliance = {
+      projectId: 'prj_1', dataRegion: 'global', retentionLocked: true, exportEnabled: false,
+      deletionSlaHours: 24, updatedAt: '2026-08-30T00:00:01.000Z',
+    } satisfies ComplianceProfile;
+
+    await expect(store.claimInboxDeletion(deleting, inbox)).resolves.toBe(true);
+    await expect(store.saveComplianceProfileIfNoDeletion(compliance)).resolves.toBe(true);
+
+    expect(database.statements[0]?.query).toContain('mailfn_compliance');
+    expect(database.statements[0]?.query).toContain('retention_locked = 1');
+    expect(database.statements[1]?.query).toContain("status = 'deleting'");
   });
 
   it('prunes only terminal webhook deliveries and events that are not needed for retries', async () => {

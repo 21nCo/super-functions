@@ -55,7 +55,7 @@ The Cloudflare adapter implements this acceptance path:
 
 1. Email Routing calls the Email Worker.
 2. The Worker validates the recipient and limits, writes raw MIME to R2, inserts a D1 message row, and enqueues a versioned parse job.
-3. The Queue consumer parses MIME, writes attachment bytes to R2, normalizes content into D1, resolves the thread, and emits versioned events.
+3. The Queue consumer parses MIME, writes attachment bytes to R2, normalizes content into D1, resolves the thread, and processes durable webhook-delivery jobs. Inbound acceptance persists events and pending deliveries before enqueueing webhook work, so consumer latency never blocks MIME parsing.
 4. The HTTP Worker serves scoped inbox, message, attachment, wait, extraction, thread, draft, webhook, domain, audit, operations, usage, abuse, support, and compliance APIs.
 5. The scheduled handler expires inboxes and independently enforces raw, attachment, message, and audit retention.
 
