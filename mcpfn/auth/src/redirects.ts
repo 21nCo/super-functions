@@ -1,7 +1,16 @@
+export type McpFnPrivateUseSchemePolicy =
+  | "rfc8252"
+  | "compatible";
+
 export interface McpFnRedirectPolicy {
   allowDynamicLoopbackPort?: boolean;
   allowLocalhostLoopback?: boolean;
-  allowPrivateUseSchemes?: boolean;
+  /**
+   * Private-use native-app redirect handling. Defaults to `rfc8252`.
+   * `rfc8252` requires a reverse-domain scheme. `compatible` additionally
+   * accepts well-formed non-web schemes such as Cursor's `cursor:` callback.
+   */
+  privateUseSchemePolicy?: McpFnPrivateUseSchemePolicy;
 }
 
 export interface McpFnRedirectMatch {
@@ -40,10 +49,7 @@ export function normalizeMcpRedirectUri(
   }
   if (url.protocol === "https:") return url.toString();
   if (url.protocol === "http:" && isLoopback(url, policy)) return url.toString();
-  if (
-    policy.allowPrivateUseSchemes === true &&
-    isReverseDomainPrivateUseScheme(url.protocol)
-  ) {
+  if (isAllowedPrivateUseRedirect(url, policy.privateUseSchemePolicy)) {
     return url.toString();
   }
   throw new McpFnRedirectMismatchError(url.toString());
@@ -81,6 +87,62 @@ export function matchMcpRedirectUri(
     }
   }
   throw new McpFnRedirectMismatchError(actual.toString());
+}
+
+export function isMcpFnCompatiblePrivateUseRedirect(
+  value: string | URL,
+): boolean {
+  let url: URL;
+  try {
+    url = new URL(value.toString());
+  } catch {
+    return false;
+  }
+  return (
+    isAllowedPrivateUseRedirect(url, "compatible") &&
+    !isReverseDomainPrivateUseScheme(url.protocol)
+  );
+}
+
+const unsafeNativeProtocols = new Set([
+  "about:",
+  "blob:",
+  "chrome:",
+  "chrome-extension:",
+  "data:",
+  "file:",
+  "filesystem:",
+  "ftp:",
+  "javascript:",
+  "mailto:",
+  "resource:",
+  "sms:",
+  "tel:",
+  "urn:",
+  "vbscript:",
+  "view-source:",
+  "ws:",
+  "wss:",
+]);
+
+function isAllowedPrivateUseRedirect(
+  url: URL,
+  policy: McpFnPrivateUseSchemePolicy | undefined,
+): boolean {
+  const effectivePolicy = policy ?? "rfc8252";
+  if (
+    url.username ||
+    url.password ||
+    url.hash ||
+    url.hostname.includes("*") ||
+    url.protocol === "http:" ||
+    url.protocol === "https:" ||
+    unsafeNativeProtocols.has(url.protocol) ||
+    (!url.hostname && !url.pathname.startsWith("/"))
+  ) {
+    return false;
+  }
+  return effectivePolicy === "compatible" || isReverseDomainPrivateUseScheme(url.protocol);
 }
 
 function isReverseDomainPrivateUseScheme(protocol: string): boolean {

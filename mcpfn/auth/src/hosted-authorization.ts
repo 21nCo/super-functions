@@ -2,6 +2,7 @@ import type { OAuthClientMetadata } from "@modelcontextprotocol/sdk/shared/auth.
 import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 import {
+  isMcpFnCompatiblePrivateUseRedirect,
   matchMcpRedirectUri,
   McpFnRedirectMismatchError,
   normalizeMcpRedirectUri,
@@ -624,9 +625,23 @@ async function handleRegistrationRequest(
     redirectPolicy: options.redirectPolicy,
   });
   assertCompatibleClientRegistration(registration, supportedMethods, options.supportedScopes);
+  const compatibilityRedirectSchemes = unique(
+    registration.redirectUris
+      .filter(isMcpFnCompatiblePrivateUseRedirect)
+      .map((redirect) => new URL(redirect).protocol.slice(0, -1)),
+  );
   await emit(options, "client-registration", "succeeded", undefined, {
     clientId: registration.clientId,
     source: registration.source,
+    ...(compatibilityRedirectSchemes.length > 0
+      ? {
+          privateUseSchemePolicy: "compatible",
+          compatibilityRedirectSchemes,
+          compatibilityRedirectCount: registration.redirectUris.filter(
+            isMcpFnCompatiblePrivateUseRedirect,
+          ).length,
+        }
+      : {}),
   });
   return json(201, {
     ...registration.metadata,
