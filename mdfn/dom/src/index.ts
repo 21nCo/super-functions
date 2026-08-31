@@ -226,8 +226,16 @@ export function createDomEditor(options: DomEditorOptions): DomEditor {
     gapCursor(),
     dropCursor(),
   ];
-  let previousPmDocument = documentToProseMirror(options.controller.getState().document);
-  const state = PmEditorState.create({ schema: mdfnSchema, doc: previousPmDocument, plugins });
+  const controllerStateToPmState = (controllerState: ReturnType<EditorController["getState"]>): PmEditorState => {
+    const doc = documentToProseMirror(controllerState.document);
+    const state = PmEditorState.create({ schema: mdfnSchema, doc, plugins });
+    if (controllerState.selection?.kind !== "text") return state;
+    const segments = positionSegments(doc, controllerState.document);
+    const anchor = sourcePositionToPm(segments, doc.content.size, controllerState.selection.anchor);
+    const head = sourcePositionToPm(segments, doc.content.size, controllerState.selection.head);
+    return state.apply(state.tr.setSelection(PmTextSelection.create(doc, anchor, head)).setMeta("addToHistory", false));
+  };
+  const state = controllerStateToPmState(options.controller.getState());
   const view = new EditorView(options.target, {
     state,
     editable: () => !readOnly,
@@ -298,14 +306,22 @@ export function createDomEditor(options: DomEditorOptions): DomEditor {
     dispatchTransaction(transaction) {
       const next = view.state.apply(transaction);
       const before = view.state.doc;
-      view.updateState(next);
-      if (syncing) return;
+      if (syncing) {
+        view.updateState(next);
+        return;
+      }
       if (transaction.docChanged) {
         const document = proseMirrorToDocument(next.doc, before, options.controller.getState().document.schemaVersion);
         options.controller.dispatch(new MdfnTransaction().replaceDocument(document).withSource("visual:document"));
-        previousPmDocument = next.doc;
+        const controllerState = options.controller.getState();
+        options.controller.dispatch(new MdfnTransaction()
+          .setSelection(selectionFromPm(next, controllerState.document, controllerState.markdown.length))
+          .withSource("visual:selection"));
+        view.updateState(controllerStateToPmState(options.controller.getState()));
+        return;
       }
-      if (transaction.selectionSet || transaction.docChanged) {
+      view.updateState(next);
+      if (transaction.selectionSet) {
         const controllerState = options.controller.getState();
         options.controller.dispatch(new MdfnTransaction()
           .setSelection(selectionFromPm(next, controllerState.document, controllerState.markdown.length))
@@ -327,14 +343,7 @@ export function createDomEditor(options: DomEditorOptions): DomEditor {
     const nextDoc = documentToProseMirror(change.current.document);
     if (view.state.doc.eq(nextDoc)) return;
     syncing = true;
-    previousPmDocument = nextDoc;
-    const nextState = PmEditorState.create({ schema: mdfnSchema, doc: nextDoc, plugins });
-    if (change.current.selection?.kind === "text") {
-      const segments = positionSegments(nextDoc, change.current.document);
-      const anchor = sourcePositionToPm(segments, nextDoc.content.size, change.current.selection.anchor);
-      const head = sourcePositionToPm(segments, nextDoc.content.size, change.current.selection.head);
-      view.updateState(nextState.apply(nextState.tr.setSelection(PmTextSelection.create(nextDoc, anchor, head))));
-    } else view.updateState(nextState);
+    view.updateState(controllerStateToPmState(change.current));
     syncing = false;
   });
 

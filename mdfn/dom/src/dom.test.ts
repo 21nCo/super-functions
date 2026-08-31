@@ -52,6 +52,28 @@ describe("@mdfn/dom", () => {
     editor.destroy();
   });
 
+  it("refreshes visual source spans after each canonical document edit", () => {
+    const controller = createEditor({ markdown: "a\n", projector: createMarkdownProjector() });
+    const editor = createDomEditor({ target: document.createElement("div"), controller });
+
+    editor.view.dispatch(editor.view.state.tr.insertText("b", 2));
+    editor.view.dispatch(editor.view.state.tr.insertText("c", 3));
+
+    expect(controller.getState().markdown).toBe("abc\n");
+    expect(editor.view.state.doc.textContent).toBe("abc");
+    editor.destroy();
+  });
+
+  it("keeps the visual view canonical when controller validation rejects an edit", () => {
+    const controller = createEditor({ markdown: "a\n", projector: createMarkdownProjector({ maxBytes: 2 }) });
+    const editor = createDomEditor({ target: document.createElement("div"), controller });
+
+    expect(() => editor.view.dispatch(editor.view.state.tr.insertText("b", 2))).toThrowError(/MDFN_SOURCE_TOO_LARGE/);
+    expect(controller.getState().markdown).toBe("a\n");
+    expect(editor.view.state.doc.textContent).toBe("a");
+    editor.destroy();
+  });
+
   it("maps visual insertion, deletion, and replacement selections to exact source offsets", () => {
     const cases = [
       { apply: (editor: ReturnType<typeof createDomEditor>) => editor.view.state.tr.setSelection(TextSelection.create(editor.view.state.doc, 3)).insertText("X"), markdown: "abXcd\n", offset: 3 },

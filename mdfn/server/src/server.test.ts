@@ -96,6 +96,28 @@ describe("mdfn server", () => {
     expect(third.updates).toEqual(["snapshot"]);
   });
 
+  it("orders later collaboration writes after issued cursors with a frozen clock and descending ids", async () => {
+    const ids = ["z", "y", "a"];
+    const service = createMdfnService({
+      database: memoryAdapter(),
+      durability: "ephemeral",
+      authorize: () => true,
+      createId: () => ids.shift()!,
+      now: () => new Date("2026-08-31T00:00:00.000Z"),
+    });
+    const principal = { id: "author" };
+    const document = await service.create(principal, { id: "document", markdown: "valid" });
+    await service.appendCollaborationUpdate(principal, document.id, "first");
+    await service.appendCollaborationUpdate(principal, document.id, "second");
+
+    const first = await service.collaborationUpdates(principal, document.id, { limit: 1 });
+    await service.appendCollaborationUpdate(principal, document.id, "third");
+    const remainder = await service.collaborationUpdates(principal, document.id, { cursor: first.nextCursor });
+
+    expect(first).toMatchObject({ updates: ["first"], includedUpdateIds: ["z"], nextCursor: expect.any(String) });
+    expect(remainder).toMatchObject({ updates: ["second", "third"], includedUpdateIds: ["y", "a"] });
+  });
+
   it("paginates lightweight immutable version history", async () => {
     const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true });
     const principal = { id: "author" };
@@ -207,6 +229,31 @@ describe("mdfn server", () => {
     const restricted = await service.create(principal, { title: "restricted", markdown: "secret" });
     await expect(service.read(principal, restricted.id)).rejects.toMatchObject({ code: "MDFN_FORBIDDEN" });
     expect((await service.list(principal)).map((document) => document.title)).toEqual(["visible"]);
+  });
+
+  it("applies authorization and visible offsets over bounded document pages", async () => {
+    const database = memoryAdapter();
+    const findMany = database.findMany.bind(database);
+    const documentPageLimits: Array<number | undefined> = [];
+    database.findMany = async <T = unknown>(params: Parameters<typeof database.findMany>[0]): Promise<T[]> => {
+      if (params.model === "mdfnDocuments") documentPageLimits.push(params.limit);
+      return findMany<T>(params);
+    };
+    const service = createMdfnService({
+      database,
+      durability: "ephemeral",
+      authorize: (action, _principal, document) => action !== "read" || !document || Number(document.id.slice(4)) % 2 === 0,
+      now: () => new Date("2026-08-31T00:00:00.000Z"),
+    });
+    const principal = { id: "owner" };
+    for (let index = 0; index < 60; index += 1) {
+      await service.create(principal, { id: `doc-${String(index).padStart(2, "0")}`, markdown: String(index) });
+    }
+
+    const listed = await service.list(principal, { offset: 10, limit: 5 });
+
+    expect(listed.map((document) => document.id)).toEqual(["doc-38", "doc-36", "doc-34", "doc-32", "doc-30"]);
+    expect(documentPageLimits).toEqual([25, 25]);
   });
 
   it("keeps tenant documents out of owner-only listings", async () => {
