@@ -505,8 +505,18 @@ export class MailFn {
     assertMailFn(input.metadata === undefined || isStringRecord(input.metadata), {
       code: 'MAILFN_VALIDATION_FAILED', message: 'Inbox metadata values must be strings', status: 400,
     });
+    if (input.expiresAt) requireFutureIso(input.expiresAt, this.now(), 'expiresAt');
+    if (actor.inboxId && input.expiresAt !== undefined && inbox.expiresAt) {
+      assertMailFn(
+        input.expiresAt !== null && Date.parse(input.expiresAt) <= Date.parse(inbox.expiresAt),
+        {
+          code: 'MAILFN_FORBIDDEN',
+          message: 'Inbox-scoped credentials cannot clear or extend the inbox expiration',
+          status: 403,
+        },
+      );
+    }
     const expiresAt = input.expiresAt === null ? undefined : input.expiresAt ?? inbox.expiresAt;
-    if (expiresAt) requireFutureIso(expiresAt, this.now(), 'expiresAt');
     const updated: Inbox = {
       ...inbox,
       displayName: input.displayName === undefined ? inbox.displayName : input.displayName.trim() || undefined,
@@ -1935,11 +1945,17 @@ export class MailFn {
       });
       await this.domainAdapter.disableRouting(domain);
       const reconciled = { ...domain, routingRuleId: undefined, updatedAt: this.now() };
-      await this.store.saveDomain(reconciled);
-      return reconciled;
+      if (await this.store.saveDomainIfUnchanged(reconciled, domain)) return reconciled;
+      const latest = await this.store.getDomain(domain.id);
+      if (!latest) throw notFound('Domain');
+      return this.disableDomainRouting(latest);
     }
     const disabling = { ...domain, status: 'disabling' as const, updatedAt: this.now() };
-    await this.store.saveDomain(disabling);
+    if (!(await this.store.saveDomainIfUnchanged(disabling, domain))) {
+      const latest = await this.store.getDomain(domain.id);
+      if (!latest) throw notFound('Domain');
+      return this.disableDomainRouting(latest);
+    }
     try {
       if (disabling.routingRuleId && !this.domainAdapter) {
         throw new Error('MAILFN_DOMAIN_ADAPTER_UNAVAILABLE');
@@ -1956,7 +1972,9 @@ export class MailFn {
     }
     const updated = { ...disabling, status: 'disabled' as const, routingRuleId: undefined, updatedAt: this.now() };
     try {
-      await this.store.saveDomain(updated);
+      if (!(await this.store.saveDomainIfUnchanged(updated, disabling))) {
+        throw new Error('MAILFN_DOMAIN_STATE_CHANGED');
+      }
     } catch (cause) {
       throw new MailFnError({
         code: 'MAILFN_STORAGE_FAILED',

@@ -193,6 +193,34 @@ class FailingDisabledDomainStore extends MemoryMailFnStore {
   }
 }
 
+class PausedDomainDisableStore extends MemoryMailFnStore {
+  private pauseNextDisable = true;
+  private readonly disableStartedPromise: Promise<void>;
+  private resolveDisableStarted!: () => void;
+  private readonly disableResumePromise: Promise<void>;
+  private resolveDisableResume!: () => void;
+
+  public constructor() {
+    super();
+    this.disableStartedPromise = new Promise((resolve) => { this.resolveDisableStarted = resolve; });
+    this.disableResumePromise = new Promise((resolve) => { this.resolveDisableResume = resolve; });
+  }
+
+  public disableStarted(): Promise<void> { return this.disableStartedPromise; }
+  public resumeDisable(): void { this.resolveDisableResume(); }
+
+  override async saveDomainIfUnchanged(
+    ...args: Parameters<MemoryMailFnStore['saveDomainIfUnchanged']>
+  ): Promise<boolean> {
+    if (this.pauseNextDisable && args[0].status === 'disabling') {
+      this.pauseNextDisable = false;
+      this.resolveDisableStarted();
+      await this.disableResumePromise;
+    }
+    return super.saveDomainIfUnchanged(...args);
+  }
+}
+
 class RetryableCancelStore extends MemoryMailFnStore {
   public releaseAttempts = 0;
   override async releaseStorage(reservationId: string): Promise<void> {
@@ -520,6 +548,30 @@ describe('MailFn domain service', () => {
       metadata: { owner: 42 } as never,
     })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
     await expect(context.store.getInbox(created.inbox.id)).resolves.toMatchObject({ metadata: {} });
+  });
+
+  it('prevents inbox-scoped credentials from clearing or extending their expiry boundary', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id,
+      kind: 'expiring',
+      requestedLocalPart: 'scoped-expiry-update',
+      expirySeconds: 3_600,
+    });
+    const actor = await context.mailfn.authenticate(created.credential.token);
+
+    await expect(context.mailfn.updateInbox(actor, created.inbox.id, { expiresAt: null }))
+      .rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN', status: 403 });
+    await expect(context.mailfn.updateInbox(actor, created.inbox.id, {
+      expiresAt: new Date(Date.parse(created.inbox.expiresAt!) + 60_000).toISOString(),
+    })).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN', status: 403 });
+
+    const shortened = new Date(Date.parse(created.inbox.expiresAt!) - 60_000).toISOString();
+    await expect(context.mailfn.updateInbox(actor, created.inbox.id, { expiresAt: shortened }))
+      .resolves.toMatchObject({ expiresAt: shortened });
+    await expect(context.mailfn.updateInbox(context.admin, created.inbox.id, { expiresAt: null }))
+      .resolves.toMatchObject({ expiresAt: undefined });
   });
 
   it('rechecks the active-inbox quota before reactivation', async () => {
@@ -1921,6 +1973,39 @@ describe('MailFn domain service', () => {
     });
     expect(disableRouting).toHaveBeenCalledOnce();
     expect((await context.store.getDomain(pending.id))?.routingRuleId).toBeUndefined();
+  });
+
+  it('reloads a verified routing handle when disablement loses its initial claim race', async () => {
+    const store = new PausedDomainDisableStore();
+    const clock = new MutableClock();
+    const disableRouting = vi.fn(async () => undefined);
+    const context = await setup({
+      store,
+      clock,
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'unused' }),
+        disableRouting,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'disable-claim-race.example.com');
+    const verifying = { ...pending, status: 'verifying' as const, lastCheckedAt: clock.now().toISOString() };
+    await store.saveDomain(verifying);
+
+    const disabling = context.mailfn.disableDomain(context.admin, pending.id);
+    await store.disableStarted();
+    await store.saveDomain({
+      ...verifying,
+      status: 'active',
+      routingRuleId: 'routing-won-race',
+      verifiedAt: clock.now().toISOString(),
+      updatedAt: clock.now().toISOString(),
+    });
+    store.resumeDisable();
+
+    await expect(disabling).resolves.toMatchObject({ status: 'disabled', routingRuleId: undefined });
+    expect(disableRouting).toHaveBeenCalledWith(expect.objectContaining({ routingRuleId: 'routing-won-race' }));
   });
 
   it('enforces custom-domain ownership across projects', async () => {

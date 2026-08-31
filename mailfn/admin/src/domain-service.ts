@@ -425,13 +425,11 @@ export function createMailFnDomainAdminService(
       return pageResult(result.items.map((entry) => safeAttachment(asJson(entry))), result.hasMore, resolved, context);
     },
     async getAttachment(input, context) {
-      const { activeProjectId, adminActor } = state(context);
+      const { activeProjectId } = state(context);
       const attachment = await store.getAttachment(string(input.id, "id"));
       if (!attachment) notFound("Attachment");
       assertProject(attachment, activeProjectId, "Attachment");
-      const result = await mailfn.getAttachment(adminActor, attachment.inboxId, attachment.messageId, attachment.id);
-      const { objectKey: _objectKey, ...metadata } = result.attachment;
-      return item(metadata);
+      return item(safeAttachment(asJson(attachment)));
     },
     async listCredentials(input, context) {
       const { activeProjectId } = state(context);

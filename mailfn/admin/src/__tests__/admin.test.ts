@@ -467,6 +467,25 @@ describe("@mailfn/admin", () => {
     }));
   });
 
+  it("returns attachment metadata without downloading its object", async () => {
+    const getAttachment = vi.fn();
+    const service = createMailFnDomainAdminService({
+      mailfn: { getAttachment } as unknown as MailFn,
+      store: {
+        getAttachment: vi.fn(async () => ({
+          id: "attachment_1", projectId: "project_1", inboxId: "inbox_1",
+          messageId: "message_1", filename: "proof.txt", contentType: "text/plain",
+          sizeBytes: 5, sha256: "sha", objectKey: "private/object", createdAt: "2026-08-30T00:00:00.000Z",
+        })),
+      } as unknown as MemoryMailFnStore,
+    });
+
+    await expect(service.getAttachment({ id: "attachment_1" }, context)).resolves.toMatchObject({
+      data: { item: { id: "attachment_1", filename: "proof.txt" } },
+    });
+    expect(getAttachment).not.toHaveBeenCalled();
+  });
+
   it("applies generic filters and sorting and binds cursors to the complete query", async () => {
     const service = createMailFnDomainAdminService({
       mailfn: {
