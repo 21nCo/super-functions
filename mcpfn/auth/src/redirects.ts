@@ -1,7 +1,22 @@
+export type McpFnPrivateUseSchemePolicy =
+  | "disabled"
+  | "rfc8252"
+  | "compatible";
+
 export interface McpFnRedirectPolicy {
   allowDynamicLoopbackPort?: boolean;
   allowLocalhostLoopback?: boolean;
+  /** @deprecated Use `privateUseSchemePolicy` instead. */
   allowPrivateUseSchemes?: boolean;
+  /**
+   * Private-use native-app redirect handling. Defaults to `rfc8252`.
+   * `disabled` rejects all private-use schemes. `rfc8252` requires a
+   * reverse-domain scheme. `compatible` additionally accepts well-formed
+   * non-web schemes such as Cursor's `cursor:` callback.
+   */
+  privateUseSchemePolicy?: McpFnPrivateUseSchemePolicy;
+  /** Lowercase scheme names, without `:`, admitted by `compatible` mode. */
+  compatiblePrivateUseSchemes?: ReadonlyArray<string>;
 }
 
 export interface McpFnRedirectMatch {
@@ -40,10 +55,7 @@ export function normalizeMcpRedirectUri(
   }
   if (url.protocol === "https:") return url.toString();
   if (url.protocol === "http:" && isLoopback(url, policy)) return url.toString();
-  if (
-    policy.allowPrivateUseSchemes === true &&
-    isReverseDomainPrivateUseScheme(url.protocol)
-  ) {
+  if (isAllowedPrivateUseRedirect(url, policy)) {
     return url.toString();
   }
   throw new McpFnRedirectMismatchError(url.toString());
@@ -81,6 +93,91 @@ export function matchMcpRedirectUri(
     }
   }
   throw new McpFnRedirectMismatchError(actual.toString());
+}
+
+/** True when a redirect needs `compatible` rather than RFC 8252 policy. */
+export function isMcpFnCompatiblePrivateUseRedirect(
+  value: string | URL,
+): boolean {
+  let url: URL;
+  try {
+    url = new URL(value.toString());
+  } catch {
+    return false;
+  }
+  return (
+    isSafePrivateUseRedirect(url) &&
+    !isReverseDomainPrivateUseScheme(url.protocol)
+  );
+}
+
+const unsafeNativeProtocols = new Set([
+  "about:",
+  "android-app:",
+  "blob:",
+  "chrome:",
+  "chrome-extension:",
+  "data:",
+  "facetime:",
+  "file:",
+  "filesystem:",
+  "ftp:",
+  "ftps:",
+  "geo:",
+  "gopher:",
+  "intent:",
+  "javascript:",
+  "ldap:",
+  "ldaps:",
+  "mailto:",
+  "market:",
+  "ms-settings:",
+  "ms-windows-store:",
+  "nntp:",
+  "resource:",
+  "sftp:",
+  "shell:",
+  "smb:",
+  "sms:",
+  "ssh:",
+  "tel:",
+  "urn:",
+  "vbscript:",
+  "view-source:",
+  "ws:",
+  "wss:",
+]);
+
+function isAllowedPrivateUseRedirect(
+  url: URL,
+  policy: McpFnRedirectPolicy,
+): boolean {
+  const effectivePolicy = policy.privateUseSchemePolicy ??
+    (policy.allowPrivateUseSchemes === false ? "disabled" : "rfc8252");
+  if (effectivePolicy === "disabled") return false;
+  if (!isSafePrivateUseRedirect(url)) return false;
+  if (isReverseDomainPrivateUseScheme(url.protocol)) return true;
+  if (effectivePolicy !== "compatible") return false;
+  const scheme = url.protocol.slice(0, -1).toLowerCase();
+  return policy.compatiblePrivateUseSchemes?.some(
+    (candidate) => candidate === candidate.toLowerCase() && candidate === scheme,
+  ) === true;
+}
+
+function isSafePrivateUseRedirect(url: URL): boolean {
+  if (
+    url.username ||
+    url.password ||
+    url.hash ||
+    url.hostname.includes("*") ||
+    url.protocol === "http:" ||
+    url.protocol === "https:" ||
+    unsafeNativeProtocols.has(url.protocol) ||
+    (!url.hostname && !url.pathname.startsWith("/"))
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function isReverseDomainPrivateUseScheme(protocol: string): boolean {

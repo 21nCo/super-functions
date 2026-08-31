@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "outDir": "dist", "rootDir": "src", "allowJs": true, "checkJs": true },
+  "include": ["src/**/*.ts", "src/**/*.svelte"],
+  "exclude": ["dist", "node_modules"]
+}

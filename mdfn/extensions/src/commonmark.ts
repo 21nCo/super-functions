@@ -1,0 +1,1 @@
+export { commonmarkExtension } from "./index";

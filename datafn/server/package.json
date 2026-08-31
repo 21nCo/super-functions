@@ -1,6 +1,6 @@
 {
   "name": "@datafn/server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DataFn server runtime - HTTP endpoints for DFQL query, mutations, and sync",
   "license": "MIT",
   "type": "module",
@@ -12,6 +12,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./placement": {
+      "types": "./dist/placement.d.ts",
+      "import": "./dist/placement.js",
+      "require": "./dist/placement.cjs"
     }
   },
   "files": [

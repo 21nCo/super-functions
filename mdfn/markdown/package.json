@@ -1,0 +1,32 @@
+{
+  "name": "@mdfn/markdown",
+  "version": "0.1.0",
+  "description": "CommonMark and GFM parsing, serialization, formatting, diagnostics, source mapping, and preservation for mdfn",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.cjs" } },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap --clean",
+    "test": "vitest run --config ../vitest.config.ts --root .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@mdfn/core": "0.1.0",
+    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-gfm": "^3.1.0",
+    "mdast-util-to-markdown": "^2.1.2",
+    "micromark-extension-gfm": "^3.0.0"
+  },
+  "devDependencies": { "tsup": "^8.0.0", "typescript": "^5.3.0", "vitest": "3.2.4" },
+  "files": ["dist", "README.md"],
+  "license": "MIT",
+  "engines": { "node": ">=20 <25" },
+  "repository": { "type": "git", "url": "git+https://github.com/21nCo/super-functions.git", "directory": "mdfn/markdown" },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "mdfn": { "status": "stable-candidate", "layer": "markdown", "schemaVersion": 1 }
+}

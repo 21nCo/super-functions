@@ -47,9 +47,60 @@ describe("McpFn OAuth client compatibility", () => {
       "http://127.0.0.1:43123/callback",
       ["http://127.0.0.1:43124/callback"],
     )).toThrow(/not registered/);
+    expect(matchMcpRedirectUri(
+      "com.example.app:/callback",
+      ["com.example.app:/callback"],
+    ).kind).toBe("exact");
     expect(() => matchMcpRedirectUri(
       "com.example.app:/callback",
       ["com.example.app:/callback"],
+      { privateUseSchemePolicy: "disabled" },
+    )).toThrow(/not registered/);
+    expect(matchMcpRedirectUri(
+      "com.example.app:/callback",
+      ["com.example.app:/callback"],
+      { privateUseSchemePolicy: "rfc8252" },
+    ).kind).toBe("exact");
+    expect(matchMcpRedirectUri(
+      "com.3m:/callback",
+      ["com.3m:/callback"],
+      { privateUseSchemePolicy: "rfc8252" },
+    ).kind).toBe("exact");
+    expect(() => matchMcpRedirectUri(
+      "cursor://anysphere.cursor-mcp/oauth/callback",
+      ["cursor://anysphere.cursor-mcp/oauth/callback"],
+      { privateUseSchemePolicy: "rfc8252" },
+    )).toThrow(/not registered/);
+    expect(() => matchMcpRedirectUri(
+      "cursor://anysphere.cursor-mcp/oauth/callback",
+      ["cursor://anysphere.cursor-mcp/oauth/callback"],
+      { privateUseSchemePolicy: "compatible" },
+    )).toThrow(/not registered/);
+    expect(matchMcpRedirectUri(
+      "cursor://anysphere.cursor-mcp/oauth/callback",
+      ["cursor://anysphere.cursor-mcp/oauth/callback"],
+      {
+        privateUseSchemePolicy: "compatible",
+        compatiblePrivateUseSchemes: ["cursor"],
+      },
+    ).kind).toBe("exact");
+    expect(() => matchMcpRedirectUri(
+      "cursor://anysphere.cursor-mcp/oauth/other",
+      ["cursor://anysphere.cursor-mcp/oauth/callback"],
+      {
+        privateUseSchemePolicy: "compatible",
+        compatiblePrivateUseSchemes: ["cursor"],
+      },
+    )).toThrow(/not registered/);
+    expect(() => matchMcpRedirectUri(
+      "myapp:/callback",
+      ["myapp:/callback"],
+      { privateUseSchemePolicy: "rfc8252" },
+    )).toThrow(/not registered/);
+    expect(() => matchMcpRedirectUri(
+      "com.example.app:/callback",
+      ["com.example.app:/callback"],
+      { allowPrivateUseSchemes: false },
     )).toThrow(/not registered/);
     expect(matchMcpRedirectUri(
       "com.example.app:/callback",
@@ -57,21 +108,47 @@ describe("McpFn OAuth client compatibility", () => {
       { allowPrivateUseSchemes: true },
     ).kind).toBe("exact");
     expect(matchMcpRedirectUri(
-      "com.3m:/callback",
-      ["com.3m:/callback"],
-      { allowPrivateUseSchemes: true },
+      "myapp:/callback",
+      ["myapp:/callback"],
+      {
+        privateUseSchemePolicy: "compatible",
+        compatiblePrivateUseSchemes: ["myapp"],
+      },
     ).kind).toBe("exact");
     for (const unsafe of [
       "javascript:alert(1)",
       "data:text/plain,callback",
       "file:///tmp/callback",
+      "intent://anysphere.cursor-mcp/oauth/callback",
+      "android-app://anysphere.cursor-mcp/oauth/callback",
+      "market://anysphere.cursor-mcp/oauth/callback",
+      "ms-settings://privacy-webcam/",
+      "ms-windows-store://home/",
+      "gopher://anysphere.cursor-mcp/oauth/callback",
       "vbscript:msgbox(1)",
-      "myapp:/callback",
+      "cursor://user:password@anysphere.cursor-mcp/oauth/callback",
+      "cursor://anysphere.cursor-mcp/oauth/callback#fragment",
+      "cursor:opaque-callback",
     ]) {
       expect(() => matchMcpRedirectUri(
         unsafe,
         [unsafe],
-        { allowPrivateUseSchemes: true },
+        {
+          privateUseSchemePolicy: "compatible",
+          compatiblePrivateUseSchemes: [
+            "android-app",
+            "cursor",
+            "data",
+            "file",
+            "gopher",
+            "intent",
+            "javascript",
+            "market",
+            "ms-settings",
+            "ms-windows-store",
+            "vbscript",
+          ],
+        },
       )).toThrow(/not registered/);
     }
   });
@@ -189,7 +266,7 @@ describe("McpFn OAuth client compatibility", () => {
     expect(matchMcpRedirectUri(
       "com.example.app:/oauth/callback",
       ["https://app.example.com/callback", "com.example.app:/oauth/callback"],
-      { allowPrivateUseSchemes: true },
+      { privateUseSchemePolicy: "rfc8252" },
     ).kind).toBe("exact");
     expect(() => matchMcpRedirectUri(
       "http://127.0.0.1:43123/callback?environment=prod",
@@ -685,6 +762,124 @@ describe("McpFn hosted authorization compatibility", () => {
       error: "invalid_client_metadata",
     });
     expect(register).not.toHaveBeenCalled();
+  });
+
+  it("accepts the full Cursor-compatible registration set and audits compatibility use", async () => {
+    const diagnostics: Array<{
+      phase: string;
+      outcome: string;
+      details?: Record<string, unknown>;
+    }> = [];
+    const redirects = [
+      "cursor://anysphere.cursor-mcp/oauth/callback",
+      "https://www.cursor.com/agents/mcp/oauth/callback",
+      "http://localhost:8787/callback",
+    ];
+    const redirectPolicy = {
+      allowDynamicLoopbackPort: true,
+      allowLocalhostLoopback: true,
+      privateUseSchemePolicy: "compatible",
+      compatiblePrivateUseSchemes: ["cursor"],
+    } as const;
+    let registeredClient: ReturnType<typeof normalizeMcpClientRegistration> | null = null;
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      redirectPolicy,
+      clients: {
+        resolve: async (clientId) =>
+          registeredClient?.clientId === clientId ? registeredClient : null,
+        register: async (metadata) => {
+          registeredClient = normalizeMcpClientRegistration({
+            clientId: "cursor-compatible-client",
+            source: "dynamic",
+            metadata,
+            redirectPolicy,
+          });
+          return registeredClient;
+        },
+      },
+      authorize: async () => Response.json({ ok: true }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({
+          access_token: "opaque",
+          token_type: "Bearer",
+        }),
+      },
+      diagnostics: (event) => {
+        diagnostics.push(event);
+      },
+    });
+    const response = await compatibility(new Request(`${issuer}/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        client_name: "Cursor",
+        redirect_uris: redirects,
+        response_types: ["code"],
+        grant_types: ["authorization_code", "refresh_token"],
+        token_endpoint_auth_method: "none",
+      }),
+    }));
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      client_id: "cursor-compatible-client",
+      redirect_uris: [...redirects].sort(),
+      token_endpoint_auth_method: "none",
+    });
+    expect(diagnostics).toContainEqual({
+      phase: "client-registration",
+      outcome: "succeeded",
+      details: {
+        clientId: "cursor-compatible-client",
+        source: "dynamic",
+        privateUseSchemePolicy: "compatible",
+        compatibilityRedirectSchemes: ["cursor"],
+        compatibilityRedirectCount: 1,
+      },
+    });
+
+    const authorize = authorizationUrl("cursor-compatible-client", redirects[0]);
+    authorize.searchParams.delete("resource");
+    authorize.searchParams.delete("scope");
+    expect((await compatibility(new Request(authorize))).status).toBe(200);
+
+    const changedPath = new URL(authorize);
+    changedPath.searchParams.set(
+      "redirect_uri",
+      "cursor://anysphere.cursor-mcp/oauth/other",
+    );
+    const changedPathResponse = await compatibility(new Request(changedPath));
+    expect(changedPathResponse.status).toBe(400);
+    expect(changedPathResponse.headers.get("location")).toBeNull();
+
+    const plainPkce = new URL(authorize);
+    plainPkce.searchParams.set("code_challenge_method", "plain");
+    const plainPkceResponse = await compatibility(new Request(plainPkce));
+    expect(plainPkceResponse.status).toBe(302);
+    const errorRedirect = new URL(plainPkceResponse.headers.get("location")!);
+    expect(errorRedirect.protocol).toBe("cursor:");
+    expect(errorRedirect.searchParams.get("error")).toBe("invalid_request");
+  });
+
+  it("accepts the native and IPv4 loopback callbacks bundled by Grok Bot", () => {
+    const redirectPolicy = {
+      allowDynamicLoopbackPort: true,
+      allowLocalhostLoopback: true,
+      privateUseSchemePolicy: "compatible",
+      compatiblePrivateUseSchemes: ["cursor"],
+    } as const;
+
+    expect(matchMcpRedirectUri(
+      "cursor://anysphere.cursor-mcp/oauth/return",
+      ["cursor://anysphere.cursor-mcp/oauth/return"],
+      redirectPolicy,
+    ).kind).toBe("exact");
+    expect(matchMcpRedirectUri(
+      "http://127.0.0.1:8787/callback",
+      ["http://127.0.0.1:8787/callback"],
+      redirectPolicy,
+    ).kind).toBe("exact");
   });
 
   it("preserves the dynamic registration request body for host policy", async () => {
