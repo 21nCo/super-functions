@@ -1346,6 +1346,11 @@ export class MailFn {
     type: 'otp' | 'verification_link',
   ): Promise<ExtractedVerification> {
     await this.authorize(actor, 'message:extract', actor.projectId, inboxId);
+    assertMailFn(type === 'otp' || type === 'verification_link', {
+      code: 'MAILFN_VALIDATION_FAILED',
+      message: 'Verification extraction type must be otp or verification_link',
+      status: 400,
+    });
     const message = await this.requireMessage(actor.projectId, inboxId, messageId);
     assertMailFn(message.status === 'ready', {
       code: 'MAILFN_CONFLICT',
@@ -1374,11 +1379,19 @@ export class MailFn {
 
   public async labelThread(actor: Actor, inboxId: string, threadId: string, labels: string[]): Promise<Thread> {
     await this.authorize(actor, 'message:label', actor.projectId, inboxId);
-    const thread = await this.store.getThread(threadId);
-    if (!thread || thread.projectId !== actor.projectId || thread.inboxId !== inboxId) throw notFound('Thread');
-    const updated = { ...thread, labels: normalizeLabels(labels), updatedAt: this.now() };
-    await this.store.saveThread(updated);
-    return updated;
+    const normalizedLabels = normalizeLabels(labels);
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const thread = await this.store.getThread(threadId);
+      if (!thread || thread.projectId !== actor.projectId || thread.inboxId !== inboxId) throw notFound('Thread');
+      const updated = { ...thread, labels: normalizedLabels, updatedAt: this.now() };
+      if (await this.store.saveThreadIfUnchanged(updated, thread)) return updated;
+    }
+    throw new MailFnError({
+      code: 'MAILFN_STORAGE_FAILED',
+      message: 'Thread labels conflicted repeatedly',
+      status: 503,
+      retryable: true,
+    });
   }
 
   public async createDraft(actor: Actor, input: Omit<CreateDraftInput, 'projectId'>): Promise<Draft> {
@@ -1635,7 +1648,7 @@ export class MailFn {
     } catch (error) {
       const reset = await resetClaim().catch(() => false);
       if (reset) {
-        await this.store.releaseUsage(outboundUsage.id).catch(() => undefined);
+        await this.store.releaseOutboundUsageIfDraftNotSent(draft.id, outboundUsage.id).catch(() => false);
       }
       throw error;
     }

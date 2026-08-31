@@ -689,6 +689,13 @@ describe('MailFn in workerd', () => {
     await expect(store.listUsage(bootstrap.project.id)).resolves.toContainEqual(expect.objectContaining({
       id: `outbound_${draft.id}`, metric: 'outbound_message',
     }));
+    await expect(store.releaseOutboundUsageIfDraftNotSent(
+      draft.id,
+      `outbound_${draft.id}`,
+    )).resolves.toBe(false);
+    await expect(store.listUsage(bootstrap.project.id)).resolves.toContainEqual(expect.objectContaining({
+      id: `outbound_${draft.id}`, metric: 'outbound_message',
+    }));
   });
 
   it('applies concurrent sender-reputation signals atomically in D1', async () => {

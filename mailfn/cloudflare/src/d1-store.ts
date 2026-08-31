@@ -1154,6 +1154,16 @@ export class D1MailFnStore implements MailFnStore {
   async releaseUsage(id: string): Promise<void> {
     await this.run('DELETE FROM mailfn_usage WHERE id = ?', [id]);
   }
+  async releaseOutboundUsageIfDraftNotSent(draftId: string, usageId: string): Promise<boolean> {
+    const result = await bind(this.database.prepare(
+      `DELETE FROM mailfn_usage
+       WHERE id = ? AND NOT EXISTS (
+         SELECT 1 FROM mailfn_drafts WHERE id = ? AND status = 'sent'
+       )`,
+    ), [usageId, draftId]).run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
+  }
   async listUsage(projectId: string, period?: string): Promise<UsageRecord[]> {
     return period
       ? this.many('SELECT data_json FROM mailfn_usage WHERE project_id = ? AND period = ? ORDER BY created_at', [projectId, period])

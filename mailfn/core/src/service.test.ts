@@ -241,6 +241,44 @@ class PausingDraftClaimStore extends MemoryMailFnStore {
   }
 }
 
+class PausedThreadLabelStore extends MemoryMailFnStore {
+  public pauseNextLabel = false;
+  private resolveStarted!: () => void;
+  private resumeLabel!: () => void;
+  public readonly started = new Promise<void>((resolve) => { this.resolveStarted = resolve; });
+  private readonly labelResume = new Promise<void>((resolve) => { this.resumeLabel = resolve; });
+
+  public continueLabel(): void { this.resumeLabel(); }
+
+  override async saveThreadIfUnchanged(
+    ...args: Parameters<MemoryMailFnStore['saveThreadIfUnchanged']>
+  ): Promise<boolean> {
+    if (this.pauseNextLabel) {
+      this.pauseNextLabel = false;
+      this.resolveStarted();
+      await this.labelResume;
+    }
+    return super.saveThreadIfUnchanged(...args);
+  }
+}
+
+class PausedOutboundUsageReleaseStore extends MemoryMailFnStore {
+  private resolveStarted!: () => void;
+  private resumeRelease!: () => void;
+  public readonly started = new Promise<void>((resolve) => { this.resolveStarted = resolve; });
+  private readonly releaseResume = new Promise<void>((resolve) => { this.resumeRelease = resolve; });
+
+  public continueRelease(): void { this.resumeRelease(); }
+
+  override async releaseOutboundUsageIfDraftNotSent(
+    ...args: Parameters<MemoryMailFnStore['releaseOutboundUsageIfDraftNotSent']>
+  ): Promise<boolean> {
+    this.resolveStarted();
+    await this.releaseResume;
+    return super.releaseOutboundUsageIfDraftNotSent(...args);
+  }
+}
+
 class RacingDraftWriteStore extends MemoryMailFnStore {
   public completeBeforeWrite = false;
 
@@ -693,6 +731,12 @@ describe('MailFn domain service', () => {
     await expect(context.mailfn.extractVerification(actor, created.inbox.id, message.id, 'verification_link')).resolves.toMatchObject({
       value: 'https://app.example.com/verify?token=abc', sourceMessageId: message.id,
     });
+    await expect(context.mailfn.extractVerification(
+      actor,
+      created.inbox.id,
+      message.id,
+      'password_reset' as never,
+    )).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED', status: 400 });
     const attachments = await context.store.listAttachments(message.id);
     expect(attachments).toMatchObject([{ filename: '.._proof____name.txt', contentType: 'text/plain', sizeBytes: 8 }]);
     const attachment = await context.mailfn.getAttachment(actor, created.inbox.id, message.id, attachments[0]!.id);
@@ -2225,6 +2269,39 @@ describe('MailFn domain service', () => {
     await expect(context.mailfn.updateDraft(context.admin, draft.id, { subject: 'Too late' })).rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
   });
 
+  it('preserves concurrent thread membership while retrying a label update', async () => {
+    const store = new PausedThreadLabelStore();
+    const context = await setup({ store });
+    const created = await createInbox(context, 'thread-label-race');
+    const value = raw({ subject: 'Thread labels' });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'thread-label-race',
+      envelopeFrom: 'first@example.com',
+      envelopeTo: created.inbox.address,
+      raw: value,
+      rawSize: value.byteLength,
+    });
+    const original = await store.getThread(message.threadId!);
+    store.pauseNextLabel = true;
+    const labeling = context.mailfn.labelThread(context.admin, created.inbox.id, message.threadId!, ['important']);
+    await store.started;
+    await store.saveThread({
+      ...original!,
+      messageIds: [...original!.messageIds, 'msg_concurrent'],
+      participants: [...original!.participants, 'second@example.com'],
+      lastMessageAt: '2026-08-10T00:00:01.000Z',
+      updatedAt: '2026-08-10T00:00:01.000Z',
+    });
+    store.continueLabel();
+
+    await expect(labeling).resolves.toMatchObject({
+      labels: ['important'],
+      messageIds: [message.id, 'msg_concurrent'],
+      participants: expect.arrayContaining([...original!.participants, 'second@example.com']),
+      lastMessageAt: '2026-08-10T00:00:01.000Z',
+    });
+  });
+
   it('does not let stale draft edits or discards revert a completed send', async () => {
     const store = new RacingDraftWriteStore();
     const context = await setup({ store });
@@ -2382,12 +2459,14 @@ describe('MailFn domain service', () => {
 
   it('preserves a successful send result after an expired lease is taken over', async () => {
     const clock = new MutableClock();
+    const store = new PausedOutboundUsageReleaseStore();
     const controls: Array<{
       resolve: (value: { providerMessageId: string; status: 'sent' }) => void;
       reject: (reason: Error) => void;
     }> = [];
     const context = await setup({
       clock,
+      store,
       quota: { maxOutboundPerDay: 1 },
       sendAdapter: {
         send: () => new Promise((resolve, reject) => { controls.push({ resolve, reject }); }),
@@ -2405,13 +2484,13 @@ describe('MailFn domain service', () => {
     await vi.waitFor(() => expect(controls).toHaveLength(2));
 
     controls[1]!.reject(new Error('takeover provider failure'));
-    await expect(takeover).rejects.toThrow('takeover provider failure');
-    expect(await context.store.listUsage(context.project.id))
-      .not.toContainEqual(expect.objectContaining({ metric: 'outbound_message' }));
+    await store.started;
     controls[0]!.resolve({ providerMessageId: 'provider-stale-success', status: 'sent' });
     await expect(stale).resolves.toMatchObject({
       status: 'sent', providerMessageId: 'provider-stale-success',
     });
+    store.continueRelease();
+    await expect(takeover).rejects.toThrow('takeover provider failure');
 
     await expect(context.store.getDraft(draft.id)).resolves.toMatchObject({
       status: 'sent', providerMessageId: 'provider-stale-success',

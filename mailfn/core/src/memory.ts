@@ -734,6 +734,10 @@ export class MemoryMailFnStore implements MailFnStore {
   async releaseUsage(id: string): Promise<void> {
     this.usage.delete(id);
   }
+  async releaseOutboundUsageIfDraftNotSent(draftId: string, usageId: string): Promise<boolean> {
+    if (this.drafts.get(draftId)?.status === 'sent') return false;
+    return this.usage.delete(usageId);
+  }
   async listUsage(projectId: string, period?: string): Promise<UsageRecord[]> {
     return values(this.usage).filter(
       (record) => record.projectId === projectId && (period === undefined || record.period === period),

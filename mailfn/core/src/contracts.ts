@@ -190,6 +190,7 @@ export interface MailFnStore {
   appendUsage(record: UsageRecord): Promise<void>;
   reserveOutboundUsage(record: UsageRecord, limit: number): Promise<'created' | 'existing' | 'denied'>;
   releaseUsage(id: string): Promise<void>;
+  releaseOutboundUsageIfDraftNotSent(draftId: string, usageId: string): Promise<boolean>;
   listUsage(projectId: string, period?: string): Promise<UsageRecord[]>;
   saveAbuseCase(abuseCase: AbuseCase): Promise<void>;
   listAbuseCases(projectId: string): Promise<AbuseCase[]>;
