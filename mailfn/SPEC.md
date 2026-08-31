@@ -5,7 +5,7 @@
 - Package release: `0.1.0`
 - HTTP API: `/v1`
 - Event envelope: version `1`
-- Queue jobs: `mailfn.parse` and `mailfn.webhook-delivery`, version `1`
+- Queue jobs: `mailfn.parse` and `mailfn.webhook-delivery`, version `1`, on separate queue bindings so endpoint latency cannot delay MIME parsing
 - Initial deployment adapter: Cloudflare Email Workers + Workers + D1 + R2 + Queues
 - Outbound transport owner: SendFn through `@mailfn/sendfn`
 - Protocol clients in scope: TypeScript client, CLI, MCP, test helpers

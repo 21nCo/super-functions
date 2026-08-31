@@ -241,6 +241,16 @@ export class MemoryMailFnStore implements MailFnStore {
     if (duplicate) throw new Error('MAILFN_UNIQUE_CONSTRAINT');
     this.messages.set(message.id, copy(message));
   }
+  async saveMessageIfUnchanged(message: Message, expected: Message): Promise<boolean> {
+    const current = this.messages.get(message.id);
+    const inbox = this.inboxes.get(message.inboxId);
+    if (
+      !current || JSON.stringify(current) !== JSON.stringify(expected) ||
+      !inbox || inbox.status === 'deleting' || inbox.status === 'deleted'
+    ) return false;
+    this.messages.set(message.id, copy(message));
+    return true;
+  }
   async createInboundMessageIfInboxActive(message: Message): Promise<boolean> {
     const inbox = this.inboxes.get(message.inboxId);
     if (!inbox || inbox.status !== 'active') return false;
@@ -260,6 +270,12 @@ export class MemoryMailFnStore implements MailFnStore {
       (message.parseLeaseExpiresAt !== undefined && message.parseLeaseExpiresAt > claimedAt)
     ) return false;
     this.messages.set(messageId, copy({ ...message, parseLeaseExpiresAt: leaseExpiresAt, updatedAt: claimedAt }));
+    return true;
+  }
+  async claimMessageDeletion(message: Message, expected: Message): Promise<boolean> {
+    const current = this.messages.get(message.id);
+    if (!current || JSON.stringify(current) !== JSON.stringify(expected)) return false;
+    this.messages.set(message.id, copy(message));
     return true;
   }
   async markMessageRead(messageId: string, readAt: string): Promise<Message | null> {
@@ -324,6 +340,13 @@ export class MemoryMailFnStore implements MailFnStore {
       entry.normalizedSubject === thread.normalizedSubject
     ))) return false;
     this.threads.set(thread.id, copy(thread));
+    return true;
+  }
+  async restoreThreadIfUnchanged(thread: Thread, previous: Thread | null): Promise<boolean> {
+    const current = this.threads.get(thread.id) ?? null;
+    if (JSON.stringify(current) !== JSON.stringify(thread)) return false;
+    if (previous) this.threads.set(previous.id, copy(previous));
+    else this.threads.delete(thread.id);
     return true;
   }
   async deleteMessageWithThread(messageId: string, expected: Thread, next: Thread | null): Promise<boolean> {

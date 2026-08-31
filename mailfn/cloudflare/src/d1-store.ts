@@ -419,6 +419,35 @@ export class D1MailFnStore implements MailFnStore {
     const results = await this.database.batch([save, removeSearch, saveSearch]);
     if (results.some((result) => !result.success)) throw new Error('MAILFN_D1_WRITE_FAILED');
   }
+  async saveMessageIfUnchanged(value: Message, expected: Message): Promise<boolean> {
+    const valueJson = json(value);
+    const save = this.database.prepare(
+      `UPDATE mailfn_messages
+       SET internet_message_id = ?, envelope_from = ?, envelope_to = ?, subject = ?, parsed_at = ?, thread_id = ?,
+         status = ?, raw_deleted_at = ?, retention_expires_at = ?, updated_at = ?, data_json = ?
+       WHERE id = ? AND data_json = ?
+         AND EXISTS (
+           SELECT 1 FROM mailfn_inboxes
+           WHERE id = ? AND status NOT IN ('deleting', 'deleted')
+         )`,
+    ).bind(
+      value.internetMessageId ?? null, value.envelopeFrom, value.envelopeTo, value.subject, value.parsedAt ?? null,
+      value.threadId ?? null, value.status, value.rawDeletedAt ?? null, value.retentionExpiresAt, value.updatedAt, valueJson,
+      value.id, json(expected), value.inboxId,
+    );
+    const removeSearch = this.database.prepare(
+      'DELETE FROM mailfn_messages_fts WHERE message_id = ? AND EXISTS (SELECT 1 FROM mailfn_messages WHERE id = ? AND data_json = ?)',
+    ).bind(value.id, value.id, valueJson);
+    const saveSearch = this.database.prepare(
+      `INSERT INTO mailfn_messages_fts(message_id, project_id, inbox_id, subject, text_body, html_body)
+       SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM mailfn_messages WHERE id = ? AND data_json = ?)`,
+    ).bind(
+      value.id, value.projectId, value.inboxId, value.subject, value.textBody ?? '', value.htmlBody ?? '', value.id, valueJson,
+    );
+    const results = await this.database.batch([save, removeSearch, saveSearch]);
+    if (results.some((result) => !result.success)) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(results[0]?.meta?.changes ?? 0) === 1;
+  }
   async claimMessageForParsing(messageId: string, claimedAt: string, leaseExpiresAt: string): Promise<boolean> {
     const result = await this.database.prepare(
       `UPDATE mailfn_messages
@@ -428,6 +457,19 @@ export class D1MailFnStore implements MailFnStore {
     ).bind(claimedAt, leaseExpiresAt, claimedAt, messageId, claimedAt).run();
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;
+  }
+  async claimMessageDeletion(value: Message, expected: Message): Promise<boolean> {
+    const valueJson = json(value);
+    const claim = this.database.prepare(
+      `UPDATE mailfn_messages SET status = 'deleted', updated_at = ?, data_json = ?
+       WHERE id = ? AND data_json = ?`,
+    ).bind(value.updatedAt, valueJson, value.id, json(expected));
+    const removeSearch = this.database.prepare(
+      'DELETE FROM mailfn_messages_fts WHERE message_id = ? AND EXISTS (SELECT 1 FROM mailfn_messages WHERE id = ? AND data_json = ?)',
+    ).bind(value.id, value.id, valueJson);
+    const results = await this.database.batch([claim, removeSearch]);
+    if (results.some((result) => !result.success)) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(results[0]?.meta?.changes ?? 0) === 1;
   }
   async markMessageRead(messageId: string, readAt: string): Promise<Message | null> {
     const result = await this.database.prepare(
@@ -508,6 +550,18 @@ export class D1MailFnStore implements MailFnStore {
         `INSERT OR IGNORE INTO mailfn_threads(id, project_id, inbox_id, normalized_subject, last_message_at, created_at, updated_at, data_json)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       ), [value.id, value.projectId, value.inboxId, value.normalizedSubject, value.lastMessageAt, value.createdAt, value.updatedAt, json(value)]);
+    const result = await statement.run();
+    if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
+    return Number(result.meta?.changes ?? 0) === 1;
+  }
+  async restoreThreadIfUnchanged(value: Thread, previous: Thread | null): Promise<boolean> {
+    const statement = previous
+      ? bind(this.database.prepare(
+        `UPDATE mailfn_threads
+         SET normalized_subject = ?, last_message_at = ?, updated_at = ?, data_json = ?
+         WHERE id = ? AND data_json = ?`,
+      ), [previous.normalizedSubject, previous.lastMessageAt, previous.updatedAt, json(previous), value.id, json(value)])
+      : bind(this.database.prepare('DELETE FROM mailfn_threads WHERE id = ? AND data_json = ?'), [value.id, json(value)]);
     const result = await statement.run();
     if (!result.success) throw new Error('MAILFN_D1_WRITE_FAILED');
     return Number(result.meta?.changes ?? 0) === 1;

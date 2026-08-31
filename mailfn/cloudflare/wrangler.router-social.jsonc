@@ -34,7 +34,8 @@
   ],
   "queues": {
     "producers": [
-      { "binding": "MAILFN_PARSE_QUEUE", "queue": "router-mailfn-parse" }
+      { "binding": "MAILFN_PARSE_QUEUE", "queue": "router-mailfn-parse" },
+      { "binding": "MAILFN_WEBHOOK_QUEUE", "queue": "router-mailfn-webhook" }
     ],
     "consumers": [
       {
@@ -42,6 +43,12 @@
         "max_batch_size": 10,
         "max_retries": 5,
         "dead_letter_queue": "router-mailfn-parse-dlq"
+      },
+      {
+        "queue": "router-mailfn-webhook",
+        "max_batch_size": 10,
+        "max_retries": 5,
+        "dead_letter_queue": "router-mailfn-webhook-dlq"
       }
     ]
   },

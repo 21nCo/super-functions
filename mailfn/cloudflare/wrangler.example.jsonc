@@ -21,8 +21,14 @@
     { "binding": "MAILFN_OBJECTS", "bucket_name": "mailfn-objects" }
   ],
   "queues": {
-    "producers": [{ "binding": "MAILFN_PARSE_QUEUE", "queue": "mailfn-parse" }],
-    "consumers": [{ "queue": "mailfn-parse", "max_batch_size": 10, "max_retries": 5, "dead_letter_queue": "mailfn-parse-dlq" }]
+    "producers": [
+      { "binding": "MAILFN_PARSE_QUEUE", "queue": "mailfn-parse" },
+      { "binding": "MAILFN_WEBHOOK_QUEUE", "queue": "mailfn-webhook" }
+    ],
+    "consumers": [
+      { "queue": "mailfn-parse", "max_batch_size": 10, "max_retries": 5, "dead_letter_queue": "mailfn-parse-dlq" },
+      { "queue": "mailfn-webhook", "max_batch_size": 10, "max_retries": 5, "dead_letter_queue": "mailfn-webhook-dlq" }
+    ]
   },
   "triggers": { "crons": ["*/15 * * * *"] },
   "observability": { "enabled": true, "head_sampling_rate": 1 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { MailFnError, type Message, type ParseJob } from '@mailfn/core';
+import { MailFnError, type MailFnJob, type Message, type ParseJob, type WebhookDeliveryJob } from '@mailfn/core';
 
 import type {
   D1Database,
@@ -16,7 +16,9 @@ import {
   deriveCloudflareDeliveryId,
   parseCloudflareAuthenticationResults,
   permanentInboundFailure,
+  processMailFnQueueBatch,
 } from './worker.js';
+import { CloudflareMailFnQueue } from './queue.js';
 
 class FakeStatement implements D1PreparedStatement {
   public constructor(private readonly query: string, private readonly row: { data_json: string } | null) {}
@@ -48,6 +50,7 @@ function env(database: D1Database): MailFnCloudflareEnv {
       async delete() { return undefined; },
     } satisfies R2Bucket,
     MAILFN_PARSE_QUEUE: { async send() { return undefined; } },
+    MAILFN_WEBHOOK_QUEUE: { async send() { return undefined; } },
     MAILFN_DOMAIN: 'inbound.example.com',
     MAILFN_SECRET_KEY: '00'.repeat(32),
   };
@@ -97,6 +100,71 @@ describe('MailFn Cloudflare handlers', () => {
       + 'spf=none smtp.helo=mail.example.com; spf=pass smtp.mailfrom=sender@example.com; arc=pass',
     );
     expect(parsed).toMatchObject({ spf: 'pass', dkim: 'pass', dmarc: 'pass', arc: 'pass' });
+  });
+
+  it('routes parse and webhook jobs to separate queue bindings', async () => {
+    const parseJobs: ParseJob[] = [];
+    const webhookJobs: WebhookDeliveryJob[] = [];
+    const queue = new CloudflareMailFnQueue(
+      { async send(job) { parseJobs.push(job); } },
+      { async send(job) { webhookJobs.push(job); } },
+    );
+    const parseJob = {
+      id: 'parse-job', version: 1, type: 'mailfn.parse', projectId: 'project', inboxId: 'inbox',
+      messageId: 'message', rawObjectKey: 'raw', attempt: 1, createdAt: '2026-08-31T00:00:00.000Z',
+    } satisfies ParseJob;
+    const webhookJob = {
+      id: 'webhook-job', version: 1, type: 'mailfn.webhook-delivery', projectId: 'project', eventId: 'event',
+      webhookId: 'webhook', deliveryId: 'delivery', expectedUpdatedAt: '2026-08-31T00:00:00.000Z',
+      createdAt: '2026-08-31T00:00:00.000Z',
+    } satisfies WebhookDeliveryJob;
+
+    await queue.enqueue(parseJob);
+    await queue.enqueueWebhook(webhookJob);
+
+    expect(parseJobs).toEqual([parseJob]);
+    expect(webhookJobs).toEqual([webhookJob]);
+  });
+
+  it('processes parse work without waiting for a blocked webhook in a mixed batch', async () => {
+    let releaseWebhook!: () => void;
+    let webhookStarted!: () => void;
+    const webhookGate = new Promise<void>((resolve) => { releaseWebhook = resolve; });
+    const started = new Promise<void>((resolve) => { webhookStarted = resolve; });
+    const parseMessage = vi.fn(async () => ({} as Message));
+    const processWebhookDelivery = vi.fn(async () => {
+      webhookStarted();
+      await webhookGate;
+      return true;
+    });
+    const webhook = {
+      id: 'webhook-message', attempts: 1, ack: vi.fn(), retry: vi.fn(),
+      body: {
+        id: 'webhook-job', version: 1, type: 'mailfn.webhook-delivery', projectId: 'project', eventId: 'event',
+        webhookId: 'webhook', deliveryId: 'delivery', expectedUpdatedAt: '2026-08-31T00:00:00.000Z',
+        createdAt: '2026-08-31T00:00:00.000Z',
+      } satisfies WebhookDeliveryJob,
+    } satisfies QueueMessage<WebhookDeliveryJob>;
+    const parse = {
+      id: 'parse-message', attempts: 1, ack: vi.fn(), retry: vi.fn(),
+      body: {
+        id: 'parse-job', version: 1, type: 'mailfn.parse', projectId: 'project', inboxId: 'inbox',
+        messageId: 'message', rawObjectKey: 'raw', attempt: 1, createdAt: '2026-08-31T00:00:00.000Z',
+      } satisfies ParseJob,
+    } satisfies QueueMessage<ParseJob>;
+
+    const processing = processMailFnQueueBatch(
+      { parseMessage, processWebhookDelivery },
+      { messages: [webhook, parse] as QueueMessage<MailFnJob>[] },
+    );
+    await started;
+    await vi.waitFor(() => expect(parseMessage).toHaveBeenCalledOnce());
+    expect(parse.ack).toHaveBeenCalledOnce();
+    expect(webhook.ack).not.toHaveBeenCalled();
+
+    releaseWebhook();
+    await processing;
+    expect(webhook.ack).toHaveBeenCalledOnce();
   });
 
   it('retries transient Queue parse failures with bounded exponential delay', async () => {

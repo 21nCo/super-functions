@@ -4,7 +4,9 @@ import {
   MailFnError,
   type MailFnJob,
   type MailFnSendAdapter,
+  type ParseJob,
   type PublicPlatformPolicy,
+  type WebhookDeliveryJob,
 } from '@mailfn/core';
 
 import type {
@@ -27,7 +29,8 @@ import { CloudflareWebhookDispatcher, cloudflareFetchResolved } from './webhook.
 export interface MailFnCloudflareEnv {
   MAILFN_DB: D1Database;
   MAILFN_OBJECTS: R2Bucket;
-  MAILFN_PARSE_QUEUE: Queue<MailFnJob>;
+  MAILFN_PARSE_QUEUE: Queue<ParseJob>;
+  MAILFN_WEBHOOK_QUEUE: Queue<WebhookDeliveryJob>;
   MAILFN_DOMAIN: string;
   MAILFN_SECRET_KEY: string;
   MAILFN_ADMIN_TOKEN?: string;
@@ -82,7 +85,7 @@ export async function createCloudflareMailFn(
   return new MailFn({
     store: new D1MailFnStore(env.MAILFN_DB),
     objects: new R2MailFnObjectStore(env.MAILFN_OBJECTS),
-    queue: new CloudflareMailFnQueue(env.MAILFN_PARSE_QUEUE),
+    queue: new CloudflareMailFnQueue(env.MAILFN_PARSE_QUEUE, env.MAILFN_WEBHOOK_QUEUE),
     mimeParser: new PostalMimeParser(),
     webhookDispatcher: new CloudflareWebhookDispatcher({ fetchResolved: cloudflareFetchResolved, maxAttempts: 1 }),
     secretProtector,
@@ -136,20 +139,7 @@ export function createMailFnCloudflareHandlers(options: MailFnCloudflareFactoryO
 
     async queue(batch: QueueBatch<MailFnJob>, env: MailFnCloudflareEnv): Promise<void> {
       const mailfn = await createCloudflareMailFn(env, options);
-      for (const message of batch.messages) {
-        try {
-          if (message.body.type === 'mailfn.parse') {
-            await mailfn.parseMessage({ ...message.body, attempt: message.attempts });
-          } else {
-            await mailfn.processWebhookDelivery(message.body);
-          }
-          message.ack();
-        } catch (error) {
-          const retryable = !(error instanceof MailFnError) || error.retryable;
-          if (retryable) message.retry({ delaySeconds: Math.min(300, 2 ** Math.min(8, message.attempts)) });
-          else message.ack();
-        }
-      }
+      await processMailFnQueueBatch(mailfn, batch);
     },
 
     async scheduled(_event: unknown, env: MailFnCloudflareEnv, ctx: ExecutionContext): Promise<void> {
@@ -161,6 +151,26 @@ export function createMailFnCloudflareHandlers(options: MailFnCloudflareFactoryO
       ]).then(() => undefined));
     },
   };
+}
+
+export async function processMailFnQueueBatch(
+  mailfn: Pick<MailFn, 'parseMessage' | 'processWebhookDelivery'>,
+  batch: QueueBatch<MailFnJob>,
+): Promise<void> {
+  await Promise.all(batch.messages.map(async (message) => {
+    try {
+      if (message.body.type === 'mailfn.parse') {
+        await mailfn.parseMessage({ ...message.body, attempt: message.attempts });
+      } else {
+        await mailfn.processWebhookDelivery(message.body);
+      }
+      message.ack();
+    } catch (error) {
+      const retryable = !(error instanceof MailFnError) || error.retryable;
+      if (retryable) message.retry({ delaySeconds: Math.min(300, 2 ** Math.min(8, message.attempts)) });
+      else message.ack();
+    }
+  }));
 }
 
 export async function deriveCloudflareDeliveryId(

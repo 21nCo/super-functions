@@ -92,7 +92,9 @@ export interface MailFnStore {
   ): Promise<{ items: Message[]; hasMore: boolean; cursorFound: boolean }>;
   createInboundMessageIfInboxActive(message: Message): Promise<boolean>;
   saveMessage(message: Message): Promise<void>;
+  saveMessageIfUnchanged(message: Message, expected: Message): Promise<boolean>;
   claimMessageForParsing(messageId: string, claimedAt: string, leaseExpiresAt: string): Promise<boolean>;
+  claimMessageDeletion(message: Message, expected: Message): Promise<boolean>;
   markMessageRead(messageId: string, readAt: string): Promise<Message | null>;
   setMessageLabels(messageId: string, labels: string[], updatedAt: string): Promise<Message | null>;
   deleteMessage(id: string): Promise<void>;
@@ -110,6 +112,7 @@ export interface MailFnStore {
   listThreads(projectId: string, inboxId: string): Promise<Thread[]>;
   saveThread(thread: Thread): Promise<void>;
   saveThreadIfUnchanged(thread: Thread, expected: Thread | null): Promise<boolean>;
+  restoreThreadIfUnchanged(thread: Thread, previous: Thread | null): Promise<boolean>;
   deleteMessageWithThread(messageId: string, expected: Thread, next: Thread | null): Promise<boolean>;
 
   getWebhook(id: string): Promise<Webhook | null>;

@@ -18,8 +18,14 @@ export default defineWorkersConfig({
           },
           d1Databases: ['MAILFN_DB'],
           r2Buckets: ['MAILFN_OBJECTS'],
-          queueProducers: { MAILFN_PARSE_QUEUE: 'mailfn-parse' },
-          queueConsumers: { 'mailfn-parse': { maxBatchSize: 10, maxRetries: 5, deadLetterQueue: 'mailfn-parse-dlq' } },
+          queueProducers: {
+            MAILFN_PARSE_QUEUE: 'mailfn-parse',
+            MAILFN_WEBHOOK_QUEUE: 'mailfn-webhook',
+          },
+          queueConsumers: {
+            'mailfn-parse': { maxBatchSize: 10, maxRetries: 5, deadLetterQueue: 'mailfn-parse-dlq' },
+            'mailfn-webhook': { maxBatchSize: 10, maxRetries: 5, deadLetterQueue: 'mailfn-webhook-dlq' },
+          },
         },
       },
     },

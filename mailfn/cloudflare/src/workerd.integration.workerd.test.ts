@@ -9,7 +9,7 @@ import {
 } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { AuditEvent, ComplianceProfile, MailDomain, MailFnJob, Message, ParseJob, Thread, Webhook } from '@mailfn/core';
+import type { AuditEvent, ComplianceProfile, MailDomain, Message, ParseJob, Thread, Webhook, WebhookDeliveryJob } from '@mailfn/core';
 import type { D1Database, Queue, R2Bucket } from './bindings.js';
 import { D1MailFnStore } from './d1-store.js';
 import { applyMailFnMigrations } from './migrations.js';
@@ -20,7 +20,8 @@ declare module 'cloudflare:test' {
   interface ProvidedEnv extends MailFnCloudflareEnv {
     MAILFN_DB: D1Database;
     MAILFN_OBJECTS: R2Bucket;
-    MAILFN_PARSE_QUEUE: Queue<MailFnJob>;
+    MAILFN_PARSE_QUEUE: Queue<ParseJob>;
+    MAILFN_WEBHOOK_QUEUE: Queue<WebhookDeliveryJob>;
     MAILFN_DOMAIN: string;
     MAILFN_SECRET_KEY: string;
   }
@@ -305,6 +306,42 @@ describe('MailFn in workerd', () => {
       rawObjectKey: 'blocked/raw.eml',
     })).resolves.toBe(false);
     await expect(store.getMessage('msg_quiesce_blocked')).resolves.toBeNull();
+  });
+
+  it('atomically arbitrates parse commits against message deletion claims', async () => {
+    const mailfn = await createCloudflareMailFn(env, { migrate: false });
+    const bootstrap = await mailfn.bootstrapProject({ slug: 'parse-delete-cas', displayName: 'Parse Delete CAS' });
+    const admin = await mailfn.authenticate(bootstrap.credential.token);
+    const created = await mailfn.createInbox(admin, {
+      projectId: bootstrap.project.id, kind: 'stable', requestedLocalPart: 'parse-delete-cas',
+    });
+    const store = new D1MailFnStore(env.MAILFN_DB);
+    const pending: Message = {
+      id: 'msg_parse_delete_cas', projectId: bootstrap.project.id, inboxId: created.inbox.id,
+      providerDeliveryId: 'delivery_parse_delete_cas', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      from: [{ address: 'sender@example.com' }], to: [{ address: created.inbox.address }], cc: [], bcc: [], replyTo: [],
+      subject: 'CAS', receivedAt: '2026-08-31T00:00:00.000Z', headers: {}, rawObjectKey: 'raw/cas',
+      rawRetentionExpiresAt: '2026-09-01T00:00:00.000Z', attachmentRetentionExpiresAt: '2026-09-01T00:00:00.000Z',
+      references: [], authenticationResults: {}, sizeBytes: 1, status: 'pending', labels: [],
+      retentionExpiresAt: '2026-09-01T00:00:00.000Z', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z',
+    };
+    await store.saveMessage(pending);
+    await expect(store.claimMessageForParsing(
+      pending.id, '2026-08-31T00:00:01.000Z', '2026-08-31T00:05:01.000Z',
+    )).resolves.toBe(true);
+    const parsing = (await store.getMessage(pending.id))!;
+    const ready: Message = {
+      ...parsing, status: 'ready', parsedAt: '2026-08-31T00:00:02.000Z', parseLeaseExpiresAt: undefined,
+      updatedAt: '2026-08-31T00:00:02.000Z',
+    };
+
+    await expect(store.saveMessageIfUnchanged(ready, pending)).resolves.toBe(false);
+    await expect(store.saveMessageIfUnchanged(ready, parsing)).resolves.toBe(true);
+    const deleted: Message = { ...ready, status: 'deleted', updatedAt: '2026-08-31T00:00:03.000Z' };
+    await expect(store.claimMessageDeletion(deleted, parsing)).resolves.toBe(false);
+    await expect(store.claimMessageDeletion(deleted, ready)).resolves.toBe(true);
+    await expect(store.saveMessageIfUnchanged(ready, ready)).resolves.toBe(false);
+    await expect(store.getMessage(pending.id)).resolves.toMatchObject({ status: 'deleted' });
   });
 
   it('deduplicates Message-ID-less retries and preserves distinct mail that reuses Message-ID', async () => {

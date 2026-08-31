@@ -890,6 +890,7 @@ export class MailFn {
     const message = await this.requireMessage(job.projectId, job.inboxId, job.messageId);
     const written: Array<{ attachment: Attachment; key: string }> = [];
     const reservedAttachmentIds: string[] = [];
+    let threadWrite: { current: Thread; previous: Thread | null } | undefined;
     try {
       const raw = await this.objects.get(message.rawObjectKey);
       assertMailFn(raw, {
@@ -985,6 +986,7 @@ export class MailFn {
         const expected = threads.find((entry) => entry.id === candidate.id) ?? null;
         if (await this.store.saveThreadIfUnchanged(candidate, expected)) {
           thread = candidate;
+          threadWrite = { current: candidate, previous: expected };
           break;
         }
       }
@@ -995,7 +997,14 @@ export class MailFn {
         });
       }
       updated.threadId = thread.id;
-      await this.store.saveMessage(updated);
+      if (!(await this.store.saveMessageIfUnchanged(updated, message))) {
+        throw new MailFnError({
+          code: 'MAILFN_CONFLICT',
+          message: 'Message changed or became ineligible while parsing',
+          status: 409,
+          retryable: false,
+        });
+      }
       await this.event('message.parsed', project.id, {
         inboxId: message.inboxId,
         messageId: message.id,
@@ -1011,6 +1020,9 @@ export class MailFn {
       }
       for (const attachmentId of reservedAttachmentIds) {
         await this.store.releaseStorage(attachmentId).catch(() => undefined);
+      }
+      if (threadWrite) {
+        await this.store.restoreThreadIfUnchanged(threadWrite.current, threadWrite.previous).catch(() => false);
       }
       const normalizedError = error instanceof MailFnError
         ? error
@@ -1029,12 +1041,13 @@ export class MailFn {
         parseLeaseExpiresAt: undefined,
         updatedAt: this.now(),
       };
-      await this.store.saveMessage(failed);
-      await this.event('message.parse_failed', message.projectId, {
-        inboxId: message.inboxId,
-        messageId: message.id,
-        payload: { errorCode: failed.parseErrorCode ?? 'MAILFN_PARSE_FAILED', retryable: normalizedError.retryable },
-      });
+      if (await this.store.saveMessageIfUnchanged(failed, message)) {
+        await this.event('message.parse_failed', message.projectId, {
+          inboxId: message.inboxId,
+          messageId: message.id,
+          payload: { errorCode: failed.parseErrorCode ?? 'MAILFN_PARSE_FAILED', retryable: normalizedError.retryable },
+        });
+      }
       throw normalizedError;
     }
   }
@@ -1778,9 +1791,12 @@ export class MailFn {
         // If current ownership cannot be read, preserving the provider rule is
         // safer than deleting routing that a newer claim may already reference.
       }
-      const routingWasCommittedByAnotherClaim = current?.status === 'active'
-        && current.routingRuleId === active.routingRuleId;
-      if (currentReadSucceeded && !routingWasCommittedByAnotherClaim) {
+      const routingMayBelongToAnotherClaim = (
+        current?.status === 'active' && current.routingRuleId === active.routingRuleId
+      ) || (
+        current?.status === 'verifying' && current.lastCheckedAt !== claimed.lastCheckedAt
+      );
+      if (currentReadSucceeded && !routingMayBelongToAnotherClaim) {
         await this.domainAdapter.disableRouting(active).catch(() => undefined);
       }
       if (current && JSON.stringify(current) === JSON.stringify(claimed)) {
@@ -1788,8 +1804,8 @@ export class MailFn {
       }
       throw new MailFnError({
         code: 'MAILFN_STORAGE_FAILED',
-        message: routingWasCommittedByAnotherClaim
-          ? 'Domain verification was superseded by a newer active claim'
+        message: routingMayBelongToAnotherClaim
+          ? 'Domain verification was superseded by a newer claim'
           : 'Domain routing was rolled back because active state could not be persisted',
         status: 503,
         retryable: true,
@@ -1875,15 +1891,19 @@ export class MailFn {
       );
       for (const inbox of await this.store.listInboxes(project.id)) {
         let effectiveInbox = inbox;
+        let expiredNow = false;
         if (!['expired', 'deleting', 'deleted'].includes(inbox.status) && inbox.expiresAt && isExpiredAt(inbox.expiresAt, now)) {
           effectiveInbox = { ...inbox, status: 'expired', updatedAt: now };
           await this.store.saveInbox(effectiveInbox);
           result.expiredInboxes += 1;
-          await this.event('inbox.expired', project.id, { inboxId: inbox.id, payload: {} });
+          expiredNow = true;
+        }
+        if (effectiveInbox.status === 'expired') {
           for (const credential of await this.store.listCredentials(project.id, inbox.id)) {
             if (credential.status === 'active') await this.store.saveCredential({ ...credential, status: 'expired' });
           }
         }
+        if (expiredNow) await this.event('inbox.expired', project.id, { inboxId: inbox.id, payload: {} });
         if (compliance?.retentionLocked) continue;
         if (effectiveInbox.status === 'deleting') {
           try {
@@ -1893,8 +1913,10 @@ export class MailFn {
               }
             }
             for (const message of await this.store.listMessages(project.id, effectiveInbox.id)) {
-              result.deletedObjects += await this.deleteMessageObjects(message);
-              await this.deleteMessageRecord(message);
+              const claimed = await this.claimMessageDeletion(message);
+              if (!claimed) continue;
+              result.deletedObjects += await this.deleteMessageObjects(claimed);
+              await this.deleteMessageRecord(claimed);
               result.deletedMessages += 1;
             }
             await this.store.deleteDrafts(project.id, effectiveInbox.id);
@@ -1920,8 +1942,10 @@ export class MailFn {
           const inboxDeletion = effectiveInbox.status === 'expired' && retention.deleteOnInboxExpiry;
           if (message.retentionExpiresAt <= now || inboxDeletion) {
             try {
-              result.deletedObjects += await this.deleteMessageObjects(message);
-              await this.deleteMessageRecord(message);
+              const claimed = await this.claimMessageDeletion(message);
+              if (!claimed) continue;
+              result.deletedObjects += await this.deleteMessageObjects(claimed);
+              await this.deleteMessageRecord(claimed);
               result.deletedMessages += 1;
               await this.event('retention.deleted', project.id, {
                 inboxId: inbox.id,
@@ -2181,6 +2205,9 @@ export class MailFn {
       code: 'MAILFN_PUBLIC_PLATFORM_DISABLED',
       message: 'Support surfaces are disabled',
       status: 403,
+    });
+    assertMailFn(['low', 'normal', 'high', 'critical'].includes(input.severity), {
+      code: 'MAILFN_VALIDATION_FAILED', message: 'Invalid support case severity', status: 400,
     });
     const now = this.now();
     const supportCase: SupportCase = {
@@ -2711,9 +2738,32 @@ export class MailFn {
 
   private async deleteInboxMessages(inbox: Inbox): Promise<void> {
     for (const message of await this.store.listMessages(inbox.projectId, inbox.id)) {
-      await this.deleteMessageObjects(message);
-      await this.deleteMessageRecord(message);
+      const claimed = await this.claimMessageDeletion(message);
+      if (!claimed) continue;
+      await this.deleteMessageObjects(claimed);
+      await this.deleteMessageRecord(claimed);
     }
+  }
+
+  private async claimMessageDeletion(message: Message): Promise<Message | null> {
+    let expected: Message | null = message;
+    for (let attempt = 0; attempt < 5 && expected; attempt += 1) {
+      const claimed: Message = {
+        ...expected,
+        status: 'deleted',
+        parseLeaseExpiresAt: undefined,
+        updatedAt: this.now(),
+      };
+      if (await this.store.claimMessageDeletion(claimed, expected)) return claimed;
+      expected = await this.store.getMessage(message.id);
+    }
+    if (!expected) return null;
+    throw new MailFnError({
+      code: 'MAILFN_STORAGE_FAILED',
+      message: 'Message deletion conflicted repeatedly',
+      status: 503,
+      retryable: true,
+    });
   }
 
   private async deleteMessageRecord(message: Message): Promise<void> {

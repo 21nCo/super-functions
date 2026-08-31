@@ -69,6 +69,17 @@ class NoncriticalFailureStore extends MemoryMailFnStore {
   override async appendUsage(): Promise<void> { throw new Error('usage store unavailable'); }
 }
 
+class ToggleExpiryEventStore extends MemoryMailFnStore {
+  public failExpiryEvent = false;
+
+  override async appendEventWithDeliveries(
+    ...args: Parameters<MemoryMailFnStore['appendEventWithDeliveries']>
+  ): Promise<void> {
+    if (this.failExpiryEvent && args[0].type === 'inbox.expired') throw new Error('event store unavailable');
+    await super.appendEventWithDeliveries(...args);
+  }
+}
+
 class FailingAtomicWebhookStore extends MemoryMailFnStore {
   override async createWebhookWithQuotaAndAudit(): Promise<boolean> {
     throw new Error('atomic webhook transaction failed');
@@ -807,6 +818,24 @@ describe('MailFn domain service', () => {
     await expect(context.store.getMessage(message.id)).resolves.toBeNull();
   });
 
+  it('expires inbox credentials before emitting a fallible expiry event', async () => {
+    const clock = new MutableClock();
+    const store = new ToggleExpiryEventStore();
+    const context = await setup({ clock, store });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'expiring', requestedLocalPart: 'expiry-event', expirySeconds: 60,
+    });
+    store.failExpiryEvent = true;
+    clock.advance(61_000);
+
+    await expect(context.mailfn.runRetention(context.project.id)).rejects.toThrow('event store unavailable');
+    await expect(store.getInbox(created.inbox.id)).resolves.toMatchObject({ status: 'expired' });
+    await expect(context.mailfn.authenticate(created.credential.token)).rejects.toMatchObject({ code: 'MAILFN_UNAUTHORIZED' });
+
+    store.failExpiryEvent = false;
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({ expiredInboxes: 0 });
+  });
+
   it('applies raw, attachment, and message retention independently', async () => {
     const clock = new MutableClock();
     const context = await setup({
@@ -1460,6 +1489,50 @@ describe('MailFn domain service', () => {
     });
   });
 
+  it('preserves a shared route while the newer verification lease is still in flight', async () => {
+    const clock = new MutableClock();
+    let releaseStaleRouting!: () => void;
+    let releaseNewRouting!: () => void;
+    let newerRoutingStarted!: () => void;
+    const staleGate = new Promise<void>((resolve) => { releaseStaleRouting = resolve; });
+    const newGate = new Promise<void>((resolve) => { releaseNewRouting = resolve; });
+    const newStarted = new Promise<void>((resolve) => { newerRoutingStarted = resolve; });
+    let routingCalls = 0;
+    const disableRouting = vi.fn(async () => undefined);
+    const context = await setup({
+      clock,
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: vi.fn(async () => {
+          routingCalls += 1;
+          if (routingCalls === 1) await staleGate;
+          else {
+            newerRoutingStarted();
+            await newGate;
+          }
+          return { routingRuleId: 'shared-in-flight-route' };
+        }),
+        disableRouting,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'in-flight-takeover.example.com');
+    const stale = context.mailfn.verifyDomain(context.admin, pending.id);
+    await vi.waitFor(() => expect(routingCalls).toBe(1));
+    clock.advance(5 * 60 * 1000 + 1);
+    const newer = context.mailfn.verifyDomain(context.admin, pending.id);
+    await newStarted;
+
+    releaseStaleRouting();
+    await expect(stale).rejects.toMatchObject({ code: 'MAILFN_STORAGE_FAILED', retryable: true });
+    expect(disableRouting).not.toHaveBeenCalled();
+    await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({ status: 'verifying' });
+
+    releaseNewRouting();
+    await expect(newer).resolves.toMatchObject({ status: 'active', routingRuleId: 'shared-in-flight-route' });
+    expect(disableRouting).not.toHaveBeenCalled();
+  });
+
   it('reconciles a durably disabled domain that still retains live routing state', async () => {
     const disableRouting = vi.fn(async () => undefined);
     const context = await setup({
@@ -1777,6 +1850,10 @@ describe('MailFn domain service', () => {
       providerDeliveryId: 'blocked-sender', envelopeFrom: 'sender@example.com', envelopeTo: reputationInbox.inbox.address,
       raw: value, rawSize: value.byteLength,
     })).rejects.toMatchObject({ code: 'MAILFN_SENDER_BLOCKED' });
+    await expect(context.mailfn.createSupportCase(context.admin, {
+      subject: 'Invalid severity', severity: 'urgent' as never, description: 'Must not persist',
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED', status: 400 });
+    await expect(context.mailfn.listSupportCases(context.admin)).resolves.toEqual([]);
     const supportCase = await context.mailfn.createSupportCase(context.admin, {
       subject: 'Delivery review', severity: 'high', description: 'Please review the rejected delivery',
     });
@@ -2066,6 +2143,47 @@ describe('MailFn domain service', () => {
     const attachments = await recoveringStore.listAttachments(stored[0]!.id);
     expect(attachments).toHaveLength(1);
     expect(recoveringObjects.size()).toBe(2);
+  });
+
+  it('does not resurrect a retained message after its parser has already loaded raw MIME', async () => {
+    const clock = new MutableClock();
+    const jobs: ParseJob[] = [];
+    let releaseParser!: () => void;
+    let parserStarted!: () => void;
+    const parserGate = new Promise<void>((resolve) => { releaseParser = resolve; });
+    const started = new Promise<void>((resolve) => { parserStarted = resolve; });
+    const parser = new JsonMimeParser();
+    const context = await setup({
+      clock,
+      retentionPolicy: { messageTtlSeconds: 1 },
+      queue: { async enqueue(job) { jobs.push(job); } },
+      mimeParser: {
+        async parse(value) {
+          parserStarted();
+          await parserGate;
+          return parser.parse(value);
+        },
+      },
+    });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'stable', requestedLocalPart: 'parse-retention-race',
+    });
+    const value = raw({ attachments: [{ filename: 'proof.txt', contentType: 'text/plain', content: 'proof' } as never] });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'parse-retention-race', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    const parsing = context.mailfn.parseMessage(jobs[0]!);
+    await started;
+    clock.advance(1_100);
+
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({ deletedMessages: 1 });
+    releaseParser();
+    await expect(parsing).rejects.toMatchObject({ code: 'MAILFN_CONFLICT', retryable: false });
+    await expect(context.store.getMessage(message.id)).resolves.toBeNull();
+    await expect(context.store.listAttachments(message.id)).resolves.toEqual([]);
+    await expect(context.store.listThreads(context.project.id, created.inbox.id)).resolves.toEqual([]);
+    expect(context.objects.size()).toBe(0);
   });
 
   it('preserves trusted authentication, Reply-To, lifecycle validation, and concurrent read labels', async () => {
