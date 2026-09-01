@@ -15,15 +15,22 @@ export interface FumadocsTransformResult {
   componentsUsed: string[];
 }
 
-function parseImportSpecifiers(source: string): string[] {
+interface ImportSpecifier {
+  imported: string;
+  local: string;
+}
+
+function parseImportSpecifiers(source: string): ImportSpecifier[] {
   return source
     .split(",")
     .map((entry) => {
       const words = entry.trim().split(/\s+/);
       const alias = words.indexOf("as");
-      return words.slice(0, alias === -1 ? words.length : alias).join(" ");
+      const imported = words.slice(0, alias === -1 ? words.length : alias).join(" ");
+      const local = alias === -1 ? imported : words.slice(alias + 1).join(" ");
+      return { imported, local };
     })
-    .filter(Boolean);
+    .filter((specifier) => specifier.imported.length > 0 && specifier.local.length > 0);
 }
 
 function parseNamedImport(line: string): { rawSpecifiers: string; moduleName: string } | null {
@@ -69,12 +76,28 @@ function validateFumadocsImport(input: {
   });
 }
 
-function rewriteFumadocsTags(source: string): string {
+function rewriteTag(source: string, local: string, canonical: "DocsTabs" | "DocsTab"): string {
+  const escaped = local.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return source
-    .replace(/<\s*Tabs(?=[\s>])/g, "<DocsTabs")
-    .replace(/<\s*\/\s*Tabs\s*>/g, "</DocsTabs>")
-    .replace(/<\s*Tab(?=[\s>])/g, "<DocsTab")
-    .replace(/<\s*\/\s*Tab\s*>/g, "</DocsTab>");
+    .replace(new RegExp(`<\\s*${escaped}(?=[\\s>])`, "g"), `<${canonical}`)
+    .replace(new RegExp(`<\\s*\\/\\s*${escaped}\\s*>`, "g"), `</${canonical}>`);
+}
+
+function rewriteOutsideInlineCode(
+  line: string,
+  aliases: Map<string, "DocsTabs" | "DocsTab">
+): string {
+  return line
+    .split(/(`+[^`]*`+)/g)
+    .map((segment, index) => {
+      if (index % 2 === 1) return segment;
+      let rewritten = segment;
+      for (const [local, canonical] of aliases) {
+        rewritten = rewriteTag(rewritten, local, canonical);
+      }
+      return rewritten;
+    })
+    .join("");
 }
 
 export function transformFumadocsV15(
@@ -83,8 +106,26 @@ export function transformFumadocsV15(
   const lines = input.source.split(/\r?\n/);
   const keptLines: string[] = [];
   const importedComponents = new Set<string>();
+  const aliases = new Map<string, "DocsTabs" | "DocsTab">();
+  let fence: { marker: "`" | "~"; length: number } | null = null;
 
   for (const line of lines) {
+    const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      const marker = fenceMatch[1][0] as "`" | "~";
+      if (!fence) {
+        fence = { marker, length: fenceMatch[1].length };
+      } else if (fence.marker === marker && fenceMatch[1].length >= fence.length) {
+        fence = null;
+      }
+      keptLines.push(line);
+      continue;
+    }
+    if (fence) {
+      keptLines.push(line);
+      continue;
+    }
+
     const importMatch = parseNamedImport(line);
     if (!importMatch) {
       keptLines.push(line);
@@ -94,18 +135,37 @@ export function transformFumadocsV15(
     const { rawSpecifiers, moduleName } = importMatch;
     const specifiers = parseImportSpecifiers(rawSpecifiers);
     for (const specifier of specifiers) {
-      importedComponents.add(specifier);
+      importedComponents.add(specifier.local);
       if (moduleName.startsWith("fumadocs")) {
         validateFumadocsImport({
           sourcePath: input.sourcePath,
           moduleName,
-          specifier,
+          specifier: specifier.imported,
         });
+        aliases.set(
+          specifier.local,
+          specifier.imported === "Tabs" ? "DocsTabs" : "DocsTab"
+        );
       }
     }
   }
 
-  const transformed = rewriteFumadocsTags(keptLines.join("\n"));
+  let rewriteFence: { marker: "`" | "~"; length: number } | null = null;
+  const transformed = keptLines
+    .map((line) => {
+      const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/);
+      if (fenceMatch) {
+        const marker = fenceMatch[1][0] as "`" | "~";
+        if (!rewriteFence) {
+          rewriteFence = { marker, length: fenceMatch[1].length };
+        } else if (rewriteFence.marker === marker && fenceMatch[1].length >= rewriteFence.length) {
+          rewriteFence = null;
+        }
+        return line;
+      }
+      return rewriteFence ? line : rewriteOutsideInlineCode(line, aliases);
+    })
+    .join("\n");
   const componentsUsed: string[] = [];
 
   if (/<\s*DocsTabs(?=[\s>])/.test(transformed)) {

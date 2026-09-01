@@ -10,6 +10,7 @@ import {
 import { ApiReferenceRenderer } from "@docsfn/react/ApiReferenceRenderer";
 import { DocsContent } from "@docsfn/react/DocsContent";
 import { loadDocsSiteSource } from "@/source.config";
+import { SearchArtifactStatus } from "../SearchArtifactStatus";
 
 type DocsPageParams = {
   slug?: string[];
@@ -175,6 +176,7 @@ export default async function DocsPage(props: {
             &rdquo; ({source.searchProbe.scopes.join(", ")})
             {source.searchProbe.firstPath ? ` -> ${source.searchProbe.firstPath}` : ""}
           </p>
+          <SearchArtifactStatus />
         </header>
 
         <nav aria-label="Breadcrumb">

@@ -89,6 +89,24 @@ describe("security", () => {
     ).not.toThrow();
   });
 
+  it("blocks entity-obfuscated javascript URLs in raw HTML", () => {
+    expect(() =>
+      assertSourceEntriesTrusted({
+        entries: [createEntry({ body: '<a href="j&#x61;vascript:alert(1)">open</a>' })],
+      })
+    ).toThrowError(/DOCS_HTML_UNSAFE|unsafe HTML/);
+  });
+
+  it("does not treat fence markers inside raw HTML as code examples", () => {
+    expect(() =>
+      assertSourceEntriesTrusted({
+        entries: [
+          createEntry({ body: "<div>\n```\n<script>alert(1)</script>\n```\n</div>" }),
+        ],
+      })
+    ).toThrowError(/DOCS_HTML_UNSAFE|unsafe HTML/);
+  });
+
   it("applies the same trust model for compiled content artifacts", () => {
     expect(() =>
       assertCompiledContentTrusted({

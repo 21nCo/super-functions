@@ -25,7 +25,6 @@
     </nav>
 
     <div class="eyebrow">Paper page</div>
-    <h1>{data.page.title}</h1>
     {#if data.page.description}
       <p class="lede">{data.page.description}</p>
     {/if}

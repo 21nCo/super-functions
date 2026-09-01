@@ -193,7 +193,21 @@ describe("generateRSSFeed", () => {
     expect(rss).not.toContain("/docs/blog/alpha");
     expect(rss).not.toContain("/docs/blog/beta");
     expect(rss).toContain(
-      '<atom:link href="https://docs.example.com/missing/rss.xml"'
+      '<atom:link href="https://docs.example.com/rss.xml"'
     );
+  });
+
+  it("joins manifest routes from the site origin and safely splits CDATA terminators", () => {
+    const manifest = createManifest();
+    manifest.posts["blog:alpha.mdx"].title = "Alpha ]]> release";
+    manifest.posts["blog:alpha.mdx"].excerpt = "Details ]]> continued";
+    const rss = generateRSSFeed(manifest, {
+      title: "Docs Blog",
+      description: "Updates",
+      link: "https://docs.example.com/docs/blog",
+    });
+    expect(rss).toContain("https://docs.example.com/docs/blog/alpha");
+    expect(rss).not.toContain("/docs/blog/docs/blog/");
+    expect(rss).toContain("]]]]><![CDATA[>");
   });
 });

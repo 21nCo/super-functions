@@ -47,7 +47,7 @@ URL-like fields are sanitized to drop sensitive query keys before emission (see 
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `enabled?` | `boolean` | Default `true`. |
+| `enabled?` | `boolean` | Default `false`. |
 | `respectDnt?` | `boolean` | Default `true`. |
 | `emit` | `(event: DocsAnalyticsEvent) => void` | Your emit callback. |
 | `doNotTrackValue?` | `string \| null` | Explicit DNT header value override. |

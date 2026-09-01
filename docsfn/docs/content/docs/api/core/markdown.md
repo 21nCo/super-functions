@@ -23,7 +23,7 @@ description: Markdown compilation and CompiledContentBlock types in @docsfn/core
 extractHeadings(markdown: string): DocHeading[]
 ```
 
-Parses raw Markdown and returns an array of **`DocHeading`** objects (`{ depth, text, slug }`) without running the full compile pipeline. Useful for building a table of contents from source text before compilation.
+Parses raw Markdown and returns an array of **`DocHeading`** objects (`{ level, text, slug }`) without running the full compile pipeline. Useful for building a table of contents from source text before compilation.
 
 ## `CompiledContentArtifact`
 

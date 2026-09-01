@@ -1,10 +1,15 @@
 import { error } from "@sveltejs/kit";
-import type { SidebarItem } from "@docsfn/core";
+import { getTopNavigation, type SidebarItem } from "@docsfn/core";
 import {
   resolveDocsPageSurface,
   resolveDocsRouteDataOrThrow,
+  type SvelteDocsPageSurface,
 } from "@docsfn/sveltekit";
 import type { PageServerLoad } from "./$types";
+import {
+  loadDocsSiteSource,
+  type DocsSiteSource,
+} from "../../../lib/server/docs-site-source";
 
 interface FlattenedSidebarLink {
   label: string;
@@ -44,7 +49,11 @@ function isRouteNotFoundError(input: unknown): input is { message: string } {
 }
 
 export const load: PageServerLoad = async ({ params, parent }) => {
-  const { source } = await parent();
+  const parentData = await parent();
+  const source =
+    "source" in parentData
+      ? (parentData.source as DocsSiteSource)
+      : await loadDocsSiteSource();
 
   let routeEntry;
   try {
@@ -62,17 +71,40 @@ export const load: PageServerLoad = async ({ params, parent }) => {
     throw error(404, `unsupported docs route kind: ${routeEntry.kind}`);
   }
 
-  const surface = resolveDocsPageSurface({
-    manifest: source.manifest,
-    route: routeEntry.route,
-    page: routeEntry.kind === "page" ? routeEntry.page : undefined,
-    options: {
-      basePath: "/docs",
-      homeHref: "/docs",
-      canonicalUrl: source.canonicalUrl,
-      versionMode: "path-prefix",
-    },
-  });
+  const surface: SvelteDocsPageSurface = routeEntry.kind === "api"
+    ? {
+        route: routeEntry.route,
+        title: routeEntry.api.title,
+        description:
+          typeof routeEntry.api.frontmatter.description === "string"
+            ? routeEntry.api.frontmatter.description
+            : undefined,
+        canonicalPath: routeEntry.route,
+        canonicalUrl: source.canonicalUrl
+          ? `${source.canonicalUrl.replace(/\/+$/, "")}${routeEntry.route}`
+          : routeEntry.route,
+        sidebarId: "api",
+        headings: [],
+        breadcrumbs: [
+          { label: "Docs", href: "/docs" },
+          { label: "API Reference", href: "/docs/api" },
+          { label: routeEntry.api.title, href: routeEntry.route },
+        ],
+        pagination: {},
+        topNav: getTopNavigation(source.manifest),
+        versions: source.manifest.versions,
+      }
+    : resolveDocsPageSurface({
+        manifest: source.manifest,
+        route: routeEntry.route,
+        page: routeEntry.page,
+        options: {
+          basePath: "/docs",
+          homeHref: "/docs",
+          canonicalUrl: source.canonicalUrl,
+          versionMode: "path-prefix",
+        },
+      });
 
   const sidebar = source.manifest.sidebars[surface.sidebarId ?? "default"];
   const sidebarLinks = sidebar ? flattenSidebarLinks(sidebar.items) : [];

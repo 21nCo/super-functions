@@ -26,5 +26,15 @@ export const GET: RequestHandler = async ({ url }) => {
     });
   }
 
+  if (latest.path === url.pathname) {
+    return new Response("The changelog slug 'latest' is reserved for the latest-entry alias", {
+      status: 409,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "public, max-age=0, must-revalidate",
+      },
+    });
+  }
+
   return redirectWithSearch(latest.path, url);
 };

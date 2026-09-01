@@ -15,7 +15,7 @@ export interface RSSFeedOptions {
   language?: string;
   /**
    * Absolute URL for this feed’s `atom:link rel="self"`.
-   * Default: `{link}{manifest.blog.feedPath}` when `link` has no path, or join with manifest feed path.
+   * Default: the origin from `link` joined with the manifest feed path.
    */
   feedHref?: string;
   /**
@@ -37,6 +37,7 @@ export function generateRSSFeed(
   let linkEnd = link.length;
   while (linkEnd > 0 && link.charCodeAt(linkEnd - 1) === 47) linkEnd -= 1;
   const normalizedLink = link.slice(0, linkEnd);
+  const siteOrigin = new URL(normalizedLink).origin;
   const hasRequestedCollection = options.collectionId !== undefined;
   const requestedCollectionId = hasRequestedCollection
     ? normalizeDatedCollectionId(options.collectionId ?? "")
@@ -80,15 +81,15 @@ export function generateRSSFeed(
       const publish = assertValidBlogPublishMetadata(post);
       const postLink = options.itemHref
         ? options.itemHref(post)
-        : `${normalizedLink}${post.path}`;
+        : new URL(post.path, siteOrigin).toString();
       const descriptionValue = post.excerpt ?? post.summary;
       return `
     <item>
-      <title><![CDATA[${post.title}]]></title>
+      <title><![CDATA[${escapeCdata(post.title)}]]></title>
       <link>${escapeXml(postLink)}</link>
       <guid isPermaLink="true">${escapeXml(postLink)}</guid>
       <pubDate>${new Date(publish.publishedAt).toUTCString()}</pubDate>
-      ${descriptionValue ? `<description><![CDATA[${descriptionValue}]]></description>` : ""}
+      ${descriptionValue ? `<description><![CDATA[${escapeCdata(descriptionValue)}]]></description>` : ""}
       ${post.author ? `<author>${escapeXml(post.author)}</author>` : ""}
       ${post.tags.map((tag) => `<category>${escapeXml(tag)}</category>`).join("\n      ")}
     </item>
@@ -99,7 +100,7 @@ export function generateRSSFeed(
   const feedPath = hasRequestedCollection
     ? collectionSurface?.feedPath ?? "/rss.xml"
     : manifest.blog?.feedPath ?? "/rss.xml";
-  const feedLink = options.feedHref ?? `${normalizedLink}${feedPath}`;
+  const feedLink = options.feedHref ?? new URL(feedPath, siteOrigin).toString();
   const lastBuildDate = resolveBlogLastBuildDate(posts);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -123,4 +124,8 @@ function escapeXml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
+}
+
+function escapeCdata(value: string): string {
+  return value.replaceAll("]]>", "]]]]><![CDATA[>");
 }

@@ -51,7 +51,7 @@ export const papersConfig: DocsConfig = {
     title: "Northstar Cloud Papers",
     description: "Long-form papers rendered through a dedicated docsfn manifest.",
     basePath: "/papers",
-    canonicalUrl: "https://northstar.example.com/papers"
+    canonicalUrl: "https://northstar.example.com"
   },
   compat: {
     preset: "none"

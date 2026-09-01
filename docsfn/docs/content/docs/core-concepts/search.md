@@ -72,7 +72,7 @@ That is the supported way to make Markdown package docs under `content/docs/api`
 
 ## `maxArtifactBytes`
 
-If the serialized artifact size exceeds **`search.maxArtifactBytes`**, the build fails with a diagnostic (`DOCS_SEARCH_BUILD_FAILED`). Use this as a **guardrail** in CI when enabling `full` body indexing or very large corpora.
+If the serialized artifact size exceeds **`search.maxArtifactBytes`**, the build emits a warning diagnostic (`DOCS_ARTIFACT_INVALID`) and still succeeds. Treat warnings as failures in CI if you want this limit to be a hard guardrail when enabling `full` body indexing or very large corpora.
 
 ## Serving the artifact in SvelteKit
 

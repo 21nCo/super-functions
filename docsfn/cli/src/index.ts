@@ -160,6 +160,7 @@ function resolveCollectionDirectories(
 function computeInvalidatedPaths(input: {
   cwd: string;
   config?: DocsConfig;
+  configPath?: string;
   changedPaths?: string[];
 }): string[] {
   if (!input.changedPaths || input.changedPaths.length === 0) {
@@ -175,6 +176,9 @@ function computeInvalidatedPaths(input: {
     path.resolve(normalizedCwd, "docsfn.config.mjs"),
     path.resolve(normalizedCwd, "docsfn.config.js"),
   ];
+  if (input.configPath) {
+    configFiles.push(path.resolve(normalizedCwd, input.configPath));
+  }
 
   const invalidated = new Set<string>();
 
@@ -283,6 +287,7 @@ async function runPipeline(input: PipelineInput): Promise<PipelineResult> {
   const invalidatedPaths = computeInvalidatedPaths({
     cwd: input.cwd,
     config,
+    configPath: input.configPath,
     changedPaths: input.changedPaths,
   });
 
@@ -399,6 +404,7 @@ function printCommandSummary(command: string, result: PipelineResult): void {
 function resolveWatchTargets(input: {
   cwd: string;
   config: DocsConfig;
+  configPath?: string;
   providerMetadata?: DocsProviderWatchMetadata;
   outDir: string;
 }): string[] {
@@ -413,6 +419,9 @@ function resolveWatchTargets(input: {
   ];
   for (const candidate of configFileCandidates) {
     targets.add(candidate);
+  }
+  if (input.configPath) {
+    targets.add(path.resolve(cwd, input.configPath));
   }
 
   if (input.providerMetadata?.watchedDirectories?.length) {
@@ -435,6 +444,26 @@ function resolveWatchTargets(input: {
   }
 
   return [...targets].sort(compareStrings);
+}
+
+async function resolveProviderWatchMetadata(
+  config: DocsConfig,
+  cwd: string
+): Promise<DocsProviderWatchMetadata | undefined> {
+  const provider = createProvider(config, cwd);
+  if (typeof provider.watch !== "function") return undefined;
+
+  try {
+    const subscription = await provider.watch({
+      config,
+      onChange: () => undefined,
+    });
+    const metadata = subscription.metadata;
+    await subscription.close();
+    return metadata;
+  } catch {
+    return undefined;
+  }
 }
 
 async function runValidateCommand(
@@ -515,25 +544,12 @@ async function runDevCommand(
     return;
   }
 
-  const provider = createProvider(initialResult.config, cwd);
-  let providerMetadata: DocsProviderWatchMetadata | undefined;
-
-  if (typeof provider.watch === "function") {
-    try {
-      const subscription = await provider.watch({
-        config: initialResult.config,
-        onChange: () => undefined,
-      });
-      providerMetadata = subscription.metadata;
-      await subscription.close();
-    } catch {
-      providerMetadata = undefined;
-    }
-  }
+  const providerMetadata = await resolveProviderWatchMetadata(initialResult.config, cwd);
 
   const watchTargets = resolveWatchTargets({
     cwd,
     config: initialResult.config,
+    configPath: options.config,
     providerMetadata,
     outDir,
   });
@@ -543,6 +559,25 @@ async function runDevCommand(
   const watcher = chokidar.watch(watchTargets, {
     ignoreInitial: true,
   });
+  let activeWatchTargets = new Set(watchTargets);
+
+  async function refreshWatchTargets(config: DocsConfig): Promise<void> {
+    const metadata = await resolveProviderWatchMetadata(config, cwd);
+    const nextTargets = new Set(
+      resolveWatchTargets({
+        cwd,
+        config,
+        configPath: options.config,
+        providerMetadata: metadata,
+        outDir,
+      })
+    );
+    const removed = [...activeWatchTargets].filter((target) => !nextTargets.has(target));
+    const added = [...nextTargets].filter((target) => !activeWatchTargets.has(target));
+    if (removed.length > 0) await watcher.unwatch(removed);
+    if (added.length > 0) watcher.add(added);
+    activeWatchTargets = nextTargets;
+  }
 
   let rebuildQueue = Promise.resolve();
 
@@ -563,6 +598,9 @@ async function runDevCommand(
         await writeArtifacts(outDir, result);
         printDiagnostics(result.diagnostics);
         printCommandSummary("dev:rebuild", result);
+        if (result.config) {
+          await refreshWatchTargets(result.config);
+        }
       })
       .catch((error) => {
         console.error(

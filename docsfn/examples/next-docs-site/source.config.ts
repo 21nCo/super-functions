@@ -67,6 +67,9 @@ async function buildSearchProbe(
 }
 
 export async function loadDocsSiteSource(): Promise<DocsSiteSource> {
+  if (process.env.NODE_ENV === "development") {
+    sourcePromise = null;
+  }
   if (!sourcePromise) {
     sourcePromise = (async () => {
       const fixtureRoot = resolveFixtureRoot();
@@ -80,6 +83,7 @@ export async function loadDocsSiteSource(): Promise<DocsSiteSource> {
       const manifest = await buildManifest(provider, config);
       const searchArtifact = await buildSearchIndex(manifest, {
         search: config.search,
+        auth: config.auth,
       });
       const searchProbe = await buildSearchProbe(searchArtifact);
 

@@ -41,4 +41,4 @@ npm install @docsfn/core
 | Entry | Purpose |
 | --- | --- |
 | `@docsfn/core` | Full server-side API |
-| `@docsfn/core/browser` | Browser-safe subset: types, search runtime, analytics, theme utilities. Does not import Node.js modules. |
+| `@docsfn/core/browser` | Browser-safe types plus diagnostics, sanitizing, Markdown/link compilation, security, and theme utilities. Search runtime and analytics use their dedicated subpath exports. |

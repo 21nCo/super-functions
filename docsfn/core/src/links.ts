@@ -7,7 +7,7 @@ export interface ResolveMarkdownRelativeLinksInput {
   isIndexRoute?: boolean;
 }
 
-const HREF_ATTRIBUTE_REGEX = /(<a\b[^>]*\bhref=)(["'])([^"']+)\2/gi;
+const HREF_ATTRIBUTE_REGEX = /(<a\b[^>]*?\shref\s*=\s*)(["'])([^"']+)\2/gi;
 const EXTERNAL_OR_SPECIAL_HREF_REGEX = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#|\/|\{)/i;
 
 export function resolveMarkdownRelativeLinks({
@@ -20,19 +20,20 @@ export function resolveMarkdownRelativeLinks({
 
   return {
     ...compiled,
-    blocks: resolveBlocks(compiled.blocks, baseRoute),
+    blocks: resolveBlocks(compiled.blocks, baseRoute, route),
   };
 }
 
 function resolveBlocks(
   blocks: CompiledContentBlock[],
   baseRoute: string,
+  route: string,
 ): CompiledContentBlock[] {
   return blocks.map((block) => {
     if ("html" in block) {
       return {
         ...block,
-        html: resolveHtmlLinks(block.html, baseRoute),
+        html: resolveHtmlLinks(block.html, baseRoute, route),
       };
     }
 
@@ -41,7 +42,7 @@ function resolveBlocks(
         ...block,
         tabs: block.tabs.map((tab) => ({
           ...tab,
-          nodes: resolveBlocks(tab.nodes, baseRoute),
+          nodes: resolveBlocks(tab.nodes, baseRoute, route),
         })),
       };
     }
@@ -49,7 +50,7 @@ function resolveBlocks(
     if (block.type === "component") {
       return {
         ...block,
-        children: resolveBlocks(block.children, baseRoute),
+        children: resolveBlocks(block.children, baseRoute, route),
       };
     }
 
@@ -57,20 +58,22 @@ function resolveBlocks(
   });
 }
 
-function resolveHtmlLinks(html: string, baseRoute: string): string {
+function resolveHtmlLinks(html: string, baseRoute: string, route: string): string {
   return html.replace(HREF_ATTRIBUTE_REGEX, (match, prefix, quote, href) => {
     if (EXTERNAL_OR_SPECIAL_HREF_REGEX.test(href)) {
       return match;
     }
 
-    const resolvedHref = resolveHref(href, baseRoute);
+    const queryOnly = href.startsWith("?");
+    const resolvedHref = resolveHref(href, queryOnly ? route : baseRoute, queryOnly);
     return `${prefix}${quote}${resolvedHref}${quote}`;
   });
 }
 
-function resolveHref(href: string, baseRoute: string): string {
+function resolveHref(href: string, baseRoute: string, preserveBasePath = false): string {
   try {
-    const resolved = new URL(href, `https://docs.local${baseRoute}/`);
+    const basePath = preserveBasePath || baseRoute === "/" ? baseRoute : `${baseRoute}/`;
+    const resolved = new URL(href, `https://docs.local${basePath}`);
     return `${resolved.pathname}${resolved.search}${resolved.hash}`;
   } catch {
     return href;

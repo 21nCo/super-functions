@@ -62,6 +62,7 @@
   </div>
 {/snippet}
 
+{#key `${data.embed}:${data.embedSidebar}`}
 <DocsSiteShell
   embedded={data.embed}
   brand={data.source.siteTitle}
@@ -86,3 +87,4 @@
     {@render routeContent()}
   {/if}
 </DocsSiteShell>
+{/key}

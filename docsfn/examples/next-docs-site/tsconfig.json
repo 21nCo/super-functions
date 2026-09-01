@@ -24,6 +24,9 @@
       "@docsfn/react/ApiReferenceRenderer": ["../../react/src/ApiReferenceRenderer.tsx"],
       "@docsfn/react/EmbeddedPage": ["../../react/src/EmbeddedPage.tsx"],
       "@docsfn/next": ["../../next/src/index.ts"],
+      "@searchfn/client": ["../../../searchfn/client/src/index.ts"],
+      "@searchfn/core": ["../../../searchfn/core/src/index.ts"],
+      "@searchfn/core/*": ["../../../searchfn/core/src/*"],
       "@uifn/react": ["../../../uifn/react/src/index.ts"],
       "@uifn/core": ["../../../uifn/core/src/index.ts"],
       "@uifn/core/*": ["../../../uifn/core/src/*"]

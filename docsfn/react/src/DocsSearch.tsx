@@ -2,15 +2,13 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
+import { maybeEmitAnalyticsEvent, type DocsAnalyticsEvent } from "@docsfn/core/analytics";
+import type { DocsSearchArtifact, DocsSearchScope } from "@docsfn/core/search";
 import {
   createDocsSearchRuntime,
-  maybeEmitAnalyticsEvent,
-  type DocsAnalyticsEvent,
-  type DocsSearchArtifact,
   type DocsSearchRuntime,
   type DocsSearchRuntimeResultItem,
-  type DocsSearchScope,
-} from "@docsfn/core";
+} from "@docsfn/core/search-runtime";
 import {
   Dialog,
   DialogBackdrop as DialogOverlay,

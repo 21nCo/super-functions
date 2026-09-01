@@ -97,6 +97,30 @@ describe("searchFnSearchAdapter", () => {
     ]);
   });
 
+  it("preserves complete search terms longer than the default n-gram ceiling", async () => {
+    const { searchFnSearchAdapter } = await import("./searchfn-adapter");
+    const title = "supercalifragilisticexpialidocious";
+    const document = createDocument("docs:long", "docs", "/docs/long", title);
+    const engine = await searchFnSearchAdapter.createIndexEngine({ fields });
+    engine.add({
+      id: document.id,
+      fields: {
+        title: document.title,
+        summary: document.summary,
+        headings: document.headings.join(" "),
+        tags: document.tags.join(" "),
+        body: document.body,
+      },
+    });
+    const runtime = await searchFnSearchAdapter.createRuntime({
+      artifact: createArtifact([document], engine.exportSnapshot()),
+      documents: new Map([[document.id, document]]),
+    });
+    await expect(runtime.query({ query: title, scope: "all", limit: 5 })).resolves.toEqual([
+      expect.objectContaining({ id: document.id }),
+    ]);
+  });
+
   it("translates missing client failures for build and runtime usage", async () => {
     vi.resetModules();
     vi.doMock("@searchfn/client", () => {

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getDocsBlogPostData } from "@docsfn/next";
+import { generateDocsBlogParams, getDocsBlogPostData } from "@docsfn/next";
 import { DocsContent } from "@docsfn/react/DocsContent";
 import { loadDocsSiteSource } from "@/source.config";
 
@@ -10,9 +10,7 @@ type BlogPageParams = {
 
 export async function generateStaticParams() {
   const source = await loadDocsSiteSource();
-  return Object.values(source.manifest.posts).map((post) => ({
-    slug: post.slug,
-  }));
+  return generateDocsBlogParams(source.manifest);
 }
 
 export async function generateMetadata(props: {

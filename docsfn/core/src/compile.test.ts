@@ -101,6 +101,30 @@ graph TD;
     expect(compiled.blocks.some((block) => block.type === "component" && block.name === "DemoCard")).toBe(true);
   });
 
+  it("preserves Fumadocs examples and supports aliased tab imports", () => {
+    const compiled = compileMarkdown({
+      source: [
+        'import { Tabs as MyTabs, Tab as MyTab } from "fumadocs-ui/components/tabs";',
+        "",
+        "`<Tabs><Tab /></Tabs>`",
+        "",
+        "```tsx",
+        'import { Tabs } from "fumadocs-ui/components/tabs";',
+        "<Tabs><Tab /></Tabs>",
+        "```",
+        "",
+        '<MyTabs items={["A"]}>',
+        '  <MyTab value="A">Body</MyTab>',
+        "</MyTabs>",
+      ].join("\n"),
+      sourcePath: "content/docs/aliased.mdx",
+      compatPreset: "fumadocs-v15",
+    });
+    expect(compiled.transformedSource).toContain("`<Tabs><Tab /></Tabs>`");
+    expect(compiled.transformedSource).toContain('import { Tabs } from "fumadocs-ui/components/tabs";');
+    expect(compiled.blocks.some((block) => block.type === "tabs")).toBe(true);
+  });
+
   it("compiles nested component children and preserves normalized props", () => {
     const compiled = compileMarkdown({
       source: `import { DemoCard } from "./DemoCard";

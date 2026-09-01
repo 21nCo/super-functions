@@ -26,13 +26,14 @@ export default async function EmbeddedPage(props: {
 }) {
   const params = await props.params;
   const source = await loadDocsSiteSource();
-  const requestedSlug = (params.slug ?? []).join("/");
-  const normalizedSlug = requestedSlug.length > 0 ? requestedSlug : "index";
-
-  const page = Object.values(source.manifest.pages).find((candidate) => {
-    const candidateSlug = candidate.slug.length > 0 ? candidate.slug : "index";
-    return candidateSlug === normalizedSlug;
-  });
+  const embeddedEntry = Object.values(source.manifest.embedded?.pages ?? {}).find(
+    (entry) => {
+      const candidate = source.manifest.pages[entry.pageId];
+      const candidateSlug = candidate?.slug.length ? candidate.slug : "index";
+      return candidateSlug === ((params.slug ?? []).join("/") || "index");
+    }
+  );
+  const page = embeddedEntry ? source.manifest.pages[embeddedEntry.pageId] : undefined;
   if (!page) {
     notFound();
   }

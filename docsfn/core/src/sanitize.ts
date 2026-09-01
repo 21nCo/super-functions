@@ -1,4 +1,6 @@
 import { createDiagnostic, createDocsError } from "./diagnostics";
+import { decodeHTML } from "entities";
+import { marked, type Token } from "marked";
 
 export const BLOCKED_HTML_TAGS = [
   "script",
@@ -25,15 +27,19 @@ export interface UnsafeHtmlMatch {
   match: string;
 }
 
-function stripCodeExamples(source: string): string {
-  return source
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/~~~[\s\S]*?~~~/g, " ")
-    .replace(/`[^`\n]+`/g, " ");
+function collectRawHtml(source: string): string {
+  const html: string[] = [];
+  marked.walkTokens(marked.lexer(source), (token: Token) => {
+    if (token.type === "html") {
+      html.push(token.raw);
+    }
+  });
+  return html.join("\n");
 }
 
 export function findUnsafeHtml(source: string): UnsafeHtmlMatch[] {
-  const normalizedSource = stripCodeExamples(source);
+  const rawHtml = collectRawHtml(source);
+  const normalizedSource = decodeHTML(rawHtml);
   const matches: UnsafeHtmlMatch[] = [];
 
   for (const tag of BLOCKED_HTML_TAGS) {

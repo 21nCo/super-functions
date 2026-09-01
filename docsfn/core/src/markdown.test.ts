@@ -329,4 +329,32 @@ describe("resolveMarkdownRelativeLinks", () => {
       expect(block.html).toContain('href="mailto:hello@example.com"');
     }
   });
+
+  it("resolves root, query-only, and spaced href attributes without rewriting data-href", () => {
+    const compiled = {
+      ...compileMarkdown({ source: "text", sourcePath: "content/docs/page.md" }),
+      blocks: [
+        {
+          type: "paragraph" as const,
+          text: "links",
+          html: '<a data-href="./wrong" href = "./child">child</a> <a href="?raw=1">raw</a>',
+        },
+      ],
+    };
+    const resolved = resolveMarkdownRelativeLinks({
+      compiled,
+      route: "/",
+      sourcePath: "content/docs/index.md",
+    });
+    expect((resolved.blocks[0] as { html: string }).html).toBe(
+      '<a data-href="./wrong" href = "/child">child</a> <a href="/?raw=1">raw</a>'
+    );
+
+    const leaf = resolveMarkdownRelativeLinks({
+      compiled,
+      route: "/docs/page",
+      sourcePath: "content/docs/page.md",
+    });
+    expect((leaf.blocks[0] as { html: string }).html).toContain('href="/docs/page?raw=1"');
+  });
 });
