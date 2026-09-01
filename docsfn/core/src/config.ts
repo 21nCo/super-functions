@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, stat } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
@@ -279,7 +279,7 @@ async function loadConfigModule(configPath: string): Promise<unknown> {
       return await loadTypeScriptConfig(configPath);
     }
 
-    const moduleValue = await import(pathToFileURL(configPath).href);
+    const moduleValue = await import(await resolveConfigModuleUrl(configPath));
     return resolveConfigExport(moduleValue);
   } catch (error) {
     throw createDocsError({
@@ -302,7 +302,7 @@ async function loadConfigModule(configPath: string): Promise<unknown> {
 
 async function loadTypeScriptConfig(configPath: string): Promise<unknown> {
   try {
-    const moduleValue = await import(pathToFileURL(configPath).href);
+    const moduleValue = await import(await resolveConfigModuleUrl(configPath));
     return resolveConfigExport(moduleValue);
   } catch {
     const typescriptModuleName = process.env.DOCSFN_TYPESCRIPT_MODULE ?? "typescript";
@@ -323,6 +323,13 @@ async function loadTypeScriptConfig(configPath: string): Promise<unknown> {
     const moduleValue = await import(dataUrl);
     return resolveConfigExport(moduleValue);
   }
+}
+
+async function resolveConfigModuleUrl(configPath: string): Promise<string> {
+  const configUrl = pathToFileURL(configPath);
+  const fileStats = await stat(configPath);
+  configUrl.searchParams.set("docsfnUpdatedAt", String(fileStats.mtimeMs));
+  return configUrl.href;
 }
 
 function resolveConfigExport(moduleValue: unknown): unknown {

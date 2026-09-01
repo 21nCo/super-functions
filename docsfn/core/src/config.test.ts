@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -74,6 +74,27 @@ describe("loadDocsConfig", () => {
     const loaded = await loadDocsConfig({ cwd });
     expect(loaded.site.title).toBe("TypeScript Config");
     expect(loaded.compat?.preset).toBe("fumadocs-v15");
+  });
+
+  it("reloads an edited JavaScript config instead of returning the module cache", async () => {
+    const cwd = await createTempDir();
+    const configPath = join(cwd, "docsfn.config.mjs");
+    const createConfig = (title: string) =>
+      serializeConfig({
+        schemaVersion: 1,
+        site: { title, basePath: "/docs" },
+        compat: { preset: "none" },
+        content: { root: cwd, docsDir: "content/docs" },
+      });
+
+    await writeFile(configPath, createConfig("Before"));
+    expect((await loadDocsConfig({ cwd })).site.title).toBe("Before");
+
+    await writeFile(configPath, createConfig("After"));
+    const changedAt = new Date(Date.now() + 1_000);
+    await utimes(configPath, changedAt, changedAt);
+
+    expect((await loadDocsConfig({ cwd })).site.title).toBe("After");
   });
 
   it("fails closed with DOCS_CONFIG_INVALID when config shape is invalid", async () => {

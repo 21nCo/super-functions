@@ -7,6 +7,7 @@ import {
   buildLlmsTxtArtifacts,
   buildManifest,
   buildSearchIndex,
+  createNamedCollection,
   createDiagnostic,
   diagnosticsFromUnknownError,
   formatDiagnosticsForCli,
@@ -130,19 +131,30 @@ async function loadConfig(cwd: string, configPath?: string): Promise<DocsConfig>
   });
 }
 
-function resolveCollectionDirectories(config: DocsConfig): Record<string, string[]> {
-  const root = path.resolve(config.content.root);
+function resolveCollectionDirectories(
+  config: DocsConfig,
+  cwd: string
+): Record<string, string[]> {
+  const root = path.isAbsolute(config.content.root)
+    ? path.resolve(config.content.root)
+    : path.resolve(cwd, config.content.root);
   const directories = (value: string | string[] | undefined, fallback: string): string[] =>
     (Array.isArray(value) ? value : [value ?? fallback]).map((directory) =>
       path.resolve(root, directory)
     );
-  return {
+  const collectionDirectories: Record<string, string[]> = {
     docs: directories(config.content.docsDir, "content/docs"),
     pages: directories(config.content.pagesDir, "pages"),
     blog: directories(config.content.blogDir, "blog"),
     api: directories(config.content.apiDir, "api"),
     assets: directories(config.content.assetsDir, "public"),
   };
+  for (const [collectionId, collection] of Object.entries(config.collections ?? {})) {
+    collectionDirectories[createNamedCollection(collectionId)] = [
+      path.resolve(root, collection.dir),
+    ];
+  }
+  return collectionDirectories;
 }
 
 function computeInvalidatedPaths(input: {
@@ -155,7 +167,9 @@ function computeInvalidatedPaths(input: {
   }
 
   const normalizedCwd = path.resolve(input.cwd);
-  const directories = input.config ? resolveCollectionDirectories(input.config) : {};
+  const directories = input.config
+    ? resolveCollectionDirectories(input.config, normalizedCwd)
+    : {};
   const configFiles = [
     path.resolve(normalizedCwd, "docsfn.config.ts"),
     path.resolve(normalizedCwd, "docsfn.config.mjs"),
@@ -320,6 +334,8 @@ async function writeArtifacts(outDir: string, result: PipelineResult): Promise<v
       path.join(outDir, "manifest.json"),
       JSON.stringify(result.manifest, null, 2)
     );
+  } else {
+    await fs.rm(path.join(outDir, "manifest.json"), { force: true });
   }
 
   const searchEnabled = result.config?.search?.enabled ?? true;
@@ -408,7 +424,7 @@ function resolveWatchTargets(input: {
       targets.add(resolved);
     }
   } else {
-    const directories = resolveCollectionDirectories(input.config);
+    const directories = resolveCollectionDirectories(input.config, cwd);
     for (const directory of Object.values(directories).flat()) {
       const resolved = path.resolve(directory);
       if (resolved === outDir || resolved.startsWith(`${outDir}${path.sep}`)) {

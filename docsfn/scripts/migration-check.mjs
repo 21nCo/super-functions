@@ -14,7 +14,7 @@ const fixturesRoot = resolve(docsfnRoot, "test-fixtures", "repo");
 const tempRoot = resolve(docsfnRoot, ".tmp", "migration-check");
 const summaryPath = resolve(tempRoot, "summary.json");
 const cliPrefix = resolve(docsfnRoot, "cli");
-const cliBin = resolve(cliPrefix, "bin", "docsfn.js");
+const cliBin = resolve(cliPrefix, "dist", "index.js");
 const proofRoutesPath = resolve(docsfnRoot, "examples", "proof-routes.json");
 
 const sharedSearchRuntimeBuildMatrix = [

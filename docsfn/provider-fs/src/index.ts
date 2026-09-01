@@ -5,6 +5,7 @@ import matter from "gray-matter";
 import { readFile, realpath, stat } from "node:fs/promises";
 import {
   assertValidSourceEntries,
+  createNamedCollection,
   createDefaultDocsConfig,
   createDiagnostic,
   createDocsError,
@@ -158,13 +159,16 @@ export class FsContentProvider implements DocsContentProvider {
   async watch(
     input: DocsProviderWatchInput
   ): Promise<DocsProviderWatchSubscription> {
-    const collections = input.collections ?? DEFAULT_COLLECTIONS;
+    const collections = input.collections ?? [
+      ...DEFAULT_COLLECTIONS,
+      ...Object.keys(input.config.collections ?? {}).map(createNamedCollection),
+    ];
     const entries = await this.listEntries({
       config: input.config,
       collections,
     });
     const metadata = buildFsWatchMetadata({
-      root: input.config.content.root,
+      root: this.resolveRoot(input.config),
       collectionDirectories: this.lastCollectionDirectories,
       entries,
     });

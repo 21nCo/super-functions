@@ -66,4 +66,38 @@ describe("provider watch metadata", () => {
     expect(subscription.metadata.watchedDirectories.length).toBeGreaterThan(0);
     await expect(subscription.close()).resolves.toBeUndefined();
   });
+
+  it("resolves relative roots and includes configured named collections", async () => {
+    const root = await createTempRoot();
+    await mkdir(join(root, "content/docs"), { recursive: true });
+    await mkdir(join(root, "content/changelog"), { recursive: true });
+    await writeFile(join(root, "content/docs/index.mdx"), "# Home\n");
+    await writeFile(
+      join(root, "content/changelog/release.mdx"),
+      "---\ntitle: Release\ndate: 2026-09-01\n---\n\n# Release\n"
+    );
+
+    const provider = new FsContentProvider({ root });
+    const config = createDefaultDocsConfig({ cwd: root });
+    config.content.root = ".";
+    config.collections = {
+      changelog: {
+        dir: "content/changelog",
+        routeBase: "/changelog",
+      },
+    };
+    const subscription = await provider.watch({
+      config,
+      onChange: () => {},
+    });
+
+    expect(subscription.metadata.watchedDirectories).toContain(root);
+    expect(subscription.metadata.watchedDirectories).toContain(
+      join(root, "content/changelog")
+    );
+    expect(subscription.metadata.collectionGlobs["collection:changelog"]).toEqual(
+      expect.arrayContaining([`${join(root, "content/changelog")}/**/*`])
+    );
+    await subscription.close();
+  });
 });
