@@ -4,7 +4,7 @@
   "description": "CLI workflows for docsfn",
   "type": "module",
   "bin": {
-    "docsfn": "./bin/docsfn.js"
+    "docsfn": "./dist/index.js"
   },
   "dependencies": {
     "@docsfn/core": "0.0.6",

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createDefaultDocsConfig, type DocsConfig } from "@docsfn/core";
@@ -86,6 +86,59 @@ describe("FsContentProvider", () => {
 
     expect(legacyEntries.some((entry) => entry.id === "meta.json")).toBe(false);
     expect(legacyEntries.some((entry) => entry.id === "getting-started.mdx")).toBe(true);
+  });
+
+  it("resolves relative content roots from the requested site root", async () => {
+    const root = await createTempRoot();
+    await mkdir(join(root, "content/docs"), { recursive: true });
+    await writeFile(join(root, "content/docs/index.mdx"), "# Home\n");
+    const config = createConfig(root);
+    config.content.root = ".";
+
+    const entries = await new FsContentProvider({ root }).listEntries({
+      config,
+      collections: ["docs"],
+    });
+
+    expect(entries.map((entry) => entry.relativePath)).toEqual(["index.mdx"]);
+  });
+
+  it("honors a configured metadata filename", async () => {
+    const root = await createTempRoot();
+    await mkdir(join(root, "content/docs"), { recursive: true });
+    await writeFile(join(root, "content/docs/_nav.json"), '{"pages":["index"]}\n');
+    await writeFile(join(root, "content/docs/index.mdx"), "# Home\n");
+
+    const entries = await new FsContentProvider({ root }).listEntries({
+      config: createConfig(root, { content: { root, metaFileName: "_nav.json" } }),
+      collections: ["docs"],
+    });
+
+    expect(entries.find((entry) => entry.relativePath === "_nav.json")?.entryType).toBe(
+      "control"
+    );
+  });
+
+  it("rejects asset traversal, absolute paths, and symlink escapes", async () => {
+    const root = await createTempRoot();
+    const outside = await createTempRoot();
+    await mkdir(join(root, "content/docs"), { recursive: true });
+    await mkdir(join(root, "public"), { recursive: true });
+    await writeFile(join(root, "content/docs/index.mdx"), "# Home\n");
+    await writeFile(join(root, "public/inside.txt"), "inside\n");
+    await writeFile(join(outside, "outside.txt"), "outside\n");
+    await symlink(join(outside, "outside.txt"), join(root, "public/link.txt"));
+
+    const provider = new FsContentProvider({ root });
+    const config = createConfig(root);
+    await expect(provider.loadAsset({ config, relativePath: "inside.txt" })).resolves.toMatchObject({
+      relativePath: "inside.txt",
+    });
+    for (const relativePath of ["../outside.txt", "..\\outside.txt", "/tmp/outside.txt", "C:\\outside.txt", "link.txt"]) {
+      await expect(provider.loadAsset({ config, relativePath })).rejects.toMatchObject({
+        code: "DOCS_ENTRY_INVALID",
+      });
+    }
   });
 
   it("loads configured dated collections from their own directories", async () => {

@@ -1,0 +1,19 @@
+{
+  "name": "@mailfn/cloudflare",
+  "version": "0.1.0",
+  "description": "Cloudflare Email Workers, D1, R2, Queues, HTTP, and domain adapter for MailFn",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }, "./migrations": { "types": "./dist/migrations.d.ts", "default": "./dist/migrations.js" } },
+  "files": ["dist", "migrations", "wrangler.example.jsonc", "README.md"],
+  "scripts": { "build": "tsc", "test": "npm run test:unit && npm run test:workerd", "test:unit": "vitest run", "test:workerd": "vitest run --config vitest.workerd.config.ts", "typecheck": "tsc --noEmit", "lint": "tsc --noEmit", "clean": "rm -rf dist" },
+  "keywords": ["mailfn", "cloudflare", "email-workers", "d1", "r2", "queues"],
+  "author": "21n",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/21nCo/super-functions.git", "directory": "mailfn/cloudflare" },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "dependencies": { "@mailfn/core": "0.1.0", "@superfunctions/http": "0.1.3", "postal-mime": "^2.7.6" },
+  "devDependencies": { "@cloudflare/vitest-pool-workers": "0.10.4", "@cloudflare/workers-types": "^4.20250408.0", "typescript": "^5.6.0", "vitest": "3.2.4" }
+}

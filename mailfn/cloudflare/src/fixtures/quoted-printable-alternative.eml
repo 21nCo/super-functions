@@ -1,0 +1,18 @@
+From: Sender <sender@example.com>
+To: target@inbound.example.com
+Subject: =?UTF-8?Q?Ol=C3=A1_verification?=
+Message-ID: <quoted@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="alternative"
+
+--alternative
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+caf=C3=A9 code 246810
+--alternative
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<p>caf=C3=A9 code <strong>246810</strong></p>
+--alternative--

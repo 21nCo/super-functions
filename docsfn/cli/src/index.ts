@@ -114,7 +114,7 @@ function resolveOutDirectory(input: BuildCommandOptions, cwd: string): string {
 
 function createProvider(config: DocsConfig, cwd: string): FsContentProvider {
   return new FsContentProvider({
-    root: config.content.root || cwd,
+    root: cwd,
     docsDir: config.content.docsDir,
     pagesDir: config.content.pagesDir,
     blogDir: config.content.blogDir,
@@ -328,6 +328,8 @@ async function writeArtifacts(outDir: string, result: PipelineResult): Promise<v
       path.join(outDir, "search.json"),
       JSON.stringify(result.searchArtifact, null, 2)
     );
+  } else {
+    await fs.rm(path.join(outDir, "search.json"), { force: true });
   }
 }
 

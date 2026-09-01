@@ -1,0 +1,1 @@
+export { diagramExtension } from "./index";

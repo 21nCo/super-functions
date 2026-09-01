@@ -1,0 +1,1 @@
+export { gfmExtension } from "./index";

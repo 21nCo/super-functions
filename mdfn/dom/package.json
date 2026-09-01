@@ -1,0 +1,39 @@
+{
+  "name": "@mdfn/dom",
+  "version": "0.1.0",
+  "description": "Vanilla DOM visual editing, selection, history, clipboard, composition, drag-drop, and node views for mdfn",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.cjs" } },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap --clean",
+    "test": "vitest run --config ../vitest.config.ts --root .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@mdfn/core": "0.1.0",
+    "@mdfn/markdown": "0.1.0",
+    "prosemirror-commands": "^1.7.2",
+    "prosemirror-dropcursor": "^1.8.3",
+    "prosemirror-gapcursor": "^1.4.1",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-model": "^1.25.11",
+    "prosemirror-schema-list": "^1.5.1",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-tables": "^1.8.5",
+    "prosemirror-view": "^1.42.2"
+  },
+  "devDependencies": { "@mdfn/extensions": "0.1.0", "jsdom": "^26.0.0", "tsup": "^8.0.0", "typescript": "^5.3.0", "vitest": "3.2.4" },
+  "files": ["dist", "README.md"],
+  "license": "MIT",
+  "engines": { "node": ">=20 <25" },
+  "repository": { "type": "git", "url": "git+https://github.com/21nCo/super-functions.git", "directory": "mdfn/dom" },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "mdfn": { "status": "stable-candidate", "layer": "browser", "schemaVersion": 1, "kernel": "prosemirror" }
+}

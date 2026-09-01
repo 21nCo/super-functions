@@ -1,5 +1,5 @@
 {
-  "name": "devfn",
+  "name": "@devfn/cli",
   "version": "0.1.0",
   "description": "Portable local development environments and worktree-aware port orchestration",
   "type": "module",

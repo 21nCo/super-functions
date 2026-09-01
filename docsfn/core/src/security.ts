@@ -95,7 +95,8 @@ function isMarkdownContentEntry(entry: DocsSourceEntry): boolean {
   return (
     entry.collection === "docs" ||
     entry.collection === "pages" ||
-    entry.collection === "blog"
+    entry.collection === "blog" ||
+    entry.collection.startsWith("collection:")
   );
 }
 

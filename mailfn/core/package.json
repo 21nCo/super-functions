@@ -1,0 +1,40 @@
+{
+  "name": "@mailfn/core",
+  "version": "0.1.0",
+  "description": "Provider-neutral programmable mailbox domain for MailFn",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["mailfn", "email", "inbox", "testing", "agents"],
+  "author": "21n",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "mailfn/core"
+  },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "dependencies": {
+    "sanitize-html": "2.17.0"
+  },
+  "devDependencies": {
+    "@types/sanitize-html": "^2.16.1",
+    "typescript": "^5.6.0",
+    "vitest": "3.2.4"
+  }
+}

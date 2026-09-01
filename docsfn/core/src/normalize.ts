@@ -1,4 +1,4 @@
-import { extname } from "node:path";
+import { dirname, extname } from "node:path";
 import { createDiagnostic, createDocsError } from "./diagnostics";
 import { extractHeadings } from "./markdown";
 import {
@@ -187,13 +187,8 @@ function parseMetaPageRule(value: unknown): MetaPageRule {
 
 function parseMetaDocument(entry: DocsSourceEntry): MetaDocument {
   const raw = entry.body ?? "";
-  const source = normalizeSlug(stripSourceExtension(entry.relativePath));
-  const directory =
-    source === "meta"
-      ? ""
-      : source.endsWith("/meta")
-        ? source.slice(0, -"/meta".length)
-        : source;
+  const normalizedDirectory = normalizeSlug(dirname(entry.relativePath));
+  const directory = normalizedDirectory === "." ? "" : normalizedDirectory;
   let parsed: Record<string, unknown>;
 
   try {
@@ -257,10 +252,8 @@ export function normalizeSourceEntries(
 
   for (const entry of input.entries) {
     if (entry.collection === "docs" && entry.entryType === "control") {
-      if (normalizeSlug(entry.relativePath).endsWith("/meta.json") || normalizeSlug(entry.relativePath) === "meta.json") {
-        const parsedMeta = parseMetaDocument(entry);
-        metaByDirectory.set(parsedMeta.directory, parsedMeta);
-      }
+      const parsedMeta = parseMetaDocument(entry);
+      metaByDirectory.set(parsedMeta.directory, parsedMeta);
       continue;
     }
 

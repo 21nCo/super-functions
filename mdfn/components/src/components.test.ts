@@ -1,0 +1,159 @@
+import { describe, expect, it } from "vitest";
+import { createEditor, Transaction } from "@mdfn/core";
+import { createMarkdownProjector } from "@mdfn/markdown";
+import { captureMarkdownInsertion, createAuthoringModel, createToolbarModel, filterSlashCommands, insertMarkdownAtSelection, insertUploadedMarkdown, runToolbarAction } from "./index";
+
+describe("toolbar model", () => {
+  it("reports actual history availability", () => {
+    const controller = createEditor({ markdown: "before", projector: createMarkdownProjector() });
+    expect(createToolbarModel(controller).groups[0]?.actions[0]?.disabled).toBe(true);
+  });
+
+  it("routes formatting and history actions to an active surface", () => {
+    const controller = createEditor({ markdown: "before", projector: createMarkdownProjector() });
+    const calls: string[] = [];
+    const target = { can: () => true, run: (command: string) => { calls.push(command); return true; } };
+    const model = createToolbarModel(controller, undefined, undefined, target);
+    const bold = model.groups.flatMap((group) => group.actions).find((action) => action.id === "bold")!;
+    const undo = model.groups.flatMap((group) => group.actions).find((action) => action.id === "undo")!;
+    expect(bold.disabled).toBe(false);
+    expect(runToolbarAction(controller, bold, target)).toBe(true);
+    expect(runToolbarAction(controller, undo, target)).toBe(true);
+    expect(calls).toEqual(["bold", "undo"]);
+  });
+
+  it("projects every authoring chrome surface from canonical state", () => {
+    const controller = createEditor({ markdown: "# Outline\n", projector: createMarkdownProjector() });
+    const model = createAuthoringModel(controller, { slashQuery: "table", compact: true });
+    expect(model.outline).toEqual([expect.objectContaining({ level: 1, text: "Outline" })]);
+    expect(model.slashCommands.map((entry) => entry.id)).toEqual(["table"]);
+    expect(model.compact).toBe(true);
+    expect(filterSlashCommands("upload")[0]?.kind).toBe("file");
+  });
+
+  it("shows contextual controls only for the matching canonical selection", () => {
+    const range = createEditor({ markdown: "text", projector: createMarkdownProjector(), selection: { kind: "text", anchor: 0, head: 4 } });
+    expect(createAuthoringModel(range)).toMatchObject({ bubbleVisible: true, floatingVisible: false, slashOpen: false });
+    const caret = createEditor({ markdown: "/tab", projector: createMarkdownProjector(), selection: { kind: "text", anchor: 4, head: 4 } });
+    const model = createAuthoringModel(caret);
+    expect(model).toMatchObject({ bubbleVisible: false, floatingVisible: true, slashOpen: true });
+    expect(model.slashCommands.map((entry) => entry.id)).toEqual(["table"]);
+  });
+
+  it("inserts Markdown at the canonical selection when no visual surface accepts it", () => {
+    const controller = createEditor({
+      markdown: "before after",
+      projector: createMarkdownProjector(),
+      selection: { kind: "text", anchor: 7, head: 12 },
+    });
+    insertMarkdownAtSelection(controller, { insertMarkdown: () => false }, "asset");
+    expect(controller.getState()).toMatchObject({
+      markdown: "before asset",
+      selection: { kind: "text", anchor: 12, head: 12 },
+    });
+  });
+
+  it("keeps asynchronous Markdown insertion anchored through intervening edits", () => {
+    const controller = createEditor({
+      markdown: "before after",
+      projector: createMarkdownProjector(),
+      selection: { kind: "text", anchor: 7, head: 12 },
+    });
+    const insertion = captureMarkdownInsertion(controller);
+    controller.dispatch(
+      new Transaction()
+        .replaceSource(0, 0, "prefix ")
+        .setSelection({ kind: "text", anchor: 0, head: 0 }),
+    );
+    insertion.insert("asset");
+    expect(controller.getState()).toMatchObject({
+      markdown: "prefix before asset",
+      selection: { kind: "text", anchor: 19, head: 19 },
+    });
+  });
+
+  it("cancels a pending insertion when its component lifecycle ends", () => {
+    const controller = createEditor({
+      markdown: "before after",
+      projector: createMarkdownProjector(),
+      selection: { kind: "text", anchor: 7, head: 12 },
+    });
+    const lifecycle = new AbortController();
+    const insertion = captureMarkdownInsertion(controller, lifecycle.signal);
+    lifecycle.abort();
+    insertion.insert("asset");
+    expect(controller.getState().markdown).toBe("before after");
+  });
+
+  it("compensates an uploaded asset when its captured insertion was cancelled", async () => {
+    const controller = createEditor({ markdown: "before", projector: createMarkdownProjector() });
+    const insertion = captureMarkdownInsertion(controller);
+    const causes: unknown[] = [];
+    insertion.cancel();
+    await expect(insertUploadedMarkdown(insertion, Promise.resolve({
+      markdown: "asset",
+      rollback: (cause) => { causes.push(cause); },
+    }))).rejects.toThrow("MDFN_MARKDOWN_INSERTION_CANCELLED");
+    expect(causes).toHaveLength(1);
+    expect(controller.getState().markdown).toBe("before");
+  });
+
+  it("keeps pending insertion anchors stable across history restoration", () => {
+    const controller = createEditor({
+      markdown: "before after",
+      projector: createMarkdownProjector(),
+      selection: { kind: "text", anchor: 7, head: 12 },
+    });
+    controller.dispatch(new Transaction().replaceSource(12, 12, "!"));
+    const insertion = captureMarkdownInsertion(controller);
+    expect(controller.undo()).toBe(true);
+    insertion.insert("asset");
+    expect(controller.getState().markdown).toBe("before asset");
+  });
+
+  it("preserves pending interior selections across disjoint history changes", () => {
+    const controller = createEditor({
+      markdown: "A middle Z",
+      projector: createMarkdownProjector(),
+      selection: { kind: "text", anchor: 2, head: 8 },
+    });
+    controller.dispatch(new Transaction().replaceSource(0, 1, "B").replaceSource(9, 10, "Y"));
+    const insertion = captureMarkdownInsertion(controller);
+    expect(controller.undo()).toBe(true);
+    insertion.insert("asset");
+    expect(controller.getState().markdown).toBe("A asset Z");
+  });
+
+  it("preserves pending interior selections across large disjoint history changes", () => {
+    const middle = "x".repeat(600);
+    const controller = createEditor({
+      markdown: `A${middle}Z`,
+      projector: createMarkdownProjector(),
+      selection: { kind: "text", anchor: 301, head: 302 },
+    });
+    controller.dispatch(new Transaction()
+      .replaceSource(0, 1, "B")
+      .replaceSource(middle.length + 1, middle.length + 2, "Y"));
+    const insertion = captureMarkdownInsertion(controller);
+
+    expect(controller.undo()).toBe(true);
+    insertion.insert("asset");
+
+    expect(controller.getState().markdown).toBe(`A${middle.slice(0, 300)}asset${middle.slice(301)}Z`);
+  });
+
+  it("cancels a pending insertion when history replaces the whole document", () => {
+    const controller = createEditor({
+      markdown: "before",
+      projector: createMarkdownProjector(),
+      selection: { kind: "text", anchor: 3, head: 3 },
+    });
+    controller.dispatch(new Transaction().replaceSource(0, 6, "after"));
+    const insertion = captureMarkdownInsertion(controller);
+
+    expect(controller.undo()).toBe(true);
+    insertion.insert("asset");
+
+    expect(controller.getState().markdown).toBe("before");
+  });
+});

@@ -13,7 +13,7 @@ const scriptPath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(scriptPath);
 const docsfnRoot = resolve(scriptDir, "..");
 const repoRoot = resolve(docsfnRoot, "..");
-const cliBin = resolve(docsfnRoot, "cli", "bin", "docsfn.js");
+const cliBin = resolve(docsfnRoot, "cli", "dist", "index.js");
 const gateTempRoot = resolve(docsfnRoot, ".tmp", "release-gate");
 const gateSummaryPath = resolve(gateTempRoot, "summary.json");
 const gateSummarySchemaPath = resolve(docsfnRoot, "scripts", "release-gate-summary.schema.json");
@@ -33,6 +33,8 @@ const sharedSearchRuntimeBuildMatrix = [
 ];
 
 const docsfnPackageBuildMatrix = [
+  { name: "@mcpfn/core", prefix: resolve(repoRoot, "mcpfn", "core") },
+  { name: "@superfunctions/admin", prefix: resolve(repoRoot, "packages", "admin") },
   { name: "@docsfn/core", prefix: resolve(docsfnRoot, "core") },
   { name: "@docsfn/provider-fs", prefix: resolve(docsfnRoot, "provider-fs") },
   { name: "@docsfn/react", prefix: resolve(docsfnRoot, "react") },
@@ -40,6 +42,7 @@ const docsfnPackageBuildMatrix = [
   { name: "@docsfn/next", prefix: resolve(docsfnRoot, "next") },
   { name: "@docsfn/sveltekit", prefix: resolve(docsfnRoot, "sveltekit") },
   { name: "@docsfn/cli", prefix: resolve(docsfnRoot, "cli") },
+  { name: "@docsfn/admin", prefix: resolve(docsfnRoot, "admin") },
 ];
 
 const stepOrder = [
@@ -98,6 +101,29 @@ async function run(command, args, options = {}) {
       rejectPromise(
         new Error(`${command} ${args.join(" ")} failed with exit code ${String(code)}`)
       );
+    });
+  });
+}
+
+async function runCapture(command, args, options = {}) {
+  const cwd = options.cwd ?? repoRoot;
+  return await new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: options.env ?? process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += String(chunk); });
+    child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+    child.on("error", rejectPromise);
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolvePromise({ stdout: stdout.trim(), stderr: stderr.trim() });
+        return;
+      }
+      rejectPromise(new Error(`${command} ${args.join(" ")} failed with exit code ${String(code)}: ${stderr.trim()}`));
     });
   });
 }
@@ -251,10 +277,35 @@ async function verifyPackageMetadataAndArtifacts() {
       }
     }
 
+    const binTargets = Object.values(
+      typeof packageJson.bin === "string"
+        ? { [packageJson.name]: packageJson.bin }
+        : packageJson.bin ?? {}
+    ).filter((value) => typeof value === "string");
+    for (const target of binTargets) {
+      const outputPath = normalizeFieldPath(item.prefix, target);
+      assert(await fileExists(outputPath), `${item.name}: missing bin target at ${outputPath}`);
+    }
+
+    const packOutput = await runCapture(
+      "npm",
+      ["pack", "--dry-run", "--json", "--ignore-scripts"],
+      { cwd: item.prefix }
+    );
+    const packResult = JSON.parse(packOutput.stdout)[0];
+    const packedFiles = new Set(
+      (packResult?.files ?? []).map((file) => String(file.path).replace(/^\.\//, ""))
+    );
+    for (const target of [...exportTargets, ...binTargets]) {
+      const normalizedTarget = String(target).replace(/^\.\//, "");
+      assert(packedFiles.has(normalizedTarget), `${item.name}: ${target} is missing from npm pack output`);
+    }
+
     verifiedPackages.push({
       name: item.name,
       path: toRepoRelativePath(packageJsonPath),
       verifiedExports: exportTargets.sort((left, right) => left.localeCompare(right)),
+      verifiedBins: binTargets.sort((left, right) => left.localeCompare(right)),
     });
   }
 
@@ -348,6 +399,11 @@ async function runTestMatrix() {
       id: "provider-fs",
       command: "npm",
       args: ["--prefix", resolve(docsfnRoot, "provider-fs"), "run", "test", "--", "--run"],
+    },
+    {
+      id: "admin",
+      command: "npm",
+      args: ["--prefix", resolve(docsfnRoot, "admin"), "run", "test", "--", "--run"],
     },
     {
       id: "react-parity",

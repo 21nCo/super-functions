@@ -237,6 +237,65 @@ describe("OpenAPI normalization", () => {
     ).toThrowError(/DOCS_OPENAPI_PARSE_FAILED|duplicate operationId/);
   });
 
+  it("rejects collisions between generated operation routes", () => {
+    expect(() =>
+      createReference({
+        sourceId: "api:routes.json",
+        sourcePath: "routes.json",
+        body: JSON.stringify({
+          openapi: "3.0.3",
+          info: { title: "Routes", version: "1.0.0" },
+          paths: {
+            "/user-id": { get: { responses: { "200": { description: "ok" } } } },
+            "/user/{id}": { get: { responses: { "200": { description: "ok" } } } },
+          },
+        }),
+      })
+    ).toThrowError(/duplicate operation route/);
+  });
+
+  it("rejects case-folded explicit operation route collisions", () => {
+    expect(() =>
+      createReference({
+        sourceId: "api:operations.json",
+        sourcePath: "operations.json",
+        body: JSON.stringify({
+          openapi: "3.0.3",
+          info: { title: "Operations", version: "1.0.0" },
+          paths: {
+            "/one": { get: { operationId: "Get-User", responses: { "200": { description: "ok" } } } },
+            "/two": { get: { operationId: "get-user", responses: { "200": { description: "ok" } } } },
+          },
+        }),
+      })
+    ).toThrowError(/duplicate operation route/);
+  });
+
+  it("rejects generated tag and schema route collisions", () => {
+    for (const body of [
+      {
+        openapi: "3.0.3",
+        info: { title: "Tags", version: "1.0.0" },
+        tags: [{ name: "User API" }, { name: "user-api" }],
+        paths: {},
+      },
+      {
+        openapi: "3.0.3",
+        info: { title: "Schemas", version: "1.0.0" },
+        paths: {},
+        components: { schemas: { "User ID": {}, "user-id": {} } },
+      },
+    ]) {
+      expect(() =>
+        createReference({
+          sourceId: "api:collision.json",
+          sourcePath: "collision.json",
+          body: JSON.stringify(body),
+        })
+      ).toThrowError(/duplicate (tag|schema) route/);
+    }
+  });
+
   it("throws DOCS_OPENAPI_PARSE_FAILED for malformed path operations", () => {
     expect(() =>
       createReference({

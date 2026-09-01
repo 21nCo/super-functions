@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -594,6 +595,55 @@ describe("McpFnServer", () => {
     });
   });
 
+  it("configures every isolated stateless request server before connecting it", async () => {
+    const registry = new McpFnRegistry().register({
+      name: "visible_without_configuration",
+      description: "Prove request-server configuration can wrap live protocol handlers.",
+      inputSchema: { type: "object" },
+      handler: async () => structuredResult({ ok: true }),
+    });
+    const server = createMcpFnServer({
+      info: { name: "configured-stateless", version: "1.0.0" },
+      registry,
+    });
+    const configuredServers: Array<typeof server> = [];
+    const handler = await server.createWebStandardHandler({
+      enableJsonResponse: true,
+      configureRequestServer: (requestServer) => {
+        configuredServers.push(requestServer);
+        requestServer.protocol.setRequestHandler(ListToolsRequestSchema, async () => ({
+          tools: [],
+        }));
+      },
+    });
+    closeables.push(server);
+    const post = (body: unknown) => handler(new Request("https://example.com/mcp", {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }));
+
+    const initialized = await post({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-11-25",
+        capabilities: {},
+        clientInfo: { name: "test", version: "1.0.0" },
+      },
+    });
+    expect(initialized.status).toBe(200);
+    const listed = await post({ jsonrpc: "2.0", id: 2, method: "tools/list" });
+    await expect(listed.json()).resolves.toMatchObject({ result: { tools: [] } });
+    expect(configuredServers).toHaveLength(2);
+    expect(new Set(configuredServers).size).toBe(2);
+    expect(configuredServers).not.toContain(server);
+  });
+
   it("routes sessionful HTTP clients to isolated transports", async () => {
     const registry = new McpFnRegistry().register({
       name: "echo",
@@ -610,9 +660,33 @@ describe("McpFnServer", () => {
       registry,
     });
     let nextSession = 0;
+    let signalCloseStarted: () => void;
+    let finishClose: () => void;
+    const closeStarted = new Promise<void>((resolve) => {
+      signalCloseStarted = resolve;
+    });
+    const closeCanFinish = new Promise<void>((resolve) => {
+      finishClose = resolve;
+    });
+    const configuredServers: Array<typeof server> = [];
+    const closeCalls = new Map<typeof server, number>();
     const handler = await server.createWebStandardHandler({
       enableJsonResponse: true,
       sessionIdGenerator: () => `session-${++nextSession}`,
+      onsessionclosed: async (id) => {
+        if (id === "session-1") {
+          signalCloseStarted();
+          await closeCanFinish;
+        }
+      },
+      configureRequestServer: (requestServer) => {
+        configuredServers.push(requestServer);
+        const close = requestServer.close.bind(requestServer);
+        requestServer.close = async () => {
+          closeCalls.set(requestServer, (closeCalls.get(requestServer) ?? 0) + 1);
+          await close();
+        };
+      },
     });
     closeables.push(server);
     const post = (body: unknown, sessionId?: string) => handler(new Request(
@@ -638,12 +712,25 @@ describe("McpFnServer", () => {
       },
     });
 
+    const rejected = await post({
+      jsonrpc: "2.0",
+      id: 0,
+      method: "tools/list",
+    });
+    expect(rejected.status).toBe(400);
+    await rejected.text();
+    expect(configuredServers).toHaveLength(1);
+    expect(configuredServers).not.toContain(server);
+    expect(closeCalls.get(configuredServers[0]!)).toBe(1);
+
     const first = await initialize(1);
     const second = await initialize(2);
     const firstSession = first.headers.get("mcp-session-id");
     const secondSession = second.headers.get("mcp-session-id");
     expect(firstSession).toBe("session-1");
     expect(secondSession).toBe("session-2");
+    expect(configuredServers).toHaveLength(3);
+    expect(configuredServers).not.toContain(server);
 
     for (const [id, sessionId] of [[3, firstSession], [4, secondSession]] as const) {
       const response = await post({
@@ -656,5 +743,30 @@ describe("McpFnServer", () => {
         result: { structuredContent: { value: sessionId } },
       });
     }
+    expect(configuredServers).toHaveLength(3);
+
+    const remove = (sessionId: string) => handler(new Request("https://example.com/mcp", {
+        method: "DELETE",
+        headers: {
+          accept: "application/json, text/event-stream",
+          "mcp-protocol-version": "2025-11-25",
+          "mcp-session-id": sessionId,
+        },
+      }));
+    const firstRemoval = remove(firstSession!);
+    await closeStarted;
+    const whileClosing = await post({
+      jsonrpc: "2.0",
+      id: 5,
+      method: "tools/call",
+      params: { name: "echo", arguments: { value: "too-late" } },
+    }, firstSession!);
+    expect(whileClosing.status).toBe(404);
+    finishClose();
+    expect((await firstRemoval).status).toBe(200);
+    expect(closeCalls.get(configuredServers[1]!)).toBe(1);
+
+    expect((await remove(secondSession!)).status).toBe(200);
+    expect(closeCalls.get(configuredServers[2]!)).toBe(1);
   });
 });

@@ -75,6 +75,20 @@ export interface McpFnServerOptions<TContext> extends CreateManifestOptions {
   enforceStrictCapabilities?: boolean;
 }
 
+export type McpFnWebStandardHandlerOptions<TContext> =
+  ConstructorParameters<typeof WebStandardStreamableHTTPServerTransport>[0] & {
+    /**
+     * Configure the live isolated server before its transport connects. This
+     * runs once per stateless request, or once per session initialization
+     * attempt before the SDK validates the request. Rejected attempts may
+     * therefore invoke it without retaining a session. This is the correct
+     * place to attach protocol instrumentation.
+     */
+    configureRequestServer?: (
+      server: McpFnServer<TContext>,
+    ) => void | Promise<void>;
+  };
+
 function mergeCapabilities(
   base: ServerCapabilities,
   extra: ServerCapabilities | undefined,
@@ -394,12 +408,13 @@ export class McpFnServer<TContext = undefined> {
   }
 
   async createWebStandardHandler(
-    options: ConstructorParameters<typeof WebStandardStreamableHTTPServerTransport>[0] = {},
+    options: McpFnWebStandardHandlerOptions<TContext> = {},
   ): Promise<(request: Request, options?: HandleRequestOptions) => Promise<Response>> {
-    if (!options.sessionIdGenerator) {
+    const { configureRequestServer, ...transportOptions } = options;
+    if (!transportOptions.sessionIdGenerator) {
       return async (request: Request, handleOptions?: HandleRequestOptions) => {
         const requestServer = new McpFnServer(this.serverOptions);
-        const transport = new WebStandardStreamableHTTPServerTransport(options);
+        const transport = new WebStandardStreamableHTTPServerTransport(transportOptions);
         this.requestServers.add(requestServer);
         let released = false;
         const release = async () => {
@@ -410,6 +425,7 @@ export class McpFnServer<TContext = undefined> {
         };
 
         try {
+          await configureRequestServer?.(requestServer);
           await requestServer.connect(transport);
           const response = await transport.handleRequest(request, handleOptions);
           return releaseAfterResponse(response, release);
@@ -453,21 +469,25 @@ export class McpFnServer<TContext = undefined> {
         await requestServer.close();
       };
       transport = new WebStandardStreamableHTTPServerTransport({
-        ...options,
+        ...transportOptions,
         onsessioninitialized: async (id) => {
-          await options.onsessioninitialized?.(id);
+          await transportOptions.onsessioninitialized?.(id);
           initializedSessionId = id;
           sessions.set(id, { server: requestServer, transport });
         },
         onsessionclosed: async (id) => {
           sessions.delete(id);
-          this.requestServers.delete(requestServer);
-          await options.onsessionclosed?.(id);
+          try {
+            await transportOptions.onsessionclosed?.(id);
+          } finally {
+            await release();
+          }
         },
       });
       this.requestServers.add(requestServer);
 
       try {
+        await configureRequestServer?.(requestServer);
         await requestServer.connect(transport);
         const response = await transport.handleRequest(request, handleOptions);
         if (initializedSessionId) return response;

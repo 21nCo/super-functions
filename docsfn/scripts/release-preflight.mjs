@@ -46,8 +46,8 @@ const requiredPaths = [
   },
   {
     id: "docsfn-cli-bin",
-    label: "docsfn CLI entrypoint",
-    path: resolve(docsfnRoot, "cli", "bin", "docsfn.js"),
+    label: "docsfn CLI source entrypoint",
+    path: resolve(docsfnRoot, "cli", "src", "index.ts"),
   },
   {
     id: "canonical-fixture-datafn",

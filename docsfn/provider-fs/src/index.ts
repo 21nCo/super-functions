@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { basename, extname, resolve } from "node:path";
+import { basename, extname, isAbsolute, relative, resolve, sep } from "node:path";
 import fg from "fast-glob";
 import matter from "gray-matter";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import {
   assertValidSourceEntries,
   createDefaultDocsConfig,
@@ -27,7 +27,6 @@ import {
 } from "@docsfn/core";
 import { buildFsWatchMetadata, createNoopWatchSubscription } from "./watch";
 
-const CONTROL_FILE_NAME = "meta.json";
 const MARKDOWN_EXTENSIONS = new Set([".md", ".mdx"]);
 const API_EXTENSIONS = new Set([".json", ".yaml", ".yml"]);
 const DEFAULT_COLLECTIONS: DocsCollection[] = [
@@ -63,7 +62,7 @@ export class FsContentProvider implements DocsContentProvider {
   }
 
   async listEntries(input: DocsProviderListEntriesInput): Promise<DocsSourceEntry[]> {
-    const root = resolve(input.config.content.root || this.options.root);
+    const root = this.resolveRoot(input.config);
     await this.ensureDirectoryExists(root, "root", root, true);
 
     const resolutions = await this.resolveCollectionDirectories({
@@ -84,7 +83,8 @@ export class FsContentProvider implements DocsContentProvider {
     for (const resolution of resolutions) {
       const entries = await this.collectCollectionEntries(
         resolution.collection,
-        resolution.absolutePath
+        resolution.absolutePath,
+        input.config.content.metaFileName ?? "meta.json"
       );
       for (const entry of entries) {
         entriesByPath.set(`${entry.collection}:${entry.relativePath}`, entry);
@@ -103,7 +103,7 @@ export class FsContentProvider implements DocsContentProvider {
     config: DocsConfig;
     relativePath: string;
   }): Promise<DocsProviderLoadAssetResult> {
-    const root = resolve(input.config.content.root || this.options.root);
+    const root = this.resolveRoot(input.config);
     const resolution = (
       await this.resolveCollectionDirectoryCandidates({
         collection: "assets",
@@ -119,8 +119,33 @@ export class FsContentProvider implements DocsContentProvider {
       );
     }
 
-    const relativePath = normalizeProviderPath(input.relativePath);
-    const absolutePath = resolve(resolution.absolutePath, relativePath);
+    const requestedPath = input.relativePath.replaceAll("\\", "/");
+    if (
+      requestedPath.length === 0 ||
+      requestedPath.startsWith("/") ||
+      /^[a-zA-Z]:\//.test(requestedPath) ||
+      requestedPath.split("/").some((segment) => segment === "..")
+    ) {
+      throw this.createEntryInvalidError(
+        `asset path ${input.relativePath} must stay within the configured assets directory`,
+        resolution.absolutePath
+      );
+    }
+
+    const relativePath = normalizeProviderPath(requestedPath);
+    const assetsRoot = await realpath(resolution.absolutePath);
+    const absolutePath = await realpath(resolve(assetsRoot, relativePath));
+    const relativeToRoot = relative(assetsRoot, absolutePath);
+    if (
+      relativeToRoot === ".." ||
+      relativeToRoot.startsWith(`..${sep}`) ||
+      isAbsolute(relativeToRoot)
+    ) {
+      throw this.createEntryInvalidError(
+        `asset path ${input.relativePath} must stay within the configured assets directory`,
+        absolutePath
+      );
+    }
     const fileBuffer = await readFile(absolutePath);
     return {
       relativePath,
@@ -333,7 +358,8 @@ export class FsContentProvider implements DocsContentProvider {
 
   private async collectCollectionEntries(
     collection: DocsCollection,
-    absoluteDirectory: string
+    absoluteDirectory: string,
+    metaFileName: string
   ): Promise<DocsSourceEntry[]> {
     const filePaths = await fg("**/*", {
       cwd: absoluteDirectory,
@@ -360,7 +386,7 @@ export class FsContentProvider implements DocsContentProvider {
       const extension = extname(relativePath).toLowerCase();
       const fileName = basename(relativePath).toLowerCase();
 
-      if (fileName === CONTROL_FILE_NAME) {
+      if (fileName === metaFileName.toLowerCase()) {
         entries.push(await this.createControlEntry(collection, relativePath, absolutePath));
         continue;
       }
@@ -513,6 +539,16 @@ export class FsContentProvider implements DocsContentProvider {
           : segment
       )
       .join(" ");
+  }
+
+  private resolveRoot(config: DocsConfig): string {
+    const configuredRoot = config.content.root;
+    if (!configuredRoot) {
+      return resolve(this.options.root);
+    }
+    return isAbsolute(configuredRoot)
+      ? resolve(configuredRoot)
+      : resolve(this.options.root, configuredRoot);
   }
 
   private createEntryInvalidError(message: string, absolutePath: string) {

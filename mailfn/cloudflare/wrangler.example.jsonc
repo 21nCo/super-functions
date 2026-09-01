@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mailfn",
+  "main": "src/entrypoint.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "MAILFN_DOMAIN": "inbound.example.com",
+    "MAILFN_PUBLIC_PLATFORM_ENABLED": "false",
+    "MAILFN_PRODUCTION_SECURITY_APPROVED": "false",
+    "MAILFN_BILLING_ENABLED": "false",
+    "MAILFN_SUPPORT_ENABLED": "false",
+    "MAILFN_PROTOCOL_SERVICES_ENABLED": "false",
+    "MAILFN_ALLOWED_DATA_REGIONS": "global",
+    "MAILFN_STORAGE_REGION": "global"
+  },
+  "d1_databases": [
+    { "binding": "MAILFN_DB", "database_name": "mailfn", "database_id": "replace-me", "migrations_dir": "migrations" }
+  ],
+  "r2_buckets": [
+    { "binding": "MAILFN_OBJECTS", "bucket_name": "mailfn-objects" }
+  ],
+  "queues": {
+    "producers": [
+      { "binding": "MAILFN_PARSE_QUEUE", "queue": "mailfn-parse" },
+      { "binding": "MAILFN_WEBHOOK_QUEUE", "queue": "mailfn-webhook" }
+    ],
+    "consumers": [
+      { "queue": "mailfn-parse", "max_batch_size": 10, "max_retries": 5, "dead_letter_queue": "mailfn-parse-dlq" },
+      { "queue": "mailfn-webhook", "max_batch_size": 10, "max_retries": 5, "dead_letter_queue": "mailfn-webhook-dlq" }
+    ]
+  },
+  "triggers": { "crons": ["*/15 * * * *"] },
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}

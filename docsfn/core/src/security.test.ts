@@ -52,6 +52,21 @@ describe("security", () => {
     ).not.toThrow();
   });
 
+  it("blocks unsafe html in named dated collections", () => {
+    expect(() =>
+      assertSourceEntriesTrusted({
+        entries: [
+          createEntry({
+            id: "collection:changelog:release.mdx",
+            collection: "collection:changelog",
+            relativePath: "release.mdx",
+            body: "# Release\n\n<script>alert(1)</script>",
+          }),
+        ],
+      })
+    ).toThrowError(/DOCS_HTML_UNSAFE|unsafe HTML/);
+  });
+
   it("ignores unsafe-looking html when it appears inside fenced code samples", () => {
     expect(() =>
       assertSourceEntriesTrusted({

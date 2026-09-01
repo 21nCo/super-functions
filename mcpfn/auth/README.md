@@ -43,6 +43,25 @@ Pass it to `streamableHttpTarget`. Complete interactive authorization with
 fails before token exchange. Dynamic loopback ports are accepted only when the
 registered URI omits the port. Other redirect URIs require exact equality.
 
+Native private-use redirects use RFC 8252's reverse-domain scheme policy by
+default, accepting values such as `com.example.app:/oauth/callback`. Hosts can
+set `redirectPolicy.privateUseSchemePolicy: "disabled"` to reject all native
+schemes, or opt into `"compatible"` for well-formed non-web schemes used by
+native clients and name those schemes explicitly, for example
+`compatiblePrivateUseSchemes: ["cursor"]` for
+`cursor://anysphere.cursor-mcp/oauth/callback`. Compatibility mode still rejects
+web, network, launcher, and dangerous schemes, non-loopback HTTP, credentials,
+fragments, wildcards, and malformed or opaque callbacks. Authorization always
+requires exact matching; dynamic-port matching remains restricted to loopback
+HTTP. Successful dynamic
+registrations expose compatibility scheme names and counts through the hosted
+authorization diagnostics hook so hosts can audit use without recording callback
+queries.
+
+The deprecated `allowPrivateUseSchemes` boolean remains accepted for 0.0.3
+callers: `false` maps to `disabled` and `true` maps to `rfc8252`. When neither
+field is provided, 0.0.4 defaults to `rfc8252`.
+
 ## Hosted compatibility
 
 `createMcpAuthorizationCompatibilityHandler()` publishes authorization-server

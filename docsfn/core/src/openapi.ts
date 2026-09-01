@@ -365,6 +365,25 @@ function buildApiRootPath(basePath: string, sourcePath: string): string {
   return `${basePath}/api/${logicalPath}`;
 }
 
+function assertUniqueGeneratedRoutes(
+  entries: Array<{ routePath: string }>,
+  kind: string,
+  input: NormalizeOpenApiReferenceInput
+): void {
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    if (seen.has(entry.routePath)) {
+      throw createOpenApiParseError({
+        message: `OpenAPI source ${input.sourcePath} generates duplicate ${kind} route ${entry.routePath}`,
+        sourceId: input.sourceId,
+        sourcePath: input.sourcePath,
+        details: { routePath: entry.routePath, routeKind: kind },
+      });
+    }
+    seen.add(entry.routePath);
+  }
+}
+
 function assertOpenApi3x(parsed: Record<string, unknown>, input: NormalizeOpenApiReferenceInput): string {
   const version =
     typeof parsed.openapi === "string" && parsed.openapi.length > 0
@@ -570,6 +589,7 @@ export function normalizeOpenApiReference(
   }
 
   const sortedOperations = [...operations].sort(operationSort);
+  assertUniqueGeneratedRoutes(sortedOperations, "operation", input);
 
   const tags: CanonicalOpenApiTagGroup[] = [...tagMap.entries()]
     .sort(([left], [right]) => compareStrings(left, right))
@@ -580,6 +600,7 @@ export function normalizeOpenApiReference(
       routePath: `${apiRootPath}/tags/${normalizeRouteSlug(name)}`,
       operationIds: [...new Set(value.operationIds)].sort(compareStrings),
     }));
+  assertUniqueGeneratedRoutes(tags, "tag", input);
 
   const schemaRecord = toObject(toObject(parsed.components).schemas);
   const schemas: CanonicalOpenApiSchemaRecord[] = Object.keys(schemaRecord)
@@ -596,6 +617,7 @@ export function normalizeOpenApiReference(
         schema,
       };
     });
+  assertUniqueGeneratedRoutes(schemas, "schema", input);
 
   const routes: CanonicalOpenApiRoutes = {
     overview: apiRootPath,

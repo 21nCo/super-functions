@@ -292,6 +292,33 @@ describe("buildManifest", () => {
     ]);
   });
 
+  it("uses a configured metadata filename when normalizing navigation", async () => {
+    const provider = new InMemorySourceProvider([
+      {
+        id: createSourceEntryId("docs", "index.mdx"),
+        collection: "docs",
+        relativePath: "index.mdx",
+        entryType: "content",
+        frontmatter: { title: "Home" },
+        body: "# Home",
+      },
+      {
+        id: createSourceEntryId("docs", "_nav.json"),
+        collection: "docs",
+        relativePath: "_nav.json",
+        entryType: "control",
+        frontmatter: {},
+        body: JSON.stringify({ pages: ["index"] }),
+      },
+    ]);
+
+    const manifest = await buildManifest(
+      provider,
+      createConfig({ content: { root: "/repo/docs", metaFileName: "_nav.json" } })
+    );
+    expect(manifest.sidebars.default.items.map((item) => item.text)).toEqual(["Home"]);
+  });
+
   it("throws DOCS_ROUTE_CONFLICT for duplicate route claims", async () => {
     const provider = new InMemorySourceProvider([
       {

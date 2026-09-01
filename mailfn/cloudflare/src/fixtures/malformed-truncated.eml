@@ -1,0 +1,10 @@
+From: sender@example.com
+To: target@inbound.example.com
+Subject: Truncated multipart
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="never-closed"
+
+--never-closed
+Content-Type: text/plain; charset=utf-8
+
+still recover this body

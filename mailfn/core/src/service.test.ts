@@ -1,0 +1,3234 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import type {
+  MailFnClock,
+  MailFnDomainAdapter,
+  MailFnMimeParser,
+  MailFnQueue,
+  MailFnSendAdapter,
+  MailFnWebhookDispatcher,
+  ParseJob,
+  ParsedMessage,
+  ProjectQuota,
+  PublicPlatformPolicy,
+  RetentionPolicy,
+  WebhookDeliveryJob,
+} from './index.js';
+import {
+  MailFn,
+  MailFnError,
+  MemoryMailFnObjectStore,
+  MemoryMailFnStore,
+  noOpSecretProtector,
+} from './index.js';
+
+class MutableClock implements MailFnClock {
+  public constructor(public value = new Date('2026-08-10T00:00:00.000Z')) {}
+  now(): Date { return new Date(this.value); }
+  sleep(ms: number): Promise<void> { this.value = new Date(this.value.getTime() + ms); return Promise.resolve(); }
+  advance(ms: number): void { this.value = new Date(this.value.getTime() + ms); }
+}
+
+class JsonMimeParser implements MailFnMimeParser {
+  async parse(raw: Uint8Array): Promise<ParsedMessage> {
+    const input = JSON.parse(new TextDecoder().decode(raw)) as Partial<ParsedMessage>;
+    return {
+      from: input.from ?? [{ address: 'sender@example.com' }],
+      to: input.to ?? [{ address: 'target@inbound.example.com' }],
+      cc: input.cc ?? [], bcc: input.bcc ?? [], replyTo: input.replyTo ?? [],
+      subject: input.subject ?? 'Verification code 123456',
+      text: input.text ?? 'Your verification code is 123456',
+      html: input.html,
+      headers: input.headers ?? {},
+      internetMessageId: input.internetMessageId,
+      inReplyTo: input.inReplyTo,
+      references: input.references ?? [],
+      authenticationResults: input.authenticationResults,
+      attachments: (input.attachments ?? []).map((entry) => ({
+        ...entry,
+        content: typeof entry.content === 'string'
+          ? new TextEncoder().encode(entry.content)
+          : new Uint8Array(Object.values(entry.content as unknown as Record<string, number>)),
+      })),
+    };
+  }
+}
+
+class FailingDeleteObjectStore extends MemoryMailFnObjectStore {
+  public failDeletes = true;
+
+  override async delete(key: string): Promise<void> {
+    if (this.failDeletes) throw new Error('object store unavailable');
+    await super.delete(key);
+  }
+}
+
+class NoncriticalFailureStore extends MemoryMailFnStore {
+  override async appendEvent(): Promise<void> { throw new Error('event store unavailable'); }
+  override async appendEventWithDeliveries(): Promise<void> { throw new Error('event store unavailable'); }
+  override async appendUsage(): Promise<void> { throw new Error('usage store unavailable'); }
+}
+
+class ToggleExpiryEventStore extends MemoryMailFnStore {
+  public failExpiryEvent = false;
+
+  override async appendEventWithDeliveries(
+    ...args: Parameters<MemoryMailFnStore['appendEventWithDeliveries']>
+  ): Promise<void> {
+    if (this.failExpiryEvent && args[0].type === 'inbox.expired') throw new Error('event store unavailable');
+    await super.appendEventWithDeliveries(...args);
+  }
+}
+
+class FailingAtomicWebhookStore extends MemoryMailFnStore {
+  override async createWebhookWithQuotaAndAudit(): Promise<boolean> {
+    throw new Error('atomic webhook transaction failed');
+  }
+}
+
+class PausedInboxDeletionStore extends MemoryMailFnStore {
+  private resolveClaimed!: () => void;
+  private resumeClaim!: () => void;
+  public readonly claimed = new Promise<void>((resolve) => { this.resolveClaimed = resolve; });
+  private readonly claimResume = new Promise<void>((resolve) => { this.resumeClaim = resolve; });
+
+  public continueDeletion(): void { this.resumeClaim(); }
+
+  override async claimInboxDeletion(
+    ...args: Parameters<MemoryMailFnStore['claimInboxDeletion']>
+  ): Promise<boolean> {
+    const result = await super.claimInboxDeletion(...args);
+    this.resolveClaimed();
+    await this.claimResume;
+    return result;
+  }
+}
+
+class PausedInboxUpdateStore extends MemoryMailFnStore {
+  private resolveStarted!: () => void;
+  private resumeUpdate!: () => void;
+  public readonly started = new Promise<void>((resolve) => { this.resolveStarted = resolve; });
+  private readonly updateResume = new Promise<void>((resolve) => { this.resumeUpdate = resolve; });
+
+  public continueUpdate(): void { this.resumeUpdate(); }
+
+  override async saveInboxIfUnchanged(
+    ...args: Parameters<MemoryMailFnStore['saveInboxIfUnchanged']>
+  ): Promise<boolean> {
+    this.resolveStarted();
+    await this.updateResume;
+    return super.saveInboxIfUnchanged(...args);
+  }
+}
+
+class PausedRawDeletionStore extends MemoryMailFnStore {
+  private resolveClaimStarted!: () => void;
+  private resumeClaim!: () => void;
+  public readonly claimStarted = new Promise<void>((resolve) => { this.resolveClaimStarted = resolve; });
+  private readonly claimResume = new Promise<void>((resolve) => { this.resumeClaim = resolve; });
+  private pauseNextClaim = true;
+
+  public continueClaim(): void { this.resumeClaim(); }
+
+  override async claimMessageRawDeletion(
+    ...args: Parameters<MemoryMailFnStore['claimMessageRawDeletion']>
+  ): Promise<boolean> {
+    if (this.pauseNextClaim) {
+      this.pauseNextClaim = false;
+      this.resolveClaimStarted();
+      await this.claimResume;
+    }
+    return super.claimMessageRawDeletion(...args);
+  }
+}
+
+class FailingAttachmentStore extends MemoryMailFnStore {
+  override async saveAttachmentIfMessageParseOwned(): Promise<boolean> {
+    throw new Error('attachment metadata unavailable');
+  }
+}
+
+class FailingAtomicInboxStore extends MemoryMailFnStore {
+  public failInboxCreation = false;
+  override async createInboxWithCredential(...args: Parameters<MemoryMailFnStore['createInboxWithCredential']>): Promise<void> {
+    if (this.failInboxCreation) throw new Error('atomic inbox transaction failed');
+    await super.createInboxWithCredential(...args);
+  }
+}
+
+class FailingAtomicProjectStore extends MemoryMailFnStore {
+  public failProjectCreation = true;
+  override async createProjectWithCredential(...args: Parameters<MemoryMailFnStore['createProjectWithCredential']>): Promise<void> {
+    if (this.failProjectCreation) throw new Error('atomic project transaction failed');
+    await super.createProjectWithCredential(...args);
+  }
+}
+
+class FailingAtomicCredentialStore extends MemoryMailFnStore {
+  override async createCredentialWithAudit(): Promise<boolean> {
+    throw new Error('atomic credential transaction failed');
+  }
+}
+
+class FailingWebhookFailureEventStore extends MemoryMailFnStore {
+  override async appendEventWithDeliveries(
+    ...args: Parameters<MemoryMailFnStore['appendEventWithDeliveries']>
+  ): Promise<void> {
+    if (args[0].type === 'webhook.delivery_failed') throw new Error('failure event unavailable');
+    await super.appendEventWithDeliveries(...args);
+  }
+}
+
+class FailingActiveDomainStore extends MemoryMailFnStore {
+  override async saveDomain(domain: Parameters<MemoryMailFnStore['saveDomain']>[0]): Promise<void> {
+    if (domain.status === 'active') throw new Error('domain state unavailable');
+    await super.saveDomain(domain);
+  }
+}
+
+class FailingDisabledDomainStore extends MemoryMailFnStore {
+  override async saveDomain(domain: Parameters<MemoryMailFnStore['saveDomain']>[0]): Promise<void> {
+    if (domain.status === 'disabled') throw new Error('disabled state unavailable');
+    await super.saveDomain(domain);
+  }
+}
+
+class PausedDomainDisableStore extends MemoryMailFnStore {
+  private pauseNextDisable = true;
+  private readonly disableStartedPromise: Promise<void>;
+  private resolveDisableStarted!: () => void;
+  private readonly disableResumePromise: Promise<void>;
+  private resolveDisableResume!: () => void;
+
+  public constructor() {
+    super();
+    this.disableStartedPromise = new Promise((resolve) => { this.resolveDisableStarted = resolve; });
+    this.disableResumePromise = new Promise((resolve) => { this.resolveDisableResume = resolve; });
+  }
+
+  public disableStarted(): Promise<void> { return this.disableStartedPromise; }
+  public resumeDisable(): void { this.resolveDisableResume(); }
+
+  override async saveDomainIfUnchanged(
+    ...args: Parameters<MemoryMailFnStore['saveDomainIfUnchanged']>
+  ): Promise<boolean> {
+    if (this.pauseNextDisable && args[0].status === 'disabling') {
+      this.pauseNextDisable = false;
+      this.resolveDisableStarted();
+      await this.disableResumePromise;
+    }
+    return super.saveDomainIfUnchanged(...args);
+  }
+}
+
+class RetryableCancelStore extends MemoryMailFnStore {
+  public releaseAttempts = 0;
+  override async releaseStorage(reservationId: string): Promise<void> {
+    this.releaseAttempts += 1;
+    if (this.releaseAttempts === 1) throw new Error('transient release failure');
+    await super.releaseStorage(reservationId);
+  }
+}
+
+class ConcurrentRevokeStore extends MemoryMailFnStore {
+  public revokeOnTouch = false;
+  override async touchCredentialIfActive(id: string, lastUsedAt: string): Promise<boolean> {
+    if (this.revokeOnTouch) {
+      const credential = await this.getCredential(id);
+      if (credential) await this.saveCredential({ ...credential, status: 'revoked', revokedAt: lastUsedAt });
+    }
+    return super.touchCredentialIfActive(id, lastUsedAt);
+  }
+}
+
+class QuiescingInboundStore extends MemoryMailFnStore {
+  override async createInboundMessageIfInboxActive(
+    message: Parameters<MemoryMailFnStore['createInboundMessageIfInboxActive']>[0],
+  ): Promise<boolean> {
+    const inbox = await this.getInbox(message.inboxId);
+    if (inbox) await this.saveInbox({ ...inbox, status: 'deleting' });
+    return super.createInboundMessageIfInboxActive(message);
+  }
+}
+
+class CompletingDraftResetStore extends MemoryMailFnStore {
+  override async claimDraft(...args: Parameters<MemoryMailFnStore['claimDraft']>): Promise<boolean> {
+    const [draftId, expected, value] = args;
+    if (expected.status === 'sending' && value.status === 'draft') {
+      const current = await this.getDraft(draftId);
+      if (current) await this.saveDraft({ ...current, status: 'sent', providerMessageId: 'concurrent-send' });
+    }
+    return super.claimDraft(...args);
+  }
+}
+
+class PausingDraftClaimStore extends MemoryMailFnStore {
+  public pauseBeforeClaim = false;
+  private claimStartedResolve!: () => void;
+  private continueClaimResolve!: () => void;
+  public readonly claimStarted = new Promise<void>((resolve) => { this.claimStartedResolve = resolve; });
+  private readonly continueClaim = new Promise<void>((resolve) => { this.continueClaimResolve = resolve; });
+
+  public resumeClaim(): void {
+    this.continueClaimResolve();
+  }
+
+  override async claimDraft(...args: Parameters<MemoryMailFnStore['claimDraft']>): Promise<boolean> {
+    const [, expected, value] = args;
+    if (this.pauseBeforeClaim && expected.status === 'draft' && value.status === 'sending') {
+      this.pauseBeforeClaim = false;
+      this.claimStartedResolve();
+      await this.continueClaim;
+    }
+    return super.claimDraft(...args);
+  }
+}
+
+class PausedThreadLabelStore extends MemoryMailFnStore {
+  public pauseNextLabel = false;
+  private resolveStarted!: () => void;
+  private resumeLabel!: () => void;
+  public readonly started = new Promise<void>((resolve) => { this.resolveStarted = resolve; });
+  private readonly labelResume = new Promise<void>((resolve) => { this.resumeLabel = resolve; });
+
+  public continueLabel(): void { this.resumeLabel(); }
+
+  override async saveThreadIfUnchanged(
+    ...args: Parameters<MemoryMailFnStore['saveThreadIfUnchanged']>
+  ): Promise<boolean> {
+    if (this.pauseNextLabel) {
+      this.pauseNextLabel = false;
+      this.resolveStarted();
+      await this.labelResume;
+    }
+    return super.saveThreadIfUnchanged(...args);
+  }
+}
+
+class PausedOutboundUsageReleaseStore extends MemoryMailFnStore {
+  private resolveStarted!: () => void;
+  private resumeRelease!: () => void;
+  public readonly started = new Promise<void>((resolve) => { this.resolveStarted = resolve; });
+  private readonly releaseResume = new Promise<void>((resolve) => { this.resumeRelease = resolve; });
+
+  public continueRelease(): void { this.resumeRelease(); }
+
+  override async releaseOutboundUsageIfDraftNotSent(
+    ...args: Parameters<MemoryMailFnStore['releaseOutboundUsageIfDraftNotSent']>
+  ): Promise<boolean> {
+    this.resolveStarted();
+    await this.releaseResume;
+    return super.releaseOutboundUsageIfDraftNotSent(...args);
+  }
+}
+
+class RacingDraftWriteStore extends MemoryMailFnStore {
+  public completeBeforeWrite = false;
+
+  override async saveDraftIfInboxWritable(
+    ...args: Parameters<MemoryMailFnStore['saveDraftIfInboxWritable']>
+  ): Promise<boolean> {
+    const [draft, expected] = args;
+    if (this.completeBeforeWrite && expected) {
+      this.completeBeforeWrite = false;
+      const current = await this.getDraft(draft.id);
+      if (current) {
+        await this.saveDraft({
+          ...current,
+          status: 'sent',
+          providerMessageId: 'concurrent-send',
+          updatedAt: new Date(Date.parse(current.updatedAt) + 1).toISOString(),
+        });
+      }
+    }
+    return super.saveDraftIfInboxWritable(...args);
+  }
+}
+
+class RecoveringAttachmentStore extends MemoryMailFnStore {
+  public failNextAttachment = true;
+  override async saveAttachmentIfMessageParseOwned(
+    ...args: Parameters<MemoryMailFnStore['saveAttachmentIfMessageParseOwned']>
+  ): Promise<boolean> {
+    if (this.failNextAttachment) {
+      this.failNextAttachment = false;
+      throw new Error('attachment metadata unavailable');
+    }
+    return super.saveAttachmentIfMessageParseOwned(...args);
+  }
+}
+
+class PausedInboundStore extends MemoryMailFnStore {
+  private resolveInboundSaveStarted!: () => void;
+  private resumeInboundSave!: () => void;
+  public readonly inboundSaveStarted = new Promise<void>((resolve) => {
+    this.resolveInboundSaveStarted = resolve;
+  });
+  private readonly inboundSaveResume = new Promise<void>((resolve) => {
+    this.resumeInboundSave = resolve;
+  });
+
+  public continueInboundSave(): void {
+    this.resumeInboundSave();
+  }
+
+  override async createInboundMessageIfInboxActive(
+    ...args: Parameters<MemoryMailFnStore['createInboundMessageIfInboxActive']>
+  ): Promise<boolean> {
+    this.resolveInboundSaveStarted();
+    await this.inboundSaveResume;
+    return super.createInboundMessageIfInboxActive(...args);
+  }
+}
+
+class PausedCredentialStore extends MemoryMailFnStore {
+  private resolveCredentialSaveStarted!: () => void;
+  private resumeCredentialSave!: () => void;
+  public readonly credentialSaveStarted = new Promise<void>((resolve) => {
+    this.resolveCredentialSaveStarted = resolve;
+  });
+  private readonly credentialSaveResume = new Promise<void>((resolve) => {
+    this.resumeCredentialSave = resolve;
+  });
+
+  public continueCredentialSave(): void {
+    this.resumeCredentialSave();
+  }
+
+  override async createCredentialWithAudit(
+    ...args: Parameters<MemoryMailFnStore['createCredentialWithAudit']>
+  ): Promise<boolean> {
+    this.resolveCredentialSaveStarted();
+    await this.credentialSaveResume;
+    return super.createCredentialWithAudit(...args);
+  }
+}
+
+async function setup(options: {
+  clock?: MutableClock;
+  queue?: MailFnQueue;
+  sendAdapter?: MailFnSendAdapter;
+  webhookDispatcher?: MailFnWebhookDispatcher;
+  domainAdapter?: MailFnDomainAdapter;
+  store?: MemoryMailFnStore;
+  objects?: MemoryMailFnObjectStore;
+  mimeParser?: MailFnMimeParser;
+  retentionPolicy?: Partial<RetentionPolicy>;
+  quota?: Partial<ProjectQuota>;
+  publicPlatform?: Partial<PublicPlatformPolicy>;
+} = {}) {
+  const store = options.store ?? new MemoryMailFnStore();
+  const objects = options.objects ?? new MemoryMailFnObjectStore();
+  const mailfn = new MailFn({
+    store,
+    objects,
+    defaultDomain: 'inbound.example.com',
+    mimeParser: options.mimeParser ?? new JsonMimeParser(),
+    secretProtector: noOpSecretProtector,
+    clock: options.clock,
+    queue: options.queue,
+    sendAdapter: options.sendAdapter,
+    webhookDispatcher: options.webhookDispatcher,
+    domainAdapter: options.domainAdapter,
+    publicPlatform: options.publicPlatform,
+  });
+  const bootstrap = await mailfn.bootstrapProject({
+    slug: 'tests',
+    displayName: 'Tests',
+    retentionPolicy: options.retentionPolicy,
+    quota: options.quota,
+  });
+  const admin = await mailfn.authenticate(bootstrap.credential.token);
+  return { mailfn, store, objects, admin, project: bootstrap.project };
+}
+
+async function createInbox(context: Awaited<ReturnType<typeof setup>>, localPart = 'target') {
+  return context.mailfn.createInbox(context.admin, {
+    projectId: context.project.id,
+    kind: 'expiring',
+    requestedLocalPart: localPart,
+    expirySeconds: 3_600,
+    idempotencyKey: `create:${localPart}`,
+  });
+}
+
+function raw(input: Partial<ParsedMessage> = {}): Uint8Array {
+  return new TextEncoder().encode(JSON.stringify(input));
+}
+
+describe('MailFn domain service', () => {
+  it('requires secret protection before claiming an idempotent inbox creation', async () => {
+    const context = await setup();
+    const mailfn = new MailFn({
+      store: context.store,
+      objects: context.objects,
+      defaultDomain: 'inbound.example.com',
+    });
+
+    await expect(mailfn.createInbox(context.admin, {
+      projectId: context.project.id,
+      kind: 'stable',
+      requestedLocalPart: 'missing-protector',
+      idempotencyKey: 'missing-protector',
+    })).rejects.toMatchObject({
+      code: 'MAILFN_VALIDATION_FAILED',
+      message: 'Secret protection must be configured before creating an idempotent inbox',
+    });
+    await expect(context.store.getInboxByAddress('missing-protector@inbound.example.com')).resolves.toBeNull();
+  });
+
+  it('does not issue an inbox credential after deletion has quiesced the inbox', async () => {
+    const store = new PausedCredentialStore();
+    const context = await setup({ store });
+    const created = await createInbox(context, 'credential-delete-race');
+    const issuance = context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: created.inbox.id,
+      permissions: ['inbox:read'],
+    });
+    const rejected = expect(issuance).rejects.toMatchObject({ code: 'MAILFN_INBOX_INACTIVE' });
+
+    await store.credentialSaveStarted;
+    await context.mailfn.deleteInbox(context.admin, created.inbox.id);
+    store.continueCredentialSave();
+
+    await rejected;
+    await expect(store.listCredentials(context.project.id, created.inbox.id)).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ permissions: ['inbox:read'], status: 'active' })]),
+    );
+  });
+
+  it('creates the bootstrap audit atomically and permits a clean retry after transaction failure', async () => {
+    const store = new FailingAtomicProjectStore();
+    const mailfn = new MailFn({
+      store,
+      objects: new MemoryMailFnObjectStore(),
+      defaultDomain: 'inbound.example.com',
+    });
+    const input = { slug: 'atomic-bootstrap', displayName: 'Atomic Bootstrap' };
+    await expect(mailfn.bootstrapProject(input)).rejects.toMatchObject({
+      code: 'MAILFN_STORAGE_FAILED', retryable: true,
+    });
+    await expect(store.getProjectBySlug(input.slug)).resolves.toBeNull();
+
+    store.failProjectCreation = false;
+    const bootstrap = await mailfn.bootstrapProject(input);
+    await expect(store.listAudits(bootstrap.project.id)).resolves.toMatchObject([{
+      action: 'project.created', resourceId: bootstrap.project.id,
+    }]);
+    await expect(mailfn.authenticate(bootstrap.credential.token)).resolves.toMatchObject({
+      projectId: bootstrap.project.id,
+    });
+  });
+
+  it('does not persist a credential when its audit cannot be created atomically', async () => {
+    const store = new FailingAtomicCredentialStore();
+    const context = await setup({ store });
+
+    await expect(context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      permissions: ['inbox:read'],
+    })).rejects.toMatchObject({ code: 'MAILFN_STORAGE_FAILED', retryable: true });
+
+    await expect(store.listCredentials(context.project.id)).resolves.toHaveLength(1);
+    expect((await store.listAudits(context.project.id)).some((event) => event.action === 'credential.created')).toBe(false);
+  });
+
+  it('rejects non-boolean inbox-expiry retention flags', async () => {
+    await expect(setup({
+      retentionPolicy: { deleteOnInboxExpiry: 'false' as unknown as boolean },
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+  });
+
+  it('rejects non-string inbox metadata values on update', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'metadata-update');
+
+    await expect(context.mailfn.updateInbox(context.admin, created.inbox.id, {
+      metadata: { owner: 42 } as never,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+    await expect(context.store.getInbox(created.inbox.id)).resolves.toMatchObject({ metadata: {} });
+  });
+
+  it('prevents inbox-scoped credentials from clearing or extending their expiry boundary', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id,
+      kind: 'expiring',
+      requestedLocalPart: 'scoped-expiry-update',
+      expirySeconds: 3_600,
+    });
+    const actor = await context.mailfn.authenticate(created.credential.token);
+
+    await expect(context.mailfn.updateInbox(actor, created.inbox.id, { expiresAt: null }))
+      .rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN', status: 403 });
+    await expect(context.mailfn.updateInbox(actor, created.inbox.id, {
+      expiresAt: new Date(Date.parse(created.inbox.expiresAt!) + 60_000).toISOString(),
+    })).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN', status: 403 });
+
+    const shortened = new Date(Date.parse(created.inbox.expiresAt!) - 60_000).toISOString();
+    await expect(context.mailfn.updateInbox(actor, created.inbox.id, { expiresAt: shortened }))
+      .resolves.toMatchObject({ expiresAt: shortened });
+    await expect(context.mailfn.updateInbox(context.admin, created.inbox.id, { expiresAt: null }))
+      .resolves.toMatchObject({ expiresAt: undefined });
+  });
+
+  it('rejects non-string inbox expirations from raw request bodies', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'invalid-expiry-type');
+
+    await expect(context.mailfn.updateInbox(context.admin, created.inbox.id, { expiresAt: 0 } as never))
+      .rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED', status: 400 });
+    await expect(context.store.getInbox(created.inbox.id)).resolves.toMatchObject({ expiresAt: created.inbox.expiresAt });
+  });
+
+  it('rechecks the active-inbox quota before reactivation', async () => {
+    const context = await setup({ quota: { maxActiveInboxes: 1 } });
+    const first = await createInbox(context, 'reactivate-first');
+    await context.mailfn.updateInbox(context.admin, first.inbox.id, { status: 'disabled' });
+    const second = await createInbox(context, 'reactivate-second');
+
+    await expect(context.mailfn.updateInbox(context.admin, first.inbox.id, { status: 'active' }))
+      .rejects.toMatchObject({ code: 'MAILFN_QUOTA_EXCEEDED' });
+    await expect(context.store.getInbox(first.inbox.id)).resolves.toMatchObject({ status: 'disabled' });
+
+    await context.mailfn.updateInbox(context.admin, second.inbox.id, { status: 'disabled' });
+    await expect(context.mailfn.updateInbox(context.admin, first.inbox.id, { status: 'active' }))
+      .resolves.toMatchObject({ status: 'active' });
+  });
+
+  it('does not let a stale disabled update resurrect a deleted inbox', async () => {
+    const store = new PausedInboxUpdateStore();
+    const context = await setup({ store });
+    const created = await createInbox(context, 'disabled-delete-race');
+
+    const update = context.mailfn.updateInbox(context.admin, created.inbox.id, { status: 'disabled' });
+    await store.started;
+    await expect(context.mailfn.deleteInbox(context.admin, created.inbox.id)).resolves.toMatchObject({ status: 'deleted' });
+    store.continueUpdate();
+
+    await expect(update).rejects.toMatchObject({ code: 'MAILFN_NOT_FOUND' });
+    await expect(store.getInbox(created.inbox.id)).resolves.toMatchObject({ status: 'deleted' });
+  });
+
+  it('creates stable and expiring inboxes with replayable one-time scoped credentials', async () => {
+    const context = await setup();
+    const first = await createInbox(context);
+    const replay = await createInbox(context);
+    expect(replay.inbox.id).toBe(first.inbox.id);
+    expect(replay.credential.token).toBe(first.credential.token);
+    expect(first.inbox.expiresAt).toBeDefined();
+    expect(first.credential.credential.tokenHash).not.toContain(first.credential.token);
+    await context.mailfn.revokeCredential(context.admin, first.credential.credential.id);
+    await expect(createInbox(context)).rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+  });
+
+  it('replays credential rotations durably across service instances', async () => {
+    const context = await setup();
+    const issued = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      permissions: ['inbox:read'],
+    });
+    const secondService = new MailFn({
+      store: context.store,
+      objects: context.objects,
+      defaultDomain: 'inbound.example.com',
+      secretProtector: noOpSecretProtector,
+    });
+
+    const rotations = await Promise.all([
+      context.mailfn.rotateCredential(context.admin, issued.credential.id, 'rotation-1'),
+      secondService.rotateCredential(context.admin, issued.credential.id, 'rotation-1'),
+    ]);
+
+    expect(rotations[1]).toEqual(rotations[0]);
+    const credentials = await context.store.listCredentials(context.project.id);
+    expect(credentials.filter((entry) => entry.id === rotations[0].credential.id)).toEqual([
+      expect.objectContaining({ status: 'active' }),
+    ]);
+    expect(credentials).toHaveLength(3);
+    await expect(context.store.getCredential(issued.credential.id)).resolves.toMatchObject({ status: 'revoked' });
+  });
+
+  it('prevents limited token managers from escalating through credential rotation', async () => {
+    const context = await setup();
+    const manager = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      permissions: ['token:manage'],
+    });
+    const actor = await context.mailfn.authenticate(manager.token);
+
+    await expect(context.mailfn.rotateCredential(actor, context.admin.actorId, 'escalation-attempt'))
+      .rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN' });
+    await expect(context.store.getCredential(context.admin.actorId)).resolves.toMatchObject({ status: 'active' });
+  });
+
+  it('blocks credential issuance for inactive and elapsed inboxes', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const disabled = await createInbox(context, 'disabled-credential');
+    await context.store.saveInbox({ ...disabled.inbox, status: 'disabled' });
+
+    await expect(context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: disabled.inbox.id,
+      permissions: ['message:read'],
+    })).rejects.toMatchObject({ code: 'MAILFN_INBOX_INACTIVE' });
+
+    const expiring = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id,
+      kind: 'expiring',
+      requestedLocalPart: 'expired-credential',
+      expirySeconds: 60,
+    });
+    clock.advance(61_000);
+    await expect(context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: expiring.inbox.id,
+      permissions: ['message:read'],
+    })).rejects.toMatchObject({ code: 'MAILFN_INBOX_INACTIVE' });
+  });
+
+  it('caps inbox-scoped credentials at the inbox expiration instant', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id,
+      kind: 'expiring',
+      requestedLocalPart: 'credential-expiry-cap',
+      expirySeconds: 60,
+    });
+    const uncapped = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: created.inbox.id,
+      permissions: ['message:read'],
+    });
+    const later = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: created.inbox.id,
+      permissions: ['message:read'],
+      expiresAt: new Date(clock.now().getTime() + 3_600_000).toISOString(),
+    });
+
+    expect(uncapped.credential.expiresAt).toBe(created.inbox.expiresAt);
+    expect(later.credential.expiresAt).toBe(created.inbox.expiresAt);
+    clock.advance(61_000);
+    await expect(context.mailfn.authenticate(uncapped.token)).rejects.toMatchObject({ code: 'MAILFN_UNAUTHORIZED' });
+  });
+
+  it('compares message time filters by instant across timezone offsets', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'timezone-filter');
+    const first = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'timezone-early', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: raw({ subject: 'Early' }), rawSize: raw({ subject: 'Early' }).byteLength,
+    });
+    const second = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'timezone-late', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: raw({ subject: 'Late' }), rawSize: raw({ subject: 'Late' }).byteLength,
+    });
+    await context.store.saveMessage({ ...first, receivedAt: '2026-01-01T00:30:00+01:00' });
+    await context.store.saveMessage({ ...second, receivedAt: '2025-12-31T23:45:00.000Z' });
+
+    await expect(context.store.listMessages(context.project.id, created.inbox.id, {
+      receivedAfter: '2026-01-01T00:40:00+01:00',
+    })).resolves.toMatchObject([{ id: second.id }]);
+  });
+
+  it('does not expose an inbox or credential when its atomic creation transaction fails', async () => {
+    const store = new FailingAtomicInboxStore();
+    const context = await setup({ store });
+    store.failInboxCreation = true;
+    await expect(createInbox(context, 'atomic-failure')).rejects.toMatchObject({ code: 'MAILFN_STORAGE_FAILED' });
+    expect(await store.getInboxByAddress('atomic-failure@inbound.example.com')).toBeNull();
+    expect(await store.listCredentials(context.project.id)).toHaveLength(1);
+  });
+
+  it('enforces the active-inbox quota atomically across concurrent creations', async () => {
+    const context = await setup({ quota: { maxActiveInboxes: 1 } });
+    const results = await Promise.allSettled([
+      createInbox(context, 'quota-concurrent-a'),
+      createInbox(context, 'quota-concurrent-b'),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toMatchObject([{
+      reason: { code: 'MAILFN_QUOTA_EXCEEDED' },
+    }]);
+    expect(await context.store.listInboxes(context.project.id)).toHaveLength(1);
+    expect(await context.store.listCredentials(context.project.id)).toHaveLength(2);
+  });
+
+  it('preflights ingress before raw receipt and compensates a mismatched reservation', async () => {
+    const context = await setup({ quota: {
+      maxMessagesPerHour: 1, maxMessagesPerInboxPerHour: 1, maxMessagesPerSenderPerHour: 1,
+    } });
+    const created = await createInbox(context, 'preflight');
+    const value = raw({ subject: 'preflight' });
+    const preflight = await context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
+    });
+    await expect(context.mailfn.receiveInbound({
+      providerDeliveryId: 'preflight-mismatch', envelopeFrom: 'different@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    }, preflight)).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+    await expect(context.mailfn.receiveInbound({
+      providerDeliveryId: 'preflight-recovered', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    })).resolves.toMatchObject({ providerDeliveryId: 'preflight-recovered' });
+  });
+
+  it('enforces cross-inbox credential isolation and records authorization failures without secrets', async () => {
+    const context = await setup();
+    const first = await createInbox(context, 'first');
+    const second = await createInbox(context, 'second');
+    const actor = await context.mailfn.authenticate(first.credential.token);
+    await expect(context.mailfn.listInboxes(actor)).resolves.toMatchObject([{ id: first.inbox.id }]);
+    await expect(context.mailfn.getInbox(actor, second.inbox.id)).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN' });
+    const audits = await context.mailfn.getAuditEvents(context.admin);
+    expect(audits.some((entry) => entry.action === 'authorization.failed')).toBe(true);
+    expect(JSON.stringify(audits)).not.toContain(first.credential.token);
+  });
+
+  it('receives, parses, threads, waits, extracts, and stores attachment evidence deterministically', async () => {
+    const context = await setup();
+    const created = await createInbox(context);
+    const firstRaw = raw({
+      internetMessageId: '<first@example.com>',
+      subject: 'Verify your account',
+      text: 'Use verification code 654321 or https://app.example.com/verify?token=abc',
+      html: '<script>steal()</script><style>body{background:url(https://tracker.example)}</style><svg onload="bad()"></svg><p onclick="bad()">Verify</p><a href="javascript:steal()">click</a><img src="https://tracker.example/pixel">',
+      attachments: [{ filename: '../proof"\r\n;name.txt', contentType: 'text/plain', content: 'evidence' } as never],
+    });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'delivery-1', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: firstRaw, rawSize: firstRaw.byteLength,
+    });
+    expect(message.status).toBe('ready');
+    expect(message.htmlBody).not.toContain('<script');
+    expect(message.htmlBody).not.toContain('<style');
+    expect(message.htmlBody).not.toContain('<svg');
+    expect(message.htmlBody).not.toContain('javascript:');
+    expect(message.htmlBody).not.toContain('onclick');
+    expect(message.htmlBody).toContain('data-mailfn-remote-image="blocked"');
+    const actor = await context.mailfn.authenticate(created.credential.token);
+    const waited = await context.mailfn.waitForMessages(actor, { inboxId: created.inbox.id, subject: 'Verify', after: '2026-01-01T00:00:00.000Z', timeoutMs: 5 });
+    expect(waited.status).toBe('matched');
+    await expect(context.mailfn.extractVerification(actor, created.inbox.id, message.id, 'otp')).resolves.toMatchObject({
+      value: '654321', sourceMessageId: message.id,
+    });
+    await expect(context.mailfn.extractVerification(actor, created.inbox.id, message.id, 'verification_link')).resolves.toMatchObject({
+      value: 'https://app.example.com/verify?token=abc', sourceMessageId: message.id,
+    });
+    await expect(context.mailfn.extractVerification(
+      actor,
+      created.inbox.id,
+      message.id,
+      'password_reset' as never,
+    )).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED', status: 400 });
+    const attachments = await context.store.listAttachments(message.id);
+    expect(attachments).toMatchObject([{ filename: '.._proof____name.txt', contentType: 'text/plain', sizeBytes: 8 }]);
+    const attachment = await context.mailfn.getAttachment(actor, created.inbox.id, message.id, attachments[0]!.id);
+    expect(new TextDecoder().decode(attachment.data)).toBe('evidence');
+
+    const replyRaw = raw({
+      internetMessageId: '<reply@example.com>', inReplyTo: 'sender <missing@example.com> <first@example.com>', references: [],
+      subject: 'Re: Verify your account', text: 'Follow up',
+    });
+    const reply = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'delivery-2', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: replyRaw, rawSize: replyRaw.byteLength,
+    });
+    expect(reply.threadId).toBe(message.threadId);
+    expect((await context.mailfn.listThreads(actor, created.inbox.id))[0]?.messageIds).toEqual([message.id, reply.id]);
+  });
+
+  it('attributes concurrent verification messages using sender, subject, time, and count predicates', async () => {
+    const context = await setup();
+    const created = await createInbox(context);
+    for (const [delivery, sender, subject, code] of [
+      ['a', 'one@example.com', 'Run A', '111111'],
+      ['b', 'two@example.net', 'Run B', '222222'],
+    ]) {
+      const value = raw({ from: [{ address: sender }], subject, text: `Authentication code is ${code}` });
+      await context.mailfn.receiveInbound({ providerDeliveryId: delivery, envelopeFrom: sender, envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength });
+    }
+    const actor = await context.mailfn.authenticate(created.credential.token);
+    const result = await context.mailfn.waitForMessages(actor, {
+      inboxId: created.inbox.id, senderDomain: 'example.net', subject: 'Run B', expectedCount: 1, timeoutMs: 10,
+    });
+    expect(result.status).toBe('matched');
+    if (result.status === 'matched') {
+      expect(result.messages).toHaveLength(1);
+      expect((await context.mailfn.extractVerification(actor, created.inbox.id, result.messages[0]!.id, 'otp')).value).toBe('222222');
+    }
+  });
+
+  it('requires message read scope before a wait can return message bodies', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'wait-read-scope');
+    const value = raw({ subject: 'Sensitive', text: 'one-time secret' });
+    await context.mailfn.receiveInbound({
+      providerDeliveryId: 'wait-read-scope', envelopeFrom: 'sender@example.com',
+      envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength,
+    });
+    const credential = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: created.inbox.id,
+      permissions: ['message:wait'],
+    });
+    const actor = await context.mailfn.authenticate(credential.token);
+
+    await expect(context.mailfn.waitForMessages(actor, {
+      inboxId: created.inbox.id,
+      timeoutMs: 0,
+    })).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN', status: 403 });
+  });
+
+  it('requires message read scope before search can return message bodies', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'search-read-scope');
+    const value = raw({ subject: 'Sensitive search', text: 'one-time secret' });
+    await context.mailfn.receiveInbound({
+      providerDeliveryId: 'search-read-scope', envelopeFrom: 'sender@example.com',
+      envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength,
+    });
+    const credential = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: created.inbox.id,
+      permissions: ['message:search'],
+    });
+    const actor = await context.mailfn.authenticate(credential.token);
+
+    await expect(context.mailfn.searchMessages(actor, {
+      inboxId: created.inbox.id,
+      query: 'one-time secret',
+    })).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN', status: 403 });
+  });
+
+  it('preserves raw evidence and marks queue failure for reconciliation', async () => {
+    let fail = true;
+    const jobs: ParseJob[] = [];
+    const queue: MailFnQueue = { async enqueue(job) { if (fail) throw new Error('queue down'); jobs.push(job); } };
+    const context = await setup({ queue });
+    const created = await createInbox(context);
+    const value = raw();
+    await expect(context.mailfn.receiveInbound({
+      providerDeliveryId: 'queue-fail', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    })).rejects.toMatchObject({ code: 'MAILFN_QUEUE_FAILED', retryable: true });
+    const [stored] = await context.store.listMessages(context.project.id, created.inbox.id);
+    expect(stored?.status).toBe('queue_failed');
+    expect(context.objects.size()).toBe(1);
+    fail = false;
+    expect(await context.mailfn.retryPendingMessages(context.project.id)).toBe(1);
+    expect(jobs).toHaveLength(1);
+    expect((await context.store.getMessage(stored!.id))?.status).toBe('pending');
+  });
+
+  it('does not recreate messages deleted while parse retries are being queued', async () => {
+    const store = new MemoryMailFnStore();
+    let deleteDuringEnqueue = false;
+    let failAfterDelete = false;
+    const queue: MailFnQueue = {
+      async enqueue(job) {
+        if (!deleteDuringEnqueue) return;
+        await store.deleteMessage(job.messageId);
+        if (failAfterDelete) throw new Error('queue down after retention');
+      },
+    };
+    const context = await setup({ store, queue });
+    const created = await createInbox(context, 'requeue-retention-race');
+
+    const retry = async (providerDeliveryId: string) => {
+      deleteDuringEnqueue = false;
+      const value = raw({ subject: providerDeliveryId });
+      const message = await context.mailfn.receiveInbound({
+        providerDeliveryId,
+        envelopeFrom: 'sender@example.com',
+        envelopeTo: created.inbox.address,
+        raw: value,
+        rawSize: value.byteLength,
+      });
+      await store.saveMessage({ ...message, status: 'queue_failed' });
+      deleteDuringEnqueue = true;
+      return message;
+    };
+
+    const queued = await retry('requeue-deleted-after-success');
+    await expect(context.mailfn.retryPendingMessages(context.project.id)).resolves.toBe(1);
+    await expect(store.getMessage(queued.id)).resolves.toBeNull();
+
+    const failed = await retry('requeue-deleted-after-failure');
+    failAfterDelete = true;
+    await expect(context.mailfn.retryPendingMessages(context.project.id)).rejects.toMatchObject({
+      code: 'MAILFN_QUEUE_FAILED',
+    });
+    await expect(store.getMessage(failed.id)).resolves.toBeNull();
+  });
+
+  it('does not requeue permanent MIME parse failures', async () => {
+    const jobs: ParseJob[] = [];
+    const context = await setup({
+      quota: { maxAttachmentBytes: 4 },
+      queue: { async enqueue(job) { jobs.push(job); } },
+    });
+    const created = await createInbox(context, 'permanent-parse-failure');
+    const value = raw({
+      attachments: [{ filename: 'oversized.txt', contentType: 'text/plain', content: '12345' } as never],
+    });
+    await context.mailfn.receiveInbound({
+      providerDeliveryId: 'permanent-parse-failure', envelopeFrom: 'sender@example.com',
+      envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength,
+    });
+    await expect(context.mailfn.parseMessage(jobs[0]!)).rejects.toMatchObject({
+      code: 'MAILFN_ATTACHMENT_TOO_LARGE', retryable: false,
+    });
+    const [stored] = await context.store.listMessages(context.project.id, created.inbox.id);
+    expect(stored).toMatchObject({
+      status: 'parse_failed', parseErrorCode: 'MAILFN_ATTACHMENT_TOO_LARGE', parseRetryable: false,
+    });
+    await expect(context.mailfn.retryPendingMessages(context.project.id)).resolves.toBe(0);
+    expect(jobs).toHaveLength(1);
+  });
+
+  it('queues accepted mail even when non-critical event and usage writes fail', async () => {
+    const jobs: ParseJob[] = [];
+    const context = await setup({
+      store: new NoncriticalFailureStore(),
+      queue: { async enqueue(job) { jobs.push(job); } },
+    });
+    const created = await createInbox(context);
+    const value = raw();
+    await expect(context.mailfn.receiveInbound({
+      providerDeliveryId: 'noncritical-failures', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    })).resolves.toMatchObject({ status: 'pending' });
+    expect(jobs).toHaveLength(1);
+  });
+
+  it('cleans attachment objects when attachment metadata cannot be committed', async () => {
+    const context = await setup({ store: new FailingAttachmentStore() });
+    const created = await createInbox(context);
+    const value = raw({ attachments: [{ filename: 'orphan.txt', contentType: 'text/plain', content: 'orphan' } as never] });
+    await expect(context.mailfn.receiveInbound({
+      providerDeliveryId: 'attachment-store-failure', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    })).rejects.toMatchObject({ code: 'MAILFN_PARSE_FAILED', retryable: true });
+    expect(context.objects.size()).toBe(1);
+    expect((await context.store.listMessages(context.project.id, created.inbox.id))[0]).toMatchObject({ status: 'parse_failed' });
+  });
+
+  it('enforces the project stored-byte quota before writing raw evidence', async () => {
+    const value = raw({ subject: 'Too large for tenant storage' });
+    const context = await setup({ quota: { maxStoredBytes: value.byteLength - 1 } });
+    const created = await createInbox(context);
+    await expect(context.mailfn.receiveInbound({
+      providerDeliveryId: 'quota-1', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    })).rejects.toMatchObject({ code: 'MAILFN_QUOTA_EXCEEDED' });
+    expect(context.objects.size()).toBe(0);
+    expect(await context.store.listMessages(context.project.id, created.inbox.id)).toHaveLength(0);
+  });
+
+  it('reserves stored bytes atomically across concurrent inbox deliveries', async () => {
+    const value = raw({ subject: 'Atomic storage budget' });
+    const context = await setup({ quota: { maxStoredBytes: value.byteLength } });
+    const [first, second] = await Promise.all([
+      createInbox(context, 'storage-a'),
+      createInbox(context, 'storage-b'),
+    ]);
+    const results = await Promise.allSettled([
+      context.mailfn.receiveInbound({
+        providerDeliveryId: 'storage-a', envelopeFrom: 'one@example.com', envelopeTo: first.inbox.address,
+        raw: value, rawSize: value.byteLength,
+      }),
+      context.mailfn.receiveInbound({
+        providerDeliveryId: 'storage-b', envelopeFrom: 'two@example.com', envelopeTo: second.inbox.address,
+        raw: value, rawSize: value.byteLength,
+      }),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toMatchObject([{
+      reason: { code: 'MAILFN_QUOTA_EXCEEDED' },
+    }]);
+    expect(context.objects.size()).toBe(1);
+  });
+
+  it('deduplicates at-least-once inbound delivery before parsing or events', async () => {
+    const context = await setup();
+    const created = await createInbox(context);
+    const value = raw();
+    const first = await context.mailfn.receiveInbound({ providerDeliveryId: 'same', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength });
+    const second = await context.mailfn.receiveInbound({ providerDeliveryId: 'same', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength });
+    expect(second.id).toBe(first.id);
+    expect(await context.store.listMessages(context.project.id, created.inbox.id)).toHaveLength(1);
+  });
+
+  it('deduplicates truly concurrent inbound retries and compensates the losing reservation/object', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'concurrent-ingress');
+    const value = raw({ subject: 'Concurrent duplicate' });
+    const input = {
+      providerDeliveryId: 'concurrent-same', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    };
+    const [first, second] = await Promise.all([
+      context.mailfn.receiveInbound(input),
+      context.mailfn.receiveInbound(input),
+    ]);
+    expect(second.id).toBe(first.id);
+    expect(await context.store.listMessages(context.project.id, created.inbox.id)).toHaveLength(1);
+    expect(context.objects.size()).toBe(1);
+  });
+
+  it('enforces atomic project, inbox, and sender ingress quotas independently', async () => {
+    const projectLimited = await setup({ quota: {
+      maxMessagesPerHour: 1, maxMessagesPerInboxPerHour: 10, maxMessagesPerSenderPerHour: 10,
+    } });
+    const projectInboxA = await createInbox(projectLimited, 'quota-project-a');
+    const projectInboxB = await createInbox(projectLimited, 'quota-project-b');
+    const value = raw();
+    await projectLimited.mailfn.receiveInbound({
+      providerDeliveryId: 'project-1', envelopeFrom: 'one@example.com', envelopeTo: projectInboxA.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    await expect(projectLimited.mailfn.receiveInbound({
+      providerDeliveryId: 'project-2', envelopeFrom: 'two@example.com', envelopeTo: projectInboxB.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    })).rejects.toMatchObject({ code: 'MAILFN_RATE_LIMITED', details: { dimension: 'project' } });
+
+    const inboxLimited = await setup({ quota: {
+      maxMessagesPerHour: 10, maxMessagesPerInboxPerHour: 1, maxMessagesPerSenderPerHour: 10,
+    } });
+    const singleInbox = await createInbox(inboxLimited, 'quota-inbox');
+    await inboxLimited.mailfn.receiveInbound({
+      providerDeliveryId: 'inbox-1', envelopeFrom: 'one@example.com', envelopeTo: singleInbox.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    await expect(inboxLimited.mailfn.receiveInbound({
+      providerDeliveryId: 'inbox-2', envelopeFrom: 'two@example.com', envelopeTo: singleInbox.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    })).rejects.toMatchObject({ code: 'MAILFN_RATE_LIMITED', details: { dimension: 'inbox' } });
+
+    const senderLimited = await setup({ quota: {
+      maxMessagesPerHour: 10, maxMessagesPerInboxPerHour: 10, maxMessagesPerSenderPerHour: 1,
+    } });
+    const senderInboxA = await createInbox(senderLimited, 'quota-sender-a');
+    const senderInboxB = await createInbox(senderLimited, 'quota-sender-b');
+    await senderLimited.mailfn.receiveInbound({
+      providerDeliveryId: 'sender-1', envelopeFrom: 'abuser@example.com', envelopeTo: senderInboxA.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    await expect(senderLimited.mailfn.receiveInbound({
+      providerDeliveryId: 'sender-2', envelopeFrom: 'abuser@example.com', envelopeTo: senderInboxB.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    })).rejects.toMatchObject({ code: 'MAILFN_RATE_LIMITED', details: { dimension: 'sender' } });
+  });
+
+  it('expires inboxes, revokes credentials, and removes message objects under expiring retention', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'expiring', requestedLocalPart: 'expire', expirySeconds: 60,
+    });
+    const value = raw();
+    await context.mailfn.receiveInbound({ providerDeliveryId: 'expire-1', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength });
+    clock.advance(61_000);
+    const result = await context.mailfn.runRetention(context.project.id);
+    expect(result.expiredInboxes).toBe(1);
+    expect(result.deletedMessages).toBe(1);
+    expect(context.objects.size()).toBe(0);
+    expect(await context.store.listThreads(context.project.id, created.inbox.id)).toHaveLength(0);
+    await expect(context.mailfn.authenticate(created.credential.token)).rejects.toMatchObject({ code: 'MAILFN_UNAUTHORIZED' });
+  });
+
+  it('expires disabled inboxes at their deadline and applies expiry deletion', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'expiring', requestedLocalPart: 'disabled-expiry', expirySeconds: 60,
+    });
+    const value = raw();
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'disabled-expiry-1', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    await context.mailfn.updateInbox(context.admin, created.inbox.id, { status: 'disabled' });
+    clock.advance(61_000);
+
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({ expiredInboxes: 1, deletedMessages: 1 });
+    await expect(context.store.getInbox(created.inbox.id)).resolves.toMatchObject({ status: 'expired' });
+    await expect(context.store.getMessage(message.id)).resolves.toBeNull();
+  });
+
+  it('expires inbox credentials before emitting a fallible expiry event', async () => {
+    const clock = new MutableClock();
+    const store = new ToggleExpiryEventStore();
+    const context = await setup({ clock, store });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'expiring', requestedLocalPart: 'expiry-event', expirySeconds: 60,
+    });
+    store.failExpiryEvent = true;
+    clock.advance(61_000);
+
+    await expect(context.mailfn.runRetention(context.project.id)).rejects.toThrow('event store unavailable');
+    await expect(store.getInbox(created.inbox.id)).resolves.toMatchObject({ status: 'expired' });
+    await expect(context.mailfn.authenticate(created.credential.token)).rejects.toMatchObject({ code: 'MAILFN_UNAUTHORIZED' });
+
+    store.failExpiryEvent = false;
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({ expiredInboxes: 0 });
+  });
+
+  it('does not overwrite a concurrent inbox lifecycle update during expiration', async () => {
+    const clock = new MutableClock();
+    const store = new PausedInboxUpdateStore();
+    const context = await setup({ clock, store });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'expiring', requestedLocalPart: 'expiry-cas', expirySeconds: 60,
+    });
+    clock.advance(61_000);
+
+    const retention = context.mailfn.runRetention(context.project.id);
+    await store.started;
+    await store.saveInbox({
+      ...created.inbox,
+      status: 'disabled',
+      expiresAt: new Date(clock.now().getTime() + 60_000).toISOString(),
+      updatedAt: clock.now().toISOString(),
+    });
+    store.continueUpdate();
+
+    await expect(retention).resolves.toMatchObject({ expiredInboxes: 0 });
+    await expect(store.getInbox(created.inbox.id)).resolves.toMatchObject({ status: 'disabled' });
+  });
+
+  it('applies raw, attachment, and message retention independently', async () => {
+    const clock = new MutableClock();
+    const context = await setup({
+      clock,
+      retentionPolicy: {
+        rawTtlSeconds: 1,
+        attachmentTtlSeconds: 2,
+        messageTtlSeconds: 10,
+        auditTtlSeconds: 100,
+      },
+    });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id,
+      kind: 'stable',
+      requestedLocalPart: 'retention',
+    });
+    const value = raw({ attachments: [{ filename: 'proof.txt', contentType: 'text/plain', content: 'proof' } as never] });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'retention-1', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    const actor = await context.mailfn.authenticate(created.credential.token);
+    expect(context.objects.size()).toBe(2);
+
+    clock.advance(1_100);
+    expect(await context.mailfn.runRetention(context.project.id)).toMatchObject({ deletedMessages: 0, deletedObjects: 1 });
+    expect((await context.store.getMessage(message.id))?.rawDeletedAt).toBeDefined();
+    await expect(context.mailfn.getRawMessage(actor, created.inbox.id, message.id)).rejects.toMatchObject({ code: 'MAILFN_NOT_FOUND' });
+    expect(await context.store.listAttachments(message.id)).toHaveLength(1);
+
+    clock.advance(1_000);
+    expect(await context.mailfn.runRetention(context.project.id)).toMatchObject({ deletedMessages: 0, deletedObjects: 1 });
+    expect(await context.store.listAttachments(message.id)).toHaveLength(0);
+    expect(await context.store.getMessage(message.id)).not.toBeNull();
+  });
+
+  it('orders retained thread activity by instant when timestamps use different offsets', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const created = await createInbox(context, 'retention-thread-instant');
+    const messages = [];
+    for (const [providerDeliveryId, sender] of [
+      ['retention-thread-delete', 'delete@example.com'],
+      ['retention-thread-offset', 'offset@example.com'],
+      ['retention-thread-zulu', 'zulu@example.com'],
+    ]) {
+      const value = raw({ subject: 'Retention ordering', from: [{ address: sender }] });
+      messages.push(await context.mailfn.receiveInbound({
+        providerDeliveryId,
+        envelopeFrom: sender,
+        envelopeTo: created.inbox.address,
+        raw: value,
+        rawSize: value.byteLength,
+      }));
+    }
+    const [expired, offset, zulu] = messages;
+    await context.store.saveMessage({
+      ...expired!,
+      retentionExpiresAt: '2026-08-09T23:59:59.000Z',
+    });
+    await context.store.saveMessage({
+      ...offset!,
+      receivedAt: '2026-08-10T01:00:00.000+02:00',
+      retentionExpiresAt: '2026-08-11T00:00:00.000Z',
+    });
+    await context.store.saveMessage({
+      ...zulu!,
+      receivedAt: '2026-08-10T00:30:00.000Z',
+      retentionExpiresAt: '2026-08-11T00:00:00.000Z',
+    });
+
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({ deletedMessages: 1 });
+    await expect(context.store.getThread(expired!.threadId!)).resolves.toMatchObject({
+      messageIds: expect.arrayContaining([offset!.id, zulu!.id]),
+      lastMessageAt: '2026-08-10T00:30:00.000Z',
+    });
+  });
+
+  it('prunes terminal webhook delivery history and events outside the audit retention window', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock, retentionPolicy: { auditTtlSeconds: 1 } });
+    await context.store.saveWebhook({
+      id: 'whk_history', projectId: context.project.id, url: 'https://example.test/hook',
+      eventTypes: ['message.received'], secretHash: 'hash', status: 'active', consecutiveFailures: 0,
+      createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString(),
+    });
+    await context.store.appendEvent({
+      id: 'evt_history', version: 1, type: 'message.received', projectId: context.project.id,
+      occurredAt: clock.now().toISOString(), payload: {},
+    });
+    await context.store.saveWebhookDelivery({
+      id: 'delivery_history', webhookId: 'whk_history', eventId: 'evt_history', attempt: 1,
+      status: 'delivered', createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString(),
+    });
+    await context.store.saveWebhook({
+      id: 'whk_quarantined', projectId: context.project.id, url: 'https://example.test/quarantined',
+      eventTypes: ['message.received'], secretHash: 'hash', status: 'quarantined', consecutiveFailures: 10,
+      createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString(),
+    });
+    await context.store.appendEvent({
+      id: 'evt_quarantined', version: 1, type: 'message.received', projectId: context.project.id,
+      occurredAt: clock.now().toISOString(), payload: {},
+    });
+    await context.store.saveWebhookDelivery({
+      id: 'delivery_quarantined', webhookId: 'whk_quarantined', eventId: 'evt_quarantined', attempt: 4,
+      status: 'failed', nextAttemptAt: clock.now().toISOString(),
+      createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString(),
+    });
+    clock.advance(2_000);
+
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({
+      webhookDeliveriesDeleted: 2,
+      eventRecordsDeleted: 2,
+    });
+    await expect(context.store.listWebhookDeliveries('whk_history')).resolves.toEqual([]);
+    await expect(context.store.listWebhookDeliveries('whk_quarantined')).resolves.toEqual([]);
+    await expect(context.store.listEvents(context.project.id)).resolves.toEqual([]);
+  });
+
+  it('persists the expiring inbox audit clock independently from stable project audits', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const expiring = await createInbox(context, 'audit-expiring');
+    await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'stable', requestedLocalPart: 'audit-stable',
+    });
+    const audits = await context.mailfn.getAuditEvents(context.admin);
+    const expiringAudit = audits.find((event) => event.action === 'inbox.created' && event.resourceId === expiring.inbox.id)!;
+    expect(Date.parse(expiringAudit.retentionExpiresAt) - Date.parse(expiringAudit.createdAt)).toBe(90 * 24 * 60 * 60 * 1000);
+    const stableAudit = audits.find((event) => event.action === 'inbox.created' && event.resourceId !== expiring.inbox.id)!;
+    expect(Date.parse(stableAudit.retentionExpiresAt) - Date.parse(stableAudit.createdAt)).toBe(365 * 24 * 60 * 60 * 1000);
+  });
+
+  it('preserves retryable deletion state when object storage is unavailable', async () => {
+    const clock = new MutableClock();
+    const objects = new FailingDeleteObjectStore();
+    const context = await setup({ clock, objects });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'expiring', requestedLocalPart: 'deletion', expirySeconds: 60,
+    });
+    const value = raw();
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'deletion-1', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    clock.advance(61_000);
+    expect(await context.mailfn.runRetention(context.project.id)).toMatchObject({ deletedMessages: 0, deletedObjects: 0 });
+    expect(await context.store.getMessage(message.id)).not.toBeNull();
+
+    await expect(context.mailfn.deleteInbox(context.admin, created.inbox.id)).rejects.toThrow('object store unavailable');
+    expect((await context.store.getInbox(created.inbox.id))?.status).toBe('deleting');
+    await expect(context.mailfn.authenticate(created.credential.token)).rejects.toMatchObject({ code: 'MAILFN_UNAUTHORIZED' });
+    await expect(context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
+    })).rejects.toMatchObject({ code: 'MAILFN_INBOX_INACTIVE' });
+    objects.failDeletes = false;
+    await expect(context.mailfn.deleteInbox(context.admin, created.inbox.id)).resolves.toMatchObject({ status: 'deleted' });
+  });
+
+  it('reclaims expired orphan storage reservations without accepting stale preflights', async () => {
+    const clock = new MutableClock();
+    const value = raw({ subject: 'reservation lease' });
+    const context = await setup({ clock, quota: { maxStoredBytes: value.byteLength } });
+    const created = await createInbox(context, 'reservation-lease');
+    const abandoned = await context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
+    });
+
+    await expect(context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
+    })).rejects.toMatchObject({ code: 'MAILFN_QUOTA_EXCEEDED' });
+
+    clock.advance(15 * 60 * 1000 + 1);
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({
+      releasedStorageReservations: 1,
+    });
+    await expect(context.mailfn.receiveInbound({
+      providerDeliveryId: 'stale-preflight', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    }, abandoned)).rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+    const replacement = await context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
+    });
+    await context.mailfn.cancelInbound(replacement);
+  });
+
+  it('deletes journaled object writes when their metadata was never committed', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const reservationId = 'orphaned-raw-write';
+    const objectKey = `projects/${context.project.id}/orphaned/raw.eml`;
+    const createdAt = clock.now().toISOString();
+    await expect(context.store.reserveStorage({
+      id: reservationId,
+      projectId: context.project.id,
+      bytes: 4,
+      createdAt,
+    }, context.project.quota.maxStoredBytes)).resolves.toBe('created');
+    await expect(context.store.claimStorage(reservationId, createdAt, objectKey)).resolves.toBe(true);
+    await context.objects.put(objectKey, new Uint8Array([1, 2, 3, 4]));
+
+    clock.advance(60 * 60 * 1000 + 1);
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({
+      releasedStorageReservations: 1,
+    });
+    await expect(context.objects.get(objectKey)).resolves.toBeNull();
+  });
+
+  it('keeps a parsed attachment reservation after its write claim and orphan cutoff expire', async () => {
+    const clock = new MutableClock();
+    const value = raw({ attachments: [{ filename: 'quota.txt', contentType: 'text/plain', content: 'proof' } as never] });
+    const context = await setup({ clock, quota: { maxStoredBytes: value.byteLength + 5 } });
+    const created = await createInbox(context, 'attachment-reservation');
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'attachment-reservation', envelopeFrom: 'sender@example.com',
+      envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength,
+    });
+    const [attachment] = await context.store.listAttachments(message.id);
+    expect(attachment?.storageReservationId).toBeTruthy();
+    expect(attachment?.storageReservationId).not.toBe(attachment?.id);
+
+    clock.advance(15 * 60 * 1000 + 1);
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({
+      releasedStorageReservations: 0,
+    });
+    await expect(context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: 1,
+    })).rejects.toMatchObject({ code: 'MAILFN_QUOTA_EXCEEDED' });
+  });
+
+  it('keeps claimed storage reserved while inbound metadata persistence is in flight', async () => {
+    const clock = new MutableClock();
+    const store = new PausedInboundStore();
+    const value = raw({ subject: 'in-flight reservation' });
+    const context = await setup({ clock, store, quota: { maxStoredBytes: value.byteLength } });
+    const created = await createInbox(context, 'in-flight-reservation');
+    const preflight = await context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
+    });
+    const receiving = context.mailfn.receiveInbound({
+      providerDeliveryId: 'in-flight-reservation', envelopeFrom: 'sender@example.com',
+      envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength,
+    }, preflight);
+
+    await store.inboundSaveStarted;
+    clock.advance(15 * 60 * 1000 + 1);
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({
+      releasedStorageReservations: 0,
+    });
+    store.continueInboundSave();
+    await expect(receiving).resolves.toMatchObject({ providerDeliveryId: 'in-flight-reservation' });
+    await expect(context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: value.byteLength,
+    })).rejects.toMatchObject({ code: 'MAILFN_QUOTA_EXCEEDED' });
+  });
+
+  it('blocks draft writes while deleting and erases drafts with the inbox', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'draft-erasure');
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Erase me', text: 'sensitive body',
+    });
+    await context.store.saveInbox({ ...created.inbox, status: 'deleting', updatedAt: new Date().toISOString() });
+
+    await expect(context.mailfn.getDraft(context.admin, draft.id)).rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+    await expect(context.store.saveDraftIfInboxWritable({ ...draft, subject: 'Racing update' })).resolves.toBe(false);
+    await expect(context.mailfn.deleteInbox(context.admin, created.inbox.id)).resolves.toMatchObject({ status: 'deleted' });
+    await expect(context.store.listDrafts(context.project.id, created.inbox.id)).resolves.toHaveLength(0);
+    await expect(context.mailfn.getDraft(context.admin, draft.id)).rejects.toMatchObject({ code: 'MAILFN_NOT_FOUND' });
+  });
+
+  it('serializes retention locking against the start of inbox deletion', async () => {
+    const store = new PausedInboxDeletionStore();
+    const context = await setup({ store });
+    const created = await createInbox(context, 'retention-delete-race');
+
+    const deletion = context.mailfn.deleteInbox(context.admin, created.inbox.id);
+    await store.claimed;
+    await expect(context.mailfn.configureCompliance(context.admin, {
+      dataRegion: 'global', retentionLocked: true, exportEnabled: false, deletionSlaHours: 24,
+    })).rejects.toMatchObject({
+      code: 'MAILFN_CONFLICT',
+      message: 'Retention lock cannot be enabled while inbox deletion is in progress',
+    });
+    store.continueDeletion();
+
+    await expect(deletion).resolves.toMatchObject({ status: 'deleted' });
+    await expect(context.store.getComplianceProfile(context.project.id)).resolves.toBeNull();
+  });
+
+  it('disables inbox-scoped webhooks when deleting an inbox', async () => {
+    const context = await setup({
+      quota: { maxWebhooks: 1 },
+      webhookDispatcher: { async deliver() { return { ok: true, status: 204, retryable: false }; } },
+    });
+    const created = await createInbox(context, 'webhook-erasure');
+    const webhook = await context.mailfn.createWebhook(context.admin, {
+      inboxId: created.inbox.id, url: 'https://consumer.example.test/hook', eventTypes: ['message.received'],
+    });
+    await context.mailfn.deleteInbox(context.admin, created.inbox.id);
+    expect(await context.store.getWebhook(webhook.webhook.id)).toMatchObject({ status: 'disabled' });
+    await expect(context.mailfn.createWebhook(context.admin, {
+      url: 'https://consumer.example.test/project-hook', eventTypes: ['message.received'],
+    })).resolves.toMatchObject({ webhook: { status: 'active' } });
+  });
+
+  it('finishes interrupted inbox deletion during retention reconciliation', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'deletion-recovery');
+    const value = raw({ subject: 'Delete me' });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'deletion-recovery', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    await context.store.saveInbox({ ...created.inbox, status: 'deleting', updatedAt: '2026-08-10T00:00:01.000Z' });
+
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({
+      deletedMessages: 1,
+      deletedObjects: 1,
+    });
+    await expect(context.store.getInbox(created.inbox.id)).resolves.toMatchObject({ status: 'deleted' });
+    await expect(context.store.getMessage(message.id)).resolves.toBeNull();
+    expect(context.objects.size()).toBe(0);
+    await expect(context.mailfn.authenticate(created.credential.token)).rejects.toMatchObject({ code: 'MAILFN_UNAUTHORIZED' });
+  });
+
+  it('enforces webhook quotas atomically across concurrent creations', async () => {
+    const context = await setup({
+      quota: { maxWebhooks: 1 },
+      webhookDispatcher: {
+        async validateUrl() { await Promise.resolve(); },
+        async deliver() { return { ok: true, status: 204, retryable: false }; },
+      },
+    });
+    const results = await Promise.allSettled([
+      context.mailfn.createWebhook(context.admin, { url: 'https://one.example.test/hook', eventTypes: ['message.received'] }),
+      context.mailfn.createWebhook(context.admin, { url: 'https://two.example.test/hook', eventTypes: ['message.received'] }),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toMatchObject([{
+      reason: { code: 'MAILFN_QUOTA_EXCEEDED' },
+    }]);
+    await expect(context.store.listWebhooks(context.project.id)).resolves.toHaveLength(1);
+  });
+
+  it('does not persist a webhook when its atomic audit transaction fails', async () => {
+    const context = await setup({ store: new FailingAtomicWebhookStore() });
+
+    await expect(context.mailfn.createWebhook(context.admin, {
+      url: 'https://consumer.example.test/atomic-audit', eventTypes: ['message.received'],
+    })).rejects.toThrow('atomic webhook transaction failed');
+    await expect(context.store.listWebhooks(context.project.id)).resolves.toHaveLength(0);
+    expect((await context.store.listAudits(context.project.id)).some(
+      (event) => event.action === 'webhook.created',
+    )).toBe(false);
+  });
+
+  it('persists and queues webhook delivery without waiting on the consumer', async () => {
+    const parseJobs: ParseJob[] = [];
+    const webhookJobs: WebhookDeliveryJob[] = [];
+    let deliveries = 0;
+    const context = await setup({
+      queue: {
+        async enqueue(job) { parseJobs.push(job); },
+        async enqueueWebhook(job) { webhookJobs.push(job); },
+      },
+      webhookDispatcher: {
+        async deliver() { deliveries += 1; return { ok: true, status: 204, retryable: false }; },
+      },
+    });
+    const created = await createInbox(context, 'queued-webhook');
+    const webhook = await context.mailfn.createWebhook(context.admin, {
+      inboxId: created.inbox.id,
+      url: 'https://consumer.example.test/queued',
+      eventTypes: ['message.received'],
+    });
+    const value = raw();
+
+    await expect(context.mailfn.receiveInbound({
+      providerDeliveryId: 'queued-webhook', envelopeFrom: 'sender@example.com',
+      envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength,
+    })).resolves.toMatchObject({ status: 'pending' });
+
+    expect(deliveries).toBe(0);
+    expect(parseJobs).toHaveLength(1);
+    expect(webhookJobs).toHaveLength(1);
+    await expect(context.store.listWebhookDeliveries(webhook.webhook.id)).resolves.toMatchObject([{
+      status: 'pending', attempt: 1,
+    }]);
+    await expect(context.mailfn.processWebhookDelivery(webhookJobs[0]!)).resolves.toBe(true);
+    await expect(context.mailfn.processWebhookDelivery(webhookJobs[0]!)).resolves.toBe(false);
+    expect(deliveries).toBe(1);
+    await expect(context.store.listWebhookDeliveries(webhook.webhook.id)).resolves.toMatchObject([{
+      status: 'delivered', attempt: 1,
+    }]);
+  });
+
+  it('accepts tagged senders and SMTP null reverse paths on inbound mail', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'external-senders');
+    for (const [index, envelopeFrom] of ['sender+tag@example.com', '<>'].entries()) {
+      const value = raw();
+      await expect(context.mailfn.receiveInbound({
+        providerDeliveryId: `external-${index}`, envelopeFrom, envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength,
+      })).resolves.toMatchObject({ envelopeFrom: index === 0 ? 'sender+tag@example.com' : '' });
+    }
+  });
+
+  it('atomically blocks inbound metadata writes after an inbox starts deleting', async () => {
+    const store = new QuiescingInboundStore();
+    const context = await setup({ store });
+    const created = await createInbox(context, 'delete-race');
+    const value = raw();
+    await expect(context.mailfn.receiveInbound({
+      providerDeliveryId: 'delete-race', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    })).rejects.toMatchObject({ code: 'MAILFN_INBOX_INACTIVE' });
+    expect(await store.listMessages(context.project.id, created.inbox.id)).toHaveLength(0);
+    expect(context.objects.size()).toBe(0);
+  });
+
+  it('searches message content and prevents privilege-expanding token delegation', async () => {
+    const context = await setup();
+    const first = await createInbox(context, 'search-one');
+    const second = await createInbox(context, 'search-two');
+    const value = raw({ subject: 'Invoice available', text: 'Unique needle alpha-4829' });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'search-1', envelopeFrom: 'billing@example.com', envelopeTo: first.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    const scopedActor = await context.mailfn.authenticate(first.credential.token);
+    await expect(context.mailfn.searchMessages(scopedActor, { inboxId: first.inbox.id, query: 'alpha-4829' }))
+      .resolves.toMatchObject({ items: [{ id: message.id }] });
+
+    const manager = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: first.inbox.id,
+      permissions: ['token:manage', 'message:read'],
+    });
+    const managerActor = await context.mailfn.authenticate(manager.token);
+    await expect(context.mailfn.createCredential(managerActor, {
+      projectId: context.project.id,
+      inboxId: first.inbox.id,
+      permissions: ['message:read', 'draft:write'],
+    })).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN' });
+    await expect(context.mailfn.createCredential(managerActor, {
+      projectId: context.project.id,
+      inboxId: second.inbox.id,
+      permissions: ['message:read'],
+    })).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN' });
+  });
+
+  it('rejects stale and cross-scope list/search cursors instead of restarting pagination', async () => {
+    const context = await setup();
+    const first = await createInbox(context, 'cursor-one');
+    const second = await createInbox(context, 'cursor-two');
+    for (const [delivery, subject] of [['cursor-a', 'Needle A'], ['cursor-b', 'Needle B']]) {
+      const value = raw({ subject, text: 'cursor needle' });
+      await context.mailfn.receiveInbound({
+        providerDeliveryId: delivery, envelopeFrom: 'sender@example.com', envelopeTo: first.inbox.address,
+        raw: value, rawSize: value.byteLength,
+      });
+    }
+    const page = await context.mailfn.listMessages(context.admin, { inboxId: first.inbox.id, limit: 1 });
+    expect(page.nextCursor).toBeDefined();
+    await expect(context.mailfn.listMessages(context.admin, {
+      inboxId: second.inbox.id, limit: 1, cursor: page.nextCursor,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+    await expect(context.mailfn.listMessages(context.admin, {
+      inboxId: first.inbox.id, limit: 1, subject: 'other', cursor: page.nextCursor,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+
+    const search = await context.mailfn.searchMessages(context.admin, { inboxId: first.inbox.id, query: 'needle', limit: 1 });
+    await expect(context.mailfn.searchMessages(context.admin, {
+      inboxId: first.inbox.id, query: 'different', limit: 1, cursor: search.nextCursor,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+  });
+
+  it('contains draft thread and attachment references within the actor inbox', async () => {
+    const context = await setup();
+    const first = await createInbox(context, 'draft-one');
+    const second = await createInbox(context, 'draft-two');
+    const value = raw({
+      internetMessageId: '<draft-source@example.com>',
+      attachments: [{ filename: 'private.txt', contentType: 'text/plain', content: 'private' } as never],
+    });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'draft-source', envelopeFrom: 'sender@example.com', envelopeTo: first.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    const [attachment] = await context.store.listAttachments(message.id);
+    const actor = await context.mailfn.authenticate(second.credential.token);
+    await expect(context.mailfn.createDraft(actor, {
+      inboxId: second.inbox.id,
+      threadId: message.threadId,
+      to: ['recipient@example.com'],
+      subject: 'Cross-inbox reference',
+    })).rejects.toMatchObject({ code: 'MAILFN_NOT_FOUND' });
+    await expect(context.mailfn.createDraft(actor, {
+      inboxId: second.inbox.id,
+      to: ['recipient@example.com'],
+      subject: 'Cross-inbox attachment',
+      attachmentIds: [attachment!.id],
+    })).rejects.toMatchObject({ code: 'MAILFN_NOT_FOUND' });
+
+    const draftWriter = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      inboxId: first.inbox.id,
+      permissions: ['draft:write'],
+    });
+    const draftWriterActor = await context.mailfn.authenticate(draftWriter.token);
+    await expect(context.mailfn.createDraft(draftWriterActor, {
+      inboxId: first.inbox.id,
+      to: ['recipient@example.com'],
+      subject: 'Unauthorized attachment import',
+      attachmentIds: [attachment!.id],
+    })).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN' });
+    const imported = await context.mailfn.createDraft(context.admin, {
+      inboxId: first.inbox.id,
+      to: ['recipient@example.com'],
+      subject: 'Authorized attachment import',
+      attachmentIds: [attachment!.id],
+    });
+    await expect(context.mailfn.updateDraft(draftWriterActor, imported.id, {
+      subject: 'Keep inaccessible attachment',
+    })).rejects.toMatchObject({ code: 'MAILFN_FORBIDDEN' });
+  });
+
+  it('records webhook outages without rejecting mail and retries from durable delivery state', async () => {
+    const clock = new MutableClock();
+    let available = false;
+    const context = await setup({
+      clock,
+      webhookDispatcher: { async deliver() { if (!available) throw new Error('consumer unavailable'); return { ok: true, status: 204, retryable: false }; } },
+    });
+    const created = await createInbox(context, 'webhook');
+    await expect(context.mailfn.createWebhook(context.admin, {
+      inboxId: created.inbox.id,
+      url: 'https://127.0.0.1/internal',
+      eventTypes: ['message.received'],
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+    const webhook = await context.mailfn.createWebhook(context.admin, {
+      inboxId: created.inbox.id,
+      url: 'https://consumer.example.test/mailfn',
+      eventTypes: ['message.received'],
+    });
+    const value = raw();
+    await expect(context.mailfn.receiveInbound({
+      providerDeliveryId: 'webhook-1', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    })).resolves.toMatchObject({ status: 'ready' });
+    expect(await context.store.listWebhookDeliveries(webhook.webhook.id)).toMatchObject([{
+      status: 'failed', attempt: 1, nextAttemptAt: '2026-08-10T00:00:02.000Z',
+    }]);
+    await expect(context.store.getWebhook(webhook.webhook.id)).resolves.toMatchObject({
+      status: 'active', consecutiveFailures: 1,
+    });
+    available = true;
+    clock.advance(2_100);
+    expect(await context.mailfn.retryWebhookDeliveries(context.project.id)).toBe(1);
+    expect(await context.store.listWebhookDeliveries(webhook.webhook.id)).toMatchObject([{
+      status: 'delivered', attempt: 2, nextAttemptAt: undefined,
+    }]);
+    await expect(context.store.getWebhook(webhook.webhook.id)).resolves.toMatchObject({
+      status: 'active', consecutiveFailures: 0,
+    });
+  });
+
+  it('atomically counts concurrent webhook failures and preserves quarantine', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'webhook-failure-count');
+    const webhook = await context.mailfn.createWebhook(context.admin, {
+      inboxId: created.inbox.id,
+      url: 'https://consumer.example.test/failure-count',
+      eventTypes: ['message.received'],
+    });
+
+    await Promise.all(Array.from({ length: 10 }, (_, index) => (
+      context.store.recordWebhookDeliveryResult(
+        webhook.webhook.id,
+        false,
+        new Date(Date.parse(webhook.webhook.updatedAt) + index + 1).toISOString(),
+      )
+    )));
+    await expect(context.store.getWebhook(webhook.webhook.id)).resolves.toMatchObject({
+      status: 'quarantined', consecutiveFailures: 10,
+    });
+
+    await context.store.recordWebhookDeliveryResult(
+      webhook.webhook.id,
+      true,
+      new Date(Date.parse(webhook.webhook.updatedAt) + 20).toISOString(),
+    );
+    await expect(context.store.getWebhook(webhook.webhook.id)).resolves.toMatchObject({
+      status: 'quarantined', consecutiveFailures: 10,
+    });
+  });
+
+  it('reclaims one abandoned pending webhook delivery with a conditional lease', async () => {
+    const clock = new MutableClock();
+    let deliveries = 0;
+    const context = await setup({
+      clock,
+      webhookDispatcher: { async deliver() { deliveries += 1; return { ok: true, status: 204, retryable: false }; } },
+    });
+    const created = await createInbox(context, 'abandoned-webhook');
+    const webhook = await context.mailfn.createWebhook(context.admin, {
+      inboxId: created.inbox.id,
+      url: 'https://consumer.example.test/hook',
+      eventTypes: ['message.received'],
+    });
+    await context.store.appendEvent({
+      id: 'evt_abandoned', version: 1, type: 'message.received', projectId: context.project.id,
+      inboxId: created.inbox.id, occurredAt: clock.now().toISOString(), payload: {},
+    });
+    await context.store.saveWebhookDelivery({
+      id: 'delivery_abandoned', webhookId: webhook.webhook.id, eventId: 'evt_abandoned', attempt: 1,
+      status: 'pending', createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString(),
+    });
+    clock.advance(5 * 60 * 1000 + 1);
+
+    const processed = await Promise.all([
+      context.mailfn.retryWebhookDeliveries(context.project.id),
+      context.mailfn.retryWebhookDeliveries(context.project.id),
+    ]);
+    expect(processed.reduce((total, value) => total + value, 0)).toBe(1);
+    expect(deliveries).toBe(1);
+    await expect(context.store.listWebhookDeliveries(webhook.webhook.id)).resolves.toMatchObject([{
+      status: 'delivered', attempt: 2, nextAttemptAt: undefined,
+    }]);
+  });
+
+  it('rejects webhook URLs that the configured transport cannot deliver', async () => {
+    const context = await setup({
+      webhookDispatcher: {
+        async validateUrl() { throw new Error('Cloudflare-proxied webhook hosts are unsupported'); },
+        async deliver() { return { ok: true, status: 204, retryable: false }; },
+      },
+    });
+    await expect(context.mailfn.createWebhook(context.admin, {
+      url: 'https://proxied.example.test/hook', eventTypes: ['message.received'],
+    })).rejects.toMatchObject({
+      code: 'MAILFN_VALIDATION_FAILED',
+      message: 'Cloudflare-proxied webhook hosts are unsupported',
+      status: 400,
+    });
+    await expect(context.store.listWebhooks(context.project.id)).resolves.toHaveLength(0);
+  });
+
+  it('verifies, activates, uses, and reversibly disables custom domains', async () => {
+    const getRequiredDnsRecords = vi.fn(async (domain: string) => [
+      { type: 'MX' as const, name: domain, value: 'mx.provider.test', priority: 10 },
+    ]);
+    const verifyDns = vi.fn(async () => ({ verified: true, diagnostics: [] }));
+    const createRouting = vi.fn(async () => ({ routingRuleId: 'routing-1' }));
+    const disableRouting = vi.fn(async () => undefined);
+    const context = await setup({ domainAdapter: { getRequiredDnsRecords, verifyDns, createRouting, disableRouting } });
+    const pending = await context.mailfn.createDomain(context.admin, 'mail.example.com');
+    expect(pending.expectedRecords.map((record) => record.value)).toEqual([
+      expect.stringMatching(/^mailfn-verification=/),
+      'mx.provider.test',
+    ]);
+    expect(getRequiredDnsRecords).toHaveBeenCalledWith('mail.example.com');
+    const active = await context.mailfn.verifyDomain(context.admin, pending.id);
+    expect(active).toMatchObject({ status: 'active', routingRuleId: 'routing-1' });
+    expect((await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'stable', requestedLocalPart: 'custom', domain: 'mail.example.com',
+    })).inbox.address).toBe('custom@mail.example.com');
+    await expect(context.mailfn.disableDomain(context.admin, pending.id)).resolves.toMatchObject({ status: 'disabled' });
+    await expect(context.mailfn.disableDomain(context.admin, pending.id)).resolves.toMatchObject({ status: 'disabled' });
+    expect(disableRouting).toHaveBeenCalledOnce();
+  });
+
+  it('claims domain verification before provisioning one provider routing rule', async () => {
+    let releaseRouting!: () => void;
+    const createRouting = vi.fn(() => new Promise<{ routingRuleId: string }>((resolve) => {
+      releaseRouting = () => resolve({ routingRuleId: 'routing-once' });
+    }));
+    const context = await setup({
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting,
+        disableRouting: async () => undefined,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'serialized.example.com');
+
+    const first = context.mailfn.verifyDomain(context.admin, pending.id);
+    await vi.waitFor(() => expect(createRouting).toHaveBeenCalledOnce());
+    await expect(context.mailfn.verifyDomain(context.admin, pending.id)).rejects.toMatchObject({
+      code: 'MAILFN_CONFLICT', retryable: true,
+    });
+    releaseRouting();
+
+    await expect(first).resolves.toMatchObject({ status: 'active', routingRuleId: 'routing-once' });
+    expect(createRouting).toHaveBeenCalledOnce();
+    const active = await context.store.getDomain(pending.id);
+    expect(active).toMatchObject({ status: 'active', routingRuleId: 'routing-once' });
+  });
+
+  it('preserves a shared route committed by a newer verification lease', async () => {
+    const clock = new MutableClock();
+    let releaseStaleRouting!: () => void;
+    let routingCalls = 0;
+    const disableRouting = vi.fn(async () => undefined);
+    const context = await setup({
+      clock,
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: vi.fn(async () => {
+          routingCalls += 1;
+          if (routingCalls === 1) {
+            await new Promise<void>((resolve) => { releaseStaleRouting = resolve; });
+          }
+          return { routingRuleId: 'shared-routing-rule' };
+        }),
+        disableRouting,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'lease-takeover.example.com');
+    const stale = context.mailfn.verifyDomain(context.admin, pending.id);
+    await vi.waitFor(() => expect(routingCalls).toBe(1));
+    clock.advance(5 * 60 * 1000 + 1);
+
+    await expect(context.mailfn.verifyDomain(context.admin, pending.id)).resolves.toMatchObject({
+      status: 'active', routingRuleId: 'shared-routing-rule',
+    });
+    releaseStaleRouting();
+
+    await expect(stale).rejects.toMatchObject({ code: 'MAILFN_STORAGE_FAILED', retryable: true });
+    expect(disableRouting).not.toHaveBeenCalled();
+    await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({
+      status: 'active', routingRuleId: 'shared-routing-rule',
+    });
+  });
+
+  it('preserves a shared route while the newer verification lease is still in flight', async () => {
+    const clock = new MutableClock();
+    let releaseStaleRouting!: () => void;
+    let releaseNewRouting!: () => void;
+    let newerRoutingStarted!: () => void;
+    const staleGate = new Promise<void>((resolve) => { releaseStaleRouting = resolve; });
+    const newGate = new Promise<void>((resolve) => { releaseNewRouting = resolve; });
+    const newStarted = new Promise<void>((resolve) => { newerRoutingStarted = resolve; });
+    let routingCalls = 0;
+    const disableRouting = vi.fn(async () => undefined);
+    const context = await setup({
+      clock,
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: vi.fn(async () => {
+          routingCalls += 1;
+          if (routingCalls === 1) await staleGate;
+          else {
+            newerRoutingStarted();
+            await newGate;
+          }
+          return { routingRuleId: 'shared-in-flight-route' };
+        }),
+        disableRouting,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'in-flight-takeover.example.com');
+    const stale = context.mailfn.verifyDomain(context.admin, pending.id);
+    await vi.waitFor(() => expect(routingCalls).toBe(1));
+    clock.advance(5 * 60 * 1000 + 1);
+    const newer = context.mailfn.verifyDomain(context.admin, pending.id);
+    await newStarted;
+
+    releaseStaleRouting();
+    await expect(stale).rejects.toMatchObject({ code: 'MAILFN_STORAGE_FAILED', retryable: true });
+    expect(disableRouting).not.toHaveBeenCalled();
+    await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({ status: 'verifying' });
+
+    releaseNewRouting();
+    await expect(newer).resolves.toMatchObject({ status: 'active', routingRuleId: 'shared-in-flight-route' });
+    expect(disableRouting).not.toHaveBeenCalled();
+  });
+
+  it('reconciles a durably disabled domain that still retains live routing state', async () => {
+    const disableRouting = vi.fn(async () => undefined);
+    const context = await setup({
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'routing-live' }),
+        disableRouting,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'retry.example.com');
+    await context.store.saveDomain({ ...pending, status: 'disabled', routingRuleId: 'routing-live' });
+
+    await expect(context.mailfn.disableDomain(context.admin, pending.id)).resolves.toMatchObject({
+      status: 'disabled', routingRuleId: undefined,
+    });
+    expect(disableRouting).toHaveBeenCalledOnce();
+    expect((await context.store.getDomain(pending.id))?.routingRuleId).toBeUndefined();
+  });
+
+  it('reloads a verified routing handle when disablement loses its initial claim race', async () => {
+    const store = new PausedDomainDisableStore();
+    const clock = new MutableClock();
+    const disableRouting = vi.fn(async () => undefined);
+    const context = await setup({
+      store,
+      clock,
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'unused' }),
+        disableRouting,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'disable-claim-race.example.com');
+    const verifying = { ...pending, status: 'verifying' as const, lastCheckedAt: clock.now().toISOString() };
+    await store.saveDomain(verifying);
+
+    const disabling = context.mailfn.disableDomain(context.admin, pending.id);
+    await store.disableStarted();
+    await store.saveDomain({
+      ...verifying,
+      status: 'active',
+      routingRuleId: 'routing-won-race',
+      verifiedAt: clock.now().toISOString(),
+      updatedAt: clock.now().toISOString(),
+    });
+    store.resumeDisable();
+
+    await expect(disabling).resolves.toMatchObject({ status: 'disabled', routingRuleId: undefined });
+    expect(disableRouting).toHaveBeenCalledWith(expect.objectContaining({ routingRuleId: 'routing-won-race' }));
+  });
+
+  it('enforces custom-domain ownership across projects', async () => {
+    const context = await setup({
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'unused' }),
+        disableRouting: async () => undefined,
+      },
+    });
+    const other = await context.mailfn.bootstrapProject({ slug: 'other-project', displayName: 'Other project' });
+    const otherAdmin = await context.mailfn.authenticate(other.credential.token);
+
+    const results = await Promise.allSettled([
+      context.mailfn.createDomain(context.admin, 'owned.example.com'),
+      context.mailfn.createDomain(otherAdmin, 'owned.example.com'),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toMatchObject([{
+      reason: { code: 'MAILFN_CONFLICT' },
+    }]);
+    await expect(context.store.getDomainByNameAcrossProjects('owned.example.com')).resolves.not.toBeNull();
+  });
+
+  it('retains retryable disabling state when final disabled persistence fails', async () => {
+    const disableRouting = vi.fn(async () => undefined);
+    const context = await setup({
+      store: new FailingDisabledDomainStore(),
+      domainAdapter: {
+        getRequiredDnsRecords: async (domain) => [{ type: 'MX', name: domain, value: 'mx.provider.test' }],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'routing-safe-disable' }),
+        disableRouting,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'safe-disable.example.com');
+    await context.mailfn.verifyDomain(context.admin, pending.id);
+
+    await expect(context.mailfn.disableDomain(context.admin, pending.id)).rejects.toMatchObject({
+      code: 'MAILFN_STORAGE_FAILED', retryable: true,
+    });
+    expect(disableRouting).toHaveBeenCalledOnce();
+    await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({
+      status: 'disabling', routingRuleId: 'routing-safe-disable',
+    });
+  });
+
+  it('retains retryable disabling state when provider routing teardown fails', async () => {
+    const context = await setup({
+      domainAdapter: {
+        getRequiredDnsRecords: async (domain) => [{ type: 'MX', name: domain, value: 'mx.provider.test' }],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'routing-still-live' }),
+        disableRouting: async () => { throw new Error('provider teardown unavailable'); },
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'rollback-disable.example.com');
+    await context.mailfn.verifyDomain(context.admin, pending.id);
+
+    await expect(context.mailfn.disableDomain(context.admin, pending.id)).rejects.toMatchObject({
+      code: 'MAILFN_DOMAIN_ROUTING_FAILED', retryable: true,
+    });
+    await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({
+      status: 'disabling',
+      routingRuleId: 'routing-still-live',
+    });
+  });
+
+  it('preserves the routing handle when the provider adapter is unavailable during retry', async () => {
+    const context = await setup({
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'routing-needs-adapter' }),
+        disableRouting: async () => undefined,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'adapter-retry.example.com');
+    await context.mailfn.verifyDomain(context.admin, pending.id);
+    const withoutAdapter = new MailFn({
+      store: context.store,
+      objects: context.objects,
+      defaultDomain: 'inbound.example.com',
+      secretProtector: noOpSecretProtector,
+    });
+
+    await expect(withoutAdapter.disableDomain(context.admin, pending.id)).rejects.toMatchObject({
+      code: 'MAILFN_DOMAIN_ROUTING_FAILED', retryable: true,
+    });
+    await expect(context.store.getDomain(pending.id)).resolves.toMatchObject({
+      status: 'disabling', routingRuleId: 'routing-needs-adapter',
+    });
+    await expect(withoutAdapter.disableDomain(context.admin, pending.id)).rejects.toMatchObject({
+      code: 'MAILFN_DOMAIN_ROUTING_FAILED', retryable: true,
+    });
+  });
+
+  it('enforces the domain quota atomically across concurrent domain names', async () => {
+    const context = await setup({
+      quota: { maxDomains: 1 },
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'unused' }),
+        disableRouting: async () => undefined,
+      },
+    });
+    const results = await Promise.allSettled([
+      context.mailfn.createDomain(context.admin, 'quota-a.example.com'),
+      context.mailfn.createDomain(context.admin, 'quota-b.example.com'),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toMatchObject([{
+      reason: { code: 'MAILFN_QUOTA_EXCEEDED' },
+    }]);
+    expect(await context.store.listDomains(context.project.id)).toHaveLength(1);
+  });
+
+  it('compensates provider routing when active custom-domain state cannot be persisted', async () => {
+    const disableRouting = vi.fn(async () => undefined);
+    const context = await setup({
+      store: new FailingActiveDomainStore(),
+      domainAdapter: {
+        getRequiredDnsRecords: async (domain) => [{ type: 'MX', name: domain, value: 'mx.provider.test' }],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'orphan-candidate' }),
+        disableRouting,
+      },
+    });
+    const pending = await context.mailfn.createDomain(context.admin, 'mail.example.com');
+    await expect(context.mailfn.verifyDomain(context.admin, pending.id)).rejects.toMatchObject({ code: 'MAILFN_STORAGE_FAILED' });
+    expect(disableRouting).toHaveBeenCalledWith(expect.objectContaining({ routingRuleId: 'orphan-candidate' }));
+    expect((await context.store.getDomain(pending.id))?.status).toBe('pending');
+  });
+
+  it('keeps billing and support disabled while preserving abuse and compliance controls', async () => {
+    const context = await setup();
+    await expect(context.mailfn.getUsage(context.admin)).rejects.toMatchObject({ code: 'MAILFN_PUBLIC_PLATFORM_DISABLED' });
+    await expect(context.mailfn.createSupportCase(context.admin, {
+      subject: 'Help', severity: 'normal', description: 'Need help',
+    })).rejects.toMatchObject({ code: 'MAILFN_PUBLIC_PLATFORM_DISABLED' });
+    await expect(context.mailfn.reportAbuse(context.admin, {
+      kind: 'spam', resourceType: 'project', resourceId: context.project.id, reason: 'automated complaint',
+    })).resolves.toMatchObject({ status: 'open' });
+    await expect(context.mailfn.reportAbuse(context.admin, {
+      kind: 'invented' as never, resourceType: 'project', resourceId: context.project.id, reason: 'invalid kind',
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+    await expect(context.mailfn.configureCompliance(context.admin, {
+      dataRegion: 'global', retentionLocked: 'false' as never, exportEnabled: false, deletionSlaHours: 24,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+    await expect(context.mailfn.configureCompliance(context.admin, {
+      dataRegion: 'global', retentionLocked: false, exportEnabled: 'false' as never, deletionSlaHours: 24,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+    expect(await context.store.getComplianceProfile(context.project.id)).toBeNull();
+    await expect(context.mailfn.configureCompliance(context.admin, {
+      dataRegion: 'global', retentionLocked: true, exportEnabled: false, deletionSlaHours: 24,
+    })).resolves.toMatchObject({ projectId: context.project.id, retentionLocked: true });
+  });
+
+  it('applies concurrent abuse penalties atomically to sender reputation', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'concurrent-abuse-reputation');
+    const value = raw({ from: [{ address: 'repeat-abuser@example.com' }] });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'concurrent-abuse-reputation',
+      envelopeFrom: 'repeat-abuser@example.com',
+      envelopeTo: created.inbox.address,
+      raw: value,
+      rawSize: value.byteLength,
+    });
+
+    await Promise.all(Array.from({ length: 3 }, (_, index) => context.mailfn.reportAbuse(context.admin, {
+      kind: 'spam',
+      resourceType: 'message',
+      resourceId: message.id,
+      reason: `complaint ${index + 1}`,
+    })));
+
+    await expect(context.store.getSenderReputation(
+      context.project.id,
+      'repeat-abuser@example.com',
+    )).resolves.toMatchObject({
+      score: 10,
+      status: 'block',
+      complaintCount: 3,
+      bounceCount: 0,
+    });
+  });
+
+  it('does not expose a committed abuse report as failed when its event cannot be stored', async () => {
+    const context = await setup({ store: new NoncriticalFailureStore() });
+    const created = await createInbox(context, 'abuse-event-failure');
+    const value = raw({ from: [{ address: 'event-failure@example.com' }] });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'abuse-event-failure',
+      envelopeFrom: 'event-failure@example.com',
+      envelopeTo: created.inbox.address,
+      raw: value,
+      rawSize: value.byteLength,
+    });
+
+    await expect(context.mailfn.reportAbuse(context.admin, {
+      kind: 'spam', resourceType: 'message', resourceId: message.id, reason: 'reported once',
+    })).resolves.toMatchObject({ status: 'open' });
+    await expect(context.mailfn.listAbuseCases(context.admin)).resolves.toHaveLength(1);
+    await expect(context.store.getSenderReputation(context.project.id, 'event-failure@example.com'))
+      .resolves.toMatchObject({ score: 70, complaintCount: 1 });
+    expect((await context.store.listAudits(context.project.id)).some((event) =>
+      event.action === 'event.append_failed'
+      && event.resourceType === 'abuse_case'
+      && event.metadata.eventType === 'abuse.reported'
+    )).toBe(true);
+  });
+
+  it('does not classify post-commit webhook processing failure as an abuse event append failure', async () => {
+    const store = new FailingWebhookFailureEventStore();
+    const context = await setup({
+      store,
+      webhookDispatcher: { deliver: async () => ({ ok: false, retryable: false }) },
+    });
+    await context.mailfn.createWebhook(context.admin, {
+      url: 'https://hooks.example.test/abuse',
+      eventTypes: ['abuse.reported'],
+    });
+
+    const abuseCase = await context.mailfn.reportAbuse(context.admin, {
+      kind: 'spam', resourceType: 'project', resourceId: context.project.id, reason: 'reported once',
+    });
+
+    await expect(store.listEvents(context.project.id)).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'abuse.reported' })]),
+    );
+    const audits = await store.listAudits(context.project.id);
+    expect(audits.some((event) =>
+      event.action === 'event.append_failed' && event.resourceId === abuseCase.id
+    )).toBe(false);
+    expect(audits.some((event) => event.action === 'webhook.processing_failed')).toBe(true);
+  });
+
+  it('preserves terminal inbox state when abuse enforcement races expiration', async () => {
+    const store = new PausedInboxUpdateStore();
+    const context = await setup({ store });
+    const created = await createInbox(context, 'abuse-expiry-race');
+    const abuseCase = await context.mailfn.reportAbuse(context.admin, {
+      kind: 'spam', resourceType: 'inbox', resourceId: created.inbox.id, reason: 'reported',
+    });
+
+    const enforcement = context.mailfn.updateAbuseCase(context.admin, abuseCase.id, {
+      status: 'investigating', disableResource: true,
+    });
+    await store.started;
+    await store.saveInbox({
+      ...created.inbox,
+      status: 'expired',
+      updatedAt: '2026-08-10T00:00:01.000Z',
+    });
+    store.continueUpdate();
+
+    await expect(enforcement).resolves.toMatchObject({ status: 'investigating' });
+    await expect(store.getInbox(created.inbox.id)).resolves.toMatchObject({ status: 'expired' });
+  });
+
+  it('rejects non-boolean abuse enforcement flags before changing the resource', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'abuse-boolean');
+    const abuseCase = await context.mailfn.reportAbuse(context.admin, {
+      kind: 'spam', resourceType: 'inbox', resourceId: created.inbox.id, reason: 'reported',
+    });
+
+    await expect(context.mailfn.updateAbuseCase(context.admin, abuseCase.id, {
+      status: 'investigating', disableResource: 'false' as never,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED', message: 'disableResource must be a boolean' });
+    await expect(context.store.getInbox(created.inbox.id)).resolves.toMatchObject({ status: 'active' });
+    await expect(context.mailfn.authenticate(created.credential.token)).resolves.toMatchObject({ inboxId: created.inbox.id });
+  });
+
+  it('keeps abuse domain enforcement retryable when routing teardown has no adapter', async () => {
+    const context = await setup({
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'abuse-routing-live' }),
+        disableRouting: async () => undefined,
+      },
+    });
+    const domain = await context.mailfn.createDomain(context.admin, 'abuse-routing.example.com');
+    await context.mailfn.verifyDomain(context.admin, domain.id);
+    const abuseCase = await context.mailfn.reportAbuse(context.admin, {
+      kind: 'phishing', resourceType: 'domain', resourceId: domain.id, reason: 'reported',
+    });
+    const withoutAdapter = new MailFn({
+      store: context.store,
+      objects: context.objects,
+      defaultDomain: 'inbound.example.com',
+      secretProtector: noOpSecretProtector,
+    });
+
+    await expect(withoutAdapter.updateAbuseCase(context.admin, abuseCase.id, {
+      status: 'investigating', disableResource: true,
+    })).rejects.toMatchObject({ code: 'MAILFN_DOMAIN_ROUTING_FAILED', retryable: true });
+    await expect(context.store.getDomain(domain.id)).resolves.toMatchObject({
+      status: 'disabling', routingRuleId: 'abuse-routing-live',
+    });
+  });
+
+  it('rejects unknown abuse resource types before persisting a case', async () => {
+    const context = await setup({
+      domainAdapter: {
+        getRequiredDnsRecords: async () => [],
+        verifyDns: async () => ({ verified: true, diagnostics: [] }),
+        createRouting: async () => ({ routingRuleId: 'unused' }),
+        disableRouting: async () => undefined,
+      },
+    });
+    const domain = await context.mailfn.createDomain(context.admin, 'abuse.example.com');
+
+    await expect(context.mailfn.reportAbuse(context.admin, {
+      kind: 'spam', resourceType: 'unknown' as never, resourceId: domain.id, reason: 'invalid resource type',
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED', message: 'Invalid abuse resource type' });
+    await expect(context.mailfn.listAbuseCases(context.admin)).resolves.toHaveLength(0);
+  });
+
+  it('compares credential expirations by instant instead of ISO spelling', async () => {
+    const clock = new MutableClock(new Date('2026-08-10T00:00:00.000Z'));
+    const context = await setup({ clock });
+    const issued = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id,
+      permissions: ['inbox:read'],
+      expiresAt: '2026-08-10T04:00:01+04:00',
+    });
+    await expect(context.mailfn.authenticate(issued.token)).resolves.toMatchObject({ actorId: issued.credential.id });
+
+    clock.advance(2_000);
+    await expect(context.mailfn.authenticate(issued.token)).rejects.toMatchObject({ code: 'MAILFN_UNAUTHORIZED' });
+    await expect(context.store.getCredential(issued.credential.id)).resolves.toMatchObject({ status: 'expired' });
+  });
+
+  it('rejects offset-bearing inbox expirations by instant during inbound preflight', async () => {
+    const clock = new MutableClock(new Date('2026-08-10T00:00:00.000Z'));
+    const context = await setup({ clock });
+    const created = await createInbox(context, 'offset-inbound-expiry');
+    await context.store.saveInbox({
+      ...created.inbox,
+      expiresAt: '2026-08-10T04:00:01+04:00',
+      updatedAt: clock.now().toISOString(),
+    });
+
+    clock.advance(2_000);
+    await expect(context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com',
+      envelopeTo: created.inbox.address,
+      rawSize: 10,
+    })).rejects.toMatchObject({ code: 'MAILFN_INBOX_INACTIVE' });
+  });
+
+  it('enforces retention locks and supports gated compliance export and case-management workflows', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock, publicPlatform: { supportEnabled: true, billingEnabled: true } });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'expiring', requestedLocalPart: 'governed', expirySeconds: 60,
+    });
+    const value = raw();
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'governed-1', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    await context.mailfn.configureCompliance(context.admin, {
+      dataRegion: 'global', retentionLocked: true, exportEnabled: true, deletionSlaHours: 24,
+    });
+    await expect(context.mailfn.deleteInbox(context.admin, created.inbox.id)).rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+    clock.advance(61_000);
+    await context.mailfn.runRetention(context.project.id);
+    expect(await context.store.getMessage(message.id)).not.toBeNull();
+    await expect(context.mailfn.exportCompliance(context.admin)).resolves.toMatchObject({
+      project: { id: context.project.id },
+      compliance: { retentionLocked: true, exportEnabled: true },
+      messages: [{ id: message.id }],
+    });
+
+    const abuseCase = await context.mailfn.reportAbuse(context.admin, {
+      kind: 'spam', resourceType: 'inbox', resourceId: created.inbox.id, reason: 'complaint threshold exceeded',
+    });
+    await expect(context.mailfn.updateAbuseCase(context.admin, abuseCase.id, {
+      status: 'investigating', disableResource: true,
+    })).resolves.toMatchObject({ status: 'investigating' });
+    expect((await context.store.getInbox(created.inbox.id))?.status).toBe('expired');
+    const reputationInbox = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'stable', requestedLocalPart: 'reputation',
+    });
+    await context.mailfn.updateSenderReputation(context.admin, 'sender@example.com', {
+      status: 'block', score: 0, reason: 'operator block',
+    });
+    expect(await context.mailfn.listSenderReputations(context.admin)).toMatchObject([{
+      sender: 'sender@example.com', status: 'block', score: 0,
+    }]);
+    await expect(context.mailfn.receiveInbound({
+      providerDeliveryId: 'blocked-sender', envelopeFrom: 'sender@example.com', envelopeTo: reputationInbox.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    })).rejects.toMatchObject({ code: 'MAILFN_SENDER_BLOCKED' });
+    await expect(context.mailfn.createSupportCase(context.admin, {
+      subject: 'Invalid severity', severity: 'urgent' as never, description: 'Must not persist',
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED', status: 400 });
+    await expect(context.mailfn.listSupportCases(context.admin)).resolves.toEqual([]);
+    const supportCase = await context.mailfn.createSupportCase(context.admin, {
+      subject: 'Delivery review', severity: 'high', description: 'Please review the rejected delivery',
+    });
+    await expect(context.mailfn.updateSupportCase(context.admin, supportCase.id, { status: 'resolved' }))
+      .resolves.toMatchObject({ status: 'resolved' });
+  });
+
+  it('composes reply and forward through the send adapter and preserves threading headers', async () => {
+    const sent: Array<Parameters<MailFnSendAdapter['send']>[0]> = [];
+    const sendAdapter: MailFnSendAdapter = {
+      async send(request) { sent.push(request); return { providerMessageId: `sent-${sent.length}`, status: 'sent' }; },
+    };
+    const context = await setup({ sendAdapter });
+    const created = await createInbox(context);
+    const value = raw({
+      internetMessageId: '<origin@example.com>', references: ['<root@example.com>'], subject: 'Question',
+      attachments: [{ filename: 'proof.txt', contentType: 'text/plain', content: 'proof' } as never],
+    });
+    const message = await context.mailfn.receiveInbound({ providerDeliveryId: 'origin', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, raw: value, rawSize: value.byteLength });
+    await expect(context.mailfn.createReplyDraft(context.admin, created.inbox.id, message.id, {
+      text: 'Do not reply all', replyAll: 'false' as never,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+    const reply = await context.mailfn.createReplyDraft(context.admin, created.inbox.id, message.id, { text: 'Answer' });
+    await context.mailfn.sendDraft(context.admin, reply.id);
+    expect(sent[0]?.headers).toEqual({ 'In-Reply-To': '<origin@example.com>', References: '<root@example.com> <origin@example.com>' });
+    await expect(context.mailfn.createForwardDraft(context.admin, created.inbox.id, message.id, {
+      to: ['other@example.com'], includeOriginalAttachments: 'false' as never,
+    })).rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+    const forward = await context.mailfn.createForwardDraft(context.admin, created.inbox.id, message.id, { to: ['other@example.com'], includeOriginalAttachments: true });
+    await context.mailfn.sendDraft(context.admin, forward.id);
+    expect(sent[1]?.subject).toBe('Fwd: Question');
+    expect(sent[1]?.attachments).toMatchObject([{ filename: 'proof.txt', contentType: 'text/plain', content: new TextEncoder().encode('proof') }]);
+  });
+
+  it('rejects sending drafts from disabled or elapsed expiring inboxes before dispatch', async () => {
+    const send = vi.fn(async () => ({ providerMessageId: 'must-not-send', status: 'sent' as const }));
+    const clock = new MutableClock();
+    const context = await setup({ clock, sendAdapter: { send } });
+    const disabled = await createInbox(context, 'disabled-draft');
+    const disabledDraft = await context.mailfn.createDraft(context.admin, {
+      inboxId: disabled.inbox.id, to: ['recipient@example.com'], subject: 'Disabled', text: 'body',
+    });
+    await context.store.saveInbox({ ...disabled.inbox, status: 'disabled', updatedAt: clock.now().toISOString() });
+    await expect(context.mailfn.sendDraft(context.admin, disabledDraft.id)).rejects.toMatchObject({
+      code: 'MAILFN_INBOX_INACTIVE',
+    });
+
+    const expiring = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id,
+      kind: 'expiring',
+      requestedLocalPart: 'expired-draft',
+      expirySeconds: 60,
+    });
+    const expiredDraft = await context.mailfn.createDraft(context.admin, {
+      inboxId: expiring.inbox.id, to: ['recipient@example.com'], subject: 'Expired', text: 'body',
+    });
+    clock.advance(61_000);
+    await expect(context.mailfn.sendDraft(context.admin, expiredDraft.id)).rejects.toMatchObject({
+      code: 'MAILFN_INBOX_INACTIVE',
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('compares offset-bearing inbox expiration by instant before sending', async () => {
+    const send = vi.fn(async () => ({ providerMessageId: 'offset-send', status: 'sent' as const }));
+    const clock = new MutableClock(new Date('2026-08-10T00:00:00.000Z'));
+    const context = await setup({ clock, sendAdapter: { send } });
+    const created = await createInbox(context, 'offset-expiry');
+    await context.store.saveInbox({
+      ...created.inbox,
+      expiresAt: '2026-08-09T23:30:00-01:00',
+      updatedAt: clock.now().toISOString(),
+    });
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Offset', text: 'body',
+    });
+
+    await expect(context.mailfn.sendDraft(context.admin, draft.id)).resolves.toMatchObject({ status: 'sent' });
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it('provides complete draft and independent thread-label lifecycles', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'lifecycle');
+    const value = raw({ internetMessageId: '<lifecycle@example.com>', subject: 'Lifecycle' });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'lifecycle', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    const thread = await context.mailfn.labelThread(context.admin, created.inbox.id, message.threadId!, ['important']);
+    expect(thread.labels).toEqual(['important']);
+    await context.mailfn.labelMessage(context.admin, created.inbox.id, message.id, ['Message-Only']);
+    expect((await context.mailfn.listThreads(context.admin, created.inbox.id))[0]?.labels).toEqual(['important']);
+    await expect(context.mailfn.listMessages(context.admin, {
+      inboxId: created.inbox.id,
+      labels: [' MESSAGE-ONLY '],
+    })).resolves.toMatchObject({ items: [expect.objectContaining({ id: message.id })] });
+
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['first@example.com'], subject: 'Draft', text: 'body',
+    });
+    expect(await context.mailfn.listDrafts(context.admin, created.inbox.id)).toMatchObject([{ id: draft.id }]);
+    const updated = await context.mailfn.updateDraft(context.admin, draft.id, { to: ['second@example.com'], subject: 'Updated' });
+    expect(updated).toMatchObject({ to: ['second@example.com'], subject: 'Updated' });
+    await expect(context.mailfn.discardDraft(context.admin, draft.id)).resolves.toMatchObject({ status: 'discarded' });
+    await expect(context.mailfn.updateDraft(context.admin, draft.id, { subject: 'Too late' })).rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+  });
+
+  it('preserves concurrent thread membership while retrying a label update', async () => {
+    const store = new PausedThreadLabelStore();
+    const context = await setup({ store });
+    const created = await createInbox(context, 'thread-label-race');
+    const value = raw({ subject: 'Thread labels' });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'thread-label-race',
+      envelopeFrom: 'first@example.com',
+      envelopeTo: created.inbox.address,
+      raw: value,
+      rawSize: value.byteLength,
+    });
+    const original = await store.getThread(message.threadId!);
+    store.pauseNextLabel = true;
+    const labeling = context.mailfn.labelThread(context.admin, created.inbox.id, message.threadId!, ['important']);
+    await store.started;
+    await store.saveThread({
+      ...original!,
+      messageIds: [...original!.messageIds, 'msg_concurrent'],
+      participants: [...original!.participants, 'second@example.com'],
+      lastMessageAt: '2026-08-10T00:00:01.000Z',
+      updatedAt: '2026-08-10T00:00:01.000Z',
+    });
+    store.continueLabel();
+
+    await expect(labeling).resolves.toMatchObject({
+      labels: ['important'],
+      messageIds: [message.id, 'msg_concurrent'],
+      participants: expect.arrayContaining([...original!.participants, 'second@example.com']),
+      lastMessageAt: '2026-08-10T00:00:01.000Z',
+    });
+  });
+
+  it('does not let stale draft edits or discards revert a completed send', async () => {
+    const store = new RacingDraftWriteStore();
+    const context = await setup({ store });
+    const created = await createInbox(context, 'draft-write-race');
+    const createDraft = (subject: string) => context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id,
+      to: ['recipient@example.com'],
+      subject,
+      text: 'body',
+    });
+
+    const edited = await createDraft('Edit race');
+    store.completeBeforeWrite = true;
+    await expect(context.mailfn.updateDraft(context.admin, edited.id, { subject: 'Stale edit' }))
+      .rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+    await expect(store.getDraft(edited.id)).resolves.toMatchObject({
+      status: 'sent', subject: 'Edit race', providerMessageId: 'concurrent-send',
+    });
+
+    const discarded = await createDraft('Discard race');
+    store.completeBeforeWrite = true;
+    await expect(context.mailfn.discardDraft(context.admin, discarded.id))
+      .rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+    await expect(store.getDraft(discarded.id)).resolves.toMatchObject({
+      status: 'sent', subject: 'Discard race', providerMessageId: 'concurrent-send',
+    });
+  });
+
+  it('does not let a stale send claim overwrite a successful draft edit', async () => {
+    const store = new PausingDraftClaimStore();
+    const send = vi.fn(async () => ({ providerMessageId: 'must-not-send', status: 'sent' as const }));
+    const context = await setup({ store, sendAdapter: { send } });
+    const created = await createInbox(context, 'draft-claim-race');
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Original', text: 'body',
+    });
+
+    store.pauseBeforeClaim = true;
+    const sending = context.mailfn.sendDraft(context.admin, draft.id);
+    await store.claimStarted;
+    await expect(context.mailfn.updateDraft(context.admin, draft.id, { subject: 'Edited' }))
+      .resolves.toMatchObject({ status: 'draft', subject: 'Edited' });
+    store.resumeClaim();
+
+    await expect(sending).rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+    expect(send).not.toHaveBeenCalled();
+    await expect(store.getDraft(draft.id)).resolves.toMatchObject({ status: 'draft', subject: 'Edited' });
+    expect(await store.listUsage(context.project.id)).not.toContainEqual(expect.objectContaining({ metric: 'outbound_message' }));
+  });
+
+  it('recovers concurrent draft sends through the stable adapter idempotency key', async () => {
+    let release!: () => void;
+    let providerCalls = 0;
+    const inFlight = new Map<string, Promise<{ providerMessageId: string; status: 'sent' }>>();
+    const sendAdapter: MailFnSendAdapter = {
+      async send(request) {
+        const existing = inFlight.get(request.idempotencyKey);
+        if (existing) return { providerMessageId: 'tx-pending', status: 'queued' };
+        providerCalls += 1;
+        const operation = new Promise<{ providerMessageId: string; status: 'sent' }>((resolve) => {
+          release = () => resolve({ providerMessageId: 'provider-once', status: 'sent' });
+        });
+        inFlight.set(request.idempotencyKey, operation);
+        return operation;
+      },
+    };
+    const context = await setup({ sendAdapter });
+    const created = await createInbox(context, 'concurrent-send');
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Once', text: 'body',
+    });
+    const first = context.mailfn.sendDraft(context.admin, draft.id);
+    while (providerCalls === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+    await expect(context.mailfn.sendDraft(context.admin, draft.id)).resolves.toMatchObject({ status: 'sending' });
+    release();
+    await expect(first).resolves.toMatchObject({ status: 'sent', providerMessageId: 'provider-once' });
+    await expect(context.mailfn.sendDraft(context.admin, draft.id)).resolves.toMatchObject({ status: 'sent' });
+    expect(providerCalls).toBe(1);
+  });
+
+  it('retries a queued send only after its active send lease is released', async () => {
+    let releaseQueued!: () => void;
+    let firstCallStarted!: () => void;
+    const queuedGate = new Promise<void>((resolve) => { releaseQueued = resolve; });
+    const started = new Promise<void>((resolve) => { firstCallStarted = resolve; });
+    let calls = 0;
+    const context = await setup({
+      sendAdapter: {
+        async send() {
+          calls += 1;
+          if (calls === 1) {
+            firstCallStarted();
+            await queuedGate;
+            return { providerMessageId: 'provider-queued', status: 'queued' as const };
+          }
+          return { providerMessageId: 'provider-sent', status: 'sent' as const };
+        },
+      },
+    });
+    const created = await createInbox(context, 'queued-after-sent');
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Monotonic', text: 'body',
+    });
+    const queued = context.mailfn.sendDraft(context.admin, draft.id);
+    await started;
+    releaseQueued();
+    await expect(queued).resolves.toMatchObject({ status: 'sending', providerMessageId: 'provider-queued' });
+    await expect(context.mailfn.sendDraft(context.admin, draft.id)).resolves.toMatchObject({
+      status: 'sent', providerMessageId: 'provider-sent',
+    });
+    await expect(context.store.getDraft(draft.id)).resolves.toMatchObject({
+      status: 'sent', providerMessageId: 'provider-sent',
+    });
+  });
+
+  it('does not share a releasable outbound reservation with an overlapping send', async () => {
+    let firstStarted!: () => void;
+    let releaseFirst!: () => void;
+    const started = new Promise<void>((resolve) => { firstStarted = resolve; });
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let calls = 0;
+    const context = await setup({
+      quota: { maxOutboundPerDay: 1 },
+      sendAdapter: {
+        async send() {
+          calls += 1;
+          if (calls === 1) {
+            firstStarted();
+            await firstGate;
+            throw new Error('provider unavailable');
+          }
+          return { providerMessageId: 'provider-sent', status: 'sent' as const };
+        },
+      },
+    });
+    const created = await createInbox(context, 'send-reservation-race');
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Once', text: 'body',
+    });
+
+    const first = context.mailfn.sendDraft(context.admin, draft.id);
+    await started;
+    await expect(context.mailfn.sendDraft(context.admin, draft.id)).resolves.toMatchObject({ status: 'sending' });
+    expect(calls).toBe(1);
+    releaseFirst();
+    await expect(first).rejects.toThrow('provider unavailable');
+    expect(await context.store.listUsage(context.project.id)).not.toContainEqual(expect.objectContaining({ metric: 'outbound_message' }));
+
+    await expect(context.mailfn.sendDraft(context.admin, draft.id)).resolves.toMatchObject({
+      status: 'sent', providerMessageId: 'provider-sent',
+    });
+    expect(calls).toBe(2);
+    expect((await context.store.listUsage(context.project.id)).filter((record) => record.metric === 'outbound_message')).toHaveLength(1);
+  });
+
+  it('preserves a successful send result after an expired lease is taken over', async () => {
+    const clock = new MutableClock();
+    const store = new PausedOutboundUsageReleaseStore();
+    const controls: Array<{
+      resolve: (value: { providerMessageId: string; status: 'sent' }) => void;
+      reject: (reason: Error) => void;
+    }> = [];
+    const context = await setup({
+      clock,
+      store,
+      quota: { maxOutboundPerDay: 1 },
+      sendAdapter: {
+        send: () => new Promise((resolve, reject) => { controls.push({ resolve, reject }); }),
+      },
+    });
+    const created = await createInbox(context, 'expired-send-result');
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Lease result', text: 'body',
+    });
+
+    const stale = context.mailfn.sendDraft(context.admin, draft.id);
+    await vi.waitFor(() => expect(controls).toHaveLength(1));
+    clock.advance(5 * 60 * 1000 + 1);
+    const takeover = context.mailfn.sendDraft(context.admin, draft.id);
+    await vi.waitFor(() => expect(controls).toHaveLength(2));
+
+    controls[1]!.reject(new Error('takeover provider failure'));
+    await store.started;
+    controls[0]!.resolve({ providerMessageId: 'provider-stale-success', status: 'sent' });
+    await expect(stale).resolves.toMatchObject({
+      status: 'sent', providerMessageId: 'provider-stale-success',
+    });
+    store.continueRelease();
+    await expect(takeover).rejects.toThrow('takeover provider failure');
+
+    await expect(context.store.getDraft(draft.id)).resolves.toMatchObject({
+      status: 'sent', providerMessageId: 'provider-stale-success',
+    });
+    expect((await context.store.listUsage(context.project.id))
+      .filter((record) => record.metric === 'outbound_message')).toHaveLength(1);
+  });
+
+  it('releases outbound quota when both expired send-lease owners fail', async () => {
+    const clock = new MutableClock();
+    const controls: Array<{ reject: (reason: Error) => void }> = [];
+    const context = await setup({
+      clock,
+      quota: { maxOutboundPerDay: 1 },
+      sendAdapter: {
+        send: () => new Promise((_resolve, reject) => { controls.push({ reject }); }),
+      },
+    });
+    const created = await createInbox(context, 'expired-send-quota');
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Lease quota', text: 'body',
+    });
+
+    const stale = context.mailfn.sendDraft(context.admin, draft.id);
+    await vi.waitFor(() => expect(controls).toHaveLength(1));
+    clock.advance(5 * 60 * 1000 + 1);
+    const takeover = context.mailfn.sendDraft(context.admin, draft.id);
+    await vi.waitFor(() => expect(controls).toHaveLength(2));
+
+    controls[1]!.reject(new Error('takeover provider failure'));
+    await expect(takeover).rejects.toThrow('takeover provider failure');
+    controls[0]!.reject(new Error('stale provider failure'));
+    await expect(stale).rejects.toThrow('stale provider failure');
+
+    await expect(context.store.getDraft(draft.id)).resolves.toMatchObject({
+      status: 'sending',
+      sendLeaseId: undefined,
+      sendLeaseExpiresAt: undefined,
+    });
+    expect(await context.store.listUsage(context.project.id))
+      .not.toContainEqual(expect.objectContaining({ metric: 'outbound_message' }));
+  });
+
+  it('does not overwrite a concurrently completed send while resetting a provider failure', async () => {
+    const store = new CompletingDraftResetStore();
+    const context = await setup({
+      store,
+      sendAdapter: { async send() { throw new Error('provider unavailable'); } },
+    });
+    const created = await createInbox(context, 'conditional-reset');
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Conditional reset', text: 'body',
+    });
+
+    await expect(context.mailfn.sendDraft(context.admin, draft.id)).rejects.toThrow('provider unavailable');
+    await expect(store.getDraft(draft.id)).resolves.toMatchObject({ status: 'sent', providerMessageId: 'concurrent-send' });
+  });
+
+  it('reserves the daily outbound quota atomically and compensates provider failures', async () => {
+    let fail = false;
+    const sent: string[] = [];
+    const context = await setup({
+      quota: { maxOutboundPerDay: 1 },
+      sendAdapter: {
+        async send(request) {
+          if (fail) throw new Error('provider unavailable');
+          sent.push(request.idempotencyKey);
+          return { providerMessageId: request.idempotencyKey, status: 'sent' };
+        },
+      },
+    });
+    const created = await createInbox(context, 'outbound-quota');
+    const [first, second] = await Promise.all(['First', 'Second'].map((subject) => context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject, text: 'body',
+    })));
+    const outcomes = await Promise.allSettled([
+      context.mailfn.sendDraft(context.admin, first.id),
+      context.mailfn.sendDraft(context.admin, second.id),
+    ]);
+    expect(outcomes.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((result) => result.status === 'rejected')).toMatchObject([{
+      reason: { code: 'MAILFN_QUOTA_EXCEEDED' },
+    }]);
+    expect(sent).toHaveLength(1);
+    expect((await context.store.listUsage(context.project.id)).filter((record) => record.metric === 'outbound_message')).toHaveLength(1);
+
+    const retryContext = await setup({
+      quota: { maxOutboundPerDay: 1 },
+      sendAdapter: { async send() { if (fail) throw new Error('provider unavailable'); return { providerMessageId: 'sent', status: 'sent' }; } },
+    });
+    const retryInbox = await createInbox(retryContext, 'outbound-retry');
+    const draft = await retryContext.mailfn.createDraft(retryContext.admin, {
+      inboxId: retryInbox.inbox.id, to: ['recipient@example.com'], subject: 'Retry', text: 'body',
+    });
+    fail = true;
+    await expect(retryContext.mailfn.sendDraft(retryContext.admin, draft.id)).rejects.toThrow('provider unavailable');
+    expect(await retryContext.store.listUsage(retryContext.project.id)).not.toContainEqual(expect.objectContaining({ metric: 'outbound_message' }));
+    fail = false;
+    await expect(retryContext.mailfn.sendDraft(retryContext.admin, draft.id)).resolves.toMatchObject({ status: 'sent' });
+  });
+
+  it('keeps public outbound closed until the production-security gate is approved', async () => {
+    const send = vi.fn(async () => ({ providerMessageId: 'never', status: 'queued' as const }));
+    const context = await setup({ sendAdapter: { send }, publicPlatform: { enabled: true, productionSecurityApproved: false } });
+    const created = await createInbox(context);
+    const draft = await context.mailfn.createDraft(context.admin, {
+      inboxId: created.inbox.id, to: ['recipient@example.com'], subject: 'Blocked', text: 'No open relay',
+    });
+    await expect(context.mailfn.sendDraft(context.admin, draft.id)).rejects.toMatchObject({ code: 'MAILFN_PRODUCTION_APPROVAL_REQUIRED' });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('returns a normal typed timeout result and cancellation error', async () => {
+    const clock = new MutableClock();
+    const context = await setup({ clock });
+    const created = await createInbox(context);
+    const actor = await context.mailfn.authenticate(created.credential.token);
+    await expect(context.mailfn.waitForMessages(actor, { inboxId: created.inbox.id, timeoutMs: 100 })).resolves.toMatchObject({ status: 'timeout', retryable: true });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(context.mailfn.waitForMessages(actor, { inboxId: created.inbox.id, signal: controller.signal })).rejects.toBeInstanceOf(MailFnError);
+  });
+
+  it('keeps failed inbound reservation cleanup retryable', async () => {
+    const store = new RetryableCancelStore();
+    const context = await setup({ store });
+    const created = await createInbox(context, 'cancel-retry');
+    const preflight = await context.mailfn.preflightInbound({
+      envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address, rawSize: 10,
+    });
+    await expect(context.mailfn.cancelInbound(preflight)).rejects.toThrow('transient release failure');
+    await expect(context.mailfn.cancelInbound(preflight)).resolves.toBeUndefined();
+    await context.mailfn.cancelInbound(preflight);
+    expect(store.releaseAttempts).toBe(2);
+  });
+
+  it('does not resurrect a credential revoked during authentication', async () => {
+    const store = new ConcurrentRevokeStore();
+    const context = await setup({ store });
+    const issued = await context.mailfn.createCredential(context.admin, {
+      projectId: context.project.id, permissions: ['inbox:read'],
+    });
+    store.revokeOnTouch = true;
+    await expect(context.mailfn.authenticate(issued.token)).rejects.toMatchObject({ code: 'MAILFN_UNAUTHORIZED' });
+    await expect(store.getCredential(issued.credential.id)).resolves.toMatchObject({ status: 'revoked' });
+  });
+
+  it('claims concurrent parse deliveries and reuses deterministic attachment state on retry', async () => {
+    const jobs: ParseJob[] = [];
+    let parseCalls = 0;
+    let releaseParse!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseParse = resolve; });
+    const parser = new JsonMimeParser();
+    const blockingParser: MailFnMimeParser = {
+      async parse(value) {
+        parseCalls += 1;
+        await gate;
+        return parser.parse(value);
+      },
+    };
+    const context = await setup({ mimeParser: blockingParser, queue: { async enqueue(job) { jobs.push(job); } } });
+    const created = await createInbox(context, 'parse-claim');
+    const value = raw({ attachments: [{ filename: 'proof.txt', contentType: 'text/plain', content: 'proof' } as never] });
+    await context.mailfn.receiveInbound({
+      providerDeliveryId: 'parse-claim', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    const first = context.mailfn.parseMessage(jobs[0]!);
+    await vi.waitFor(() => expect(parseCalls).toBe(1));
+    await expect(context.mailfn.parseMessage(jobs[0]!)).resolves.toMatchObject({ status: 'pending' });
+    releaseParse();
+    await expect(first).resolves.toMatchObject({ status: 'ready' });
+    expect(parseCalls).toBe(1);
+
+    const recoveringStore = new RecoveringAttachmentStore();
+    const recoveringObjects = new FailingDeleteObjectStore();
+    const retryJobs: ParseJob[] = [];
+    const retryContext = await setup({
+      store: recoveringStore,
+      objects: recoveringObjects,
+      queue: { async enqueue(job) { retryJobs.push(job); } },
+    });
+    const retryInbox = await createInbox(retryContext, 'parse-cleanup');
+    await retryContext.mailfn.receiveInbound({
+      providerDeliveryId: 'parse-cleanup', envelopeFrom: 'sender@example.com', envelopeTo: retryInbox.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    await expect(retryContext.mailfn.parseMessage(retryJobs[0]!)).rejects.toMatchObject({ code: 'MAILFN_PARSE_FAILED' });
+    recoveringObjects.failDeletes = false;
+    await expect(retryContext.mailfn.parseMessage(retryJobs[0]!)).resolves.toMatchObject({ status: 'ready' });
+    const stored = await recoveringStore.listMessages(retryContext.project.id, retryInbox.inbox.id);
+    const attachments = await recoveringStore.listAttachments(stored[0]!.id);
+    expect(attachments).toHaveLength(1);
+    expect(recoveringObjects.size()).toBe(2);
+  });
+
+  it('does not resurrect a retained message after its parser has already loaded raw MIME', async () => {
+    const clock = new MutableClock();
+    const jobs: ParseJob[] = [];
+    let releaseParser!: () => void;
+    let parserStarted!: () => void;
+    const parserGate = new Promise<void>((resolve) => { releaseParser = resolve; });
+    const started = new Promise<void>((resolve) => { parserStarted = resolve; });
+    const parser = new JsonMimeParser();
+    const context = await setup({
+      clock,
+      retentionPolicy: { messageTtlSeconds: 1 },
+      queue: { async enqueue(job) { jobs.push(job); } },
+      mimeParser: {
+        async parse(value) {
+          parserStarted();
+          await parserGate;
+          return parser.parse(value);
+        },
+      },
+    });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'stable', requestedLocalPart: 'parse-retention-race',
+    });
+    const value = raw({ attachments: [{ filename: 'proof.txt', contentType: 'text/plain', content: 'proof' } as never] });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'parse-retention-race', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    const parsing = context.mailfn.parseMessage(jobs[0]!);
+    await started;
+    clock.advance(1_100);
+
+    await expect(context.mailfn.runRetention(context.project.id)).resolves.toMatchObject({ deletedMessages: 1 });
+    releaseParser();
+    await expect(parsing).rejects.toMatchObject({ code: 'MAILFN_CONFLICT', retryable: false });
+    await expect(context.store.getMessage(message.id)).resolves.toBeNull();
+    await expect(context.store.listAttachments(message.id)).resolves.toEqual([]);
+    await expect(context.store.listThreads(context.project.id, created.inbox.id)).resolves.toEqual([]);
+    expect(context.objects.size()).toBe(0);
+  });
+
+  it('marks raw retention against current message state after parsing wins a stale snapshot race', async () => {
+    const clock = new MutableClock();
+    const store = new PausedRawDeletionStore();
+    const jobs: ParseJob[] = [];
+    const context = await setup({
+      clock,
+      store,
+      retentionPolicy: { rawTtlSeconds: 1, attachmentTtlSeconds: 10, messageTtlSeconds: 20 },
+      queue: { async enqueue(job) { jobs.push(job); } },
+    });
+    const created = await context.mailfn.createInbox(context.admin, {
+      projectId: context.project.id, kind: 'stable', requestedLocalPart: 'raw-parse-race',
+    });
+    const value = raw({ subject: 'Parsed winner', text: 'preserve parsed body' });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'raw-parse-race', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    clock.advance(1_100);
+    const retention = context.mailfn.runRetention(context.project.id);
+    await store.claimStarted;
+
+    await expect(context.mailfn.parseMessage(jobs[0]!)).resolves.toMatchObject({ status: 'ready' });
+    store.continueClaim();
+    await expect(retention).resolves.toMatchObject({ deletedObjects: 1, deletedMessages: 0 });
+
+    await expect(store.getMessage(message.id)).resolves.toMatchObject({
+      status: 'ready', subject: 'Parsed winner', textBody: 'preserve parsed body', rawDeletedAt: expect.any(String),
+    });
+  });
+
+  it('fences stale parser cleanup from a newer lease owner attachment', async () => {
+    const clock = new MutableClock();
+    const jobs: ParseJob[] = [];
+    let releaseStale!: () => void;
+    let staleStarted!: () => void;
+    const staleGate = new Promise<void>((resolve) => { releaseStale = resolve; });
+    const started = new Promise<void>((resolve) => { staleStarted = resolve; });
+    const parser = new JsonMimeParser();
+    let parseCalls = 0;
+    const context = await setup({
+      clock,
+      queue: { async enqueue(job) { jobs.push(job); } },
+      mimeParser: {
+        async parse(value) {
+          parseCalls += 1;
+          if (parseCalls === 1) {
+            staleStarted();
+            await staleGate;
+          }
+          return parser.parse(value);
+        },
+      },
+    });
+    const created = await createInbox(context, 'parse-lease-takeover');
+    const value = raw({ attachments: [{ filename: 'winner.txt', contentType: 'text/plain', content: 'winner' } as never] });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'parse-lease-takeover', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: value, rawSize: value.byteLength,
+    });
+    const stale = context.mailfn.parseMessage(jobs[0]!);
+    void stale.catch(() => undefined);
+    await started;
+    clock.advance(15 * 60 * 1000 + 1);
+
+    await expect(context.mailfn.parseMessage(jobs[0]!)).resolves.toMatchObject({ status: 'ready' });
+    releaseStale();
+    await expect(stale).rejects.toMatchObject({ code: 'MAILFN_CONFLICT' });
+
+    const attachments = await context.store.listAttachments(message.id);
+    expect(attachments).toHaveLength(1);
+    expect(await context.objects.get(attachments[0]!.objectKey)).not.toBeNull();
+    expect(context.objects.size()).toBe(2);
+    await expect(context.store.getMessage(message.id)).resolves.toMatchObject({ status: 'ready' });
+  });
+
+  it('preserves trusted authentication, Reply-To, lifecycle validation, and concurrent read labels', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'message-safety');
+    await expect(context.mailfn.updateInbox(context.admin, created.inbox.id, { status: 'deleted' } as never))
+      .rejects.toMatchObject({ code: 'MAILFN_VALIDATION_FAILED' });
+    const value = raw({
+      internetMessageId: '<safe@example.com>', replyTo: [{ address: 'reply@example.com' }],
+      authenticationResults: { spf: 'fail', dkim: 'pass' },
+    });
+    const message = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'message-safety', envelopeFrom: 'bounce@example.com', envelopeTo: created.inbox.address,
+      authenticationResults: { spf: 'pass' }, raw: value, rawSize: value.byteLength,
+    });
+    expect(message.authenticationResults).toMatchObject({ spf: 'pass', dkim: 'pass' });
+    await expect(context.mailfn.createReplyDraft(context.admin, created.inbox.id, message.id, { text: 'reply' }))
+      .resolves.toMatchObject({ to: ['reply@example.com'] });
+    await Promise.all([
+      context.mailfn.getMessage(context.admin, created.inbox.id, message.id),
+      context.mailfn.labelMessage(context.admin, created.inbox.id, message.id, ['important']),
+    ]);
+    await expect(context.store.getMessage(message.id)).resolves.toMatchObject({
+      labels: ['important'], readAt: expect.any(String),
+    });
+    const footer = raw({ subject: 'Newsletter', text: 'Read https://example.com/privacy for details.' });
+    const footerMessage = await context.mailfn.receiveInbound({
+      providerDeliveryId: 'ordinary-link', envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+      raw: footer, rawSize: footer.byteLength,
+    });
+    await expect(context.mailfn.extractVerification(
+      context.admin, created.inbox.id, footerMessage.id, 'verification_link',
+    )).rejects.toMatchObject({ code: 'MAILFN_NOT_FOUND' });
+  });
+
+  it('uses bounded store pagination, unique domain creation, and optimistic thread updates', async () => {
+    const domainAdapter: MailFnDomainAdapter = {
+      async getRequiredDnsRecords() { return []; },
+      async createRouting() { return { routingRuleId: 'route' }; },
+      async verifyDns() { return { verified: true, diagnostics: [] }; },
+      async disableRouting() {},
+    };
+    const context = await setup({ domainAdapter });
+    const created = await createInbox(context, 'paged');
+    for (const id of ['one', 'two', 'three']) {
+      const value = raw({ subject: `Paged common ${id}` });
+      await context.mailfn.receiveInbound({
+        providerDeliveryId: id, envelopeFrom: 'sender@example.com', envelopeTo: created.inbox.address,
+        raw: value, rawSize: value.byteLength,
+      });
+    }
+    const first = await context.mailfn.listMessages(context.admin, { inboxId: created.inbox.id, limit: 2 });
+    const second = await context.mailfn.listMessages(context.admin, {
+      inboxId: created.inbox.id, limit: 2, cursor: first.nextCursor,
+    });
+    expect(first.items).toHaveLength(2);
+    expect(second.items).toHaveLength(1);
+    expect(new Set([...first.items, ...second.items].map((message) => message.id)).size).toBe(3);
+    const searchFirst = await context.mailfn.searchMessages(context.admin, {
+      inboxId: created.inbox.id, query: 'common', limit: 2,
+    });
+    const searchSecond = await context.mailfn.searchMessages(context.admin, {
+      inboxId: created.inbox.id, query: 'common', limit: 2, cursor: searchFirst.nextCursor,
+    });
+    expect(searchFirst.items).toHaveLength(2);
+    expect(searchSecond.items).toHaveLength(1);
+
+    const domains = await Promise.allSettled([
+      context.mailfn.createDomain(context.admin, 'mail.example.com'),
+      context.mailfn.createDomain(context.admin, 'mail.example.com'),
+    ]);
+    expect(domains.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(domains.filter((result) => result.status === 'rejected')).toMatchObject([{ reason: { code: 'MAILFN_CONFLICT' } }]);
+
+    const thread = (await context.mailfn.listThreads(context.admin, created.inbox.id))[0]!;
+    const firstUpdate = { ...thread, messageIds: [...thread.messageIds, 'extra-1'] };
+    const staleUpdate = { ...thread, messageIds: [...thread.messageIds, 'extra-2'] };
+    await expect(context.store.saveThreadIfUnchanged(firstUpdate, thread)).resolves.toBe(true);
+    await expect(context.store.saveThreadIfUnchanged(staleUpdate, thread)).resolves.toBe(false);
+    await expect(context.store.getThread(thread.id)).resolves.toMatchObject({ messageIds: expect.arrayContaining(['extra-1']) });
+  });
+
+  it('sorts project message and attachment timestamps by instant in memory', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'instant-sort');
+    const messages = [];
+    const attachments = [];
+    for (const [index, content] of ['first', 'second'].entries()) {
+      const value = raw({
+        subject: content,
+        attachments: [{ filename: `${content}.txt`, contentType: 'text/plain', content } as never],
+      });
+      const message = await context.mailfn.receiveInbound({
+        providerDeliveryId: `instant-${index}`,
+        envelopeFrom: 'sender@example.com',
+        envelopeTo: created.inbox.address,
+        raw: value,
+        rawSize: value.byteLength,
+      });
+      messages.push(message);
+      attachments.push((await context.store.listAttachments(message.id))[0]!);
+    }
+    await context.store.saveMessage({ ...messages[0]!, receivedAt: '2026-08-10T01:00:00+02:00' });
+    await context.store.saveMessage({ ...messages[1]!, receivedAt: '2026-08-10T00:30:00Z' });
+    await context.store.saveAttachment({ ...attachments[0]!, createdAt: '2026-08-10T01:00:00+02:00' });
+    await context.store.saveAttachment({ ...attachments[1]!, createdAt: '2026-08-10T00:30:00Z' });
+
+    await expect(context.store.listProjectMessagesPage(context.project.id, {
+      offset: 0, limit: 10, sort: [{ field: 'receivedAt', direction: 'desc' }],
+    })).resolves.toMatchObject({ items: [{ id: messages[1]!.id }, { id: messages[0]!.id }] });
+    await expect(context.store.listProjectAttachmentsPage(context.project.id, {
+      offset: 0, limit: 10, sort: [{ field: 'createdAt', direction: 'desc' }],
+    })).resolves.toMatchObject({ items: [{ id: attachments[1]!.id }, { id: attachments[0]!.id }] });
+    await context.store.saveThread({
+      id: 'thread-offset-earlier', projectId: context.project.id, inboxId: created.inbox.id,
+      normalizedSubject: 'earlier', messageIds: [], participants: [], labels: [],
+      lastMessageAt: '2026-08-10T01:00:00+02:00', createdAt: '2026-08-10T01:00:00+02:00', updatedAt: '2026-08-10T01:00:00+02:00',
+    });
+    await context.store.saveThread({
+      id: 'thread-offset-later', projectId: context.project.id, inboxId: created.inbox.id,
+      normalizedSubject: 'later', messageIds: [], participants: [], labels: [],
+      lastMessageAt: '2026-08-10T00:30:00Z', createdAt: '2026-08-10T00:30:00Z', updatedAt: '2026-08-10T00:30:00Z',
+    });
+    const offsetThreads = (await context.store.listThreads(context.project.id, created.inbox.id))
+      .filter((thread) => thread.id.startsWith('thread-offset'));
+    expect(offsetThreads).toMatchObject([{ id: 'thread-offset-later' }, { id: 'thread-offset-earlier' }]);
+  });
+
+  it('serializes concurrent subject-fallback thread creation', async () => {
+    const context = await setup();
+    const created = await createInbox(context, 'thread-race');
+    const messages = await Promise.all(['race-1', 'race-2'].map((providerDeliveryId) => {
+      const value = raw({ subject: 'Concurrent Subject' });
+      return context.mailfn.receiveInbound({
+        providerDeliveryId,
+        envelopeFrom: 'sender@example.com',
+        envelopeTo: created.inbox.address,
+        raw: value,
+        rawSize: value.byteLength,
+      });
+    }));
+
+    expect(new Set(messages.map((message) => message.threadId)).size).toBe(1);
+    await expect(context.mailfn.listThreads(context.admin, created.inbox.id)).resolves.toMatchObject([
+      { normalizedSubject: 'concurrent subject', messageIds: expect.arrayContaining(messages.map((message) => message.id)) },
+    ]);
+  });
+});
