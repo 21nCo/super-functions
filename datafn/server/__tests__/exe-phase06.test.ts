@@ -157,7 +157,11 @@ describe("FIX-EXE-014: FK omit-set caching", () => {
       userId: "user:1",
       createdAt,
       metadata: { userId: "private", visible: true },
-      history: [createdAt, { userId: "private", visible: true }],
+      history: [
+        createdAt,
+        { userId: "private", visible: true },
+        [[{ userId: "private", visible: true }, createdAt]],
+      ],
     };
     const records = new Map<string, Record<string, unknown>[]>([
       ["task", [task]],
@@ -176,12 +180,16 @@ describe("FIX-EXE-014: FK omit-set caching", () => {
       id: "task:1",
       createdAt,
       metadata: { visible: true },
-      history: [createdAt, { visible: true }],
+      history: [createdAt, { visible: true }, [[{ visible: true }, createdAt]]],
       user: { id: "user:1", name: "Alice" },
     });
     expect(result).not.toHaveProperty("userId");
     expect(result.createdAt).toBe(createdAt);
-    expect(result.history).toEqual([createdAt, { visible: true }]);
+    expect(result.history).toEqual([
+      createdAt,
+      { visible: true },
+      [[{ visible: true }, createdAt]],
+    ]);
   });
 });
 

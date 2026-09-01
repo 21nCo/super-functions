@@ -60,6 +60,19 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
+function applyOmitToArrayValue(
+  value: unknown,
+  omit: string[] | undefined,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => applyOmitToArrayValue(item, omit));
+  }
+  if (isPlainRecord(value)) {
+    return applyOmit(value, omit);
+  }
+  return value;
+}
+
 /**
  * Apply omit to a record, removing specified fields (but never id)
  */
@@ -77,12 +90,7 @@ function applyOmit(
     if (key === "id" || !omit.includes(key)) {
       // Recursively apply omit to arrays of records
       if (Array.isArray(value)) {
-        result[key] = value.map((item) => {
-          if (isPlainRecord(item)) {
-            return applyOmit(item, omit);
-          }
-          return item;
-        });
+        result[key] = value.map((item) => applyOmitToArrayValue(item, omit));
       } else if (
         isPlainRecord(value) &&
         key !== "$relation_metadata"
