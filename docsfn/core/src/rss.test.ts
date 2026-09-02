@@ -227,4 +227,47 @@ describe("generateRSSFeed", () => {
     );
     expect(rss).not.toContain("https://evil.example");
   });
+
+  it("keeps backslash-prefixed feed paths on the site origin", () => {
+    const manifest = createManifest();
+    manifest.blog = {
+      ...manifest.blog!,
+      feedPath: "/\\evil.example/rss.xml",
+    };
+    const rss = generateRSSFeed(manifest, {
+      title: "Docs Blog",
+      description: "Release updates",
+      link: "https://docs.example.com",
+    });
+    expect(rss).toContain(
+      '<atom:link href="https://docs.example.com/evil.example/rss.xml"'
+    );
+    expect(rss).not.toContain("https://evil.example");
+  });
+
+  it("does not publish named-collection posts on the default blog feed", () => {
+    const manifest = createManifest();
+    manifest.blog = {
+      ...manifest.blog!,
+      postOrder: [],
+    };
+    manifest.posts["changelog:one.mdx"] = {
+      kind: "post",
+      id: "changelog:one.mdx",
+      collectionId: "changelog",
+      slug: "one",
+      path: "/changelog/one",
+      title: "Changelog One",
+      date: "2026-03-03",
+      tags: [],
+      body: "one",
+      frontmatter: {},
+    };
+    const rss = generateRSSFeed(manifest, {
+      title: "Docs Blog",
+      description: "Release updates",
+      link: "https://docs.example.com",
+    });
+    expect(rss).not.toContain("Changelog One");
+  });
 });

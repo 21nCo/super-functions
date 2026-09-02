@@ -6,7 +6,7 @@ import {
   normalizeProviderPath,
 } from "./provider";
 import { buildCanonicalDatedCollectionRecords } from "./blog";
-import { buildOpenApiReference } from "./openapi";
+import { normalizeOpenApiReference, parseOpenApiSource } from "./openapi";
 import { assertRouteAvailability } from "./routing";
 import { buildSidebars } from "./navigation";
 import { normalizeSourceEntries } from "./normalize";
@@ -330,13 +330,19 @@ export async function buildManifest(
 
   for (const api of normalized.apis) {
     const sourceEntry = sourceEntriesById.get(api.id);
-    const normalizedReference = buildOpenApiReference({
+    const parsed = parseOpenApiSource({
       sourceId: api.id,
       sourcePath: sourceEntry?.relativePath ?? api.slug,
       body: api.body,
+      absolutePath: sourceEntry?.absolutePath,
+    });
+    const normalizedReference = normalizeOpenApiReference({
+      sourceId: api.id,
+      sourcePath: sourceEntry?.relativePath ?? api.slug,
+      parsed: parsed.parsed,
+      sourceFormat: parsed.sourceFormat,
       fallbackTitle: api.title,
       basePath: canonicalConfig.site.basePath,
-      absolutePath: sourceEntry?.absolutePath,
       sourceMeta: {
         etag: sourceEntry?.etag,
         sha256: sourceEntry?.sha256,
@@ -368,7 +374,10 @@ export async function buildManifest(
       slug: api.slug,
       path: normalizedReference.routes.overview,
       title: api.title,
-      spec: normalizedReference,
+      spec: {
+        ...normalizedReference,
+        spec: parsed.parsed,
+      },
       frontmatter: api.frontmatter,
     };
   }

@@ -378,4 +378,24 @@ describe("resolveMarkdownRelativeLinks", () => {
     expect((resolved.blocks[0] as { html: string }).html).toContain('data="href = decoy"');
     expect((resolved.blocks[0] as { html: string }).html).toContain('href="/docs/page?raw=1"');
   });
+
+  it("preserves empty hrefs and quoted greater-than characters in relative anchors", () => {
+    const compiled = {
+      ...compileMarkdown({ source: "text", sourcePath: "content/docs/page.md" }),
+      blocks: [
+        {
+          type: "paragraph" as const,
+          text: "links",
+          html: '<a href="">current</a> <a href="./a>b">child</a>',
+        },
+      ],
+    };
+    const resolved = resolveMarkdownRelativeLinks({
+      compiled,
+      route: "/docs/page",
+      sourcePath: "content/docs/page.md",
+    });
+    expect((resolved.blocks[0] as { html: string }).html).toContain('href=""');
+    expect((resolved.blocks[0] as { html: string }).html).toContain('href="/docs/a%3Eb"');
+  });
 });

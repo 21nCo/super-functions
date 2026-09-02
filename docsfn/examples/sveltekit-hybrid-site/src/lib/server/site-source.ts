@@ -1,3 +1,5 @@
+import path from "node:path";
+import { readdir, stat } from "node:fs/promises";
 import {
   buildManifest,
   type DocPage,
@@ -26,6 +28,43 @@ export interface HybridSiteSource {
 const appRoot = process.cwd();
 
 let sourcePromise: Promise<HybridSiteSource> | null = null;
+let sourceSignature = "";
+
+async function contentSignature(root: string): Promise<string> {
+  let latest = 0;
+  const stack = [root];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+    let entries;
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.name === "node_modules" || entry.name === ".git") {
+        continue;
+      }
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+      try {
+        const info = await stat(fullPath);
+        if (info.mtimeMs > latest) {
+          latest = info.mtimeMs;
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+  return String(latest);
+}
 
 async function buildManifestSource(config: DocsConfig): Promise<HybridManifestSource> {
   const provider = new FsContentProvider({ root: appRoot });
@@ -40,23 +79,31 @@ async function buildManifestSource(config: DocsConfig): Promise<HybridManifestSo
 }
 
 export async function loadHybridSiteSource(): Promise<HybridSiteSource> {
-  if (!sourcePromise) {
-    sourcePromise = (async () => {
-      const [docs, papers] = await Promise.all([
-        buildManifestSource(docsConfig),
-        buildManifestSource(papersConfig)
-      ]);
+  const createSource = async () => {
+    const [docs, papers] = await Promise.all([
+      buildManifestSource(docsConfig),
+      buildManifestSource(papersConfig)
+    ]);
 
-      return {
-        appRoot,
-        siteTitle: docsConfig.site.title,
-        canonicalUrl: docsConfig.site.canonicalUrl,
-        docs,
-        papers
-      };
-    })();
+    return {
+      appRoot,
+      siteTitle: docsConfig.site.title,
+      canonicalUrl: docsConfig.site.canonicalUrl,
+      docs,
+      papers
+    };
+  };
+
+  if (process.env.NODE_ENV === "development") {
+    const signature = await contentSignature(appRoot);
+    if (!sourcePromise || signature !== sourceSignature) {
+      sourceSignature = signature;
+      sourcePromise = createSource();
+    }
+    return sourcePromise;
   }
 
+  sourcePromise ??= createSource();
   return sourcePromise;
 }
 

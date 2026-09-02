@@ -481,6 +481,7 @@ describe("buildManifest", () => {
     expect(manifest.routes["/docs/api/tags/indexing"]).toBe("api:index.json");
     expect(manifest.routes["/docs/api/operations/post-index"]).toBe("api:index.json");
     expect(apiReference.spec.operations.map((operation: { method: string; path: string }) => `${operation.method} ${operation.path}`)).toEqual(["POST /index"]);
+    expect(apiReference.spec.spec.paths["/index"]).toBeDefined();
 
     expect(
       resolveOpenApiRoute(

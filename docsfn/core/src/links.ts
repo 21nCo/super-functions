@@ -8,7 +8,6 @@ export interface ResolveMarkdownRelativeLinksInput {
 }
 
 const EXTERNAL_OR_SPECIAL_HREF_REGEX = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#|\/|\{)/i;
-const ANCHOR_TAG_REGEX = /<a\b[^>]*>/gi;
 
 export function resolveMarkdownRelativeLinks({
   compiled,
@@ -60,18 +59,60 @@ function resolveBlocks(
 
 function resolveHtmlLinks(html: string, baseRoute: string, route: string): string {
   const normalizedRoute = normalizeAbsolutePath(route);
-  return html.replace(ANCHOR_TAG_REGEX, (tag) =>
-    rewriteAnchorHref(tag, baseRoute, normalizedRoute)
-  );
+  let result = "";
+  let cursor = 0;
+  for (const tag of findAnchorTags(html)) {
+    result += html.slice(cursor, tag.start);
+    result += rewriteAnchorHref(tag.value, baseRoute, normalizedRoute);
+    cursor = tag.end;
+  }
+  result += html.slice(cursor);
+  return result;
+}
+
+function findAnchorTags(html: string): Array<{ start: number; end: number; value: string }> {
+  const tags: Array<{ start: number; end: number; value: string }> = [];
+  const opener = /<a\b/gi;
+  let match: RegExpExecArray | null;
+  while ((match = opener.exec(html))) {
+    const end = findQuotedTagEnd(html, match.index + match[0].length);
+    if (end === -1) {
+      continue;
+    }
+    tags.push({ start: match.index, end, value: html.slice(match.index, end) });
+    opener.lastIndex = end;
+  }
+  return tags;
+}
+
+function findQuotedTagEnd(html: string, from: number): number {
+  let quote: '"' | "'" | null = null;
+  for (let index = from; index < html.length; index += 1) {
+    const character = html[index];
+    if (quote) {
+      if (character === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === ">") {
+      return index + 1;
+    }
+  }
+  return -1;
 }
 
 function rewriteAnchorHref(tag: string, baseRoute: string, route: string): string {
-  const parsed = /^(<a\b)([^>]*)(>)$/i.exec(tag);
+  const parsed = /^(<a\b)([\s\S]*)(>)$/i.exec(tag);
   if (!parsed) {
     return tag;
   }
   const href = matchHrefAttribute(parsed[2]);
-  if (!href) {
+  if (!href || href.value.length === 0) {
     return tag;
   }
   if (EXTERNAL_OR_SPECIAL_HREF_REGEX.test(href.value)) {

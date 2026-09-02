@@ -57,8 +57,8 @@ export function generateRSSFeed(
       : Object.values(manifest.posts)
           .filter(
             (post) =>
-              !hasRequestedCollection ||
-              normalizeDatedCollectionId(post.collectionId ?? "blog") === requestedCollectionId
+              normalizeDatedCollectionId(post.collectionId ?? "blog") ===
+              (requestedCollectionId ?? "blog")
           )
           .sort((left, right) => {
             const leftDate = assertValidBlogPublishMetadata(left).timestamp;
@@ -119,12 +119,10 @@ export function generateRSSFeed(
 
 function resolveSameOriginUrl(siteOrigin: string, route: string): string {
   const origin = new URL(siteOrigin).origin;
-  const path = route.startsWith("//") || !route.startsWith("/")
-    ? `/${route.replace(/^\/+/, "")}`
-    : route;
+  const path = `/${route.replaceAll("\\", "/").replace(/^[a-z][a-z0-9+.-]*:/i, "").replace(/^\/+/, "")}`;
   const resolved = new URL(path, `${origin}/`);
   if (resolved.origin !== origin) {
-    return new URL(`/${path.replace(/^\/+/, "")}`, `${origin}/`).toString();
+    return new URL("/", `${origin}/`).toString();
   }
   return resolved.toString();
 }

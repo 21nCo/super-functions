@@ -156,6 +156,23 @@ graph TD;
     expect(compiled.blocks.some((block) => block.type === "tabs")).toBe(true);
   });
 
+  it("treats mixed fence markers as ordinary text", () => {
+    const compiled = compileMarkdown({
+      source: [
+        'import { Tabs, Tab } from "fumadocs-ui/components/tabs";',
+        "",
+        "~`` not a fence",
+        '<Tabs items={["A"]}>',
+        '  <Tab value="A">Body</Tab>',
+        "</Tabs>",
+      ].join("\n"),
+      sourcePath: "content/docs/mixed-fence.mdx",
+      compatPreset: "fumadocs-v15",
+    });
+    expect(compiled.transformedSource).toContain("<DocsTabs");
+    expect(compiled.transformedSource).toContain("~`` not a fence");
+  });
+
   it("compiles nested component children and preserves normalized props", () => {
     const compiled = compileMarkdown({
       source: `import { DemoCard } from "./DemoCard";

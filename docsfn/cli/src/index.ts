@@ -8,6 +8,7 @@ import {
   buildLlmsTxtArtifacts,
   buildManifest,
   buildSearchIndex,
+  compileMarkdown,
   createNamedCollection,
   createDiagnostic,
   diagnosticsFromUnknownError,
@@ -226,15 +227,62 @@ function computeInvalidatedPaths(input: {
 function createCompatReport(input: {
   preset: DocsCompatPreset;
   diagnostics: DocsDiagnostic[];
+  transformedFiles?: Array<{ sourceId: string; transforms: string[] }>;
 }): DocsCompatReport {
   return {
     schemaVersion: 1,
     preset: input.preset,
-    transformedFiles: [],
+    transformedFiles: input.transformedFiles ?? [],
     unsupportedSyntax: input.diagnostics.filter(
       (diagnostic) => diagnostic.code === "DOCS_COMPAT_UNSUPPORTED"
     ),
   };
+}
+
+function compileManifestSources(
+  manifest: DocsManifest,
+  preset: DocsCompatPreset,
+  diagnostics: DocsDiagnostic[]
+): Array<{ sourceId: string; transforms: string[] }> {
+  const transformedFiles: Array<{ sourceId: string; transforms: string[] }> = [];
+  const entries = [
+    ...Object.values(manifest.pages).map((page) => ({
+      sourceId: page.id,
+      source: page.body,
+      sourcePath: page.id,
+    })),
+    ...Object.values(manifest.posts).map((post) => ({
+      sourceId: post.id,
+      source: post.body,
+      sourcePath: post.id,
+    })),
+  ];
+
+  for (const entry of entries) {
+    try {
+      const compiled = compileMarkdown({
+        source: entry.source,
+        sourcePath: entry.sourcePath,
+        compatPreset: preset,
+      });
+      if (compiled.transformedSource !== entry.source) {
+        transformedFiles.push({
+          sourceId: entry.sourceId,
+          transforms: [preset],
+        });
+      }
+      diagnostics.push(...compiled.diagnostics);
+    } catch (error) {
+      diagnostics.push(
+        ...diagnosticsFromUnknownError(error, {
+          code: "DOCS_MDX_COMPILE_FAILED",
+          message: `failed to compile ${entry.sourceId}`,
+        })
+      );
+    }
+  }
+
+  return transformedFiles;
 }
 
 async function runPipeline(input: PipelineInput): Promise<PipelineResult> {
@@ -242,6 +290,7 @@ async function runPipeline(input: PipelineInput): Promise<PipelineResult> {
   let config: DocsConfig | undefined;
   let manifest: DocsManifest | undefined;
   let searchArtifact: DocsSearchArtifact | undefined;
+  let transformedFiles: Array<{ sourceId: string; transforms: string[] }> = [];
 
   try {
     config = await loadConfig(input.cwd, input.configPath);
@@ -269,6 +318,8 @@ async function runPipeline(input: PipelineInput): Promise<PipelineResult> {
     }
 
     if (manifest) {
+      const preset = config.compat?.preset ?? "none";
+      transformedFiles = compileManifestSources(manifest, preset, diagnostics);
       try {
         searchArtifact = await buildSearchIndex(manifest, {
           search: config.search,
@@ -317,6 +368,7 @@ async function runPipeline(input: PipelineInput): Promise<PipelineResult> {
     compatReport: createCompatReport({
       preset,
       diagnostics: finalizedDiagnostics,
+      transformedFiles,
     }),
     invalidatedPaths,
   };
@@ -434,8 +486,6 @@ function resolveWatchTargets(input: {
       }
       targets.add(resolved);
     }
-  } else {
-    targets.add(cwd);
   }
 
   return [...targets].sort(compareStrings);

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { readdir, stat } from "node:fs/promises";
 import {
   buildManifest,
   buildSearchIndex,
@@ -31,6 +32,43 @@ const defaultFixtureRoot = path.resolve(
 );
 
 let sourcePromise: Promise<DocsSiteSource> | null = null;
+let sourceSignature = "";
+
+async function contentSignature(root: string): Promise<string> {
+  let latest = 0;
+  const stack = [root];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+    let entries;
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.name === "node_modules" || entry.name === ".git") {
+        continue;
+      }
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+      try {
+        const info = await stat(fullPath);
+        if (info.mtimeMs > latest) {
+          latest = info.mtimeMs;
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+  return String(latest);
+}
 
 function resolveFixtureRoot(): string {
   const override = process.env.DOCSFN_FIXTURE_ROOT;
@@ -76,6 +114,14 @@ async function createDocsSiteSource(): Promise<DocsSiteSource> {
 }
 
 export async function loadDocsSiteSource(): Promise<DocsSiteSource> {
+  if (process.env.NODE_ENV === "development") {
+    const signature = await contentSignature(resolveFixtureRoot());
+    if (!sourcePromise || signature !== sourceSignature) {
+      sourceSignature = signature;
+      sourcePromise = createDocsSiteSource();
+    }
+    return sourcePromise;
+  }
   sourcePromise ??= createDocsSiteSource();
   return sourcePromise;
 }

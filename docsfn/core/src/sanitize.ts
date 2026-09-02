@@ -30,22 +30,26 @@ export interface UnsafeHtmlMatch {
 interface FenceState {
   marker: "`" | "~";
   length: number;
+  quoteDepth: number;
 }
 
-function splitBlockQuotePrefix(line: string): string {
+function matchFenceLine(line: string): {
+  marker: "`" | "~";
+  length: number;
+  info: string;
+  quoteDepth: number;
+} | null {
+  let quoteDepth = 0;
   let content = line;
   while (true) {
     const match = content.match(/^ {0,3}> ?/);
     if (!match) {
-      return content;
+      break;
     }
+    quoteDepth += 1;
     content = content.slice(match[0].length);
   }
-}
-
-function matchFenceLine(line: string): { marker: "`" | "~"; length: number; info: string } | null {
-  const content = splitBlockQuotePrefix(line);
-  const match = content.match(/^ {0,3}([`~]{3,})(.*)$/);
+  const match = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
   if (!match) {
     return null;
   }
@@ -55,16 +59,17 @@ function matchFenceLine(line: string): { marker: "`" | "~"; length: number; info
   if (marker === "`" && info.includes("`")) {
     return null;
   }
-  return { marker, length: fence.length, info };
+  return { marker, length: fence.length, info, quoteDepth };
 }
 
 function isClosingFence(
   open: FenceState,
-  candidate: { marker: "`" | "~"; length: number; info: string }
+  candidate: { marker: "`" | "~"; length: number; info: string; quoteDepth: number }
 ): boolean {
   return (
     candidate.marker === open.marker &&
     candidate.length >= open.length &&
+    candidate.quoteDepth === open.quoteDepth &&
     /^[ \t]*$/.test(candidate.info)
   );
 }
@@ -119,7 +124,11 @@ function stripCodeExamples(source: string): string {
   for (const line of source.split(/\r?\n/)) {
     const fenceMatch = matchFenceLine(line);
     if (!fence && fenceMatch) {
-      fence = { marker: fenceMatch.marker, length: fenceMatch.length };
+      fence = {
+        marker: fenceMatch.marker,
+        length: fenceMatch.length,
+        quoteDepth: fenceMatch.quoteDepth,
+      };
       kept.push("");
       continue;
     }
@@ -128,13 +137,13 @@ function stripCodeExamples(source: string): string {
       kept.push("");
       continue;
     }
-    if (fence) {
+    if (fence || /^(?: {4}|\t)/.test(line)) {
       kept.push("");
       continue;
     }
-    kept.push(stripInlineCode(line));
+    kept.push(line);
   }
-  return kept.join("\n");
+  return stripInlineCode(kept.join("\n"));
 }
 
 function collectRawHtml(source: string): string {
@@ -147,19 +156,32 @@ function collectRawHtml(source: string): string {
   return html.join("\n");
 }
 
+function collectHrefAndHtml(source: string): string {
+  const parts: string[] = [];
+  marked.walkTokens(marked.lexer(source), (token: Token) => {
+    if (token.type === "html") {
+      parts.push(token.raw);
+    }
+    if ((token.type === "link" || token.type === "image") && typeof token.href === "string") {
+      parts.push(token.href);
+    }
+  });
+  return parts.join("\n");
+}
+
 export function findUnsafeHtml(source: string): UnsafeHtmlMatch[] {
-  const scanText = `${collectRawHtml(source)}\n${stripCodeExamples(source)}`;
+  const tagScan = `${collectRawHtml(source)}\n${stripCodeExamples(source)}`;
   const matches: UnsafeHtmlMatch[] = [];
 
   for (const tag of BLOCKED_HTML_TAGS) {
     const regex = new RegExp(`<\\s*${tag}(?=[\\s/>])`, "i");
-    const found = scanText.match(regex);
+    const found = tagScan.match(regex);
     if (found) {
       matches.push({ category: `blocked-tag:${tag}`, match: found[0] });
     }
   }
 
-  const decodedForUrls = decodeHTML(scanText);
+  const decodedForUrls = decodeHTML(collectHrefAndHtml(source));
   for (const pattern of BLOCKED_HTML_PATTERNS) {
     const found = decodedForUrls.match(pattern.regex);
     if (found) {

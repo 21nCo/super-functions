@@ -86,22 +86,26 @@ function rewriteTag(source: string, local: string, canonical: "DocsTabs" | "Docs
 interface FenceState {
   marker: "`" | "~";
   length: number;
+  quoteDepth: number;
 }
 
-function splitBlockQuotePrefix(line: string): string {
+function matchFenceLine(line: string): {
+  marker: "`" | "~";
+  length: number;
+  info: string;
+  quoteDepth: number;
+} | null {
+  let quoteDepth = 0;
   let content = line;
   while (true) {
     const match = content.match(/^ {0,3}> ?/);
     if (!match) {
-      return content;
+      break;
     }
+    quoteDepth += 1;
     content = content.slice(match[0].length);
   }
-}
-
-function matchFenceLine(line: string): { marker: "`" | "~"; length: number; info: string } | null {
-  const content = splitBlockQuotePrefix(line);
-  const match = content.match(/^ {0,3}([`~]{3,})(.*)$/);
+  const match = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
   if (!match) {
     return null;
   }
@@ -111,16 +115,17 @@ function matchFenceLine(line: string): { marker: "`" | "~"; length: number; info
   if (marker === "`" && info.includes("`")) {
     return null;
   }
-  return { marker, length: fence.length, info };
+  return { marker, length: fence.length, info, quoteDepth };
 }
 
 function isClosingFence(
   open: FenceState,
-  candidate: { marker: "`" | "~"; length: number; info: string }
+  candidate: { marker: "`" | "~"; length: number; info: string; quoteDepth: number }
 ): boolean {
   return (
     candidate.marker === open.marker &&
     candidate.length >= open.length &&
+    candidate.quoteDepth === open.quoteDepth &&
     /^[ \t]*$/.test(candidate.info)
   );
 }
@@ -189,7 +194,11 @@ function scanFenceLines(lines: string[], onLine: (line: string, inFence: boolean
   for (const line of lines) {
     const fenceMatch = matchFenceLine(line);
     if (!fence && fenceMatch) {
-      fence = { marker: fenceMatch.marker, length: fenceMatch.length };
+      fence = {
+        marker: fenceMatch.marker,
+        length: fenceMatch.length,
+        quoteDepth: fenceMatch.quoteDepth,
+      };
       onLine(line, true, true);
       continue;
     }
