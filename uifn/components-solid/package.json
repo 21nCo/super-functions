@@ -18,7 +18,7 @@
   },
   "dependencies": { "@uifn/components": "0.0.1", "@uifn/solid": "0.0.1", "@uifn/recipes": "0.0.1" },
   "peerDependencies": { "solid-js": ">=1.9.0 <2" },
-  "devDependencies": { "solid-js": "1.9.13", "tsup": "^8.0.0", "typescript": "^5.0.0", "vitest": "^3.2.4" },
+  "devDependencies": { "solid-js": "1.9.13", "tsup": "^8.0.0", "typescript": "^5.0.0", "vite": "^5.4.21", "vite-plugin-solid": "2.11.12", "vitest": "^3.2.4" },
   "files": ["dist", "README.md"],
   "author": "21n",
   "license": "MIT",

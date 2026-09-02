@@ -1,5 +1,5 @@
 {
-  "name": "mdfn",
+  "name": "@mdfn/facade",
   "version": "0.1.0",
   "description": "Curated Markdown-native authoring facade for mdfn",
   "type": "module",

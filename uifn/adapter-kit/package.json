@@ -21,7 +21,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@uifn/core": "0.0.1"
+    "@uifn/core": "0.0.2"
   },
   "devDependencies": {
     "tsup": "^8.0.0",

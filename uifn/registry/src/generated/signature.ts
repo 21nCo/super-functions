@@ -3,6 +3,6 @@ export const REGISTRY_SIGNATURE = {
   "schemaVersion": 1,
   "algorithm": "Ed25519",
   "keyId": "af26384964522699ef39dd80",
-  "catalogSha256": "98170dd835921eaf019d89c68f3d17b4b32a349f5e0b96d1214f3182ab1d58c1",
-  "signatureBase64": "yLtNCFg1Ff9XFIF8PotENak43tRF2gLvKVDwoZN9WYvsaEsTb2qPzyzt1AAc2WUEmY5bgX0xZToj4qXgYMm7Ag=="
+  "catalogSha256": "7ae7efc26b69564ece5b488bc1cbec398106ef43cbe18026e066962602b135d5",
+  "signatureBase64": "GTzK/LpBeBu9N6GMXxYPpyVaiRIonyRS/a1mPgBF1bTCLb0KeOPJTS8azphqbBDAuv1OWLoXykp47sbPLn88AQ=="
 } as const;

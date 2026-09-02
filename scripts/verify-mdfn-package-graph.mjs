@@ -35,7 +35,7 @@ const allowedLayers = {
 function fail(code, detail = {}) { failures.push({ code, ...detail }); }
 function json(value) { return JSON.stringify(value); }
 function packageName(specifier) {
-  if (specifier === "mdfn" || specifier.startsWith("mdfn/")) return "mdfn";
+  if (specifier === "mdfn" || specifier.startsWith("mdfn/")) return "@mdfn/facade";
   const scoped = /^(@mdfn\/[^/]+)(?:\/.*)?$/.exec(specifier);
   return scoped?.[1] ?? null;
 }
@@ -149,7 +149,7 @@ for (const node of nodes) {
       if (!manifest.files.includes(top)) fail("MDFN_GRAPH_EXPORT_TARGET_UNPUBLISHED", { package: node.name, export: exportKey, target });
     }
   }
-  const actual = Object.keys(manifest.dependencies ?? {}).filter((name) => name === "mdfn" || name.startsWith("@mdfn/")).sort();
+  const actual = Object.keys(manifest.dependencies ?? {}).filter((name) => name === "@mdfn/facade" || name.startsWith("@mdfn/")).sort();
   const expected = [...node.dependencies].sort();
   dependencies.set(node.name, actual);
   if (json(actual) !== json(expected)) fail("MDFN_GRAPH_EDGE_MISMATCH", { package: node.name, expected, actual });
@@ -224,8 +224,8 @@ for (const node of nodes) {
   const matches = releases.filter((entry) => entry.name === node.name && entry.path === node.path);
   if (matches.length !== 1) fail("MDFN_GRAPH_RELEASE_ROW_INVALID", { package: node.name, matches: matches.length });
 }
-if (releases.some((entry) => (entry.name === "mdfn" || entry.name.startsWith("@mdfn/")) && !byName.has(entry.name))) fail("MDFN_GRAPH_RELEASE_ROW_UNKNOWN");
-if (nodes.filter((node) => node.layer === "facade").length !== 1 || byName.get("mdfn")?.layer !== "facade") fail("MDFN_GRAPH_FACADE_INVALID");
+if (releases.some((entry) => entry.name?.startsWith("@mdfn/") && !byName.has(entry.name))) fail("MDFN_GRAPH_RELEASE_ROW_UNKNOWN");
+if (nodes.filter((node) => node.layer === "facade").length !== 1 || byName.get("@mdfn/facade")?.layer !== "facade") fail("MDFN_GRAPH_FACADE_INVALID");
 
 // Negative controls keep the rules executable: each forbidden fixture must be rejected.
 const negativeControls = [];

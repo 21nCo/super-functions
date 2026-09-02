@@ -19,7 +19,7 @@
     { "name": "@mdfn/components-solid", "path": "mdfn/components-solid", "layer": "components-adapter", "dependencies": ["@mdfn/core", "@mdfn/solid", "@mdfn/components"] },
     { "name": "@mdfn/testing", "path": "mdfn/testing", "layer": "testing", "dependencies": ["@mdfn/core", "@mdfn/markdown", "@mdfn/render"] },
     { "name": "@mdfn/registry", "path": "mdfn/registry", "layer": "registry", "dependencies": ["@mdfn/core"] },
-    { "name": "mdfn", "path": "mdfn/facade", "layer": "facade", "dependencies": ["@mdfn/core", "@mdfn/markdown", "@mdfn/render", "@mdfn/extensions"] }
+    { "name": "@mdfn/facade", "path": "mdfn/facade", "layer": "facade", "dependencies": ["@mdfn/core", "@mdfn/markdown", "@mdfn/render", "@mdfn/extensions"] }
   ],
   "optional": [
     { "name": "@mdfn/collab", "path": "mdfn/collab", "layer": "platform", "dependencies": ["@mdfn/core"] },
