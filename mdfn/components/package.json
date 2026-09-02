@@ -9,7 +9,7 @@
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.cjs" }, "./styles.css": "./styles.css" },
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap --clean",
-    "test": "vitest run --config ../vitest.config.ts --root .",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "tsc --noEmit -p tsconfig.json",
     "prepack": "npm run build"
