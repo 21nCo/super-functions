@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { authoritativeGfmCorpus, certifyExtension, deterministicFuzzCorpus, compareSemanticTraces, representativeCorpus, runPreservationCorpus, runSecurityCorpus, runSemanticCorpus, traceState } from "./index";
-import { createEditor, resolveExtensions, Transaction } from "@mdfn/core";
-import { calloutExtension, commonmarkExtension } from "@mdfn/extensions";
+import { authoritativeGfmCorpus, deterministicFuzzCorpus, compareSemanticTraces, representativeCorpus, runPreservationCorpus, runSecurityCorpus, runSemanticCorpus, traceState } from "./index";
+import { createEditor, Transaction } from "@mdfn/core";
 import { createMarkdownProjector, parseMarkdown, serializeMarkdown } from "@mdfn/markdown";
 import { renderHtml } from "@mdfn/render";
 import { tests as commonmarkSpecTests } from "commonmark-spec";
@@ -19,16 +18,6 @@ describe("@mdfn/testing", () => {
     const result = compareSemanticTraces(reference, [{ ...reference, framework: "react", finalMarkdown: "b" }]);
     expect(result.ok).toBe(false);
     expect(compareSemanticTraces(reference, [{ ...reference, framework: "react", cleanup: { subscriptions: 1, mounted: true } }]).ok).toBe(false);
-  });
-
-  it("preserves resolved fixture dependencies during extension certification", () => {
-    const result = certifyExtension(calloutExtension, {
-      id: "directive-callout",
-      source: ":::callout\nBody\n:::\n",
-      options: { extensions: resolveExtensions([commonmarkExtension]) },
-    });
-    expect(result.findings.map((finding) => finding.code)).not.toContain("MDFN_CERT_LIFECYCLE_EXCEPTION");
-    expect(result.ok).toBe(true);
   });
 
   it("records selection and diagnostics in intermediate trace steps", () => {

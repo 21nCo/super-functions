@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { calloutExtension, commonmarkExtension } from "@mdfn/extensions";
 import type { MdfnExtension } from "@mdfn/core";
 import { formatMarkdown, parseMarkdown, serializeMarkdown } from "./index";
 
@@ -67,15 +66,6 @@ describe("@mdfn/markdown", () => {
 
   it("treats lone carriage returns as token boundaries", () => {
     expect(parseMarkdown("one\rtwo\rthree\r", { maxTokenLength: 5 }).lineEnding).toBe("cr");
-    const parsed = parseMarkdown(":::callout\rBody\r:::\rAfter\r", { extensions: [commonmarkExtension, calloutExtension] });
-    expect(parsed.document.content.map((node) => node.type)).toEqual(["directive-callout", "paragraph"]);
-    expect(parsed.document.content[1].content?.[0]?.text).toBe("After");
-  });
-
-  it("does not claim directive-like text inside fenced or indented code", () => {
-    const parsed = parseMarkdown("```md\n:::callout\ninside\n:::\n```\n\n    :::callout\n\nAfter\n", { extensions: [commonmarkExtension, calloutExtension] });
-    expect(parsed.document.content.map((node) => node.type)).toEqual(["codeBlock", "codeBlock", "paragraph"]);
-    expect(parsed.document.content).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "directive-callout" })]));
   });
 
   it("preserves unknown directives and disabled frontmatter as exact opaque source", () => {

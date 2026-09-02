@@ -9,14 +9,14 @@
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.cjs" } },
   "scripts": {
     "build": "tsup src/index.tsx --format esm,cjs --dts --sourcemap --clean --external react --external react-dom",
-    "test": "vitest run --config ../vitest.config.ts --root .",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "tsc --noEmit -p tsconfig.json",
     "prepack": "npm run build"
   },
   "dependencies": { "@mdfn/core": "0.1.0", "@mdfn/dom": "0.1.0", "@mdfn/source": "0.1.0", "@mdfn/adapter-kit": "0.1.0" },
   "peerDependencies": { "react": ">=18.2.0 <20", "react-dom": ">=18.2.0 <20" },
-  "devDependencies": { "@types/react": "^18.2.0", "@types/react-dom": "^18.2.0", "jsdom": "^26.0.0", "react": "18.3.1", "react-dom": "18.3.1", "tsup": "^8.0.0", "typescript": "^5.3.0", "vitest": "3.2.4" },
+  "devDependencies": { "@mdfn/markdown": "0.1.0", "@types/react": "^18.2.0", "@types/react-dom": "^18.2.0", "jsdom": "^26.0.0", "react": "18.3.1", "react-dom": "18.3.1", "tsup": "^8.0.0", "typescript": "^5.3.0", "vitest": "3.2.4" },
   "files": ["dist", "README.md"],
   "license": "MIT",
   "engines": { "node": ">=20 <25" },

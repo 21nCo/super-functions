@@ -1,11 +1,20 @@
-import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
 import { describe, expect, it, vi } from 'vitest';
 import { memoryAdapter } from '@superfunctions/db/adapters/memory';
 
 import { createSendFnAdapter } from './index.js';
 
-const localSendfnTest = existsSync(new URL('../../../sendfn/typescript/package.json', import.meta.url)) ? it : it.skip;
+function hasInstalledSendfn(): boolean {
+  try {
+    createRequire(import.meta.url).resolve('sendfn');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const localSendfnTest = hasInstalledSendfn() ? it : it.skip;
 
 const request = {
   idempotencyKey: 'mailfn:draft:d',
