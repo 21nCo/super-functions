@@ -76,7 +76,6 @@ async function createDocsSiteSource(): Promise<DocsSiteSource> {
 }
 
 export async function loadDocsSiteSource(): Promise<DocsSiteSource> {
-  if (process.env.NODE_ENV === "development") sourcePromise = null;
   sourcePromise ??= createDocsSiteSource();
   return sourcePromise;
 }

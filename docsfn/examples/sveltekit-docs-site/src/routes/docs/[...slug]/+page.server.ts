@@ -83,7 +83,7 @@ export const load: PageServerLoad = async ({ params, parent }) => {
         canonicalUrl: source.canonicalUrl
           ? `${source.canonicalUrl.replace(/\/+$/, "")}${routeEntry.route}`
           : routeEntry.route,
-        sidebarId: "api",
+        sidebarId: source.manifest.sidebars.api ? "api" : "default",
         headings: [],
         breadcrumbs: [
           { label: "Docs", href: "/docs" },

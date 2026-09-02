@@ -11,6 +11,6 @@
     description={data.page.description}
     content={data.page.body}
     headings={data.page.headings}
-    compatPreset={data.source.compatPreset}
+    compatPreset={data.compatPreset}
   />
 </div>

@@ -40,9 +40,6 @@ async function buildManifestSource(config: DocsConfig): Promise<HybridManifestSo
 }
 
 export async function loadHybridSiteSource(): Promise<HybridSiteSource> {
-  if (process.env.NODE_ENV === "development") {
-    sourcePromise = null;
-  }
   if (!sourcePromise) {
     sourcePromise = (async () => {
       const [docs, papers] = await Promise.all([

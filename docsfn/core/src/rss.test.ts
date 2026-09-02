@@ -210,4 +210,21 @@ describe("generateRSSFeed", () => {
     expect(rss).not.toContain("/docs/blog/docs/blog/");
     expect(rss).toContain("]]]]><![CDATA[>");
   });
+
+  it("keeps protocol-relative feed paths on the site origin", () => {
+    const manifest = createManifest();
+    manifest.blog = {
+      ...manifest.blog!,
+      feedPath: "//evil.example/rss.xml",
+    };
+    const rss = generateRSSFeed(manifest, {
+      title: "Docs Blog",
+      description: "Release updates",
+      link: "https://docs.example.com",
+    });
+    expect(rss).toContain(
+      '<atom:link href="https://docs.example.com/evil.example/rss.xml"'
+    );
+    expect(rss).not.toContain("https://evil.example");
+  });
 });

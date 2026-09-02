@@ -27,6 +27,116 @@ export interface UnsafeHtmlMatch {
   match: string;
 }
 
+interface FenceState {
+  marker: "`" | "~";
+  length: number;
+}
+
+function splitBlockQuotePrefix(line: string): string {
+  let content = line;
+  while (true) {
+    const match = content.match(/^ {0,3}> ?/);
+    if (!match) {
+      return content;
+    }
+    content = content.slice(match[0].length);
+  }
+}
+
+function matchFenceLine(line: string): { marker: "`" | "~"; length: number; info: string } | null {
+  const content = splitBlockQuotePrefix(line);
+  const match = content.match(/^ {0,3}([`~]{3,})(.*)$/);
+  if (!match) {
+    return null;
+  }
+  const fence = match[1];
+  const marker = fence[0] as "`" | "~";
+  const info = match[2] ?? "";
+  if (marker === "`" && info.includes("`")) {
+    return null;
+  }
+  return { marker, length: fence.length, info };
+}
+
+function isClosingFence(
+  open: FenceState,
+  candidate: { marker: "`" | "~"; length: number; info: string }
+): boolean {
+  return (
+    candidate.marker === open.marker &&
+    candidate.length >= open.length &&
+    /^[ \t]*$/.test(candidate.info)
+  );
+}
+
+function stripInlineCode(source: string): string {
+  let result = "";
+  let index = 0;
+  while (index < source.length) {
+    if (source[index] !== "`") {
+      const next = source.indexOf("`", index);
+      result += next === -1 ? source.slice(index) : source.slice(index, next);
+      if (next === -1) {
+        break;
+      }
+      index = next;
+      continue;
+    }
+    let length = 1;
+    while (index + length < source.length && source[index + length] === "`") {
+      length += 1;
+    }
+    let cursor = index + length;
+    let closer = -1;
+    while (cursor < source.length) {
+      if (source[cursor] !== "`") {
+        cursor += 1;
+        continue;
+      }
+      let run = 0;
+      while (cursor + run < source.length && source[cursor + run] === "`") {
+        run += 1;
+      }
+      if (run === length) {
+        closer = cursor + run;
+        break;
+      }
+      cursor += run;
+    }
+    if (closer === -1) {
+      result += source.slice(index);
+      break;
+    }
+    result += " ".repeat(closer - index);
+    index = closer;
+  }
+  return result;
+}
+
+function stripCodeExamples(source: string): string {
+  const kept: string[] = [];
+  let fence: FenceState | null = null;
+  for (const line of source.split(/\r?\n/)) {
+    const fenceMatch = matchFenceLine(line);
+    if (!fence && fenceMatch) {
+      fence = { marker: fenceMatch.marker, length: fenceMatch.length };
+      kept.push("");
+      continue;
+    }
+    if (fence && fenceMatch && isClosingFence(fence, fenceMatch)) {
+      fence = null;
+      kept.push("");
+      continue;
+    }
+    if (fence) {
+      kept.push("");
+      continue;
+    }
+    kept.push(stripInlineCode(line));
+  }
+  return kept.join("\n");
+}
+
 function collectRawHtml(source: string): string {
   const html: string[] = [];
   marked.walkTokens(marked.lexer(source), (token: Token) => {
@@ -38,20 +148,20 @@ function collectRawHtml(source: string): string {
 }
 
 export function findUnsafeHtml(source: string): UnsafeHtmlMatch[] {
-  const rawHtml = collectRawHtml(source);
-  const normalizedSource = decodeHTML(rawHtml);
+  const scanText = `${collectRawHtml(source)}\n${stripCodeExamples(source)}`;
   const matches: UnsafeHtmlMatch[] = [];
 
   for (const tag of BLOCKED_HTML_TAGS) {
-    const regex = new RegExp(`<\\s*${tag}\\b`, "i");
-    const found = normalizedSource.match(regex);
+    const regex = new RegExp(`<\\s*${tag}(?=[\\s/>])`, "i");
+    const found = scanText.match(regex);
     if (found) {
       matches.push({ category: `blocked-tag:${tag}`, match: found[0] });
     }
   }
 
+  const decodedForUrls = decodeHTML(scanText);
   for (const pattern of BLOCKED_HTML_PATTERNS) {
-    const found = normalizedSource.match(pattern.regex);
+    const found = decodedForUrls.match(pattern.regex);
     if (found) {
       matches.push({ category: pattern.category, match: found[0] });
     }
@@ -81,7 +191,6 @@ export function assertSafeSource(input: SanitizeSourceInput): void {
           absolutePath: input.sourcePath,
         },
         details: {
-          blockedCategories: matches.map((match) => match.category),
           matches,
         },
       }),

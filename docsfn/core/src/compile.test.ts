@@ -125,6 +125,37 @@ graph TD;
     expect(compiled.blocks.some((block) => block.type === "tabs")).toBe(true);
   });
 
+  it("does not rewrite Fumadocs tags inside quoted fences or false closing markers", () => {
+    const compiled = compileMarkdown({
+      source: [
+        'import { Tabs, Tab } from "fumadocs-ui/components/tabs";',
+        "",
+        "> ```md",
+        "> <Tabs><Tab /></Tabs>",
+        "> ```",
+        "",
+        "```txt",
+        "<Tabs>",
+        "``` not-a-closer",
+        "<Tab />",
+        "```",
+        "",
+        "``<Tabs><Tab /></Tabs>``",
+        "",
+        '<Tabs items={["A"]}>',
+        '  <Tab value="A">Body</Tab>',
+        "</Tabs>",
+      ].join("\n"),
+      sourcePath: "content/docs/quoted-fence.mdx",
+      compatPreset: "fumadocs-v15",
+    });
+    expect(compiled.transformedSource).toContain("> <Tabs><Tab /></Tabs>");
+    expect(compiled.transformedSource).toContain("<Tabs>");
+    expect(compiled.transformedSource).toContain("<Tab />");
+    expect(compiled.transformedSource).toContain("``<Tabs><Tab /></Tabs>``");
+    expect(compiled.blocks.some((block) => block.type === "tabs")).toBe(true);
+  });
+
   it("compiles nested component children and preserves normalized props", () => {
     const compiled = compileMarkdown({
       source: `import { DemoCard } from "./DemoCard";

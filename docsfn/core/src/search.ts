@@ -4,7 +4,7 @@ import {
   type DocsSearchEngineAdapter,
   type DocsSearchEngineName,
 } from "./search-adapter";
-import { redactSensitiveText, resolveDocsAuthMode } from "./security";
+import { isDocsContentProtected, redactSensitiveText } from "./security";
 import type {
   DocsConfig,
   DocsDiagnostic,
@@ -297,24 +297,13 @@ function collectSearchDocuments(input: {
   routeScopeOverrides?: DocsSearchRouteScopeOverride[];
 }): DocsSearchDocument[] {
   const documents: DocsSearchDocument[] = [];
-  const authMode = resolveDocsAuthMode({ auth: input.auth });
-  const authEnabled = Boolean(input.auth?.enabled);
 
   function isProtected(frontmatter: Record<string, unknown> | undefined, route: string): boolean {
-    if (!authEnabled) {
-      return false;
-    }
-    if (authMode === "private") {
-      return true;
-    }
-    if (authMode === "public") {
-      return false;
-    }
-
-    const frontmatterPrivate =
-      frontmatter?.private === true || frontmatter?.auth === "private";
-    const routePrivate = /\/private(?:\/|$)/i.test(route);
-    return frontmatterPrivate || routePrivate;
+    return isDocsContentProtected({
+      auth: input.auth,
+      frontmatter,
+      route,
+    });
   }
 
   for (const page of Object.values(input.manifest.pages)) {

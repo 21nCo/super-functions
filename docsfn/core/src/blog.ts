@@ -237,9 +237,28 @@ function buildTagIndexes(input: {
   listRoute: string;
 }): Record<string, BlogTagIndex> {
   const tagMap = new Map<string, BlogTagIndex>();
+  const slugOwners = new Map<string, string>();
   for (const post of input.orderedPosts) {
     for (const tag of post.tags) {
       const slug = toTagSlug(tag);
+      const owner = slugOwners.get(slug);
+      if (owner && owner !== tag) {
+        throw createDocsError({
+          code: "DOCS_ARTIFACT_INVALID",
+          message: `dated-collection tags "${owner}" and "${tag}" collapse to the same slug "${slug}"`,
+          diagnostics: [
+            createDiagnostic({
+              code: "DOCS_ARTIFACT_INVALID",
+              message: `dated-collection tags "${owner}" and "${tag}" collapse to the same slug "${slug}"`,
+              details: {
+                tags: [owner, tag],
+                slug,
+              },
+            }),
+          ],
+        });
+      }
+      slugOwners.set(slug, tag);
       const existing = tagMap.get(tag);
       if (existing) {
         existing.postIds.push(post.id);

@@ -137,6 +137,29 @@ export function resolveDocsAuthMode(config: Pick<DocsConfig, "auth">): DocsAuthM
   return config.auth.mode;
 }
 
+export function isDocsContentProtected(input: {
+  auth: DocsConfig["auth"] | undefined;
+  frontmatter?: Record<string, unknown>;
+  route: string;
+}): boolean {
+  if (!input.auth?.enabled) {
+    return false;
+  }
+
+  const authMode = resolveDocsAuthMode({ auth: input.auth });
+  if (authMode === "private") {
+    return true;
+  }
+  if (authMode === "public") {
+    return false;
+  }
+
+  const frontmatterPrivate =
+    input.frontmatter?.private === true || input.frontmatter?.auth === "private";
+  const routePrivate = /\/private(?:\/|$)/i.test(input.route);
+  return frontmatterPrivate || routePrivate;
+}
+
 export function redactSensitiveText(value: string): string {
   if (!SENSITIVE_VALUE_PATTERN.test(value)) {
     return value;

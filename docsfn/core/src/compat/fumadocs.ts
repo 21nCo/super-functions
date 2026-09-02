@@ -83,21 +83,123 @@ function rewriteTag(source: string, local: string, canonical: "DocsTabs" | "Docs
     .replace(new RegExp(`<\\s*\\/\\s*${escaped}\\s*>`, "g"), `</${canonical}>`);
 }
 
-function rewriteOutsideInlineCode(
-  line: string,
+interface FenceState {
+  marker: "`" | "~";
+  length: number;
+}
+
+function splitBlockQuotePrefix(line: string): string {
+  let content = line;
+  while (true) {
+    const match = content.match(/^ {0,3}> ?/);
+    if (!match) {
+      return content;
+    }
+    content = content.slice(match[0].length);
+  }
+}
+
+function matchFenceLine(line: string): { marker: "`" | "~"; length: number; info: string } | null {
+  const content = splitBlockQuotePrefix(line);
+  const match = content.match(/^ {0,3}([`~]{3,})(.*)$/);
+  if (!match) {
+    return null;
+  }
+  const fence = match[1];
+  const marker = fence[0] as "`" | "~";
+  const info = match[2] ?? "";
+  if (marker === "`" && info.includes("`")) {
+    return null;
+  }
+  return { marker, length: fence.length, info };
+}
+
+function isClosingFence(
+  open: FenceState,
+  candidate: { marker: "`" | "~"; length: number; info: string }
+): boolean {
+  return (
+    candidate.marker === open.marker &&
+    candidate.length >= open.length &&
+    /^[ \t]*$/.test(candidate.info)
+  );
+}
+
+function rewriteTagsInText(
+  source: string,
   aliases: Map<string, "DocsTabs" | "DocsTab">
 ): string {
-  return line
-    .split(/(`+[^`]*`+)/g)
-    .map((segment, index) => {
-      if (index % 2 === 1) return segment;
-      let rewritten = segment;
-      for (const [local, canonical] of aliases) {
-        rewritten = rewriteTag(rewritten, local, canonical);
+  let rewritten = source;
+  for (const [local, canonical] of aliases) {
+    rewritten = rewriteTag(rewritten, local, canonical);
+  }
+  return rewritten;
+}
+
+function rewriteOutsideInlineCode(
+  source: string,
+  aliases: Map<string, "DocsTabs" | "DocsTab">
+): string {
+  let result = "";
+  let index = 0;
+  while (index < source.length) {
+    if (source[index] !== "`") {
+      const next = source.indexOf("`", index);
+      const chunk = next === -1 ? source.slice(index) : source.slice(index, next);
+      result += rewriteTagsInText(chunk, aliases);
+      if (next === -1) {
+        break;
       }
-      return rewritten;
-    })
-    .join("");
+      index = next;
+      continue;
+    }
+    let length = 1;
+    while (index + length < source.length && source[index + length] === "`") {
+      length += 1;
+    }
+    let cursor = index + length;
+    let closer = -1;
+    while (cursor < source.length) {
+      if (source[cursor] !== "`") {
+        cursor += 1;
+        continue;
+      }
+      let run = 0;
+      while (cursor + run < source.length && source[cursor + run] === "`") {
+        run += 1;
+      }
+      if (run === length) {
+        closer = cursor + run;
+        break;
+      }
+      cursor += run;
+    }
+    if (closer === -1) {
+      result += rewriteTagsInText(source.slice(index), aliases);
+      break;
+    }
+    result += source.slice(index, closer);
+    index = closer;
+  }
+  return result;
+}
+
+function scanFenceLines(lines: string[], onLine: (line: string, inFence: boolean, isFenceLine: boolean) => void): void {
+  let fence: FenceState | null = null;
+  for (const line of lines) {
+    const fenceMatch = matchFenceLine(line);
+    if (!fence && fenceMatch) {
+      fence = { marker: fenceMatch.marker, length: fenceMatch.length };
+      onLine(line, true, true);
+      continue;
+    }
+    if (fence && fenceMatch && isClosingFence(fence, fenceMatch)) {
+      onLine(line, true, true);
+      fence = null;
+      continue;
+    }
+    onLine(line, fence !== null, false);
+  }
 }
 
 export function transformFumadocsV15(
@@ -107,29 +209,17 @@ export function transformFumadocsV15(
   const keptLines: string[] = [];
   const importedComponents = new Set<string>();
   const aliases = new Map<string, "DocsTabs" | "DocsTab">();
-  let fence: { marker: "`" | "~"; length: number } | null = null;
 
-  for (const line of lines) {
-    const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/);
-    if (fenceMatch) {
-      const marker = fenceMatch[1][0] as "`" | "~";
-      if (!fence) {
-        fence = { marker, length: fenceMatch[1].length };
-      } else if (fence.marker === marker && fenceMatch[1].length >= fence.length) {
-        fence = null;
-      }
+  scanFenceLines(lines, (line, inFence) => {
+    if (inFence) {
       keptLines.push(line);
-      continue;
-    }
-    if (fence) {
-      keptLines.push(line);
-      continue;
+      return;
     }
 
     const importMatch = parseNamedImport(line);
     if (!importMatch) {
       keptLines.push(line);
-      continue;
+      return;
     }
 
     const { rawSpecifiers, moduleName } = importMatch;
@@ -148,24 +238,34 @@ export function transformFumadocsV15(
         );
       }
     }
-  }
+  });
 
-  let rewriteFence: { marker: "`" | "~"; length: number } | null = null;
-  const transformed = keptLines
-    .map((line) => {
-      const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/);
-      if (fenceMatch) {
-        const marker = fenceMatch[1][0] as "`" | "~";
-        if (!rewriteFence) {
-          rewriteFence = { marker, length: fenceMatch[1].length };
-        } else if (rewriteFence.marker === marker && fenceMatch[1].length >= rewriteFence.length) {
-          rewriteFence = null;
-        }
-        return line;
-      }
-      return rewriteFence ? line : rewriteOutsideInlineCode(line, aliases);
-    })
-    .join("\n");
+  const rewrittenChunks: string[] = [];
+  let pending: string[] = [];
+  const flushPending = () => {
+    if (pending.length === 0) {
+      return;
+    }
+    rewrittenChunks.push(rewriteOutsideInlineCode(pending.join("\n"), aliases));
+    pending = [];
+  };
+
+  scanFenceLines(keptLines, (line, inFence, isFenceLine) => {
+    if (inFence && isFenceLine) {
+      flushPending();
+      rewrittenChunks.push(line);
+      return;
+    }
+    if (inFence) {
+      flushPending();
+      rewrittenChunks.push(line);
+      return;
+    }
+    pending.push(line);
+  });
+  flushPending();
+
+  const transformed = rewrittenChunks.join("\n");
   const componentsUsed: string[] = [];
 
   if (/<\s*DocsTabs(?=[\s>])/.test(transformed)) {

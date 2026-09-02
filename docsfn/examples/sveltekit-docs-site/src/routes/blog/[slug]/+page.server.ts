@@ -23,5 +23,6 @@ export const load: PageServerLoad = async ({ params, parent }) => {
 
   return {
     post,
+    compatPreset: source.compatPreset,
   };
 };

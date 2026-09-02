@@ -357,4 +357,25 @@ describe("resolveMarkdownRelativeLinks", () => {
     });
     expect((leaf.blocks[0] as { html: string }).html).toContain('href="/docs/page?raw=1"');
   });
+
+  it("resolves the real href when another attribute contains href text and normalizes query-only routes", () => {
+    const compiled = {
+      ...compileMarkdown({ source: "text", sourcePath: "content/docs/page.md" }),
+      blocks: [
+        {
+          type: "paragraph" as const,
+          text: "links",
+          html: '<a data="href = decoy" href="./child">child</a> <a href="?raw=1">raw</a>',
+        },
+      ],
+    };
+    const resolved = resolveMarkdownRelativeLinks({
+      compiled,
+      route: "docs/page",
+      sourcePath: "content/docs/page.md",
+    });
+    expect((resolved.blocks[0] as { html: string }).html).toContain('href="/docs/child"');
+    expect((resolved.blocks[0] as { html: string }).html).toContain('data="href = decoy"');
+    expect((resolved.blocks[0] as { html: string }).html).toContain('href="/docs/page?raw=1"');
+  });
 });

@@ -156,4 +156,37 @@ describe("buildLlmsTxtArtifacts", () => {
     expect(artifacts.llmsTxt).toContain("# Site Title");
     expect(artifacts.llmsFullTxt).toContain("# Getting Started");
   });
+
+  it("omits private pages from public LLM artifacts", () => {
+    const manifest = createManifest({
+      pages: {
+        "docs/public": {
+          kind: "page",
+          id: "docs/public",
+          slug: "public",
+          path: "/docs/public",
+          title: "Public",
+          body: "public body",
+          headings: [],
+          frontmatter: {},
+        },
+        "docs/secret": {
+          kind: "page",
+          id: "docs/secret",
+          slug: "secret",
+          path: "/docs/secret",
+          title: "Secret",
+          body: "secret body",
+          headings: [],
+          frontmatter: { private: true },
+        },
+      },
+    });
+    const artifacts = buildLlmsTxtArtifacts(manifest, {
+      auth: { enabled: true, mode: "mixed" },
+    });
+    expect(artifacts.llmsTxt).toContain("Public");
+    expect(artifacts.llmsTxt).not.toContain("Secret");
+    expect(artifacts.llmsFullTxt).not.toContain("secret body");
+  });
 });

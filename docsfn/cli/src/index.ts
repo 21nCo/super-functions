@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import fs from "node:fs/promises";
 import path from "node:path";
 import cac from "cac";
@@ -403,7 +404,7 @@ function printCommandSummary(command: string, result: PipelineResult): void {
 
 function resolveWatchTargets(input: {
   cwd: string;
-  config: DocsConfig;
+  config?: DocsConfig;
   configPath?: string;
   providerMetadata?: DocsProviderWatchMetadata;
   outDir: string;
@@ -412,16 +413,8 @@ function resolveWatchTargets(input: {
   const cwd = path.resolve(input.cwd);
   const outDir = path.resolve(input.outDir);
 
-  const configFileCandidates = [
-    path.resolve(cwd, "docsfn.config.ts"),
-    path.resolve(cwd, "docsfn.config.mjs"),
-    path.resolve(cwd, "docsfn.config.js"),
-  ];
-  for (const candidate of configFileCandidates) {
+  for (const candidate of resolveConfigWatchPaths(cwd, input.configPath)) {
     targets.add(candidate);
-  }
-  if (input.configPath) {
-    targets.add(path.resolve(cwd, input.configPath));
   }
 
   if (input.providerMetadata?.watchedDirectories?.length) {
@@ -432,7 +425,7 @@ function resolveWatchTargets(input: {
       }
       targets.add(resolved);
     }
-  } else {
+  } else if (input.config) {
     const directories = resolveCollectionDirectories(input.config, cwd);
     for (const directory of Object.values(directories).flat()) {
       const resolved = path.resolve(directory);
@@ -441,9 +434,28 @@ function resolveWatchTargets(input: {
       }
       targets.add(resolved);
     }
+  } else {
+    targets.add(cwd);
   }
 
   return [...targets].sort(compareStrings);
+}
+
+function resolveConfigWatchPaths(cwd: string, configPath?: string): string[] {
+  const paths = [
+    path.resolve(cwd, "docsfn.config.ts"),
+    path.resolve(cwd, "docsfn.config.mjs"),
+    path.resolve(cwd, "docsfn.config.js"),
+  ];
+  if (configPath) {
+    paths.push(path.resolve(cwd, configPath));
+  }
+  return paths;
+}
+
+function isConfigWatchPath(changedPath: string, cwd: string, configPath?: string): boolean {
+  const absolutePath = path.resolve(changedPath);
+  return resolveConfigWatchPaths(cwd, configPath).includes(absolutePath);
 }
 
 async function resolveProviderWatchMetadata(
@@ -534,17 +546,13 @@ async function runDevCommand(
   printDiagnostics(initialResult.diagnostics);
   printCommandSummary("dev:initial", initialResult);
 
-  if (hasErrorDiagnostics(initialResult.diagnostics)) {
+  if (hasErrorDiagnostics(initialResult.diagnostics) || !initialResult.config) {
     process.exitCode = 1;
-    return;
   }
 
-  if (!initialResult.config) {
-    process.exitCode = 1;
-    return;
-  }
-
-  const providerMetadata = await resolveProviderWatchMetadata(initialResult.config, cwd);
+  const providerMetadata = initialResult.config
+    ? await resolveProviderWatchMetadata(initialResult.config, cwd)
+    : undefined;
 
   const watchTargets = resolveWatchTargets({
     cwd,
@@ -598,7 +606,12 @@ async function runDevCommand(
         await writeArtifacts(outDir, result);
         printDiagnostics(result.diagnostics);
         printCommandSummary("dev:rebuild", result);
-        if (result.config) {
+        if (hasErrorDiagnostics(result.diagnostics) || !result.config) {
+          process.exitCode = 1;
+        } else {
+          process.exitCode = 0;
+        }
+        if (result.config && isConfigWatchPath(absolutePath, cwd, options.config)) {
           await refreshWatchTargets(result.config);
         }
       })
@@ -650,6 +663,7 @@ async function runLlmsCommand(
     canonicalUrl: result.config?.site?.canonicalUrl,
     embedOpenApiSpec: options.embedOpenapi === true,
     includeBlog: options.noBlog ? false : true,
+    auth: result.config?.auth,
   };
 
   const artifacts = buildLlmsTxtArtifacts(result.manifest, llmsOptions);

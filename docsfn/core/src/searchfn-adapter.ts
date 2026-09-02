@@ -11,7 +11,7 @@ import type {
 const SEARCHFN_PIPELINE = {
   enableEdgeNGrams: true,
   edgeNGramMinLength: 2,
-  edgeNGramMaxLength: Number.MAX_SAFE_INTEGER,
+  edgeNGramMaxLength: 128,
 };
 
 interface SnapshotSearchEngine extends DocsSearchIndexEngine {

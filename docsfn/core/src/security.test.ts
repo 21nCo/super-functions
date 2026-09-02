@@ -3,9 +3,11 @@ import {
   assertCompiledContentTrusted,
   assertDocsRouteAccess,
   assertSourceEntriesTrusted,
+  isDocsContentProtected,
   redactSensitivePayload,
   resolveDocsAuthMode,
 } from "./security";
+import { findUnsafeHtml } from "./sanitize";
 import type { DocsSourceEntry } from "./provider";
 
 function createEntry(overrides: Partial<DocsSourceEntry> = {}): DocsSourceEntry {
@@ -210,5 +212,37 @@ describe("security", () => {
         regular: "safe-value",
       },
     });
+  });
+
+  it("treats mixed-mode private frontmatter and routes as protected", () => {
+    const auth = { enabled: true as const, mode: "mixed" as const };
+    expect(
+      isDocsContentProtected({
+        auth,
+        frontmatter: { auth: "private" },
+        route: "/docs/guide",
+      })
+    ).toBe(true);
+    expect(
+      isDocsContentProtected({
+        auth,
+        frontmatter: {},
+        route: "/docs/private/guide",
+      })
+    ).toBe(true);
+    expect(
+      isDocsContentProtected({
+        auth,
+        frontmatter: {},
+        route: "/docs/guide",
+      })
+    ).toBe(false);
+  });
+
+  it("blocks browser-permissive tags and keeps encoded literals as text", () => {
+    expect(findUnsafeHtml("# Unsafe\n\n<script/src=x>")).toEqual(
+      expect.arrayContaining([expect.objectContaining({ category: "blocked-tag:script" })])
+    );
+    expect(findUnsafeHtml("Use &lt;script&gt; in examples.")).toEqual([]);
   });
 });

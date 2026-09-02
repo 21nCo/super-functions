@@ -81,7 +81,7 @@ export function generateRSSFeed(
       const publish = assertValidBlogPublishMetadata(post);
       const postLink = options.itemHref
         ? options.itemHref(post)
-        : new URL(post.path, siteOrigin).toString();
+        : resolveSameOriginUrl(siteOrigin, post.path);
       const descriptionValue = post.excerpt ?? post.summary;
       return `
     <item>
@@ -100,7 +100,7 @@ export function generateRSSFeed(
   const feedPath = hasRequestedCollection
     ? collectionSurface?.feedPath ?? "/rss.xml"
     : manifest.blog?.feedPath ?? "/rss.xml";
-  const feedLink = options.feedHref ?? new URL(feedPath, siteOrigin).toString();
+  const feedLink = options.feedHref ?? resolveSameOriginUrl(siteOrigin, feedPath);
   const lastBuildDate = resolveBlogLastBuildDate(posts);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -115,6 +115,18 @@ export function generateRSSFeed(
     ${items}
   </channel>
 </rss>`;
+}
+
+function resolveSameOriginUrl(siteOrigin: string, route: string): string {
+  const origin = new URL(siteOrigin).origin;
+  const path = route.startsWith("//") || !route.startsWith("/")
+    ? `/${route.replace(/^\/+/, "")}`
+    : route;
+  const resolved = new URL(path, `${origin}/`);
+  if (resolved.origin !== origin) {
+    return new URL(`/${path.replace(/^\/+/, "")}`, `${origin}/`).toString();
+  }
+  return resolved.toString();
 }
 
 function escapeXml(value: string): string {

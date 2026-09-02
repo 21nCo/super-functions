@@ -86,6 +86,18 @@ describe("buildCanonicalBlogRecords", () => {
     ]);
   });
 
+  it("rejects dated-collection tags that collapse to the same slug", () => {
+    expect(() =>
+      buildCanonicalBlogRecords({
+        posts: [
+          createPost("blog:cpp.mdx", { slug: "cpp", tags: ["c++"] }),
+          createPost("blog:csharp.mdx", { slug: "csharp", tags: ["c#"] }),
+        ],
+        basePath: "/docs",
+      })
+    ).toThrowError(/collapse to the same slug/);
+  });
+
   it("includes drafts only when preview mode is enabled", () => {
     const canonical = buildCanonicalBlogRecords({
       posts: [

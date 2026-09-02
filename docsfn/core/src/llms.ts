@@ -1,8 +1,11 @@
-import type { ApiReference, BlogPost, DocPage, DocsManifest } from "./types";
+import { isDocsContentProtected } from "./security";
+import type { ApiReference, BlogPost, DocPage, DocsConfig, DocsManifest } from "./types";
 
 export interface BuildLlmsTxtOptions {
   /** When provided, prefixes generated links with this absolute origin (eg. "https://authfn.superfunctions.dev"). */
   canonicalUrl?: string;
+  /** Auth policy used to omit private content from public LLM artifacts. */
+  auth?: DocsConfig["auth"];
   /** Glob-style include patterns (e.g., ["docs/**"]). When omitted, every page is included. */
   includePages?: string[];
   /** Glob-style exclude patterns (e.g., ["docs/blog/**"]). */
@@ -68,12 +71,27 @@ function matchesAnyGlob(value: string, patterns: string[] | undefined): boolean 
   return patterns.some((pattern) => globToRegExp(pattern).test(value));
 }
 
+function isProtectedContent(
+  options: BuildLlmsTxtOptions,
+  frontmatter: Record<string, unknown> | undefined,
+  route: string
+): boolean {
+  return isDocsContentProtected({
+    auth: options.auth,
+    frontmatter,
+    route,
+  });
+}
+
 function selectPages(manifest: DocsManifest, options: BuildLlmsTxtOptions): DocPage[] {
   const include = options.includePages;
   const exclude = options.excludePages;
   const pages = Object.values(manifest.pages);
   return pages
     .filter((page) => {
+      if (isProtectedContent(options, page.frontmatter, page.path)) {
+        return false;
+      }
       if (include && include.length > 0 && !matchesAnyGlob(page.id, include)) {
         return false;
       }
@@ -87,13 +105,17 @@ function selectPages(manifest: DocsManifest, options: BuildLlmsTxtOptions): DocP
 
 function selectPosts(manifest: DocsManifest, options: BuildLlmsTxtOptions): BlogPost[] {
   if (options.includeBlog === false) return [];
-  const posts = Object.values(manifest.posts).filter((post) => !post.draft);
+  const posts = Object.values(manifest.posts).filter(
+    (post) => !post.draft && !isProtectedContent(options, post.frontmatter, post.path)
+  );
   return posts.sort(compareById);
 }
 
 function selectApis(manifest: DocsManifest, options: BuildLlmsTxtOptions): ApiReference[] {
   if (options.includeOpenApi === false) return [];
-  return Object.values(manifest.apis).sort(compareById);
+  return Object.values(manifest.apis)
+    .filter((api) => !isProtectedContent(options, api.frontmatter, api.path))
+    .sort(compareById);
 }
 
 function filterManifest(manifest: DocsManifest, options: BuildLlmsTxtOptions): FilteredManifest {

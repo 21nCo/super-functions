@@ -21,5 +21,5 @@
   {#if data.post.tags.length > 0}
     <p>Tags: {data.post.tags.join(", ")}</p>
   {/if}
-  <DocsContent content={data.post.body} sourcePath={data.post.id} compatPreset={data.source.compatPreset} />
+  <DocsContent content={data.post.body} sourcePath={data.post.id} compatPreset={data.compatPreset} />
 </article>

@@ -7,8 +7,8 @@ export interface ResolveMarkdownRelativeLinksInput {
   isIndexRoute?: boolean;
 }
 
-const HREF_ATTRIBUTE_REGEX = /(<a\b[^>]*?\shref\s*=\s*)(["'])([^"']+)\2/gi;
 const EXTERNAL_OR_SPECIAL_HREF_REGEX = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#|\/|\{)/i;
+const ANCHOR_TAG_REGEX = /<a\b[^>]*>/gi;
 
 export function resolveMarkdownRelativeLinks({
   compiled,
@@ -59,15 +59,85 @@ function resolveBlocks(
 }
 
 function resolveHtmlLinks(html: string, baseRoute: string, route: string): string {
-  return html.replace(HREF_ATTRIBUTE_REGEX, (match, prefix, quote, href) => {
-    if (EXTERNAL_OR_SPECIAL_HREF_REGEX.test(href)) {
-      return match;
-    }
+  const normalizedRoute = normalizeAbsolutePath(route);
+  return html.replace(ANCHOR_TAG_REGEX, (tag) =>
+    rewriteAnchorHref(tag, baseRoute, normalizedRoute)
+  );
+}
 
-    const queryOnly = href.startsWith("?");
-    const resolvedHref = resolveHref(href, queryOnly ? route : baseRoute, queryOnly);
-    return `${prefix}${quote}${resolvedHref}${quote}`;
-  });
+function rewriteAnchorHref(tag: string, baseRoute: string, route: string): string {
+  const parsed = /^(<a\b)([^>]*)(>)$/i.exec(tag);
+  if (!parsed) {
+    return tag;
+  }
+  const href = matchHrefAttribute(parsed[2]);
+  if (!href) {
+    return tag;
+  }
+  if (EXTERNAL_OR_SPECIAL_HREF_REGEX.test(href.value)) {
+    return tag;
+  }
+  const queryOnly = href.value.startsWith("?");
+  const resolvedHref = resolveHref(href.value, queryOnly ? route : baseRoute, queryOnly);
+  return `${parsed[1]}${parsed[2].slice(0, href.start)}${href.nameAndEquals}${resolvedHref}${href.quote}${parsed[2].slice(href.end)}${parsed[3]}`;
+}
+
+function matchHrefAttribute(attrs: string): {
+  start: number;
+  end: number;
+  nameAndEquals: string;
+  quote: string;
+  value: string;
+} | null {
+  let index = 0;
+  while (index < attrs.length) {
+    while (index < attrs.length && /\s/.test(attrs[index])) {
+      index += 1;
+    }
+    if (index >= attrs.length) {
+      break;
+    }
+    const nameStart = index;
+    while (index < attrs.length && /[^\s=]/.test(attrs[index])) {
+      index += 1;
+    }
+    const name = attrs.slice(nameStart, index);
+    while (index < attrs.length && /\s/.test(attrs[index])) {
+      index += 1;
+    }
+    if (attrs[index] !== "=") {
+      continue;
+    }
+    index += 1;
+    while (index < attrs.length && /\s/.test(attrs[index])) {
+      index += 1;
+    }
+    const quote = attrs[index];
+    if (quote !== '"' && quote !== "'") {
+      while (index < attrs.length && !/\s/.test(attrs[index])) {
+        index += 1;
+      }
+      continue;
+    }
+    index += 1;
+    const valueStart = index;
+    while (index < attrs.length && attrs[index] !== quote) {
+      index += 1;
+    }
+    const value = attrs.slice(valueStart, index);
+    const end = Math.min(index + 1, attrs.length);
+    if (name.toLowerCase() === "href") {
+      return {
+        start: nameStart,
+        end,
+        nameAndEquals: attrs.slice(nameStart, valueStart),
+        quote,
+        value,
+      };
+    }
+    index = end;
+  }
+  return null;
 }
 
 function resolveHref(href: string, baseRoute: string, preserveBasePath = false): string {
