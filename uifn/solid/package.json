@@ -47,7 +47,7 @@
   },
   "dependencies": {
     "@uifn/adapter-kit": "0.0.1",
-    "@uifn/core": "0.0.1",
+    "@uifn/core": "0.0.2",
     "@uifn/dom": "0.0.1"
   },
   "peerDependencies": {

@@ -132,29 +132,42 @@ function resolveValue<T>(value: T | (() => T) | undefined, fallback: T): T {
   return typeof value === 'function' ? (value as () => T)() : value ?? fallback;
 }
 
+type TimerHost = {
+  setTimeout: (callback: () => void, delayMs: number) => unknown;
+  clearTimeout: (handle: unknown) => void;
+  setInterval: (callback: () => void, intervalMs: number) => unknown;
+  clearInterval: (handle: unknown) => void;
+  queueMicrotask: (callback: () => void) => void;
+};
+
+function timerHost(): TimerHost {
+  return globalThis as unknown as TimerHost;
+}
+
 function createDefaultScheduler(now: () => number): UIFnScheduler {
+  const timers = timerHost();
   return {
     now,
     setTimeout(callback, delayMs) {
-      return globalThis.setTimeout(callback, delayMs);
+      return timers.setTimeout(callback, delayMs);
     },
     clearTimeout(handle) {
-      globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>);
+      timers.clearTimeout(handle);
     },
     setInterval(callback, intervalMs) {
-      return globalThis.setInterval(callback, intervalMs);
+      return timers.setInterval(callback, intervalMs);
     },
     clearInterval(handle) {
-      globalThis.clearInterval(handle as ReturnType<typeof setInterval>);
+      timers.clearInterval(handle);
     },
     requestAnimationFrame(callback) {
-      return globalThis.setTimeout(() => callback(now()), 16);
+      return timers.setTimeout(() => callback(now()), 16);
     },
     cancelAnimationFrame(handle) {
-      globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>);
+      timers.clearTimeout(handle);
     },
     queueMicrotask(callback) {
-      globalThis.queueMicrotask(callback);
+      timers.queueMicrotask(callback);
     },
   };
 }

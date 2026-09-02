@@ -1,6 +1,6 @@
 {
   "name": "@uifn/svelte",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Catalog-complete, permanently headless Svelte 5 compounds for uifn primitives",
   "type": "module",
   "main": "dist/index.js",
@@ -49,7 +49,7 @@
   },
   "dependencies": {
     "@uifn/adapter-kit": "0.0.1",
-    "@uifn/core": "0.0.1",
+    "@uifn/core": "0.0.2",
     "@uifn/dom": "0.0.1"
   },
   "peerDependencies": {

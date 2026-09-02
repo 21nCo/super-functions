@@ -1,6 +1,6 @@
 {
   "name": "@uifn/react",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Permanently headless React adapter for uifn primitives",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "@uifn/adapter-kit": "0.0.1",
-    "@uifn/core": "0.0.1",
+    "@uifn/core": "0.0.2",
     "@uifn/dom": "0.0.1"
   },
   "peerDependencies": {

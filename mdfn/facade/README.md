@@ -1,4 +1,4 @@
-# mdfn
+# @mdfn/facade
 
 Curated facade for headless Markdown parsing, secure rendering, transactions,
 extensions, diagnostics, snapshots, and source preservation. Browser,

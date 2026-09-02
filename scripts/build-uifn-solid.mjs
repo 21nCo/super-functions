@@ -10,11 +10,20 @@ const packageRoot = path.join(root, 'uifn/solid');
 const dist = path.join(packageRoot, 'dist');
 rmSync(dist, { recursive: true, force: true });
 
-const result = spawnSync(process.execPath, [
+const tsc = [
+  path.join(packageRoot, 'node_modules/typescript/bin/tsc'),
   path.join(root, 'node_modules/typescript/bin/tsc'),
+].find((candidate) => existsSync(candidate));
+if (!tsc) {
+  process.stderr.write('typescript tsc not found in uifn/solid or repo root node_modules\n');
+  process.exit(1);
+}
+
+const result = spawnSync(process.execPath, [
+  tsc,
   '--project',
   path.join(packageRoot, 'tsconfig.build.json'),
-], { cwd: root, env: process.env, encoding: 'utf8' });
+], { cwd: packageRoot, env: process.env, encoding: 'utf8' });
 
 if (result.stdout) process.stdout.write(result.stdout);
 if (result.stderr) process.stderr.write(result.stderr);

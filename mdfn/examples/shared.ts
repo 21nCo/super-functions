@@ -1,4 +1,4 @@
-import { Transaction, createMdfn, type EditorController } from "mdfn";
+import { Transaction, createMdfn, type EditorController } from "@mdfn/facade";
 
 export const INITIAL_MARKDOWN = `# Product launch brief
 

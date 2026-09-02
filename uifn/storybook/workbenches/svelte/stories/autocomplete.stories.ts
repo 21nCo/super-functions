@@ -9,7 +9,7 @@ const meta = {
   component: StoryHarness,
   tags: ['autodocs'],
   args: { Root: AutocompleteRoot, parts, primitive: "autocomplete", scenario: 'default', rootId: "root", rootElement: "div", rootProps: {}, rootVoid: false },
-  parameters: { controls: { disable: true }, uifnCompatibility: {"primitive":"autocomplete","canonicalVersion":"1.0.0","registryVersion":"0.0.1","frameworks":["react","svelte","solid"],"sourcePolicy":"clean-room","definitionSha256":"3185a671483e813f1eb1c3302fa51503a9dc8e966f68d7470a5855f845838e15","registryCatalogSha256":"3b1e598a930877f503d5ba1592e36fab3710a2068768004179b6c15f42cfd251","certification":"semantic-parity-complete-external-compatibility-pending"} },
+  parameters: { controls: { disable: true }, uifnCompatibility: {"primitive":"autocomplete","canonicalVersion":"1.0.0","registryVersion":"0.0.1","frameworks":["react","svelte","solid"],"sourcePolicy":"clean-room","definitionSha256":"3185a671483e813f1eb1c3302fa51503a9dc8e966f68d7470a5855f845838e15","registryCatalogSha256":"894f528c60f97b21cbb0ff76b67b0b19b8e8cb6785a7619072e5c6cc4e734805","certification":"semantic-parity-complete-external-compatibility-pending"} },
 };
 export default meta;
 

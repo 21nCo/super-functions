@@ -13,7 +13,7 @@
     "@mdfn/components": "0.1.0",
     "@mdfn/components-solid": "0.1.0",
     "@uifn/components": "0.0.1",
-    "mdfn": "0.1.0",
+    "@mdfn/facade": "0.1.0",
     "solid-js": "^1.9.13"
   },
   "devDependencies": {
