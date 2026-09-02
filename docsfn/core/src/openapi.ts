@@ -432,8 +432,9 @@ export function parseOpenApiSource(input: ParseOpenApiSourceInput): {
 function assertAcyclicParsedSource(value: unknown, input: ParseOpenApiSourceInput): void {
   const visiting = new WeakSet<object>();
   const visited = new WeakSet<object>();
+  const stack: Array<{ node: object; children: unknown[]; index: number }> = [];
 
-  const visit = (node: unknown): void => {
+  const push = (node: unknown): void => {
     if (node === null || typeof node !== "object") {
       return;
     }
@@ -452,20 +453,26 @@ function assertAcyclicParsedSource(value: unknown, input: ParseOpenApiSourceInpu
       });
     }
     visiting.add(node);
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        visit(item);
-      }
-    } else {
-      for (const item of Object.values(node)) {
-        visit(item);
-      }
-    }
-    visiting.delete(node);
-    visited.add(node);
+    stack.push({
+      node,
+      children: Array.isArray(node) ? node : Object.values(node),
+      index: 0,
+    });
   };
 
-  visit(value);
+  push(value);
+  while (stack.length > 0) {
+    const frame = stack[stack.length - 1];
+    if (frame.index >= frame.children.length) {
+      visiting.delete(frame.node);
+      visited.add(frame.node);
+      stack.pop();
+      continue;
+    }
+    const child = frame.children[frame.index];
+    frame.index += 1;
+    push(child);
+  }
 }
 
 export function normalizeOpenApiReference(

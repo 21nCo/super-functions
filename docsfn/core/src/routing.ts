@@ -141,7 +141,7 @@ function resolveVersionContext(input: {
   if (requestedVersion && logicalSegments.length > 0) {
     if (mode === "path-segment" && logicalSegments[logicalSegments.length - 1] === requestedVersion) {
       slugWithoutVersion = segmentsToSlug(logicalSegments.slice(0, -1));
-    } else if (logicalSegments[0] === requestedVersion) {
+    } else if (mode !== "path-segment" && logicalSegments[0] === requestedVersion) {
       slugWithoutVersion = segmentsToSlug(logicalSegments.slice(1));
     }
   }

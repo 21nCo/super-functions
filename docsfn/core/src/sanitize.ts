@@ -1,5 +1,5 @@
 import { createDiagnostic, createDocsError } from "./diagnostics";
-import { scanFenceLines, splitBlockQuotePrefix } from "./markdown-fences";
+import { scanFenceLines, splitMarkdownContainerPrefix } from "./markdown-fences";
 import { decodeHTML } from "entities";
 import { marked, type Token } from "marked";
 
@@ -79,7 +79,7 @@ function stripCodeExamples(source: string): string {
       kept.push("");
       return;
     }
-    const { content } = splitBlockQuotePrefix(line);
+    const { content } = splitMarkdownContainerPrefix(line);
     if (/^(?: {4}|\t)/.test(content)) {
       kept.push("");
       return;

@@ -165,6 +165,27 @@ describe("routing", () => {
     ]);
   });
 
+  it("keeps a leading version-like slug in path-segment mode when version comes from frontmatter", () => {
+    const config = createConfig({
+      versions: {
+        mode: "path-segment",
+        versions: [
+          { slug: "v1", label: "Version 1", default: true },
+          { slug: "v2", label: "Version 2" },
+        ],
+      },
+    });
+
+    const routed = buildRoute({
+      collection: "docs",
+      sourcePath: "v2/intro",
+      frontmatter: { version: "v2" },
+      config,
+    });
+
+    expect(routed.path).toBe("/docs/v2/intro/v2");
+  });
+
   it("fails with DOCS_VERSION_INVALID when version mode has no default", () => {
     const config = createConfig({
       versions: {

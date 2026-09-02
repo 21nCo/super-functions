@@ -84,6 +84,8 @@ describe("loadDocsConfig", () => {
       join(cwd, "docsfn.config.ts"),
       [
         'import { title } from "./theme.js";',
+        "namespace DocsfnForceTranspile { export const marker = 1; }",
+        "void DocsfnForceTranspile.marker;",
         "export default {",
         "  schemaVersion: 1,",
         "  site: { title, basePath: '/docs' },",
@@ -94,8 +96,9 @@ describe("loadDocsConfig", () => {
       ].join("\n")
     );
 
-    const loaded = await loadDocsConfig({ cwd });
-    expect(loaded.site.title).toBe("Imported Theme");
+    const [first, second] = await Promise.all([loadDocsConfig({ cwd }), loadDocsConfig({ cwd })]);
+    expect(first.site.title).toBe("Imported Theme");
+    expect(second.site.title).toBe("Imported Theme");
   });
 
   it("reloads an edited JavaScript config instead of returning the module cache", async () => {

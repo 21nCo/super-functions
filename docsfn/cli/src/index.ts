@@ -41,6 +41,7 @@ interface LlmsCommandOptions extends BuildCommandOptions {
   staticDir?: string;
   embedOpenapi?: boolean;
   noBlog?: boolean;
+  blog?: boolean;
 }
 
 interface DocusaurusMigrateCommandOptions {
@@ -712,7 +713,7 @@ async function runLlmsCommand(
   const llmsOptions: BuildLlmsFullTxtOptions = {
     canonicalUrl: result.config?.site?.canonicalUrl,
     embedOpenApiSpec: options.embedOpenapi === true,
-    includeBlog: options.noBlog ? false : true,
+    includeBlog: options.blog !== false,
     auth: result.config?.auth,
   };
 
@@ -820,7 +821,7 @@ cli
   .option("--root <dir>", "Root directory")
   .option("--config <path>", "Explicit docsfn config path")
   .option("--out <dir>", "Output directory (legacy option)")
-  .option("--out-dir <dir>", "Output directory", { default: ".docsfn" })
+  .option("--out-dir <dir>", "Output directory")
   .action(async (root, options) => {
     await runBuildCommand(root, options as BuildCommandOptions);
   });
@@ -830,7 +831,7 @@ cli
   .option("--root <dir>", "Root directory")
   .option("--config <path>", "Explicit docsfn config path")
   .option("--out <dir>", "Output directory (legacy option)")
-  .option("--out-dir <dir>", "Output directory", { default: ".docsfn" })
+  .option("--out-dir <dir>", "Output directory")
   .action(async (root, options) => {
     await runDevCommand(root, options as BuildCommandOptions);
   });
@@ -840,7 +841,7 @@ cli
   .option("--root <dir>", "Root directory")
   .option("--config <path>", "Explicit docsfn config path")
   .option("--static <dir>", "Output directory for static assets (legacy)")
-  .option("--static-dir <dir>", "Output directory for static assets", { default: "static" })
+  .option("--static-dir <dir>", "Output directory for static assets")
   .option("--embed-openapi", "Embed full OpenAPI JSON in llms-full.txt")
   .option("--no-blog", "Exclude blog posts from generated artifacts")
   .action(async (root, options) => {

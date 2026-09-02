@@ -191,6 +191,27 @@ graph TD;
     expect(compiled.transformedSource).toContain("<DocsTabs");
   });
 
+  it("treats list-item fences as code during fumadocs transforms", () => {
+    const compiled = compileMarkdown({
+      source: [
+        'import { Tabs, Tab } from "fumadocs-ui/components/tabs";',
+        "",
+        "- ```html",
+        "  <Tabs />",
+        "  ```",
+        "",
+        '<Tabs items={["A"]}>',
+        '  <Tab value="A">Body</Tab>',
+        "</Tabs>",
+      ].join("\n"),
+      sourcePath: "content/docs/list-fence.mdx",
+      compatPreset: "fumadocs-v15",
+    });
+    expect(compiled.transformedSource).toContain("- ```html");
+    expect(compiled.transformedSource).toContain("<Tabs />");
+    expect(compiled.transformedSource).toContain("<DocsTabs");
+  });
+
   it("compiles nested component children and preserves normalized props", () => {
     const compiled = compileMarkdown({
       source: `import { DemoCard } from "./DemoCard";

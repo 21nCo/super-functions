@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { access, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -319,9 +320,12 @@ async function loadTypeScriptConfig(configPath: string): Promise<unknown> {
     });
     const compiledPath = join(
       dirname(configPath),
-      `.docsfn.${process.pid}.${Date.now()}.mjs`
+      `.docsfn.${randomBytes(16).toString("hex")}.mjs`
     );
-    await writeFile(compiledPath, transpiled.outputText, "utf8");
+    await writeFile(compiledPath, transpiled.outputText, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
     try {
       const moduleValue = await import(await resolveConfigModuleUrl(compiledPath));
       return resolveConfigExport(moduleValue);

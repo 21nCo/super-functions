@@ -28,8 +28,25 @@ export function splitBlockQuotePrefix(line: string): {
   return { quoteDepth, content };
 }
 
+const LIST_ITEM_MARKER_REGEX = /^ {0,3}(?:[-+*]|\d{1,9}[.)])(?: |\t)/;
+
+export function splitMarkdownContainerPrefix(line: string): {
+  quoteDepth: number;
+  content: string;
+} {
+  const quoted = splitBlockQuotePrefix(line);
+  const listMatch = quoted.content.match(LIST_ITEM_MARKER_REGEX);
+  if (!listMatch) {
+    return quoted;
+  }
+  return {
+    quoteDepth: quoted.quoteDepth,
+    content: quoted.content.slice(listMatch[0].length),
+  };
+}
+
 export function matchFenceLine(line: string): FenceLineMatch | null {
-  const { quoteDepth, content } = splitBlockQuotePrefix(line);
+  const { quoteDepth, content } = splitMarkdownContainerPrefix(line);
   const match = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
   if (!match) {
     return null;

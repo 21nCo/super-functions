@@ -52,7 +52,7 @@ async function contentSignature(root: string): Promise<string> {
       continue;
     }
     for (const entry of entries) {
-      if (entry.name === "node_modules" || entry.name === ".git") {
+      if (entry.name === "node_modules" || entry.name === ".git" || entry.isSymbolicLink()) {
         continue;
       }
       const fullPath = path.join(current, entry.name);
