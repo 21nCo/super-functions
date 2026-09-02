@@ -173,6 +173,24 @@ graph TD;
     expect(compiled.transformedSource).toContain("~`` not a fence");
   });
 
+  it("closes an unquoted fence after a quoted fence loses quote depth", () => {
+    const compiled = compileMarkdown({
+      source: [
+        'import { Tabs, Tab } from "fumadocs-ui/components/tabs";',
+        "",
+        "> ```js",
+        "> unclosed quoted fence",
+        "",
+        '<Tabs items={["A"]}>',
+        '  <Tab value="A">Body</Tab>',
+        "</Tabs>",
+      ].join("\n"),
+      sourcePath: "content/docs/quoted-fence.mdx",
+      compatPreset: "fumadocs-v15",
+    });
+    expect(compiled.transformedSource).toContain("<DocsTabs");
+  });
+
   it("compiles nested component children and preserves normalized props", () => {
     const compiled = compileMarkdown({
       source: `import { DemoCard } from "./DemoCard";

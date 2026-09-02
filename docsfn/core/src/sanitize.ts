@@ -1,4 +1,5 @@
 import { createDiagnostic, createDocsError } from "./diagnostics";
+import { scanFenceLines, splitBlockQuotePrefix } from "./markdown-fences";
 import { decodeHTML } from "entities";
 import { marked, type Token } from "marked";
 
@@ -25,53 +26,6 @@ export interface SanitizeSourceInput {
 export interface UnsafeHtmlMatch {
   category: string;
   match: string;
-}
-
-interface FenceState {
-  marker: "`" | "~";
-  length: number;
-  quoteDepth: number;
-}
-
-function matchFenceLine(line: string): {
-  marker: "`" | "~";
-  length: number;
-  info: string;
-  quoteDepth: number;
-} | null {
-  let quoteDepth = 0;
-  let content = line;
-  while (true) {
-    const match = content.match(/^ {0,3}> ?/);
-    if (!match) {
-      break;
-    }
-    quoteDepth += 1;
-    content = content.slice(match[0].length);
-  }
-  const match = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
-  if (!match) {
-    return null;
-  }
-  const fence = match[1];
-  const marker = fence[0] as "`" | "~";
-  const info = match[2] ?? "";
-  if (marker === "`" && info.includes("`")) {
-    return null;
-  }
-  return { marker, length: fence.length, info, quoteDepth };
-}
-
-function isClosingFence(
-  open: FenceState,
-  candidate: { marker: "`" | "~"; length: number; info: string; quoteDepth: number }
-): boolean {
-  return (
-    candidate.marker === open.marker &&
-    candidate.length >= open.length &&
-    candidate.quoteDepth === open.quoteDepth &&
-    /^[ \t]*$/.test(candidate.info)
-  );
 }
 
 function stripInlineCode(source: string): string {
@@ -120,29 +74,18 @@ function stripInlineCode(source: string): string {
 
 function stripCodeExamples(source: string): string {
   const kept: string[] = [];
-  let fence: FenceState | null = null;
-  for (const line of source.split(/\r?\n/)) {
-    const fenceMatch = matchFenceLine(line);
-    if (!fence && fenceMatch) {
-      fence = {
-        marker: fenceMatch.marker,
-        length: fenceMatch.length,
-        quoteDepth: fenceMatch.quoteDepth,
-      };
+  scanFenceLines(source.split(/\r?\n/), (line, inFence, isFenceLine) => {
+    if (inFence || isFenceLine) {
       kept.push("");
-      continue;
+      return;
     }
-    if (fence && fenceMatch && isClosingFence(fence, fenceMatch)) {
-      fence = null;
+    const { content } = splitBlockQuotePrefix(line);
+    if (/^(?: {4}|\t)/.test(content)) {
       kept.push("");
-      continue;
-    }
-    if (fence || /^(?: {4}|\t)/.test(line)) {
-      kept.push("");
-      continue;
+      return;
     }
     kept.push(line);
-  }
+  });
   return stripInlineCode(kept.join("\n"));
 }
 

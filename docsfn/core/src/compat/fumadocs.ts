@@ -1,4 +1,5 @@
 import { createDiagnostic, createDocsError } from "../diagnostics";
+import { scanFenceLines } from "../markdown-fences";
 
 const SUPPORTED_FUMADOCS_IMPORTS: Record<string, Set<string>> = {
   "fumadocs-ui/components/tabs": new Set(["Tabs", "Tab"]),
@@ -83,53 +84,6 @@ function rewriteTag(source: string, local: string, canonical: "DocsTabs" | "Docs
     .replace(new RegExp(`<\\s*\\/\\s*${escaped}\\s*>`, "g"), `</${canonical}>`);
 }
 
-interface FenceState {
-  marker: "`" | "~";
-  length: number;
-  quoteDepth: number;
-}
-
-function matchFenceLine(line: string): {
-  marker: "`" | "~";
-  length: number;
-  info: string;
-  quoteDepth: number;
-} | null {
-  let quoteDepth = 0;
-  let content = line;
-  while (true) {
-    const match = content.match(/^ {0,3}> ?/);
-    if (!match) {
-      break;
-    }
-    quoteDepth += 1;
-    content = content.slice(match[0].length);
-  }
-  const match = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
-  if (!match) {
-    return null;
-  }
-  const fence = match[1];
-  const marker = fence[0] as "`" | "~";
-  const info = match[2] ?? "";
-  if (marker === "`" && info.includes("`")) {
-    return null;
-  }
-  return { marker, length: fence.length, info, quoteDepth };
-}
-
-function isClosingFence(
-  open: FenceState,
-  candidate: { marker: "`" | "~"; length: number; info: string; quoteDepth: number }
-): boolean {
-  return (
-    candidate.marker === open.marker &&
-    candidate.length >= open.length &&
-    candidate.quoteDepth === open.quoteDepth &&
-    /^[ \t]*$/.test(candidate.info)
-  );
-}
-
 function rewriteTagsInText(
   source: string,
   aliases: Map<string, "DocsTabs" | "DocsTab">
@@ -187,28 +141,6 @@ function rewriteOutsideInlineCode(
     index = closer;
   }
   return result;
-}
-
-function scanFenceLines(lines: string[], onLine: (line: string, inFence: boolean, isFenceLine: boolean) => void): void {
-  let fence: FenceState | null = null;
-  for (const line of lines) {
-    const fenceMatch = matchFenceLine(line);
-    if (!fence && fenceMatch) {
-      fence = {
-        marker: fenceMatch.marker,
-        length: fenceMatch.length,
-        quoteDepth: fenceMatch.quoteDepth,
-      };
-      onLine(line, true, true);
-      continue;
-    }
-    if (fence && fenceMatch && isClosingFence(fence, fenceMatch)) {
-      onLine(line, true, true);
-      fence = null;
-      continue;
-    }
-    onLine(line, fence !== null, false);
-  }
 }
 
 export function transformFumadocsV15(

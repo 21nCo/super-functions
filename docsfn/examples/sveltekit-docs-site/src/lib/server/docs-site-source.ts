@@ -35,7 +35,7 @@ let sourcePromise: Promise<DocsSiteSource> | null = null;
 let sourceSignature = "";
 
 async function contentSignature(root: string): Promise<string> {
-  let latest = 0;
+  const parts: string[] = [];
   const stack = [root];
   while (stack.length > 0) {
     const current = stack.pop();
@@ -59,15 +59,14 @@ async function contentSignature(root: string): Promise<string> {
       }
       try {
         const info = await stat(fullPath);
-        if (info.mtimeMs > latest) {
-          latest = info.mtimeMs;
-        }
+        parts.push(`${path.relative(root, fullPath)}\0${info.mtimeMs}\0${info.size}`);
       } catch {
         continue;
       }
     }
   }
-  return String(latest);
+  parts.sort();
+  return parts.join("\n");
 }
 
 function resolveFixtureRoot(): string {
@@ -118,7 +117,11 @@ export async function loadDocsSiteSource(): Promise<DocsSiteSource> {
     const signature = await contentSignature(resolveFixtureRoot());
     if (!sourcePromise || signature !== sourceSignature) {
       sourceSignature = signature;
-      sourcePromise = createDocsSiteSource();
+      sourcePromise = createDocsSiteSource().catch((error) => {
+        sourcePromise = null;
+        sourceSignature = "";
+        throw error;
+      });
     }
     return sourcePromise;
   }

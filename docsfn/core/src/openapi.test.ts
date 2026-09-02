@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildOpenApiReference,
+  parseOpenApiSource,
   resolveOpenApiRoute,
   type CanonicalOpenApiReference,
 } from "./openapi";
@@ -194,6 +195,23 @@ describe("OpenAPI normalization", () => {
         body: "openapi: 3.0.3\npaths:\n  /health: [",
       })
     ).toThrowError(/DOCS_OPENAPI_PARSE_FAILED|could not be parsed/);
+  });
+
+  it("throws DOCS_OPENAPI_PARSE_FAILED for cyclic YAML aliases", () => {
+    expect(() =>
+      parseOpenApiSource({
+        sourceId: "api:cycle.yaml",
+        sourcePath: "cycle.yaml",
+        body: [
+          "openapi: 3.0.3",
+          "info: &cycle",
+          "  title: Cycle",
+          "  version: '1.0.0'",
+          "  extra: *cycle",
+          "paths: {}",
+        ].join("\n"),
+      })
+    ).toThrowError(/DOCS_OPENAPI_PARSE_FAILED|cyclic/);
   });
 
   it("throws DOCS_OPENAPI_PARSE_FAILED for unsupported OpenAPI versions", () => {

@@ -129,22 +129,31 @@ function resolveVersionContext(input: {
       });
     }
     requestedVersion = frontmatterVersion;
-  } else if (logicalSegments.length > 0 && validSlugs.has(logicalSegments[0])) {
+  } else if (mode === "path-segment" && logicalSegments.length > 0 && validSlugs.has(logicalSegments[logicalSegments.length - 1])) {
+    requestedVersion = logicalSegments[logicalSegments.length - 1];
+  } else if (mode !== "path-segment" && logicalSegments.length > 0 && validSlugs.has(logicalSegments[0])) {
     requestedVersion = logicalSegments[0];
   } else {
     requestedVersion = defaultVersion?.slug;
   }
 
   let slugWithoutVersion = input.logicalPath;
-  if (
-    requestedVersion &&
-    logicalSegments.length > 0 &&
-    logicalSegments[0] === requestedVersion
-  ) {
-    slugWithoutVersion = segmentsToSlug(logicalSegments.slice(1));
+  if (requestedVersion && logicalSegments.length > 0) {
+    if (mode === "path-segment" && logicalSegments[logicalSegments.length - 1] === requestedVersion) {
+      slugWithoutVersion = segmentsToSlug(logicalSegments.slice(0, -1));
+    } else if (logicalSegments[0] === requestedVersion) {
+      slugWithoutVersion = segmentsToSlug(logicalSegments.slice(1));
+    }
   }
 
-  if (requestedVersion && slugToSegments(slugWithoutVersion)[0] === requestedVersion) {
+  const remainingSegments = slugToSegments(slugWithoutVersion);
+  const duplicated =
+    requestedVersion &&
+    remainingSegments.length > 0 &&
+    (mode === "path-segment"
+      ? remainingSegments[remainingSegments.length - 1] === requestedVersion
+      : remainingSegments[0] === requestedVersion);
+  if (duplicated) {
     throw createDocsError({
       code: "DOCS_VERSION_INVALID",
       message: "version segment duplicated during route normalization",

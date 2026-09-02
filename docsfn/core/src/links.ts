@@ -77,7 +77,7 @@ function findAnchorTags(html: string): Array<{ start: number; end: number; value
   while ((match = opener.exec(html))) {
     const end = findQuotedTagEnd(html, match.index + match[0].length);
     if (end === -1) {
-      continue;
+      break;
     }
     tags.push({ start: match.index, end, value: html.slice(match.index, end) });
     opener.lastIndex = end;

@@ -76,6 +76,28 @@ describe("loadDocsConfig", () => {
     expect(loaded.compat?.preset).toBe("fumadocs-v15");
   });
 
+  it("loads a TypeScript config that imports a sibling module", async () => {
+    const cwd = await createTempDir();
+
+    await writeFile(join(cwd, "theme.js"), "export const title = 'Imported Theme';\n");
+    await writeFile(
+      join(cwd, "docsfn.config.ts"),
+      [
+        'import { title } from "./theme.js";',
+        "export default {",
+        "  schemaVersion: 1,",
+        "  site: { title, basePath: '/docs' },",
+        "  compat: { preset: 'none' },",
+        `  content: { root: ${JSON.stringify(cwd)}, docsDir: 'content/docs' },`,
+        "};",
+        "",
+      ].join("\n")
+    );
+
+    const loaded = await loadDocsConfig({ cwd });
+    expect(loaded.site.title).toBe("Imported Theme");
+  });
+
   it("reloads an edited JavaScript config instead of returning the module cache", async () => {
     const cwd = await createTempDir();
     const configPath = join(cwd, "docsfn.config.mjs");

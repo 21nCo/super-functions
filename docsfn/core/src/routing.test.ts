@@ -128,6 +128,43 @@ describe("routing", () => {
     ]);
   });
 
+  it("places the version at the end in path-segment mode", () => {
+    const config = createConfig({
+      versions: {
+        mode: "path-segment",
+        versions: [
+          { slug: "v1", label: "Version 1", default: true },
+          { slug: "v2", label: "Version 2" },
+        ],
+      },
+    });
+
+    const defaulted = buildRoute({
+      collection: "docs",
+      sourcePath: "getting-started",
+      config,
+    });
+    const explicit = buildRoute({
+      collection: "docs",
+      sourcePath: "getting-started/v2",
+      config,
+    });
+
+    expect(defaulted.path).toBe("/docs/getting-started/v1");
+    expect(explicit.path).toBe("/docs/getting-started/v2");
+
+    const params = buildDocsStaticParams({
+      routes: [defaulted.path, explicit.path],
+      basePath: "/docs",
+      versions: config.versions,
+    });
+
+    expect(params).toEqual([
+      { version: "v1", slug: ["getting-started"] },
+      { version: "v2", slug: ["getting-started"] },
+    ]);
+  });
+
   it("fails with DOCS_VERSION_INVALID when version mode has no default", () => {
     const config = createConfig({
       versions: {

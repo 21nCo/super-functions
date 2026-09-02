@@ -421,10 +421,51 @@ export function parseOpenApiSource(input: ParseOpenApiSourceInput): {
     });
   }
 
+  assertAcyclicParsedSource(parsed, input);
+
   return {
     sourceFormat,
     parsed,
   };
+}
+
+function assertAcyclicParsedSource(value: unknown, input: ParseOpenApiSourceInput): void {
+  const visiting = new WeakSet<object>();
+  const visited = new WeakSet<object>();
+
+  const visit = (node: unknown): void => {
+    if (node === null || typeof node !== "object") {
+      return;
+    }
+    if (visited.has(node)) {
+      return;
+    }
+    if (visiting.has(node)) {
+      throw createOpenApiParseError({
+        message: `OpenAPI source ${input.sourcePath} contains a cyclic reference`,
+        sourceId: input.sourceId,
+        sourcePath: input.sourcePath,
+        absolutePath: input.absolutePath,
+        details: {
+          parser: "cycle",
+        },
+      });
+    }
+    visiting.add(node);
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        visit(item);
+      }
+    } else {
+      for (const item of Object.values(node)) {
+        visit(item);
+      }
+    }
+    visiting.delete(node);
+    visited.add(node);
+  };
+
+  visit(value);
 }
 
 export function normalizeOpenApiReference(

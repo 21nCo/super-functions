@@ -30,40 +30,39 @@ const appRoot = process.cwd();
 let sourcePromise: Promise<HybridSiteSource> | null = null;
 let sourceSignature = "";
 
-async function contentSignature(root: string): Promise<string> {
-  let latest = 0;
-  const stack = [root];
+async function contentSignature(roots: string[]): Promise<string> {
+  const parts: string[] = [];
+  const stack = [...roots];
   while (stack.length > 0) {
     const current = stack.pop();
     if (!current) {
       continue;
     }
-    let entries;
+    let info;
     try {
-      entries = await readdir(current, { withFileTypes: true });
+      info = await stat(current);
     } catch {
       continue;
     }
-    for (const entry of entries) {
-      if (entry.name === "node_modules" || entry.name === ".git") {
-        continue;
-      }
-      const fullPath = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(fullPath);
-        continue;
-      }
+    if (info.isDirectory()) {
+      let entries;
       try {
-        const info = await stat(fullPath);
-        if (info.mtimeMs > latest) {
-          latest = info.mtimeMs;
-        }
+        entries = await readdir(current, { withFileTypes: true });
       } catch {
         continue;
       }
+      for (const entry of entries) {
+        if (entry.name === "node_modules" || entry.name === ".git") {
+          continue;
+        }
+        stack.push(path.join(current, entry.name));
+      }
+      continue;
     }
+    parts.push(`${current}\0${info.mtimeMs}\0${info.size}`);
   }
-  return String(latest);
+  parts.sort();
+  return parts.join("\n");
 }
 
 async function buildManifestSource(config: DocsConfig): Promise<HybridManifestSource> {
@@ -95,10 +94,19 @@ export async function loadHybridSiteSource(): Promise<HybridSiteSource> {
   };
 
   if (process.env.NODE_ENV === "development") {
-    const signature = await contentSignature(appRoot);
+    const signature = await contentSignature([
+      path.join(appRoot, "content"),
+      path.join(appRoot, "docsfn.config.ts"),
+      path.join(appRoot, "docsfn.config.js"),
+      path.join(appRoot, "docsfn.config.mjs"),
+    ]);
     if (!sourcePromise || signature !== sourceSignature) {
       sourceSignature = signature;
-      sourcePromise = createSource();
+      sourcePromise = createSource().catch((error) => {
+        sourcePromise = null;
+        sourceSignature = "";
+        throw error;
+      });
     }
     return sourcePromise;
   }

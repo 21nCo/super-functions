@@ -7,6 +7,7 @@ import {
   createDocsError,
   createDocsSearchRuntime,
   loadDocsConfig,
+  resolveMarkdownRelativeLinks,
   type CompiledContentArtifact,
   type DocsCompatPreset,
   type DocsConfig,
@@ -91,10 +92,14 @@ function createCompiledCache(input: {
     pageKeysById[page.id] = key;
     pages.set(
       key,
-      compileSvelteContent({
-        source: page.body,
+      resolveMarkdownRelativeLinks({
+        compiled: compileSvelteContent({
+          source: page.body,
+          sourcePath: page.id,
+          compatPreset: input.compatPreset,
+        }),
+        route: page.path,
         sourcePath: page.id,
-        compatPreset: input.compatPreset,
       })
     );
   }
@@ -109,10 +114,14 @@ function createCompiledCache(input: {
     postKeysById[post.id] = key;
     posts.set(
       key,
-      compileSvelteContent({
-        source: post.body,
+      resolveMarkdownRelativeLinks({
+        compiled: compileSvelteContent({
+          source: post.body,
+          sourcePath: post.id,
+          compatPreset: input.compatPreset,
+        }),
+        route: post.path,
         sourcePath: post.id,
-        compatPreset: input.compatPreset,
       })
     );
   }

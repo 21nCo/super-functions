@@ -398,4 +398,25 @@ describe("resolveMarkdownRelativeLinks", () => {
     expect((resolved.blocks[0] as { html: string }).html).toContain('href=""');
     expect((resolved.blocks[0] as { html: string }).html).toContain('href="/docs/a%3Eb"');
   });
+
+  it("leaves unterminated anchor openers unchanged", () => {
+    const compiled = {
+      ...compileMarkdown({ source: "text", sourcePath: "content/docs/page.md" }),
+      blocks: [
+        {
+          type: "paragraph" as const,
+          text: "links",
+          html: '<a href="./never <a href="./also',
+        },
+      ],
+    };
+    const resolved = resolveMarkdownRelativeLinks({
+      compiled,
+      route: "/docs/page",
+      sourcePath: "content/docs/page.md",
+    });
+    expect((resolved.blocks[0] as { html: string }).html).toBe(
+      '<a href="./never <a href="./also'
+    );
+  });
 });

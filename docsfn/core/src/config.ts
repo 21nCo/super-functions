@@ -1,5 +1,5 @@
-import { access, readFile, stat } from "node:fs/promises";
-import { extname, isAbsolute, resolve } from "node:path";
+import { access, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import {
@@ -317,11 +317,17 @@ async function loadTypeScriptConfig(configPath: string): Promise<unknown> {
       },
       fileName: configPath,
     });
-    const dataUrl = `data:text/javascript;base64,${Buffer.from(
-      transpiled.outputText
-    ).toString("base64")}`;
-    const moduleValue = await import(dataUrl);
-    return resolveConfigExport(moduleValue);
+    const compiledPath = join(
+      dirname(configPath),
+      `.docsfn.${process.pid}.${Date.now()}.mjs`
+    );
+    await writeFile(compiledPath, transpiled.outputText, "utf8");
+    try {
+      const moduleValue = await import(await resolveConfigModuleUrl(compiledPath));
+      return resolveConfigExport(moduleValue);
+    } finally {
+      await unlink(compiledPath).catch(() => undefined);
+    }
   }
 }
 

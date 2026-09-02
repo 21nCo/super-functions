@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createDocsSiteSearchRuntime,
+  getCompiledDocsPage,
   getDocsSiteCompiledCacheSummary,
   loadDocsSiteSource,
 } from "./docs-site-source";
@@ -162,5 +163,14 @@ describe("docsfn dogfood site source", () => {
       parent: async () => ({ source }),
     } as never);
     expect(embeddedChangelogLoad.embed).toBe(true);
+  });
+
+  it("resolves relative links on collapsed index pages against the section route", async () => {
+    const compiled = await getCompiledDocsPage("docs:core-concepts/index.md");
+    const html = compiled.blocks
+      .map((block) => ("html" in block ? block.html : ""))
+      .join("\n");
+    expect(html).toContain('href="/docs/core-concepts/configuration"');
+    expect(html).not.toContain('href="./configuration"');
   });
 });
