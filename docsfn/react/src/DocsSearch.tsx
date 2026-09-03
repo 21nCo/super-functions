@@ -107,6 +107,7 @@ export function DocsSearch({
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!runtime || !query.trim()) {
+      queryRequestRef.current += 1;
       setResults([]);
       setSelectedIndex(0);
       return;

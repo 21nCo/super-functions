@@ -71,6 +71,36 @@ describe("DocsSearch scope UI", () => {
     expect(screen.getAllByText("Changelog").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("ignores stale results after the query is cleared", async () => {
+    let resolveQuery: (value: typeof searchResults) => void = () => undefined;
+    searchRuntime.query.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveQuery = resolve;
+        })
+    );
+
+    render(DocsSearch, {
+      props: {
+        createSearchRuntime: () => searchRuntime,
+        scopes: ["all", "docs", "api", "blog", "changelog"],
+      },
+    });
+
+    await fireEvent.input(screen.getByLabelText("Search query"), {
+      target: { value: "docsfn" },
+    });
+    await fireEvent.input(screen.getByLabelText("Search query"), {
+      target: { value: "" },
+    });
+    resolveQuery([...searchResults]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Start typing to search...")).toBeTruthy();
+    });
+    expect(screen.queryByText("Getting Started")).toBeNull();
+  });
+
   it("filters by changelog scope and preserves embed mode on result hrefs", async () => {
     window.history.pushState({}, "", "/docs/api/core?embed=1");
 

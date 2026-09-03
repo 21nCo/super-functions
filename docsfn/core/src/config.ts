@@ -167,14 +167,34 @@ const docsConfigSchema = z.object({
     })
     .optional(),
 }).superRefine((value, context) => {
+  const seenNormalizedIds = new Map<string, string>();
   for (const collectionId of Object.keys(value.collections ?? {})) {
-    if (normalizeDatedCollectionId(collectionId) === "blog") {
+    const normalizedId = normalizeDatedCollectionId(collectionId);
+    if (!normalizedId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["collections", collectionId],
+        message: "collection id must normalize to a nonempty identifier",
+      });
+      continue;
+    }
+    if (normalizedId === "blog") {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["collections", collectionId],
         message: "collection id is reserved for the legacy blog surface",
       });
     }
+    const previousId = seenNormalizedIds.get(normalizedId);
+    if (previousId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["collections", collectionId],
+        message: `collection id collides with '${previousId}' after normalization`,
+      });
+      continue;
+    }
+    seenNormalizedIds.set(normalizedId, collectionId);
   }
 });
 

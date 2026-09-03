@@ -69,6 +69,11 @@ function resolveDoNotTrackValue(input?: string | null): string | null {
   return null;
 }
 
+function sanitizeIdentifierValue(value: string): string {
+  const redacted = redactSensitivePayload(value);
+  return typeof redacted === "string" && redacted !== "[REDACTED]" ? redacted : "";
+}
+
 function sanitizePathLikeValue(value: string): string {
   if (!value) {
     return value;
@@ -133,11 +138,17 @@ export function sanitizeDocsAnalyticsEvent(
   };
 
   if (typeof event.version === "string" && event.version.trim().length > 0) {
-    sanitized.version = sanitizePathLikeValue(event.version.trim());
+    const version = sanitizeIdentifierValue(event.version.trim());
+    if (version) {
+      sanitized.version = version;
+    }
   }
 
   if (typeof event.sidebarId === "string" && event.sidebarId.trim().length > 0) {
-    sanitized.sidebarId = sanitizePathLikeValue(event.sidebarId.trim());
+    const sidebarId = sanitizeIdentifierValue(event.sidebarId.trim());
+    if (sidebarId) {
+      sanitized.sidebarId = sidebarId;
+    }
   }
 
   if (isDocsSearchScope(event.searchScope)) {

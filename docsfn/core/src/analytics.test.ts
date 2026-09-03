@@ -102,6 +102,23 @@ describe("analytics", () => {
     });
   });
 
+  it("preserves version and sidebar identifiers instead of path-normalizing them", () => {
+    const sanitized = sanitizeDocsAnalyticsEvent({
+      name: "docs.pageview",
+      timestamp: "2026-03-20T00:00:00Z",
+      route: "/docs/guide",
+      version: "v1",
+      sidebarId: "default",
+    });
+
+    expect(sanitized).toMatchObject({
+      name: "docs.pageview",
+      route: "/docs/guide",
+      version: "v1",
+      sidebarId: "default",
+    });
+  });
+
   it("exposes the canonical event names from SPEC.md", () => {
     expect(CANONICAL_DOCS_ANALYTICS_EVENT_NAMES).toEqual([
       "docs.pageview",

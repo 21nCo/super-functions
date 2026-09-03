@@ -20,7 +20,6 @@ function createPost(
     date,
     tags: [],
     body: "# Heading\n\nBody text",
-    frontmatter,
     ...overrides,
     frontmatter,
   };

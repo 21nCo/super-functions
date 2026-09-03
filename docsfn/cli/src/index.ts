@@ -40,7 +40,6 @@ interface LlmsCommandOptions extends BuildCommandOptions {
   static?: string;
   staticDir?: string;
   embedOpenapi?: boolean;
-  noBlog?: boolean;
   blog?: boolean;
 }
 

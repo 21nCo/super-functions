@@ -248,6 +248,10 @@ describe("security", () => {
     expect(findUnsafeHtml("    <script>alert(1)</script>")).toEqual([]);
     expect(findUnsafeHtml(">     <script>alert(1)</script>")).toEqual([]);
     expect(findUnsafeHtml("- ```html\n  <script>alert(1)</script>\n  ```")).toEqual([]);
+    expect(findUnsafeHtml("-     <script>alert(1)</script>")).toEqual([]);
+    expect(findUnsafeHtml("- <script>alert(1)</script>")).toEqual(
+      expect.arrayContaining([expect.objectContaining({ category: "blocked-tag:script" })])
+    );
     expect(findUnsafeHtml("`<script>\nexample`")).toEqual([]);
   });
 });

@@ -158,7 +158,7 @@
     "@testing-library/svelte": "^5.3.1",
     "esbuild-svelte": "^0.9.4",
     "jsdom": "^27.0.1",
-    "svelte": "^5.0.0",
+    "svelte": ">=5.20.0 <6",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"

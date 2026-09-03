@@ -342,6 +342,56 @@ describe("loadDocsConfig", () => {
     );
   });
 
+  it("rejects collection ids that collide after normalization", async () => {
+    const cwd = await createTempDir();
+
+    await writeFile(
+      join(cwd, "docsfn.config.mjs"),
+      serializeConfig({
+        schemaVersion: 1,
+        site: { title: "Colliding Collections", basePath: "/docs" },
+        compat: { preset: "none" },
+        content: { root: cwd, docsDir: "content/docs" },
+        collections: {
+          Changelog: {
+            dir: "content/changelog",
+            routeBase: "/changelog",
+          },
+          changelog: {
+            dir: "content/changelog-alt",
+            routeBase: "/changelog-alt",
+          },
+        },
+      })
+    );
+
+    await expect(loadDocsConfig({ cwd })).rejects.toThrowError(/collides with 'Changelog'/);
+  });
+
+  it("rejects collection ids that normalize to an empty identifier", async () => {
+    const cwd = await createTempDir();
+
+    await writeFile(
+      join(cwd, "docsfn.config.mjs"),
+      serializeConfig({
+        schemaVersion: 1,
+        site: { title: "Empty Collection", basePath: "/docs" },
+        compat: { preset: "none" },
+        content: { root: cwd, docsDir: "content/docs" },
+        collections: {
+          "/": {
+            dir: "content/slash",
+            routeBase: "/slash",
+          },
+        },
+      })
+    );
+
+    await expect(loadDocsConfig({ cwd })).rejects.toThrowError(
+      /must normalize to a nonempty identifier/
+    );
+  });
+
   it("returns deterministic defaults only when no config file exists", async () => {
     const cwd = await createTempDir();
 

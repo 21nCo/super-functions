@@ -119,6 +119,7 @@
     scopeFilter: SearchScopeFilter
   ) {
     if (!activeRuntime || queryText.trim().length === 0) {
+      requestVersion += 1;
       results = [];
       selectedIndex = 0;
       return;

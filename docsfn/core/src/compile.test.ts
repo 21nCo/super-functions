@@ -212,6 +212,46 @@ graph TD;
     expect(compiled.transformedSource).toContain("<DocsTabs");
   });
 
+  it("closes four-space list-item fences before later fumadocs tags", () => {
+    const compiled = compileMarkdown({
+      source: [
+        'import { Tabs, Tab } from "fumadocs-ui/components/tabs";',
+        "",
+        "- ```html",
+        "    <Tabs />",
+        "    ```",
+        "",
+        '<Tabs items={["A"]}>',
+        '  <Tab value="A">Body</Tab>',
+        "</Tabs>",
+      ].join("\n"),
+      sourcePath: "content/docs/list-fence-indent.mdx",
+      compatPreset: "fumadocs-v15",
+    });
+    expect(compiled.transformedSource).toContain("    ```");
+    expect(compiled.transformedSource).toContain("<DocsTabs");
+  });
+
+  it("closes list-item blockquote fences before later fumadocs tags", () => {
+    const compiled = compileMarkdown({
+      source: [
+        'import { Tabs, Tab } from "fumadocs-ui/components/tabs";',
+        "",
+        "- > ```js",
+        "  > const ok = true;",
+        "  > ```",
+        "",
+        '<Tabs items={["A"]}>',
+        '  <Tab value="A">Body</Tab>',
+        "</Tabs>",
+      ].join("\n"),
+      sourcePath: "content/docs/list-quote-fence.mdx",
+      compatPreset: "fumadocs-v15",
+    });
+    expect(compiled.transformedSource).toContain("- > ```js");
+    expect(compiled.transformedSource).toContain("<DocsTabs");
+  });
+
   it("compiles nested component children and preserves normalized props", () => {
     const compiled = compileMarkdown({
       source: `import { DemoCard } from "./DemoCard";

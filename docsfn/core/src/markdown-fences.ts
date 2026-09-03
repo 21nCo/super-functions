@@ -2,6 +2,7 @@ export interface FenceState {
   marker: "`" | "~";
   length: number;
   quoteDepth: number;
+  containerIndent: number;
 }
 
 export interface FenceLineMatch {
@@ -30,23 +31,53 @@ export function splitBlockQuotePrefix(line: string): {
 
 const LIST_ITEM_MARKER_REGEX = /^ {0,3}(?:[-+*]|\d{1,9}[.)])(?: |\t)/;
 
+function stripLeadingContainerIndent(line: string, indent: number): string {
+  if (indent <= 0) {
+    return line;
+  }
+  let consumed = 0;
+  let index = 0;
+  while (index < line.length && consumed < indent) {
+    const character = line[index];
+    if (character !== " " && character !== "\t") {
+      break;
+    }
+    consumed += 1;
+    index += 1;
+  }
+  return line.slice(index);
+}
+
 export function splitMarkdownContainerPrefix(line: string): {
   quoteDepth: number;
   content: string;
+  containerIndent: number;
 } {
-  const quoted = splitBlockQuotePrefix(line);
-  const listMatch = quoted.content.match(LIST_ITEM_MARKER_REGEX);
-  if (!listMatch) {
-    return quoted;
+  let quoteDepth = 0;
+  let content = line;
+  let containerIndent = 0;
+  while (true) {
+    const quoteMatch = content.match(/^ {0,3}> ?/);
+    if (quoteMatch) {
+      quoteDepth += 1;
+      content = content.slice(quoteMatch[0].length);
+      containerIndent += quoteMatch[0].length;
+      continue;
+    }
+    const listMatch = content.match(LIST_ITEM_MARKER_REGEX);
+    if (listMatch) {
+      content = content.slice(listMatch[0].length);
+      containerIndent += listMatch[0].length;
+      continue;
+    }
+    break;
   }
-  return {
-    quoteDepth: quoted.quoteDepth,
-    content: quoted.content.slice(listMatch[0].length),
-  };
+  return { quoteDepth, content, containerIndent };
 }
 
-export function matchFenceLine(line: string): FenceLineMatch | null {
-  const { quoteDepth, content } = splitMarkdownContainerPrefix(line);
+export function matchFenceLine(line: string, containerIndent = 0): FenceLineMatch | null {
+  const remaining = stripLeadingContainerIndent(line, containerIndent);
+  const { quoteDepth, content } = splitMarkdownContainerPrefix(remaining);
   const match = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
   if (!match) {
     return null;
@@ -75,16 +106,17 @@ export function scanFenceLines(
 ): void {
   let fence: FenceState | null = null;
   for (const line of lines) {
-    const { quoteDepth } = splitBlockQuotePrefix(line);
+    const { quoteDepth } = splitMarkdownContainerPrefix(line);
     if (fence && quoteDepth < fence.quoteDepth) {
       fence = null;
     }
-    const fenceMatch = matchFenceLine(line);
+    const fenceMatch = matchFenceLine(line, fence?.containerIndent ?? 0);
     if (!fence && fenceMatch) {
       fence = {
         marker: fenceMatch.marker,
         length: fenceMatch.length,
         quoteDepth: fenceMatch.quoteDepth,
+        containerIndent: splitMarkdownContainerPrefix(line).containerIndent,
       };
       onLine(line, true, true);
       continue;
