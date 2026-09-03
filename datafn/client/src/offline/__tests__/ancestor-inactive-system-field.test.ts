@@ -5,23 +5,16 @@ import { handleOfflineMutation } from "../mutate.js";
 import { assertNoSystemFieldWrite } from "../../capability-fields.js";
 import type { DatafnSchema } from "@datafn/core";
 
+const field = (name: string, type: "string" | "boolean" = "string") => ({ name, type, required: false });
+
 const schema: DatafnSchema = {
   resources: [
     {
       name: "goals",
       version: 1,
-      fields: [
-        { name: "label", type: "string", required: false },
-        { name: "parentId", type: "string", required: false },
-        { name: "parentPath", type: "string", required: false },
-        { name: "isArchived", type: "boolean", required: false },
-      ],
+      fields: [field("label"), field("parentId"), field("parentPath"), field("isArchived", "boolean")],
     },
-    {
-      name: "notes",
-      version: 1,
-      fields: [{ name: "body", type: "string", required: false }],
-    },
+    { name: "notes", version: 1, fields: [field("body")] },
   ],
   relations: [
     {

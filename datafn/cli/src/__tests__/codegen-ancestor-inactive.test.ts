@@ -2,26 +2,13 @@ import { describe, expect, it } from "vitest";
 import { generateTypes } from "../codegen.js";
 import { generateDrizzleSchema } from "../drizzle-codegen.js";
 
+const str = (name: string, required = false) => ({ name, type: "string", required });
+
 const schema = {
   namespaced: false,
   resources: [
-    {
-      name: "goals",
-      version: 1,
-      fields: [
-        { name: "id", type: "string", required: true },
-        { name: "label", type: "string", required: false },
-        { name: "parentId", type: "string", required: false },
-      ],
-    },
-    {
-      name: "notes",
-      version: 1,
-      fields: [
-        { name: "id", type: "string", required: true },
-        { name: "body", type: "string", required: false },
-      ],
-    },
+    { name: "goals", version: 1, fields: [str("id", true), str("label"), str("parentId")] },
+    { name: "notes", version: 1, fields: [str("id", true), str("body")] },
   ],
   relations: [
     {

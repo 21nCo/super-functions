@@ -35,7 +35,7 @@ export interface RecomputeAncestorInactiveResult {
  * `isAncestorInactive` field for `schema`.
  */
 export function ancestorInactiveResources(schema: DatafnSchema): string[] {
-  return [...getAncestorInactiveResources(schema.relations)].sort();
+  return [...getAncestorInactiveResources(schema.relations)].sort((a, b) => a.localeCompare(b));
 }
 
 /**
