@@ -20,8 +20,7 @@
     SelectItem,
     SelectItemIndicator,
     SelectTrigger,
-    SelectValue,
-    SelectViewport,
+    SelectValueText,
   } from "@uifn/svelte";
   import { commandItems, type CommandItemFixture, type ExampleRouteHash } from "@uifn/examples-shared";
 
@@ -110,17 +109,15 @@
             class="select-trigger"
             aria-label="Filter command group"
           >
-            <SelectValue placeholder="Filter command group" />
+            <SelectValueText placeholder="Filter command group" />
           </SelectTrigger>
           <SelectContent class="floating-card command-menu">
-            <SelectViewport>
-              {#each groupOptions as option (option.value)}
-                <SelectItem value={option.value} class="command-option">
-                  {option.label}
-                  <SelectItemIndicator>Selected</SelectItemIndicator>
-                </SelectItem>
-              {/each}
-            </SelectViewport>
+            {#each groupOptions as option (option.value)}
+              <SelectItem value={option.value} class="command-option">
+                {option.label}
+                <SelectItemIndicator>Selected</SelectItemIndicator>
+              </SelectItem>
+            {/each}
           </SelectContent>
         </Select>
       </div>

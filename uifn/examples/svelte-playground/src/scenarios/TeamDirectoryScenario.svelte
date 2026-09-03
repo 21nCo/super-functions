@@ -4,12 +4,12 @@
     AvatarFallback,
     AvatarImage,
     Badge,
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
+    Menu,
+    MenuContent,
+    MenuGroupLabel,
+    MenuItem,
+    MenuSeparator,
+    MenuTrigger,
     HoverCard,
     HoverCardContent,
     HoverCardTrigger,
@@ -91,18 +91,18 @@
             </PopoverContent>
           </Popover>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger class="primary-button" aria-label={`Open actions for ${member.name}`}>
+          <Menu>
+            <MenuTrigger class="primary-button" aria-label={`Open actions for ${member.name}`}>
               Actions
-            </DropdownMenuTrigger>
-            <DropdownMenuContent class="floating-card">
-              <DropdownMenuLabel>{member.name}</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>Message teammate</DropdownMenuItem>
-              <DropdownMenuItem>Review example route</DropdownMenuItem>
-              <DropdownMenuItem>Share status update</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </MenuTrigger>
+            <MenuContent class="floating-card">
+              <MenuGroupLabel>{member.name}</MenuGroupLabel>
+              <MenuSeparator />
+              <MenuItem>Message teammate</MenuItem>
+              <MenuItem>Review example route</MenuItem>
+              <MenuItem>Share status update</MenuItem>
+            </MenuContent>
+          </Menu>
         </div>
       </article>
     {/each}

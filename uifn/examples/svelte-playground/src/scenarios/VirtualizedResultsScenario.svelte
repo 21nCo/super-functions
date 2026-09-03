@@ -6,8 +6,8 @@
     ScrollAreaScrollbar,
     ScrollAreaThumb,
     ScrollAreaViewport,
-    VirtualizedList,
   } from "@uifn/svelte";
+  import VirtualizedList from "./VirtualizedList.svelte";
   import { resultRows, type ExampleRouteHash } from "@uifn/examples-shared";
 
   export let route: ExampleRouteHash;

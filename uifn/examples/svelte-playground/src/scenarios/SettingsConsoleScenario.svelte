@@ -5,7 +5,7 @@
     Dialog,
     DialogClose,
     DialogContent,
-    DialogOverlay,
+    DialogBackdrop,
     DialogPortal,
     DialogTrigger,
     Switch,
@@ -62,7 +62,7 @@
       <Dialog open={dialogOpen} onOpenChange={(open) => (dialogOpen = open)}>
         <DialogTrigger class="primary-button">Open settings console</DialogTrigger>
         <DialogPortal>
-          <DialogOverlay class="dialog-overlay" />
+          <DialogBackdrop class="dialog-overlay" />
           <DialogContent
             class="dialog-content"
             aria-labelledby="settings-dialog-title"
