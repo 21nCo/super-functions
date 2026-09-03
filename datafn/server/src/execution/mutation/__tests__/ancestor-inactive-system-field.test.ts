@@ -288,6 +288,40 @@ describe("isAncestorInactive as a system field (server)", () => {
       expect((await get("goals", "goal:3")).isAncestorInactive).toBe(true);
     });
 
+    it("guards legacy null rows against concurrent propagation too", async () => {
+      await db.update({
+        model: "tasks",
+        where: [{ field: "id", operator: "eq", value: "task:2" }],
+        data: { isAncestorInactive: null },
+        namespace: NS,
+      });
+      let raced = false;
+      const racing = {
+        ...db,
+        findMany: async (params: Record<string, unknown>) => {
+          const rows = await db.findMany(params);
+          if (!raced && params.model === "tasks") {
+            raced = true;
+            await db.update({
+              model: "tasks",
+              where: [{ field: "id", operator: "eq", value: "task:2" }],
+              data: { isAncestorInactive: true },
+              namespace: NS,
+            });
+          }
+          return rows;
+        },
+      };
+
+      await recomputeAncestorInactive(racing, schema, { namespace: NS });
+      expect(raced).toBe(true);
+      expect((await get("tasks", "task:2")).isAncestorInactive).toBe(true);
+
+      const settled = await recomputeAncestorInactive(db, schema, { namespace: NS });
+      expect(settled.updated).toBe(1);
+      expect((await get("tasks", "task:2")).isAncestorInactive).toBe(false);
+    });
+
     it("is resumable through cursors and bounded by batchSize", async () => {
       await corrupt();
       const visited: string[] = [];

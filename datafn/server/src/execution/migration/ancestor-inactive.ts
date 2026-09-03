@@ -94,9 +94,11 @@ export async function recomputeAncestorInactive(
             model: resource,
             where: [
               { field: "id", operator: "eq", value: id },
-              ...(typeof previous === "boolean"
-                ? [{ field: ANCESTOR_INACTIVE_FIELD, operator: "eq" as const, value: previous }]
-                : []),
+              {
+                field: ANCESTOR_INACTIVE_FIELD,
+                operator: "eq",
+                value: typeof previous === "boolean" ? previous : null,
+              },
             ],
             data: { [ANCESTOR_INACTIVE_FIELD]: next },
             namespace,
