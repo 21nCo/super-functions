@@ -24,6 +24,7 @@ import {
   getJoinStoreKey,
   normalizeRelationPayload,
   resolveEndpointResource,
+  resourceRequiresAncestorInactive,
 } from "@datafn/core";
 import {
   assertNoSystemFieldWrite,
@@ -163,6 +164,7 @@ async function updateAncestorInactive(
   resource: string,
   record: Record<string, unknown>,
 ): Promise<Record<string, unknown> | null> {
+  if (!resourceRequiresAncestorInactive(schema.relations, resource)) return null;
   const next = await resolveAncestorInactive(storage, schema, resource, record);
   if (record.isAncestorInactive === next) return null;
   const updated = { ...record, isAncestorInactive: next };

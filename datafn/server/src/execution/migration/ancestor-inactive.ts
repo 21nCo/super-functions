@@ -85,12 +85,18 @@ export async function recomputeAncestorInactive(
       if (typeof id !== "string") continue;
       scanned += 1;
       const next = await resolveAncestorInactive(adapter, schema, resource, row, namespace);
-      if (row[ANCESTOR_INACTIVE_FIELD] !== next) {
+      const previous = row[ANCESTOR_INACTIVE_FIELD];
+      if (previous !== next) {
         updated += 1;
         if (!dryRun) {
           await adapter.update({
             model: resource,
-            where: [{ field: "id", operator: "eq", value: id }],
+            where: [
+              { field: "id", operator: "eq", value: id },
+              ...(typeof previous === "boolean"
+                ? [{ field: ANCESTOR_INACTIVE_FIELD, operator: "eq" as const, value: previous }]
+                : []),
+            ],
             data: { [ANCESTOR_INACTIVE_FIELD]: next },
             namespace,
           });
@@ -117,12 +123,15 @@ export interface RecomputeAncestorInactiveAllResult {
   scanned: number;
   updated: number;
   sweeps: number;
+  /** False when `maxSweeps` was reached while the last sweep still changed rows. */
+  converged: boolean;
 }
 
 /**
  * Runs full namespace sweeps of {@link recomputeAncestorInactive} until a
  * sweep produces no updates, so inherited inactivity converges through
- * arbitrarily deep hierarchies. Bounded by `maxSweeps`.
+ * arbitrarily deep hierarchies. Bounded by `maxSweeps`; check `converged`
+ * and rerun if it is false. Dry runs perform a single sweep.
  */
 export async function recomputeAncestorInactiveAll(
   adapter: Adapter,
@@ -133,6 +142,7 @@ export async function recomputeAncestorInactiveAll(
   let scanned = 0;
   let updated = 0;
   let sweeps = 0;
+  let converged = false;
   while (sweeps < maxSweeps) {
     sweeps += 1;
     let sweepUpdated = 0;
@@ -144,7 +154,19 @@ export async function recomputeAncestorInactiveAll(
       cursor = result.nextCursor;
     } while (cursor !== null);
     updated += sweepUpdated;
-    if (sweepUpdated === 0 || options.dryRun) break;
+    if (sweepUpdated === 0) {
+      converged = true;
+      break;
+    }
+    if (options.dryRun) break;
   }
-  return { scanned, updated, sweeps };
+  if (!converged) {
+    options.logger?.warn("datafn.ancestorInactive.recompute.notConverged", {
+      namespace: options.namespace,
+      sweeps,
+      updated,
+      dryRun: options.dryRun === true,
+    });
+  }
+  return { scanned, updated, sweeps, converged };
 }

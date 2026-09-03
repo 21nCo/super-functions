@@ -81,6 +81,23 @@ describe("isAncestorInactive as a system field (offline)", () => {
     ).not.toThrow();
   });
 
+  it("does not touch a consumer-owned isAncestorInactive on resources without inheritsInactive", async () => {
+    await handleOfflineMutation(
+      storage,
+      schema,
+      {
+        ...base,
+        resource: "notes",
+        mutationId: "note-insert",
+        operation: "insert",
+        id: "n1",
+        record: { body: "hi", isAncestorInactive: true },
+      },
+      Date.now(),
+    );
+    expect((await storage.getRecord("notes", "n1"))?.isAncestorInactive).toBe(true);
+  });
+
   it("engine propagation still writes the field and default queries filter it", async () => {
     await handleOfflineMutation(
       storage,

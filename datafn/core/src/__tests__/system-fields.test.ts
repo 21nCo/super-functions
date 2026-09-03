@@ -101,7 +101,7 @@ describe("isAncestorInactive system field", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe("SYSTEM_FIELD_COLLISION");
-    expect(result.error.details?.path).toBe("resources.goals.fields.isAncestorInactive");
+    expect(result.error.details).toEqual({ path: "resources.goals.fields.isAncestorInactive" });
   });
 
   it("still allows a consumer field named isAncestorInactive on resources without inheritsInactive", () => {

@@ -231,6 +231,32 @@ describe("isAncestorInactive as a system field (server)", () => {
       const second = await recomputeAncestorInactiveAll(db, schema, { namespace: NS });
       expect(second.updated).toBe(0);
       expect(second.sweeps).toBe(1);
+      expect(second.converged).toBe(true);
+    });
+
+    it("reports converged=false when maxSweeps stops a reverse-id hierarchy early", async () => {
+      await insert("goals", "goal:z", { label: "Root", parentPath: "" });
+      await insert("goals", "goal:y", { label: "L1", parentId: "goal:z", parentPath: "goal:z" });
+      await insert("goals", "goal:x", { label: "L2", parentId: "goal:y", parentPath: "goal:z-goal:y" });
+      await insert("goals", "goal:w", { label: "L3", parentId: "goal:x", parentPath: "goal:z-goal:y-goal:x" });
+      await db.update({
+        model: "goals",
+        where: [{ field: "id", operator: "eq", value: "goal:z" }],
+        data: { isArchived: true },
+        namespace: NS,
+      });
+
+      const capped = await recomputeAncestorInactiveAll(db, schema, { namespace: NS, maxSweeps: 1 });
+      expect(capped.converged).toBe(false);
+      expect(capped.sweeps).toBe(1);
+      expect((await get("goals", "goal:y")).isAncestorInactive).toBe(true);
+      expect((await get("goals", "goal:w")).isAncestorInactive).toBe(false);
+
+      const full = await recomputeAncestorInactiveAll(db, schema, { namespace: NS });
+      expect(full.converged).toBe(true);
+      expect(full.sweeps).toBeGreaterThan(1);
+      expect((await get("goals", "goal:x")).isAncestorInactive).toBe(true);
+      expect((await get("goals", "goal:w")).isAncestorInactive).toBe(true);
     });
 
     it("is resumable through cursors and bounded by batchSize", async () => {
