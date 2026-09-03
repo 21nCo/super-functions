@@ -1,5 +1,8 @@
 import { acquireUIFnDomPlatform, createUIFnPresence } from '@uifn/dom';
 import React from 'react';
+import { composeReactRefs } from './utils/slot';
+
+type AnyProps = Record<string, unknown>;
 
 export interface PresenceProps {
   present: boolean;
@@ -36,17 +39,11 @@ export const Presence: React.FC<PresenceProps> = ({ present, children }) => {
 
   if (!mounted && !present) return null;
 
-  const child = typeof children === 'function' ? children({ present }) : children;
-  const childRef = (child.props as { ref?: React.Ref<HTMLElement> }).ref
+  const child = (typeof children === 'function' ? children({ present }) : children) as React.ReactElement<AnyProps>;
+  const childRef = (child.props as AnyProps & { ref?: React.Ref<HTMLElement> }).ref
     ?? (child as unknown as { ref?: React.Ref<HTMLElement> }).ref;
   return React.cloneElement(child, {
-    ref: (element: HTMLElement | null) => {
-      setNode(element);
-      if (typeof childRef === 'function') childRef(element);
-      else if (childRef && typeof childRef === 'object') {
-        (childRef as React.MutableRefObject<HTMLElement | null>).current = element;
-      }
-    },
+    ref: composeReactRefs((element: HTMLElement | null) => setNode(element), childRef),
     'data-state': present ? 'open' : 'closed',
   });
 };
