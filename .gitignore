@@ -74,6 +74,10 @@ __pycache__/
 # Turbo
 .turbo/
 
+# Vite writes these next to a config while bundling it
+**/vite.config.ts.timestamp-*
+**/vite.config.js.timestamp-*
+
 # Misc
 *.tgz
 .cache/
