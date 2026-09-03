@@ -12,9 +12,11 @@
   },
   "dependencies": {
     "@uifn/components": "*",
+    "@uifn/components-solid": "*",
     "@uifn/examples-shared": "*",
     "@uifn/patterns": "*",
     "@uifn/sf": "*",
+    "@uifn/solid": "*",
     "solid-js": "^1.8.0"
   },
   "devDependencies": {
