@@ -22,10 +22,8 @@
   },
   "dependencies": {
     "@uifn/components": "*",
-    "@uifn/core": "*",
     "@uifn/theme": "*",
     "@uifn/patterns": "*",
-    "@uifn/registry": "*",
     "@uifn/sf": "*"
   },
   "devDependencies": {
