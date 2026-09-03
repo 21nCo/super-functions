@@ -1,7 +1,7 @@
 {
   "name": "@mdfn/ai", "version": "0.1.0", "description": "Validated transaction and suggestion boundary for AI-assisted mdfn editing", "type": "module",
   "main": "dist/index.cjs", "module": "dist/index.js", "types": "dist/index.d.ts", "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.cjs" } },
-  "scripts": { "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap --clean", "test": "vitest run --config ../vitest.config.ts --root .", "typecheck": "tsc --noEmit -p tsconfig.json", "lint": "tsc --noEmit -p tsconfig.json", "prepack": "npm run build" },
+  "scripts": { "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap --clean", "test": "vitest run", "typecheck": "tsc --noEmit -p tsconfig.json", "lint": "tsc --noEmit -p tsconfig.json", "prepack": "npm run build" },
   "dependencies": { "@mdfn/core": "0.1.0" }, "devDependencies": { "@mdfn/markdown": "0.1.0", "tsup": "^8.0.0", "typescript": "^5.3.0", "vitest": "3.2.4" },
   "files": ["dist", "README.md"], "sideEffects": false, "license": "MIT", "engines": { "node": ">=20 <25" }, "repository": { "type": "git", "url": "git+https://github.com/21nCo/super-functions.git", "directory": "mdfn/ai" }, "publishConfig": { "access": "public" },
   "mdfn": { "status": "optional", "layer": "bridge", "schemaVersion": 1 }

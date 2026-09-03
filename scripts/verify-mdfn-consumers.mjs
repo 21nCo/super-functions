@@ -12,7 +12,7 @@ const tempRoot = mkdtempSync(path.join(os.tmpdir(), "mdfn-consumers-"));
 const packRoot = path.join(tempRoot, "packs");
 const failures = [];
 const artifactHashes = {};
-const commonMdfn = ["@mdfn/core", "@mdfn/markdown", "@mdfn/render", "@mdfn/extensions", "@mdfn/dom", "@mdfn/source", "@mdfn/adapter-kit", "@mdfn/components", "@mdfn/registry", "mdfn"];
+const commonMdfn = ["@mdfn/core", "@mdfn/markdown", "@mdfn/render", "@mdfn/extensions", "@mdfn/dom", "@mdfn/source", "@mdfn/adapter-kit", "@mdfn/components", "@mdfn/registry", "@mdfn/facade"];
 const commonUifn = ["@uifn/core", "@uifn/dom", "@uifn/adapter-kit", "@uifn/tokens", "@uifn/theme", "@uifn/recipes", "@uifn/components"];
 const consumers = [
   { framework: "react", packages: ["@mdfn/react", "@mdfn/components-react", "@uifn/react", "@uifn/components-react"], peers: { react: "18.3.1", "react-dom": "18.3.1", vite: "5.4.21" } },
@@ -68,23 +68,23 @@ function writeConsumer(consumerRoot, framework) {
   mkdirSync(sourceRoot, { recursive: true });
   writeFileSync(path.join(consumerRoot, "index.html"), '<main id="app"></main><script type="module" src="/src/main.js"></script>\n');
   if (framework === "react") {
-    writeFileSync(path.join(sourceRoot, "main.js"), `import React from 'react';\nimport { createRoot } from 'react-dom/client';\nimport { createMdfn } from 'mdfn';\nimport { MdfnEditorShell } from '@mdfn/components-react';\nconst controller=createMdfn({markdown:'# Consumer\\n'});\ncreateRoot(document.querySelector('#app')).render(React.createElement(MdfnEditorShell,{controller}));\n`);
+    writeFileSync(path.join(sourceRoot, "main.js"), `import React from 'react';\nimport { createRoot } from 'react-dom/client';\nimport { createMdfn } from '@mdfn/facade';\nimport { MdfnEditorShell } from '@mdfn/components-react';\nconst controller=createMdfn({markdown:'# Consumer\\n'});\ncreateRoot(document.querySelector('#app')).render(React.createElement(MdfnEditorShell,{controller}));\n`);
     writeFileSync(path.join(consumerRoot, "vite.config.mjs"), "export default { logLevel: 'error' };\n");
-    writeFileSync(path.join(sourceRoot, "ssr.js"), `import React from 'react';\nimport { renderToString } from 'react-dom/server';\nimport { createMdfn } from 'mdfn';\nimport { MdfnEditorShell } from '@mdfn/components-react';\nconst html=renderToString(React.createElement(MdfnEditorShell,{controller:createMdfn({markdown:'# SSR\\n'}),mode:'read-only'}));\nif(!html.includes('data-mdfn-component="editor-shell"')) throw new Error('MDFN_REACT_SSR_FAILED');\nexport {html};\n`);
+    writeFileSync(path.join(sourceRoot, "ssr.js"), `import React from 'react';\nimport { renderToString } from 'react-dom/server';\nimport { createMdfn } from '@mdfn/facade';\nimport { MdfnEditorShell } from '@mdfn/components-react';\nconst html=renderToString(React.createElement(MdfnEditorShell,{controller:createMdfn({markdown:'# SSR\\n'}),mode:'read-only'}));\nif(!html.includes('data-mdfn-component="editor-shell"')) throw new Error('MDFN_REACT_SSR_FAILED');\nexport {html};\n`);
     return;
   }
   if (framework === "svelte") {
-    writeFileSync(path.join(sourceRoot, "App.svelte"), `<script>\n  import { createMdfn } from 'mdfn';\n  import { MdfnEditorShell } from '@mdfn/components-svelte';\n  const controller=createMdfn({markdown:'# Consumer\\n'});\n</script>\n<MdfnEditorShell {controller} />\n`);
+    writeFileSync(path.join(sourceRoot, "App.svelte"), `<script>\n  import { createMdfn } from '@mdfn/facade';\n  import { MdfnEditorShell } from '@mdfn/components-svelte';\n  const controller=createMdfn({markdown:'# Consumer\\n'});\n</script>\n<MdfnEditorShell {controller} />\n`);
     writeFileSync(path.join(sourceRoot, "main.js"), "import { mount } from 'svelte';\nimport App from './App.svelte';\nmount(App,{target:document.querySelector('#app')});\n");
     writeFileSync(path.join(consumerRoot, "vite.config.mjs"), "import { svelte } from '@sveltejs/vite-plugin-svelte';\nexport default { logLevel: 'error', plugins: [svelte()] };\n");
-    writeFileSync(path.join(sourceRoot, "ssr.js"), `import { render } from 'svelte/server';\nimport { createMdfn } from 'mdfn';\nimport { MdfnEditorShell } from '@mdfn/components-svelte';\nconst {body:html}=render(MdfnEditorShell,{props:{controller:createMdfn({markdown:'# SSR\\n'}),mode:'read-only'}});\nif(!html.includes('data-mdfn-component="editor-shell"')) throw new Error('MDFN_SVELTE_SSR_FAILED');\nexport {html};\n`);
+    writeFileSync(path.join(sourceRoot, "ssr.js"), `import { render } from 'svelte/server';\nimport { createMdfn } from '@mdfn/facade';\nimport { MdfnEditorShell } from '@mdfn/components-svelte';\nconst {body:html}=render(MdfnEditorShell,{props:{controller:createMdfn({markdown:'# SSR\\n'}),mode:'read-only'}});\nif(!html.includes('data-mdfn-component="editor-shell"')) throw new Error('MDFN_SVELTE_SSR_FAILED');\nexport {html};\n`);
     return;
   }
-  writeFileSync(path.join(sourceRoot, "App.tsx"), `import { createMdfn } from 'mdfn';\nimport { MdfnEditorShell } from '@mdfn/components-solid';\nconst controller=createMdfn({markdown:'# Consumer\\n'});\nexport default function App(){return <MdfnEditorShell controller={controller}/>;}\n`);
+  writeFileSync(path.join(sourceRoot, "App.tsx"), `import { createMdfn } from '@mdfn/facade';\nimport { MdfnEditorShell } from '@mdfn/components-solid';\nconst controller=createMdfn({markdown:'# Consumer\\n'});\nexport default function App(){return <MdfnEditorShell controller={controller}/>;}\n`);
   writeFileSync(path.join(sourceRoot, "main.tsx"), "import { render } from 'solid-js/web';\nimport App from './App';\nrender(()=><App/>,document.querySelector('#app'));\n");
   writeFileSync(path.join(sourceRoot, "main.js"), "import './main.tsx';\n");
   writeFileSync(path.join(consumerRoot, "vite.config.mjs"), "import solid from 'vite-plugin-solid';\nexport default { logLevel: 'error', plugins: [solid({hot:false})] };\n");
-  writeFileSync(path.join(sourceRoot, "ssr.js"), `import { createComponent } from 'solid-js';\nimport { renderToString } from 'solid-js/web';\nimport { createMdfn } from 'mdfn';\nimport { MdfnEditorShell } from '@mdfn/components-solid';\nconst html=renderToString(()=>createComponent(MdfnEditorShell,{controller:createMdfn({markdown:'# SSR\\n'}),mode:'read-only'}));\nif(!html.includes('data-mdfn-component="editor-shell"')) throw new Error('MDFN_SOLID_SSR_FAILED');\nexport {html};\n`);
+  writeFileSync(path.join(sourceRoot, "ssr.js"), `import { createComponent } from 'solid-js';\nimport { renderToString } from 'solid-js/web';\nimport { createMdfn } from '@mdfn/facade';\nimport { MdfnEditorShell } from '@mdfn/components-solid';\nconst html=renderToString(()=>createComponent(MdfnEditorShell,{controller:createMdfn({markdown:'# SSR\\n'}),mode:'read-only'}));\nif(!html.includes('data-mdfn-component="editor-shell"')) throw new Error('MDFN_SOLID_SSR_FAILED');\nexport {html};\n`);
 }
 
 function verifyRuntimeExports(consumerRoot, framework, packageNames) {

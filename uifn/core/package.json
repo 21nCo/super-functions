@@ -1,6 +1,6 @@
 {
   "name": "@uifn/core",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Permanently unstyled, framework-agnostic UI primitive semantics for uifn",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -126,6 +126,7 @@
     "framework-agnostic"
   ],
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "esbuild": "^0.21.5",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",

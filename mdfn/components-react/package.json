@@ -1,10 +1,10 @@
 {
   "name": "@mdfn/components-react", "version": "0.1.0", "description": "UIFn-styled React editor chrome for mdfn", "type": "module",
   "main": "dist/index.cjs", "module": "dist/index.js", "types": "dist/index.d.ts", "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.cjs" } },
-  "scripts": { "build": "tsup src/index.tsx --format esm,cjs --dts --sourcemap --clean --external react --external react-dom", "test": "vitest run --config ../vitest.config.ts --root .", "typecheck": "tsc --noEmit -p tsconfig.json", "lint": "tsc --noEmit -p tsconfig.json", "prepack": "npm run build" },
+  "scripts": { "build": "tsup src/index.tsx --format esm,cjs --dts --sourcemap --clean --external react --external react-dom", "test": "vitest run", "typecheck": "tsc --noEmit -p tsconfig.json", "lint": "tsc --noEmit -p tsconfig.json", "prepack": "npm run build" },
   "dependencies": { "@mdfn/core": "0.1.0", "@mdfn/react": "0.1.0", "@mdfn/components": "0.1.0", "@uifn/components-react": "0.0.1" },
   "peerDependencies": { "react": ">=18.2.0 <20", "react-dom": ">=18.2.0 <20" },
-  "devDependencies": { "@mdfn/markdown": "0.1.0", "@types/react": "^18.2.0", "@types/react-dom": "^18.2.0", "react": "18.3.1", "react-dom": "18.3.1", "tsup": "^8.0.0", "typescript": "^5.3.0", "vitest": "3.2.4" },
+  "devDependencies": { "@mdfn/markdown": "0.1.0", "@types/react": "^18.2.0", "@types/react-dom": "^18.2.0", "jsdom": "^26.0.0", "react": "18.3.1", "react-dom": "18.3.1", "tsup": "^8.0.0", "typescript": "^5.3.0", "vitest": "3.2.4" },
   "files": ["dist", "README.md"], "sideEffects": false, "license": "MIT", "engines": { "node": ">=20 <25" },
   "repository": { "type": "git", "url": "git+https://github.com/21nCo/super-functions.git", "directory": "mdfn/components-react" }, "publishConfig": { "access": "public" },
   "mdfn": { "status": "stable-candidate", "layer": "components-adapter", "framework": "react", "schemaVersion": 1, "chromeOwner": "uifn" }

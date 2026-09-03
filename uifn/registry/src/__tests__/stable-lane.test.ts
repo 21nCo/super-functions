@@ -13,7 +13,12 @@ function withProject(callback: (rootDir: string) => void) {
 }
 
 describe('stable source delivery lane', () => {
-  const adapterVersions = { react: '0.0.2', svelte: '0.0.2', solid: '0.0.1' } as const;
+  const adapterVersions = Object.fromEntries(
+    REQUIRED_FRAMEWORKS.map((framework) => [
+      framework,
+      JSON.parse(readFileSync(new URL(`../../../${framework}/package.json`, import.meta.url), 'utf8')).version,
+    ]),
+  ) as Record<(typeof REQUIRED_FRAMEWORKS)[number], string>;
 
   it('contains only the current canonical components', () => {
     const registry = buildRegistry();

@@ -150,7 +150,7 @@
   { "slug": "mdfn-components-solid", "path": "mdfn/components-solid", "name": "@mdfn/components-solid" },
   { "slug": "mdfn-testing", "path": "mdfn/testing", "name": "@mdfn/testing" },
   { "slug": "mdfn-registry", "path": "mdfn/registry", "name": "@mdfn/registry" },
-  { "slug": "mdfn", "path": "mdfn/facade", "name": "mdfn" },
+  { "slug": "mdfn-facade", "path": "mdfn/facade", "name": "@mdfn/facade" },
   { "slug": "mdfn-collab", "path": "mdfn/collab", "name": "@mdfn/collab" },
   { "slug": "mdfn-client", "path": "mdfn/client", "name": "@mdfn/client" },
   { "slug": "mdfn-server", "path": "mdfn/server", "name": "@mdfn/server" },

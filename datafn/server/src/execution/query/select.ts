@@ -52,6 +52,27 @@ function filterAncestorInactiveRecords(
   return records.filter((record) => record.isAncestorInactive !== true);
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function applyOmitToArrayValue(
+  value: unknown,
+  omit: string[] | undefined,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => applyOmitToArrayValue(item, omit));
+  }
+  if (isPlainRecord(value)) {
+    return applyOmit(value, omit);
+  }
+  return value;
+}
+
 /**
  * Apply omit to a record, removing specified fields (but never id)
  */
@@ -69,19 +90,13 @@ function applyOmit(
     if (key === "id" || !omit.includes(key)) {
       // Recursively apply omit to arrays of records
       if (Array.isArray(value)) {
-        result[key] = value.map((item) => {
-          if (typeof item === "object" && item !== null) {
-            return applyOmit(item as Record<string, unknown>, omit);
-          }
-          return item;
-        });
+        result[key] = value.map((item) => applyOmitToArrayValue(item, omit));
       } else if (
-        typeof value === "object" &&
-        value !== null &&
+        isPlainRecord(value) &&
         key !== "$relation_metadata"
       ) {
         // Recursively apply omit to nested objects (except metadata)
-        result[key] = applyOmit(value as Record<string, unknown>, omit);
+        result[key] = applyOmit(value, omit);
       } else {
         result[key] = value;
       }
