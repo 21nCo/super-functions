@@ -87,9 +87,10 @@ export async function recomputeAncestorInactive(
       const next = await resolveAncestorInactive(adapter, schema, resource, row, namespace);
       const previous = row[ANCESTOR_INACTIVE_FIELD];
       if (previous !== next) {
-        updated += 1;
-        if (!dryRun) {
-          await adapter.update({
+        if (dryRun) {
+          updated += 1;
+        } else {
+          const affected = await adapter.updateMany({
             model: resource,
             where: [
               { field: "id", operator: "eq", value: id },
@@ -100,6 +101,7 @@ export async function recomputeAncestorInactive(
             data: { [ANCESTOR_INACTIVE_FIELD]: next },
             namespace,
           });
+          updated += affected > 0 ? 1 : 0;
         }
       }
       cursor = { resource, afterId: id };

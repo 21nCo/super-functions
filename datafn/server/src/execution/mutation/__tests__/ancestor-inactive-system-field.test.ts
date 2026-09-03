@@ -259,6 +259,35 @@ describe("isAncestorInactive as a system field (server)", () => {
       expect((await get("goals", "goal:w")).isAncestorInactive).toBe(true);
     });
 
+    it("skips rows changed by a concurrent propagation instead of overwriting or aborting", async () => {
+      await corrupt();
+      let raced = false;
+      const racing = {
+        ...db,
+        findMany: async (params: Record<string, unknown>) => {
+          const rows = await db.findMany(params);
+          if (!raced && params.model === "tasks") {
+            raced = true;
+            await db.update({
+              model: "tasks",
+              where: [{ field: "id", operator: "eq", value: "task:2" }],
+              data: { isAncestorInactive: false },
+              namespace: NS,
+            });
+          }
+          return rows;
+        },
+      };
+
+      const result = await recomputeAncestorInactive(racing, schema, { namespace: NS });
+      expect(raced).toBe(true);
+      expect(result.nextCursor).toBeNull();
+      expect(result.updated).toBe(2);
+      expect((await get("tasks", "task:2")).isAncestorInactive).toBe(false);
+      expect((await get("tasks", "task:1")).isAncestorInactive).toBe(true);
+      expect((await get("goals", "goal:3")).isAncestorInactive).toBe(true);
+    });
+
     it("is resumable through cursors and bounded by batchSize", async () => {
       await corrupt();
       const visited: string[] = [];
