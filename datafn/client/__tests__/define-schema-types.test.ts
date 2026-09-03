@@ -2,8 +2,16 @@ import { describe, it, expectTypeOf } from "vitest";
 import {
   defineSchema,
   field,
+  type DatafnArrayFieldOptions,
+  type DatafnBooleanFieldOptions,
+  type DatafnDateFieldOptions,
   type DatafnFieldSchema,
+  type DatafnFileFieldOptions,
+  type DatafnJsonFieldOptions,
+  type DatafnNumberFieldOptions,
+  type DatafnObjectFieldOptions,
   type DatafnSchema,
+  type DatafnStringFieldOptions,
 } from "@datafn/core";
 import type { ResourceNames } from "../src/client.js";
 import type { DatafnResourceRecord } from "../src/tables/table.js";
@@ -119,6 +127,52 @@ describe("field builder type preservation", () => {
     });
     expectTypeOf(optional.required).toEqualTypeOf<false>();
     expectTypeOf(optional.nullable).toEqualTypeOf<false>();
+  });
+
+  it("accounts for optional and widened boolean options", () => {
+    const maybeRequired: { required?: true } = {};
+    const maybeNullable: { nullable?: true } = {};
+    const optionalBooleans = field.string("optionalBooleans", {
+      ...maybeRequired,
+      ...maybeNullable,
+    });
+    expectTypeOf(optionalBooleans.required).toEqualTypeOf<boolean>();
+    expectTypeOf(optionalBooleans.nullable).toEqualTypeOf<boolean>();
+
+    const nullableOptions: { nullable?: boolean } = { nullable: true };
+    const widenedSchema = defineSchema({
+      resources: [
+        {
+          name: "widened",
+          version: 1,
+          fields: [
+            {
+              name: "value",
+              type: "string",
+              required: true,
+              ...nullableOptions,
+            },
+          ],
+        },
+      ],
+    });
+    type Widened = DatafnResourceRecord<typeof widenedSchema, "widened">;
+    expectTypeOf<Widened["value"]>().toEqualTypeOf<string | null>();
+  });
+
+  it("accepts exported option types and date bounds", () => {
+    field.string("string", {} as DatafnStringFieldOptions);
+    field.number("number", {} as DatafnNumberFieldOptions);
+    field.boolean("boolean", {} as DatafnBooleanFieldOptions);
+    field.object("object", {} as DatafnObjectFieldOptions);
+    field.array("array", {} as DatafnArrayFieldOptions);
+    field.date("date", {
+      ...({} as DatafnDateFieldOptions),
+      min: 0,
+      max: 1,
+    });
+    field.file("file", {} as DatafnFileFieldOptions);
+    field.json("json", {} as DatafnJsonFieldOptions);
   });
 
   it("returns plain DatafnFieldSchema-compatible values", () => {

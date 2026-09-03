@@ -66,9 +66,13 @@ type FieldName<Field> = Field extends { readonly name: infer Name extends string
   : never;
 
 type NullableFieldValue<Field, Value> = Field extends {
-  readonly nullable: true;
+  readonly nullable?: infer Nullable;
 }
-  ? Value | null
+  ? "nullable" extends keyof Field
+    ? true extends Nullable
+      ? Value | null
+      : Value
+    : Value
   : Value;
 
 type IsAny<T> = 0 extends (1 & T) ? true : false;

@@ -80,5 +80,18 @@ describe("field", () => {
       encrypt: true,
       volatile: false,
     });
+    expect(field.date("dueAt", { min: 0, max: 1 })).toEqual({
+      name: "dueAt",
+      type: "date",
+      required: false,
+      nullable: false,
+      min: 0,
+      max: 1,
+    });
+  });
+
+  it("omits undefined defaults", () => {
+    const built = field.string("title", { default: undefined });
+    expect(Object.prototype.hasOwnProperty.call(built, "default")).toBe(false);
   });
 });

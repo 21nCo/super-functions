@@ -45,7 +45,7 @@ export interface RelationOperation {
 
 /**
  * Build a full record for replace operation
- * Clears unspecified fields to defaults/null, preserves system fields
+ * Clears unspecified fields to defaults, null, or undefined, and preserves system fields
  */
 export function buildReplaceRecord(
   schema: DatafnSchema,
@@ -103,16 +103,22 @@ export function buildReplaceRecord(
     if (Object.prototype.hasOwnProperty.call(newRecord, key)) {
       result[key] = newRecord[key];
     } else {
-      // Not provided: set to default or null
-      result[key] = field.default !== undefined ? field.default : null;
+      // Not provided: reset to a default, null when allowed, or undefined.
+      result[key] =
+        field.default !== undefined
+          ? field.default
+          : field.nullable
+            ? null
+            : undefined;
     }
 
     // Validation: Required check
-    // If required and value is null/undefined (and not a generated field like id)
+    // If required, undefined is always missing and null is missing unless allowed.
     // Note: boolean false or number 0 are valid.
     if (
       field.required &&
-      (result[key] === null || result[key] === undefined)
+      (result[key] === undefined ||
+        (result[key] === null && !field.nullable))
     ) {
       return {
         ok: false,

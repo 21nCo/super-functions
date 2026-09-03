@@ -16,6 +16,13 @@ const schema: DatafnSchema = {
         { name: "description", type: "string" as const, required: false },
         { name: "status", type: "string" as const, required: false, default: "active" },
         { name: "priority", type: "string" as const, required: false },
+        {
+          name: "nullableDefault",
+          type: "string" as const,
+          required: true,
+          nullable: true,
+          default: null,
+        },
       ],
     },
   ],
@@ -85,9 +92,10 @@ describe("MUT-REPLACE-001: Replace Operation Semantics", () => {
     });
 
     expect(task.title).toBe("New Title");
-    expect(task.description).toBeNull(); // Cleared
+    expect(task.description).toBeUndefined(); // Cleared
     expect(task.status).toBe("active"); // Default
-    expect(task.priority).toBeNull(); // Cleared
+    expect(task.priority).toBeUndefined(); // Cleared
+    expect(task.nullableDefault).toBeNull(); // Nullable default
   });
 
   it("Replace preserves system fields and updates timestamps", async () => {

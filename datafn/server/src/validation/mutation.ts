@@ -386,7 +386,11 @@ export function validateMutation(
             if (field.required && field.default === undefined && field.name !== "id" && !field.readonly) {
                 // If required, no default, not id, not readonly (system)
                 // Must be present
-                if (!(field.name in record) || record[field.name] === null || record[field.name] === undefined) {
+                if (
+                  !(field.name in record) ||
+                  record[field.name] === undefined ||
+                  (record[field.name] === null && !field.nullable)
+                ) {
                      return vErr(
                         "DFQL_INVALID",
                         `Required field missing: ${field.name}`,
