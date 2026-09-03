@@ -33,6 +33,12 @@
     { value: "Maintenance", label: "Maintenance" },
   ] as const;
 
+  const commandMenuItems = [
+    { id: "run", value: "run", label: "Run command", textValue: "Run command" },
+    { id: "copy", value: "copy", label: "Copy shortcut", textValue: "Copy shortcut" },
+    { id: "pin", value: "pin", label: "Pin to palette", textValue: "Pin to palette" },
+  ];
+
   let query = "";
   let selectedGroup = "all";
   let selectedCommandTitle = "";
@@ -91,7 +97,7 @@
             {#each filteredCommands as command (command.id)}
               <ComboboxItem class="command-option" value={command.title}>
                 <span>{command.title}</span>
-                <ComboboxItemIndicator>Selected</ComboboxItemIndicator>
+                <ComboboxItemIndicator value={command.title}>Selected</ComboboxItemIndicator>
               </ComboboxItem>
             {/each}
           </ComboboxContent>
@@ -115,7 +121,7 @@
             {#each groupOptions as option (option.value)}
               <SelectItem value={option.value} class="command-option">
                 {option.label}
-                <SelectItemIndicator>Selected</SelectItemIndicator>
+                <SelectItemIndicator value={option.value}>Selected</SelectItemIndicator>
               </SelectItem>
             {/each}
           </SelectContent>
@@ -138,7 +144,7 @@
         <ScrollAreaViewport class="command-scroll-viewport">
           <div class="command-list">
             {#each filteredCommands as command (command.id)}
-              <ContextMenu>
+              <ContextMenu items={commandMenuItems}>
                 <ContextMenuTrigger class="command-card-trigger">
                   <button type="button" class="command-card" aria-label={`Command ${command.title}`}>
                     <div>
@@ -149,16 +155,16 @@
                   </button>
                 </ContextMenuTrigger>
                 <ContextMenuContent class="floating-card">
-                  <ContextMenuItem>Run command</ContextMenuItem>
-                  <ContextMenuItem>Copy shortcut</ContextMenuItem>
-                  <ContextMenuItem>Pin to palette</ContextMenuItem>
+                  <ContextMenuItem value="run">Run command</ContextMenuItem>
+                  <ContextMenuItem value="copy">Copy shortcut</ContextMenuItem>
+                  <ContextMenuItem value="pin">Pin to palette</ContextMenuItem>
                 </ContextMenuContent>
               </ContextMenu>
             {/each}
           </div>
         </ScrollAreaViewport>
-        <ScrollAreaScrollbar orientation="vertical" class="scrollbar">
-          <ScrollAreaThumb class="scrollbar-thumb" />
+        <ScrollAreaScrollbar orientation="vertical" value="vertical" class="scrollbar">
+          <ScrollAreaThumb value="vertical" class="scrollbar-thumb" />
         </ScrollAreaScrollbar>
         <ScrollAreaCorner />
       </ScrollArea>

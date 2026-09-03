@@ -32,6 +32,12 @@
     "team-noah-singh": "Run the keyboard smoke after the final scenario copy is in place.",
   };
 
+  const memberActionItems = [
+    { id: "message", value: "message", label: "Message teammate", textValue: "Message teammate" },
+    { id: "review", value: "review", label: "Review example route", textValue: "Review example route" },
+    { id: "share", value: "share", label: "Share status update", textValue: "Share status update" },
+  ];
+
   function getAvatarSrc(member: TeamMemberFixture) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="24" fill="#d7e6ef"/><text x="48" y="58" text-anchor="middle" font-size="28" font-family="Trebuchet MS" fill="#17445f">${member.initials}</text></svg>`;
     return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
@@ -91,16 +97,16 @@
             </PopoverContent>
           </Popover>
 
-          <Menu>
+          <Menu items={memberActionItems}>
             <MenuTrigger class="primary-button" aria-label={`Open actions for ${member.name}`}>
               Actions
             </MenuTrigger>
             <MenuContent class="floating-card">
-              <MenuGroupLabel>{member.name}</MenuGroupLabel>
-              <MenuSeparator />
-              <MenuItem>Message teammate</MenuItem>
-              <MenuItem>Review example route</MenuItem>
-              <MenuItem>Share status update</MenuItem>
+              <MenuGroupLabel value={member.id}>{member.name}</MenuGroupLabel>
+              <MenuSeparator value={`${member.id}-separator`} />
+              <MenuItem value="message">Message teammate</MenuItem>
+              <MenuItem value="review">Review example route</MenuItem>
+              <MenuItem value="share">Share status update</MenuItem>
             </MenuContent>
           </Menu>
         </div>

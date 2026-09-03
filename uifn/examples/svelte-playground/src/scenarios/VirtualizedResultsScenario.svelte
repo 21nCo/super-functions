@@ -45,8 +45,8 @@
             {/each}
           </ul>
         </ScrollAreaViewport>
-        <ScrollAreaScrollbar orientation="vertical" class="scrollbar">
-          <ScrollAreaThumb class="scrollbar-thumb" />
+        <ScrollAreaScrollbar orientation="vertical" value="vertical" class="scrollbar">
+          <ScrollAreaThumb value="vertical" class="scrollbar-thumb" />
         </ScrollAreaScrollbar>
         <ScrollAreaCorner />
       </ScrollArea>
