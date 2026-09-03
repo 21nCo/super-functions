@@ -15,7 +15,7 @@ const docsfnSvelteSrc = path.join(
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
   ssr: {
-    noExternal: ["@docsfn/core"],
+    noExternal: ["@docsfn/core", "@docsfn/svelte"],
   },
   resolve: {
     alias: [
