@@ -11,12 +11,14 @@ import ipaddress
 import json
 import secrets
 import time
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple, TypeGuard, cast
 from urllib.parse import unquote, urlparse
 
 import idna
+from idna import idnadata
 
 from ..http import _coerce_utc, _hash_secret, get_cookie_session_state
 from ..observability import emit_auth_event, resolve_request_id
@@ -234,15 +236,6 @@ class PlacementContextIssuer:
     async def _emit(self, event: Dict[str, Any]) -> None:
         self._notify(event)
         await emit_auth_event(self._config, event)
-
-    def _emit_sync(self, event: Dict[str, Any]) -> None:
-        self._notify(event)
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            asyncio.run(emit_auth_event(self._config, event))
-            return
-        loop.create_task(emit_auth_event(self._config, event))
 
     def _notify(self, event: Dict[str, Any]) -> None:
         if self._on_event is None:
@@ -790,9 +783,48 @@ def _ascii_domain_label(label: str) -> str:
         if "hyphen" not in message and "too long" not in message:
             raise ConfigError(INVALID_AUTHORITY) from error
         try:
+            _enforce_idna_after_hyphen_or_length_exception(label)
             return "xn--" + label.encode("punycode").decode("ascii")
-        except UnicodeError as puny_error:
-            raise ConfigError(INVALID_AUTHORITY) from puny_error
+        except ConfigError:
+            raise
+        except (idna.IDNAError, UnicodeError) as remaining:
+            raise ConfigError(INVALID_AUTHORITY) from remaining
+
+
+def _enforce_idna_after_hyphen_or_length_exception(label: str) -> None:
+    # WHATWG keeps CheckJoiners and CheckBidi even when CheckHyphens and
+    # VerifyDnsLength are false. idna.encode reports the hyphen first, so
+    # re-run the remaining checks before the raw-punycode fallback.
+    idna.check_nfc(label)
+    idna.check_initial_combiner(label)
+    classes = idnadata.codepoint_classes
+    for pos, char in enumerate(label):
+        code = ord(char)
+        if idna.intranges_contain(code, classes["PVALID"]):
+            continue
+        if idna.intranges_contain(code, classes["CONTEXTJ"]):
+            try:
+                if not idna.valid_contextj(label, pos):
+                    raise ConfigError(INVALID_AUTHORITY)
+            except ValueError as error:
+                raise ConfigError(INVALID_AUTHORITY) from error
+            continue
+        if idna.intranges_contain(code, classes["CONTEXTO"]):
+            if not idna.valid_contexto(label, pos):
+                raise ConfigError(INVALID_AUTHORITY)
+            continue
+        raise ConfigError(INVALID_AUTHORITY)
+    if _rtl_hyphen_exception_is_invalid(label):
+        raise ConfigError(INVALID_AUTHORITY)
+
+
+def _rtl_hyphen_exception_is_invalid(label: str) -> bool:
+    directions = [unicodedata.bidirectional(char) for char in label]
+    has_rtl = any(direction in {"R", "AL", "AN"} for direction in directions)
+    if not has_rtl:
+        return False
+    has_ltr = any(direction == "L" for direction in directions)
+    return has_ltr or label.endswith("-")
 
 
 def _serialize_ipv6(address: ipaddress.IPv6Address) -> str:
