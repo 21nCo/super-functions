@@ -662,17 +662,26 @@ def _is_signed_payload(value: Any) -> TypeGuard[Dict[str, Any]]:
     return True
 
 
+class _HeaderSanitizedRequest:
+    __slots__ = ("_original", "headers", "method", "url")
+
+    def __init__(self, original: Any, headers: Dict[str, str]) -> None:
+        object.__setattr__(self, "_original", original)
+        object.__setattr__(self, "headers", headers)
+        object.__setattr__(self, "method", getattr(original, "method", "GET"))
+        object.__setattr__(self, "url", getattr(original, "url", ""))
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._original, name)
+
+
 def _strip_routing_headers(request: Any) -> Any:
     headers = {
         key: value
         for key, value in getattr(request, "headers", {}).items()
         if not key.lower().startswith(INTERNAL_HEADER_PREFIX)
     }
-    clone = type("SanitizedRequest", (), {})()
-    clone.method = getattr(request, "method", "GET")
-    clone.url = getattr(request, "url", "")
-    clone.headers = headers
-    return clone
+    return _HeaderSanitizedRequest(request, headers)
 
 
 def _authorization_credential(request: Any) -> Optional[Tuple[str, str]]:
@@ -859,11 +868,12 @@ def _rtl_hyphen_exception_is_invalid(label: str) -> bool:
     if last not in {"R", "AL", "EN", "AN"}:
         return True
     if has_ltr:
-        # Node URL.origin allows one trailing R/AL/AN on an LTR label
+        # Node URL.origin allows one trailing R/AL/AN on an LTR-leading label
         # (https://a١.example -> https://xn--a-bqc.example) and still
-        # rejects two AN digits (a١١) or mixed L plus an interior RTL char.
+        # rejects EN-then-L-then-RTL (1aא) and two AN digits (a١١).
         rtl_count = sum(1 for direction in directions if direction in {"R", "AL", "AN"})
-        return rtl_count != 1 or last not in {"R", "AL", "AN"}
+        first = next((direction for direction in directions if direction != "NSM"), "")
+        return rtl_count != 1 or last not in {"R", "AL", "AN"} or first != "L"
     return False
 
 
