@@ -870,15 +870,19 @@ def _parse_ipv4_number(part: str) -> Optional[int]:
         return None
 
 
-def _whatwg_special_scheme_slashes(authority: str) -> str:
+def _whatwg_special_scheme_authority(authority: str) -> str:
     scheme, separator, rest = authority.partition(":")
-    if separator and scheme.lower() in {"http", "https"} and "\\" in rest:
-        return f"{scheme}:{rest.replace(chr(92), '/')}"
-    return authority
+    if not separator or scheme.lower() not in {"http", "https"}:
+        return authority
+    # WHATWG special-scheme: `\\` is `/`, and one or more leading slashes
+    # enter the authority state. `https:host` and `https:/host` therefore
+    # match TypeScript `new URL(authority).origin`.
+    rest = rest.replace("\\", "/").lstrip("/")
+    return f"{scheme}://{rest}"
 
 
 def _normalize_authority(authority: str) -> str:
-    authority = _whatwg_special_scheme_slashes(authority)
+    authority = _whatwg_special_scheme_authority(authority)
     try:
         parsed = urlparse(authority)
         port = parsed.port
