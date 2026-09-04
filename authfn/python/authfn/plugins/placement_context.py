@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
+import inspect
 import json
 import secrets
 import time
@@ -14,6 +16,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tup
 from urllib.parse import urlparse
 
 from ..http import get_cookie_session_state
+from ..observability import emit_auth_event
 from ..plugins.api_keys import ApiKeyPluginConfig, ApiKeyService
 from ..plugins.gateway_routing import (
     IdentityPlacement,
@@ -22,7 +25,6 @@ from ..plugins.gateway_routing import (
     RoutingSigningKey,
 )
 from ..types import (
-    ApiKeyRevokedError,
     AuthFnConfig,
     ConfigError,
     PlacementContextInvalidError,
@@ -39,6 +41,9 @@ CONTEXT_KIND = "placement-context"
 INTERNAL_HEADER_PREFIX = "x-authfn-routing-"
 DEFAULT_TTL_SECONDS = 60
 MAX_TTL_SECONDS = 300
+AUTH_REQUIRED = "Authentication required"
+SESSION_EXPIRED = "Session expired"
+SESSION_REVOKED = "Session revoked"
 
 
 @dataclass(frozen=True)
@@ -110,10 +115,10 @@ class PlacementContextIssuer:
         self._on_event = on_event
 
     async def derive(self, request: Any, *, audience: Optional[str] = None) -> PlacementBoundAuthContext:
-        resolved_audience = _require_audience(audience or self._default_audience, self._audiences)
         sanitized = _strip_routing_headers(request)
         request_id = _request_id(sanitized)
         try:
+            resolved_audience = _require_audience(audience or self._default_audience, self._audiences)
             principal = await _resolve_principal(self._config, sanitized)
             identity_key = self._identity_key_for_user_id(principal["user_id"])
             placement = await _load_active_placement(self._directory, identity_key)
@@ -123,7 +128,7 @@ class PlacementContextIssuer:
             if isinstance(session_expiry, datetime):
                 expires_at = min(expires_at, int(session_expiry.timestamp()))
             if expires_at <= issued_at:
-                raise SessionExpiredError("Session expired")
+                raise SessionExpiredError(SESSION_EXPIRED)
             authenticated_at = principal["authenticated_at"]
             context = PlacementBoundAuthContext(
                 subject=_hmac_opaque(self._subject_secret, "subject", principal["user_id"]),
@@ -146,7 +151,7 @@ class PlacementContextIssuer:
                 actor_type=principal["actor_type"],
                 user_id=principal["user_id"] if self._include_user_id else None,
             )
-            self._emit(
+            await self._emit(
                 {
                     "type": "authfn.placement_context.issued",
                     "requestId": request_id,
@@ -161,7 +166,7 @@ class PlacementContextIssuer:
             )
             return context
         except Exception as error:
-            self._emit(
+            await self._emit(
                 {
                     "type": "authfn.placement_context.rejected",
                     "requestId": request_id,
@@ -207,7 +212,7 @@ class PlacementContextIssuer:
             if payload.get("issuer") != self._public_authority:
                 raise PlacementContextInvalidError("Placement-bound auth context issuer is invalid")
             context = _context_from_payload(payload)
-            self._emit(
+            self._emit_sync(
                 {
                     "type": "authfn.placement_context.verified",
                     "requestId": context.request_id,
@@ -222,25 +227,40 @@ class PlacementContextIssuer:
             )
             return context
         except PlacementContextInvalidError:
-            self._emit(
+            self._emit_sync(
                 {
                     "type": "authfn.placement_context.verification_failed",
+                    "requestId": _request_id(None),
                     "outcome": "rejected",
                     "metadata": {"audience": audience or self._default_audience},
                 }
             )
             raise
         except Exception as error:
-            self._emit(
+            self._emit_sync(
                 {
                     "type": "authfn.placement_context.verification_failed",
+                    "requestId": _request_id(None),
                     "outcome": "rejected",
                     "metadata": {"errorType": getattr(error, "code", "AUTHFN_PLACEMENT_CONTEXT_INVALID")},
                 }
             )
             raise PlacementContextInvalidError() from error
 
-    def _emit(self, event: Dict[str, Any]) -> None:
+    async def _emit(self, event: Dict[str, Any]) -> None:
+        self._notify(event)
+        await emit_auth_event(self._config, event)
+
+    def _emit_sync(self, event: Dict[str, Any]) -> None:
+        self._notify(event)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(emit_auth_event(self._config, event))
+            return
+        loop.create_task(emit_auth_event(self._config, event))
+
+    def _notify(self, event: Dict[str, Any]) -> None:
         if self._on_event is None:
             return
         try:
@@ -256,36 +276,40 @@ def create_placement_context_issuer(**kwargs: Any) -> PlacementContextIssuer:
 async def _resolve_principal(config: AuthFnConfig, request: Any) -> Dict[str, Any]:
     state = await get_cookie_session_state(config, request)
     if state.session_token:
-        if state.failure_reason == "revoked":
-            raise SessionRevokedError("Session revoked")
-        if state.failure_reason == "expired":
-            raise SessionExpiredError("Session expired")
-        if state.session is None or state.session_record is None or state.user is None:
-            raise UnauthorizedError("Authentication required")
-        record = state.session_record
-        user = state.user
-        return {
-            "user_id": user["id"],
-            "actor_type": "user",
-            "session_id": record["id"],
-            "session_version_material": record["tokenHash"],
-            "methods": list(state.session.methods),
-            "authenticated_at": record.get("lastAuthenticatedAt") or record.get("updatedAt"),
-            "session_expires_at": record.get("expiresAt"),
-        }
-
+        return _principal_from_cookie_state(state)
     secret = _authorization_secret(request)
     if not secret:
-        raise UnauthorizedError("Authentication required")
+        raise UnauthorizedError(AUTH_REQUIRED)
     bearer_session = await _resolve_bearer_session(config, secret)
     if bearer_session is not None:
         return bearer_session
-    try:
-        session = await ApiKeyService(config, ApiKeyPluginConfig()).authenticate(request)
-    except ApiKeyRevokedError:
-        raise
+    return await _resolve_api_key_principal(config, request)
+
+
+def _principal_from_cookie_state(state: Any) -> Dict[str, Any]:
+    if state.failure_reason == "revoked":
+        raise SessionRevokedError(SESSION_REVOKED)
+    if state.failure_reason == "expired":
+        raise SessionExpiredError(SESSION_EXPIRED)
+    if state.session is None or state.session_record is None or state.user is None:
+        raise UnauthorizedError(AUTH_REQUIRED)
+    record = state.session_record
+    user = state.user
+    return {
+        "user_id": user["id"],
+        "actor_type": "user",
+        "session_id": record["id"],
+        "session_version_material": record["tokenHash"],
+        "methods": list(state.session.methods),
+        "authenticated_at": record.get("lastAuthenticatedAt") or record.get("updatedAt"),
+        "session_expires_at": record.get("expiresAt"),
+    }
+
+
+async def _resolve_api_key_principal(config: AuthFnConfig, request: Any) -> Dict[str, Any]:
+    session = await ApiKeyService(config, ApiKeyPluginConfig()).authenticate(request)
     if session is None:
-        raise UnauthorizedError("Authentication required")
+        raise UnauthorizedError(AUTH_REQUIRED)
     row = await config.database.find_one(
         model="api_keys",
         where=[{"field": "id", "operator": "eq", "value": session.actor_id}],
@@ -293,14 +317,14 @@ async def _resolve_principal(config: AuthFnConfig, request: Any) -> Dict[str, An
     )
     user_id = (row or {}).get("userId")
     if not row or not user_id:
-        raise UnauthorizedError("Authentication required")
+        raise UnauthorizedError(AUTH_REQUIRED)
     user = await config.database.find_one(
         model="users",
         where=[{"field": "id", "operator": "eq", "value": user_id}],
         namespace=config.namespace,
     )
     if user is None:
-        raise UnauthorizedError("Authentication required")
+        raise UnauthorizedError(AUTH_REQUIRED)
     scopes = row.get("scopes") or []
     return {
         "user_id": user["id"],
@@ -327,17 +351,17 @@ async def _resolve_bearer_session(config: AuthFnConfig, session_token: str) -> O
     if record is None:
         return None
     if record.get("revokedAt") is not None:
-        raise SessionRevokedError("Session revoked")
+        raise SessionRevokedError(SESSION_REVOKED)
     expires_at = record.get("expiresAt")
     if isinstance(expires_at, datetime) and expires_at.timestamp() <= time.time():
-        raise SessionExpiredError("Session expired")
+        raise SessionExpiredError(SESSION_EXPIRED)
     user = await config.database.find_one(
         model="users",
         where=[{"field": "id", "operator": "eq", "value": record["userId"]}],
         namespace=config.namespace,
     )
     if user is None:
-        raise UnauthorizedError("Authentication required")
+        raise UnauthorizedError(AUTH_REQUIRED)
     methods = record.get("methods") or []
     return {
         "user_id": user["id"],
@@ -368,7 +392,7 @@ async def _load_active_placement(
 
 
 def _payload_from_context(context: PlacementBoundAuthContext, keyring: RoutingKeyring) -> Dict[str, Any]:
-    return {
+    payload: Dict[str, Any] = {
         "kind": CONTEXT_KIND,
         "keyId": keyring.active.key_id,
         "subject": context.subject,
@@ -382,12 +406,15 @@ def _payload_from_context(context: PlacementBoundAuthContext, keyring: RoutingKe
         "expiresAt": _unix(context.expires_at),
         "audience": context.audience,
         "assurance": list(context.assurance),
-        "scopes": list(context.scopes) if context.scopes is not None else None,
         "requestId": context.request_id,
         "actorType": context.actor_type,
         "nonce": secrets.token_urlsafe(16),
-        "userId": context.user_id,
     }
+    if context.scopes is not None:
+        payload["scopes"] = list(context.scopes)
+    if context.user_id:
+        payload["userId"] = context.user_id
+    return payload
 
 
 def _context_from_payload(payload: Dict[str, Any]) -> PlacementBoundAuthContext:
@@ -487,12 +514,26 @@ def _strip_routing_headers(request: Any) -> Any:
     clone.url = getattr(request, "url", "")
     clone.headers = headers
     clone._body = getattr(request, "_body", None)
+    original_json = getattr(request, "json", None)
+    original_body = getattr(request, "body", None)
 
     async def read_json() -> Any:
+        if callable(original_json):
+            result = original_json()
+            if inspect.isawaitable(result):
+                return await result
+            return result
         return getattr(request, "_body", None)
 
     async def read_body() -> bytes:
-        raw = getattr(request, "_body", None)
+        if callable(original_body):
+            result = original_body()
+            if inspect.isawaitable(result):
+                raw = await result
+            else:
+                raw = result
+        else:
+            raw = getattr(request, "_body", None)
         if raw is None:
             return b""
         if isinstance(raw, (bytes, bytearray)):
@@ -571,7 +612,7 @@ def _isoformat(value: Any) -> str:
         return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     if isinstance(value, str):
         return value
-    raise UnauthorizedError("Authentication required")
+    raise UnauthorizedError(AUTH_REQUIRED)
 
 
 def _unix(value: str) -> int:

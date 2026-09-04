@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import sys
 from datetime import datetime, timezone
@@ -79,8 +81,9 @@ async def test_ignores_client_supplied_routing_headers() -> None:
 @pytest.mark.asyncio
 async def test_fails_closed_for_unauthenticated_and_revoked_sessions() -> None:
     issuer, request, _user = await _setup()
+    unauthenticated = TestRequest("GET", "https://account.example.com/auth/session")
     with pytest.raises(UnauthorizedError):
-        await issuer.derive(TestRequest("GET", "https://account.example.com/auth/session"))
+        await issuer.derive(unauthenticated)
 
     record_id = request.headers["x-session-id"]
     await issuer._config.database.update(
@@ -120,6 +123,11 @@ async def test_signed_private_consumer_and_in_process_ticket_exchange() -> None:
     verified = issuer.verify_signed(issued["assertion"])
     assert verified.home_region == "us-east-1"
     assert verified.subject == issued["context"].subject
+    encoded = issued["assertion"].split(".", 1)[0]
+    padding = "=" * ((4 - len(encoded) % 4) % 4)
+    payload = json.loads(base64.urlsafe_b64decode(encoded + padding))
+    assert "userId" not in payload
+    assert "scopes" not in payload
     with pytest.raises(ValidationError):
         await issuer.derive(request, audience="other-service")
     with pytest.raises(PlacementContextInvalidError):
@@ -137,18 +145,33 @@ async def test_signed_private_consumer_and_in_process_ticket_exchange() -> None:
     assert "cell://" not in str(ticket)
 
 
+@pytest.mark.asyncio
+async def test_emits_configured_observability_events() -> None:
+    events: List[Any] = []
+    issuer, request, _user = await _setup(on_event=events.append)
+    await issuer.derive(request)
+    types = [getattr(event, "type", None) or event.get("type") for event in events]
+    assert "authfn.placement_context.issued" in types
+    with pytest.raises(ValidationError):
+        await issuer.derive(request, audience="other-service")
+    types = [getattr(event, "type", None) or event.get("type") for event in events]
+    assert "authfn.placement_context.rejected" in types
+
+
 async def _setup(
     *,
     extra_headers: Optional[Dict[str, str]] = None,
     placement: Optional[IdentityPlacement] = None,
     identity_key: Optional[str] = None,
     skip_placement: bool = False,
+    on_event: Optional[Any] = None,
 ) -> tuple[Any, TestRequest, Dict[str, Any]]:
     config = AuthFnConfig.model_validate(
         {
             "database": InMemoryDatabaseAdapter(),
             "namespace": "authfn",
             "plugins": [],
+            "observability": {"emit": on_event} if on_event is not None else None,
         }
     )
     user = {
