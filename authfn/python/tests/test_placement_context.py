@@ -418,6 +418,25 @@ async def test_canonicalizes_idn_authority_to_punycode() -> None:
     assert context.issuer == "https://xn--mnich-kva.example"
     assert _normalize_authority("https://faß.de") == "https://xn--fa-hia.de"
     assert _normalize_authority("https://xn--fa-hia.de") == "https://xn--fa-hia.de"
+    assert _normalize_authority("https://auth_service.example") == "https://auth_service.example"
+    assert _normalize_authority("https://-edge.example") == "https://-edge.example"
+    assert _normalize_authority("https://AUTH_SERVICE.EXAMPLE") == "https://auth_service.example"
+    assert (
+        _normalize_authority("https://auth_service.münich.example")
+        == "https://auth_service.xn--mnich-kva.example"
+    )
+    assert _normalize_authority("http://AUTH_SERVICE.example:80") == "http://auth_service.example"
+
+
+def test_rejects_out_of_range_authority_ports_as_config_error() -> None:
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://example.com:99999")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://example.com:65536")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://example.com:abc")
+    assert _normalize_authority("https://example.com:65535") == "https://example.com:65535"
+    assert _normalize_authority("https://example.com:0") == "https://example.com:0"
 
 
 def test_canonicalizes_ipv4_authorities_like_whatwg_origin() -> None:
