@@ -115,6 +115,9 @@ describe('AuthFn placement-bound auth context', () => {
         expect(incoming.method).toBe(request.method);
         expect(incoming.bodyUsed).toBe(request.bodyUsed);
         expect(incoming.signal).toBe(request.signal);
+        const cloned = incoming.clone();
+        expect(cloned.headers.get('x-authfn-routing-region')).toBeNull();
+        expect(cloned.headers.get('cookie')).toBe(request.headers.get('cookie'));
         return { issuer: 'https://account.example.com', baseUrl: 'https://account.example.com' };
       }
     };
