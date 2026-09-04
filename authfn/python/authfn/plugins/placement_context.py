@@ -16,7 +16,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tup
 from urllib.parse import urlparse
 
 from ..http import _hash_secret, get_cookie_session_state
-from ..observability import emit_auth_event
+from ..observability import emit_auth_event, resolve_request_id
 from ..plugins.gateway_routing import (
     IdentityPlacement,
     IdentityPlacementDirectory,
@@ -128,8 +128,10 @@ class PlacementContextIssuer:
         )
 
     async def derive(self, request: Any, *, audience: Optional[str] = None) -> PlacementBoundAuthContext:
+        request_id = resolve_request_id(request)
         sanitized = _strip_routing_headers(request)
-        request_id = _request_id(sanitized)
+        if not any(key.lower() == "x-request-id" for key in sanitized.headers):
+            sanitized.headers["x-request-id"] = request_id
         try:
             resolved_audience = _require_audience(audience or self._default_audience, self._audiences)
             principal = await _resolve_principal(self._config, sanitized, self._clock)
@@ -649,11 +651,12 @@ def _authorization_secret(request: Any) -> Optional[str]:
     if not authorization:
         return None
     trimmed = authorization.strip()
-    if trimmed.startswith("Bearer "):
-        secret = trimmed[len("Bearer "):].strip()
+    lowered = trimmed.lower()
+    if lowered.startswith("bearer "):
+        secret = trimmed[7:].strip()
         return secret or None
-    if trimmed.startswith("Api-Key "):
-        secret = trimmed[len("Api-Key "):].strip()
+    if lowered.startswith("api-key "):
+        secret = trimmed[8:].strip()
         return secret or None
     return None
 
