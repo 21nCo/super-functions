@@ -31,7 +31,7 @@ Return `true` to allow, `false` to deny. Throwing has the same effect as `false`
 - Row-level filtering (use [namespaces](/docs/documentation/security/namespace-isolation))
 - Capability-driven sharing rules (the `shareable` capability handles these directly)
 
-`authorize` runs before the schema is validated, which means `payload` is untrusted JSON. Don't treat field values as authoritative until DataFn has validated them.
+`authorize` runs before the schema is validated, which means `payload` is untrusted JSON. Don't treat field values as authoritative until DataFn has validated them. For protocol resource names, use [structural resource selectors](/docs/documentation/security/resource-selectors) instead of walking the payload.
 
 ## Minimum production callback
 
@@ -56,19 +56,25 @@ authorize: async (ctx, action) => {
 
 ## Per-resource gating
 
-The `payload` includes the target resource for `query`, `mutation`, and `transact`. Use it to deny entire resources by role:
+Do not read `payload.resource` or recursively search the body. Application records and filters may contain fields named `resource` or `resources`. Use the canonical extractor:
 
 ```typescript
+import { extractStructuralResourceSelectors } from "@datafn/server";
+
 authorize: async (ctx, action, payload) => {
   if (!ctx.session?.userId) return false;
-  if (action === "mutation" && payload?.resource === "billing") {
-    return ctx.session.roles.includes("billing-admin");
-  }
-  return true;
+  if (action === "status") return true;
+
+  const extracted = extractStructuralResourceSelectors(action, payload);
+  if (!extracted.ok) return false;
+
+  return extracted.result.selectors.every((resource) =>
+    ctx.session.allowedResources.includes(resource),
+  );
 }
 ```
 
-For batch payloads (`mutation` or `transact`), `payload` may be an array; check every element if you want strict gating.
+See [Structural resource selectors](/docs/documentation/security/resource-selectors) for batch, transaction, search, and sync envelopes.
 
 ## Throwing for richer errors
 
@@ -149,5 +155,6 @@ describe("authorize", () => {
 ## See also
 
 - [Field-level authorization](/docs/documentation/security/field-level-authz)
+- [Structural resource selectors](/docs/documentation/security/resource-selectors)
 - [Namespace isolation](/docs/documentation/security/namespace-isolation)
 - [AuthFn integration recipe](/docs/recipes/authfn-integration)

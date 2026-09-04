@@ -11,7 +11,7 @@ DataFn follows [semver](https://semver.org/): until 1.0 minor versions may inclu
 
 ## Unreleased
 
-- (placeholder for in-development changes)
+- Canonical structural resource-selector extraction: `parseDatafnRequest`, `collectStructuralResourceSelectors`, and `extractStructuralResourceSelectors` in `@datafn/core` (re-exported from `@datafn/server`). Gateways and `authorize` plugins should use this API instead of traversing request JSON. Unsupported `protocolVersion` values return `DATAFN_UNSUPPORTED_PROTOCOL_VERSION`.
 
 ## 0.3.0
 
