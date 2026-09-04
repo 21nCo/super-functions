@@ -849,9 +849,9 @@ def _rtl_hyphen_exception_is_invalid(label: str) -> bool:
     has_ltr = any(direction == "L" for direction in directions)
     has_an = any(direction == "AN" for direction in directions)
     has_en = any(direction == "EN" for direction in directions)
-    last = directions[-1]
-    # RTL labels must end in R/AL/EN/AN (RFC 5893). Hyphen-first labels such
-    # as -א stay valid; trailing neutrals such as -א! fail like Node.
+    last = next((direction for direction in reversed(directions) if direction != "NSM"), "")
+    # RTL labels must end in R/AL/EN/AN (RFC 5893), ignoring trailing NSM so
+    # -א plus sheva matches Node. Trailing neutrals such as -א! still fail.
     # AN and EN must not both appear (e.g. -١۲).
     return has_ltr or (has_an and has_en) or last not in {"R", "AL", "EN", "AN"}
 
