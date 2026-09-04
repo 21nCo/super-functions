@@ -5,7 +5,7 @@
     Dialog,
     DialogClose,
     DialogContent,
-    DialogOverlay,
+    DialogBackdrop,
     DialogPortal,
     DialogTrigger,
     Switch,
@@ -14,12 +14,11 @@
     TabsContent,
     TabsList,
     TabsTrigger,
-    Toast,
     ToastClose,
     ToastDescription,
     ToastProvider,
+    ToastRoot,
     ToastTitle,
-    ToastViewport,
   } from "@uifn/svelte";
   import { settingsSections, settingsToggles, type ExampleRouteHash } from "@uifn/examples-shared";
 
@@ -56,13 +55,27 @@
   }
 </script>
 
-<ToastProvider>
+<ToastProvider
+  class="toast-viewport"
+  toasts={toastOpen
+    ? [
+        {
+          id: "preferences-saved",
+          title: "Preferences saved",
+          description: "The shared example state updated without any remote request or environment setup.",
+          duration: 3500,
+        },
+      ]
+    : []}
+  duration={3500}
+  onDismiss={() => (toastOpen = false)}
+>
   <div class="scenario-stack" data-route={route}>
     <div class="scenario-toolbar">
       <Dialog open={dialogOpen} onOpenChange={(open) => (dialogOpen = open)}>
         <DialogTrigger class="primary-button">Open settings console</DialogTrigger>
         <DialogPortal>
-          <DialogOverlay class="dialog-overlay" />
+          <DialogBackdrop class="dialog-overlay" />
           <DialogContent
             class="dialog-content"
             aria-labelledby="settings-dialog-title"
@@ -152,13 +165,14 @@
       </div>
     </div>
 
-    <Toast open={toastOpen} onOpenChange={(open) => (toastOpen = open)} duration={3500} class="toast-card">
-      <ToastTitle>Preferences saved</ToastTitle>
-      <ToastDescription>
-        The shared example state updated without any remote request or environment setup.
-      </ToastDescription>
-      <ToastClose class="toast-close">Close</ToastClose>
-    </Toast>
-    <ToastViewport class="toast-viewport" />
+    {#if toastOpen}
+      <ToastRoot value="preferences-saved" class="toast-card">
+        <ToastTitle value="preferences-saved">Preferences saved</ToastTitle>
+        <ToastDescription value="preferences-saved">
+          The shared example state updated without any remote request or environment setup.
+        </ToastDescription>
+        <ToastClose value="preferences-saved" class="toast-close">Close</ToastClose>
+      </ToastRoot>
+    {/if}
   </div>
 </ToastProvider>

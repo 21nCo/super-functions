@@ -3,7 +3,13 @@ import { svelte, vitePreprocess } from "@uifn/vite-plugin-svelte";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [svelte({ preprocess: vitePreprocess() })],
+  plugins: [
+    svelte({
+      // script:true so esbuild strips TS that Svelte 5's native stripper leaves
+      // behind (e.g. `basePath?: string` → `basePath?`).
+      preprocess: vitePreprocess({ script: true }),
+    }),
+  ],
   resolve: {
     alias: [
       { find: /^svelte$/, replacement: path.resolve(__dirname, "../../../node_modules/svelte/src/index-client.js") },

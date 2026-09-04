@@ -21,7 +21,7 @@ export default defineConfig({
     // @docsfn/core is externalized and resolved by Node, which fails because
     // @searchfn/client is not installed as a dependency and its dist is not
     // built in the monorepo.
-    noExternal: ["@docsfn/core"],
+    noExternal: ["@docsfn/core", "@docsfn/svelte"],
   },
   resolve: {
     alias: [

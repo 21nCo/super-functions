@@ -5,14 +5,24 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [
     svelte({
-      preprocess: vitePreprocess(),
+      // script:true so esbuild strips TS that Svelte 5's native stripper leaves
+      // behind (e.g. `hash?: string` → `hash?`).
+      preprocess: vitePreprocess({ script: true }),
     }),
   ],
   resolve: {
     alias: [
       {
-        find: /^@uifn\/core\/(.*)$/,
-        replacement: `${path.resolve(__dirname, "../../core/src")}/$1`,
+        find: /^@uifn\/core\/primitives\/overlay$/,
+        replacement: path.resolve(__dirname, "../../core/dist/primitives/overlay.mjs"),
+      },
+      {
+        find: /^@uifn\/core\/primitives\/(.+)$/,
+        replacement: path.resolve(__dirname, "../../core/dist/primitive-entries/$1.mjs"),
+      },
+      {
+        find: /^@uifn\/core\/(.+)$/,
+        replacement: path.resolve(__dirname, "../../core/src/$1.ts"),
       },
       {
         find: /^svelte$/,

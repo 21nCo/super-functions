@@ -12,8 +12,10 @@
   },
   "dependencies": {
     "@uifn/components": "*",
+    "@uifn/components-react": "*",
     "@uifn/examples-shared": "*",
     "@uifn/patterns": "*",
+    "@uifn/react": "*",
     "@uifn/sf": "*",
     "react": "18.3.1",
     "react-dom": "18.3.1"
