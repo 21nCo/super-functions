@@ -42,7 +42,7 @@ from authfn import (
 )
 from authfn.http import _hash_secret, issue_session, revoke_session_by_id
 from authfn.observability import resolve_request_id
-from authfn.plugins.placement_context import _isoformat, _normalize_authority
+from authfn.plugins.placement_context import _credential_expired, _isoformat, _normalize_authority
 
 from .support import InMemoryDatabaseAdapter, TestRequest
 
@@ -521,6 +521,15 @@ def test_canonicalizes_timestamps_like_javascript_to_iso_string() -> None:
     assert _isoformat(datetime(2026, 8, 1, tzinfo=timezone.utc)) == "2026-08-01T00:00:00.000Z"
     assert _isoformat("2026-08-01T00:00:00Z") == "2026-08-01T00:00:00.000Z"
     assert _isoformat(datetime(2026, 8, 1, 0, 0, 0, 123000, tzinfo=timezone.utc)) == "2026-08-01T00:00:00.123Z"
+
+
+def test_treats_naive_credential_expiry_as_utc() -> None:
+    naive = datetime(2026, 1, 1, 0, 0, 0)
+    aware = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    now = aware.timestamp() + 1
+    assert _credential_expired(naive, lambda: now) is True
+    assert _credential_expired(aware, lambda: now) is True
+    assert _credential_expired(naive, lambda: now) is _credential_expired(aware, lambda: now)
 
 
 @pytest.mark.asyncio
