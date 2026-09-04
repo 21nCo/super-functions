@@ -13,7 +13,7 @@ mcpfn test-target http://127.0.0.1:3000/mcp ./mcp-scenarios.ts \
   --output target-report.json --junit target-report.xml
 mcpfn inspect https://api.example.com/mcp --output inspection.json
 mcpfn inspect http://127.0.0.1:3000/mcp --header "Authorization: Bearer $MCP_API_KEY"
-mcpfn inspect node --stdio --args '[\"./dist/server.js\"]'
+mcpfn inspect node --stdio --args '["./dist/server.js"]'
 mcpfn auth-diagnose https://api.example.com/mcp
 mcpfn conformance http://127.0.0.1:3000/mcp --suite active
 mcpfn conformance http://127.0.0.1:3000/mcp --suite active \
