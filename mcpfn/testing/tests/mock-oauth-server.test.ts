@@ -110,11 +110,15 @@ describe("McpFn mock OAuth authorization server", () => {
     expect((await refresh(refreshed.refresh_token)).status).toBe(200);
     expect((await refresh()).status).toBe(400);
 
-    expect((await fetch(oauth.tokenEndpoint, {
+    const unsupported = await fetch(oauth.tokenEndpoint, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ grant_type: "password" }),
-    })).status).toBe(400);
+    });
+    expect(unsupported.status).toBe(400);
+    await expect(unsupported.json()).resolves.toMatchObject({
+      error: "unsupported_grant_type",
+    });
 
     await fetch(oauth.revocationEndpoint, {
       method: "POST",
