@@ -433,6 +433,13 @@ def test_canonicalizes_ipv4_authorities_like_whatwg_origin() -> None:
         _normalize_authority("https://hello.1")
 
 
+def test_canonicalizes_ipv6_authorities_like_whatwg_origin() -> None:
+    assert _normalize_authority("https://[2001:0db8:0:0:0:0:0:1]") == "https://[2001:db8::1]"
+    assert _normalize_authority("https://[0:0:0:0:0:0:0:1]") == "https://[::1]"
+    assert _normalize_authority("https://[::ffff:127.0.0.1]") == "https://[::ffff:7f00:1]"
+    assert _normalize_authority("https://[2001:0DB8::1]:8443") == "https://[2001:db8::1]:8443"
+
+
 def test_canonicalizes_timestamps_like_javascript_to_iso_string() -> None:
     assert _isoformat(datetime(2026, 8, 1, tzinfo=timezone.utc)) == "2026-08-01T00:00:00.000Z"
     assert _isoformat("2026-08-01T00:00:00Z") == "2026-08-01T00:00:00.000Z"
