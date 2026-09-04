@@ -499,6 +499,53 @@ describe('AuthFn placement-bound auth context', () => {
       headers: { authorization: 'Api-Key secret_missing' }
     }))).rejects.toBeInstanceOf(AuthFnInternalError);
   });
+
+  it('evaluates cookie and bearer expiry against the issuer clock', async () => {
+    const expiresAt = new Date(Date.now() - 60_000);
+    const issuerNow = () => new Date(expiresAt.getTime() - 60_000);
+    const setup = await setupIssuer({ now: issuerNow });
+    await setup.config.database.update({
+      model: 'sessions',
+      where: [{ field: 'id', operator: 'eq', value: setup.sessionId }],
+      data: { expiresAt },
+      namespace: 'authfn'
+    });
+    const cookieContext = await setup.issuer.derive(setup.request);
+    const bearerContext = await setup.issuer.derive(new Request(setup.request.url, {
+      headers: { authorization: `Bearer ${setup.sessionToken}` }
+    }));
+    expect(cookieContext.homeRegion).toBe('us-east-1');
+    expect(bearerContext.sessionBinding).toBe(cookieContext.sessionBinding);
+
+    const expiredIssuer = await setupIssuer({ now: () => new Date(expiresAt.getTime() + 1_000) });
+    await expiredIssuer.config.database.update({
+      model: 'sessions',
+      where: [{ field: 'id', operator: 'eq', value: expiredIssuer.sessionId }],
+      data: { expiresAt },
+      namespace: 'authfn'
+    });
+    await expect(expiredIssuer.issuer.derive(expiredIssuer.request))
+      .rejects.toBeInstanceOf(AuthFnSessionExpiredError);
+    await expect(expiredIssuer.issuer.derive(new Request(expiredIssuer.request.url, {
+      headers: { authorization: `Bearer ${expiredIssuer.sessionToken}` }
+    }))).rejects.toBeInstanceOf(AuthFnSessionExpiredError);
+  });
+
+  it('keeps the signed request id on post-signature verification failures', async () => {
+    const { issuer, request, events } = await setupIssuer();
+    const issued = await issuer.issueSigned(request);
+    expect(() => issuer.verifySigned(issued.assertion, { audience: 'other-service' }))
+      .toThrow(AuthFnPlacementContextInvalidError);
+    await Promise.resolve();
+    expect(events.filter((event) => event.type === 'authfn.placement_context.verification_failed')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          requestId: issued.context.requestId,
+          metadata: expect.objectContaining({ audience: 'other-service' })
+        })
+      ])
+    );
+  });
 });
 
 async function deriveWithPlacement(placement: AuthFnIdentityPlacement) {
