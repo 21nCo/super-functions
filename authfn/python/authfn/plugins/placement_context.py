@@ -500,7 +500,7 @@ async def _resolve_bearer_session(
     if isinstance(expires_at, datetime) and expires_at.timestamp() <= clock():
         raise SessionExpiredError(SESSION_EXPIRED)
     user = await config.database.find_one(
-        model="sessions",
+        model="users",
         where=[{"field": "id", "operator": "eq", "value": record["userId"]}],
         namespace=config.namespace,
     )
@@ -516,3 +516,289 @@ async def _resolve_bearer_session(
         "authenticated_at": record.get("lastAuthenticatedAt") or record.get("createdAt"),
         "session_expires_at": record.get("expiresAt"),
     }
+
+
+async def _load_active_placement(
+    directory: IdentityPlacementDirectory,
+    identity_key: str,
+) -> IdentityPlacement:
+    try:
+        placement = await directory.get(identity_key)
+    except Exception as error:  # noqa: BLE001
+        raise PlacementDirectoryUnavailableError() from error
+    if placement is None or placement.state == "tombstoned":
+        raise RegionNotFoundError("Identity placement is not active")
+    if placement.state in {"moving", "deleting"}:
+        raise PlacementMovingError("Identity placement is moving", {"executionStarted": False})
+    if placement.state != "active":
+        raise RegionNotFoundError("Identity placement is not active")
+    return placement
+
+
+def _payload_from_context(context: PlacementBoundAuthContext, keyring: RoutingKeyring) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "kind": CONTEXT_KIND,
+        "keyId": keyring.active.key_id,
+        "subject": context.subject,
+        "homeRegion": context.home_region,
+        "placementEpoch": context.placement_epoch,
+        "issuer": context.issuer,
+        "sessionBinding": context.session_binding,
+        "sessionVersion": context.session_version,
+        "authenticatedAt": _unix(context.authenticated_at),
+        "issuedAt": _unix(context.issued_at),
+        "expiresAt": _unix(context.expires_at),
+        "audience": context.audience,
+        "assurance": list(context.assurance),
+        "requestId": context.request_id,
+        "actorType": context.actor_type,
+        "nonce": secrets.token_urlsafe(16),
+    }
+    if context.scopes is not None:
+        payload["scopes"] = list(context.scopes)
+    if context.user_id:
+        payload["userId"] = context.user_id
+    return payload
+
+
+def _context_from_payload(payload: Dict[str, Any]) -> PlacementBoundAuthContext:
+    scopes = payload.get("scopes")
+    return PlacementBoundAuthContext(
+        subject=str(payload["subject"]),
+        home_region=str(payload["homeRegion"]),
+        placement_epoch=int(payload["placementEpoch"]),
+        issuer=str(payload["issuer"]),
+        session_binding=str(payload["sessionBinding"]),
+        session_version=str(payload["sessionVersion"]),
+        authenticated_at=_isoformat(datetime.fromtimestamp(int(payload["authenticatedAt"]), tz=timezone.utc)),
+        issued_at=_isoformat(datetime.fromtimestamp(int(payload["issuedAt"]), tz=timezone.utc)),
+        expires_at=_isoformat(datetime.fromtimestamp(int(payload["expiresAt"]), tz=timezone.utc)),
+        audience=str(payload["audience"]),
+        assurance=tuple(str(item) for item in payload.get("assurance") or ()),
+        scopes=tuple(str(item) for item in scopes) if isinstance(scopes, list) else None,
+        request_id=str(payload["requestId"]),
+        actor_type=str(payload["actorType"]),
+        user_id=str(payload["userId"]) if payload.get("userId") else None,
+    )
+
+
+def _sign(payload: Dict[str, Any], keyring: RoutingKeyring) -> str:
+    encoded = _b64(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    signature = _b64(hmac.new(_secret_bytes(keyring.active.secret), encoded.encode("ascii"), hashlib.sha256).digest())
+    return f"{encoded}.{signature}"
+
+
+def _verify(
+    token: str,
+    keyring: RoutingKeyring,
+    clock: Callable[[], float],
+    clock_skew_seconds: int,
+) -> Dict[str, Any]:
+    parts = token.split(".")
+    if len(parts) != 2:
+        raise PlacementContextInvalidError()
+    encoded, signature = parts
+    try:
+        parsed: Any = json.loads(_unb64(encoded).decode("utf-8"))
+    except Exception as error:  # noqa: BLE001
+        raise PlacementContextInvalidError() from error
+    if not _is_signed_payload(parsed):
+        raise PlacementContextInvalidError()
+    payload = cast(Dict[str, Any], parsed)
+    key = next(
+        (entry for entry in [keyring.active, *keyring.previous] if entry.key_id == payload.get("keyId")),
+        None,
+    )
+    if key is None:
+        raise PlacementContextInvalidError("Placement-bound auth context key is unknown")
+    expected = hmac.new(_secret_bytes(key.secret), encoded.encode("ascii"), hashlib.sha256).digest()
+    if not hmac.compare_digest(_unb64(signature), expected):
+        raise PlacementContextInvalidError()
+    now = int(clock())
+    if int(payload["issuedAt"]) > now + clock_skew_seconds or int(payload["expiresAt"]) < now - clock_skew_seconds:
+        raise PlacementContextInvalidError("Placement-bound auth context is expired")
+    return payload
+
+
+def _is_signed_payload(value: Any) -> TypeGuard[Dict[str, Any]]:
+    if not isinstance(value, dict):
+        return False
+    required = (
+        value.get("kind") == CONTEXT_KIND
+        and isinstance(value.get("keyId"), str)
+        and isinstance(value.get("subject"), str)
+        and isinstance(value.get("homeRegion"), str)
+        and isinstance(value.get("placementEpoch"), int)
+        and int(value["placementEpoch"]) >= 1
+        and isinstance(value.get("issuer"), str)
+        and isinstance(value.get("sessionBinding"), str)
+        and isinstance(value.get("sessionVersion"), str)
+        and isinstance(value.get("authenticatedAt"), int)
+        and isinstance(value.get("issuedAt"), int)
+        and isinstance(value.get("expiresAt"), int)
+        and int(value["expiresAt"]) >= int(value["issuedAt"])
+        and int(value["expiresAt"]) - int(value["issuedAt"]) <= MAX_TTL_SECONDS
+        and isinstance(value.get("audience"), str)
+        and isinstance(value.get("assurance"), list)
+        and all(isinstance(item, str) for item in value["assurance"])
+        and isinstance(value.get("requestId"), str)
+        and value.get("actorType") in {"user", "api-key"}
+        and isinstance(value.get("nonce"), str)
+        and len(str(value.get("nonce"))) >= 16
+    )
+    if not required:
+        return False
+    scopes = value.get("scopes")
+    if scopes is not None and (
+        not isinstance(scopes, list) or any(not isinstance(item, str) for item in scopes)
+    ):
+        return False
+    user_id = value.get("userId")
+    if user_id is not None and not isinstance(user_id, str):
+        return False
+    return True
+
+
+def _strip_routing_headers(request: Any) -> Any:
+    headers = {
+        key: value
+        for key, value in getattr(request, "headers", {}).items()
+        if not key.lower().startswith(INTERNAL_HEADER_PREFIX)
+    }
+    clone = type("SanitizedRequest", (), {})()
+    clone.method = getattr(request, "method", "GET")
+    clone.url = getattr(request, "url", "")
+    clone.headers = headers
+    return clone
+
+
+def _authorization_secret(request: Any) -> Optional[str]:
+    headers = getattr(request, "headers", {}) or {}
+    authorization = next((value for key, value in headers.items() if key.lower() == "authorization"), None)
+    if not authorization:
+        return None
+    trimmed = authorization.strip()
+    lowered = trimmed.lower()
+    if lowered.startswith("bearer "):
+        secret = trimmed[7:].strip()
+        return secret or None
+    if lowered.startswith("api-key "):
+        secret = trimmed[8:].strip()
+        return secret or None
+    return None
+
+
+def _require_audience(audience: str, allowlist: Sequence[str]) -> str:
+    if audience not in allowlist:
+        raise ValidationError("Placement-bound auth context audience is not allowed")
+    return audience
+
+
+def _require_int(name: str, value: Any, minimum: int, maximum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigError(f"Placement-context {name} must be an integer")
+    if not minimum <= value <= maximum:
+        if name == "ttl_seconds":
+            raise ConfigError(f"Placement-context ttl_seconds must be between 1 and {MAX_TTL_SECONDS}")
+        raise ConfigError(f"Placement-context {name} must be between {minimum} and {maximum}")
+    return value
+
+
+def _credential_version_material(record: Dict[str, Any]) -> str:
+    created_at = record.get("createdAt") or record.get("updatedAt")
+    return f"{record['id']}:{_isoformat(created_at)}"
+
+
+def _hmac_opaque(mac_key: bytes, label: str, value: str) -> str:
+    # Keyed MAC over identifiers (user/session ids), not password storage.
+    material = f"{label}:{value}".encode("utf-8")
+    return _b64(hmac.digest(mac_key, material, "sha256"))  # codeql[py/weak-sensitive-data-hashing]
+
+
+def _telemetry_hash(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
+
+def _secret_bytes(secret: bytes | str) -> bytes:
+    return secret.encode("utf-8") if isinstance(secret, str) else bytes(secret)
+
+
+def _canonical_hostname(hostname: str) -> str:
+    if ":" in hostname:
+        return hostname.lower()
+    try:
+        return idna.encode(hostname, uts46=True, transitional=False).decode("ascii")
+    except idna.IDNAError as error:
+        raise ConfigError("AuthFn publicAuthority must be a valid origin") from error
+
+
+def _normalize_authority(authority: str) -> str:
+    parsed = urlparse(authority)
+    if not parsed.scheme or not parsed.hostname:
+        raise ConfigError("AuthFn publicAuthority must be a valid origin")
+    scheme = parsed.scheme.lower()
+    hostname = _canonical_hostname(parsed.hostname)
+    if ":" in hostname and not hostname.startswith("["):
+        hostname = f"[{hostname}]"
+    port = parsed.port
+    if port is None or (scheme == "https" and port == 443) or (scheme == "http" and port == 80):
+        return f"{scheme}://{hostname}"
+    return f"{scheme}://{hostname}:{port}"
+
+
+def _validate_keyring(keyring: RoutingKeyring) -> None:
+    keys: List[RoutingSigningKey] = [keyring.active, *keyring.previous]
+    ids: set[str] = set()
+    for key in keys:
+        secret = _secret_bytes(key.secret)
+        if not key.key_id.strip() or len(secret) < 32:
+            raise ConfigError("AuthFn routing keys require a keyId and at least 32 bytes of secret material")
+        if key.key_id in ids:
+            raise ConfigError("AuthFn routing key IDs must be unique")
+        ids.add(key.key_id)
+
+
+def _request_id(request: Any) -> str:
+    headers = getattr(request, "headers", {}) or {}
+    return next(
+        (value for key, value in headers.items() if key.lower() == "x-request-id"),
+        f"req_{secrets.token_hex(8)}",
+    )
+
+
+def _isoformat(value: Any) -> str:
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as error:
+            raise UnauthorizedError(AUTH_REQUIRED) from error
+    if isinstance(value, datetime):
+        aware: datetime = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        utc = aware.astimezone(timezone.utc)
+        return utc.strftime("%Y-%m-%dT%H:%M:%S.") + f"{utc.microsecond:06d}"[:3] + "Z"
+    raise UnauthorizedError(AUTH_REQUIRED)
+
+
+def _unix(value: str) -> int:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return int(parsed.timestamp())
+
+
+def _b64(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
+
+
+def _unb64(value: str) -> bytes:
+    padding = "=" * ((4 - len(value) % 4) % 4)
+    return base64.urlsafe_b64decode(value + padding)
+
+
+# Re-export for consumers that import the Python error from types.
+__all__ = [
+    "PlacementBoundAuthContext",
+    "PlacementContextInvalidError",
+    "PlacementContextIssuer",
+    "PlacementContextVerifier",
+    "create_placement_context_issuer",
+    "create_placement_context_verifier",
+]
