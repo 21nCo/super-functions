@@ -136,8 +136,9 @@ class PlacementContextIssuer:
     async def derive(self, request: Any, *, audience: Optional[str] = None) -> PlacementBoundAuthContext:
         request_id = resolve_request_id(request)
         sanitized = _strip_routing_headers(request)
-        if not any(key.lower() == "x-request-id" for key in sanitized.headers):
-            sanitized.headers["x-request-id"] = request_id
+        for key in [name for name in list(sanitized.headers) if name.lower() == "x-request-id"]:
+            del sanitized.headers[key]
+        sanitized.headers["x-request-id"] = request_id
         try:
             resolved_audience = _require_audience(
                 self._default_audience if audience is None else audience,
