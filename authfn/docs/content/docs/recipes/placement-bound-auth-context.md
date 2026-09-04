@@ -16,6 +16,7 @@ The API is **opt-in**. Public AuthFn routes, cookies, OAuth issuer behavior, and
 | Browser / native client | Canonical AuthFn authority, cookies, OAuth | Choose a region, carry placement epoch, or learn a regional AuthFn URL |
 | Canonical AuthFn / application gateway | Verified session, placement directory, opaque subject | Treat client headers or body fields as region/epoch/subject authority |
 | Nucleum (or another consumer) | Immutable context or a short-lived audience-bound assertion | Reconstruct routing from session email, request host, or private internals |
+| Remote HMAC verifier | Dedicated placement-context keyring | Reuse gateway-routing keys, or treat verification as unprivileged |
 | Regional DataFn cell | Consumer-minted ticket derived from this context | Trust a client-supplied region or an AuthFn internal routing assertion |
 
 Derive subject, home region, and placement epoch **only after** AuthFn session validation succeeds. Strip every incoming `x-authfn-routing-*` header. Ignore client-supplied subject, region, epoch, issuer, and audience values.
@@ -25,6 +26,7 @@ Derive subject, home region, and placement epoch **only after** AuthFn session v
 ```ts
 import {
   createAuthFnPlacementContextIssuer,
+  createAuthFnPlacementContextVerifier,
   createInMemoryAuthFnPlacementDirectory,
 } from '@authfn/multi-region';
 
@@ -54,9 +56,16 @@ await issuer.withContext(request, async (context) => {
   return datafnTickets.mint(context);
 });
 
-// Private remote consumer: audience-bound assertion, not a browser bearer token.
+// Private remote consumer: audience-bound HMAC assertion, not a browser bearer token.
+// Anyone with this keyring can also mint, so provision a dedicated keyring and treat
+// every verifier as a trusted co-issuer. Do not reuse gateway-routing keys.
 const { assertion } = await issuer.issueSigned(request);
-const verified = remoteIssuer.verifySigned(assertion);
+const remote = createAuthFnPlacementContextVerifier({
+  audiences: ['nucleum-datafn'],
+  publicAuthority: 'https://account.example.com',
+  keyring, // dedicated placement-context keys only
+});
+const verified = remote.verifySigned(assertion);
 ```
 
 The context is frozen and contains:
@@ -68,8 +77,8 @@ The context is frozen and contains:
 | `placementEpoch` | Placement fence. Downstream grants should copy this. |
 | `issuer` | Canonical AuthFn public authority. |
 | `sessionBinding` | HMAC of the AuthFn session or API-key id. |
-| `sessionVersion` | HMAC of the session `tokenHash` or API-key `secretHash`. Changes if the credential is rotated. |
-| `authenticatedAt` | Last authentication time from the regional session record. |
+| `sessionVersion` | HMAC of the credential record `id` and `createdAt`. Stable across last-seen updates; changes when the session or API-key row is replaced. |
+| `authenticatedAt` | Stored last-authentication time (`lastAuthenticatedAt` / `lastUsedAt`, else `createdAt`). Derivation does not refresh this claim. |
 | `issuedAt` / `expiresAt` | Context lifetime. Capped by both `ttlSeconds` and session expiry. |
 | `audience` | Consumer allowlist entry such as `nucleum-datafn`. |
 | `assurance` | AuthFn methods on the session (`password`, `email-otp`, …). |
@@ -85,7 +94,7 @@ Gateway-mode servers can omit `placementDirectory`, `identityKeyForUserId`, and 
 ## Python
 
 ```python
-from authfn import create_placement_context_issuer
+from authfn import create_placement_context_issuer, create_placement_context_verifier
 
 issuer = create_placement_context_issuer(
     config=config,
@@ -99,7 +108,12 @@ issuer = create_placement_context_issuer(
 
 context = await issuer.derive(request)
 issued = await issuer.issue_signed(request)
-verified = issuer.verify_signed(issued["assertion"])
+remote = create_placement_context_verifier(
+    audiences=["nucleum-datafn"],
+    public_authority="https://account.example.com",
+    keyring=keyring,
+)
+verified = remote.verify_signed(issued["assertion"])
 ```
 
 ## Session revocation semantics

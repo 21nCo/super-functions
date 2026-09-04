@@ -104,6 +104,14 @@ Trusted gateway code can derive an immutable, privacy-preserving routing context
 ```ts
 import { createAuthFnPlacementContextIssuer } from "authfn";
 
+const issuer = createAuthFnPlacementContextIssuer({
+  config,
+  placementDirectory,
+  identityKeyForUserId: (userId) => `person:${userId}`,
+  publicAuthority: "https://account.example.com",
+  subjectSecret,
+  audiences: ["nucleum-datafn"],
+});
 const context = await issuer.derive(request);
 ```
 
