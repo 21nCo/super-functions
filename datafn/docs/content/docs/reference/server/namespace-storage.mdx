@@ -1,0 +1,60 @@
+---
+title: "Namespace storage"
+description: "Server APIs that resolve DataFn-owned namespace storage for migration and ownership tooling."
+audience: reference
+applies_to: typescript
+---
+
+See the conceptual guide: [Namespace storage contract](/docs/documentation/namespace-storage).
+
+## resolveNamespaceStoragePlan
+
+```typescript
+function resolveNamespaceStoragePlan(input: {
+  schema: DatafnSchema;
+  catalog: NamespaceStorageCatalog;
+  manifestVersion?: string;
+  schemaVersion?: string;
+}): NamespaceStoragePlan;
+```
+
+Validates the installed PostgreSQL schema against the logical manifest and returns a deterministic plan. Unknown DataFn namespace tables fail closed.
+
+## inspectPostgresNamespaceStorage
+
+```typescript
+function inspectPostgresNamespaceStorage(
+  query: (sql: string) => Promise<readonly { table_name: string; column_name: string }[]>,
+): Promise<NamespaceStorageCatalog>;
+```
+
+Runs DataFn-owned catalog SQL through the provided query callback.
+
+## selectNamespaceStorageEntries
+
+```typescript
+function selectNamespaceStorageEntries(
+  plan: NamespaceStoragePlan,
+  operation: NamespaceStorageOperation,
+): readonly NamespaceStorageEntry[];
+```
+
+`cleanup` is returned in reverse copy order. `drain` currently contains only `permission_directory_outbox`.
+
+## drainNamespaceStorage
+
+```typescript
+function drainNamespaceStorage(input: {
+  adapter: Adapter;
+  plan: NamespaceStoragePlan;
+  namespace: string;
+  runtime: DatafnMultiRegionRuntimeConfig;
+  logger?: DatafnLogger;
+}): Promise<{ processed: number; pending: number }>;
+```
+
+Drains permission-directory outbox rows for one namespace without touching other namespaces.
+
+## composeNamespaceStoragePlan
+
+Adds application-owned relations. DataFn does not claim those tables. Collisions with DataFn relations throw `DATAFN_NAMESPACE_STORAGE_INVALID`.
