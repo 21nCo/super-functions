@@ -54,6 +54,21 @@ suites. Named host data is synthetic and contains no provider credential.
 | Target open or authorization runtime failure | CLI exit 1 |
 | Invalid CLI usage or configuration | CLI exit 2 |
 
+## Client-profile vectors
+
+| Vector | Expected result |
+| --- | --- |
+| No matching profile | Canonical `tools/list` and unenriched `tools/call` |
+| Matching profile hides a required field | Field omitted from the advertised schema and restored from trusted context before validation |
+| Projection without enrichment | Compatibility suite fails |
+| Enrichment without omitted required fields | Compatibility suite fails |
+| Model-provided server-owned field | Trusted context overwrites it |
+| Missing trusted context | `MCPFN_TRUSTED_CONTEXT_MISSING` before the handler |
+| Unknown root property | Structured issue includes `rejectedProperty`, instance path, schema path, and `additionalProperties` |
+| Stale effective-catalog snapshot | Compatibility suite fails with a catalog diff |
+| Initialize `clientInfo` spoofing a profile id | Ignored; verified identity remains authoritative |
+| Report arguments, tokens, and authorization headers | Redacted |
+
 ## Named provider-shaped fixtures
 
 The ChatGPT fixture uses a pre-registered client identifier and the configured

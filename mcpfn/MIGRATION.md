@@ -42,6 +42,14 @@ account linking are separate boundaries.
 
 Set `clientRequirements` for roots, sampling, or elicitation used by handlers. Add extension declarations for MCP Apps, then check the manifest against the intended host profile in CI. This turns a host capability mismatch into a pre-release failure instead of a runtime surprise.
 
+## 8. Add client profiles only for verified identities
+
+If an authenticated client must omit server-owned fields from the model-visible
+schema, declare a versioned client profile with matching catalog projection
+and trusted enrichment. Keep product identifiers and tenancy policy in the
+application. Run `mcpfn test-profiles` beside `mcpfn test` and `mcpfn conformance`;
+do not replace protocol conformance or semantic scenarios with profile receipts.
+
 ## Existing Superfunctions migrations
 
 LangFn, MemoryFn, and ProbeFn migrations are outside this release. Their existing

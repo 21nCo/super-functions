@@ -92,7 +92,40 @@ const server = createMcpFnServer({
 
 Do not accept workspace, tenant, actor, or credential identifiers as tool arguments. The context factory receives the official SDK request metadata and runs before every tool call.
 
-Invalid input returns `MCPFN_INVALID_ARGUMENTS`; invalid declared output returns `MCPFN_INVALID_OUTPUT`; other handler failures return `MCPFN_TOOL_ERROR`. Error objects that already expose a string `code` keep it. `handleInvalidArguments` is available for existing domain packages that must map schema failures into a stable legacy envelope.
+## Client profiles
+
+When a verified client must see a different tool catalog than the canonical
+manifest, declare a profile on the server runtime. Identity comes from
+`resolveVerifiedIdentity`, never from initialize `clientInfo`. Hide
+server-owned fields with `omitToolInputFields` and restore them with
+`applyTrustedArguments` so canonical validation still runs on the execution
+schema.
+
+```ts
+import { omitToolInputFields, applyTrustedArguments } from "@mcpfn/core";
+
+const server = createMcpFnServer({
+  info: { name: "example", version: "1.0.0" },
+  registry,
+  context: (extra) => resolvePrincipal(extra.authInfo),
+  resolveVerifiedIdentity: (_extra, context) => ({ id: context.clientProfileId }),
+  clientProfiles: [{
+    id: "hosted",
+    version: "1",
+    projectCatalog: async (tools) =>
+      tools.map((tool) => omitToolInputFields(tool, ["workspaceId"])),
+    enrichCallArguments: async (_name, args, request) =>
+      applyTrustedArguments(args, { workspaceId: request.context.workspaceId }, ["workspaceId"]),
+  }],
+});
+```
+
+Generic clients keep canonical schemas when no profile matches. Invalid input
+issues include `path`, `schemaPath`, `keyword`, and `rejectedProperty` when
+Ajv rejects an additional property. Those fields are structural; argument
+values are not recorded.
+
+Invalid input returns `MCPFN_INVALID_ARGUMENTS`; invalid declared output returns `MCPFN_INVALID_OUTPUT`; missing trusted profile context returns `MCPFN_TRUSTED_CONTEXT_MISSING`; other handler failures return `MCPFN_TOOL_ERROR`. Error objects that already expose a string `code` keep it. `handleInvalidArguments` is available for existing domain packages that must map schema failures into a stable legacy envelope.
 
 When a tool declares a success `outputSchema`, error details remain in its JSON text content and `structuredContent` is omitted so the official SDK does not validate an error envelope against the success schema. Tools without an output schema retain both structured and text error envelopes.
 

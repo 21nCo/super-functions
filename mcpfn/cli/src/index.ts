@@ -23,11 +23,12 @@ import {
   runMcpFnTargetSuite,
   runScenarios,
   createMcpFnScenarioReport,
+  runClientProfileCompatibilitySuite,
 } from "@mcpfn/testing";
 
-import { loadManifestSource, loadScenarios } from "./load.js";
+import { loadClientProfileSuite, loadManifestSource, loadScenarios } from "./load.js";
 
-export { loadManifestSource, loadScenarios };
+export { loadManifestSource, loadScenarios, loadClientProfileSuite };
 
 export interface CliRunOptions {
   cwd?: string;
@@ -207,6 +208,39 @@ export async function runCli(
       } finally {
         await inspector.close();
       }
+    });
+
+  cli.command("test-profiles <server> <suite>", "Run deterministic client-profile compatibility checks")
+    .option("--output <path>", "Write a JSON report")
+    .option("--name <name>", "Server name when source exports a registry")
+    .option("--version <version>", "Server version when source exports a registry")
+    .option("--max-report-bytes <bytes>", "Maximum aggregate JSON report size")
+    .action(async (serverPath: string, suitePath: string, options: {
+      output?: string;
+      name?: string;
+      version?: string;
+      maxReportBytes?: string;
+    }) => {
+      const info = options.name && options.version
+        ? { name: options.name, version: options.version }
+        : undefined;
+      const loaded = await loadClientProfileSuite(serverPath, suitePath, cwd, info);
+      const outputMaxBytes = parsePositiveInteger(options.maxReportBytes, "--max-report-bytes");
+      if (outputMaxBytes !== undefined && outputMaxBytes < 1_024) {
+        throw new Error("--max-report-bytes must be an integer of at least 1024");
+      }
+      const report = await runClientProfileCompatibilitySuite({
+        registry: loaded.registry,
+        info: loaded.info,
+        ...loaded.suite,
+        maxReportBytes: outputMaxBytes ?? loaded.suite.maxReportBytes,
+      });
+      const serialized = `${JSON.stringify(report, null, 2)}\n`;
+      if (options.output) {
+        await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+      }
+      stdout(serialized);
+      if (!report.ok || report.status === "incomplete") exitCode = 1;
     });
 
   cli.command("test-target <target> <scenarios>", "Run scenarios against an HTTP or stdio MCP target")

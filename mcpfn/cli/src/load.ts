@@ -4,13 +4,19 @@ import { createJiti } from "jiti";
 import {
   createManifest,
   validateManifest,
+  type McpFnClientProfile,
   type McpFnManifest,
   type McpFnRegistry,
   type McpFnServer,
   type McpFnServerInfo,
   type McpFnServerRuntimeOptions,
 } from "@mcpfn/core";
-import { validateMcpFnScenarios, type McpFnScenario } from "@mcpfn/testing";
+import {
+  validateMcpFnScenarios,
+  type McpFnClientProfileCase,
+  type McpFnScenario,
+  type RunClientProfileCompatibilitySuiteOptions,
+} from "@mcpfn/testing";
 
 async function loadModule(file: string, cwd: string): Promise<unknown> {
   const resolved = path.isAbsolute(file) ? file : path.resolve(cwd, file);
@@ -95,4 +101,73 @@ export async function loadScenarios(
 ): Promise<McpFnScenario[]> {
   const value = await loadModule(file, cwd);
   return validateMcpFnScenarios(value) as McpFnScenario[];
+}
+
+export interface LoadedClientProfileSuite {
+  registry: McpFnRegistry<unknown>;
+  info: McpFnServerInfo;
+  suite: Pick<
+    RunClientProfileCompatibilitySuiteOptions<unknown>,
+    "profiles" | "cases" | "includeGeneric" | "genericContext" | "maxReportBytes"
+  >;
+}
+
+export async function loadClientProfileSuite(
+  serverPath: string,
+  suitePath: string,
+  cwd = process.cwd(),
+  info?: McpFnServerInfo,
+): Promise<LoadedClientProfileSuite> {
+  const serverValue = await loadModule(serverPath, cwd);
+  const registryAndInfo = extractRegistry(serverValue, info);
+  const suiteValue = await loadModule(suitePath, cwd);
+  if (!suiteValue || typeof suiteValue !== "object" || Array.isArray(suiteValue)) {
+    throw new Error("A client-profile suite must export an object with cases");
+  }
+  const suite = suiteValue as {
+    profiles?: McpFnClientProfile<unknown>[];
+    cases?: McpFnClientProfileCase<unknown>[];
+    includeGeneric?: boolean;
+    genericContext?: unknown;
+    maxReportBytes?: number;
+  };
+  if (!Array.isArray(suite.cases)) {
+    throw new Error("A client-profile suite must export a cases array");
+  }
+  return {
+    registry: registryAndInfo.registry,
+    info: registryAndInfo.info,
+    suite: {
+      ...(suite.profiles ? { profiles: suite.profiles } : {}),
+      cases: suite.cases,
+      ...(suite.includeGeneric === undefined ? {} : { includeGeneric: suite.includeGeneric }),
+      ...(suite.genericContext === undefined ? {} : { genericContext: suite.genericContext }),
+      ...(suite.maxReportBytes === undefined ? {} : { maxReportBytes: suite.maxReportBytes }),
+    },
+  };
+}
+
+function extractRegistry(
+  value: unknown,
+  info?: McpFnServerInfo,
+): { registry: McpFnRegistry<unknown>; info: McpFnServerInfo } {
+  if (
+    value &&
+    typeof value === "object" &&
+    "registry" in value &&
+    isRegistryExport((value as { registry: unknown }).registry) &&
+    "info" in value &&
+    (value as { info?: McpFnServerInfo }).info?.name &&
+    (value as { info?: McpFnServerInfo }).info?.version
+  ) {
+    return {
+      registry: (value as { registry: McpFnRegistry<unknown> }).registry,
+      info: (value as { info: McpFnServerInfo }).info,
+    };
+  }
+  if (isRegistryExport(value)) {
+    if (!info) throw new Error("A registry source requires --name and --version");
+    return { registry: value, info };
+  }
+  throw new Error("test-profiles requires a McpFn server, declaration, or registry export");
 }

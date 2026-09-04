@@ -27,9 +27,22 @@ import {
   type LoggingMessageNotification,
   type ResourceUpdatedNotification,
   type ServerCapabilities,
+  type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { errorResult } from "./errors.js";
+import { McpFnError, errorResult } from "./errors.js";
+import {
+  MCPFN_GENERIC_CLIENT_PROFILE_ID,
+  attachLifecycle,
+  prepareToolCall,
+  projectCatalogForProfile,
+  resolveClientProfile,
+  type McpFnClientProfile,
+  type McpFnClientProtocolCapabilities,
+  type McpFnResolvedClientProfile,
+  type McpFnVerifiedClientIdentity,
+} from "./client-profile.js";
+import type { McpFnLifecycleStage } from "./validation.js";
 import { assertMcpAppContracts } from "./apps.js";
 import { createManifest, type CreateManifestOptions } from "./manifest.js";
 import type { McpFnRegistry } from "./registry.js";
@@ -65,6 +78,34 @@ export interface McpFnServerOptions<TContext> extends CreateManifestOptions {
   toolVisibility?: (
     input: McpFnToolVisibilityInput<TContext>,
   ) => boolean | Promise<boolean>;
+  /**
+   * Authenticated client-profile contracts. Identity must come from
+   * `resolveVerifiedIdentity`, not initialize `clientInfo`. When omitted,
+   * generic clients receive the canonical catalog and no call enrichment.
+   */
+  clientProfiles?: McpFnClientProfile<TContext>[];
+  /**
+   * Resolve verified client identity from trusted request context.
+   * Self-reported initialize metadata is not an input to this hook.
+   */
+  resolveVerifiedIdentity?: (
+    extra: McpFnRequestExtra,
+    context: TContext,
+  ) =>
+    | McpFnVerifiedClientIdentity
+    | undefined
+    | Promise<McpFnVerifiedClientIdentity | undefined>;
+  /**
+   * Optional protocol capability snapshot for projectors and enrichers.
+   * Informational only; never used to select a trusted profile.
+   */
+  resolveProtocolCapabilities?: (
+    extra: McpFnRequestExtra,
+    context: TContext,
+  ) =>
+    | McpFnClientProtocolCapabilities
+    | undefined
+    | Promise<McpFnClientProtocolCapabilities | undefined>;
   /** Maximum entries returned by each list request. Defaults to 100. */
   pageSize?: number;
   additionalCapabilities?: ServerCapabilities;
@@ -193,6 +234,9 @@ export class McpFnServer<TContext = undefined> {
     extra: McpFnRequestExtra,
   ) => TContext | Promise<TContext>;
   private readonly toolVisibility?: McpFnServerOptions<TContext>["toolVisibility"];
+  private readonly clientProfiles?: McpFnClientProfile<TContext>[];
+  private readonly resolveVerifiedIdentity?: McpFnServerOptions<TContext>["resolveVerifiedIdentity"];
+  private readonly resolveProtocolCapabilities?: McpFnServerOptions<TContext>["resolveProtocolCapabilities"];
   private readonly manifestOptions: CreateManifestOptions;
   private readonly pageSize: number;
   private readonly serverOptions: McpFnServerOptions<TContext>;
@@ -206,6 +250,9 @@ export class McpFnServer<TContext = undefined> {
     assertMcpAppContracts(this.registry);
     this.contextFactory = options.context ?? (() => undefined as TContext);
     this.toolVisibility = options.toolVisibility;
+    this.clientProfiles = options.clientProfiles;
+    this.resolveVerifiedIdentity = options.resolveVerifiedIdentity;
+    this.resolveProtocolCapabilities = options.resolveProtocolCapabilities;
     this.pageSize = options.pageSize ?? 100;
     if (!Number.isInteger(this.pageSize) || this.pageSize < 1) {
       throw new Error("McpFn pageSize must be a positive integer");
@@ -254,11 +301,9 @@ export class McpFnServer<TContext = undefined> {
   private installHandlers(): void {
     if (this.capabilities.tools) {
       this.protocol.setRequestHandler(ListToolsRequestSchema, async (request, extra) => {
-        const tools = this.registry.listTools();
-        const visibleTools = this.toolVisibility
-          ? await this.filterVisibleTools(tools, await this.contextFactory(extra), extra)
-          : tools;
-        const result = page(visibleTools, request.params?.cursor, this.pageSize);
+        const context = await this.contextFactory(extra);
+        const tools = await this.listEffectiveTools(context, extra);
+        const result = page(tools, request.params?.cursor, this.pageSize);
         return { tools: result.values, ...(result.nextCursor ? { nextCursor: result.nextCursor } : {}) };
       });
       this.protocol.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
@@ -266,6 +311,16 @@ export class McpFnServer<TContext = undefined> {
         const listedTool = this.registry.listTools().find((tool) => tool.name === request.params.name);
         if (!listedTool || (this.toolVisibility
           && !(await this.toolVisibility({ tool: listedTool, context, extra })))) {
+          throw new McpError(ErrorCode.MethodNotFound, `Tool ${request.params.name} not found`);
+        }
+        let resolution: McpFnResolvedClientProfile<TContext>;
+        try {
+          resolution = await this.resolveRequestProfile(context, extra);
+        } catch (error) {
+          return this.toolErrorResult(error, request.params.name);
+        }
+        const projected = await this.projectVisibleTools(context, extra, resolution);
+        if (!projected.some((tool) => tool.name === request.params.name)) {
           throw new McpError(ErrorCode.MethodNotFound, `Tool ${request.params.name} not found`);
         }
         const taskSupport = this.registry.taskSupport(request.params.name);
@@ -283,26 +338,40 @@ export class McpFnServer<TContext = undefined> {
           );
         }
         try {
+          const prepared = await prepareToolCall({
+            toolName: request.params.name,
+            arguments: request.params.arguments,
+            profile: resolution.profile,
+            identity: resolution.identity,
+            protocolCapabilities: resolution.protocolCapabilities,
+            context,
+            extra,
+          });
           if (isTaskRequest) {
             if (!extra.taskStore) throw new Error("No task store is available");
             return await this.registry.createToolTask(
               request.params.name,
-              request.params.arguments,
+              prepared.arguments,
               context,
               extra as McpFnTaskRequestExtra,
             );
           }
-          return await this.registry.callTool(
+          return await this.withValidationLifecycle(
+            () => this.registry.callTool(
+              request.params.name,
+              prepared.arguments,
+              context,
+              extra,
+            ),
+            resolution,
             request.params.name,
-            request.params.arguments,
-            context,
-            extra,
           );
         } catch (error) {
           if (isTaskRequest) throw error;
-          return errorResult(error, {
-            includeStructuredContent: !this.registry.hasOutputSchema(request.params.name),
-          });
+          return this.toolErrorResult(
+            this.withLifecycle(error, resolution, request.params.name, "call_enrichment"),
+            request.params.name,
+          );
         }
       });
     }
@@ -391,6 +460,108 @@ export class McpFnServer<TContext = undefined> {
     const decisions = await Promise.all(tools.map((tool) =>
       this.toolVisibility!({ tool, context, extra })));
     return tools.filter((_, index) => decisions[index]);
+  }
+
+  private async listEffectiveTools(
+    context: TContext,
+    extra: McpFnRequestExtra,
+  ): Promise<McpFnListedTool[]> {
+    const resolution = await this.resolveRequestProfile(context, extra);
+    return this.projectVisibleTools(context, extra, resolution);
+  }
+
+  private async projectVisibleTools(
+    context: TContext,
+    extra: McpFnRequestExtra,
+    resolution: McpFnResolvedClientProfile<TContext>,
+  ): Promise<McpFnListedTool[]> {
+    const tools = this.registry.listTools();
+    const visible = this.toolVisibility
+      ? await this.filterVisibleTools(tools, context, extra)
+      : tools;
+    return projectCatalogForProfile(visible, resolution, extra, context);
+  }
+
+  private async resolveRequestProfile(
+    context: TContext,
+    extra: McpFnRequestExtra,
+  ): Promise<McpFnResolvedClientProfile<TContext>> {
+    const identity = (await this.resolveVerifiedIdentity?.(extra, context)) ?? {
+      id: MCPFN_GENERIC_CLIENT_PROFILE_ID,
+    };
+    const profile = resolveClientProfile(this.clientProfiles, identity, context);
+    const protocolCapabilities = (await this.resolveProtocolCapabilities?.(extra, context))
+      ?? this.sessionProtocolCapabilities();
+    return { profile, identity, protocolCapabilities };
+  }
+
+  private sessionProtocolCapabilities(): McpFnClientProtocolCapabilities | undefined {
+    const capabilities = this.protocol.getClientCapabilities?.();
+    if (!capabilities) return undefined;
+    const elicitation = capabilities.elicitation && typeof capabilities.elicitation === "object"
+      ? (
+        [
+          ...("form" in capabilities.elicitation ? ["form"] as const : []),
+          ...("url" in capabilities.elicitation ? ["url"] as const : []),
+        ]
+      )
+      : undefined;
+    return {
+      sampling: Boolean(capabilities.sampling),
+      ...(elicitation?.length ? { elicitation } : {}),
+      roots: Boolean(capabilities.roots),
+    };
+  }
+
+  private async withValidationLifecycle(
+    invoke: () => Promise<CallToolResult> | CallToolResult,
+    resolution: McpFnResolvedClientProfile<TContext>,
+    toolName: string,
+  ): Promise<CallToolResult> {
+    try {
+      return await invoke();
+    } catch (error) {
+      throw this.withLifecycle(error, resolution, toolName, "input_validation");
+    }
+  }
+
+  private withLifecycle(
+    error: unknown,
+    resolution: McpFnResolvedClientProfile<TContext>,
+    toolName: string,
+    fallbackStage: McpFnLifecycleStage,
+  ): unknown {
+    if (!(error instanceof McpFnError)) return error;
+    const attachable = new Set([
+      "MCPFN_INVALID_ARGUMENTS",
+      "MCPFN_INVALID_OUTPUT",
+      "MCPFN_TRUSTED_CONTEXT_MISSING",
+      "MCPFN_PROFILE_RESOLUTION",
+      "MCPFN_PROFILE_VERSION_MISMATCH",
+      "MCPFN_CATALOG_PROJECTION",
+      "MCPFN_CALL_ENRICHMENT",
+    ]);
+    if (!attachable.has(error.code)) return error;
+    const existing = error.details && typeof error.details === "object" && !Array.isArray(error.details)
+      ? (error.details as { lifecycle?: { stage?: string } }).lifecycle
+      : undefined;
+    const stage: McpFnLifecycleStage = error.code === "MCPFN_INVALID_OUTPUT"
+      ? "output_validation"
+      : error.code === "MCPFN_INVALID_ARGUMENTS"
+        ? "input_validation"
+        : (existing?.stage as McpFnLifecycleStage | undefined) ?? fallbackStage;
+    return attachLifecycle(error, {
+      stage,
+      profileId: resolution.profile.id,
+      profileVersion: resolution.profile.version,
+      tool: toolName,
+    });
+  }
+
+  private toolErrorResult(error: unknown, toolName: string) {
+    return errorResult(error, {
+      includeStructuredContent: !this.registry.hasOutputSchema(toolName),
+    });
   }
 
   manifest(): McpFnManifest {

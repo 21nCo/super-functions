@@ -6,13 +6,13 @@ McpFn is the Superfunctions layer for building and keeping Model Context Protoco
 
 | Package | Purpose |
 | --- | --- |
-| `@mcpfn/core` | Official-SDK runtime, tools/resources/prompts/tasks, client-mediated features, MCP Apps contracts, manifests, and compatibility diffing |
+| `@mcpfn/core` | Official-SDK runtime, tools/resources/prompts/tasks, client-mediated features, MCP Apps contracts, manifests, client-profile catalogs, and compatibility diffing |
 | `@mcpfn/client` | Production stdio/Streamable HTTP targets, lifecycle-safe sessions, complete inventories, tasks, OAuth callback completion, and redacted phase diagnostics |
 | `@mcpfn/auth` | OAuth client persistence and callback policy, discovery diagnostics, hosted authorization compatibility, RFC 9728 resource protection, and generic auth-provider composition |
-| `@mcpfn/testing` | The production client exposed as a fixture, auth regression matrices, named host-shaped OAuth fixtures, local/external target suites, scenarios, Playwright, and conformance orchestration |
+| `@mcpfn/testing` | The production client exposed as a fixture, auth regression matrices, named host-shaped OAuth fixtures, client-profile compatibility, local/external target suites, scenarios, Playwright, and conformance orchestration |
 | `@mcpfn/inspector` | Headless inventory, capability execution, redacted timelines, and sanitized scenario export over the production client |
 | `@mcpfn/datafn` | Deny-by-default generation of bounded MCP tools from a DataFn server executor |
-| `@mcpfn/cli` | Contract, local/remote target testing, inspection, authorization discovery diagnostics, and official conformance commands with stable CI exit codes |
+| `@mcpfn/cli` | Contract, local/remote target testing, client-profile compatibility, inspection, authorization discovery diagnostics, and official conformance commands with stable CI exit codes |
 
 All client-side surfaces share `@mcpfn/client`; tests, the inspector, and CLI do
 not carry private transport or protocol implementations. McpFn's inspector is
@@ -79,13 +79,14 @@ mcpfn manifest ./src/mcp/server.ts --output ./mcpfn.manifest.json
 mcpfn validate ./mcpfn.manifest.json
 mcpfn diff ./mcpfn.manifest.json ./candidate.manifest.json --fail-on-behavioral
 mcpfn test ./src/mcp/server.ts ./tests/mcp.scenarios.ts --output ./mcpfn-report.json
+mcpfn test-profiles ./src/mcp/server.ts ./tests/mcp.profiles.ts --output ./mcpfn-profiles.json
 mcpfn test-target https://api.example.com/mcp ./tests/mcp.scenarios.ts
 mcpfn inspect https://api.example.com/mcp --output ./mcpfn-inspection.json
 mcpfn auth-diagnose https://api.example.com/mcp
 mcpfn conformance http://127.0.0.1:3000/mcp --suite active
 ```
 
-The manifest catches tool, resource, template, prompt, task, extension, client-requirement, protocol-version, and transport changes. Scenarios catch business behavior. Host profiles expose feature mismatches. The official conformance runner catches wire-protocol behavior. None of those layers substitutes for the others.
+The manifest catches tool, resource, template, prompt, task, extension, client-requirement, protocol-version, and transport changes. Scenarios catch business behavior. Host profiles expose feature mismatches. Client profiles catch authenticated catalog projection, trusted argument enrichment, and schema-diagnostic fidelity. The official conformance runner catches wire-protocol behavior. None of those layers substitutes for the others.
 
 The conformance subcommand pins the reviewed official runner version and requires Node.js 22 or newer. Other McpFn commands support Node.js 18.18 or newer.
 
