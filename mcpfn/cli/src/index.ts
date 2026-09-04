@@ -18,11 +18,15 @@ import { McpFnInspector } from "@mcpfn/inspector";
 import {
   McpFnTestClient,
   McpFnAssertionError,
+  annotateTargetSuiteReportLayers,
   assertManifestContract,
+  authenticatedHttpTarget,
+  createMcpFnJUnitXml,
+  createMcpFnScenarioReport,
+  runAuthenticatedOfficialConformance,
   runOfficialConformance,
   runMcpFnTargetSuite,
   runScenarios,
-  createMcpFnScenarioReport,
 } from "@mcpfn/testing";
 
 import { loadManifestSource, loadScenarios } from "./load.js";
@@ -104,6 +108,7 @@ export async function runCli(
 
   cli.command("test <server> <scenarios>", "Run protocol-level semantic regression scenarios")
     .option("--output <path>", "Write a JSON report")
+    .option("--junit <path>", "Write a JUnit XML report")
     .option("--max-report-bytes <bytes>", "Maximum aggregate JSON report size")
     .option(
       "--visible-tools <names>",
@@ -112,7 +117,7 @@ export async function runCli(
     .action(async (
       serverPath: string,
       scenariosPath: string,
-      options: { output?: string; visibleTools?: string; maxReportBytes?: string },
+      options: { output?: string; junit?: string; visibleTools?: string; maxReportBytes?: string },
     ) => {
       const loaded = await loadManifestSource(serverPath, cwd, undefined, {
         taskStore: new InMemoryTaskStore(),
@@ -146,6 +151,13 @@ export async function runCli(
         if (options.output) {
           await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
         }
+        if (options.junit) {
+          await writeFile(
+            path.resolve(cwd, options.junit),
+            createMcpFnJUnitXml({ name: "mcpfn.test", results: report.results }),
+            "utf8",
+          );
+        }
         stdout(serialized);
         if (report.failed > 0 || report.status === "incomplete") exitCode = 1;
       } finally {
@@ -159,6 +171,7 @@ export async function runCli(
     .option("--expected-failures <path>", "Expected-failures baseline")
     .option("--output-dir <path>", "Directory for official conformance artifacts")
     .option("--spec-version <version>", "MCP specification version")
+    .option("--header <header>", "Inject a request header (repeatable)")
     .option("--verbose", "Show official runner diagnostics")
     .action(async (url: string, options: {
       suite?: "active" | "all" | "pending";
@@ -166,9 +179,11 @@ export async function runCli(
       expectedFailures?: string;
       outputDir?: string;
       specVersion?: string;
+      header?: string | string[];
       verbose?: boolean;
     }) => {
-      const result = await runOfficialConformance({
+      const headers = parseHeaderOptions(options.header);
+      const conformance = {
         url,
         suite: options.suite,
         scenario: options.scenario,
@@ -179,8 +194,11 @@ export async function runCli(
         specVersion: options.specVersion,
         verbose: options.verbose,
         cwd,
-        stdio: "pipe",
-      });
+        stdio: "pipe" as const,
+      };
+      const result = headers
+        ? await runAuthenticatedOfficialConformance({ ...conformance, headers })
+        : await runOfficialConformance(conformance);
       if (result.stdout) stdout(result.stdout);
       if (result.stderr) stderr(result.stderr);
       exitCode = result.exitCode;
@@ -189,10 +207,12 @@ export async function runCli(
   cli.command("inspect <target>", "Inventory an HTTP or stdio MCP target")
     .option("--stdio", "Treat target as an executable instead of an HTTP URL")
     .option("--args <json>", "JSON array of stdio executable arguments")
+    .option("--header <header>", "Inject a request header (repeatable)")
     .option("--output <path>", "Write the redacted JSON snapshot")
     .action(async (targetValue: string, options: {
       stdio?: boolean;
       args?: string;
+      header?: string | string[];
       output?: string;
     }) => {
       const target = parseTarget(targetValue, options, cwd);
@@ -212,19 +232,30 @@ export async function runCli(
   cli.command("test-target <target> <scenarios>", "Run scenarios against an HTTP or stdio MCP target")
     .option("--stdio", "Treat target as an executable instead of an HTTP URL")
     .option("--args <json>", "JSON array of stdio executable arguments")
+    .option("--header <header>", "Inject a request header (repeatable)")
     .option("--output <path>", "Write the JSON report")
+    .option("--junit <path>", "Write a JUnit XML report")
     .action(async (targetValue: string, scenariosPath: string, options: {
       stdio?: boolean;
       args?: string;
+      header?: string | string[];
       output?: string;
+      junit?: string;
     }) => {
-      const report = await runMcpFnTargetSuite({
+      const report = annotateTargetSuiteReportLayers(await runMcpFnTargetSuite({
         target: parseTarget(targetValue, options, cwd),
         scenarios: await loadScenarios(scenariosPath, cwd),
-      });
+      }));
       const serialized = `${JSON.stringify(report, null, 2)}\n`;
       if (options.output) {
         await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+      }
+      if (options.junit) {
+        await writeFile(
+          path.resolve(cwd, options.junit),
+          createMcpFnJUnitXml({ name: "mcpfn.test-target", results: report.results }),
+          "utf8",
+        );
       }
       stdout(serialized);
       if (!report.ok) exitCode = 1;
@@ -275,14 +306,36 @@ function parsePositiveInteger(value: string | undefined, name: string): number |
   return parsed;
 }
 
+function parseHeaderOptions(value: string | string[] | undefined): Headers | undefined {
+  const items = value === undefined ? [] : Array.isArray(value) ? value : [value];
+  if (items.length === 0) return undefined;
+  const headers = new Headers();
+  for (const item of items) {
+    const separator = item.indexOf(":");
+    if (separator <= 0) {
+      throw new Error('Each --header value must be "Name: value"');
+    }
+    const name = item.slice(0, separator).trim();
+    const headerValue = item.slice(separator + 1).trim();
+    if (!name) throw new Error('Each --header value must be "Name: value"');
+    headers.append(name, headerValue);
+  }
+  return headers;
+}
+
 function parseTarget(
   targetValue: string,
-  options: { stdio?: boolean; args?: string },
+  options: { stdio?: boolean; args?: string; header?: string | string[] },
   cwd: string,
 ): McpFnTarget {
+  const headers = parseHeaderOptions(options.header);
   if (!options.stdio) {
     if (options.args) throw new Error("--args requires --stdio");
+    if (headers) return authenticatedHttpTarget(targetValue, { headers });
     return streamableHttpTarget(targetValue);
+  }
+  if (headers) {
+    throw new Error("--header requires an HTTP target");
   }
   let args: string[] | undefined;
   if (options.args) {
