@@ -25,7 +25,7 @@ interface AuthFnErrorEnvelope {
 ## All error codes
 
 | Code | HTTP | Retryable | Meaning |
-| --- | --- | --- |
+| --- | --- | --- | --- |
 | `AUTHFN_2FA_INVALID_CODE` | 400 | no | TOTP code or recovery code is wrong. |
 | `AUTHFN_2FA_REQUIRED` | 401 | no | Sign-in succeeded for the primary method, but 2FA must complete before a session is issued. The response carries a challenge id for the follow-up call. |
 | `AUTHFN_ADMIN_AMBIGUOUS_USER` | 409 | no | An admin lookup matched multiple users. |
