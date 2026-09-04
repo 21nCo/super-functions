@@ -21,7 +21,9 @@ if TYPE_CHECKING:
     from .placement_context import (
         PlacementBoundAuthContext,
         PlacementContextIssuer,
+        PlacementContextVerifier,
         create_placement_context_issuer,
+        create_placement_context_verifier,
     )
 
 __all__ = [
@@ -57,7 +59,9 @@ __all__ = [
     "move_identity_placement",
     "PlacementBoundAuthContext",
     "PlacementContextIssuer",
+    "PlacementContextVerifier",
     "create_placement_context_issuer",
+    "create_placement_context_verifier",
 ]
 
 
@@ -111,12 +115,16 @@ def __getattr__(name: str) -> object:
         "move_identity_placement",
         "PlacementBoundAuthContext",
         "PlacementContextIssuer",
+        "PlacementContextVerifier",
         "create_placement_context_issuer",
+        "create_placement_context_verifier",
     }:
         if name in {
             "PlacementBoundAuthContext",
             "PlacementContextIssuer",
+            "PlacementContextVerifier",
             "create_placement_context_issuer",
+            "create_placement_context_verifier",
         }:
             from . import placement_context
 

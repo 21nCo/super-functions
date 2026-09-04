@@ -32,7 +32,9 @@ from .plugins.multi_region import (
 from .plugins.placement_context import (
     PlacementBoundAuthContext,
     PlacementContextIssuer,
+    PlacementContextVerifier,
     create_placement_context_issuer,
+    create_placement_context_verifier,
 )
 from .plugins.social_oauth import (
     SocialOAuthPluginConfig,
@@ -136,7 +138,9 @@ __all__ = [
     "move_identity_placement",
     "PlacementBoundAuthContext",
     "PlacementContextIssuer",
+    "PlacementContextVerifier",
     "create_placement_context_issuer",
+    "create_placement_context_verifier",
     "SocialOAuthPluginConfig",
     "SocialOAuthService",
     "SocialProviderConfig",
