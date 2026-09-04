@@ -533,6 +533,26 @@ def test_rejects_idna_joiner_labels_like_whatwg_origin() -> None:
         _normalize_authority("https://a\u200cb.example")
 
 
+def test_omits_default_ports_for_special_schemes() -> None:
+    assert _normalize_authority("ftp://example.com:21") == "ftp://example.com"
+    assert _normalize_authority("ws://example.com:80") == "ws://example.com"
+    assert _normalize_authority("wss://example.com:443") == "wss://example.com"
+    assert _normalize_authority("ftp://example.com:2121") == "ftp://example.com:2121"
+    assert _normalize_authority("ws://example.com:8080") == "ws://example.com:8080"
+    assert _normalize_authority("wss://example.com:8443") == "wss://example.com:8443"
+
+
+def test_rejects_opaque_url_origins() -> None:
+    with pytest.raises(ConfigError):
+        _normalize_authority("file://auth.example")
+    with pytest.raises(ConfigError):
+        _normalize_authority("mailto:auth@example.com")
+    with pytest.raises(ConfigError):
+        _normalize_authority("data:text/plain,hello")
+    with pytest.raises(ConfigError):
+        _normalize_authority("custom://example.com")
+
+
 def test_canonicalizes_ipv4_authorities_like_whatwg_origin() -> None:
     assert _normalize_authority("https://127.1") == "https://127.0.0.1"
     assert _normalize_authority("https://0x") == "https://0.0.0.0"
