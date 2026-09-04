@@ -5,6 +5,7 @@ import { authFnMultiRegionEnvironment, authFnMultiRegionPlugin } from '@authfn/m
 import type { AuthFnEventInput, AuthFnRuntimeConfig } from '../index.js';
 import {
   AuthFnApiKeyRevokedError,
+  AuthFnConfigError,
   AuthFnPlacementContextInvalidError,
   AuthFnPlacementDirectoryUnavailableError,
   AuthFnPlacementMovingError,
@@ -445,6 +446,25 @@ describe('AuthFn placement-bound auth context', () => {
     expect(bearerContext.authenticatedAt).toBe(authenticatedAt.toISOString());
     expect(again.authenticatedAt).toBe(authenticatedAt.toISOString());
     expect(again.sessionVersion).toBe(cookieContext.sessionVersion);
+  });
+
+  it('rejects opaque publicAuthority origins', async () => {
+    const setup = await setupIssuer();
+    const options = {
+      config: setup.config,
+      subjectSecret: SUBJECT_SECRET,
+      audiences: ['nucleum-datafn'] as const,
+      placementDirectory: setup.directory,
+      identityKeyForUserId: (userId: string) => `person:${userId}`
+    };
+    expect(() => createAuthFnPlacementContextIssuer({
+      ...options,
+      publicAuthority: 'file://auth.example'
+    })).toThrow(AuthFnConfigError);
+    expect(() => createAuthFnPlacementContextIssuer({
+      ...options,
+      publicAuthority: 'mailto:auth@example.com'
+    })).toThrow(AuthFnConfigError);
   });
 
   it('keeps API-key sessionVersion stable across reuse', async () => {
