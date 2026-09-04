@@ -41,3 +41,22 @@ from .types import (
     UnauthorizedError,
     ValidationError,
 )
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _coerce_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7
+DEFAULT_CSRF_MAX_AGE_SECONDS = DEFAULT_SESSION_MAX_AGE_SECONDS
+PASSWORD_HASH_ALGO = "scrypt"
+PASSWORD_HASH_N = 16384
+PASSWORD_HASH_R = 8
+PASSWORD_HASH_P = 1
+PASSWORD_HASH_KEY_LENGTH = 64
+MIN_PASSWORD_LENGTH = 12
