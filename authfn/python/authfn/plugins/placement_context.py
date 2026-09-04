@@ -874,9 +874,9 @@ def _whatwg_special_scheme_authority(authority: str) -> str:
     scheme, separator, rest = authority.partition(":")
     if not separator or scheme.lower() not in {"http", "https"}:
         return authority
-    # WHATWG special-scheme: `\\` is `/`, and one or more leading slashes
-    # enter the authority state. `https:host` and `https:/host` therefore
-    # match TypeScript `new URL(authority).origin`.
+    # WHATWG special-scheme: backslash is a path separator, and one or more
+    # leading slashes enter the authority state. `https:host` and `https:/host`
+    # therefore match TypeScript `new URL(authority).origin`.
     rest = rest.replace("\\", "/").lstrip("/")
     return f"{scheme}://{rest}"
 
