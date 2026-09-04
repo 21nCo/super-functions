@@ -40,7 +40,8 @@ from authfn import (
     create_placement_context_issuer,
     create_placement_context_verifier,
 )
-from authfn.http import issue_session, revoke_session_by_id
+from authfn.http import _hash_secret, issue_session, revoke_session_by_id
+from authfn.observability import resolve_request_id
 
 from .support import InMemoryDatabaseAdapter, TestRequest
 
@@ -350,6 +351,38 @@ async def test_normalizes_default_https_port_like_typescript_origin() -> None:
 
 
 @pytest.mark.asyncio
+async def test_reuses_original_request_correlation_id() -> None:
+    setup = await _setup()
+    context = await setup.issuer.derive(setup.request)
+    assert context.request_id == resolve_request_id(setup.request)
+
+
+@pytest.mark.asyncio
+async def test_accepts_lowercase_authorization_scheme() -> None:
+    setup = await _setup()
+    await setup.config.database.create(
+        model="api_keys",
+        data={
+            "id": "key_lower",
+            "secretHash": _hash_secret("secret_lower"),
+            "userId": setup.user["id"],
+            "name": "lower",
+            "createdAt": datetime(2026, 9, 1, tzinfo=timezone.utc),
+            "updatedAt": datetime(2026, 9, 1, tzinfo=timezone.utc),
+        },
+        namespace="authfn",
+    )
+    request = TestRequest(
+        "GET",
+        "https://account.example.com/auth/session",
+        headers={"authorization": "bearer secret_lower"},
+    )
+    context = await setup.issuer.derive(request)
+    assert context.actor_type == "api-key"
+    assert context.home_region == "us-east-1"
+
+
+@pytest.mark.asyncio
 async def test_awaits_async_identity_key_resolver() -> None:
     async def resolve(user_id: str) -> str:
         return f"person:{user_id}"
@@ -372,7 +405,7 @@ def test_rejects_fractional_and_boolean_ttl() -> None:
         "public_authority": "https://account.example.com",
         "placement_directory": directory,
         "identity_key_for_user_id": lambda user_id: f"person:{user_id}",
-    }
+    )
     with pytest.raises(ConfigError):
         create_placement_context_issuer(**kwargs, ttl_seconds=1.5)
     with pytest.raises(ConfigError):
