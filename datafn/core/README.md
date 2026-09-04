@@ -17,6 +17,7 @@ npm install @datafn/core
 - **Envelope Pattern** — Structured `ok | error` result types with helper functions
 - **KV Utilities** — Built-in key-value resource helpers (`ensureBuiltinKv`, `kvId`)
 - **Error Codes** — Enumerated error codes for consistent error handling
+- **Structural Resource Selectors** — Parse request envelopes and collect protocol-level resource selectors for routing and authorization
 
 ---
 
@@ -352,6 +353,22 @@ type DfqlTransact = {
   steps: Array<{ query?: DfqlQuery; mutation?: DfqlMutation }>;
 };
 ```
+
+### Structural resource selectors
+
+Gateways and authorization plugins must not recursively inspect request JSON for fields named `resource` or `resources`. Application records and filters may legitimately use those names.
+
+```typescript
+import { extractStructuralResourceSelectors } from "@datafn/core";
+
+const extracted = extractStructuralResourceSelectors("query", payload);
+if (extracted.ok) {
+  extracted.result.selectors; // protocol-level resources only
+  extracted.result.protocolVersion; // "1"
+}
+```
+
+`parseDatafnRequest` plus `collectStructuralResourceSelectors` is the composable form. Unsupported `protocolVersion` values return `DATAFN_UNSUPPORTED_PROTOCOL_VERSION`.
 
 ### Sort & Cursor
 
