@@ -7,6 +7,7 @@ import base64
 import hashlib
 import hmac
 import inspect
+import ipaddress
 import json
 import secrets
 import time
@@ -47,6 +48,7 @@ MAX_TTL_SECONDS = 300
 AUTH_REQUIRED = "Authentication required"
 SESSION_EXPIRED = "Session expired"
 SESSION_REVOKED = "Session revoked"
+INVALID_AUTHORITY = "AuthFn publicAuthority must be a valid origin"
 
 
 @dataclass(frozen=True)
@@ -725,16 +727,19 @@ def _secret_bytes(secret: bytes | str) -> bytes:
 
 def _canonical_hostname(hostname: str) -> str:
     if ":" in hostname:
-        return hostname.lower()
+        try:
+            return str(ipaddress.IPv6Address(hostname))
+        except ipaddress.AddressValueError as error:
+            raise ConfigError(INVALID_AUTHORITY) from error
     try:
         ascii_host = idna.encode(hostname, uts46=True, transitional=False).decode("ascii")
     except idna.IDNAError as error:
-        raise ConfigError("AuthFn publicAuthority must be a valid origin") from error
+        raise ConfigError(INVALID_AUTHORITY) from error
     if not _ends_in_ipv4_number(ascii_host):
         return ascii_host
     ipv4 = _parse_ipv4_hostname(ascii_host)
     if ipv4 is None:
-        raise ConfigError("AuthFn publicAuthority must be a valid origin")
+        raise ConfigError(INVALID_AUTHORITY)
     return ipv4
 
 
@@ -791,7 +796,7 @@ def _parse_ipv4_number(part: str) -> Optional[int]:
 def _normalize_authority(authority: str) -> str:
     parsed = urlparse(authority)
     if not parsed.scheme or not parsed.hostname:
-        raise ConfigError("AuthFn publicAuthority must be a valid origin")
+        raise ConfigError(INVALID_AUTHORITY)
     scheme = parsed.scheme.lower()
     hostname = _canonical_hostname(parsed.hostname)
     if ":" in hostname and not hostname.startswith("["):
