@@ -69,7 +69,7 @@ authfn assumes:
 ## Cookie attribute matrix
 
 | Use case | Domain | SameSite | Secure | HttpOnly |
-| --- | --- | --- |
+| --- | --- | --- | --- | --- |
 | Single-host SPA | unset | Lax | true | session: true; csrf: false |
 | Subdomain-shared session (`app.example.com` + `api.example.com`) | `.example.com` | Lax | true | as above |
 | OAuth on a different parent domain | scope as tight as possible | Lax | true | as above |
