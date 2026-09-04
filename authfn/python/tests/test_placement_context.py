@@ -368,6 +368,7 @@ async def test_accepts_lowercase_authorization_scheme() -> None:
             "secretHash": _hash_secret("secret_lower"),
             "userId": setup.user["id"],
             "name": "lower",
+            "scopes": [],
             "createdAt": datetime(2026, 9, 1, tzinfo=timezone.utc),
             "updatedAt": datetime(2026, 9, 1, tzinfo=timezone.utc),
         },
@@ -381,6 +382,12 @@ async def test_accepts_lowercase_authorization_scheme() -> None:
     context = await setup.issuer.derive(request)
     assert context.actor_type == "api-key"
     assert context.home_region == "us-east-1"
+    assert context.scopes == ()
+    signed = await setup.issuer.issue_signed(request)
+    encoded = signed["assertion"].split(".", 1)[0]
+    padding = "=" * ((4 - len(encoded) % 4) % 4)
+    payload = json.loads(base64.urlsafe_b64decode(encoded + padding))
+    assert payload["scopes"] == []
 
 
 @pytest.mark.asyncio
@@ -411,6 +418,19 @@ async def test_canonicalizes_idn_authority_to_punycode() -> None:
     assert context.issuer == "https://xn--mnich-kva.example"
     assert _normalize_authority("https://faß.de") == "https://xn--fa-hia.de"
     assert _normalize_authority("https://xn--fa-hia.de") == "https://xn--fa-hia.de"
+
+
+def test_canonicalizes_ipv4_authorities_like_whatwg_origin() -> None:
+    assert _normalize_authority("https://127.1") == "https://127.0.0.1"
+    assert _normalize_authority("https://0x7f.1") == "https://127.0.0.1"
+    assert _normalize_authority("https://0177.0.0.1") == "https://127.0.0.1"
+    assert _normalize_authority("https://2130706433") == "https://127.0.0.1"
+    assert _normalize_authority("https://127.1:8443") == "https://127.0.0.1:8443"
+    assert _normalize_authority("http://127.1:80") == "http://127.0.0.1"
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://08.0.0.1")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://hello.1")
 
 
 def test_canonicalizes_timestamps_like_javascript_to_iso_string() -> None:
