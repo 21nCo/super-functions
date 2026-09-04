@@ -42,7 +42,12 @@ from authfn import (
 )
 from authfn.http import _hash_secret, issue_session, revoke_session_by_id
 from authfn.observability import resolve_request_id
-from authfn.plugins.placement_context import _credential_expired, _isoformat, _normalize_authority
+from authfn.plugins.placement_context import (
+    _credential_expired,
+    _isoformat,
+    _normalize_authority,
+    _telemetry_hash,
+)
 
 from .support import InMemoryDatabaseAdapter, TestRequest
 
@@ -332,7 +337,7 @@ async def test_uses_stored_authentication_time_for_cookie_and_bearer() -> None:
 async def test_emits_configured_observability_events() -> None:
     events: List[Any] = []
     setup = await _setup(on_event=events.append)
-    await setup.issuer.derive(setup.request)
+    context = await setup.issuer.derive(setup.request)
     types = [getattr(event, "type", None) or event.get("type") for event in events]
     assert "authfn.placement_context.issued" in types
     issued = next(
@@ -342,6 +347,12 @@ async def test_emits_configured_observability_events() -> None:
     )
     issued_metadata = getattr(issued, "metadata", None) or issued.get("metadata")
     assert issued_metadata["actorType"] == "user"
+    assert (getattr(issued, "actorId", None) or issued.get("actorId")) == _telemetry_hash(
+        context.subject
+    )
+    assert (getattr(issued, "actorId", None) or issued.get("actorId")) == _telemetry_hash(
+        context.subject
+    )
     with pytest.raises(ValidationError):
         await setup.issuer.derive(setup.request, audience="other-service")
     types = [getattr(event, "type", None) or event.get("type") for event in events]
@@ -404,6 +415,52 @@ async def test_accepts_lowercase_authorization_scheme() -> None:
     padding = "=" * ((4 - len(encoded) % 4) % 4)
     payload = json.loads(base64.urlsafe_b64decode(encoded + padding))
     assert payload["scopes"] == []
+
+
+@pytest.mark.asyncio
+async def test_api_key_scheme_skips_session_lookup() -> None:
+    setup = await _setup()
+    await setup.config.database.create(
+        model="api_keys",
+        data={
+            "id": "key_scheme",
+            "secretHash": _hash_secret("secret_scheme"),
+            "userId": setup.user["id"],
+            "name": "scheme",
+            "createdAt": datetime(2026, 9, 1, tzinfo=timezone.utc),
+            "updatedAt": datetime(2026, 9, 1, tzinfo=timezone.utc),
+        },
+        namespace="authfn",
+    )
+    original = setup.config.database.find_one
+
+    async def find_one(
+        model: str,
+        where: List[Dict[str, Any]],
+        namespace: str,
+    ) -> Any:
+        if model == "sessions":
+            raise RuntimeError("sessions table unavailable")
+        return await original(model=model, where=where, namespace=namespace)
+
+    setup.config.database.find_one = find_one  # type: ignore[method-assign]
+    cookie_free = TestRequest(
+        "GET",
+        "https://account.example.com/auth/session",
+        headers={"authorization": "Api-Key secret_scheme"},
+    )
+    context = await setup.issuer.derive(cookie_free)
+    assert context.actor_type == "api-key"
+    assert context.home_region == "us-east-1"
+
+    setup.config.database.find_one = original  # type: ignore[method-assign]
+    session_as_api_key = TestRequest(
+        "GET",
+        "https://account.example.com/auth/session",
+        headers={"authorization": f"Api-Key {setup.issued['sessionToken']}"},
+    )
+    with pytest.raises(UnauthorizedError):
+        await setup.issuer.derive(session_as_api_key)
 
 
 @pytest.mark.asyncio
@@ -569,6 +626,10 @@ def test_rejects_compound_idna_failures_like_whatwg_origin() -> None:
     assert _normalize_authority("https://a・.example") == "https://xn--a-iju.example"
     assert _normalize_authority("https://☃.net") == "https://xn--n3h.net"
     assert _normalize_authority("https://💩.example") == "https://xn--ls8h.example"
+    assert _normalize_authority("https://a\u0661.example") == "https://xn--a-bqc.example"
+    assert _normalize_authority("https://a\u05d0.example") == "https://xn--a-0hc.example"
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://a\u0661\u0661.example")
     with pytest.raises(ConfigError):
         _normalize_authority("https://-\u05d0!.example")
     with pytest.raises(ConfigError):
