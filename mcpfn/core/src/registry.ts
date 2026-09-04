@@ -1,4 +1,4 @@
-import Ajv, { type ErrorObject, type ValidateFunction } from "ajv";
+import Ajv, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 import { UriTemplate } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
 import type {
@@ -13,6 +13,7 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { McpFnOutputValidationError, McpFnValidationError } from "./errors.js";
+import { formatValidationIssues } from "./validation.js";
 import { compareCodeUnits } from "./canonical.js";
 import {
   unsupportedUriTemplateOperator,
@@ -53,17 +54,6 @@ type ResourceMatch<TContext> =
       variables: Record<string, string | string[]>;
     };
 
-function formatErrors(errors: ErrorObject[] | null | undefined): Array<{
-  path: string;
-  message: string;
-  keyword: string;
-}> {
-  return (errors ?? []).map((error) => ({
-    path: error.instancePath || "/",
-    message: error.message ?? "Schema validation failed",
-    keyword: error.keyword,
-  }));
-}
 
 function assertName(kind: string, name: string): void {
   if (!/^[A-Za-z0-9_.-]{1,128}$/.test(name)) {
@@ -755,14 +745,14 @@ export class McpFnRegistry<TContext = undefined> {
   private normalizeAndValidateArgs(
     registered: RegisteredTool<TContext>,
     args: unknown,
-  ): { args: Record<string, unknown>; issues?: ReturnType<typeof formatErrors> } {
+  ): { args: Record<string, unknown>; issues?: ReturnType<typeof formatValidationIssues> } {
     const normalizedArgs = args ?? {};
     if (!registered.validateInput(normalizedArgs)) {
       return {
         args: normalizedArgs && typeof normalizedArgs === "object" && !Array.isArray(normalizedArgs)
           ? normalizedArgs as Record<string, unknown>
           : {},
-        issues: formatErrors(registered.validateInput.errors),
+        issues: formatValidationIssues(registered.validateInput.errors),
       };
     }
     return { args: normalizedArgs as Record<string, unknown> };
@@ -902,7 +892,7 @@ export class McpFnRegistry<TContext = undefined> {
     const normalized = args ?? {};
     if (!registered.validateArguments(normalized)) {
       throw new McpFnValidationError(`Invalid arguments for prompt ${name}`, {
-        issues: formatErrors(registered.validateArguments.errors),
+        issues: formatValidationIssues(registered.validateArguments.errors),
       });
     }
     return registered.definition.get(normalized, context, extra);
@@ -957,7 +947,7 @@ export class McpFnRegistry<TContext = undefined> {
       if (!registered.validateOutput(result.structuredContent)) {
         throw new McpFnOutputValidationError(
           `Invalid output from ${registered.definition.name}`,
-          { issues: formatErrors(registered.validateOutput.errors) },
+          { issues: formatValidationIssues(registered.validateOutput.errors) },
         );
       }
     }

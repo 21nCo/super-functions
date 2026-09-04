@@ -30,6 +30,7 @@ import type {
   RequestOptions,
   RequestTaskStore,
 } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import type { McpFnValidationIssue } from "./validation.js";
 
 export type McpFnJsonSchema = Record<string, unknown>;
 
@@ -73,7 +74,7 @@ export interface McpFnToolDefinition<TContext = undefined> {
   /** Optional domain-specific mapping for JSON Schema argument failures. */
   handleInvalidArguments?(
     args: Record<string, unknown>,
-    issues: Array<{ path: string; message: string; keyword: string }>,
+    issues: McpFnValidationIssue[],
     context: TContext,
     extra: McpFnRequestExtra,
   ): CallToolResult | Promise<CallToolResult>;

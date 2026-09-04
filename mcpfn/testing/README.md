@@ -12,6 +12,7 @@ It includes:
 - extensible Client ID Metadata fixtures that include unrelated grant types;
 - optional Playwright fixtures for real redirect and consent-page coverage;
 - generic tools-only, full-protocol, and MCP Apps host profiles;
+- deterministic authenticated client-profile catalog and call-enrichment contracts;
 - named ChatGPT- and Claude-shaped OAuth metadata fixtures;
 - one suite for in-memory, custom, stdio, and Streamable HTTP targets;
 - structured/text response parity checks;
@@ -65,6 +66,14 @@ with cancellation. `assertStructuredTextParity` requires a JSON text block; do
 not use it for intentionally human-readable text.
 
 `checkHostCompatibility(manifest, profile)` returns `compatible`, `degraded`, or `incompatible`. Unsupported optional server surfaces are degraded; missing protocol overlap or required client-mediated features are incompatible. The built-in profiles are stable capability fixtures, not claims about the current behavior of named commercial hosts. Supply a custom profile for a captured host version.
+
+`runClientProfileCompatibilitySuite()` is a different contract. It enumerates
+the effective `tools/list` catalog for verified identities, checks schema
+portability and projection/enrichment symmetry, runs explicit minimal-valid
+and captured-failure fixtures through the production call-preparation
+lifecycle, and emits a bounded redacted `mcpfn.client-profile-report`. Host
+capability profiles do not replace that suite, and that suite does not replace
+official protocol conformance or product scenarios.
 
 ## Authentication regression suite
 

@@ -19,8 +19,9 @@ ownership, OAuth compatibility policy, testing, artifacts, and inspection.
 
 ## Public format policy
 
-Manifests, scenario artifacts, scenario reports, target-suite reports, and
-client events use integer `formatVersion: 1`. Inspector snapshots use
+Manifests, scenario artifacts, scenario reports, target-suite reports,
+client-profile compatibility reports, and client events use integer
+`formatVersion: 1`. Inspector snapshots use
 `formatVersion: 2`; version 2 removes the version 1 `state` field and replaces
 it with the unambiguous `clientState` field. Snapshot readers must reject the
 unknown major version until they migrate to `clientState`; no dual-field

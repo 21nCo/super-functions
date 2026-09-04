@@ -7,6 +7,7 @@ mcpfn manifest ./mcp-server.ts --output mcpfn.manifest.json
 mcpfn validate mcpfn.manifest.json
 mcpfn diff main.manifest.json mcpfn.manifest.json --fail-on-behavioral
 mcpfn test ./mcp-server.ts ./mcp-scenarios.ts --output mcpfn-report.json
+mcpfn test-profiles ./mcp-server.ts ./mcp-profiles.ts --output mcpfn-profiles.json
 mcpfn test-target https://api.example.com/mcp ./mcp-scenarios.ts
 mcpfn inspect https://api.example.com/mcp --output inspection.json
 mcpfn inspect node --stdio --args '["./dist/server.js"]'
@@ -20,12 +21,15 @@ mcpfn conformance http://127.0.0.1:3000/mcp --suite active
 
 `inspect` and `test-target` use the production `@mcpfn/client` session engine;
 HTTP is the default and `--stdio` treats the target as an executable.
-`auth-diagnose` probes protected-resource and authorization-server discovery
-without opening a browser or exchanging credentials. Reports and inspector
-timelines are redacted, versioned, and aggregate-size bounded. Target open,
-authorization, and execution failures use exit `1`; malformed command or file
-configuration uses exit `2`. `mcpfn test --max-report-bytes` can tighten the
-default one-MiB scenario report cap.
+`test-profiles` loads a server declaration or registry plus a suite module of
+verified identities, catalog fixtures, and captured failures; it does not
+embed consumer client identifiers. `auth-diagnose` probes protected-resource
+and authorization-server discovery without opening a browser or exchanging
+credentials. Reports and inspector timelines are redacted, versioned, and
+aggregate-size bounded. Target open, authorization, and execution failures use
+exit `1`; malformed command or file configuration uses exit `2`.
+`mcpfn test --max-report-bytes` can tighten the default one-MiB scenario
+report cap.
 
 The conformance command delegates to the pinned official
 `@modelcontextprotocol/conformance` package. It requires Node.js 22 or newer;

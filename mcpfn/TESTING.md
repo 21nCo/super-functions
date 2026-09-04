@@ -1,21 +1,23 @@
 # Testing and CI
 
-A regression-free MCP project needs five independent layers.
-
-Scenario arrays remain readable for compatibility, while new portable bundles
-use the version 1 `mcpfn.scenarios` artifact. Every scenario can declare a
-timeout, side-effect class, required variable names, or an explicit incomplete
-state. Reports and inspector timelines apply aggregate bounds and record
-truncation rather than silently dropping evidence. See `TEST_VECTORS.md` for
-the maintained compatibility matrix.
+A regression-free MCP project needs independent evidence layers. Do not treat
+one layer as a substitute for another.
 
 | Layer | What it catches | McpFn surface |
 | --- | --- | --- |
 | Unit/domain | Handler logic, authorization, persistence, policy | Existing package tests |
 | Contract | Tools, resources, prompts, tasks, extensions, host requirements | Hashed manifest plus `mcpfn diff` |
-| Semantic protocol | Real client/server calls and stable business envelopes | `@mcpfn/testing` scenarios |
+| Deterministic client profiles | Authenticated `tools/list` projection, trusted `tools/call` enrichment, schema portability, and validator diagnostics | `@mcpfn/testing` `runClientProfileCompatibilitySuite` and `mcpfn test-profiles` |
+| Semantic product scenarios | Real client/server calls and stable business envelopes | `@mcpfn/testing` scenarios |
 | Authentication | API keys, OAuth challenges, scopes, audience, expiry, revocation, PKCE, refresh, and client metadata | `@mcpfn/testing/auth` and `@mcpfn/testing/playwright` |
 | Protocol conformance | Initialization, JSON-RPC, transport, and MCP specification behavior | Official `@modelcontextprotocol/conformance` via `mcpfn conformance` |
+| Live-client evidence | A named deployed revision talking to a real host | Controlled-live or deployed proof; not produced by the local release gate |
+
+Protocol conformance proves the wire protocol. Deterministic client-profile
+compatibility proves each authenticated client receives a usable catalog and
+that server-owned fields are restored before strict validation. Product
+scenarios prove domain behavior. Live-client evidence proves a specific
+deployment against a real host and remains a separate proof level.
 
 ## Contract baseline
 
@@ -30,7 +32,59 @@ For a registry export, pass both `--name` and `--version`. Exit code `1` means t
 
 Review additive changes before replacing the committed baseline. A compatible diff means old inputs remain structurally accepted; it does not prove the new tool is authorized or semantically correct.
 
+## Deterministic client profiles
+
+Host capability profiles answer whether a client can speak the protocol. Client
+profiles answer whether a verified identity receives a usable catalog. Supply
+product mappings, trusted context, and bounded fixtures; McpFn does not encode
+Skillplane identifiers or tenancy policy.
+
+```ts
+import {
+  applyTrustedArguments,
+  omitToolInputFields,
+} from "@mcpfn/core";
+import { runClientProfileCompatibilitySuite } from "@mcpfn/testing";
+
+await runClientProfileCompatibilitySuite({
+  registry,
+  profiles: [{
+    id: "hosted",
+    version: "1",
+    projectCatalog: async (tools) =>
+      tools.map((tool) => omitToolInputFields(tool, ["workspaceId"])),
+    enrichCallArguments: async (_name, args, request) =>
+      applyTrustedArguments(args, { workspaceId: request.context.workspaceId }, ["workspaceId"]),
+  }],
+  cases: [{
+    name: "hosted-client",
+    identity: { id: "hosted" },
+    context: { workspaceId: "ws_test" },
+    fixtures: [{
+      name: "minimal search",
+      tool: "search",
+      kind: "minimal-valid",
+      arguments: { query: "docs" },
+      expect: { isError: false },
+    }],
+  }],
+});
+```
+
+`mcpfn test-profiles ./server.ts ./profiles.suite.ts` runs the same suite.
+Captured failure fixtures execute through production catalog projection and
+call enrichment, then canonical validation. Mutating tools require an explicit
+fixture; unknown additional properties keep the rejected property name in
+structured diagnostics. Reports redact credentials, tokens, and argument values.
+
 ## Semantic scenarios
+
+Scenario arrays remain readable for compatibility, while new portable bundles
+use the version 1 `mcpfn.scenarios` artifact. Every scenario can declare a
+timeout, side-effect class, required variable names, or an explicit incomplete
+state. Reports and inspector timelines apply aggregate bounds and record
+truncation rather than silently dropping evidence. See `TEST_VECTORS.md` for
+the maintained compatibility matrix.
 
 ```ts
 import type { McpFnScenario } from "@mcpfn/testing";

@@ -10,7 +10,7 @@ official MCP SDK transports and protocol lifecycle
    |
 OAuth resource-server wrapper -> validated authInfo
    |
-McpFnServer -> trusted request context and client-mediated requests
+McpFnServer -> trusted request context, client profiles, and client-mediated requests
    |
 McpFnRegistry -> tools/resources/prompts/tasks -> domain handlers
    |                                      |
@@ -32,7 +32,7 @@ official MCP SDK client transports and OAuth orchestration
 
 The official `@modelcontextprotocol/sdk` owns initialization, JSON-RPC dispatch, stdio framing, Streamable HTTP, capability negotiation, ping, and protocol errors. McpFn does not carry a second MCP protocol implementation.
 
-`McpFnServer` owns server identity, capability derivation, request-context construction, pagination, dispatch, error normalization, client-mediated roots/sampling/elicitation, notifications, and transport connection lifecycle. One `McpFnServer` instance connects to one transport. A host accepting multiple connections creates one server instance per connection while sharing the immutable registry.
+`McpFnServer` owns server identity, capability derivation, request-context construction, authenticated client-profile resolution, catalog projection, trusted argument enrichment, pagination, dispatch, error normalization, client-mediated roots/sampling/elicitation, notifications, and transport connection lifecycle. One `McpFnServer` instance connects to one transport. A host accepting multiple connections creates one server instance per connection while sharing the immutable registry.
 
 `McpFnRegistry` owns the application contract. It registers tools, exact resources, URI-template resources, prompts, completions, subscriptions, and task-capable tool handlers. Ajv validates tool and prompt inputs. URI templates are parsed once at registration. Task-capable tools require an explicit SDK `TaskStore`. MCP App links are validated across the full registry before a server or manifest is created.
 
@@ -83,7 +83,31 @@ authorization-code flow.
 - `additive`: added tools, optional input properties, optional output properties accepted by a previously open schema, widened input enums, relaxed input constraints, and added protocol/transport support;
 - `behavioral`: titles, descriptions, or annotations that can alter model tool selection without changing JSON validity.
 
-The diff is deliberately structural. Semantic scenarios are still required for authorization decisions, version resolution, idempotency, side effects, error envelopes, and result meaning.
+The diff is deliberately structural. Semantic scenarios are still required for authorization decisions, version resolution, idempotency, side effects, error envelopes, and result meaning. Authenticated client-profile catalogs are a separate deterministic contract: they project the canonical manifest for a verified identity, restore server-owned arguments before validation, and keep structured schema diagnostics. Host capability profiles and client-profile catalogs are not interchangeable.
+
+## Client-profile lifecycle
+
+Verified identity, self-reported protocol capabilities, and catalog behavior are distinct inputs. Profile selection uses only verified authentication context or an explicit test adapter. Initialize `clientInfo` never selects a trusted profile.
+
+```text
+authenticated request
+  -> verified identity
+  -> profile resolver
+  -> visibility policy
+  -> catalog projection
+  -> client receives the effective tools/list schema
+
+tools/call
+  -> model-owned arguments
+  -> verified profile context
+  -> trusted argument enrichment
+  -> canonical schema validation
+  -> handler
+  -> result validation
+  -> redacted evidence
+```
+
+Generic clients keep the canonical catalog when no profile matches. A projector that hides a required field must restore it from trusted context before validation. Structured validation issues retain instance path, schema path, keyword, and the rejected additional property name; argument values stay out of diagnostics.
 
 ## DataFn integration
 

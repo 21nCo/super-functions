@@ -274,6 +274,57 @@ describe("mcpfn CLI", () => {
     );
   });
 
+  it("runs deterministic client-profile compatibility through the production lifecycle", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-profiles-"));
+    roots.push(root);
+    const coreUrl = pathToFileURL(testRequire.resolve("@mcpfn/core")).href;
+    await writeFile(
+      path.join(root, "server.mjs"),
+      `import { defineMcpFnServer, structuredResult } from ${JSON.stringify(coreUrl)};
+       export default defineMcpFnServer({
+         info: { name: "profiles", version: "1.0.0" },
+         tools: [{
+           name: "echo", description: "Echo a value.",
+           inputSchema: {
+             type: "object",
+             properties: { value: { type: "string" } },
+             required: ["value"],
+             additionalProperties: false
+           },
+           handler: async (args) => structuredResult(args)
+         }]
+       });`,
+    );
+    await writeFile(
+      path.join(root, "suite.mjs"),
+      `export default {
+         includeGeneric: true,
+         cases: [{
+           name: "generic",
+           identity: { id: "mcpfn/generic" },
+           context: undefined,
+           fixtures: [{
+             name: "minimal echo",
+             tool: "echo",
+             kind: "minimal-valid",
+             arguments: { value: "ok" },
+             expect: { isError: false }
+           }]
+         }]
+       };`,
+    );
+    let output = "";
+    const exitCode = await runCli(["test-profiles", "server.mjs", "suite.mjs"], {
+      cwd: root,
+      stdout: (value) => { output += value; },
+    });
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(output)).toMatchObject({
+      kind: "mcpfn.client-profile-report",
+      ok: true,
+    });
+  });
+
   it("classifies target connection failures as runtime exit 1", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-runtime-"));
     roots.push(root);

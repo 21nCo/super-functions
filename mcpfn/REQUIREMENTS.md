@@ -28,3 +28,16 @@ The local release gate is authoritative for deterministic workspace and packed
 installation claims. Registry publication, controlled provider smoke tests,
 and deployment checks remain separate actions and must record their own
 version, endpoint, and timestamp evidence.
+
+## MCP-3 requirements
+
+| ID | Requirement | Deterministic evidence |
+| --- | --- | --- |
+| MCP3-AC-01 | Verified identity, protocol capabilities, and catalog behavior are distinct profile inputs. | core client-profile contract tests |
+| MCP3-AC-02 | Generic clients retain the canonical catalog when no profile matches. | core lifecycle tests and generic suite case |
+| MCP3-AC-03 | Catalog projection and trusted enrichment share one production call-preparation lifecycle. | server list/call path and `prepareToolCall` |
+| MCP3-AC-04 | Server-owned required fields can be omitted from the model-visible schema and restored from trusted context. | hosted profile lifecycle tests |
+| MCP3-AC-05 | Unknown additional properties retain instance path, schema path, keyword, and rejected property name. | validation issue tests |
+| MCP3-AC-06 | Asymmetric projection/enrichment, stale snapshots, missing trusted context, and forged server-owned metadata fail closed. | core and testing-package negative cases |
+| MCP3-AC-07 | Compatibility reports are bounded and redact credentials, tokens, and argument values. | testing-package redaction test and CLI `test-profiles` |
+| MCP3-AC-08 | Protocol conformance, product scenarios, client-profile compatibility, and live-client evidence stay separate. | `TESTING.md` layer table |
