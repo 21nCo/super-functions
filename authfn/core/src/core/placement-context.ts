@@ -721,10 +721,14 @@ function normalizeAuthority(authority: string | undefined): string {
     throw new AuthFnConfigError('Placement-bound auth context requires publicAuthority');
   }
   try {
-    return new URL(authority).origin;
+    const origin = new URL(authority).origin;
+    if (origin && origin !== 'null') {
+      return origin;
+    }
   } catch {
-    throw new AuthFnConfigError('AuthFn publicAuthority must be a valid origin');
+    // Opaque URLs such as file: and mailto: serialize origin as "null".
   }
+  throw new AuthFnConfigError('AuthFn publicAuthority must be a valid origin');
 }
 
 function validateKeyring(keyring: AuthFnRoutingKeyring): void {
