@@ -394,7 +394,8 @@ async function resolvePrincipal(
       const sessionPrincipal = await resolveBearerSession(config, credential.secret, now);
       if (sessionPrincipal) return sessionPrincipal;
     }
-    return resolveApiKeyPrincipal(config, credential.secret, now);
+    const apiKeyPrincipal = await resolveApiKeyPrincipal(config, credential.secret, now);
+    if (apiKeyPrincipal) return apiKeyPrincipal;
   }
 
   if (cookieState.sessionToken) {
@@ -418,7 +419,7 @@ async function resolveApiKeyPrincipal(
   config: AuthFnRuntimeConfig,
   secret: string,
   now: () => Date
-): Promise<PlacementPrincipal> {
+): Promise<PlacementPrincipal | null> {
   try {
     // Same keyed lookup AuthFn uses for API keys (not password storage).
     // codeql[js/insufficient-password-hash]
@@ -428,7 +429,7 @@ async function resolveApiKeyPrincipal(
       where: [{ field: 'secretHash', operator: 'eq', value: secretHash }],
       namespace: namespace(config)
     });
-    if (!record) throw new AuthFnUnauthenticatedError();
+    if (!record) return null;
     if (record.revokedAt) throw new AuthFnApiKeyRevokedError();
     if (record.expiresAt && record.expiresAt.getTime() <= now().getTime()) {
       throw new AuthFnUnauthenticatedError();
@@ -716,17 +717,22 @@ function secretBytes(secret: string | Uint8Array): Buffer {
   return Buffer.from(secret);
 }
 
+const SPECIAL_SCHEME_PROTOCOLS = new Set(['http:', 'https:', 'ftp:', 'ws:', 'wss:']);
+
 function normalizeAuthority(authority: string | undefined): string {
   if (!authority) {
     throw new AuthFnConfigError('Placement-bound auth context requires publicAuthority');
   }
   try {
-    const origin = new URL(authority).origin;
-    if (origin && origin !== 'null') {
+    const parsed = new URL(authority);
+    const origin = parsed.origin;
+    // Opaque origins (file:, mailto:) serialize as "null". blob: yields an inner
+    // https origin but is not a network special scheme; reject it like Python.
+    if (origin && origin !== 'null' && SPECIAL_SCHEME_PROTOCOLS.has(parsed.protocol)) {
       return origin;
     }
   } catch {
-    // Opaque URLs such as file: and mailto: serialize origin as "null".
+    // Malformed input that new URL cannot parse.
   }
   throw new AuthFnConfigError('AuthFn publicAuthority must be a valid origin');
 }
