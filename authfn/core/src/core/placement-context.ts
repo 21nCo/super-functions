@@ -259,6 +259,7 @@ export function createAuthFnPlacementContextIssuer(
       }
       const context = contextFromPayload(payload);
       void emit(options.config, undefined, 'authfn.placement_context.verified', {
+        requestId: context.requestId,
         outcome: 'success',
         regionId: context.homeRegion,
         metadata: {
@@ -359,7 +360,7 @@ async function resolveApiKeyPrincipal(
       actorType: 'api-key',
       actorId: record.id,
       sessionId: record.id,
-      sessionVersionMaterial: record.secretHash,
+      sessionVersionMaterial: `${record.id}:${record.updatedAt.toISOString()}`,
       methods: ['api-key'],
       scopes,
       authenticatedAt: record.lastUsedAt ?? record.updatedAt,
@@ -571,7 +572,10 @@ function stripClientRoutingHeaders(request: Request): Request {
   for (const key of keys) {
     if (key.toLowerCase().startsWith(INTERNAL_HEADER_PREFIX)) headers.delete(key);
   }
-  return new Request(request.clone(), { headers });
+  return new Request(request.url, {
+    method: request.method,
+    headers
+  });
 }
 
 function readAuthorizationCredential(
@@ -606,8 +610,8 @@ function uniqueAudiences(audiences: readonly string[]): string[] {
   return [...new Set(audiences.map((audience) => audience.trim()).filter(Boolean))];
 }
 
-function hmacOpaque(secret: Buffer, label: string, value: string): string {
-  return createHmac('sha256', secret).update(`${label}:${value}`).digest('base64url');
+function hmacOpaque(macKey: Buffer, label: string, value: string): string {
+  return createHmac('sha256', macKey).update(`${label}:${value}`).digest('base64url');
 }
 
 function hashForTelemetry(value: string): string {
@@ -663,6 +667,7 @@ async function emit(
   request: Request | undefined,
   type: AuthFnEventInput['type'],
   input: {
+    requestId?: string;
     outcome?: string;
     regionId?: string;
     actorId?: string;
@@ -671,7 +676,7 @@ async function emit(
 ): Promise<void> {
   await emitAuthEvent(config, {
     type,
-    requestId: eventRequestId(request),
+    requestId: input.requestId ?? eventRequestId(request),
     regionId: input.regionId,
     actorId: input.actorId,
     outcome: input.outcome,

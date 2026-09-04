@@ -305,8 +305,31 @@ describe('AuthFn placement-bound auth context', () => {
     const verified = remote.verifySigned(issued.assertion);
     expect(verified.homeRegion).toBe('eu-west-1');
     expect(verified.audience).toBe('nucleum-datafn');
+    expect(verified.requestId).toBe(issued.context.requestId);
+    await Promise.resolve();
+    expect(gateway.events.filter((event) => event.type === 'authfn.placement_context.verified')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'authfn.placement_context.verified',
+          requestId: issued.context.requestId
+        })
+      ])
+    );
     expect(() => remote.verifySigned(issued.assertion, { audience: 'other-service' }))
       .toThrow(AuthFnPlacementContextInvalidError);
+  });
+
+  it('derives context after the caller has already consumed the request body', async () => {
+    const { issuer, request } = await setupIssuer();
+    const posted = new Request(request.url, {
+      method: 'POST',
+      headers: request.headers,
+      body: JSON.stringify({ note: 'already-read' })
+    });
+    await posted.json();
+    const context = await issuer.derive(posted);
+    expect(context.homeRegion).toBe('us-east-1');
+    expect(context.placementEpoch).toBe(4);
   });
 
   it('binds API-key grants to the owning user placement and rejects unbound keys', async () => {
