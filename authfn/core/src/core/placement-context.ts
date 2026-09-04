@@ -222,9 +222,7 @@ export function createAuthFnPlacementContextIssuer(
   ): Promise<AuthFnPlacementBoundAuthContext> {
     const requestId = eventRequestId(request);
     const sanitizedRequest = stripClientRoutingHeaders(request);
-    if (!sanitizedRequest.headers.get('x-request-id')) {
-      sanitizedRequest.headers.set('x-request-id', requestId);
-    }
+    sanitizedRequest.headers.set('x-request-id', requestId);
     try {
       const audience = resolveAudience(input?.audience ?? defaultAudience, audiences);
       const principal = await resolvePrincipal(options.config, sanitizedRequest, now);
@@ -258,6 +256,7 @@ export function createAuthFnPlacementContextIssuer(
         userId: includeUserId ? principal.userId : undefined
       });
       await emit(options.config, sanitizedRequest, 'authfn.placement_context.issued', {
+        requestId,
         outcome: 'success',
         regionId: context.homeRegion,
         actorId: hashForTelemetry(context.subject),
@@ -270,7 +269,7 @@ export function createAuthFnPlacementContextIssuer(
       });
       return context;
     } catch (error) {
-      await emitRejection(options.config, sanitizedRequest, error);
+      await emitRejection(options.config, sanitizedRequest, error, requestId);
       throw error;
     }
   }
@@ -662,9 +661,14 @@ function stripClientRoutingHeaders(request: Request): Request {
   for (const key of keys) {
     if (key.toLowerCase().startsWith(INTERNAL_HEADER_PREFIX)) headers.delete(key);
   }
-  return new Request(request.url, {
-    method: request.method,
-    headers
+  return new Proxy(request, {
+    get(target, property, receiver) {
+      if (property === 'headers') {
+        return headers;
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    }
   });
 }
 
@@ -757,10 +761,12 @@ function validateKeyring(keyring: AuthFnRoutingKeyring): void {
 async function emitRejection(
   config: AuthFnRuntimeConfig,
   request: Request,
-  error: unknown
+  error: unknown,
+  requestId: string
 ): Promise<void> {
   const code = readErrorCode(error);
   await emit(config, request, 'authfn.placement_context.rejected', {
+    requestId,
     outcome: 'rejected',
     metadata: { errorType: code }
   });
