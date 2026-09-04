@@ -811,11 +811,8 @@ def _enforce_idna_after_hyphen_or_length_exception(label: str) -> None:
             except ValueError as error:
                 raise ConfigError(INVALID_AUTHORITY) from error
             continue
-        if idna.intranges_contain(code, classes["CONTEXTO"]):
-            if not idna.valid_contexto(label, pos):
-                raise ConfigError(INVALID_AUTHORITY)
-            continue
-        raise ConfigError(INVALID_AUTHORITY)
+        # WHATWG domain-to-ASCII does not enable CONTEXTO, so mapped middle-dot
+        # and similar labels still punycode like Node URL.origin.
     if _rtl_hyphen_exception_is_invalid(label):
         raise ConfigError(INVALID_AUTHORITY)
 
@@ -902,6 +899,13 @@ def _parse_ipv4_number(part: str) -> Optional[int]:
         digits = part[1:]
     if not digits:
         return 0 if radix == 16 else None
+    allowed = {
+        8: set("01234567"),
+        10: set("0123456789"),
+        16: set("0123456789abcdefABCDEF"),
+    }[radix]
+    if any(char not in allowed for char in digits):
+        return None
     try:
         return int(digits, radix)
     except ValueError:
