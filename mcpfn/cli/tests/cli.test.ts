@@ -291,4 +291,71 @@ describe("mcpfn CLI", () => {
     expect(exitCode).toBe(1);
     expect(errors).toContain("Failed to connect and initialize the MCP session");
   });
+
+  it("rejects a malformed --header on test-target", async () => {
+    let errors = "";
+    const exitCode = await runCli([
+      "test-target",
+      "http://127.0.0.1:9/mcp",
+      "scenarios.json",
+      "--header",
+      "NotAHeader",
+    ], {
+      stderr: (value) => { errors += value; },
+    });
+    expect(exitCode).toBe(2);
+    expect(errors).toContain('Each --header value must be "Name: value"');
+  });
+
+  it("rejects mixing --header with --stdio", async () => {
+    let errors = "";
+    const exitCode = await runCli([
+      "test-target",
+      "mcpfn-command-that-does-not-exist",
+      "scenarios.json",
+      "--stdio",
+      "--header",
+      "Authorization: Bearer test",
+    ], {
+      stderr: (value) => { errors += value; },
+    });
+    expect(exitCode).toBe(2);
+    expect(errors).toContain("--header requires an HTTP target");
+  });
+
+  it("accepts repeatable --header values without treating them as usage errors", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-headers-"));
+    roots.push(root);
+    await writeFile(path.join(root, "scenarios.json"), "[]\n");
+    let errors = "";
+    const exitCode = await runCli([
+      "test-target",
+      "http://127.0.0.1:9/mcp",
+      "scenarios.json",
+      "--header",
+      "Authorization: Bearer test",
+      "--header",
+      "X-Test: 1",
+    ], {
+      cwd: root,
+      stderr: (value) => { errors += value; },
+    });
+    expect(exitCode).toBe(1);
+    expect(errors).not.toContain('Each --header value must be "Name: value"');
+    expect(errors).toContain("Failed to connect and initialize the MCP session");
+  });
+
+  it("rejects a malformed --header on official conformance before launching the runner", async () => {
+    let errors = "";
+    const exitCode = await runCli([
+      "conformance",
+      "http://127.0.0.1:9/mcp",
+      "--header",
+      "Authorization",
+    ], {
+      stderr: (value) => { errors += value; },
+    });
+    expect(exitCode).toBe(2);
+    expect(errors).toContain('Each --header value must be "Name: value"');
+  });
 });
