@@ -99,6 +99,38 @@ describe('AuthFn placement-bound auth context', () => {
     expect(context.audience).toBe('nucleum-datafn');
   });
 
+  it('preserves runtime request state while sanitizing routing headers', async () => {
+    const bound = await setupIssuer({
+      extraHeaders: { 'x-authfn-routing-region': 'eu-west-1' }
+    });
+    const request = bound.request as Request & { cf?: { colo: string } };
+    request.cf = { colo: 'SFO' };
+    let seenColo: string | undefined;
+    let seenRouting: string | null = 'present';
+    bound.config.environment = {
+      async resolve(incoming) {
+        seenColo = (incoming as Request & { cf?: { colo: string } }).cf?.colo;
+        seenRouting = incoming.headers.get('x-authfn-routing-region');
+        return { issuer: 'https://account.example.com', baseUrl: 'https://account.example.com' };
+      }
+    };
+    const context = await bound.issuer.derive(request);
+    expect(context.homeRegion).toBe('us-east-1');
+    expect(seenColo).toBe('SFO');
+    expect(seenRouting).toBeNull();
+  });
+
+  it('treats whitespace-only request ids as absent', async () => {
+    const bound = await setupIssuer({
+      extraHeaders: { 'x-request-id': '   ' }
+    });
+    const context = await bound.issuer.derive(bound.request);
+    expect(context.requestId.trim()).not.toBe('');
+    expect(context.requestId).not.toBe('   ');
+    const issued = bound.events.find((event) => event.type === 'authfn.placement_context.issued');
+    expect(issued?.requestId).toBe(context.requestId);
+  });
+
   it('fails closed for unauthenticated, revoked, expired, and deleted identities', async () => {
     const unauthenticated = await setupIssuer();
     await expect(unauthenticated.issuer.derive(new Request('https://account.example.com/auth/session')))
