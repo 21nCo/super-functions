@@ -481,14 +481,14 @@ def test_rejects_out_of_range_authority_ports_as_config_error() -> None:
 
 def test_treats_special_scheme_backslashes_as_path_separators() -> None:
     assert (
-        _normalize_authority(r"https://account.example.com\\@evil.example")
+        _normalize_authority(r"https://account.example.com\@evil.example")
         == "https://account.example.com"
     )
     assert (
-        _normalize_authority(r"https://account.example.com:8443\\@evil.example")
+        _normalize_authority(r"https://account.example.com:8443\@evil.example")
         == "https://account.example.com:8443"
     )
-    assert _normalize_authority(r"https://[::1]\\@evil.example") == "https://[::1]"
+    assert _normalize_authority(r"https://[::1]\@evil.example") == "https://[::1]"
 
 
 def test_canonicalizes_ipv4_authorities_like_whatwg_origin() -> None:
