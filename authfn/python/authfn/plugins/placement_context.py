@@ -77,7 +77,7 @@ class PlacementContextIssuer:
         audiences: Sequence[str],
         public_authority: str,
         placement_directory: IdentityPlacementDirectory,
-        identity_key_for_user_id: Callable[[str], str],
+        identity_key_for_user_id: Callable[[str], str | Awaitable[str]],
         audience: Optional[str] = None,
         keyring: Optional[RoutingKeyring] = None,
         ttl_seconds: int = DEFAULT_TTL_SECONDS,
@@ -132,9 +132,11 @@ class PlacementContextIssuer:
         request_id = _request_id(sanitized)
         try:
             resolved_audience = _require_audience(audience or self._default_audience, self._audiences)
-            principal = await _resolve_principal(self._config, sanitized)
+            principal = await _resolve_principal(self._config, sanitized, self._clock)
             identity_key = self._identity_key_for_user_id(principal["user_id"])
-            placement = await _load_active_placement(self._directory, identity_key)
+            if inspect.isawaitable(identity_key):
+                identity_key = await identity_key
+            placement = await _load_active_placement(self._directory, str(identity_key))
             issued_at = int(self._clock())
             expires_at = issued_at + self._ttl_seconds
             session_expiry = principal.get("session_expires_at")
@@ -173,6 +175,7 @@ class PlacementContextIssuer:
                     "metadata": {
                         "epoch": context.placement_epoch,
                         "audience": context.audience,
+                        "actorType": context.actor_type,
                         "subjectDigest": _telemetry_hash(context.subject),
                     },
                 }
@@ -336,16 +339,20 @@ def create_placement_context_verifier(**kwargs: Any) -> PlacementContextVerifier
     return PlacementContextVerifier(**kwargs)
 
 
-async def _resolve_principal(config: AuthFnConfig, request: Any) -> Dict[str, Any]:
+async def _resolve_principal(
+    config: AuthFnConfig,
+    request: Any,
+    clock: Callable[[], float],
+) -> Dict[str, Any]:
     state = await get_cookie_session_state(config, request, touch=False)
     if state.session is not None:
         return _principal_from_cookie_state(state)
     secret = _authorization_secret(request)
     if secret:
-        bearer_session = await _resolve_bearer_session(config, secret)
+        bearer_session = await _resolve_bearer_session(config, secret, clock)
         if bearer_session is not None:
             return bearer_session
-        return await _resolve_api_key_principal(config, secret)
+        return await _resolve_api_key_principal(config, secret, clock)
     if state.session_token:
         return _principal_from_cookie_state(state)
     raise UnauthorizedError(AUTH_REQUIRED)
@@ -371,7 +378,11 @@ def _principal_from_cookie_state(state: Any) -> Dict[str, Any]:
     }
 
 
-async def _resolve_api_key_principal(config: AuthFnConfig, secret: str) -> Dict[str, Any]:
+async def _resolve_api_key_principal(
+    config: AuthFnConfig,
+    secret: str,
+    clock: Callable[[], float],
+) -> Dict[str, Any]:
     row = await config.database.find_one(
         model="api_keys",
         where=[{"field": "secretHash", "operator": "eq", "value": _hash_secret(secret)}],
@@ -382,7 +393,7 @@ async def _resolve_api_key_principal(config: AuthFnConfig, secret: str) -> Dict[
     if row.get("revokedAt") is not None:
         raise ApiKeyRevokedError("API key has been revoked")
     expires_at = row.get("expiresAt")
-    if isinstance(expires_at, datetime) and expires_at.timestamp() <= time.time():
+    if isinstance(expires_at, datetime) and expires_at.timestamp() <= clock():
         raise ExpiredCredentialsError("API key has expired")
     user_id = row.get("userId")
     if not user_id:
@@ -407,7 +418,11 @@ async def _resolve_api_key_principal(config: AuthFnConfig, secret: str) -> Dict[
     }
 
 
-async def _resolve_bearer_session(config: AuthFnConfig, session_token: str) -> Optional[Dict[str, Any]]:
+async def _resolve_bearer_session(
+    config: AuthFnConfig,
+    session_token: str,
+    clock: Callable[[], float],
+) -> Optional[Dict[str, Any]]:
     record = await config.database.find_one(
         model="sessions",
         where=[{
@@ -422,7 +437,7 @@ async def _resolve_bearer_session(config: AuthFnConfig, session_token: str) -> O
     if record.get("revokedAt") is not None:
         raise SessionRevokedError(SESSION_REVOKED)
     expires_at = record.get("expiresAt")
-    if isinstance(expires_at, datetime) and expires_at.timestamp() <= time.time():
+    if isinstance(expires_at, datetime) and expires_at.timestamp() <= clock():
         raise SessionExpiredError(SESSION_EXPIRED)
     user = await config.database.find_one(
         model="users",
@@ -564,12 +579,23 @@ def _is_signed_payload(value: Any) -> bool:
         and int(value["expiresAt"]) - int(value["issuedAt"]) <= MAX_TTL_SECONDS
         and isinstance(value.get("audience"), str)
         and isinstance(value.get("assurance"), list)
+        and all(isinstance(item, str) for item in value["assurance"])
         and isinstance(value.get("requestId"), str)
         and value.get("actorType") in {"user", "api-key"}
         and isinstance(value.get("nonce"), str)
         and len(str(value.get("nonce"))) >= 16
     )
-    return bool(required)
+    if not required:
+        return False
+    scopes = value.get("scopes")
+    if scopes is not None and (
+        not isinstance(scopes, list) or any(not isinstance(item, str) for item in scopes)
+    ):
+        return False
+    user_id = value.get("userId")
+    if user_id is not None and not isinstance(user_id, str):
+        return False
+    return True
 
 
 def _strip_routing_headers(request: Any) -> Any:

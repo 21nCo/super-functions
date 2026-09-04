@@ -317,6 +317,13 @@ async def test_emits_configured_observability_events() -> None:
     await setup.issuer.derive(setup.request)
     types = [getattr(event, "type", None) or event.get("type") for event in events]
     assert "authfn.placement_context.issued" in types
+    issued = next(
+        event
+        for event in events
+        if (getattr(event, "type", None) or event.get("type")) == "authfn.placement_context.issued"
+    )
+    issued_metadata = getattr(issued, "metadata", None) or issued.get("metadata")
+    assert issued_metadata["actorType"] == "user"
     with pytest.raises(ValidationError):
         await setup.issuer.derive(setup.request, audience="other-service")
     types = [getattr(event, "type", None) or event.get("type") for event in events]
@@ -340,6 +347,17 @@ async def test_normalizes_default_https_port_like_typescript_origin() -> None:
     setup = await _setup(public_authority="https://account.example.com:443")
     context = await setup.issuer.derive(setup.request)
     assert context.issuer == "https://account.example.com"
+
+
+@pytest.mark.asyncio
+async def test_awaits_async_identity_key_resolver() -> None:
+    async def resolve(user_id: str) -> str:
+        return f"person:{user_id}"
+
+    setup = await _setup(identity_key_for_user_id=resolve)
+    context = await setup.issuer.derive(setup.request)
+    assert context.home_region == "us-east-1"
+    assert context.placement_epoch == 4
 
 
 def test_rejects_fractional_and_boolean_ttl() -> None:
@@ -368,6 +386,7 @@ async def _setup(
     extra_headers: Optional[Dict[str, str]] = None,
     placement: Optional[IdentityPlacement] = None,
     identity_key: Optional[str] = None,
+    identity_key_for_user_id: Optional[Any] = None,
     skip_placement: bool = False,
     on_event: Optional[Any] = None,
     public_authority: str = "https://account.example.com",
@@ -426,7 +445,8 @@ async def _setup(
         audiences=["nucleum-datafn"],
         public_authority=public_authority,
         placement_directory=resolved_directory,
-        identity_key_for_user_id=lambda user_id: identity_key or f"person:{user_id}",
+        identity_key_for_user_id=identity_key_for_user_id
+        or (lambda user_id: identity_key or f"person:{user_id}"),
         keyring=KEYRING,
         on_event=on_event,
     )
