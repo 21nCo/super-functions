@@ -862,19 +862,19 @@ def _rtl_hyphen_exception_is_invalid(label: str) -> bool:
     last = next((direction for direction in reversed(directions) if direction != "NSM"), "")
     # RTL labels must end in R/AL/EN/AN (RFC 5893), ignoring trailing NSM so
     # -א plus sheva matches Node. Trailing neutrals such as -א! still fail.
-    # AN and EN must not both appear (e.g. -١۲).
-    if has_an and has_en:
-        return True
     if last not in {"R", "AL", "EN", "AN"}:
         return True
     if has_ltr:
-        # Node URL.origin allows one trailing R/AL/AN on an LTR-leading label
-        # (https://a١.example -> https://xn--a-bqc.example) and still
-        # rejects EN-then-L-then-RTL (1aא) and two AN digits (a١١).
+        # Node URL.origin allows one trailing R/AL/AN on an LTR-leading label,
+        # including L+EN+AN (https://a1١.example -> https://xn--a1-cyd.example)
+        # and still rejects EN-then-L-then-RTL (1aא), two AN digits (a١١),
+        # and AN-then-EN (a١1). EN is not an RTL class, so the mix check
+        # below must not run on this LTR-leading path.
         rtl_count = sum(1 for direction in directions if direction in {"R", "AL", "AN"})
         first = next((direction for direction in directions if direction != "NSM"), "")
         return rtl_count != 1 or last not in {"R", "AL", "AN"} or first != "L"
-    return False
+    # AN and EN must not both appear on RTL-only labels (e.g. -١۲, 1١).
+    return has_an and has_en
 
 
 def _serialize_ipv6(address: ipaddress.IPv6Address) -> str:
