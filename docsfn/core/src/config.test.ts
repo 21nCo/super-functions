@@ -25,6 +25,7 @@ function serializeConfig(config: unknown): string {
   return `export default ${JSON.stringify(config, null, 2)};\n`;
 }
 
+// TypeScript configs transpile to a temp `.mjs` before import; under full CI load that can exceed Vitest's 5s default.
 describe("loadDocsConfig", () => {
   it("loads explicit configPath before default config file", async () => {
     const cwd = await createTempDir();
