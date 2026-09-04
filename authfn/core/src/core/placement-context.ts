@@ -415,9 +415,10 @@ async function resolveApiKeyPrincipal(
   try {
     // Same keyed lookup AuthFn uses for API keys (not password storage).
     // codeql[js/insufficient-password-hash]
+    const secretHash = hashSecret(secret);
     const record = await config.database.findOne<AuthFnApiKeyRecord>({
       model: 'api_keys',
-      where: [{ field: 'secretHash', operator: 'eq', value: hashSecret(secret) }],
+      where: [{ field: 'secretHash', operator: 'eq', value: secretHash }],
       namespace: namespace(config)
     });
     if (!record) throw new AuthFnUnauthenticatedError();
@@ -456,9 +457,12 @@ async function resolveBearerSession(
   sessionToken: string,
   now: () => Date
 ): Promise<PlacementPrincipal | null> {
+  // Same keyed lookup AuthFn uses for session tokens (not password storage).
+  // codeql[js/insufficient-password-hash]
+  const tokenHash = hashSecret(sessionToken);
   const record = await config.database.findOne<AuthFnSessionRecord>({
     model: 'sessions',
-    where: [{ field: 'tokenHash', operator: 'eq', value: hashSecret(sessionToken) }],
+    where: [{ field: 'tokenHash', operator: 'eq', value: tokenHash }],
     namespace: namespace(config)
   });
   if (!record) return null;
@@ -693,6 +697,8 @@ function credentialVersionMaterial(record: { id: string; createdAt: Date }): str
 }
 
 function hmacOpaque(macKey: Buffer, label: string, value: string): string {
+  // Keyed MAC over identifiers (user/session ids), not password storage.
+  // codeql[js/insufficient-password-hash]
   return createHmac('sha256', macKey).update(`${label}:${value}`).digest('base64url');
 }
 
