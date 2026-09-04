@@ -391,6 +391,36 @@ async def test_accepts_lowercase_authorization_scheme() -> None:
 
 
 @pytest.mark.asyncio
+async def test_omits_absent_api_key_scopes_from_signed_payload() -> None:
+    setup = await _setup()
+    await setup.config.database.create(
+        model="api_keys",
+        data={
+            "id": "key_no_scopes",
+            "secretHash": _hash_secret("secret_no_scopes"),
+            "userId": setup.user["id"],
+            "name": "no-scopes",
+            "createdAt": datetime(2026, 9, 1, tzinfo=timezone.utc),
+            "updatedAt": datetime(2026, 9, 1, tzinfo=timezone.utc),
+        },
+        namespace="authfn",
+    )
+    request = TestRequest(
+        "GET",
+        "https://account.example.com/auth/session",
+        headers={"authorization": "api-key secret_no_scopes"},
+    )
+    context = await setup.issuer.derive(request)
+    assert context.actor_type == "api-key"
+    assert context.scopes is None
+    signed = await setup.issuer.issue_signed(request)
+    encoded = signed["assertion"].split(".", 1)[0]
+    padding = "=" * ((4 - len(encoded) % 4) % 4)
+    payload = json.loads(base64.urlsafe_b64decode(encoded + padding))
+    assert "scopes" not in payload
+
+
+@pytest.mark.asyncio
 async def test_awaits_async_identity_key_resolver() -> None:
     async def resolve(user_id: str) -> str:
         return f"person:{user_id}"
@@ -435,6 +465,10 @@ def test_rejects_out_of_range_authority_ports_as_config_error() -> None:
         _normalize_authority("https://example.com:65536")
     with pytest.raises(ConfigError):
         _normalize_authority("https://example.com:abc")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://[::1")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://[::1]:99999")
     assert _normalize_authority("https://example.com:65535") == "https://example.com:65535"
     assert _normalize_authority("https://example.com:0") == "https://example.com:0"
 
