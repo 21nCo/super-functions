@@ -287,6 +287,22 @@ async def test_falls_back_to_authorization_when_cookie_is_stale() -> None:
 
 
 @pytest.mark.asyncio
+async def test_falls_back_to_stale_cookie_error_after_credential_miss() -> None:
+    setup = await _setup()
+    await revoke_session_by_id(setup.config, setup.issued["record"]["id"], user_id=setup.user["id"])
+    mixed = TestRequest(
+        "GET",
+        "https://account.example.com/auth/session",
+        headers={
+            "cookie": setup.request.headers["cookie"],
+            "authorization": "Bearer not-a-real-secret",
+        },
+    )
+    with pytest.raises(SessionRevokedError):
+        await setup.issuer.derive(mixed)
+
+
+@pytest.mark.asyncio
 async def test_uses_stored_authentication_time_for_cookie_and_bearer() -> None:
     setup = await _setup()
     authenticated_at = datetime(2026, 9, 1, tzinfo=timezone.utc)
@@ -565,6 +581,14 @@ def test_rejects_opaque_url_origins() -> None:
         _normalize_authority("data:text/plain,hello")
     with pytest.raises(ConfigError):
         _normalize_authority("custom://example.com")
+    with pytest.raises(ConfigError):
+        _normalize_authority("blob:https://account.example.com")
+
+
+def test_strips_surrounding_c0_and_space_from_authorities() -> None:
+    assert _normalize_authority("https://account.example.com ") == "https://account.example.com"
+    assert _normalize_authority(" https://account.example.com") == "https://account.example.com"
+    assert _normalize_authority("https://account.example.com\t") == "https://account.example.com"
 
 
 def test_canonicalizes_ipv4_authorities_like_whatwg_origin() -> None:
