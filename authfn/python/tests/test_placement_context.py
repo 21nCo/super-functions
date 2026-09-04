@@ -422,6 +422,8 @@ async def test_canonicalizes_idn_authority_to_punycode() -> None:
 
 def test_canonicalizes_ipv4_authorities_like_whatwg_origin() -> None:
     assert _normalize_authority("https://127.1") == "https://127.0.0.1"
+    assert _normalize_authority("https://0x") == "https://0.0.0.0"
+    assert _normalize_authority("https://1.0x") == "https://1.0.0.0"
     assert _normalize_authority("https://0x7f.1") == "https://127.0.0.1"
     assert _normalize_authority("https://0177.0.0.1") == "https://127.0.0.1"
     assert _normalize_authority("https://2130706433") == "https://127.0.0.1"
@@ -438,6 +440,10 @@ def test_canonicalizes_ipv6_authorities_like_whatwg_origin() -> None:
     assert _normalize_authority("https://[0:0:0:0:0:0:0:1]") == "https://[::1]"
     assert _normalize_authority("https://[::ffff:127.0.0.1]") == "https://[::ffff:7f00:1]"
     assert _normalize_authority("https://[2001:0DB8::1]:8443") == "https://[2001:db8::1]:8443"
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://[::%31]")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://[fe80::1%25eth0]")
 
 
 def test_canonicalizes_percent_encoded_hosts_like_whatwg_origin() -> None:
