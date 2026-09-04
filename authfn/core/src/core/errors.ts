@@ -511,7 +511,7 @@ function sanitizeOAuthValue(value: unknown): unknown {
     return value.map((entry) => sanitizeOAuthValue(entry));
   }
 
-  if (value && typeof value !== 'object') {
+  if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
         key,
