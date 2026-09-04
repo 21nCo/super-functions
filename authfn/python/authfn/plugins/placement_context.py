@@ -870,7 +870,15 @@ def _parse_ipv4_number(part: str) -> Optional[int]:
         return None
 
 
+def _whatwg_special_scheme_slashes(authority: str) -> str:
+    scheme, separator, rest = authority.partition(":")
+    if separator and scheme.lower() in {"http", "https"} and "\\" in rest:
+        return f"{scheme}:{rest.replace(chr(92), '/')}"
+    return authority
+
+
 def _normalize_authority(authority: str) -> str:
+    authority = _whatwg_special_scheme_slashes(authority)
     try:
         parsed = urlparse(authority)
         port = parsed.port
