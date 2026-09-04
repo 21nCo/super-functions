@@ -330,7 +330,7 @@ async def _resolve_api_key_principal(config: AuthFnConfig, request: Any) -> Dict
         "user_id": user["id"],
         "actor_type": "api-key",
         "session_id": row["id"],
-        "session_version_material": row["secretHash"],
+        "session_version_material": f"{row['id']}:{_isoformat(row.get('updatedAt') or row.get('createdAt'))}",
         "methods": ["api-key"],
         "scopes": [scope for scope in scopes if isinstance(scope, str)],
         "authenticated_at": row.get("lastUsedAt") or row.get("updatedAt"),
@@ -582,9 +582,16 @@ def _secret_bytes(secret: bytes | str) -> bytes:
 
 def _normalize_authority(authority: str) -> str:
     parsed = urlparse(authority)
-    if not parsed.scheme or not parsed.netloc:
+    if not parsed.scheme or not parsed.hostname:
         raise ConfigError("AuthFn publicAuthority must be a valid origin")
-    return f"{parsed.scheme}://{parsed.netloc}"
+    scheme = parsed.scheme.lower()
+    hostname = parsed.hostname.lower()
+    if ":" in hostname and not hostname.startswith("["):
+        hostname = f"[{hostname}]"
+    port = parsed.port
+    if port is None or (scheme == "https" and port == 443) or (scheme == "http" and port == 80):
+        return f"{scheme}://{hostname}"
+    return f"{scheme}://{hostname}:{port}"
 
 
 def _validate_keyring(keyring: RoutingKeyring) -> None:

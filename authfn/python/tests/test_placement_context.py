@@ -158,6 +158,13 @@ async def test_emits_configured_observability_events() -> None:
     assert "authfn.placement_context.rejected" in types
 
 
+@pytest.mark.asyncio
+async def test_normalizes_default_https_port_like_typescript_origin() -> None:
+    issuer, request, _user = await _setup(public_authority="https://account.example.com:443")
+    context = await issuer.derive(request)
+    assert context.issuer == "https://account.example.com"
+
+
 async def _setup(
     *,
     extra_headers: Optional[Dict[str, str]] = None,
@@ -165,6 +172,7 @@ async def _setup(
     identity_key: Optional[str] = None,
     skip_placement: bool = False,
     on_event: Optional[Any] = None,
+    public_authority: str = "https://account.example.com",
 ) -> tuple[Any, TestRequest, Dict[str, Any]]:
     config = AuthFnConfig.model_validate(
         {
@@ -217,7 +225,7 @@ async def _setup(
         config=config,
         subject_secret=SUBJECT_SECRET,
         audiences=["nucleum-datafn"],
-        public_authority="https://account.example.com",
+        public_authority=public_authority,
         placement_directory=directory,
         identity_key_for_user_id=lambda user_id: identity_key or f"person:{user_id}",
         keyring=KEYRING,
