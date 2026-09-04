@@ -782,9 +782,13 @@ def _ascii_domain_label(label: str) -> str:
         if _has_forbidden_domain_code_point(label):
             raise ConfigError(INVALID_AUTHORITY) from error
         # WHATWG domain-to-ASCII: UseSTD3ASCIIRules=false, CheckHyphens=false,
-        # VerifyDnsLength=false. Keep ASCII labels; punycode Unicode anyway.
+        # VerifyDnsLength=false, CheckJoiners=true, CheckBidi=true.
+        # Keep ASCII labels; punycode only hyphen/length Unicode exceptions.
         if label.isascii():
             return label
+        message = str(error).lower()
+        if "hyphen" not in message and "too long" not in message:
+            raise ConfigError(INVALID_AUTHORITY) from error
         try:
             return "xn--" + label.encode("punycode").decode("ascii")
         except UnicodeError as puny_error:
@@ -872,7 +876,7 @@ def _parse_ipv4_number(part: str) -> Optional[int]:
 
 def _whatwg_special_scheme_authority(authority: str) -> str:
     scheme, separator, rest = authority.partition(":")
-    if not separator or scheme.lower() not in {"http", "https"}:
+    if not separator or scheme.lower() not in {"http", "https", "ftp", "ws", "wss"}:
         return authority
     # WHATWG special-scheme: backslash is a path separator, and one or more
     # leading slashes enter the authority state. `https:host` and `https:/host`
