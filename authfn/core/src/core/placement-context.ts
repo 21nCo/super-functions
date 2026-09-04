@@ -666,6 +666,9 @@ function stripClientRoutingHeaders(request: Request): Request {
       if (property === 'headers') {
         return headers;
       }
+      if (property === 'clone') {
+        return () => stripClientRoutingHeaders(target.clone());
+      }
       const value = Reflect.get(target, property, target);
       return typeof value === 'function' ? value.bind(target) : value;
     }
