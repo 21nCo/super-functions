@@ -111,6 +111,10 @@ describe('AuthFn placement-bound auth context', () => {
       async resolve(incoming) {
         seenColo = (incoming as Request & { cf?: { colo: string } }).cf?.colo;
         seenRouting = incoming.headers.get('x-authfn-routing-region');
+        expect(incoming.url).toBe(request.url);
+        expect(incoming.method).toBe(request.method);
+        expect(incoming.bodyUsed).toBe(request.bodyUsed);
+        expect(incoming.signal).toBe(request.signal);
         return { issuer: 'https://account.example.com', baseUrl: 'https://account.example.com' };
       }
     };
@@ -118,6 +122,14 @@ describe('AuthFn placement-bound auth context', () => {
     expect(context.homeRegion).toBe('us-east-1');
     expect(seenColo).toBe('SFO');
     expect(seenRouting).toBeNull();
+  });
+
+  it('derives when no custom environment resolver is configured', async () => {
+    const bound = await setupIssuer();
+    bound.config.environment = undefined;
+    const context = await bound.issuer.derive(bound.request);
+    expect(context.homeRegion).toBe('us-east-1');
+    expect(context.issuer).toBe('https://account.example.com');
   });
 
   it('treats whitespace-only request ids as absent', async () => {
