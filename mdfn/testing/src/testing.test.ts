@@ -5,6 +5,12 @@ import { createMarkdownProjector, parseMarkdown, serializeMarkdown } from "@mdfn
 import { renderHtml } from "@mdfn/render";
 import { tests as commonmarkSpecTests } from "commonmark-spec";
 
+/** End-to-end parse → serialize → render on the large-document fixture below. */
+const LARGE_DOCUMENT_DEVELOPMENT_BUDGET_MS = 5_000;
+/** GHA shared runners are much slower than local dev; keep a separate CI ceiling. */
+const LARGE_DOCUMENT_CI_BUDGET_MS = 12_000;
+const largeDocumentBudgetMs = process.env.CI ? LARGE_DOCUMENT_CI_BUDGET_MS : LARGE_DOCUMENT_DEVELOPMENT_BUDGET_MS;
+
 describe("@mdfn/testing", () => {
   it("passes the representative no-edit corpus", () => {
     const result = runPreservationCorpus(representativeCorpus);
@@ -62,6 +68,6 @@ describe("@mdfn/testing", () => {
     expect(source.length).toBeGreaterThan(200_000);
     expect(serialized.markdown).toBe(source);
     expect(rendered.html.length).toBeGreaterThan(100_000);
-    expect(elapsed).toBeLessThan(5_000);
-  }, 10_000);
+    expect(elapsed).toBeLessThan(largeDocumentBudgetMs);
+  }, 30_000);
 });
