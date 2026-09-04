@@ -13,7 +13,6 @@ import type {
   AuthFnSessionRecord,
   AuthFnUserRecord
 } from '../types.js';
-import { authenticateApiKey } from './api-keys.js';
 import {
   AuthFnApiKeyRevokedError,
   AuthFnConfigError,
@@ -71,6 +70,27 @@ export interface AuthFnPlacementContextIssuerOptions {
   clockSkewSeconds?: number;
   includeUserId?: boolean;
   now?: () => Date;
+}
+
+export interface AuthFnPlacementContextVerifierOptions {
+  /** Audiences this verifier may accept. */
+  audiences: readonly string[];
+  /** Default audience used when verifySigned omits one. */
+  audience?: string;
+  publicAuthority: string;
+  /** Dedicated placement-context keyring. Do not reuse gateway-routing keys. */
+  keyring: AuthFnRoutingKeyring;
+  clockSkewSeconds?: number;
+  now?: () => Date;
+  /** Optional. Used only to emit verification events. */
+  config?: AuthFnRuntimeConfig;
+}
+
+export interface AuthFnPlacementContextVerifier {
+  verifySigned(
+    assertion: string,
+    input?: AuthFnPlacementContextDeriveInput
+  ): AuthFnPlacementBoundAuthContext;
 }
 
 export interface AuthFnPlacementContextDeriveInput {
@@ -183,6 +203,17 @@ export function createAuthFnPlacementContextIssuer(
   if (options.keyring) validateKeyring(options.keyring);
   const now = options.now ?? (() => new Date());
   const includeUserId = options.includeUserId === true;
+  const verifier = options.keyring
+    ? createAuthFnPlacementContextVerifier({
+        audiences,
+        audience: defaultAudience,
+        publicAuthority,
+        keyring: options.keyring,
+        clockSkewSeconds,
+        now,
+        config: options.config
+      })
+    : undefined;
 
   async function derive(
     request: Request,
@@ -244,40 +275,10 @@ export function createAuthFnPlacementContextIssuer(
     assertion: string,
     input?: AuthFnPlacementContextDeriveInput
   ): AuthFnPlacementBoundAuthContext {
-    if (!options.keyring) {
+    if (!verifier) {
       throw new AuthFnConfigError('Placement-context verification requires a keyring');
     }
-    const requestedAudience = input?.audience ?? defaultAudience;
-    try {
-      const audience = resolveAudience(requestedAudience, audiences);
-      const payload = verifyPlacementPayload(assertion, options.keyring, now, clockSkewSeconds);
-      if (payload.audience !== audience) {
-        throw new AuthFnPlacementContextInvalidError('Placement-bound auth context audience is invalid');
-      }
-      if (payload.issuer !== publicAuthority) {
-        throw new AuthFnPlacementContextInvalidError('Placement-bound auth context issuer is invalid');
-      }
-      const context = contextFromPayload(payload);
-      void emit(options.config, undefined, 'authfn.placement_context.verified', {
-        requestId: context.requestId,
-        outcome: 'success',
-        regionId: context.homeRegion,
-        metadata: {
-          epoch: context.placementEpoch,
-          audience: context.audience,
-          subjectDigest: hashForTelemetry(context.subject)
-        }
-      });
-      return context;
-    } catch (error) {
-      void emit(options.config, undefined, 'authfn.placement_context.verification_failed', {
-        outcome: 'rejected',
-        metadata: { errorType: readErrorCode(error), audience: requestedAudience }
-      });
-      throw error instanceof AuthFnPlacementContextInvalidError
-        ? error
-        : new AuthFnPlacementContextInvalidError();
-    }
+    return verifier.verifySigned(assertion, input);
   }
 
   return {
@@ -299,6 +300,71 @@ export function createAuthFnPlacementContextIssuer(
   };
 }
 
+/**
+ * Verification-only factory for a private remote consumer. HMAC holders can also
+ * mint assertions, so treat every verifier as a trusted co-issuer and give it a
+ * dedicated placement-context keyring — never the gateway-routing keys.
+ */
+export function createAuthFnPlacementContextVerifier(
+  options: AuthFnPlacementContextVerifierOptions
+): AuthFnPlacementContextVerifier {
+  const audiences = uniqueAudiences(options.audiences);
+  if (audiences.length === 0) {
+    throw new AuthFnConfigError('Placement-bound auth context requires at least one audience');
+  }
+  const defaultAudience = options.audience ?? audiences[0];
+  if (!audiences.includes(defaultAudience)) {
+    throw new AuthFnConfigError('Default placement-context audience must be in the allowlist');
+  }
+  const clockSkewSeconds = options.clockSkewSeconds ?? 5;
+  if (!Number.isSafeInteger(clockSkewSeconds) || clockSkewSeconds < 0 || clockSkewSeconds > 60) {
+    throw new AuthFnConfigError('Placement-context clockSkewSeconds must be between 0 and 60');
+  }
+  const publicAuthority = normalizeAuthority(options.publicAuthority);
+  validateKeyring(options.keyring);
+  const now = options.now ?? (() => new Date());
+
+  return {
+    verifySigned(assertion, input) {
+      const requestedAudience = input?.audience ?? defaultAudience;
+      try {
+        const audience = resolveAudience(requestedAudience, audiences);
+        const payload = verifyPlacementPayload(assertion, options.keyring, now, clockSkewSeconds);
+        if (payload.audience !== audience) {
+          throw new AuthFnPlacementContextInvalidError('Placement-bound auth context audience is invalid');
+        }
+        if (payload.issuer !== publicAuthority) {
+          throw new AuthFnPlacementContextInvalidError('Placement-bound auth context issuer is invalid');
+        }
+        const context = contextFromPayload(payload);
+        if (options.config) {
+          void emit(options.config, undefined, 'authfn.placement_context.verified', {
+            requestId: context.requestId,
+            outcome: 'success',
+            regionId: context.homeRegion,
+            metadata: {
+              epoch: context.placementEpoch,
+              audience: context.audience,
+              subjectDigest: hashForTelemetry(context.subject)
+            }
+          });
+        }
+        return context;
+      } catch (error) {
+        if (options.config) {
+          void emit(options.config, undefined, 'authfn.placement_context.verification_failed', {
+            outcome: 'rejected',
+            metadata: { errorType: readErrorCode(error), audience: requestedAudience }
+          });
+        }
+        throw error instanceof AuthFnPlacementContextInvalidError
+          ? error
+          : new AuthFnPlacementContextInvalidError();
+      }
+    }
+  };
+}
+
 export function freezeAuthFnPlacementContext(
   context: AuthFnPlacementBoundAuthContext
 ): AuthFnPlacementBoundAuthContext {
@@ -309,20 +375,24 @@ async function resolvePrincipal(
   config: AuthFnRuntimeConfig,
   request: Request
 ): Promise<PlacementPrincipal> {
-  const cookieState = await getCookieSessionState(config, request);
-  if (cookieState.sessionToken) {
+  const cookieState = await getCookieSessionState(config, request, { touch: false });
+  if (cookieState.session) {
     return principalFromCookieState(cookieState);
   }
 
   const credential = readAuthorizationCredential(request);
-  if (!credential) throw new AuthFnUnauthenticatedError();
-
-  if (credential.scheme === 'bearer') {
-    const sessionPrincipal = await resolveBearerSession(config, credential.secret);
-    if (sessionPrincipal) return sessionPrincipal;
+  if (credential) {
+    if (credential.scheme === 'bearer') {
+      const sessionPrincipal = await resolveBearerSession(config, credential.secret);
+      if (sessionPrincipal) return sessionPrincipal;
+    }
+    return resolveApiKeyPrincipal(config, credential.secret);
   }
 
-  return resolveApiKeyPrincipal(config, credential.secret);
+  if (cookieState.sessionToken) {
+    return principalFromCookieState(cookieState);
+  }
+  throw new AuthFnUnauthenticatedError();
 }
 
 function principalFromCookieState(
@@ -341,15 +411,18 @@ async function resolveApiKeyPrincipal(
   secret: string
 ): Promise<PlacementPrincipal> {
   try {
-    const apiKeySession = await authenticateApiKey(config, secret, { now: () => new Date() });
-    if (!apiKeySession) throw new AuthFnUnauthenticatedError();
     const record = await config.database.findOne<AuthFnApiKeyRecord>({
       model: 'api_keys',
-      where: [{ field: 'id', operator: 'eq', value: apiKeySession.actorId }],
+      where: [{ field: 'secretHash', operator: 'eq', value: hashSecret(secret) }],
       namespace: namespace(config)
     });
-    const userId = typeof record?.userId === 'string' ? record.userId : undefined;
-    if (!record || !userId) throw new AuthFnUnauthenticatedError();
+    if (!record) throw new AuthFnUnauthenticatedError();
+    if (record.revokedAt) throw new AuthFnApiKeyRevokedError();
+    if (record.expiresAt && record.expiresAt.getTime() <= Date.now()) {
+      throw new AuthFnUnauthenticatedError();
+    }
+    const userId = typeof record.userId === 'string' ? record.userId : undefined;
+    if (!userId) throw new AuthFnUnauthenticatedError();
     const user = await findUserById(config, userId);
     if (!user) throw new AuthFnUnauthenticatedError();
     const scopes = Array.isArray(record.scopes)
@@ -360,10 +433,10 @@ async function resolveApiKeyPrincipal(
       actorType: 'api-key',
       actorId: record.id,
       sessionId: record.id,
-      sessionVersionMaterial: `${record.id}:${record.updatedAt.toISOString()}`,
+      sessionVersionMaterial: credentialVersionMaterial(record),
       methods: ['api-key'],
       scopes,
-      authenticatedAt: record.lastUsedAt ?? record.updatedAt,
+      authenticatedAt: record.lastUsedAt ?? record.createdAt,
       sessionExpiresAt: record.expiresAt ?? undefined
     };
   } catch (error) {
@@ -401,9 +474,9 @@ function principalFromSession(
     actorType: 'user',
     actorId: user.id,
     sessionId: record.id,
-    sessionVersionMaterial: record.tokenHash,
+    sessionVersionMaterial: credentialVersionMaterial(record),
     methods,
-    authenticatedAt: record.lastAuthenticatedAt ?? record.updatedAt,
+    authenticatedAt: record.lastAuthenticatedAt ?? record.createdAt,
     sessionExpiresAt: record.expiresAt
   };
 }
@@ -608,6 +681,10 @@ function audiencesIncludes(allowlist: readonly string[], audience: string): bool
 
 function uniqueAudiences(audiences: readonly string[]): string[] {
   return [...new Set(audiences.map((audience) => audience.trim()).filter(Boolean))];
+}
+
+function credentialVersionMaterial(record: { id: string; createdAt: Date }): string {
+  return `${record.id}:${record.createdAt.toISOString()}`;
 }
 
 function hmacOpaque(macKey: Buffer, label: string, value: string): string {
