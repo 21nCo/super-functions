@@ -433,6 +433,11 @@ def test_canonicalizes_ipv4_authorities_like_whatwg_origin() -> None:
         _normalize_authority("https://08.0.0.1")
     with pytest.raises(ConfigError):
         _normalize_authority("https://hello.1")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://example.09")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://example.0x")
+    assert _normalize_authority("https://example.0xg") == "https://example.0xg"
 
 
 def test_canonicalizes_ipv6_authorities_like_whatwg_origin() -> None:
