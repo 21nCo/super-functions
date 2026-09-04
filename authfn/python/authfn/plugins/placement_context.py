@@ -728,7 +728,7 @@ def _secret_bytes(secret: bytes | str) -> bytes:
 def _canonical_hostname(hostname: str) -> str:
     if ":" in hostname:
         try:
-            return str(ipaddress.IPv6Address(hostname))
+            return _serialize_ipv6(ipaddress.IPv6Address(hostname))
         except ipaddress.AddressValueError as error:
             raise ConfigError(INVALID_AUTHORITY) from error
     try:
@@ -741,6 +741,32 @@ def _canonical_hostname(hostname: str) -> str:
     if ipv4 is None:
         raise ConfigError(INVALID_AUTHORITY)
     return ipv4
+
+
+def _serialize_ipv6(address: ipaddress.IPv6Address) -> str:
+    # WHATWG URL.origin / RFC 5952 hex compression. Do not use str(IPv6Address):
+    # Python 3.11 emits dotted IPv4 for ::ffff-mapped addresses.
+    pieces = [int.from_bytes(address.packed[index : index + 2], "big") for index in range(0, 16, 2)]
+    best_start = -1
+    best_length = 1
+    index = 0
+    while index < 8:
+        if pieces[index] != 0:
+            index += 1
+            continue
+        end = index
+        while end < 8 and pieces[end] == 0:
+            end += 1
+        length = end - index
+        if length > best_length:
+            best_start = index
+            best_length = length
+        index = end
+    if best_length < 2:
+        return ":".join(format(piece, "x") for piece in pieces)
+    head = ":".join(format(piece, "x") for piece in pieces[:best_start])
+    tail = ":".join(format(piece, "x") for piece in pieces[best_start + best_length :])
+    return f"{head}::{tail}"
 
 
 def _ends_in_ipv4_number(hostname: str) -> bool:
