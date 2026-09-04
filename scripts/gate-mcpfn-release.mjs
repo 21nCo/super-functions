@@ -472,6 +472,9 @@ try {
     "scripts/test-mcpfn-calculator-example.mjs",
   ], { timeout: 30_000 });
   run("official:conformance", process.execPath, ["scripts/test-mcpfn-conformance.mjs"]);
+  run("example:external-http-server", process.execPath, [
+    "scripts/test-mcpfn-external-server.mjs",
+  ], { timeout: 45_000 });
 
   const packageNames = ["@mcpfn/core", "@mcpfn/client", "@mcpfn/auth", "@mcpfn/testing", "@mcpfn/inspector", "@mcpfn/datafn", "@mcpfn/cli"];
   run("packages:esm-import", process.execPath, [
