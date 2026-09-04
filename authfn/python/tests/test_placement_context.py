@@ -561,6 +561,9 @@ def test_rejects_compound_idna_failures_like_whatwg_origin() -> None:
     assert _normalize_authority("https://-\u05d0.example") == "https://xn----0hc.example"
     assert _normalize_authority("https://-é.example") == "https://xn----bga.example"
     assert _normalize_authority("https://é-.example") == "https://xn----9fa.example"
+    assert _normalize_authority("https://-a·b.example") == "https://xn---ab-mga.example"
+    assert _normalize_authority("https://-͵a.example") == "https://xn---a-63b.example"
+    assert _normalize_authority("https://-a・.example") == "https://xn---a-4n4a.example"
 
 
 def test_omits_default_ports_for_special_schemes() -> None:
@@ -609,6 +612,8 @@ def test_canonicalizes_ipv4_authorities_like_whatwg_origin() -> None:
     with pytest.raises(ConfigError):
         _normalize_authority("https://example.0x")
     assert _normalize_authority("https://example.0xg") == "https://example.0xg"
+    assert _normalize_authority("https://0.0.0.1_0") == "https://0.0.0.1_0"
+    assert _normalize_authority("https://0.0.0.+1") == "https://0.0.0.+1"
 
 
 def test_canonicalizes_ipv6_authorities_like_whatwg_origin() -> None:
