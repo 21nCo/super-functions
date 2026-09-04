@@ -405,7 +405,7 @@ def test_rejects_fractional_and_boolean_ttl() -> None:
         "public_authority": "https://account.example.com",
         "placement_directory": directory,
         "identity_key_for_user_id": lambda user_id: f"person:{user_id}",
-    )
+    }
     with pytest.raises(ConfigError):
         create_placement_context_issuer(**kwargs, ttl_seconds=1.5)
     with pytest.raises(ConfigError):
