@@ -358,6 +358,24 @@ describe('AuthFn placement-bound auth context', () => {
       model: 'api_keys',
       namespace: 'authfn',
       data: {
+        id: 'key_empty_scopes',
+        userId: bound.user.id,
+        name: 'empty-scopes',
+        secretHash: hashSecret('secret_empty_scopes'),
+        scopes: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    });
+    const emptyScopes = await bound.issuer.derive(new Request('https://account.example.com/auth/session', {
+      headers: { authorization: 'Bearer secret_empty_scopes' }
+    }));
+    expect(emptyScopes.scopes).toEqual([]);
+
+    await bound.config.database.create({
+      model: 'api_keys',
+      namespace: 'authfn',
+      data: {
         id: 'key_unbound',
         name: 'orphan',
         secretHash: hashSecret('secret_unbound'),
