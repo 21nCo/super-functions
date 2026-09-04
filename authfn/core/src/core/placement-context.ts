@@ -23,7 +23,8 @@ import {
   AuthFnSessionExpiredError,
   AuthFnSessionRevokedError,
   AuthFnUnauthenticatedError,
-  AuthFnValidationError
+  AuthFnValidationError,
+  toAuthFnError
 } from './errors.js';
 import { emitAuthEvent, eventRequestId } from './observability.js';
 import { getMultiRegionPluginConfig } from './regions.js';
@@ -219,8 +220,11 @@ export function createAuthFnPlacementContextIssuer(
     request: Request,
     input?: AuthFnPlacementContextDeriveInput
   ): Promise<AuthFnPlacementBoundAuthContext> {
+    const requestId = eventRequestId(request);
     const sanitizedRequest = stripClientRoutingHeaders(request);
-    const requestId = eventRequestId(sanitizedRequest);
+    if (!sanitizedRequest.headers.get('x-request-id')) {
+      sanitizedRequest.headers.set('x-request-id', requestId);
+    }
     try {
       const audience = resolveAudience(input?.audience ?? defaultAudience, audiences);
       const principal = await resolvePrincipal(options.config, sanitizedRequest, now);
@@ -448,7 +452,7 @@ async function resolveApiKeyPrincipal(
     if (error instanceof AuthFnApiKeyRevokedError || error instanceof AuthFnUnauthenticatedError) {
       throw error;
     }
-    throw new AuthFnUnauthenticatedError();
+    throw toAuthFnError(error);
   }
 }
 
@@ -666,14 +670,13 @@ function readAuthorizationCredential(
   const authorization = request.headers.get('authorization');
   if (!authorization) return null;
   const trimmed = authorization.trim();
-  if (trimmed.startsWith('Bearer ')) {
-    const secret = trimmed.slice('Bearer '.length).trim();
-    return secret ? { scheme: 'bearer', secret } : null;
-  }
-  if (trimmed.startsWith('Api-Key ')) {
-    const secret = trimmed.slice('Api-Key '.length).trim();
-    return secret ? { scheme: 'api-key', secret } : null;
-  }
+  const separator = trimmed.indexOf(' ');
+  if (separator <= 0) return null;
+  const scheme = trimmed.slice(0, separator).toLowerCase();
+  const secret = trimmed.slice(separator + 1).trim();
+  if (!secret) return null;
+  if (scheme === 'bearer') return { scheme: 'bearer', secret };
+  if (scheme === 'api-key') return { scheme: 'api-key', secret };
   return null;
 }
 
