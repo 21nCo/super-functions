@@ -7,8 +7,11 @@ import { tests as commonmarkSpecTests } from "commonmark-spec";
 
 /** End-to-end parse → serialize → render on the large-document fixture below. */
 const LARGE_DOCUMENT_DEVELOPMENT_BUDGET_MS = 5_000;
-/** GHA shared runners are much slower than local dev; keep a separate CI ceiling. */
-const LARGE_DOCUMENT_CI_BUDGET_MS = 12_000;
+/**
+ * GHA shared runners are much slower than local dev; keep a separate CI ceiling.
+ * Full-graph turbo CI (PR 133, ~310 tasks) observed ~12.1s here; scoped runs stay ~12s.
+ */
+const LARGE_DOCUMENT_CI_BUDGET_MS = 20_000;
 const largeDocumentBudgetMs = process.env.CI ? LARGE_DOCUMENT_CI_BUDGET_MS : LARGE_DOCUMENT_DEVELOPMENT_BUDGET_MS;
 
 describe("@mdfn/testing", () => {
