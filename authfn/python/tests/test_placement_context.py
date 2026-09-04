@@ -806,6 +806,22 @@ async def test_evaluates_cookie_and_bearer_expiry_against_issuer_clock() -> None
 
 
 @pytest.mark.asyncio
+async def test_keeps_subsecond_session_expiry_when_capping_ttl() -> None:
+    issued_at = datetime(2026, 9, 4, 12, 0, 10, 100000, tzinfo=timezone.utc)
+    session_expires_at = datetime(2026, 9, 4, 12, 0, 10, 800000, tzinfo=timezone.utc)
+    setup = await _setup(clock=lambda: issued_at.timestamp())
+    await setup.config.database.update(
+        model="sessions",
+        where=[{"field": "id", "operator": "eq", "value": setup.issued["record"]["id"]}],
+        data={"expiresAt": session_expires_at},
+        namespace="authfn",
+    )
+    context = await setup.issuer.derive(setup.request)
+    assert context.issued_at == "2026-09-04T12:00:10.100Z"
+    assert context.expires_at == "2026-09-04T12:00:10.800Z"
+
+
+@pytest.mark.asyncio
 async def test_keeps_signed_request_id_on_post_signature_verification_failure() -> None:
     events: List[Any] = []
     setup = await _setup(on_event=events.append)
