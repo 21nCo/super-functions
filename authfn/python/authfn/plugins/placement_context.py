@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
-from ..http import get_cookie_session_state
+from ..http import _hash_secret, get_cookie_session_state
 from ..observability import emit_auth_event
 from ..plugins.api_keys import ApiKeyPluginConfig, ApiKeyService
 from ..plugins.gateway_routing import (
@@ -85,8 +85,8 @@ class PlacementContextIssuer:
         clock: Callable[[], float] = time.time,
         on_event: Optional[Callable[[Dict[str, Any]], Any]] = None,
     ) -> None:
-        secret = _secret_bytes(subject_secret)
-        if len(secret) < 32:
+        mac_key = _secret_bytes(subject_secret)
+        if len(mac_key) < 32:
             raise ConfigError("Placement-context subject_secret must be at least 32 bytes")
         allowed = tuple(dict.fromkeys(item.strip() for item in audiences if item.strip()))
         if not allowed:
@@ -101,7 +101,7 @@ class PlacementContextIssuer:
         if keyring is not None:
             _validate_keyring(keyring)
         self._config = config
-        self._subject_secret = secret
+        self._mac_key = mac_key
         self._audiences = allowed
         self._default_audience = default_audience
         self._public_authority = _normalize_authority(public_authority)
@@ -131,13 +131,13 @@ class PlacementContextIssuer:
                 raise SessionExpiredError(SESSION_EXPIRED)
             authenticated_at = principal["authenticated_at"]
             context = PlacementBoundAuthContext(
-                subject=_hmac_opaque(self._subject_secret, "subject", principal["user_id"]),
+                subject=_hmac_opaque(self._mac_key, "subject", principal["user_id"]),
                 home_region=placement.region_id,
                 placement_epoch=placement.epoch,
                 issuer=self._public_authority,
-                session_binding=_hmac_opaque(self._subject_secret, "session", principal["session_id"]),
+                session_binding=_hmac_opaque(self._mac_key, "session", principal["session_id"]),
                 session_version=_hmac_opaque(
-                    self._subject_secret,
+                    self._mac_key,
                     "session-version",
                     principal["session_version_material"],
                 ),
@@ -344,7 +344,7 @@ async def _resolve_bearer_session(config: AuthFnConfig, session_token: str) -> O
         where=[{
             "field": "tokenHash",
             "operator": "eq",
-            "value": hashlib.sha256(session_token.encode("utf-8")).hexdigest(),
+            "value": _hash_secret(session_token),
         }],
         namespace=config.namespace,
     )
@@ -566,8 +566,10 @@ def _require_audience(audience: str, allowlist: Sequence[str]) -> str:
     return audience
 
 
-def _hmac_opaque(secret: bytes, label: str, value: str) -> str:
-    return _b64(hmac.new(secret, f"{label}:{value}".encode("utf-8"), hashlib.sha256).digest())
+def _hmac_opaque(mac_key: bytes, label: str, value: str) -> str:
+    # Keyed MAC over identifiers (user/session ids), not password storage.
+    # codeql[py/weak-sensitive-data-hashing]
+    return _b64(hmac.digest(mac_key, f"{label}:{value}".encode("utf-8"), "sha256"))
 
 
 def _telemetry_hash(value: str) -> str:
