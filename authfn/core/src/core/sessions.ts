@@ -173,7 +173,8 @@ export async function authenticateRequest(
 
 export async function getCookieSessionState(
   config: AuthFnRuntimeConfig,
-  request: Request
+  request: Request,
+  options?: { touch?: boolean }
 ): Promise<AuthenticatedRequestState> {
   const runtime = await resolveEnvironment(config, request);
   const cookiePolicy = resolveCookiePolicy(config, request, runtime);
@@ -233,6 +234,15 @@ export async function getCookieSessionState(
   const session = buildUserSession(record, user, {
     regionId: runtime.regionId
   });
+
+  if (options?.touch === false) {
+    return {
+      ...state,
+      session,
+      sessionRecord: record,
+      user
+    };
+  }
 
   const now = new Date();
   await config.database.update<AuthFnSessionRecord>({
