@@ -18,7 +18,7 @@ from urllib.parse import unquote, urlparse
 
 import idna
 
-from ..http import _hash_secret, get_cookie_session_state
+from ..http import _coerce_utc, _hash_secret, get_cookie_session_state
 from ..observability import emit_auth_event, resolve_request_id
 from ..plugins.gateway_routing import (
     IdentityPlacement,
@@ -150,7 +150,7 @@ class PlacementContextIssuer:
             expires_at = issued_at + self._ttl_seconds
             session_expiry = principal.get("session_expires_at")
             if isinstance(session_expiry, datetime):
-                expires_at = min(expires_at, int(session_expiry.timestamp()))
+                expires_at = min(expires_at, int(_coerce_utc(session_expiry).timestamp()))
             if expires_at <= issued_at:
                 raise SessionExpiredError(SESSION_EXPIRED)
             authenticated_at = principal["authenticated_at"]
@@ -414,7 +414,7 @@ def _fail_closed_cookie_state(state: Any, clock: Callable[[], float]) -> Dict[st
 
 def _credential_expired(expires_at: Any, clock: Callable[[], float]) -> bool:
     if isinstance(expires_at, datetime):
-        return expires_at.timestamp() <= clock()
+        return _coerce_utc(expires_at).timestamp() <= clock()
     return False
 
 
@@ -454,8 +454,7 @@ async def _resolve_api_key_principal(
         raise UnauthorizedError(AUTH_REQUIRED)
     if row.get("revokedAt") is not None:
         raise ApiKeyRevokedError("API key has been revoked")
-    expires_at = row.get("expiresAt")
-    if isinstance(expires_at, datetime) and expires_at.timestamp() <= clock():
+    if _credential_expired(row.get("expiresAt"), clock):
         raise ExpiredCredentialsError("API key has expired")
     user_id = row.get("userId")
     if not user_id:
@@ -503,8 +502,7 @@ async def _resolve_bearer_session(
         return None
     if record.get("revokedAt") is not None:
         raise SessionRevokedError(SESSION_REVOKED)
-    expires_at = record.get("expiresAt")
-    if isinstance(expires_at, datetime) and expires_at.timestamp() <= clock():
+    if _credential_expired(record.get("expiresAt"), clock):
         raise SessionExpiredError(SESSION_EXPIRED)
     user = await config.database.find_one(
         model="users",
