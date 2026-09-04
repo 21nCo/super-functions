@@ -513,6 +513,24 @@ def test_canonicalizes_slashless_special_scheme_authorities() -> None:
         _normalize_authority("https:")
     with pytest.raises(ConfigError):
         _normalize_authority("https:/")
+    assert _normalize_authority("ftp:account.example.com") == "ftp://account.example.com"
+    assert _normalize_authority("ws:account.example.com") == "ws://account.example.com"
+    assert _normalize_authority("wss:/account.example.com") == "wss://account.example.com"
+    assert (
+        _normalize_authority("ftp://account.example.com" + chr(92) + "@evil.example")
+        == "ftp://account.example.com"
+    )
+    assert (
+        _normalize_authority("wss://account.example.com" + chr(92) + "@evil.example")
+        == "wss://account.example.com"
+    )
+
+
+def test_rejects_idna_joiner_labels_like_whatwg_origin() -> None:
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://a\u200db.example")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://a\u200cb.example")
 
 
 def test_canonicalizes_ipv4_authorities_like_whatwg_origin() -> None:
