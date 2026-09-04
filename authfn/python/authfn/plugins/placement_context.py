@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple, TypeGuard, cast
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import idna
 
@@ -725,12 +725,30 @@ def _secret_bytes(secret: bytes | str) -> bytes:
     return secret.encode("utf-8") if isinstance(secret, str) else bytes(secret)
 
 
+def _percent_decode_hostname(hostname: str) -> str:
+    try:
+        return unquote(hostname, encoding="utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        raise ConfigError(INVALID_AUTHORITY) from error
+
+
+def _has_forbidden_domain_code_point(hostname: str) -> bool:
+    return any(
+        ord(char) <= 0x1F
+        or char in {" ", "#", "/", ":", "<", ">", "?", "@", "[", "\\", "]", "^", "|", "%", "\x7f"}
+        for char in hostname
+    )
+
+
 def _canonical_hostname(hostname: str) -> str:
+    hostname = _percent_decode_hostname(hostname)
     if ":" in hostname:
         try:
             return _serialize_ipv6(ipaddress.IPv6Address(hostname))
         except ipaddress.AddressValueError as error:
             raise ConfigError(INVALID_AUTHORITY) from error
+    if _has_forbidden_domain_code_point(hostname):
+        raise ConfigError(INVALID_AUTHORITY)
     try:
         ascii_host = idna.encode(hostname, uts46=True, transitional=False).decode("ascii")
     except idna.IDNAError as error:
