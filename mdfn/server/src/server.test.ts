@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
 import { createMdfnRouter, createMdfnService } from "./index";
 
+/** Vitest default is 10s; coarse-resync fixtures exceed that on GHA (~9–18s observed). */
+const COARSE_RESYNC_TEST_TIMEOUT_MS = 30_000;
+
 function reorderObjectKeys<T>(value: T): T {
   if (Array.isArray(value)) return value.map(reorderObjectKeys) as T;
   if (value === null || typeof value !== "object") return value;
@@ -374,7 +377,7 @@ describe("mdfn server", () => {
     const expectedFrom = after.indexOf("ANCHOR");
 
     expect(updated.sidecar?.comments?.[0]?.anchor).toEqual({ from: expectedFrom, to: expectedFrom + 6 });
-  });
+  }, COARSE_RESYNC_TEST_TIMEOUT_MS);
 
   it("bounds coarse resynchronization when large replacements share no anchors", async () => {
     const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `bounded-resync-${id++}`; })() });
@@ -388,7 +391,7 @@ describe("mdfn server", () => {
 
     expect(updated.markdown).toBe(after);
     expect(updated.sidecar?.comments?.[0]?.anchor.to).toBeLessThanOrEqual(after.length);
-  });
+  }, COARSE_RESYNC_TEST_TIMEOUT_MS);
 
   it("shares the coarse resynchronization budget across many short stable runs", async () => {
     const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `bounded-runs-${id++}`; })() });
@@ -402,7 +405,7 @@ describe("mdfn server", () => {
 
     expect(updated.markdown).toBe(after);
     expect(updated.sidecar?.comments?.[0]?.anchor.to).toBeLessThanOrEqual(after.length);
-  });
+  }, COARSE_RESYNC_TEST_TIMEOUT_MS);
 
   it("restores the complete historical title, Markdown, and sidecar snapshot", async () => {
     const service = createMdfnService({ database: memoryAdapter(), durability: "ephemeral", authorize: () => true, createId: (() => { let id = 0; return () => `restore-${id++}`; })() });
