@@ -740,13 +740,21 @@ def _has_forbidden_domain_code_point(hostname: str) -> bool:
     )
 
 
+def _canonical_bracketed_ipv6(hostport: str) -> str:
+    end = hostport.find("]")
+    if end < 2:
+        raise ConfigError(INVALID_AUTHORITY)
+    raw = hostport[1:end]
+    if "%" in raw:
+        raise ConfigError(INVALID_AUTHORITY)
+    try:
+        return f"[{_serialize_ipv6(ipaddress.IPv6Address(raw))}]"
+    except ipaddress.AddressValueError as error:
+        raise ConfigError(INVALID_AUTHORITY) from error
+
+
 def _canonical_hostname(hostname: str) -> str:
     hostname = _percent_decode_hostname(hostname)
-    if ":" in hostname:
-        try:
-            return _serialize_ipv6(ipaddress.IPv6Address(hostname))
-        except ipaddress.AddressValueError as error:
-            raise ConfigError(INVALID_AUTHORITY) from error
     if _has_forbidden_domain_code_point(hostname):
         raise ConfigError(INVALID_AUTHORITY)
     try:
@@ -830,7 +838,7 @@ def _parse_ipv4_number(part: str) -> Optional[int]:
         radix = 8
         digits = part[1:]
     if not digits:
-        return None
+        return 0 if radix == 16 else None
     try:
         return int(digits, radix)
     except ValueError:
@@ -842,9 +850,11 @@ def _normalize_authority(authority: str) -> str:
     if not parsed.scheme or not parsed.hostname:
         raise ConfigError(INVALID_AUTHORITY)
     scheme = parsed.scheme.lower()
-    hostname = _canonical_hostname(parsed.hostname)
-    if ":" in hostname and not hostname.startswith("["):
-        hostname = f"[{hostname}]"
+    hostport = parsed.netloc.rsplit("@", 1)[-1]
+    if hostport.startswith("["):
+        hostname = _canonical_bracketed_ipv6(hostport)
+    else:
+        hostname = _canonical_hostname(parsed.hostname)
     port = parsed.port
     if port is None or (scheme == "https" and port == 443) or (scheme == "http" and port == 80):
         return f"{scheme}://{hostname}"
