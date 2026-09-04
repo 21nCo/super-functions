@@ -331,9 +331,11 @@ export function createAuthFnPlacementContextVerifier(
   return {
     verifySigned(assertion, input) {
       const requestedAudience = input?.audience ?? defaultAudience;
+      let verifiedRequestId: string | undefined;
       try {
-        const audience = resolveAudience(requestedAudience, audiences);
         const payload = verifyPlacementPayload(assertion, options.keyring, now, clockSkewSeconds);
+        verifiedRequestId = payload.requestId;
+        const audience = resolveAudience(requestedAudience, audiences);
         if (payload.audience !== audience) {
           throw new AuthFnPlacementContextInvalidError('Placement-bound auth context audience is invalid');
         }
@@ -357,6 +359,7 @@ export function createAuthFnPlacementContextVerifier(
       } catch (error) {
         if (options.config) {
           void emit(options.config, undefined, 'authfn.placement_context.verification_failed', {
+            requestId: verifiedRequestId,
             outcome: 'rejected',
             metadata: { errorType: readErrorCode(error), audience: requestedAudience }
           });
@@ -380,7 +383,7 @@ async function resolvePrincipal(
   request: Request,
   now: () => Date
 ): Promise<PlacementPrincipal> {
-  const cookieState = await getCookieSessionState(config, request, { touch: false });
+  const cookieState = await getCookieSessionState(config, request, { touch: false, now });
   if (cookieState.session) {
     return principalFromCookieState(cookieState);
   }
