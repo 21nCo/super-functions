@@ -533,6 +533,20 @@ def test_rejects_idna_joiner_labels_like_whatwg_origin() -> None:
         _normalize_authority("https://a\u200cb.example")
 
 
+def test_rejects_compound_idna_failures_like_whatwg_origin() -> None:
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://-a\u200db.example")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://-a\u200cb.example")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://-\u05d0a.example")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://\u05d0-.example")
+    assert _normalize_authority("https://-\u05d0.example") == "https://xn----0hc.example"
+    assert _normalize_authority("https://-é.example") == "https://xn----bga.example"
+    assert _normalize_authority("https://é-.example") == "https://xn----9fa.example"
+
+
 def test_omits_default_ports_for_special_schemes() -> None:
     assert _normalize_authority("ftp://example.com:21") == "ftp://example.com"
     assert _normalize_authority("ws://example.com:80") == "ws://example.com"
