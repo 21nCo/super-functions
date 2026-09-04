@@ -564,6 +564,9 @@ def test_rejects_compound_idna_failures_like_whatwg_origin() -> None:
     assert _normalize_authority("https://-a·b.example") == "https://xn---ab-mga.example"
     assert _normalize_authority("https://-͵a.example") == "https://xn---a-63b.example"
     assert _normalize_authority("https://-a・.example") == "https://xn---a-4n4a.example"
+    assert _normalize_authority("https://a·b.example") == "https://xn--ab-0ea.example"
+    assert _normalize_authority("https://͵a.example") == "https://xn--a-jib.example"
+    assert _normalize_authority("https://a・.example") == "https://xn--a-iju.example"
     with pytest.raises(ConfigError):
         _normalize_authority("https://-\u05d0!.example")
     with pytest.raises(ConfigError):
