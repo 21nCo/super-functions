@@ -758,15 +758,28 @@ def _canonical_hostname(hostname: str) -> str:
     if _has_forbidden_domain_code_point(hostname):
         raise ConfigError(INVALID_AUTHORITY)
     try:
-        ascii_host = idna.encode(hostname, uts46=True, transitional=False).decode("ascii")
+        mapped = idna.uts46_remap(hostname, std3_rules=False, transitional=False)
     except idna.IDNAError as error:
         raise ConfigError(INVALID_AUTHORITY) from error
+    ascii_host = ".".join(_ascii_domain_label(label) for label in mapped.split("."))
     if not _ends_in_ipv4_number(ascii_host):
         return ascii_host
     ipv4 = _parse_ipv4_hostname(ascii_host)
     if ipv4 is None:
         raise ConfigError(INVALID_AUTHORITY)
     return ipv4
+
+
+def _ascii_domain_label(label: str) -> str:
+    if not label:
+        return ""
+    try:
+        return idna.encode(label, uts46=False, transitional=False).decode("ascii")
+    except idna.IDNAError as error:
+        # WHATWG domain-to-ASCII uses UseSTD3ASCIIRules=false and CheckHyphens=false.
+        if label.isascii() and not _has_forbidden_domain_code_point(label):
+            return label
+        raise ConfigError(INVALID_AUTHORITY) from error
 
 
 def _serialize_ipv6(address: ipaddress.IPv6Address) -> str:
@@ -858,7 +871,10 @@ def _normalize_authority(authority: str) -> str:
         hostname = _canonical_bracketed_ipv6(hostport)
     else:
         hostname = _canonical_hostname(parsed.hostname)
-    port = parsed.port
+    try:
+        port = parsed.port
+    except ValueError as error:
+        raise ConfigError(INVALID_AUTHORITY) from error
     if port is None or (scheme == "https" and port == 443) or (scheme == "http" and port == 80):
         return f"{scheme}://{hostname}"
     return f"{scheme}://{hostname}:{port}"
