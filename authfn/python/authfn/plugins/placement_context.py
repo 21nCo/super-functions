@@ -17,7 +17,6 @@ from urllib.parse import urlparse
 
 from ..http import _hash_secret, get_cookie_session_state
 from ..observability import emit_auth_event
-from ..plugins.api_keys import ApiKeyPluginConfig, ApiKeyService
 from ..plugins.gateway_routing import (
     IdentityPlacement,
     IdentityPlacementDirectory,
@@ -25,8 +24,10 @@ from ..plugins.gateway_routing import (
     RoutingSigningKey,
 )
 from ..types import (
+    ApiKeyRevokedError,
     AuthFnConfig,
     ConfigError,
+    ExpiredCredentialsError,
     PlacementContextInvalidError,
     PlacementDirectoryUnavailableError,
     PlacementMovingError,
@@ -94,10 +95,8 @@ class PlacementContextIssuer:
         default_audience = audience or allowed[0]
         if default_audience not in allowed:
             raise ConfigError("Default placement-context audience must be in the allowlist")
-        if not 1 <= ttl_seconds <= MAX_TTL_SECONDS:
-            raise ConfigError(f"Placement-context ttl_seconds must be between 1 and {MAX_TTL_SECONDS}")
-        if not 0 <= clock_skew_seconds <= 60:
-            raise ConfigError("Placement-context clock_skew_seconds must be between 0 and 60")
+        ttl_seconds = _require_int("ttl_seconds", ttl_seconds, 1, MAX_TTL_SECONDS)
+        clock_skew_seconds = _require_int("clock_skew_seconds", clock_skew_seconds, 0, 60)
         if keyring is not None:
             _validate_keyring(keyring)
         self._config = config
@@ -113,6 +112,20 @@ class PlacementContextIssuer:
         self._include_user_id = include_user_id
         self._clock = clock
         self._on_event = on_event
+        self._verifier = (
+            PlacementContextVerifier(
+                audiences=allowed,
+                public_authority=self._public_authority,
+                keyring=keyring,
+                audience=default_audience,
+                clock_skew_seconds=clock_skew_seconds,
+                clock=clock,
+                config=config,
+                on_event=on_event,
+            )
+            if keyring is not None
+            else None
+        )
 
     async def derive(self, request: Any, *, audience: Optional[str] = None) -> PlacementBoundAuthContext:
         sanitized = _strip_routing_headers(request)
@@ -202,50 +215,9 @@ class PlacementContextIssuer:
         return {"context": context, "assertion": _sign(payload, self._keyring)}
 
     def verify_signed(self, assertion: str, *, audience: Optional[str] = None) -> PlacementBoundAuthContext:
-        if self._keyring is None:
+        if self._verifier is None:
             raise ConfigError("Placement-context verification requires a keyring")
-        try:
-            resolved_audience = _require_audience(audience or self._default_audience, self._audiences)
-            payload = _verify(assertion, self._keyring, self._clock, self._clock_skew_seconds)
-            if payload.get("audience") != resolved_audience:
-                raise PlacementContextInvalidError("Placement-bound auth context audience is invalid")
-            if payload.get("issuer") != self._public_authority:
-                raise PlacementContextInvalidError("Placement-bound auth context issuer is invalid")
-            context = _context_from_payload(payload)
-            self._emit_sync(
-                {
-                    "type": "authfn.placement_context.verified",
-                    "requestId": context.request_id,
-                    "regionId": context.home_region,
-                    "outcome": "success",
-                    "metadata": {
-                        "epoch": context.placement_epoch,
-                        "audience": context.audience,
-                        "subjectDigest": _telemetry_hash(context.subject),
-                    },
-                }
-            )
-            return context
-        except PlacementContextInvalidError:
-            self._emit_sync(
-                {
-                    "type": "authfn.placement_context.verification_failed",
-                    "requestId": _request_id(None),
-                    "outcome": "rejected",
-                    "metadata": {"audience": audience or self._default_audience},
-                }
-            )
-            raise
-        except Exception as error:
-            self._emit_sync(
-                {
-                    "type": "authfn.placement_context.verification_failed",
-                    "requestId": _request_id(None),
-                    "outcome": "rejected",
-                    "metadata": {"errorType": getattr(error, "code", "AUTHFN_PLACEMENT_CONTEXT_INVALID")},
-                }
-            )
-            raise PlacementContextInvalidError() from error
+        return self._verifier.verify_signed(assertion, audience=audience)
 
     async def _emit(self, event: Dict[str, Any]) -> None:
         self._notify(event)
@@ -273,17 +245,110 @@ def create_placement_context_issuer(**kwargs: Any) -> PlacementContextIssuer:
     return PlacementContextIssuer(**kwargs)
 
 
+class PlacementContextVerifier:
+    """Verification-only consumer. HMAC holders are trusted co-issuers."""
+
+    def __init__(
+        self,
+        *,
+        audiences: Sequence[str],
+        public_authority: str,
+        keyring: RoutingKeyring,
+        audience: Optional[str] = None,
+        clock_skew_seconds: int = 5,
+        clock: Callable[[], float] = time.time,
+        config: Optional[AuthFnConfig] = None,
+        on_event: Optional[Callable[[Dict[str, Any]], Any]] = None,
+    ) -> None:
+        allowed = tuple(dict.fromkeys(item.strip() for item in audiences if item.strip()))
+        if not allowed:
+            raise ConfigError("Placement-bound auth context requires at least one audience")
+        default_audience = audience or allowed[0]
+        if default_audience not in allowed:
+            raise ConfigError("Default placement-context audience must be in the allowlist")
+        self._audiences = allowed
+        self._default_audience = default_audience
+        self._public_authority = _normalize_authority(public_authority)
+        self._keyring = keyring
+        _validate_keyring(keyring)
+        self._clock_skew_seconds = _require_int("clock_skew_seconds", clock_skew_seconds, 0, 60)
+        self._clock = clock
+        self._config = config
+        self._on_event = on_event
+
+    def verify_signed(self, assertion: str, *, audience: Optional[str] = None) -> PlacementBoundAuthContext:
+        requested_audience = audience or self._default_audience
+        try:
+            resolved_audience = _require_audience(requested_audience, self._audiences)
+            payload = _verify(assertion, self._keyring, self._clock, self._clock_skew_seconds)
+            if payload.get("audience") != resolved_audience:
+                raise PlacementContextInvalidError("Placement-bound auth context audience is invalid")
+            if payload.get("issuer") != self._public_authority:
+                raise PlacementContextInvalidError("Placement-bound auth context issuer is invalid")
+            context = _context_from_payload(payload)
+            self._emit_sync(
+                {
+                    "type": "authfn.placement_context.verified",
+                    "requestId": context.request_id,
+                    "regionId": context.home_region,
+                    "outcome": "success",
+                    "metadata": {
+                        "epoch": context.placement_epoch,
+                        "audience": context.audience,
+                        "subjectDigest": _telemetry_hash(context.subject),
+                    },
+                }
+            )
+            return context
+        except Exception as error:
+            self._emit_sync(
+                {
+                    "type": "authfn.placement_context.verification_failed",
+                    "requestId": _request_id(None),
+                    "outcome": "rejected",
+                    "metadata": {
+                        "errorType": getattr(error, "code", "AUTHFN_PLACEMENT_CONTEXT_INVALID"),
+                        "audience": requested_audience,
+                    },
+                }
+            )
+            if isinstance(error, PlacementContextInvalidError):
+                raise
+            raise PlacementContextInvalidError() from error
+
+    def _emit_sync(self, event: Dict[str, Any]) -> None:
+        if self._on_event is not None:
+            try:
+                self._on_event(event)
+            except Exception:  # noqa: BLE001
+                pass
+        if self._config is None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(emit_auth_event(self._config, event))
+            return
+        loop.create_task(emit_auth_event(self._config, event))
+
+
+def create_placement_context_verifier(**kwargs: Any) -> PlacementContextVerifier:
+    return PlacementContextVerifier(**kwargs)
+
+
 async def _resolve_principal(config: AuthFnConfig, request: Any) -> Dict[str, Any]:
-    state = await get_cookie_session_state(config, request)
-    if state.session_token:
+    state = await get_cookie_session_state(config, request, touch=False)
+    if state.session is not None:
         return _principal_from_cookie_state(state)
     secret = _authorization_secret(request)
-    if not secret:
-        raise UnauthorizedError(AUTH_REQUIRED)
-    bearer_session = await _resolve_bearer_session(config, secret)
-    if bearer_session is not None:
-        return bearer_session
-    return await _resolve_api_key_principal(config, request)
+    if secret:
+        bearer_session = await _resolve_bearer_session(config, secret)
+        if bearer_session is not None:
+            return bearer_session
+        return await _resolve_api_key_principal(config, secret)
+    if state.session_token:
+        return _principal_from_cookie_state(state)
+    raise UnauthorizedError(AUTH_REQUIRED)
 
 
 def _principal_from_cookie_state(state: Any) -> Dict[str, Any]:
@@ -299,24 +364,28 @@ def _principal_from_cookie_state(state: Any) -> Dict[str, Any]:
         "user_id": user["id"],
         "actor_type": "user",
         "session_id": record["id"],
-        "session_version_material": record["tokenHash"],
+        "session_version_material": _credential_version_material(record),
         "methods": list(state.session.methods),
-        "authenticated_at": record.get("lastAuthenticatedAt") or record.get("updatedAt"),
+        "authenticated_at": record.get("lastAuthenticatedAt") or record.get("createdAt"),
         "session_expires_at": record.get("expiresAt"),
     }
 
 
-async def _resolve_api_key_principal(config: AuthFnConfig, request: Any) -> Dict[str, Any]:
-    session = await ApiKeyService(config, ApiKeyPluginConfig()).authenticate(request)
-    if session is None:
-        raise UnauthorizedError(AUTH_REQUIRED)
+async def _resolve_api_key_principal(config: AuthFnConfig, secret: str) -> Dict[str, Any]:
     row = await config.database.find_one(
         model="api_keys",
-        where=[{"field": "id", "operator": "eq", "value": session.actor_id}],
+        where=[{"field": "secretHash", "operator": "eq", "value": _hash_secret(secret)}],
         namespace=config.namespace,
     )
-    user_id = (row or {}).get("userId")
-    if not row or not user_id:
+    if row is None:
+        raise UnauthorizedError(AUTH_REQUIRED)
+    if row.get("revokedAt") is not None:
+        raise ApiKeyRevokedError("API key has been revoked")
+    expires_at = row.get("expiresAt")
+    if isinstance(expires_at, datetime) and expires_at.timestamp() <= time.time():
+        raise ExpiredCredentialsError("API key has expired")
+    user_id = row.get("userId")
+    if not user_id:
         raise UnauthorizedError(AUTH_REQUIRED)
     user = await config.database.find_one(
         model="users",
@@ -330,10 +399,10 @@ async def _resolve_api_key_principal(config: AuthFnConfig, request: Any) -> Dict
         "user_id": user["id"],
         "actor_type": "api-key",
         "session_id": row["id"],
-        "session_version_material": f"{row['id']}:{_isoformat(row.get('updatedAt') or row.get('createdAt'))}",
+        "session_version_material": _credential_version_material(row),
         "methods": ["api-key"],
         "scopes": [scope for scope in scopes if isinstance(scope, str)],
-        "authenticated_at": row.get("lastUsedAt") or row.get("updatedAt"),
+        "authenticated_at": row.get("lastUsedAt") or row.get("createdAt"),
         "session_expires_at": row.get("expiresAt"),
     }
 
@@ -367,9 +436,9 @@ async def _resolve_bearer_session(config: AuthFnConfig, session_token: str) -> O
         "user_id": user["id"],
         "actor_type": "user",
         "session_id": record["id"],
-        "session_version_material": record["tokenHash"],
+        "session_version_material": _credential_version_material(record),
         "methods": [str(item) for item in methods] if isinstance(methods, list) else ["password"],
-        "authenticated_at": record.get("lastAuthenticatedAt") or record.get("updatedAt"),
+        "authenticated_at": record.get("lastAuthenticatedAt") or record.get("createdAt"),
         "session_expires_at": record.get("expiresAt"),
     }
 
@@ -566,6 +635,21 @@ def _require_audience(audience: str, allowlist: Sequence[str]) -> str:
     return audience
 
 
+def _require_int(name: str, value: Any, minimum: int, maximum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigError(f"Placement-context {name} must be an integer")
+    if not minimum <= value <= maximum:
+        if name == "ttl_seconds":
+            raise ConfigError(f"Placement-context ttl_seconds must be between 1 and {MAX_TTL_SECONDS}")
+        raise ConfigError(f"Placement-context {name} must be between {minimum} and {maximum}")
+    return value
+
+
+def _credential_version_material(record: Dict[str, Any]) -> str:
+    created_at = record.get("createdAt") or record.get("updatedAt")
+    return f"{record['id']}:{_isoformat(created_at)}"
+
+
 def _hmac_opaque(mac_key: bytes, label: str, value: str) -> str:
     # Keyed MAC over identifiers (user/session ids), not password storage.
     # codeql[py/weak-sensitive-data-hashing]
@@ -643,5 +727,7 @@ __all__ = [
     "PlacementBoundAuthContext",
     "PlacementContextInvalidError",
     "PlacementContextIssuer",
+    "PlacementContextVerifier",
     "create_placement_context_issuer",
+    "create_placement_context_verifier",
 ]
