@@ -566,6 +566,8 @@ def test_rejects_compound_idna_failures_like_whatwg_origin() -> None:
     assert _normalize_authority("https://-a・.example") == "https://xn---a-4n4a.example"
     with pytest.raises(ConfigError):
         _normalize_authority("https://-\u05d0!.example")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://-\u0661\u06f2.example")
 
 
 def test_rejects_malformed_ace_labels_like_whatwg_origin() -> None:
