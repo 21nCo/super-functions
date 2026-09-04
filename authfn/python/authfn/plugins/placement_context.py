@@ -168,7 +168,7 @@ class PlacementContextIssuer:
                 expires_at=_isoformat(datetime.fromtimestamp(expires_at, tz=timezone.utc)),
                 audience=resolved_audience,
                 assurance=tuple(principal["methods"]),
-                scopes=tuple(principal["scopes"]) if principal.get("scopes") else None,
+                scopes=tuple(principal["scopes"]) if principal.get("scopes") is not None else None,
                 request_id=request_id,
                 actor_type=principal["actor_type"],
                 user_id=principal["user_id"] if self._include_user_id else None,
@@ -727,9 +727,65 @@ def _canonical_hostname(hostname: str) -> str:
     if ":" in hostname:
         return hostname.lower()
     try:
-        return idna.encode(hostname, uts46=True, transitional=False).decode("ascii")
+        ascii_host = idna.encode(hostname, uts46=True, transitional=False).decode("ascii")
     except idna.IDNAError as error:
         raise ConfigError("AuthFn publicAuthority must be a valid origin") from error
+    if not _ends_in_ipv4_number(ascii_host):
+        return ascii_host
+    ipv4 = _parse_ipv4_hostname(ascii_host)
+    if ipv4 is None:
+        raise ConfigError("AuthFn publicAuthority must be a valid origin")
+    return ipv4
+
+
+def _ends_in_ipv4_number(hostname: str) -> bool:
+    parts = hostname.split(".")
+    if parts and parts[-1] == "":
+        if len(parts) == 1:
+            return False
+        parts.pop()
+    return bool(parts) and _parse_ipv4_number(parts[-1]) is not None
+
+
+def _parse_ipv4_hostname(hostname: str) -> Optional[str]:
+    parts = hostname.split(".")
+    if parts and parts[-1] == "" and len(parts) > 1:
+        parts.pop()
+    if not 1 <= len(parts) <= 4:
+        return None
+    numbers: List[int] = []
+    for part in parts:
+        parsed = _parse_ipv4_number(part)
+        if parsed is None:
+            return None
+        numbers.append(parsed)
+    if any(number > 255 for number in numbers[:-1]):
+        return None
+    if numbers[-1] >= 256 ** (5 - len(numbers)):
+        return None
+    ipv4 = numbers[-1]
+    for index, number in enumerate(numbers[:-1]):
+        ipv4 += number * (256 ** (3 - index))
+    return ".".join(str((ipv4 >> shift) & 255) for shift in (24, 16, 8, 0))
+
+
+def _parse_ipv4_number(part: str) -> Optional[int]:
+    if not part:
+        return None
+    radix = 10
+    digits = part
+    if len(part) >= 2 and part[0] == "0" and part[1] in {"x", "X"}:
+        radix = 16
+        digits = part[2:]
+    elif len(part) >= 2 and part[0] == "0":
+        radix = 8
+        digits = part[1:]
+    if not digits:
+        return None
+    try:
+        return int(digits, radix)
+    except ValueError:
+        return None
 
 
 def _normalize_authority(authority: str) -> str:
