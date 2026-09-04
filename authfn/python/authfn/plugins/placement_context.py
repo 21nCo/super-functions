@@ -92,7 +92,7 @@ class PlacementContextIssuer:
         allowed = tuple(dict.fromkeys(item.strip() for item in audiences if item.strip()))
         if not allowed:
             raise ConfigError("Placement-bound auth context requires at least one audience")
-        default_audience = audience or allowed[0]
+        default_audience = allowed[0] if audience is None else audience
         if default_audience not in allowed:
             raise ConfigError("Default placement-context audience must be in the allowlist")
         ttl_seconds = _require_int("ttl_seconds", ttl_seconds, 1, MAX_TTL_SECONDS)
@@ -133,7 +133,10 @@ class PlacementContextIssuer:
         if not any(key.lower() == "x-request-id" for key in sanitized.headers):
             sanitized.headers["x-request-id"] = request_id
         try:
-            resolved_audience = _require_audience(audience or self._default_audience, self._audiences)
+            resolved_audience = _require_audience(
+                self._default_audience if audience is None else audience,
+                self._audiences,
+            )
             principal = await _resolve_principal(self._config, sanitized, self._clock)
             identity_key = self._identity_key_for_user_id(principal["user_id"])
             if inspect.isawaitable(identity_key):
@@ -268,7 +271,7 @@ class PlacementContextVerifier:
         allowed = tuple(dict.fromkeys(item.strip() for item in audiences if item.strip()))
         if not allowed:
             raise ConfigError("Placement-bound auth context requires at least one audience")
-        default_audience = audience or allowed[0]
+        default_audience = allowed[0] if audience is None else audience
         if default_audience not in allowed:
             raise ConfigError("Default placement-context audience must be in the allowlist")
         self._audiences = allowed
@@ -282,10 +285,14 @@ class PlacementContextVerifier:
         self._on_event = on_event
 
     def verify_signed(self, assertion: str, *, audience: Optional[str] = None) -> PlacementBoundAuthContext:
-        requested_audience = audience or self._default_audience
+        requested_audience = self._default_audience if audience is None else audience
+        verified_request_id: Optional[str] = None
         try:
-            resolved_audience = _require_audience(requested_audience, self._audiences)
             payload = _verify(assertion, self._keyring, self._clock, self._clock_skew_seconds)
+            request_id = payload.get("requestId")
+            if isinstance(request_id, str):
+                verified_request_id = request_id
+            resolved_audience = _require_audience(requested_audience, self._audiences)
             if payload.get("audience") != resolved_audience:
                 raise PlacementContextInvalidError("Placement-bound auth context audience is invalid")
             if payload.get("issuer") != self._public_authority:
@@ -309,7 +316,7 @@ class PlacementContextVerifier:
             self._emit_sync(
                 {
                     "type": "authfn.placement_context.verification_failed",
-                    "requestId": _request_id(None),
+                    "requestId": verified_request_id or _request_id(None),
                     "outcome": "rejected",
                     "metadata": {
                         "errorType": getattr(error, "code", "AUTHFN_PLACEMENT_CONTEXT_INVALID"),
@@ -347,8 +354,9 @@ async def _resolve_principal(
     clock: Callable[[], float],
 ) -> Dict[str, Any]:
     state = await get_cookie_session_state(config, request, touch=False)
-    if state.session is not None:
-        return _principal_from_cookie_state(state)
+    cookie_principal = await _cookie_principal_for_clock(config, state, clock)
+    if cookie_principal is not None:
+        return cookie_principal
     secret = _authorization_secret(request)
     if secret:
         bearer_session = await _resolve_bearer_session(config, secret, clock)
@@ -356,8 +364,54 @@ async def _resolve_principal(
             return bearer_session
         return await _resolve_api_key_principal(config, secret, clock)
     if state.session_token:
-        return _principal_from_cookie_state(state)
+        return _fail_closed_cookie_state(state, clock)
     raise UnauthorizedError(AUTH_REQUIRED)
+
+
+async def _cookie_principal_for_clock(
+    config: AuthFnConfig,
+    state: Any,
+    clock: Callable[[], float],
+) -> Optional[Dict[str, Any]]:
+    record = state.session_record
+    if record is None or record.get("revokedAt") is not None:
+        return None
+    if _credential_expired(record.get("expiresAt"), clock):
+        return None
+    if state.session is not None and state.user is not None:
+        return _principal_from_cookie_state(state)
+    user = state.user
+    if user is None:
+        user = await config.database.find_one(
+            model="users",
+            where=[{"field": "id", "operator": "eq", "value": record["userId"]}],
+            namespace=config.namespace,
+        )
+    if user is None:
+        return None
+    return {
+        "user_id": user["id"],
+        "actor_type": "user",
+        "session_id": record["id"],
+        "session_version_material": _credential_version_material(record),
+        "methods": list(record.get("methods") or ["password"]),
+        "authenticated_at": record.get("lastAuthenticatedAt") or record.get("createdAt"),
+        "session_expires_at": record.get("expiresAt"),
+    }
+
+
+def _fail_closed_cookie_state(state: Any, clock: Callable[[], float]) -> Dict[str, Any]:
+    if state.failure_reason == "revoked" or (state.session_record and state.session_record.get("revokedAt")):
+        raise SessionRevokedError(SESSION_REVOKED)
+    if _credential_expired((state.session_record or {}).get("expiresAt"), clock) or state.failure_reason == "expired":
+        raise SessionExpiredError(SESSION_EXPIRED)
+    return _principal_from_cookie_state(state)
+
+
+def _credential_expired(expires_at: Any, clock: Callable[[], float]) -> bool:
+    if isinstance(expires_at, datetime):
+        return expires_at.timestamp() <= clock()
+    return False
 
 
 def _principal_from_cookie_state(state: Any) -> Dict[str, Any]:
@@ -701,7 +755,10 @@ def _normalize_authority(authority: str) -> str:
     if not parsed.scheme or not parsed.hostname:
         raise ConfigError("AuthFn publicAuthority must be a valid origin")
     scheme = parsed.scheme.lower()
-    hostname = parsed.hostname.lower()
+    try:
+        hostname = parsed.hostname.encode("idna").decode("ascii").lower()
+    except UnicodeError as error:
+        raise ConfigError("AuthFn publicAuthority must be a valid origin") from error
     if ":" in hostname and not hostname.startswith("["):
         hostname = f"[{hostname}]"
     port = parsed.port
