@@ -1,4 +1,4 @@
-import { mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, unlink, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -9,6 +9,11 @@ const tempDirs: string[] = [];
 afterEach(async () => {
   await Promise.all(
     tempDirs.map(async (dirPath) => {
+      for (const entry of await readdir(dirPath).catch(() => [] as string[])) {
+        if (entry.startsWith(".docsfn.") && entry.endsWith(".mjs")) {
+          await unlink(join(dirPath, entry)).catch(() => undefined);
+        }
+      }
       await rm(dirPath, { recursive: true, force: true });
     })
   );
@@ -25,7 +30,6 @@ function serializeConfig(config: unknown): string {
   return `export default ${JSON.stringify(config, null, 2)};\n`;
 }
 
-// TypeScript configs transpile to a temp `.mjs` before import; under full CI load that can exceed Vitest's 5s default.
 describe("loadDocsConfig", () => {
   it("loads explicit configPath before default config file", async () => {
     const cwd = await createTempDir();
