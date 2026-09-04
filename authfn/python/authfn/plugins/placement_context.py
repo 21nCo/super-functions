@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple, TypeGuard, cast
 from urllib.parse import urlparse
 
+import idna
+
 from ..http import _hash_secret, get_cookie_session_state
 from ..observability import emit_auth_event, resolve_request_id
 from ..plugins.gateway_routing import (
@@ -750,15 +752,21 @@ def _secret_bytes(secret: bytes | str) -> bytes:
     return secret.encode("utf-8") if isinstance(secret, str) else bytes(secret)
 
 
+def _canonical_hostname(hostname: str) -> str:
+    if ":" in hostname:
+        return hostname.lower()
+    try:
+        return idna.encode(hostname, uts46=True, transitional=False).decode("ascii")
+    except idna.IDNAError as error:
+        raise ConfigError("AuthFn publicAuthority must be a valid origin") from error
+
+
 def _normalize_authority(authority: str) -> str:
     parsed = urlparse(authority)
     if not parsed.scheme or not parsed.hostname:
         raise ConfigError("AuthFn publicAuthority must be a valid origin")
     scheme = parsed.scheme.lower()
-    try:
-        hostname = parsed.hostname.encode("idna").decode("ascii").lower()
-    except UnicodeError as error:
-        raise ConfigError("AuthFn publicAuthority must be a valid origin") from error
+    hostname = _canonical_hostname(parsed.hostname)
     if ":" in hostname and not hostname.startswith("["):
         hostname = f"[{hostname}]"
     port = parsed.port
@@ -788,11 +796,15 @@ def _request_id(request: Any) -> str:
 
 
 def _isoformat(value: Any) -> str:
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as error:
+            raise UnauthorizedError(AUTH_REQUIRED) from error
     if isinstance(value, datetime):
         aware: datetime = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-        return aware.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-    if isinstance(value, str):
-        return value
+        utc = aware.astimezone(timezone.utc)
+        return utc.strftime("%Y-%m-%dT%H:%M:%S.") + f"{utc.microsecond:06d}"[:3] + "Z"
     raise UnauthorizedError(AUTH_REQUIRED)
 
 
