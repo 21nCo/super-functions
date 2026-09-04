@@ -42,6 +42,7 @@ from authfn import (
 )
 from authfn.http import _hash_secret, issue_session, revoke_session_by_id
 from authfn.observability import resolve_request_id
+from authfn.plugins.placement_context import _isoformat, _normalize_authority
 
 from .support import InMemoryDatabaseAdapter, TestRequest
 
@@ -304,7 +305,7 @@ async def test_uses_stored_authentication_time_for_cookie_and_bearer() -> None:
         )
     )
     again = await setup.issuer.derive(setup.request)
-    expected = authenticated_at.isoformat().replace("+00:00", "Z")
+    expected = "2026-09-01T00:00:00.000Z"
     assert cookie_context.authenticated_at == expected
     assert bearer_context.authenticated_at == expected
     assert again.authenticated_at == expected
@@ -408,6 +409,14 @@ async def test_canonicalizes_idn_authority_to_punycode() -> None:
     setup = await _setup(public_authority="https://münich.example")
     context = await setup.issuer.derive(setup.request)
     assert context.issuer == "https://xn--mnich-kva.example"
+    assert _normalize_authority("https://faß.de") == "https://xn--fa-hia.de"
+    assert _normalize_authority("https://xn--fa-hia.de") == "https://xn--fa-hia.de"
+
+
+def test_canonicalizes_timestamps_like_javascript_to_iso_string() -> None:
+    assert _isoformat(datetime(2026, 8, 1, tzinfo=timezone.utc)) == "2026-08-01T00:00:00.000Z"
+    assert _isoformat("2026-08-01T00:00:00Z") == "2026-08-01T00:00:00.000Z"
+    assert _isoformat(datetime(2026, 8, 1, 0, 0, 0, 123000, tzinfo=timezone.utc)) == "2026-08-01T00:00:00.123Z"
 
 
 @pytest.mark.asyncio
