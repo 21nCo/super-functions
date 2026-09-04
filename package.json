@@ -16,6 +16,7 @@
     "authfn/examples/*",
     "authfn/examples/*/*",
     "apifn/*",
+    "docsfn/*",
     "extfn/*",
     "extfn/examples/*",
     "datafn/client",
