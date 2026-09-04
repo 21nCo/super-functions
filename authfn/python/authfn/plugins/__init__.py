@@ -18,6 +18,11 @@ if TYPE_CHECKING:
         create_cell_routing_middleware,
         move_identity_placement,
     )
+    from .placement_context import (
+        PlacementBoundAuthContext,
+        PlacementContextIssuer,
+        create_placement_context_issuer,
+    )
 
 __all__ = [
     "ApiKeyPluginConfig",
@@ -50,6 +55,9 @@ __all__ = [
     "classify_route",
     "create_cell_routing_middleware",
     "move_identity_placement",
+    "PlacementBoundAuthContext",
+    "PlacementContextIssuer",
+    "create_placement_context_issuer",
 ]
 
 
@@ -101,7 +109,18 @@ def __getattr__(name: str) -> object:
         "classify_route",
         "create_cell_routing_middleware",
         "move_identity_placement",
+        "PlacementBoundAuthContext",
+        "PlacementContextIssuer",
+        "create_placement_context_issuer",
     }:
+        if name in {
+            "PlacementBoundAuthContext",
+            "PlacementContextIssuer",
+            "create_placement_context_issuer",
+        }:
+            from . import placement_context
+
+            return getattr(placement_context, name)
         from . import gateway_routing
 
         return getattr(gateway_routing, name)
