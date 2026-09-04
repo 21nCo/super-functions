@@ -56,6 +56,17 @@ export {
   restoreAuthFnIdentityDeletion,
   tombstoneAuthFnIdentityPlacement
 } from 'authfn/core/gateway-routing';
+export {
+  createAuthFnPlacementContextIssuer,
+  freezeAuthFnPlacementContext
+} from 'authfn/core/placement-context';
+export type {
+  AuthFnPlacementBoundAuthContext,
+  AuthFnPlacementContextDeriveInput,
+  AuthFnPlacementContextIssuer,
+  AuthFnPlacementContextIssuerOptions,
+  AuthFnSignedPlacementContext
+} from 'authfn/core/placement-context';
 
 const DELETION_FENCE_OPERATION = Symbol('authfn.multiRegion.deletionFence');
 
