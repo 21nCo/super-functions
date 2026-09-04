@@ -12,20 +12,28 @@ It includes:
 - extensible Client ID Metadata fixtures that include unrelated grant types;
 - optional Playwright fixtures for real redirect and consent-page coverage;
 - generic tools-only, full-protocol, and MCP Apps host profiles;
-- named ChatGPT- and Claude-shaped OAuth metadata fixtures;
+- named ChatGPT- and Claude-shaped OAuth metadata fixtures whose registration,
+  authorization request, and client-owned metadata are independently configurable;
+- URL-plus-auth remote targets that never construct `McpFnServer` or `McpFnRegistry`;
 - one suite for in-memory, custom, stdio, and Streamable HTTP targets;
 - structured/text response parity checks;
 - version 1 declarative scenarios for capabilities, tasks, events, and auth phases;
 - per-scenario timeout/cancellation, side-effect and incomplete metadata;
-- bounded, redacted scenario and target-suite reports;
+- bounded, redacted scenario, target-suite, and JUnit reports with protocol-layer labels;
 - orchestration of the official `@modelcontextprotocol/conformance` runner.
 
-Official conformance validates protocol behavior. McpFn scenarios validate product behavior. Production MCP servers should run both. For a protected local endpoint, use `runAuthenticatedOfficialConformance({ url, headers })`; it requires a literal loopback upstream, binds a temporary loopback-only streaming proxy, pins every request to the configured upstream path, injects the configured headers without printing them, and always closes the proxy after the pinned official runner exits.
+Official conformance validates protocol behavior. McpFn scenarios validate product behavior. Production MCP servers should run both. For a protected local endpoint, use `runAuthenticatedOfficialConformance({ url, headers })`; it requires a literal loopback upstream, binds a temporary loopback-only streaming proxy, pins every request to the configured upstream path, injects the configured headers without printing them, and always closes the proxy after the pinned official runner exits. The pin is `OFFICIAL_CONFORMANCE_VERSION` (currently `0.1.16`); bump it only with a dedicated change and a `npm run gate:mcpfn-release` run.
 
+Use `authenticatedHttpTarget(url, { headers })` or
+`connectAuthenticatedHttpTarget({ url, auth })` when the consumer already has a
+remote MCP URL and an API-key, OAuth credential, or `McpFnAuthProviderAdapter`.
 Use `runMcpFnTargetSuite({ target, scenarios, manifest })` when a test should
 exercise a subprocess or deployed target. It constructs the same session used
 by applications, the inspector, and CLI. Scenario execution is serial and
-capability calls are never retried implicitly.
+capability calls are never retried implicitly. `createMcpFnJUnitXml()` and
+`annotateTargetSuiteReportLayers()` label failures as `mcpfn-preflight`,
+`authorization-server`, `resource-server`, or `mcp-initialization` after
+`redactOAuthValue()`.
 
 ```ts
 import {
