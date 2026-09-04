@@ -183,6 +183,7 @@ class PlacementContextIssuer:
                     "requestId": request_id,
                     "regionId": context.home_region,
                     "outcome": "success",
+                    "actorId": _telemetry_hash(context.subject),
                     "metadata": {
                         "epoch": context.placement_epoch,
                         "audience": context.audience,
@@ -354,11 +355,13 @@ async def _resolve_principal(
     cookie_principal = await _cookie_principal_for_clock(config, state, clock)
     if cookie_principal is not None:
         return cookie_principal
-    secret = _authorization_secret(request)
-    if secret:
-        bearer_session = await _resolve_bearer_session(config, secret, clock)
-        if bearer_session is not None:
-            return bearer_session
+    credential = _authorization_credential(request)
+    if credential:
+        scheme, secret = credential
+        if scheme == "bearer":
+            bearer_session = await _resolve_bearer_session(config, secret, clock)
+            if bearer_session is not None:
+                return bearer_session
         api_key_principal = await _resolve_api_key_principal(config, secret, clock)
         if api_key_principal is not None:
             return api_key_principal
@@ -672,7 +675,7 @@ def _strip_routing_headers(request: Any) -> Any:
     return clone
 
 
-def _authorization_secret(request: Any) -> Optional[str]:
+def _authorization_credential(request: Any) -> Optional[Tuple[str, str]]:
     headers = getattr(request, "headers", {}) or {}
     authorization = next((value for key, value in headers.items() if key.lower() == "authorization"), None)
     if not authorization:
@@ -681,10 +684,10 @@ def _authorization_secret(request: Any) -> Optional[str]:
     lowered = trimmed.lower()
     if lowered.startswith("bearer "):
         secret = trimmed[7:].strip()
-        return secret or None
+        return ("bearer", secret) if secret else None
     if lowered.startswith("api-key "):
         secret = trimmed[8:].strip()
-        return secret or None
+        return ("api-key", secret) if secret else None
     return None
 
 
@@ -851,7 +854,17 @@ def _rtl_hyphen_exception_is_invalid(label: str) -> bool:
     # RTL labels must end in R/AL/EN/AN (RFC 5893), ignoring trailing NSM so
     # -א plus sheva matches Node. Trailing neutrals such as -א! still fail.
     # AN and EN must not both appear (e.g. -١۲).
-    return has_ltr or (has_an and has_en) or last not in {"R", "AL", "EN", "AN"}
+    if has_an and has_en:
+        return True
+    if last not in {"R", "AL", "EN", "AN"}:
+        return True
+    if has_ltr:
+        # Node URL.origin allows one trailing R/AL/AN on an LTR label
+        # (https://a١.example -> https://xn--a-bqc.example) and still
+        # rejects two AN digits (a١١) or mixed L plus an interior RTL char.
+        rtl_count = sum(1 for direction in directions if direction in {"R", "AL", "AN"})
+        return rtl_count != 1 or last not in {"R", "AL", "AN"}
+    return False
 
 
 def _serialize_ipv6(address: ipaddress.IPv6Address) -> str:
