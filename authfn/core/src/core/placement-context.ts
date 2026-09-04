@@ -662,11 +662,11 @@ function stripClientRoutingHeaders(request: Request): Request {
     if (key.toLowerCase().startsWith(INTERNAL_HEADER_PREFIX)) headers.delete(key);
   }
   return new Proxy(request, {
-    get(target, property, receiver) {
+    get(target, property, _receiver) {
       if (property === 'headers') {
         return headers;
       }
-      const value = Reflect.get(target, property, receiver);
+      const value = Reflect.get(target, property, target);
       return typeof value === 'function' ? value.bind(target) : value;
     }
   });
