@@ -114,6 +114,24 @@ def test_sanitized_request_keeps_adapter_attributes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_treats_whitespace_only_request_ids_as_absent() -> None:
+    events: List[Any] = []
+    setup = await _setup(
+        extra_headers={"x-request-id": "   "},
+        on_event=events.append,
+    )
+    context = await setup.issuer.derive(setup.request)
+    assert context.request_id.strip()
+    assert context.request_id != "   "
+    issued = next(
+        event
+        for event in events
+        if (getattr(event, "type", None) or event.get("type")) == "authfn.placement_context.issued"
+    )
+    assert (getattr(issued, "requestId", None) or issued.get("requestId")) == context.request_id
+
+
+@pytest.mark.asyncio
 async def test_fails_closed_for_unauthenticated_revoked_expired_and_deleted() -> None:
     setup = await _setup()
     unauthenticated = TestRequest("GET", "https://account.example.com/auth/session")
