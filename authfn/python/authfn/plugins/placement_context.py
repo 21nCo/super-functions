@@ -778,17 +778,11 @@ def _ascii_domain_label(label: str) -> str:
             raise ConfigError(INVALID_AUTHORITY) from error
         # WHATWG domain-to-ASCII: UseSTD3ASCIIRules=false, CheckHyphens=false,
         # VerifyDnsLength=false, CheckJoiners=true, CheckBidi=true.
-        # Keep ASCII labels; punycode only hyphen/length Unicode exceptions.
+        # Keep ASCII labels. Unicode encode failures still punycode after
+        # joiner/BiDi checks, including CONTEXTO and symbol labels Node accepts.
         if label.isascii():
             _reject_malformed_ace_label(label)
             return label
-        message = str(error).lower()
-        if (
-            "hyphen" not in message
-            and "too long" not in message
-            and not _label_has_only_contexto_exceptions(label)
-        ):
-            raise ConfigError(INVALID_AUTHORITY) from error
         try:
             _enforce_idna_after_hyphen_or_length_exception(label)
             return "xn--" + label.encode("punycode").decode("ascii")
@@ -796,24 +790,6 @@ def _ascii_domain_label(label: str) -> str:
             raise
         except (idna.IDNAError, UnicodeError) as remaining:
             raise ConfigError(INVALID_AUTHORITY) from remaining
-
-
-def _label_has_only_contexto_exceptions(label: str) -> bool:
-    # WHATWG does not enable CONTEXTO. Labels such as a·b fail idna.encode
-    # without a hyphen/length error, but Node URL.origin still punycodes them.
-    classes = idnadata.codepoint_classes
-    saw_contexto = False
-    for char in label:
-        code = ord(char)
-        if idna.intranges_contain(code, classes["PVALID"]):
-            continue
-        if idna.intranges_contain(code, classes["CONTEXTJ"]):
-            continue
-        if idna.intranges_contain(code, classes["CONTEXTO"]):
-            saw_contexto = True
-            continue
-        return False
-    return saw_contexto
 
 
 def _reject_malformed_ace_label(label: str) -> None:
