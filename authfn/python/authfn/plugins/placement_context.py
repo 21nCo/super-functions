@@ -783,7 +783,11 @@ def _ascii_domain_label(label: str) -> str:
             _reject_malformed_ace_label(label)
             return label
         message = str(error).lower()
-        if "hyphen" not in message and "too long" not in message:
+        if (
+            "hyphen" not in message
+            and "too long" not in message
+            and not _label_has_only_contexto_exceptions(label)
+        ):
             raise ConfigError(INVALID_AUTHORITY) from error
         try:
             _enforce_idna_after_hyphen_or_length_exception(label)
@@ -792,6 +796,24 @@ def _ascii_domain_label(label: str) -> str:
             raise
         except (idna.IDNAError, UnicodeError) as remaining:
             raise ConfigError(INVALID_AUTHORITY) from remaining
+
+
+def _label_has_only_contexto_exceptions(label: str) -> bool:
+    # WHATWG does not enable CONTEXTO. Labels such as a·b fail idna.encode
+    # without a hyphen/length error, but Node URL.origin still punycodes them.
+    classes = idnadata.codepoint_classes
+    saw_contexto = False
+    for char in label:
+        code = ord(char)
+        if idna.intranges_contain(code, classes["PVALID"]):
+            continue
+        if idna.intranges_contain(code, classes["CONTEXTJ"]):
+            continue
+        if idna.intranges_contain(code, classes["CONTEXTO"]):
+            saw_contexto = True
+            continue
+        return False
+    return saw_contexto
 
 
 def _reject_malformed_ace_label(label: str) -> None:
