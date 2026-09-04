@@ -149,11 +149,11 @@ class PlacementContextIssuer:
             if inspect.isawaitable(identity_key):
                 identity_key = await identity_key
             placement = await _load_active_placement(self._directory, str(identity_key))
-            issued_at = int(self._clock())
+            issued_at = self._clock()
             expires_at = issued_at + self._ttl_seconds
             session_expiry = principal.get("session_expires_at")
             if isinstance(session_expiry, datetime):
-                expires_at = min(expires_at, int(_coerce_utc(session_expiry).timestamp()))
+                expires_at = min(expires_at, _coerce_utc(session_expiry).timestamp())
             if expires_at <= issued_at:
                 raise SessionExpiredError(SESSION_EXPIRED)
             authenticated_at = principal["authenticated_at"]
