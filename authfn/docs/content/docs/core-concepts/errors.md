@@ -25,7 +25,7 @@ interface AuthFnErrorEnvelope {
 ## All error codes
 
 | Code | HTTP | Retryable | Meaning |
-| --- | --- | --- | --- |
+| --- | --- | --- |
 | `AUTHFN_2FA_INVALID_CODE` | 400 | no | TOTP code or recovery code is wrong. |
 | `AUTHFN_2FA_REQUIRED` | 401 | no | Sign-in succeeded for the primary method, but 2FA must complete before a session is issued. The response carries a challenge id for the follow-up call. |
 | `AUTHFN_ADMIN_AMBIGUOUS_USER` | 409 | no | An admin lookup matched multiple users. |
@@ -50,6 +50,7 @@ interface AuthFnErrorEnvelope {
 | `AUTHFN_OTP_REPLAYED` | 409 | no | The OTP code was already used. |
 | `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE` | 503 | yes | Canonical identity placement could not be read or atomically updated. Gateway mode fails closed. |
 | `AUTHFN_PLACEMENT_MOVING` | 503 | yes | The identity is fenced during a cell move. No auth side effect may start. |
+| `AUTHFN_PLACEMENT_CONTEXT_INVALID` | 401 | no | A signed placement-bound auth context failed signature, audience, issuer, or expiry verification. |
 | `AUTHFN_PLUGIN_ABORTED` | 500 | no | A plugin's `before*` hook threw / aborted. |
 | `AUTHFN_RATE_LIMITED` | 429 | yes | The request was rate-limited (by an external limiter or by an authfn-internal counter). |
 | `AUTHFN_REDIRECT_URI_DISALLOWED` | 400 | no | `returnTo` (or OAuth `redirect_uri`) is not in `allowlistedReturnTo` / `allowlistedRedirectUris`. |
