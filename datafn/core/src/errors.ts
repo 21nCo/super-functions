@@ -13,6 +13,7 @@ export const DATAFN_ERROR_CODES = [
   "DFQL_UNKNOWN_FIELD",
   "DFQL_UNKNOWN_RELATION",
   "DFQL_UNSUPPORTED",
+  "DATAFN_UNSUPPORTED_PROTOCOL_VERSION",
   "DFQL_ABORTED",
   "LIMIT_EXCEEDED",
   "FORBIDDEN",
@@ -40,44 +41,3 @@ export const DATAFN_ERROR_CODES = [
   "DATAFN_ROUTING_RETRY_EXHAUSTED",
   "DATAFN_PAYLOAD_TOO_LARGE",
 ] as const;
-
-export type DatafnErrorCode = (typeof DATAFN_ERROR_CODES)[number];
-
-const DATAFN_ERROR_CODE_SET = new Set<string>(DATAFN_ERROR_CODES);
-
-export function isDatafnErrorCode(value: unknown): value is DatafnErrorCode {
-  return typeof value === "string" && DATAFN_ERROR_CODE_SET.has(value);
-}
-
-export type DatafnError = {
-  code: DatafnErrorCode;
-  message: string;
-  details?: unknown;
-};
-
-export type DatafnEnvelope<T> =
-  | { ok: true; result: T }
-  | { ok: false; error: DatafnError };
-
-/**
- * Helper functions for creating envelopes
- */
-
-export function ok<T>(result: T): DatafnEnvelope<T> {
-  return { ok: true, result };
-}
-
-export function err<T = never>(
-  code: DatafnErrorCode,
-  message: string,
-  details?: unknown
-): DatafnEnvelope<T> {
-  return {
-    ok: false,
-    error: {
-      code,
-      message,
-      details: details ?? { path: "$" },
-    },
-  };
-}
