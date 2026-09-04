@@ -874,9 +874,19 @@ def _parse_ipv4_number(part: str) -> Optional[int]:
         return None
 
 
+_WHATWG_SPECIAL_SCHEMES = {"http", "https", "ftp", "ws", "wss"}
+_SPECIAL_SCHEME_DEFAULT_PORTS = {
+    "http": 80,
+    "https": 443,
+    "ftp": 21,
+    "ws": 80,
+    "wss": 443,
+}
+
+
 def _whatwg_special_scheme_authority(authority: str) -> str:
     scheme, separator, rest = authority.partition(":")
-    if not separator or scheme.lower() not in {"http", "https", "ftp", "ws", "wss"}:
+    if not separator or scheme.lower() not in _WHATWG_SPECIAL_SCHEMES:
         return authority
     # WHATWG special-scheme: backslash is a path separator, and one or more
     # leading slashes enter the authority state. `https:host` and `https:/host`
@@ -895,12 +905,14 @@ def _normalize_authority(authority: str) -> str:
     if not parsed.scheme or not parsed.hostname:
         raise ConfigError(INVALID_AUTHORITY)
     scheme = parsed.scheme.lower()
+    if scheme not in _SPECIAL_SCHEME_DEFAULT_PORTS:
+        raise ConfigError(INVALID_AUTHORITY)
     hostport = parsed.netloc.rsplit("@", 1)[-1]
     if hostport.startswith("["):
         hostname = _canonical_bracketed_ipv6(hostport)
     else:
         hostname = _canonical_hostname(parsed.hostname)
-    if port is None or (scheme == "https" and port == 443) or (scheme == "http" and port == 80):
+    if port is None or _SPECIAL_SCHEME_DEFAULT_PORTS[scheme] == port:
         return f"{scheme}://{hostname}"
     return f"{scheme}://{hostname}:{port}"
 
