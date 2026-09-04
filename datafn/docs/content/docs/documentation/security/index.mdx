@@ -26,6 +26,7 @@ flowchart LR
 | [Payload limit](/docs/documentation/security/payload-limits) | Reject oversized bodies | `LIMIT_EXCEEDED` |
 | JSON parse | Reject malformed bodies before auth | `DFQL_INVALID` |
 | [`authorize`](/docs/documentation/security/request-authz) | Coarse-grained "is this caller allowed to do this kind of action" | `FORBIDDEN` |
+| [Structural selectors](/docs/documentation/security/resource-selectors) | Derive protocol resource names for `authorize` and gateway routing | `DFQL_INVALID` / `DATAFN_UNSUPPORTED_PROTOCOL_VERSION` |
 | Schema validation | Validate the DFQL against the schema | `DFQL_INVALID` / `DFQL_UNKNOWN_*` |
 | [Field-level authz](/docs/documentation/security/field-level-authz) | Per-field `permissions` policy on each resource | `FORBIDDEN` |
 | [Namespace filter](/docs/documentation/security/namespace-isolation) | Row-level isolation for multi-tenancy | (transparent — rows just don't return) |

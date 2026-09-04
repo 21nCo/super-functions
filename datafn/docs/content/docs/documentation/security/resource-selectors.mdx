@@ -1,0 +1,112 @@
+---
+title: "Structural Resource Selectors"
+description: "Canonical API for deriving protocol-level resource selectors used by gateways and authorization plugins."
+audience: guide
+applies_to: server
+---
+
+Gateways and authorization plugins must know which DataFn resources a request **structurally** addresses before dispatch or policy evaluation. Those selectors live on the DFQL protocol envelope. Application records and filters can independently contain fields named `resource` or `resources`.
+
+Do not recursively search request JSON. Use `extractStructuralResourceSelectors` from `@datafn/core` (also re-exported from `@datafn/server`). This is the supported security-sensitive integration point.
+
+## Why this API exists
+
+A generic recursive scan cannot distinguish protocol structure from domain data. A consumer-maintained shallow scan avoids some false positives but drifts when DataFn adds envelope shapes. Selector extraction belongs next to request parsing so both share one versioned protocol contract.
+
+Returned selectors are **inputs to product policy**. The extractor does not grant access, choose a regional cell, or evaluate permissions.
+
+## Parse, then visit
+
+Prefer the two composable layers:
+
+1. `parseDatafnRequest(action, payload)` validates the unknown body into a discriminated protocol envelope.
+2. `collectStructuralResourceSelectors(parsed)` visits that envelope exhaustively.
+
+`extractStructuralResourceSelectors(action, payload)` runs both steps for gateway preflight.
+
+```typescript
+import {
+  extractStructuralResourceSelectors,
+  unwrapEnvelope,
+} from "@datafn/core";
+
+const selection = unwrapEnvelope(
+  extractStructuralResourceSelectors("query", payload),
+);
+// selection.protocolVersion === "1"
+// selection.selectors is a deduplicated, encounter-ordered list
+```
+
+## Envelope coverage
+
+The parser accepts every current `DatafnRequestAction` and inspects only protocol-defined selector positions:
+
+| Action | Selector positions | Selector-less? |
+| --- | --- | --- |
+| `query` | `resource` on the query or each batch entry | no — missing `resource` is `DFQL_INVALID` |
+| `mutation` | `resource` on the mutation or each batch entry | no |
+| `transact` | `steps[].resource`, `steps[].query.resource`, `steps[].mutation.resource` | empty `steps` is valid |
+| `search` | `resources[]`, keys of `filters`, keys of `temporalByResource` | yes — omitted `resources` searches all |
+| `clone` | `tables[]`, `page.table` | yes — omitted `tables` clones all |
+| `pull` | keys of `cursors` | yes — global `cursor` pull |
+| `push` | `mutations[].resource` | no — `mutations` is required |
+| `reconcile` | `resources[]` | no |
+| `status`, `seed` | none | yes |
+
+Application record properties, mutation values, filter operands, and nested domain JSON are ignored even when they use the names `resource` or `resources`.
+
+```typescript
+extractStructuralResourceSelectors("query", {
+  resource: "skills",
+  filters: { metadata: { resource: "workspaces" } },
+  record: { resources: ["workspaceMemberships"] },
+});
+// => { protocolVersion: "1", selectors: ["skills"] }
+```
+
+Batched queries, mutations, and transaction steps are included:
+
+```typescript
+extractStructuralResourceSelectors("transact", {
+  steps: [
+    { query: { resource: "skills" } },
+    { mutation: { resource: "contextNotes", operation: "insert", record: { resource: "nope" } } },
+    { resource: "skillContexts" },
+  ],
+});
+// => { protocolVersion: "1", selectors: ["skills", "contextNotes", "skillContexts"] }
+```
+
+## Authorization preflight
+
+`authorize` still receives untrusted JSON. Derive selectors from the canonical API instead of reading `payload.resource` by hand:
+
+```typescript
+import { extractStructuralResourceSelectors } from "@datafn/server";
+
+authorize: (ctx, action, payload) => {
+  if (!ctx.session?.userId) return false;
+  if (action === "status") return true;
+
+  const extracted = extractStructuralResourceSelectors(action, payload);
+  if (!extracted.ok) return false;
+
+  return extracted.result.selectors.every((resource) =>
+    ctx.session.allowedResources.includes(resource),
+  );
+}
+```
+
+Empty selector sets are meaningful: `status` and `seed` never address a resource; `search` without `resources` addresses the full searchable set. Decide product policy on that empty set — do not invent selectors by scanning JSON.
+
+## Errors
+
+Malformed selector positions return `DFQL_INVALID` with `details.path` pointing at the bad field. Unknown actions return `DFQL_UNSUPPORTED`. An explicit `protocolVersion` other than `"1"` returns `DATAFN_UNSUPPORTED_PROTOCOL_VERSION` and fails closed before routing or authorization.
+
+Current requests may omit `protocolVersion`; the parser stamps the parsed envelope with `"1"`. Do not add recursive discovery for future indirect addressing — introduce a new explicit protocol variant instead.
+
+## See also
+
+- [Request authorization](/docs/documentation/security/request-authz)
+- [Multi-region gateway](/docs/documentation/multi-region-gateway)
+- [Error types](/docs/reference/core/errors)
