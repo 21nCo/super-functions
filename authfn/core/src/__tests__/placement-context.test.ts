@@ -467,6 +467,25 @@ describe('AuthFn placement-bound auth context', () => {
     })).toThrow(AuthFnConfigError);
   });
 
+  it('rejects compound IDNA publicAuthority failures', async () => {
+    const setup = await setupIssuer();
+    const options = {
+      config: setup.config,
+      subjectSecret: SUBJECT_SECRET,
+      audiences: ['nucleum-datafn'] as const,
+      placementDirectory: setup.directory,
+      identityKeyForUserId: (userId: string) => `person:${userId}`
+    };
+    expect(() => createAuthFnPlacementContextIssuer({
+      ...options,
+      publicAuthority: 'https://-a\u200db.example'
+    })).toThrow(AuthFnConfigError);
+    expect(() => createAuthFnPlacementContextIssuer({
+      ...options,
+      publicAuthority: 'https://-\u05d0a.example'
+    })).toThrow(AuthFnConfigError);
+  });
+
   it('keeps API-key sessionVersion stable across reuse', async () => {
     const bound = await setupIssuer();
     await bound.config.database.create({
