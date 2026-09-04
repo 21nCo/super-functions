@@ -17,16 +17,16 @@ import {
   DialogClose,
   DialogContent,
   DialogDescription,
-  DialogOverlay,
+  DialogBackdrop,
   DialogPortal,
   DialogTitle,
   DialogTrigger,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  Menu as DropdownMenu,
+  MenuContent as DropdownMenuContent,
+  MenuItem as DropdownMenuItem,
+  MenuGroupLabel as DropdownMenuLabel,
+  MenuSeparator as DropdownMenuSeparator,
+  MenuTrigger as DropdownMenuTrigger,
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
@@ -42,7 +42,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValueText as SelectValue,
   Switch,
   SwitchThumb,
   Tabs,
@@ -55,8 +55,8 @@ import {
   ToastProvider,
   ToastTitle,
   ToastViewport,
-  VirtualizedList,
 } from "@uifn/react";
+import { VirtualizedList } from "./VirtualizedList";
 import {
   capabilitySupport,
   commandItems,
@@ -251,7 +251,7 @@ function SettingsConsoleScenario({ route }: ScenarioComponentProps) {
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger className="primary-button">Open settings console</DialogTrigger>
           <DialogPortal>
-            <DialogOverlay className="dialog-overlay" />
+            <DialogBackdrop className="dialog-overlay" />
             <DialogContent className="dialog-content">
               <div className="dialog-header">
                 <div>
