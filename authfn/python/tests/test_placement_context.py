@@ -46,6 +46,7 @@ from authfn.plugins.placement_context import (
     _credential_expired,
     _isoformat,
     _normalize_authority,
+    _strip_routing_headers,
     _telemetry_hash,
 )
 
@@ -97,6 +98,19 @@ async def test_ignores_client_supplied_routing_headers() -> None:
     context = await setup.issuer.derive(setup.request)
     assert context.home_region == "us-east-1"
     assert context.placement_epoch == 4
+
+
+def test_sanitized_request_keeps_adapter_attributes() -> None:
+    request = TestRequest(
+        "GET",
+        "https://account.example.com/auth/session?region=us",
+        headers={"x-authfn-routing-region": "eu-west-1", "cookie": "session=1"},
+    )
+    sanitized = _strip_routing_headers(request)
+    assert sanitized.path == request.path
+    assert sanitized.query_params == request.query_params
+    assert sanitized.headers.get("cookie") == "session=1"
+    assert "x-authfn-routing-region" not in {key.lower() for key in sanitized.headers}
 
 
 @pytest.mark.asyncio
@@ -628,6 +642,8 @@ def test_rejects_compound_idna_failures_like_whatwg_origin() -> None:
     assert _normalize_authority("https://💩.example") == "https://xn--ls8h.example"
     assert _normalize_authority("https://a\u0661.example") == "https://xn--a-bqc.example"
     assert _normalize_authority("https://a\u05d0.example") == "https://xn--a-0hc.example"
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://1a\u05d0.example")
     with pytest.raises(ConfigError):
         _normalize_authority("https://a\u0661\u0661.example")
     with pytest.raises(ConfigError):
