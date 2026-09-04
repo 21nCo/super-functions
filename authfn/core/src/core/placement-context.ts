@@ -188,10 +188,10 @@ export function createAuthFnPlacementContextIssuer(
     request: Request,
     input?: AuthFnPlacementContextDeriveInput
   ): Promise<AuthFnPlacementBoundAuthContext> {
-    const audience = resolveAudience(input?.audience ?? defaultAudience, audiences);
     const sanitizedRequest = stripClientRoutingHeaders(request);
     const requestId = eventRequestId(sanitizedRequest);
     try {
+      const audience = resolveAudience(input?.audience ?? defaultAudience, audiences);
       const principal = await resolvePrincipal(options.config, sanitizedRequest);
       const identityKey = await resolveIdentityKey(principal.userId);
       const placement = await loadActivePlacement(directory, identityKey);
@@ -310,12 +310,7 @@ async function resolvePrincipal(
 ): Promise<PlacementPrincipal> {
   const cookieState = await getCookieSessionState(config, request);
   if (cookieState.sessionToken) {
-    if (cookieState.failureReason === 'revoked') throw new AuthFnSessionRevokedError();
-    if (cookieState.failureReason === 'expired') throw new AuthFnSessionExpiredError();
-    if (!cookieState.session || !cookieState.sessionRecord || !cookieState.user) {
-      throw new AuthFnUnauthenticatedError();
-    }
-    return principalFromSession(cookieState.sessionRecord, cookieState.user, cookieState.session.methods);
+    return principalFromCookieState(cookieState);
   }
 
   const credential = readAuthorizationCredential(request);
@@ -326,8 +321,26 @@ async function resolvePrincipal(
     if (sessionPrincipal) return sessionPrincipal;
   }
 
+  return resolveApiKeyPrincipal(config, credential.secret);
+}
+
+function principalFromCookieState(
+  cookieState: Awaited<ReturnType<typeof getCookieSessionState>>
+): PlacementPrincipal {
+  if (cookieState.failureReason === 'revoked') throw new AuthFnSessionRevokedError();
+  if (cookieState.failureReason === 'expired') throw new AuthFnSessionExpiredError();
+  if (!cookieState.session || !cookieState.sessionRecord || !cookieState.user) {
+    throw new AuthFnUnauthenticatedError();
+  }
+  return principalFromSession(cookieState.sessionRecord, cookieState.user, cookieState.session.methods);
+}
+
+async function resolveApiKeyPrincipal(
+  config: AuthFnRuntimeConfig,
+  secret: string
+): Promise<PlacementPrincipal> {
   try {
-    const apiKeySession = await authenticateApiKey(config, credential.secret, { now: () => new Date() });
+    const apiKeySession = await authenticateApiKey(config, secret, { now: () => new Date() });
     if (!apiKeySession) throw new AuthFnUnauthenticatedError();
     const record = await config.database.findOne<AuthFnApiKeyRecord>({
       model: 'api_keys',
@@ -353,8 +366,9 @@ async function resolvePrincipal(
       sessionExpiresAt: record.expiresAt ?? undefined
     };
   } catch (error) {
-    if (error instanceof AuthFnApiKeyRevokedError) throw error;
-    if (error instanceof AuthFnUnauthenticatedError) throw error;
+    if (error instanceof AuthFnApiKeyRevokedError || error instanceof AuthFnUnauthenticatedError) {
+      throw error;
+    }
     throw new AuthFnUnauthenticatedError();
   }
 }
@@ -467,7 +481,7 @@ function contextFromPayload(payload: SignedPlacementContextPayload): AuthFnPlace
     scopes: payload.scopes ? Object.freeze([...payload.scopes]) : undefined,
     requestId: payload.requestId,
     actorType: payload.actorType,
-    userId: payload.userId
+    userId: typeof payload.userId === 'string' ? payload.userId : undefined
   });
 }
 
@@ -541,12 +555,12 @@ function isSignedPlacementPayload(value: unknown): value is SignedPlacementConte
   ) {
     return false;
   }
-  if (payload.scopes !== undefined && (
+  if (payload.scopes != null && (
     !Array.isArray(payload.scopes) || payload.scopes.some((entry) => typeof entry !== 'string')
   )) {
     return false;
   }
-  if (payload.userId !== undefined && typeof payload.userId !== 'string') return false;
+  if (payload.userId != null && typeof payload.userId !== 'string') return false;
   return true;
 }
 
@@ -601,7 +615,7 @@ function hashForTelemetry(value: string): string {
 }
 
 function secretBytes(secret: string | Uint8Array): Buffer {
-  return typeof secret === 'string' ? Buffer.from(secret) : Buffer.from(secret);
+  return Buffer.from(secret);
 }
 
 function normalizeAuthority(authority: string | undefined): string {

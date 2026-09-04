@@ -167,6 +167,15 @@ describe('AuthFn placement-bound auth context', () => {
     const denied = await setupIssuer();
     await expect(denied.issuer.derive(denied.request, { audience: 'other-service' }))
       .rejects.toBeInstanceOf(AuthFnValidationError);
+    expect(denied.events.filter((event) => event.type === 'authfn.placement_context.rejected')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'authfn.placement_context.rejected',
+          outcome: 'rejected',
+          metadata: expect.objectContaining({ errorType: 'AUTHFN_VALIDATION_ERROR' })
+        })
+      ])
+    );
 
     const identified = await setupIssuer({ includeUserId: true });
     const context = await identified.issuer.derive(identified.request);
