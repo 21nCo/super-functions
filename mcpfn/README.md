@@ -80,9 +80,13 @@ mcpfn validate ./mcpfn.manifest.json
 mcpfn diff ./mcpfn.manifest.json ./candidate.manifest.json --fail-on-behavioral
 mcpfn test ./src/mcp/server.ts ./tests/mcp.scenarios.ts --output ./mcpfn-report.json
 mcpfn test-target https://api.example.com/mcp ./tests/mcp.scenarios.ts
+mcpfn test-target http://127.0.0.1:3000/mcp ./tests/mcp.scenarios.ts \
+  --header "Authorization: Bearer $MCP_API_KEY" --junit ./mcpfn-target.xml
 mcpfn inspect https://api.example.com/mcp --output ./mcpfn-inspection.json
 mcpfn auth-diagnose https://api.example.com/mcp
 mcpfn conformance http://127.0.0.1:3000/mcp --suite active
+mcpfn conformance http://127.0.0.1:3000/mcp --suite active \
+  --header "Authorization: Bearer $MCP_API_KEY"
 ```
 
 The manifest catches tool, resource, template, prompt, task, extension, client-requirement, protocol-version, and transport changes. Scenarios catch business behavior. Host profiles expose feature mismatches. The official conformance runner catches wire-protocol behavior. None of those layers substitutes for the others.
@@ -92,8 +96,10 @@ The conformance subcommand pins the reviewed official runner version and require
 Run `npm run gate:mcpfn-release` from this repository for the complete package, example, migration, and packability gate.
 
 The examples include a declaration-backed calculator server, stdio entrypoint,
-Streamable HTTP entrypoint, production client, semantic scenarios, and committed
-manifest under `mcpfn/examples`.
+Streamable HTTP entrypoint, production client, semantic scenarios, committed
+manifest, and a non-McpFn official-SDK HTTP server under `mcpfn/examples`.
+The external server is the third-party fixture: URL plus `--header`, no
+`McpFnServer` or `McpFnRegistry`.
 
 ## Authorization and MCP Apps
 

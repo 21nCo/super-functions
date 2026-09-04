@@ -25,6 +25,8 @@ authorization contract, adopt the shared client/server surface, and add its own
 scenario and deployment evidence.
 
 Downstream Skillplane work consumes published McpFn packages after the guarded
-release sequence. This repository gate proves the shared packages, examples,
-packed external installation, and protocol fixtures; it does not prove a
-downstream deployment or hosted OAuth registration.
+release sequence. This repository gate proves the shared packages, examples
+including the non-McpFn official-SDK HTTP server, packed external installation,
+and protocol fixtures; it does not prove a downstream deployment or hosted OAuth
+registration. External MCP servers attach through URL plus an auth provider or
+CLI `--header` and are not required to adopt `McpFnServer` or `McpFnRegistry`.

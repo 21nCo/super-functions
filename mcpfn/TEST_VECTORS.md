@@ -53,6 +53,14 @@ suites. Named host data is synthetic and contains no provider credential.
 | Inspector-exported tool/resource/prompt operation | executable by the shared runner |
 | Target open or authorization runtime failure | CLI exit 1 |
 | Invalid CLI usage or configuration | CLI exit 2 |
+| HTTP target plus `--header "Name: value"` | production client sends the injected headers |
+| `--header` combined with `--stdio` | CLI exit 2 |
+| Malformed `--header` | CLI exit 2 before the runner starts |
+| Failed scenario JUnit | `classname` is the owning protocol layer; codes, tokens, and PKCE values redacted |
+| URL plus auth provider without a server object | `connectAuthenticatedHttpTarget` initializes MCP |
+| Independent Claude/ChatGPT registration vs authorization request | redirect or grant drift fails at `mcpfn-preflight` or `authorization-server` |
+| Hosted role-3 authorization-code + PKCE | protected MCP tool call succeeds |
+| Actual unsupported token `grant_type` | `unsupported_grant_type` |
 
 ## Named provider-shaped fixtures
 

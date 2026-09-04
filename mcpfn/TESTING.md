@@ -87,15 +87,81 @@ Keep application-specific UI selectors, real-provider secrets, workspace authori
 
 Each release claim must name its highest verified level. Evidence at one level never implies a later level.
 
+## Remote targets without McpFn server types
+
+A third-party MCP server does not need `McpFnServer` or `McpFnRegistry`. Point
+the production client at a URL plus an explicit auth provider:
+
+```ts
+import {
+  connectAuthenticatedHttpTarget,
+  runMcpFnTargetSuite,
+} from "@mcpfn/testing";
+
+const connected = await connectAuthenticatedHttpTarget({
+  url: "http://127.0.0.1:3000/mcp",
+  auth: { headers: { authorization: `Bearer ${process.env.MCP_API_KEY}` } },
+});
+try {
+  await runMcpFnTargetSuite({
+    target: connected.target,
+    scenarios: await import("./mcp-scenarios.ts").then((module) => module.default),
+  });
+} finally {
+  await connected.close();
+}
+```
+
+`mcpfn test-target` accepts the same contract on the command line. Repeat
+`--header "Name: value"` for API keys or OAuth-derived Bearer tokens. `--junit`
+writes a redacted JUnit document whose `classname` is the owning protocol layer
+(`mcpfn-preflight`, `authorization-server`, `resource-server`, or
+`mcp-initialization`). Scenario modules are the explicit contract file; live
+endpoint introspection is optional extra evidence, never a substitute for the
+committed scenarios.
+
+Claude-shaped and ChatGPT-shaped OAuth cases keep authorization-server
+registration independent from the client-sent authorization request and from
+client-owned metadata. That split is what makes redirect, grant, and deployment
+drift fail. `createNamedHostAuthorizationCase()`,
+`createNamedHostRedirectDriftCase()`, and `createNamedHostIncompatibleGrantCase()`
+are the shared builders; they reuse `@mcpfn/auth` and `@superfunctions/oauth-core`
+for PKCE, state, token storage, and redaction.
+
 ## Official conformance
 
 Start a real Streamable HTTP endpoint, then run:
 
 ```sh
 mcpfn conformance http://127.0.0.1:3000/mcp --suite active
+mcpfn conformance http://127.0.0.1:3000/mcp --suite active \
+  --header "Authorization: Bearer $MCP_API_KEY"
 ```
 
-McpFn delegates to the pinned official conformance npm package and returns its exit code. The current pinned runner requires Node.js 22 or newer. Use an expected-failures file only for reviewed, time-bounded exceptions; do not turn new failures into a silent baseline update.
+McpFn delegates to the pinned official `@modelcontextprotocol/conformance`
+package and returns its exit code. The pin is `OFFICIAL_CONFORMANCE_VERSION` in
+`@mcpfn/testing` (currently `0.1.16`). The current pinned runner requires
+Node.js 22 or newer. Authenticated runs bind a temporary loopback-only streaming
+proxy, inject the configured headers without printing them, pin every request to
+the configured upstream path, and always close the proxy after the runner exits.
+The official runner never receives a second protocol implementation from McpFn.
+
+Use an expected-failures file only for reviewed, time-bounded exceptions; do not
+turn new failures into a silent baseline update. Upgrade the pin in a dedicated
+change, re-run `npm run gate:mcpfn-release`, and record the new version in this
+file. McpFn tracks one reviewed official runner version at a time; there is no
+multi-version compatibility window.
+
+## CI lanes
+
+Pull requests that touch McpFn runtime, CLI, testing, examples, or release
+metadata run the dedicated Node.js 22 McpFn gate: package tests, hosted role-3
+OAuth cases, CLI usage exits, the official active suite, the non-McpFn external
+HTTP example, packed-consumer installation, and documentation inventory.
+
+Scheduled or separately authorized lanes cover published-registry installation
+and controlled-live remote endpoints. Workspace evidence never implies a
+published package, and published evidence never implies a particular deployment.
 
 ## Superfunctions release gate
 
@@ -105,7 +171,8 @@ npm run gate:mcpfn-release
 
 The gate typechecks, tests, and builds all seven McpFn packages; runs real stdio
 and Streamable HTTP round trips, OAuth boundary tests, a real Chromium PKCE
-flow, and the official active conformance suite; runs the complete DataFn
+flow, and the official active conformance suite; runs the non-McpFn external
+HTTP example through `mcpfn test-target --header`; runs the complete DataFn
 server suite; exercises the real CLI; checks package contents; and installs
 packed artifacts into a temporary external consumer for ESM and CommonJS
 imports. LangFn, MemoryFn, and ProbeFn are not covered by this release gate.

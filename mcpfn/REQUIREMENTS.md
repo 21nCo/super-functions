@@ -28,3 +28,25 @@ The local release gate is authoritative for deterministic workspace and packed
 installation claims. Registry publication, controlled provider smoke tests,
 and deployment checks remain separate actions and must record their own
 version, endpoint, and timestamp evidence.
+
+# MCP-1 requirements
+
+Transport-neutral regression and official conformance for remote MCP endpoints.
+These identifiers are stable even while individual tests evolve. MCP-1 consumes
+MCP-2 target, session, diagnostic, and hosted-authorization contracts; it does
+not add a second production client or authorization implementation.
+
+| ID | Requirement | Deterministic evidence |
+| --- | --- | --- |
+| MCP1-AC-01 | A third-party fixture can install released McpFn packages from the configured registry. | packed-consumer gate and `scripts/test-mcpfn-external-server.mjs` |
+| MCP1-AC-02 | A remote MCP target is exercised by URL plus an explicit auth provider without `McpFnServer` or `McpFnRegistry`. | `authenticatedHttpTarget`, `connectAuthenticatedHttpTarget`, remote-target tests, external HTTP example |
+| MCP1-AC-03 | Official conformance can test an authenticated loopback server using API-key or OAuth-derived headers. | `runAuthenticatedOfficialConformance`, `mcpfn conformance --header` |
+| MCP1-AC-04 | The auth matrix covers authorization-code and refresh flows alongside advertised JWT-bearer, device-code, and custom grants. | `createOAuthClientMetadataVariants` and Playwright/auth suites |
+| MCP1-AC-05 | Additional advertised grants do not cause metadata discovery to fail as `invalid_client` when a compatible supported flow exists. | extensible Client ID Metadata assertions |
+| MCP1-AC-06 | Claude-shaped and ChatGPT-shaped fixtures define registration independently from the generated authorization request. | `createNamedHostAuthorizationCase` and host-authorization tests |
+| MCP1-AC-07 | Valid authorization-code + PKCE completes against a hosted-server role-3 adapter; incompatible metadata and unregistered redirects fail with layer diagnostics. | hosted-role3 tests and `classifyMcpFnFailure` |
+| MCP1-AC-08 | The harness inventories and reuses shared OAuth primitives rather than a second PKCE/state/token/redaction stack. | imports from `@mcpfn/auth`, `@mcpfn/client`, and `@superfunctions/oauth-core` |
+| MCP1-AC-09 | An actual unsupported token request is classified as `unsupported_grant_type`. | mock OAuth server and hosted-role3 token tests |
+| MCP1-AC-10 | CI produces bounded, redacted, machine-readable artifacts that identify the failing scenario and protocol layer. | `createMcpFnJUnitXml`, `--junit`, `--output` |
+| MCP1-AC-11 | Release automation verifies package exports, consumer installation, the external-server example, and the dedicated McpFn test gate. | `npm run gate:mcpfn-release` |
+| MCP1-AC-12 | Documentation explains version pinning, authenticated conformance, remote targets, and upgrade policy. | `TESTING.md`, package READMEs |
