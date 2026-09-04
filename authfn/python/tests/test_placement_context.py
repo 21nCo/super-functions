@@ -364,9 +364,6 @@ async def test_emits_configured_observability_events() -> None:
     assert (getattr(issued, "actorId", None) or issued.get("actorId")) == _telemetry_hash(
         context.subject
     )
-    assert (getattr(issued, "actorId", None) or issued.get("actorId")) == _telemetry_hash(
-        context.subject
-    )
     with pytest.raises(ValidationError):
         await setup.issuer.derive(setup.request, audience="other-service")
     types = [getattr(event, "type", None) or event.get("type") for event in events]
