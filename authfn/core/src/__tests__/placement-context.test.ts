@@ -426,6 +426,18 @@ describe('AuthFn placement-bound auth context', () => {
     expect(context.sessionBinding).toBe(bearerOnly.sessionBinding);
   });
 
+  it('falls back to the stale-cookie error after an authorization miss', async () => {
+    const stale = await setupIssuer();
+    await revokeSessionById(stale.config, stale.sessionId, { userId: stale.user.id });
+    const mixed = new Request('https://account.example.com/auth/session', {
+      headers: {
+        cookie: stale.request.headers.get('cookie') ?? '',
+        authorization: 'Bearer not-a-real-secret'
+      }
+    });
+    await expect(stale.issuer.derive(mixed)).rejects.toBeInstanceOf(AuthFnSessionRevokedError);
+  });
+
   it('uses stored authentication time for cookie and bearer of the same session', async () => {
     const setup = await setupIssuer();
     const authenticatedAt = new Date('2026-09-01T00:00:00.000Z');
@@ -464,6 +476,10 @@ describe('AuthFn placement-bound auth context', () => {
     expect(() => createAuthFnPlacementContextIssuer({
       ...options,
       publicAuthority: 'mailto:auth@example.com'
+    })).toThrow(AuthFnConfigError);
+    expect(() => createAuthFnPlacementContextIssuer({
+      ...options,
+      publicAuthority: 'blob:https://account.example.com'
     })).toThrow(AuthFnConfigError);
   });
 
