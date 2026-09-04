@@ -97,6 +97,16 @@ if (!session) {
 }
 ```
 
+## Placement-bound auth context
+
+Trusted gateway code can derive an immutable, privacy-preserving routing context after a valid session. This is opt-in and is not a public AuthFn route. See [Placement-bound auth context](../recipes/placement-bound-auth-context).
+
+```ts
+import { createAuthFnPlacementContextIssuer } from "authfn";
+
+const context = await issuer.derive(request);
+```
+
 ## Hooks and observability
 
 Hooks and observability are runtime dependencies:
