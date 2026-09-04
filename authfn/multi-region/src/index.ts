@@ -58,6 +58,7 @@ export {
 } from 'authfn/core/gateway-routing';
 export {
   createAuthFnPlacementContextIssuer,
+  createAuthFnPlacementContextVerifier,
   freezeAuthFnPlacementContext
 } from 'authfn/core/placement-context';
 export type {
@@ -65,6 +66,8 @@ export type {
   AuthFnPlacementContextDeriveInput,
   AuthFnPlacementContextIssuer,
   AuthFnPlacementContextIssuerOptions,
+  AuthFnPlacementContextVerifier,
+  AuthFnPlacementContextVerifierOptions,
   AuthFnSignedPlacementContext
 } from 'authfn/core/placement-context';
 
