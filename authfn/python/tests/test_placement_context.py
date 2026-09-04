@@ -491,6 +491,30 @@ def test_treats_special_scheme_backslashes_as_path_separators() -> None:
     assert _normalize_authority(r"https://[::1]\@evil.example") == "https://[::1]"
 
 
+def test_canonicalizes_slashless_special_scheme_authorities() -> None:
+    assert _normalize_authority("https:account.example.com") == "https://account.example.com"
+    assert _normalize_authority("https:/account.example.com") == "https://account.example.com"
+    assert _normalize_authority("https:///account.example.com") == "https://account.example.com"
+    assert (
+        _normalize_authority("https:" + chr(92) + "account.example.com")
+        == "https://account.example.com"
+    )
+    assert (
+        _normalize_authority("https:account.example.com:8443")
+        == "https://account.example.com:8443"
+    )
+    assert _normalize_authority("https:/account.example.com:443") == "https://account.example.com"
+    assert _normalize_authority("http:account.example.com") == "http://account.example.com"
+    assert _normalize_authority("http:/account.example.com:80") == "http://account.example.com"
+    assert _normalize_authority("https:[::1]") == "https://[::1]"
+    assert _normalize_authority("https:/[::1]") == "https://[::1]"
+    assert _normalize_authority("https:127.1") == "https://127.0.0.1"
+    with pytest.raises(ConfigError):
+        _normalize_authority("https:")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https:/")
+
+
 def test_canonicalizes_ipv4_authorities_like_whatwg_origin() -> None:
     assert _normalize_authority("https://127.1") == "https://127.0.0.1"
     assert _normalize_authority("https://0x") == "https://0.0.0.0"
