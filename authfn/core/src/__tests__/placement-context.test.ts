@@ -17,6 +17,7 @@ import {
 import { issueSessionCookies } from '../core/cookies.js';
 import {
   createAuthFnPlacementContextIssuer,
+  createAuthFnPlacementContextVerifier,
   type AuthFnPlacementBoundAuthContext
 } from '../core/placement-context.js';
 import {
@@ -292,14 +293,11 @@ describe('AuthFn placement-bound auth context', () => {
   it('supports a private remote consumer that verifies an audience-bound assertion', async () => {
     const gateway = await setupIssuer({ regionId: 'eu-west-1', email: 'grace@example.com' });
     const issued = await gateway.issuer.issueSigned(gateway.request);
-    const remote = createAuthFnPlacementContextIssuer({
-      config: gateway.config,
-      subjectSecret: SUBJECT_SECRET,
+    const remote = createAuthFnPlacementContextVerifier({
       audiences: ['nucleum-datafn'],
       publicAuthority: 'https://account.example.com',
-      placementDirectory: gateway.directory,
-      identityKeyForUserId: (userId) => `person:${userId}`,
-      keyring
+      keyring,
+      config: gateway.config
     });
 
     const verified = remote.verifySigned(issued.assertion);
@@ -378,6 +376,55 @@ describe('AuthFn placement-bound auth context', () => {
     await expect(bound.issuer.derive(new Request('https://account.example.com/auth/session', {
       headers: { authorization: 'Bearer secret_bound' }
     }))).rejects.toBeInstanceOf(AuthFnApiKeyRevokedError);
+  });
+
+  it('falls back to a valid authorization credential when the cookie is stale', async () => {
+    const stale = await setupIssuer();
+    const fresh = await issueSession(stale.config, {}, {
+      request: new Request('https://account.example.com/auth/session'),
+      userId: stale.user.id,
+      primaryEmail: stale.user.primaryEmail,
+      methods: ['password'],
+      regionId: 'us-east-1'
+    });
+    await revokeSessionById(stale.config, stale.sessionId, { userId: stale.user.id });
+
+    await expect(stale.issuer.derive(stale.request)).rejects.toBeInstanceOf(AuthFnSessionRevokedError);
+
+    const mixed = new Request('https://account.example.com/auth/session', {
+      headers: {
+        cookie: stale.request.headers.get('cookie') ?? '',
+        authorization: `Bearer ${fresh.sessionToken}`
+      }
+    });
+    const context = await stale.issuer.derive(mixed);
+    const bearerOnly = await stale.issuer.derive(new Request('https://account.example.com/auth/session', {
+      headers: { authorization: `Bearer ${fresh.sessionToken}` }
+    }));
+    expect(context.homeRegion).toBe('us-east-1');
+    expect(context.sessionBinding).toBe(bearerOnly.sessionBinding);
+  });
+
+  it('uses stored authentication time for cookie and bearer of the same session', async () => {
+    const setup = await setupIssuer();
+    const authenticatedAt = new Date('2026-09-01T00:00:00.000Z');
+    await setup.config.database.update({
+      model: 'sessions',
+      where: [{ field: 'id', operator: 'eq', value: setup.sessionId }],
+      data: { lastAuthenticatedAt: authenticatedAt, updatedAt: authenticatedAt },
+      namespace: 'authfn'
+    });
+
+    const cookieContext = await setup.issuer.derive(setup.request);
+    const bearerContext = await setup.issuer.derive(new Request('https://account.example.com/auth/session', {
+      headers: { authorization: `Bearer ${setup.sessionToken}` }
+    }));
+    const again = await setup.issuer.derive(setup.request);
+
+    expect(cookieContext.authenticatedAt).toBe(authenticatedAt.toISOString());
+    expect(bearerContext.authenticatedAt).toBe(authenticatedAt.toISOString());
+    expect(again.authenticatedAt).toBe(authenticatedAt.toISOString());
+    expect(again.sessionVersion).toBe(cookieContext.sessionVersion);
   });
 });
 
@@ -471,7 +518,8 @@ async function setupIssuer(options?: {
     config,
     directory,
     events,
-    sessionId: issued.session.id
+    sessionId: issued.session.id,
+    sessionToken: issued.sessionToken
   };
 }
 
