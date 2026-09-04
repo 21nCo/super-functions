@@ -779,10 +779,16 @@ def _ascii_domain_label(label: str) -> str:
     try:
         return idna.encode(label, uts46=False, transitional=False).decode("ascii")
     except idna.IDNAError as error:
-        # WHATWG domain-to-ASCII uses UseSTD3ASCIIRules=false and CheckHyphens=false.
-        if label.isascii() and not _has_forbidden_domain_code_point(label):
+        if _has_forbidden_domain_code_point(label):
+            raise ConfigError(INVALID_AUTHORITY) from error
+        # WHATWG domain-to-ASCII: UseSTD3ASCIIRules=false, CheckHyphens=false,
+        # VerifyDnsLength=false. Keep ASCII labels; punycode Unicode anyway.
+        if label.isascii():
             return label
-        raise ConfigError(INVALID_AUTHORITY) from error
+        try:
+            return "xn--" + label.encode("punycode").decode("ascii")
+        except UnicodeError as puny_error:
+            raise ConfigError(INVALID_AUTHORITY) from puny_error
 
 
 def _serialize_ipv6(address: ipaddress.IPv6Address) -> str:
