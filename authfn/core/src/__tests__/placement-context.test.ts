@@ -11,6 +11,7 @@ import {
   AuthFnRegionNotFoundError,
   AuthFnSessionExpiredError,
   AuthFnSessionRevokedError,
+  AuthFnInternalError,
   AuthFnUnauthenticatedError,
   AuthFnValidationError
 } from '../index.js';
@@ -24,6 +25,7 @@ import {
   createInMemoryAuthFnPlacementDirectory,
   tombstoneAuthFnIdentityPlacement
 } from '../core/gateway-routing.js';
+import { eventRequestId } from '../core/observability.js';
 import { hashSecret, issueSession, revokeSessionById } from '../core/sessions.js';
 import { createUser } from '../core/users.js';
 import type { AuthFnIdentityPlacement, AuthFnRoutingKeyring } from '../plugin-types.js';
@@ -455,6 +457,47 @@ describe('AuthFn placement-bound auth context', () => {
     const second = await bound.issuer.derive(request);
     expect(second.sessionVersion).toBe(first.sessionVersion);
     expect(second.sessionBinding).toBe(first.sessionBinding);
+  });
+
+  it('reuses the original request correlation id when none is provided', async () => {
+    const { issuer, request } = await setupIssuer();
+    const context = await issuer.derive(request);
+    expect(context.requestId).toBe(eventRequestId(request));
+  });
+
+  it('accepts lowercase authorization schemes', async () => {
+    const bound = await setupIssuer();
+    await bound.config.database.create({
+      model: 'api_keys',
+      data: {
+        id: 'key_lower',
+        secretHash: hashSecret('secret_lower'),
+        userId: bound.user.id,
+        name: 'lower',
+        createdAt: new Date('2026-09-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-09-01T00:00:00.000Z')
+      },
+      namespace: 'authfn'
+    });
+    const context = await bound.issuer.derive(new Request(bound.request.url, {
+      headers: { authorization: 'bearer secret_lower' }
+    }));
+    expect(context.actorType).toBe('api-key');
+    expect(context.homeRegion).toBe('us-east-1');
+  });
+
+  it('preserves operational failures during API-key lookup', async () => {
+    const bound = await setupIssuer();
+    const original = bound.config.database.findOne.bind(bound.config.database);
+    bound.config.database.findOne = async (params) => {
+      if (params.model === 'api_keys') {
+        throw new Error('placement-directory database unavailable');
+      }
+      return original(params);
+    };
+    await expect(bound.issuer.derive(new Request(bound.request.url, {
+      headers: { authorization: 'Api-Key secret_missing' }
+    }))).rejects.toBeInstanceOf(AuthFnInternalError);
   });
 });
 
