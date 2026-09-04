@@ -440,6 +440,19 @@ def test_canonicalizes_ipv6_authorities_like_whatwg_origin() -> None:
     assert _normalize_authority("https://[2001:0DB8::1]:8443") == "https://[2001:db8::1]:8443"
 
 
+def test_canonicalizes_percent_encoded_hosts_like_whatwg_origin() -> None:
+    assert _normalize_authority("https://%65xample.com") == "https://example.com"
+    assert _normalize_authority("https://ex%61mple.com") == "https://example.com"
+    assert _normalize_authority("https://%31%32%37.0.0.1") == "https://127.0.0.1"
+    assert _normalize_authority("https://%e4%b8%ad.com") == "https://xn--fiq.com"
+    assert _normalize_authority("http://%65xample.com:80") == "http://example.com"
+    assert _normalize_authority("https://%65xample.com:8443") == "https://example.com:8443"
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://%2565xample.com")
+    with pytest.raises(ConfigError):
+        _normalize_authority("https://%00example.com")
+
+
 def test_canonicalizes_timestamps_like_javascript_to_iso_string() -> None:
     assert _isoformat(datetime(2026, 8, 1, tzinfo=timezone.utc)) == "2026-08-01T00:00:00.000Z"
     assert _isoformat("2026-08-01T00:00:00Z") == "2026-08-01T00:00:00.000Z"
