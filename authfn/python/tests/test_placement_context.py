@@ -393,6 +393,62 @@ async def test_awaits_async_identity_key_resolver() -> None:
     assert context.placement_epoch == 4
 
 
+@pytest.mark.asyncio
+async def test_rejects_explicitly_empty_audience() -> None:
+    setup = await _setup()
+    with pytest.raises(ValidationError):
+        await setup.issuer.derive(setup.request, audience="")
+    signed = await setup.issuer.issue_signed(setup.request)
+    with pytest.raises(PlacementContextInvalidError):
+        setup.issuer.verify_signed(signed["assertion"], audience="")
+
+
+@pytest.mark.asyncio
+async def test_canonicalizes_idn_authority_to_punycode() -> None:
+    setup = await _setup(public_authority="https://münich.example")
+    context = await setup.issuer.derive(setup.request)
+    assert context.issuer == "https://xn--mnich-kva.example"
+
+
+@pytest.mark.asyncio
+async def test_evaluates_cookie_and_bearer_expiry_against_issuer_clock() -> None:
+    expires_at = datetime.now(timezone.utc) - timedelta(seconds=60)
+    issuer_now = (expires_at - timedelta(seconds=60)).timestamp()
+    setup = await _setup(clock=lambda: issuer_now)
+    await setup.config.database.update(
+        model="sessions",
+        where=[{"field": "id", "operator": "eq", "value": setup.issued["record"]["id"]}],
+        data={"expiresAt": expires_at},
+        namespace="authfn",
+    )
+    cookie_context = await setup.issuer.derive(setup.request)
+    bearer_context = await setup.issuer.derive(
+        TestRequest(
+            "GET",
+            "https://account.example.com/auth/session",
+            headers={"authorization": f"Bearer {setup.issued['sessionToken']}"},
+        )
+    )
+    assert cookie_context.home_region == "us-east-1"
+    assert bearer_context.session_binding == cookie_context.session_binding
+
+
+@pytest.mark.asyncio
+async def test_keeps_signed_request_id_on_post_signature_verification_failure() -> None:
+    events: List[Any] = []
+    setup = await _setup(on_event=events.append)
+    signed = await setup.issuer.issue_signed(setup.request)
+    with pytest.raises(PlacementContextInvalidError):
+        setup.issuer.verify_signed(signed["assertion"], audience="other-service")
+    failed = [
+        event
+        for event in events
+        if (getattr(event, "type", None) or event.get("type")) == "authfn.placement_context.verification_failed"
+    ]
+    assert failed
+    assert (getattr(failed[-1], "requestId", None) or failed[-1].get("requestId")) == signed["context"].request_id
+
+
 def test_rejects_fractional_and_boolean_ttl() -> None:
     config = AuthFnConfig.model_validate(
         {"database": InMemoryDatabaseAdapter(), "namespace": "authfn", "plugins": []}
@@ -424,6 +480,7 @@ async def _setup(
     on_event: Optional[Any] = None,
     public_authority: str = "https://account.example.com",
     directory: Optional[Any] = None,
+    clock: Optional[Any] = None,
 ) -> _Setup:
     config = AuthFnConfig.model_validate(
         {
@@ -482,6 +539,7 @@ async def _setup(
         or (lambda user_id: identity_key or f"person:{user_id}"),
         keyring=KEYRING,
         on_event=on_event,
+        **({"clock": clock} if clock is not None else {}),
     )
     return _Setup(
         issuer=issuer,
