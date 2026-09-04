@@ -780,6 +780,7 @@ def _ascii_domain_label(label: str) -> str:
         # VerifyDnsLength=false, CheckJoiners=true, CheckBidi=true.
         # Keep ASCII labels; punycode only hyphen/length Unicode exceptions.
         if label.isascii():
+            _reject_malformed_ace_label(label)
             return label
         message = str(error).lower()
         if "hyphen" not in message and "too long" not in message:
@@ -791,6 +792,27 @@ def _ascii_domain_label(label: str) -> str:
             raise
         except (idna.IDNAError, UnicodeError) as remaining:
             raise ConfigError(INVALID_AUTHORITY) from remaining
+
+
+def _reject_malformed_ace_label(label: str) -> None:
+    # ACE labels still Punycode-decode under WHATWG domain-to-ASCII. Keep
+    # underscore hosts, but fail closed when xn-- suffix decode or the
+    # resulting Unicode would be rejected by Node URL.origin.
+    if not label.startswith("xn--"):
+        return
+    try:
+        decoded = label[4:].encode("ascii").decode("punycode")
+    except UnicodeError as error:
+        raise ConfigError(INVALID_AUTHORITY) from error
+    if not decoded:
+        raise ConfigError(INVALID_AUTHORITY)
+    try:
+        mapped = idna.uts46_remap(decoded, std3_rules=False, transitional=False)
+    except idna.IDNAError as error:
+        raise ConfigError(INVALID_AUTHORITY) from error
+    if _has_forbidden_domain_code_point(mapped):
+        raise ConfigError(INVALID_AUTHORITY)
+    _enforce_idna_after_hyphen_or_length_exception(mapped)
 
 
 def _enforce_idna_after_hyphen_or_length_exception(label: str) -> None:
@@ -818,12 +840,17 @@ def _enforce_idna_after_hyphen_or_length_exception(label: str) -> None:
 
 
 def _rtl_hyphen_exception_is_invalid(label: str) -> bool:
+    if not label:
+        return False
     directions = [unicodedata.bidirectional(char) for char in label]
     has_rtl = any(direction in {"R", "AL", "AN"} for direction in directions)
     if not has_rtl:
         return False
     has_ltr = any(direction == "L" for direction in directions)
-    return has_ltr or label.endswith("-")
+    last = directions[-1]
+    # RTL labels must end in R/AL/EN/AN (RFC 5893). Hyphen-first labels such
+    # as -א stay valid; trailing neutrals such as -א! fail like Node.
+    return has_ltr or last not in {"R", "AL", "EN", "AN"}
 
 
 def _serialize_ipv6(address: ipaddress.IPv6Address) -> str:
