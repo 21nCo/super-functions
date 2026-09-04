@@ -456,6 +456,12 @@ async def test_canonicalizes_idn_authority_to_punycode() -> None:
         == "https://auth_service.xn--mnich-kva.example"
     )
     assert _normalize_authority("http://AUTH_SERVICE.example:80") == "http://auth_service.example"
+    assert _normalize_authority("https://-é.example") == "https://xn----bga.example"
+    assert _normalize_authority("https://é-.example") == "https://xn----9fa.example"
+    assert (
+        _normalize_authority("https://" + ("é" * 64) + ".example")
+        == "https://xn--9caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example"
+    )
 
 
 def test_rejects_out_of_range_authority_ports_as_config_error() -> None:
