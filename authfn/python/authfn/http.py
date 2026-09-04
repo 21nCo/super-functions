@@ -1,3 +1,5 @@
+"""Shared HTTP route construction and envelope helpers for authfn Python."""
+
 from __future__ import annotations
 
 import hashlib
