@@ -25,6 +25,7 @@ import {
   normalizeTemporalQuery,
   relationFkFieldForManyOne,
   relationFkFieldForOneMany,
+  stripNullsForNonNullableFields,
   TIMEZONE_CHANGE_RESOURCE_NAME,
 } from "@datafn/core";
 import type { DatafnStorageAdapter } from "../storage.js";
@@ -205,6 +206,14 @@ export async function executeLocalQuery(
   if (!usedIndexedPath) {
     records = await storage.listRecords(resource);
   }
+
+  // Normalize persisted nulls for non-nullable fields once, up front, so
+  // filters (e.g. $is_null), sorting, and no-select results all observe the
+  // same record contract as the server: cleared fields read as absent.
+  const localResourceSchema = schema.resources.find((r) => r.name === resource);
+  records = records.map((record) =>
+    stripNullsForNonNullableFields(record, localResourceSchema),
+  );
 
   // Apply filters only when not fully satisfied by the indexed path (CLI-012)
   if (query.filters && !filterFullySatisfied) {
