@@ -14,6 +14,7 @@ import {
   relationFkFieldForManyOne,
   resolveEndpointResource,
   resourceNameFromId,
+  stripNullsForNonNullableFields,
   type DatafnRelationEndpoint,
   type DatafnRelationMatch,
 } from "@datafn/core";
@@ -265,6 +266,10 @@ export function materializeSelect(
 ): Record<string, unknown> {
   const resourceSchema = schema.resources.find((r) => r.name === resource);
   if (!resourceSchema) return { id: record.id };
+
+  // Persisted stores can hold null for non-nullable fields (nullable SQL
+  // columns, replace clears). Expose them as undefined in query results.
+  record = stripNullsForNonNullableFields(record, resourceSchema);
 
   // EXE-014: Use cached FK omit-set computation
   const fkFieldsToOmit = getFkFieldsToOmit(schema, resource);

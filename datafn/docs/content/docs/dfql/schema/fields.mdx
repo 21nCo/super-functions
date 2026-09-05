@@ -100,9 +100,10 @@ are owned by the selected builder and cannot be overridden.
 ## Constraints
 
 Constraint metadata is preserved for adapters and generated schemas. Core
-mutation validation does not currently enforce every constraint, including
-enum membership, bounds, and patterns. Check the selected storage adapter
-before relying on those constraints at runtime.
+mutation validation enforces `min`/`max` bounds for `date` fields (compared
+as epoch milliseconds) but does not currently enforce every other
+constraint, including enum membership, number bounds, and patterns. Check
+the selected storage adapter before relying on those constraints at runtime.
 
 ### required
 

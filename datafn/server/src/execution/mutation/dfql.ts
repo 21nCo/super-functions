@@ -45,7 +45,7 @@ export interface RelationOperation {
 
 /**
  * Build a full record for replace operation
- * Clears unspecified fields to defaults, null, or undefined, and preserves system fields
+ * Clears unspecified fields to their default or null, and preserves system fields
  */
 export function buildReplaceRecord(
   schema: DatafnSchema,
@@ -103,13 +103,11 @@ export function buildReplaceRecord(
     if (Object.prototype.hasOwnProperty.call(newRecord, key)) {
       result[key] = newRecord[key];
     } else {
-      // Not provided: reset to a default, null when allowed, or undefined.
-      result[key] =
-        field.default !== undefined
-          ? field.default
-          : field.nullable
-            ? null
-            : undefined;
+      // Not provided: reset to the default, otherwise clear with null. Null is
+      // the only clear every supported adapter persists (Drizzle and Prisma
+      // ignore undefined) and the only one that survives JSON change tracking;
+      // read paths normalize it back to undefined for non-nullable fields.
+      result[key] = field.default !== undefined ? field.default : null;
     }
 
     // Validation: Required check

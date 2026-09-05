@@ -92,10 +92,35 @@ describe("MUT-REPLACE-001: Replace Operation Semantics", () => {
     });
 
     expect(task.title).toBe("New Title");
-    expect(task.description).toBeUndefined(); // Cleared
+    // Cleared fields persist as null: null is the only clear every supported
+    // adapter applies (Drizzle/Prisma ignore undefined) and it survives JSON
+    // change tracking. Read paths normalize it back to undefined.
+    expect(task.description).toBeNull();
     expect(task.status).toBe("active"); // Default
-    expect(task.priority).toBeUndefined(); // Cleared
+    expect(task.priority).toBeNull();
     expect(task.nullableDefault).toBeNull(); // Nullable default
+
+    // Query results expose cleared non-nullable fields as undefined again.
+    const queryRes = await server.router.handle(
+      new Request("http://localhost/datafn/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resource: "tasks",
+          filters: { id: { $eq: "task-1" } },
+        }),
+      }),
+    );
+    const queryBody = await queryRes.json();
+    expect(queryBody.ok).toBe(true);
+    const [row] = queryBody.result.data;
+    expect(row.title).toBe("New Title");
+    expect(row.description).toBeUndefined();
+    expect("description" in row).toBe(false);
+    expect(row.priority).toBeUndefined();
+    expect("priority" in row).toBe(false);
+    // Nullable fields keep their explicit null on read.
+    expect(row.nullableDefault).toBeNull();
   });
 
   it("Replace preserves system fields and updates timestamps", async () => {

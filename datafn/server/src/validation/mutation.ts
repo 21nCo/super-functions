@@ -376,6 +376,35 @@ export function validateMutation(
           `${basePath}.record.${fieldName}`,
         );
       }
+      // Enforce min/max bounds for date fields by comparing epoch milliseconds.
+      if (
+        fieldDef.type === "date" &&
+        (fieldDef.min !== undefined || fieldDef.max !== undefined)
+      ) {
+        const epoch =
+          typeof value === "string"
+            ? Date.parse(value)
+            : typeof value === "number"
+              ? value
+              : Number.NaN;
+        // Non-finite epochs are e2ee envelopes or already rejected above.
+        if (Number.isFinite(epoch)) {
+          if (fieldDef.min !== undefined && epoch < fieldDef.min) {
+            return vErr(
+              "DFQL_INVALID",
+              `Field '${fieldName}' must be on or after ${new Date(fieldDef.min).toISOString()}`,
+              `${basePath}.record.${fieldName}`,
+            );
+          }
+          if (fieldDef.max !== undefined && epoch > fieldDef.max) {
+            return vErr(
+              "DFQL_INVALID",
+              `Field '${fieldName}' must be on or before ${new Date(fieldDef.max).toISOString()}`,
+              `${basePath}.record.${fieldName}`,
+            );
+          }
+        }
+      }
     }
 
     // Check required fields for insert/replace

@@ -153,6 +153,9 @@ export {
   normalizeRelationPayload,
 } from "./relations.js";
 
+// Re-export record read-path normalization
+export { stripNullsForNonNullableFields } from "./records.js";
+
 // Re-export aggregation utilities
 export { calculateAggregation } from "./aggregate.js";
 
