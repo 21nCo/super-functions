@@ -216,6 +216,8 @@ export {
   fromEpochMs,
   coerceDateFieldsToEpoch,
   parseDateFieldsToDate,
+  toBoundsEpochMs,
+  formatBoundEpochMs,
 } from "./date.js";
 
 // Re-export validation primitives

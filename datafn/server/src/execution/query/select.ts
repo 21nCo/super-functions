@@ -410,7 +410,9 @@ export function materializeSelect(
             ),
             htreeRelation,
             metadata,
-          ).map((c) => applyOmit(c, omit));
+          ).map((c) =>
+            applyOmit(stripNullsForNonNullableFields(c, resourceSchema), omit),
+          );
         } else if (parsed.directive === "**") {
           result[parsed.baseName] = filterAncestorInactiveRecords(
             htreeChildren(
@@ -422,7 +424,9 @@ export function materializeSelect(
             ),
             htreeRelation,
             metadata,
-          ).map((d) => applyOmit(d, omit));
+          ).map((d) =>
+            applyOmit(stripNullsForNonNullableFields(d, resourceSchema), omit),
+          );
         }
         includedFields.add(parsed.baseName);
       } else if (parsed.baseName === "parent") {
@@ -431,7 +435,9 @@ export function materializeSelect(
           resource,
           htreeRelation.relation,
           store,
-        ).map((a) => applyOmit(a, omit));
+        ).map((a) =>
+          applyOmit(stripNullsForNonNullableFields(a, resourceSchema), omit),
+        );
         includedFields.add(parsed.baseName);
       }
       continue;

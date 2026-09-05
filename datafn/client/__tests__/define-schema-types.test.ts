@@ -175,6 +175,16 @@ describe("field builder type preservation", () => {
     field.json("json", {} as DatafnJsonFieldOptions);
   });
 
+  it("rejects other-kind options on reusable option objects", () => {
+    // Excess-key checks do not apply to variables, so the reusable-options
+    // overload must still refuse keys that belong to another field kind.
+    const opts = { required: true, min: 1 };
+    // @ts-expect-error min does not apply to string fields
+    field.string("title", opts);
+    const numberOpts: DatafnNumberFieldOptions = { min: 0, max: 10 };
+    field.number("estimate", numberOpts);
+  });
+
   it("returns plain DatafnFieldSchema-compatible values", () => {
     expectTypeOf(reusableId).toMatchTypeOf<DatafnFieldSchema>();
     expectTypeOf<

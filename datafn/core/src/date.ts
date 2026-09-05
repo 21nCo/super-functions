@@ -58,6 +58,40 @@ export function fromEpochMs(value: unknown): Date {
   dfqlInvalid(`Cannot convert to Date: ${String(value)}`);
 }
 
+/**
+ * ISO datetimes without a timezone designator (date-only forms are already
+ * parsed as UTC by ECMAScript, so they are excluded here).
+ */
+const TIMEZONE_LESS_DATETIME_RE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+
+/**
+ * Epoch milliseconds for min/max bounds comparison. Timezone-less ISO
+ * datetimes are interpreted as UTC so absolute bounds are independent of the
+ * server's local timezone. Returns NaN for values that are not date-like
+ * (e.g. e2ee envelopes), letting callers skip them.
+ */
+export function toBoundsEpochMs(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "string") {
+    const normalized = TIMEZONE_LESS_DATETIME_RE.test(value)
+      ? `${value}Z`
+      : value;
+    return Date.parse(normalized);
+  }
+  return Number.NaN;
+}
+
+/**
+ * Format an epoch-ms bound for error messages. Never throws: invalid or
+ * out-of-range bounds fall back to their raw string form.
+ */
+export function formatBoundEpochMs(bound: number): string {
+  const date = new Date(bound);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : String(bound);
+}
+
 type FieldLike = Pick<DatafnFieldSchema, "name" | "type">;
 
 /**

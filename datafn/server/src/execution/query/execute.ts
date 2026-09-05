@@ -20,6 +20,7 @@ import {
   createTimezoneResolver,
   hasTemporalGrouping,
   normalizeTemporalQuery,
+  stripNullsForNonNullableFields,
 } from "@datafn/core";
 
 /**
@@ -43,8 +44,17 @@ export function executeQuery(
     return executeAggregateQuery(query as any, records, schema, store, temporalConfig);
   }
 
-  // Get all records for the resource
-  let records = store.getRecords(query.resource);
+  // Get all records for the resource. Normalize persisted nulls for
+  // non-nullable fields up front so filters (e.g. $is_null) and results both
+  // observe the same record contract as the materialized output.
+  const queryResourceSchema = schema.resources.find(
+    (r) => r.name === query.resource,
+  );
+  let records = store
+    .getRecords(query.resource)
+    .map((record) =>
+      stripNullsForNonNullableFields(record, queryResourceSchema),
+    );
 
   // Apply filters
   if (query.filters) {

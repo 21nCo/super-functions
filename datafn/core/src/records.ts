@@ -4,6 +4,21 @@
 
 import type { DatafnResourceSchema } from "./types.js";
 
+// Resource schemas are long-lived singletons, so cache the per-resource field
+// scan instead of repeating it for every record in a query result.
+const nonNullableFieldNamesCache = new WeakMap<DatafnResourceSchema, string[]>();
+
+function getNonNullableFieldNames(resource: DatafnResourceSchema): string[] {
+  let names = nonNullableFieldNamesCache.get(resource);
+  if (!names) {
+    names = resource.fields
+      .filter((field) => field.nullable !== true)
+      .map((field) => field.name);
+    nonNullableFieldNamesCache.set(resource, names);
+  }
+  return names;
+}
+
 /**
  * Removes `null` values for fields the schema declares as non-nullable.
  *
@@ -24,11 +39,12 @@ export function stripNullsForNonNullableFields(
 ): Record<string, unknown> {
   if (!resource) return record;
   let copy: Record<string, unknown> | undefined;
-  for (const field of resource.fields) {
-    if (field.nullable === true) continue;
-    if (record[field.name] !== null) continue;
+  for (const name of getNonNullableFieldNames(resource)) {
+    if (record[name] !== null) continue;
+    // Copy lazily and only when a null is actually stripped: stored records
+    // must never be mutated in place.
     copy ??= { ...record };
-    delete copy[field.name];
+    delete copy[name];
   }
   return copy ?? record;
 }
