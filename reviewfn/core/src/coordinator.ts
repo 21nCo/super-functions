@@ -116,12 +116,15 @@ export class ReviewCoordinator {
       output = { terminal: request.signal?.aborted ? "canceled" : "failed", requirements: [], assessments: [], evidence: [], findings: [], inspectedPaths: [], uninspected: [{ scope: "review", reason: error instanceof Error ? error.message : String(error) }], events: [], error: error instanceof Error ? error.message : String(error) };
     }
     const secrets = [...collectSecrets(process.env), ...(request.config.inference.credentialEnv ? [process.env[request.config.inference.credentialEnv] ?? ""] : [])];
+    const payload = (value: HarnessOutput) => Object.fromEntries(["requirements", "assessments", "evidence", "findings", "inspectedPaths", "uninspected"].map(key => [key, value?.[key as keyof HarnessOutput]]));
+    const rawErrors = validateHarnessPayload(payload(output));
+    const rawFingerprints = rawErrors.length ? [] : output.findings.map(findingFingerprint);
     if (output) output = redactJson(output, secrets);
-    const payloadErrors = validateHarnessPayload(Object.fromEntries(["requirements", "assessments", "evidence", "findings", "inspectedPaths", "uninspected"].map(key => [key, output?.[key as keyof HarnessOutput]])));
+    const payloadErrors = [...rawErrors, ...validateHarnessPayload(payload(output))];
     if (payloadErrors.length) output = { terminal: "malformed", requirements: [], assessments: [], evidence: [], findings: [], inspectedPaths: [], uninspected: [{ scope: "structured output", reason: payloadErrors.join("; ") }], events: output?.events ?? [] };
     if (request.signal?.aborted) output.terminal = "canceled";
     output.requirements = output.requirements.map(requirement => ({ ...requirement, extraction: { harness: this.dependencies.harness.capabilities.id, promptDigest: prompt.digest } }));
-    output.findings = output.findings.map((finding) => ({ ...finding, fingerprint: findingFingerprint(finding) }));
+    output.findings = output.findings.map((finding, index) => ({ ...finding, fingerprint: rawFingerprints[index] }));
     const sourceIds = new Set(context.sources.map((source) => source.id));
     const unknownSources = [
       ...output.requirements.flatMap((requirement) => requirement.sources.map((source) => source.sourceId)),

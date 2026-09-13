@@ -9,7 +9,7 @@ export async function publicationLease(identity: string): Promise<() => Promise<
   const root = path.join(tmpdir(), `reviewfn-publication-${process.getuid?.() ?? "user"}`);
   await safeDirectory(root);
   const rootStat = await lstat(root);
-  if ((process.getuid && rootStat.uid !== process.getuid()) || (rootStat.mode & 0o077) !== 0) throw new Error("Publication lease root must be private and owned by the current user.");
+  if (process.platform !== "win32" && ((process.getuid && rootStat.uid !== process.getuid()) || (rootStat.mode & 0o077) !== 0)) throw new Error("Publication lease root must be private and owned by the current user.");
   const directory = path.join(root, sha256(identity));
   try { await mkdir(directory, { mode: 0o700 }); }
   catch (error) {

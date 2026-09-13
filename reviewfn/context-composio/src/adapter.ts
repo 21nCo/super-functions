@@ -52,7 +52,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
   public async fetch(request: ContextRequest): Promise<Omit<ContextManifest, "digest">> {
     if (!request.issue || !request.account || !request.expectedWorkspace) throw new Error("issue, account, and expectedWorkspace are required.");
     const payload = await this.execute("LINEAR_GET_LINEAR_ISSUE", { issue_id: request.issue }, request.account, request.signal);
-    const issue = findIssue(payload);
+    const issue = findIssue(payload, request.issue);
     if (!issue) throw new Error(`Composio returned no accessible Linear issue for ${request.issue}.`);
     const workspaceCandidates = collectWorkspaceCandidates(issue);
     if (!workspaceCandidates.some((candidate) => candidate.toLowerCase() === request.expectedWorkspace!.toLowerCase())) {
@@ -108,14 +108,20 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
       catch { incompleteReasons.push("Unable to establish complete Linear document pagination."); }
     }
     if (!hasPageInfo(initialDocuments)) incompleteReasons.push("Linear document pagination metadata missing or malformed.");
-    const documents = [...connectionNodes(initialDocuments), ...connectionNodes(issue.documents), ...arrayObjects(issue.documents), ...linkedDocuments(JSON.stringify(issue)), ...comments.flatMap(comment => linkedDocuments(stringField(comment, "body") ?? ""))];
+    const candidateKeys = new Set<string>();
+    const uniqueDocuments = (candidates: Record<string, unknown>[]) => candidates.filter(document => {
+      const key = stringField(document, "url") ?? stringField(document, "id");
+      if (!key || candidateKeys.has(key)) return false;
+      candidateKeys.add(key); return true;
+    });
+    const documents = uniqueDocuments([...connectionNodes(initialDocuments), ...connectionNodes(issue.documents), ...arrayObjects(issue.documents), ...linkedDocuments(JSON.stringify(issue)), ...comments.flatMap(comment => linkedDocuments(stringField(comment, "body") ?? ""))]);
     let documentPage = pageInfo(initialDocuments);
     const documentCursors = new Set<string>();
     while (documentPage.hasNextPage && documentPage.endCursor && !documentCursors.has(documentPage.endCursor) && documents.length < request.limits.maxSources) {
       documentCursors.add(documentPage.endCursor);
       const page = await this.fetchIssueConnection("documents", issueId, documentPage.endCursor, request.account, request.signal);
       const connection = findConnection(page, "documents");
-      documents.push(...connectionNodes(connection));
+      documents.push(...uniqueDocuments(connectionNodes(connection)));
       if (!hasPageInfo(connection)) incompleteReasons.push("Linear document pagination metadata missing or malformed.");
       documentPage = pageInfo(connection);
     }
@@ -170,7 +176,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
         const resolvedFile = path.resolve(file);
         const stat = await lstat(resolvedFile);
         if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 5_000_000) throw new Error("Composio stored response exceeds bounds or is not a regular file.");
-        payload = JSON.parse((await safeRead(resolvedFile)).toString("utf8"));
+        payload = JSON.parse((await safeRead(resolvedFile, 5_000_000)).toString("utf8"));
       }
       if (records(payload).some(record => record.successful === false || (Array.isArray(record.errors) && record.errors.length))) throw new Error("Composio or Linear returned an error envelope.");
       return payload;
@@ -199,8 +205,8 @@ function records(value: unknown, output: Record<string, unknown>[] = []): Record
   return output;
 }
 
-function findIssue(value: unknown): Record<string, unknown> | undefined {
-  return records(value).find((record) => typeof record.identifier === "string" && typeof record.title === "string") ?? records(value).find((record) => typeof record.title === "string" && typeof record.description === "string" && typeof record.id === "string");
+function findIssue(value: unknown, expected: string): Record<string, unknown> | undefined {
+  return records(value).find(record => typeof record.title === "string" && [record.id, record.identifier].some(identity => typeof identity === "string" && identity.toLowerCase() === expected.toLowerCase()));
 }
 
 function findDocument(value: unknown): Record<string, unknown> | undefined {

@@ -1,4 +1,4 @@
-import { access, realpath, stat } from "node:fs/promises";
+import { access, lstat, realpath, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
 
@@ -15,14 +15,16 @@ export async function resolveTrustedExecutable(name: string, searchPath = proces
       if (!parent.isDirectory() || (parent.mode & 0o002) !== 0) continue;
       const executable = await realpath(path.join(directory, name));
       if (executable === cwd || executable.startsWith(`${cwd}${path.sep}`)) continue;
-      let ancestor = path.dirname(executable);
       let trusted = true;
+      for (const location of [canonicalDirectory, path.dirname(executable)]) {
+      let ancestor = location;
       while (true) {
         const info = await stat(ancestor);
-        if ((info.mode & 0o002) !== 0) { trusted = false; break; }
+        if ((info.mode & 0o002) !== 0 || await lstat(path.join(ancestor, ".git")).catch(() => undefined)) { trusted = false; break; }
         const next = path.dirname(ancestor);
         if (next === ancestor) break;
         ancestor = next;
+      }
       }
       if (!trusted) continue;
       const file = await stat(executable);

@@ -88,3 +88,15 @@ it("honors shorter configured retention for every artifact and test logs", async
   await coordinator.run({ root: ".", base: "base", head: "head", config: { ...config, retainTranscript: true, retention: { reportDays: 3, transcriptDays: 1, testLogDays: 2 } }, policy: DEFAULT_POLICY });
   expect(writes).toHaveLength(4); expect(writes.map(item => item.days)).toEqual([3, 3, 1, 3]); expect(writes[2].kind).toBe("redacted-transcript"); expect(testLogDays).toBe(2);
 });
+
+it("keeps finding identity stable when coordinator redaction secrets differ", async () => {
+  const finding = { fingerprint: "from-harness", severity: "high" as const, category: "behavior", title: "private-example-secret bug", trigger: "input", impact: "wrong", direction: "fix", requirementIds: ["R1"], evidenceIds: ["E1"], lifecycle: "new" as const, basis: "inferred" as const };
+  const run = async () => new ReviewCoordinator({ sourceControl: new FakeSourceControlAdapter(), contexts: [new FakeContextAdapter("fixture", manifest)], harness: new FakeHarnessAdapter({ ...output, findings: [finding] }), execution: new FakeExecutionAdapter(), artifacts: new MemoryArtifactStore() }).run({ root: ".", base: "base", head: "head", config, policy: DEFAULT_POLICY });
+  const original = process.env.REVIEWFN_TEST_SECRET;
+  try {
+    delete process.env.REVIEWFN_TEST_SECRET; const first = await run();
+    process.env.REVIEWFN_TEST_SECRET = "private-example-secret"; const second = await run();
+    expect(second.report.findings[0].fingerprint).toBe(first.report.findings[0].fingerprint);
+    expect(second.report.findings[0].title).not.toContain("private-example-secret");
+  } finally { if (original === undefined) delete process.env.REVIEWFN_TEST_SECRET; else process.env.REVIEWFN_TEST_SECRET = original; }
+});

@@ -14,17 +14,29 @@ export async function safeDirectory(directory: string): Promise<void> {
   if (process.platform === "darwin" && stat.uid === 0 && ["/var", "/tmp", "/etc"].includes(absolute) && await realpath(absolute) === `/private${absolute}`) return;
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`Expected real directory; refusing non-directory or symlink: ${absolute}`);
 }
-export async function safeRead(file: string): Promise<Buffer> {
+export async function safeRead(file: string, maxBytes = 32 * 1024 * 1024): Promise<Buffer> {
+  if (/[\\/]$/.test(file)) throw new Error("Expected a file path, not a directory-form path.");
   file = path.resolve(file);
   await safeDirectory(path.dirname(file));
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error("Read budget must be a positive integer.");
   const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stat = await handle.stat();
-    if (!stat.isFile() || stat.size > 32 * 1024 * 1024) throw new Error("Expected a regular file within the 32 MiB read budget.");
-    return await handle.readFile();
+    if (!stat.isFile() || stat.size > maxBytes) throw new Error("Expected a regular file within the 32 MiB read budget.");
+    const chunks: Buffer[] = []; let bytes = 0;
+    while (true) {
+      const buffer = Buffer.alloc(Math.min(64 * 1024, maxBytes - bytes + 1));
+      const count = (await handle.read(buffer, 0, buffer.length, null)).bytesRead;
+      if (!count) break;
+      bytes += count;
+      if (bytes > maxBytes) throw new Error("File exceeds the read budget.");
+      chunks.push(buffer.subarray(0, count));
+    }
+    return Buffer.concat(chunks, bytes);
   } finally { await handle.close(); }
 }
 export async function safeWrite(file: string, content: string | Uint8Array): Promise<void> {
+  if (/[\\/]$/.test(file)) throw new Error("Expected a file path, not a directory-form path.");
   file = path.resolve(file);
   await safeDirectory(path.dirname(file));
   const stat = await lstat(file).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? undefined : Promise.reject(error));

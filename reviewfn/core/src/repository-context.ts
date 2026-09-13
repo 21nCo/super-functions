@@ -33,7 +33,6 @@ async function expandPaths(root: string, patterns: readonly string[], limits: Co
     if (pattern === "**/*.md" || pattern.endsWith("/**/*.md")) {
       const prefix = pattern === "**/*.md" ? "" : pattern.slice(0, -"**/*.md".length);
       const allMarkdown = await collectMarkdown(root, limits.maxDepth, limits.maxSources * 100, prefix.replace(/\/$/, ""), traversal);
-      if (!allMarkdown.length) reasons.push(`Configured context glob ${raw} matched no sources.`);
       for (const candidate of allMarkdown) if (candidate.startsWith(prefix)) selected.add(candidate);
     } else if (!pattern.includes("*")) selected.add(pattern);
     else throw new Error(`Unsupported context glob ${raw}; use an exact path or **/*.md.`);

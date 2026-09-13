@@ -79,3 +79,18 @@ it("deduplicates document UUID and URL aliases", async () => {
   expect(result.sources.filter(source => source.type === "document")).toHaveLength(1);
   expect(result.incompleteReasons).toEqual([]);
 });
+
+it("does not spend pagination budget on duplicate initial documents", async () => {
+  let pages = 0;
+  const runner: ComposioRunner = async args => {
+    if (args[1] === "LINEAR_GET_LINEAR_ISSUE") return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "x", description: "requirements", organization: { id: "workspace-1" }, comments: { nodes: [], pageInfo: { hasNextPage: false } }, documents: { nodes: [{ id: "d1", content: "one" }, { id: "d2", content: "two" }], pageInfo: { hasNextPage: true, endCursor: "next" } } } }) };
+    pages++; return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { documents: { nodes: [{ id: "d3", content: "three" }], pageInfo: { hasNextPage: false } } } }) };
+  };
+  const result = await new ComposioLinearContextAdapter({ runner }).fetch({ ...request, limits: { ...request.limits, maxSources: 4 } });
+  expect(pages).toBe(1); expect(result.sources.filter(source => source.type === "document")).toHaveLength(3); expect(result.incompleteReasons).toEqual([]);
+});
+
+it("rejects a different issue in the same workspace", async () => {
+  const runner: ComposioRunner = async () => ({ code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "other", identifier: "ENG-2", title: "Wrong", organization: { id: "workspace-1" } } }) });
+  await expect(new ComposioLinearContextAdapter({ runner }).fetch(request)).rejects.toThrow(/no accessible Linear issue/);
+});

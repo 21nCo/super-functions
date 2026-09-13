@@ -2,7 +2,7 @@ import { afterEach, expect, it } from "vitest";
 import { chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DEFAULT_CONFIG, DEFAULT_POLICY, FileArtifactStore, RepositoryMarkdownContextAdapter, combineContextManifests, deriveVerdict, digestJson, renderMarkdownReport, redactJson, resolveTrustedExecutable, safeWrite, sha256, validateConfig, validateHarnessPayload, validatePolicy, validateReport, type ReviewReport, type ContextManifest } from "../src/index.js";
+import { DEFAULT_CONFIG, DEFAULT_POLICY, FileArtifactStore, RepositoryMarkdownContextAdapter, combineContextManifests, deriveVerdict, digestJson, renderMarkdownReport, redactJson, resolveTrustedExecutable, safeRead, safeWrite, sha256, validateConfig, validateHarnessPayload, validatePolicy, validateReport, type ReviewReport, type ContextManifest } from "../src/index.js";
 const roots: string[] = [];
 async function temporary() { const root = await mkdtemp(path.join(tmpdir(), "reviewfn-security-")); roots.push(root); return root; }
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -95,7 +95,7 @@ it("preserves README context when a scoped glob directory is missing", async () 
   const root = await temporary(); await writeFile(path.join(root, "README.md"), "requirements");
   const result = await new RepositoryMarkdownContextAdapter().fetch({ root, paths: ["README.md", "docs/**/*.md"], limits: context.limits });
   expect(result.sources.map(source => source.id)).toEqual(["repo:README.md"]);
-  expect(result.incompleteReasons.join()).toMatch(/matched no sources/);
+  expect(result.incompleteReasons).toEqual([]);
 });
 it.each(["resolved", "superseded"] as const)("rejects unproven historical lifecycle %s", async lifecycle => {
   const value = report(); value.findings = [{ fingerprint: "f", severity: "high", category: "test", title: "Bug", trigger: "input", impact: "wrong", direction: "fix", evidenceIds: ["e"], basis: "inferred", requirementIds: ["r"], lifecycle }];
@@ -117,7 +117,7 @@ it("rejects executable paths beneath a world-writable ancestor", async () => {
   await expect(resolveTrustedExecutable("fixture-tool", path.join(root, "bin"))).rejects.toThrow(/trusted executable/);
 });
 
-it("redacts string secrets without corrupting JSON booleans or syntax", () => {
+it("redacts exact scalar secrets without corrupting JSON syntax", () => {
   const value = { ok: true, nothing: null, count: 1234, nested: ["true", "null", 'quote"secret'] };
   const redacted = redactJson(value, ["true", "null", 'quote"secret']);
   expect(redacted).toEqual({ ok: "[REDACTED]", nothing: "[REDACTED]", count: 1234, nested: ["[REDACTED]", "[REDACTED]", "[REDACTED]"] });
@@ -132,4 +132,35 @@ it("cannot inject report sections from uninspected and coverage text", () => {
   value.coverageReasons = [hostile]; value.uninspected = [{ scope: hostile, reason: hostile }]; value.limitations = [hostile];
   const rendered = renderMarkdownReport(value);
   expect(rendered).not.toContain("\n# Forged"); expect(rendered).not.toContain("[click]("); expect(rendered).not.toContain("@victim");
+});
+
+it("rejects trusted-tool candidates inside another checkout", async () => {
+  const root = await temporary(); await mkdir(path.join(root, ".git")); await mkdir(path.join(root, "bin"));
+  await writeFile(path.join(root, "bin", "fixture-tool"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+  await expect(resolveTrustedExecutable("fixture-tool", path.join(root, "bin"))).rejects.toThrow(/trusted executable/);
+});
+it("preserves directory-form path semantics and enforces a caller read bound", async () => {
+  const root = await temporary(); const file = path.join(root, "file"); await writeFile(file, "12345");
+  await expect(safeWrite(`${file}/`, "bad")).rejects.toThrow(/directory-form/);
+  await expect(safeRead(`${file}/`)).rejects.toThrow(/directory-form/);
+  await expect(safeRead(file, 4)).rejects.toThrow(/budget/);
+  expect((await safeRead(file, 5)).toString()).toBe("12345");
+});
+it("enforces the artifact read/write boundary", async () => {
+  const root = await temporary(); const store = new FileArtifactStore(root);
+  const bytes = Buffer.alloc(32 * 1024 * 1024, 120); const saved = await store.put("report", bytes, 1);
+  expect((await store.get(saved.id))?.length).toBe(bytes.length);
+  await expect(store.put("report", Buffer.alloc(bytes.length + 1), 1)).rejects.toThrow(/budget/);
+});
+
+it("accounts for every changed path and permits inspected deletions", async () => {
+  const value = report(); value.change.changedPaths.push("deleted.ts");
+  expect((await errors(value)).join()).toMatch(/Changed path deleted/);
+  value.inspectedPaths.push("deleted.ts");
+  const result = await validateReport(value, policy, { ...source, verifyAnchor: async (_root, anchor) => anchor.path === "index.ts" || anchor.path === "deleted.ts" && anchor.commit === value.change.baseCommit }, ".", context);
+  expect(result.errors).toEqual([]);
+});
+it("does not require impossible coverage evidence for a zero-byte source", async () => {
+  const manifest = { ...context, sources: [...context.sources, { ...context.sources[0], id: "empty", content: "", digest: sha256("") }] };
+  expect(await errors(report(), manifest)).toEqual([]);
 });

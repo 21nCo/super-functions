@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, rm, mkdir, writeFile, stat } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, stat, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -40,13 +40,14 @@ export class LocalIsolatedExecutionAdapter implements ExecutionAdapter {
       const archived = await runProcess("git", ["--git-dir", archiveRepo, "archive", "--format=tar", `--output=${archive}`, headCommit], root, 60_000, 64_000, signal);
       if (archived.exitCode !== 0 || archived.canceled) throw new Error("Unable to archive reviewed commit.");
       if ((await stat(archive)).size > 256 * 1024 * 1024) throw new Error("Generated archive exceeds the 256 MiB input budget.");
+      await chmod(archive, 0o444);
       const image = await runProcess("docker", ["image", "inspect", TEST_IMAGE, "--format", "{{.Id}}"], root, 10_000, 64_000, signal);
       if (image.exitCode !== 0 || !/^sha256:[a-f0-9]{64}$/.test(image.stdout.trim())) throw new Error("Required isolated test image is unavailable.");
       const deadline = Date.now() + policy.limits.testTimeoutMs;
       for (const [index, command] of commands.entries()) {
         if (signal?.aborted) break;
         if (!command.length || command.some(part => !part || part.includes("\0"))) throw new Error(`Invalid command ${index}.`);
-        const name = `reviewfn-${randomUUID()}`;
+        const name = `reviewfn-${sha256(path.resolve(root)).slice(0, 16)}-${randomUUID()}`;
         const startedAt = new Date();
         let result: ProcessResult;
         try {
@@ -61,7 +62,7 @@ export class LocalIsolatedExecutionAdapter implements ExecutionAdapter {
         if (result.timedOut || result.canceled || result.outputLimited) break;
       }
       return receipts;
-    } finally { await rm(owned, { recursive: true, force: true }); }
+    } finally { await rm(owned, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); }
   }
 }
 

@@ -43,8 +43,9 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
   if (report.execution === "completed") {
     if (!report.requirements.length) errors.push("No requirements were extracted; extraction coverage is unverified.");
     if (!report.inspectedPaths.length) errors.push("No code paths were inspected.");
+    for (const changed of report.change.changedPaths) if (!report.inspectedPaths.includes(changed) && !report.uninspected.some(item => item.scope === changed)) errors.push(`Changed path ${changed} has no inspected or explicitly uninspected scope.`);
     for (const category of policy.requiredCategories) if (!report.requirements.some(requirement => requirement.category === category)) errors.push(`Extraction coverage for required category ${category} is unverified.`);
-    for (const source of context?.sources ?? []) if (source.status === "available" && policy.sourceAuthority.acceptedTypes.includes(source.type) && !report.requirements.some(requirement => requirement.sources.some(ref => ref.sourceId === source.id)) && !report.evidence.some(evidence => evidence.kind === "source" && evidence.source?.sourceId === source.id && referenceValid(evidence.source))) errors.push(`Extraction coverage for source ${source.id} is unverified; cite its requirements or source-backed exclusion evidence.`);
+    for (const source of context?.sources ?? []) if (source.status === "available" && source.content !== "" && policy.sourceAuthority.acceptedTypes.includes(source.type) && !report.requirements.some(requirement => requirement.sources.some(ref => ref.sourceId === source.id)) && !report.evidence.some(evidence => evidence.kind === "source" && evidence.source?.sourceId === source.id && referenceValid(evidence.source))) errors.push(`Extraction coverage for source ${source.id} is unverified; cite its requirements or source-backed exclusion evidence.`);
     if (!context) errors.push("Frozen context is required to validate source authority.");
   }
   const requirementIds = report.requirements.map((item) => item.id);
@@ -100,14 +101,16 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
     }
   }
   if (sourceControl && root) {
-    for (const inspected of report.inspectedPaths) if (!(await sourceControl.verifyAnchor(root, { commit: report.change.headCommit, path: inspected, startLine: 1 }))) errors.push(`Inspected path ${inspected} does not exist at the reviewed head.`);
+    for (const inspected of report.inspectedPaths) {
+      const inHead = await sourceControl.verifyAnchor(root, { commit: report.change.headCommit, path: inspected, startLine: 1 });
+      const deletedFromBase = !inHead && report.change.changedPaths.includes(inspected) && await sourceControl.verifyAnchor(root, { commit: report.change.baseCommit, path: inspected, startLine: 1 });
+      if (!inHead && !deletedFromBase) errors.push(`Inspected path ${inspected} does not exist in the reviewed change.`);
+    }
     for (const item of report.evidence) {
       if (item.code && item.code.commit !== report.change.headCommit) errors.push(`Evidence ${item.id} does not reference reviewed head ${report.change.headCommit}.`);
       if (item.code && !(await sourceControl.verifyAnchor(root, item.code))) errors.push(`Evidence ${item.id} has an invalid code anchor.`);
     }
     for (const finding of report.findings) {
-    if (["resolved", "superseded"].includes(finding.lifecycle)) errors.push(`Finding ${finding.fingerprint} claims a historical lifecycle without supplied prior finding provenance.`);
-    if (!finding.evidenceIds.length) errors.push(`Finding ${finding.fingerprint} has no evidence.`);
       if (finding.anchor && finding.anchor.commit !== report.change.headCommit) errors.push(`Finding ${finding.fingerprint} does not reference reviewed head.`);
       if (finding.anchor && !(await sourceControl.verifyAnchor(root, finding.anchor))) errors.push(`Finding ${finding.fingerprint} has an invalid code anchor.`);
     }

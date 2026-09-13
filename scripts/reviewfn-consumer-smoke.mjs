@@ -8,7 +8,7 @@ export async function consumerSmoke(consumer) {
   const gitExecutable = await resolveTrustedExecutable("git");
   const fixture = path.join(consumer, "fixture"); mkdirSync(fixture);
   const binary = path.join(consumer, "node_modules/@superfunctions/reviewfn-cli/dist/main.js");
-  const run = args => execFileSync(process.execPath, [binary, ...args], { cwd: fixture, encoding: "utf8", timeout: 60_000, env: { ...process.env, GITHUB_TOKEN: "", REVIEWFN_SMOKE_AUTH: "fixture-only-noncredential" } });
+  const run = args => execFileSync(process.execPath, [binary, ...args], { cwd: fixture, encoding: "utf8", timeout: 60_000, env: { ...process.env, GITHUB_TOKEN: "", GITHUB_BASE_REF: "unrelated-workflow-base", REVIEWFN_SMOKE_AUTH: "fixture-only-noncredential" } });
   run(["init"]);
   const harness = path.join(consumer, "fixture-codex.cjs");
   writeFileSync(harness, `#!${process.execPath}

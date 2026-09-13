@@ -129,7 +129,7 @@ async function run(): Promise<number> {
   if (remote.includes("://")) { const url = new URL(remote); url.username = ""; url.password = ""; url.search = ""; url.hash = ""; safeRemote = url.toString(); }
   await execFileAsync("git", ["remote", "set-url", "origin", safeRemote], { cwd: snapshot });
   const symbolicBase = (await execFileAsync("git", ["rev-parse", "--symbolic-full-name", "--verify", "--end-of-options", base], { cwd: root })).stdout.trim();
-  const targetBranch = optional(args.flags, "target-branch") ?? process.env.GITHUB_BASE_REF ?? (symbolicBase.startsWith("refs/") ? symbolicBase.replace(/^refs\/(heads|remotes)\//, "") : "unknown");
+  const targetBranch = optional(args.flags, "target-branch") ?? (symbolicBase.startsWith("refs/") ? symbolicBase.replace(/^refs\/(heads|remotes)\//, "") : process.env.GITHUB_BASE_REF ?? "unknown");
   const coordinator = await createCoordinator(snapshot, config, pullRequest, targetBranch);
   const request = { root: snapshot, base: immutableBase, head: immutableHead, pullRequest, config, policy, issue: optional(args.flags, "issue") };
   if (args.command === "preflight") {
