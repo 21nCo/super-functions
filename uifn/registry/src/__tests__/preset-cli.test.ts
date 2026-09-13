@@ -343,3 +343,52 @@ it.each(['preset', 'origin', 'code'])('rejects a missing --%s value', async flag
   const result = await runCli(['preset', 'url', `--${flag}`], { stdout: () => {}, stderr: () => {} });
   expect(result).toMatchObject({ exitCode: 1, result: { ok: false, error: { code: 'UIFN_PRESET_USAGE' } } });
 });
+
+
+it.each(['hoisted', 'nested', 'missing', 'malformed'] as const)('checks ancestor workspace locks with %s records without writing them', async scenario => {
+  await withProject(async parent => {
+    const rootDir = path.join(parent, 'packages/app');
+    const initial = encodePreset({});
+    expect(initProject({ rootDir, preset: initial }).ok).toBe(true);
+    writeFileSync(path.join(parent, 'package.json'), JSON.stringify({ private: true, workspaces: ['packages/*'] }));
+    const source = readFileSync(path.join(rootDir, 'package.json'), 'utf8');
+    const lock = npmLock(source);
+    lock.packages['packages/app'] = lock.packages[''];
+    lock.packages[''] = {};
+    if (scenario === 'nested') {
+      for (const key of Object.keys(lock.packages).filter(key => key.startsWith('node_modules/'))) {
+        lock.packages[`packages/app/${key}`] = lock.packages[key];
+        delete lock.packages[key];
+      }
+    }
+    if (scenario === 'missing') delete lock.packages['packages/app'];
+    const lockPath = path.join(parent, 'package-lock.json');
+    const original = scenario === 'malformed' ? '{' : JSON.stringify(lock);
+    writeFileSync(lockPath, original);
+    const current = applyPreset({ rootDir, preset: initial, dryRun: true });
+    expect(current.requiredActions?.length).toBe(['missing', 'malformed'].includes(scenario) ? 1 : 0);
+    const changed = encodePreset({ iconLibrary: 'phosphor' });
+    for (const dryRun of [true, false]) {
+      const result = applyPreset({ rootDir, preset: changed, dryRun });
+      expect(result.ok).toBe(true);
+      expect(result.requiredActions).toMatchObject([{ path: '../../package-lock.json', code: 'UIFN_PRESET_LOCKFILE_REFRESH_REQUIRED' }]);
+      expect(readFileSync(lockPath, 'utf8')).toBe(original);
+    }
+    const refreshed = npmLock(readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+    refreshed.packages['packages/app'] = refreshed.packages[''];
+    refreshed.packages[''] = {};
+    writeFileSync(lockPath, JSON.stringify(refreshed));
+    expect(applyPreset({ rootDir, preset: changed, dryRun: true }).requiredActions).toEqual([]);
+  });
+});
+
+it('ignores an unrelated ancestor lock without workspace metadata', async () => {
+  await withProject(async parent => {
+    const rootDir = path.join(parent, 'app');
+    const preset = encodePreset({});
+    expect(initProject({ rootDir, preset }).ok).toBe(true);
+    writeFileSync(path.join(parent, 'package.json'), '{}');
+    writeFileSync(path.join(parent, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { '': {} } }));
+    expect(applyPreset({ rootDir, preset, dryRun: true }).requiredActions).toEqual([]);
+  });
+});

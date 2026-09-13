@@ -244,37 +244,75 @@ type DependencySection = 'dependencies' | 'devDependencies' | 'optionalDependenc
 type NpmPackageRecord = Partial<Record<DependencySection, Record<string, string>>> & { version?: string };
 interface NpmLockfile { lockfileVersion?: number; packages?: Record<string, NpmPackageRecord> }
 
-function lockMatchesManifest(lock: NpmLockfile | null, manifest: Record<string, unknown>): boolean {
+function lockedDependencyVersion(lock: NpmLockfile, packageKey: string, name: string): string | undefined {
+  let directory = packageKey;
+  while (true) {
+    const record = lock.packages?.[path.posix.join(directory, 'node_modules', name)];
+    if (record) return record.version;
+    if (!directory) return undefined;
+    const parent = path.posix.dirname(directory);
+    directory = parent === '.' ? '' : parent;
+  }
+}
+
+function lockMatchesManifest(lock: NpmLockfile | null, manifest: Record<string, unknown>, packageKey = ''): boolean {
   if (lock?.lockfileVersion !== 2 && lock?.lockfileVersion !== 3) return false;
-  const locked = lock.packages?.[''];
+  const locked = lock.packages?.[packageKey];
   if (!locked) return false;
   for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const) {
     const desired = (manifest[section] ?? {}) as Record<string, string>;
     const recorded = locked[section] ?? {};
     if (Object.keys(desired).length !== Object.keys(recorded).length) return false;
     for (const [name, version] of Object.entries(desired)) {
-      if (recorded[name] !== version || lock.packages?.[`node_modules/${name}`]?.version !== version) return false;
+      if (recorded[name] !== version || lockedDependencyVersion(lock, packageKey, name) !== version) return false;
     }
   }
   return true;
+}
+
+// Read ancestor metadata only. Never add an ancestor lockfile to the write transaction.
+function governingLockfile(rootDir: string): { pathname: string; packageKey: string } | undefined {
+  let directory = rootDir;
+  while (true) {
+    const pathname = directory === rootDir ? assertContainedPath(rootDir, 'package-lock.json') : path.join(directory, 'package-lock.json');
+    if (existsSync(pathname) && (directory === rootDir || hasWorkspaceMetadata(directory, rootDir))) {
+      return { pathname, packageKey: path.relative(directory, rootDir).split(path.sep).join('/') };
+    }
+    const parent = path.dirname(directory);
+    if (parent === directory) return undefined;
+    directory = parent;
+  }
+}
+
+function hasWorkspaceMetadata(directory: string, rootDir: string): boolean {
+  try {
+    const manifest = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8'));
+    // Conservatively inspect a workspace ancestor even if its lock is malformed or
+    // has not recorded this package yet. npm owns workspace glob interpretation.
+    if (Array.isArray(manifest.workspaces) && manifest.workspaces.length > 0) return true;
+  } catch { /* A lock package record can still identify the workspace. */ }
+  try {
+    const lock = JSON.parse(readFileSync(path.join(directory, 'package-lock.json'), 'utf8'));
+    return Boolean(lock?.packages?.[path.relative(directory, rootDir).split(path.sep).join('/')]);
+  } catch { return false; }
 }
 
 // Lock resolution belongs to npm. Never guess integrity hashes or run install
 // scripts inside the file transaction; expose the required follow-up explicitly.
 function requiredLockfileActions(rootDir: string, packageSource?: string): RequiredProjectAction[] {
   if (!packageSource) return [];
-  const lockPath = assertContainedPath(rootDir, 'package-lock.json');
-  if (!existsSync(lockPath)) return [];
+  const location = governingLockfile(rootDir);
+  if (!location) return [];
   const manifest = JSON.parse(packageSource) as Record<string, unknown>;
   try {
-    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
-    if (lockMatchesManifest(lock, manifest)) return [];
+    const lock = JSON.parse(readFileSync(location.pathname, 'utf8'));
+    if (lockMatchesManifest(lock, manifest, location.packageKey)) return [];
   } catch { /* An unreadable lock also requires npm to regenerate it. */ }
   return [{
     code: 'UIFN_PRESET_LOCKFILE_REFRESH_REQUIRED',
-    path: 'package-lock.json',
+    path: path.relative(rootDir, location.pathname).split(path.sep).join('/'),
     command: 'npm install --package-lock-only --ignore-scripts --lockfile-version=3',
-    message: 'After applying this plan, use npm 7 or newer to run npm install --package-lock-only --ignore-scripts --lockfile-version=3 in the project directory and review the lockfile before npm ci. UIFn supports lockfile versions 2 and 3; older, malformed, or mismatched direct dependency records require refresh. UIFn leaves the lockfile unchanged. This check does not replace npm validation of the complete dependency tree.',
+    message: 'After applying this plan, use npm 7 or newer to run npm install --package-lock-only --ignore-scripts --lockfile-version=3 in the directory containing the reported lockfile and review it before npm ci. Ancestor workspace locks are checked conservatively; npm determines workspace membership. UIFn supports lockfile versions 2 and 3; older, malformed, or mismatched direct dependency records require refresh. UIFn leaves the lockfile unchanged. This check does not replace npm validation of the complete dependency tree.',
   }];
 }
 
