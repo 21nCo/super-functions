@@ -227,15 +227,37 @@ describe("WebSocket Reconnection (Phase 07)", () => {
     vi.spyOn(DefaultHttpTransport.prototype, "clone").mockResolvedValue({ ok: true, result: { ok: true, data: {}, cursors: {} } });
     const bootstrap = vi.fn(async () => ({ version: 1 as const, httpUrl: "https://eu.example/datafn",
       ticket: "test.ticket", expiresAt: Date.now() + 60_000, renewAfter: Date.now() + 48_000 }));
-    const protocols = vi.fn(() => []);
+    const protocols = vi.fn(async () => { throw new Error("No WS credentials"); });
     const client = createDatafnClient({ schema: defaultSchema, clientId: "http-only", storage: new MockStorageAdapter(),
       sync: { routeProvider: { bootstrap, renew: bootstrap }, ws: true, wsProtocols: protocols } });
     try {
       await client.sync.start();
       await vi.advanceTimersByTimeAsync(10_000);
       expect(MockWebSocket.instances).toHaveLength(0);
-      expect(protocols).toHaveBeenCalledTimes(1);
+      expect(protocols).not.toHaveBeenCalled();
       expect(bootstrap).toHaveBeenCalledTimes(1);
+    } finally { await client.destroy(); }
+  });
+
+  it("opens a socket when renewal adds WebSocket support to an HTTP-only route", async () => {
+    vi.spyOn(DefaultHttpTransport.prototype, "clone").mockResolvedValue({ ok: true, result: { ok: true, data: {}, cursors: {} } });
+    vi.spyOn(DefaultHttpTransport.prototype, "pull").mockResolvedValue({ ok: true, result: { ok: true, records: {}, deleted: {}, cursors: {} } });
+    const descriptor = () => ({ version: 1 as const, httpUrl: "https://eu.example/datafn", ticket: "test.ticket",
+      expiresAt: Date.now() + 60_000, renewAfter: Date.now() + 48_000 });
+    const protocols = vi.fn(() => []);
+    const client = createDatafnClient({ schema: defaultSchema, clientId: "upgrade", storage: new MockStorageAdapter(),
+      sync: { routeProvider: { bootstrap: async () => descriptor(), renew: async () => ({ ...descriptor(), wsUrl: "wss://eu.example/ws" }) },
+        ws: true, wsProtocols: protocols } });
+    try {
+      await client.sync.start();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(MockWebSocket.instances).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(48_000);
+      expect(MockWebSocket.instances).toHaveLength(1);
+      expect(protocols).toHaveBeenCalledTimes(1);
+      client.sync.stop();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(MockWebSocket.instances).toHaveLength(1);
     } finally { await client.destroy(); }
   });
 

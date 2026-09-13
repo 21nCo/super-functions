@@ -69,6 +69,17 @@ describe("direct regional client lifecycle", () => {
     await expect(cache.get()).rejects.toMatchObject({ code: "DATAFN_ROUTE_DISPOSED" });
   });
 
+  it("accepts maximum TTL within bounded clock skew while preserving strict expiry", async () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    for (const ahead of [1, 5000, 5001]) {
+      const cache = new DatafnRegionalRouteCache({ bootstrap: async () => route({ expiresAt: now + 300_000 + ahead }), renew: async () => route() });
+      if (ahead <= 5000) expect((await cache.get()).expiresAt).toBe(now + 300_000 + ahead);
+      else await expect(cache.get()).rejects.toMatchObject({ code: "DATAFN_ROUTE_DESCRIPTOR_INVALID" });
+      cache.dispose();
+    }
+  });
+
   it("never restores a descriptor from an invalidated in-flight bootstrap", async () => {
     let release!: (value: DatafnRegionalRouteDescriptor) => void;
     const provider = { bootstrap: vi.fn().mockImplementationOnce(() => new Promise(resolve => { release = resolve; })).mockResolvedValue(route({ ticket: "fresh.ticket" })), renew: vi.fn() };

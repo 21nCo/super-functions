@@ -3,6 +3,9 @@ import {
   type DatafnRegionalRouteDescriptor, type DatafnRouteProvider,
 } from "@datafn/core";
 
+// Allow bounded issuer/client clock differences when validating the maximum TTL.
+const DESCRIPTOR_CLOCK_SKEW_MS = 5000;
+
 export class DatafnRegionalTransportError extends Error {
   constructor(readonly code: "DATAFN_ROUTE_BOOTSTRAP_UNAVAILABLE" | "DATAFN_ROUTE_DESCRIPTOR_INVALID" |
     "DATAFN_ROUTE_DISPOSED" | "DATAFN_REGIONAL_ENDPOINT_UNAVAILABLE") {
@@ -71,7 +74,7 @@ export class DatafnRegionalRouteCache {
           if (!descriptor || descriptor.version !== 1 || typeof descriptor.ticket !== "string" ||
             !/^[A-Za-z0-9_.-]{1,16384}$/.test(descriptor.ticket) ||
             !Number.isSafeInteger(descriptor.expiresAt) || !Number.isSafeInteger(descriptor.renewAfter) ||
-            descriptor.expiresAt <= now || descriptor.expiresAt > now + DATAFN_ROUTE_MAX_TTL_MS ||
+            descriptor.expiresAt <= now || descriptor.expiresAt > now + DATAFN_ROUTE_MAX_TTL_MS + DESCRIPTOR_CLOCK_SKEW_MS ||
             descriptor.renewAfter >= descriptor.expiresAt || descriptor.renewAfter <= now) throw new Error();
           const next = Object.freeze({ ...descriptor,
             httpUrl: validateDatafnRegionalEndpoint(descriptor.httpUrl),

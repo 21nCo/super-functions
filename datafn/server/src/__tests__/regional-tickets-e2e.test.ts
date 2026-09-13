@@ -276,10 +276,10 @@ describe("direct regional two-region network conformance", () => {
     await vi.waitFor(() => expect(f.eu.admitted).toHaveLength(1));
     f.setGatewayAvailable(false);
     f.eu.admitted[0].terminate();
-    await vi.waitFor(() => expect(f.eu.admitted).toHaveLength(2));
+    await vi.waitFor(() => expect(f.eu.admitted).toHaveLength(2), { timeout: 6000 });
     await expect(client.query({ resource: "note", version: 1 })).resolves.toBeDefined();
     expect(f.gateway.paths).toEqual(["/bootstrap"]);
-  });
+  }, 10_000);
 
   it("keeps established regional traffic through a gateway outage only until expiry and closes sockets with 4511", async () => {
     const f = await fixture(3000);

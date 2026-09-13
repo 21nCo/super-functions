@@ -540,12 +540,22 @@ export class SyncEngine {
     const generation = ++this.wsGeneration;
 
     try {
-      const authProtocols = [...await this.config?.wsProtocols?.() ?? []];
       const route = await routes?.get();
       if (!this.wsReconnectEnabled || generation !== this.wsGeneration) return;
       const url = route?.wsUrl ?? (route ? undefined : this.wsUrl);
       // An HTTP-only descriptor does not advertise a socket service. Keep HTTP sync active.
-      if (!url) return;
+      if (!url) {
+        // Wake on descriptor changes without polling an HTTP-only route.
+        this.wsRouteUnsubscribe?.();
+        this.wsRouteUnsubscribe = routes?.subscribe(() => {
+          this.wsRouteUnsubscribe?.();
+          this.wsRouteUnsubscribe = undefined;
+          if (this.wsReconnectEnabled && generation === this.wsGeneration) void this.connectWs();
+        });
+        return;
+      }
+      const authProtocols = [...await this.config?.wsProtocols?.() ?? []];
+      if (!this.wsReconnectEnabled || generation !== this.wsGeneration) return;
       const socket = route
         ? new WebSocket(url, [DATAFN_ROUTE_WS_PROTOCOL, `${DATAFN_ROUTE_WS_TICKET_PREFIX}${route.ticket}`, ...authProtocols])
         : new WebSocket(url, authProtocols);
