@@ -18,3 +18,5 @@ Head changes detected before writes return stale. The comment includes the exact
 Public fork execution requires a deliberately provisioned isolated proxy runner. No unauthenticated failure becomes a passing review. Repository package publication itself remains a separate release operation; this PR does not publish npm packages or merge code.
 
 For a PAT or GitHub App publisher, pass `--publisher-login` with the authenticated comment author login. The default is `github-actions[bot]`. The local lease is deliberately never stolen after a crash, including interruption before owner metadata is written; confirm no publisher is active before removing that lease.
+
+The CLI preserves a named base ref as target-branch provenance. With SHA-only input it records `unknown` unless `--target-branch` or the Actions `GITHUB_BASE_REF` supplies the branch label; the reviewed commits remain separately pinned.

@@ -24,6 +24,7 @@ export interface GitSourceOptions {
   runner?: GitRunner;
   currentPullRequestHead?: (pullRequest: number) => Promise<string>;
   host?: string;
+  targetBranch?: string;
 }
 
 export class GitSourceControlAdapter implements SourceControlAdapter {
@@ -51,7 +52,7 @@ export class GitSourceControlAdapter implements SourceControlAdapter {
       repositoryId,
       host: this.options.host ?? hostFromRemote(repositoryId),
       pullRequest,
-      targetBranch: targetBranch.trim(),
+      targetBranch: this.options.targetBranch ?? (/^[a-f0-9]{40,64}$/.test(targetBranch.trim()) ? "unknown" : targetBranch.trim()),
       baseCommit,
       headCommit,
       mergeBaseCommit,
@@ -91,10 +92,10 @@ function redactRemote(remote: string): string {
 
 /** Normalize a recorded Git remote for comparison with a trusted GitHub repository. */
 export function githubRepositoryIdentity(remote: string): string | undefined {
-  const scp = /^(?:[^@/]+@)?github\.com:([^?#]+)$/.exec(remote);
+  const scp = /^(?:[^@/]+@)?github\.com:([^?#]+)$/i.exec(remote);
   let repository = scp?.[1];
   if (!repository) {
-    try { const url = new URL(remote); if (url.hostname.toLowerCase() !== "github.com") return undefined; repository = url.pathname.slice(1); } catch { return undefined; }
+    try { const url = new URL(remote); if (url.hostname.toLowerCase() !== "github.com" || !["https:", "ssh:"].includes(url.protocol) || url.port && !(url.protocol === "ssh:" && url.port === "22") || url.search || url.hash) return undefined; repository = url.pathname.slice(1); } catch { return undefined; }
   }
   repository = repository.replace(/\/$/, "").replace(/\.git$/, "");
   return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ? repository.toLowerCase() : undefined;

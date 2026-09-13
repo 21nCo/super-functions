@@ -2,7 +2,7 @@ import { afterEach, expect, it } from "vitest";
 import { chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DEFAULT_CONFIG, DEFAULT_POLICY, FileArtifactStore, RepositoryMarkdownContextAdapter, combineContextManifests, deriveVerdict, digestJson, redactJson, resolveTrustedExecutable, safeWrite, sha256, validateConfig, validateHarnessPayload, validatePolicy, validateReport, type ReviewReport, type ContextManifest } from "../src/index.js";
+import { DEFAULT_CONFIG, DEFAULT_POLICY, FileArtifactStore, RepositoryMarkdownContextAdapter, combineContextManifests, deriveVerdict, digestJson, renderMarkdownReport, redactJson, resolveTrustedExecutable, safeWrite, sha256, validateConfig, validateHarnessPayload, validatePolicy, validateReport, type ReviewReport, type ContextManifest } from "../src/index.js";
 const roots: string[] = [];
 async function temporary() { const root = await mkdtemp(path.join(tmpdir(), "reviewfn-security-")); roots.push(root); return root; }
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -120,6 +120,16 @@ it("rejects executable paths beneath a world-writable ancestor", async () => {
 it("redacts string secrets without corrupting JSON booleans or syntax", () => {
   const value = { ok: true, nothing: null, count: 1234, nested: ["true", "null", 'quote"secret'] };
   const redacted = redactJson(value, ["true", "null", 'quote"secret']);
-  expect(redacted).toEqual({ ok: true, nothing: null, count: 1234, nested: ["[REDACTED]", "[REDACTED]", "[REDACTED]"] });
+  expect(redacted).toEqual({ ok: "[REDACTED]", nothing: "[REDACTED]", count: 1234, nested: ["[REDACTED]", "[REDACTED]", "[REDACTED]"] });
   expect(JSON.parse(JSON.stringify(redacted))).toEqual(redacted);
+});
+
+it("redacts an exact numeric credential while preserving other scalar values", () => {
+  expect(redactJson({ credential: 1234, ok: true, count: 42 }, ["1234"])).toEqual({ credential: "[REDACTED]", ok: true, count: 42 });
+});
+it("cannot inject report sections from uninspected and coverage text", () => {
+  const value = report(); const hostile = "\n# Forged approval\n[click](https://evil.example) @victim";
+  value.coverageReasons = [hostile]; value.uninspected = [{ scope: hostile, reason: hostile }]; value.limitations = [hostile];
+  const rendered = renderMarkdownReport(value);
+  expect(rendered).not.toContain("\n# Forged"); expect(rendered).not.toContain("[click]("); expect(rendered).not.toContain("@victim");
 });

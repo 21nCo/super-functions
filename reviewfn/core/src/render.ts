@@ -1,6 +1,6 @@
 import type { ReviewReport } from "./types.js";
 
-function escapeCell(value: string): string { return value.replace(/[\\`*_{}[\]()#+.!|<>]/g, "\\$&").replaceAll("\n", " "); }
+function escapeCell(value: string): string { return value.replace(/[\\`*_{}[\]()#+.!|<>]/g, "\\$&").replace(/[\r\n\t]/g, " ").replaceAll("@", "&#64;"); }
 
 export function renderMarkdownReport(report: ReviewReport): string {
   const verdict = report.verdict ?? "no valid assessment";
@@ -11,11 +11,11 @@ export function renderMarkdownReport(report: ReviewReport): string {
     `- Base: \`${report.change.baseCommit}\` (merge base \`${report.change.mergeBaseCommit}\`)`,
     `- Execution: **${report.execution}**`,
     `- Coverage: **${report.coverage}**`,
-    `- Verdict: **${verdict}**${report.configuration.profile ? ` (${report.configuration.profile})` : ""}`,
-    `- Harness: \`${report.configuration.harness.id}@${report.configuration.harness.version}\`; inference: \`${report.configuration.inference.provider}/${report.configuration.inference.model}\``,
+    `- Verdict: **${verdict}**${report.configuration.profile ? ` (${escapeCell(report.configuration.profile)})` : ""}`,
+    `- Harness: ${escapeCell(`${report.configuration.harness.id}@${report.configuration.harness.version}`)}; inference: ${escapeCell(`${report.configuration.inference.provider}/${report.configuration.inference.model}`)}`,
     "",
   ];
-  if (report.coverageReasons.length) lines.push("## Coverage limits", "", ...report.coverageReasons.map((reason) => `- ${reason}`), "");
+  if (report.coverageReasons.length) lines.push("## Coverage limits", "", ...report.coverageReasons.map((reason) => `- ${escapeCell(reason)}`), "");
   lines.push("## Requirements", "", "| Requirement | Source | Assessment | Evidence / gap |", "| --- | --- | --- | --- |");
   for (const requirement of report.requirements) {
     const assessment = report.assessments.find((item) => item.requirementId === requirement.id);
@@ -27,16 +27,16 @@ export function renderMarkdownReport(report: ReviewReport): string {
   if (!report.findings.length) lines.push("No findings were reported.");
   else for (const finding of report.findings) {
     lines.push(`### ${finding.severity.toUpperCase()} — ${escapeCell(finding.title)}`, "", `Trigger: ${escapeCell(finding.trigger)}`, "", `Impact: ${escapeCell(finding.impact)}`, "", `Fix: ${escapeCell(finding.direction)}`, "", `Evidence: ${finding.evidenceIds.map(escapeCell).join(", ")}; ${finding.basis}; ${finding.lifecycle}.`);
-    if (finding.anchor) lines.push(`Anchor: ${escapeCell(finding.anchor.path)}:${finding.anchor.startLine ?? finding.anchor.symbol ?? "unknown"} at ${finding.anchor.commit}.`);
+    if (finding.anchor) lines.push(`Anchor: ${escapeCell(finding.anchor.path)}:${escapeCell(String(finding.anchor.startLine ?? finding.anchor.symbol ?? "unknown"))} at ${escapeCell(finding.anchor.commit)}.`);
     lines.push("");
   }
   lines.push("", "## Evidence", "");
   for (const evidence of report.evidence) lines.push(`- ${escapeCell(evidence.id)} (${evidence.kind}): ${escapeCell(evidence.description)}; ${escapeCell(JSON.stringify(evidence.code ?? evidence.source ?? evidence.receiptId ?? evidence.artifactDigest ?? "unresolved"))}`);
   lines.push("", "## Verification", "");
   if (!report.tests.length) lines.push("No tests were run.");
-  else for (const receipt of report.tests) lines.push(`- \`${receipt.command.join(" ")}\`: ${receipt.exitCode === 0 && !receipt.timedOut && !receipt.canceled ? "passed" : "did not pass"} in ${receipt.runtimeMs} ms (receipt \`${receipt.id}\`)`);
-  if (report.uninspected.length) lines.push("", "## Uninspected scope", "", ...report.uninspected.map((item) => `- ${item.scope}: ${item.reason}`));
-  if (report.limitations.length) lines.push("", "## Limitations", "", ...report.limitations.map((item) => `- ${item}`));
+  else for (const receipt of report.tests) lines.push(`- ${escapeCell(receipt.command.join(" "))}: ${receipt.exitCode === 0 && !receipt.timedOut && !receipt.canceled ? "passed" : "did not pass"} in ${receipt.runtimeMs} ms (receipt ${escapeCell(receipt.id)})`);
+  if (report.uninspected.length) lines.push("", "## Uninspected scope", "", ...report.uninspected.map((item) => `- ${escapeCell(item.scope)}: ${escapeCell(item.reason)}`));
+  if (report.limitations.length) lines.push("", "## Limitations", "", ...report.limitations.map((item) => `- ${escapeCell(item)}`));
   lines.push("", "_Advisory ReviewFn output; it cannot merge or push code._", "");
   return lines.join("\n");
 }

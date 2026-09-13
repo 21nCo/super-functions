@@ -13,8 +13,9 @@ export function redactText(input: string, secrets: readonly string[]): string {
   return output;
 }
 
-/** Redact JSON string values and keys without changing booleans, numbers or JSON syntax. */
+/** Redact JSON values and keys without corrupting JSON syntax. Exact scalar credentials become redaction strings. */
 export function redactJson<T>(input: T, secrets: readonly string[]): T {
+  if ((input === null || typeof input === "number" || typeof input === "boolean") && secrets.some(secret => secret && secret === String(input))) return "[REDACTED]" as T;
   if (typeof input === "string") return redactText(input, secrets) as T;
   if (Array.isArray(input)) return input.map(value => redactJson(value, secrets)) as T;
   if (input && typeof input === "object") return Object.fromEntries(Object.entries(input).map(([key, value]) => [redactText(key, secrets), redactJson(value, secrets)])) as T;

@@ -103,3 +103,6 @@ it("compares publication repository identity across GitHub remote formats", () =
   expect(githubRepositoryIdentity("https://github.com/fork/repo.git")).not.toBe("acme/repo");
   expect(githubRepositoryIdentity("https://other.example/acme/repo.git")).toBeUndefined();
 });
+
+it.each(["file://github.com/acme/repo", "ftp://github.com/acme/repo", "https://github.com:444/acme/repo"])("rejects noncanonical publication transport %s", remote => expect(githubRepositoryIdentity(remote)).toBeUndefined());
+it("normalizes uppercase SCP hosts", () => expect(githubRepositoryIdentity("git@GITHUB.COM:Acme/repo.git")).toBe("acme/repo"));
