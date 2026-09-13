@@ -117,7 +117,16 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
       });
     }
 
-    return normalizeTokenResponse(parsedBody, input.grantType);
+    let tokenBody = parsedBody;
+    if (input.grantType === "authorization_code" && input.provider.authorizationCodeTokenPath) {
+      for (const key of input.provider.authorizationCodeTokenPath) {
+        if (!tokenBody || typeof tokenBody !== "object" || Array.isArray(tokenBody) || !Object.prototype.hasOwnProperty.call(tokenBody, key)) {
+          throw new OAuthHttpError("Provider user token is missing", { code: failureCode, status: 502, retryable: false });
+        }
+        tokenBody = (tokenBody as Record<string, unknown>)[key];
+      }
+    }
+    return normalizeTokenResponse(tokenBody, input.grantType);
   }
 
   async revokeToken(input: OAuthRevocationRequest): Promise<void> {
@@ -136,10 +145,16 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
     const response = await this.executeWithRetry(
       revocationUrl,
       endpointRequest,
-      "errors-only",
+      input.provider.revocationResponse === "json-ok" ? "always" : "errors-only",
       "INTERNAL_ERROR",
     );
     if (response.ok) {
+      if (input.provider.revocationResponse === "json-ok") {
+        const payload = parseResponseBody(await response.text(), response.headers.get("content-type"));
+        if (!payload || typeof payload !== "object" || (payload as Record<string, unknown>).ok !== true) {
+          throw new OAuthHttpError("Provider revocation was not confirmed", { code: "INTERNAL_ERROR", status: 502, retryable: false });
+        }
+      }
       return;
     }
 
@@ -410,11 +425,10 @@ function createTokenRequest(
     params.set("scope", input.scopes.join(input.provider.scopeSeparator ?? " "));
   }
 
-  return {
-    method: "POST",
-    headers: createAuthHeaders(credentials, params),
-    body: params.toString()
-  };
+  const headers = { ...input.provider.tokenHeaders, ...createAuthHeaders(credentials, params) };
+  const json = input.provider.tokenBodyEncoding === 'json';
+  if (json) headers['content-type'] = 'application/json';
+  return { method: 'POST', headers, body: json ? JSON.stringify(Object.fromEntries(params)) : params.toString() };
 }
 
 function resolveRevocationUrl(revocationUrl: string | undefined, clientId: string): string {

@@ -1,0 +1,70 @@
+{
+  "name": "@secfn/server",
+  "version": "0.0.2",
+  "description": "Adapter-backed SecFn server, vault, audit, RBAC, and runtime APIs",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./audit": {
+      "types": "./dist/audit.d.ts",
+      "import": "./dist/audit.js",
+      "require": "./dist/audit.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "secfn",
+    "security",
+    "secrets",
+    "vault",
+    "rbac",
+    "audit"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "dependencies": {
+    "@secfn/core": "0.0.2",
+    "@superfunctions/http": "0.2.0",
+    "@superfunctions/middleware": "0.2.0"
+  },
+  "peerDependencies": {
+    "@superfunctions/db": "0.2.0"
+  },
+  "devDependencies": {
+    "@superfunctions/db": "0.2.0",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "secfn/server"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "superfunctions": {
+    "initFunction": "createSecFnServer",
+    "schemaVersion": 1,
+    "libraryNames": [
+      "secfn"
+    ]
+  }
+}

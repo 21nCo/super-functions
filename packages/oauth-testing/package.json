@@ -38,7 +38,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@superfunctions/oauth-core": "0.1.0",
+    "@superfunctions/oauth-core": "0.1.1",
     "@superfunctions/oauth-flow": "0.1.0",
     "@superfunctions/oauth-storage": "0.1.0"
   },

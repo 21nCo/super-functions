@@ -73,7 +73,7 @@
     "@superfunctions/observability": "0.0.1"
   },
   "devDependencies": {
-    "@superfunctions/oauth-core": "0.1.0",
+    "@superfunctions/oauth-core": "0.1.1",
     "@superfunctions/oauth-flow": "0.1.0",
     "@superfunctions/oauth-http": "0.1.0",
     "@superfunctions/oauth-providers": "0.1.0",
