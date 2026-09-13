@@ -12,3 +12,11 @@ export function redactText(input: string, secrets: readonly string[]): string {
   output = output.replace(/\b(sk-[A-Za-z0-9_-]{8,})\b/g, "[REDACTED]");
   return output;
 }
+
+/** Redact JSON string values and keys without changing booleans, numbers or JSON syntax. */
+export function redactJson<T>(input: T, secrets: readonly string[]): T {
+  if (typeof input === "string") return redactText(input, secrets) as T;
+  if (Array.isArray(input)) return input.map(value => redactJson(value, secrets)) as T;
+  if (input && typeof input === "object") return Object.fromEntries(Object.entries(input).map(([key, value]) => [redactText(key, secrets), redactJson(value, secrets)])) as T;
+  return input;
+}

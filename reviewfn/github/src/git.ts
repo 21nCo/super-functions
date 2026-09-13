@@ -88,3 +88,14 @@ function hostFromRemote(remote: string): string {
 function redactRemote(remote: string): string {
   try { const url = new URL(remote); url.username = ""; url.password = ""; url.search = ""; url.hash = ""; return url.toString(); } catch { return remote; }
 }
+
+/** Normalize a recorded Git remote for comparison with a trusted GitHub repository. */
+export function githubRepositoryIdentity(remote: string): string | undefined {
+  const scp = /^(?:[^@/]+@)?github\.com:([^?#]+)$/.exec(remote);
+  let repository = scp?.[1];
+  if (!repository) {
+    try { const url = new URL(remote); if (url.hostname.toLowerCase() !== "github.com") return undefined; repository = url.pathname.slice(1); } catch { return undefined; }
+  }
+  repository = repository.replace(/\/$/, "").replace(/\.git$/, "");
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ? repository.toLowerCase() : undefined;
+}

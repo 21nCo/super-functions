@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { strictProviderSchema, omitOptionalNulls, validateHarnessPayload, redactText, type HarnessAdapter, type HarnessCapabilities, type HarnessInput, type HarnessOutput, type JsonValue, type NormalizedRunEvent, type PreflightResult, type ReviewFnConfig } from "@superfunctions/reviewfn-core";
+import { strictProviderSchema, omitOptionalNulls, validateHarnessPayload, redactJson, redactText, type HarnessAdapter, type HarnessCapabilities, type HarnessInput, type HarnessOutput, type JsonValue, type NormalizedRunEvent, type PreflightResult, type ReviewFnConfig } from "@superfunctions/reviewfn-core";
 
 export interface CommandResult { code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string; timedOut: boolean; canceled: boolean }
 export type CommandRunner = (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; maxOutputBytes: number; signal?: AbortSignal; stdin?: string }) => Promise<CommandResult>;
@@ -141,7 +141,7 @@ export class CodexHarnessAdapter implements HarnessAdapter {
       const result = await this.runner(executable, runArgs, { cwd: input.workspace, env: container ? { PATH: this.environment.PATH, HOME: this.environment.HOME } : minimalEnvironment(this.environment, input.configuration), timeoutMs: input.policy.limits.harnessTimeoutMs, maxOutputBytes: input.policy.limits.maxOutputBytes, signal: input.signal, stdin: input.prompt });
       const secrets = input.configuration.inference.credentialEnv ? [this.environment[input.configuration.inference.credentialEnv] ?? ""] : [];
       const stdout = redactText(result.stdout, secrets);
-      const events = normalizeEvents(stdout);
+      const events = redactJson(normalizeEvents(result.stdout), secrets);
       const stderr = redactText(result.stderr, secrets);
       if (result.canceled) return { ...emptyFailure("canceled", "Codex run was canceled."), events, transcript: `${stdout}\n${stderr}` };
       if (result.timedOut) return { ...emptyFailure("timed_out", "Codex run exceeded its configured bound."), events, transcript: `${stdout}\n${stderr}` };
@@ -152,9 +152,9 @@ export class CodexHarnessAdapter implements HarnessAdapter {
       if ((await stat(outputPath).catch(() => ({ size: 0 }))).size > input.policy.limits.maxOutputBytes) return emptyFailure("malformed", "Structured output exceeds byte budget.");
       const text = await readFile(outputPath, "utf8").catch(() => "");
       try {
-        const errors = validateHarnessPayload(omitOptionalNulls(JSON.parse(redactText(text, secrets))));
+        const errors = validateHarnessPayload(omitOptionalNulls(redactJson(JSON.parse(text), secrets)));
         if (errors.length) throw new Error(errors.join("; "));
-        const parsed = omitOptionalNulls(JSON.parse(redactText(text, secrets))) as Omit<HarnessOutput, "terminal" | "events" | "transcript">;
+        const parsed = omitOptionalNulls(redactJson(JSON.parse(text), secrets)) as Omit<HarnessOutput, "terminal" | "events" | "transcript">;
         return { terminal: "completed", requirements: parsed.requirements, assessments: parsed.assessments, evidence: parsed.evidence, findings: parsed.findings, inspectedPaths: parsed.inspectedPaths, uninspected: parsed.uninspected, events, transcript: `${stdout}\n${stderr}` };
       } catch (error) {
         return { ...emptyFailure("malformed", `Codex output was not valid structured JSON: ${error instanceof Error ? error.message : String(error)}`), events, transcript: `${stdout}\n${stderr}` };

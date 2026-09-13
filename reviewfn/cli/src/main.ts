@@ -8,7 +8,7 @@ const execFileAsync = promisify(execFile);
 
 import { ComposioLinearContextAdapter } from "@superfunctions/reviewfn-context-composio";
 import { safeWrite, safeRead, FileArtifactStore, RepositoryMarkdownContextAdapter, ReviewCoordinator, ReviewFnError, renderMarkdownReport, validateConfig, validatePolicy, type ContextAdapter, type ReviewFnConfig, type ReviewPolicy, type ReviewReport } from "@superfunctions/reviewfn-core";
-import { GitHubAdvisoryPublisher, GitHubApi, GitSourceControlAdapter } from "@superfunctions/reviewfn-github";
+import { githubRepositoryIdentity, GitHubAdvisoryPublisher, GitHubApi, GitSourceControlAdapter } from "@superfunctions/reviewfn-github";
 import { CodexHarnessAdapter } from "@superfunctions/reviewfn-harness-codex";
 import { evaluate, type EvaluationCase, type EvaluationOutcome } from "@superfunctions/reviewfn-testing";
 
@@ -99,6 +99,7 @@ async function run(): Promise<number> {
     const expectedHead = required(args.flags, "head");
     if (repository.length !== 2 || !process.env.GITHUB_TOKEN || !Number.isInteger(pullRequest) || pullRequest <= 0) throw new Error("Publication requires repository, PR number and GITHUB_TOKEN.");
     if (report.change.headCommit !== expectedHead || report.change.pullRequest !== pullRequest || report.execution !== "completed" || report.configuration.profile !== required(args.flags, "profile")) throw new Error("Artifact does not match trusted publication identity or is not completed.");
+    if (githubRepositoryIdentity(report.change.repositoryId) !== repository.join("/").toLowerCase()) throw new Error("Artifact repository does not match the trusted publication target.");
     const publisher = new GitHubAdvisoryPublisher({ api: new GitHubApi({ owner: repository[0], repository: repository[1], token: process.env.GITHUB_TOKEN }), pullRequest, publisherLogin: optional(args.flags, "publisher-login") });
     const result = await publisher.publish({ report, rendered: renderMarkdownReport(report), expectedHead, profile: report.configuration.profile });
     process.stdout.write(`${JSON.stringify(result)}\n`);

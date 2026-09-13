@@ -78,3 +78,13 @@ it("keeps configured test failures incomplete even when the model omits their re
   const result = await coordinator.run({ root: ".", base: "base", head: "head", config, policy: { ...DEFAULT_POLICY, requiredCategories: ["behavior"] } });
   expect(result.report.coverage).toBe("incomplete"); expect(result.report.verdict).toBe("needs_verification"); expect(result.report.coverageReasons.join()).toMatch(/did not pass/);
 });
+
+it("honors shorter configured retention for every artifact and test logs", async () => {
+  const store = new MemoryArtifactStore(); const writes: number[] = [];
+  const artifacts = { get: store.get.bind(store), deleteExpired: store.deleteExpired.bind(store), put: async (kind: string, content: string | Uint8Array, days: number) => { writes.push(days); return store.put(kind, content); } };
+  const execution = new FakeExecutionAdapter(); let testLogDays = 0;
+  execution.run = async (_root, _head, _commands, policy) => { testLogDays = policy.retention.testLogDays; return []; };
+  const coordinator = new ReviewCoordinator({ sourceControl: new FakeSourceControlAdapter(), contexts: [new FakeContextAdapter("fixture", manifest)], harness: new FakeHarnessAdapter({ ...output, transcript: "observed" }), execution, artifacts });
+  await coordinator.run({ root: ".", base: "base", head: "head", config: { ...config, retainTranscript: true, retention: { reportDays: 1, transcriptDays: 1, testLogDays: 1 } }, policy: DEFAULT_POLICY });
+  expect(writes).toHaveLength(4); expect(writes.every(days => days === 1)).toBe(true); expect(testLogDays).toBe(1);
+});

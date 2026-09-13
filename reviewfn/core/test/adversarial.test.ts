@@ -2,7 +2,7 @@ import { afterEach, expect, it } from "vitest";
 import { chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DEFAULT_CONFIG, DEFAULT_POLICY, FileArtifactStore, RepositoryMarkdownContextAdapter, combineContextManifests, deriveVerdict, digestJson, resolveTrustedExecutable, safeWrite, sha256, validateConfig, validateHarnessPayload, validatePolicy, validateReport, type ReviewReport, type ContextManifest } from "../src/index.js";
+import { DEFAULT_CONFIG, DEFAULT_POLICY, FileArtifactStore, RepositoryMarkdownContextAdapter, combineContextManifests, deriveVerdict, digestJson, redactJson, resolveTrustedExecutable, safeWrite, sha256, validateConfig, validateHarnessPayload, validatePolicy, validateReport, type ReviewReport, type ContextManifest } from "../src/index.js";
 const roots: string[] = [];
 async function temporary() { const root = await mkdtemp(path.join(tmpdir(), "reviewfn-security-")); roots.push(root); return root; }
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -115,4 +115,11 @@ it("rejects executable paths beneath a world-writable ancestor", async () => {
   const root = await temporary(); await chmod(root, 0o777); await mkdir(path.join(root, "bin"));
   await writeFile(path.join(root, "bin", "fixture-tool"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
   await expect(resolveTrustedExecutable("fixture-tool", path.join(root, "bin"))).rejects.toThrow(/trusted executable/);
+});
+
+it("redacts string secrets without corrupting JSON booleans or syntax", () => {
+  const value = { ok: true, nothing: null, count: 1234, nested: ["true", "null", 'quote"secret'] };
+  const redacted = redactJson(value, ["true", "null", 'quote"secret']);
+  expect(redacted).toEqual({ ok: true, nothing: null, count: 1234, nested: ["[REDACTED]", "[REDACTED]", "[REDACTED]"] });
+  expect(JSON.parse(JSON.stringify(redacted))).toEqual(redacted);
 });

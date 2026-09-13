@@ -2,7 +2,7 @@ import { createAttemptId, digestJson } from "./canonical.js";
 import { ReviewFnError } from "./errors.js";
 import { findingFingerprint } from "./identity.js";
 import { buildReviewPrompt } from "./prompt.js";
-import { collectSecrets, redactText } from "./redaction.js";
+import { collectSecrets, redactText, redactJson } from "./redaction.js";
 import { combineContextManifests } from "./repository-context.js";
 import { renderMarkdownReport } from "./render.js";
 import type {
@@ -82,6 +82,7 @@ export class ReviewCoordinator {
     const diagnostics = await this.preflight(request);
     const preflightErrors = diagnostics.filter((diagnostic) => diagnostic.level === "error");
     if (preflightErrors.length) throw new ReviewFnError("REVIEWFN_PREFLIGHT_FAILED", "Review preflight failed.", { diagnostics: preflightErrors });
+    const retention = { reportDays: Math.min(request.config.retention.reportDays, request.policy.retention.reportDays), transcriptDays: Math.min(request.config.retention.transcriptDays, request.policy.retention.transcriptDays), testLogDays: Math.min(request.config.retention.testLogDays, request.policy.retention.testLogDays) };
     const now = this.dependencies.now ?? (() => new Date());
     const change = await this.dependencies.sourceControl.capture(request.root, request.base, request.head, request.pullRequest);
     const limits = this.contextLimits(request);
@@ -96,9 +97,9 @@ export class ReviewCoordinator {
       }
     }
     const context = combineContextManifests(manifests, limits);
-    const contextArtifact = await this.dependencies.artifacts.put("context-manifest", JSON.stringify(context, null, 2), request.policy.retention.reportDays);
+    const contextArtifact = await this.dependencies.artifacts.put("context-manifest", JSON.stringify(context, null, 2), retention.reportDays);
 
-    const executionPolicy = { ...request.policy, limits: { ...request.policy.limits, testTimeoutMs: Math.min(request.policy.limits.testTimeoutMs, request.config.execution.timeoutMs), maxOutputBytes: Math.min(request.policy.limits.maxOutputBytes, request.config.execution.maxOutputBytes) } };
+    const executionPolicy = { ...request.policy, retention, limits: { ...request.policy.limits, testTimeoutMs: Math.min(request.policy.limits.testTimeoutMs, request.config.execution.timeoutMs), maxOutputBytes: Math.min(request.policy.limits.maxOutputBytes, request.config.execution.maxOutputBytes) } };
     let tests: TestReceipt[] = [];
     const executionErrors: string[] = [];
     try { tests = await this.dependencies.execution.run(request.root, change.headCommit, request.config.execution.tests, executionPolicy, request.signal); }
@@ -115,7 +116,7 @@ export class ReviewCoordinator {
       output = { terminal: request.signal?.aborted ? "canceled" : "failed", requirements: [], assessments: [], evidence: [], findings: [], inspectedPaths: [], uninspected: [{ scope: "review", reason: error instanceof Error ? error.message : String(error) }], events: [], error: error instanceof Error ? error.message : String(error) };
     }
     const secrets = [...collectSecrets(process.env), ...(request.config.inference.credentialEnv ? [process.env[request.config.inference.credentialEnv] ?? ""] : [])];
-    if (output) output = JSON.parse(redactText(JSON.stringify(output), secrets)) as HarnessOutput;
+    if (output) output = redactJson(output, secrets);
     const payloadErrors = validateHarnessPayload(Object.fromEntries(["requirements", "assessments", "evidence", "findings", "inspectedPaths", "uninspected"].map(key => [key, output?.[key as keyof HarnessOutput]])));
     if (payloadErrors.length) output = { terminal: "malformed", requirements: [], assessments: [], evidence: [], findings: [], inspectedPaths: [], uninspected: [{ scope: "structured output", reason: payloadErrors.join("; ") }], events: output?.events ?? [] };
     if (request.signal?.aborted) output.terminal = "canceled";
@@ -128,8 +129,8 @@ export class ReviewCoordinator {
     ].filter((sourceId) => !sourceIds.has(sourceId));
     if (unknownSources.length) output.uninspected.push({ scope: "context references", reason: `Unknown sources: ${[...new Set(unknownSources)].join(", ")}` });
 
-    const eventArtifact = await this.dependencies.artifacts.put("normalized-events", redactText(JSON.stringify(output.events, null, 2), secrets), request.policy.retention.reportDays);
-    const transcriptArtifact = request.config.retainTranscript && output.transcript ? await this.dependencies.artifacts.put("redacted-transcript", redactText(output.transcript, secrets), request.policy.retention.transcriptDays) : undefined;
+    const eventArtifact = await this.dependencies.artifacts.put("normalized-events", JSON.stringify(redactJson(output.events, secrets), null, 2), retention.reportDays);
+    const transcriptArtifact = request.config.retainTranscript && output.transcript ? await this.dependencies.artifacts.put("redacted-transcript", redactText(output.transcript, secrets), retention.transcriptDays) : undefined;
     const coverageReasons = [
       ...context.incompleteReasons,
       ...executionErrors,
@@ -176,7 +177,7 @@ export class ReviewCoordinator {
       report.coverageReasons.push(...validation.errors);
       report.verdict = deriveVerdict(report, request.policy);
     }
-    await this.dependencies.artifacts.put("review-report", JSON.stringify(report, null, 2), request.policy.retention.reportDays);
+    await this.dependencies.artifacts.put("review-report", JSON.stringify(report, null, 2), retention.reportDays);
     const rendered = renderMarkdownReport(report);
     const publications: PublishResult[] = [];
     if (!request.signal?.aborted && report.execution === "completed" && (this.dependencies.publishers?.length ?? 0) > 0) {

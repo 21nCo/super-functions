@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ReviewReport } from "@superfunctions/reviewfn-core";
-import { GitHubAdvisoryPublisher, GitHubApi, GitSourceControlAdapter } from "../src/index.js";
+import { githubRepositoryIdentity, GitHubAdvisoryPublisher, GitHubApi, GitSourceControlAdapter } from "../src/index.js";
 
 function report(): ReviewReport {
   return { schemaVersion: 1, runId: "run1", attemptId: "attempt", createdAt: "2026-01-01T00:00:00Z", change: { repositoryId: "repo", host: "github.com", pullRequest: 1, targetBranch: "main", baseCommit: "a".repeat(40), headCommit: "b".repeat(40), mergeBaseCommit: "a".repeat(40), diffDigest: "d".repeat(64), changedPaths: [], capturedAt: "2026-01-01T00:00:00Z" }, contextManifestDigest: "c".repeat(64), contextManifestArtifact: `context-manifest-${"c".repeat(64)}`, configuration: { schemaVersion: 1, policyDigest: "p", promptDigest: "q", harness: { id: "codex", version: "1" }, inference: { provider: "openai", model: "model", auth: "api-key" }, execution: { adapter: "isolated", timeoutMs: 1, maxOutputBytes: 1 }, contextAdapters: [], profile: "requirements" }, execution: "completed", coverage: "complete", coverageReasons: [], verdict: "ready", requirements: [], assessments: [], evidence: [], findings: [], tests: [], inspectedPaths: [], uninspected: [], limitations: [] };
@@ -94,4 +94,12 @@ it("propagates unexpected Git identity failures", async () => {
 
 it.each(["https://api.github.com?", "https://api.github.com#"])("rejects ambiguous API base %s", baseUrl => {
   expect(() => new GitHubApi({ owner: "a", repository: "b", token: "fixture", baseUrl })).toThrow(/URL/);
+});
+
+it("compares publication repository identity across GitHub remote formats", () => {
+  expect(githubRepositoryIdentity("https://github.com/Acme/repo.git")).toBe("acme/repo");
+  expect(githubRepositoryIdentity("git@github.com:acme/repo.git")).toBe("acme/repo");
+  expect(githubRepositoryIdentity("ssh://git@github.com/acme/repo.git")).toBe("acme/repo");
+  expect(githubRepositoryIdentity("https://github.com/fork/repo.git")).not.toBe("acme/repo");
+  expect(githubRepositoryIdentity("https://other.example/acme/repo.git")).toBeUndefined();
 });
