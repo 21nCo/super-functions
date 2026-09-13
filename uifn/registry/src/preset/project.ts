@@ -1,3 +1,4 @@
+import { minimatch } from "minimatch";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync } from 'node:fs';
 import path from 'node:path';
 import { planInstall } from '../plan';
@@ -303,10 +304,14 @@ function governingLockfile(rootDir: string): { pathname: string; packageKey: str
 function hasWorkspaceMetadata(directory: string, rootDir: string): boolean {
   try {
     const manifest = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8'));
-    // Conservatively inspect a workspace ancestor even if its lock is malformed or
-    // has not recorded this package yet. npm owns workspace glob interpretation.
     const workspaces = Array.isArray(manifest.workspaces) ? manifest.workspaces : manifest.workspaces?.packages;
-    if (Array.isArray(workspaces) && workspaces.length > 0) return true;
+    if (Array.isArray(workspaces)) {
+      const relative = path.relative(directory, rootDir).split(path.sep).join('/');
+      const patterns = workspaces.filter((value): value is string => typeof value === 'string');
+      const matches = (pattern: string) => minimatch(relative, pattern.replace(/^\.\//, '').replace(/\/$/, ''));
+      return patterns.some(pattern => !pattern.startsWith('!') && matches(pattern)) &&
+        !patterns.some(pattern => pattern.startsWith('!') && matches(pattern.slice(1)));
+    }
   } catch { /* A lock package record can still identify the workspace. */ }
   try {
     const lock = JSON.parse(readFileSync(path.join(directory, 'package-lock.json'), 'utf8'));

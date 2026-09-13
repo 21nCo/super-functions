@@ -31,6 +31,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepack": "npm run generate:check && npm run typecheck && npm run test && npm run build"
   },
+  "dependencies": {
+    "minimatch": "^9.0.5"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "tsup": "^8.0.0",

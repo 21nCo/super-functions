@@ -469,3 +469,17 @@ it('uses the governing workspace lock even when an ignored nested lock is valid'
     expect(snapshot(parent)).toBe(before);
   });
 });
+
+it.each([['other/*'], ['packages/*', '!packages/app']])('retains local locks for nonmember projects: %j', async (...patterns) => {
+  await withProject(async parent => {
+    const rootDir = path.join(parent, 'packages/app');
+    const preset = encodePreset({});
+    expect(initProject({ rootDir, preset }).ok).toBe(true);
+    writeFileSync(path.join(parent, 'package.json'), JSON.stringify({ workspaces: patterns.flat() }));
+    writeFileSync(path.join(parent, 'package-lock.json'), '{');
+    writeFileSync(path.join(rootDir, 'package-lock.json'), JSON.stringify(npmLock(readFileSync(path.join(rootDir, 'package.json'), 'utf8'))));
+    expect(applyPreset({ rootDir, preset, dryRun: true }).requiredActions).toEqual([]);
+    const changed = applyPreset({ rootDir, preset: encodePreset({ iconLibrary: 'phosphor' }), dryRun: true });
+    expect(changed.requiredActions).toMatchObject([{ path: 'package-lock.json' }]);
+  });
+});
