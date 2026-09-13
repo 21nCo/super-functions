@@ -103,3 +103,23 @@ it.skipIf(process.platform === "win32")("rejects a runner output FIFO without wa
   } });
   expect((await adapter.run(baseInput)).terminal).toBe("malformed");
 });
+
+
+it("keeps transcript content out of retained normalized telemetry", async () => {
+  const content = "private-conversation-sentinel";
+  const adapter = new CodexHarnessAdapter({ runner: async (_command, args) => {
+    await writeFile(args[args.indexOf("--output-last-message") + 1], JSON.stringify({ requirements: [], assessments: [], evidence: [], findings: [], inspectedPaths: [], uninspected: [] }));
+    const events = [
+      { type: "item.completed", item: { type: "agent_message", text: content } },
+      { type: "item.started", item: { type: "reasoning", text: content } },
+      { type: "item.completed", item: { type: "command_execution", aggregated_output: content } },
+      { type: "turn.completed", usage: { input_tokens: 3, cached_input_tokens: 2, output_tokens: 1, text: content } },
+    ];
+    return { code: 0, signal: null, stdout: events.map(event => JSON.stringify(event)).join("\n"), stderr: "", timedOut: false, canceled: false };
+  } });
+  const output = await adapter.run(baseInput);
+  expect(output.terminal).toBe("completed");
+  expect(output.transcript).toContain(content);
+  expect(JSON.stringify(output.events)).not.toContain(content);
+  expect(output.events.at(-1)?.data.usage).toEqual({ input_tokens: 3, cached_input_tokens: 2, output_tokens: 1 });
+});

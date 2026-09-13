@@ -191,7 +191,17 @@ function normalizeEvents(jsonl: string): NormalizedRunEvent[] {
       const raw = JSON.parse(line) as Record<string, unknown>;
       const rawType = typeof raw.type === "string" ? raw.type : "unknown";
       const type: NormalizedRunEvent["type"] = raw.usage ? "usage" : rawType.includes("error") || rawType.includes("failed") ? "error" : rawType.includes("completed") ? "completed" : rawType.includes("started") && rawType.includes("item") ? "tool_started" : rawType === "turn.started" || rawType === "thread.started" ? "started" : rawType.includes("message") ? "message" : "warning";
-      events.push({ sequence: events.length, at: new Date().toISOString(), type, data: JSON.parse(JSON.stringify(raw)) as Record<string, JsonValue> });
+      const data: Record<string, JsonValue> = {};
+      // Content-bearing payloads belong only to the opt-in transcript artifact.
+      if (raw.usage && typeof raw.usage === "object" && !Array.isArray(raw.usage)) {
+        const usage: Record<string, JsonValue> = {};
+        for (const key of ["input_tokens", "cached_input_tokens", "output_tokens"]) {
+          const value = (raw.usage as Record<string, unknown>)[key];
+          if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) usage[key] = value;
+        }
+        data.usage = usage;
+      }
+      events.push({ sequence: events.length, at: new Date().toISOString(), type, data });
     } catch {
       events.push({ sequence: events.length, at: new Date().toISOString(), type: "warning", data: { message: "Unparseable Codex event was discarded." } });
     }

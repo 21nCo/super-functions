@@ -6,8 +6,9 @@ export function findingFingerprint(finding: Omit<Finding, "fingerprint"> | Findi
     category: finding.category,
     title: finding.title.trim().toLowerCase(),
     trigger: finding.trigger.trim().toLowerCase(),
-    // Commit identity belongs to evidence; fingerprints correlate unchanged locations across revisions.
-    anchor: finding.anchor ? { path: finding.anchor.path, startLine: finding.anchor.startLine, endLine: finding.anchor.endLine, symbol: finding.anchor.symbol } : undefined,
+    // Commit and line coordinates belong to evidence. Prefer a symbol; otherwise use the path
+    // plus the finding semantics above to tolerate unrelated line insertions.
+    anchor: finding.anchor ? { path: finding.anchor.path, symbol: finding.anchor.symbol } : undefined,
     requirementIds: [...finding.requirementIds].sort(compareCodePoints),
   });
 }

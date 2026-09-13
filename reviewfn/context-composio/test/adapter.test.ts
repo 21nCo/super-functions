@@ -41,8 +41,8 @@ describe("ComposioLinearContextAdapter", () => {
       calls.push({ slug, data });
       if (slug === "LINEAR_GET_LINEAR_ISSUE") return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "x", description: "x", organization: { id: "workspace-1" }, comments: { nodes: [{ id: "c1", body: "first" }], pageInfo: { hasNextPage: true, endCursor: "comments-next" } }, documents: { nodes: [], pageInfo: { hasNextPage: true, endCursor: "documents-next" } } } }) };
       const variables = data.variables as { after?: string; id?: string };
-      if (variables.after === "comments-next") return { code: 0, stderr: "", stdout: JSON.stringify({ data: { issue: { comments: { nodes: [{ id: "c2", body: "second" }], pageInfo: { hasNextPage: false } } } } }) };
-      if (variables.after === "documents-next") return { code: 0, stderr: "", stdout: JSON.stringify({ data: { issue: { documents: { nodes: [{ id: "d1", title: "Design", content: "full design" }], pageInfo: { hasNextPage: false } } } } }) };
+      if (variables.after === "comments-next") return { code: 0, stderr: "", stdout: JSON.stringify({ data: { issue: { id: "i", comments: { nodes: [{ id: "c2", body: "second" }], pageInfo: { hasNextPage: false } } } } }) };
+      if (variables.after === "documents-next") return { code: 0, stderr: "", stdout: JSON.stringify({ data: { issue: { id: "i", documents: { nodes: [{ id: "d1", title: "Design", content: "full design" }], pageInfo: { hasNextPage: false } } } } }) };
       throw new Error(`unexpected call ${JSON.stringify({ slug, data })}`);
     };
     const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
@@ -59,8 +59,8 @@ it("retrieves live-shaped linked specifications and explicit comment pagination"
     const payload = args[1] === "LINEAR_GET_LINEAR_ISSUE"
       ? { successful: true, data: { issue: { id: "i", identifier: "ENG-1", title: "Feature", url: "https://linear.app/acme/issue/ENG-1", description: "Read https://linear.app/acme/document/design-abcdef123456", team: { name: "workspace-1" }, comments: { nodes: [] } } } }
       : data.query_or_mutation.includes("comments(")
-        ? { data: { data: { issue: { comments: { nodes: [{ id: "c", body: "clarification" }], pageInfo: { hasNextPage: false } } } } } }
-        : data.query_or_mutation.includes("documents(") ? { data: { data: { issue: { documents: { nodes: [], pageInfo: { hasNextPage: false } } } } } } : { data: { data: { document: { id: "doc", slugId: "abcdef123456", title: "Design", url: "https://linear.app/acme/document/design-abcdef123456", content: "must preserve compatibility" } } } };
+        ? { data: { data: { issue: { id: "i", comments: { nodes: [{ id: "c", body: "clarification" }], pageInfo: { hasNextPage: false } } } } } }
+        : data.query_or_mutation.includes("documents(") ? { data: { data: { issue: { id: "i", documents: { nodes: [], pageInfo: { hasNextPage: false } } } } } } : { data: { data: { document: { id: "doc", slugId: "abcdef123456", title: "Design", url: "https://linear.app/acme/document/design-abcdef123456", content: "must preserve compatibility" } } } };
     return { code: 0, stdout: JSON.stringify(payload), stderr: "" };
   };
   const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
@@ -84,7 +84,7 @@ it("does not spend pagination budget on duplicate initial documents", async () =
   let pages = 0;
   const runner: ComposioRunner = async args => {
     if (args[1] === "LINEAR_GET_LINEAR_ISSUE") return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "x", description: "requirements", organization: { id: "workspace-1" }, comments: { nodes: [], pageInfo: { hasNextPage: false } }, documents: { nodes: [{ id: "d1", content: "one" }, { id: "d2", content: "two" }], pageInfo: { hasNextPage: true, endCursor: "next" } } } }) };
-    pages++; return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { documents: { nodes: [{ id: "d3", content: "three" }], pageInfo: { hasNextPage: false } } } }) };
+    pages++; return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", documents: { nodes: [{ id: "d3", content: "three" }], pageInfo: { hasNextPage: false } } } }) };
   };
   const result = await new ComposioLinearContextAdapter({ runner }).fetch({ ...request, limits: { ...request.limits, maxSources: 4 } });
   expect(pages).toBe(1); expect(result.sources.filter(source => source.type === "document")).toHaveLength(3); expect(result.incompleteReasons).toEqual([]);
@@ -110,7 +110,7 @@ it("uses richer paginated records in place of URL-only placeholders", async () =
     if (args[1] === "LINEAR_GET_LINEAR_ISSUE") return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "x", url: "https://linear.app/acme/issue/ENG-1", description: url, organization: { id: "workspace-1" }, comments: { nodes: [], pageInfo: { hasNextPage: false } }, documents: { nodes: [], pageInfo: { hasNextPage: true, endCursor: "next" } } } }) };
     const data = JSON.parse(args[args.indexOf("-d") + 1]);
     if (data.query_or_mutation.includes("document(id:")) { documentReads++; throw new Error("unnecessary document fetch"); }
-    return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { documents: { nodes: [{ id: "provider-uuid", title: "Design", url, content: "full specification" }], pageInfo: { hasNextPage: false } } } }) };
+    return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", documents: { nodes: [{ id: "provider-uuid", title: "Design", url, content: "full specification" }], pageInfo: { hasNextPage: false } } } }) };
   };
   const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
   expect(documentReads).toBe(0); expect(result.sources.find(source => source.type === "document")?.id).toBe("linear:document:provider-uuid"); expect(result.incompleteReasons).toEqual([]);
@@ -168,4 +168,22 @@ it("truncates Linear context at a complete UTF-8 boundary", async () => {
   expect(result.sources[0].status).toBe("truncated");
   expect(Buffer.byteLength(result.sources[0].content!)).toBeLessThanOrEqual(maxBytes);
   expect(result.sources[0].content).not.toContain("�");
+});
+
+
+it.each(["comments", "documents"] as const)("binds fallback and paginated %s connections to the requested issue", async name => {
+  let reads = 0;
+  const adapter = new ComposioLinearContextAdapter({ runner: async args => {
+    if (args[1] === "LINEAR_GET_LINEAR_ISSUE") return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "Requested", organization: { id: "workspace-1" }, [name === "comments" ? "documents" : "comments"]: { nodes: [], pageInfo: { hasNextPage: false } } } }) };
+    const data = JSON.parse(args[args.indexOf("-d") + 1]);
+    reads++;
+    const node = name === "comments" ? { id: `safe-${reads}`, body: "correct issue" } : { id: `safe-${reads}`, title: "Design", content: "correct issue" };
+    const connection = { nodes: [node], pageInfo: { hasNextPage: reads === 1, endCursor: reads === 1 ? "next" : null } };
+    return { code: 0, stderr: "", stdout: JSON.stringify({ unrelated: { id: "other", [name]: { nodes: [{ id: "foreign", body: "wrong issue", title: "Wrong", content: "wrong issue" }], pageInfo: { hasNextPage: false } } }, data: { issue: { id: data.variables.issueId, [name]: connection } } }) };
+  } });
+  const output = await adapter.fetch(request);
+  expect(reads).toBe(2);
+  expect(output.sources.map(source => source.id)).toContain(`linear:${name === "comments" ? "comment" : "document"}:safe-2`);
+  expect(JSON.stringify(output.sources)).not.toContain("wrong issue");
+  expect(output.incompleteReasons).toEqual([]);
 });

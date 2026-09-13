@@ -81,7 +81,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
 
     let initialComments = issue.comments;
     if (!hasPageInfo(initialComments)) {
-      try { initialComments = findConnection(await this.fetchIssueConnection("comments", issueId, undefined, request.account, request.signal), "comments"); }
+      try { initialComments = findConnection(await this.fetchIssueConnection("comments", issueId, undefined, request.account, request.signal), "comments", issueId); }
       catch (error) { if (request.signal?.aborted) throw error; incompleteReasons.push("Unable to establish complete Linear comment pagination."); }
     }
     const comments = [...connectionNodes(initialComments)];
@@ -91,7 +91,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     while (commentPage.hasNextPage && commentPage.endCursor && !commentCursors.has(commentPage.endCursor) && comments.length < request.limits.maxSources) {
       commentCursors.add(commentPage.endCursor);
       const page = await this.fetchIssueConnection("comments", issueId, commentPage.endCursor, request.account, request.signal);
-      const connection = findConnection(page, "comments");
+      const connection = findConnection(page, "comments", issueId);
       comments.push(...connectionNodes(connection));
       if (!hasPageInfo(connection)) incompleteReasons.push("Linear comment pagination metadata missing or malformed.");
       commentPage = pageInfo(connection);
@@ -118,7 +118,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     });
     let initialDocuments = issue.documents;
     if (!hasPageInfo(initialDocuments)) {
-      try { initialDocuments = findConnection(await this.fetchIssueConnection("documents", issueId, undefined, request.account, request.signal), "documents"); }
+      try { initialDocuments = findConnection(await this.fetchIssueConnection("documents", issueId, undefined, request.account, request.signal), "documents", issueId); }
       catch (error) { if (request.signal?.aborted) throw error; incompleteReasons.push("Unable to establish complete Linear document pagination."); }
     }
     if (!hasPageInfo(initialDocuments)) incompleteReasons.push("Linear document pagination metadata missing or malformed.");
@@ -136,7 +136,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     while (documentPage.hasNextPage && documentPage.endCursor && !documentCursors.has(documentPage.endCursor) && documents.length < request.limits.maxSources) {
       documentCursors.add(documentPage.endCursor);
       const page = await this.fetchIssueConnection("documents", issueId, documentPage.endCursor, request.account, request.signal);
-      const connection = findConnection(page, "documents");
+      const connection = findConnection(page, "documents", issueId);
       documents.push(...uniqueDocuments(connectionNodes(connection)));
       if (!hasPageInfo(connection)) incompleteReasons.push("Linear document pagination metadata missing or malformed.");
       documentPage = pageInfo(connection);
@@ -215,7 +215,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
 
   private fetchIssueConnection(connection: "comments" | "documents", issueId: string, after: string | undefined, account: string, signal?: AbortSignal): Promise<unknown> {
     const fields = connection === "comments" ? "id body createdAt updatedAt parent { id } user { id name }" : "id title content url updatedAt";
-    const query = `query($issueId: String!, $after: String) { issue(id: $issueId) { ${connection}(first: 50, after: $after) { nodes { ${fields} } pageInfo { hasNextPage endCursor } } } }`;
+    const query = `query($issueId: String!, $after: String) { issue(id: $issueId) { id ${connection}(first: 50, after: $after) { nodes { ${fields} } pageInfo { hasNextPage endCursor } } } }`;
     return this.execute("LINEAR_RUN_QUERY_OR_MUTATION", { query_or_mutation: query, variables: { issueId, after } }, account, signal);
   }
 }
@@ -237,8 +237,8 @@ function findDocument(value: unknown, expected: string, requireContent = true): 
   return records(value).find(record => typeof record.id === "string" && (record.id === expected || record.slugId === expected) && (!requireContent || typeof record.content === "string") && typeof record.title === "string");
 }
 
-function findConnection(value: unknown, name: "comments" | "documents"): unknown {
-  return records(value).map((record) => record[name]).find((candidate) => candidate && typeof candidate === "object");
+function findConnection(value: unknown, name: "comments" | "documents", issueId: string): unknown {
+  return records(value).find(record => record.id === issueId && record[name] && typeof record[name] === "object")?.[name];
 }
 
 function stringField(record: Record<string, unknown>, key: string): string | undefined { return typeof record[key] === "string" ? record[key] as string : undefined; }

@@ -34,7 +34,7 @@ export function validateConfig(input: unknown): ReviewFnConfig {
   if (value.version !== 1) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Only configuration version 1 is supported.");
   const config = structuredClone(value) as unknown as ReviewFnConfig;
   if (config.retainTranscript !== undefined && typeof config.retainTranscript !== "boolean") throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "retainTranscript must be boolean.");
-  if (!config.profile || typeof config.profile !== "string") throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "profile is required.");
+  if (typeof config.profile !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(config.profile)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "profile must be 1–80 letters, digits, underscores or hyphens.");
   if (!config.harness || typeof config.harness.adapter !== "string" || typeof config.harness.version !== "string") throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "harness.adapter and harness.version are required.");
   rejectUnknown(object(config.harness, "harness"), ["adapter", "version", "executable"], "harness");
   if (!config.inference || !config.inference.provider || !config.inference.model || !config.inference.auth) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "inference provider, model, and auth are required.");

@@ -191,6 +191,11 @@ it("fills a bounded Markdown prefix across short filesystem reads", async () => 
 it("correlates the same finding across head revisions while distinguishing locations", () => {
   const finding = { severity: "high" as const, category: "behavior" as const, title: "Missing check", trigger: "invalid input", impact: "bad output", direction: "validate", anchor: { commit: "a".repeat(40), path: "index.ts", startLine: 8 }, evidenceIds: ["e"], basis: "inferred" as const, requirementIds: ["r"], lifecycle: "new" as const };
   const before = findingFingerprint(finding);
-  expect(findingFingerprint({ ...finding, anchor: { ...finding.anchor, commit: "b".repeat(40) }, lifecycle: "still_valid" })).toBe(before);
+  expect(findingFingerprint({ ...finding, anchor: { ...finding.anchor, commit: "b".repeat(40), startLine: 9, endLine: 10 }, lifecycle: "still_valid" })).toBe(before);
   expect(findingFingerprint({ ...finding, anchor: { ...finding.anchor, path: "other.ts" } })).not.toBe(before);
+});
+
+
+it.each(["with spaces", "dot.name", "a".repeat(81), ""])("rejects an unpublishable profile %s during configuration validation", profile => {
+  expect(() => validateConfig({ ...DEFAULT_CONFIG, profile })).toThrow(/profile/);
 });
