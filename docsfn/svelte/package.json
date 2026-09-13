@@ -150,8 +150,7 @@
     "@docsfn/core": "0.0.6",
     "@uifn/svelte": "0.0.2",
     "@lucide/svelte": "^1.24.0",
-    "marked": "^12.0.0",
-    "searchfn": "*"
+    "marked": "^12.0.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^4.0.4",

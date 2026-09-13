@@ -841,11 +841,12 @@ export function generateBlogParams(
 }
 
 export function generateApiParams(manifest: DocsManifest) {
-  return Object.values(manifest.apis)
-    .sort((left, right) => compareStrings(left.slug, right.slug))
-    .map((api) => ({
-      slug: api.slug,
-    }));
+  const slugs = Object.values(manifest.apis).flatMap((api) => {
+    const reference = api.spec as { routes?: { all?: string[] } } | undefined;
+    return (reference?.routes?.all ?? [api.path]).map((route) =>
+      route === api.path ? api.slug : `${api.slug}${route.slice(api.path.length)}`);
+  });
+  return [...new Set(slugs)].sort(compareStrings).map((slug) => ({ slug }));
 }
 
 export function getCollectionPaths(

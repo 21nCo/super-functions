@@ -133,3 +133,14 @@ describe("@docsfn/admin", () => {
     expect(client.availability).toEqual(expect.any(Function));
   });
 });
+
+it.each(["//evil.test", "/docs?x=1", "/docs#x", "/docs\\bad", "/docs path"])("rejects invalid admin route %s before storing or building", async (basePath) => {
+  const openProvider = vi.fn(async () => provider);
+  const service = createDocsFnOperatorService({ store: new MemoryDocsFnOperatorStore(), provider: openProvider });
+  const invalid = { ...config, site: { ...config.site, basePath: basePath as `/${string}` } };
+  await expect(service.upsertSite({ id: "bad", name: "Bad", config: invalid }, context("p"))).rejects.toThrow();
+  const adapter = createDocsFnAdminAdapter(service);
+  await expect(adapter.execute("docsfn.sites.upsert", { id: "bad", name: "Bad", config: invalid }, context("p"))).rejects.toThrow();
+  expect((await service.listSites({}, context("p"))).items).toEqual([]);
+  expect(openProvider).not.toHaveBeenCalled();
+});

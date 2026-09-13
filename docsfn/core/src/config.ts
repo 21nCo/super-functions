@@ -54,11 +54,11 @@ const docsVersionsSchema = z
     const defaultCount = value.versions.filter(
       (version) => version.default,
     ).length;
-    if (defaultCount > 1) {
+    if (defaultCount > 1 || (value.mode !== "none" && defaultCount !== 1)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["versions"],
-        message: "versions.versions must mark at most one default version",
+        message: value.mode === "none" ? "versions.versions must mark at most one default version" : "versioned routing requires exactly one default version",
       });
     }
   });
@@ -567,7 +567,7 @@ function resolveConfigExport(moduleValue: unknown): unknown {
   return typeof candidate === "function" ? (candidate as () => unknown)() : candidate;
 }
 
-function validateDocsConfig(loadedConfig: unknown, configPath: string): DocsConfig {
+export function validateDocsConfig(loadedConfig: unknown, configPath = "docsfn.config"): DocsConfig {
   const parsed = docsConfigSchema.safeParse(loadedConfig);
   if (parsed.success) {
     return parsed.data as DocsConfig;

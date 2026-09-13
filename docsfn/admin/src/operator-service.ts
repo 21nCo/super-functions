@@ -1,4 +1,4 @@
-import { buildManifest, type DocsContentProvider } from "@docsfn/core";
+import { buildManifest, validateDocsConfig, type DocsContentProvider } from "@docsfn/core";
 import { AdminError, adminScopeRootId, type AdminOperationContext } from "@superfunctions/admin";
 
 export interface DocsFnOperatorScope {
@@ -200,6 +200,11 @@ export function createDocsFnOperatorService(options: DocsFnOperatorServiceOption
       if (!input.id.trim() || !input.name.trim() || !input.config?.site?.title) {
         throw new AdminError("invalid_argument", "Site id, name, and config.site.title are required.");
       }
+      try {
+        validateDocsConfig(input.config);
+      } catch {
+        throw new AdminError("invalid_argument", "DocsFn configuration is invalid.");
+      }
       const previous = await options.store.getSite(scope, input.id);
       const updatedAt = now();
       const value: DocsFnSiteRecord = {
@@ -244,9 +249,10 @@ export function createDocsFnOperatorService(options: DocsFnOperatorServiceOption
       if (!site) throw new AdminError("not_found", "DocsFn site was not found.");
       const id = createId();
       try {
+        const config = validateDocsConfig(site.config);
         const manifest = await buildManifest(
           await options.provider(site, context),
-          site.config,
+          config,
           { preview: input.preview },
         );
         const value: DocsFnBuildRecord = {

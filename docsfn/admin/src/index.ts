@@ -102,7 +102,7 @@ const configSchema: AdminObjectSchema = {
       properties: {
         title: { type: "string", minLength: 1 },
         description: { type: "string" },
-        basePath: { type: "string", pattern: "^/" },
+        basePath: { type: "string", pattern: "^/(?!/)[^?#\\\\\\u0000-\\u0020]*$" },
         canonicalUrl: { type: "string", minLength: 1 },
         defaultLocale: { type: "string", minLength: 1 },
         showFooter: { type: "boolean" },

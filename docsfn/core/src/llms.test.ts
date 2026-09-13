@@ -1,3 +1,4 @@
+import { buildOpenApiReference } from "./openapi";
 import { describe, expect, it } from "vitest";
 import {
   buildLlmsFullTxt,
@@ -204,4 +205,11 @@ it("matches recursive source globs with canonical provider IDs", () => {
   expect(txt).toContain(page.body);
   expect(txt).not.toContain(manifest.pages["docs/concepts/architecture"].body);
   expect(buildLlmsFullTxt(manifest, { includePages: ["docs/**/*.md"], excludePages: ["docs/deep/**"] })).not.toContain(page.body);
+});
+
+it("summarizes resolved OpenAPI Path Item references", () => {
+  const spec = buildOpenApiReference({ sourceId: "api:x.json", sourcePath: "x.json", fallbackTitle: "X", body: JSON.stringify({ openapi: "3.0.3", info: { title: "X", version: "1" }, paths: { "/items": { $ref: "#/components/pathItems/Items" } }, components: { pathItems: { Items: { get: { summary: "List referenced items", responses: {} } } } } }) });
+  const manifest = createManifest({ apis: { x: { kind: "api", id: "x", slug: "x", path: spec.routes.overview, title: spec.title, frontmatter: {}, spec } } });
+  expect(buildLlmsTxt(manifest)).toContain("GET /items — List referenced items");
+  expect(buildLlmsFullTxt(manifest)).toContain("GET /items — List referenced items");
 });

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, rm, unlink, utimes, writeFile } from "node:fs/
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { getDocsConfigDependencies, isDocsConfigError, loadDocsConfig } from "./config";
+import { getDocsConfigDependencies, isDocsConfigError, loadDocsConfig, validateDocsConfig } from "./config";
 
 const tempDirs: string[] = [];
 
@@ -523,4 +523,13 @@ it.each(['//outside.example', '/docs?x=1', '/docs#anchor', '/\\outside'])('rejec
     await writeFile(join(cwd, 'docsfn.config.mjs'), serializeConfig({ ...base, ...extra }));
     await expect(loadDocsConfig({ cwd })).rejects.toThrow();
   }
+});
+
+it.each(["path-prefix", "path-segment"])("requires one default for %s routing", (mode) => {
+  const config = { schemaVersion: 1, site: { title: "Test" }, content: { root: "." }, versions: { mode, versions: [{ slug: "v1", label: "V1" }] } };
+  expect(() => validateDocsConfig(config)).toThrow(/exactly one default/);
+  expect(validateDocsConfig({ ...config, versions: { mode, versions: [{ slug: "v1", label: "V1", default: true }] } }).versions?.versions[0].default).toBe(true);
+});
+it.each(["//evil.test", "/docs?x=1", "/docs#x", "/docs\\bad", "/docs path"])("rejects invalid programmatic route %s", (basePath) => {
+  expect(() => validateDocsConfig({ schemaVersion: 1, site: { title: "Test", basePath }, content: { root: "." } })).toThrow();
 });

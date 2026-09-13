@@ -144,6 +144,11 @@ function describePost(post: BlogPost): string {
 
 function summarizeOpenApiSpec(api: ApiReference): string[] {
   const lines: string[] = [];
+  // Canonical operations include resolved Path Item references.
+  if (Array.isArray(api.spec?.operations)) {
+    return api.spec.operations.map((operation: { method: string; path: string; summary?: string; description?: string; operationId?: string }) =>
+      `- ${operation.method} ${operation.path} — ${operation.summary ?? operation.description ?? operation.operationId ?? "(no summary)"}`);
+  }
   const spec = api.spec?.spec ?? api.spec;
   const paths = spec?.paths;
   if (!paths || typeof paths !== "object") return lines;

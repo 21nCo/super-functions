@@ -271,3 +271,12 @@ describe("generateRSSFeed", () => {
     expect(rss).not.toContain("Changelog One");
   });
 });
+
+it("preserves canonical publication time in RSS dates", () => {
+  const manifest = createManifest();
+  manifest.posts["blog:beta.mdx"].publishedAt = "2026-03-02T14:35:00.000Z";
+  const rss = generateRSSFeed(manifest, { title: "Blog", description: "Updates", link: "https://example.com" });
+  const timestamp = new Date("2026-03-02T14:35:00.000Z").toUTCString();
+  expect(rss).toContain(`<pubDate>${timestamp}</pubDate>`);
+  expect(rss).toContain(`<lastBuildDate>${timestamp}</lastBuildDate>`);
+});

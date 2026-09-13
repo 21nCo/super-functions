@@ -16,6 +16,7 @@ import {
 } from "../../next/src/route-helpers";
 import {
   createPageLoad,
+  generateApiParams,
   generateCollectionParams,
   generateStaticParams,
   getCollectionPostData,
@@ -346,6 +347,7 @@ it('emits every OpenAPI child route as a Next catch-all parameter', async () => 
   const manifest = structuredClone(await loadCanonicalManifest());
   const spec = buildOpenApiReference({ sourceId: 'api:x.json', sourcePath: 'x.json', fallbackTitle: 'X', body: JSON.stringify({ openapi: '3.0.3', info: { title: 'X', version: '1' }, paths: { '/items': { get: { responses: {} } } } }) });
   manifest.apis = { x: { kind: 'api', id: 'x', slug: 'x', path: spec.routes.overview, title: spec.title, frontmatter: {}, spec } };
+  expect(generateApiParams(manifest)).toEqual([{ slug: "x" }, { slug: "x/operations/get-items" }, { slug: "x/tags/default" }]);
   const params = generateNextApiParams(manifest, { catchAll: true });
   expect(params).toEqual([{ slug: ['x'] }, { slug: ['x', 'operations', 'get-items'] }, { slug: ['x', 'tags', 'default'] }]);
   manifest.apis.x.slug = '';

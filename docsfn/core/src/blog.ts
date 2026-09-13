@@ -278,18 +278,18 @@ function buildTagIndexes(input: {
   );
 }
 
-export function assertValidBlogPublishMetadata(post: Pick<BlogPost, "id" | "date">): {
+export function assertValidBlogPublishMetadata(post: Pick<BlogPost, "id" | "date"> & Partial<Pick<BlogPost, "publishedAt">>): {
   date: string;
   publishedAt: string;
   timestamp: number;
 } {
   return parsePublishedDate({
-    date: post.date,
+    date: post.publishedAt ?? post.date,
     sourceId: post.id,
   });
 }
 
-export function resolveBlogLastBuildDate(posts: Array<Pick<BlogPost, "id" | "date">>): string {
+export function resolveBlogLastBuildDate(posts: Array<Pick<BlogPost, "id" | "date"> & Partial<Pick<BlogPost, "publishedAt">>>): string {
   if (posts.length === 0) {
     return new Date("1970-01-01T00:00:00.000Z").toUTCString();
   }
