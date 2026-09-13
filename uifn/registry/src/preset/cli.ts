@@ -58,7 +58,8 @@ export function runPresetCommand(options: {
       const preset = decodePreset(code);
       const url = presetShareUrl(preset);
       if (!options.dryRun) {
-        const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'powershell.exe' : 'xdg-open';
+        const commands: Partial<Record<NodeJS.Platform, string>> = { darwin: 'open', win32: 'powershell.exe' };
+        const command = commands[process.platform] ?? 'xdg-open';
         const args = process.platform === 'win32' ? ['-NoProfile', '-NonInteractive', '-Command', `Start-Process -FilePath '${url.replaceAll("'", "''")}' -ErrorAction Stop`] : [url];
         const launched = spawnSync(command, args, { stdio: 'ignore', timeout: 10_000 });
         if (launched.error && 'code' in launched.error && launched.error.code === 'ETIMEDOUT') throw new UIFnPresetError('UIFN_PRESET_OPEN_UNKNOWN', 'Browser launch timed out; the editor may already be open. Use the returned URL if needed.', { url });

@@ -2,47 +2,16 @@ import * as React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import '@uifn/components/styles.css';
 import { ButtonRoot } from '@uifn/components-react/button';
-import { CardRoot } from '@uifn/components-react/card';
-import { CardHeader } from '@uifn/components-react/card';
-import { CardTitle } from '@uifn/components-react/card';
-import { CardContent } from '@uifn/components-react/card';
-import { FieldRoot } from '@uifn/components-react/field';
-import { FieldLabel } from '@uifn/components-react/field';
-import { SelectRoot } from '@uifn/components-react/select';
-import { SelectLabel } from '@uifn/components-react/select';
-import { SelectTrigger } from '@uifn/components-react/select';
-import { SelectValueText } from '@uifn/components-react/select';
-import { SelectContent } from '@uifn/components-react/select';
-import { SelectItem } from '@uifn/components-react/select';
+import { CardRoot, CardHeader, CardTitle, CardContent } from '@uifn/components-react/card';
+import { FieldRoot, FieldLabel } from '@uifn/components-react/field';
+import { SelectRoot, SelectLabel, SelectTrigger, SelectValueText, SelectContent, SelectItem } from '@uifn/components-react/select';
 import { InputRoot } from '@uifn/components-react/input';
-import { CheckboxRoot } from '@uifn/components-react/checkbox';
-import { CheckboxControl } from '@uifn/components-react/checkbox';
-import { CheckboxLabel } from '@uifn/components-react/checkbox';
-import { SwitchRoot } from '@uifn/components-react/switch';
-import { SwitchControl } from '@uifn/components-react/switch';
-import { SwitchThumb } from '@uifn/components-react/switch';
-import { SwitchLabel } from '@uifn/components-react/switch';
-import { TabsRoot } from '@uifn/components-react/tabs';
-import { TabsList } from '@uifn/components-react/tabs';
-import { TabsTrigger } from '@uifn/components-react/tabs';
-import { TabsContent } from '@uifn/components-react/tabs';
-import { MenuRoot } from '@uifn/components-react/menu';
-import { MenuTrigger } from '@uifn/components-react/menu';
-import { MenuContent } from '@uifn/components-react/menu';
-import { MenuItem } from '@uifn/components-react/menu';
-import { DialogPortal } from '@uifn/components-react/dialog';
-import { DialogRoot } from '@uifn/components-react/dialog';
-import { DialogTrigger } from '@uifn/components-react/dialog';
-import { DialogContent } from '@uifn/components-react/dialog';
-import { DialogTitle } from '@uifn/components-react/dialog';
-import { DialogClose } from '@uifn/components-react/dialog';
-import { TableRoot } from '@uifn/components-react/table';
-import { TableTable } from '@uifn/components-react/table';
-import { TableHeader } from '@uifn/components-react/table';
-import { TableBody } from '@uifn/components-react/table';
-import { TableRow } from '@uifn/components-react/table';
-import { TableHead } from '@uifn/components-react/table';
-import { TableCell } from '@uifn/components-react/table';
+import { CheckboxRoot, CheckboxControl, CheckboxLabel } from '@uifn/components-react/checkbox';
+import { SwitchRoot, SwitchControl, SwitchThumb, SwitchLabel } from '@uifn/components-react/switch';
+import { TabsRoot, TabsList, TabsTrigger, TabsContent } from '@uifn/components-react/tabs';
+import { MenuRoot, MenuTrigger, MenuContent, MenuItem } from '@uifn/components-react/menu';
+import { DialogPortal, DialogRoot, DialogTrigger, DialogContent, DialogTitle, DialogClose } from '@uifn/components-react/dialog';
+import { TableRoot, TableTable, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@uifn/components-react/table';
 import {
   PRESET_AXES,
   PRESET_AXIS_LABELS,
@@ -65,7 +34,7 @@ const components: Record<string, React.ElementType> = { ButtonRoot, CardRoot, Ca
 let preview: Root | undefined;
 export function renderFixture(node: PresetFixtureNode | string, key: number): React.ReactNode {
   if (typeof node === 'string') return node;
-  return React.createElement(components[node.type] ?? node.type, { ...node.props, key, ...(['SelectContent', 'MenuContent', 'DialogPortal'].includes(node.type) ? { container: document.querySelector('.preview-root') } : {}) }, ...(node.children ?? []).map(renderFixture));
+  return React.createElement(components[node.type] ?? node.type, { ...node.props, key, ...(['SelectContent', 'MenuContent', 'DialogPortal'].includes(node.type) ? { container: document.querySelector('.preview-root') } : {}) }, ...(node.children ?? []).map((child, index) => renderFixture(child, index)));
 }
 
 const VIEWPORTS = {
@@ -137,7 +106,10 @@ function render(preset: UIFnPresetV1, locked: Set<PresetAxis>, mode: 'light' | '
           <article>
             <h2>Existing project</h2>
             ${plan.commands.apply ? '<pre><code data-output="apply"></code></pre>' : "<p>Full project application is currently available for React presets.</p>"}
+            <p>Apply theme only</p>
             <pre><code data-output="applyTheme"></code></pre>
+            <p>Apply fonts only</p>
+            <pre><code data-output="applyFont"></code></pre>
           </article>
           <article>
             <h2>Preset code</h2>
@@ -195,9 +167,10 @@ function boot() {
   };
   paint();
   document.addEventListener('change', (event) => {
-    const target = event.target as HTMLElement;
-    const axis = target.getAttribute('data-axis') as PresetAxis | null;
-    const lock = target.getAttribute('data-lock') as PresetAxis | null;
+    const target = event.target;
+    if (!(target instanceof HTMLElement || target instanceof SVGElement)) return;
+    const axis = target.dataset.axis as PresetAxis | undefined;
+    const lock = target.dataset.lock as PresetAxis | undefined;
     if (axis && target instanceof HTMLSelectElement) {
       preset = normalizePreset({ ...preset, [axis]: target.value });
       paint();
@@ -208,10 +181,11 @@ function boot() {
     }
   });
   document.addEventListener('click', async (event) => {
-    const target = event.target as HTMLElement;
-    const action = target.getAttribute('data-action');
-    const nextMode = target.getAttribute('data-mode');
-    const nextViewport = target.getAttribute('data-viewport');
+    const target = event.target;
+    if (!(target instanceof HTMLElement || target instanceof SVGElement)) return;
+    const action = target.dataset.action;
+    const nextMode = target.dataset.mode;
+    const nextViewport = target.dataset.viewport;
     if (nextMode === 'light' || nextMode === 'dark') { mode = nextMode; paint(); }
     if (nextViewport === 'desktop' || nextViewport === 'tablet' || nextViewport === 'mobile') { viewport = nextViewport; paint(); }
     if (action === 'random') { preset = randomPreset({ seed: Date.now(), locks: Object.fromEntries([...locked].map((axis) => [axis, true])), base: preset }); paint(); }

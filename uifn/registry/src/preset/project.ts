@@ -33,12 +33,20 @@ export interface PresetMutationOptions {
   createRoot?: boolean;
 }
 
+interface RequiredProjectAction {
+  code: 'UIFN_PRESET_LOCKFILE_REFRESH_REQUIRED';
+  path: string;
+  command: string;
+  message: string;
+}
+
 export interface PresetMutationResult {
   ok: boolean;
   dryRun: boolean;
   written: string[];
   unchanged: string[];
   rolledBack?: boolean;
+  requiredActions?: RequiredProjectAction[];
   plan?: {
     code: string;
     url: string;
@@ -226,6 +234,28 @@ export function resolveProjectPreset(rootDir: string) {
   return { ok: true as const, ...resolved.state, url: plan.url, commands: plan.commands, deviations: resolved.state.code === encodePreset(resolved.state.preset) ? [] : ['normalized-code'] };
 }
 
+// Lock resolution belongs to npm. Never guess integrity hashes or run install
+// scripts inside the file transaction; expose the required follow-up explicitly.
+function requiredLockfileActions(rootDir: string, packageSource?: string): RequiredProjectAction[] {
+  if (!packageSource) return [];
+  const lockPath = assertContainedPath(rootDir, 'package-lock.json');
+  if (!existsSync(lockPath)) return [];
+  const manifest = JSON.parse(packageSource) as Record<string, unknown>;
+  try {
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const locked = lock?.packages?.[''];
+    const sections = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
+    const sorted = (value: Record<string, string> = {}) => JSON.stringify(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
+    if (locked && sections.every(section => sorted(locked[section]) === sorted(manifest[section] as Record<string, string>))) return [];
+  } catch { /* An unreadable lock also requires npm to regenerate it. */ }
+  return [{
+    code: 'UIFN_PRESET_LOCKFILE_REFRESH_REQUIRED',
+    path: 'package-lock.json',
+    command: 'npm install --package-lock-only --ignore-scripts',
+    message: 'After applying this plan, run npm install --package-lock-only --ignore-scripts in the project directory and review the lockfile before npm ci. The existing lockfile does not match the planned dependencies; uifn leaves it unchanged.',
+  }];
+}
+
 function mutate(options: PresetMutationOptions, mode: 'init' | 'apply'): PresetMutationResult {
   let template = options.template ?? 'react-vite';
   const createdDirectories: string[] = [];
@@ -289,9 +319,10 @@ function mutate(options: PresetMutationOptions, mode: 'init' | 'apply'): PresetM
     const planned = planFileChanges(rootDir, files);
     if (planned.error) return { ...planned.error, dryRun: Boolean(options.dryRun) };
 
+    const requiredActions = requiredLockfileActions(rootDir, files['package.json']);
     const summary = [...planned.summary, ...artifactFiles.filter((file) => !planned.summary.some((entry) => entry.path === file.path))];
     if (options.dryRun) {
-      return { ok: true, dryRun: true, written: [], unchanged: summary.filter((file) => file.operation === 'unchanged').map((file) => file.path), plan: { code: plan.code, url: plan.url, files: summary, artifacts: plan.preset.installMode === 'source' ? plan.project.artifacts : [], commands: plan.commands } };
+      return { ok: true, dryRun: true, requiredActions, written: [], unchanged: summary.filter((file) => file.operation === 'unchanged').map((file) => file.path), plan: { code: plan.code, url: plan.url, files: summary, artifacts: plan.preset.installMode === 'source' ? plan.project.artifacts : [], commands: plan.commands } };
     }
 
     const committed = commitTransaction({ rootDir, changes: [...planned.changes, ...artifactChanges] }, { faultAfterWrites: options.faultAfterWrites });
@@ -300,6 +331,7 @@ function mutate(options: PresetMutationOptions, mode: 'init' | 'apply'): PresetM
     return {
       ok: true,
       dryRun: false,
+      requiredActions,
       written: committed.committed,
       unchanged: summary.filter((file) => file.operation === 'unchanged').map((file) => file.path),
       plan: { code: plan.code, url: plan.url, files: summary, artifacts: plan.preset.installMode === 'source' ? plan.project.artifacts : [], commands: plan.commands },

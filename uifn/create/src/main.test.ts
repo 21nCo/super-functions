@@ -22,5 +22,6 @@ it('ignores injected mode and viewport attributes and renders valid controls and
   const output = document.querySelector('[data-output="init"]')!;
   expect(output.textContent).toContain('uifn');
   expect(output.children).toHaveLength(0);
+  expect(document.querySelector('[data-output="applyFont"]')!.textContent).toContain('--only font');
   expect(document.querySelector('style')!.textContent).toContain('--uifn');
 });

@@ -70,14 +70,13 @@ function assertAxisValue<K extends PresetAxis>(axis: K, value: unknown): (typeof
 
 export function normalizePreset(input: UIFnPresetInput | UIFnPresetV1 = {}): UIFnPresetV1 {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new UIFnPresetError('UIFN_PRESET_INVALID_JSON', 'Preset must be an object.');
-  {
-    for (const key of Object.keys(input)) {
-      if (key === 'version') continue;
-      if (!PRESET_FIELD_ORDER.includes(key as PresetAxis)) {
-        throw new UIFnPresetError('UIFN_PRESET_UNKNOWN_FIELD', `Unknown preset field: ${key}.`, { field: key });
-      }
+  for (const key of Object.keys(input)) {
+    if (key === 'version') continue;
+    if (!PRESET_FIELD_ORDER.includes(key as PresetAxis)) {
+      throw new UIFnPresetError('UIFN_PRESET_UNKNOWN_FIELD', `Unknown preset field: ${key}.`, { field: key });
     }
   }
+  // Only omission supplies the default; an explicit null must be rejected.
   const version = input.version === undefined ? PRESET_SCHEMA_VERSION : input.version;
   if (version !== PRESET_SCHEMA_VERSION) {
     throw new UIFnPresetError('UIFN_PRESET_UNSUPPORTED_VERSION', `Unsupported preset schema version: ${version}.`, {

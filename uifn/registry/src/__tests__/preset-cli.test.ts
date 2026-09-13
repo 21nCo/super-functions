@@ -221,3 +221,57 @@ it('applies the same symlink containment checks during dry-run', async () => {
     }
   });
 });
+
+it.each([true, false])('rejects symlinked project roots for init and apply (dryRun=%s)', async dryRun => {
+  await withProject(async parent => {
+    const rootDir = path.join(parent, 'app');
+    const linked = path.join(parent, 'linked');
+    const code = encodePreset({});
+    expect(initProject({ rootDir, preset: code }).ok).toBe(true);
+    const before = readFileSync(path.join(rootDir, '.uifn/preset.json'), 'utf8');
+    symlinkSync(rootDir, linked, 'dir');
+    for (const mutate of [initProject, applyPreset]) {
+      expect(mutate({ rootDir: linked, preset: encodePreset({ style: 'atlas' }), dryRun }))
+        .toMatchObject({ ok: false, dryRun, written: [], error: { code: 'UIFN_REGISTRY_SYMLINK_ESCAPE' } });
+    }
+    expect(readFileSync(path.join(rootDir, '.uifn/preset.json'), 'utf8')).toBe(before);
+  });
+});
+
+it.each([true, false])('rejects dangling managed symlinks before planning or writing (dryRun=%s)', async dryRun => {
+  await withProject(async parent => {
+    const rootDir = path.join(parent, 'app');
+    const outside = path.join(parent, 'absent.css');
+    const code = encodePreset({});
+    expect(initProject({ rootDir, preset: code }).ok).toBe(true);
+    const theme = path.join(rootDir, 'src/uifn-theme.css');
+    rmSync(theme); symlinkSync(outside, theme);
+    expect(applyPreset({ rootDir, preset: code, dryRun })).toMatchObject({ ok: false, dryRun, error: { code: 'UIFN_REGISTRY_SYMLINK_ESCAPE' } });
+    expect(existsSync(outside)).toBe(false);
+  });
+});
+
+it.each(['iconLibrary', 'installMode'] as const)('reports required npm lock refresh when %s changes, including repeat applies', async axis => {
+  await withProject(async parent => {
+    const rootDir = path.join(parent, 'app');
+    expect(initProject({ rootDir, preset: encodePreset({}) }).ok).toBe(true);
+    const packagePath = path.join(rootDir, 'package.json');
+    const lockPath = path.join(rootDir, 'package-lock.json');
+    const originalPackage = readFileSync(packagePath, 'utf8');
+    const originalLock = JSON.stringify({ lockfileVersion: 3, packages: { '': JSON.parse(originalPackage) } });
+    writeFileSync(lockPath, originalLock);
+    expect(applyPreset({ rootDir, preset: encodePreset({}), dryRun: true }).requiredActions).toEqual([]);
+    const code = encodePreset(axis === 'iconLibrary' ? { iconLibrary: 'phosphor' } : { installMode: 'source' });
+    const dry = applyPreset({ rootDir, preset: code, dryRun: true });
+    expect(dry.ok).toBe(true);
+    expect(dry.requiredActions).toMatchObject([{ code: 'UIFN_PRESET_LOCKFILE_REFRESH_REQUIRED', command: 'npm install --package-lock-only --ignore-scripts' }]);
+    expect(readFileSync(packagePath, 'utf8')).toBe(originalPackage);
+    const applied = applyPreset({ rootDir, preset: code });
+    expect(applied.ok).toBe(true);
+    expect(applied.requiredActions).toEqual(dry.requiredActions);
+    expect(readFileSync(lockPath, 'utf8')).toBe(originalLock);
+    expect(applyPreset({ rootDir, preset: code }).requiredActions).toEqual(dry.requiredActions);
+    writeFileSync(lockPath, JSON.stringify({ lockfileVersion: 3, packages: { '': JSON.parse(readFileSync(packagePath, 'utf8')) } }));
+    expect(applyPreset({ rootDir, preset: code }).requiredActions).toEqual([]);
+  });
+});

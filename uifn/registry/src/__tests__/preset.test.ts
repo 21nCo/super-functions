@@ -140,3 +140,10 @@ it.each(['nova', 'meridian', 'atlas'] as const)('keeps radius none square for %s
     expect(plan.theme.darkVars[`--uifn-radius-${size}`]).toBe('0px');
   }
 });
+
+it('preserves V1 UTF-16 seed hashes, including surrogate pairs', async () => {
+  const { hashSeed } = await import('../preset/random');
+  expect(hashSeed('hello')).toBe(1335831723);
+  expect(hashSeed('😀')).toBe(3409036472);
+  expect(hashSeed('a😀b')).toBe(2412414209);
+});

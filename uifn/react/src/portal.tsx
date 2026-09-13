@@ -26,7 +26,7 @@ export const Portal: React.FC<PortalProps> = ({ children, container }) => {
     // React 19 redirects an HTML-element portal to document.body. A real
     // element host keeps body-less documents usable without creating a body.
     const host = ownerDocument.createElement('div');
-    host.setAttribute('data-uifn-portal-host', '');
+    host.dataset.uifnPortalHost = '';
     mountNode.appendChild(host);
     setFallbackHost(host);
     return () => { host.remove(); setFallbackHost(null); };

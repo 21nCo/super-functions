@@ -17,6 +17,8 @@ function mulberry32(seed: number): () => number {
 export function hashSeed(value: string): number {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
+    // V1 seed compatibility hashes UTF-16 code units, including each surrogate.
+    // codePointAt would change deterministic presets for existing non-BMP seeds.
     hash ^= value.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }

@@ -110,3 +110,13 @@ npm run build
 ```
 
 The repository-wide delivery gate also creates independent package/source consumers for React, Svelte, and Solid and verifies type checking, production build, SSR, hydration, browser semantics, accessibility, and semantic-trace equivalence.
+
+### Preset applies and npm lockfiles
+
+When full `uifn apply` changes dependencies in a project with `package-lock.json`,
+the result includes `requiredActions` if the lockfile's root dependencies differ
+from the planned manifest. Dry-run reports the same requirement without writing.
+After applying, run `npm install --package-lock-only --ignore-scripts` in the
+project directory, review the updated lockfile, then use `npm ci`. UIFn does not
+run npm or modify the lockfile inside its file transaction. The required action
+continues to be reported on repeat applies until the lockfile is refreshed.

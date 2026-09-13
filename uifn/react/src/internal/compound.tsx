@@ -765,7 +765,7 @@ export function ReactPrimitivePart({
     const ownerDocument = bridge.getElement(definition.rootPart)?.ownerDocument;
     const ownerBody = ownerDocument?.body ?? ownerDocument?.documentElement;
     if (container == null && !ownerBody) return null;
-    return <Portal container={container == null ? ownerBody : container}>{subtree}</Portal>;
+    return <Portal container={container ?? ownerBody}>{subtree}</Portal>;
   }
   return subtree;
 }
