@@ -3,7 +3,7 @@ import * as fileSystem from "node:fs/promises";
 vi.mock("node:fs/promises", async importOriginal => ({ ...await importOriginal<typeof import("node:fs/promises")>() }));
 import * as safeFiles from "../src/safe-files.js";
 
-import { DEFAULT_CONFIG, DEFAULT_POLICY, FileArtifactStore, RepositoryMarkdownContextAdapter, applyRepositoryPolicy, buildReviewPrompt, deriveVerdict, digestJson, validateConfig, validateReport, type ReviewReport } from "../src/index.js";
+import { DEFAULT_CONFIG, DEFAULT_POLICY, FileArtifactStore, RepositoryMarkdownContextAdapter, applyRepositoryPolicy, buildReviewPrompt, deriveVerdict, digestJson, findingFingerprint, validateConfig, validateReport, type ReviewReport } from "../src/index.js";
 import { readFile, mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -185,4 +185,12 @@ it("fills a bounded Markdown prefix across short filesystem reads", async () => 
     expect(result.sources[0].status).toBe("available");
     expect(result.incompleteReasons).toEqual([]);
   } finally { spy.mockRestore(); }
+});
+
+
+it("correlates the same finding across head revisions while distinguishing locations", () => {
+  const finding = { severity: "high" as const, category: "behavior" as const, title: "Missing check", trigger: "invalid input", impact: "bad output", direction: "validate", anchor: { commit: "a".repeat(40), path: "index.ts", startLine: 8 }, evidenceIds: ["e"], basis: "inferred" as const, requirementIds: ["r"], lifecycle: "new" as const };
+  const before = findingFingerprint(finding);
+  expect(findingFingerprint({ ...finding, anchor: { ...finding.anchor, commit: "b".repeat(40) }, lifecycle: "still_valid" })).toBe(before);
+  expect(findingFingerprint({ ...finding, anchor: { ...finding.anchor, path: "other.ts" } })).not.toBe(before);
 });

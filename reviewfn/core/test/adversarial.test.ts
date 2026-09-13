@@ -204,6 +204,7 @@ it("requires completed receipts with verified retained logs for reproduced findi
 
 it("accepts immutable base anchors only for changed paths proven absent from the head", async () => {
   const value = report(); value.verdict = "changes_requested";
+  value.assessments[0].status = "missing";
   value.evidence[0].code!.commit = value.change.baseCommit;
   value.findings = [{ fingerprint: "f", severity: "high", category: "behavior", title: "Removed required code", trigger: "call", impact: "missing", direction: "restore", anchor: value.evidence[0].code, evidenceIds: ["e"], basis: "inferred", requirementIds: ["r"], lifecycle: "new" }];
   let exists = false;
@@ -221,4 +222,18 @@ it.each(["missing", "partial"] as const)("rejects source-only evidence for a %s 
   value.assessments[0].status = status; value.assessments[0].evidenceIds = ["source-only"];
   value.evidence.push({ id: "source-only", kind: "source", description: "requirement", source: { sourceId: "issue", anchor: "L1" } });
   expect((await errors(value)).join()).toMatch(/without code or test evidence/);
+});
+
+
+it("does not treat deleted implementation as proof of an implemented requirement", async () => {
+  const value = report();
+  value.evidence[0].code!.commit = value.change.baseCommit;
+  const adapter = { ...source, pathExists: async () => false, verifyAnchor: async (_root: string, anchor: { commit: string }) => anchor.commit === value.change.baseCommit };
+  const result = await validateReport(value, policy, adapter, ".", context);
+  expect(result.valid).toBe(false);
+  expect(result.coverage).toBe("incomplete");
+  expect(result.errors.join()).toMatch(/without reviewed-head implementation evidence/);
+  value.assessments[0].status = "missing";
+  value.verdict = "changes_requested";
+  expect((await validateReport(value, policy, adapter, ".", context)).errors).toEqual([]);
 });

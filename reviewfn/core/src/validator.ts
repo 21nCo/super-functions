@@ -109,6 +109,12 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
     if (item.code && (!sourceControl || !root)) errors.push(`Evidence ${item.id} code anchor cannot be verified.`);
   }
   for (const assessment of report.assessments) if (assessment.status === "implemented") {
+    const hasHeadImplementation = assessment.evidenceIds.some(id => {
+      const item = evidence.get(id);
+      if ((item?.kind === "code" || item?.kind === "diff") && item.code?.commit === report.change.headCommit) return true;
+      return item?.kind === "test" && report.tests.some(test => test.id === item.receiptId && test.commit === report.change.headCommit && test.exitCode === 0 && !test.canceled && !test.timedOut);
+    });
+    if (!hasHeadImplementation) errors.push(`Assessment ${assessment.requirementId} claims implemented without reviewed-head implementation evidence.`);
     for (const id of assessment.evidenceIds) {
       const item = evidence.get(id);
       const receipt = item?.kind === "test" ? report.tests.find(test => test.id === item.receiptId) : undefined;
