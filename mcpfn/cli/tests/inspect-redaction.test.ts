@@ -6,8 +6,9 @@ const state = vi.hoisted(() => ({ reject: false }));
 vi.mock("@mcpfn/inspector", () => ({ McpFnInspector: { create: ({ target }: any) => {
   let handle: any;
   return { connect: async () => { handle = await target.open({ requestId: "inspect-test", diagnostic: async () => {} }); },
-    snapshot: async () => { if (state.reject) throw new Error("remote echoed opaque-inspect-value"); return { tools: [{ description: "opaque-inspect-value" }] }; }, close: async () => handle?.close() };
+    snapshot: async () => { if (state.reject) throw new McpFnClientError("MCPFN_OPERATION_FAILED", "remote echoed opaque-inspect-value", {phase: "capability-operation"}); return { tools: [{ description: "opaque-inspect-value" }] }; }, close: async () => handle?.close() };
 } } }));
+import { McpFnClientError } from "@mcpfn/client";
 import { runCli } from "../src/index.js";
 
 it("scrubs acquired credentials from inspect stdout and its output file", async () => {
@@ -31,7 +32,7 @@ it("scrubs credentials from failed inspect stderr", async () => {
   let stderr = "";
   try {
     const code = await runCli(["inspect", "http://127.0.0.1:1/mcp", "--api-key-env", "MCPFN_INSPECT_TEST_TOKEN"], { stdout: () => {}, stderr: text => { stderr += text; } });
-    expect(code).not.toBe(0);
+    expect(code).toBe(1);
     expect(stderr).toContain("[REDACTED]");
     expect(stderr).not.toContain("opaque-inspect-value");
   } finally { state.reject = false; vi.unstubAllEnvs(); }

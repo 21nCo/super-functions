@@ -74,7 +74,7 @@ export function normalizeMcpFnReportFailure(
   return {
     name: stringField(record.name) ?? "Error",
     message,
-    layer: failureLayer(phase) !== "authorization-server" && [401, 403].includes(Number(causeRecord?.code ?? causeRecord?.status ?? record.status))
+    layer: failureLayer(phase) !== "authorization-server" && [causeRecord?.code, causeRecord?.status, record.code, record.status].some(value => [401, 403].includes(Number(value)))
       ? "resource-server" : failureLayer(phase),
     ...(stringField(record.code) ? { code: stringField(record.code)! } : {}),
     ...(phase ? { phase } : {}),

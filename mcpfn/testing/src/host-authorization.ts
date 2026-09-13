@@ -219,6 +219,7 @@ async function runHostedCase(
   fixture: McpFnHostedAuthorizationCase,
 ): Promise<McpFnHostedAuthorizationCaseResult> {
   let phase: McpFnHostedAuthorizationCaseResult["phase"] = "client-registration";
+  let responseStatus: number | undefined;
   try {
     await target.prepareRegistration(structuredClone(fixture.registration));
     phase = "authorization-request";
@@ -237,6 +238,7 @@ async function runHostedCase(
     const authorizationResponse = await target.request(new Request(authorization, {
       redirect: "manual",
     }));
+    responseStatus = authorizationResponse.status;
     const authorizationError = await oauthError(authorizationResponse);
     if (authorizationError) {
       await validateOAuthRejection(authorizationResponse, fixture, true);
@@ -277,6 +279,7 @@ async function runHostedCase(
       }
       if (!tokenResponse.ok) throw new Error(`Token request returned HTTP ${tokenResponse.status}`);
       const tokenSet = await validatedTokenSet(tokenResponse);
+      responseStatus = tokenResponse.status;
       if (fixture.token.refreshAfterExchange) {
         if (typeof tokenSet.refresh_token !== "string" || !tokenSet.refresh_token) {
           throw new Error("Authorization-code response did not include a refresh token");
@@ -305,9 +308,10 @@ async function runHostedCase(
           throw new Error(`Refresh request returned HTTP ${refreshResponse.status}`);
         }
         await validatedTokenSet(refreshResponse);
+        responseStatus = refreshResponse.status;
       }
     }
-    return assessHostedCase(fixture, phase, 200);
+    return assessHostedCase(fixture, phase, responseStatus);
   } catch (error) {
     const safe = redactOAuthValue(error) as Record<string, unknown>;
     const code = typeof safe.code === "string" ? safe.code : undefined;
@@ -377,6 +381,11 @@ async function validateOAuthRejection(response: Response, fixture: McpFnHostedAu
     validatedRedirectCode(new Response(null, { status: response.status, headers: { location: callback.toString() } }), fixture);
   } else {
     const body = await response.clone().json().catch(() => undefined);
+    // An unrecognized/incompatible client must not receive a redirect. Other
+    // authorization errors for the registered callback must use that callback.
+    if (authorization && body?.error !== "invalid_client" && (fixture.registration.metadata.redirect_uris as string[])?.includes(fixture.authorization.redirectUri)) {
+      throw new Error("Registered authorization requests require an OAuth error callback");
+    }
     if (response.status !== 400 && !(!authorization && response.status === 401 && body?.error === "invalid_client")) throw new Error("OAuth error response has invalid HTTP status");
     if (response.headers.has("location") || !isJsonResponse(response) ||
         !body || typeof body.error !== "string" || !body.error) {
@@ -411,7 +420,7 @@ async function validatedTokenSet(response: Response): Promise<{ refresh_token?: 
   if (!isJsonResponse(response)) throw new Error("Token response must use a JSON media type");
   const value = await response.clone().json() as Record<string, unknown> | null;
   if (!value || typeof value.access_token !== "string" || !value.access_token ||
-      typeof value.token_type !== "string" || !value.token_type) {
+      typeof value.token_type !== "string" || value.token_type.toLowerCase() !== "bearer") {
     throw new Error("Token response is missing an access token or token type");
   }
   return value;

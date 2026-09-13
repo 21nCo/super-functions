@@ -1,16 +1,20 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 const spawn = vi.hoisted(() => vi.fn());
 vi.mock("node:child_process", () => ({ spawn }));
-import { runAuthenticatedOfficialConformance } from "../src/conformance.js";
+import { McpFnConformanceCleanupError, runAuthenticatedOfficialConformance } from "../src/conformance.js";
 
-it("scrubs opaque credentials from runner output and never inherits authenticated stdio", async () => {
+beforeEach(() => {
+  spawn.mockReset();
   spawn.mockImplementation(() => {
     const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
     queueMicrotask(() => { child.stdout.write('{"echo":"opaque-runner-value"}'); child.stderr.write("failure opaque-runner-value"); child.emit("close", 1); });
     return child;
   });
+});
+
+it("scrubs opaque credentials from runner output and never inherits authenticated stdio", async () => {
   const result = await runAuthenticatedOfficialConformance({ url: "http://127.0.0.1:1/mcp", headers: { "x-api-key": "opaque-runner-value" }, stdio: "inherit" });
   expect(result.ok).toBe(false);
   expect(JSON.stringify(result)).not.toContain("opaque-runner-value");
@@ -22,4 +26,22 @@ it("rejects raw output artifacts before credential acquisition", async () => {
   const acquire = vi.fn();
   await expect(runAuthenticatedOfficialConformance({ url: "http://127.0.0.1:1/mcp", credential: { acquire }, outputDir: "/tmp/unsafe-output" })).rejects.toThrow(/outputDir/);
   expect(acquire).not.toHaveBeenCalled();
+});
+
+it("retries transient conformance credential revocation", async () => {
+  const revoke = vi.fn().mockRejectedValueOnce(new Error("temporary")).mockResolvedValue(undefined);
+  await runAuthenticatedOfficialConformance({url: "http://127.0.0.1:1/mcp", credential: {acquire: () => ({headers: {"x-api-key": "opaque-runner-value"}}), revoke}});
+  expect(revoke).toHaveBeenCalledTimes(2);
+});
+it("retains permanently failing conformance cleanup for explicit retry", async () => {
+  const revoke = vi.fn().mockRejectedValue(new Error("secret-cleanup-error"));
+  let failure: unknown;
+  try { await runAuthenticatedOfficialConformance({url: "http://127.0.0.1:1/mcp", credential: {acquire: () => ({headers: {"x-api-key": "opaque-runner-value"}}), revoke}}); }
+  catch(error) { failure = error; }
+  expect(failure).toBeInstanceOf(McpFnConformanceCleanupError);
+  expect(revoke).toHaveBeenCalledTimes(3);
+  expect(JSON.stringify(failure)).not.toContain("secret-cleanup-error");
+  revoke.mockResolvedValue(undefined);
+  await (failure as McpFnConformanceCleanupError).retryCleanup();
+  expect(revoke).toHaveBeenCalledTimes(4);
 });

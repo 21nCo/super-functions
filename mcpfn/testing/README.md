@@ -21,7 +21,7 @@ It includes:
 - JSON and JUnit artifacts with package/runtime provenance and failure layers;
 - orchestration of the official `@modelcontextprotocol/conformance` runner.
 
-Official conformance validates protocol behavior. McpFn scenarios validate product behavior. Production MCP servers should run both. For a protected local endpoint, use `runAuthenticatedOfficialConformance({ url, credential })`; it requires a literal loopback upstream, binds a temporary loopback-only streaming proxy, pins every request to the configured upstream path, injects bounded credential headers without printing them, and always revokes/disposes the credential and closes the proxy after the pinned official runner exits.
+Official conformance validates protocol behavior. McpFn scenarios validate product behavior. Production MCP servers should run both. For a protected local endpoint, use `runAuthenticatedOfficialConformance({ url, credential })`; it requires a literal loopback upstream, binds a temporary loopback-only streaming proxy, pins every request to the configured upstream path, injects bounded credential headers without printing them, and closes the proxy and attempts credential revocation/disposal after the pinned official runner exits. Credential cleanup retries up to three times. If all attempts fail, it throws `McpFnConformanceCleanupError`; retain that error and call `await error.retryCleanup()` after the provider recovers. The error contains no raw credential fields, and a successful retry releases the retained lease.
 
 Use `runMcpFnTargetSuite({ target, scenarios, manifest })` when a test should
 exercise a subprocess or deployed target. It constructs the same session used

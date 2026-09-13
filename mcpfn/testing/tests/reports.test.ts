@@ -109,3 +109,11 @@ function fixtureReport(
 it.each(["authorization-request", "token-exchange", "token-refresh"])("keeps HTTP 401 in %s on the authorization-server layer", (phase) => {
   expect(normalizeMcpFnReportFailure({ message: "denied", phase, status: 401 }).layer).toBe("authorization-server");
 });
+
+it.each([
+  {cause: {code: "ERR_BAD_RESPONSE", status: 401}},
+  {code: 403},
+  {status: 401},
+])("recognizes HTTP denial independently of non-HTTP codes", fields => {
+  expect(normalizeMcpFnReportFailure({message: "denied", phase: "mcp-initialize", ...fields}).layer).toBe("resource-server");
+});

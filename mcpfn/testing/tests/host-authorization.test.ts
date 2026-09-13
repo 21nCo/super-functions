@@ -172,3 +172,22 @@ it.each(["token-exchange", "token-refresh"])("rejects non-JSON successful %s", a
   } }, [fixture]);
   expect(results[0]).toMatchObject({ status: "failed", phase });
 });
+
+it.each(["Bearer", "bEaReR", "MAC"])("validates hosted token type %s and reports actual final status", async tokenType => {
+  const fixture = createHostedAuthorizationFixtures({issuer: "https://login.example.com", resource: "https://mcp.example.com/mcp"}).find(item => item.token?.refreshAfterExchange)!;
+  const [result] = await runHostedAuthorizationRegression({issuer: "https://login.example.com", prepareRegistration: () => {}, request: async request => {
+    if (new URL(request.url).pathname.endsWith("authorize")) {
+      const callback = new URL(fixture.authorization.redirectUri); callback.searchParams.set("code", "code"); callback.searchParams.set("state", fixture.authorization.state);
+      return Response.redirect(callback, 302);
+    }
+    return Response.json({access_token: "token", token_type: tokenType, refresh_token: "refresh"}, {status: 201});
+  }}, [fixture]);
+  expect(result.status).toBe(tokenType === "MAC" ? "failed" : "passed");
+  if (tokenType !== "MAC") expect(result.responseStatus).toBe(201);
+});
+it("rejects a direct JSON authorization error for a registered callback", async () => {
+  const fixture = createHostedAuthorizationFixtures({issuer: "https://login.example.com", resource: "https://mcp.example.com/mcp"})[0];
+  fixture.expected = {outcome: "rejected", errorCode: "invalid_request"};
+  const [result] = await runHostedAuthorizationRegression({issuer: "https://login.example.com", prepareRegistration: () => {}, request: async () => Response.json({error: "invalid_request"}, {status: 400})}, [fixture]);
+  expect(result.status).toBe("failed");
+});

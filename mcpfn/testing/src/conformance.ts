@@ -310,6 +310,24 @@ export async function runOfficialConformance(
   });
 }
 
+const retainedConformanceCleanup = new WeakMap<Error, () => Promise<void>>();
+
+/** Cleanup failed after retries. Retain this error and call retryCleanup(). */
+export class McpFnConformanceCleanupError extends Error {
+  constructor(release: () => Promise<void>) {
+    super("Authenticated conformance credential cleanup failed; retry cleanup");
+    this.name = "McpFnConformanceCleanupError";
+    retainedConformanceCleanup.set(this, release);
+  }
+  async retryCleanup(): Promise<void> {
+    const release = retainedConformanceCleanup.get(this);
+    if (!release) return;
+    try { await release(); }
+    catch { throw this; }
+    retainedConformanceCleanup.delete(this);
+  }
+}
+
 /**
  * Run the pinned official suite against an authenticated MCP endpoint.
  * Always captures stdio (even when inherit is requested) to redact credentials.
@@ -341,7 +359,11 @@ export async function runAuthenticatedOfficialConformance(
     try {
       await proxy?.close();
     } finally {
-      await lease.release();
+      let released = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try { await lease.release(); released = true; break; } catch { /* Retry transient revocation failure. */ }
+      }
+      if (!released) throw new McpFnConformanceCleanupError(() => lease.release());
     }
   }
 }

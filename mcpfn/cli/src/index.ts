@@ -250,7 +250,11 @@ export async function runCli(
         } finally { await inspector.close(); }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(redactTargetCredentials(target, message));
+        const safeMessage = redactTargetCredentials(target, message);
+        if (error instanceof McpFnClientError) {
+          throw new McpFnClientError(error.code, safeMessage, {phase: error.phase, retryable: error.retryable});
+        }
+        throw new Error(safeMessage);
       } finally { finishRedaction(); }
     });
 
