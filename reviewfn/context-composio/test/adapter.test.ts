@@ -66,3 +66,8 @@ it("retrieves live-shaped linked specifications and explicit comment pagination"
   const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
   expect(result.sources.map(source => source.type)).toEqual(["issue", "comment", "document"]); expect(result.incompleteReasons).toEqual([]); expect(calls).toHaveLength(3);
 });
+
+it("does not accept another workspace identity from nested comment metadata", async () => {
+  const runner: ComposioRunner = async () => ({ code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "wrong issue", description: "x", organization: { id: "workspace-A" }, comments: { nodes: [{ body: "x", user: { organization: { id: "workspace-1" } } }] } } }) });
+  await expect(new ComposioLinearContextAdapter({ runner }).fetch(request)).rejects.toThrow(/workspace mismatch/);
+});

@@ -174,7 +174,9 @@ function minimalEnvironment(source: NodeJS.ProcessEnv, config: ReviewFnConfig): 
   if (config.inference.auth === "workload-identity") allowed.push("OPENAI_WORKLOAD_IDENTITY_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL");
   if (config.inference.auth === "action-proxy") allowed.push("OPENAI_BASE_URL", "CODEX_API_BASE_URL");
   if (config.inference.credentialEnv) allowed.push(config.inference.credentialEnv);
-  return Object.fromEntries(allowed.flatMap((key) => source[key] === undefined ? [] : [[key, source[key]]]));
+  const environment: NodeJS.ProcessEnv = Object.fromEntries(allowed.flatMap((key) => source[key] === undefined ? [] : [[key, source[key]]]));
+  if (config.inference.auth === "api-key" && config.inference.credentialEnv) environment.CODEX_API_KEY = source[config.inference.credentialEnv];
+  return environment;
 }
 
 function emptyFailure(terminal: HarnessOutput["terminal"], error: string): HarnessOutput {

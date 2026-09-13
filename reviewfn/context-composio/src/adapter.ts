@@ -209,7 +209,7 @@ function pageInfo(value: unknown): { hasNextPage: boolean; endCursor?: string } 
 
 function collectWorkspaceCandidates(issue: Record<string, unknown>): string[] {
   const result = new Set<string>();
-  for (const record of records(issue)) {
+  for (const record of [issue]) {
     for (const key of ["workspace", "workspaceId", "organization", "organizationId"]) {
       const value = record[key];
       if (typeof value === "string") result.add(value);

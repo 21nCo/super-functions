@@ -68,3 +68,10 @@ it("blocks override instructions before invoking the model", async () => {
   let invoked = false; const adapter = new CodexHarnessAdapter({ runner: async () => { invoked = true; throw new Error("unexpected"); } });
   expect((await adapter.run({ ...baseInput, change: { ...baseInput.change, changedPaths: ["nested/AGENTS.override.md"] } })).terminal).toBe("failed"); expect(invoked).toBe(false);
 });
+
+it("maps the configured API credential to Codex while excluding publication credentials", async () => {
+  let environment: NodeJS.ProcessEnv = {};
+  const adapter = new CodexHarnessAdapter({ environment: { REVIEW_AUTH: "custom-private-key", GITHUB_TOKEN: "publication-private-key", PATH: process.env.PATH }, runner: async (_command, _args, options) => { environment = options.env; return { code: 0, signal: null, stdout: "codex-cli 0.154.0", stderr: "", timedOut: false, canceled: false }; } });
+  await adapter.preflight({ ...baseInput.configuration, inference: { provider: "openai", model: "gpt-5.6-sol", auth: "api-key", credentialEnv: "REVIEW_AUTH" } });
+  expect(environment.CODEX_API_KEY).toBe("custom-private-key"); expect(environment.GITHUB_TOKEN).toBeUndefined();
+});

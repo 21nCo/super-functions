@@ -135,7 +135,7 @@ export class ReviewCoordinator {
       ...executionErrors,
       ...(output.terminal === "completed" ? [] : [`Harness terminal outcome: ${output.terminal}${output.error ? ` (${output.error})` : ""}.`]),
       ...output.uninspected.map((item) => `Uninspected ${item.scope}: ${item.reason}`),
-      ...tests.filter((receipt) => receipt.timedOut || receipt.canceled).map((receipt) => `Test ${receipt.id} did not complete.`),
+      ...tests.filter((receipt) => receipt.exitCode !== 0 || receipt.timedOut || receipt.canceled).map((receipt) => `Test ${receipt.id} did not pass (exit ${String(receipt.exitCode)}).`),
     ];
     const report: ReviewReport = {
       schemaVersion: 1,

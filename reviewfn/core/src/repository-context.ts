@@ -4,15 +4,15 @@ import path from "node:path";
 import { compareCodePoints, digestJson, sha256 } from "./canonical.js";
 import type { ContextAdapter, ContextManifest, ContextRequest, ContextSource, PreflightResult } from "./types.js";
 
-async function collectMarkdown(root: string, maxDepth: number, maxEntries: number, relative = "", state = { visited: 0 }): Promise<string[]> {
+async function collectMarkdown(root: string, maxDepth: number, maxEntries: number, relative = "", state: { visited: number; reasons: string[] } = { visited: 0, reasons: [] }): Promise<string[]> {
   const directory = path.join(root, relative);
   const result: string[] = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (++state.visited > maxEntries) throw new Error("Context directory traversal budget exhausted.");
+    if (++state.visited > maxEntries) { state.reasons.push("Context directory traversal budget exhausted."); break; }
     if (entry.name === ".git" || entry.name === "node_modules") continue;
     const next = path.posix.join(relative.split(path.sep).join(path.posix.sep), entry.name);
     if (entry.isSymbolicLink()) continue;
-    if (entry.isDirectory()) { if (next.split("/").length >= maxDepth) throw new Error("Context directory depth budget exhausted."); result.push(...await collectMarkdown(root, maxDepth, maxEntries, next, state)); }
+    if (entry.isDirectory()) { if (next.split("/").length >= maxDepth) { state.reasons.push(`Context directory depth budget exhausted at ${next}.`); continue; } result.push(...await collectMarkdown(root, maxDepth, maxEntries, next, state)); }
     else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) result.push(next);
   }
   return result;
@@ -24,15 +24,15 @@ function safeRelative(input: string): string {
   return normalized;
 }
 
-async function expandPaths(root: string, patterns: readonly string[], limits: ContextManifest["limits"]): Promise<string[]> {
-  const traversal = { visited: 0 };
+async function expandPaths(root: string, patterns: readonly string[], limits: ContextManifest["limits"], reasons: string[]): Promise<string[]> {
+  const traversal = { visited: 0, reasons };
   const selected = new Set<string>();
   for (const raw of patterns) {
     const pattern = safeRelative(raw);
     if (pattern === "**/*.md" || pattern.endsWith("/**/*.md")) {
       const prefix = pattern === "**/*.md" ? "" : pattern.slice(0, -"**/*.md".length);
       const allMarkdown = await collectMarkdown(root, limits.maxDepth, limits.maxSources * 100, prefix.replace(/\/$/, ""), traversal);
-      if (!allMarkdown.length) throw new Error(`Configured context glob ${raw} matched no sources.`);
+      if (!allMarkdown.length) reasons.push(`Configured context glob ${raw} matched no sources.`);
       for (const candidate of allMarkdown) if (candidate.startsWith(prefix)) selected.add(candidate);
     } else if (!pattern.includes("*")) selected.add(pattern);
     else throw new Error(`Unsupported context glob ${raw}; use an exact path or **/*.md.`);
@@ -55,7 +55,7 @@ export class RepositoryMarkdownContextAdapter implements ContextAdapter {
     const sources: ContextSource[] = [];
     const incompleteReasons: string[] = [];
     let consumed = 0;
-    const paths = await expandPaths(root, request.paths ?? [], request.limits);
+    const paths = await expandPaths(root, request.paths ?? [], request.limits, incompleteReasons);
     if (!paths.length) incompleteReasons.push("Configured Markdown paths matched no sources.");
     for (const relative of paths) {
       if (sources.length >= request.limits.maxSources) { incompleteReasons.push(`Repository Markdown source limit ${request.limits.maxSources} reached.`); break; }

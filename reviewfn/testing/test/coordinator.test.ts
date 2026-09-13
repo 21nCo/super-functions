@@ -69,3 +69,10 @@ it("uses content identity across attempts with different collection timestamps",
   const a = await coordinator.run(request); const b = await coordinator.run(request);
   expect(a.report.runId).toBe(b.report.runId); expect(a.report.attemptId).not.toBe(b.report.attemptId);
 });
+
+it("keeps configured test failures incomplete even when the model omits their receipts", async () => {
+  const execution = new FakeExecutionAdapter([{ id: "failed-test", command: ["node", "test.js"], cwd: ".", commit: "b".repeat(40), startedAt: "now", finishedAt: "now", runtimeMs: 1, exitCode: 1, signal: null, timedOut: false, canceled: false, stdoutDigest: "d", stderrDigest: "e", limitations: [] }]);
+  const coordinator = new ReviewCoordinator({ sourceControl: new FakeSourceControlAdapter(), contexts: [new FakeContextAdapter("fixture", manifest)], harness: new FakeHarnessAdapter(output), execution, artifacts: new MemoryArtifactStore() });
+  const result = await coordinator.run({ root: ".", base: "base", head: "head", config, policy: { ...DEFAULT_POLICY, requiredCategories: ["behavior"] } });
+  expect(result.report.coverage).toBe("incomplete"); expect(result.report.verdict).toBe("needs_verification"); expect(result.report.coverageReasons.join()).toMatch(/did not pass/);
+});
