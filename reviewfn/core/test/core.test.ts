@@ -131,7 +131,11 @@ it("removes orphaned data after a failed metadata commit", async () => {
   const store = new FileArtifactStore(root);
   const original = safeFiles.safeWrite;
   const spy = vi.spyOn(safeFiles, "safeWrite").mockImplementation(async (file, content) => {
-    if (file.endsWith(".json")) throw new Error("simulated metadata failure");
+    if (file.endsWith(".json")) {
+      const lease = JSON.parse(await readFile(path.join(root, ".retention.lock"), "utf8"));
+      expect(lease.pid).toBe(process.pid); expect(lease.hostname).toBeTruthy(); expect(Number.isFinite(Date.parse(lease.acquiredAt))).toBe(true);
+      throw new Error("simulated metadata failure");
+    }
     return original(file, content);
   });
   try { await expect(store.put("report", "private-content", 30)).rejects.toThrow(/simulated/); }
@@ -149,4 +153,14 @@ it("preserves both report copies when one export was externally changed", async 
   expect((await store.deleteExpired(new Date(Date.now() + 2 * 86_400_000))).errors.join()).toMatch(/changed/);
   expect(await readFile(path.join(root, "report.json"), "utf8")).toBe("original-json");
   expect(await readFile(path.join(root, "report.md"), "utf8")).toBe("user-modified");
+});
+
+it.each([[Buffer.from([255, 255]), "failed", ""], [Buffer.from("a😀b"), "truncated", "a"]] as const)("bounds emitted Markdown bytes without replacement expansion", async (bytes, status, content) => {
+  const root = await mkdtemp(path.join(tmpdir(), "reviewfn-utf8-"));
+  await writeFile(path.join(root, "README.md"), bytes);
+  const result = await new RepositoryMarkdownContextAdapter().fetch({ root, paths: ["README.md"], limits: { maxSources: 1, maxBytes: 2, maxDepth: 2 } });
+  expect(result.sources[0].status).toBe(status);
+  expect(result.sources[0].content ?? "").toBe(content);
+  expect(Buffer.byteLength(result.sources[0].content ?? "")).toBeLessThanOrEqual(2);
+  expect(result.incompleteReasons.length).toBeGreaterThan(0);
 });

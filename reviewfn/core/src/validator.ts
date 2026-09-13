@@ -1,5 +1,5 @@
 import { sha256 } from "./canonical.js";
-import type { ArtifactStore, ContextManifest, SourceReference, Assessment, Evidence, ReportPublisher, ReviewPolicy, ReviewReport, SourceControlAdapter, Verdict } from "./types.js";
+import type { CodeAnchor, ArtifactStore, ContextManifest, SourceReference, Assessment, Evidence, ReportPublisher, ReviewPolicy, ReviewReport, SourceControlAdapter, Verdict } from "./types.js";
 
 export interface ValidationResult {
   valid: boolean;
@@ -77,6 +77,19 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
   for (const finding of report.findings) {
     if (["resolved", "superseded"].includes(finding.lifecycle)) errors.push(`Finding ${finding.fingerprint} claims a historical lifecycle without supplied prior finding provenance.`);
     if (!finding.evidenceIds.length) errors.push(`Finding ${finding.fingerprint} has no evidence.`);
+    if (!finding.evidenceIds.some(id => ["code", "diff", "test"].includes(evidence.get(id)?.kind ?? ""))) errors.push(`Finding ${finding.fingerprint} has no implementation evidence.`);
+    if (finding.basis === "reproduced") {
+      let reproduced = false;
+      for (const id of finding.evidenceIds) {
+        const item = evidence.get(id);
+        const receipt = item?.kind === "test" ? report.tests.find(test => test.id === item.receiptId && test.commit === report.change.headCommit && test.exitCode !== null && !test.timedOut && !test.canceled) : undefined;
+        if (!receipt || !artifacts) continue;
+        const stdout = receipt.stdoutArtifact ? await artifacts.get(receipt.stdoutArtifact) : undefined;
+        const stderr = receipt.stderrArtifact ? await artifacts.get(receipt.stderrArtifact) : undefined;
+        if (stdout && stderr && sha256(stdout) === receipt.stdoutDigest && sha256(stderr) === receipt.stderrDigest) reproduced = true;
+      }
+      if (!reproduced) errors.push(`Finding ${finding.fingerprint} claims reproduction without a completed test receipt and verified retained logs.`);
+    }
     if (!finding.trigger || !finding.impact || !finding.direction) errors.push(`Finding ${finding.fingerprint} is missing actionable detail.`);
     for (const id of finding.evidenceIds) if (!evidence.has(id)) errors.push(`Finding ${finding.fingerprint} references unknown evidence ${id}.`);
     for (const id of finding.requirementIds) if (!requirementIds.includes(id)) errors.push(`Finding ${finding.fingerprint} references unknown requirement ${id}.`);
@@ -103,17 +116,18 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
     }
   }
   if (sourceControl && root) {
+    const allowedCommit = async (anchor: CodeAnchor): Promise<boolean> => anchor.commit === report.change.headCommit || (anchor.commit === report.change.baseCommit && report.change.changedPaths.includes(anchor.path) && !!sourceControl.pathExists && !(await sourceControl.pathExists(root, report.change.headCommit, anchor.path)));
     for (const inspected of report.inspectedPaths) {
       const inHead = await sourceControl.verifyAnchor(root, { commit: report.change.headCommit, path: inspected, startLine: 1 });
       const deletedFromBase = !inHead && report.change.changedPaths.includes(inspected) && await sourceControl.verifyAnchor(root, { commit: report.change.baseCommit, path: inspected, startLine: 1 });
       if (!inHead && !deletedFromBase) errors.push(`Inspected path ${inspected} does not exist in the reviewed change.`);
     }
     for (const item of report.evidence) {
-      if (item.code && item.code.commit !== report.change.headCommit) errors.push(`Evidence ${item.id} does not reference reviewed head ${report.change.headCommit}.`);
+      if (item.code && !(await allowedCommit(item.code))) errors.push(`Evidence ${item.id} does not reference reviewed head ${report.change.headCommit}.`);
       if (item.code && !(await sourceControl.verifyAnchor(root, item.code))) errors.push(`Evidence ${item.id} has an invalid code anchor.`);
     }
     for (const finding of report.findings) {
-      if (finding.anchor && finding.anchor.commit !== report.change.headCommit) errors.push(`Finding ${finding.fingerprint} does not reference reviewed head.`);
+      if (finding.anchor && !(await allowedCommit(finding.anchor))) errors.push(`Finding ${finding.fingerprint} does not reference reviewed head.`);
       if (finding.anchor && !(await sourceControl.verifyAnchor(root, finding.anchor))) errors.push(`Finding ${finding.fingerprint} has an invalid code anchor.`);
     }
   }

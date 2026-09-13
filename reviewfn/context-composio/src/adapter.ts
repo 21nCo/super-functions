@@ -67,7 +67,8 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
       const original = source.content ?? "";
       const remaining = request.limits.maxBytes - consumed;
       if (remaining <= 0) { incompleteReasons.push(`Linear byte limit ${request.limits.maxBytes} reached.`); return false; }
-      const content = Buffer.byteLength(original) <= remaining ? original : Buffer.from(original).subarray(0, remaining).toString("utf8");
+      const bytes = Buffer.from(original);
+      const content = bytes.length <= remaining ? original : new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes.subarray(0, remaining), { stream: true });
       const status = content === original ? source.status : "truncated";
       sources.push({ ...source, status, content, digest: sha256(content) });
       consumed += Buffer.byteLength(content);

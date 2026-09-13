@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import { constants } from "node:fs";
 import { lstat, open, readdir, rm } from "node:fs/promises";
 import path from "node:path";
@@ -33,7 +34,7 @@ export class FileArtifactStore implements ArtifactStore {
         await new Promise(resolve => setTimeout(resolve, 50));
       }
     }
-    try { return await action(); } finally { await handle!.close(); await rm(file); }
+    try { await handle!.writeFile(JSON.stringify({ pid: process.pid, hostname: hostname(), acquiredAt: new Date().toISOString() })); return await action(); } finally { await handle!.close(); await rm(file); }
   }
 
   private async putUnlocked(kind: string, content: string | Uint8Array, retentionDays: number): Promise<{ digest: string; id: string }> {

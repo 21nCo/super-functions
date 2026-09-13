@@ -1,20 +1,21 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import { compareCodePoints, sha256, type ChangeSnapshot, type CodeAnchor, type SourceControlAdapter } from "@superfunctions/reviewfn-core";
+import { isolatedGitEnvironment, compareCodePoints, sha256, type ChangeSnapshot, type CodeAnchor, type SourceControlAdapter } from "@superfunctions/reviewfn-core";
 
 const execFileAsync = promisify(execFile);
 export type GitRunner = (args: string[], cwd: string) => Promise<string>;
 const defaultRunner: GitRunner = async (args, cwd) => {
   const [command, ...parameters] = args;
-  const options = { cwd, maxBuffer: 50 * 1024 * 1024 };
+  const options = { cwd, env: isolatedGitEnvironment(), maxBuffer: 50 * 1024 * 1024 };
   // Keep each permitted subcommand literal at the process boundary. Repository input cannot select git transport commands.
   switch (command) {
     case "rev-parse": return (await execFileAsync("git", ["rev-parse", ...parameters], options)).stdout;
     case "config": return (await execFileAsync("git", ["config", ...parameters], options)).stdout;
     case "status": return (await execFileAsync("git", ["status", ...parameters], options)).stdout;
     case "merge-base": return (await execFileAsync("git", ["merge-base", ...parameters], options)).stdout;
-    case "diff": return (await execFileAsync("git", ["diff", ...parameters], options)).stdout;
+    case "diff": return (await execFileAsync("git", ["diff", "--no-ext-diff", "--no-textconv", ...parameters], options)).stdout;
+    case "cat-file": return (await execFileAsync("git", ["cat-file", ...parameters], options)).stdout;
     case "show": return (await execFileAsync("git", ["show", ...parameters], options)).stdout;
     default: throw new Error("Unsupported read-only Git operation.");
   }
@@ -65,6 +66,12 @@ export class GitSourceControlAdapter implements SourceControlAdapter {
   public async currentHead(root: string, pullRequest?: number): Promise<string> {
     if (pullRequest !== undefined && this.options.currentPullRequestHead) return this.options.currentPullRequestHead(pullRequest);
     return (await this.runner(["rev-parse", "HEAD"], root)).trim();
+  }
+
+  public async pathExists(root: string, commit: string, file: string): Promise<boolean> {
+    if (!/^[a-f0-9]{40,64}$/.test(commit) || !file || file.startsWith("/") || file.split(/[\\/]/).includes("..")) return false;
+    try { await this.runner(["cat-file", "-e", `${commit}:${file}`], root); return true; }
+    catch (error) { if ([1, 128].includes((error as { code?: number }).code ?? 0)) return false; throw error; }
   }
 
   public async verifyAnchor(root: string, anchor: CodeAnchor): Promise<boolean> {

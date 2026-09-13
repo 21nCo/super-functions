@@ -3,7 +3,7 @@ import { mkdtemp, rm, mkdir, writeFile, stat, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { sha256, redactText, type ArtifactStore, type ExecutionAdapter, type PreflightResult, type ReviewPolicy, type TestReceipt } from "@superfunctions/reviewfn-core";
+import { isolatedGitEnvironment, sha256, redactText, type ArtifactStore, type ExecutionAdapter, type PreflightResult, type ReviewPolicy, type TestReceipt } from "@superfunctions/reviewfn-core";
 
 // This image is resolved to a digest before executing any repository command.
 export const TEST_IMAGE = "node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5";
@@ -33,7 +33,7 @@ export class LocalIsolatedExecutionAdapter implements ExecutionAdapter {
       const totalSize = inventory.stdout.split("\n").reduce((sum, line) => sum + Number(line.match(/^\d+ blob [a-f0-9]+\s+(\d+)\t/)?.[1] ?? 0), 0);
       if (inventory.exitCode !== 0 || inventory.outputLimited || totalSize > 256 * 1024 * 1024) throw new Error("Repository archive exceeds the 256 MiB input budget.");
       const archiveRepo = path.join(owned, "archive.git");
-      const cloned = await runProcess("git", ["clone", "--bare", "--shared", "--", root, archiveRepo], root, 60_000, 64_000, signal);
+      const cloned = await runProcess("git", ["clone", "--template=", "--bare", "--shared", "--", root, archiveRepo], root, 60_000, 64_000, signal);
       if (cloned.exitCode !== 0) throw new Error("Unable to prepare archive repository.");
       await mkdir(path.join(archiveRepo, "info"), { recursive: true });
       await writeFile(path.join(archiveRepo, "info", "attributes"), "* -export-ignore -export-subst\n");
@@ -70,7 +70,7 @@ async function runProcess(command: string, args: string[], cwd: string, timeoutM
   if (signal?.aborted) return { exitCode: null, signal: null, stdout: "", stderr: "", timedOut: false, canceled: true, runtimeMs: 0, outputLimited: false };
   return new Promise((resolve, reject) => {
     const started = Date.now();
-    const env = Object.fromEntries(["PATH", "HOME", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "TMPDIR"].flatMap(key => process.env[key] ? [[key, process.env[key]]] : []));
+    const env = command === "git" ? isolatedGitEnvironment() : Object.fromEntries(["PATH", "HOME", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "TMPDIR"].flatMap(key => process.env[key] ? [[key, process.env[key]]] : []));
     const child = spawn(command, args, { cwd, env, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", stderr = "", bytes = 0;
     let timedOut = false, canceled = false, outputLimited = false;

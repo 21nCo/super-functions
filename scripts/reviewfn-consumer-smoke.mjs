@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -8,7 +8,15 @@ export async function consumerSmoke(consumer) {
   const gitExecutable = await resolveTrustedExecutable("git");
   const fixture = path.join(consumer, "fixture"); mkdirSync(fixture);
   const binary = path.join(consumer, "node_modules/@superfunctions/reviewfn-cli/dist/main.js");
-  const run = args => execFileSync(process.execPath, [binary, ...args], { cwd: fixture, encoding: "utf8", timeout: 60_000, env: { ...process.env, GITHUB_TOKEN: "", GITHUB_BASE_REF: "unrelated-workflow-base", REVIEWFN_SMOKE_AUTH: "fixture-only-noncredential" } });
+  const filterConfig = path.join(consumer, "host-filter.config");
+  const filterMarker = path.join(consumer, "host-filter-ran");
+  const filterScript = path.join(consumer, "host-filter.cjs");
+  writeFileSync(filterScript, `require('fs').writeFileSync(${JSON.stringify(filterMarker)}, 'unsafe');process.stdout.write(require('fs').readFileSync(0));`);
+  const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+  execFileSync(gitExecutable, ["config", "--file", filterConfig, "filter.reviewfn-fixture.smudge", `${quote(process.execPath)} ${quote(filterScript)}`]);
+  execFileSync(gitExecutable, ["config", "--file", filterConfig, "filter.reviewfn-fixture.clean", `${quote(process.execPath)} ${quote(filterScript)}`]);
+  execFileSync(gitExecutable, ["config", "--file", filterConfig, "filter.reviewfn-fixture.required", "true"]);
+  const run = args => execFileSync(process.execPath, [binary, ...args], { cwd: fixture, encoding: "utf8", timeout: 60_000, env: { ...process.env, GIT_CONFIG_GLOBAL: filterConfig, GITHUB_TOKEN: "", GITHUB_BASE_REF: "unrelated-workflow-base", REVIEWFN_SMOKE_AUTH: "fixture-only-noncredential" } });
   run(["init"]);
   const harness = path.join(consumer, "fixture-codex.cjs");
   writeFileSync(harness, `#!${process.execPath}
@@ -23,6 +31,7 @@ fs.writeFileSync(process.argv[process.argv.indexOf('--output-last-message')+1],J
   writeFileSync(path.join(fixture, ".reviewfn/config.json"), JSON.stringify(config));
   writeFileSync(path.join(fixture, ".reviewfn/policy.json"), JSON.stringify({ ...DEFAULT_POLICY, requiredCategories: ["behavior"] }));
   writeFileSync(path.join(fixture, "README.md"), "Return the value\n"); writeFileSync(path.join(fixture, "value.js"), "export const value = 1;\n");
+  writeFileSync(path.join(fixture, ".gitattributes"), "value.js filter=reviewfn-fixture\n");
   const git = args => execFileSync(gitExecutable, args, { cwd: fixture, encoding: "utf8" });
   git(["init", "-q"]); git(["remote", "add", "origin", "sensitive-user@github.com:acme/fixture.git"]); git(["add", "."]); git(["-c", "user.name=ReviewFn", "-c", "user.email=reviewfn@example.invalid", "commit", "-qm", "fixture"]);
   const base = git(["rev-parse", "HEAD"]).trim();
@@ -32,6 +41,7 @@ fs.writeFileSync(process.argv[process.argv.indexOf('--output-last-message')+1],J
   const head = git(["rev-parse", "HEAD"]).trim();
   if (!JSON.parse(run(["preflight", "--base", base, "--head", head])).ok) throw new Error("External preflight failed.");
   run(["review", "--base", "reviewfn-base", "--head", head, "--output", "../output"]);
+  if (existsSync(filterMarker)) throw new Error("Snapshot checkout executed an inherited host Git filter.");
   const reportPath = path.join(consumer, "output/report.json"); const report = JSON.parse(readFileSync(reportPath, "utf8"));
   if (report.change.targetBranch !== "reviewfn-base" || report.verdict !== "ready" || report.change.headCommit !== head || report.requirements.length !== 1 || !report.change.changedPaths.includes("value.js")) throw new Error(`External consumer review failed: ${JSON.stringify(report.coverageReasons)}`);
   if (!run(["render", "--input", reportPath]).includes("Return the value")) throw new Error("External render failed.");
@@ -41,5 +51,10 @@ fs.writeFileSync(process.argv[process.argv.indexOf('--output-last-message')+1],J
   catch (error) { cleanupFailure = error; }
   if (cleanupFailure?.status !== 1 || !String(cleanupFailure.stderr).includes("REVIEWFN_RETENTION_CLEANUP_FAILED")) throw new Error("External consumer silently ignored retention cleanup failure.");
   if (JSON.parse(readFileSync(reportPath, "utf8")).verdict !== "ready") throw new Error("Cleanup failure lost the completed local report.");
+  const { GitSourceControlAdapter } = await import(pathToFileURL(path.join(consumer, "node_modules/@superfunctions/reviewfn-github/dist/index.js")));
+  const sourceControl = new GitSourceControlAdapter();
+  if (!(await sourceControl.pathExists(fixture, head, "value.js")) || await sourceControl.pathExists(fixture, head, "absent.js")) throw new Error("Installed source adapter misclassified path existence.");
+  execFileSync(gitExecutable, ["cat-file", "--filters", `${head}:value.js`], { cwd: fixture, env: { ...process.env, GIT_CONFIG_GLOBAL: filterConfig } });
+  if (!existsSync(filterMarker)) throw new Error("Host-filter regression fixture did not exercise a working external filter.");
   return { head, verdict: report.verdict, harness: "deterministic fixture, not model-quality evidence", commands: ["init", "preflight", "review", "render"], artifacts: true };
 }

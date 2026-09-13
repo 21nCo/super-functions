@@ -177,3 +177,41 @@ it("requires an explanation for uninspected changed scope", async () => {
   const value = report(); value.change.changedPaths.push("other.ts"); value.uninspected = [{ scope: "other.ts", reason: " " }];
   const result = await errors(value); expect(result.join()).toMatch(/nonblank/); expect(result.join()).toMatch(/cannot claim complete/);
 });
+
+it("rejects a defect finding backed only by requirement text", async () => {
+  const value = report(); value.verdict = "changes_requested";
+  value.evidence.push({ id: "source-only", kind: "source", description: "requirement", source: { sourceId: "issue", anchor: "L1" } });
+  value.findings = [{ fingerprint: "f", severity: "high", category: "behavior", title: "Bug", trigger: "input", impact: "wrong", direction: "fix", evidenceIds: ["source-only"], basis: "inferred", requirementIds: ["r"], lifecycle: "new" }];
+  expect((await errors(value)).join()).toMatch(/no implementation evidence/);
+});
+
+it("requires completed receipts with verified retained logs for reproduced findings", async () => {
+  const value = report(); value.verdict = "changes_requested";
+  value.findings = [{ fingerprint: "f", severity: "high", category: "behavior", title: "Bug", trigger: "input", impact: "wrong", direction: "fix", evidenceIds: ["e"], basis: "reproduced", requirementIds: ["r"], lifecycle: "new" }];
+  expect((await errors(value)).join()).toMatch(/completed test receipt/);
+  const store = new FileArtifactStore(await temporary());
+  const stdout = await store.put("test-stdout", "observed defect", 1);
+  const stderr = await store.put("test-stderr", "", 1);
+  value.tests = [{ id: "t", command: ["node", "probe.js"], cwd: ".", commit: value.change.headCommit, startedAt: "now", finishedAt: "now", runtimeMs: 1, exitCode: 0, signal: null, timedOut: false, canceled: false, stdoutArtifact: stdout.id, stderrArtifact: stderr.id, stdoutDigest: stdout.digest, stderrDigest: stderr.digest, limitations: [] }];
+  value.evidence.push({ id: "test", kind: "test", description: "observed probe", receiptId: "t" }); value.findings[0].evidenceIds = ["test"];
+  const validate = () => validateReport(value, policy, source, ".", context, store);
+  expect((await validate()).errors).toEqual([]);
+  value.tests[0].stdoutDigest = "0".repeat(64);
+  expect((await validate()).errors.join()).toMatch(/verified retained logs/);
+  value.tests[0].stdoutDigest = stdout.digest; value.tests[0].canceled = true;
+  expect((await validate()).errors.join()).toMatch(/completed test receipt/);
+});
+
+it("accepts immutable base anchors only for changed paths proven absent from the head", async () => {
+  const value = report(); value.verdict = "changes_requested";
+  value.evidence[0].code!.commit = value.change.baseCommit;
+  value.findings = [{ fingerprint: "f", severity: "high", category: "behavior", title: "Removed required code", trigger: "call", impact: "missing", direction: "restore", anchor: value.evidence[0].code, evidenceIds: ["e"], basis: "inferred", requirementIds: ["r"], lifecycle: "new" }];
+  let exists = false;
+  const adapter = { ...source, pathExists: async () => exists, verifyAnchor: async (_root: string, anchor: { commit: string }) => anchor.commit === value.change.baseCommit };
+  const validate = () => validateReport(value, policy, adapter, ".", context);
+  expect((await validate()).errors).toEqual([]);
+  exists = true;
+  expect((await validate()).errors.join()).toMatch(/does not reference reviewed head/);
+  exists = false; value.change.changedPaths = [];
+  expect((await validate()).errors.join()).toMatch(/does not reference reviewed head/);
+});

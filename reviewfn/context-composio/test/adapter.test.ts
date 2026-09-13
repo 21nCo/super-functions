@@ -157,3 +157,15 @@ it.each(["comments", "documents", "document-body"])("propagates cancellation dur
   };
   await expect(new ComposioLinearContextAdapter({ runner }).fetch({ ...request, signal: controller.signal })).rejects.toThrow(/canceled/);
 });
+
+it("truncates Linear context at a complete UTF-8 boundary", async () => {
+  const runner: ComposioRunner = async () => ({ code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "😀title", organization: { id: "workspace-1" }, comments: { nodes: [], pageInfo: { hasNextPage: false } }, documents: { nodes: [], pageInfo: { hasNextPage: false } } } }) });
+  const adapter = new ComposioLinearContextAdapter({ runner });
+  const full = await adapter.fetch(request);
+  const maxBytes = Buffer.from(full.sources[0].content!).indexOf(Buffer.from("😀")) + 2;
+  expect(maxBytes).toBeGreaterThan(2);
+  const result = await adapter.fetch({ ...request, limits: { ...request.limits, maxBytes } });
+  expect(result.sources[0].status).toBe("truncated");
+  expect(Buffer.byteLength(result.sources[0].content!)).toBeLessThanOrEqual(maxBytes);
+  expect(result.sources[0].content).not.toContain("�");
+});

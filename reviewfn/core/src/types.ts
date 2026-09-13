@@ -273,6 +273,7 @@ export interface SourceControlAdapter {
   capture(root: string, base: string, head: string, pullRequest?: number): Promise<ChangeSnapshot>;
   currentHead(root: string, pullRequest?: number): Promise<string>;
   verifyAnchor(root: string, anchor: CodeAnchor): Promise<boolean>;
+  pathExists?(root: string, commit: string, path: string): Promise<boolean>;
 }
 
 export interface HarnessAdapter {

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import path from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, devNull } from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 import { ComposioLinearContextAdapter } from "@superfunctions/reviewfn-context-composio";
-import { safeRead, FileArtifactStore, RepositoryMarkdownContextAdapter, ReviewCoordinator, ReviewFnError, renderMarkdownReport, validateConfig, validatePolicy, type ContextAdapter, type ReviewFnConfig, type ReviewPolicy, type ReviewReport } from "@superfunctions/reviewfn-core";
+import { isolatedGitEnvironment, safeRead, FileArtifactStore, RepositoryMarkdownContextAdapter, ReviewCoordinator, ReviewFnError, renderMarkdownReport, validateConfig, validatePolicy, type ContextAdapter, type ReviewFnConfig, type ReviewPolicy, type ReviewReport } from "@superfunctions/reviewfn-core";
 import { redactRepositoryRemote, githubRepositoryIdentity, GitHubAdvisoryPublisher, GitHubApi, GitSourceControlAdapter } from "@superfunctions/reviewfn-github";
 import { CodexHarnessAdapter } from "@superfunctions/reviewfn-harness-codex";
 import { evaluate, type EvaluationCase, type EvaluationOutcome } from "@superfunctions/reviewfn-testing";
@@ -120,10 +120,11 @@ async function run(): Promise<number> {
   const owned = await mkdtemp(path.join(tmpdir(), "reviewfn-run-"));
   try {
   const snapshot = path.join(owned, "checkout");
+  const snapshotEnvironment = isolatedGitEnvironment();
   const immutableHead = (await execFileAsync("git", ["rev-parse", "--verify", "--end-of-options", `${head}^{commit}`], { cwd: root })).stdout.trim();
   const immutableBase = (await execFileAsync("git", ["rev-parse", "--verify", "--end-of-options", `${base}^{commit}`], { cwd: root })).stdout.trim();
-  await execFileAsync("git", ["-c", "core.hooksPath=/dev/null", "clone", "--no-local", "--no-checkout", root, snapshot], { maxBuffer: 1_000_000 });
-  await execFileAsync("git", ["-c", "core.hooksPath=/dev/null", "checkout", "--detach", immutableHead], { cwd: snapshot, maxBuffer: 1_000_000 });
+  await execFileAsync("git", ["-c", `core.hooksPath=${devNull}`, "clone", "--template=", "--no-local", "--no-checkout", root, snapshot], { env: snapshotEnvironment, maxBuffer: 1_000_000 });
+  await execFileAsync("git", ["-c", `core.hooksPath=${devNull}`, "-c", `core.attributesFile=${devNull}`, "-c", "core.autocrlf=false", "checkout", "--detach", immutableHead], { cwd: snapshot, env: snapshotEnvironment, maxBuffer: 1_000_000 });
   const remote = (await execFileAsync("git", ["config", "--get", "remote.origin.url"], { cwd: root }).catch(() => ({ stdout: "local" }))).stdout.trim();
   const safeRemote = redactRepositoryRemote(remote);
   await execFileAsync("git", ["remote", "set-url", "origin", safeRemote], { cwd: snapshot });

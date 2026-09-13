@@ -74,10 +74,10 @@ export class RepositoryMarkdownContextAdapter implements ContextAdapter {
         const buffer = Buffer.alloc(Math.min(stat.size, remaining));
         let count = 0;
         try { count = (await handle.read(buffer, 0, buffer.length, 0)).bytesRead; } finally { await handle.close(); }
-        const content = buffer.subarray(0, count).toString("utf8");
-        const bytes = stat.size;
-        const available = bytes <= remaining ? content : Buffer.from(content).subarray(0, remaining).toString("utf8");
-        const status = bytes <= remaining ? "available" as const : "truncated" as const;
+        // Reject malformed input; leave an incomplete trailing code point buffered
+        // when this is only a prefix, rather than expanding it to U+FFFD.
+        const available = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buffer.subarray(0, count), { stream: count < stat.size });
+        const status = count < stat.size ? "truncated" as const : "available" as const;
         sources.push({ id: `repo:${relative}`, type: "repository_markdown", canonicalUrl: `repo://${relative}`, retrievedAt: new Date().toISOString(), updatedAt: stat.mtime.toISOString(), digest: sha256(available), status, content: available });
         consumed += Buffer.byteLength(available);
         if (status === "truncated") { incompleteReasons.push(`${relative} was truncated by the context byte limit.`); break; }
