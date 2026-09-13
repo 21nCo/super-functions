@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { ReviewReport } from "@superfunctions/reviewfn-core";
 import { githubRepositoryIdentity, GitHubAdvisoryPublisher, GitHubApi, GitSourceControlAdapter } from "../src/index.js";
 
-function report(): ReviewReport {
-  return { schemaVersion: 1, runId: "run1", attemptId: "attempt", createdAt: "2026-01-01T00:00:00Z", change: { repositoryId: "repo", host: "github.com", pullRequest: 1, targetBranch: "main", baseCommit: "a".repeat(40), headCommit: "b".repeat(40), mergeBaseCommit: "a".repeat(40), diffDigest: "d".repeat(64), changedPaths: [], capturedAt: "2026-01-01T00:00:00Z" }, contextManifestDigest: "c".repeat(64), contextManifestArtifact: `context-manifest-${"c".repeat(64)}`, configuration: { schemaVersion: 1, policyDigest: "p", promptDigest: "q", harness: { id: "codex", version: "1" }, inference: { provider: "openai", model: "model", auth: "api-key" }, execution: { adapter: "isolated", timeoutMs: 1, maxOutputBytes: 1 }, contextAdapters: [], profile: "requirements" }, execution: "completed", coverage: "complete", coverageReasons: [], verdict: "ready", requirements: [], assessments: [], evidence: [], findings: [], tests: [], inspectedPaths: [], uninspected: [], limitations: [] };
+function report(repository = "repo"): ReviewReport {
+  return { schemaVersion: 1, runId: "run1", attemptId: "attempt", createdAt: "2026-01-01T00:00:00Z", change: { repositoryId: `https://github.com/acme/${repository}`, host: "github.com", pullRequest: 1, targetBranch: "main", baseCommit: "a".repeat(40), headCommit: "b".repeat(40), mergeBaseCommit: "a".repeat(40), diffDigest: "d".repeat(64), changedPaths: [], capturedAt: "2026-01-01T00:00:00Z" }, contextManifestDigest: "c".repeat(64), contextManifestArtifact: `context-manifest-${"c".repeat(64)}`, configuration: { schemaVersion: 1, policyDigest: "p", promptDigest: "q", harness: { id: "codex", version: "1" }, inference: { provider: "openai", model: "model", auth: "api-key" }, execution: { adapter: "isolated", timeoutMs: 1, maxOutputBytes: 1 }, contextAdapters: [], profile: "requirements" }, execution: "completed", coverage: "complete", coverageReasons: [], verdict: "ready", requirements: [], assessments: [], evidence: [], findings: [], tests: [], inspectedPaths: [], uninspected: [], limitations: [] };
 }
 
 describe("GitSourceControlAdapter", () => {
@@ -66,7 +66,7 @@ it("does not write when the PR advances during comment listing", async () => {
     head = "c".repeat(40); return Response.json([]);
   };
   const publisher = new GitHubAdvisoryPublisher({ api: new GitHubApi({ owner: "acme", repository: "race", token: "secret", fetch: fetcher }), pullRequest: 1 });
-  expect((await publisher.publish({ report: report(), rendered: "report", expectedHead: "b".repeat(40), profile: "requirements" })).status).toBe("stale"); expect(writes).toBe(0);
+  expect((await publisher.publish({ report: report("race"), rendered: "report", expectedHead: "b".repeat(40), profile: "requirements" })).status).toBe("stale"); expect(writes).toBe(0);
 });
 it("serializes concurrent delivery and ignores marker spoofing by another author", async () => {
   const comments: Array<{ id: number; body: string; user: { login: string } }> = [{ id: 1, body: "<!-- reviewfn:requirements -->", user: { login: "untrusted" } }]; let creates = 0;
@@ -79,7 +79,7 @@ it("serializes concurrent delivery and ignores marker spoofing by another author
     return Response.json({ id: 3 });
   };
   const options = { api: new GitHubApi({ owner: "acme", repository: "concurrent", token: "secret", fetch: fetcher }), pullRequest: 1 };
-  const request = { report: report(), rendered: "report", expectedHead: "b".repeat(40), profile: "requirements" };
+  const request = { report: report("concurrent"), rendered: "report", expectedHead: "b".repeat(40), profile: "requirements" };
   const results = await Promise.all([new GitHubAdvisoryPublisher(options).publish(request), new GitHubAdvisoryPublisher(options).publish(request)]);
   expect(results.map(result => result.status)).toEqual(["published", "unchanged"]); expect(creates).toBe(1); expect(comments[0].body).toBe("<!-- reviewfn:requirements -->");
 });
@@ -133,4 +133,17 @@ it("classifies drive-relative Windows origins as local", async () => {
 it.each(["tree", "commit", "blob"])("requires a blob for code anchors (%s)", async type => {
   const adapter = new GitSourceControlAdapter({ runner: async args => args[0] === "cat-file" ? type : "implementation" });
   expect(await adapter.verifyAnchor(".", { commit: "a".repeat(40), path: "src", startLine: 1, symbol: "implementation" })).toBe(type === "blob");
+});
+
+it.each(["head", "pull-request", "repository"])("rejects mismatched report publication identity (%s)", async mismatch => {
+  let calls = 0;
+  const api = new GitHubApi({ owner: "acme", repository: "repo", token: "fixture", fetch: async (input, init) => { calls++; const url = String(input); return Response.json(url.includes("/pulls/") ? { head: { sha: "b".repeat(40) } } : url.includes("check-runs") ? { check_runs: [] } : init?.method === "GET" ? [] : { id: 1 }); } });
+  const value = report();
+  if (mismatch === "head") value.change.headCommit = "c".repeat(40);
+  else if (mismatch === "pull-request") value.change.pullRequest = 2;
+  else value.change.repositoryId = "https://github.com/other/repo";
+  const result = await new GitHubAdvisoryPublisher({ api, pullRequest: 1 }).publish({ report: value, rendered: "report", expectedHead: "b".repeat(40), profile: "requirements" });
+  expect(result.status).toBe("failed");
+  expect(result.error).toMatch(/identity/);
+  expect(calls).toBe(0);
 });

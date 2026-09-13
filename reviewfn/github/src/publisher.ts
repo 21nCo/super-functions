@@ -2,6 +2,7 @@ import { type PreflightResult, type PublishRequest, type PublishResult, type Rep
 
 import { publicationLease } from "./lease.js";
 import { GitHubApi } from "./api.js";
+import { githubRepositoryIdentity } from "./git.js";
 
 interface PullRequestResponse { head: { sha: string } }
 interface Comment { id: number; body?: string; user?: { login: string } }
@@ -29,6 +30,7 @@ export class GitHubAdvisoryPublisher implements ReportPublisher {
   }
 
   public async publish(request: PublishRequest): Promise<PublishResult> {
+    if (request.report.change.headCommit !== request.expectedHead || request.report.change.pullRequest !== this.options.pullRequest || this.options.api.endpoint("").toLowerCase() !== `/repos/${githubRepositoryIdentity(request.report.change.repositoryId)}`) return { status: "failed", error: "Report identity does not match the publication repository, pull request and expected head." };
     const key = this.options.api.endpoint(`/pulls/${this.options.pullRequest}`);
     const previous = locks.get(key) ?? Promise.resolve();
     let release!: () => void;
