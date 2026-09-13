@@ -20,6 +20,9 @@ from urllib.parse import unquote, urlparse
 import idna
 from idna import idnadata
 
+from ..config import get_plugin_config
+from .multi_region import MultiRegionPluginConfig
+
 from ..http import _coerce_utc, _hash_secret, get_cookie_session_state
 from ..observability import emit_auth_event, resolve_request_id
 from ..plugins.gateway_routing import (
@@ -95,6 +98,14 @@ class PlacementContextIssuer:
     ) -> None:
         if not isinstance(region_id, str) or not region_id.strip():
             raise ConfigError("Placement-context issuance requires the region owning config.database")
+        routing = get_plugin_config(config, "multiRegion", MultiRegionPluginConfig()).routing
+        if routing is not None and routing.mode == "gateway":
+            if not isinstance(routing.cell_region_id, str) or not routing.cell_region_id.strip():
+                raise ConfigError("Gateway-only configurations cannot issue placement context")
+            if routing.cell_region_id.strip() != region_id.strip():
+                raise ConfigError("Placement-context region must match the configured regional cell")
+        if not isinstance(include_user_id, bool):
+            raise ConfigError("include_user_id must be a boolean")
         self._region_id = region_id.strip()
         mac_key = _secret_bytes(subject_secret)
         if len(mac_key) < 32:
