@@ -241,9 +241,11 @@ export async function validateDatafnRouteTicket(input: {
     const identity = await runtime.authenticate(input.request);
     if (!identity || identity.subject !== claims.subject || identity.namespace !== claims.namespace ||
       identity.sessionBinding !== claims.sessionBinding ||
-      (identity.expiresAt !== undefined && (!Number.isFinite(identity.expiresAt) || (identity.expiresAt <= (runtime.now ?? Date.now)() || claims.expiresAt > identity.expiresAt)))) {
+      (identity.expiresAt !== undefined && (!Number.isFinite(identity.expiresAt) || identity.expiresAt <= (runtime.now ?? Date.now)()))) {
       throw routeTicketError("DATAFN_ROUTE_FORBIDDEN");
     }
+    // A shortened live session needs a fresh bounded grant, not terminal auth denial.
+    if (identity.expiresAt !== undefined && claims.expiresAt > identity.expiresAt) throw routeTicketError("DATAFN_ROUTE_TICKET_EXPIRED");
     if (runtime.isActive && !await runtime.isActive(claims)) throw routeTicketError("DATAFN_ROUTE_TICKET_REVOKED");
     if (runtime.allowRequest && !await runtime.allowRequest(claims)) throw routeTicketError("DATAFN_ROUTE_RATE_LIMITED");
     const admittedAt = (runtime.now ?? Date.now)();

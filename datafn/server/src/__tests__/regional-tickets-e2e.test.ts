@@ -53,11 +53,12 @@ async function fixture(ttlMs = 60_000, allowRequest?: () => boolean) {
   await claimDatafnNamespacePlacement({ directory, namespace: "tenant", regionId: "eu" });
   const signer = createDatafnHmacRouteTickets({ activeKeyId: "test", keys: { test: "x".repeat(32) } });
   const endpoints: Record<string, DatafnRegionalEndpoint> = {};
-  const auth = (request: Request) => {
+  let sessionExpiresAt: number | undefined;
+  const auth = (request: Request): { namespace: string; subject: string; expiresAt?: number } => {
     const authenticated = request.headers.get("authorization") === "Bearer app-session" ||
       request.headers.get("sec-websocket-protocol")?.split(",").map(s => s.trim()).includes("app-session.test");
     if (!authenticated) throw new Error("Unauthenticated");
-    return { namespace: "tenant", subject: "opaque-subject" };
+    return { namespace: "tenant", subject: "opaque-subject", expiresAt: sessionExpiresAt };
   };
   async function cell(regionId: string) {
     const db = memoryAdapter();
@@ -98,7 +99,7 @@ async function fixture(ttlMs = 60_000, allowRequest?: () => boolean) {
   const provider = createDatafnHttpRouteProvider({ bootstrapUrl: `${gateway.origin}/bootstrap`, headers: () => ({ authorization: "Bearer app-session" }) });
   const transport = new DefaultHttpTransport("", { routeProvider: provider, headers: { authorization: "Bearer app-session" } });
   cleanups.push(() => transport.dispose());
-  return { directory, eu, us, gateway, provider, transport, signer, setGatewayAvailable: (value: boolean) => { gatewayAvailable = value; } };
+  return { directory, eu, us, gateway, provider, transport, signer, setSessionDeadline: (value: number) => { sessionExpiresAt = value; }, setGatewayAvailable: (value: boolean) => { gatewayAvailable = value; } };
 }
 const mutation = (id: string, mutationId = id) => ({ resource: "note", version: 1, operation: "insert", id: `note:${id}`, clientId: "client:one", mutationId, record: { title: id } });
 
@@ -335,6 +336,27 @@ describe("direct regional two-region network conformance", () => {
     await new Promise(resolve => setTimeout(resolve, 50));
     expect(f.eu.admitted).toHaveLength(1);
     expect(f.gateway.paths).toEqual(["/bootstrap"]);
+  });
+
+  it("refreshes a cached grant after the authenticated session deadline shortens", async () => {
+    const f = await fixture();
+    await f.transport.regionalRoutes!.get();
+    f.setSessionDeadline(Date.now() + 30_000);
+    expect((await f.transport.mutation(mutation("rotated")) as any).ok).toBe(true);
+    expect(f.gateway.paths).toEqual(["/bootstrap", "/bootstrap"]);
+    expect(f.eu.authorize).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let caller trust flags widen a valid ticket's scope", async () => {
+    const f = await fixture();
+    const descriptor = await f.provider.bootstrap();
+    const claims = await f.signer.verify(descriptor.ticket);
+    const token = await f.signer.sign({ ...claims, scopes: ["mutation"] });
+    const response = await fetch(`${descriptor.httpUrl}/query`, { method: "POST",
+      headers: { authorization: "Bearer app-session", "x-datafn-route-ticket": token, "x-datafn-trusted-internal": "true" },
+      body: JSON.stringify({ resource: "note", version: 1, trustedInternal: true }) });
+    expect(response.status).toBe(401);
+    expect(f.eu.authorize).not.toHaveBeenCalled();
   });
 
   it("rejects missing/forged/wrong-namespace grants before every built-in regional operation", async () => {

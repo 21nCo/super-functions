@@ -261,7 +261,7 @@ describe("WebSocket Reconnection (Phase 07)", () => {
     } finally { await client.destroy(); }
   });
 
-  it("uses the renewed route when socket credentials resolve after renewal", async () => {
+  it.each([true, false])("uses the renewed initial route with reconnect=%s after slow credentials", async enabled => {
     vi.spyOn(DefaultHttpTransport.prototype, "clone").mockResolvedValue({ ok: true, result: { ok: true, data: {}, cursors: {} } });
     vi.spyOn(DefaultHttpTransport.prototype, "pull").mockResolvedValue({ ok: true, result: { ok: true, records: {}, deleted: {}, cursors: {} } });
     const descriptor = (wsUrl: string) => ({ version: 1 as const, httpUrl: "https://eu.example/datafn", wsUrl, ticket: "test.ticket",
@@ -270,11 +270,12 @@ describe("WebSocket Reconnection (Phase 07)", () => {
     const protocols = vi.fn().mockImplementationOnce(() => new Promise<string[]>(resolve => { release = resolve; })).mockResolvedValue([]);
     const client = createDatafnClient({ schema: defaultSchema, clientId: "slow-auth", storage: new MockStorageAdapter(),
       sync: { routeProvider: { bootstrap: async () => descriptor("wss://old.example/ws"), renew: async () => descriptor("wss://new.example/ws") },
-        ws: true, wsProtocols: protocols } });
+        ws: true, wsProtocols: protocols, wsReconnect: { enabled } } });
     try {
       await client.sync.start();
       await vi.advanceTimersByTimeAsync(48_001);
       expect(MockWebSocket.instances).toHaveLength(0);
+      expect(protocols).toHaveBeenCalledTimes(1);
       release([]);
       await vi.advanceTimersByTimeAsync(1);
       expect(MockWebSocket.instances).toHaveLength(1);

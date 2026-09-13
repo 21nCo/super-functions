@@ -558,7 +558,7 @@ export class SyncEngine {
       if (!this.wsReconnectEnabled || generation !== this.wsGeneration) return;
       // Credentials may take longer than a renewal or migration. Never pin the old grant.
       if (routes && await routes.get() !== route) {
-        if (this.wsReconnectEnabled && this.config?.wsReconnect?.enabled !== false && generation === this.wsGeneration) void this.connectWs();
+        if (this.wsReconnectEnabled && generation === this.wsGeneration) void this.connectWs();
         return;
       }
       if (!this.wsReconnectEnabled || generation !== this.wsGeneration) return;

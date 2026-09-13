@@ -123,7 +123,7 @@ describe("regional route grants", () => {
   it.each(["authenticate", "isActive", "allowRequest"] as const)("rejects identity expiry across %s", async phase => {
     let clock = now;
     const advance = () => { clock = now + 2000; };
-    await expect(validateDatafnRouteTicket({ request: request(signer.sign(claims()) as string),
+    await expect(validateDatafnRouteTicket({ request: request(signer.sign(claims({ expiresAt: now + 1000 })) as string),
       namespace: "tenant", regionId: "eu", scope: "query", runtime: {
         ...runtime(), now: () => clock,
         authenticate: async () => {
@@ -135,10 +135,10 @@ describe("regional route grants", () => {
       } })).rejects.toMatchObject({ code: "DATAFN_ROUTE_FORBIDDEN" });
   });
 
-  it.each(["query", "websocket"] as const)("rejects %s grants outliving the authenticated session", async scope => {
+  it.each(["query", "websocket"] as const)("requests renewal for %s grants outliving the authenticated session", async scope => {
     await expect(validateDatafnRouteTicket({ request: request(signer.sign(claims()) as string), namespace: "tenant", regionId: "eu", scope,
       runtime: { ...runtime(), authenticate: () => ({ namespace: "tenant", subject: "opaque-user", expiresAt: now + 1000 }) } }))
-      .rejects.toMatchObject({ code: "DATAFN_ROUTE_FORBIDDEN" });
+      .rejects.toMatchObject({ code: "DATAFN_ROUTE_TICKET_EXPIRED", executionStarted: false });
   });
 
   it("retains canonical assertion validation alongside public ticket ingress", async () => {
