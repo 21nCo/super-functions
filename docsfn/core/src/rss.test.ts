@@ -280,3 +280,13 @@ it("preserves canonical publication time in RSS dates", () => {
   expect(rss).toContain(`<pubDate>${timestamp}</pubDate>`);
   expect(rss).toContain(`<lastBuildDate>${timestamp}</lastBuildDate>`);
 });
+
+it.each([true, false])("excludes preview drafts from items and lastBuildDate (ordered=%s)", ordered => {
+  const manifest = createManifest();
+  manifest.posts["blog:beta.mdx"].draft = true;
+  if (!ordered) delete manifest.blog;
+  const xml = generateRSSFeed(manifest, { title: "Blog", description: "Published", link: "https://example.com" });
+  expect(xml).toContain("Alpha");
+  expect(xml).not.toContain("Beta");
+  expect(xml).not.toContain("02 Mar 2026");
+});

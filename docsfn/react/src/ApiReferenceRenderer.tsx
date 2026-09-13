@@ -3,12 +3,25 @@
 import React, { useMemo, useState } from "react";
 import type { ApiReference } from "@docsfn/core";
 
+function rawMedia(value: unknown): RenderMediaContent[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  return Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([mediaType, raw]) => {
+    const media = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const examples = media.examples && typeof media.examples === "object" ? Object.entries(media.examples).map(([name, raw]) => {
+      const example = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+      return { name, value: example.value, reference: typeof example.$ref === "string" ? example.$ref : undefined };
+    }) : [];
+    return { mediaType, schema: media.schema, example: media.example, examples };
+  });
+}
+
 function MediaPayload({ media }: { media: RenderMediaContent }) {
+  if (media.schema === undefined && media.example === undefined && !media.examples?.length) return null;
   return <div className="docsfn-api-request-media">
     <h4>{media.mediaType}</h4>
     {media.schema !== undefined ? <><h5>Schema</h5><pre className="docsfn-api-code">{JSON.stringify(media.schema, null, 2)}</pre></> : null}
-    {media.example !== undefined ? <pre className="docsfn-api-code">{JSON.stringify(media.example, null, 2)}</pre> : null}
-    {media.examples?.map(example => <div key={example.name}><h5>{example.name}</h5><pre className="docsfn-api-code">{JSON.stringify(example.value, null, 2)}</pre></div>)}
+    {media.example !== undefined ? <><h5>Example</h5><pre className="docsfn-api-code">{JSON.stringify(media.example, null, 2)}</pre></> : null}
+    {media.examples?.map(example => <div key={example.name}><h5>{example.name}</h5><pre className="docsfn-api-code">{example.reference ? `External example reference: ${example.reference}` : JSON.stringify(example.value, null, 2)}</pre></div>)}
   </div>;
 }
 
@@ -30,7 +43,7 @@ interface RenderMediaContent {
   mediaType: string;
   schema?: unknown;
   example?: unknown;
-  examples?: Array<{ name: string; value: unknown }>;
+  examples?: Array<{ name: string; value: unknown; reference?: string }>;
 }
 
 interface RenderResponse {
@@ -211,7 +224,7 @@ function normalizeSpecModel(api: ApiReference): RenderSpecModel | null {
                     typeof responseRecord.description === "string"
                       ? responseRecord.description
                       : undefined,
-                  content: [],
+                  content: rawMedia(responseRecord.content),
                 };
               })
           : [];
@@ -228,6 +241,7 @@ function normalizeSpecModel(api: ApiReference): RenderSpecModel | null {
         tags,
         parameters,
         responses,
+        requestBody: operation.requestBody && typeof operation.requestBody === "object" ? { required: Boolean((operation.requestBody as Record<string, unknown>).required), content: rawMedia((operation.requestBody as Record<string, unknown>).content) } : undefined,
         routePath: `${api.path}/operations/${method.toLowerCase()}-${path.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase()}`,
       });
     }

@@ -42,6 +42,7 @@ export function segmentsToSlug(segments: string[]): string {
 }
 
 export function deriveLogicalPathFromSourcePath(sourcePath: string): string {
+  if (/[?#]/.test(sourcePath)) throw createDocsError({ code: "DOCS_ROUTE_INVALID", message: "Source paths must not contain URL query or fragment delimiters" });
   const segments = slugToSegments(sourcePath);
   if (segments.length === 0) {
     return "";

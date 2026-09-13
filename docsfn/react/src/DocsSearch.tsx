@@ -7,6 +7,7 @@ import type { DocsSearchArtifact, DocsSearchScope } from "@docsfn/core/search";
 import {
   createDocsSearchRuntime,
   type DocsSearchRuntime,
+  type CreateDocsSearchRuntimeInput,
   type DocsSearchRuntimeResultItem,
 } from "@docsfn/core/search-runtime";
 import {
@@ -22,6 +23,7 @@ import { navigateTo } from "./navigation";
 type SearchScopeFilter = DocsSearchScope | "all";
 
 export interface DocsSearchProps {
+  createSearchRuntime?: (input: CreateDocsSearchRuntimeInput) => DocsSearchRuntime;
   searchArtifact?: DocsSearchArtifact;
   searchIndex?: DocsSearchArtifact;
   loadSearchArtifact?: () => Promise<DocsSearchArtifact>;
@@ -63,6 +65,7 @@ export function DocsSearch({
   searchArtifact,
   searchIndex,
   loadSearchArtifact,
+  createSearchRuntime = createDocsSearchRuntime,
   placeholder = "Search docs...",
   initialScope = "all",
   scopes: scopeInput,
@@ -89,7 +92,7 @@ export function DocsSearch({
     let active = true;
     setLoadedScopes(null);
     queryRequestRef.current += 1;
-    runtimeRef.current = createDocsSearchRuntime({
+    runtimeRef.current = createSearchRuntime({
       artifact: searchArtifact ?? searchIndex,
       loadArtifact: loadSearchArtifact ? async () => {
         const loaded = await loadSearchArtifact();
@@ -98,7 +101,7 @@ export function DocsSearch({
       } : undefined,
     });
     return () => { active = false; queryRequestRef.current += 1; };
-  }, [searchArtifact, searchIndex, loadSearchArtifact]);
+  }, [searchArtifact, searchIndex, loadSearchArtifact, createSearchRuntime]);
 
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {

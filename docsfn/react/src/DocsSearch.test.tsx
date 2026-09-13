@@ -180,3 +180,13 @@ it('retains a valid initial scope until a lazy artifact resolves', async () => {
     expect(screen.getByRole("button", { name: "API" })).toBeTruthy();
   });
 });
+
+it("queries the caller supplied search runtime", async () => {
+  const query = vi.fn(async () => []);
+  const factory = vi.fn(() => ({ query, ensureReady: async () => {}, getScopes: async () => [] }));
+  const view = render(<DocsSearch createSearchRuntime={factory} />);
+  fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+  fireEvent.change(view.getByPlaceholderText("Search docs..."), { target: { value: "custom" } });
+  await waitFor(() => expect(query).toHaveBeenCalledWith(expect.objectContaining({ query: "custom" })));
+  view.unmount();
+});

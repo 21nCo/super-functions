@@ -1,4 +1,4 @@
-import { render, cleanup } from "@testing-library/svelte";
+import { render, cleanup, fireEvent } from "@testing-library/svelte";
 import ApiReferenceRenderer from "./ApiReferenceRenderer.svelte";
 import { describe, expect, it } from "vitest";
 import type { ApiReference } from "@docsfn/core";
@@ -84,17 +84,21 @@ describe("ApiReferenceRenderer canonical model contract", () => {
   });
 });
 
-it("renders operation media schemas and named examples", () => {
+it.each([false, true])("renders operation media schemas and named examples (raw=%s)", async (raw) => {
   const api = createCanonicalApiFixture();
   const operation = api.spec.operations[1];
   api.path = operation.routePath;
-  const media = { mediaType: "application/json", schema: { type: "object", properties: { payloadField: { type: "string" } } }, examples: [{ name: "named-sample", value: { payloadField: "sample-value" } }] };
-  operation.requestBody.content = [media];
-  operation.responses = [{ statusCode: "200", content: [media] }];
+  const media = (side: string) => ({ mediaType: "application/json", schema: { type: "object", properties: { [side + "Field"]: { type: "string" } } }, example: side + "-single", examples: [{ name: side + "-sample", value: side + "-value" }] });
+  operation.requestBody.content = [media("request")];
+  operation.responses = [{ statusCode: "200", content: [media("response")] }];
+  if (raw) {
+    const rawContent = (side: string) => { const item = media(side); return { [item.mediaType]: { ...item, examples: Object.fromEntries(item.examples.map(example => [example.name, { value: example.value }])) } }; };
+    api.path = "/docs/api/operations/post-x";
+    api.spec = { openapi: "3.0.3", info: { title: "Raw", version: "1" }, paths: { "/x": { post: { requestBody: { content: rawContent("request") }, responses: { "200": { content: rawContent("response") } } } } } };
+  }
   const view = render(ApiReferenceRenderer, { api });
   try {
-    expect(view.container.textContent).toContain("payloadField");
-    expect(view.container.textContent).toContain("named-sample");
-    expect(view.container.textContent).toContain("sample-value");
+    if (raw) await fireEvent.click(view.getByRole("button", { expanded: false }));
+    for (const side of ["request", "response"]) for (const suffix of ["Field", "-sample", "-value", "-single"]) expect(view.container.textContent).toContain(side + suffix);
   } finally { cleanup(); }
 });

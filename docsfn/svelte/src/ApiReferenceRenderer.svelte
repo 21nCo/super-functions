@@ -2,6 +2,18 @@
   import type { ApiReference } from "@docsfn/core/browser";
   import { Tabs, TabsList, TabsTrigger, TabsContent } from "@uifn/svelte";
 
+function rawMedia(value: unknown): RenderMediaContent[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  return Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([mediaType, raw]) => {
+    const media = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const examples = media.examples && typeof media.examples === "object" ? Object.entries(media.examples).map(([name, raw]) => {
+      const example = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+      return { name, value: example.value, reference: typeof example.$ref === "string" ? example.$ref : undefined };
+    }) : [];
+    return { mediaType, schema: media.schema, example: media.example, examples };
+  });
+}
+
   export let api: ApiReference;
 
   interface RenderParameter {
@@ -16,7 +28,7 @@
     mediaType: string;
     schema?: unknown;
     example?: unknown;
-    examples?: Array<{ name: string; value?: unknown }>;
+    examples?: Array<{ name: string; value?: unknown; reference?: string }>;
   }
 
   interface RenderResponse {
@@ -160,6 +172,7 @@
 
                   return {
                     statusCode,
+                    content: rawMedia(responseRecord.content),
                     description:
                       typeof responseRecord.description === "string"
                         ? responseRecord.description
@@ -171,23 +184,7 @@
         const requestBody =
           typeof operation.requestBody === "object" && operation.requestBody !== null
             ? {
-                content:
-                  typeof (operation.requestBody as Record<string, unknown>).content === "object" &&
-                  (operation.requestBody as Record<string, unknown>).content !== null
-                    ? Object.keys((operation.requestBody as Record<string, unknown>).content as Record<string, unknown>)
-                        .sort(compareStrings)
-                        .map((mediaType) => {
-                          const mediaRecord =
-                            typeof ((operation.requestBody as Record<string, unknown>).content as Record<string, unknown>)[mediaType] === "object" &&
-                            ((operation.requestBody as Record<string, unknown>).content as Record<string, unknown>)[mediaType] !== null
-                              ? (((operation.requestBody as Record<string, unknown>).content as Record<string, unknown>)[mediaType] as Record<string, unknown>)
-                              : {};
-                          return {
-                            mediaType,
-                            example: mediaRecord.example,
-                          };
-                        })
-                    : [],
+                content: rawMedia((operation.requestBody as Record<string, unknown>).content),
               }
             : undefined;
 
@@ -336,13 +333,13 @@
                     <TabsContent value="request">
                       {#if operation.requestBody}
                         <div class="docsfn-api-request-content">
-                          {#each operation.requestBody.content as media (media.mediaType)}
+                          {#each operation.requestBody.content.filter(media => media.schema !== undefined || media.example !== undefined || media.examples?.length) as media (media.mediaType)}
                             <div class="docsfn-api-request-media">
                               <h4>{media.mediaType}</h4>
                               {#if media.schema !== undefined}<h5>Schema</h5><pre class="docsfn-api-code">{JSON.stringify(media.schema, null, 2)}</pre>{/if}
-                              {#each media.examples ?? [] as example (example.name)}<h5>{example.name}</h5><pre class="docsfn-api-code">{JSON.stringify(example.value, null, 2)}</pre>{/each}
+                              {#each media.examples ?? [] as example (example.name)}<h5>{example.name}</h5><pre class="docsfn-api-code">{example.reference ? `External example reference: ${example.reference}` : JSON.stringify(example.value, null, 2)}</pre>{/each}
                               {#if typeof media.example !== "undefined"}
-                                <pre class="docsfn-api-code">{JSON.stringify(media.example, null, 2)}</pre>
+                                <h5>Example</h5><pre class="docsfn-api-code">{JSON.stringify(media.example, null, 2)}</pre>
                               {/if}
                             </div>
                           {/each}
@@ -358,11 +355,13 @@
                           <div class="docsfn-api-response">
                             <span class="docsfn-api-response-code">{response.statusCode}</span>
                             <span class="docsfn-api-response-desc">{response.description || "-"}</span>
-                            {#each response.content ?? [] as media (media.mediaType)}
+                            {#each (response.content ?? []).filter(media => media.schema !== undefined || media.example !== undefined || media.examples?.length) as media (media.mediaType)}
+                              <div class="docsfn-api-request-media">
                               <h4>{media.mediaType}</h4>
                               {#if media.schema !== undefined}<h5>Schema</h5><pre class="docsfn-api-code">{JSON.stringify(media.schema, null, 2)}</pre>{/if}
-                              {#if media.example !== undefined}<pre class="docsfn-api-code">{JSON.stringify(media.example, null, 2)}</pre>{/if}
-                              {#each media.examples ?? [] as example (example.name)}<h5>{example.name}</h5><pre class="docsfn-api-code">{JSON.stringify(example.value, null, 2)}</pre>{/each}
+                              {#if media.example !== undefined}<h5>Example</h5><pre class="docsfn-api-code">{JSON.stringify(media.example, null, 2)}</pre>{/if}
+                              {#each media.examples ?? [] as example (example.name)}<h5>{example.name}</h5><pre class="docsfn-api-code">{example.reference ? `External example reference: ${example.reference}` : JSON.stringify(example.value, null, 2)}</pre>{/each}
+                              </div>
                             {/each}
                           </div>
                         {/each}

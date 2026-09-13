@@ -119,7 +119,7 @@ function normalizeTags(tags: string[]): string[] {
   return normalized.sort(compareStrings);
 }
 
-function parseDraftFlag(value: unknown): boolean {
+export function parseDraftFlag(value: unknown): boolean {
   if (typeof value === "boolean") {
     return value;
   }

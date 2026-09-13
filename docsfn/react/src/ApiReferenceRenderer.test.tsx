@@ -100,20 +100,27 @@ it("expands the operation selected by the canonical route helper", () => {
   expect(renderToStaticMarkup(<ApiReferenceRenderer api={selected} />)).toContain('aria-expanded="true"');
 });
 
-it("shows media schemas and named examples in request and response tabs", () => {
+it.each([false, true])("shows media schemas and named examples in request and response tabs (raw=%s)", (raw) => {
   const api = createApiReferenceFixture();
   const operation = api.spec.operations[1];
   api.path = operation.routePath;
-  const media = { mediaType: "application/json", schema: { type: "object", properties: { payloadField: { type: "string" } } }, examples: [{ name: "named-sample", value: { payloadField: "sample-value" } }] };
-  operation.requestBody.content = [media];
-  operation.responses = [{ statusCode: "200", content: [media] }];
+  const media = (side: string) => ({ mediaType: "application/json", schema: { type: "object", properties: { [side + "Field"]: { type: "string" } } }, example: side + "-single", examples: [{ name: side + "-sample", value: side + "-value" }] });
+  operation.requestBody.content = [media("request")];
+  operation.responses = [{ statusCode: "200", content: [media("response")] }];
+  if (raw) {
+    const rawContent = (side: string) => { const item = media(side); return { [item.mediaType]: { ...item, examples: Object.fromEntries(item.examples.map(example => [example.name, { value: example.value }])) } }; };
+    api.path = "/docs/api/operations/post-x";
+    api.spec = { openapi: "3.0.3", info: { title: "Raw", version: "1" }, paths: { "/x": { post: { requestBody: { content: rawContent("request") }, responses: { "200": { content: rawContent("response") } } } } } };
+  }
   const view = render(<ApiReferenceRenderer api={api} />);
   try {
+    if (raw) fireEvent.click(view.getByRole("button", { expanded: false }));
     for (const name of ["Request", "Responses"]) {
       fireEvent.click(view.getByRole("tab", { name }));
-      expect(view.getByRole("tabpanel").textContent).toContain("payloadField");
-      expect(view.getByRole("tabpanel").textContent).toContain("named-sample");
-      expect(view.getByRole("tabpanel").textContent).toContain("sample-value");
+      const side = name === "Request" ? "request" : "response";
+      const text = view.getByRole("tabpanel").textContent;
+      for (const suffix of ["Field", "-sample", "-value", "-single"]) expect(text).toContain(side + suffix);
+      expect(text).not.toContain((side === "request" ? "response" : "request") + "Field");
     }
   } finally { cleanup(); }
 });

@@ -1,4 +1,4 @@
-import { assertValidBlogPublishMetadata, resolveBlogLastBuildDate } from "./blog";
+import { assertValidBlogPublishMetadata, resolveBlogLastBuildDate, parseDraftFlag } from "./blog";
 import { normalizeDatedCollectionId } from "./provider";
 import type { BlogPost, DocsManifest } from "./types";
 
@@ -50,14 +50,14 @@ export function generateRSSFeed(
     : manifest.blog?.postOrder ?? [];
   const orderedPostsFromManifest = orderedIds
     .map((id) => manifest.posts[id])
-    .filter((post): post is BlogPost => Boolean(post));
+    .filter((post): post is BlogPost => Boolean(post) && !parseDraftFlag(post.draft ?? post.frontmatter?.draft));
   const fallbackPosts =
     hasRequestedCollection && !collectionSurface
       ? []
       : Object.values(manifest.posts)
           .filter(
             (post) =>
-              normalizeDatedCollectionId(post.collectionId ?? "blog") ===
+              !parseDraftFlag(post.draft ?? post.frontmatter?.draft) && normalizeDatedCollectionId(post.collectionId ?? "blog") ===
               (requestedCollectionId ?? "blog")
           )
           .sort((left, right) => {

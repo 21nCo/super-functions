@@ -401,3 +401,8 @@ it("resolves reusable examples for request and response media", () => {
   expect(spec.operations[0].requestBody?.content[0].examples[0]).toMatchObject({ name: "sample", summary: "Reusable", value: { id: "sample-id" } });
   expect(spec.operations[0].responses[0].content[0].examples[0].value).toEqual({ id: "sample-id" });
 });
+
+it("preserves external example references without failing normalization", () => {
+  const spec = buildOpenApiReference({ sourceId: "api:x", sourcePath: "x.json", fallbackTitle: "X", body: JSON.stringify({ openapi: "3.0.3", info: { title: "X", version: "1" }, paths: { "/x": { get: { responses: { "200": { content: { "application/json": { examples: { sample: { $ref: "./examples.json#/Sample" } } } } } } } } } }) });
+  expect(spec.operations[0].responses[0].content[0].examples[0]).toMatchObject({ name: "sample", reference: "./examples.json#/Sample", value: undefined });
+});

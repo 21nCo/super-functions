@@ -20,6 +20,8 @@ export type OpenApiSourceFormat = "json" | "yaml";
 
 export interface CanonicalOpenApiExample {
   name: string;
+  /** Unresolved external example reference; never fetched during normalization. */
+  reference?: string;
   summary?: string;
   description?: string;
   value: unknown;
@@ -266,6 +268,8 @@ function normalizeExamples(value: unknown, document: Record<string, unknown>, in
   return Object.keys(record)
     .sort(compareStrings)
     .map((name) => {
+      const raw = toObject(record[name]);
+      if (typeof raw.$ref === "string" && !raw.$ref.startsWith("#")) return { name, reference: raw.$ref, value: undefined };
       const item = toObject(resolveLocalReference(record[name], document, input));
       return {
         name,

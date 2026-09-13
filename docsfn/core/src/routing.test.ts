@@ -228,3 +228,7 @@ it.each(['path-prefix', 'path-segment'] as const)('rejects conflicting frontmatt
   const config = createConfig({ versions: { mode, versions: [{ slug: 'v1', label: 'V1', default: true }, { slug: 'v2', label: 'V2' }] } });
   expect(() => buildRoute({ collection: 'docs', sourcePath: mode === 'path-prefix' ? 'v1/page' : 'page/v1', frontmatter: { version: 'v2' }, config })).toThrow(/version/i);
 });
+
+it.each(["guide?draft.mdx", "guide#section.mdx"])("rejects URL delimiters in source filenames: %s", sourcePath => {
+  expect(() => buildRoute({ collection: "docs", sourcePath, config: createConfig() })).toThrow(/query or fragment/);
+});
