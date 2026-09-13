@@ -434,6 +434,9 @@ export class McpFnServer<TContext = undefined> {
               !Array.isArray(error.details)
                 ? (error.details as Record<string, unknown>)
                 : {};
+            if ((currentStage as McpFnClientProfileLifecycleStage) === "invalid-arguments-handler") await this.emitProfileEvidence({
+              stage: "input-validation", outcome: "failed", profile, tool: request.params.name, code: "MCPFN_INVALID_ARGUMENTS",
+            });
             const issues = (error instanceof McpFnValidationError || error instanceof McpFnOutputValidationError) && ["input-validation", "output-validation"].includes(currentStage) && Array.isArray(details.issues)
               ? (details.issues as McpFnClientProfileEvidence["issues"])
               : undefined;

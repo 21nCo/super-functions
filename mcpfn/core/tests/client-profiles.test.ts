@@ -321,13 +321,13 @@ describe("McpFn client profiles", () => {
     ).rejects.toThrow(/not found/);
   });
 
-  it("reports recovered invalid input as failed validation without a normal handler", async () => {
+  it.each([false, true])("reports invalid input even when recovery throws: %s", async (throws) => {
     const evidence: McpFnClientProfileEvidence[] = [];
     const registry = new McpFnRegistry<RequestContext>().register({ name: "recover", description: "Recover invalid input", inputSchema: { type: "object", required: ["value"] },
-      handleInvalidArguments: () => structuredResult({ recovered: true }), handler: async () => structuredResult({ recovered: false }) });
+      handleInvalidArguments: () => { if (throws) throw new Error("recovery failed"); return structuredResult({ recovered: true }); }, handler: async () => structuredResult({ recovered: false }) });
     const { client } = await connect({ subject: "trusted" }, { id: "test", version: "1", matches: () => true }, registry, "client", event => { evidence.push(event); });
     await client.callTool({ name: "recover", arguments: {} });
-    expect(evidence).toEqual(expect.arrayContaining([expect.objectContaining({ stage: "input-validation", outcome: "failed" }), expect.objectContaining({ stage: "invalid-arguments-handler", outcome: "succeeded" })]));
+    expect(evidence).toEqual(expect.arrayContaining([expect.objectContaining({ stage: "input-validation", outcome: "failed" }), expect.objectContaining({ stage: "invalid-arguments-handler", outcome: throws ? "failed" : "succeeded" })]));
     expect(evidence.some(event => event.stage === "handler")).toBe(false);
   });
 
@@ -661,8 +661,14 @@ it("resolves named anchors and rejects unsupported dynamic projection references
   const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
   const run = (before: any, after = before) => buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: before }], resolved: { context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" }, profile: { id: "test", version: "1", matches: () => true, projectCatalog: () => [{ name: "test", inputSchema: after }] } } });
   await expect(run({ $schema: "http://json-schema.org/draft-07/schema#", type: "object", definitions: { node: { $id: "#node", type: "string" } }, properties: { value: { $ref: "#node" } } })).resolves.toBeDefined();
-  await expect(run({ type: "object", $defs: { node: { $anchor: "node", type: "string" } }, properties: { value: { $ref: "#node" } } })).resolves.toBeDefined();
-  const content = (type: string) => ({ type: "object", $defs: { body: { type } }, properties: { value: { type: "string", contentSchema: { $ref: "#/$defs/body" } } } });
+  await expect(run({ $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", $defs: { node: { $anchor: "node", type: "string" } }, properties: { value: { $ref: "#node" } } })).resolves.toBeDefined();
+  for (const schema of [
+    { type: "object", properties: { values: { type: "array", items: [{ type: "string" }] } } },
+    { type: "object", properties: { value: { contentSchema: { $ref: "literal-extension-value" } } } },
+    { type: "object", $defs: { node: { type: "string" } }, properties: { value: { $ref: "#%2F$defs%2Fnode" } } },
+    { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", $defs: { node: { $dynamicAnchor: "node", type: "string" } }, properties: { value: { $ref: "#node" } } },
+  ]) await expect(run(schema)).resolves.toBeDefined();
+  const content = (type: string) => ({ $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", $defs: { body: { type } }, properties: { value: { type: "string", contentSchema: { $ref: "#/$defs/body" } } } });
   await expect(run(content("string"), content("number"))).rejects.toThrow(/canonical schema/);
   await expect(run({ type: "object", properties: { value: { $dynamicRef: "#node" } } })).rejects.toMatchObject({ code: "MCPFN_INVALID_PROJECTED_CATALOG" });
   const { formatMcpFnSchemaIssues } = await import("../src/validation.js");

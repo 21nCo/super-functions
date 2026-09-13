@@ -394,7 +394,7 @@ function validateDefinitionContainers(schema: unknown, ajv: Ajv | Ajv2019 | Ajv2
 
 function assertValidProfileSchema(schema: Record<string, unknown>): void {
   try {
-    const dialect = typeof schema.$schema === "string" ? schema.$schema : "https://json-schema.org/draft/2020-12/schema";
+    const dialect = typeof schema.$schema === "string" ? schema.$schema : "http://json-schema.org/draft-07/schema#";
     const Validator = dialect.includes("draft-07") ? Ajv : dialect.includes("2019-09") ? Ajv2019 : Ajv2020;
     const ajv = new Validator({ strict: false, allowUnionTypes: true, validateFormats: false });
     validateDefinitionContainers(schema, ajv);
@@ -493,14 +493,15 @@ function taskSupport(tool: McpFnListedTool): string {
 }
 
 /** Visit schema positions without interpreting instance data as schema syntax. */
-function mapSchemaKeyword(key: string, value: unknown, visit: (schema: unknown) => unknown): unknown {
+function mapSchemaKeyword(key: string, value: unknown, visit: (schema: unknown) => unknown, modern = false): unknown {
   if (["$defs", "definitions", "properties", "patternProperties", "dependentSchemas"].includes(key) && value && typeof value === "object" && !Array.isArray(value)) {
     return Object.fromEntries(Object.entries(value).map(([name, child]) => [name, visit(child)]));
   }
   if (["allOf", "anyOf", "oneOf", "prefixItems"].includes(key) && Array.isArray(value)) return value.map(visit);
   if (key === "items") return Array.isArray(value) ? value.map(visit) : visit(value);
   if (key === "dependencies" && value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([name, child]) => [name, Array.isArray(child) ? child : visit(child)]));
-  if (["additionalItems", "additionalProperties", "contains", "not", "if", "then", "else", "unevaluatedProperties", "unevaluatedItems", "propertyNames", "contentSchema"].includes(key)) return visit(value);
+  if (["additionalItems", "additionalProperties", "contains", "not", "if", "then", "else", "unevaluatedProperties", "unevaluatedItems", "propertyNames"].includes(key)) return visit(value);
+  if (key === "contentSchema" && modern) return visit(value);
   return value;
 }
 
@@ -516,6 +517,11 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
   const resources = new WeakMap<object, Record<string, unknown>>();
   const ids = new Map<string, Record<string, unknown>>();
   const bases = new WeakMap<object, string>();
+  const modernDialect = (schema: object) => {
+    const resource = resources.get(schema) ?? schema as Record<string, unknown>;
+    const dialect = String(resource.$schema ?? root.$schema ?? "draft-07");
+    return dialect.includes("2019-09") || dialect.includes("2020-12");
+  };
   const index = (value: unknown, resource: Record<string, unknown>) => {
     if (!value || typeof value !== "object" || resources.has(value)) return;
     const parentBase = bases.get(resource) ?? "https://mcpfn.invalid/schema";
@@ -530,9 +536,10 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
       throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Dynamic and recursive references are not supported in projected catalogs");
     }
     if (typeof schemaValue.$anchor === "string") ids.set(new URL(`#${schemaValue.$anchor}`, bases.get(resource) ?? parentBase).href, schemaValue);
+    if (typeof schemaValue.$dynamicAnchor === "string" && modernDialect(resource)) ids.set(new URL(`#${schemaValue.$dynamicAnchor}`, bases.get(resource) ?? parentBase).href, schemaValue);
     resources.set(value, resource);
     for (const [key, child] of Object.entries(value)) {
-      mapSchemaKeyword(key, child, item => { index(item, resource); return item; });
+      mapSchemaKeyword(key, child, item => { index(item, resource); return item; }, modernDialect(resource));
     }
   };
   index(root, root);
@@ -541,7 +548,10 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
     let resource = resources.get(schema) ?? root;
     let fragment = reference;
     const referenceAddress = new URL(reference, bases.get(resource) ?? "https://mcpfn.invalid/schema");
-    if (referenceAddress.hash && !referenceAddress.hash.startsWith("#/")) {
+    let decodedFragment: string;
+    try { decodedFragment = decodeURIComponent(referenceAddress.hash.slice(1)); }
+    catch { throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Invalid schema reference encoding"); }
+    if (decodedFragment && !decodedFragment.startsWith("/")) {
       const anchored = ids.get(referenceAddress.href);
       if (anchored) return anchored;
       throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Unresolved named schema anchor");
@@ -571,7 +581,7 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
     if (Array.isArray(value)) return value.map(child => resolveProperty(child, refs));
     if (!value || typeof value !== "object") return value;
     const schema = value as Record<string, unknown>;
-    const result = Object.fromEntries(Object.entries(schema).map(([key, child]) => [key, mapSchemaKeyword(key, child, item => resolveProperty(item, refs))]));
+    const result = Object.fromEntries(Object.entries(schema).map(([key, child]) => [key, mapSchemaKeyword(key, child, item => resolveProperty(item, refs), modernDialect(schema))]));
     if (typeof schema.$ref === "string") {
       const target = referenceTarget(schema);
       if (!refs.has(target)) result.$ref = resolveProperty(target, new Set([...refs, target]));
@@ -617,7 +627,7 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
     for (const [key, value] of Object.entries(schema)) {
       if (["dependencies", "dependentRequired", "dependentSchemas", "if", "then", "else", "anyOf", "oneOf", "not", "const", "enum", "minProperties", "maxProperties", "unevaluatedProperties"].includes(key)) ownershipSensitive = true;
       if (!["properties", "required", "allOf", "$ref", "$defs", "definitions", "title", "description", "$comment", "examples"].includes(key)) {
-        constraints.add(canonicalJson({ path, [key]: mapSchemaKeyword(key, value, resolveProperty) }));
+        constraints.add(canonicalJson({ path, [key]: mapSchemaKeyword(key, value, resolveProperty, modernDialect(schema)) }));
       }
     }
     if (typeof schema.$ref === "string") {
