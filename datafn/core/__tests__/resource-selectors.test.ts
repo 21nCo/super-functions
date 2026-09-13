@@ -473,14 +473,14 @@ it.each(["constructor", "prototype", "__proto__"])("retains own cursor resource 
 });
 
 
-it("does not let search filter keys disguise namespace-wide access", () => {
-  expectSelectors("search", { query: "x", filters: { allowed: {} }, temporalByResource: { allowed: {} } }, []);
+it.each([undefined, []])("does not let search filter keys disguise namespace-wide access: %j", (resources) => {
+  expectSelectors("search", { query: "x", resources, filters: { allowed: {} }, temporalByResource: { allowed: {} } }, []);
 });
 
-it("includes every join endpoint returned by a restricted clone", () => {
+it.each([undefined, { table: "allowed", limit: 10 }])("includes every join endpoint returned by a restricted clone: %j", (page) => {
   const schema: any = { resources: [{ name: "allowed" }, { name: "private" }, { name: "secret" }],
     relations: [{ type: "many-many", from: "private", to: "secret", relation: "links" }] };
-  const payload = { tables: ["allowed"], includeJoins: true };
+  const payload = { tables: ["allowed"], page, includeJoins: true };
   const parsed = parseDatafnRequest("clone", payload, { schema });
   expect(parsed.ok).toBe(true);
   if (!parsed.ok) return;

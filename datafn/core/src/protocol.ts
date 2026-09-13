@@ -413,7 +413,7 @@ function parseSearchPayload(
   return ok({
     kind: "search",
     protocolVersion,
-    resources: payload.resources === undefined ? Object.freeze([]) : selectors.snapshot(),
+    resources: payload.resources === undefined || (Array.isArray(payload.resources) && payload.resources.length === 0) ? Object.freeze([]) : selectors.snapshot(),
   });
 }
 
@@ -437,8 +437,8 @@ function parseClonePayload(
     const added = selectors.add(payload.page.table, "page.table");
     if (!added.ok) return added;
   }
-  // Non-paginated execution returns every many-many join, independently of tables.
-  if (payload.includeJoins && payload.page === undefined) {
+  // Execution returns every many-many join, even for a page scoped to one table.
+  if (payload.includeJoins) {
     if (!schema) return err("DFQL_UNSUPPORTED", "Clone join selectors require trusted schema metadata", { path: "includeJoins" });
     for (const endpoints of resolveJoinStoreResources(schema.relations ?? []).values()) {
       const added = selectors.addAll(endpoints, "includeJoins");
