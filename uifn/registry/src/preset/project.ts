@@ -309,8 +309,12 @@ function hasWorkspaceMetadata(directory: string, rootDir: string): boolean {
       const relative = path.relative(directory, rootDir).split(path.sep).join('/');
       const patterns = workspaces.filter((value): value is string => typeof value === 'string');
       const matches = (pattern: string) => minimatch(relative, pattern.replace(/^\.\//, '').replace(/\/$/, ''));
-      return patterns.some(pattern => !pattern.startsWith('!') && matches(pattern)) &&
-        !patterns.some(pattern => pattern.startsWith('!') && matches(pattern.slice(1)));
+      let included = false;
+      for (const pattern of patterns) {
+        const prefix = /^!*/.exec(pattern)![0].length;
+        if (matches(pattern.slice(prefix))) included = prefix % 2 === 0;
+      }
+      return included;
     }
   } catch { /* A lock package record can still identify the workspace. */ }
   try {

@@ -43,13 +43,13 @@ const VIEWPORTS = {
 
 function optionControl(axis: PresetAxis, preset: UIFnPresetV1, locked: Set<PresetAxis>): string {
   const options = (PRESET_AXES[axis] as readonly string[]).map((value) => `<option value="${value}" ${preset[axis] === value ? 'selected' : ''}>${value}</option>`).join('');
-  return `<label class="axis">
+  return `<div class="axis">
     <span>
-      <input type="checkbox" data-lock="${axis}" ${locked.has(axis) ? 'checked' : ''} />
-      ${PRESET_AXIS_LABELS[axis]}
+      <input type="checkbox" data-lock="${axis}" aria-label="Lock ${PRESET_AXIS_LABELS[axis]}" ${locked.has(axis) ? 'checked' : ''} />
+      <label for="preset-${axis}">${PRESET_AXIS_LABELS[axis]}</label>
     </span>
-    <select data-axis="${axis}">${options}</select>
-  </label>`;
+    <select id="preset-${axis}" data-axis="${axis}">${options}</select>
+  </div>`;
 }
 
 function render(preset: UIFnPresetV1, locked: Set<PresetAxis>, mode: 'light' | 'dark', viewport: keyof typeof VIEWPORTS) {

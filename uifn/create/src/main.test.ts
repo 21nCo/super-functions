@@ -24,6 +24,13 @@ it('ignores injected mode and viewport attributes and renders valid controls and
   expect(output.children).toHaveLength(0);
   expect(document.querySelector('[data-output="applyFont"]')!.textContent).toContain('--only font');
   expect(document.querySelector('style')!.textContent).toContain('--uifn');
+  for (const select of document.querySelectorAll<HTMLSelectElement>('select[data-axis]')) {
+    expect(select.labels?.length).toBe(1);
+    expect(select.labels?.[0].textContent?.trim()).toBeTruthy();
+    const lock = document.querySelector<HTMLInputElement>(`input[data-lock="${select.dataset.axis}"]`)!;
+    expect(lock.getAttribute('aria-label')).toContain('Lock ');
+    expect(lock.closest('label')).toBeNull();
+  }
   const framework = document.querySelector<HTMLSelectElement>('select[data-axis="framework"]')!;
   framework.value = 'svelte';
   framework.dispatchEvent(new Event('change', { bubbles: true }));
