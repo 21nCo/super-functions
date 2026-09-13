@@ -312,3 +312,11 @@ it("validates removed bytes at the merge base when the target branch has advance
   value.evidence[0].code!.commit = value.change.baseCommit;
   expect((await validate()).errors.join()).toMatch(/does not reference reviewed head/);
 });
+
+
+it("keeps an authorized source with absent content explicitly incomplete", async () => {
+  const manifest = { ...context, sources: [...context.sources, { id: "missing", type: "document" as const, status: "available" as const, digest: "m", retrievedAt: "now" }] };
+  const result = await validateReport(report(), policy, source, ".", manifest);
+  expect(result.valid).toBe(false);
+  expect(result.errors.join()).toMatch(/Available source missing has no content/);
+});

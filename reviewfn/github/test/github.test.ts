@@ -129,3 +129,8 @@ it("classifies drive-relative Windows origins as local", async () => {
   const change = await new GitSourceControlAdapter({ runner }).capture(".", "base", "head");
   expect(change.repositoryId).toBe("C:repo"); expect(change.host).toBe("local");
 });
+
+it.each(["tree", "commit", "blob"])("requires a blob for code anchors (%s)", async type => {
+  const adapter = new GitSourceControlAdapter({ runner: async args => args[0] === "cat-file" ? type : "implementation" });
+  expect(await adapter.verifyAnchor(".", { commit: "a".repeat(40), path: "src", startLine: 1, symbol: "implementation" })).toBe(type === "blob");
+});

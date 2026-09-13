@@ -255,6 +255,7 @@ export interface HarnessOutput {
 }
 
 export interface ContextRequest {
+  sourceAuthority?: ReviewPolicy["sourceAuthority"];
   root: string;
   issue?: string;
   account?: string;

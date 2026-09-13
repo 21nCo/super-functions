@@ -210,7 +210,7 @@ it("tells the harness exactly which sources have policy authority", () => {
   const value = report();
   const sources = ["issue", "comment", "document"].map(type => ({ id: type, type: type as "issue" | "comment" | "document", status: "available" as const, content: "source content", digest: "s", retrievedAt: "now" }));
   const policy = { ...DEFAULT_POLICY, sourceAuthority: { ...DEFAULT_POLICY.sourceAuthority, acceptedTypes: ["issue", "comment"] as Array<"issue" | "comment">, commentsMayClarify: false } };
-  const prompt = buildReviewPrompt({ change: value.change, context: { version: 1, sources, selection: { candidates: [], selected: [], rule: "explicit" }, limits: { maxSources: 3, maxBytes: 100, maxDepth: 1 }, incompleteReasons: [], digest: "c" }, config: DEFAULT_CONFIG, policy, tests: [] }).prompt;
+  const prompt = buildReviewPrompt({ change: value.change, context: { version: 1, sources: [...sources, { id: "missing", type: "issue", status: "available", digest: "m", retrievedAt: "now" }], selection: { candidates: [], selected: [], rule: "explicit" }, limits: { maxSources: 4, maxBytes: 100, maxDepth: 1 }, incompleteReasons: [], digest: "c" }, config: DEFAULT_CONFIG, policy, tests: [] }).prompt;
   const payload = JSON.parse(prompt.split("Frozen review input:\n")[1]);
   expect(payload.authoritativeSourceIds).toEqual(["issue"]);
 });

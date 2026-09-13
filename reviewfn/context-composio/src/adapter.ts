@@ -90,31 +90,35 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     };
     add({ id: `linear:issue:${issueId}`, type: "issue", canonicalUrl: stringField(issue, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), updatedAt: stringField(issue, "updatedAt"), providerVersion: "LINEAR_GET_LINEAR_ISSUE", status: "available", content: JSON.stringify(issueWithoutConnections(issue), null, 2) });
 
-    let initialComments = issue.comments;
-    if (!hasPageInfo(initialComments)) {
-      try { initialComments = findConnection(await fetchConnection("comments"), "comments", issueId); }
-      catch (error) { if (request.signal?.aborted) throw error; incompleteReasons.push("Unable to establish complete Linear comment pagination."); }
+    const comments: Record<string, unknown>[] = [];
+    if (!request.sourceAuthority || (request.sourceAuthority.acceptedTypes.includes("comment") && request.sourceAuthority.commentsMayClarify)) {
+      let initialComments = issue.comments;
+      if (!hasPageInfo(initialComments)) {
+        try { initialComments = findConnection(await fetchConnection("comments"), "comments", issueId); }
+        catch (error) { if (request.signal?.aborted) throw error; incompleteReasons.push("Unable to establish complete Linear comment pagination."); }
+      }
+      comments.push(...connectionNodes(initialComments));
+      let commentPage = pageInfo(initialComments);
+      if (!hasPageInfo(initialComments)) incompleteReasons.push("Linear comment pagination metadata missing.");
+      const commentCursors = new Set<string>();
+      while (commentPage.hasNextPage && commentPage.endCursor && !commentCursors.has(commentPage.endCursor) && comments.length < request.limits.maxSources) {
+        commentCursors.add(commentPage.endCursor);
+        const page = await fetchConnection("comments", commentPage.endCursor);
+        const connection = findConnection(page, "comments", issueId);
+        comments.push(...connectionNodes(connection));
+        if (!hasPageInfo(connection)) incompleteReasons.push("Linear comment pagination metadata missing or malformed.");
+        commentPage = pageInfo(connection);
+      }
+      for (const comment of comments) {
+        const id = stringField(comment, "id") ?? sha256(JSON.stringify(comment)).slice(0, 16);
+        if (!add({ id: `linear:comment:${id}`, type: "comment", workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), updatedAt: stringField(comment, "updatedAt"), providerVersion: "LINEAR_GET_LINEAR_ISSUE", status: "available", parentId: `linear:issue:${issueId}`, content: stringField(comment, "body") ?? JSON.stringify(comment, null, 2) })) break;
+      }
+      if (commentPage.hasNextPage) incompleteReasons.push(`Linear comments for ${issueIdentifier} remain incomplete at cursor ${commentPage.endCursor ?? "unknown"}.`);
+
     }
-    const comments = [...connectionNodes(initialComments)];
-    let commentPage = pageInfo(initialComments);
-    if (!hasPageInfo(initialComments)) incompleteReasons.push("Linear comment pagination metadata missing.");
-    const commentCursors = new Set<string>();
-    while (commentPage.hasNextPage && commentPage.endCursor && !commentCursors.has(commentPage.endCursor) && comments.length < request.limits.maxSources) {
-      commentCursors.add(commentPage.endCursor);
-      const page = await fetchConnection("comments", commentPage.endCursor);
-      const connection = findConnection(page, "comments", issueId);
-      comments.push(...connectionNodes(connection));
-      if (!hasPageInfo(connection)) incompleteReasons.push("Linear comment pagination metadata missing or malformed.");
-      commentPage = pageInfo(connection);
-    }
-    for (const comment of comments) {
-      const id = stringField(comment, "id") ?? sha256(JSON.stringify(comment)).slice(0, 16);
-      if (!add({ id: `linear:comment:${id}`, type: "comment", workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), updatedAt: stringField(comment, "updatedAt"), providerVersion: "LINEAR_GET_LINEAR_ISSUE", status: "available", parentId: `linear:issue:${issueId}`, content: stringField(comment, "body") ?? JSON.stringify(comment, null, 2) })) break;
-    }
-    if (commentPage.hasNextPage) incompleteReasons.push(`Linear comments for ${issueIdentifier} remain incomplete at cursor ${commentPage.endCursor ?? "unknown"}.`);
 
     let issueWorkspace = linearWorkspace(stringField(issue, "url"));
-    if (!issueWorkspace && `${JSON.stringify(issue)}${JSON.stringify(comments)}`.includes("/document/")) {
+    if (!issueWorkspace && `${JSON.stringify({ ...issue, comments: undefined })}${JSON.stringify(comments)}`.includes("/document/")) {
       try {
         const query = "query($id: String!) { issue(id: $id) { id identifier title url } }";
         const canonicalIssue = findIssue(await this.execute("LINEAR_RUN_QUERY_OR_MUTATION", { query_or_mutation: query, variables: { id: issueId } }, request.account, request.signal), issueId);
@@ -141,7 +145,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
       if (existing) { if ((!existing.content && document.content) || (existing.linked === true && document.linked !== true)) Object.assign(existing, document); return false; }
       candidateKeys.set(key, document); return true;
     });
-    const documents = uniqueDocuments([...connectionNodes(initialDocuments), ...connectionNodes(issue.documents), ...arrayObjects(issue.documents), ...linkedDocuments(JSON.stringify(issue)), ...comments.flatMap(comment => linkedDocuments(stringField(comment, "body") ?? ""))]);
+    const documents = uniqueDocuments([...connectionNodes(initialDocuments), ...connectionNodes(issue.documents), ...arrayObjects(issue.documents), ...linkedDocuments(JSON.stringify({ ...issue, comments: undefined })), ...comments.flatMap(comment => linkedDocuments(stringField(comment, "body") ?? ""))]);
     let documentPage = pageInfo(initialDocuments);
     const documentCursors = new Set<string>();
     while (documentPage.hasNextPage && documentPage.endCursor && !documentCursors.has(documentPage.endCursor) && documents.length < request.limits.maxSources) {

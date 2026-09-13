@@ -58,11 +58,12 @@ export class ReviewCoordinator {
 
   public async preflight(request: ReviewRunRequest): Promise<PreflightDiagnostic[]> {
     const diagnostics: PreflightDiagnostic[] = [];
+    if (request.pullRequest !== undefined && this.dependencies.harness.capabilities.id === "codex" && request.config.inference.auth !== "action-proxy") diagnostics.push({ code: "REVIEWFN_PR_AUTH_REQUIRED", level: "error", message: "Pull-request review with Codex requires action-proxy authentication." });
     const contextById = new Map(this.dependencies.contexts.map((adapter) => [adapter.id, adapter]));
     for (const item of request.config.context) {
       const adapter = contextById.get(item.adapter);
       if (!adapter) { diagnostics.push({ code: "REVIEWFN_CONTEXT_ADAPTER_MISSING", level: "error", message: `Context adapter ${item.adapter} is not installed.` }); continue; }
-      const result = await adapter.preflight({ root: request.root, issue: item.issue ?? request.issue, account: item.account, expectedWorkspace: item.expectedWorkspace, paths: item.paths, limits: this.contextLimits(request), signal: request.signal });
+      const result = await adapter.preflight({ root: request.root, issue: item.issue ?? request.issue, account: item.account, expectedWorkspace: item.expectedWorkspace, paths: item.paths, sourceAuthority: request.policy.sourceAuthority, limits: this.contextLimits(request), signal: request.signal });
       if (!result.ok && !result.diagnostics.some(item => item.level === "error")) diagnostics.push({ code: "REVIEWFN_PREFLIGHT_FAILED", level: "error", message: `${adapter.id} preflight refused execution.` });
       diagnostics.push(...result.diagnostics.map((diagnostic) => ({ ...diagnostic, message: `${adapter.id}: ${diagnostic.message}` })));
     }
@@ -91,7 +92,7 @@ export class ReviewCoordinator {
     for (const item of request.config.context) {
       const adapter = contextById.get(item.adapter) as ContextAdapter;
       try {
-        manifests.push(await adapter.fetch({ root: request.root, issue: item.issue ?? request.issue, account: item.account, expectedWorkspace: item.expectedWorkspace, paths: item.paths, limits, signal: request.signal }));
+        manifests.push(await adapter.fetch({ root: request.root, issue: item.issue ?? request.issue, account: item.account, expectedWorkspace: item.expectedWorkspace, paths: item.paths, sourceAuthority: request.policy.sourceAuthority, limits, signal: request.signal }));
       } catch (error) {
         manifests.push(failedContext(adapter, error, limits, now()));
       }

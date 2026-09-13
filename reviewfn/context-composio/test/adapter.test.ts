@@ -214,3 +214,14 @@ it.each(["comments", "documents", "both"])("bounds empty %s pages with a shared 
   expect(requests).toBe(3);
   expect(output.incompleteReasons.join()).toMatch(/request budget/);
 });
+
+it.each([false, true])("preserves document budgets when comment authority is disabled (%s)", async excludedType => {
+  const runner: ComposioRunner = async args => {
+    if (args[1] !== "LINEAR_GET_LINEAR_ISSUE") throw new Error("Disabled comments must not trigger pagination");
+    return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "Feature", organization: { id: "workspace-1" }, comments: { nodes: Array.from({ length: 20 }, (_, i) => ({ id: `c${i}`, body: "x".repeat(10000) })), pageInfo: { hasNextPage: true, endCursor: "more" } }, documents: { nodes: [{ id: "d", title: "Spec", content: "Required behavior" }], pageInfo: { hasNextPage: false } } } }) };
+  };
+  const result = await new ComposioLinearContextAdapter({ runner }).fetch({ ...request, limits: { maxSources: 2, maxBytes: 1000, maxDepth: 3 }, sourceAuthority: { acceptedTypes: excludedType ? ["issue", "document"] : ["issue", "document", "comment"], commentsMayClarify: excludedType, waiverAuthorities: [] } });
+  expect(result.sources.map(source => source.type)).toEqual(["issue", "document"]);
+  expect(result.sources[1].content).toBe("Required behavior");
+  expect(result.incompleteReasons).toEqual([]);
+});

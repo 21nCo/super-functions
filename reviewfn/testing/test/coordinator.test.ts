@@ -118,3 +118,10 @@ it("keeps omitted configured categories incomplete even when policy does not req
   expect(result.report.coverageReasons.join()).toMatch(/category documentation/);
   expect(result.report.verdict).toBe("needs_verification");
 });
+
+it.each(["api-key", "chatgpt", "action-proxy"])("checks PR authentication before review (%s)", async auth => {
+  const harness = new FakeHarnessAdapter(output);
+  const coordinator = new ReviewCoordinator({ sourceControl: new FakeSourceControlAdapter(), contexts: [new FakeContextAdapter("fixture", manifest)], harness: { capabilities: { ...harness.capabilities, id: "codex" }, preflight: harness.preflight.bind(harness), run: harness.run.bind(harness) }, execution: new FakeExecutionAdapter(), artifacts: new MemoryArtifactStore() });
+  const diagnostics = await coordinator.preflight({ root: ".", base: "base", head: "head", pullRequest: 177, config: { ...config, inference: { ...config.inference, auth } }, policy: DEFAULT_POLICY });
+  expect(diagnostics.some(item => item.code === "REVIEWFN_PR_AUTH_REQUIRED")).toBe(auth !== "action-proxy");
+});

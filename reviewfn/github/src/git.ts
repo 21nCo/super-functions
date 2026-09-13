@@ -79,6 +79,8 @@ export class GitSourceControlAdapter implements SourceControlAdapter {
     if (!/^[a-f0-9]{40,64}$/.test(anchor.commit)) return false;
     if (!anchor.startLine && !anchor.symbol) return false;
     if (!anchor.path || anchor.path.startsWith("/") || anchor.path.split(/[\\/]/).includes("..")) return false;
+    const objectType = await this.runner(["cat-file", "-t", `${anchor.commit}:${anchor.path}`], root).catch(() => undefined);
+    if (objectType?.trim() !== "blob") return false;
     const content = await this.runner(["show", `${anchor.commit}:${anchor.path}`], root).catch(() => undefined);
     if (content === undefined) return false;
     if (anchor.symbol && !content.includes(anchor.symbol)) return false;

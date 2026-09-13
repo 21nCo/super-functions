@@ -21,7 +21,7 @@ export function buildReviewPrompt(input: { change: ChangeSnapshot; context: Cont
     categories: input.config.review.categories,
     change: input.change,
     context: input.context,
-    authoritativeSourceIds: input.context.sources.filter(source => source.status === "available" && source.content !== "" && input.policy.sourceAuthority.acceptedTypes.includes(source.type) && (source.type !== "comment" || input.policy.sourceAuthority.commentsMayClarify)).map(source => source.id),
+    authoritativeSourceIds: input.context.sources.filter(source => source.status === "available" && typeof source.content === "string" && source.content !== "" && input.policy.sourceAuthority.acceptedTypes.includes(source.type) && (source.type !== "comment" || input.policy.sourceAuthority.commentsMayClarify)).map(source => source.id),
     testReceipts: input.tests,
     policy: { requiredCategories: input.policy.requiredCategories, blockingSeverities: input.policy.blockingSeverities, mode: input.policy.mode, sourceAuthority: input.policy.sourceAuthority },
   };
