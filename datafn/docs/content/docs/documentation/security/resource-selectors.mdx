@@ -46,8 +46,8 @@ The parser accepts every current `DatafnRequestAction` and inspects only protoco
 | `query` | `resource` on the query or each batch entry | no — missing `resource` is `DFQL_INVALID` |
 | `mutation` | `resource` on the mutation or each batch entry | no |
 | `transact` | `steps[].resource`, `steps[].query.resource`, `steps[].mutation.resource` | empty `steps` is valid |
-| `search` | `resources[]`, keys of `filters`, keys of `temporalByResource` | yes — omitted `resources` searches all |
-| `clone` | `tables[]`, `page.table` | yes — omitted `tables` clones all |
+| `search` | `resources[]`, keys of `filters`, keys of `temporalByResource` (filter keys never scope an omitted `resources`) | yes — omitted `resources` searches all |
+| `clone` | `tables[]`, `page.table`, all returned join endpoints when `includeJoins` is enabled (requires trusted schema) | yes — omitted `tables` clones all |
 | `pull` | keys of `cursors`, excluding `__datafn_actor_feed__` | yes — global `cursor` pull |
 | `push` | `mutations[].resource` | no — `mutations` is required |
 | `reconcile` | `resources[]` | no |

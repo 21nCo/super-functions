@@ -413,13 +413,14 @@ function parseSearchPayload(
   return ok({
     kind: "search",
     protocolVersion,
-    resources: selectors.snapshot(),
+    resources: payload.resources === undefined ? Object.freeze([]) : selectors.snapshot(),
   });
 }
 
 function parseClonePayload(
   payload: unknown,
   protocolVersion: DatafnRequestProtocolVersion,
+  schema?: Pick<DatafnSchema, "resources" | "relations">,
 ): DatafnEnvelope<ParsedDatafnRequest> {
   if (!isPlainObject(payload)) {
     return invalid("Invalid DFQL: expected object", "$");
@@ -436,10 +437,18 @@ function parseClonePayload(
     const added = selectors.add(payload.page.table, "page.table");
     if (!added.ok) return added;
   }
+  // Non-paginated execution returns every many-many join, independently of tables.
+  if (payload.includeJoins && payload.page === undefined) {
+    if (!schema) return err("DFQL_UNSUPPORTED", "Clone join selectors require trusted schema metadata", { path: "includeJoins" });
+    for (const endpoints of resolveJoinStoreResources(schema.relations ?? []).values()) {
+      const added = selectors.addAll(endpoints, "includeJoins");
+      if (!added.ok) return added;
+    }
+  }
   return ok({
     kind: "clone",
     protocolVersion,
-    resources: selectors.snapshot(),
+    resources: payload.tables === undefined && payload.page === undefined ? Object.freeze([]) : selectors.snapshot(),
   });
 }
 
@@ -545,7 +554,7 @@ function parseObjectAction(
     case "search":
       return parseSearchPayload(payload, protocolVersion);
     case "clone":
-      return parseClonePayload(payload, protocolVersion);
+      return parseClonePayload(payload, protocolVersion, schema);
     case "pull":
       return parsePullPayload(payload, protocolVersion, schema);
     case "push":

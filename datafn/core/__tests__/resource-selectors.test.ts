@@ -466,9 +466,28 @@ it.each(["constructor", "prototype", "__proto__"])("retains own cursor resource 
  it.each(["public ", " public", "constructor", "prototype", "__proto__"])("preserves exact selector names: %s", name => {
   for (const [action, payload] of [
     ["query", {resource: name}],
-    ["search", {query: "x", filters: {[name]: {}}, temporalByResource: {[name]: {}}}],
+    ["search", {query: "x", resources: [name], filters: {[name]: {}}, temporalByResource: {[name]: {}}}],
   ] as const) {
-    const result = extractStructuralResourceSelectors(action, payload);
-    expect(result.ok && result.result.selectors).toEqual([name]);
+    expectSelectors(action, payload, [name]);
   }
+});
+
+
+it("does not let search filter keys disguise namespace-wide access", () => {
+  expectSelectors("search", { query: "x", filters: { allowed: {} }, temporalByResource: { allowed: {} } }, []);
+});
+
+it("includes every join endpoint returned by a restricted clone", () => {
+  const schema: any = { resources: [{ name: "allowed" }, { name: "private" }, { name: "secret" }],
+    relations: [{ type: "many-many", from: "private", to: "secret", relation: "links" }] };
+  const payload = { tables: ["allowed"], includeJoins: true };
+  const parsed = parseDatafnRequest("clone", payload, { schema });
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) return;
+  const expected = ["allowed", "private", "secret"];
+  expect(collectStructuralResourceSelectors(parsed.result).selectors).toEqual(expected);
+  const extracted = extractStructuralResourceSelectors("clone", payload, { schema });
+  expect(extracted.ok && extracted.result.selectors).toEqual(expected);
+  expect(extractStructuralResourceSelectors("clone", payload).ok).toBe(false);
+  expect(extractStructuralResourceSelectors("clone", { includeJoins: true }, { schema })).toMatchObject({ ok: true, result: { selectors: [] } });
 });
