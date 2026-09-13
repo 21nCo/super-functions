@@ -394,16 +394,24 @@ it('ignores an unrelated ancestor lock without workspace metadata', async () => 
 });
 
 
-it.each(['missing', 'malformed'])('detects object-form workspaces with %s lock records', async scenario => {
+it.each(['missing', 'malformed', 'valid'])('detects object-form workspaces with %s lock records', async scenario => {
   await withProject(async parent => {
     const rootDir = path.join(parent, 'packages/app');
     const preset = encodePreset({});
     expect(initProject({ rootDir, preset }).ok).toBe(true);
     writeFileSync(path.join(parent, 'package.json'), JSON.stringify({ workspaces: { packages: ['packages/*'] } }));
     const lockPath = path.join(parent, 'package-lock.json');
-    const original = scenario === 'missing' ? JSON.stringify({ lockfileVersion: 3, packages: {} }) : '{';
+    const valid = npmLock(readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+    valid.packages['packages/app'] = valid.packages[''];
+    valid.packages[''] = {};
+    const original = scenario === 'valid' ? JSON.stringify(valid) : scenario === 'missing' ? JSON.stringify({ lockfileVersion: 3, packages: {} }) : '{';
     writeFileSync(lockPath, original);
-    expect(applyPreset({ rootDir, preset, dryRun: true }).requiredActions).toMatchObject([{ path: '../../package-lock.json' }]);
+    for (const dryRun of [true, false]) {
+      const result = applyPreset({ rootDir, preset, dryRun });
+      expect(result.ok).toBe(true);
+      if (scenario === 'valid') expect(result.requiredActions).toEqual([]);
+      else expect(result.requiredActions).toMatchObject([{ path: '../../package-lock.json' }]);
+    }
     expect(readFileSync(lockPath, 'utf8')).toBe(original);
   });
 });
