@@ -50,3 +50,9 @@ it('preserves metadata through public content-only updates and supports replacem
   expect((await fn.search({...scope,q:'new',filters:{source:'audit'}})).results).toHaveLength(0);
   expect((await fn.search({...scope,q:'new',filters:{source:'replacement'}})).results).toHaveLength(1);
 });
+
+it('does not silently accept failed LLM extraction without an embedder', async () => {
+  const storage = new MemoryStorageAdapter();
+  const fn = new MemoryFn({ storage: { kind: 'adapter', adapter: storage } }, storage, undefined, { generateJSON: async () => { throw new Error('provider unavailable'); } } as any);
+  await expect(fn.add({ tenantId: 't', containerTags: [], content: 'must survive' })).rejects.toThrow('provider unavailable');
+});

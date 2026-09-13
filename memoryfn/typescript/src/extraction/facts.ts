@@ -27,12 +27,8 @@ export class FactExtractor {
     Text: "${text}"
     `;
 
-    try {
-        const result = await this.llm.generateJSON<{ facts: Fact[] }>(prompt);
-        return result.facts || [];
-    } catch (e) {
-        console.error('Fact extraction failed:', e);
-        return [];
-    }
+    const result = await this.llm.generateJSON<{ facts: Fact[] }>(prompt);
+    if (!Array.isArray(result.facts)) throw new Error('MEMORY_EXTRACTION_INVALID');
+    return result.facts;
   }
 }

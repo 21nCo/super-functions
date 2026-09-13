@@ -480,7 +480,7 @@ describe('PlugFn SDK', () => {
       ).rejects.toThrow('Action failed');
     });
 
-    it.each([['stable-key', 2], ['', 1], ['   ', 1], [undefined, 1]])('retries provider-key writes only with a usable key %s', async (key, count) => {
+    it.each([['usable', 'stable-key', 2], ['empty', '', 1], ['whitespace', '   ', 1], ['missing', undefined, 1]])('provider-key retry admission: %s', async (_label, key, count) => {
       let attempts = 0;
       const provider = mockProvider('test', { mutate: mockResponse({ ok: true }) });
       provider.actions.mutate.contract = { version: '1.0.0', effect: 'write', requiredScopes: [], resources: [], sensitiveKeys: [], pagination: { kind: 'none' }, retry: 'provider-key', idempotencyKeyParameter: 'requestId' };

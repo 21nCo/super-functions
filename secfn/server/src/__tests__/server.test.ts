@@ -319,7 +319,7 @@ it("enforces runtime scope on omitted environments and every set member", async 
   await expect(secfn.vault.readRuntimeSecret("DEV", verified, scope)).rejects.toThrow("scope mismatch");
   await secfn.vault.createSecretSet({ ...scope, name: "app", members: [{ secretId: dev.id }] });
   await expect(secfn.vault.resolveRuntimeSet("app", verified, { ...scope, environment: "production" })).rejects.toThrow("scope mismatch");
-  expect(db.dump("secfn_audit_events").filter(e => e.action === "runtime_read")).toHaveLength(0);
+  expect(db.dump("secfn_audit_events").filter(e => e.action === "read")).toHaveLength(0);
 });
 
 it("looks up tokens beyond 1000 rows and cleans up revoked secret history", async () => {
@@ -342,4 +342,18 @@ it("rejects namespace IDs belonging to another tenant", async () => {
   const { secfn } = createServer();
   const namespace = await secfn.vault.createNamespace({ tenantId: "other", slug: "private", createdBy: "admin" });
   await expect(secfn.vault.createEnvironment({ tenantId: "tenant-a", namespaceId: namespace.id, name: "production", createdBy: "admin" })).rejects.toThrow("Namespace not found");
+});
+
+it("binds ID-issued tokens to canonical tenant, namespace and environment", async () => {
+  const { secfn } = createServer();
+  const ns = await secfn.vault.createNamespace({ tenantId: "tenant-a", slug: "canonical", label: "Display Name", createdBy: "admin" });
+  const env = await secfn.vault.createEnvironment({ tenantId: "tenant-a", namespaceId: ns.id, name: "production", createdBy: "admin" });
+  await secfn.vault.createSecret({ tenantId: "tenant-a", namespaceId: ns.id, environmentId: env.id, key: "KEY", value: "private", createdBy: "admin" });
+  const token = await secfn.vault.createServiceToken({ tenantId: "tenant-a", namespaceId: ns.id, environmentId: env.id, name: "by-id", scopes: ["secret:KEY"], createdBy: "admin" });
+  expect(token.record).toMatchObject({ tenantId: "tenant-a", namespace: "canonical", environment: "production" });
+  const scope = { tenantId: "tenant-a", namespace: "canonical", environment: "production" };
+  const verified = await secfn.vault.verifyRuntimeToken(token.token, scope);
+  expect((await secfn.vault.readRuntimeSecret("KEY", verified, scope)).value).toBe("private");
+  await expect(secfn.vault.verifyRuntimeToken(token.token, { ...scope, environment: "development" })).rejects.toThrow();
+  await expect(secfn.vault.createServiceToken({ tenantId: "other", namespaceId: ns.id, name: "bad", scopes: ["*"], createdBy: "admin" })).rejects.toThrow();
 });

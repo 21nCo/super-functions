@@ -16,7 +16,7 @@ export function memoryfn(config: MemoryFnConfig): MemoryFn {
   let embedder: Embedder | undefined;
   let llm: LLMProvider | undefined;
 
-  if ((config.storage.kind === 'pg' || config.storage.adapter instanceof PostgresAdapter) &&
+  if ((config.storage.kind === 'pg' || config.storage.adapter?.embeddingDimensions === 1536) &&
       config.embedder && (config.embedder.dims ?? 1536) !== 1536) {
     throw new Error('MEMORY_PG_EMBEDDING_DIMENSION_MUST_BE_1536');
   }
@@ -50,7 +50,7 @@ export function memoryfn(config: MemoryFnConfig): MemoryFn {
       embedder = new OpenAIEmbedder({
           apiKey: config.embedder.apiKey,
           model: config.embedder.model,
-          dims: config.embedder.dims ?? (storage instanceof PostgresAdapter ? 1536 : undefined)
+          dims: config.embedder.dims ?? (storage.embeddingDimensions)
       });
   }
 

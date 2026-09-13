@@ -8,6 +8,8 @@ export interface MemoryUpdate extends MemoryScope {
 }
 export interface MemoryDelete extends MemoryScope { id: string; expectedRevision?: number }
 export interface StorageAdapter {
+  /** Fixed vector dimension, shared across bundled entrypoints. */
+  readonly embeddingDimensions?: number;
   close?(): Promise<void>;
   insertMemories(memories: Partial<Memory>[]): Promise<Memory[]>;
   insertRelationships(relationships: Partial<MemoryRelationship>[]): Promise<MemoryRelationship[]>;

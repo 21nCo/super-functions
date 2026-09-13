@@ -27,6 +27,9 @@ suite('Postgres lifecycle integration', () => {
     const id = '550e8400-e29b-41d4-a716-446655440000';
     const [relation] = await adapter.insertRelationships([{ id, fromId: rows[0].id, toId: rows[1].id, confidence: 0 }]);
     expect(relation).toMatchObject({ id, confidence: 0 });
+    await expect(adapter.insertRelationships([{ id, fromId: rows[0].id, toId: rows[1].id }])).rejects.toThrow('MEMORY_RELATION_EXISTS');
+    const [generated] = await adapter.insertRelationships([{ id: '', fromId: rows[0].id, toId: rows[1].id }]);
+    expect(generated.id).toBeTruthy();
   });
   it('retrieves only the explicit tenant with all scope tags', async () => {
     await adapter.insertMemories([

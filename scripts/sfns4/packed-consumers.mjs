@@ -122,6 +122,12 @@ try {
     if (!sec.createSecFnServer || !Object.keys(file).length || !Object.keys(data).length || !Object.keys(auth).length || !send.connectedMailboxAdapter) throw new Error('Platform export missing');
     const pg = await import('@memoryfn/core/storage/pg');
     if (!pg.PostgresAdapter || !pg.memories) throw new Error('Postgres schema export missing');
+    const injectedPg = new pg.PostgresAdapter({});
+    if (injectedPg.embeddingDimensions !== 1536) throw new Error('Postgres dimension capability missing');
+    let rejectedDimensions = false;
+    try { memory.memoryfn({ storage: { kind: 'adapter', adapter: injectedPg }, embedder: { provider: 'openai', apiKey: 'fixture', dims: 768 } }); }
+    catch (error) { rejectedDimensions = error.message === 'MEMORY_PG_EMBEDDING_DIMENSION_MUST_BE_1536'; }
+    if (!rejectedDimensions) throw new Error('Bundled subpath adapter dimensions were not enforced');
     if (!plug.ExecutionCoordinator || !providers.googleDocsProvider.actions['documents.get'] || !lang.GoogleChatModel || !memory.MemoryStorageAdapter || !cli.createCredentialStore) throw new Error('Packed export missing');
     const store = new memory.MemoryStorageAdapter();
     const m = memory.memoryfn({ storage: { kind: 'adapter', adapter: store } });

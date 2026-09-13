@@ -104,7 +104,7 @@ export class PromptRegistry {
           return false;
         }
       })
-      .sort((left, right) => comparePromptRecords(right, left))
+      .sort((left, right) => -comparePromptRecords(left, right))
       .map(toPromptTemplate);
   }
 
@@ -132,7 +132,7 @@ export class PromptRegistry {
     if (!valid.length) {
       return null;
     }
-    valid.sort((left, right) => comparePromptRecords(right, left));
+    valid.sort((left, right) => -comparePromptRecords(left, right));
     return valid[0];
   }
 }

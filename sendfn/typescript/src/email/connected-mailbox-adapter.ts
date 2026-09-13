@@ -139,7 +139,7 @@ export function connectedMailboxAdapter(
         const raw = base64(new TextEncoder().encode(mime))
           .replace(/\+/g, "-")
           .replace(/\//g, "_")
-          .replace(/=+$/, "");
+          .replace(/={1,2}$/, "");
         result = await options.dispatch("messages.send", { body: { raw } });
         if (!result || typeof result.id !== "string")
           throw new Error("SENDFN_MAILBOX_DISPATCH_UNCONFIRMED");

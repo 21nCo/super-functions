@@ -133,7 +133,10 @@ export function parseMessages(input: Message[]): Message[] {
 
     return {
       role: role as Message["role"],
-      content: asNonEmptyString(message.content, `messages[${index}].content`),
+      content: role === "assistant" && (message.tool_calls?.length || message.toolCalls?.length)
+        ? asString(message.content, `messages[${index}].content`)
+        : asNonEmptyString(message.content, `messages[${index}].content`),
+      ...parseContinuation(message, role),
       ...(typeof message.name === "string" && message.name.length > 0 ? { name: message.name } : {}),
       ...(typeof message.tool_call_id === "string" && message.tool_call_id.length > 0
         ? { tool_call_id: message.tool_call_id }
@@ -296,4 +299,36 @@ function firstNonEmptyString(...values: unknown[]): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asString(value: unknown, label: string): string {
+  if (typeof value !== "string") throw new ValidationError(`${label} must be a string`);
+  return value;
+}
+
+function parseContinuation(message: Record<string, unknown>, role: string): Partial<Message> {
+  const result: Partial<Message> = {};
+  if (message.toolCalls !== undefined) {
+    if (role !== "assistant" || !Array.isArray(message.toolCalls)) throw new ValidationError("Invalid assistant toolCalls");
+    result.toolCalls = message.toolCalls.map(call => {
+      const item = asRecord(call, "tool call");
+      return { id: asNonEmptyString(item.id, "tool id"), name: asNonEmptyString(item.name, "tool name"), arguments: asRecord(item.arguments, "tool arguments") };
+    });
+  }
+  if (message.tool_calls !== undefined) {
+    if (role !== "assistant" || !Array.isArray(message.tool_calls)) throw new ValidationError("Invalid assistant tool_calls");
+    result.tool_calls = message.tool_calls.map(call => {
+      const item = asRecord(call, "tool call");
+      const fn = asRecord(item.function, "tool function");
+      if (item.type !== "function") throw new ValidationError("Invalid tool call type");
+      return { id: asNonEmptyString(item.id, "tool id"), type: "function", function: { name: asNonEmptyString(fn.name, "tool name"), arguments: asString(fn.arguments, "tool arguments") } };
+    });
+  }
+  if (message.providerData !== undefined) {
+    if (role !== "assistant") throw new ValidationError("Provider continuation requires an assistant message");
+    const data = asRecord(message.providerData, "providerData");
+    if (!Array.isArray(data.googleParts) || !data.googleParts.every(isRecord)) throw new ValidationError("Invalid googleParts");
+    result.providerData = { googleParts: data.googleParts };
+  }
+  return result;
 }

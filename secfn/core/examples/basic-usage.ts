@@ -29,7 +29,7 @@ async function main() {
 
   const scanner = createSecurityScanner();
   const findings = scanner.scanContent(
-    "const token = 'ghp_aB3dE5gH7jK9mN2pQ4sT6vW8xY1zA3cD5fG7';",
+    "const token = 'REPLACE_WITH_YOUR_TOKEN';",
     { path: "example.ts" },
   );
   console.log(formatFindingsTable(findings));

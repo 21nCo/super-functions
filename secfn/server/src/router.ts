@@ -1,5 +1,5 @@
 import { createRouter, ForbiddenError, TooManyRequestsError, UnauthorizedError, type Route } from "@superfunctions/http";
-import { SecFnForbiddenError } from "@secfn/core";
+import { SecFnForbiddenError, SecFnValidationError } from "@secfn/core";
 import type { SecFnRequestContext, SecFnServerConfig, SecFnAdminAction, SecretScope } from "./types.js";
 import type { VaultService } from "./vault.js";
 import type { AuditService } from "./audit.js";
@@ -73,7 +73,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
       const body = await readJson<Record<string, unknown>>(request);
       return ok(await services.vault.createNamespace({
         tenantId: ctx.tenantId,
-        slug: String(body.slug ?? body.label ?? ""),
+        slug: requiredString(body.slug ?? body.label ?? ""),
         label: asOptionalString(body.label),
         description: asOptionalString(body.description),
         metadata: isRecord(body.metadata) ? body.metadata : undefined,
@@ -102,7 +102,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
         tenantId: ctx.tenantId,
         namespaceId: asOptionalString(body.namespaceId),
         namespace: asOptionalString(body.namespace),
-        name: String(body.name ?? ""),
+        name: requiredString(body.name ?? ""),
         description: asOptionalString(body.description),
         metadata: isRecord(body.metadata) ? body.metadata : undefined,
         createdBy: ctx.actorId ?? "system",
@@ -130,8 +130,8 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
     adminRoute("POST", "/admin/secrets", "secrets:create", async (request, ctx) => {
       const body = await readJson<Record<string, unknown>>(request);
       return ok(await services.vault.createSecret({
-        key: String(body.key ?? ""),
-        value: String(body.value ?? ""),
+        key: requiredString(body.key ?? ""),
+        value: requiredString(body.value ?? ""),
         description: asOptionalString(body.description),
         tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
         metadata: isRecord(body.metadata) ? body.metadata : undefined,
@@ -168,7 +168,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
     adminRoute("POST", "/admin/secrets/:id/rotate", "secrets:rotate", async (request, ctx) => {
       const body = await readJson<{ value?: string }>(request);
       return ok(await services.vault.rotateSecret(ctx.params.id, {
-        value: String(body.value ?? ""),
+        value: requiredString(body.value ?? ""),
         actorId: ctx.actorId ?? "system",
       }));
     }),
@@ -186,10 +186,10 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
     adminRoute("POST", "/admin/secret-sets", "secret-sets:create", async (request, ctx) => {
       const body = await readJson<Record<string, unknown>>(request);
       return ok(await services.vault.createSecretSet({
-        name: String(body.name ?? ""),
+        name: requiredString(body.name ?? ""),
         description: asOptionalString(body.description),
         members: Array.isArray(body.members) ? body.members.map((member) => ({
-          secretId: String((member as Record<string, unknown>).secretId ?? ""),
+          secretId: requiredString((member as Record<string, unknown>).secretId ?? ""),
           alias: asOptionalString((member as Record<string, unknown>).alias),
         })) : undefined,
         createdBy: ctx.actorId ?? "system",
@@ -230,7 +230,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
       const body = await readJson<Record<string, unknown>>(request);
       return ok(await services.vault.addSecretSetMember(
         ctx.params.id,
-        String(body.secretId ?? ""),
+        requiredString(body.secretId ?? ""),
         asOptionalString(body.alias),
       ), { status: 201 });
     }),
@@ -248,7 +248,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
     adminRoute("POST", "/admin/service-tokens", "service-tokens:create", async (request, ctx) => {
       const body = await readJson<Record<string, unknown>>(request);
       return ok(await services.vault.createServiceToken({
-        name: String(body.name ?? ""),
+        name: requiredString(body.name ?? ""),
         scopes: Array.isArray(body.scopes) ? body.scopes.map(String) : [],
         expiresAt: asOptionalString(body.expiresAt),
         createdBy: ctx.actorId ?? "system",
@@ -404,4 +404,9 @@ function asQueryString(value: string | null): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requiredString(value: unknown): string {
+  if (typeof value !== "string") throw new SecFnValidationError("Expected a string field");
+  return value;
 }

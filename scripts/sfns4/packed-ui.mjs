@@ -1,5 +1,6 @@
-import { writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { writeFileSync, realpathSync, lstatSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, basename, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 const require = createRequire(resolve("uifn/svelte/package.json"));
@@ -10,20 +11,27 @@ const { svelte } = await import(
   pathToFileURL(require.resolve("@sveltejs/vite-plugin-svelte")).href
 );
 const { chromium } = await import("playwright");
-const root = process.argv[2];
-if (!root) throw new Error("Temporary packed consumer directory is required");
+const candidate = process.argv[2];
+if (!candidate || lstatSync(candidate).isSymbolicLink()) throw new Error("Temporary packed consumer directory is required");
+const root = realpathSync(candidate);
+if (dirname(root) !== realpathSync(tmpdir()) || !/^sfns4-packed-[A-Za-z0-9]+$/.test(basename(root))) {
+  throw new Error("Use a fresh sfns4-packed directory directly inside the OS temporary directory");
+}
 writeFileSync(
   join(root, "App.svelte"),
   `<script>import { Accordion } from '@uifn/svelte';</script>
 <Accordion.Root><Accordion.Item value="one"><Accordion.Header value="one"><Accordion.Trigger value="one">Section</Accordion.Trigger></Accordion.Header><Accordion.Content value="one">Packed content</Accordion.Content></Accordion.Item></Accordion.Root>`,
+  { flag: "wx" },
 );
 writeFileSync(
   join(root, "server.js"),
   `import {render} from 'svelte/server'; import App from './App.svelte'; export const output = render(App);`,
+  { flag: "wx" },
 );
 writeFileSync(
   join(root, "client.js"),
   `import {hydrate} from 'svelte'; import App from './App.svelte'; hydrate(App,{target:document.querySelector('#app')}); window.ready = true;`,
+  { flag: "wx" },
 );
 const vite = await createServer({
   root,

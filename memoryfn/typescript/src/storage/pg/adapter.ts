@@ -6,6 +6,7 @@ import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 
 // We assume the DB passed is compatible with PostgresJsDatabase schema
 export class PostgresAdapter implements StorageAdapter {
+  readonly embeddingDimensions = 1536;
   private db: PostgresJsDatabase<any>;
 
   constructor(db: PostgresJsDatabase<any>, private readonly dispose?: () => Promise<void>) {
@@ -47,7 +48,7 @@ export class PostgresAdapter implements StorageAdapter {
 
     const now = new Date();
     const values = relationships.map(r => ({
-      ...(r.id === undefined ? {} : { id: r.id }),
+      ...(r.id ? { id: r.id } : {}),
       fromId: r.fromId!,
       toId: r.toId!,
       type: r.type || 'extends',
@@ -65,6 +66,10 @@ export class PostgresAdapter implements StorageAdapter {
         if (!from || !to || from.tenantId !== to.tenantId) throw new Error('MEMORY_RELATION_SCOPE_INVALID');
       }
       return tx.insert(memoryRelationships).values(values).returning();
+    }).catch(error => {
+      const cause = error?.cause ?? error;
+      if (cause?.code === "23505") throw new Error("MEMORY_RELATION_EXISTS", { cause: error });
+      throw error;
     });
 
     return result.map(r => ({

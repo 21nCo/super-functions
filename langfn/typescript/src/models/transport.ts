@@ -1,6 +1,7 @@
 export interface TransportClientConfig {
   baseUrl: string;
   headers?: HeadersInit;
+  /** Total response deadline including the body, in milliseconds; 0 disables it. */
   timeout?: number;
   fetchImpl?: typeof fetch;
 }
@@ -115,7 +116,11 @@ export function getTransportClient(config: TransportClientConfig): TransportClie
           },
           async cancel(reason) { finish(); await reader.cancel(reason); }
         });
-        return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+        const wrapped = new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+        for (const field of ["url", "redirected", "type"] as const) {
+          Object.defineProperty(wrapped, field, { value: response[field] });
+        }
+        return wrapped;
       } catch (error) {
         cleanup();
         throw error;

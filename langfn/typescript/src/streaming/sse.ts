@@ -44,8 +44,8 @@ export function normalizeStreamEvent(event: EventLike, traceId: string): StreamE
       return withTrace<ContentEvent>(
         {
           type,
-          content: String(raw.content ?? raw.delta ?? ""),
-          delta: String(raw.delta ?? raw.content ?? "")
+          content: streamText(raw.content ?? raw.delta ?? ""),
+          delta: streamText(raw.delta ?? raw.content ?? "")
         },
         traceId
       );
@@ -53,8 +53,8 @@ export function normalizeStreamEvent(event: EventLike, traceId: string): StreamE
       return withTrace<ToolCallEvent>(
         {
           type,
-          id: String(raw.id ?? ""),
-          toolName: String(raw.toolName ?? raw.tool_name ?? ""),
+          id: streamText(raw.id ?? ""),
+          toolName: streamText(raw.toolName ?? raw.tool_name ?? ""),
           args: (raw.args as Record<string, unknown> | undefined) ?? {}
         },
         traceId
@@ -63,7 +63,7 @@ export function normalizeStreamEvent(event: EventLike, traceId: string): StreamE
       return withTrace<ToolResultEvent>(
         {
           type,
-          toolCallId: String(raw.toolCallId ?? raw.tool_call_id ?? ""),
+          toolCallId: streamText(raw.toolCallId ?? raw.tool_call_id ?? ""),
           result: raw.result
         },
         traceId
@@ -81,7 +81,7 @@ export function normalizeStreamEvent(event: EventLike, traceId: string): StreamE
       return withTrace<TraceEvent>(
         {
           type,
-          span: String(raw.span ?? ""),
+          span: streamText(raw.span ?? ""),
           metadata: (raw.metadata as Record<string, unknown> | undefined) ?? {}
         },
         traceId
@@ -90,8 +90,8 @@ export function normalizeStreamEvent(event: EventLike, traceId: string): StreamE
       return withTrace<ReasoningEvent>(
         {
           type,
-          step: String(raw.step ?? ""),
-          thinking: String(raw.thinking ?? "")
+          step: streamText(raw.step ?? ""),
+          thinking: streamText(raw.thinking ?? "")
         },
         traceId
       );
@@ -99,7 +99,7 @@ export function normalizeStreamEvent(event: EventLike, traceId: string): StreamE
       return withTrace<EndEvent>(
         {
           type,
-          finish_reason: String(raw.finish_reason ?? "stop")
+          finish_reason: streamText(raw.finish_reason ?? "stop")
         },
         traceId
       );
@@ -128,4 +128,10 @@ export async function* toSSE(
   for await (const event of lang.stream(input as never, options as never)) {
     yield toSSEFrame(event);
   }
+}
+
+function streamText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  throw new ValidationError("Stream text fields must contain text or scalar values");
 }

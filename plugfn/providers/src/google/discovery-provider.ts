@@ -178,7 +178,7 @@ export function googleDiscoveryProvider(
           : method.path;
         if (!template) throw new Error("GOOGLE_MEDIA_UPLOAD_UNSUPPORTED");
         const path = template.replace(
-          /\{(\+?)([^}]+)\}/g,
+          /\{(\+?)([^{}]+)\}/g,
           (_, _reserved, key: string) => {
             const value = validated[key];
             if (typeof value !== "string" || !value || value === "." || value === "..")

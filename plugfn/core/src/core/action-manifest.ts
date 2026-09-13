@@ -85,7 +85,7 @@ function canonicalJson(value: unknown, depth = 0): string {
     return `[${value.map((item) => canonicalJson(item, depth + 1)).join(',')}]`;
   if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
     return `{${Object.keys(value)
-      .sort()
+      .sort(compareCanonicalKeys)
       .map(
         (key) =>
           `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key], depth + 1)}`
@@ -93,4 +93,11 @@ function canonicalJson(value: unknown, depth = 0): string {
       .join(',')}}`;
   }
   throw new Error('Manifest must contain JSON values only');
+}
+
+// Manifest hashes require locale-independent UTF-16 ordering on every runtime.
+function compareCanonicalKeys(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }

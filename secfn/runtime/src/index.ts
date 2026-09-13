@@ -31,7 +31,7 @@ interface CacheEntry<T> {
 
 export function createSecFnRuntime(config: SecFnRuntimeConfig): SecFnRuntime {
   const fetchImpl = config.fetch ?? fetch;
-  const endpoint = config.endpoint.replace(/\/+$/, "");
+  const endpoint = trimSuffix(config.endpoint, "/");
   const cache = new Map<string, CacheEntry<unknown>>();
   const ttlMs = config.cache?.ttlMs ?? 0;
 
@@ -142,4 +142,10 @@ export function formatDotEnv(values: Record<string, string>): string {
 function quoteDotEnvValue(value: string): string {
   if (/^[A-Za-z0-9_./:@-]+$/.test(value)) return value;
   return JSON.stringify(value);
+}
+
+function trimSuffix(value: string, suffix: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === suffix) end--;
+  return value.slice(0, end);
 }

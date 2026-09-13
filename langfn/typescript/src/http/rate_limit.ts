@@ -33,10 +33,10 @@ export function createLangFnRateLimitMiddleware(options: {
   getTenantContext: (request: Request, context: Record<string, unknown>) => CanonicalTenantContext;
   contextKey?: string;
 }): Middleware<Record<string, unknown>> {
+  if (!options.provider) return async (_request, _context, next) => next();
   const contextKey = options.contextKey ?? "auth";
   return async (request, context, next) => {
     const tenantContext = options.getTenantContext(request, context);
-    if (!options.provider) return next();
     const session = context[contextKey] as AuthSession | undefined;
     const key = [
       tenantContext.tenantId ?? "anonymous",

@@ -73,7 +73,7 @@ This gate runs the TypeScript build, the full TypeScript and Python test suites,
 
 - [Release contract](./SPEC.md)
 - [Provider compatibility matrix](./COMPATIBILITY.md)
-- [Release-gate checklist](./.conduct/release-gate.md)
+- [Release-gate checklist](./RELEASE_GATE.md)
 - [TypeScript README](./typescript/README.md)
 - [Python README](./python/README.md)
 

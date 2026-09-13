@@ -19,5 +19,5 @@ if(first.ok) {
 }
 const evidence={timestamp:new Date().toISOString(),url:endpoint.href,unauthenticatedStatus:negative.status,runs,ok:runs.length===4 && runs.every(r=>r.status===200&&r.ok)};
 writeFileSync(output,JSON.stringify(evidence,null,2)+'\n');
-console.log(JSON.stringify(evidence));
+console.log(JSON.stringify({ ok: evidence.ok, runCount: runs.length, unauthenticatedStatus: negative.status }));
 if(!evidence.ok)process.exitCode=1;

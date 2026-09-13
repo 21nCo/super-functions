@@ -702,14 +702,26 @@ export class VaultService {
   }
 
   async createServiceToken(input: CreateServiceTokenInput): Promise<{ token: string; record: Omit<ServiceTokenRecord, "tokenHash"> }> {
+    let namespace = input.namespaceId
+      ? await this.ensureNamespace({ ...input, create: false })
+      : input.namespace ? await this.findNamespace(input) : undefined;
+    const environment = input.environmentId
+      ? await this.getEnvironment(input.environmentId) : undefined;
+    if (environment) {
+      if (input.tenantId !== undefined && environment.tenantId !== input.tenantId) throw new SecFnNotFoundError("Environment not found");
+      if (environment.namespaceId) {
+        if (namespace && namespace.id !== environment.namespaceId) throw new SecFnValidationError("Token scope mismatch");
+        namespace = await this.ensureNamespace({ tenantId: input.tenantId, namespaceId: environment.namespaceId, createdBy: input.createdBy, create: false });
+      }
+    }
     const token = `secfn_${randomBytes(24).toString("base64url")}`;
     const record: ServiceTokenRecord = {
       id: generateId("stok"),
       tokenHash: hashToken(token),
       name: input.name,
-      tenantId: input.tenantId,
-      namespace: input.namespace,
-      environment: input.environment,
+      tenantId: input.tenantId ?? namespace?.tenantId ?? environment?.tenantId,
+      namespace: namespace?.slug ?? (input.namespace ? normalizeSlug(input.namespace) : undefined),
+      environment: environment?.name ?? (input.environment ? normalizeName(input.environment) : undefined),
       scopes: input.scopes,
       expiresAt: input.expiresAt,
       createdBy: input.createdBy,
@@ -745,7 +757,10 @@ export class VaultService {
       throw new SecFnForbiddenError("Runtime token has expired");
     }
     if (token.tenantId && token.tenantId !== scope.tenantId) throw new SecFnForbiddenError("Runtime token tenant mismatch");
-    if (token.namespace && token.namespace !== scope.namespace) throw new SecFnForbiddenError("Runtime token namespace mismatch");
+    if (token.namespace) {
+      const requested = await this.findNamespace({ tenantId: scope.tenantId, namespace: scope.namespace });
+      if ((requested?.slug ?? normalizeSlug(scope.namespace ?? "")) !== token.namespace) throw new SecFnForbiddenError("Runtime token namespace mismatch");
+    }
     if (token.environment && token.environment !== (scope.environment ?? DEFAULT_ENVIRONMENT)) throw new SecFnForbiddenError("Runtime token environment mismatch");
     await this.db.update({
       model: "secfn_service_tokens",
@@ -767,7 +782,8 @@ export class VaultService {
     const resolved = await this.resolveScope(scope, { requireNamespace: true, requireEnvironment: true });
     const secret = await this.findSecretByKey(key, resolved);
     if (!secret || secret.revokedAt) throw new SecFnNotFoundError("Secret not found", { key });
-    this.assertRuntimeScope(secret, verified, resolved);
+    const hydrated = await this.hydrateSecret(secret);
+    this.assertRuntimeScope({ ...hydrated, namespace: resolved.namespace }, verified, resolved);
     return this.decryptRuntimeSecret(await this.hydrateSecret(secret), verified, requestMeta);
   }
 
@@ -795,7 +811,7 @@ export class VaultService {
     for (const member of members) {
       const secret = await this.getSecret(member.secretId);
       if (secret.revokedAt) continue;
-      this.assertRuntimeScope(secret, verified, { ...resolved, environment: scope.environment });
+      this.assertRuntimeScope({ ...secret, namespace: resolved.namespace }, verified, { ...resolved, environment: scope.environment ?? DEFAULT_ENVIRONMENT });
       const response = await this.decryptRuntimeSecret(secret, verified, requestMeta);
       secrets[member.alias ?? secret.key] = response.value;
     }
@@ -855,7 +871,7 @@ export class VaultService {
     return {
       tenantId,
       namespaceId: namespace?.id,
-      namespace: namespace?.label ?? namespace?.slug,
+      namespace: namespace?.slug,
       environmentId: environment?.id,
       environment: environment?.name,
     };
@@ -1183,7 +1199,11 @@ function cleanString(value: string | undefined): string | undefined {
 }
 
 function normalizeSlug(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  const slug = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  let start = 0; let end = slug.length;
+  while (start < end && slug[start] === "-") start++;
+  while (end > start && slug[end - 1] === "-") end--;
+  return slug.slice(start, end);
 }
 
 function uniqueStrings(values: Array<string | undefined | null>): string[] {

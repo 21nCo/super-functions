@@ -65,7 +65,7 @@ function normalizeValue(value: unknown): CanonicalValue | undefined {
     }
     return normalized;
   }
-  return String(value);
+  return undefined;
 }
 
 export function stableSerializeCachePayload(value: unknown): string {

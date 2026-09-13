@@ -54,11 +54,12 @@ export interface ObservabilityConfig {
   };
   budgets?: Budgets;
   traceStorage?: TraceStorage | {
+    supportsScope?: boolean;
     save?(trace: Record<string, unknown>): Promise<void>;
     saveTrace?(trace: Record<string, unknown>): Promise<unknown>;
     saveFeedback?(feedback: Record<string, unknown>): Promise<unknown>;
-    findMany(options?: { limit?: number; provider?: string; model?: string }): Promise<Record<string, unknown>[]>;
-    findOne?(traceId: string): Promise<Record<string, unknown> | null>;
+    findMany(options?: TraceQuery): Promise<Record<string, unknown>[]>;
+    findOne?(traceId: string, scope?: { tenantId?: string; userId?: string }): Promise<Record<string, unknown> | null>;
     listFeedback?(traceId: string): Promise<Record<string, unknown>[]>;
   };
   watchfn?: {
@@ -179,7 +180,7 @@ export class LangFn {
             throw normalizeUnknownError(error);
           }
         },
-        options.retry ?? this.config.retry
+        { ...(options.retry ?? this.config.retry), signal: options.cancelToken?.signal }
       );
 
       const finalized = this.finalizeCompletion(response, traceId, options.structuredOutput ?? options.structured);
@@ -232,7 +233,7 @@ export class LangFn {
             throw normalizeUnknownError(error);
           }
         },
-        options.retry ?? this.config.retry
+        { ...(options.retry ?? this.config.retry), signal: options.cancelToken?.signal }
       );
 
       const finalized = this.finalizeChat(response, traceId, options.structuredOutput ?? options.structured);
@@ -270,9 +271,10 @@ export class LangFn {
 
     try {
       if (typeof input === "string") {
-        const stream = this.requireModel().stream({ prompt: input, metadata: options.metadata });
+        const controller = new AbortController();
+        const stream = this.requireModel().stream({ prompt: input, metadata: options.metadata, signal: controller.signal });
         for await (const event of normalizeStream(
-          iterateWithTimeoutAndCancel(stream, options.timeout, options.cancelToken),
+          iterateWithTimeoutAndCancel(stream, options.timeout, options.cancelToken, controller),
           traceId
         )) {
           if (event.type === "content") {
@@ -302,7 +304,7 @@ export class LangFn {
                 options.timeout,
                 options.cancelToken
               ),
-            this.config.retry
+            { ...this.config.retry, signal: options.cancelToken?.signal }
           ),
           traceId
         );
@@ -485,7 +487,8 @@ export class LangFn {
 
     const storage = this.config.observability?.traceStorage;
     if (request.scope) {
-      const trace = await storage?.findOne?.(traceId);
+      if (!storage?.supportsScope || !storage.findOne) throw new ValidationError("Scoped feedback requires a scope-aware trace store with findOne");
+      const trace = await storage.findOne(traceId, request.scope);
       if (!trace || !matchesTraceScope(trace, request.scope)) throw new TraceNotFoundError("Trace not found");
     }
     const payload = this.redactObservabilityPayload({
@@ -508,7 +511,9 @@ export class LangFn {
   }
 
   async getTraces(query: TraceQuery = {}): Promise<Record<string, unknown>[]> {
-    const traces = ((await this.config.observability?.traceStorage?.findMany(query)) ?? []) as Record<string, unknown>[];
+    const storage = this.config.observability?.traceStorage;
+    if ((query.tenantId !== undefined || query.userId !== undefined) && !storage?.supportsScope) throw new ValidationError("Scoped trace queries require a scope-aware trace store");
+    const traces = ((await storage?.findMany(query)) ?? []) as Record<string, unknown>[];
     return traces.filter(trace => matchesTraceScope(trace, query));
   }
 
@@ -627,7 +632,7 @@ export class LangFn {
     kind: string;
     traceId: string;
     request: Record<string, unknown>;
-    response: CompletionResponse | ChatResponse | CompletionResponse;
+    response: CompletionResponse | ChatResponse;
   }): Promise<void> {
     const storage = this.config.observability?.traceStorage;
     if (!this.model) return;
@@ -771,33 +776,25 @@ async function callWithTimeoutAndCancel<T>(
 async function* iterateWithTimeoutAndCancel(
   stream: AsyncIterable<StreamEvent>,
   timeout?: number,
-  cancelToken?: CancellationToken
+  cancelToken?: CancellationToken,
+  controller = new AbortController()
 ): AsyncIterable<StreamEvent> {
   const iterator = stream[Symbol.asyncIterator]();
-  while (true) {
-    if (cancelToken?.cancelled) {
-      throw new AbortError();
-    }
-
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    let timeoutPromise: Promise<never> | undefined;
-    if (timeout !== undefined) {
-      timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => reject(new TimeoutError()), timeout);
-      });
-    }
-
-    try {
-      const result = await Promise.race(
-        [iterator.next(), timeoutPromise].filter(Boolean) as Promise<IteratorResult<StreamEvent>>[]
-      );
-      if (result.done) {
-        return;
-      }
+  try {
+    while (true) {
+      const result = await callWithTimeoutAndCancel(async signal => {
+        const abort = () => controller.abort(signal.reason);
+        signal.addEventListener("abort", abort, { once: true });
+        try { return await iterator.next(); }
+        finally { signal.removeEventListener("abort", abort); }
+      }, timeout, cancelToken);
+      if (result.done) return;
       yield result.value;
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
     }
+  } finally {
+    controller.abort(new AbortError());
+    // Custom iterators may ignore the signal; cleanup must not stall cancellation.
+    void Promise.resolve(iterator.return?.()).catch(() => {});
   }
 }
 

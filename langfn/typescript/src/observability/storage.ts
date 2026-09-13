@@ -31,7 +31,7 @@ export interface SpanRecord {
   error?: Record<string, unknown>;
 }
 
-export interface FeedbackRecord {
+export interface FeedbackRecord extends TraceScope {
   scope?: TraceScope;
   traceId: string;
   clientKey?: string;
@@ -42,6 +42,7 @@ export interface FeedbackRecord {
 }
 
 export class TraceStorage {
+  readonly supportsScope = true;
   private readonly traceTableName = "langfn_traces";
   private readonly spanTableName = "langfn_trace_spans";
   private readonly feedbackTableName = "langfn_trace_feedback";
@@ -85,7 +86,8 @@ export class TraceStorage {
         model: this.feedbackTableName,
         where: [
           { field: "traceId", operator: "eq", value: feedback.traceId },
-          { field: "clientKey", operator: "eq", value: feedback.clientKey }
+          { field: "clientKey", operator: "eq", value: feedback.clientKey },
+          ...scopeWhere(feedback.scope)
         ]
       });
       if (existing) {
@@ -95,6 +97,8 @@ export class TraceStorage {
 
     const record = {
       ...feedback,
+      tenantId: trace.tenantId,
+      userId: trace.userId,
       createdAt: feedback.createdAt ?? Date.now()
     };
     await this.db.create({

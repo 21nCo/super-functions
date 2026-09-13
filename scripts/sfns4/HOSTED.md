@@ -5,8 +5,10 @@ Use a dedicated disposable PostgreSQL/pgvector service, never an existing produc
 Build from the validated package set using Node 22:
 
 ```sh
-node scripts/sfns4/build-hosted-hyperdrive.mjs "$SFNS4_BUNDLE_PATH"
+node scripts/sfns4/build-hosted-hyperdrive.mjs
 ```
+
+The builder creates a fresh private temporary directory and returns `outfile` and `sha256` as JSON. Use that returned path and remove the directory after qualification.
 
 Deploy that ES module through the Cloudflare API with `main_module: worker.mjs`, compatibility date `2026-09-13`, flag `nodejs_compat`, a `HYPERDRIVE` binding, and a random `CANARY_TOKEN` secret binding. Use a unique `sfns-4-` Worker name. Retain the uploaded bundle SHA256 and the exact Worker version and Hyperdrive IDs in qualification evidence. Never write a token or origin password to a repository file.
 

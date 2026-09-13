@@ -41,7 +41,7 @@ export class CompiledGraph<TState extends Record<string, unknown>> {
     if (!checkpoint) {
       throw new ValidationError(`Unknown checkpoint: ${checkpointId}`, { metadata: { checkpointId } });
     }
-    return await this.run({
+    const result = await this.run({
       checkpointStore: store,
       currentNode: checkpoint.node,
       currentState: checkpoint.state,
@@ -49,6 +49,8 @@ export class CompiledGraph<TState extends Record<string, unknown>> {
       maxSteps: options.maxSteps ?? 100,
       skipInterruptFor: checkpoint.node
     });
+    await store.remove?.(checkpointId);
+    return result;
   }
 
   private async run(options: {
@@ -198,5 +200,5 @@ export class StateGraph<TState extends Record<string, unknown>> {
 }
 
 function randomCheckpointId(): string {
-  return `chk_${Math.random().toString(36).slice(2, 10)}`;
+  return `chk_${crypto.randomUUID()}`;
 }

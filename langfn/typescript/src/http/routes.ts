@@ -1,5 +1,5 @@
 import type { AuthSession } from "@superfunctions/auth";
-import { createRouter, type Route, type RouteContext, type Router } from "@superfunctions/http";
+import { createRouter, type Route, type RouteContext, type Router, type Middleware } from "@superfunctions/http";
 
 import { LangFn } from "../client.js";
 import type { Message } from "../core/types.js";
@@ -44,6 +44,10 @@ export function createLangFnRoutes<TSession extends AuthSession = AuthSession>(
 ): Route<LangFnRouteContext>[] {
   const secure = (routeId: string) => [
     createLangFnAuthMiddleware(options.auth),
+    ((request, context, next) => {
+      context.tenantContext = extractTenantContext(request, context[options.auth?.contextKey ?? "auth"] as AuthSession | undefined);
+      return next();
+    }) satisfies Middleware<Record<string, unknown>>,
     createLangFnRateLimitMiddleware({
       provider: options.rateLimit?.provider,
       routeId,
