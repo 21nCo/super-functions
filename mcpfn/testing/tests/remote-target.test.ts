@@ -391,3 +391,15 @@ it("releases malformed credentials even when inspection fails", async () => {
   await expect(target.open({ requestId: "invalid", diagnostic: async () => {} })).rejects.toThrow();
   expect(revoke).toHaveBeenCalledOnce();
 });
+
+it("scrubs opaque credentials before generic redaction can truncate their suffix", async () => {
+  const {redactRemoteCredential} = await import("../src/remote-target.js");
+  const token = "opaque-credential-unique-tail";
+  const input = "token=x " + "a".repeat(262144 - 8 - token.length) + token;
+  const result = redactRemoteCredential({headers: {"x-api-key": token}}, input);
+  expect(result).not.toContain("opaque-credential");
+});
+it("scrubs token components of custom authorization schemes", async () => {
+  const {redactRemoteCredential} = await import("../src/remote-target.js");
+  expect(redactRemoteCredential({headers: {authorization: "Token opaque-123"}}, {echo: "opaque-123"})).toEqual({echo: "[REDACTED]"});
+});

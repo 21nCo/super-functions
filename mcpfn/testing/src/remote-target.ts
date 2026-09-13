@@ -32,7 +32,7 @@ function credentialValues(headers: HeadersInit): Set<string> {
     secrets.add(raw.trim());
     const trimmed = raw.trim();
     const separator = trimmed.search(/\s/);
-    if (separator > 0 && ["bearer", "basic"].includes(trimmed.slice(0, separator).toLowerCase())) {
+    if (separator > 0) {
       const token = trimmed.slice(separator).trim();
       if (token) secrets.add(token);
     }
@@ -100,7 +100,8 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
     }));
     return input;
   };
-  return scrub(redactOAuthValue(value, { maxStringLength: 262_144, maxDepth: 64, maxArrayEntries: 100_000, maxObjectEntries: 100_000 }), preserveKeys ? "root" : "payload") as T;
+  const scrubbed = scrub(value, preserveKeys ? "root" : "payload");
+  return redactOAuthValue(scrubbed, { maxStringLength: 262_144, maxDepth: 64, maxArrayEntries: 100_000, maxObjectEntries: 100_000 }) as T;
 }
 
 /** Remove known opaque credential values as well as credential-shaped fields. */

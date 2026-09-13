@@ -589,3 +589,58 @@ it("shares cleanup of a late aborted handle across close calls", async () => {
   finishCleanup();
   await Promise.all([closing, rejected]);
 });
+
+it("retains a cleanup gate when an aborted open fails after close", async () => {
+  let rejectOpen!: (reason: Error) => void;
+  let retained = false;
+  const cleanup = vi.fn(async () => { if (retained) throw new Error("revoke failed"); });
+  const client = createMcpFnClient({target: customTarget({kind: "late-failed-open", cleanup,
+    open: () => new Promise((_, reject) => { rejectOpen = reject; }),
+  })});
+  const connecting = client.connect().catch(() => undefined);
+  await vi.waitFor(() => expect(rejectOpen).toBeDefined());
+  await client.close();
+  retained = true;
+  rejectOpen(new Error("late setup failure"));
+  await connecting;
+  await vi.waitFor(() => expect(cleanup).toHaveBeenCalledTimes(2));
+  await expect(client.connect()).rejects.toThrow(/Retry close/);
+  await expect(client.close()).rejects.toThrow(/cleanup failed/);
+  retained = false;
+  await client.close();
+});
+
+it("does not reconnect after authorization when target cleanup fails", async () => {
+  const cleanup = vi.fn().mockRejectedValueOnce(new Error("revoke failed")).mockResolvedValue(undefined);
+  const open = vi.fn();
+  const client = createMcpFnClient({target: customTarget({kind: "auth-cleanup", open, cleanup})});
+  // Isolate the post-callback transition from the OAuth server fixture.
+  (client as any)._state = "authorization-required";
+  (client as any).handle = {finishAuthorization: async () => {}, close: async () => {}};
+  await expect(client.completeAuthorization("code")).rejects.toThrow(/cleanup failed/);
+  expect(open).not.toHaveBeenCalled();
+  await expect(client.connect()).rejects.toThrow(/Retry close/);
+  await client.close();
+});
+
+it("drains late-open cleanup after an earlier cleanup snapshot finishes", async () => {
+  let rejectOpen!: (reason: Error) => void;
+  let finishFirstCleanup!: () => void;
+  const cleanup = vi.fn().mockImplementationOnce(() => new Promise<void>(resolve => {finishFirstCleanup = resolve;}))
+    .mockRejectedValueOnce(new Error("late lease revoke failed")).mockResolvedValue(undefined);
+  const client = createMcpFnClient({target: customTarget({kind: "cleanup-race", cleanup,
+    open: () => new Promise((_, reject) => {rejectOpen = reject;}),
+  })});
+  const connecting = client.connect().catch(() => undefined);
+  await vi.waitFor(() => expect(rejectOpen).toBeDefined());
+  const closing = client.close();
+  await vi.waitFor(() => expect(finishFirstCleanup).toBeDefined());
+  rejectOpen(new Error("late setup failure"));
+  finishFirstCleanup();
+  await closing;
+  await connecting;
+  await vi.waitFor(() => expect(cleanup).toHaveBeenCalledTimes(2));
+  await expect(client.connect()).rejects.toThrow(/Retry close/);
+  await client.close();
+  expect(cleanup).toHaveBeenCalledTimes(3);
+});

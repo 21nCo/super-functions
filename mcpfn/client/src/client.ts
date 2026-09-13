@@ -80,6 +80,8 @@ export class McpFnClient {
   private readonly pendingCleanup = new Set<McpFnTransportHandle>();
   private readonly cleanupPromises = new Map<McpFnTransportHandle, Promise<void>>();
   private connectPromise?: Promise<void>;
+  private targetCleanupPending = false;
+  private targetCleanupPromise?: Promise<void>;
   private readonly openingSignals = new Set<AbortSignal>();
   private closePromise?: Promise<void>;
   private connectController?: AbortController;
@@ -270,7 +272,7 @@ export class McpFnClient {
 
   async connect(): Promise<void> {
     if (this.closePromise) await this.closePromise;
-    if (this._state === "closing" || this.pendingCleanup.size > 0 || [...this.openingSignals].some(signal => signal.aborted)) throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Retry close before reconnecting after failed cleanup", { phase: "transport-close", retryable: true });
+    if (this._state === "closing" || this.pendingCleanup.size > 0 || this.targetCleanupPending || [...this.openingSignals].some(signal => signal.aborted)) throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Retry close before reconnecting after failed cleanup", { phase: "transport-close", retryable: true });
     if (this._state === "connected") return;
     if (this.connectPromise) return this.connectPromise;
     if (this._state === "authorization-required") {
@@ -339,6 +341,11 @@ export class McpFnClient {
       return undefined;
     } catch (error) {
       if (signal.aborted) throw connectAbortedError(error);
+      try { await this.cleanupTarget(); }
+      catch {
+        this._state = "closing";
+        throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Retry close after target cleanup failed", {phase: "transport-close", retryable: true});
+      }
       await this.emit("transport-connect", "failed", requestId, "MCPFN_TARGET_OPEN_FAILED", {
         attempt,
         message: errorMessage(error),
@@ -354,6 +361,14 @@ export class McpFnClient {
         { phase: "transport-connect", retryable: true, cause: error },
       );
     } finally {
+      if (signal.aborted) {
+        try {
+          // A close already in progress may have snapshotted cleanup before
+          // this late open registered its failed lease. Drain again afterward.
+          await this.targetCleanupPromise?.catch(() => undefined);
+          await this.cleanupTarget();
+        } catch { /* Retain the cleanup gate for close(). */ }
+      }
       this.openingSignals.delete(signal);
     }
   }
@@ -493,7 +508,8 @@ export class McpFnClient {
         { phase: "token-exchange", cause: error },
       );
     }
-    await this.cleanupAttempt();
+    try { await this.cleanupAttempt(true); }
+    catch (error) { this._state = "closing"; throw error; }
     this._state = "idle";
     await this.connect();
   }
@@ -511,7 +527,7 @@ export class McpFnClient {
 
   async close(permanent = true): Promise<void> {
     if (this.closePromise) return this.closePromise;
-    if (this._state === "closed" && permanent && this.pendingCleanup.size === 0) return;
+    if (this._state === "closed" && permanent && this.pendingCleanup.size === 0 && !this.targetCleanupPending && this.openingSignals.size === 0) return;
     this.closePromise = (async () => {
       this._state = "closing";
       const requestId = this.requestId();
@@ -542,6 +558,15 @@ export class McpFnClient {
     return this.closePromise;
   }
 
+  private cleanupTarget(): Promise<void> {
+    if (this.targetCleanupPromise) return this.targetCleanupPromise;
+    this.targetCleanupPending = true;
+    this.targetCleanupPromise = Promise.resolve().then(() => this.options.target.cleanup?.())
+      .then(() => { this.targetCleanupPending = false; })
+      .finally(() => { this.targetCleanupPromise = undefined; });
+    return this.targetCleanupPromise;
+  }
+
   private async cleanupAttempt(strict = false): Promise<void> {
     const protocol = this._protocol;
     const handle = this.handle;
@@ -549,7 +574,7 @@ export class McpFnClient {
     this.handle = undefined;
     const handles = new Set(this.pendingCleanup);
     if (handle) handles.add(handle);
-    const results = await Promise.allSettled([protocol?.close(), this.options.target.cleanup?.(), ...[...handles].map(item => this.closeRetainedHandle(item, strict))]);
+    const results = await Promise.allSettled([protocol?.close(), this.cleanupTarget(), ...[...handles].map(item => this.closeRetainedHandle(item, strict))]);
     if (strict && results.some((result) => result.status === "rejected")) {
       if (results[0].status === "rejected") this._protocol = protocol;
 
