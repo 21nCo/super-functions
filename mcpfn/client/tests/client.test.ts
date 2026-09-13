@@ -650,8 +650,8 @@ it("blocks reconnect while an aborted pre-open diagnostic is pending", async () 
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   const open = vi.fn();
-  const client = createMcpFnClient({ target: customTarget({ kind: 'pre-open', open }), diagnostics: async event => {
-    if (event.phase === 'transport-connect' && event.outcome === 'started') await gate;
+  const client = createMcpFnClient({ target: customTarget({ kind: "pre-open", open }), diagnostics: async event => {
+    if (event.phase === "transport-connect" && event.outcome === "started") await gate;
   } });
   const connecting = client.connect();
   const rejected = expect(connecting).rejects.toThrow();
@@ -660,4 +660,18 @@ it("blocks reconnect while an aborted pre-open diagnostic is pending", async () 
   expect(open).not.toHaveBeenCalled();
   release();
   await rejected;
+});
+
+it("cleans a failed target before awaiting failure diagnostics", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const cleanup = vi.fn(async () => {});
+  const client = createMcpFnClient({ target: customTarget({ kind: "failed-open", cleanup, open: async () => { throw new Error("open failed"); } }), diagnostics: async event => {
+    if (event.phase === "transport-connect" && event.outcome === "failed") await gate;
+  } });
+  const connecting = client.connect().catch(() => undefined);
+  await vi.waitFor(() => expect(cleanup).toHaveBeenCalled());
+  release();
+  await connecting;
+  await client.close();
 });

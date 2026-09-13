@@ -343,7 +343,7 @@ it("retries failed cleanup without repeating successful disposal", async () => {
 });
 it("handles long authorization whitespace without backtracking", async () => {
   const { redactRemoteCredential } = await import("../src/remote-target.js");
-  expect(redactRemoteCredential({ headers: { authorization: `Bearer${" ".repeat(100000)}opaque` } }, "opaque")).toBe("******");
+  expect(() => redactRemoteCredential({ headers: { authorization: `Bearer${" ".repeat(100000)}opaque` } }, "opaque")).toThrow(/value-size limit/);
 });
 
 it("retries authenticated handle revocation after a strict close fails", async () => {
@@ -429,4 +429,12 @@ it("preserves fixed report values and special diagnostics while masking short se
   const result: any = redactRemoteCredential({ headers: { 'x-api-key': 'opaque-secret' } }, new Error('failed opaque-secret'));
   expect(result.message).toContain('failed');
   expect(result.message).not.toContain('opaque-secret');
+});
+
+it("rejects oversized raw header collections before reading their values", async () => {
+  const { validateRemoteCredentialHeaders, redactRemoteCredential } = await import("../src/remote-target.js");
+  const headers = new Array(100000) as [string, string][];
+  Object.defineProperty(headers, 0, { get() { throw new Error("must not read oversized input"); } });
+  expect(() => validateRemoteCredentialHeaders(headers)).toThrow(/header limit/);
+  expect(() => redactRemoteCredential({ headers }, "report")).toThrow(/header limit/);
 });

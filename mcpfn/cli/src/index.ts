@@ -424,6 +424,7 @@ function readRemoteCredential(
       },
     };
   }
+  if (!value.trim()) throw new Error("API key must not be blank");
   const headerName = options.apiKeyHeader ?? "x-api-key";
   try {
     new Headers({ [headerName]: value });

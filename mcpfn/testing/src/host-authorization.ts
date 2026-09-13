@@ -235,6 +235,7 @@ async function runHostedCase(
     authorization.searchParams.set("state", fixture.authorization.state);
     authorization.searchParams.set("resource", fixture.authorization.resource);
     authorization.searchParams.set("scope", fixture.authorization.scopes.join(" "));
+    responseStatus = undefined;
     const authorizationResponse = await target.request(new Request(authorization, {
       redirect: "manual",
     }));
@@ -263,6 +264,7 @@ async function runHostedCase(
         tokenBody.set("refresh_token", fixture.token.refreshToken);
         tokenBody.set("resource", fixture.authorization.resource);
       }
+      responseStatus = undefined;
       const tokenResponse = await target.request(new Request(
         new URL("token", ensureTrailingSlash(target.issuer)),
         {
@@ -286,6 +288,7 @@ async function runHostedCase(
           throw new Error("Authorization-code response did not include a refresh token");
         }
         phase = "token-refresh";
+        responseStatus = undefined;
         const refreshResponse = await target.request(new Request(
           new URL("token", ensureTrailingSlash(target.issuer)),
           {
@@ -422,7 +425,7 @@ async function validatedTokenSet(response: Response): Promise<{ refresh_token?: 
   if (response.status !== 200) throw new Error("Successful token responses must use HTTP 200");
   if (!isJsonResponse(response)) throw new Error("Token response must use a JSON media type");
   const value = await response.clone().json() as Record<string, unknown> | null;
-  if (!value || typeof value.access_token !== "string" || !value.access_token ||
+  if (!value || typeof value.access_token !== "string" || !value.access_token.trim() ||
       typeof value.token_type !== "string" || value.token_type.toLowerCase() !== "bearer") {
     throw new Error("Token response requires an access token and Bearer token type");
   }

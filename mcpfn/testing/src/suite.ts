@@ -237,7 +237,7 @@ function enforceReportCap(
     bounded.droppedTimelineEvents += report.timeline.length;
     if (bounded.failure) {
       bounded.failure.details = undefined;
-      bounded.failure.message = bounded.failure.message.slice(0, 128);
+      bounded.failure.message = "Target operation failed; details omitted to fit report budget";
     }
   }
   if (bounded.droppedResults > 0 || jsonBytes(bounded) > maxBytes) {

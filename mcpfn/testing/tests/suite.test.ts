@@ -132,9 +132,9 @@ it("marks otherwise successful suites incomplete when custom close rejects", asy
 });
 
 
-it("bounds long target failures under the minimum report cap", async () => {
+it.each(["x", "€"])("bounds long target failures under the minimum report cap: %s", async character => {
   const { customTarget } = await import('@mcpfn/client');
-  const report = await runMcpFnTargetSuite({ target: customTarget({ kind: 'failure', open: async () => { throw new Error('x'.repeat(4000)); } }), maxReportBytes: 1024 });
+  const report = await runMcpFnTargetSuite({ target: customTarget({ kind: 'failure', open: async () => { throw new Error(character.repeat(4000)); } }), maxReportBytes: 1024 });
   expect(report.status).toBe('incomplete');
   expect(Buffer.byteLength(JSON.stringify(report, null, 2))).toBeLessThanOrEqual(1024);
 });

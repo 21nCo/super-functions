@@ -21,10 +21,7 @@ export function beginTargetCredentialRedaction(target: McpFnTarget): () => void 
 }
 
 function credentialValues(headers: HeadersInit): Set<string> {
-  // Read raw entries before Headers validation, which may itself fail.
-  const values: string[] = [];
-  if (headers instanceof Headers) headers.forEach((value) => values.push(value));
-  else values.push(...(Array.isArray(headers) ? headers.map((entry) => entry[1]) : Object.values(headers)));
+  const values = boundedCredentialEntries(headers).map((entry) => entry[1]);
   const secrets = new Set<string>();
   for (const raw of values) {
     if (typeof raw !== "string" || !raw.trim()) continue;
@@ -348,10 +345,29 @@ function isCredentialProvider(
   return "acquire" in value && typeof value.acquire === "function";
 }
 
+function boundedCredentialEntries(value: HeadersInit): Array<[string, string]> {
+  const entries: Array<[string, string]> = [];
+  let bytes = 0;
+  const append = (name: string, headerValue: string) => {
+    if (entries.length >= MAX_CREDENTIAL_HEADERS) throw new TypeError("Credential headers exceed the header limit");
+    if (typeof name !== "string" || typeof headerValue !== "string") throw new TypeError("Credential header values must be strings");
+    if (name.length > MAX_CREDENTIAL_HEADER_BYTES || headerValue.length > MAX_CREDENTIAL_HEADER_VALUE_BYTES) throw new TypeError("Credential header exceeds the value-size limit");
+    bytes += new TextEncoder().encode(`${name}: ${headerValue}\r\n`).byteLength;
+    if (bytes > MAX_CREDENTIAL_HEADER_BYTES) throw new TypeError("Credential headers exceed the aggregate size limit");
+    entries.push([name, headerValue]);
+  };
+  if (value instanceof Headers) value.forEach((v, k) => append(k, v));
+  else if (Array.isArray(value)) {
+    if (value.length > MAX_CREDENTIAL_HEADERS) throw new TypeError("Credential headers exceed the header limit");
+    for (const entry of value) append(entry[0], entry[1]);
+  } else {
+    for (const name in value) if (Object.prototype.hasOwnProperty.call(value, name)) append(name, value[name]);
+  }
+  return entries;
+}
+
 export function validateRemoteCredentialHeaders(value: HeadersInit): Headers {
-  const rawValues = value instanceof Headers ? [] : Array.isArray(value) ? value.map(entry => entry[1]) : Object.values(value);
-  if (rawValues.some(entry => typeof entry !== "string")) throw new TypeError("Credential header values must be strings");
-  const headers = new Headers(value);
+  const headers = new Headers(boundedCredentialEntries(value));
   const entries: Array<[string, string]> = [];
   headers.forEach((headerValue, name) => entries.push([name, headerValue]));
   if (entries.length === 0) {
