@@ -18,7 +18,7 @@ function duplicates(values: readonly string[]): string[] {
 
 export function deriveVerdict(report: Pick<ReviewReport, "execution" | "coverage" | "requirements" | "assessments" | "findings">, policy: ReviewPolicy): Verdict | undefined {
   if (report.execution !== "completed") return undefined;
-  if (report.coverage !== "complete" || !report.requirements.length || report.requirements.some(requirement => !requirement.statement.trim()) || report.findings.some(finding => ![finding.title, finding.trigger, finding.impact, finding.direction].every(value => value.trim().length > 0))) return "needs_verification";
+  if (report.coverage !== "complete" || !report.requirements.length || report.requirements.some(requirement => !requirement.statement.trim()) || report.findings.some(finding => ![finding.title, finding.trigger, finding.impact, finding.direction].every(value => typeof value === "string" && value.trim().length > 0))) return "needs_verification";
   const mandatory = new Set(report.requirements.filter((requirement) => requirement.classification === "mandatory").map((requirement) => requirement.id));
   if (report.assessments.some((assessment) => mandatory.has(assessment.requirementId) && ["missing", "partial"].includes(assessment.status))) return "changes_requested";
   if (report.assessments.some((assessment) => mandatory.has(assessment.requirementId) && assessment.status === "unverified")) return "needs_verification";
@@ -102,7 +102,7 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
       }
       if (!reproduced) errors.push(`Finding ${finding.fingerprint} claims reproduction without a completed test receipt and verified retained logs.`);
     }
-    if (![finding.title, finding.trigger, finding.impact, finding.direction].every(value => value.trim().length > 0)) errors.push(`Finding ${finding.fingerprint} is missing actionable detail.`);
+    if (![finding.title, finding.trigger, finding.impact, finding.direction].every(value => typeof value === "string" && value.trim().length > 0)) errors.push(`Finding ${finding.fingerprint} is missing actionable detail.`);
     for (const id of finding.evidenceIds) if (!evidence.has(id)) errors.push(`Finding ${finding.fingerprint} references unknown evidence ${id}.`);
     for (const id of finding.requirementIds) if (!requirementIds.includes(id)) errors.push(`Finding ${finding.fingerprint} references unknown requirement ${id}.`);
   }

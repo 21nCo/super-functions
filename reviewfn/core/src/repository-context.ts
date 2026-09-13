@@ -55,11 +55,11 @@ export class RepositoryMarkdownContextAdapter implements ContextAdapter {
   }
 
   public async fetch(request: ContextRequest): Promise<Omit<ContextManifest, "digest">> {
-    const root = await realpath(request.root);
+    const allowed = !request.sourceAuthority || request.sourceAuthority.acceptedTypes.includes("repository_markdown");
+    const root = allowed ? await realpath(request.root) : request.root;
     const sources: ContextSource[] = [];
     const incompleteReasons: string[] = [];
     let consumed = 0;
-    const allowed = !request.sourceAuthority || request.sourceAuthority.acceptedTypes.includes("repository_markdown");
     const paths = allowed ? await expandPaths(root, request.paths ?? [], request.limits, incompleteReasons) : [];
     for (const relative of paths) {
       if (sources.length >= request.limits.maxSources) { incompleteReasons.push(`Repository Markdown source limit ${request.limits.maxSources} reached.`); break; }

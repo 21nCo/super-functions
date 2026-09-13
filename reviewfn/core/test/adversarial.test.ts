@@ -344,3 +344,20 @@ it("skips unauthorized repository Markdown without missing-file errors", async (
   const result = await new RepositoryMarkdownContextAdapter().fetch({ root: await temporary(), paths: ["private.md"], sourceAuthority: { acceptedTypes: ["issue"], commentsMayClarify: false, waiverAuthorities: [] }, limits: { maxSources: 10, maxBytes: 1000, maxDepth: 3 } });
   expect(result.sources).toEqual([]); expect(result.incompleteReasons).toEqual([]);
 });
+
+it("does not resolve the root when repository Markdown is disabled", async () => {
+  const result = await new RepositoryMarkdownContextAdapter().fetch({ root: path.join(await temporary(), "absent"), paths: ["README.md"], sourceAuthority: { acceptedTypes: ["issue"], commentsMayClarify: false, waiverAuthorities: [] }, limits: { maxSources: 10, maxBytes: 1000, maxDepth: 3 } });
+  expect(result.sources).toEqual([]);
+  expect(result.selection.selected).toEqual([]);
+  expect(result.incompleteReasons).toEqual([]);
+});
+
+it.each(["title", "trigger", "impact", "direction"] as const)("handles malformed finding %s in direct public helpers", async field => {
+  for (const malformed of [undefined, null, 7]) {
+    const value = report(); value.verdict = "needs_verification";
+    value.findings = [{ fingerprint: "f", severity: "high", category: "behavior", title: "Bug", trigger: "input", impact: "wrong", direction: "fix", evidenceIds: ["e"], basis: "inferred", requirementIds: ["r"], lifecycle: "new" }];
+    (value.findings[0] as unknown as Record<string, unknown>)[field] = malformed;
+    expect(deriveVerdict(value, policy)).toBe("needs_verification");
+    expect((await errors(value)).join()).toMatch(/actionable/);
+  }
+});

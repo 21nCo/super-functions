@@ -204,7 +204,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
         }
       }
     }
-    return { version: 1, sources, selection: { candidates: [request.issue], selected: sources.map(source => source.id), rule: `explicit issue ${request.issue} using explicit Composio account ${request.account}` }, limits: request.limits, incompleteReasons };
+    return { version: 1, sources, selection: { candidates: [request.issue], selected: sources.filter(source => source.status === "available").map(source => source.id), rule: `explicit issue ${request.issue} using explicit Composio account ${request.account}` }, limits: request.limits, incompleteReasons };
   }
 
   private async execute(slug: string, data: Record<string, unknown>, account: string, signal?: AbortSignal): Promise<unknown> {

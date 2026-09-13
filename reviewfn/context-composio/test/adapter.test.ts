@@ -237,3 +237,14 @@ it("does not discover disabled documents or comments for issue-only policy", asy
   expect(result.sources.map(source => source.type)).toEqual(["issue"]);
   expect(result.incompleteReasons).toEqual([]); expect(calls).toBe(1);
 });
+
+it.each(["failed", "unsupported", "truncated"])("excludes %s documents from selected context", async status => {
+  const runner: ComposioRunner = async args => {
+    if (args[1] === "LINEAR_GET_LINEAR_ISSUE") return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "Feature", organization: { id: "workspace-1" }, documents: { nodes: [{ id: "d", title: "Spec", ...(status === "truncated" ? { content: "x".repeat(2000) } : {}) }], pageInfo: { hasNextPage: false } } } }) };
+    return status === "failed" ? { code: 1, stdout: "", stderr: "permission denied" } : { code: 0, stderr: "", stdout: JSON.stringify({ data: { document: { id: "d", title: "Spec" } } }) };
+  };
+  const result = await new ComposioLinearContextAdapter({ runner }).fetch({ ...request, sourceAuthority: { acceptedTypes: ["issue", "document"], commentsMayClarify: false, waiverAuthorities: [] }, limits: { ...request.limits, maxBytes: 1000 } });
+  expect(result.sources.find(source => source.type === "document")?.status).toBe(status);
+  expect(result.selection.selected).toEqual(["linear:issue:i"]);
+  expect(result.incompleteReasons.length).toBeGreaterThan(0);
+});
