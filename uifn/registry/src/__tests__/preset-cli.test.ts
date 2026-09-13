@@ -392,3 +392,49 @@ it('ignores an unrelated ancestor lock without workspace metadata', async () => 
     expect(applyPreset({ rootDir, preset, dryRun: true }).requiredActions).toEqual([]);
   });
 });
+
+
+it.each(['missing', 'malformed'])('detects object-form workspaces with %s lock records', async scenario => {
+  await withProject(async parent => {
+    const rootDir = path.join(parent, 'packages/app');
+    const preset = encodePreset({});
+    expect(initProject({ rootDir, preset }).ok).toBe(true);
+    writeFileSync(path.join(parent, 'package.json'), JSON.stringify({ workspaces: { packages: ['packages/*'] } }));
+    const lockPath = path.join(parent, 'package-lock.json');
+    const original = scenario === 'missing' ? JSON.stringify({ lockfileVersion: 3, packages: {} }) : '{';
+    writeFileSync(lockPath, original);
+    expect(applyPreset({ rootDir, preset, dryRun: true }).requiredActions).toMatchObject([{ path: '../../package-lock.json' }]);
+    expect(readFileSync(lockPath, 'utf8')).toBe(original);
+  });
+});
+
+it.each(['valid', 'wrong-version', 'missing-target', 'escape', 'absolute', 'cycle', 'missing-resolved'] as const)('validates %s workspace dependency links', async scenario => {
+  await withProject(async parent => {
+    const rootDir = path.join(parent, 'packages/app');
+    const preset = encodePreset({});
+    expect(initProject({ rootDir, preset }).ok).toBe(true);
+    writeFileSync(path.join(parent, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }));
+    const lock = npmLock(readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+    lock.packages['packages/app'] = lock.packages[''];
+    lock.packages[''] = {};
+    const version = lock.packages['node_modules/react'].version;
+    const link: any = { link: true, resolved: 'packages/./react' };
+    lock.packages['node_modules/react'] = link;
+    lock.packages['packages/react'] = { version };
+    if (scenario === 'wrong-version') lock.packages['packages/react'] = { version: '0.0.0' };
+    if (scenario === 'missing-target') delete lock.packages['packages/react'];
+    if (scenario === 'escape') link.resolved = '../react';
+    if (scenario === 'absolute') link.resolved = '/react';
+    if (scenario === 'cycle') lock.packages['packages/react'] = link;
+    if (scenario === 'missing-resolved') delete link.resolved;
+    const lockPath = path.join(parent, 'package-lock.json');
+    const original = JSON.stringify(lock);
+    writeFileSync(lockPath, original);
+    for (const dryRun of [true, false]) {
+      const result = applyPreset({ rootDir, preset, dryRun });
+      expect(result.ok).toBe(true);
+      expect(result.requiredActions?.length).toBe(scenario === 'valid' ? 0 : 1);
+      expect(readFileSync(lockPath, 'utf8')).toBe(original);
+    }
+  });
+});

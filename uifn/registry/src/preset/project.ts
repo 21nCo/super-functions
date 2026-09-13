@@ -241,14 +241,26 @@ export function resolveProjectPreset(rootDir: string) {
 // A root manifest alone does not prove that the resolved package records exist.
 // Generated manifests use exact versions, so their direct records must match too.
 type DependencySection = 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies';
-type NpmPackageRecord = Partial<Record<DependencySection, Record<string, string>>> & { version?: string };
+type NpmPackageRecord = Partial<Record<DependencySection, Record<string, string>>> & { version?: string; link?: boolean; resolved?: string };
 interface NpmLockfile { lockfileVersion?: number; packages?: Record<string, NpmPackageRecord> }
+
+function lockRecordVersion(lock: NpmLockfile, record: NpmPackageRecord): string | undefined {
+  if (!record.link) return record.version;
+  const resolved = record.resolved;
+  if (typeof resolved !== 'string' || !resolved || /[\\:\0]/.test(resolved)) return undefined;
+  const targetKey = path.posix.normalize(resolved);
+  if (path.posix.isAbsolute(targetKey) || targetKey === '..' || targetKey.startsWith('../')) return undefined;
+  // npm records the workspace target separately. Never follow filesystem paths
+  // or chains of links in untrusted lock metadata.
+  const target = lock.packages?.[targetKey];
+  return target?.link ? undefined : target?.version;
+}
 
 function lockedDependencyVersion(lock: NpmLockfile, packageKey: string, name: string): string | undefined {
   let directory = packageKey;
   while (true) {
     const record = lock.packages?.[path.posix.join(directory, 'node_modules', name)];
-    if (record) return record.version;
+    if (record) return lockRecordVersion(lock, record);
     if (!directory) return undefined;
     const parent = path.posix.dirname(directory);
     directory = parent === '.' ? '' : parent;
@@ -289,7 +301,8 @@ function hasWorkspaceMetadata(directory: string, rootDir: string): boolean {
     const manifest = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8'));
     // Conservatively inspect a workspace ancestor even if its lock is malformed or
     // has not recorded this package yet. npm owns workspace glob interpretation.
-    if (Array.isArray(manifest.workspaces) && manifest.workspaces.length > 0) return true;
+    const workspaces = Array.isArray(manifest.workspaces) ? manifest.workspaces : manifest.workspaces?.packages;
+    if (Array.isArray(workspaces) && workspaces.length > 0) return true;
   } catch { /* A lock package record can still identify the workspace. */ }
   try {
     const lock = JSON.parse(readFileSync(path.join(directory, 'package-lock.json'), 'utf8'));
