@@ -64,6 +64,7 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
 
   const evidence = new Map<string, Evidence>(report.evidence.map((item) => [item.id, item]));
   for (const assessment of report.assessments) {
+    if (assessment.status === "implemented" && !assessment.evidenceIds.some(id => ["code", "diff", "test"].includes(evidence.get(id)?.kind ?? ""))) errors.push(`Assessment ${assessment.requirementId} claims implementation without code or test evidence.`);
     if (assessment.confidence < 0 || assessment.confidence > 1) errors.push(`Assessment ${assessment.requirementId} has invalid confidence.`);
     if (assessment.status !== "not_applicable" && assessment.evidenceIds.length === 0) errors.push(`Assessment ${assessment.requirementId} has no evidence.`);
     if (assessment.status === "not_applicable" && (!assessment.waiverReference || !referenceValid(assessment.waiverReference) || !policy.sourceAuthority.waiverAuthorities.includes(assessment.waiverReference.sourceId))) errors.push(`Assessment ${assessment.requirementId} is not_applicable without a waiver.`);
@@ -97,6 +98,7 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
     }
   }
   if (sourceControl && root) {
+    for (const inspected of report.inspectedPaths) if (!(await sourceControl.verifyAnchor(root, { commit: report.change.headCommit, path: inspected, startLine: 1 }))) errors.push(`Inspected path ${inspected} does not exist at the reviewed head.`);
     for (const item of report.evidence) {
       if (item.code && item.code.commit !== report.change.headCommit) errors.push(`Evidence ${item.id} does not reference reviewed head ${report.change.headCommit}.`);
       if (item.code && !(await sourceControl.verifyAnchor(root, item.code))) errors.push(`Evidence ${item.id} has an invalid code anchor.`);

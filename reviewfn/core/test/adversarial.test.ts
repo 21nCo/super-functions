@@ -73,3 +73,13 @@ it("does not traverse unrelated deep trees for a scoped Markdown glob", async ()
   const result = await new RepositoryMarkdownContextAdapter().fetch({ root, paths: ["docs/**/*.md"], limits: { maxSources: 10, maxBytes: 100, maxDepth: 3 } });
   expect(result.sources.map(source => source.id)).toEqual(["repo:docs/design.md"]); expect(result.incompleteReasons).toEqual([]);
 });
+
+it("does not accept requirements text as implementation proof", async () => {
+  const value = report(); value.evidence = [{ id: "e", kind: "source", description: "specification", source: { sourceId: "issue", anchor: "L1" } }];
+  expect((await errors(value)).join()).toMatch(/without code or test evidence/);
+});
+it("verifies that claimed inspected paths exist at the reviewed head", async () => {
+  const value = report(); value.inspectedPaths = ["invented.ts"];
+  const result = await validateReport(value, policy, { ...source, verifyAnchor: async (_root, anchor) => anchor.path === "index.ts" }, ".", context);
+  expect(result.errors.join()).toMatch(/Inspected path invented/);
+});
