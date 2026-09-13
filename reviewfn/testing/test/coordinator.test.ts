@@ -10,7 +10,7 @@ const output: HarnessOutput = {
   evidence: [{ id: "E1", kind: "code", description: "value", code: { commit: "b".repeat(40), path: "src/value.ts", startLine: 1 } }],
   findings: [], inspectedPaths: ["src/value.ts"], uninspected: [], events: [],
 };
-const config = { ...DEFAULT_CONFIG, harness: { adapter: "fake", version: "1" }, inference: { provider: "fake", model: "fixture", auth: "none" }, context: [{ adapter: "fixture", issue: "ISS-1" }], execution: { ...DEFAULT_CONFIG.execution, adapter: "fake-execution" } };
+const config = { ...DEFAULT_CONFIG, review: { ...DEFAULT_CONFIG.review, categories: ["behavior" as const] }, harness: { adapter: "fake", version: "1" }, inference: { provider: "fake", model: "fixture", auth: "none" }, context: [{ adapter: "fixture", issue: "ISS-1" }], execution: { ...DEFAULT_CONFIG.execution, adapter: "fake-execution" } };
 
 describe("ReviewCoordinator", () => {
   it("publishes a validated exact-head report", async () => {
@@ -109,4 +109,12 @@ it.each([[80, 90, 17, 19], [8, 9, 8, 9]])("records effective execution limits fo
   const coordinator = new ReviewCoordinator({ sourceControl: new FakeSourceControlAdapter(), contexts: [new FakeContextAdapter("fixture", manifest)], harness: new FakeHarnessAdapter(output), execution, artifacts: new MemoryArtifactStore() });
   const result = await coordinator.run({ root: ".", base: "base", head: "head", config: { ...config, execution: { ...config.execution, timeoutMs, maxOutputBytes } }, policy: { ...DEFAULT_POLICY, limits: { ...DEFAULT_POLICY.limits, testTimeoutMs: 17, maxOutputBytes: 19 } } });
   expect(limits).toMatchObject({ testTimeoutMs: expectedTimeout, maxOutputBytes: expectedBytes }); expect(result.report.configuration.execution).toMatchObject({ timeoutMs: expectedTimeout, maxOutputBytes: expectedBytes });
+});
+
+it("keeps omitted configured categories incomplete even when policy does not require them", async () => {
+  const coordinator = new ReviewCoordinator({ sourceControl: new FakeSourceControlAdapter(), contexts: [new FakeContextAdapter("fixture", manifest)], harness: new FakeHarnessAdapter(output), execution: new FakeExecutionAdapter(), artifacts: new MemoryArtifactStore() });
+  const result = await coordinator.run({ root: ".", base: "base", head: "head", config: { ...config, review: { ...config.review, categories: ["behavior", "documentation"] } }, policy: { ...DEFAULT_POLICY, requiredCategories: ["behavior"] } });
+  expect(result.report.configuration.reviewCategories).toEqual(["behavior", "documentation"]);
+  expect(result.report.coverageReasons.join()).toMatch(/category documentation/);
+  expect(result.report.verdict).toBe("needs_verification");
 });

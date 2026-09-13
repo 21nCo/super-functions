@@ -73,7 +73,14 @@ export class RepositoryMarkdownContextAdapter implements ContextAdapter {
         const handle = await open(resolved, "r");
         const buffer = Buffer.alloc(Math.min(stat.size, remaining));
         let count = 0;
-        try { count = (await handle.read(buffer, 0, buffer.length, 0)).bytesRead; } finally { await handle.close(); }
+        try {
+          while (count < buffer.length) {
+            const read = (await handle.read(buffer, count, buffer.length - count, count)).bytesRead;
+            if (!read) break;
+            count += read;
+          }
+        } finally { await handle.close(); }
+        if (count < buffer.length) throw new Error("Context file changed before the requested prefix was read.");
         // Reject malformed input; leave an incomplete trailing code point buffered
         // when this is only a prefix, rather than expanding it to U+FFFD.
         const available = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buffer.subarray(0, count), { stream: count < stat.size });

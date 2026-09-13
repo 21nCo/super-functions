@@ -1,10 +1,10 @@
-import { digestJson, type ArtifactStore, type ChangeSnapshot, type ContextAdapter, type ContextManifest, type ContextRequest, type ExecutionAdapter, type HarnessAdapter, type HarnessCapabilities, type HarnessInput, type HarnessOutput, type PreflightResult, type PublishRequest, type PublishResult, type ReportPublisher, type ReviewPolicy, type SourceControlAdapter, type TestReceipt } from "@superfunctions/reviewfn-core";
+import { sha256, type ArtifactStore, type ChangeSnapshot, type ContextAdapter, type ContextManifest, type ContextRequest, type ExecutionAdapter, type HarnessAdapter, type HarnessCapabilities, type HarnessInput, type HarnessOutput, type PreflightResult, type PublishRequest, type PublishResult, type ReportPublisher, type ReviewPolicy, type SourceControlAdapter, type TestReceipt } from "@superfunctions/reviewfn-core";
 
 const ok: PreflightResult = { ok: true, diagnostics: [] };
 
 export class MemoryArtifactStore implements ArtifactStore {
   public readonly values = new Map<string, Uint8Array>();
-  public async put(kind: string, content: string | Uint8Array): Promise<{ digest: string; id: string }> { const bytes = Buffer.from(content); const digest = digestJson([...bytes]); const id = `${kind}-${digest}`; this.values.set(id, bytes); return { digest, id }; }
+  public async put(kind: string, content: string | Uint8Array): Promise<{ digest: string; id: string }> { const bytes = Buffer.from(content); const digest = sha256(bytes); const id = `${kind}-${digest}`; this.values.set(id, bytes); return { digest, id }; }
   public async get(id: string): Promise<Uint8Array | undefined> { return this.values.get(id); }
   public async deleteExpired(): Promise<{ deleted: string[]; errors: string[] }> { return { deleted: [], errors: [] }; }
 }

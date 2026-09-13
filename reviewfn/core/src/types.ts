@@ -134,6 +134,7 @@ export interface RunConfigurationProvenance {
   inference: { provider: string; model: string; auth: string };
   execution: { adapter: string; timeoutMs: number; maxOutputBytes: number };
   contextAdapters: string[];
+  reviewCategories?: Requirement["category"][];
   profile: string;
 }
 

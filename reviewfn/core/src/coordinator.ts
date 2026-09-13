@@ -157,6 +157,7 @@ export class ReviewCoordinator {
         inference: { provider: request.config.inference.provider, model: request.config.inference.model, auth: request.config.inference.auth },
         execution: { adapter: this.dependencies.execution.id, timeoutMs: executionPolicy.limits.testTimeoutMs, maxOutputBytes: executionPolicy.limits.maxOutputBytes },
         contextAdapters: request.config.context.map((item) => item.adapter),
+        reviewCategories: [...request.config.review.categories],
         profile: request.config.profile,
       },
       execution: terminalExecution(output),

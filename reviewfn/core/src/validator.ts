@@ -44,7 +44,7 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
     if (!report.requirements.length) errors.push("No requirements were extracted; extraction coverage is unverified.");
     if (!report.inspectedPaths.length) errors.push("No code paths were inspected.");
     for (const changed of report.change.changedPaths) if (!report.inspectedPaths.includes(changed) && !report.uninspected.some(item => item.scope === changed && item.reason.trim().length > 0)) errors.push(`Changed path ${changed} has no inspected or explicitly uninspected scope.`);
-    for (const category of policy.requiredCategories) if (!report.requirements.some(requirement => requirement.category === category)) errors.push(`Extraction coverage for required category ${category} is unverified.`);
+    for (const category of new Set([...policy.requiredCategories, ...(report.configuration.reviewCategories ?? [])])) if (!report.requirements.some(requirement => requirement.category === category)) errors.push(`Extraction coverage for required category ${category} is unverified.`);
     for (const source of context?.sources ?? []) if (source.status === "available" && source.content !== "" && policy.sourceAuthority.acceptedTypes.includes(source.type) && !report.requirements.some(requirement => requirement.sources.some(ref => ref.sourceId === source.id)) && !report.evidence.some(evidence => evidence.kind === "source" && evidence.source?.sourceId === source.id && referenceValid(evidence.source))) errors.push(`Extraction coverage for source ${source.id} is unverified; cite its requirements or source-backed exclusion evidence.`);
     if (!context) errors.push("Frozen context is required to validate source authority.");
     for (const item of report.uninspected) if (!item.scope.trim() || !item.reason.trim()) errors.push("Uninspected scope requires a nonblank scope and reason.");
@@ -68,7 +68,7 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
 
   const evidence = new Map<string, Evidence>(report.evidence.map((item) => [item.id, item]));
   for (const assessment of report.assessments) {
-    if (assessment.status === "implemented" && !assessment.evidenceIds.some(id => ["code", "diff", "test"].includes(evidence.get(id)?.kind ?? ""))) errors.push(`Assessment ${assessment.requirementId} claims implementation without code or test evidence.`);
+    if (["implemented", "missing", "partial"].includes(assessment.status) && !assessment.evidenceIds.some(id => ["code", "diff", "test"].includes(evidence.get(id)?.kind ?? ""))) errors.push(`Assessment ${assessment.requirementId} claims ${assessment.status} without code or test evidence.`);
     if (assessment.confidence < 0 || assessment.confidence > 1) errors.push(`Assessment ${assessment.requirementId} has invalid confidence.`);
     if (assessment.status !== "not_applicable" && assessment.evidenceIds.length === 0) errors.push(`Assessment ${assessment.requirementId} has no evidence.`);
     if (assessment.status === "not_applicable" && (!assessment.waiverReference || !referenceValid(assessment.waiverReference) || !policy.sourceAuthority.waiverAuthorities.includes(assessment.waiverReference.sourceId))) errors.push(`Assessment ${assessment.requirementId} is not_applicable without a waiver.`);

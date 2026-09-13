@@ -1,3 +1,5 @@
+import * as fileSystem from "node:fs/promises";
+vi.mock("node:fs/promises", async importOriginal => ({ ...await importOriginal<typeof import("node:fs/promises")>() }));
 import * as safeFiles from "../src/safe-files.js";
 import { describe, expect, it, vi } from "vitest";
 
@@ -133,7 +135,9 @@ it("removes orphaned data after a failed metadata commit", async () => {
   const spy = vi.spyOn(safeFiles, "safeWrite").mockImplementation(async (file, content) => {
     if (file.endsWith(".json")) {
       const lease = JSON.parse(await readFile(path.join(root, ".retention.lock"), "utf8"));
-      expect(lease.pid).toBe(process.pid); expect(lease.hostname).toBeTruthy(); expect(Number.isFinite(Date.parse(lease.acquiredAt))).toBe(true);
+      expect(lease.pid).toBe(process.pid);
+      expect(lease.hostname).toBeTruthy();
+      expect(Number.isFinite(Date.parse(lease.acquiredAt))).toBe(true);
       throw new Error("simulated metadata failure");
     }
     return original(file, content);
@@ -163,4 +167,22 @@ it.each([[Buffer.from([255, 255]), "failed", ""], [Buffer.from("a😀b"), "trunc
   expect(result.sources[0].content ?? "").toBe(content);
   expect(Buffer.byteLength(result.sources[0].content ?? "")).toBeLessThanOrEqual(2);
   expect(result.incompleteReasons.length).toBeGreaterThan(0);
+});
+
+it("fills a bounded Markdown prefix across short filesystem reads", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "reviewfn-short-read-"));
+  await writeFile(path.join(root, "README.md"), "complete");
+  const original = fileSystem.open;
+  const spy = vi.spyOn(fileSystem, "open").mockImplementation(async (...args) => {
+    const handle = await original(...args);
+    const read = handle.read.bind(handle) as (buffer: Buffer, offset: number, length: number, position: number) => Promise<{ bytesRead: number; buffer: Buffer }>;
+    handle.read = ((buffer: Buffer, offset: number, length: number, position: number) => read(buffer, offset, Math.min(length, 1), position)) as typeof handle.read;
+    return handle;
+  });
+  try {
+    const result = await new RepositoryMarkdownContextAdapter().fetch({ root, paths: ["README.md"], limits: { maxSources: 1, maxBytes: 20, maxDepth: 2 } });
+    expect(result.sources[0].content).toBe("complete");
+    expect(result.sources[0].status).toBe("available");
+    expect(result.incompleteReasons).toEqual([]);
+  } finally { spy.mockRestore(); }
 });

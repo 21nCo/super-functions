@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { sha256, DEFAULT_POLICY } from "@superfunctions/reviewfn-core";
+import { sha256, DEFAULT_POLICY, FileArtifactStore } from "@superfunctions/reviewfn-core";
 import { initializeConfiguration, loadConfig } from "../src/config.js";
 import { LocalIsolatedExecutionAdapter } from "../src/execution.js";
 const exec = promisify(execFile);
@@ -27,6 +27,19 @@ it("initializes defaults without overwriting", async () => {
   await expect(initializeConfiguration(root)).rejects.toThrow(/overwrite/);
 });
 describe.runIf(process.env.REVIEWFN_DOCKER_TESTS === "1")("Docker execution boundary", () => {
+  it("binds receipt digests to the exact retained redacted log bytes", async () => {
+    const { root, head } = await fixture();
+    const store = new FileArtifactStore(path.join(root, "artifacts"));
+    const receipt = (await new LocalIsolatedExecutionAdapter(store).run(root, head, [["node", "-e", "console.log('token abcdefgh');console.error('token ijklmnop')"]], DEFAULT_POLICY))[0];
+    expect(receipt.exitCode).toBe(0);
+    for (const [id, digest, secret] of [[receipt.stdoutArtifact!, receipt.stdoutDigest, "abcdefgh"], [receipt.stderrArtifact!, receipt.stderrDigest, "ijklmnop"]]) {
+      const retained = Buffer.from((await store.get(id))!);
+      expect(retained.toString()).toContain("[REDACTED]");
+      expect(retained.toString()).not.toContain(secret);
+      expect(sha256(retained)).toBe(digest);
+    }
+  }, 30_000);
+
   it("runs exact committed bytes without host secrets, network, or writable host files", async () => {
     const { root, head } = await fixture();
     await writeFile(path.join(root, "README.md"), "dirty\n");

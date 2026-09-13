@@ -56,9 +56,11 @@ export class LocalIsolatedExecutionAdapter implements ExecutionAdapter {
           // Container teardown kills all descendants even after their parent exits or detaches.
           await runProcess("docker", ["rm", "--force", name], root, 10_000, 64_000).catch(() => undefined);
         }
-        const stdoutArtifact = await this.artifacts?.put("test-stdout", redactText(result.stdout, []), policy.retention.testLogDays);
-        const stderrArtifact = await this.artifacts?.put("test-stderr", redactText(result.stderr, []), policy.retention.testLogDays);
-        receipts.push({ stdoutArtifact: stdoutArtifact?.id, stderrArtifact: stderrArtifact?.id, id: `test-${index}-${sha256(JSON.stringify(command)).slice(0, 12)}`, command, cwd: ".", commit: headCommit, startedAt: startedAt.toISOString(), finishedAt: new Date().toISOString(), runtimeMs: result.runtimeMs, exitCode: result.exitCode, signal: result.signal, timedOut: result.timedOut, canceled: result.canceled, stdoutDigest: sha256(result.stdout), stderrDigest: sha256(result.stderr), limitations: [`Docker image ${image.stdout.trim()}; network disabled; 1 CPU, 512 MiB memory, 128 PIDs, 256 MiB workspace, 64 MiB temporary disk.`, ...(result.outputLimited ? ["Command exceeded output budget."] : []), ...(result.timedOut ? ["Test batch deadline exhausted."] : [])] });
+        const stdout = redactText(result.stdout, []);
+        const stderr = redactText(result.stderr, []);
+        const stdoutArtifact = await this.artifacts?.put("test-stdout", stdout, policy.retention.testLogDays);
+        const stderrArtifact = await this.artifacts?.put("test-stderr", stderr, policy.retention.testLogDays);
+        receipts.push({ stdoutArtifact: stdoutArtifact?.id, stderrArtifact: stderrArtifact?.id, id: `test-${index}-${sha256(JSON.stringify(command)).slice(0, 12)}`, command, cwd: ".", commit: headCommit, startedAt: startedAt.toISOString(), finishedAt: new Date().toISOString(), runtimeMs: result.runtimeMs, exitCode: result.exitCode, signal: result.signal, timedOut: result.timedOut, canceled: result.canceled, stdoutDigest: sha256(stdout), stderrDigest: sha256(stderr), limitations: [`Docker image ${image.stdout.trim()}; network disabled; 1 CPU, 512 MiB memory, 128 PIDs, 256 MiB workspace, 64 MiB temporary disk.`, ...(result.outputLimited ? ["Command exceeded output budget."] : []), ...(result.timedOut ? ["Test batch deadline exhausted."] : [])] });
         if (result.timedOut || result.canceled || result.outputLimited) break;
       }
       return receipts;

@@ -215,3 +215,10 @@ it("accepts immutable base anchors only for changed paths proven absent from the
   exists = false; value.change.changedPaths = [];
   expect((await validate()).errors.join()).toMatch(/does not reference reviewed head/);
 });
+
+it.each(["missing", "partial"] as const)("rejects source-only evidence for a %s assessment", async status => {
+  const value = report(); value.verdict = "changes_requested";
+  value.assessments[0].status = status; value.assessments[0].evidenceIds = ["source-only"];
+  value.evidence.push({ id: "source-only", kind: "source", description: "requirement", source: { sourceId: "issue", anchor: "L1" } });
+  expect((await errors(value)).join()).toMatch(/without code or test evidence/);
+});

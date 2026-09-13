@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir, devNull } from "node:os";
 import { execFile } from "node:child_process";
@@ -124,6 +124,9 @@ async function run(): Promise<number> {
   const immutableHead = (await execFileAsync("git", ["rev-parse", "--verify", "--end-of-options", `${head}^{commit}`], { cwd: root })).stdout.trim();
   const immutableBase = (await execFileAsync("git", ["rev-parse", "--verify", "--end-of-options", `${base}^{commit}`], { cwd: root })).stdout.trim();
   await execFileAsync("git", ["-c", `core.hooksPath=${devNull}`, "clone", "--template=", "--no-local", "--no-checkout", root, snapshot], { env: snapshotEnvironment, maxBuffer: 1_000_000 });
+  // info/attributes outranks every committed .gitattributes, including nested files.
+  await mkdir(path.join(snapshot, ".git", "info"), { recursive: true, mode: 0o700 });
+  await writeFile(path.join(snapshot, ".git", "info", "attributes"), "* -text -eol -working-tree-encoding -filter -ident\n", { mode: 0o600 });
   await execFileAsync("git", ["-c", `core.hooksPath=${devNull}`, "-c", `core.attributesFile=${devNull}`, "-c", "core.autocrlf=false", "checkout", "--detach", immutableHead], { cwd: snapshot, env: snapshotEnvironment, maxBuffer: 1_000_000 });
   const remote = (await execFileAsync("git", ["config", "--get", "remote.origin.url"], { cwd: root }).catch(() => ({ stdout: "local" }))).stdout.trim();
   const safeRemote = redactRepositoryRemote(remote);
