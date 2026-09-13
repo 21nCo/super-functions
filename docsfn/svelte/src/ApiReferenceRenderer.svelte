@@ -14,12 +14,15 @@
 
   interface RenderMediaContent {
     mediaType: string;
+    schema?: unknown;
     example?: unknown;
+    examples?: Array<{ name: string; value?: unknown }>;
   }
 
   interface RenderResponse {
     statusCode: string;
     description?: string;
+    content?: RenderMediaContent[];
   }
 
   interface RenderOperation {
@@ -336,6 +339,8 @@
                           {#each operation.requestBody.content as media (media.mediaType)}
                             <div class="docsfn-api-request-media">
                               <h4>{media.mediaType}</h4>
+                              {#if media.schema !== undefined}<h5>Schema</h5><pre class="docsfn-api-code">{JSON.stringify(media.schema, null, 2)}</pre>{/if}
+                              {#each media.examples ?? [] as example (example.name)}<h5>{example.name}</h5><pre class="docsfn-api-code">{JSON.stringify(example.value, null, 2)}</pre>{/each}
                               {#if typeof media.example !== "undefined"}
                                 <pre class="docsfn-api-code">{JSON.stringify(media.example, null, 2)}</pre>
                               {/if}
@@ -353,6 +358,12 @@
                           <div class="docsfn-api-response">
                             <span class="docsfn-api-response-code">{response.statusCode}</span>
                             <span class="docsfn-api-response-desc">{response.description || "-"}</span>
+                            {#each response.content ?? [] as media (media.mediaType)}
+                              <h4>{media.mediaType}</h4>
+                              {#if media.schema !== undefined}<h5>Schema</h5><pre class="docsfn-api-code">{JSON.stringify(media.schema, null, 2)}</pre>{/if}
+                              {#if media.example !== undefined}<pre class="docsfn-api-code">{JSON.stringify(media.example, null, 2)}</pre>{/if}
+                              {#each media.examples ?? [] as example (example.name)}<h5>{example.name}</h5><pre class="docsfn-api-code">{JSON.stringify(example.value, null, 2)}</pre>{/each}
+                            {/each}
                           </div>
                         {/each}
                       {:else}

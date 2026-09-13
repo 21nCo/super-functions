@@ -1,10 +1,13 @@
 import { mkdir, mkdtemp, readdir, rm, unlink, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getDocsConfigDependencies, isDocsConfigError, loadDocsConfig, validateDocsConfig } from "./config";
 
 const tempDirs: string[] = [];
+
+// Load the compiler once outside per-case timing; production import remains lazy.
+beforeAll(async () => { await import("typescript"); }, 60_000);
 
 afterEach(async () => {
   await Promise.all(
@@ -61,9 +64,7 @@ describe("loadDocsConfig", () => {
     });
 
     expect(loaded.site.title).toBe("Explicit Config");
-  // This first load includes the cold TypeScript runtime import. Parallel CI
-  // took 25s for this file; keep startup tolerance local to this test.
-  }, 45_000);
+  });
 
   it("loads docsfn.config.ts when present", async () => {
     const cwd = await createTempDir();

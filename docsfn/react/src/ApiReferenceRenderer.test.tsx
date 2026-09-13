@@ -1,3 +1,4 @@
+import { render, fireEvent, cleanup } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -97,4 +98,22 @@ it("expands the operation selected by the canonical route helper", () => {
   const selected = selectApiReferenceRoute(api, "/docs/api/operations/get-search");
   expect(selected.path).toBe("/docs/api/operations/get-search");
   expect(renderToStaticMarkup(<ApiReferenceRenderer api={selected} />)).toContain('aria-expanded="true"');
+});
+
+it("shows media schemas and named examples in request and response tabs", () => {
+  const api = createApiReferenceFixture();
+  const operation = api.spec.operations[1];
+  api.path = operation.routePath;
+  const media = { mediaType: "application/json", schema: { type: "object", properties: { payloadField: { type: "string" } } }, examples: [{ name: "named-sample", value: { payloadField: "sample-value" } }] };
+  operation.requestBody.content = [media];
+  operation.responses = [{ statusCode: "200", content: [media] }];
+  const view = render(<ApiReferenceRenderer api={api} />);
+  try {
+    for (const name of ["Request", "Responses"]) {
+      fireEvent.click(view.getByRole("tab", { name }));
+      expect(view.getByRole("tabpanel").textContent).toContain("payloadField");
+      expect(view.getByRole("tabpanel").textContent).toContain("named-sample");
+      expect(view.getByRole("tabpanel").textContent).toContain("sample-value");
+    }
+  } finally { cleanup(); }
 });

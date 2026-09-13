@@ -530,14 +530,21 @@ export async function buildSearchIndex(
 
   const artifact = finalizeArtifactBytes({ ...artifactBase, diagnostics: withStableDiagnosticOrder(diagnostics), bytes: 0 });
   if (typeof searchConfig?.maxArtifactBytes === "number" && artifact.bytes > searchConfig.maxArtifactBytes) {
-    artifact.diagnostics.push(createDiagnostic({
+    const warning = createDiagnostic({
       code: "DOCS_ARTIFACT_INVALID",
       severity: "warning",
       message: `search artifact exceeds configured maxArtifactBytes ${searchConfig.maxArtifactBytes}`,
-      details: { maxArtifactBytes: searchConfig.maxArtifactBytes },
-    }));
+      details: { bytes: artifact.bytes, maxArtifactBytes: searchConfig.maxArtifactBytes },
+    });
+    artifact.diagnostics.push(warning);
     artifact.diagnostics = withStableDiagnosticOrder(artifact.diagnostics);
-    finalizeArtifactBytes(artifact);
+    let measured: number;
+    do {
+      measured = artifact.bytes;
+      warning.message = `search artifact size ${measured} exceeds configured maxArtifactBytes ${searchConfig.maxArtifactBytes}`;
+      warning.details = { bytes: measured, maxArtifactBytes: searchConfig.maxArtifactBytes };
+      finalizeArtifactBytes(artifact);
+    } while (measured !== artifact.bytes);
   }
 
   return artifact;

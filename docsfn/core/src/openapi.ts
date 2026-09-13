@@ -261,12 +261,12 @@ function parseYamlSource(source: ParseOpenApiSourceInput): unknown {
   }
 }
 
-function normalizeExamples(value: unknown): CanonicalOpenApiExample[] {
+function normalizeExamples(value: unknown, document: Record<string, unknown>, input: NormalizeOpenApiReferenceInput): CanonicalOpenApiExample[] {
   const record = toObject(value);
   return Object.keys(record)
     .sort(compareStrings)
     .map((name) => {
-      const item = toObject(record[name]);
+      const item = toObject(resolveLocalReference(record[name], document, input));
       return {
         name,
         summary: typeof item.summary === "string" ? item.summary : undefined,
@@ -276,7 +276,7 @@ function normalizeExamples(value: unknown): CanonicalOpenApiExample[] {
     });
 }
 
-function normalizeMediaContent(value: unknown): CanonicalOpenApiRequestBodyMedia[] {
+function normalizeMediaContent(value: unknown, document: Record<string, unknown>, input: NormalizeOpenApiReferenceInput): CanonicalOpenApiRequestBodyMedia[] {
   const contentRecord = toObject(value);
   return Object.keys(contentRecord)
     .sort(compareStrings)
@@ -286,7 +286,7 @@ function normalizeMediaContent(value: unknown): CanonicalOpenApiRequestBodyMedia
         mediaType,
         schema: media.schema,
         example: media.example,
-        examples: normalizeExamples(media.examples),
+        examples: normalizeExamples(media.examples, document, input),
       };
     });
 }
@@ -360,7 +360,7 @@ function normalizeParameter(value: unknown): CanonicalOpenApiParameter {
   };
 }
 
-function normalizeRequestBody(value: unknown): CanonicalOpenApiRequestBody | undefined {
+function normalizeRequestBody(value: unknown, document: Record<string, unknown>, input: NormalizeOpenApiReferenceInput): CanonicalOpenApiRequestBody | undefined {
   const requestBody = toObject(value);
   if (Object.keys(requestBody).length === 0) {
     return undefined;
@@ -370,7 +370,7 @@ function normalizeRequestBody(value: unknown): CanonicalOpenApiRequestBody | und
     required: Boolean(requestBody.required),
     description:
       typeof requestBody.description === "string" ? requestBody.description : undefined,
-    content: normalizeMediaContent(requestBody.content),
+    content: normalizeMediaContent(requestBody.content, document, input),
   };
 }
 
@@ -384,7 +384,7 @@ function normalizeResponses(value: unknown, document: Record<string, unknown>, i
         statusCode,
         description:
           typeof response.description === "string" ? response.description : undefined,
-        content: normalizeMediaContent(response.content),
+        content: normalizeMediaContent(response.content, document, input),
       };
     });
 }
@@ -667,7 +667,7 @@ export function normalizeOpenApiReference(
           }
           return compareStrings(left.name, right.name);
         }),
-        requestBody: normalizeRequestBody(resolveLocalReference(operation.requestBody, parsed, input)),
+        requestBody: normalizeRequestBody(resolveLocalReference(operation.requestBody, parsed, input), parsed, input),
         responses: normalizeResponses(operation.responses, parsed, input),
         deprecated: Boolean(operation.deprecated),
       });

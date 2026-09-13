@@ -546,4 +546,5 @@ it("counts final serialized bytes and applies the boundary after including metad
   const limited = await buildSearchIndex(manifest, { search: { enabled: true, maxArtifactBytes: baseline.bytes - 1 } });
   expect(limited.diagnostics.some(item => item.severity === "warning")).toBe(true);
   expect(limited.bytes).toBe(Buffer.byteLength(JSON.stringify(limited)));
+  expect(limited.diagnostics.find(item => item.severity === "warning")?.details?.bytes).toBe(limited.bytes);
 });

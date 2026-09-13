@@ -1,3 +1,5 @@
+import { render, cleanup } from "@testing-library/svelte";
+import ApiReferenceRenderer from "./ApiReferenceRenderer.svelte";
 import { describe, expect, it } from "vitest";
 import type { ApiReference } from "@docsfn/core";
 
@@ -80,4 +82,19 @@ describe("ApiReferenceRenderer canonical model contract", () => {
     );
     expect(schemaNames).toEqual(["IndexRequest"]);
   });
+});
+
+it("renders operation media schemas and named examples", () => {
+  const api = createCanonicalApiFixture();
+  const operation = api.spec.operations[1];
+  api.path = operation.routePath;
+  const media = { mediaType: "application/json", schema: { type: "object", properties: { payloadField: { type: "string" } } }, examples: [{ name: "named-sample", value: { payloadField: "sample-value" } }] };
+  operation.requestBody.content = [media];
+  operation.responses = [{ statusCode: "200", content: [media] }];
+  const view = render(ApiReferenceRenderer, { api });
+  try {
+    expect(view.container.textContent).toContain("payloadField");
+    expect(view.container.textContent).toContain("named-sample");
+    expect(view.container.textContent).toContain("sample-value");
+  } finally { cleanup(); }
 });

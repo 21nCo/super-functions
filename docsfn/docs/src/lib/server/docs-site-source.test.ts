@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createDocsSiteSearchRuntime,
   getCompiledDocsPage,
@@ -13,6 +13,7 @@ import { GET as getChangelogJson } from "../../routes/changelog.json/+server";
 import { load as loadDocsPage } from "../../routes/docs/[...slug]/+page.server";
 
 describe("docsfn dogfood site source", () => {
+  beforeAll(async () => { await loadDocsSiteSource(); }, 60_000);
   it("classifies API content truthfully and queries through the canonical search runtime", async () => {
     const source = await loadDocsSiteSource();
 

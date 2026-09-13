@@ -12,6 +12,7 @@ const config: DocsConfig = {
   compat: {
     preset: "none"
   },
+  blog: { routeBase: "/blog", feedPath: "/blog/rss.xml" },
   content: {
     root: ".",
     docsDir: "content/docs",

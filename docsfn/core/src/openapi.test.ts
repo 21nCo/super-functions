@@ -394,3 +394,10 @@ it.each(['3.1.0', '3.2.0'])('resolves reusable path items and preserves OpenAPI 
   expect(reference.operations[0].requestBody?.description).toBe('Local input');
   expect(reference.operations[0].responses[0].description).toBe('Local response');
 });
+
+it("resolves reusable examples for request and response media", () => {
+  const media = { "application/json": { examples: { sample: { $ref: "#/components/examples/Sample" } } } };
+  const spec = buildOpenApiReference({ sourceId: "api:x.json", sourcePath: "x.json", fallbackTitle: "X", body: JSON.stringify({ openapi: "3.0.3", info: { title: "X", version: "1" }, paths: { "/x": { post: { requestBody: { content: media }, responses: { "200": { description: "ok", content: media } } } } }, components: { examples: { Sample: { summary: "Reusable", value: { id: "sample-id" } } } } }) });
+  expect(spec.operations[0].requestBody?.content[0].examples[0]).toMatchObject({ name: "sample", summary: "Reusable", value: { id: "sample-id" } });
+  expect(spec.operations[0].responses[0].content[0].examples[0].value).toEqual({ id: "sample-id" });
+});

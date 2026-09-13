@@ -3,6 +3,15 @@
 import React, { useMemo, useState } from "react";
 import type { ApiReference } from "@docsfn/core";
 
+function MediaPayload({ media }: { media: RenderMediaContent }) {
+  return <div className="docsfn-api-request-media">
+    <h4>{media.mediaType}</h4>
+    {media.schema !== undefined ? <><h5>Schema</h5><pre className="docsfn-api-code">{JSON.stringify(media.schema, null, 2)}</pre></> : null}
+    {media.example !== undefined ? <pre className="docsfn-api-code">{JSON.stringify(media.example, null, 2)}</pre> : null}
+    {media.examples?.map(example => <div key={example.name}><h5>{example.name}</h5><pre className="docsfn-api-code">{JSON.stringify(example.value, null, 2)}</pre></div>)}
+  </div>;
+}
+
 export interface ApiReferenceRendererProps {
   api: ApiReference;
   className?: string;
@@ -353,12 +362,7 @@ export function ApiReferenceRenderer({ api, className }: ApiReferenceRendererPro
                           content: operation.requestBody ? (
                             <div className="docsfn-api-request-content">
                               {operation.requestBody.content.map((media) => (
-                                <div key={media.mediaType} className="docsfn-api-request-media">
-                                  <h4>{media.mediaType}</h4>
-                                  {typeof media.example !== "undefined" ? (
-                                    <pre className="docsfn-api-code">{JSON.stringify(media.example, null, 2)}</pre>
-                                  ) : null}
-                                </div>
+                                <MediaPayload key={media.mediaType} media={media} />
                               ))}
                             </div>
                           ) : (
@@ -375,6 +379,7 @@ export function ApiReferenceRenderer({ api, className }: ApiReferenceRendererPro
                                   <div key={response.statusCode} className="docsfn-api-response">
                                     <span className="docsfn-api-response-code">{response.statusCode}</span>
                                     <span className="docsfn-api-response-desc">{response.description || "-"}</span>
+                                    {response.content?.map(media => <MediaPayload key={media.mediaType} media={media} />)}
                                   </div>
                                 ))}
                               </>
