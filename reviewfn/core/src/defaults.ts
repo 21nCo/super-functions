@@ -26,8 +26,8 @@ export const DEFAULT_POLICY: ReviewPolicy = {
 export const DEFAULT_CONFIG: ReviewFnConfig = {
   version: 1,
   profile: "requirements",
-  harness: { adapter: "codex", version: "1", executable: "codex" },
-  inference: { provider: "openai", model: "configured", auth: "api-key", credentialEnv: "CODEX_API_KEY" },
+  harness: { adapter: "codex", version: "1" },
+  inference: { provider: "openai", model: "gpt-5.6-sol", auth: "api-key", credentialEnv: "CODEX_API_KEY" },
   context: [{ adapter: "repository-markdown", paths: ["README.md", "docs/**/*.md"] }],
   review: { categories: ["behavior", "architecture", "compatibility", "test", "documentation"], evidenceRequired: true },
   execution: { adapter: "local-isolated", tests: [], timeoutMs: 15 * 60_000, maxOutputBytes: 10_000_000 },

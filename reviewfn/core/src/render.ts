@@ -1,6 +1,6 @@
 import type { ReviewReport } from "./types.js";
 
-function escapeCell(value: string): string { return value.replaceAll("|", "\\|").replaceAll("\n", " "); }
+function escapeCell(value: string): string { return value.replace(/[\\`*_{}[\]()#+.!|<>]/g, "\\$&").replaceAll("\n", " "); }
 
 export function renderMarkdownReport(report: ReviewReport): string {
   const verdict = report.verdict ?? "no valid assessment";
@@ -25,7 +25,13 @@ export function renderMarkdownReport(report: ReviewReport): string {
   }
   lines.push("", "## Findings", "");
   if (!report.findings.length) lines.push("No findings were reported.");
-  else for (const finding of report.findings) lines.push(`- **${finding.severity.toUpperCase()} — ${finding.title}**: ${finding.impact} (${finding.basis}; ${finding.lifecycle})`);
+  else for (const finding of report.findings) {
+    lines.push(`### ${finding.severity.toUpperCase()} — ${escapeCell(finding.title)}`, "", `Trigger: ${escapeCell(finding.trigger)}`, "", `Impact: ${escapeCell(finding.impact)}`, "", `Fix: ${escapeCell(finding.direction)}`, "", `Evidence: ${finding.evidenceIds.map(escapeCell).join(", ")}; ${finding.basis}; ${finding.lifecycle}.`);
+    if (finding.anchor) lines.push(`Anchor: ${escapeCell(finding.anchor.path)}:${finding.anchor.startLine ?? finding.anchor.symbol ?? "unknown"} at ${finding.anchor.commit}.`);
+    lines.push("");
+  }
+  lines.push("", "## Evidence", "");
+  for (const evidence of report.evidence) lines.push(`- ${escapeCell(evidence.id)} (${evidence.kind}): ${escapeCell(evidence.description)}; ${escapeCell(JSON.stringify(evidence.code ?? evidence.source ?? evidence.receiptId ?? evidence.artifactDigest ?? "unresolved"))}`);
   lines.push("", "## Verification", "");
   if (!report.tests.length) lines.push("No tests were run.");
   else for (const receipt of report.tests) lines.push(`- \`${receipt.command.join(" ")}\`: ${receipt.exitCode === 0 && !receipt.timedOut && !receipt.canceled ? "passed" : "did not pass"} in ${receipt.runtimeMs} ms (receipt \`${receipt.id}\`)`);

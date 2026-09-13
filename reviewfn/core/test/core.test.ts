@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 function report(): ReviewReport {
-  const requirement = { id: "R1", statement: "Return the value", sources: [{ sourceId: "issue:1", anchor: "acceptance" }], category: "behavior" as const, scope: "public API", classification: "mandatory" as const, dependencies: [], extraction: { harness: "fixture", promptDigest: "p" } };
+  const requirement = { id: "R1", statement: "Return the value", sources: [{ sourceId: "issue:1", anchor: "L1" }], category: "behavior" as const, scope: "public API", classification: "mandatory" as const, dependencies: [], extraction: { harness: "fixture", promptDigest: "p" } };
   const evidence = { id: "E1", kind: "code" as const, description: "implementation", code: { commit: "b".repeat(40), path: "src/value.ts", startLine: 1 } };
   return {
     schemaVersion: 1, runId: "run", attemptId: "attempt", createdAt: "2026-01-01T00:00:00.000Z",
@@ -60,7 +60,7 @@ describe("policy and configuration", () => {
 });
 
 describe("report validation", () => {
-  it("validates exact requirement and evidence coverage", async () => expect((await validateReport(report(), DEFAULT_POLICY)).valid).toBe(true));
+  it("validates exact requirement and evidence coverage", async () => expect((await validateReport(report(), { ...DEFAULT_POLICY, requiredCategories: ["behavior"] }, { id: "fixture", capture: async () => report().change, currentHead: async () => report().change.headCommit, verifyAnchor: async () => true }, ".", { version: 1, sources: [{ id: "issue:1", type: "issue", status: "available", content: "Return the value", retrievedAt: "now", digest: "d" }], selection: { candidates: [], selected: [], rule: "explicit" }, limits: { maxSources: 1, maxBytes: 100, maxDepth: 1 }, incompleteReasons: [], digest: "d" })).valid).toBe(true));
   it("rejects a passing incomplete report", async () => { const value = report(); value.coverage = "incomplete"; value.coverageReasons = ["missing issue"]; expect((await validateReport(value, DEFAULT_POLICY)).errors).toContain("Incomplete coverage cannot have a ready verdict."); });
   it("rejects duplicate or missing assessments", async () => { const value = report(); value.assessments = []; value.verdict = "changes_requested"; expect((await validateReport(value, DEFAULT_POLICY)).errors.some((item) => item.includes("0 assessments"))).toBe(true); });
   it("derives needs verification from unverified mandatory work", () => { const value = report(); value.assessments[0].status = "unverified"; expect(deriveVerdict(value, DEFAULT_POLICY)).toBe("needs_verification"); });

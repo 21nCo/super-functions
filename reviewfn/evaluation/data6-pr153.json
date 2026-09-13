@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "method": "retrospective-manual-adjudication",
+  "method": "retrospective-agent-label-schema-smoke",
   "capturedAt": "2026-09-12T17:59:23.000Z",
   "pullRequest": {
     "url": "https://github.com/21nCo/super-functions/pull/153",
@@ -30,7 +30,7 @@
       "retrospective": true,
       "limitations": [
         "Linear has no contemporaneous source-version endpoint, so the source digest represents the current issue and two linked documents.",
-        "This outcome is a human-adjudicated schema smoke test, not a live-model ReviewFn run, and must not be used as a model-quality claim.",
+        "This outcome is a agent-authored schema smoke test, not a live-model ReviewFn run, and must not be used as a model-quality claim.",
         "The downstream Skillplane repository was not inspected; absence is based only on the exact PR change set and the issue's explicit cross-repository verification requirement."
       ]
     }

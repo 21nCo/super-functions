@@ -4,6 +4,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { consumerSmoke } from "./reviewfn-consumer-smoke.mjs";
+
 const root = process.cwd();
 const packages = ["core", "context-composio", "harness-codex", "github", "testing", "cli"];
 const packageName = (name) => `@superfunctions/reviewfn-${name}`;
@@ -45,6 +47,9 @@ function verifyDocs() {
 
 const temporary = mkdtempSync(path.join(tmpdir(), "reviewfn-release-"));
 try {
+  run("docker-available", "docker", ["info", "--format", "{{.ServerVersion}}"]);
+  run("test-image", "docker", ["image", "inspect", "node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5"]);
+  process.env.REVIEWFN_DOCKER_TESTS = "1";
   for (const name of packages) npm(`build:${name}`, ["run", "build", "--workspace", packageName(name)]);
   for (const name of packages) npm(`typecheck:${name}`, ["run", "typecheck", "--workspace", packageName(name)]);
   for (const name of packages) npm(`test:${name}`, ["run", "test", "--workspace", packageName(name)]);
@@ -65,6 +70,8 @@ try {
   npm("consumer-install", ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...tarballs], consumer);
   run("consumer-import", process.execPath, ["--input-type=module", "-e", "const core=await import('@superfunctions/reviewfn-core'); if(typeof core.ReviewCoordinator!=='function')process.exit(1)"], consumer);
   run("consumer-cli", path.join(consumer, "node_modules", ".bin", process.platform === "win32" ? "reviewfn.cmd" : "reviewfn"), ["help"], consumer);
+  const smoke = await consumerSmoke(consumer);
+  results.push({ name: "consumer-end-to-end", ok: true, status: 0, stdout: JSON.stringify(smoke) });
   console.log(JSON.stringify({ ok: true, node: process.versions.node, packages, results: results.map(({ name, ok, status }) => ({ name, ok, status })) }, null, 2));
 } catch (error) {
   console.error(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error), results }, null, 2));

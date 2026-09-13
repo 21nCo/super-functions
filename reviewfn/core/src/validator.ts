@@ -1,4 +1,5 @@
-import type { Assessment, Evidence, ReportPublisher, ReviewPolicy, ReviewReport, SourceControlAdapter, Verdict } from "./types.js";
+import { sha256 } from "./canonical.js";
+import type { ArtifactStore, ContextManifest, SourceReference, Assessment, Evidence, ReportPublisher, ReviewPolicy, ReviewReport, SourceControlAdapter, Verdict } from "./types.js";
 
 export interface ValidationResult {
   valid: boolean;
@@ -22,12 +23,29 @@ export function deriveVerdict(report: Pick<ReviewReport, "execution" | "coverage
   if (report.assessments.some((assessment) => mandatory.has(assessment.requirementId) && ["missing", "partial"].includes(assessment.status))) return "changes_requested";
   if (report.assessments.some((assessment) => mandatory.has(assessment.requirementId) && assessment.status === "unverified")) return "needs_verification";
   if (report.findings.some((finding) => policy.blockingSeverities.includes(finding.severity) && ["new", "still_valid"].includes(finding.lifecycle))) return "changes_requested";
+  if (report.findings.some(finding => finding.lifecycle === "needs_revalidation")) return "needs_verification";
   return "ready";
 }
 
-export async function validateReport(report: ReviewReport, policy: ReviewPolicy, sourceControl?: SourceControlAdapter, root?: string): Promise<ValidationResult> {
+export async function validateReport(report: ReviewReport, policy: ReviewPolicy, sourceControl?: SourceControlAdapter, root?: string, context?: ContextManifest, artifacts?: ArtifactStore): Promise<ValidationResult> {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const sources = new Map(context?.sources.map(source => [source.id, source]) ?? []);
+  const referenceValid = (ref: SourceReference): boolean => {
+    const source = sources.get(ref.sourceId);
+    if (!source || source.status !== "available" || !source.content || !policy.sourceAuthority.acceptedTypes.includes(source.type) || (source.type === "comment" && !policy.sourceAuthority.commentsMayClarify)) return false;
+    // Explicit literal excerpts or one-based line ranges are verifiable; arbitrary labels are not.
+    if (ref.excerpt) return source.content.includes(ref.excerpt) && ref.excerpt.trim().length > 0;
+    const match = /^L(\d+)(?:-L?(\d+))?$/.exec(ref.anchor);
+    return !!match && Number(match[1]) > 0 && Number(match[2] ?? match[1]) >= Number(match[1]) && Number(match[2] ?? match[1]) <= source.content.split(/\r?\n/).length;
+  };
+  if (report.execution === "completed") {
+    if (!report.requirements.length) errors.push("No requirements were extracted; extraction coverage is unverified.");
+    if (!report.inspectedPaths.length) errors.push("No code paths were inspected.");
+    for (const category of policy.requiredCategories) if (!report.requirements.some(requirement => requirement.category === category)) errors.push(`Extraction coverage for required category ${category} is unverified.`);
+    for (const source of context?.sources ?? []) if (source.status === "available" && policy.sourceAuthority.acceptedTypes.includes(source.type) && !report.requirements.some(requirement => requirement.sources.some(ref => ref.sourceId === source.id)) && !report.evidence.some(evidence => evidence.kind === "source" && evidence.source?.sourceId === source.id && referenceValid(evidence.source))) errors.push(`Extraction coverage for source ${source.id} is unverified; cite its requirements or source-backed exclusion evidence.`);
+    if (!context) errors.push("Frozen context is required to validate source authority.");
+  }
   const requirementIds = report.requirements.map((item) => item.id);
   const evidenceIds = report.evidence.map((item) => item.id);
   for (const id of duplicates(requirementIds)) errors.push(`Duplicate requirement id ${id}.`);
@@ -38,6 +56,8 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
   for (const requirement of report.requirements) {
     const matches = assessments.get(requirement.id) ?? [];
     if (matches.length !== 1) errors.push(`Requirement ${requirement.id} has ${matches.length} assessments; expected exactly one.`);
+    for (const ref of requirement.sources) if (!referenceValid(ref)) errors.push(`Requirement ${requirement.id} has an unverifiable or unauthorized source reference.`);
+    for (const dependency of requirement.dependencies) if (!report.requirements.some(item => item.id === dependency)) errors.push(`Requirement ${requirement.id} references unknown dependency ${dependency}.`);
     if (requirement.sources.length === 0) errors.push(`Requirement ${requirement.id} has no authoritative source.`);
   }
   for (const requirementId of assessments.keys()) if (!requirementIds.includes(requirementId)) errors.push(`Assessment references unknown requirement ${requirementId}.`);
@@ -46,21 +66,43 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
   for (const assessment of report.assessments) {
     if (assessment.confidence < 0 || assessment.confidence > 1) errors.push(`Assessment ${assessment.requirementId} has invalid confidence.`);
     if (assessment.status !== "not_applicable" && assessment.evidenceIds.length === 0) errors.push(`Assessment ${assessment.requirementId} has no evidence.`);
-    if (assessment.status === "not_applicable" && !assessment.waiverReference) errors.push(`Assessment ${assessment.requirementId} is not_applicable without a waiver.`);
+    if (assessment.status === "not_applicable" && (!assessment.waiverReference || !referenceValid(assessment.waiverReference) || !policy.sourceAuthority.waiverAuthorities.includes(assessment.waiverReference.sourceId))) errors.push(`Assessment ${assessment.requirementId} is not_applicable without a waiver.`);
     for (const id of assessment.evidenceIds) if (!evidence.has(id)) errors.push(`Assessment ${assessment.requirementId} references unknown evidence ${id}.`);
   }
   for (const finding of report.findings) {
+    if (!finding.evidenceIds.length) errors.push(`Finding ${finding.fingerprint} has no evidence.`);
     if (!finding.trigger || !finding.impact || !finding.direction) errors.push(`Finding ${finding.fingerprint} is missing actionable detail.`);
     for (const id of finding.evidenceIds) if (!evidence.has(id)) errors.push(`Finding ${finding.fingerprint} references unknown evidence ${id}.`);
     for (const id of finding.requirementIds) if (!requirementIds.includes(id)) errors.push(`Finding ${finding.fingerprint} references unknown requirement ${id}.`);
   }
 
+  for (const item of report.evidence) {
+    if (item.kind === "source" && (!item.source || !referenceValid(item.source))) errors.push(`Evidence ${item.id} has no verifiable source.`);
+    if (["code", "diff"].includes(item.kind) && !item.code) errors.push(`Evidence ${item.id} has no code anchor.`);
+    if (item.kind === "diff" && item.code && !report.change.changedPaths.includes(item.code.path)) errors.push(`Diff evidence ${item.id} is outside changed paths.`);
+    if (item.kind === "test" && !report.tests.some(test => test.id === item.receiptId && test.commit === report.change.headCommit)) errors.push(`Evidence ${item.id} references no reviewed test receipt.`);
+    if (item.kind === "artifact") {
+      const ids = [report.contextManifestArtifact, report.normalizedEventArtifact, report.redactedTranscriptArtifact].filter((id): id is string => !!id);
+      const id = ids.find(id => item.artifactDigest && id.endsWith(`-${item.artifactDigest}`));
+      const bytes = id && artifacts ? await artifacts.get(id) : undefined;
+      if (!bytes || sha256(bytes) !== item.artifactDigest) errors.push(`Evidence ${item.id} references no retained artifact with matching digest.`);
+    }
+    if (item.code && (!sourceControl || !root)) errors.push(`Evidence ${item.id} code anchor cannot be verified.`);
+  }
+  for (const assessment of report.assessments) if (assessment.status === "implemented") {
+    for (const id of assessment.evidenceIds) {
+      const item = evidence.get(id);
+      const receipt = item?.kind === "test" ? report.tests.find(test => test.id === item.receiptId) : undefined;
+      if (receipt && (receipt.exitCode !== 0 || receipt.canceled || receipt.timedOut)) errors.push(`Assessment ${assessment.requirementId} relies on a failed or incomplete test.`);
+    }
+  }
   if (sourceControl && root) {
     for (const item of report.evidence) {
       if (item.code && item.code.commit !== report.change.headCommit) errors.push(`Evidence ${item.id} does not reference reviewed head ${report.change.headCommit}.`);
       if (item.code && !(await sourceControl.verifyAnchor(root, item.code))) errors.push(`Evidence ${item.id} has an invalid code anchor.`);
     }
     for (const finding of report.findings) {
+    if (!finding.evidenceIds.length) errors.push(`Finding ${finding.fingerprint} has no evidence.`);
       if (finding.anchor && finding.anchor.commit !== report.change.headCommit) errors.push(`Finding ${finding.fingerprint} does not reference reviewed head.`);
       if (finding.anchor && !(await sourceControl.verifyAnchor(root, finding.anchor))) errors.push(`Finding ${finding.fingerprint} has an invalid code anchor.`);
     }
@@ -80,6 +122,7 @@ export async function preflightPublishers(publishers: readonly ReportPublisher[]
   const errors: string[] = [];
   for (const publisher of publishers) {
     const result = await publisher.preflight();
+    if (!result.ok && !result.diagnostics.some(item => item.level === "error")) errors.push(`${publisher.id}: preflight refused publication.`);
     for (const diagnostic of result.diagnostics) if (diagnostic.level === "error") errors.push(`${publisher.id}: ${diagnostic.message}`);
   }
   return errors;

@@ -17,3 +17,5 @@ The configuration selects the profile, harness, inference provider/model/auth, c
 Fallback entries are provenance only. ReviewFn never selects one automatically; an operator must explicitly rerun a compatible configuration.
 
 Version 0.1 accepts only `advisory` output mode. Both configuration and policy validation reject `gate`; required-check behavior needs a later, separately calibrated and authorized release.
+
+PR inference requires a trusted Docker image and action-proxy authentication with an explicit model. Local API-key and ChatGPT modes are restricted to trusted repositories. `local-isolated` names the mandatory Docker execution adapter; other adapter names fail preflight. Test commands use container paths such as `node`, not a host-specific executable path. See the security model for fixed resource bounds. `retainTranscript` is false unless explicitly enabled.

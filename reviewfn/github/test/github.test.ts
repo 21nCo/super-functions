@@ -11,7 +11,7 @@ describe("GitSourceControlAdapter", () => {
     const calls: string[][] = [];
     const runner = async (args: string[]) => {
       calls.push(args);
-      if (args[0] === "rev-parse" && args[1] === "--verify") return args[2].startsWith("base") ? "a".repeat(40) : "b".repeat(40);
+      if (args[0] === "rev-parse" && args[1] === "--verify") return args.at(-1)!.startsWith("base") ? "a".repeat(40) : "b".repeat(40);
       if (args[0] === "config") return "https://github.com/acme/repo.git";
       if (args[0] === "rev-parse" && args[1] === "HEAD") return "b".repeat(40);
       if (args[0] === "merge-base") return "a".repeat(40);
@@ -30,7 +30,7 @@ describe("GitSourceControlAdapter", () => {
 
 describe("GitHubAdvisoryPublisher", () => {
   it("maintains one summary and one check for repeated delivery", async () => {
-    let comment: { id: number; body: string } | undefined;
+    let comment: { id: number; body: string; user: { login: string } } | undefined;
     let check: { id: number; external_id: string } | undefined;
     const calls: Array<{ method: string; url: string }> = [];
     const fetcher: typeof fetch = async (input, init) => {
@@ -38,8 +38,8 @@ describe("GitHubAdvisoryPublisher", () => {
       const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
       if (url.includes("/pulls/1")) return json({ head: { sha: "b".repeat(40) } });
       if (url.includes("/issues/1/comments") && method === "GET") return json(comment ? [comment] : []);
-      if (url.includes("/issues/1/comments") && method === "POST") { comment = { id: 9, body: JSON.parse(String(init?.body)).body }; return json(comment, 201); }
-      if (url.includes("/issues/comments/9") && method === "PATCH") { comment = { id: 9, body: JSON.parse(String(init?.body)).body }; return json(comment); }
+      if (url.includes("/issues/1/comments") && method === "POST") { comment = { id: 9, user: { login: "github-actions[bot]" }, body: JSON.parse(String(init?.body)).body }; return json(comment, 201); }
+      if (url.includes("/issues/comments/9") && method === "PATCH") { comment = { id: 9, user: { login: "github-actions[bot]" }, body: JSON.parse(String(init?.body)).body }; return json(comment); }
       if (url.includes("/commits/") && url.includes("/check-runs")) return json({ check_runs: check ? [check] : [] });
       if (url.endsWith("/check-runs") && method === "POST") { check = { id: 4, external_id: JSON.parse(String(init?.body)).external_id }; return json(check, 201); }
       if (url.endsWith("/check-runs/4") && method === "PATCH") return json(check);
@@ -57,4 +57,29 @@ describe("GitHubAdvisoryPublisher", () => {
     const publisher = new GitHubAdvisoryPublisher({ api: new GitHubApi({ owner: "acme", repository: "repo", token: "secret", fetch: fetcher }), pullRequest: 1 });
     expect((await publisher.publish({ report: report(), rendered: "x", expectedHead: "b".repeat(40), profile: "requirements" })).status).toBe("stale");
   });
+});
+it("does not write when the PR advances during comment listing", async () => {
+  let head = "b".repeat(40); let writes = 0;
+  const fetcher: typeof fetch = async (input, init) => {
+    if (init?.method !== "GET") writes++;
+    if (String(input).includes("/pulls/")) return Response.json({ head: { sha: head } });
+    head = "c".repeat(40); return Response.json([]);
+  };
+  const publisher = new GitHubAdvisoryPublisher({ api: new GitHubApi({ owner: "acme", repository: "race", token: "secret", fetch: fetcher }), pullRequest: 1 });
+  expect((await publisher.publish({ report: report(), rendered: "report", expectedHead: "b".repeat(40), profile: "requirements" })).status).toBe("stale"); expect(writes).toBe(0);
+});
+it("serializes concurrent delivery and ignores marker spoofing by another author", async () => {
+  const comments: Array<{ id: number; body: string; user: { login: string } }> = [{ id: 1, body: "<!-- reviewfn:requirements -->", user: { login: "untrusted" } }]; let creates = 0;
+  const fetcher: typeof fetch = async (input, init) => {
+    const url = String(input); const method = init?.method;
+    if (url.includes("/pulls/")) return Response.json({ head: { sha: "b".repeat(40) } });
+    if (url.includes("/comments") && method === "GET") return Response.json(comments);
+    if (url.includes("/comments") && method === "POST") { creates++; const comment = { id: 2, body: JSON.parse(String(init?.body)).body, user: { login: "github-actions[bot]" } }; comments.push(comment); return Response.json(comment); }
+    if (method === "GET") return Response.json({ check_runs: [] });
+    return Response.json({ id: 3 });
+  };
+  const options = { api: new GitHubApi({ owner: "acme", repository: "concurrent", token: "secret", fetch: fetcher }), pullRequest: 1 };
+  const request = { report: report(), rendered: "report", expectedHead: "b".repeat(40), profile: "requirements" };
+  const results = await Promise.all([new GitHubAdvisoryPublisher(options).publish(request), new GitHubAdvisoryPublisher(options).publish(request)]);
+  expect(results.map(result => result.status)).toEqual(["published", "unchanged"]); expect(creates).toBe(1); expect(comments[0].body).toBe("<!-- reviewfn:requirements -->");
 });

@@ -8,7 +8,13 @@ function canonicalize(value: unknown, seen: Set<object>): JsonValue {
     if (!Number.isFinite(value)) throw new TypeError("Canonical JSON does not support non-finite numbers.");
     return Object.is(value, -0) ? 0 : value;
   }
-  if (Array.isArray(value)) return value.map((entry) => canonicalize(entry, seen));
+  if (Array.isArray(value)) {
+    if (seen.has(value)) throw new TypeError("Canonical JSON does not support cycles.");
+    seen.add(value);
+    const result = value.map((entry) => canonicalize(entry, seen));
+    seen.delete(value);
+    return result;
+  }
   if (typeof value === "object") {
     if (seen.has(value)) throw new TypeError("Canonical JSON does not support cycles.");
     seen.add(value);

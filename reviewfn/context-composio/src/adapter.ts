@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process";
+import { readFile, lstat } from "node:fs/promises";
+import path from "node:path";
+import { homedir } from "node:os";
 
 import { sha256, type ContextAdapter, type ContextManifest, type ContextRequest, type ContextSource, type PreflightResult } from "@superfunctions/reviewfn-core";
 
@@ -6,15 +9,24 @@ export interface ComposioCommandResult { code: number | null; stdout: string; st
 export type ComposioRunner = (args: string[], signal?: AbortSignal) => Promise<ComposioCommandResult>;
 
 const defaultRunner: ComposioRunner = async (args, signal) => new Promise((resolve, reject) => {
-  const child = spawn("composio", args, { env: process.env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+  if (signal?.aborted) { reject(new Error("Context retrieval canceled.")); return; }
+  const env = Object.fromEntries(["PATH", "HOME", "COMPOSIO_API_KEY", "COMPOSIO_CONFIG_DIR"].flatMap(key => process.env[key] ? [[key, process.env[key]]] : []));
+  const child = spawn("composio", args, { env, detached: process.platform !== "win32", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = "";
   let stderr = "";
-  const abort = () => child.kill("SIGTERM");
+  let exceeded = false;
+  let bytes = 0;
+  const abort = () => { try { process.kill(-child.pid!, "SIGKILL"); } catch { child.kill("SIGKILL"); } };
+  const timer = setTimeout(() => { exceeded = true; abort(); }, 30_000);
+  const append = (chunk: Buffer, target: "stdout" | "stderr") => { bytes += chunk.length; if (bytes > 5_000_000) { exceeded = true; abort(); return; } if (target === "stdout") stdout += chunk.toString("utf8"); else stderr += chunk.toString("utf8"); };
   signal?.addEventListener("abort", abort, { once: true });
-  child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
-  child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
-  child.once("error", reject);
-  child.once("exit", (code) => { signal?.removeEventListener("abort", abort); resolve({ code, stdout, stderr }); });
+  child.stdout.on("data", (chunk: Buffer) => append(chunk, "stdout"));
+  child.stderr.on("data", (chunk: Buffer) => append(chunk, "stderr"));
+  const cleanup = () => { clearTimeout(timer); signal?.removeEventListener("abort", abort); abort(); };
+  if (signal?.aborted) abort();
+  child.once("error", error => { cleanup(); reject(error); });
+  child.once("exit", abort);
+  child.once("close", (code) => { cleanup(); resolve({ code: exceeded || signal?.aborted ? 1 : code, stdout, stderr: exceeded ? "Composio time or output budget exhausted." : stderr }); });
 });
 
 export interface ComposioContextOptions { runner?: ComposioRunner }
@@ -63,8 +75,14 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     const issueIdentifier = stringField(issue, "identifier") ?? request.issue;
     add({ id: `linear:issue:${issueId}`, type: "issue", canonicalUrl: stringField(issue, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), updatedAt: stringField(issue, "updatedAt"), providerVersion: "LINEAR_GET_LINEAR_ISSUE", status: "available", content: JSON.stringify(issueWithoutConnections(issue), null, 2) });
 
-    const comments = [...connectionNodes(issue.comments)];
-    let commentPage = pageInfo(issue.comments);
+    let initialComments = issue.comments;
+    if (!initialComments || typeof initialComments !== "object" || !("pageInfo" in initialComments)) {
+      try { initialComments = findConnection(await this.fetchIssueConnection("comments", issueId, undefined, request.account, request.signal), "comments"); }
+      catch { incompleteReasons.push("Unable to establish complete Linear comment pagination."); }
+    }
+    const comments = [...connectionNodes(initialComments)];
+    let commentPage = pageInfo(initialComments);
+    if (!initialComments || typeof initialComments !== "object" || !("pageInfo" in initialComments)) incompleteReasons.push("Linear comment pagination metadata missing.");
     const commentCursors = new Set<string>();
     while (commentPage.hasNextPage && commentPage.endCursor && !commentCursors.has(commentPage.endCursor) && comments.length < request.limits.maxSources) {
       commentCursors.add(commentPage.endCursor);
@@ -79,7 +97,8 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     }
     if (commentPage.hasNextPage) incompleteReasons.push(`Linear comments for ${issueIdentifier} remain incomplete at cursor ${commentPage.endCursor ?? "unknown"}.`);
 
-    const documents = [...connectionNodes(issue.documents), ...arrayObjects(issue.documents)];
+    const linkedDocuments = (text: string): Record<string, unknown>[] => [...text.matchAll(/https:\/\/linear\.app\/[^\s/)]+\/document\/([a-zA-Z0-9-]+)/g)].map(match => ({ id: match[1].split("-").at(-1)!, url: match[0] }));
+    const documents = [...connectionNodes(issue.documents), ...arrayObjects(issue.documents), ...linkedDocuments(JSON.stringify(issue)), ...comments.flatMap(comment => linkedDocuments(stringField(comment, "body") ?? ""))];
     let documentPage = pageInfo(issue.documents);
     const documentCursors = new Set<string>();
     while (documentPage.hasNextPage && documentPage.endCursor && !documentCursors.has(documentPage.endCursor) && documents.length < request.limits.maxSources) {
@@ -91,7 +110,10 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     }
     if (documentPage.hasNextPage) incompleteReasons.push(`Linear documents for ${issueIdentifier} remain incomplete at cursor ${documentPage.endCursor ?? "unknown"}.`);
     const seenDocuments = new Set<string>();
+    const documentDepth = new Map(documents.map(document => [stringField(document, "id")!, 1]));
     for (const summary of documents) {
+      if (request.signal?.aborted) throw new Error("Context retrieval canceled.");
+      if (sources.length >= request.limits.maxSources || consumed >= request.limits.maxBytes) { incompleteReasons.push("Linear aggregate retrieval budget exhausted."); break; }
       const id = stringField(summary, "id");
       if (!id || seenDocuments.has(id)) continue;
       seenDocuments.add(id);
@@ -99,16 +121,24 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
       if (!stringField(summary, "content")) {
         try { document = findDocument(await this.fetchDocument(id, request.account, request.signal)) ?? summary; }
         catch (error) {
-          sources.push({ id: `linear:document:${id}`, type: "document", canonicalUrl: stringField(summary, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), digest: sha256(""), status: "failed", parentId: `linear:issue:${issueId}`, error: error instanceof Error ? error.message : String(error) });
+          add({ id: `linear:document:${id}`, type: "document", canonicalUrl: stringField(summary, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), status: "failed", parentId: `linear:issue:${issueId}`, error: error instanceof Error ? error.message : String(error) });
           incompleteReasons.push(`Unable to fetch Linear document ${id}.`);
           continue;
         }
       }
       const content = stringField(document, "content");
       if (!content) {
-        sources.push({ id: `linear:document:${id}`, type: "document", canonicalUrl: stringField(document, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), digest: sha256(""), status: "unsupported", parentId: `linear:issue:${issueId}`, error: "Document content was not returned." });
+        add({ id: `linear:document:${id}`, type: "document", canonicalUrl: stringField(document, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), status: "unsupported", parentId: `linear:issue:${issueId}`, error: "Document content was not returned." });
         incompleteReasons.push(`Linear document ${id} did not include content.`);
-      } else add({ id: `linear:document:${id}`, type: "document", canonicalUrl: stringField(document, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), updatedAt: stringField(document, "updatedAt"), providerVersion: "LINEAR_RUN_QUERY_OR_MUTATION", status: "available", parentId: `linear:issue:${issueId}`, content });
+      } else {
+        for (const linked of linkedDocuments(content)) {
+          const linkedId = stringField(linked, "id")!;
+          if (seenDocuments.has(linkedId) || documentDepth.has(linkedId)) continue;
+          if ((documentDepth.get(id) ?? 1) >= request.limits.maxDepth) incompleteReasons.push(`Linked document ${linkedId} exceeds depth budget.`);
+          else { documentDepth.set(linkedId, (documentDepth.get(id) ?? 1) + 1); documents.push(linked); }
+        }
+        add({ id: `linear:document:${id}`, type: "document", canonicalUrl: stringField(document, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), updatedAt: stringField(document, "updatedAt"), providerVersion: "LINEAR_RUN_QUERY_OR_MUTATION", status: "available", parentId: `linear:issue:${issueId}`, content });
+      }
     }
     return { version: 1, sources, selection: { candidates: [request.issue], selected: [`linear:issue:${issueId}`], rule: `explicit issue ${request.issue} using explicit Composio account ${request.account}` }, limits: request.limits, incompleteReasons };
   }
@@ -116,7 +146,18 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
   private async execute(slug: string, data: Record<string, unknown>, account: string, signal?: AbortSignal): Promise<unknown> {
     const result = await this.runner(["execute", slug, "--account", account, "-d", JSON.stringify(data)], signal);
     if (result.code !== 0) throw new Error(`${slug} failed: ${result.stderr.trim() || `exit ${String(result.code)}`}`);
-    try { return JSON.parse(result.stdout); }
+    try {
+      let payload = JSON.parse(result.stdout);
+      if (payload.storedInFile) {
+        const file = typeof payload.storedInFile === "string" ? payload.storedInFile : payload.filePath ?? payload.path;
+        if (typeof file !== "string" || !path.resolve(file).startsWith(`${path.join(homedir(), ".composio")}${path.sep}`)) throw new Error("Unsafe Composio stored response path.");
+        const stat = await lstat(file);
+        if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 5_000_000) throw new Error("Composio stored response exceeds bounds or is not a regular file.");
+        payload = JSON.parse(await readFile(file, "utf8"));
+      }
+      if (records(payload).some(record => record.successful === false || (Array.isArray(record.errors) && record.errors.length))) throw new Error("Composio or Linear returned an error envelope.");
+      return payload;
+    }
     catch (error) { throw new Error(`${slug} returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`); }
   }
 
@@ -125,8 +166,8 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     return this.execute("LINEAR_RUN_QUERY_OR_MUTATION", { query_or_mutation: query, variables: { id } }, account, signal);
   }
 
-  private fetchIssueConnection(connection: "comments" | "documents", issueId: string, after: string, account: string, signal?: AbortSignal): Promise<unknown> {
-    const fields = connection === "comments" ? "id body createdAt updatedAt user { id name }" : "id title content url updatedAt";
+  private fetchIssueConnection(connection: "comments" | "documents", issueId: string, after: string | undefined, account: string, signal?: AbortSignal): Promise<unknown> {
+    const fields = connection === "comments" ? "id body createdAt updatedAt parent { id } user { id name }" : "id title content url updatedAt";
     const query = `query($issueId: String!, $after: String) { issue(id: $issueId) { ${connection}(first: 50, after: $after) { nodes { ${fields} } pageInfo { hasNextPage endCursor } } } }`;
     return this.execute("LINEAR_RUN_QUERY_OR_MUTATION", { query_or_mutation: query, variables: { issueId, after } }, account, signal);
   }

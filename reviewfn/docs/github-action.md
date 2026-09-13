@@ -1,13 +1,18 @@
 # GitHub Action setup
 
-The Action runs on `pull_request` opened, synchronize and reopened events or an explicitly authorized dispatch. Checkout the exact PR head with full history and `persist-credentials: false`. Pin the Action and CLI versions.
+The bundled composite is the credential-free review stage. Install the pinned CLI version, pull the pinned test image and build `reviewfn-codex:0.154.0` using the Dockerfile from the trusted harness package. Provision an inference-only Responses API proxy outside the untrusted review job. Set trusted base configuration to `action-proxy` with an explicit model, omit `harness.executable`, and provide an endpoint reachable from the Docker bridge.
 
-The bundled composite Action accepts only a credential-isolating Responses API proxy URL. The trusted base configuration must select `action-proxy` auth. It never accepts or exports a raw OpenAI key, and the harness subprocess receives no GitHub token. Provision the proxy outside the untrusted review job; the official `openai/codex-action@v1` is the reference proxy implementation. Raw API-key mode is limited to local reviews without a pull-request identity and fails closed for PR runs.
+Use `pull_request` opened/synchronize/reopened or a maintainer-authorized dispatch. Checkout the exact head with full history and `persist-credentials: false`. Pin the Action to a reviewed commit. The review job needs only `contents: read`; it must not contain `GITHUB_TOKEN` in its environment or credentials cached in the checkout. Input values are transported through environment variables to quoted argv, and versions/commit IDs are validated before invoking npx.
 
-Public forks do not receive secrets; an unauthenticated run is incomplete and non-passing. A privileged rerun requires explicit maintainer authorization and an isolated runner.
+Upload the caller-owned output directory with `actions/upload-artifact@v4` and a unique PR/head/run name. Include report JSON, rendered Markdown and its artifacts directory. Publish in a separate trusted job with `pull-requests: write`, `issues: write`, and `checks: write`, without checking out PR code. Pin/install the published CLI there, download only the artifact from the corresponding review job, and run:
 
-Use `contents: read` while acquiring context, reviewing and testing. Give `pull-requests: write`, `issues: write` and `checks: write` only to the publication step/job. ReviewFn maintains one summary per profile and rechecks the remote head before publication.
+```sh
+reviewfn publish --input "$REPORT" --repository "$REPOSITORY" \
+  --pull-request "$PR_NUMBER" --head "$EXPECTED_HEAD" --profile requirements
+```
 
-The initial result is advisory. Its GitHub check is neutral even when the report verdict is ready. Do not make it a required merge gate until an adjudicated held-out evaluation establishes acceptable precision/recall and a separate policy authorizes exact check-conclusion mapping.
+Provide these identity values from trusted workflow event metadata, not the artifact. Export the publication token only in this job. Use a workflow concurrency group such as `reviewfn-${{ github.repository }}-${{ github.event.pull_request.number }}-requirements` with `cancel-in-progress: false`. This serializes publishers across machines; the API adapter also serializes concurrent callers in one process and takes an exclusive local filesystem lease across processes. A crashed lease is never stolen by timeout; verify its recorded process is dead before operator cleanup. A failed publish can rerun this command against the same artifact without inference.
 
-Generated artifacts should upload `report.json`, `report.md`, normalized events and the context manifest. Retention follows policy; transcripts are private/opt-in and redacted.
+Head changes detected before writes return stale. The comment includes the exact reviewed SHA; because GitHub lacks conditional comment writes tied to the current PR head, a change during a write can still leave a clearly labeled older-head comment. The next run replaces it. The single marker-scoped comment must belong to the configured publisher login (default `github-actions[bot]`). Oversized reports fail publication with a bounded error while the full local report is retained. Checks remain neutral regardless of verdict. Never configure them as a merge gate for version 0.1.
+
+Public fork execution requires a deliberately provisioned isolated proxy runner. No unauthenticated failure becomes a passing review. Repository package publication itself remains a separate release operation; this PR does not publish npm packages or merge code.

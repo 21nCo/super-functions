@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import { access, lstat, mkdir, open, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { safeDirectory, safeRead, safeWrite } from "./safe-files.js";
 import { sha256 } from "./canonical.js";
 import { ReviewFnError } from "./errors.js";
 import type { ArtifactStore } from "./types.js";
@@ -27,13 +28,13 @@ export class FileArtifactStore implements ArtifactStore {
     const createdAt = new Date();
     const metadata: ArtifactMetadata = { id, digest, kind, createdAt: createdAt.toISOString(), expiresAt: new Date(createdAt.getTime() + retentionDays * 86_400_000).toISOString() };
     await writeExclusiveOrVerify(dataPath, bytes, digest);
-    await writeFile(metadataPath, JSON.stringify(metadata, null, 2), { mode: 0o600 });
+    await safeWrite(metadataPath, JSON.stringify(metadata, null, 2));
     return { digest, id };
   }
 
   public async get(id: string): Promise<Uint8Array | undefined> {
     if (!/^[a-z][a-z0-9-]{0,63}-[a-f0-9]{64}$/.test(id)) throw new ReviewFnError("REVIEWFN_ARTIFACT_UNSAFE", `Unsafe artifact id ${id}.`);
-    return readFile(path.join(this.root, `${id}.artifact`)).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? undefined : Promise.reject(error));
+    return safeRead(path.join(this.root, `${id}.artifact`)).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? undefined : Promise.reject(error));
   }
 
   public async deleteExpired(now = new Date()): Promise<{ deleted: string[]; errors: string[] }> {
@@ -43,7 +44,8 @@ export class FileArtifactStore implements ArtifactStore {
     for (const entry of await readdir(this.root)) {
       if (!entry.endsWith(".json")) continue;
       try {
-        const metadata = JSON.parse(await readFile(path.join(this.root, entry), "utf8")) as ArtifactMetadata;
+        const metadata = JSON.parse((await safeRead(path.join(this.root, entry))).toString("utf8")) as ArtifactMetadata;
+        if (!/^[a-z][a-z0-9-]{0,63}-[a-f0-9]{64}$/.test(metadata.id) || entry !== `${metadata.id}.json` || metadata.id !== `${metadata.kind}-${metadata.digest}` || !Number.isFinite(Date.parse(metadata.expiresAt))) throw new Error("Invalid artifact metadata identity or expiry.");
         if (Date.parse(metadata.expiresAt) > now.getTime()) continue;
         const artifactPath = path.join(this.root, `${metadata.id}.artifact`);
         if ((await lstat(artifactPath).catch(() => undefined))?.isSymbolicLink()) throw new Error("refusing symlinked artifact");
@@ -58,7 +60,7 @@ export class FileArtifactStore implements ArtifactStore {
   }
 
   private async ensureSafeRoot(): Promise<void> {
-    await mkdir(this.root, { recursive: true, mode: 0o700 });
+    await safeDirectory(this.root);
     const stat = await lstat(this.root);
     if (!stat.isDirectory() || stat.isSymbolicLink()) throw new ReviewFnError("REVIEWFN_ARTIFACT_UNSAFE", "Artifact root must be a real directory.");
   }
@@ -71,7 +73,7 @@ async function writeExclusiveOrVerify(file: string, bytes: Uint8Array, digest: s
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     await access(file, constants.R_OK);
-    const existing = await readFile(file);
+    const existing = await safeRead(file);
     if (sha256(existing) !== digest) throw new ReviewFnError("REVIEWFN_ARTIFACT_UNSAFE", "Existing content-addressed artifact has unexpected bytes.");
   }
 }

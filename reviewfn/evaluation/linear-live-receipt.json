@@ -1,0 +1,65 @@
+{
+  "recordedAt": "2026-09-13T11:00:18.583651+00:00",
+  "accountAlias": "21n",
+  "workspace": "Super functions",
+  "issue": "SFNS-3",
+  "sources": [
+    {
+      "id": "linear:issue:2d345256-0a0a-4774-a363-2b969c2d2d93",
+      "type": "issue",
+      "status": "available",
+      "digest": "d80e71ad2a9aacea2614a43ab0f835ac3b8de738aaf949c00dfa5f01cdc4eb4d",
+      "bytes": 10373
+    },
+    {
+      "id": "linear:comment:f888325b-5651-4b00-9531-46205c8d787f",
+      "type": "comment",
+      "status": "available",
+      "digest": "e49eac0c79cec5637924a6d17099086eae833f6e90d476430883da3b75a0a359",
+      "bytes": 475
+    },
+    {
+      "id": "linear:comment:339c9d42-c29a-4c93-b202-98539f167329",
+      "type": "comment",
+      "status": "available",
+      "digest": "bb13aaa93f6bef3dcd4179e97dabc887a4e859bddb8570649221ce5d7cba2aac",
+      "bytes": 1003
+    },
+    {
+      "id": "linear:comment:d5de962e-1940-438f-a6ab-db1f70660e21",
+      "type": "comment",
+      "status": "available",
+      "digest": "8363f59786c39b3e16bbf5ae147ca9cd411f2dbfd00d6b3b7ec281eb7cd3a860",
+      "bytes": 207
+    },
+    {
+      "id": "linear:comment:88ac3d88-d304-4bf4-8775-10dce49f1fda",
+      "type": "comment",
+      "status": "available",
+      "digest": "3a42540e2d9fcb00d0a81e403393c661f090557c8fe1633a3174b780cd0b8efe",
+      "bytes": 47
+    },
+    {
+      "id": "linear:document:67021652aeb7",
+      "type": "document",
+      "status": "available",
+      "digest": "88d657bea4062b5b556560f7bb239270e3b0a01361df99a5f3dc5055e1a2a420",
+      "bytes": 10859
+    },
+    {
+      "id": "linear:document:9a7dfabbacbb",
+      "type": "document",
+      "status": "available",
+      "digest": "295f3fdf1e2499267ec19036a3aef859a92652d26bdf840f0546a7ec774dc8e3",
+      "bytes": 16747
+    },
+    {
+      "id": "linear:document:10b829ea430f",
+      "type": "document",
+      "status": "available",
+      "digest": "c9d63fd6a484b189e8d5622683c56744dfb12ef06cf81c61a3cfd0586f40fe4b",
+      "bytes": 15668
+    }
+  ],
+  "incompleteReasons": []
+}

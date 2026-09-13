@@ -1,6 +1,6 @@
 # DATA-6 PR 153 retrospective baseline
 
-This is the first frozen historical smoke case for ReviewFn's normalized evaluation schema. It is deliberately a manual adjudication, not a live-model score.
+This is the first frozen historical smoke case for ReviewFn's normalized evaluation schema. It is deliberately a agent-authored labeling, not a live-model score.
 
 ## Snapshot
 
@@ -29,4 +29,4 @@ One completion gap remains: the architecture document requires a downstream Skil
 
 ## Limitations
 
-Linear does not expose a contemporaneous issue/document version through the available connector, so this uses the current source snapshot and is marked retrospective. No downstream Skillplane code was inspected. With one hand-adjudicated case, all aggregate percentages are smoke signals only and are not release-quality model estimates.
+Linear does not expose a contemporaneous issue/document version through the available connector, so this uses the current source snapshot and is marked retrospective. No downstream Skillplane code was inspected. With one agent-labeled case, all aggregate percentages are smoke signals only and are not release-quality model estimates.

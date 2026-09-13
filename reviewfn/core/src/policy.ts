@@ -30,9 +30,10 @@ function strings(value: unknown, name: string): string[] {
 export function validateConfig(input: unknown): ReviewFnConfig {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Configuration must be an object.");
   const value = input as Record<string, unknown>;
-  rejectUnknown(value, ["version", "profile", "harness", "inference", "context", "review", "execution", "output", "retention", "fallback"], "configuration");
+  rejectUnknown(value, ["version", "retainTranscript", "profile", "harness", "inference", "context", "review", "execution", "output", "retention", "fallback"], "configuration");
   if (value.version !== 1) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Only configuration version 1 is supported.");
   const config = structuredClone(value) as unknown as ReviewFnConfig;
+  if (config.retainTranscript !== undefined && typeof config.retainTranscript !== "boolean") throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "retainTranscript must be boolean.");
   if (!config.profile || typeof config.profile !== "string") throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "profile is required.");
   if (!config.harness || typeof config.harness.adapter !== "string" || typeof config.harness.version !== "string") throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "harness.adapter and harness.version are required.");
   rejectUnknown(object(config.harness, "harness"), ["adapter", "version", "executable"], "harness");
@@ -48,6 +49,8 @@ export function validateConfig(input: unknown): ReviewFnConfig {
   rejectUnknown(object(config.review, "review"), ["categories", "evidenceRequired"], "review");
   if (!config.execution || typeof config.execution.adapter !== "string" || !Array.isArray(config.execution.tests)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "execution adapter and tests are required.");
   rejectUnknown(object(config.execution, "execution"), ["adapter", "tests", "timeoutMs", "maxOutputBytes"], "execution");
+  if (config.execution.adapter !== "local-isolated") throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `Unsupported execution adapter ${config.execution.adapter}.`);
+  if (config.review.evidenceRequired !== true) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Evidence is required.");
   for (const [index, command] of config.execution.tests.entries()) strings(command, `execution.tests[${index}]`);
   positiveInteger(config.execution.timeoutMs, "execution.timeoutMs");
   positiveInteger(config.execution.maxOutputBytes, "execution.maxOutputBytes");
@@ -79,8 +82,9 @@ export function validatePolicy(input: unknown): ReviewPolicy {
   rejectUnknown(object(policy.sourceAuthority, "sourceAuthority"), ["acceptedTypes", "commentsMayClarify", "waiverAuthorities"], "sourceAuthority");
   rejectUnknown(object(policy.limits, "limits"), ["contextMaxSources", "contextMaxBytes", "contextMaxDepth", "harnessTimeoutMs", "testTimeoutMs", "maxOutputBytes", "maxFindings"], "limits");
   rejectUnknown(object(policy.retention, "retention"), ["reportDays", "transcriptDays", "testLogDays"], "retention");
-  for (const [name, value] of Object.entries(policy.limits)) positiveInteger(value, `limits.${name}`);
-  for (const [name, value] of Object.entries(policy.retention)) positiveInteger(value, `retention.${name}`);
+  for (const name of ["contextMaxSources", "contextMaxBytes", "contextMaxDepth", "harnessTimeoutMs", "testTimeoutMs", "maxOutputBytes", "maxFindings"] as const) positiveInteger(policy.limits[name], `limits.${name}`);
+  if (typeof policy.allowRepositoryTightening !== "boolean" || typeof policy.sourceAuthority.commentsMayClarify !== "boolean" || !Array.isArray(policy.sourceAuthority.acceptedTypes) || !policy.sourceAuthority.acceptedTypes.length || policy.sourceAuthority.acceptedTypes.some(type => !["issue", "comment", "document", "repository_markdown", "other"].includes(type)) || !Array.isArray(policy.sourceAuthority.waiverAuthorities) || policy.sourceAuthority.waiverAuthorities.some(value => typeof value !== "string" || !value)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Invalid source authority policy.");
+  for (const name of ["reportDays", "transcriptDays", "testLogDays"] as const) positiveInteger(policy.retention[name], `retention.${name}`);
   return policy;
 }
 
@@ -93,6 +97,8 @@ export function applyRepositoryPolicy(base: ReviewPolicy, repository: ReviewPoli
   for (const [name, limit] of Object.entries(base.limits)) {
     if (repository.limits[name as keyof ReviewPolicy["limits"]] > limit) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `Repository policy increased ${name}.`);
   }
+  if (repository.sourceAuthority.acceptedTypes.some(type => !base.sourceAuthority.acceptedTypes.includes(type)) || (!base.sourceAuthority.commentsMayClarify && repository.sourceAuthority.commentsMayClarify) || repository.sourceAuthority.waiverAuthorities.some(authority => !base.sourceAuthority.waiverAuthorities.includes(authority))) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Repository policy expanded source authority.");
+  for (const name of ["reportDays", "transcriptDays", "testLogDays"] as const) if (repository.retention[name] > base.retention[name]) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `Repository policy increased retention ${name}.`);
   return structuredClone(repository);
 }
 

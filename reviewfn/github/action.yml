@@ -1,11 +1,11 @@
 name: ReviewFn advisory review
-description: Run a bounded evidence-backed ReviewFn review
+description: Credential-free review stage; publish the retained artifact in a separate trusted job
 inputs:
   version:
     description: Pinned @superfunctions/reviewfn-cli version
     required: true
   base:
-    description: Trusted base ref or commit
+    description: Trusted base commit
     required: true
   head:
     description: Exact head commit
@@ -17,36 +17,36 @@ inputs:
     description: Optional issue identifier
     required: false
   codex-api-base-url:
-    description: URL of a credential-isolating Responses API proxy; trusted base config must select action-proxy auth
+    description: Credential-isolating Responses API proxy URL
     required: true
-  github-token:
-    description: Narrowly scoped publication token
-    required: false
+  output:
+    description: Caller-owned output directory outside the checkout
+    default: reviewfn-output
+outputs:
+  report:
+    description: Review artifact directory
+    value: ${{ inputs.output }}
 runs:
   using: composite
   steps:
     - uses: actions/setup-node@v4
       with:
         node-version: "22"
-    - name: ReviewFn preflight
+    - name: Run isolated review
       shell: bash
       env:
         OPENAI_BASE_URL: ${{ inputs.codex-api-base-url }}
-        GITHUB_TOKEN: ${{ inputs.github-token }}
-        GITHUB_EVENT_PULL_REQUEST_NUMBER: ${{ inputs.pull-request }}
-      run: >-
-        npx --yes --package "@superfunctions/reviewfn-cli@${{ inputs.version }}" reviewfn preflight
-        --base "${{ inputs.base }}" --head "${{ inputs.head }}"
-        --issue "${{ inputs.issue }}" --pull-request "${{ inputs.pull-request }}"
-        --trusted-config-from-base
-    - name: ReviewFn review
-      shell: bash
-      env:
-        OPENAI_BASE_URL: ${{ inputs.codex-api-base-url }}
-        GITHUB_TOKEN: ${{ inputs.github-token }}
-        GITHUB_EVENT_PULL_REQUEST_NUMBER: ${{ inputs.pull-request }}
-      run: >-
-        npx --yes --package "@superfunctions/reviewfn-cli@${{ inputs.version }}" reviewfn review
-        --base "${{ inputs.base }}" --head "${{ inputs.head }}"
-        --issue "${{ inputs.issue }}" --pull-request "${{ inputs.pull-request }}"
-        --trusted-config-from-base
+        REVIEWFN_VERSION: ${{ inputs.version }}
+        REVIEWFN_BASE: ${{ inputs.base }}
+        REVIEWFN_HEAD: ${{ inputs.head }}
+        REVIEWFN_PR: ${{ inputs.pull-request }}
+        REVIEWFN_ISSUE: ${{ inputs.issue }}
+        REVIEWFN_OUTPUT: ${{ inputs.output }}
+      run: |
+        set -euo pipefail
+        if ! [[ "$REVIEWFN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][a-zA-Z0-9.-]+)?$ ]]; then exit 2; fi
+        if ! [[ "$REVIEWFN_BASE" =~ ^[a-f0-9]{40}$ && "$REVIEWFN_HEAD" =~ ^[a-f0-9]{40}$ && "$REVIEWFN_PR" =~ ^[0-9]+$ ]]; then exit 2; fi
+        test -z "${GITHUB_TOKEN:-}"
+        npx --yes --package "@superfunctions/reviewfn-cli@$REVIEWFN_VERSION" reviewfn review \
+          --base "$REVIEWFN_BASE" --head "$REVIEWFN_HEAD" --issue "$REVIEWFN_ISSUE" \
+          --pull-request "$REVIEWFN_PR" --output "$REVIEWFN_OUTPUT" --trusted-config-from-base

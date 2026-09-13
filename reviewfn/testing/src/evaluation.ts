@@ -44,6 +44,12 @@ function metric(numerator: number, denominator: number): Metric { return { numer
 function intersection(left: readonly string[], right: readonly string[]): number { const accepted = new Set(right); return new Set(left.filter((item) => accepted.has(item))).size; }
 
 export function evaluate(cases: readonly EvaluationCase[], outcomes: readonly EvaluationOutcome[]): EvaluationReport {
+  if (new Set(cases.map(item => item.id)).size !== cases.length || new Set(outcomes.map(item => item.caseId)).size !== outcomes.length) throw new Error("Duplicate evaluation case or outcome identity.");
+  for (const item of cases) for (const ids of [item.adjudicatedRequirementIds, item.knownGapRequirementIds, item.validFindingFingerprints]) if (new Set(ids).size !== ids.length) throw new Error("Duplicate adjudication identity.");
+  for (const item of outcomes) {
+    if (!Number.isInteger(item.evidenceReferences) || !Number.isInteger(item.validEvidenceReferences) || item.evidenceReferences < 0 || item.validEvidenceReferences < 0 || item.validEvidenceReferences > item.evidenceReferences) throw new Error("Invalid evidence metric counts.");
+    for (const value of [item.runtimeMs, item.observedTokens, item.observedCostUsd]) if (value !== undefined && (!Number.isFinite(value) || value < 0)) throw new Error("Invalid observed metric.");
+  }
   const outcomeByCase = new Map(outcomes.map((outcome) => [outcome.caseId, outcome]));
   let requirementHits = 0, requirements = 0, gapHits = 0, gaps = 0, validFindings = 0, findings = 0, falseBlocks = 0, acceptable = 0, validEvidence = 0, evidence = 0, completed = 0;
   const runtimes: number[] = [];

@@ -1,15 +1,19 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
-import { harnessOutputSchema, redactText, type HarnessAdapter, type HarnessCapabilities, type HarnessInput, type HarnessOutput, type JsonValue, type NormalizedRunEvent, type PreflightResult, type ReviewFnConfig } from "@superfunctions/reviewfn-core";
+import { strictProviderSchema, omitOptionalNulls, validateHarnessPayload, harnessOutputSchema, redactText, type HarnessAdapter, type HarnessCapabilities, type HarnessInput, type HarnessOutput, type JsonValue, type NormalizedRunEvent, type PreflightResult, type ReviewFnConfig } from "@superfunctions/reviewfn-core";
 
 export interface CommandResult { code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string; timedOut: boolean; canceled: boolean }
-export type CommandRunner = (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; maxOutputBytes: number; signal?: AbortSignal }) => Promise<CommandResult>;
+export type CommandRunner = (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; maxOutputBytes: number; signal?: AbortSignal; stdin?: string }) => Promise<CommandResult>;
 
 const defaultRunner: CommandRunner = async (command, args, options) => new Promise((resolve, reject) => {
-  const child = spawn(command, args, { cwd: options.cwd, env: options.env, detached: process.platform !== "win32", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+  if (options.signal?.aborted) { resolve({ code: null, signal: null, stdout: "", stderr: "", timedOut: false, canceled: true }); return; }
+  const child = spawn(command, args, { cwd: options.cwd, env: options.env, detached: process.platform !== "win32", windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+  child.stdin.on("error", () => { /* child may reject before consuming input */ });
+  child.stdin.end(options.stdin ?? "");
   let stdout = "";
   let stderr = "";
   let total = 0;
@@ -31,8 +35,15 @@ const defaultRunner: CommandRunner = async (command, args, options) => new Promi
   };
   child.stdout.on("data", (chunk: Buffer) => append("stdout", chunk));
   child.stderr.on("data", (chunk: Buffer) => append("stderr", chunk));
-  child.once("error", reject);
-  child.once("exit", (code, signal) => {
+  const cleanup = () => {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", onAbort);
+    try { process.kill(-child.pid!, "SIGKILL"); } catch { /* process group gone */ }
+  };
+  if (options.signal?.aborted) onAbort();
+  child.once("error", error => { cleanup(); reject(error); });
+  child.once("exit", cleanup);
+  child.once("close", (code, signal) => {
     clearTimeout(timer);
     options.signal?.removeEventListener("abort", onAbort);
     resolve({ code, signal, stdout, stderr, timedOut, canceled });
@@ -50,7 +61,7 @@ export class CodexHarnessAdapter implements HarnessAdapter {
     id: "codex",
     version: "1",
     providers: ["openai"],
-    authModes: ["api-key", "chatgpt", "access-token", "workload-identity", "action-proxy"],
+    authModes: ["api-key", "chatgpt", "action-proxy"],
     structuredOutput: true,
     observableEvents: true,
     usageMetrics: true,
@@ -73,47 +84,83 @@ export class CodexHarnessAdapter implements HarnessAdapter {
     if (config.harness.adapter !== this.capabilities.id) diagnostics.push({ code: "REVIEWFN_HARNESS_MISMATCH", level: "error", message: `Configured harness ${config.harness.adapter} does not match codex.` });
     if (!this.capabilities.providers.includes(config.inference.provider)) diagnostics.push({ code: "REVIEWFN_PROVIDER_UNSUPPORTED", level: "error", message: `Provider ${config.inference.provider} is unsupported by this adapter.` });
     if (!this.capabilities.authModes.includes(config.inference.auth)) diagnostics.push({ code: "REVIEWFN_AUTH_UNSUPPORTED", level: "error", message: `Auth mode ${config.inference.auth} is unsupported by this adapter.` });
+    if (config.harness.version !== "1") diagnostics.push({ code: "REVIEWFN_HARNESS_VERSION", level: "error", message: "Only Codex adapter contract version 1 is supported." });
+    if (config.inference.model === "configured") diagnostics.push({ code: "REVIEWFN_MODEL_REQUIRED", level: "error", message: "Select an explicit model so provenance is reproducible." });
+    if (config.inference.auth === "action-proxy" && this.runner === defaultRunner) {
+      const image = await defaultRunner("docker", ["image", "inspect", "reviewfn-codex:0.154.0", "--format", "{{.Id}}"], { cwd: process.cwd(), env: { PATH: this.environment.PATH, HOME: this.environment.HOME }, timeoutMs: 10_000, maxOutputBytes: 64_000, signal }).catch(() => undefined);
+      if (image?.code !== 0) diagnostics.push({ code: "REVIEWFN_HARNESS_IMAGE", level: "error", message: "Build the trusted reviewfn-codex:0.154.0 Docker image before PR review." });
+    }
+    if (config.inference.auth === "action-proxy") {
+      try {
+        const endpoint = new URL(this.environment.OPENAI_BASE_URL ?? this.environment.CODEX_API_BASE_URL ?? "");
+        if (!["http:", "https:"].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw new Error("invalid endpoint");
+      } catch { diagnostics.push({ code: "REVIEWFN_PROXY_UNSAFE", level: "error", message: "Proxy URL must be HTTP(S) without embedded credentials, query parameters or fragments." }); }
+    }
     const credential = config.inference.credentialEnv;
     if (config.inference.auth === "api-key" && (!credential || !this.environment[credential])) diagnostics.push({ code: "REVIEWFN_CREDENTIAL_MISSING", level: "error", message: "API-key auth requires a populated credentialEnv available only to the harness process." });
     if (config.inference.auth === "api-key") diagnostics.push({ code: "REVIEWFN_API_KEY_LOCAL_TRUST", level: "warning", message: "Raw API-key CLI execution is for trusted local workspaces only; CI should use the official Codex Action proxy." });
     if (config.inference.auth === "action-proxy" && !this.environment.OPENAI_BASE_URL && !this.environment.CODEX_API_BASE_URL) diagnostics.push({ code: "REVIEWFN_PROXY_REQUIRED", level: "error", message: "action-proxy auth requires OPENAI_BASE_URL or CODEX_API_BASE_URL." });
-    const version = await this.runner(this.executableFor(config), ["--version"], { cwd: process.cwd(), env: minimalEnvironment(this.environment, config), timeoutMs: 10_000, maxOutputBytes: 64_000, signal }).catch((error) => ({ code: null, signal: null, stdout: "", stderr: error instanceof Error ? error.message : String(error), timedOut: false, canceled: false }));
+    const containerVersion = config.inference.auth === "action-proxy" && this.runner === defaultRunner;
+    const version = await this.runner(containerVersion ? "docker" : this.executableFor(config), containerVersion ? ["run", "--rm", "--network=none", "--read-only", "--tmpfs=/tmp:rw,size=16777216,mode=1777", "reviewfn-codex:0.154.0", "--version"] : ["--version"], { cwd: process.cwd(), env: containerVersion ? { PATH: this.environment.PATH, HOME: this.environment.HOME } : minimalEnvironment(this.environment, config), timeoutMs: 10_000, maxOutputBytes: 64_000, signal }).catch((error) => ({ code: null, signal: null, stdout: "", stderr: error instanceof Error ? error.message : String(error), timedOut: false, canceled: false }));
     if (version.code !== 0) diagnostics.push({ code: "REVIEWFN_CODEX_UNAVAILABLE", level: "error", message: `Codex executable is unavailable: ${version.stderr.trim() || `exit ${String(version.code)}`}.` });
+    if (version.code === 0) this.capabilities.version = version.stdout.trim() || "unknown";
     return { ok: diagnostics.every((item) => item.level !== "error"), resolved: diagnostics.some((item) => item.level === "error") ? undefined : { provider: config.inference.provider, model: config.inference.model, auth: config.inference.auth, harnessVersion: version.stdout.trim() || "unknown" }, diagnostics };
   }
 
   public async run(input: HarnessInput): Promise<HarnessOutput> {
-    if (input.change.pullRequest !== undefined && input.configuration.inference.auth === "api-key") {
-      return emptyFailure("failed", "Raw API-key authentication is forbidden for pull-request review because untrusted repository content could expose the credential. Use action-proxy authentication.");
+    if (input.change.pullRequest !== undefined && input.configuration.inference.auth !== "action-proxy") {
+      return emptyFailure("failed", "Direct credential authentication is forbidden for pull-request review because untrusted repository content could expose the credential. Use action-proxy authentication.");
     }
-    const forbiddenInstructionChanges = input.change.changedPaths.filter((changed) => /(^|\/)(AGENTS\.md|\.codex\/|\.agents\/|\.claude\/)/i.test(changed));
+    const forbiddenInstructionChanges = input.change.changedPaths.filter((changed) => /(^|\/)(AGENTS(?:\.override)?\.md|\.codex\/|\.agents\/|\.claude\/)/i.test(changed));
     if (forbiddenInstructionChanges.length) return emptyFailure("failed", `Review target changes auto-loaded instruction/configuration paths: ${forbiddenInstructionChanges.join(", ")}. Trusted policy refuses inference.`);
     const directory = await mkdtemp(path.join(tmpdir(), "reviewfn-codex-"));
     const schemaPath = path.join(directory, "schema.json");
     const outputPath = path.join(directory, "result.json");
-    await writeFile(schemaPath, JSON.stringify(harnessOutputSchema, null, 2), { mode: 0o600 });
-    const args = ["exec", "--ephemeral", "--json", "--sandbox", "read-only", "--ignore-user-config", "--ignore-rules", "--output-schema", schemaPath, "--output-last-message", outputPath];
+    await writeFile(schemaPath, JSON.stringify(strictProviderSchema(), null, 2), { mode: 0o600 });
+    const args = ["exec", "--ephemeral", "--json", "--sandbox", "read-only", "--ignore-user-config", "--ignore-rules", "-c", "project_doc_max_bytes=0", "-c", "project_doc_fallback_filenames=[]", "--output-schema", schemaPath, "--output-last-message", outputPath];
+    if (input.configuration.inference.auth === "action-proxy") {
+      const endpoint = this.environment.OPENAI_BASE_URL ?? this.environment.CODEX_API_BASE_URL!;
+      args.push("-c", 'model_provider="reviewfn_proxy"', "-c", 'model_providers.reviewfn_proxy.name="ReviewFn inference proxy"', "-c", `model_providers.reviewfn_proxy.base_url=${JSON.stringify(endpoint)}`, "-c", 'model_providers.reviewfn_proxy.wire_api="responses"', "-c", "model_providers.reviewfn_proxy.requires_openai_auth=false");
+    }
     if (input.configuration.inference.model !== "configured") args.push("--model", input.configuration.inference.model);
-    args.push(input.prompt);
+    args.push("-");
+    const container = input.change.pullRequest !== undefined && this.runner === defaultRunner ? `reviewfn-harness-${randomUUID()}` : undefined;
     try {
-      const result = await this.runner(this.executableFor(input.configuration), args, { cwd: input.workspace, env: minimalEnvironment(this.environment, input.configuration), timeoutMs: input.policy.limits.harnessTimeoutMs, maxOutputBytes: input.policy.limits.maxOutputBytes, signal: input.signal });
+      let executable = this.executableFor(input.configuration);
+      let runArgs = args;
+      if (container) {
+        if (input.configuration.harness.executable) throw new Error("Custom executables are forbidden for containerized PR review.");
+        executable = "docker";
+        const inspected = await defaultRunner("docker", ["image", "inspect", "reviewfn-codex:0.154.0", "--format", "{{.Id}}"], { cwd: input.workspace, env: { PATH: this.environment.PATH, HOME: this.environment.HOME }, timeoutMs: 10_000, maxOutputBytes: 64_000, signal: input.signal });
+        const imageId = inspected.stdout.trim();
+        if (inspected.code !== 0 || !/^sha256:[a-f0-9]{64}$/.test(imageId)) throw new Error("Trusted Codex image unavailable.");
+        // The only writable host mount is an owned, fresh output directory. No token, home, Docker socket or host config is mounted.
+        const endpoint = this.environment.OPENAI_BASE_URL ?? this.environment.CODEX_API_BASE_URL!;
+        runArgs = ["run", "--interactive", "--rm", "--name", container, "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--pids-limit=256", "--memory=1g", "--memory-swap=1g", "--cpus=2", "--user", `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`, "--tmpfs=/tmp:rw,nosuid,nodev,size=134217728,mode=1777", "--mount", `type=bind,source=${path.resolve(input.workspace)},target=/workspace,readonly`, "--mount", `type=bind,source=${directory},target=${directory}`, "--workdir=/workspace", "--env", `OPENAI_BASE_URL=${endpoint}`, imageId, ...args];
+      }
+      const result = await this.runner(executable, runArgs, { cwd: input.workspace, env: container ? { PATH: this.environment.PATH, HOME: this.environment.HOME } : minimalEnvironment(this.environment, input.configuration), timeoutMs: input.policy.limits.harnessTimeoutMs, maxOutputBytes: input.policy.limits.maxOutputBytes, signal: input.signal, stdin: input.prompt });
       const secrets = input.configuration.inference.credentialEnv ? [this.environment[input.configuration.inference.credentialEnv] ?? ""] : [];
-      const events = normalizeEvents(redactText(result.stdout, secrets));
+      const stdout = redactText(result.stdout, secrets);
+      const events = normalizeEvents(stdout);
       const stderr = redactText(result.stderr, secrets);
-      if (result.canceled) return { ...emptyFailure("canceled", "Codex run was canceled."), events, transcript: `${result.stdout}\n${stderr}` };
-      if (result.timedOut) return { ...emptyFailure("timed_out", "Codex run exceeded its configured bound."), events, transcript: `${result.stdout}\n${stderr}` };
+      if (result.canceled) return { ...emptyFailure("canceled", "Codex run was canceled."), events, transcript: `${stdout}\n${stderr}` };
+      if (result.timedOut) return { ...emptyFailure("timed_out", "Codex run exceeded its configured bound."), events, transcript: `${stdout}\n${stderr}` };
       if (result.code !== 0) {
         const terminal = /quota|rate.?limit|usage.?limit/i.test(stderr) ? "quota_exhausted" as const : "failed" as const;
-        return { ...emptyFailure(terminal, stderr.trim() || `Codex exited with ${String(result.code)}.`), events, transcript: `${result.stdout}\n${stderr}` };
+        return { ...emptyFailure(terminal, stderr.trim() || `Codex exited with ${String(result.code)}.`), events, transcript: `${stdout}\n${stderr}` };
       }
+      if ((await stat(outputPath).catch(() => ({ size: 0 }))).size > input.policy.limits.maxOutputBytes) return emptyFailure("malformed", "Structured output exceeds byte budget.");
       const text = await readFile(outputPath, "utf8").catch(() => "");
       try {
-        const parsed = JSON.parse(text) as Omit<HarnessOutput, "terminal" | "events" | "transcript">;
-        return { terminal: "completed", requirements: parsed.requirements, assessments: parsed.assessments, evidence: parsed.evidence, findings: parsed.findings, inspectedPaths: parsed.inspectedPaths, uninspected: parsed.uninspected, events, transcript: `${result.stdout}\n${stderr}` };
+        const errors = validateHarnessPayload(omitOptionalNulls(JSON.parse(text)));
+        if (errors.length) throw new Error(errors.join("; "));
+        const parsed = omitOptionalNulls(JSON.parse(redactText(text, secrets))) as Omit<HarnessOutput, "terminal" | "events" | "transcript">;
+        return { terminal: "completed", requirements: parsed.requirements, assessments: parsed.assessments, evidence: parsed.evidence, findings: parsed.findings, inspectedPaths: parsed.inspectedPaths, uninspected: parsed.uninspected, events, transcript: `${stdout}\n${stderr}` };
       } catch (error) {
-        return { ...emptyFailure("malformed", `Codex output was not valid structured JSON: ${error instanceof Error ? error.message : String(error)}`), events, transcript: `${result.stdout}\n${stderr}` };
+        return { ...emptyFailure("malformed", `Codex output was not valid structured JSON: ${error instanceof Error ? error.message : String(error)}`), events, transcript: `${stdout}\n${stderr}` };
       }
     } finally {
+      if (container) await defaultRunner("docker", ["rm", "--force", container], { cwd: input.workspace, env: { PATH: this.environment.PATH, HOME: this.environment.HOME }, timeoutMs: 10_000, maxOutputBytes: 64_000 }).catch(() => undefined);
       await rm(directory, { recursive: true, force: true });
     }
   }
@@ -140,7 +187,7 @@ function normalizeEvents(jsonl: string): NormalizedRunEvent[] {
     try {
       const raw = JSON.parse(line) as Record<string, unknown>;
       const rawType = typeof raw.type === "string" ? raw.type : "unknown";
-      const type: NormalizedRunEvent["type"] = rawType.includes("error") || rawType.includes("failed") ? "error" : rawType.includes("completed") ? "completed" : rawType.includes("started") && rawType.includes("item") ? "tool_started" : rawType === "turn.started" || rawType === "thread.started" ? "started" : rawType.includes("message") ? "message" : "warning";
+      const type: NormalizedRunEvent["type"] = raw.usage ? "usage" : rawType.includes("error") || rawType.includes("failed") ? "error" : rawType.includes("completed") ? "completed" : rawType.includes("started") && rawType.includes("item") ? "tool_started" : rawType === "turn.started" || rawType === "thread.started" ? "started" : rawType.includes("message") ? "message" : "warning";
       events.push({ sequence: events.length, at: new Date().toISOString(), type, data: JSON.parse(JSON.stringify(raw)) as Record<string, JsonValue> });
     } catch {
       events.push({ sequence: events.length, at: new Date().toISOString(), type: "warning", data: { message: "Unparseable Codex event was discarded." } });

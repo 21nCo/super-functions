@@ -106,6 +106,8 @@ export interface TestReceipt {
   signal: string | null;
   timedOut: boolean;
   canceled: boolean;
+  stdoutArtifact?: string;
+  stderrArtifact?: string;
   stdoutDigest: string;
   stderrDigest: string;
   limitations: string[];
@@ -181,6 +183,7 @@ export interface ReviewPolicy {
 
 export interface ReviewFnConfig {
   version: 1;
+  retainTranscript?: boolean;
   profile: string;
   harness: { adapter: string; version: string; executable?: string };
   inference: { provider: string; model: string; auth: string; credentialEnv?: string };

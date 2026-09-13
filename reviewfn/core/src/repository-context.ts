@@ -1,17 +1,18 @@
-import { lstat, readFile, readdir, realpath } from "node:fs/promises";
+import { lstat, open, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 
 import { digestJson, sha256 } from "./canonical.js";
 import type { ContextAdapter, ContextManifest, ContextRequest, ContextSource, PreflightResult } from "./types.js";
 
-async function collectMarkdown(root: string, relative = ""): Promise<string[]> {
+async function collectMarkdown(root: string, maxDepth: number, maxEntries: number, relative = "", state = { visited: 0 }): Promise<string[]> {
   const directory = path.join(root, relative);
   const result: string[] = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (++state.visited > maxEntries) throw new Error("Context directory traversal budget exhausted.");
     if (entry.name === ".git" || entry.name === "node_modules") continue;
     const next = path.posix.join(relative.split(path.sep).join(path.posix.sep), entry.name);
     if (entry.isSymbolicLink()) continue;
-    if (entry.isDirectory()) result.push(...await collectMarkdown(root, next));
+    if (entry.isDirectory()) { if (next.split("/").length >= maxDepth) throw new Error("Context directory depth budget exhausted."); result.push(...await collectMarkdown(root, maxDepth, maxEntries, next, state)); }
     else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) result.push(next);
   }
   return result;
@@ -23,8 +24,8 @@ function safeRelative(input: string): string {
   return normalized;
 }
 
-async function expandPaths(root: string, patterns: readonly string[]): Promise<string[]> {
-  const allMarkdown = patterns.some((value) => value.includes("*")) ? await collectMarkdown(root) : [];
+async function expandPaths(root: string, patterns: readonly string[], limits: ContextManifest["limits"]): Promise<string[]> {
+  const allMarkdown = patterns.some((value) => value.includes("*")) ? await collectMarkdown(root, limits.maxDepth, limits.maxSources * 100) : [];
   const selected = new Set<string>();
   for (const raw of patterns) {
     const pattern = safeRelative(raw);
@@ -52,7 +53,8 @@ export class RepositoryMarkdownContextAdapter implements ContextAdapter {
     const sources: ContextSource[] = [];
     const incompleteReasons: string[] = [];
     let consumed = 0;
-    const paths = await expandPaths(root, request.paths ?? []);
+    const paths = await expandPaths(root, request.paths ?? [], request.limits);
+    if (!paths.length) incompleteReasons.push("Configured Markdown paths matched no sources.");
     for (const relative of paths) {
       if (sources.length >= request.limits.maxSources) { incompleteReasons.push(`Repository Markdown source limit ${request.limits.maxSources} reached.`); break; }
       const absolute = path.join(root, relative);
@@ -60,10 +62,15 @@ export class RepositoryMarkdownContextAdapter implements ContextAdapter {
         const stat = await lstat(absolute);
         const resolved = await realpath(absolute);
         if (stat.isSymbolicLink() || !(resolved === root || resolved.startsWith(`${root}${path.sep}`))) throw new Error("symlink or path escape refused");
-        const content = await readFile(resolved, "utf8");
         const remaining = request.limits.maxBytes - consumed;
         if (remaining <= 0) { incompleteReasons.push(`Repository Markdown byte limit ${request.limits.maxBytes} reached.`); break; }
-        const bytes = Buffer.byteLength(content);
+        if (!stat.isFile()) throw new Error("Context must be a regular file.");
+        const handle = await open(resolved, "r");
+        const buffer = Buffer.alloc(Math.min(stat.size, remaining));
+        let count = 0;
+        try { count = (await handle.read(buffer, 0, buffer.length, 0)).bytesRead; } finally { await handle.close(); }
+        const content = buffer.subarray(0, count).toString("utf8");
+        const bytes = stat.size;
         const available = bytes <= remaining ? content : Buffer.from(content).subarray(0, remaining).toString("utf8");
         const status = bytes <= remaining ? "available" as const : "truncated" as const;
         sources.push({ id: `repo:${relative}`, type: "repository_markdown", canonicalUrl: `repo://${relative}`, retrievedAt: new Date().toISOString(), updatedAt: stat.mtime.toISOString(), digest: sha256(available), status, content: available });
@@ -79,16 +86,22 @@ export class RepositoryMarkdownContextAdapter implements ContextAdapter {
 }
 
 export function finalizeContextManifest(input: Omit<ContextManifest, "digest">): ContextManifest {
-  return { ...input, digest: digestJson(input) };
+  return { ...input, digest: digestJson({ ...input, sources: input.sources.map(({ retrievedAt, updatedAt, ...source }) => source) }) };
 }
 
 export function combineContextManifests(manifests: readonly Omit<ContextManifest, "digest">[], limits: ContextManifest["limits"]): ContextManifest {
   const sources = manifests.flatMap((manifest) => manifest.sources);
   const duplicateIds = sources.map((source) => source.id).filter((id, index, values) => values.indexOf(id) !== index);
   const incompleteReasons = [...new Set([...manifests.flatMap((manifest) => manifest.incompleteReasons), ...duplicateIds.map((id) => `Duplicate context source ${id}.`)])];
+  let consumed = 0;
+  const boundedSources = sources.slice(0, limits.maxSources).filter(source => {
+    consumed += Buffer.byteLength(source.content ?? "");
+    return consumed <= limits.maxBytes;
+  });
+  if (boundedSources.length !== sources.length) incompleteReasons.push("Aggregate context source or byte budget exhausted.");
   const combined = {
     version: 1 as const,
-    sources,
+    sources: boundedSources,
     selection: {
       candidates: [...new Set(manifests.flatMap((manifest) => manifest.selection.candidates))],
       selected: [...new Set(manifests.flatMap((manifest) => manifest.selection.selected))],

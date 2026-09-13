@@ -31,7 +31,7 @@ describe("ComposioLinearContextAdapter", () => {
       : { code: 1, stdout: "", stderr: "permission denied" };
     const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
     expect(result.sources.some((source) => source.type === "document" && source.status === "failed")).toBe(true);
-    expect(result.incompleteReasons).toHaveLength(1);
+    expect(result.incompleteReasons).toContain("Unable to fetch Linear document d.");
   });
   it("follows comment and document cursors before declaring context complete", async () => {
     const calls: Array<{ slug: string; data: Record<string, unknown> }> = [];
@@ -51,4 +51,18 @@ describe("ComposioLinearContextAdapter", () => {
     expect(result.incompleteReasons).toEqual([]);
     expect(calls.filter((call) => call.slug === "LINEAR_RUN_QUERY_OR_MUTATION")).toHaveLength(2);
   });
+});
+it("retrieves live-shaped linked specifications and explicit comment pagination", async () => {
+  const calls: string[] = [];
+  const runner: ComposioRunner = async args => {
+    calls.push(args[1]); const data = JSON.parse(args[args.indexOf("-d") + 1]);
+    const payload = args[1] === "LINEAR_GET_LINEAR_ISSUE"
+      ? { successful: true, data: { issue: { id: "i", identifier: "ENG-1", title: "Feature", description: "Read https://linear.app/acme/document/design-abcdef123456", team: { name: "workspace-1" }, comments: { nodes: [] } } } }
+      : data.query_or_mutation.includes("comments(")
+        ? { data: { data: { issue: { comments: { nodes: [{ id: "c", body: "clarification" }], pageInfo: { hasNextPage: false } } } } } }
+        : { data: { data: { document: { id: "doc", title: "Design", content: "must preserve compatibility" } } } };
+    return { code: 0, stdout: JSON.stringify(payload), stderr: "" };
+  };
+  const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
+  expect(result.sources.map(source => source.type)).toEqual(["issue", "comment", "document"]); expect(result.incompleteReasons).toEqual([]); expect(calls).toHaveLength(3);
 });
