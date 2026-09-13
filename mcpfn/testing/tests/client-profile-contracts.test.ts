@@ -335,15 +335,19 @@ describe("client profile compatibility contracts", () => {
   });
 
   it("bounds oversized compatibility evidence with explicit incompleteness", async () => {
-    const cases = Array.from({ length: 20 }, (_, index) => {
+    // Use larger evidence strings to exceed 2 KB with only three sessions. Avoid redundant
+    // handshakes/schema compilations competing with the full monorepo suite.
+    const handlers: ReturnType<typeof targetFor>["handler"][] = [];
+    const cases = Array.from({ length: 3 }, (_, index) => {
       const fixture = targetFor({ subject: "generic-client" });
+      handlers.push(fixture.handler);
       return {
         id: `generic-${String(index).padStart(2, "0")}`,
         version: "canonical",
         target: fixture.target,
         fixtures: [
           {
-            name: `minimal-${index}-${"x".repeat(100)}`,
+            name: `minimal-${index}-${"x".repeat(1000)}`,
             tool: "lookup",
             arguments: { query: "value", tenantId: "tenant" },
             sideEffect: "read-only" as const,
@@ -361,6 +365,8 @@ describe("client profile compatibility contracts", () => {
       incompleteReason: expect.stringContaining("truncated"),
     });
     expect(report.droppedProfiles).toBeGreaterThan(0);
+    expect(report.profiles.length + report.droppedProfiles).toBe(cases.length);
+    for (const handler of handlers) expect(handler).toHaveBeenCalledOnce();
     expect(
       new TextEncoder().encode(JSON.stringify(report)).byteLength,
     ).toBeLessThanOrEqual(2_048);
