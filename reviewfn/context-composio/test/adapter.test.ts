@@ -199,3 +199,18 @@ it("binds identifier-only initial issues without accepting an unrelated connecti
   expect(JSON.stringify(output.sources)).not.toContain("foreign");
   expect(output.incompleteReasons).toEqual([]);
 });
+
+
+it.each(["comments", "documents", "both"])("bounds empty %s pages with a shared connection budget", async scope => {
+  let requests = 0;
+  const adapter = new ComposioLinearContextAdapter({ runner: async args => {
+    if (args[1] === "LINEAR_GET_LINEAR_ISSUE") return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "Requested", organization: { id: "workspace-1" }, comments: { nodes: [], pageInfo: { hasNextPage: scope !== "documents", endCursor: "comments-start" } }, documents: { nodes: [], pageInfo: { hasNextPage: scope !== "comments", endCursor: "documents-start" } } } }) };
+    if (++requests > 3) throw new Error("Pagination exceeded the request budget");
+    const data = JSON.parse(args[args.indexOf("-d") + 1]);
+    const name = data.query_or_mutation.includes("comments(") ? "comments" : "documents";
+    return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", [name]: { nodes: [], pageInfo: { hasNextPage: true, endCursor: `cursor-${requests}` } } } }) };
+  } });
+  const output = await adapter.fetch({ ...request, limits: { ...request.limits, maxSources: 3 } });
+  expect(requests).toBe(3);
+  expect(output.incompleteReasons.join()).toMatch(/request budget/);
+});

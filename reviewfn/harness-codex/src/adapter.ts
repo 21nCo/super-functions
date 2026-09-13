@@ -141,7 +141,8 @@ export class CodexHarnessAdapter implements HarnessAdapter {
       const result = await this.runner(executable, runArgs, { cwd: input.workspace, env: container ? { PATH: this.environment.PATH, HOME: this.environment.HOME } : minimalEnvironment(this.environment, input.configuration), timeoutMs: input.policy.limits.harnessTimeoutMs, maxOutputBytes: input.policy.limits.maxOutputBytes, signal: input.signal, stdin: input.prompt });
       const secrets = input.configuration.inference.credentialEnv ? [this.environment[input.configuration.inference.credentialEnv] ?? ""] : [];
       const stdout = redactText(result.stdout, secrets);
-      const events = redactJson(normalizeEvents(result.stdout), secrets);
+      const normalized = normalizeEvents(result.stdout);
+      const events = redactJson(normalized.events, secrets);
       const stderr = redactText(result.stderr, secrets);
       if (result.canceled) return { ...emptyFailure("canceled", "Codex run was canceled."), events, transcript: `${stdout}\n${stderr}` };
       if (result.timedOut) return { ...emptyFailure("timed_out", "Codex run exceeded its configured bound."), events, transcript: `${stdout}\n${stderr}` };
@@ -156,7 +157,7 @@ export class CodexHarnessAdapter implements HarnessAdapter {
         const parsed = omitOptionalNulls(redactJson(JSON.parse(text), secrets)) as Omit<HarnessOutput, "terminal" | "events" | "transcript">;
         const errors = validateHarnessPayload(parsed);
         if (errors.length) throw new Error(errors.join("; "));
-        return { terminal: "completed", requirements: parsed.requirements, assessments: parsed.assessments, evidence: parsed.evidence, findings: parsed.findings, inspectedPaths: parsed.inspectedPaths, uninspected: parsed.uninspected, events, transcript: `${stdout}\n${stderr}` };
+        return { terminal: "completed", requirements: parsed.requirements, assessments: parsed.assessments, evidence: parsed.evidence, findings: parsed.findings, inspectedPaths: parsed.inspectedPaths, uninspected: normalized.truncated ? [...parsed.uninspected, { scope: "harness-events", reason: "Normalized event retention limit reached; telemetry was truncated." }] : parsed.uninspected, events, transcript: `${stdout}\n${stderr}` };
       } catch (error) {
         return { ...emptyFailure("malformed", `Codex output was not valid structured JSON: ${error instanceof Error ? error.message : String(error)}`), events, transcript: `${stdout}\n${stderr}` };
       }
@@ -184,9 +185,14 @@ function emptyFailure(terminal: HarnessOutput["terminal"], error: string): Harne
   return { terminal, requirements: [], assessments: [], evidence: [], findings: [], inspectedPaths: [], uninspected: [{ scope: "review", reason: error }], events: [], error };
 }
 
-function normalizeEvents(jsonl: string): NormalizedRunEvent[] {
+function normalizeEvents(jsonl: string): { events: NormalizedRunEvent[]; truncated: boolean } {
   const events: NormalizedRunEvent[] = [];
-  for (const line of jsonl.split(/\r?\n/).filter(Boolean)) {
+  for (const match of jsonl.matchAll(/[^\r\n]+/g)) {
+    if (events.length >= 9_999) {
+      events.push({ sequence: events.length, at: new Date().toISOString(), type: "warning", data: { message: "Normalized events truncated at the 10000-event retention limit." } });
+      return { events, truncated: true };
+    }
+    const line = match[0];
     try {
       const raw = JSON.parse(line) as Record<string, unknown>;
       const rawType = typeof raw.type === "string" ? raw.type : "unknown";
@@ -206,5 +212,5 @@ function normalizeEvents(jsonl: string): NormalizedRunEvent[] {
       events.push({ sequence: events.length, at: new Date().toISOString(), type: "warning", data: { message: "Unparseable Codex event was discarded." } });
     }
   }
-  return events;
+  return { events, truncated: false };
 }

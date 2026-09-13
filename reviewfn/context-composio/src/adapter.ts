@@ -77,11 +77,22 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     };
     const issueId = stringField(issue, "id") ?? request.issue;
     const issueIdentifier = stringField(issue, "identifier") ?? request.issue;
+    const account = request.account;
+    let connectionRequests = 0;
+    const fetchConnection = async (name: "comments" | "documents", after?: string): Promise<unknown> => {
+      if (connectionRequests >= request.limits.maxSources) {
+        const reason = "Linear connection pagination request budget exhausted.";
+        if (!incompleteReasons.includes(reason)) incompleteReasons.push(reason);
+        return undefined;
+      }
+      connectionRequests++;
+      return this.fetchIssueConnection(name, issueId, after, account, request.signal);
+    };
     add({ id: `linear:issue:${issueId}`, type: "issue", canonicalUrl: stringField(issue, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), updatedAt: stringField(issue, "updatedAt"), providerVersion: "LINEAR_GET_LINEAR_ISSUE", status: "available", content: JSON.stringify(issueWithoutConnections(issue), null, 2) });
 
     let initialComments = issue.comments;
     if (!hasPageInfo(initialComments)) {
-      try { initialComments = findConnection(await this.fetchIssueConnection("comments", issueId, undefined, request.account, request.signal), "comments", issueId); }
+      try { initialComments = findConnection(await fetchConnection("comments"), "comments", issueId); }
       catch (error) { if (request.signal?.aborted) throw error; incompleteReasons.push("Unable to establish complete Linear comment pagination."); }
     }
     const comments = [...connectionNodes(initialComments)];
@@ -90,7 +101,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     const commentCursors = new Set<string>();
     while (commentPage.hasNextPage && commentPage.endCursor && !commentCursors.has(commentPage.endCursor) && comments.length < request.limits.maxSources) {
       commentCursors.add(commentPage.endCursor);
-      const page = await this.fetchIssueConnection("comments", issueId, commentPage.endCursor, request.account, request.signal);
+      const page = await fetchConnection("comments", commentPage.endCursor);
       const connection = findConnection(page, "comments", issueId);
       comments.push(...connectionNodes(connection));
       if (!hasPageInfo(connection)) incompleteReasons.push("Linear comment pagination metadata missing or malformed.");
@@ -118,7 +129,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     });
     let initialDocuments = issue.documents;
     if (!hasPageInfo(initialDocuments)) {
-      try { initialDocuments = findConnection(await this.fetchIssueConnection("documents", issueId, undefined, request.account, request.signal), "documents", issueId); }
+      try { initialDocuments = findConnection(await fetchConnection("documents"), "documents", issueId); }
       catch (error) { if (request.signal?.aborted) throw error; incompleteReasons.push("Unable to establish complete Linear document pagination."); }
     }
     if (!hasPageInfo(initialDocuments)) incompleteReasons.push("Linear document pagination metadata missing or malformed.");
@@ -135,7 +146,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     const documentCursors = new Set<string>();
     while (documentPage.hasNextPage && documentPage.endCursor && !documentCursors.has(documentPage.endCursor) && documents.length < request.limits.maxSources) {
       documentCursors.add(documentPage.endCursor);
-      const page = await this.fetchIssueConnection("documents", issueId, documentPage.endCursor, request.account, request.signal);
+      const page = await fetchConnection("documents", documentPage.endCursor);
       const connection = findConnection(page, "documents", issueId);
       documents.push(...uniqueDocuments(connectionNodes(connection)));
       if (!hasPageInfo(connection)) incompleteReasons.push("Linear document pagination metadata missing or malformed.");

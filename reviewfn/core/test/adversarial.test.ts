@@ -300,3 +300,15 @@ it("does not require coverage of comments whose authority is disabled", async ()
   value.requirements[0].sources.push({ sourceId: "comment", anchor: "L1" });
   expect((await validateReport(value, disabled, source, ".", manifest)).errors.join()).toMatch(/unauthorized source reference/);
 });
+
+
+it("validates removed bytes at the merge base when the target branch has advanced", async () => {
+  const value = report(); value.change.baseCommit = "c".repeat(40);
+  value.assessments[0].status = "missing"; value.verdict = "changes_requested";
+  value.evidence[0].code!.commit = value.change.mergeBaseCommit;
+  const adapter = { ...source, pathExists: async () => false, verifyAnchor: async (_root: string, anchor: { commit: string }) => anchor.commit === value.change.mergeBaseCommit };
+  const validate = () => validateReport(value, policy, adapter, ".", context);
+  expect((await validate()).errors).toEqual([]);
+  value.evidence[0].code!.commit = value.change.baseCommit;
+  expect((await validate()).errors.join()).toMatch(/does not reference reviewed head/);
+});

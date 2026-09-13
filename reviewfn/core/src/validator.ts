@@ -124,10 +124,10 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
     }
   }
   if (sourceControl && root) {
-    const allowedCommit = async (anchor: CodeAnchor): Promise<boolean> => anchor.commit === report.change.headCommit || (anchor.commit === report.change.baseCommit && report.change.changedPaths.includes(anchor.path) && !!sourceControl.pathExists && !(await sourceControl.pathExists(root, report.change.headCommit, anchor.path)));
+    const allowedCommit = async (anchor: CodeAnchor): Promise<boolean> => anchor.commit === report.change.headCommit || (anchor.commit === report.change.mergeBaseCommit && report.change.changedPaths.includes(anchor.path) && !!sourceControl.pathExists && !(await sourceControl.pathExists(root, report.change.headCommit, anchor.path)));
     for (const inspected of report.inspectedPaths) {
       const inHead = await sourceControl.verifyAnchor(root, { commit: report.change.headCommit, path: inspected, startLine: 1 });
-      const deletedFromBase = !inHead && report.change.changedPaths.includes(inspected) && await sourceControl.verifyAnchor(root, { commit: report.change.baseCommit, path: inspected, startLine: 1 });
+      const deletedFromBase = !inHead && report.change.changedPaths.includes(inspected) && await sourceControl.verifyAnchor(root, { commit: report.change.mergeBaseCommit, path: inspected, startLine: 1 });
       if (!inHead && !deletedFromBase) errors.push(`Inspected path ${inspected} does not exist in the reviewed change.`);
     }
     for (const item of report.evidence) {

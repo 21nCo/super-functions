@@ -20,7 +20,9 @@ Linked Linear document URLs must share the server-returned issue URL workspace, 
 
 Host snapshot checkout, source capture, and test archive preparation use credential-free Git environments with system/global configuration disabled; checkout also disables templates, hooks, and global attributes. Reproduced findings require a completed reviewed-head test receipt and retained logs whose digests verify. Requirement text alone cannot substantiate a defect finding.
 
-Deleted changed paths may use verified base-commit code anchors only when the source adapter proves the path is absent from the head. Existing paths still require head-commit anchors.
+Deleted changed paths may use verified merge-base code anchors only when the source adapter proves the path is absent from the head. Existing paths still require head-commit anchors.
 
 
-Native tool lookup on Windows resolves `.exe` binaries and rejects repository-owned paths; shell-dependent `.cmd`/`.bat` wrappers are not supported. POSIX world-write and execute-bit checks apply only on POSIX. Windows operators must provision PATH directories with trusted ACLs: Node's `stat.mode` does not validate Windows ACL ownership. Windows native-name behavior has a simulated filesystem regression; the full consumer and Docker gates remain verified on POSIX, not Windows end to end.
+Native tool lookup on Windows resolves `.exe` binaries and rejects repository-owned paths; shell-dependent `.cmd`/`.bat` wrappers are not supported. POSIX world-write and execute-bit checks apply only on POSIX. Windows operators must provision PATH directories with trusted ACLs: Node's `stat.mode` does not validate Windows ACL ownership. Native Windows executable-name handling has regression-test coverage by simulating `process.platform` on POSIX. The full consumer and Docker gates remain verified on POSIX, not Windows end to end.
+
+Normalized Codex telemetry is capped at 10,000 retained events including a truncation warning. If the limit is reached, successful inference still records incomplete telemetry scope, while timeout and cancellation outcomes retain their terminal state.

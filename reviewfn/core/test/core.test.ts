@@ -204,3 +204,13 @@ it.each(["with spaces", "dot.name", "a".repeat(81), ""])("rejects an unpublishab
 it.each(["account", "expectedWorkspace", "issue"])("validates optional context %s as a nonempty string", key => {
   for (const value of [true, 7, {}, [], "", " "]) expect(() => validateConfig({ ...DEFAULT_CONFIG, context: [{ adapter: "composio-linear", [key]: value }] })).toThrow(/context/);
 });
+
+
+it("tells the harness exactly which sources have policy authority", () => {
+  const value = report();
+  const sources = ["issue", "comment", "document"].map(type => ({ id: type, type: type as "issue" | "comment" | "document", status: "available" as const, content: "source content", digest: "s", retrievedAt: "now" }));
+  const policy = { ...DEFAULT_POLICY, sourceAuthority: { ...DEFAULT_POLICY.sourceAuthority, acceptedTypes: ["issue", "comment"] as Array<"issue" | "comment">, commentsMayClarify: false } };
+  const prompt = buildReviewPrompt({ change: value.change, context: { version: 1, sources, selection: { candidates: [], selected: [], rule: "explicit" }, limits: { maxSources: 3, maxBytes: 100, maxDepth: 1 }, incompleteReasons: [], digest: "c" }, config: DEFAULT_CONFIG, policy, tests: [] }).prompt;
+  const payload = JSON.parse(prompt.split("Frozen review input:\n")[1]);
+  expect(payload.authoritativeSourceIds).toEqual(["issue"]);
+});

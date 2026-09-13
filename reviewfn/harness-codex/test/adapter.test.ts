@@ -123,3 +123,17 @@ it("keeps transcript content out of retained normalized telemetry", async () => 
   expect(JSON.stringify(output.events)).not.toContain(content);
   expect(output.events.at(-1)?.data.usage).toEqual({ input_tokens: 3, cached_input_tokens: 2, cache_write_input_tokens: 4, output_tokens: 1, reasoning_output_tokens: 5 });
 });
+
+
+it.each([false, true])("bounds normalized event expansion on timeout=%s", async timedOut => {
+  const adapter = new CodexHarnessAdapter({ runner: async (_command, args) => {
+    await writeFile(args[args.indexOf("--output-last-message") + 1], JSON.stringify({ requirements: [], assessments: [], evidence: [], findings: [], inspectedPaths: [], uninspected: [] }));
+    return { code: timedOut ? null : 0, signal: null, stdout: "{}\n".repeat(400_000), stderr: "", timedOut, canceled: false };
+  } });
+  const output = await adapter.run(baseInput);
+  expect(output.terminal).toBe(timedOut ? "timed_out" : "completed");
+  expect(output.events.length).toBeLessThanOrEqual(10_000);
+  expect(Buffer.byteLength(JSON.stringify(output.events, null, 2))).toBeLessThan(32 * 1024 * 1024);
+  expect(JSON.stringify(output.events.at(-1))).toMatch(/truncated/);
+  if (!timedOut) expect(output.uninspected.some(item => item.scope === "harness-events")).toBe(true);
+}, 30_000);
