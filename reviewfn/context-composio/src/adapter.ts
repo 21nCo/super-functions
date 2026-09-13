@@ -81,7 +81,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     let initialComments = issue.comments;
     if (!hasPageInfo(initialComments)) {
       try { initialComments = findConnection(await this.fetchIssueConnection("comments", issueId, undefined, request.account, request.signal), "comments"); }
-      catch { incompleteReasons.push("Unable to establish complete Linear comment pagination."); }
+      catch (error) { if (request.signal?.aborted) throw error; incompleteReasons.push("Unable to establish complete Linear comment pagination."); }
     }
     const comments = [...connectionNodes(initialComments)];
     let commentPage = pageInfo(initialComments);
@@ -118,7 +118,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     let initialDocuments = issue.documents;
     if (!hasPageInfo(initialDocuments)) {
       try { initialDocuments = findConnection(await this.fetchIssueConnection("documents", issueId, undefined, request.account, request.signal), "documents"); }
-      catch { incompleteReasons.push("Unable to establish complete Linear document pagination."); }
+      catch (error) { if (request.signal?.aborted) throw error; incompleteReasons.push("Unable to establish complete Linear document pagination."); }
     }
     if (!hasPageInfo(initialDocuments)) incompleteReasons.push("Linear document pagination metadata missing or malformed.");
     const candidateKeys = new Map<string, Record<string, unknown>>();
@@ -161,6 +161,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
           document = findDocument(await this.fetchDocument(id, request.account, request.signal), id) ?? summary;
         }
         catch (error) {
+          if (request.signal?.aborted) throw error;
           add({ id: `linear:document:${id}`, type: "document", canonicalUrl: stringField(summary, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), status: "failed", parentId: `linear:issue:${issueId}`, error: error instanceof Error ? error.message : String(error) });
           incompleteReasons.push(`Unable to fetch Linear document ${id}.`);
           continue;

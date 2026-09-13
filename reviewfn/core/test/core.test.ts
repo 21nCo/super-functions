@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_CONFIG, DEFAULT_POLICY, FileArtifactStore, RepositoryMarkdownContextAdapter, applyRepositoryPolicy, buildReviewPrompt, deriveVerdict, digestJson, validateConfig, validateReport, type ReviewReport } from "../src/index.js";
-import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
+import { readFile, mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -80,4 +80,28 @@ describe("artifact safety", () => {
     await symlink(tmpdir(), path.join(parent, "link"));
     await expect(new FileArtifactStore(path.join(parent, "link")).put("report", "x", 1)).rejects.toThrow(/real directory/);
   });
+});
+
+it("preserves longer retention across repeated writes and store imports", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "reviewfn-retention-"));
+  const source = new FileArtifactStore(path.join(root, "source"));
+  const store = new FileArtifactStore(path.join(root, "target"));
+  const saved = await store.put("report", "shared", 30);
+  await Promise.all([store.put("report", "shared", 1), store.put("report", "shared", 20)]);
+  await source.put("report", "shared", 1);
+  await store.importFrom(path.join(root, "source"));
+  expect((await store.deleteExpired(new Date(Date.now() + 2 * 86_400_000))).deleted).toEqual([]);
+  expect(await store.get(saved.id)).toBeDefined();
+  expect((await store.deleteExpired(new Date(Date.now() + 31 * 86_400_000))).deleted).toEqual([saved.id]);
+});
+
+it("expires the CLI JSON and Markdown report copies", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "reviewfn-report-retention-"));
+  const store = new FileArtifactStore(path.join(root, "artifacts"), root);
+  await store.writeReportCopies("{}", "review", 1);
+  expect((await store.deleteExpired()).errors).toEqual([]);
+  expect(await readFile(path.join(root, "report.md"), "utf8")).toBe("review");
+  expect((await store.deleteExpired(new Date(Date.now() + 2 * 86_400_000))).errors).toEqual([]);
+  await expect(readFile(path.join(root, "report.json"))).rejects.toThrow();
+  await expect(readFile(path.join(root, "report.md"))).rejects.toThrow();
 });

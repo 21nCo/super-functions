@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile, stat } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { strictProviderSchema, omitOptionalNulls, validateHarnessPayload, redactJson, redactText, type HarnessAdapter, type HarnessCapabilities, type HarnessInput, type HarnessOutput, type JsonValue, type NormalizedRunEvent, type PreflightResult, type ReviewFnConfig } from "@superfunctions/reviewfn-core";
+import { safeRead, strictProviderSchema, omitOptionalNulls, validateHarnessPayload, redactJson, redactText, type HarnessAdapter, type HarnessCapabilities, type HarnessInput, type HarnessOutput, type JsonValue, type NormalizedRunEvent, type PreflightResult, type ReviewFnConfig } from "@superfunctions/reviewfn-core";
 
 export interface CommandResult { code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string; timedOut: boolean; canceled: boolean }
 export type CommandRunner = (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; maxOutputBytes: number; signal?: AbortSignal; stdin?: string }) => Promise<CommandResult>;
@@ -149,8 +149,9 @@ export class CodexHarnessAdapter implements HarnessAdapter {
         const terminal = /quota|rate.?limit|usage.?limit/i.test(stderr) ? "quota_exhausted" as const : "failed" as const;
         return { ...emptyFailure(terminal, stderr.trim() || `Codex exited with ${String(result.code)}.`), events, transcript: `${stdout}\n${stderr}` };
       }
-      if ((await stat(outputPath).catch(() => ({ size: 0 }))).size > input.policy.limits.maxOutputBytes) return emptyFailure("malformed", "Structured output exceeds byte budget.");
-      const text = await readFile(outputPath, "utf8").catch(() => "");
+      let text: string;
+      try { text = (await safeRead(outputPath, input.policy.limits.maxOutputBytes)).toString("utf8"); }
+      catch { return { ...emptyFailure("malformed", "Structured output is missing, unsafe, or exceeds its byte budget."), events, transcript: `${stdout}\n${stderr}` }; }
       try {
         const parsed = omitOptionalNulls(redactJson(JSON.parse(text), secrets)) as Omit<HarnessOutput, "terminal" | "events" | "transcript">;
         const errors = validateHarnessPayload(parsed);

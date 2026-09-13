@@ -143,15 +143,11 @@ async function run(): Promise<number> {
   try {
     const result = await coordinator.run({ ...request, signal: controller.signal });
     const outputDirectory = path.resolve(root, optional(args.flags, "output") ?? ".reviewfn/output");
-    const store = new FileArtifactStore(path.join(outputDirectory, "artifacts"));
-    // Copy every retained artifact before deleting the owned run workspace.
-    const { readdir } = await import("node:fs/promises");
-    for (const file of await readdir(path.join(owned, "artifacts"))) await safeWrite(path.join(outputDirectory, "artifacts", file), await safeRead(path.join(owned, "artifacts", file)));
+    const store = new FileArtifactStore(path.join(outputDirectory, "artifacts"), outputDirectory);
+    // Merge retained artifacts without shortening expiration for prior references.
+    await store.importFrom(path.join(owned, "artifacts"));
     await store.deleteExpired();
-    await Promise.all([
-      safeWrite(path.join(outputDirectory, "report.json"), `${JSON.stringify(result.report, null, 2)}\n`),
-      safeWrite(path.join(outputDirectory, "report.md"), result.rendered),
-    ]);
+    await store.writeReportCopies(`${JSON.stringify(result.report, null, 2)}\n`, result.rendered, Math.min(config.retention.reportDays, policy.retention.reportDays));
     process.stdout.write(`${result.rendered}\n`);
     return result.report.execution === "completed" ? 0 : 1;
   } finally {

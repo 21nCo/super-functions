@@ -148,3 +148,12 @@ it("propagates cancellation during canonical issue lookup", async () => {
   };
   await expect(new ComposioLinearContextAdapter({ runner }).fetch({ ...request, signal: controller.signal })).rejects.toThrow(/canceled/);
 });
+
+it.each(["comments", "documents", "document-body"])("propagates cancellation during %s recovery", async stage => {
+  const controller = new AbortController();
+  const runner: ComposioRunner = async args => {
+    if (args[1] === "LINEAR_GET_LINEAR_ISSUE") return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "x", organization: { id: "workspace-1" }, comments: stage === "comments" ? [] : { nodes: [], pageInfo: { hasNextPage: false } }, documents: stage === "documents" ? [] : { nodes: stage === "document-body" ? [{ id: "doc", title: "Design" }] : [], pageInfo: { hasNextPage: false } } } }) };
+    controller.abort(); throw new Error("canceled");
+  };
+  await expect(new ComposioLinearContextAdapter({ runner }).fetch({ ...request, signal: controller.signal })).rejects.toThrow(/canceled/);
+});

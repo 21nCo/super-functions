@@ -103,10 +103,10 @@ it("keeps finding identity stable when coordinator redaction secrets differ", as
   } finally { if (original === undefined) delete process.env.REVIEWFN_TEST_SECRET; else process.env.REVIEWFN_TEST_SECRET = original; }
 });
 
-it("records the effective execution limits applied by policy", async () => {
+it.each([[80, 90, 17, 19], [8, 9, 8, 9]])("records effective execution limits for config %s/%s", async (timeoutMs, maxOutputBytes, expectedTimeout, expectedBytes) => {
   const execution = new FakeExecutionAdapter(); let limits;
   execution.run = async (_root, _head, _commands, policy) => { limits = policy.limits; return []; };
   const coordinator = new ReviewCoordinator({ sourceControl: new FakeSourceControlAdapter(), contexts: [new FakeContextAdapter("fixture", manifest)], harness: new FakeHarnessAdapter(output), execution, artifacts: new MemoryArtifactStore() });
-  const result = await coordinator.run({ root: ".", base: "base", head: "head", config: { ...config, execution: { ...config.execution, timeoutMs: 80, maxOutputBytes: 90 } }, policy: { ...DEFAULT_POLICY, limits: { ...DEFAULT_POLICY.limits, testTimeoutMs: 17, maxOutputBytes: 19 } } });
-  expect(limits).toMatchObject({ testTimeoutMs: 17, maxOutputBytes: 19 }); expect(result.report.configuration.execution).toMatchObject({ timeoutMs: 17, maxOutputBytes: 19 });
+  const result = await coordinator.run({ root: ".", base: "base", head: "head", config: { ...config, execution: { ...config.execution, timeoutMs, maxOutputBytes } }, policy: { ...DEFAULT_POLICY, limits: { ...DEFAULT_POLICY.limits, testTimeoutMs: 17, maxOutputBytes: 19 } } });
+  expect(limits).toMatchObject({ testTimeoutMs: expectedTimeout, maxOutputBytes: expectedBytes }); expect(result.report.configuration.execution).toMatchObject({ timeoutMs: expectedTimeout, maxOutputBytes: expectedBytes });
 });

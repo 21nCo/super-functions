@@ -118,3 +118,14 @@ it("redacts SCP usernames while retaining repository and host identity", async (
   expect(change.repositoryId).toBe("github.com:acme/repo.git"); expect(change.host).toBe("github.com");
   expect(JSON.stringify(change)).not.toContain("private-user"); expect(githubRepositoryIdentity(change.repositoryId)).toBe("acme/repo");
 });
+
+it("classifies drive-relative Windows origins as local", async () => {
+  const runner = async (args: string[]) => {
+    if (args[0] === "config") return "C:repo";
+    if (args[0] === "status" || args[0] === "diff") return "";
+    if (args.includes("--symbolic-full-name")) return "refs/heads/main";
+    return args[0] === "merge-base" || args.at(-1) === "base^{commit}" ? "a".repeat(40) : "b".repeat(40);
+  };
+  const change = await new GitSourceControlAdapter({ runner }).capture(".", "base", "head");
+  expect(change.repositoryId).toBe("C:repo"); expect(change.host).toBe("local");
+});

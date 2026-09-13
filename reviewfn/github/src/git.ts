@@ -83,11 +83,12 @@ export class GitSourceControlAdapter implements SourceControlAdapter {
 
 function hostFromRemote(remote: string): string {
   const match = remote.match(/^(?:https?:\/\/|ssh:\/\/git@|git@)([^/:]+)/);
-  const scpHost = !remote.includes("://") && !/^[A-Za-z]:[\\/]/.test(remote) ? remote.match(/^([^/@:]+):/)?.[1] : undefined;
+  const scpHost = !remote.includes("://") && !/^[A-Za-z]:/.test(remote) ? remote.match(/^([^/@:]+):/)?.[1] : undefined;
   return match?.[1] ?? scpHost ?? "local";
 }
 
 export function redactRepositoryRemote(remote: string): string {
+  if (/^[A-Za-z]:/.test(remote)) return remote;
   try { const url = new URL(remote); url.username = ""; url.password = ""; url.search = ""; url.hash = ""; return url.toString(); } catch { return remote.replace(/^[^@/]+@(?=[^/:]+:)/, ""); }
 }
 

@@ -1,4 +1,8 @@
-import { writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { writeFile, mkdtemp, symlink, rm } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG, DEFAULT_POLICY, type HarnessInput } from "@superfunctions/reviewfn-core";
 import { CodexHarnessAdapter, type CommandRunner } from "../src/index.js";
@@ -74,4 +78,28 @@ it("maps the configured API credential to Codex while excluding publication cred
   const adapter = new CodexHarnessAdapter({ environment: { REVIEW_AUTH: "custom-private-key", GITHUB_TOKEN: "publication-private-key", PATH: process.env.PATH }, runner: async (_command, _args, options) => { environment = options.env; return { code: 0, signal: null, stdout: "codex-cli 0.154.0", stderr: "", timedOut: false, canceled: false }; } });
   await adapter.preflight({ ...baseInput.configuration, inference: { provider: "openai", model: "gpt-5.6-sol", auth: "api-key", credentialEnv: "REVIEW_AUTH" } });
   expect(environment.CODEX_API_KEY).toBe("custom-private-key"); expect(environment.GITHUB_TOKEN).toBeUndefined();
+});
+
+it("rejects a runner output symlink without reading its external target", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "reviewfn-external-output-"));
+  try {
+    const target = path.join(directory, "external.json");
+    await writeFile(target, JSON.stringify({ requirements: [], assessments: [], evidence: [], findings: [], inspectedPaths: [], uninspected: [] }));
+    const adapter = new CodexHarnessAdapter({ runner: async (_command, args) => {
+      await symlink(target, args[args.indexOf("--output-last-message") + 1]);
+      return { code: 0, signal: null, stdout: '{"type":"turn.started"}\n', stderr: "", timedOut: false, canceled: false };
+    } });
+    const result = await adapter.run(baseInput);
+    expect(result.terminal).toBe("malformed");
+    expect(result.events).toHaveLength(1);
+    expect(result.error).not.toContain(target);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+it.skipIf(process.platform === "win32")("rejects a runner output FIFO without waiting for a writer", async () => {
+  const adapter = new CodexHarnessAdapter({ runner: async (_command, args) => {
+    await promisify(execFile)("mkfifo", [args[args.indexOf("--output-last-message") + 1]]);
+    return { code: 0, signal: null, stdout: "", stderr: "", timedOut: false, canceled: false };
+  } });
+  expect((await adapter.run(baseInput)).terminal).toBe("malformed");
 });

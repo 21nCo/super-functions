@@ -19,7 +19,7 @@ export async function safeRead(file: string, maxBytes = 32 * 1024 * 1024): Promi
   file = path.resolve(file);
   await safeDirectory(path.dirname(file));
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error("Read budget must be a positive integer.");
-  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const stat = await handle.stat();
     if (!stat.isFile() || stat.size > maxBytes) throw new Error(`Expected a regular file within the ${maxBytes}-byte read budget.`);
