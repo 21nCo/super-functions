@@ -297,7 +297,8 @@ export async function runCli(
           .filter(Boolean),
         maxReportBytes: (maxReportBytes ?? 1_048_576) - 1,
       });
-      const serialized = serializeBoundedReport(report, maxReportBytes);
+      const serialized = `${JSON.stringify(report)}\n`;
+      if (Buffer.byteLength(serialized) > (maxReportBytes ?? 1_048_576)) throw new Error("Serialized target report exceeds --max-report-bytes");
       if (options.output) {
         await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
       }

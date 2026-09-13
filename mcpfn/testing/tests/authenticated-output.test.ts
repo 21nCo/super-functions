@@ -45,3 +45,14 @@ it("retains permanently failing conformance cleanup for explicit retry", async (
   await (failure as McpFnConformanceCleanupError).retryCleanup();
   expect(revoke).toHaveBeenCalledTimes(4);
 });
+
+it("redacts credentials crossing the conformance output truncation boundary", async () => {
+  const secret = "opaque-boundary-credential";
+  spawn.mockImplementation(() => {
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
+    queueMicrotask(() => { child.stdout.write("x".repeat(262_140) + secret); child.emit("close", 0); });
+    return child;
+  });
+  const result = await runAuthenticatedOfficialConformance({ url: "http://127.0.0.1:1/mcp", headers: { "x-api-key": secret } });
+  expect(result.stdout).not.toContain("opaq");
+});

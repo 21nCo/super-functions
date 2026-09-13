@@ -352,6 +352,7 @@ function boundedCredentialEntries(value: HeadersInit): Array<[string, string]> {
     if (entries.length >= MAX_CREDENTIAL_HEADERS) throw new TypeError("Credential headers exceed the header limit");
     if (typeof name !== "string" || typeof headerValue !== "string") throw new TypeError("Credential header values must be strings");
     if (name.length > MAX_CREDENTIAL_HEADER_BYTES || headerValue.length > MAX_CREDENTIAL_HEADER_VALUE_BYTES) throw new TypeError("Credential header exceeds the value-size limit");
+    if (new TextEncoder().encode(headerValue).byteLength > MAX_CREDENTIAL_HEADER_VALUE_BYTES) throw new TypeError("Credential header exceeds the value-size limit");
     bytes += new TextEncoder().encode(`${name}: ${headerValue}\r\n`).byteLength;
     if (bytes > MAX_CREDENTIAL_HEADER_BYTES) throw new TypeError("Credential headers exceed the aggregate size limit");
     entries.push([name, headerValue]);
@@ -386,6 +387,7 @@ export function validateRemoteCredentialHeaders(value: HeadersInit): Headers {
     if (valueBytes > MAX_CREDENTIAL_HEADER_VALUE_BYTES) {
       throw new TypeError(`Credential header ${name} exceeds the value-size limit`);
     }
+    if (new TextEncoder().encode(headerValue).byteLength > MAX_CREDENTIAL_HEADER_VALUE_BYTES) throw new TypeError("Credential header exceeds the value-size limit");
     bytes += new TextEncoder().encode(`${name}: ${headerValue}\r\n`).byteLength;
   }
   if (bytes > MAX_CREDENTIAL_HEADER_BYTES) {

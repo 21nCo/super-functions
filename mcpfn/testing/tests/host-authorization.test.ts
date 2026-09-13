@@ -215,7 +215,7 @@ it.each(["blank", "network"])("rejects invalid token evidence: %s", async mode =
       return Response.redirect(callback, 302);
     }
     if (mode === "network") throw new Error("network failure");
-    return Response.json({ access_token: "   ", token_type: "Bearer" });
+    return Response.json({ access_token: "   ", token_type: "Bearer", refresh_token: "refresh" });
   }}, [fixture]);
   expect(result.status).toBe("failed");
   expect(result.responseStatus).toBe(mode === "network" ? undefined : 200);

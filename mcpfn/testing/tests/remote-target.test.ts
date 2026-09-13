@@ -438,3 +438,8 @@ it("rejects oversized raw header collections before reading their values", async
   expect(() => validateRemoteCredentialHeaders(headers)).toThrow(/header limit/);
   expect(() => redactRemoteCredential({ headers }, "report")).toThrow(/header limit/);
 });
+
+it("enforces encoded byte limits while collecting redaction secrets", async () => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  expect(() => redactRemoteCredential({ headers: { "x-key": "€".repeat(3000) } }, "report")).toThrow(/value-size limit/);
+});

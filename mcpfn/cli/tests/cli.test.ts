@@ -379,24 +379,35 @@ describe("mcpfn CLI", () => {
     }
   });
 
-it.each(["bearer-token-env", "api-key-env"])("rejects blank credentials for %s", async flag => {
-  const variable = "MCPFN_BLANK_TEST";
-  process.env[variable] = "   ";
-  try { expect(await runCli(["inspect", "http://127.0.0.1:1/mcp", `--${flag}`, variable], { stderr: () => {}, stdout: () => {} })).toBe(2); } finally { delete process.env[variable]; }
-});
+  it.each(["bearer-token-env", "api-key-env"])("rejects blank credentials for %s", async flag => {
+    const variable = "MCPFN_BLANK_TEST";
+    process.env[variable] = "   ";
+    try { expect(await runCli(["inspect", "http://127.0.0.1:1/mcp", `--${flag}`, variable], { stderr: () => {}, stdout: () => {} })).toBe(2); } finally { delete process.env[variable]; }
+  });
 
-it("rejects multiline Bearer credentials without printing their contents", async () => {
-  const variable = 'MCPFN_REVIEW_BEARER_TEST';
-  const previous = process.env[variable];
-  process.env[variable] = 'opaque-private\ncredential';
-  try {
-    let stderr = '';
-    const code = await runCli(['inspect', 'http://127.0.0.1:1/mcp', '--bearer-token-env', variable], { stderr: text => { stderr += text; }, stdout: () => {} });
-    expect(code).toBe(2);
-    expect(stderr).toContain('valid HTTP header');
-    expect(stderr).not.toContain('opaque-private');
-    expect(stderr).not.toContain('\ncredential');
-  } finally { if (previous === undefined) delete process.env[variable]; else process.env[variable] = previous; }
-});
+  it("rejects multiline Bearer credentials without printing their contents", async () => {
+    const variable = 'MCPFN_REVIEW_BEARER_TEST';
+    const previous = process.env[variable];
+    process.env[variable] = 'opaque-private\ncredential';
+    try {
+      let stderr = '';
+      const code = await runCli(['inspect', 'http://127.0.0.1:1/mcp', '--bearer-token-env', variable], { stderr: text => { stderr += text; }, stdout: () => {} });
+      expect(code).toBe(2);
+      expect(stderr).toContain('valid HTTP header');
+      expect(stderr).not.toContain('opaque-private');
+      expect(stderr).not.toContain('\ncredential');
+    } finally { if (previous === undefined) delete process.env[variable]; else process.env[variable] = previous; }
+  });
 
+  it("returns compact bounded target failure reports", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cap-"));
+    roots.push(root);
+    const scenarios = path.join(root, "scenarios.mjs");
+    await writeFile(scenarios, "export default [];\n");
+    let output = "";
+    const code = await runCli(["test-target", "http://127.0.0.1:1/mcp", scenarios, "--max-report-bytes", "1025"], { cwd: root, stdout: value => { output += value; }, stderr: () => {} });
+    expect(code).toBe(1);
+    expect(Buffer.byteLength(output)).toBeLessThanOrEqual(1025);
+    expect(JSON.parse(output).ok).toBe(false);
+  });
 });

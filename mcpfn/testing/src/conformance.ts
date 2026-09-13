@@ -239,8 +239,13 @@ export function buildOfficialConformanceEnvironment(
   return environment;
 }
 
-export async function runOfficialConformance(
+export async function runOfficialConformance(options: OfficialConformanceOptions): Promise<OfficialConformanceResult> {
+  return runConformance(options, value => String(redactOAuthValue(value, { maxStringLength: 262_144 })));
+}
+
+async function runConformance(
   options: OfficialConformanceOptions,
+  redactOutput: (value: string) => string,
 ): Promise<OfficialConformanceResult> {
   const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
   if (nodeMajor < 22) {
@@ -287,9 +292,17 @@ export async function runOfficialConformance(
     child.once("close", (code) => {
       if (settled) return;
       settled = true;
-      const exitCode = code ?? 1;
-      const safeStdout = String(redactOAuthValue(stdout, { maxStringLength: 262_144 }));
-      const safeStderr = String(redactOAuthValue(stderr, { maxStringLength: 262_144 }));
+      let exitCode = code ?? 1;
+      let safeStdout = "";
+      let safeStderr = "";
+      try {
+        safeStdout = redactOutput(stdout);
+        safeStderr = redactOutput(stderr);
+      } catch {
+        exitCode = 1;
+        safeStdout = "";
+        safeStderr = "Conformance output omitted because credential redaction exceeded its bounds";
+      }
       const failure = exitCode === 0
         ? undefined
         : normalizeMcpFnReportFailure(
@@ -354,7 +367,7 @@ export async function runAuthenticatedOfficialConformance(
       url: conformance.url,
       headers: lease.credential.headers,
     });
-    return redactRemoteCredential(lease.credential, await runOfficialConformance({ ...conformance, stdio: "pipe", url: proxy.url }), { preserveKeys: true });
+    return redactRemoteCredential(lease.credential, await runConformance({ ...conformance, stdio: "pipe", url: proxy.url }, value => String(redactRemoteCredential(lease.credential, value))), { preserveKeys: true });
   } finally {
     try {
       await proxy?.close();

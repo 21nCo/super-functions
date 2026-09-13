@@ -580,7 +580,11 @@ export class McpFnClient {
     this.handle = undefined;
     const handles = new Set(this.pendingCleanup);
     if (handle) handles.add(handle);
-    const results = await Promise.allSettled([protocol?.close(), this.cleanupTarget(), ...[...handles].map(item => this.closeRetainedHandle(item, strict))]);
+    const results = await Promise.allSettled([protocol?.close(), ...[...handles].map(item => this.closeRetainedHandle(item, strict))]);
+    // Retained target leases must outlive transport shutdown (including retries).
+    if (results.every(result => result.status === "fulfilled")) {
+      results.push(...await Promise.allSettled([this.cleanupTarget()]));
+    }
     if (strict && results.some((result) => result.status === "rejected")) {
       if (results[0].status === "rejected") this._protocol = protocol;
 

@@ -675,3 +675,17 @@ it("cleans a failed target before awaiting failure diagnostics", async () => {
   await connecting;
   await client.close();
 });
+
+it("drains target cleanup only after live transport handles finish closing", async () => {
+  let finish!: () => void;
+  const closed = new Promise<void>(resolve => { finish = resolve; });
+  const cleanup = vi.fn(async () => {});
+  const client = createMcpFnClient({ target: customTarget({ kind: "shutdown-order", cleanup, open: async () => { throw new Error("unused"); } }) });
+  (client as any).handle = { transport: { close: async () => {} }, close: async () => closed };
+  const closing = client.close();
+  await new Promise(resolve => setTimeout(resolve, 10));
+  expect(cleanup).not.toHaveBeenCalled();
+  finish();
+  await closing;
+  expect(cleanup).toHaveBeenCalled();
+});
