@@ -129,5 +129,11 @@ export async function loadClientProfileContracts(
   if (options.allowSideEffects !== undefined) {
     throw new Error("Client profile side effects require the explicit --allow-side-effects CLI flag; remove allowSideEffects from config");
   }
+  for (const profile of options.profiles) {
+    if (!profile || typeof profile.id !== "string" || !profile.id.trim() || typeof profile.version !== "string" || !profile.version.trim() ||
+        !profile.target || typeof profile.target.open !== "function" || typeof profile.target.describe !== "function") {
+      throw new Error("Client profile entries require id, version and a valid target");
+    }
+  }
   return options as RunMcpFnClientProfileContractsOptions;
 }

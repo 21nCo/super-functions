@@ -433,3 +433,23 @@ it('rejects misspelled captured failure sources', async () => {
 it.each(["minContains", "maxContains"])("flags %s portability", keyword => {
   expect(validateMcpFnSchemaPortability({ type: "array", contains: { type: "string" }, [keyword]: 2 }, "#").some(issue => issue.path.includes(keyword))).toBe(true);
 });
+
+
+it("warns for draft-2019 recursive reference keywords", () => {
+  const issues = validateMcpFnSchemaPortability({ $schema: 'https://json-schema.org/draft/2019-09/schema', $recursiveAnchor: true, type: 'object', properties: { next: { $recursiveRef: '#' } } }, 'input');
+  expect(issues.map(issue => issue.keyword)).toEqual(expect.arrayContaining(['$recursiveAnchor', '$recursiveRef']));
+});
+
+it("marks task-required fixtures incomplete without an ordinary call", async () => {
+  const { McpFnTestClient } = await import('../src/client.js');
+  const callTool = vi.fn();
+  const tool = { ...projectedTool(), execution: { taskSupport: 'required' as const } };
+  const spy = vi.spyOn(McpFnTestClient, 'connectTarget').mockResolvedValue({ listTools: async () => [tool], callTool, close: async () => {} } as any);
+  try {
+    const report = await runMcpFnClientProfileContracts({ profiles: [{ id: 'generic', version: '1', target: targetFor({}).target,
+      fixtures: [{ name: 'task', tool: 'lookup', arguments: { query: 'x' }, sideEffect: 'read-only' }] }] });
+    expect(report.ok).toBe(false);
+    expect(report.profiles[0].fixtures[0]).toMatchObject({ status: 'incomplete', code: 'task-fixture-unsupported' });
+    expect(callTool).not.toHaveBeenCalled();
+  } finally { spy.mockRestore(); }
+});

@@ -522,8 +522,8 @@ describe("reference and ownership projection safety", () => {
       },
     } });
   }
-  const canonical = { type: "object", properties: { tenantId: { type: "string" }, query: { type: "string" } }, required: ["tenantId"] };
-  const visible = { type: "object", properties: { query: { type: "string" } } };
+  const canonical = { type: "object", additionalProperties: false, properties: { tenantId: { type: "string" }, query: { type: "string" } }, required: ["tenantId"] };
+  const visible = { type: "object", additionalProperties: false, properties: { query: { type: "string" } } };
   it.each(["dependencies", "dependentRequired"])("rejects owned-field %s even when copied unchanged", async keyword => {
     const constraint = { [keyword]: { tenantId: ["query"] } };
     await expect(project({ ...canonical, ...constraint }, { ...visible, ...constraint })).rejects.toThrow(/whole-object constraints/);
@@ -579,4 +579,47 @@ it("accepts unchanged required keys without property declarations", async () => 
   await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: { type: "object", required: ["token"] } }], resolved: {
     context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" }, profile: { id: "test", version: "1", matches: () => true },
   } })).resolves.toMatchObject({ changes: [] });
+});
+
+
+it("rejects open ownership projections and malformed unused definitions", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import('../src/client-profiles.js');
+  for (const patternProperties of [undefined, { '^tenant': {} }]) {
+    await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: 'test', inputSchema: { type: 'object', properties: { tenantId: { type: 'string' } }, required: ['tenantId'], patternProperties } }], resolved: {
+      context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: 'trusted' },
+      profile: { id: 'test', version: '1', matches: () => true, serverOwnedArguments: { test: ['tenantId'] },
+        projectCatalog: () => [{ name: 'test', inputSchema: { type: 'object', patternProperties } }] },
+    } })).rejects.toThrow(/model-visible/);
+  }
+  await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: 'test', inputSchema: { type: 'object' } }], resolved: {
+    context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: 'trusted' },
+    profile: { id: 'test', version: '1', matches: () => true, projectCatalog: () => [{ name: 'test', inputSchema: { type: 'object', $defs: { unused: { type: 123 } } } as any }] },
+  } })).rejects.toThrow(/valid JSON Schema/);
+});
+
+it("compares boolean and embedded-resource schemas and equivalent branch references", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import('../src/client-profiles.js');
+  const run = (before: any, after: any, name = 'test') => buildMcpFnEffectiveCatalog({ canonicalTools: [{ name, inputSchema: before }], resolved: {
+    context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: 'trusted' },
+    profile: { id: 'test', version: '1', matches: () => true, serverOwnedArguments: {}, projectCatalog: () => [{ name, inputSchema: after }] },
+  } });
+  await expect(run({ type: 'object', allOf: [true] }, { type: 'object', allOf: [false] })).rejects.toThrow(/preserve root constraints/);
+  const schema = (type: string) => ({ type: 'object', properties: { value: { $ref: 'https://example.test/value' } }, $defs: { value: { $id: 'https://example.test/value', type } } });
+  await expect(run(schema('string'), schema('number'))).rejects.toThrow(/canonical schema/);
+  const defs = { a: { properties: { a: { type: 'string' } } }, z: { properties: { z: { type: 'string' } } } };
+  await expect(run({ type: 'object', $defs: defs, allOf: [{ $ref: '#/$defs/a' }, { $ref: '#/$defs/z' }] },
+    { type: 'object', $defs: defs, allOf: [{ $ref: '#/$defs/z' }, { $ref: '#/$defs/%61' }] })).resolves.toBeDefined();
+  for (const name of ['constructor', 'toString', '__proto__']) await expect(run({ type: 'object' }, { type: 'object' }, name)).resolves.toBeDefined();
+});
+
+it("marks invalid-argument callbacks as handlers and bounds diagnostic paths", async () => {
+  const { formatMcpFnSchemaIssues } = await import('../src/validation.js');
+  const issue = formatMcpFnSchemaIssues([{ instancePath: '/' + 'x'.repeat(1000), schemaPath: '#/type', keyword: 'type', params: {}, message: 'bad' }])[0];
+  expect(issue.instancePath).toBe('/');
+  const stages: string[] = [];
+  const registry = new McpFnRegistry().register({ name: 'test', inputSchema: { type: 'object', required: ['value'] },
+    handleInvalidArguments: () => { throw new McpFnValidationError('private', { issues: [{ secret: 'private' }] }); },
+    handler: async () => structuredResult({}) });
+  await expect(registry.callTool('test', {}, undefined, {} as any, { onStage: stage => stages.push(stage) })).rejects.toThrow('private');
+  expect(stages.at(-1)).toBe('handler');
 });

@@ -927,6 +927,7 @@ export class McpFnRegistry<TContext = undefined> {
     const normalized = this.normalizeAndValidateArgs(registered, args);
     if (normalized.issues) {
       if (registered.definition.handleInvalidArguments) {
+        observer.onStage?.("handler");
         const handled = await registered.definition.handleInvalidArguments(
           normalized.args,
           normalized.issues,

@@ -14,7 +14,9 @@ export function formatMcpFnSchemaIssues(
   errors: ErrorObject[] | null | undefined,
 ): McpFnSchemaIssue[] {
   return (errors ?? []).slice(0, 100).map((error) => {
-    const instancePath = error.instancePath || "/";
+    const rawPath = error.instancePath || "/";
+    // A long path is omitted rather than truncated into an invalid JSON pointer.
+    const instancePath = rawPath.length <= MAX_STRUCTURAL_FIELD_LENGTH ? rawPath : "/";
     const params = error.params as Record<string, unknown>;
     const rejectedProperty =
       error.keyword === "additionalProperties"

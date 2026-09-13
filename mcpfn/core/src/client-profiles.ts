@@ -1,3 +1,4 @@
+import Ajv from "ajv";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 import { canonicalJson, compareCodeUnits, sha256 } from "./canonical.js";
@@ -228,7 +229,7 @@ function assertProjectedCatalog(
     if (!canonical.has(toolName)) continue;
     const visibleTool = projectedTools.find((tool) => tool.name === toolName);
     if (!visibleTool) continue;
-    const ownedFields = new Set(profile.serverOwnedArguments?.[visibleTool.name] ?? []);
+    const ownedFields = new Set(ownedArguments(profile, visibleTool.name));
     const canonicalShape = rootShape(canonicalTool.inputSchema, ownedFields);
     const visibleShape = rootShape(visibleTool.inputSchema, ownedFields);
     const canonicalProperties = canonicalShape.properties;
@@ -246,7 +247,7 @@ function assertProjectedCatalog(
           { tool: toolName, property: name },
         );
       }
-      if (Object.hasOwn(visibleProperties, name) || visibleRequired.has(name)) {
+      if (Object.hasOwn(visibleProperties, name) || visibleRequired.has(name) || !visibleShape.prohibited.has(name)) {
         throw new McpFnClientProfileError(
           "MCPFN_PROFILE_ASYMMETRIC",
           `Server-owned argument ${toolName}.${name} remains model-visible`,
@@ -258,13 +259,14 @@ function assertProjectedCatalog(
 
   for (const visibleTool of projectedTools) {
     const canonicalTool = canonical.get(visibleTool.name)!;
-    const ownedFields = new Set(profile.serverOwnedArguments?.[visibleTool.name] ?? []);
+    assertValidProfileSchema(visibleTool.inputSchema);
+    const ownedFields = new Set(ownedArguments(profile, visibleTool.name));
     const canonicalShape = rootShape(canonicalTool.inputSchema, ownedFields);
     const visibleShape = rootShape(visibleTool.inputSchema, ownedFields);
     const visibleRequired = visibleShape.required;
     const visibleProperties = visibleShape.properties;
     const owned = new Set(
-      profile.serverOwnedArguments?.[visibleTool.name] ?? [],
+      ownedArguments(profile, visibleTool.name),
     );
     if (owned.size && (canonicalShape.ownershipSensitive || visibleShape.ownershipSensitive)) {
       throw new McpFnClientProfileError("MCPFN_PROFILE_ASYMMETRIC", "Server-owned fields cannot be hidden under conditional or whole-object constraints");
@@ -364,6 +366,38 @@ export async function buildMcpFnEffectiveCatalog<TContext>(input: {
   return { tools, changes };
 }
 
+function ownedArguments<T>(profile: McpFnClientProfile<T>, name: string): readonly string[] {
+  const mapping = profile.serverOwnedArguments;
+  return mapping && Object.hasOwn(mapping, name) ? mapping[name] : [];
+}
+
+function validateDefinitionContainers(schema: unknown, ajv: Ajv): void {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return;
+  const object = schema as Record<string, unknown>;
+  for (const keyword of ["$defs", "definitions", "properties", "patternProperties", "dependentSchemas"]) {
+    const entries = object[keyword];
+    if (!entries || typeof entries !== "object" || Array.isArray(entries)) continue;
+    for (const child of Object.values(entries)) {
+      if (!ajv.validateSchema(child as object)) throw new Error("Invalid subschema");
+      validateDefinitionContainers(child, ajv);
+    }
+  }
+  for (const keyword of ["allOf", "anyOf", "oneOf", "prefixItems", "items"]) {
+    const entries = object[keyword];
+    if (Array.isArray(entries)) for (const child of entries) validateDefinitionContainers(child, ajv);
+  }
+  for (const keyword of ["items", "additionalItems", "additionalProperties", "contains", "not", "if", "then", "else"]) validateDefinitionContainers(object[keyword], ajv);
+}
+
+function assertValidProfileSchema(schema: Record<string, unknown>): void {
+  try {
+    const ajv = new Ajv({ strict: false, allowUnionTypes: true, validateFormats: false });
+    validateDefinitionContainers(schema, ajv);
+    ajv.compile(schema);
+  }
+  catch { throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Projected schema must be valid JSON Schema"); }
+}
+
 function objectArguments(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new McpFnClientProfileError(
@@ -383,7 +417,7 @@ export async function enrichMcpFnClientProfileCall<TContext>(input: {
   const profile = input.resolved.profile;
   if (!profile) return original;
   assertTrustedProfileIdentity(input.resolved);
-  const owned = new Set(profile.serverOwnedArguments?.[input.tool.name] ?? []);
+  const owned = new Set(ownedArguments(profile, input.tool.name));
   for (const name of owned) {
     if (Object.hasOwn(original, name)) {
       throw new McpFnClientProfileError(
@@ -454,26 +488,46 @@ function taskSupport(tool: McpFnListedTool): string {
 }
 
 /** Resolve only root object composition; never traverse argument values. */
-function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { properties: Record<string, unknown>; required: Set<string>; constraints: string[]; ownershipSensitive: boolean } {
+function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { properties: Record<string, unknown>; required: Set<string>; constraints: string[]; ownershipSensitive: boolean; prohibited: Set<string> } {
   const properties: Record<string, unknown> = Object.create(null);
   const required = new Set<string>();
+  const prohibited = new Set<string>();
   const constraints = new Set<string>();
   let ownershipSensitive = false;
   const seen = new Set<unknown>();
   // A fragment is relative to its nearest schema resource, including nested $id roots.
   const resources = new WeakMap<object, Record<string, unknown>>();
+  const ids = new Map<string, Record<string, unknown>>();
+  const bases = new WeakMap<object, string>();
   const index = (value: unknown, resource: Record<string, unknown>) => {
     if (!value || typeof value !== "object" || resources.has(value)) return;
-    if (!Array.isArray(value) && typeof (value as Record<string, unknown>).$id === "string") resource = value as Record<string, unknown>;
+    const parentBase = bases.get(resource) ?? "https://mcpfn.invalid/schema";
+    if (!Array.isArray(value) && typeof (value as Record<string, unknown>).$id === "string") {
+      const id = new URL((value as Record<string, unknown>).$id as string, parentBase).href;
+      ids.set(id, value as Record<string, unknown>);
+      bases.set(value, id);
+      resource = value as Record<string, unknown>;
+    }
     resources.set(value, resource);
     for (const child of Object.values(value)) index(child, resource);
   };
   index(root, root);
   const referenceTarget = (schema: Record<string, unknown>): unknown => {
+    const reference = schema.$ref as string;
+    let resource = resources.get(schema) ?? root;
+    let fragment = reference;
+    if (!reference.startsWith("#")) {
+      const address = new URL(reference, bases.get(resource) ?? "https://mcpfn.invalid/schema");
+      fragment = address.hash || "#";
+      address.hash = "";
+      const embedded = ids.get(address.href);
+      if (!embedded) throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Unresolved embedded schema reference");
+      resource = embedded;
+    }
     let pointer: string;
-    try { pointer = decodeURIComponent((schema.$ref as string).slice(1)); }
+    try { pointer = decodeURIComponent(fragment.slice(1)); }
     catch { throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Invalid schema reference encoding"); }
-    let target: unknown = resources.get(schema) ?? root;
+    let target: unknown = resource;
     for (const part of pointer === "" ? [] : pointer.slice(1).split("/")) {
       const key = part.replaceAll("~1", "/").replaceAll("~0", "~");
       target = target && typeof target === "object" && Object.hasOwn(target, key) ? (target as Record<string, unknown>)[key] : undefined;
@@ -488,7 +542,7 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
     if (!value || typeof value !== "object") return value;
     const schema = value as Record<string, unknown>;
     const result = Object.fromEntries(Object.entries(schema).map(([key, child]) => [key, resolveProperty(child, refs)]));
-    if (typeof schema.$ref === "string" && (schema.$ref === "#" || schema.$ref.startsWith("#/"))) {
+    if (typeof schema.$ref === "string") {
       const target = referenceTarget(schema);
       if (!refs.has(target)) result.$ref = resolveProperty(target, new Set([...refs, target]));
     }
@@ -507,14 +561,23 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
         shape[key] = child.filter(name => !owned.has(name)).sort(compareCodeUnits);
       } else if (key === "allOf" && Array.isArray(child)) {
         shape[key] = child.map(branchKey).sort(compareCodeUnits);
-      } else shape[key] = child;
+      } else if (key === "$ref") shape[key] = resolveProperty(referenceTarget(schema));
+      else shape[key] = child;
     }
     return canonicalJson(shape);
   };
   const visit = (value: unknown, path = "root") => {
+    if (typeof value === "boolean") { constraints.add(canonicalJson({ path, booleanSchema: value })); return; }
     if (!value || typeof value !== "object" || Array.isArray(value) || seen.has(value)) return;
     seen.add(value);
     const schema = value as Record<string, unknown>;
+    if (schema.additionalProperties === false) {
+      for (const name of owned) {
+        const properties = schema.properties as Record<string, unknown> | undefined;
+        const patterns = Object.keys((schema.patternProperties ?? {}) as object);
+        if (!Object.hasOwn(properties ?? {}, name) && !patterns.some(pattern => new RegExp(pattern).test(name))) prohibited.add(name);
+      }
+    }
     const branchProperties = schema.properties && typeof schema.properties === "object" ? Object.keys(schema.properties).filter(name => !owned.has(name)).sort(compareCodeUnits) : [];
     const branchRequired = Array.isArray(schema.required) ? schema.required.filter(name => typeof name === "string" && !owned.has(name)).sort(compareCodeUnits) : [];
     constraints.add(canonicalJson({ path, properties: branchProperties, required: branchRequired }));
@@ -540,5 +603,5 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
     if (Array.isArray(schema.allOf)) [...schema.allOf].sort((left, right) => compareCodeUnits(branchKey(left), branchKey(right))).forEach((child, index) => visit(child, `${path}/allOf/${index}`));
   };
   visit(root);
-  return { properties, required, constraints: [...constraints].sort(compareCodeUnits), ownershipSensitive };
+  return { properties, required, constraints: [...constraints].sort(compareCodeUnits), ownershipSensitive, prohibited };
 }

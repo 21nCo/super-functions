@@ -144,6 +144,8 @@ export interface McpFnClientProfileContractReport {
 }
 
 const PORTABILITY_KEYWORDS = new Set([
+  "$recursiveAnchor",
+  "$recursiveRef",
   "$dynamicAnchor",
   "$dynamicRef",
   "dependentSchemas",
@@ -330,9 +332,6 @@ function walkSchema(
     "definitions",
     "dependencies",
     "dependentSchemas",
-  "dependentRequired",
-  "minContains",
-  "maxContains",
     "patternProperties",
     "properties",
   ]) {
@@ -578,6 +577,10 @@ async function runProfileCase(
             error:
               "Fixture references a tool absent from the effective catalog",
           });
+          continue;
+        }
+        if (tools.find(tool => tool.name === fixture.tool)?.execution?.taskSupport === "required") {
+          result.fixtures.push({ ...base, status: "incomplete", code: "task-fixture-unsupported", error: "Task-required fixtures are not supported by this contract runner" });
           continue;
         }
         if (fixture.sideEffect !== "read-only" && !allowSideEffects) {

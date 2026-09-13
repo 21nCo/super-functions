@@ -468,3 +468,16 @@ describe("mcpfn CLI", () => {
     );
   });
 });
+
+
+it("rejects malformed client profile entries at config loading", async () => {
+  const { loadClientProfileContracts } = await import('../src/load.js');
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mcpfn-profile-config-'));
+  try {
+    for (const [index, entry] of [null, {}, { id: 'x', version: '1', target: {} }].entries()) {
+      const file = path.join(root, `bad-${index}.json`);
+      await writeFile(file, JSON.stringify({ profiles: [entry] }));
+      await expect(loadClientProfileContracts(file)).rejects.toThrow(/entries require/);
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
