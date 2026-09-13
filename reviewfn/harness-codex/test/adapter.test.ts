@@ -80,7 +80,7 @@ it("maps the configured API credential to Codex while excluding publication cred
   expect(environment.CODEX_API_KEY).toBe("custom-private-key"); expect(environment.GITHUB_TOKEN).toBeUndefined();
 });
 
-it("rejects a runner output symlink without reading its external target", async () => {
+it.skipIf(process.platform === "win32")("rejects a runner output symlink without reading its external target", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "reviewfn-external-output-"));
   try {
     const target = path.join(directory, "external.json");

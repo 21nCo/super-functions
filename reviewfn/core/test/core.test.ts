@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import * as safeFiles from "../src/safe-files.js";
+import { describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_CONFIG, DEFAULT_POLICY, FileArtifactStore, RepositoryMarkdownContextAdapter, applyRepositoryPolicy, buildReviewPrompt, deriveVerdict, digestJson, validateConfig, validateReport, type ReviewReport } from "../src/index.js";
 import { readFile, mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
@@ -104,4 +105,48 @@ it("expires the CLI JSON and Markdown report copies", async () => {
   expect((await store.deleteExpired(new Date(Date.now() + 2 * 86_400_000))).errors).toEqual([]);
   await expect(readFile(path.join(root, "report.json"))).rejects.toThrow();
   await expect(readFile(path.join(root, "report.md"))).rejects.toThrow();
+});
+
+it.each(["report.json", "report.md"])("keeps report copies expirable after failing to save %s", async failure => {
+  const root = await mkdtemp(path.join(tmpdir(), "reviewfn-copy-failure-"));
+  const store = new FileArtifactStore(path.join(root, "artifacts"), root);
+  await store.writeReportCopies("old-json", "old-markdown", 1);
+  const original = safeFiles.safeWrite;
+  const spy = vi.spyOn(safeFiles, "safeWrite").mockImplementation(async (file, content) => {
+    if (file === path.join(root, failure)) throw new Error("simulated output write failure");
+    return original(file, content);
+  });
+  try { await expect(store.writeReportCopies("new-json", "new-markdown", 30)).rejects.toThrow(/simulated/); }
+  finally { spy.mockRestore(); }
+  expect((await store.deleteExpired(new Date(Date.now() + 2 * 86_400_000))).errors).toEqual([]);
+  await expect(readFile(path.join(root, "report.md"))).rejects.toThrow();
+  if (failure === "report.md") expect(await readFile(path.join(root, "report.json"), "utf8")).toBe("new-json");
+  else await expect(readFile(path.join(root, "report.json"))).rejects.toThrow();
+  expect((await store.deleteExpired(new Date(Date.now() + 31 * 86_400_000))).errors).toEqual([]);
+  await expect(readFile(path.join(root, "report.json"))).rejects.toThrow();
+});
+
+it("removes orphaned data after a failed metadata commit", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "reviewfn-orphan-"));
+  const store = new FileArtifactStore(root);
+  const original = safeFiles.safeWrite;
+  const spy = vi.spyOn(safeFiles, "safeWrite").mockImplementation(async (file, content) => {
+    if (file.endsWith(".json")) throw new Error("simulated metadata failure");
+    return original(file, content);
+  });
+  try { await expect(store.put("report", "private-content", 30)).rejects.toThrow(/simulated/); }
+  finally { spy.mockRestore(); }
+  const cleanup = await store.deleteExpired();
+  expect(cleanup.errors).toEqual([]); expect(cleanup.deleted).toHaveLength(1);
+  expect(await store.get(cleanup.deleted[0])).toBeUndefined();
+});
+
+it("preserves both report copies when one export was externally changed", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "reviewfn-changed-copy-"));
+  const store = new FileArtifactStore(path.join(root, "artifacts"), root);
+  await store.writeReportCopies("original-json", "original-markdown", 1);
+  await writeFile(path.join(root, "report.md"), "user-modified");
+  expect((await store.deleteExpired(new Date(Date.now() + 2 * 86_400_000))).errors.join()).toMatch(/changed/);
+  expect(await readFile(path.join(root, "report.json"), "utf8")).toBe("original-json");
+  expect(await readFile(path.join(root, "report.md"), "utf8")).toBe("user-modified");
 });

@@ -107,15 +107,15 @@ it("compares publication repository identity across GitHub remote formats", () =
 it.each(["file://github.com/acme/repo", "ftp://github.com/acme/repo", "https://github.com:444/acme/repo"])("rejects noncanonical publication transport %s", remote => expect(githubRepositoryIdentity(remote)).toBeUndefined());
 it("normalizes uppercase SCP hosts", () => expect(githubRepositoryIdentity("git@GITHUB.COM:Acme/repo.git")).toBe("acme/repo"));
 
-it("redacts SCP usernames while retaining repository and host identity", async () => {
+it.each(["private-user@github.com:acme/repo.git", "ssh://private-user@github.com/acme/repo.git"])("redacts usernames and retains host identity for %s", async remote => {
   const runner = async (args: string[]) => {
-    if (args[0] === "config") return "private-user@github.com:acme/repo.git";
+    if (args[0] === "config") return remote;
     if (args[0] === "status" || args[0] === "diff") return "";
     if (args.includes("--symbolic-full-name")) return "refs/heads/main";
     return args[0] === "merge-base" || args.at(-1) === "base^{commit}" ? "a".repeat(40) : "b".repeat(40);
   };
   const change = await new GitSourceControlAdapter({ runner }).capture(".", "base", "head");
-  expect(change.repositoryId).toBe("github.com:acme/repo.git"); expect(change.host).toBe("github.com");
+  expect(change.host).toBe("github.com");
   expect(JSON.stringify(change)).not.toContain("private-user"); expect(githubRepositoryIdentity(change.repositoryId)).toBe("acme/repo");
 });
 

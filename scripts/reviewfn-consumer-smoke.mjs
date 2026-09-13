@@ -35,5 +35,11 @@ fs.writeFileSync(process.argv[process.argv.indexOf('--output-last-message')+1],J
   const reportPath = path.join(consumer, "output/report.json"); const report = JSON.parse(readFileSync(reportPath, "utf8"));
   if (report.change.targetBranch !== "reviewfn-base" || report.verdict !== "ready" || report.change.headCommit !== head || report.requirements.length !== 1 || !report.change.changedPaths.includes("value.js")) throw new Error(`External consumer review failed: ${JSON.stringify(report.coverageReasons)}`);
   if (!run(["render", "--input", reportPath]).includes("Return the value")) throw new Error("External render failed.");
+  writeFileSync(path.join(consumer, "output/artifacts/corrupt.json"), "{}");
+  let cleanupFailure;
+  try { run(["review", "--base", "reviewfn-base", "--head", head, "--output", "../output"]); }
+  catch (error) { cleanupFailure = error; }
+  if (cleanupFailure?.status !== 1 || !String(cleanupFailure.stderr).includes("REVIEWFN_RETENTION_CLEANUP_FAILED")) throw new Error("External consumer silently ignored retention cleanup failure.");
+  if (JSON.parse(readFileSync(reportPath, "utf8")).verdict !== "ready") throw new Error("Cleanup failure lost the completed local report.");
   return { head, verdict: report.verdict, harness: "deterministic fixture, not model-quality evidence", commands: ["init", "preflight", "review", "render"], artifacts: true };
 }

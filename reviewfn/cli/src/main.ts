@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 import { ComposioLinearContextAdapter } from "@superfunctions/reviewfn-context-composio";
-import { safeWrite, safeRead, FileArtifactStore, RepositoryMarkdownContextAdapter, ReviewCoordinator, ReviewFnError, renderMarkdownReport, validateConfig, validatePolicy, type ContextAdapter, type ReviewFnConfig, type ReviewPolicy, type ReviewReport } from "@superfunctions/reviewfn-core";
+import { safeRead, FileArtifactStore, RepositoryMarkdownContextAdapter, ReviewCoordinator, ReviewFnError, renderMarkdownReport, validateConfig, validatePolicy, type ContextAdapter, type ReviewFnConfig, type ReviewPolicy, type ReviewReport } from "@superfunctions/reviewfn-core";
 import { redactRepositoryRemote, githubRepositoryIdentity, GitHubAdvisoryPublisher, GitHubApi, GitSourceControlAdapter } from "@superfunctions/reviewfn-github";
 import { CodexHarnessAdapter } from "@superfunctions/reviewfn-harness-codex";
 import { evaluate, type EvaluationCase, type EvaluationOutcome } from "@superfunctions/reviewfn-testing";
@@ -146,9 +146,13 @@ async function run(): Promise<number> {
     const store = new FileArtifactStore(path.join(outputDirectory, "artifacts"), outputDirectory);
     // Merge retained artifacts without shortening expiration for prior references.
     await store.importFrom(path.join(owned, "artifacts"));
-    await store.deleteExpired();
+    const cleanup = await store.deleteExpired();
     await store.writeReportCopies(`${JSON.stringify(result.report, null, 2)}\n`, result.rendered, Math.min(config.retention.reportDays, policy.retention.reportDays));
     process.stdout.write(`${result.rendered}\n`);
+    if (cleanup.errors.length) {
+      process.stderr.write(`${JSON.stringify({ error: "REVIEWFN_RETENTION_CLEANUP_FAILED", message: "Review outputs were saved, but retention cleanup failed; inspect the output store and retry cleanup.", details: cleanup.errors })}\n`);
+      return 1;
+    }
     return result.report.execution === "completed" ? 0 : 1;
   } finally {
     process.removeListener("SIGINT", abort);

@@ -70,8 +70,20 @@ export class FileArtifactStore implements ArtifactStore {
   private async writeCopiesUnlocked(json: string, markdown: string, retentionDays: number): Promise<void> {
     if (!this.reportCopiesDirectory || !Number.isInteger(retentionDays) || retentionDays <= 0) throw new Error("Report-copy directory and positive retention are required.");
     await this.ensureSafeRoot();
-    const metadata = { expiresAt: new Date(Date.now() + retentionDays * 86_400_000).toISOString(), digests: { "report.json": sha256(json), "report.md": sha256(markdown) } };
-    await safeWrite(path.join(this.root, ".report-copies"), JSON.stringify(metadata));
+    const marker = path.join(this.root, ".report-copies");
+    const previousRaw = await safeRead(marker).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? undefined : Promise.reject(error));
+    const previous = previousRaw ? parseReportCopies(previousRaw) : {};
+    const metadata: ReportCopies = {};
+    for (const [name, content] of [["report.json", json], ["report.md", markdown]]) {
+      const current = await safeRead(path.join(this.reportCopiesDirectory, name)).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? undefined : Promise.reject(error));
+      const prior = (previous[name] ?? []).filter(reference => current && reference.digest === sha256(current));
+      const next = { digest: sha256(content), expiresAt: new Date(Date.now() + retentionDays * 86_400_000).toISOString() };
+      // Keep the current and proposed bytes covered before either copy changes.
+      const references = new Map(prior.map(reference => [reference.digest, reference]));
+      if (!references.has(next.digest) || Date.parse(references.get(next.digest)!.expiresAt) < Date.parse(next.expiresAt)) references.set(next.digest, next);
+      metadata[name] = [...references.values()];
+    }
+    await safeWrite(marker, JSON.stringify(metadata));
     await safeWrite(path.join(this.reportCopiesDirectory, "report.json"), json);
     await safeWrite(path.join(this.reportCopiesDirectory, "report.md"), markdown);
   }
@@ -110,21 +122,39 @@ export class FileArtifactStore implements ArtifactStore {
         errors.push(`${entry}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+    // A crashed put can leave data before its metadata commit; the store lease
+    // excludes active writers while these content-addressed orphans are removed.
+    for (const entry of await readdir(this.root)) {
+      if (!/^[a-z][a-z0-9-]{0,63}-[a-f0-9]{64}\.artifact$/.test(entry)) continue;
+      try {
+        const id = entry.slice(0, -".artifact".length);
+        const metadata = await lstat(path.join(this.root, `${id}.json`)).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? undefined : Promise.reject(error));
+        if (metadata) continue;
+        const file = path.join(this.root, entry);
+        if (!(await lstat(file)).isFile()) throw new Error("Refusing non-regular orphan artifact.");
+        await rm(file);
+        deleted.push(id);
+      } catch (error) { errors.push(`${entry}: ${error instanceof Error ? error.message : String(error)}`); }
+    }
     if (this.reportCopiesDirectory) {
       try {
         const raw = await safeRead(path.join(this.root, ".report-copies")).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? undefined : Promise.reject(error));
         if (raw) {
-          const metadata = JSON.parse(raw.toString("utf8"));
-          if (!Number.isFinite(Date.parse(metadata.expiresAt))) throw new Error("Invalid report-copy expiration.");
-          if (Date.parse(metadata.expiresAt) <= now.getTime()) {
-            for (const name of ["report.json", "report.md"]) {
-              const file = path.join(this.reportCopiesDirectory, name);
-              const content = await safeRead(file).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? undefined : Promise.reject(error));
-              if (content && sha256(content) !== metadata.digests?.[name]) throw new Error("Report copy changed; refusing expiry deletion.");
-              await rm(file, { force: true });
-            }
-            await rm(path.join(this.root, ".report-copies"));
+          const metadata = parseReportCopies(raw);
+          let remaining = false;
+          const expiredCopies: string[] = [];
+          for (const name of ["report.json", "report.md"]) {
+            const file = path.join(this.reportCopiesDirectory, name);
+            const content = await safeRead(file).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? undefined : Promise.reject(error));
+            if (!content) continue;
+            const references = metadata[name].filter(reference => reference.digest === sha256(content));
+            if (!references.length) throw new Error("Report copy changed; refusing expiry deletion.");
+            if (references.some(reference => Date.parse(reference.expiresAt) > now.getTime())) { remaining = true; continue; }
+            expiredCopies.push(file);
           }
+          // Validate both copies before deleting either when an export changed.
+          for (const file of expiredCopies) await rm(file, { force: true });
+          if (!remaining) await rm(path.join(this.root, ".report-copies"));
         }
       } catch (error) { errors.push(`Report copies: ${error instanceof Error ? error.message : String(error)}`); }
     }
@@ -151,4 +181,13 @@ async function writeExclusiveOrVerify(file: string, bytes: Uint8Array, digest: s
 
 function validateMetadata(metadata: ArtifactMetadata, entry: string): void {
   if (!/^[a-z][a-z0-9-]{0,63}-[a-f0-9]{64}$/.test(metadata.id) || entry !== `${metadata.id}.json` || metadata.id !== `${metadata.kind}-${metadata.digest}` || !Number.isFinite(Date.parse(metadata.expiresAt))) throw new Error("Invalid artifact metadata identity or expiry.");
+}
+
+type ReportCopies = Record<string, { digest: string; expiresAt: string }[]>;
+function parseReportCopies(raw: Buffer): ReportCopies {
+  const value = JSON.parse(raw.toString("utf8")) as ReportCopies;
+  for (const name of ["report.json", "report.md"]) {
+    if (!Array.isArray(value?.[name]) || value[name].length < 1 || value[name].length > 2 || value[name].some(reference => !reference || !/^[a-f0-9]{64}$/.test(reference.digest) || !Number.isFinite(Date.parse(reference.expiresAt)))) throw new Error("Invalid report-copy retention metadata.");
+  }
+  return value;
 }

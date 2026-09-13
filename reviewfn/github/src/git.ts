@@ -82,9 +82,9 @@ export class GitSourceControlAdapter implements SourceControlAdapter {
 }
 
 function hostFromRemote(remote: string): string {
-  const match = remote.match(/^(?:https?:\/\/|ssh:\/\/git@|git@)([^/:]+)/);
-  const scpHost = !remote.includes("://") && !/^[A-Za-z]:/.test(remote) ? remote.match(/^([^/@:]+):/)?.[1] : undefined;
-  return match?.[1] ?? scpHost ?? "local";
+  if (/^[A-Za-z]:/.test(remote)) return "local";
+  try { const url = new URL(remote); if (["http:", "https:", "ssh:"].includes(url.protocol)) return url.hostname; } catch { /* SCP and local paths are not URLs. */ }
+  return !remote.includes("://") ? remote.match(/^(?:[^@/]+@)?([^/@:]+):/)?.[1] ?? "local" : "local";
 }
 
 export function redactRepositoryRemote(remote: string): string {
