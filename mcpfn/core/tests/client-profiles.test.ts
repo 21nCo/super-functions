@@ -617,7 +617,7 @@ it("marks invalid-argument callbacks as handlers and bounds diagnostic paths", a
   const issue = formatMcpFnSchemaIssues([{ instancePath: '/' + 'x'.repeat(1000), schemaPath: '#/type', keyword: 'type', params: {}, message: 'bad' }])[0];
   expect(issue.instancePath).toBe('/');
   const stages: string[] = [];
-  const registry = new McpFnRegistry().register({ name: 'test', inputSchema: { type: 'object', required: ['value'] },
+  const registry = new McpFnRegistry().register({ name: 'test', description: 'Test validation observer', inputSchema: { type: 'object', required: ['value'] },
     handleInvalidArguments: () => { throw new McpFnValidationError('private', { issues: [{ secret: 'private' }] }); },
     handler: async () => structuredResult({}) });
   await expect(registry.callTool('test', {}, undefined, {} as any, { onStage: stage => stages.push(stage) })).rejects.toThrow('private');
