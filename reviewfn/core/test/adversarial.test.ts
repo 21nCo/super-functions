@@ -336,6 +336,7 @@ it.each(["title", "trigger", "impact", "direction"] as const)("rejects whitespac
   const value = report(); value.verdict = "changes_requested";
   value.findings = [{ fingerprint: "f", severity: "high", category: "behavior", title: "Bug", trigger: "input", impact: "wrong", direction: "fix", evidenceIds: ["e"], basis: "inferred", requirementIds: ["r"], lifecycle: "new" }];
   value.findings[0][field] = " \n\t";
+  expect(deriveVerdict(value, policy)).toBe("needs_verification");
   expect((await errors(value)).join()).toMatch(/actionable/);
 });
 
