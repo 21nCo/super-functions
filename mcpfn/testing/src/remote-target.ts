@@ -58,10 +58,20 @@ const envelopeKeys: Record<string, Set<string>> = Object.fromEntries(Object.entr
   target: "kind",
 }).map(([role, keys]) => [role, new Set(keys.split(" "))]));
 
+function specialValue(input: unknown): unknown {
+  if (input instanceof Error) return { ...input, name: input.name, message: input.message, stack: input.stack };
+  if (input instanceof Date) return Number.isNaN(input.getTime()) ? "Invalid Date" : input.toISOString();
+  if (input instanceof URL) return input.href;
+  if (input instanceof Map) return { type: "Map", entries: [...input.entries()] };
+  if (input instanceof Set) return { type: "Set", values: [...input.values()] };
+  return input;
+}
+
 function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = false): T {
   const secrets = [...values].filter(Boolean).sort((a, b) => b.length - a.length);
   let entries = 0, stringBytes = 0;
   const budget = (input: unknown, depth = 0): void => {
+    input = specialValue(input);
     if ((Array.isArray(input) && input.length > 100_000) || ++entries > 100_000 || depth > 32) throw new McpFnRedactionLimitError();
     if (typeof input === "string") {
       stringBytes += Buffer.byteLength(input);
@@ -77,15 +87,18 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   // explicit failure, never silent truncation of a typed report collection.
   budget(value);
   const scrub = (input: unknown, role = "payload", field = ""): unknown => {
+    input = specialValue(input);
     if (typeof input === "string") {
+      if (role === "target" && field === "kind" && ["authenticated-streamable-http", "streamable-http", "stdio", "in-memory", "custom"].includes(input)) return input;
+      if ((role === "packages" && field === "testing") || (role === "runtime" && field === "node")) return input;
       if ((role === "root" || role === "result") && field === "status" && ["passed", "failed", "incomplete", "complete"].includes(input)) return input;
       if ((role === "root" || role === "diagnostic") && field === "outcome" && ["started", "succeeded", "failed"].includes(input)) return input;
       if (role === "root" && field === "kind" && ["mcpfn.target-suite-report", "mcpfn.inspector-snapshot", "mcpfn.official-conformance-report"].includes(input)) return input;
       if ((role === "root" || role === "diagnostic" || role === "failure") && field === "phase" && ["resource-discovery", "authorization-server-discovery", "client-registration", "authorization-request", "authorization-callback", "token-exchange", "token-refresh", "token-revocation", "transport-connect", "mcp-initialize", "capability-operation", "transport-close"].includes(input)) return input;
       if (role === "failure" && field === "layer" && ["mcpfn-preflight", "authorization-server", "resource-server", "mcp-initialization", "scenario", "upstream-conformance"].includes(input)) return input;
       if (role === "inspectorEvent" && field === "source" && ["diagnostic", "client"].includes(input)) return input;
-      if (role === "result" && field === "sideEffect" && ["read-only", "idempotent", "non-idempotent"].includes(input)) return input;
-      return secrets.reduce((text, secret) => text.split(secret).join("[REDACTED]"), input);
+      if (role === "result" && field === "sideEffect" && ["none", "idempotent", "non-idempotent"].includes(input)) return input;
+      return secrets.reduce((text, secret) => text.split(secret).join(secret.length < 10 ? (secret.includes("*") ? "#" : "*").repeat(secret.length) : "[REDACTED]"), input);
     }
     if (Array.isArray(input)) return input.map(entry => scrub(entry, role));
     if (input && typeof input === "object") return Object.fromEntries(Object.entries(input).map(([key, entry]) => {
@@ -257,6 +270,7 @@ export function authenticatedHttpTarget(
           secrets.clear();
         }
       };
+      pendingReleases.add(release);
       let handle: McpFnTransportHandle | undefined;
       try {
         for (const secret of credentialValues(lease.credential.headers)) {

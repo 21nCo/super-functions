@@ -252,7 +252,7 @@ export async function runCli(
         const message = error instanceof Error ? error.message : String(error);
         const safeMessage = redactTargetCredentials(target, message);
         if (error instanceof McpFnClientError) {
-          throw new McpFnClientError(error.code, safeMessage, {phase: error.phase, retryable: error.retryable});
+          throw new McpFnClientError(error.code, safeMessage, {phase: error.phase, retryable: error.retryable, details: redactTargetCredentials(target, error.details), cause: redactTargetCredentials(target, error)});
         }
         throw new Error(safeMessage);
       } finally { finishRedaction(); }
@@ -413,6 +413,9 @@ function readRemoteCredential(
     throw new Error(`Credential environment variable ${environmentName} is missing or empty`);
   }
   if (options.bearerTokenEnv) {
+    try { new Headers({ authorization: `Bearer ${value}` }); }
+    catch { throw new Error("Bearer token must be a valid HTTP header value"); }
+    if (!value.trim()) throw new Error("Bearer token must not be blank");
     return {
       environmentName,
       credential: {

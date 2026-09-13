@@ -379,3 +379,17 @@ describe("mcpfn CLI", () => {
     }
   });
 });
+
+it("rejects multiline Bearer credentials without printing their contents", async () => {
+  const variable = 'MCPFN_REVIEW_BEARER_TEST';
+  const previous = process.env[variable];
+  process.env[variable] = 'opaque-private\ncredential';
+  try {
+    let stderr = '';
+    const code = await runCli(['inspect', 'http://127.0.0.1:1/mcp', '--bearer-token-env', variable], { stderr: text => { stderr += text; }, stdout: () => {} });
+    expect(code).toBe(2);
+    expect(stderr).toContain('valid HTTP header');
+    expect(stderr).not.toContain('opaque-private');
+    expect(stderr).not.toContain('\ncredential');
+  } finally { if (previous === undefined) delete process.env[variable]; else process.env[variable] = previous; }
+});

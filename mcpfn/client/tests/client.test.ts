@@ -644,3 +644,20 @@ it("drains late-open cleanup after an earlier cleanup snapshot finishes", async 
   await client.close();
   expect(cleanup).toHaveBeenCalledTimes(3);
 });
+
+
+it("blocks reconnect while an aborted pre-open diagnostic is pending", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const open = vi.fn();
+  const client = createMcpFnClient({ target: customTarget({ kind: 'pre-open', open }), diagnostics: async event => {
+    if (event.phase === 'transport-connect' && event.outcome === 'started') await gate;
+  } });
+  const connecting = client.connect();
+  const rejected = expect(connecting).rejects.toThrow();
+  await client.close();
+  await expect(client.connect()).rejects.toThrow(/Retry close/);
+  expect(open).not.toHaveBeenCalled();
+  release();
+  await rejected;
+});

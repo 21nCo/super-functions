@@ -272,6 +272,7 @@ async function runHostedCase(
           body: tokenBody,
         },
       ));
+      responseStatus = tokenResponse.status;
       const tokenError = await oauthError(tokenResponse);
       if (tokenError) {
         await validateOAuthRejection(tokenResponse, fixture);
@@ -299,6 +300,7 @@ async function runHostedCase(
             }),
           },
         ));
+        responseStatus = refreshResponse.status;
         const refreshError = await oauthError(refreshResponse);
         if (refreshError) {
           await validateOAuthRejection(refreshResponse, fixture);
@@ -316,7 +318,7 @@ async function runHostedCase(
     const safe = redactOAuthValue(error) as Record<string, unknown>;
     const code = typeof safe.code === "string" ? safe.code : undefined;
     const message = typeof safe.message === "string" ? safe.message : String(safe);
-    return assessHostedCase(fixture, phase, undefined, code, message);
+    return assessHostedCase(fixture, phase, responseStatus, code, message);
   }
 }
 
@@ -417,11 +419,12 @@ function validatedRedirectCode(response: Response, fixture: McpFnHostedAuthoriza
 }
 
 async function validatedTokenSet(response: Response): Promise<{ refresh_token?: unknown }> {
+  if (response.status !== 200) throw new Error("Successful token responses must use HTTP 200");
   if (!isJsonResponse(response)) throw new Error("Token response must use a JSON media type");
   const value = await response.clone().json() as Record<string, unknown> | null;
   if (!value || typeof value.access_token !== "string" || !value.access_token ||
       typeof value.token_type !== "string" || value.token_type.toLowerCase() !== "bearer") {
-    throw new Error("Token response is missing an access token or token type");
+    throw new Error("Token response requires an access token and Bearer token type");
   }
   return value;
 }

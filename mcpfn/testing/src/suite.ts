@@ -235,7 +235,10 @@ function enforceReportCap(
     bounded.capabilities = undefined;
     bounded.timeline = [];
     bounded.droppedTimelineEvents += report.timeline.length;
-    if (bounded.failure) bounded.failure.details = undefined;
+    if (bounded.failure) {
+      bounded.failure.details = undefined;
+      bounded.failure.message = bounded.failure.message.slice(0, 128);
+    }
   }
   if (bounded.droppedResults > 0 || jsonBytes(bounded) > maxBytes) {
     bounded.ok = false;

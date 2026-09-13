@@ -286,7 +286,9 @@ export class McpFnClient {
     const controller = new AbortController();
     this.connectController = controller;
     let connectPromise: Promise<void>;
+    this.openingSignals.add(controller.signal);
     connectPromise = this.connectInternal(controller.signal).finally(() => {
+      this.openingSignals.delete(controller.signal);
       if (this.connectController === controller) this.connectController = undefined;
       if (this.connectPromise === connectPromise) this.connectPromise = undefined;
     });
@@ -301,7 +303,9 @@ export class McpFnClient {
       if (signal.aborted) throw connectAbortedError(lastError);
       const requestId = this.requestId();
       this._state = "connecting";
+      this.openingSignals.add(signal);
       await this.emit("transport-connect", "started", requestId, undefined, { attempt });
+      if (signal.aborted) throw connectAbortedError();
       const openFailure = await this.openTargetAttempt(requestId, attempt, retries, signal);
       if (openFailure) {
         lastError = openFailure.error;
@@ -341,15 +345,13 @@ export class McpFnClient {
       return undefined;
     } catch (error) {
       if (signal.aborted) throw connectAbortedError(error);
+      await this.emit("transport-connect", "failed", requestId, "MCPFN_TARGET_OPEN_FAILED", { attempt, message: errorMessage(error) });
       try { await this.cleanupTarget(); }
       catch {
+        await this.emit("transport-close", "failed", requestId, "MCPFN_CREDENTIAL_CLEANUP_FAILED");
         this._state = "closing";
         throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Retry close after target cleanup failed", {phase: "transport-close", retryable: true});
       }
-      await this.emit("transport-connect", "failed", requestId, "MCPFN_TARGET_OPEN_FAILED", {
-        attempt,
-        message: errorMessage(error),
-      });
       if (attempt < retries) {
         await this.connectRetryDelay(signal);
         return { error };
@@ -472,6 +474,10 @@ export class McpFnClient {
       attempt,
     });
     await this.cleanupOwnedAttempt(protocol, handle);
+    if (this.pendingCleanup.size > 0 || this.targetCleanupPending) {
+      this._state = "closing";
+      throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Retry close before another connection attempt", { phase: "transport-close", retryable: true });
+    }
     return { connected: false, error };
   }
 

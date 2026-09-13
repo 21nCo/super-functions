@@ -320,7 +320,7 @@ it("preserves report collections and fixed keys while scrubbing payload keys", a
   expect(result.target).toEqual({ kind: "http" });
   expect(result.results).toHaveLength(501);
   expect(result.count).toBe(501);
-  expect(result.results[0].structuredContent).toEqual({ "[REDACTED]": "[REDACTED]" });
+  expect(result.results[0].structuredContent).toEqual({ "******": "******" });
 });
 it("rejects non-string headers and releases the acquired lease", async () => {
   const dispose = vi.fn();
@@ -343,7 +343,7 @@ it("retries failed cleanup without repeating successful disposal", async () => {
 });
 it("handles long authorization whitespace without backtracking", async () => {
   const { redactRemoteCredential } = await import("../src/remote-target.js");
-  expect(redactRemoteCredential({ headers: { authorization: `Bearer${" ".repeat(100000)}opaque` } }, "opaque")).toBe("[REDACTED]");
+  expect(redactRemoteCredential({ headers: { authorization: `Bearer${" ".repeat(100000)}opaque` } }, "opaque")).toBe("******");
 });
 
 it("retries authenticated handle revocation after a strict close fails", async () => {
@@ -366,7 +366,7 @@ it("redacts dynamic inspector keys without corrupting result statuses", async ()
   const report = { kind: "mcpfn.target-suite-report", ok: true, results: [{ status: "passed", name: "passed" }], timeline: [{ details: { passed: "passed" } }] };
   const redacted = redactRemoteCredential(credential, report, { preserveKeys: true });
   expect(createMcpFnTargetSuiteJUnit({ ...redacted, target: { kind: "custom" }, runtime: { node: process.version }, status: "complete", total: 1, passed: 1, failed: 0, incomplete: 0, droppedResults: 0, droppedObservedEvents: 0, droppedTimelineEvents: 0 } as any)).not.toContain("<failure");
-  expect(redacted.results[0]).toEqual({ status: "passed", name: "[REDACTED]" });
+  expect(redacted.results[0]).toEqual({ status: "passed", name: "******" });
   const snapshot = { kind: "mcpfn.inspector-snapshot", timeline: [{ event: { passed: { status: "passed" } } }] };
   expect(JSON.stringify(redactRemoteCredential(credential, snapshot, { preserveKeys: true }))).not.toContain("passed");
   let deep: any = {}; for (let i = 0; i < 40; i++) deep = { child: deep };
@@ -395,11 +395,38 @@ it("releases malformed credentials even when inspection fails", async () => {
 it("scrubs opaque credentials before generic redaction can truncate their suffix", async () => {
   const {redactRemoteCredential} = await import("../src/remote-target.js");
   const token = "opaque-credential-unique-tail";
-  const input = "token=x " + "a".repeat(262144 - 8 - token.length) + token;
-  const result = redactRemoteCredential({headers: {"x-api-key": token}}, input);
-  expect(result).not.toContain("opaque-credential");
+  const input = "data=x " + "a".repeat(262144 - 7 - 8) + token;
+  // Inputs beyond the explicit budget fail closed before any output is emitted.
+  expect(() => redactRemoteCredential({headers: {"x-api-key": token}}, input)).toThrow(/traversal budget/);
 });
 it("scrubs token components of custom authorization schemes", async () => {
   const {redactRemoteCredential} = await import("../src/remote-target.js");
   expect(redactRemoteCredential({headers: {authorization: "Token opaque-123"}}, {echo: "opaque-123"})).toEqual({echo: "[REDACTED]"});
+});
+
+
+it("retains successful-open leases until revocation succeeds", async () => {
+  const revoke = vi.fn().mockRejectedValueOnce(new Error('temporary')).mockResolvedValue(undefined);
+  const target = authenticatedHttpTarget('http://127.0.0.1:1/mcp', { credential: { acquire: () => ({ headers: { 'x-api-key': 'opaque-key' } }), revoke } });
+  const handle = await target.open({ requestId: 'lease', diagnostic: async () => {} });
+  await expect(handle.close!()).rejects.toThrow(/cleanup/);
+  await target.cleanup!();
+  expect(revoke).toHaveBeenCalledTimes(2);
+});
+
+it("preserves fixed report values and special diagnostics while masking short secrets", async () => {
+  const { redactRemoteCredential } = await import('../src/remote-target.js');
+  for (const secret of ['none', 'http', '0.0.5']) {
+    const report = { kind: 'mcpfn.target-suite-report', target: { kind: 'authenticated-streamable-http' }, runtime: { packages: { testing: '0.0.5' } }, results: [{ sideEffect: 'none', name: secret }] };
+    const result = redactRemoteCredential({ headers: { 'x-api-key': secret } }, report, { preserveKeys: true });
+    expect(result.target.kind).toBe(report.target.kind);
+    expect(result.runtime).toEqual(report.runtime);
+    expect(result.results[0].sideEffect).toBe('none');
+    expect(result.results[0].name).not.toContain(secret);
+  }
+  const credential = { headers: { 'x-api-key': 'a' } };
+  expect(String(redactRemoteCredential(credential, 'a'.repeat(1000)))).toHaveLength(1000);
+  const result: any = redactRemoteCredential({ headers: { 'x-api-key': 'opaque-secret' } }, new Error('failed opaque-secret'));
+  expect(result.message).toContain('failed');
+  expect(result.message).not.toContain('opaque-secret');
 });

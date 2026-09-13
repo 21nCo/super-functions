@@ -130,3 +130,11 @@ it("marks otherwise successful suites incomplete when custom close rejects", asy
   expect(report.incompleteReason).toContain("Target cleanup failed");
   expect(JSON.stringify(report)).not.toContain("opaque-cleanup-value");
 });
+
+
+it("bounds long target failures under the minimum report cap", async () => {
+  const { customTarget } = await import('@mcpfn/client');
+  const report = await runMcpFnTargetSuite({ target: customTarget({ kind: 'failure', open: async () => { throw new Error('x'.repeat(4000)); } }), maxReportBytes: 1024 });
+  expect(report.status).toBe('incomplete');
+  expect(Buffer.byteLength(JSON.stringify(report, null, 2))).toBeLessThanOrEqual(1024);
+});
