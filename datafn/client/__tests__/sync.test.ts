@@ -948,7 +948,7 @@ describe("@datafn/client sync", () => {
       .spyOn(DefaultHttpTransport.prototype, "pull")
       .mockResolvedValue({
         ok: true,
-        result: { ok: true, changes: [], nextCursor: null },
+        result: { ok: true, records: {}, deleted: {}, cursors: {} },
       });
 
     vi.spyOn(DefaultHttpTransport.prototype, "clone").mockResolvedValue({
@@ -975,6 +975,8 @@ describe("@datafn/client sync", () => {
     const ws = MockWebSocket.instances[0];
     expect(ws.url).toBe("ws://example.com/ws");
 
+    pullSpy.mockClear();
+
     // Simulate cursor message > 10
     ws.onmessage({
       data: JSON.stringify({ type: "cursor", cursor: "20" }),
@@ -982,7 +984,7 @@ describe("@datafn/client sync", () => {
 
     await vi.runAllTimersAsync(); // Allow pullNow to run
 
-    expect(pullSpy).toHaveBeenCalled();
+    expect(pullSpy).toHaveBeenCalledTimes(1);
   });
 
   it("TV-WS-002: Unknown WebSocket messages do not trigger pull", async () => {

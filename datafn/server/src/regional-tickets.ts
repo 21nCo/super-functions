@@ -241,12 +241,14 @@ export async function validateDatafnRouteTicket(input: {
     const identity = await runtime.authenticate(input.request);
     if (!identity || identity.subject !== claims.subject || identity.namespace !== claims.namespace ||
       identity.sessionBinding !== claims.sessionBinding ||
-      (identity.expiresAt !== undefined && (!Number.isFinite(identity.expiresAt) || identity.expiresAt <= now))) {
+      (identity.expiresAt !== undefined && (!Number.isFinite(identity.expiresAt) || identity.expiresAt <= (runtime.now ?? Date.now)()))) {
       throw routeTicketError("DATAFN_ROUTE_FORBIDDEN");
     }
     if (runtime.isActive && !await runtime.isActive(claims)) throw routeTicketError("DATAFN_ROUTE_TICKET_REVOKED");
     if (runtime.allowRequest && !await runtime.allowRequest(claims)) throw routeTicketError("DATAFN_ROUTE_RATE_LIMITED");
-    if (claims.expiresAt <= (runtime.now ?? Date.now)()) throw routeTicketError("DATAFN_ROUTE_TICKET_EXPIRED");
+    const admittedAt = (runtime.now ?? Date.now)();
+    if (identity.expiresAt !== undefined && identity.expiresAt <= admittedAt) throw routeTicketError("DATAFN_ROUTE_FORBIDDEN");
+    if (claims.expiresAt <= admittedAt) throw routeTicketError("DATAFN_ROUTE_TICKET_EXPIRED");
     emit(runtime, { type: "accepted" });
     return claims;
   } catch (error) {

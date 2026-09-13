@@ -544,7 +544,8 @@ export class SyncEngine {
       const route = await routes?.get();
       if (!this.wsReconnectEnabled || generation !== this.wsGeneration) return;
       const url = route?.wsUrl ?? (route ? undefined : this.wsUrl);
-      if (!url) throw new Error("DATAFN_ROUTE_WEBSOCKET_UNAVAILABLE");
+      // An HTTP-only descriptor does not advertise a socket service. Keep HTTP sync active.
+      if (!url) return;
       const socket = route
         ? new WebSocket(url, [DATAFN_ROUTE_WS_PROTOCOL, `${DATAFN_ROUTE_WS_TICKET_PREFIX}${route.ticket}`, ...authProtocols])
         : new WebSocket(url, authProtocols);
@@ -618,7 +619,7 @@ export class SyncEngine {
         this.wsRouteUnsubscribe?.();
         this.wsRouteUnsubscribe = undefined;
         clearTimeout(this.wsExpiryTimer);
-        routes?.invalidate(route);
+        if ([4401, 4403, 4510, 4511].includes(event.code)) routes?.invalidate(route);
         this.ws = null;
         // An upgrade may open before admission rejects it. Preserve the attempt count
         // across throttled admissions instead of resetting backoff on every open event.

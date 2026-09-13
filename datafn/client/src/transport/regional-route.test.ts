@@ -40,6 +40,35 @@ describe("direct regional client lifecycle", () => {
     cache.dispose();
   });
 
+  it("supersedes hung renewal when the clock expires before timers run", async () => {
+    vi.useFakeTimers();
+    const start = Date.now();
+    let clock = start;
+    const provider = { bootstrap: vi.fn(async () => route({ expiresAt: clock + 60_000, renewAfter: clock + 48_000 })),
+      renew: vi.fn(() => new Promise<DatafnRegionalRouteDescriptor>(() => {})) };
+    const cache = new DatafnRegionalRouteCache(provider, () => clock);
+    await cache.get();
+    clock += 48_000;
+    await cache.get();
+    expect(provider.renew).toHaveBeenCalledTimes(1);
+    clock += 12_001;
+    const pending = cache.get();
+    for (let i = 0; i < 12; i++) await Promise.resolve();
+    expect(provider.bootstrap).toHaveBeenCalledTimes(2);
+    expect((await pending).expiresAt).toBe(clock + 60_000);
+    cache.dispose();
+  });
+
+  it("allows a listener to dispose during invalidation without recursive notification", async () => {
+    const cache = new DatafnRegionalRouteCache({ bootstrap: async () => route(), renew: async () => route() });
+    await cache.get();
+    const listener = vi.fn(() => cache.dispose());
+    cache.subscribe(listener);
+    cache.invalidate();
+    expect(listener).toHaveBeenCalledTimes(1);
+    await expect(cache.get()).rejects.toMatchObject({ code: "DATAFN_ROUTE_DISPOSED" });
+  });
+
   it("never restores a descriptor from an invalidated in-flight bootstrap", async () => {
     let release!: (value: DatafnRegionalRouteDescriptor) => void;
     const provider = { bootstrap: vi.fn().mockImplementationOnce(() => new Promise(resolve => { release = resolve; })).mockResolvedValue(route({ ticket: "fresh.ticket" })), renew: vi.fn() };
@@ -54,7 +83,9 @@ describe("direct regional client lifecycle", () => {
 
   it.each([
     { httpUrl: "https://user:password@eu.example/datafn" }, { httpUrl: "http://eu.example/datafn" },
-    { wsUrl: "wss://eu.example/ws?ticket=secret" }, { expiresAt: 0 },
+    { wsUrl: "wss://eu.example/ws?ticket=secret" }, { expiresAt: 0 }, { renewAfter: 0 },
+    { httpUrl: "https://eu.example/datafn?" }, { httpUrl: "https://eu.example/datafn#" },
+    { wsUrl: "wss://eu.example/ws?" }, { wsUrl: "wss://eu.example/ws#" },
     { expiresAt: Date.now() + 600_000 }, { ticket: "bad token" },
   ])("rejects invalid descriptor %j", async patch => {
     const cache = new DatafnRegionalRouteCache({ bootstrap: async () => route(patch), renew: async () => route() });

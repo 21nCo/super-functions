@@ -22,10 +22,10 @@ class MockWebSocket {
   onclose: (event?: { code: number }) => void = () => {};
   onerror: (e: any) => void = () => {};
   send = vi.fn();
-  close = vi.fn(() => {
+  close = vi.fn((code = 1005) => {
     // Simulate close event when close() is called
     this.readyState = 3;
-    setTimeout(() => this.onclose(), 0);
+    setTimeout(() => this.onclose({ code }), 0);
   });
 
   constructor(public url: string) {
@@ -216,10 +216,26 @@ describe("WebSocket Reconnection (Phase 07)", () => {
         await vi.advanceTimersByTimeAsync(2);
         expect(MockWebSocket.instances).toHaveLength(attempt + 2);
       }
-      expect(bootstrap).toHaveBeenCalledTimes(4);
+      expect(bootstrap).toHaveBeenCalledTimes(1);
       MockWebSocket.instances[3].triggerClose(4403);
       await vi.advanceTimersByTimeAsync(1000);
       expect(MockWebSocket.instances).toHaveLength(4);
+    } finally { await client.destroy(); }
+  });
+
+  it("keeps HTTP-only routes usable without scheduling socket retries", async () => {
+    vi.spyOn(DefaultHttpTransport.prototype, "clone").mockResolvedValue({ ok: true, result: { ok: true, data: {}, cursors: {} } });
+    const bootstrap = vi.fn(async () => ({ version: 1 as const, httpUrl: "https://eu.example/datafn",
+      ticket: "test.ticket", expiresAt: Date.now() + 60_000, renewAfter: Date.now() + 48_000 }));
+    const protocols = vi.fn(() => []);
+    const client = createDatafnClient({ schema: defaultSchema, clientId: "http-only", storage: new MockStorageAdapter(),
+      sync: { routeProvider: { bootstrap, renew: bootstrap }, ws: true, wsProtocols: protocols } });
+    try {
+      await client.sync.start();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(MockWebSocket.instances).toHaveLength(0);
+      expect(protocols).toHaveBeenCalledTimes(1);
+      expect(bootstrap).toHaveBeenCalledTimes(1);
     } finally { await client.destroy(); }
   });
 

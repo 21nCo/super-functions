@@ -32,7 +32,7 @@ export function validateDatafnRegionalEndpoint(value: string, websocket = false)
   const protocol = websocket ? "wss:" : "https:";
   const localProtocol = websocket ? "ws:" : "http:";
   if ((url.protocol !== protocol && !(local && url.protocol === localProtocol)) ||
-    url.username || url.password || url.search || url.hash) {
+    url.username || url.password || value.includes("?") || value.includes("#")) {
     throw new Error("DATAFN_ROUTE_ENDPOINT_INVALID");
   }
   return url.toString().replace(/\/$/, "");

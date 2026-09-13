@@ -507,6 +507,7 @@ export class WebSocketManager {
         principals: mode === "targeted" ? Array.from(requestedPrincipals).sort() : undefined,
       },
     });
+    let sent = 0;
     for (const client of recipients) {
       const ticket = this.routeTickets.get(client);
       if (ticket && ticket.expiresAt <= ticket.now()) {
@@ -515,6 +516,7 @@ export class WebSocketManager {
       }
       try {
         client.send(msg);
+        sent++;
       } catch (e) {
         this.logger?.error("Error sending to websocket client", { error: String(e), operation: "ws-broadcast" });
         this.removeClient(client);
@@ -525,7 +527,7 @@ export class WebSocketManager {
     return {
       mode,
       degraded,
-      wokenClients: mode === "namespace-broadcast" ? "all-in-namespace" : recipients.size,
+      wokenClients: mode === "namespace-broadcast" ? "all-in-namespace" : sent,
     };
   }
 

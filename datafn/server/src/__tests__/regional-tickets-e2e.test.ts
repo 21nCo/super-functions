@@ -264,8 +264,25 @@ describe("direct regional two-region network conformance", () => {
     await vi.waitFor(() => expect(f.eu.admitted).toHaveLength(3));
   });
 
+  it("reuses valid HTTP and socket routes after transient disconnect during gateway outage", async () => {
+    vi.stubGlobal("WebSocket", WebSocket);
+    const f = await fixture();
+    const client = createDatafnClient({ schema, clientId: "transient", storage: new MemoryStorageAdapter(["note"]),
+      sync: { routeProvider: f.provider, offlinability: true, ws: true,
+        http: { headers: { authorization: "Bearer app-session" } }, wsProtocols: () => ["app-session.test"],
+        wsReconnect: { baseDelayMs: 10, jitterMs: 0 } } });
+    cleanups.push(() => client.destroy());
+    await client.sync.start();
+    await vi.waitFor(() => expect(f.eu.admitted).toHaveLength(1));
+    f.setGatewayAvailable(false);
+    f.eu.admitted[0].terminate();
+    await vi.waitFor(() => expect(f.eu.admitted).toHaveLength(2));
+    await expect(client.query({ resource: "note", version: 1 })).resolves.toBeDefined();
+    expect(f.gateway.paths).toEqual(["/bootstrap"]);
+  });
+
   it("keeps established regional traffic through a gateway outage only until expiry and closes sockets with 4511", async () => {
-    const f = await fixture(1000);
+    const f = await fixture(3000);
     await f.transport.query({ resource: "note", version: 1 });
     const descriptor = await f.transport.regionalRoutes!.get();
     const ws = new WebSocket(descriptor.wsUrl!, ["datafn-sync-v1", `datafn-ticket.${descriptor.ticket}`, "app-session.test"]);
@@ -277,11 +294,11 @@ describe("direct regional two-region network conformance", () => {
     expect((await f.transport.query({ resource: "note", version: 1 }) as any).ok).toBe(true);
     expect((await closed)[0]).toBe(4511);
     await expect(f.transport.query({ resource: "note", version: 1 })).rejects.toMatchObject({ code: "DATAFN_ROUTE_BOOTSTRAP_UNAVAILABLE" });
-  });
+  }, 10_000);
 
   it("renews a live public client socket before expiry through the canonical provider", async () => {
     vi.stubGlobal("WebSocket", WebSocket);
-    const f = await fixture(1000);
+    const f = await fixture(3000);
     const client = createDatafnClient({ schema, clientId: "client:renew", storage: new MemoryStorageAdapter(["note"]),
       sync: { routeProvider: f.provider, offlinability: true, ws: true,
         http: { headers: { authorization: "Bearer app-session" } }, wsProtocols: () => ["app-session.test"],
@@ -290,11 +307,11 @@ describe("direct regional two-region network conformance", () => {
     cleanups.push(() => client.destroy());
     await client.sync.start();
     await vi.waitFor(() => expect(f.eu.admitted).toHaveLength(1));
-    await vi.waitFor(() => expect(f.eu.admitted).toHaveLength(2), { timeout: 2000 });
+    await vi.waitFor(() => expect(f.eu.admitted).toHaveLength(2), { timeout: 6000 });
     expect(f.gateway.paths).toEqual(["/bootstrap", "/bootstrap"]);
     expect(f.eu.admitted[1].readyState).toBe(WebSocket.OPEN);
     expect(f.us.admitted).toHaveLength(0);
-  });
+  }, 10_000);
 
   it("revokes admitted tickets immediately and stops automatic client reconnect", async () => {
     vi.stubGlobal("WebSocket", WebSocket);

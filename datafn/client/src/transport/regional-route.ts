@@ -28,6 +28,8 @@ export class DatafnRegionalRouteCache {
       if (this.current.renewAfter <= this.now()) void this.refresh(true).catch(() => {});
       return this.current;
     }
+    // Expiry must supersede renewal even before the deadline timer gets CPU time.
+    if (this.current) this.invalidate(this.current);
     return this.refresh(false);
   }
 
@@ -49,8 +51,8 @@ export class DatafnRegionalRouteCache {
 
   dispose(): void {
     this.disposed = true;
-    this.invalidate();
     this.listeners.clear();
+    this.invalidate();
   }
 
   private notify(): void {
@@ -70,7 +72,7 @@ export class DatafnRegionalRouteCache {
             !/^[A-Za-z0-9_.-]{1,16384}$/.test(descriptor.ticket) ||
             !Number.isSafeInteger(descriptor.expiresAt) || !Number.isSafeInteger(descriptor.renewAfter) ||
             descriptor.expiresAt <= now || descriptor.expiresAt > now + DATAFN_ROUTE_MAX_TTL_MS ||
-            descriptor.renewAfter >= descriptor.expiresAt || descriptor.renewAfter < 0) throw new Error();
+            descriptor.renewAfter >= descriptor.expiresAt || descriptor.renewAfter <= now) throw new Error();
           const next = Object.freeze({ ...descriptor,
             httpUrl: validateDatafnRegionalEndpoint(descriptor.httpUrl),
             ...(descriptor.wsUrl ? { wsUrl: validateDatafnRegionalEndpoint(descriptor.wsUrl, true) } : {}),

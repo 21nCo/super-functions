@@ -92,6 +92,9 @@ describe("regional route grants", () => {
         headers: { "x-datafn-routing-assertion": value },
       }))).rejects.toMatchObject({ code: "DATAFN_ROUTE_TICKET_INVALID" });
     }
+    const mixed = request(signer.sign(claims()) as string);
+    mixed.headers.set("x-datafn-routing-assertion", "forged");
+    await expect(validate(mixed)).rejects.toMatchObject({ code: "DATAFN_ROUTE_TICKET_INVALID" });
     const forged = request(signer.sign(claims()) as string);
     forged.headers.set("x-datafn-routing-region", "us");
     await expect(validate(forged)).rejects.toMatchObject({ code: "DATAFN_ROUTE_TICKET_INVALID" });
@@ -115,6 +118,21 @@ describe("regional route grants", () => {
     await expect(validateDatafnPlacement({ namespace: "tenant", regionId: "eu", scope: "query",
       request: request(signer.sign(claims()) as string), runtime: { directory, routeTickets: runtime() } }))
       .rejects.toMatchObject({ code: "DATAFN_PLACEMENT_UNAVAILABLE", executionStarted: false });
+  });
+
+  it.each(["authenticate", "isActive", "allowRequest"] as const)("rejects identity expiry across %s", async phase => {
+    let clock = now;
+    const advance = () => { clock = now + 2000; };
+    await expect(validateDatafnRouteTicket({ request: request(signer.sign(claims()) as string),
+      namespace: "tenant", regionId: "eu", scope: "query", runtime: {
+        ...runtime(), now: () => clock,
+        authenticate: async () => {
+          if (phase === "authenticate") advance();
+          return { namespace: "tenant", subject: "opaque-user", expiresAt: now + 1000 };
+        },
+        isActive: async () => { if (phase === "isActive") advance(); return true; },
+        allowRequest: async () => { if (phase === "allowRequest") advance(); return true; },
+      } })).rejects.toMatchObject({ code: "DATAFN_ROUTE_FORBIDDEN" });
   });
 
   it("retains canonical assertion validation alongside public ticket ingress", async () => {
@@ -165,7 +183,7 @@ describe("regional route grants", () => {
   });
 
   it("handles CORS preflight before application/placement access and never allows cookies", async () => {
-    const handler = vi.fn(async () => Response.json({ ok: true }));
+    const handler = vi.fn(async () => Response.json({ ok: true }, { headers: { "access-control-allow-credentials": "true" } }));
     const cors = withDatafnRegionalCors(handler, { origins: ["https://app.example"] });
     const preflight = await cors(new Request("https://eu.example/datafn/query", { method: "OPTIONS", headers: {
       origin: "https://app.example", "access-control-request-method": "POST", "access-control-request-headers": "authorization, x-datafn-route-ticket",
@@ -174,6 +192,8 @@ describe("regional route grants", () => {
     expect(handler).not.toHaveBeenCalled();
     expect(preflight.headers.has("access-control-allow-credentials")).toBe(false);
     expect((await cors(new Request("https://eu.example/datafn/query", { headers: { origin: "https://evil.example" } }))).status).toBe(403);
-    expect((await cors(new Request("https://eu.example/datafn/query", { headers: { origin: "https://app.example" } }))).headers.get("access-control-allow-origin")).toBe("https://app.example");
+    const response = await cors(new Request("https://eu.example/datafn/query", { headers: { origin: "https://app.example" } }));
+    expect(response.headers.get("access-control-allow-origin")).toBe("https://app.example");
+    expect(response.headers.has("access-control-allow-credentials")).toBe(false);
   });
 });
