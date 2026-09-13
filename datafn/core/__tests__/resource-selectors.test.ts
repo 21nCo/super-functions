@@ -491,3 +491,17 @@ it.each([undefined, { table: "allowed", limit: 10 }])("includes every join endpo
   expect(extractStructuralResourceSelectors("clone", payload).ok).toBe(false);
   expect(extractStructuralResourceSelectors("clone", { includeJoins: true }, { schema })).toMatchObject({ ok: true, result: { selectors: [] } });
 });
+
+it("treats paginated clones without tables as broad", () => {
+  expectSelectors("clone", { page: { table: "allowed", limit: 10 } }, []);
+});
+it("includes join endpoints touched by reconcile without expanding transitively", () => {
+  const schema: any = { resources: [], relations: [
+    { type: "many-many", from: "public", to: "private", relation: "links" },
+    { type: "many-many", from: "private", to: "other", relation: "links" },
+  ] };
+  const payload = { resources: ["public"], includeJoins: true };
+  const result = extractStructuralResourceSelectors("reconcile", payload, { schema });
+  expect(result).toMatchObject({ ok: true, result: { selectors: ["public", "private"] } });
+  expect(extractStructuralResourceSelectors("reconcile", payload).ok).toBe(false);
+});

@@ -50,7 +50,7 @@ The parser accepts every current `DatafnRequestAction` and inspects only protoco
 | `clone` | `tables[]`, `page.table`, all returned join endpoints when `includeJoins` is enabled (requires trusted schema) | yes — omitted `tables` clones all |
 | `pull` | keys of `cursors`, excluding `__datafn_actor_feed__` | yes — global `cursor` pull |
 | `push` | `mutations[].resource` | no — `mutations` is required |
-| `reconcile` | `resources[]` | no |
+| `reconcile` | `resources[]`, plus both endpoints of returned joins touching those resources when `includeJoins` is enabled (requires trusted schema) | no |
 | `status`, `seed` | none | yes |
 
 Application record properties, mutation values, filter operands, and nested domain JSON are ignored even when they use the names `resource` or `resources`.

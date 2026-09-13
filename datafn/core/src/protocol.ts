@@ -448,7 +448,7 @@ function parseClonePayload(
   return ok({
     kind: "clone",
     protocolVersion,
-    resources: payload.tables === undefined && payload.page === undefined ? Object.freeze([]) : selectors.snapshot(),
+    resources: payload.tables === undefined ? Object.freeze([]) : selectors.snapshot(),
   });
 }
 
@@ -514,6 +514,7 @@ function parsePushPayload(
 function parseReconcilePayload(
   payload: unknown,
   protocolVersion: DatafnRequestProtocolVersion,
+  schema?: Pick<DatafnSchema, "resources" | "relations">,
 ): DatafnEnvelope<ParsedDatafnRequest> {
   if (!isPlainObject(payload)) {
     return invalid("Invalid DFQL: expected object", "$");
@@ -524,6 +525,16 @@ function parseReconcilePayload(
   const selectors = new SelectorBuilder();
   const added = selectors.addAll(payload.resources, "resources");
   if (!added.ok) return added;
+  if (payload.includeJoins) {
+    if (!schema) return err("DFQL_UNSUPPORTED", "Reconcile join selectors require trusted schema metadata", { path: "includeJoins" });
+    const requested = new Set<string>(selectors.snapshot());
+    for (const endpoints of resolveJoinStoreResources(schema.relations ?? []).values()) {
+      if (endpoints.some(endpoint => requested.has(endpoint))) {
+        const joined = selectors.addAll(endpoints, "includeJoins");
+        if (!joined.ok) return joined;
+      }
+    }
+  }
   return ok({
     kind: "reconcile",
     protocolVersion,
@@ -560,7 +571,7 @@ function parseObjectAction(
     case "push":
       return parsePushPayload(payload, protocolVersion);
     case "reconcile":
-      return parseReconcilePayload(payload, protocolVersion);
+      return parseReconcilePayload(payload, protocolVersion, schema);
     default: {
       const exhaustive: never = action;
       return err(
