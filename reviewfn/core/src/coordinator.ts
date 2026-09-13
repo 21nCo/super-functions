@@ -155,7 +155,7 @@ export class ReviewCoordinator {
         promptDigest: prompt.digest,
         harness: { id: this.dependencies.harness.capabilities.id, version: this.dependencies.harness.capabilities.version },
         inference: { provider: request.config.inference.provider, model: request.config.inference.model, auth: request.config.inference.auth },
-        execution: { adapter: this.dependencies.execution.id, timeoutMs: request.config.execution.timeoutMs, maxOutputBytes: request.config.execution.maxOutputBytes },
+        execution: { adapter: this.dependencies.execution.id, timeoutMs: executionPolicy.limits.testTimeoutMs, maxOutputBytes: executionPolicy.limits.maxOutputBytes },
         contextAdapters: request.config.context.map((item) => item.adapter),
         profile: request.config.profile,
       },

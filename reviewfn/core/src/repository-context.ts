@@ -10,7 +10,7 @@ async function collectMarkdown(root: string, maxDepth: number, maxEntries: numbe
   const resolved = await realpath(directory).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return undefined; throw error; });
   if (!resolved) return result;
   if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) { state.reasons.push(`Context directory ${relative} escapes the repository.`); return result; }
-  const entries = await readdir(directory, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return []; throw error; });
+  const entries = await readdir(resolved, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return []; throw error; });
   for (const entry of entries.sort((a, b) => compareCodePoints(a.name, b.name))) {
     if (++state.visited > maxEntries) { state.reasons.push("Context directory traversal budget exhausted."); break; }
     if (entry.name === ".git" || entry.name === "node_modules") continue;

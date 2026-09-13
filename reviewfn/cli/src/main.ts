@@ -8,7 +8,7 @@ const execFileAsync = promisify(execFile);
 
 import { ComposioLinearContextAdapter } from "@superfunctions/reviewfn-context-composio";
 import { safeWrite, safeRead, FileArtifactStore, RepositoryMarkdownContextAdapter, ReviewCoordinator, ReviewFnError, renderMarkdownReport, validateConfig, validatePolicy, type ContextAdapter, type ReviewFnConfig, type ReviewPolicy, type ReviewReport } from "@superfunctions/reviewfn-core";
-import { githubRepositoryIdentity, GitHubAdvisoryPublisher, GitHubApi, GitSourceControlAdapter } from "@superfunctions/reviewfn-github";
+import { redactRepositoryRemote, githubRepositoryIdentity, GitHubAdvisoryPublisher, GitHubApi, GitSourceControlAdapter } from "@superfunctions/reviewfn-github";
 import { CodexHarnessAdapter } from "@superfunctions/reviewfn-harness-codex";
 import { evaluate, type EvaluationCase, type EvaluationOutcome } from "@superfunctions/reviewfn-testing";
 
@@ -125,8 +125,7 @@ async function run(): Promise<number> {
   await execFileAsync("git", ["-c", "core.hooksPath=/dev/null", "clone", "--no-local", "--no-checkout", root, snapshot], { maxBuffer: 1_000_000 });
   await execFileAsync("git", ["-c", "core.hooksPath=/dev/null", "checkout", "--detach", immutableHead], { cwd: snapshot, maxBuffer: 1_000_000 });
   const remote = (await execFileAsync("git", ["config", "--get", "remote.origin.url"], { cwd: root }).catch(() => ({ stdout: "local" }))).stdout.trim();
-  let safeRemote = remote;
-  if (remote.includes("://")) { const url = new URL(remote); url.username = ""; url.password = ""; url.search = ""; url.hash = ""; safeRemote = url.toString(); }
+  const safeRemote = redactRepositoryRemote(remote);
   await execFileAsync("git", ["remote", "set-url", "origin", safeRemote], { cwd: snapshot });
   const symbolicBase = (await execFileAsync("git", ["rev-parse", "--symbolic-full-name", "--verify", "--end-of-options", base], { cwd: root })).stdout.trim();
   const targetBranch = optional(args.flags, "target-branch") ?? (symbolicBase.startsWith("refs/") ? symbolicBase.replace(/^refs\/(heads|remotes)\//, "") : process.env.GITHUB_BASE_REF ?? "unknown");

@@ -109,7 +109,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
         const canonicalUrl = canonicalIssue && stringField(canonicalIssue, "url");
         issueWorkspace = linearWorkspace(canonicalUrl);
         if (issueWorkspace) { const source = sources.find(item => item.id === `linear:issue:${issueId}`); if (source) source.canonicalUrl = canonicalUrl; }
-      } catch { incompleteReasons.push("Unable to verify the canonical issue workspace for linked documents."); }
+      } catch (error) { if (request.signal?.aborted) throw error; incompleteReasons.push("Unable to verify the canonical issue workspace for linked documents."); }
     }
     const linkedDocuments = (text: string): Record<string, unknown>[] => [...text.matchAll(/https:\/\/linear\.app\/[^\s/)]+\/document\/([a-zA-Z0-9-]+)/g)].flatMap(match => {
       if (!issueWorkspace || linearWorkspace(match[0]) !== issueWorkspace) { incompleteReasons.push("Linked document workspace is unverified or differs from the issue workspace."); return []; }

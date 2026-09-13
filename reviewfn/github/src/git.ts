@@ -39,7 +39,7 @@ export class GitSourceControlAdapter implements SourceControlAdapter {
       this.runner(["config", "--get", "remote.origin.url"], root).catch(error => { if (error?.code === 1) return "local"; throw error; }),
       this.runner(["rev-parse", "HEAD"], root),
     ]).then(values => values.map(value => value.trim()));
-    const repositoryId = redactRemote(rawRepositoryId);
+    const repositoryId = redactRepositoryRemote(rawRepositoryId);
     if ((await this.runner(["status", "--porcelain", "--untracked-files=all"], root)).trim()) throw new Error("Review requires a clean immutable checkout, including untracked files.");
     if (checkoutHead !== headCommit) throw new Error(`Review workspace is at ${checkoutHead}, but requested head is ${headCommit}. Check out the exact head in an isolated workspace.`);
     const mergeBaseCommit = (await this.runner(["merge-base", baseCommit, headCommit], root)).trim();
@@ -83,11 +83,12 @@ export class GitSourceControlAdapter implements SourceControlAdapter {
 
 function hostFromRemote(remote: string): string {
   const match = remote.match(/^(?:https?:\/\/|ssh:\/\/git@|git@)([^/:]+)/);
-  return match?.[1] ?? "local";
+  const scpHost = !remote.includes("://") && !/^[A-Za-z]:[\\/]/.test(remote) ? remote.match(/^([^/@:]+):/)?.[1] : undefined;
+  return match?.[1] ?? scpHost ?? "local";
 }
 
-function redactRemote(remote: string): string {
-  try { const url = new URL(remote); url.username = ""; url.password = ""; url.search = ""; url.hash = ""; return url.toString(); } catch { return remote; }
+export function redactRepositoryRemote(remote: string): string {
+  try { const url = new URL(remote); url.username = ""; url.password = ""; url.search = ""; url.hash = ""; return url.toString(); } catch { return remote.replace(/^[^@/]+@(?=[^/:]+:)/, ""); }
 }
 
 /** Normalize a recorded Git remote for comparison with a trusted GitHub repository. */

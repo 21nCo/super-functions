@@ -139,3 +139,12 @@ it("resolves the canonical issue URL when the issue tool omits it", async () => 
   const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
   expect(result.sources[0].canonicalUrl).toBe("https://linear.app/acme/issue/ENG-1"); expect(result.sources).toHaveLength(2); expect(result.incompleteReasons).toEqual([]);
 });
+
+it("propagates cancellation during canonical issue lookup", async () => {
+  const controller = new AbortController();
+  const runner: ComposioRunner = async args => {
+    if (args[1] === "LINEAR_GET_LINEAR_ISSUE") return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "x", description: "https://linear.app/acme/document/design-abcdef123456", organization: { id: "workspace-1" }, comments: { nodes: [], pageInfo: { hasNextPage: false } }, documents: { nodes: [], pageInfo: { hasNextPage: false } } } }) };
+    controller.abort(); throw new Error("canceled");
+  };
+  await expect(new ComposioLinearContextAdapter({ runner }).fetch({ ...request, signal: controller.signal })).rejects.toThrow(/canceled/);
+});
