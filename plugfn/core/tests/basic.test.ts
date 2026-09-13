@@ -173,6 +173,7 @@ describe('PlugFn SDK', () => {
         .mockResolvedValue({ data: { ok: true }, status: 200, statusText: 'OK', headers: {} });
       const provider = mockProvider('test', { getData: mockResponse({ ok: true }) });
       provider.rateLimit = { requests: 10, window: 60_000 };
+      provider.actions.getData.idempotent = true;
       provider.actions.getData.execute = async (_params, context) => {
         await context.http.get('/quota-test');
         return { ok: true };

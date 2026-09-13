@@ -1,7 +1,8 @@
+import type { ExecutionCoordinator } from '../core/execution-coordinator.js';
 import type { Logger } from './action.js';
 import type { RetryOptions } from './action.js';
 import type { RateLimitConfig } from './provider.js';
-import type { Adapter as DbAdapter, KVStoreAdapter } from '@superfunctions/db';
+import type { Adapter as DbAdapter, KVStoreAdapter, AtomicKVStoreAdapter } from '@superfunctions/db';
 import type { AuthSession } from '@superfunctions/auth';
 import type { PlugFnOAuthClientConfig, PlugFnSecretResolverConfig } from './runtime.js';
 import type { Connection } from './connection.js';
@@ -100,6 +101,8 @@ export interface GlobalCacheConfig {
  * Global rate limit configuration
  */
 export interface GlobalRateLimitConfig {
+  atomicStore?: AtomicKVStoreAdapter;
+  keyPrefix?: string;
   enabled: boolean;
   respectProviderLimits?: boolean;
   global?: RateLimitConfig;
@@ -129,6 +132,7 @@ export interface PlugFnConfig {
   webhooks?: WebhookOptions;
   authorization?: PlugFnAuthorizationOptions;
   workflows?: {
+    coordinator?: ExecutionCoordinator;
     /** Runtime functions resolved by serializable workflow action/condition references. */
     runtime?: WorkflowRuntimeRegistry;
   };

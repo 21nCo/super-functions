@@ -1,3 +1,6 @@
+import { applySelectedResources } from '../shared/selected-resources.js';
+import { declareContracts } from '../shared/selected-contracts.js';
+import { restAction, remoteId, segment } from '../shared/rest-action.js';
 import { z } from "zod";
 import type { Provider } from "plugfn";
 import { AuthType } from "plugfn";
@@ -49,6 +52,7 @@ export const githubProvider: Provider = {
           .optional()
           .default("updated"),
         direction: z.enum(["asc", "desc"]).optional().default("desc"),
+        startPage: z.number().int().min(1).optional().default(1),
         maxPages: z.number().int().min(1).max(100).optional().default(100),
       }),
 
@@ -93,7 +97,7 @@ export const githubProvider: Provider = {
         if (params.affiliation?.length)
           queryParams.affiliation = params.affiliation.join(",");
         const rows: any[] = [];
-        for (let page = 1; page <= (params.maxPages ?? 100); page += 1) {
+        for (let page = params.startPage ?? 1; page < (params.startPage ?? 1) + (params.maxPages ?? 100); page += 1) {
           const response = await context.http.get(
             `${context.provider.baseUrl}/user/repos`,
             {
@@ -156,6 +160,7 @@ export const githubProvider: Provider = {
           .optional()
           .describe("Issue state"),
         labels: z.array(z.string()).optional().describe("Filter by labels"),
+        startPage: z.number().int().min(1).optional().default(1),
         maxPages: z
           .number()
           .int()
@@ -221,7 +226,7 @@ export const githubProvider: Provider = {
 
         queryParams.per_page = 100;
         const rows: any[] = [];
-        for (let page = 1; page <= (params.maxPages ?? 100); page += 1) {
+        for (let page = params.startPage ?? 1; page < (params.startPage ?? 1) + (params.maxPages ?? 100); page += 1) {
         const response = await context.http.get(
           `${context.provider.baseUrl}/repos/${params.owner}/${params.repo}/issues`,
             { params: { ...queryParams, page } },
@@ -383,6 +388,7 @@ export const githubProvider: Provider = {
         repo: z.string().describe("Repository name"),
         sort: z.enum(["created", "updated"]).optional().default("created"),
         direction: z.enum(["asc", "desc"]).optional().default("asc"),
+        startPage: z.number().int().min(1).optional().default(1),
         maxPages: z.number().int().min(1).max(100).optional().default(100),
       }),
 
@@ -405,7 +411,7 @@ export const githubProvider: Provider = {
 
       execute: async (params: any, context: ActionContext) => {
         const rows: any[] = [];
-        for (let page = 1; page <= (params.maxPages ?? 100); page += 1) {
+        for (let page = params.startPage ?? 1; page < (params.startPage ?? 1) + (params.maxPages ?? 100); page += 1) {
           const response = await context.http.get(
             `${context.provider.baseUrl}/repos/${params.owner}/${params.repo}/issues/comments`,
             {
@@ -441,6 +447,7 @@ export const githubProvider: Provider = {
           .optional()
           .default("updated"),
         direction: z.enum(["asc", "desc"]).optional().default("desc"),
+        startPage: z.number().int().min(1).optional().default(1),
         maxPages: z.number().int().min(1).max(100).optional().default(100),
       }),
 
@@ -484,7 +491,7 @@ export const githubProvider: Provider = {
 
       execute: async (params: any, context: ActionContext) => {
         const rows: any[] = [];
-        for (let page = 1; page <= (params.maxPages ?? 100); page += 1) {
+        for (let page = params.startPage ?? 1; page < (params.startPage ?? 1) + (params.maxPages ?? 100); page += 1) {
           const response = await context.http.get(
             `${context.provider.baseUrl}/repos/${params.owner}/${params.repo}/pulls`,
             {
@@ -588,6 +595,7 @@ export const githubProvider: Provider = {
       parameters: z.object({
         owner: z.string(),
         repo: z.string(),
+        startPage: z.number().int().min(1).optional().default(1),
         maxPages: z.number().int().min(1).max(100).optional().default(100),
       }),
       returns: z.array(
@@ -607,7 +615,7 @@ export const githubProvider: Provider = {
       ),
       execute: async (params: any, context: ActionContext) => {
         const rows: any[] = [];
-        for (let page = 1; page <= (params.maxPages ?? 100); page += 1) {
+        for (let page = params.startPage ?? 1; page < (params.startPage ?? 1) + (params.maxPages ?? 100); page += 1) {
           const response = await context.http.get(
             `${context.provider.baseUrl}/repos/${params.owner}/${params.repo}/releases`,
             { params: { per_page: 100, page } },
@@ -670,6 +678,7 @@ export const githubProvider: Provider = {
       parameters: z.object({
         owner: z.string(),
         repo: z.string(),
+        startPage: z.number().int().min(1).optional().default(1),
         maxPages: z.number().int().min(1).max(10).optional().default(10),
       }),
       returns: z.array(
@@ -690,7 +699,7 @@ export const githubProvider: Provider = {
       ),
       execute: async (params: any, context: ActionContext) => {
         const rows: any[] = [];
-        for (let page = 1; page <= (params.maxPages ?? 10); page += 1) {
+        for (let page = params.startPage ?? 1; page < (params.startPage ?? 1) + (params.maxPages ?? 10); page += 1) {
           const response = await context.http.get(
             `${context.provider.baseUrl}/repos/${params.owner}/${params.repo}/hooks`,
             { params: { per_page: 100, page } },
@@ -775,6 +784,7 @@ export const githubProvider: Provider = {
         repo: z.string(),
         sha: z.string().optional(),
         since: z.string().datetime().optional(),
+        startPage: z.number().int().min(1).optional().default(1),
         maxPages: z.number().int().min(1).max(100).optional().default(100),
       }),
       returns: z.array(
@@ -808,7 +818,7 @@ export const githubProvider: Provider = {
         const query: Record<string, unknown> = { per_page: 100 };
         if (params.sha) query.sha = params.sha;
         if (params.since) query.since = params.since;
-        for (let page = 1; page <= (params.maxPages ?? 100); page += 1) {
+        for (let page = params.startPage ?? 1; page < (params.startPage ?? 1) + (params.maxPages ?? 100); page += 1) {
           const response = await context.http.get(
             `${context.provider.baseUrl}/repos/${params.owner}/${params.repo}/commits`,
             { params: { ...query, page } },
@@ -1149,3 +1159,61 @@ function verifyGitHubSignatureRaw(
 ): boolean {
   return verifyRawBodyHmac({ signature, secret, context, algorithm: "sha256" });
 }
+
+githubProvider.actions['pulls.get'] = restAction({ name: 'pulls.get', method: 'GET',
+  path: p => `https://api.github.com/repos/${segment(p.owner)}/${segment(p.repo)}/pulls/${p.pullNumber}`,
+  parameters: z.object({ owner: remoteId, repo: remoteId, pullNumber: z.number().int().positive() }).strict(),
+  returns: z.object({ id: z.number(), number: z.number(), title: z.string(), body: z.string().nullable() }).passthrough(), scopes: ['repo'],
+});
+githubProvider.actions['issues.comments.create'] = { ...githubProvider.actions['issues.createComment'], name: 'issues.comments.create' };
+githubProvider.actions['pulls.review'] = { ...githubProvider.actions['pulls.createReview'], name: 'pulls.review' };
+
+declareContracts(githubProvider, {
+  "reads": [
+    "repos.list",
+    "issues.list",
+    "issues.get",
+    "issues.comments.list",
+    "pulls.list",
+    "pulls.get"
+  ],
+  "writes": [
+    "issues.create",
+    "issues.update",
+    "issues.comments.create",
+    "pulls.create",
+    "pulls.review"
+  ],
+  "readScopes": [
+    "repo"
+  ],
+  "writeScopes": [
+    "repo"
+  ],
+  "pagination": {
+    "repos.list": {
+      "kind": "page",
+      "maxPageSize": 100
+    },
+    "issues.list": {
+      "kind": "page",
+      "maxPageSize": 100
+    },
+    "issues.comments.list": {
+      "kind": "page",
+      "maxPageSize": 100
+    },
+    "pulls.list": {
+      "kind": "page",
+      "maxPageSize": 100
+    }
+  },
+  "resources": [
+    {
+      "kind": "repository",
+      "parameter": "repo"
+    }
+  ]
+});
+
+applySelectedResources(githubProvider);
