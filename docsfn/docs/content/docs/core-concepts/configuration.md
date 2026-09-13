@@ -182,7 +182,7 @@ Optional **versioned documentation**.
 | **Type** | `Array<{ slug: string; label: string; default?: boolean }>` (min 1 entry) |
 | **Required** | yes (when `versions` is set) |
 | **Default** | n/a |
-| **Description** | Catalog of versions; at most one entry may set `default: true`. |
+| **Description** | Catalog of versions. In `path-prefix` and `path-segment` modes, exactly one entry must set `default: true`. In `none` mode, at most one entry may set it. |
 
 **Example**
 
@@ -549,3 +549,7 @@ export default config;
 ```
 
 Run **`npx docsfn validate --root .`** after edits; fix **DOCS_CONFIG_INVALID** diagnostics before shipping.
+
+## Programmatic validation
+
+`validateDocsConfig(value, configPath?)` from `@docsfn/core` applies the same configuration validation used by file loading. It returns the validated config or throws `DOCS_CONFIG_INVALID` with field diagnostics. Admin-managed configurations are validated before saving and before building.

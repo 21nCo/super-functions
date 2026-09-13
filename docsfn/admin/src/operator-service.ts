@@ -1,4 +1,4 @@
-import { buildManifest, validateDocsConfig, type DocsContentProvider } from "@docsfn/core";
+import { buildManifest, validateDocsConfig, isDocsConfigError, type DocsContentProvider } from "@docsfn/core";
 import { AdminError, adminScopeRootId, type AdminOperationContext } from "@superfunctions/admin";
 
 export interface DocsFnOperatorScope {
@@ -202,8 +202,8 @@ export function createDocsFnOperatorService(options: DocsFnOperatorServiceOption
       }
       try {
         validateDocsConfig(input.config);
-      } catch {
-        throw new AdminError("invalid_argument", "DocsFn configuration is invalid.");
+      } catch (error) {
+        throw new AdminError("invalid_argument", isDocsConfigError(error) ? error.message : "DocsFn configuration is invalid.");
       }
       const previous = await options.store.getSite(scope, input.id);
       const updatedAt = now();

@@ -5,6 +5,7 @@ import { buildManifest, buildOpenApiReference, loadDocsConfig, type DocsManifest
 import { FsContentProvider } from "../../provider-fs/src/index";
 import {
   generateApiParams as generateNextApiParams,
+  getApiData as getNextApiData,
   generateCollectionParams as generateNextCollectionParams,
   generateStaticParams as generateNextStaticParams,
   getCollectionPostData as getNextCollectionPostData,
@@ -16,6 +17,7 @@ import {
 } from "../../next/src/route-helpers";
 import {
   createPageLoad,
+  getApiData,
   generateApiParams,
   generateCollectionParams,
   generateStaticParams,
@@ -353,4 +355,13 @@ it('emits every OpenAPI child route as a Next catch-all parameter', async () => 
   manifest.apis.x.slug = '';
   expect(generateNextApiParams(manifest, { catchAll: true })).toEqual([{}, { slug: ['operations', 'get-items'] }, { slug: ['tags', 'default'] }]);
 
+});
+
+it.each(["api", "api/foo"])("round trips dedicated API slugs beginning with api: %s", async slug => {
+  const manifest = structuredClone(await loadCanonicalManifest());
+  const spec = buildOpenApiReference({ sourceId: `api:${slug}.json`, sourcePath: `${slug}.json`, fallbackTitle: "X", body: JSON.stringify({ openapi: "3.0.3", info: { title: "X", version: "1" }, paths: { "/items": { get: { responses: {} } } } }) });
+  const api = { kind: "api" as const, id: "x", slug, path: `/docs/api/${slug}`, title: spec.title, frontmatter: {}, spec };
+  manifest.apis = { x: api };
+  manifest.routes = { [api.path]: api.id };
+  for (const read of [getApiData, getNextApiData]) expect(read(slug, manifest, { basePath: "/docs" })?.id).toBe("x");
 });

@@ -535,3 +535,15 @@ describe("buildSearchIndex", () => {
     }
   );
 });
+
+it("counts final serialized bytes and applies the boundary after including metadata", async () => {
+  const manifest = createManifest();
+  for (const enabled of [false, true]) {
+    const artifact = await buildSearchIndex(manifest, { search: { enabled } });
+    expect(artifact.bytes).toBe(Buffer.byteLength(JSON.stringify(artifact)));
+  }
+  const baseline = await buildSearchIndex(manifest, { search: { enabled: true } });
+  const limited = await buildSearchIndex(manifest, { search: { enabled: true, maxArtifactBytes: baseline.bytes - 1 } });
+  expect(limited.diagnostics.some(item => item.severity === "warning")).toBe(true);
+  expect(limited.bytes).toBe(Buffer.byteLength(JSON.stringify(limited)));
+});

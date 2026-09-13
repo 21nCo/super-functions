@@ -61,7 +61,9 @@ describe("loadDocsConfig", () => {
     });
 
     expect(loaded.site.title).toBe("Explicit Config");
-  });
+  // This first load includes the cold TypeScript runtime import. Parallel CI
+  // took 25s for this file; keep startup tolerance local to this test.
+  }, 45_000);
 
   it("loads docsfn.config.ts when present", async () => {
     const cwd = await createTempDir();

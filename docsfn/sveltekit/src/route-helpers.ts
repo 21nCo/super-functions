@@ -759,7 +759,8 @@ export function getApiData(
 ): ApiReference | null {
   const basePath = normalizeBasePath(options.basePath);
   const segments = normalizeSlugSegments(slug);
-  const logicalSegments = segments[0] === "api" ? segments.slice(1) : segments;
+  // Dedicated API slugs are relative to /api; a leading api is a real spec segment.
+  const logicalSegments = segments;
   const suffix = logicalSegments.length > 0 ? `/${logicalSegments.join("/")}` : "";
   const routePath = `${basePath}/api${suffix}`.replace(/\/{2,}/g, "/");
   const entry = resolveRouteEntry(routePath, manifest);

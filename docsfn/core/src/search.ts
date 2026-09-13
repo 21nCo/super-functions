@@ -482,11 +482,7 @@ export async function buildSearchIndex(
       diagnostics: [],
       bytes: 0,
     };
-    const serialized = JSON.stringify(emptyArtifact);
-    return {
-      ...emptyArtifact,
-      bytes: Buffer.byteLength(serialized, "utf8"),
-    };
+    return finalizeArtifactBytes(emptyArtifact);
   }
 
   const documents = collectSearchDocuments({
@@ -532,31 +528,26 @@ export async function buildSearchIndex(
     diagnostics: [],
   };
 
-  let bytes = Buffer.byteLength(JSON.stringify(artifactBase), "utf8");
-  if (
-    typeof searchConfig?.maxArtifactBytes === "number" &&
-    bytes > searchConfig.maxArtifactBytes
-  ) {
-    diagnostics.push(
-      createDiagnostic({
-        code: "DOCS_ARTIFACT_INVALID",
-        severity: "warning",
-        message: `search artifact size ${bytes} exceeds configured maxArtifactBytes ${searchConfig.maxArtifactBytes}`,
-        details: {
-          bytes,
-          maxArtifactBytes: searchConfig.maxArtifactBytes,
-        },
-      })
-    );
+  const artifact = finalizeArtifactBytes({ ...artifactBase, diagnostics: withStableDiagnosticOrder(diagnostics), bytes: 0 });
+  if (typeof searchConfig?.maxArtifactBytes === "number" && artifact.bytes > searchConfig.maxArtifactBytes) {
+    artifact.diagnostics.push(createDiagnostic({
+      code: "DOCS_ARTIFACT_INVALID",
+      severity: "warning",
+      message: `search artifact exceeds configured maxArtifactBytes ${searchConfig.maxArtifactBytes}`,
+      details: { maxArtifactBytes: searchConfig.maxArtifactBytes },
+    }));
+    artifact.diagnostics = withStableDiagnosticOrder(artifact.diagnostics);
+    finalizeArtifactBytes(artifact);
   }
 
-  const artifact: DocsSearchArtifact = {
-    ...artifactBase,
-    diagnostics: withStableDiagnosticOrder(diagnostics),
-    bytes: 0,
-  };
-  bytes = Buffer.byteLength(JSON.stringify(artifact), "utf8");
-  artifact.bytes = bytes;
+  return artifact;
+}
 
+function finalizeArtifactBytes(artifact: DocsSearchArtifact): DocsSearchArtifact {
+  let bytes = Buffer.byteLength(JSON.stringify(artifact), "utf8");
+  while (artifact.bytes !== bytes) {
+    artifact.bytes = bytes;
+    bytes = Buffer.byteLength(JSON.stringify(artifact), "utf8");
+  }
   return artifact;
 }
