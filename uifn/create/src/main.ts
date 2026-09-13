@@ -125,35 +125,49 @@ function render(preset: UIFnPresetV1, locked: Set<PresetAxis>, mode: 'light' | '
             ${Object.keys(VIEWPORTS).map((name) => `<button type="button" data-viewport="${name}" ${viewport === name ? 'aria-pressed="true"' : 'aria-pressed="false"'}>${name}</button>`).join('')}
           </div>
         </div>
-        <div class="preview-frame" data-mode="${mode}" style="width:${VIEWPORTS[viewport]}px">
-          <style>${plan.css.fonts}${plan.css.light}${plan.css.dark}${fixtureCss()}</style>
-          <div class="preview-root" data-uifn-mode="${mode}"></div>
+        <div class="preview-frame">
+          <style></style>
+          <div class="preview-root"></div>
         </div>
         <section class="outputs">
           <article>
             <h2>New project</h2>
-            ${plan.commands.init ? `<pre><code>${plan.commands.init}</code></pre>` : "<p>Project creation is currently available for React presets.</p>"}
+            ${plan.commands.init ? '<pre><code data-output="init"></code></pre>' : "<p>Project creation is currently available for React presets.</p>"}
           </article>
           <article>
             <h2>Existing project</h2>
-            ${plan.commands.apply ? `<pre><code>${plan.commands.apply}</code></pre>` : "<p>Full project application is currently available for React presets.</p>"}
-            <pre><code>${plan.commands.applyTheme}</code></pre>
+            ${plan.commands.apply ? '<pre><code data-output="apply"></code></pre>' : "<p>Full project application is currently available for React presets.</p>"}
+            <pre><code data-output="applyTheme"></code></pre>
           </article>
           <article>
             <h2>Preset code</h2>
-            <pre><code>${plan.code}</code></pre>
-            <p><a href="${plan.url}">${plan.url}</a></p>
+            <pre><code data-output="code"></code></pre>
+            <p><a data-output="url"></a></p>
           </article>
           <article>
             <h2>Theme tokens</h2>
-            <pre><code>${JSON.stringify(tokens, null, 2)}</code></pre>
+            <pre><code data-output="tokens"></code></pre>
           </article>
         </section>
       </section>
     </main>
   `;
+  for (const [name, value] of Object.entries({ ...plan.commands, code: plan.code, url: plan.url, tokens: JSON.stringify(tokens, null, 2) })) {
+    const output = app.querySelector(`[data-output="${name}"]`);
+    if (output) output.textContent = value ?? '';
+  }
+  const link = app.querySelector<HTMLAnchorElement>('[data-output="url"]');
+  if (link) link.href = plan.url;
+  const frame = app.querySelector<HTMLElement>('.preview-frame');
+  if (frame) {
+    frame.dataset.mode = mode;
+    frame.style.width = `${VIEWPORTS[viewport]}px`;
+  }
+  const style = app.querySelector('style');
+  if (style) style.textContent = plan.css.fonts + plan.css.light + plan.css.dark + fixtureCss();
   const previewRoot = app.querySelector('.preview-root') as HTMLElement | null;
   if (previewRoot) {
+    previewRoot.dataset.uifnMode = mode;
     preview = createRoot(previewRoot);
     preview.render(renderFixture(presetFixtureTree(plan), 0));
     const vars = mode === 'dark' ? plan.theme.darkVars : plan.theme.lightVars;
@@ -196,10 +210,10 @@ function boot() {
   document.addEventListener('click', async (event) => {
     const target = event.target as HTMLElement;
     const action = target.getAttribute('data-action');
-    const nextMode = target.getAttribute('data-mode') as 'light' | 'dark' | null;
-    const nextViewport = target.getAttribute('data-viewport') as keyof typeof VIEWPORTS | null;
-    if (nextMode) { mode = nextMode; paint(); }
-    if (nextViewport) { viewport = nextViewport; paint(); }
+    const nextMode = target.getAttribute('data-mode');
+    const nextViewport = target.getAttribute('data-viewport');
+    if (nextMode === 'light' || nextMode === 'dark') { mode = nextMode; paint(); }
+    if (nextViewport === 'desktop' || nextViewport === 'tablet' || nextViewport === 'mobile') { viewport = nextViewport; paint(); }
     if (action === 'random') { preset = randomPreset({ seed: Date.now(), locks: Object.fromEntries([...locked].map((axis) => [axis, true])), base: preset }); paint(); }
     if (action === 'copy-code') await navigator.clipboard?.writeText(encodePreset(preset));
     if (action === 'copy-url') await navigator.clipboard?.writeText(compilePreset(preset).url);
