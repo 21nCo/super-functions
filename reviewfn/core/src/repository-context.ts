@@ -1,7 +1,7 @@
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 
-import { digestJson, sha256 } from "./canonical.js";
+import { compareCodePoints, digestJson, sha256 } from "./canonical.js";
 import type { ContextAdapter, ContextManifest, ContextRequest, ContextSource, PreflightResult } from "./types.js";
 
 async function collectMarkdown(root: string, maxDepth: number, maxEntries: number, relative = "", state = { visited: 0 }): Promise<string[]> {
@@ -25,17 +25,19 @@ function safeRelative(input: string): string {
 }
 
 async function expandPaths(root: string, patterns: readonly string[], limits: ContextManifest["limits"]): Promise<string[]> {
-  const allMarkdown = patterns.some((value) => value.includes("*")) ? await collectMarkdown(root, limits.maxDepth, limits.maxSources * 100) : [];
+  const traversal = { visited: 0 };
   const selected = new Set<string>();
   for (const raw of patterns) {
     const pattern = safeRelative(raw);
     if (pattern === "**/*.md" || pattern.endsWith("/**/*.md")) {
       const prefix = pattern === "**/*.md" ? "" : pattern.slice(0, -"**/*.md".length);
+      const allMarkdown = await collectMarkdown(root, limits.maxDepth, limits.maxSources * 100, prefix.replace(/\/$/, ""), traversal);
+      if (!allMarkdown.length) throw new Error(`Configured context glob ${raw} matched no sources.`);
       for (const candidate of allMarkdown) if (candidate.startsWith(prefix)) selected.add(candidate);
     } else if (!pattern.includes("*")) selected.add(pattern);
     else throw new Error(`Unsupported context glob ${raw}; use an exact path or **/*.md.`);
   }
-  return [...selected].sort();
+  return [...selected].sort(compareCodePoints);
 }
 
 export class RepositoryMarkdownContextAdapter implements ContextAdapter {

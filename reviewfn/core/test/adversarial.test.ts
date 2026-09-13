@@ -63,6 +63,13 @@ it("refuses retention metadata traversal without deleting outside files", async 
 it("marks unmatched Markdown sources incomplete and bounds large files", async () => {
   const root = await temporary(); const adapter = new RepositoryMarkdownContextAdapter();
   const request = { root, paths: ["**/*.md"], limits: { maxSources: 1, maxBytes: 10, maxDepth: 2 } };
-  expect((await adapter.fetch(request)).incompleteReasons.join()).toMatch(/no sources/);
+  await expect(adapter.fetch(request)).rejects.toThrow(/no sources/);
   await writeFile(path.join(root, "big.md"), "x".repeat(10000)); const result = await adapter.fetch(request); expect(result.sources[0].status).toBe("truncated"); expect(Buffer.byteLength(result.sources[0].content!)).toBeLessThanOrEqual(10);
+});
+
+it("does not traverse unrelated deep trees for a scoped Markdown glob", async () => {
+  const root = await temporary(); await mkdir(path.join(root, "docs")); await mkdir(path.join(root, "unrelated", "deep", "nested", "too", "deep"), { recursive: true });
+  await writeFile(path.join(root, "docs", "design.md"), "design");
+  const result = await new RepositoryMarkdownContextAdapter().fetch({ root, paths: ["docs/**/*.md"], limits: { maxSources: 10, maxBytes: 100, maxDepth: 3 } });
+  expect(result.sources.map(source => source.id)).toEqual(["repo:docs/design.md"]); expect(result.incompleteReasons).toEqual([]);
 });

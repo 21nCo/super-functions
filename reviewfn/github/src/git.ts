@@ -1,11 +1,24 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import { sha256, type ChangeSnapshot, type CodeAnchor, type SourceControlAdapter } from "@superfunctions/reviewfn-core";
+import { compareCodePoints, sha256, type ChangeSnapshot, type CodeAnchor, type SourceControlAdapter } from "@superfunctions/reviewfn-core";
 
 const execFileAsync = promisify(execFile);
 export type GitRunner = (args: string[], cwd: string) => Promise<string>;
-const defaultRunner: GitRunner = async (args, cwd) => (await execFileAsync("git", args, { cwd, maxBuffer: 50 * 1024 * 1024 })).stdout;
+const defaultRunner: GitRunner = async (args, cwd) => {
+  const [command, ...parameters] = args;
+  const options = { cwd, maxBuffer: 50 * 1024 * 1024 };
+  // Keep each permitted subcommand literal at the process boundary. Repository input cannot select git transport commands.
+  switch (command) {
+    case "rev-parse": return (await execFileAsync("git", ["rev-parse", ...parameters], options)).stdout;
+    case "config": return (await execFileAsync("git", ["config", ...parameters], options)).stdout;
+    case "status": return (await execFileAsync("git", ["status", ...parameters], options)).stdout;
+    case "merge-base": return (await execFileAsync("git", ["merge-base", ...parameters], options)).stdout;
+    case "diff": return (await execFileAsync("git", ["diff", ...parameters], options)).stdout;
+    case "show": return (await execFileAsync("git", ["show", ...parameters], options)).stdout;
+    default: throw new Error("Unsupported read-only Git operation.");
+  }
+};
 
 export interface GitSourceOptions {
   runner?: GitRunner;
@@ -22,7 +35,7 @@ export class GitSourceControlAdapter implements SourceControlAdapter {
     const [baseCommit, headCommit, rawRepositoryId, checkoutHead] = await Promise.all([
       this.runner(["rev-parse", "--verify", "--end-of-options", `${base}^{commit}`], root),
       this.runner(["rev-parse", "--verify", "--end-of-options", `${head}^{commit}`], root),
-      this.runner(["config", "--get", "remote.origin.url"], root).catch(() => "local"),
+      this.runner(["config", "--get", "remote.origin.url"], root).catch(error => { if (error?.code === 1) return "local"; throw error; }),
       this.runner(["rev-parse", "HEAD"], root),
     ]).then(values => values.map(value => value.trim()));
     const repositoryId = redactRemote(rawRepositoryId);
@@ -32,7 +45,7 @@ export class GitSourceControlAdapter implements SourceControlAdapter {
     const [diff, names, targetBranch] = await Promise.all([
       this.runner(["diff", "--binary", "--full-index", mergeBaseCommit, headCommit], root),
       this.runner(["diff", "--name-only", "-z", mergeBaseCommit, headCommit], root),
-      this.runner(["rev-parse", "--abbrev-ref", base], root).catch(() => base),
+      this.runner(["rev-parse", "--abbrev-ref", "--end-of-options", base], root),
     ]);
     return {
       repositoryId,
@@ -43,7 +56,7 @@ export class GitSourceControlAdapter implements SourceControlAdapter {
       headCommit,
       mergeBaseCommit,
       diffDigest: sha256(diff),
-      changedPaths: names.split("\0").filter(Boolean).sort(),
+      changedPaths: names.split("\0").filter(Boolean).sort(compareCodePoints),
       capturedAt: new Date().toISOString(),
     };
   }

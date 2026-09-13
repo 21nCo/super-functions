@@ -20,7 +20,7 @@ function canonicalize(value: unknown, seen: Set<object>): JsonValue {
     seen.add(value);
     const record = value as Record<string, unknown>;
     const result: Record<string, JsonValue> = {};
-    for (const key of Object.keys(record).sort()) {
+    for (const key of Object.keys(record).sort(compareCodePoints)) {
       if (record[key] !== undefined) result[key] = canonicalize(record[key], seen);
     }
     seen.delete(value);
@@ -43,4 +43,10 @@ export function digestJson(value: unknown): string {
 
 export function createAttemptId(): string {
   return randomUUID();
+}
+
+/** Locale-independent order is required for reproducible digests across machines. */
+export function compareCodePoints(left: string, right: string): number {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
 }

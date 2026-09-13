@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { strictProviderSchema, omitOptionalNulls, validateHarnessPayload, harnessOutputSchema, redactText, type HarnessAdapter, type HarnessCapabilities, type HarnessInput, type HarnessOutput, type JsonValue, type NormalizedRunEvent, type PreflightResult, type ReviewFnConfig } from "@superfunctions/reviewfn-core";
+import { strictProviderSchema, omitOptionalNulls, validateHarnessPayload, redactText, type HarnessAdapter, type HarnessCapabilities, type HarnessInput, type HarnessOutput, type JsonValue, type NormalizedRunEvent, type PreflightResult, type ReviewFnConfig } from "@superfunctions/reviewfn-core";
 
 export interface CommandResult { code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string; timedOut: boolean; canceled: boolean }
 export type CommandRunner = (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; maxOutputBytes: number; signal?: AbortSignal; stdin?: string }) => Promise<CommandResult>;

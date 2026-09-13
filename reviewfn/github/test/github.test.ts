@@ -83,3 +83,11 @@ it("serializes concurrent delivery and ignores marker spoofing by another author
   const results = await Promise.all([new GitHubAdvisoryPublisher(options).publish(request), new GitHubAdvisoryPublisher(options).publish(request)]);
   expect(results.map(result => result.status)).toEqual(["published", "unchanged"]); expect(creates).toBe(1); expect(comments[0].body).toBe("<!-- reviewfn:requirements -->");
 });
+
+it("rejects cleartext and credential-bearing API origins", () => {
+  for (const baseUrl of ["http://api.example.invalid", "https://user:password@api.example.invalid", "https://api.example.invalid?token=secret"]) expect(() => new GitHubApi({ owner: "acme", repository: "repo", token: "secret", baseUrl })).toThrow(/HTTPS/);
+});
+it("propagates unexpected Git identity failures", async () => {
+  const adapter = new GitSourceControlAdapter({ runner: async args => { if (args[0] === "config") throw Object.assign(new Error("permission denied"), { code: 128 }); return "b".repeat(40); } });
+  await expect(adapter.capture(".", "base", "head")).rejects.toThrow(/permission denied/);
+});

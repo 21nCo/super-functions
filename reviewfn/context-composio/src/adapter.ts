@@ -3,15 +3,17 @@ import { readFile, lstat } from "node:fs/promises";
 import path from "node:path";
 import { homedir } from "node:os";
 
-import { sha256, type ContextAdapter, type ContextManifest, type ContextRequest, type ContextSource, type PreflightResult } from "@superfunctions/reviewfn-core";
+import { resolveTrustedExecutable, sha256, type ContextAdapter, type ContextManifest, type ContextRequest, type ContextSource, type PreflightResult } from "@superfunctions/reviewfn-core";
 
 export interface ComposioCommandResult { code: number | null; stdout: string; stderr: string }
 export type ComposioRunner = (args: string[], signal?: AbortSignal) => Promise<ComposioCommandResult>;
 
-const defaultRunner: ComposioRunner = async (args, signal) => new Promise((resolve, reject) => {
+const defaultRunner: ComposioRunner = async (args, signal) => {
+  const executable = await resolveTrustedExecutable("composio");
+  return new Promise((resolve, reject) => {
   if (signal?.aborted) { reject(new Error("Context retrieval canceled.")); return; }
   const env = Object.fromEntries(["PATH", "HOME", "COMPOSIO_API_KEY", "COMPOSIO_CONFIG_DIR"].flatMap(key => process.env[key] ? [[key, process.env[key]]] : []));
-  const child = spawn("composio", args, { env, detached: process.platform !== "win32", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(executable, args, { env, detached: process.platform !== "win32", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = "";
   let stderr = "";
   let exceeded = false;
@@ -27,7 +29,8 @@ const defaultRunner: ComposioRunner = async (args, signal) => new Promise((resol
   child.once("error", error => { cleanup(); reject(error); });
   child.once("exit", abort);
   child.once("close", (code) => { cleanup(); resolve({ code: exceeded || signal?.aborted ? 1 : code, stdout, stderr: exceeded ? "Composio time or output budget exhausted." : stderr }); });
-});
+  });
+};
 
 export interface ComposioContextOptions { runner?: ComposioRunner }
 

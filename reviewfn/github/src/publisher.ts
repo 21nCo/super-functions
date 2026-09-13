@@ -1,4 +1,4 @@
-import { sha256, type PreflightResult, type PublishRequest, type PublishResult, type ReportPublisher } from "@superfunctions/reviewfn-core";
+import { type PreflightResult, type PublishRequest, type PublishResult, type ReportPublisher } from "@superfunctions/reviewfn-core";
 
 import { publicationLease } from "./lease.js";
 import { GitHubApi } from "./api.js";

@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access, lstat, mkdir, open, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { lstat, open, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 
 import { safeDirectory, safeRead, safeWrite } from "./safe-files.js";
@@ -20,7 +20,7 @@ export class FileArtifactStore implements ArtifactStore {
     validateKind(kind);
     if (!Number.isInteger(retentionDays) || retentionDays <= 0) throw new ReviewFnError("REVIEWFN_ARTIFACT_UNSAFE", "retentionDays must be a positive integer.");
     await this.ensureSafeRoot();
-    const bytes = typeof content === "string" ? Buffer.from(content) : Buffer.from(content);
+    const bytes = Buffer.from(content);
     const digest = sha256(bytes);
     const id = `${kind}-${digest}`;
     const dataPath = path.join(this.root, `${id}.artifact`);
@@ -72,7 +72,6 @@ async function writeExclusiveOrVerify(file: string, bytes: Uint8Array, digest: s
     try { await handle.writeFile(bytes); } finally { await handle.close(); }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    await access(file, constants.R_OK);
     const existing = await safeRead(file);
     if (sha256(existing) !== digest) throw new ReviewFnError("REVIEWFN_ARTIFACT_UNSAFE", "Existing content-addressed artifact has unexpected bytes.");
   }
