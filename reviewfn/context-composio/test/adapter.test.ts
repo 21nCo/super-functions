@@ -225,3 +225,15 @@ it.each([false, true])("preserves document budgets when comment authority is dis
   expect(result.sources[1].content).toBe("Required behavior");
   expect(result.incompleteReasons).toEqual([]);
 });
+
+it("does not discover disabled documents or comments for issue-only policy", async () => {
+  let calls = 0;
+  const runner: ComposioRunner = async args => {
+    calls++;
+    if (args[1] !== "LINEAR_GET_LINEAR_ISSUE") throw new Error("Disabled connections must not be retrieved");
+    return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "Feature", description: "Read https://linear.app/acme/document/design-abcdef123456", organization: { id: "workspace-1" }, documents: [{ id: "d", content: "x".repeat(10000) }] } }) };
+  };
+  const result = await new ComposioLinearContextAdapter({ runner }).fetch({ ...request, limits: { maxSources: 1, maxBytes: 1000, maxDepth: 3 }, sourceAuthority: { acceptedTypes: ["issue"], commentsMayClarify: false, waiverAuthorities: [] } });
+  expect(result.sources.map(source => source.type)).toEqual(["issue"]);
+  expect(result.incompleteReasons).toEqual([]); expect(calls).toBe(1);
+});

@@ -63,6 +63,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     const incompleteReasons: string[] = [];
     let consumed = 0;
     const add = (source: Omit<ContextSource, "digest">) => {
+      if (request.sourceAuthority && !request.sourceAuthority.acceptedTypes.includes(source.type)) return true;
       if (sources.length >= request.limits.maxSources) { incompleteReasons.push(`Linear source limit ${request.limits.maxSources} reached.`); return false; }
       const original = source.content ?? "";
       const remaining = request.limits.maxBytes - consumed;
@@ -117,91 +118,93 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
 
     }
 
-    let issueWorkspace = linearWorkspace(stringField(issue, "url"));
-    if (!issueWorkspace && `${JSON.stringify({ ...issue, comments: undefined })}${JSON.stringify(comments)}`.includes("/document/")) {
-      try {
-        const query = "query($id: String!) { issue(id: $id) { id identifier title url } }";
-        const canonicalIssue = findIssue(await this.execute("LINEAR_RUN_QUERY_OR_MUTATION", { query_or_mutation: query, variables: { id: issueId } }, request.account, request.signal), issueId);
-        const canonicalUrl = canonicalIssue && stringField(canonicalIssue, "url");
-        issueWorkspace = linearWorkspace(canonicalUrl);
-        if (issueWorkspace) { const source = sources.find(item => item.id === `linear:issue:${issueId}`); if (source) source.canonicalUrl = canonicalUrl; }
-      } catch (error) { if (request.signal?.aborted) throw error; incompleteReasons.push("Unable to verify the canonical issue workspace for linked documents."); }
-    }
-    const linkedDocuments = (text: string): Record<string, unknown>[] => [...text.matchAll(/https:\/\/linear\.app\/[^\s/)]+\/document\/([a-zA-Z0-9-]+)/g)].flatMap(match => {
-      if (!issueWorkspace || linearWorkspace(match[0]) !== issueWorkspace) { incompleteReasons.push("Linked document workspace is unverified or differs from the issue workspace."); return []; }
-      return [{ id: match[1].split("-").at(-1)!, url: match[0], linked: true }];
-    });
-    let initialDocuments = issue.documents;
-    if (!hasPageInfo(initialDocuments)) {
-      try { initialDocuments = findConnection(await fetchConnection("documents"), "documents", issueId); }
-      catch (error) { if (request.signal?.aborted) throw error; incompleteReasons.push("Unable to establish complete Linear document pagination."); }
-    }
-    if (!hasPageInfo(initialDocuments)) incompleteReasons.push("Linear document pagination metadata missing or malformed.");
-    const candidateKeys = new Map<string, Record<string, unknown>>();
-    const uniqueDocuments = (candidates: Record<string, unknown>[]) => candidates.filter(document => {
-      const key = stringField(document, "url") ?? stringField(document, "id");
-      if (!key) return false;
-      const existing = candidateKeys.get(key);
-      if (existing) { if ((!existing.content && document.content) || (existing.linked === true && document.linked !== true)) Object.assign(existing, document); return false; }
-      candidateKeys.set(key, document); return true;
-    });
-    const documents = uniqueDocuments([...connectionNodes(initialDocuments), ...connectionNodes(issue.documents), ...arrayObjects(issue.documents), ...linkedDocuments(JSON.stringify({ ...issue, comments: undefined })), ...comments.flatMap(comment => linkedDocuments(stringField(comment, "body") ?? ""))]);
-    let documentPage = pageInfo(initialDocuments);
-    const documentCursors = new Set<string>();
-    while (documentPage.hasNextPage && documentPage.endCursor && !documentCursors.has(documentPage.endCursor) && documents.length < request.limits.maxSources) {
-      documentCursors.add(documentPage.endCursor);
-      const page = await fetchConnection("documents", documentPage.endCursor);
-      const connection = findConnection(page, "documents", issueId);
-      documents.push(...uniqueDocuments(connectionNodes(connection)));
-      if (!hasPageInfo(connection)) incompleteReasons.push("Linear document pagination metadata missing or malformed.");
-      documentPage = pageInfo(connection);
-    }
-    if (documentPage.hasNextPage) incompleteReasons.push(`Linear documents for ${issueIdentifier} remain incomplete at cursor ${documentPage.endCursor ?? "unknown"}.`);
-    const seenDocuments = new Set<string>();
-    const seenDocumentUrls = new Set<string>();
-    const documentDepth = new Map(documents.map(document => [stringField(document, "id")!, 1]));
-    for (const summary of documents) {
-      if (request.signal?.aborted) throw new Error("Context retrieval canceled.");
-      const id = stringField(summary, "id");
-      const summaryUrl = stringField(summary, "url");
-      if (!id || seenDocuments.has(id) || summaryUrl && seenDocumentUrls.has(summaryUrl)) continue;
-      if (sources.length >= request.limits.maxSources || consumed >= request.limits.maxBytes) { incompleteReasons.push("Linear aggregate retrieval budget exhausted."); break; }
-      seenDocuments.add(id);
-      let document = summary;
-      if (!stringField(summary, "content")) {
+    if (!request.sourceAuthority || request.sourceAuthority.acceptedTypes.includes("document")) {
+      let issueWorkspace = linearWorkspace(stringField(issue, "url"));
+      if (!issueWorkspace && `${JSON.stringify({ ...issue, comments: undefined })}${JSON.stringify(comments)}`.includes("/document/")) {
         try {
-          if (summary.linked === true) {
-            const metadata = findDocument(await this.fetchDocument(id, request.account, request.signal, false), id, false);
-            if (!issueWorkspace || !metadata || linearWorkspace(stringField(metadata, "url")) !== issueWorkspace) { incompleteReasons.push(`Linear document ${id} workspace could not be verified before reading content.`); continue; }
-          }
-          document = findDocument(await this.fetchDocument(id, request.account, request.signal), id) ?? summary;
-        }
-        catch (error) {
-          if (request.signal?.aborted) throw error;
-          add({ id: `linear:document:${id}`, type: "document", canonicalUrl: stringField(summary, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), status: "failed", parentId: `linear:issue:${issueId}`, error: error instanceof Error ? error.message : String(error) });
-          incompleteReasons.push(`Unable to fetch Linear document ${id}.`);
-          continue;
-        }
+          const query = "query($id: String!) { issue(id: $id) { id identifier title url } }";
+          const canonicalIssue = findIssue(await this.execute("LINEAR_RUN_QUERY_OR_MUTATION", { query_or_mutation: query, variables: { id: issueId } }, request.account, request.signal), issueId);
+          const canonicalUrl = canonicalIssue && stringField(canonicalIssue, "url");
+          issueWorkspace = linearWorkspace(canonicalUrl);
+          if (issueWorkspace) { const source = sources.find(item => item.id === `linear:issue:${issueId}`); if (source) source.canonicalUrl = canonicalUrl; }
+        } catch (error) { if (request.signal?.aborted) throw error; incompleteReasons.push("Unable to verify the canonical issue workspace for linked documents."); }
       }
-      const canonicalUrl = stringField(document, "url");
-      if ((summary.linked === true && (!canonicalUrl || !issueWorkspace)) || (canonicalUrl && issueWorkspace && linearWorkspace(canonicalUrl) !== issueWorkspace)) { incompleteReasons.push(`Linear document ${id} workspace could not be verified against the issue.`); continue; }
-      if (canonicalUrl && seenDocumentUrls.has(canonicalUrl)) continue;
-      if (canonicalUrl) seenDocumentUrls.add(canonicalUrl);
-      const content = stringField(document, "content");
-      if (!content) {
-        add({ id: `linear:document:${id}`, type: "document", canonicalUrl: stringField(document, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), status: "unsupported", parentId: `linear:issue:${issueId}`, error: "Document content was not returned." });
-        incompleteReasons.push(`Linear document ${id} did not include content.`);
-      } else {
-        for (const linked of linkedDocuments(content)) {
-          const linkedId = stringField(linked, "id")!;
-          if (seenDocuments.has(linkedId) || documentDepth.has(linkedId) || candidateKeys.has(stringField(linked, "url") ?? linkedId)) continue;
-          if ((documentDepth.get(id) ?? 1) >= request.limits.maxDepth) incompleteReasons.push(`Linked document ${linkedId} exceeds depth budget.`);
-          else { documentDepth.set(linkedId, (documentDepth.get(id) ?? 1) + 1); documents.push(...uniqueDocuments([linked])); }
+      const linkedDocuments = (text: string): Record<string, unknown>[] => [...text.matchAll(/https:\/\/linear\.app\/[^\s/)]+\/document\/([a-zA-Z0-9-]+)/g)].flatMap(match => {
+        if (!issueWorkspace || linearWorkspace(match[0]) !== issueWorkspace) { incompleteReasons.push("Linked document workspace is unverified or differs from the issue workspace."); return []; }
+        return [{ id: match[1].split("-").at(-1)!, url: match[0], linked: true }];
+      });
+      let initialDocuments = issue.documents;
+      if (!hasPageInfo(initialDocuments)) {
+        try { initialDocuments = findConnection(await fetchConnection("documents"), "documents", issueId); }
+        catch (error) { if (request.signal?.aborted) throw error; incompleteReasons.push("Unable to establish complete Linear document pagination."); }
+      }
+      if (!hasPageInfo(initialDocuments)) incompleteReasons.push("Linear document pagination metadata missing or malformed.");
+      const candidateKeys = new Map<string, Record<string, unknown>>();
+      const uniqueDocuments = (candidates: Record<string, unknown>[]) => candidates.filter(document => {
+        const key = stringField(document, "url") ?? stringField(document, "id");
+        if (!key) return false;
+        const existing = candidateKeys.get(key);
+        if (existing) { if ((!existing.content && document.content) || (existing.linked === true && document.linked !== true)) Object.assign(existing, document); return false; }
+        candidateKeys.set(key, document); return true;
+      });
+      const documents = uniqueDocuments([...connectionNodes(initialDocuments), ...connectionNodes(issue.documents), ...arrayObjects(issue.documents), ...linkedDocuments(JSON.stringify({ ...issue, comments: undefined })), ...comments.flatMap(comment => linkedDocuments(stringField(comment, "body") ?? ""))]);
+      let documentPage = pageInfo(initialDocuments);
+      const documentCursors = new Set<string>();
+      while (documentPage.hasNextPage && documentPage.endCursor && !documentCursors.has(documentPage.endCursor) && documents.length < request.limits.maxSources) {
+        documentCursors.add(documentPage.endCursor);
+        const page = await fetchConnection("documents", documentPage.endCursor);
+        const connection = findConnection(page, "documents", issueId);
+        documents.push(...uniqueDocuments(connectionNodes(connection)));
+        if (!hasPageInfo(connection)) incompleteReasons.push("Linear document pagination metadata missing or malformed.");
+        documentPage = pageInfo(connection);
+      }
+      if (documentPage.hasNextPage) incompleteReasons.push(`Linear documents for ${issueIdentifier} remain incomplete at cursor ${documentPage.endCursor ?? "unknown"}.`);
+      const seenDocuments = new Set<string>();
+      const seenDocumentUrls = new Set<string>();
+      const documentDepth = new Map(documents.map(document => [stringField(document, "id")!, 1]));
+      for (const summary of documents) {
+        if (request.signal?.aborted) throw new Error("Context retrieval canceled.");
+        const id = stringField(summary, "id");
+        const summaryUrl = stringField(summary, "url");
+        if (!id || seenDocuments.has(id) || summaryUrl && seenDocumentUrls.has(summaryUrl)) continue;
+        if (sources.length >= request.limits.maxSources || consumed >= request.limits.maxBytes) { incompleteReasons.push("Linear aggregate retrieval budget exhausted."); break; }
+        seenDocuments.add(id);
+        let document = summary;
+        if (!stringField(summary, "content")) {
+          try {
+            if (summary.linked === true) {
+              const metadata = findDocument(await this.fetchDocument(id, request.account, request.signal, false), id, false);
+              if (!issueWorkspace || !metadata || linearWorkspace(stringField(metadata, "url")) !== issueWorkspace) { incompleteReasons.push(`Linear document ${id} workspace could not be verified before reading content.`); continue; }
+            }
+            document = findDocument(await this.fetchDocument(id, request.account, request.signal), id) ?? summary;
+          }
+          catch (error) {
+            if (request.signal?.aborted) throw error;
+            add({ id: `linear:document:${id}`, type: "document", canonicalUrl: stringField(summary, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), status: "failed", parentId: `linear:issue:${issueId}`, error: error instanceof Error ? error.message : String(error) });
+            incompleteReasons.push(`Unable to fetch Linear document ${id}.`);
+            continue;
+          }
         }
-        add({ id: `linear:document:${stringField(document, "id") ?? id}`, type: "document", canonicalUrl: stringField(document, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), updatedAt: stringField(document, "updatedAt"), providerVersion: "LINEAR_RUN_QUERY_OR_MUTATION", status: "available", parentId: `linear:issue:${issueId}`, content });
+        const canonicalUrl = stringField(document, "url");
+        if ((summary.linked === true && (!canonicalUrl || !issueWorkspace)) || (canonicalUrl && issueWorkspace && linearWorkspace(canonicalUrl) !== issueWorkspace)) { incompleteReasons.push(`Linear document ${id} workspace could not be verified against the issue.`); continue; }
+        if (canonicalUrl && seenDocumentUrls.has(canonicalUrl)) continue;
+        if (canonicalUrl) seenDocumentUrls.add(canonicalUrl);
+        const content = stringField(document, "content");
+        if (!content) {
+          add({ id: `linear:document:${id}`, type: "document", canonicalUrl: stringField(document, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), status: "unsupported", parentId: `linear:issue:${issueId}`, error: "Document content was not returned." });
+          incompleteReasons.push(`Linear document ${id} did not include content.`);
+        } else {
+          for (const linked of linkedDocuments(content)) {
+            const linkedId = stringField(linked, "id")!;
+            if (seenDocuments.has(linkedId) || documentDepth.has(linkedId) || candidateKeys.has(stringField(linked, "url") ?? linkedId)) continue;
+            if ((documentDepth.get(id) ?? 1) >= request.limits.maxDepth) incompleteReasons.push(`Linked document ${linkedId} exceeds depth budget.`);
+            else { documentDepth.set(linkedId, (documentDepth.get(id) ?? 1) + 1); documents.push(...uniqueDocuments([linked])); }
+          }
+          add({ id: `linear:document:${stringField(document, "id") ?? id}`, type: "document", canonicalUrl: stringField(document, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), updatedAt: stringField(document, "updatedAt"), providerVersion: "LINEAR_RUN_QUERY_OR_MUTATION", status: "available", parentId: `linear:issue:${issueId}`, content });
+        }
       }
     }
-    return { version: 1, sources, selection: { candidates: [request.issue], selected: [`linear:issue:${issueId}`], rule: `explicit issue ${request.issue} using explicit Composio account ${request.account}` }, limits: request.limits, incompleteReasons };
+    return { version: 1, sources, selection: { candidates: [request.issue], selected: sources.map(source => source.id), rule: `explicit issue ${request.issue} using explicit Composio account ${request.account}` }, limits: request.limits, incompleteReasons };
   }
 
   private async execute(slug: string, data: Record<string, unknown>, account: string, signal?: AbortSignal): Promise<unknown> {

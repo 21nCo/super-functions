@@ -47,6 +47,7 @@ export class RepositoryMarkdownContextAdapter implements ContextAdapter {
   public readonly id = "repository-markdown";
 
   public async preflight(request: ContextRequest): Promise<PreflightResult> {
+    if (request.sourceAuthority && !request.sourceAuthority.acceptedTypes.includes("repository_markdown")) return { ok: true, diagnostics: [] };
     const diagnostics = [];
     if (!request.paths?.length) diagnostics.push({ code: "REVIEWFN_MARKDOWN_PATHS_REQUIRED", level: "error" as const, message: "Repository Markdown context requires at least one path." });
     try { await realpath(request.root); } catch { diagnostics.push({ code: "REVIEWFN_ROOT_MISSING", level: "error" as const, message: "Repository root is unavailable." }); }
@@ -58,7 +59,8 @@ export class RepositoryMarkdownContextAdapter implements ContextAdapter {
     const sources: ContextSource[] = [];
     const incompleteReasons: string[] = [];
     let consumed = 0;
-    const paths = await expandPaths(root, request.paths ?? [], request.limits, incompleteReasons);
+    const allowed = !request.sourceAuthority || request.sourceAuthority.acceptedTypes.includes("repository_markdown");
+    const paths = allowed ? await expandPaths(root, request.paths ?? [], request.limits, incompleteReasons) : [];
     for (const relative of paths) {
       if (sources.length >= request.limits.maxSources) { incompleteReasons.push(`Repository Markdown source limit ${request.limits.maxSources} reached.`); break; }
       const absolute = path.join(root, relative);

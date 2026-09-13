@@ -102,7 +102,7 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
       }
       if (!reproduced) errors.push(`Finding ${finding.fingerprint} claims reproduction without a completed test receipt and verified retained logs.`);
     }
-    if (!finding.trigger || !finding.impact || !finding.direction) errors.push(`Finding ${finding.fingerprint} is missing actionable detail.`);
+    if (![finding.title, finding.trigger, finding.impact, finding.direction].every(value => value.trim().length > 0)) errors.push(`Finding ${finding.fingerprint} is missing actionable detail.`);
     for (const id of finding.evidenceIds) if (!evidence.has(id)) errors.push(`Finding ${finding.fingerprint} references unknown evidence ${id}.`);
     for (const id of finding.requirementIds) if (!requirementIds.includes(id)) errors.push(`Finding ${finding.fingerprint} references unknown requirement ${id}.`);
   }

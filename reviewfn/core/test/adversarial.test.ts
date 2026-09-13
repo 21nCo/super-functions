@@ -331,3 +331,15 @@ it("allows an unmatched optional glob without claiming source coverage", async (
   expect(result.sources).toEqual([]);
   expect(result.incompleteReasons).toEqual([]);
 });
+
+it.each(["title", "trigger", "impact", "direction"] as const)("rejects whitespace-only finding %s", async field => {
+  const value = report(); value.verdict = "changes_requested";
+  value.findings = [{ fingerprint: "f", severity: "high", category: "behavior", title: "Bug", trigger: "input", impact: "wrong", direction: "fix", evidenceIds: ["e"], basis: "inferred", requirementIds: ["r"], lifecycle: "new" }];
+  value.findings[0][field] = " \n\t";
+  expect((await errors(value)).join()).toMatch(/actionable/);
+});
+
+it("skips unauthorized repository Markdown without missing-file errors", async () => {
+  const result = await new RepositoryMarkdownContextAdapter().fetch({ root: await temporary(), paths: ["private.md"], sourceAuthority: { acceptedTypes: ["issue"], commentsMayClarify: false, waiverAuthorities: [] }, limits: { maxSources: 10, maxBytes: 1000, maxDepth: 3 } });
+  expect(result.sources).toEqual([]); expect(result.incompleteReasons).toEqual([]);
+});

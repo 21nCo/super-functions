@@ -213,4 +213,5 @@ it("tells the harness exactly which sources have policy authority", () => {
   const prompt = buildReviewPrompt({ change: value.change, context: { version: 1, sources: [...sources, { id: "missing", type: "issue", status: "available", digest: "m", retrievedAt: "now" }], selection: { candidates: [], selected: [], rule: "explicit" }, limits: { maxSources: 4, maxBytes: 100, maxDepth: 1 }, incompleteReasons: [], digest: "c" }, config: DEFAULT_CONFIG, policy, tests: [] }).prompt;
   const payload = JSON.parse(prompt.split("Frozen review input:\n")[1]);
   expect(payload.authoritativeSourceIds).toEqual(["issue"]);
+  expect(payload.context.sources.map((source: { id: string }) => source.id)).toEqual(["issue", "missing"]);
 });
