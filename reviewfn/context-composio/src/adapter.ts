@@ -101,18 +101,33 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     }
     if (commentPage.hasNextPage) incompleteReasons.push(`Linear comments for ${issueIdentifier} remain incomplete at cursor ${commentPage.endCursor ?? "unknown"}.`);
 
-    const linkedDocuments = (text: string): Record<string, unknown>[] => [...text.matchAll(/https:\/\/linear\.app\/[^\s/)]+\/document\/([a-zA-Z0-9-]+)/g)].map(match => ({ id: match[1].split("-").at(-1)!, url: match[0] }));
+    let issueWorkspace = linearWorkspace(stringField(issue, "url"));
+    if (!issueWorkspace && `${JSON.stringify(issue)}${JSON.stringify(comments)}`.includes("/document/")) {
+      try {
+        const query = "query($id: String!) { issue(id: $id) { id identifier title url } }";
+        const canonicalIssue = findIssue(await this.execute("LINEAR_RUN_QUERY_OR_MUTATION", { query_or_mutation: query, variables: { id: issueId } }, request.account, request.signal), issueId);
+        const canonicalUrl = canonicalIssue && stringField(canonicalIssue, "url");
+        issueWorkspace = linearWorkspace(canonicalUrl);
+        if (issueWorkspace) { const source = sources.find(item => item.id === `linear:issue:${issueId}`); if (source) source.canonicalUrl = canonicalUrl; }
+      } catch { incompleteReasons.push("Unable to verify the canonical issue workspace for linked documents."); }
+    }
+    const linkedDocuments = (text: string): Record<string, unknown>[] => [...text.matchAll(/https:\/\/linear\.app\/[^\s/)]+\/document\/([a-zA-Z0-9-]+)/g)].flatMap(match => {
+      if (!issueWorkspace || linearWorkspace(match[0]) !== issueWorkspace) { incompleteReasons.push("Linked document workspace is unverified or differs from the issue workspace."); return []; }
+      return [{ id: match[1].split("-").at(-1)!, url: match[0], linked: true }];
+    });
     let initialDocuments = issue.documents;
     if (!hasPageInfo(initialDocuments)) {
       try { initialDocuments = findConnection(await this.fetchIssueConnection("documents", issueId, undefined, request.account, request.signal), "documents"); }
       catch { incompleteReasons.push("Unable to establish complete Linear document pagination."); }
     }
     if (!hasPageInfo(initialDocuments)) incompleteReasons.push("Linear document pagination metadata missing or malformed.");
-    const candidateKeys = new Set<string>();
+    const candidateKeys = new Map<string, Record<string, unknown>>();
     const uniqueDocuments = (candidates: Record<string, unknown>[]) => candidates.filter(document => {
       const key = stringField(document, "url") ?? stringField(document, "id");
-      if (!key || candidateKeys.has(key)) return false;
-      candidateKeys.add(key); return true;
+      if (!key) return false;
+      const existing = candidateKeys.get(key);
+      if (existing) { if ((!existing.content && document.content) || (existing.linked === true && document.linked !== true)) Object.assign(existing, document); return false; }
+      candidateKeys.set(key, document); return true;
     });
     const documents = uniqueDocuments([...connectionNodes(initialDocuments), ...connectionNodes(issue.documents), ...arrayObjects(issue.documents), ...linkedDocuments(JSON.stringify(issue)), ...comments.flatMap(comment => linkedDocuments(stringField(comment, "body") ?? ""))]);
     let documentPage = pageInfo(initialDocuments);
@@ -131,14 +146,20 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     const documentDepth = new Map(documents.map(document => [stringField(document, "id")!, 1]));
     for (const summary of documents) {
       if (request.signal?.aborted) throw new Error("Context retrieval canceled.");
-      if (sources.length >= request.limits.maxSources || consumed >= request.limits.maxBytes) { incompleteReasons.push("Linear aggregate retrieval budget exhausted."); break; }
       const id = stringField(summary, "id");
       const summaryUrl = stringField(summary, "url");
       if (!id || seenDocuments.has(id) || summaryUrl && seenDocumentUrls.has(summaryUrl)) continue;
+      if (sources.length >= request.limits.maxSources || consumed >= request.limits.maxBytes) { incompleteReasons.push("Linear aggregate retrieval budget exhausted."); break; }
       seenDocuments.add(id);
       let document = summary;
       if (!stringField(summary, "content")) {
-        try { document = findDocument(await this.fetchDocument(id, request.account, request.signal)) ?? summary; }
+        try {
+          if (summary.linked === true) {
+            const metadata = findDocument(await this.fetchDocument(id, request.account, request.signal, false), id, false);
+            if (!issueWorkspace || !metadata || linearWorkspace(stringField(metadata, "url")) !== issueWorkspace) { incompleteReasons.push(`Linear document ${id} workspace could not be verified before reading content.`); continue; }
+          }
+          document = findDocument(await this.fetchDocument(id, request.account, request.signal), id) ?? summary;
+        }
         catch (error) {
           add({ id: `linear:document:${id}`, type: "document", canonicalUrl: stringField(summary, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), status: "failed", parentId: `linear:issue:${issueId}`, error: error instanceof Error ? error.message : String(error) });
           incompleteReasons.push(`Unable to fetch Linear document ${id}.`);
@@ -146,6 +167,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
         }
       }
       const canonicalUrl = stringField(document, "url");
+      if ((summary.linked === true && (!canonicalUrl || !issueWorkspace)) || (canonicalUrl && issueWorkspace && linearWorkspace(canonicalUrl) !== issueWorkspace)) { incompleteReasons.push(`Linear document ${id} workspace could not be verified against the issue.`); continue; }
       if (canonicalUrl && seenDocumentUrls.has(canonicalUrl)) continue;
       if (canonicalUrl) seenDocumentUrls.add(canonicalUrl);
       const content = stringField(document, "content");
@@ -155,11 +177,11 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
       } else {
         for (const linked of linkedDocuments(content)) {
           const linkedId = stringField(linked, "id")!;
-          if (seenDocuments.has(linkedId) || documentDepth.has(linkedId)) continue;
+          if (seenDocuments.has(linkedId) || documentDepth.has(linkedId) || candidateKeys.has(stringField(linked, "url") ?? linkedId)) continue;
           if ((documentDepth.get(id) ?? 1) >= request.limits.maxDepth) incompleteReasons.push(`Linked document ${linkedId} exceeds depth budget.`);
-          else { documentDepth.set(linkedId, (documentDepth.get(id) ?? 1) + 1); documents.push(linked); }
+          else { documentDepth.set(linkedId, (documentDepth.get(id) ?? 1) + 1); documents.push(...uniqueDocuments([linked])); }
         }
-        add({ id: `linear:document:${id}`, type: "document", canonicalUrl: stringField(document, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), updatedAt: stringField(document, "updatedAt"), providerVersion: "LINEAR_RUN_QUERY_OR_MUTATION", status: "available", parentId: `linear:issue:${issueId}`, content });
+        add({ id: `linear:document:${stringField(document, "id") ?? id}`, type: "document", canonicalUrl: stringField(document, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), updatedAt: stringField(document, "updatedAt"), providerVersion: "LINEAR_RUN_QUERY_OR_MUTATION", status: "available", parentId: `linear:issue:${issueId}`, content });
       }
     }
     return { version: 1, sources, selection: { candidates: [request.issue], selected: [`linear:issue:${issueId}`], rule: `explicit issue ${request.issue} using explicit Composio account ${request.account}` }, limits: request.limits, incompleteReasons };
@@ -184,8 +206,8 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     catch (error) { throw new Error(`${slug} returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`); }
   }
 
-  private fetchDocument(id: string, account: string, signal?: AbortSignal): Promise<unknown> {
-    const query = "query($id: String!) { document(id: $id) { id title content url updatedAt } }";
+  private fetchDocument(id: string, account: string, signal?: AbortSignal, includeContent = true): Promise<unknown> {
+    const query = `query($id: String!) { document(id: $id) { id slugId title ${includeContent ? "content" : ""} url updatedAt } }`;
     return this.execute("LINEAR_RUN_QUERY_OR_MUTATION", { query_or_mutation: query, variables: { id } }, account, signal);
   }
 
@@ -209,8 +231,8 @@ function findIssue(value: unknown, expected: string): Record<string, unknown> | 
   return records(value).find(record => typeof record.title === "string" && [record.id, record.identifier].some(identity => typeof identity === "string" && identity.toLowerCase() === expected.toLowerCase()));
 }
 
-function findDocument(value: unknown): Record<string, unknown> | undefined {
-  return records(value).find((record) => typeof record.id === "string" && typeof record.content === "string" && typeof record.title === "string");
+function findDocument(value: unknown, expected: string, requireContent = true): Record<string, unknown> | undefined {
+  return records(value).find(record => typeof record.id === "string" && (record.id === expected || record.slugId === expected) && (!requireContent || typeof record.content === "string") && typeof record.title === "string");
 }
 
 function findConnection(value: unknown, name: "comments" | "documents"): unknown {
@@ -250,4 +272,9 @@ function collectWorkspaceCandidates(issue: Record<string, unknown>): string[] {
 
 function issueWithoutConnections(issue: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(issue).filter(([key]) => !["comments", "documents", "attachments"].includes(key)));
+}
+
+function linearWorkspace(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try { const parsed = new URL(url); return parsed.protocol === "https:" && parsed.hostname === "linear.app" && !parsed.port && !parsed.username && !parsed.password ? parsed.pathname.split("/")[1]?.toLowerCase() || undefined : undefined; } catch { return undefined; }
 }

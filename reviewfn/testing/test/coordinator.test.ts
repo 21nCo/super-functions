@@ -96,6 +96,8 @@ it("keeps finding identity stable when coordinator redaction secrets differ", as
   try {
     delete process.env.REVIEWFN_TEST_SECRET; const first = await run();
     process.env.REVIEWFN_TEST_SECRET = "private-example-secret"; const second = await run();
+    expect(first.report.findings[0].fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(first.report.findings[0].fingerprint).not.toBe("from-harness");
     expect(second.report.findings[0].fingerprint).toBe(first.report.findings[0].fingerprint);
     expect(second.report.findings[0].title).not.toContain("private-example-secret");
   } finally { if (original === undefined) delete process.env.REVIEWFN_TEST_SECRET; else process.env.REVIEWFN_TEST_SECRET = original; }

@@ -120,7 +120,7 @@ export class ReviewCoordinator {
     const rawErrors = validateHarnessPayload(payload(output));
     const rawFingerprints = rawErrors.length ? [] : output.findings.map(findingFingerprint);
     if (output) output = redactJson(output, secrets);
-    const payloadErrors = [...rawErrors, ...validateHarnessPayload(payload(output))];
+    const payloadErrors = [...new Set([...rawErrors, ...validateHarnessPayload(payload(output))])];
     if (payloadErrors.length) output = { terminal: "malformed", requirements: [], assessments: [], evidence: [], findings: [], inspectedPaths: [], uninspected: [{ scope: "structured output", reason: payloadErrors.join("; ") }], events: output?.events ?? [] };
     if (request.signal?.aborted) output.terminal = "canceled";
     output.requirements = output.requirements.map(requirement => ({ ...requirement, extraction: { harness: this.dependencies.harness.capabilities.id, promptDigest: prompt.digest } }));

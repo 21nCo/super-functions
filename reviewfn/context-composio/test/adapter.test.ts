@@ -57,14 +57,14 @@ it("retrieves live-shaped linked specifications and explicit comment pagination"
   const runner: ComposioRunner = async args => {
     calls.push(args[1]); const data = JSON.parse(args[args.indexOf("-d") + 1]);
     const payload = args[1] === "LINEAR_GET_LINEAR_ISSUE"
-      ? { successful: true, data: { issue: { id: "i", identifier: "ENG-1", title: "Feature", description: "Read https://linear.app/acme/document/design-abcdef123456", team: { name: "workspace-1" }, comments: { nodes: [] } } } }
+      ? { successful: true, data: { issue: { id: "i", identifier: "ENG-1", title: "Feature", url: "https://linear.app/acme/issue/ENG-1", description: "Read https://linear.app/acme/document/design-abcdef123456", team: { name: "workspace-1" }, comments: { nodes: [] } } } }
       : data.query_or_mutation.includes("comments(")
         ? { data: { data: { issue: { comments: { nodes: [{ id: "c", body: "clarification" }], pageInfo: { hasNextPage: false } } } } } }
-        : data.query_or_mutation.includes("documents(") ? { data: { data: { issue: { documents: { nodes: [], pageInfo: { hasNextPage: false } } } } } } : { data: { data: { document: { id: "doc", title: "Design", content: "must preserve compatibility" } } } };
+        : data.query_or_mutation.includes("documents(") ? { data: { data: { issue: { documents: { nodes: [], pageInfo: { hasNextPage: false } } } } } } : { data: { data: { document: { id: "doc", slugId: "abcdef123456", title: "Design", url: "https://linear.app/acme/document/design-abcdef123456", content: "must preserve compatibility" } } } };
     return { code: 0, stdout: JSON.stringify(payload), stderr: "" };
   };
   const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
-  expect(result.sources.map(source => source.type)).toEqual(["issue", "comment", "document"]); expect(result.incompleteReasons).toEqual([]); expect(calls).toHaveLength(4);
+  expect(result.sources.map(source => source.type)).toEqual(["issue", "comment", "document"]); expect(result.incompleteReasons).toEqual([]); expect(calls).toHaveLength(5);
 });
 
 it("does not accept another workspace identity from nested comment metadata", async () => {
@@ -74,7 +74,7 @@ it("does not accept another workspace identity from nested comment metadata", as
 
 it("deduplicates document UUID and URL aliases", async () => {
   const url = "https://linear.app/acme/document/design-abcdef123456";
-  const runner: ComposioRunner = async () => ({ code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "x", description: url, organization: { id: "workspace-1" }, comments: { nodes: [], pageInfo: { hasNextPage: false } }, documents: { nodes: [{ id: "uuid", title: "Design", url, content: "requirements" }], pageInfo: { hasNextPage: false } } } }) });
+  const runner: ComposioRunner = async () => ({ code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "x", url: "https://linear.app/acme/issue/ENG-1", description: url, organization: { id: "workspace-1" }, comments: { nodes: [], pageInfo: { hasNextPage: false } }, documents: { nodes: [{ id: "uuid", title: "Design", url, content: "requirements" }], pageInfo: { hasNextPage: false } } } }) });
   const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
   expect(result.sources.filter(source => source.type === "document")).toHaveLength(1);
   expect(result.incompleteReasons).toEqual([]);
@@ -93,4 +93,49 @@ it("does not spend pagination budget on duplicate initial documents", async () =
 it("rejects a different issue in the same workspace", async () => {
   const runner: ComposioRunner = async () => ({ code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "other", identifier: "ENG-2", title: "Wrong", organization: { id: "workspace-1" } } }) });
   await expect(new ComposioLinearContextAdapter({ runner }).fetch(request)).rejects.toThrow(/no accessible Linear issue/);
+});
+
+it("rejects cross-workspace links before fetching their documents", async () => {
+  let documentReads = 0;
+  const runner: ComposioRunner = async args => {
+    if (args[1] !== "LINEAR_GET_LINEAR_ISSUE") { documentReads++; throw new Error("must not read foreign document"); }
+    return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "x", url: "https://linear.app/acme/issue/ENG-1", description: "https://linear.app/foreign/document/private-abcdef123456", organization: { id: "workspace-1" }, comments: { nodes: [], pageInfo: { hasNextPage: false } }, documents: { nodes: [], pageInfo: { hasNextPage: false } } } }) };
+  };
+  const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
+  expect(documentReads).toBe(0); expect(result.sources).toHaveLength(1); expect(result.incompleteReasons.join()).toMatch(/workspace/);
+});
+it("uses richer paginated records in place of URL-only placeholders", async () => {
+  let documentReads = 0; const url = "https://linear.app/acme/document/design-abcdef123456";
+  const runner: ComposioRunner = async args => {
+    if (args[1] === "LINEAR_GET_LINEAR_ISSUE") return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "x", url: "https://linear.app/acme/issue/ENG-1", description: url, organization: { id: "workspace-1" }, comments: { nodes: [], pageInfo: { hasNextPage: false } }, documents: { nodes: [], pageInfo: { hasNextPage: true, endCursor: "next" } } } }) };
+    const data = JSON.parse(args[args.indexOf("-d") + 1]);
+    if (data.query_or_mutation.includes("document(id:")) { documentReads++; throw new Error("unnecessary document fetch"); }
+    return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { documents: { nodes: [{ id: "provider-uuid", title: "Design", url, content: "full specification" }], pageInfo: { hasNextPage: false } } } }) };
+  };
+  const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
+  expect(documentReads).toBe(0); expect(result.sources.find(source => source.type === "document")?.id).toBe("linear:document:provider-uuid"); expect(result.incompleteReasons).toEqual([]);
+});
+
+it("verifies the server-returned workspace before reading a linked document body", async () => {
+  let contentReads = 0;
+  const runner: ComposioRunner = async args => {
+    if (args[1] === "LINEAR_GET_LINEAR_ISSUE") return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "x", url: "https://linear.app/acme/issue/ENG-1", description: "https://linear.app/acme/document/forged-abcdef123456", organization: { id: "workspace-1" }, comments: { nodes: [], pageInfo: { hasNextPage: false } }, documents: { nodes: [], pageInfo: { hasNextPage: false } } } }) };
+    const data = JSON.parse(args[args.indexOf("-d") + 1]);
+    if (data.query_or_mutation.includes("content")) contentReads++;
+    return { code: 0, stderr: "", stdout: JSON.stringify({ document: { id: "uuid", slugId: "abcdef123456", title: "private", url: "https://linear.app/foreign/document/private-abcdef123456" } }) };
+  };
+  const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
+  expect(contentReads).toBe(0); expect(result.sources).toHaveLength(1); expect(result.incompleteReasons.join()).toMatch(/before reading content/);
+});
+
+it("resolves the canonical issue URL when the issue tool omits it", async () => {
+  const url = "https://linear.app/acme/document/design-abcdef123456";
+  const runner: ComposioRunner = async args => {
+    if (args[1] === "LINEAR_GET_LINEAR_ISSUE") return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "x", description: url, organization: { id: "workspace-1" }, comments: { nodes: [], pageInfo: { hasNextPage: false } }, documents: { nodes: [], pageInfo: { hasNextPage: false } } } }) };
+    const data = JSON.parse(args[args.indexOf("-d") + 1]);
+    const payload = data.query_or_mutation.includes("issue(id:") ? { issue: { id: "i", identifier: "ENG-1", title: "x", url: "https://linear.app/acme/issue/ENG-1" } } : { document: { id: "uuid", slugId: "abcdef123456", title: "Design", url, content: "requirements" } };
+    return { code: 0, stderr: "", stdout: JSON.stringify(payload) };
+  };
+  const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
+  expect(result.sources[0].canonicalUrl).toBe("https://linear.app/acme/issue/ENG-1"); expect(result.sources).toHaveLength(2); expect(result.incompleteReasons).toEqual([]);
 });

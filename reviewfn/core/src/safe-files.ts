@@ -22,7 +22,7 @@ export async function safeRead(file: string, maxBytes = 32 * 1024 * 1024): Promi
   const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stat = await handle.stat();
-    if (!stat.isFile() || stat.size > maxBytes) throw new Error("Expected a regular file within the 32 MiB read budget.");
+    if (!stat.isFile() || stat.size > maxBytes) throw new Error(`Expected a regular file within the ${maxBytes}-byte read budget.`);
     const chunks: Buffer[] = []; let bytes = 0;
     while (true) {
       const buffer = Buffer.alloc(Math.min(64 * 1024, maxBytes - bytes + 1));

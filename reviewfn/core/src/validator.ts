@@ -43,10 +43,12 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
   if (report.execution === "completed") {
     if (!report.requirements.length) errors.push("No requirements were extracted; extraction coverage is unverified.");
     if (!report.inspectedPaths.length) errors.push("No code paths were inspected.");
-    for (const changed of report.change.changedPaths) if (!report.inspectedPaths.includes(changed) && !report.uninspected.some(item => item.scope === changed)) errors.push(`Changed path ${changed} has no inspected or explicitly uninspected scope.`);
+    for (const changed of report.change.changedPaths) if (!report.inspectedPaths.includes(changed) && !report.uninspected.some(item => item.scope === changed && item.reason.trim().length > 0)) errors.push(`Changed path ${changed} has no inspected or explicitly uninspected scope.`);
     for (const category of policy.requiredCategories) if (!report.requirements.some(requirement => requirement.category === category)) errors.push(`Extraction coverage for required category ${category} is unverified.`);
     for (const source of context?.sources ?? []) if (source.status === "available" && source.content !== "" && policy.sourceAuthority.acceptedTypes.includes(source.type) && !report.requirements.some(requirement => requirement.sources.some(ref => ref.sourceId === source.id)) && !report.evidence.some(evidence => evidence.kind === "source" && evidence.source?.sourceId === source.id && referenceValid(evidence.source))) errors.push(`Extraction coverage for source ${source.id} is unverified; cite its requirements or source-backed exclusion evidence.`);
     if (!context) errors.push("Frozen context is required to validate source authority.");
+    for (const item of report.uninspected) if (!item.scope.trim() || !item.reason.trim()) errors.push("Uninspected scope requires a nonblank scope and reason.");
+    if (report.uninspected.length && report.coverage === "complete") errors.push("Uninspected scope cannot claim complete coverage.");
   }
   const requirementIds = report.requirements.map((item) => item.id);
   const evidenceIds = report.evidence.map((item) => item.id);

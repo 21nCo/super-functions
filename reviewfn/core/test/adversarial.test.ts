@@ -164,3 +164,16 @@ it("does not require impossible coverage evidence for a zero-byte source", async
   const manifest = { ...context, sources: [...context.sources, { ...context.sources[0], id: "empty", content: "", digest: sha256("") }] };
   expect(await errors(report(), manifest)).toEqual([]);
 });
+
+it("does not enumerate outside filenames through a scoped glob symlink", async () => {
+  const owned = await temporary(); const root = path.join(owned, "repo"); const outside = path.join(owned, "outside");
+  await mkdir(root); await mkdir(outside); await writeFile(path.join(outside, "private-filename.md"), "fixture");
+  await symlink(outside, path.join(root, "docs"));
+  const result = await new RepositoryMarkdownContextAdapter().fetch({ root, paths: ["docs/**/*.md"], limits: context.limits });
+  expect(result.sources).toEqual([]); expect(JSON.stringify(result)).not.toContain("private-filename"); expect(result.incompleteReasons.join()).toMatch(/escapes/);
+});
+
+it("requires an explanation for uninspected changed scope", async () => {
+  const value = report(); value.change.changedPaths.push("other.ts"); value.uninspected = [{ scope: "other.ts", reason: " " }];
+  const result = await errors(value); expect(result.join()).toMatch(/nonblank/); expect(result.join()).toMatch(/cannot claim complete/);
+});

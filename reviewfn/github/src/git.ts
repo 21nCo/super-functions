@@ -46,7 +46,7 @@ export class GitSourceControlAdapter implements SourceControlAdapter {
     const [diff, names, targetBranch] = await Promise.all([
       this.runner(["diff", "--binary", "--full-index", mergeBaseCommit, headCommit], root),
       this.runner(["diff", "--name-only", "-z", mergeBaseCommit, headCommit], root),
-      this.runner(["rev-parse", "--symbolic-full-name", "--end-of-options", base], root),
+      this.runner(["rev-parse", "--symbolic-full-name", "--verify", "--end-of-options", base], root),
     ]);
     return {
       repositoryId,

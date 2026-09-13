@@ -7,6 +7,9 @@ import type { ContextAdapter, ContextManifest, ContextRequest, ContextSource, Pr
 async function collectMarkdown(root: string, maxDepth: number, maxEntries: number, relative = "", state: { visited: number; reasons: string[] } = { visited: 0, reasons: [] }): Promise<string[]> {
   const directory = path.join(root, relative);
   const result: string[] = [];
+  const resolved = await realpath(directory).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return undefined; throw error; });
+  if (!resolved) return result;
+  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) { state.reasons.push(`Context directory ${relative} escapes the repository.`); return result; }
   const entries = await readdir(directory, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return []; throw error; });
   for (const entry of entries.sort((a, b) => compareCodePoints(a.name, b.name))) {
     if (++state.visited > maxEntries) { state.reasons.push("Context directory traversal budget exhausted."); break; }
