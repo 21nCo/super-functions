@@ -1,4 +1,6 @@
 import Ajv from "ajv";
+import Ajv2019 from "ajv/dist/2019.js";
+import Ajv2020 from "ajv/dist/2020.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 import { canonicalJson, compareCodeUnits, sha256 } from "./canonical.js";
@@ -57,6 +59,7 @@ export type McpFnClientProfileLifecycleStage =
   | "catalog-projection"
   | "argument-enrichment"
   | "input-validation"
+  | "invalid-arguments-handler"
   | "handler"
   | "output-validation";
 
@@ -371,7 +374,7 @@ function ownedArguments<T>(profile: McpFnClientProfile<T>, name: string): readon
   return mapping && Object.hasOwn(mapping, name) ? mapping[name] : [];
 }
 
-function validateDefinitionContainers(schema: unknown, ajv: Ajv): void {
+function validateDefinitionContainers(schema: unknown, ajv: Ajv | Ajv2019 | Ajv2020): void {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) return;
   const object = schema as Record<string, unknown>;
   for (const keyword of ["$defs", "definitions", "properties", "patternProperties", "dependentSchemas"]) {
@@ -391,7 +394,9 @@ function validateDefinitionContainers(schema: unknown, ajv: Ajv): void {
 
 function assertValidProfileSchema(schema: Record<string, unknown>): void {
   try {
-    const ajv = new Ajv({ strict: false, allowUnionTypes: true, validateFormats: false });
+    const dialect = typeof schema.$schema === "string" ? schema.$schema : "https://json-schema.org/draft/2020-12/schema";
+    const Validator = dialect.includes("draft-07") ? Ajv : dialect.includes("2019-09") ? Ajv2019 : Ajv2020;
+    const ajv = new Validator({ strict: false, allowUnionTypes: true, validateFormats: false });
     validateDefinitionContainers(schema, ajv);
     ajv.compile(schema);
   }
@@ -487,6 +492,18 @@ function taskSupport(tool: McpFnListedTool): string {
   return tool.execution.taskSupport === undefined ? "forbidden" : tool.execution.taskSupport;
 }
 
+/** Visit schema positions without interpreting instance data as schema syntax. */
+function mapSchemaKeyword(key: string, value: unknown, visit: (schema: unknown) => unknown): unknown {
+  if (["$defs", "definitions", "properties", "patternProperties", "dependentSchemas"].includes(key) && value && typeof value === "object" && !Array.isArray(value)) {
+    return Object.fromEntries(Object.entries(value).map(([name, child]) => [name, visit(child)]));
+  }
+  if (["allOf", "anyOf", "oneOf", "prefixItems"].includes(key) && Array.isArray(value)) return value.map(visit);
+  if (key === "items") return Array.isArray(value) ? value.map(visit) : visit(value);
+  if (key === "dependencies" && value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([name, child]) => [name, Array.isArray(child) ? child : visit(child)]));
+  if (["additionalItems", "additionalProperties", "contains", "not", "if", "then", "else", "unevaluatedProperties", "unevaluatedItems", "propertyNames"].includes(key)) return visit(value);
+  return value;
+}
+
 /** Resolve only root object composition; never traverse argument values. */
 function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { properties: Record<string, unknown>; required: Set<string>; constraints: string[]; ownershipSensitive: boolean; prohibited: Set<string> } {
   const properties: Record<string, unknown> = Object.create(null);
@@ -509,7 +526,9 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
       resource = value as Record<string, unknown>;
     }
     resources.set(value, resource);
-    for (const child of Object.values(value)) index(child, resource);
+    for (const [key, child] of Object.entries(value)) {
+      mapSchemaKeyword(key, child, item => { index(item, resource); return item; });
+    }
   };
   index(root, root);
   const referenceTarget = (schema: Record<string, unknown>): unknown => {
@@ -541,7 +560,7 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
     if (Array.isArray(value)) return value.map(child => resolveProperty(child, refs));
     if (!value || typeof value !== "object") return value;
     const schema = value as Record<string, unknown>;
-    const result = Object.fromEntries(Object.entries(schema).map(([key, child]) => [key, resolveProperty(child, refs)]));
+    const result = Object.fromEntries(Object.entries(schema).map(([key, child]) => [key, mapSchemaKeyword(key, child, item => resolveProperty(item, refs))]));
     if (typeof schema.$ref === "string") {
       const target = referenceTarget(schema);
       if (!refs.has(target)) result.$ref = resolveProperty(target, new Set([...refs, target]));
@@ -575,7 +594,10 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
       for (const name of owned) {
         const properties = schema.properties as Record<string, unknown> | undefined;
         const patterns = Object.keys((schema.patternProperties ?? {}) as object);
-        if (!Object.hasOwn(properties ?? {}, name) && !patterns.some(pattern => new RegExp(pattern).test(name))) prohibited.add(name);
+        if (!Object.hasOwn(properties ?? {}, name) && !patterns.some(pattern => {
+          try { return new RegExp(pattern).test(name); }
+          catch { throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Invalid patternProperties expression"); }
+        })) prohibited.add(name);
       }
     }
     const branchProperties = schema.properties && typeof schema.properties === "object" ? Object.keys(schema.properties).filter(name => !owned.has(name)).sort(compareCodeUnits) : [];
@@ -584,11 +606,10 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
     for (const [key, value] of Object.entries(schema)) {
       if (["dependencies", "dependentRequired", "dependentSchemas", "if", "then", "else", "anyOf", "oneOf", "not", "const", "enum", "minProperties", "maxProperties", "unevaluatedProperties"].includes(key)) ownershipSensitive = true;
       if (!["properties", "required", "allOf", "$ref", "$defs", "definitions", "title", "description", "$comment", "examples"].includes(key)) {
-        constraints.add(canonicalJson({ path, [key]: resolveProperty(value) }));
+        constraints.add(canonicalJson({ path, [key]: mapSchemaKeyword(key, value, resolveProperty) }));
       }
     }
     if (typeof schema.$ref === "string") {
-      if (schema.$ref !== "#" && !schema.$ref.startsWith("#/")) throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Profile root references must be local JSON pointers");
       visit(referenceTarget(schema), `${path}/$ref`);
     }
     if (schema.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties)) {

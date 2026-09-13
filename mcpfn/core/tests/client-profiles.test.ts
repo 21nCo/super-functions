@@ -614,12 +614,35 @@ it("compares boolean and embedded-resource schemas and equivalent branch referen
 
 it("marks invalid-argument callbacks as handlers and bounds diagnostic paths", async () => {
   const { formatMcpFnSchemaIssues } = await import('../src/validation.js');
-  const issue = formatMcpFnSchemaIssues([{ instancePath: '/' + 'x'.repeat(1000), schemaPath: '#/type', keyword: 'type', params: {}, message: 'bad' }])[0];
+  const issue = formatMcpFnSchemaIssues([{ instancePath: '/' + 'x'.repeat(1000), schemaPath: '#/' + 'x'.repeat(1000), keyword: 'type', params: {}, message: 'bad' }])[0];
   expect(issue.instancePath).toBe('/');
+  expect(issue.schemaPath).toBe('#');
   const stages: string[] = [];
   const registry = new McpFnRegistry().register({ name: 'test', description: 'Test validation observer', inputSchema: { type: 'object', required: ['value'] },
     handleInvalidArguments: () => { throw new McpFnValidationError('private', { issues: [{ secret: 'private' }] }); },
     handler: async () => structuredResult({}) });
   await expect(registry.callTool('test', {}, undefined, {} as any, { onStage: stage => stages.push(stage) })).rejects.toThrow('private');
-  expect(stages.at(-1)).toBe('handler');
+  expect(stages.at(-1)).toBe('invalid-arguments-handler');
+});
+
+it("accepts embedded root references, modern dialects and literal ref data", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+  for (const schema of [
+    { type: "object", $defs: { payload: { $id: "payload", type: "object", properties: { value: { type: "string" } } } }, $ref: "payload" },
+    { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", properties: { values: { type: "array", prefixItems: [{ type: "string" }] } } },
+    { type: "object", properties: { value: { const: { $ref: "literal-not-schema" }, default: { $id: "data-id", $ref: "literal" } } } },
+  ]) {
+    await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: schema }], resolved: {
+      context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" },
+      profile: { id: "test", version: "1", matches: () => true, projectCatalog: () => [{ name: "test", inputSchema: schema }] },
+    } })).resolves.toBeDefined();
+  }
+});
+
+it("normalizes invalid ownership pattern failures", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+  await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: { type: "object", properties: { tenant: { type: "string" } }, required: ["tenant"] } }], resolved: {
+    context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" },
+    profile: { id: "test", version: "1", matches: () => true, serverOwnedArguments: { test: ["tenant"] }, projectCatalog: () => [{ name: "test", inputSchema: { type: "object", additionalProperties: false, patternProperties: { "[": {} } } }] },
+  } })).rejects.toMatchObject({ code: "MCPFN_INVALID_PROJECTED_CATALOG" });
 });

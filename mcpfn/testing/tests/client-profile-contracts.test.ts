@@ -453,3 +453,8 @@ it("marks task-required fixtures incomplete without an ordinary call", async () 
     expect(callTool).not.toHaveBeenCalled();
   } finally { spy.mockRestore(); }
 });
+
+it("warns for named schema anchors", () => {
+  const issues = validateMcpFnSchemaPortability({ $schema: "https://json-schema.org/draft/2020-12/schema", $anchor: "node", type: "object", properties: { next: { $ref: "#node" } } }, "input");
+  expect(issues.some(issue => issue.keyword === "$anchor")).toBe(true);
+});

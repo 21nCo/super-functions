@@ -67,6 +67,7 @@ export interface McpFnSchemaIssue {
 
 export type McpFnToolLifecycleStage =
   | "input-validation"
+  | "invalid-arguments-handler"
   | "handler"
   | "output-validation";
 

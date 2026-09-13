@@ -389,7 +389,7 @@ export class McpFnServer<TContext = undefined> {
                 });
               },
               onStage: (
-                stage: "input-validation" | "handler" | "output-validation",
+                stage: "input-validation" | "invalid-arguments-handler" | "handler" | "output-validation",
               ) => {
                 currentStage = stage;
                 completedStages.add(stage);
@@ -680,6 +680,7 @@ export class McpFnServer<TContext = undefined> {
   ): Promise<void> {
     for (const stage of [
       "input-validation",
+      "invalid-arguments-handler",
       "handler",
       "output-validation",
     ] as const) {

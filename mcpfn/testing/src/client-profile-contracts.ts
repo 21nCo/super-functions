@@ -144,6 +144,7 @@ export interface McpFnClientProfileContractReport {
 }
 
 const PORTABILITY_KEYWORDS = new Set([
+  "$anchor",
   "$recursiveAnchor",
   "$recursiveRef",
   "$dynamicAnchor",

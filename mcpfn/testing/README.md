@@ -188,3 +188,5 @@ test("accepts extensible OAuth client metadata", async ({ page, mcpfnOAuth }) =>
 The fixture starts a local mock server that publishes authorization-server discovery, consent UI, callback capture, client metadata variants, PKCE token exchange, refresh rotation, revocation, and an SDK-compatible access-token verifier. Extend the exported `test` with Skillplane's signed-in page or database fixtures; do not copy the OAuth machinery into the application.
 
 See [Testing and CI](https://github.com/21nCo/super-functions/blob/main/mcpfn/TESTING.md) for the complete layered strategy.
+
+Client-profile lifecycle evidence uses `invalid-arguments-handler` when a registered invalid-argument fallback runs. This stage does not imply that the tool handler ran; normal tool execution uses `handler`. Projected schemas select their declared JSON Schema dialect, defaulting to draft 2020-12. Named `$anchor` definitions are portability-sensitive for older clients.
