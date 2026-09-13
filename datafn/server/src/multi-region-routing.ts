@@ -1,3 +1,5 @@
+import type { DatafnRouteScope } from "@datafn/core";
+import { readDatafnRouteTicket, validateDatafnRouteTicket, routeTicketError, type DatafnRegionalTicketRuntime, type DatafnRouteTicketClaims } from "./regional-tickets.js";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import type { ConditionalKVStoreAdapter } from "@superfunctions/db";
@@ -112,6 +114,8 @@ export interface DatafnRoutingEvent {
 
 export interface DatafnPlacementRuntimeConfig {
   directory: DatafnPlacementDirectoryAdapter;
+  /** Opt-in public ingress: requires a route ticket or a valid internal assertion. */
+  routeTickets?: DatafnRegionalTicketRuntime;
   requireRoutingAssertion?: boolean;
   assertionVerifier?: DatafnRoutingAssertionVerifier;
   replayStore?: DatafnRoutingReplayStore;
@@ -138,6 +142,11 @@ const DEFAULT_MIGRATION_RECOVERY_LEASE_MS = 30_000;
 
 export class DatafnRoutingError extends Error {
   readonly code:
+    | "DATAFN_ROUTE_TICKET_INVALID"
+    | "DATAFN_ROUTE_TICKET_EXPIRED"
+    | "DATAFN_ROUTE_TICKET_REVOKED"
+    | "DATAFN_ROUTE_FORBIDDEN"
+    | "DATAFN_ROUTE_RATE_LIMITED"
     | "DATAFN_PLACEMENT_NOT_FOUND"
     | "DATAFN_PLACEMENT_UNAVAILABLE"
     | "DATAFN_REGION_MISMATCH"
@@ -330,6 +339,7 @@ export async function claimDatafnNamespacePlacement(input: {
 export interface DatafnPlacementValidationResult {
   placement: DatafnNamespacePlacement;
   assertion?: DatafnRoutingAssertionClaims;
+  ticket?: DatafnRouteTicketClaims;
 }
 
 export async function validateDatafnPlacement(input: {
@@ -337,11 +347,33 @@ export async function validateDatafnPlacement(input: {
   regionId: string;
   runtime: DatafnPlacementRuntimeConfig;
   request?: Request;
+  /** Server-selected operation; custom routes default to the custom scope. */
+  scope?: DatafnRouteScope;
   /** Trusted in-process execution has no externally supplied assertion. */
   trustedInternal?: boolean;
 }): Promise<DatafnPlacementValidationResult> {
   const startedAt = Date.now();
   const requestId = input.request?.headers.get("x-request-id") ?? undefined;
+  let ticket: DatafnRouteTicketClaims | undefined;
+  const hasAssertion = Boolean(input.request?.headers.get(input.runtime.assertionHeader ?? DATAFN_ROUTING_ASSERTION_HEADER)?.trim());
+  if (input.request) {
+    const token = readDatafnRouteTicket(input.request, input.scope === "websocket");
+    if (token !== undefined && (hasAssertion || !input.runtime.routeTickets)) {
+      throw routeTicketError("DATAFN_ROUTE_TICKET_INVALID");
+    }
+    if (input.runtime.routeTickets && (!hasAssertion || token !== undefined)) {
+      if (DATAFN_ROUTING_INTERNAL_HEADERS.some(name => input.request!.headers.has(name))) {
+        throw routeTicketError("DATAFN_ROUTE_TICKET_INVALID");
+      }
+      ticket = await validateDatafnRouteTicket({
+        request: input.request, namespace: input.namespace, regionId: input.regionId,
+        scope: input.scope ?? "custom", runtime: input.runtime.routeTickets,
+      });
+    }
+  } else if (input.runtime.routeTickets && !input.trustedInternal) {
+    throw routeTicketError("DATAFN_ROUTE_TICKET_INVALID");
+  }
+
   let placement: DatafnNamespacePlacement | null;
   try {
     placement = await input.runtime.directory.get(input.namespace);
@@ -381,7 +413,7 @@ export async function validateDatafnPlacement(input: {
     });
   }
 
-  const assertion = await validateRoutingAssertion({
+  const assertion = ticket ? undefined : await validateRoutingAssertion({
     namespace: input.namespace,
     regionId: input.regionId,
     placement,
@@ -438,7 +470,7 @@ export async function validateDatafnPlacement(input: {
       internal: Boolean(assertion),
     });
   }
-  if (assertion && assertion.epoch !== placement.epoch) {
+  if ((assertion && assertion.epoch !== placement.epoch) || (ticket && ticket.epoch !== placement.epoch)) {
     await emitRoutingEvent(input.runtime, {
       type: "mismatch",
       requestId,
@@ -451,14 +483,17 @@ export async function validateDatafnPlacement(input: {
     });
     throw new DatafnRoutingError({
       code: "DATAFN_REGION_MISMATCH",
-      message: "Routing assertion uses a stale placement epoch",
+      message: "Routing grant uses a stale placement epoch",
       status: 409,
       retryable: true,
       placement,
-      internal: true,
+      internal: Boolean(assertion),
     });
   }
-  return { placement, ...(assertion ? { assertion } : {}) };
+  if (ticket && ticket.expiresAt <= (input.runtime.routeTickets?.now ?? Date.now)()) {
+    throw routeTicketError("DATAFN_ROUTE_TICKET_EXPIRED");
+  }
+  return { placement, ...(assertion ? { assertion } : {}), ...(ticket ? { ticket } : {}) };
 }
 
 export interface DatafnGatewayCellRegistry<TTarget> {

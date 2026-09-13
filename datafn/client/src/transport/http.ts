@@ -1,3 +1,5 @@
+import { DATAFN_ROUTE_TICKET_HEADER, type DatafnRouteProvider } from "@datafn/core";
+import { DatafnRegionalRouteCache, DatafnRegionalTransportError } from "./regional-route.js";
 import type { DatafnRemoteAdapter } from "../client.js";
 import type {
   HttpTransportAuthProvider,
@@ -12,6 +14,7 @@ export type DatafnHttpHeaders =
 
 export interface DatafnHttpTransportOptions {
   fetch?: typeof fetch;
+  routeProvider?: DatafnRouteProvider;
   headers?: DatafnHttpHeaders;
   credentials?: RequestCredentials;
   auth?: HttpTransportAuthProvider;
@@ -24,6 +27,9 @@ export interface DatafnHttpTransportOptions {
  */
 export class DefaultHttpTransport implements DatafnRemoteAdapter {
   private customFetch: typeof fetch;
+  readonly regionalRoutes?: DatafnRegionalRouteCache;
+
+  dispose(): void { this.regionalRoutes?.dispose(); }
 
   constructor(
     private readonly baseUrl: string,
@@ -32,6 +38,7 @@ export class DefaultHttpTransport implements DatafnRemoteAdapter {
     if (baseUrl.endsWith("/")) {
       this.baseUrl = baseUrl.slice(0, -1);
     }
+    if (options.routeProvider) this.regionalRoutes = new DatafnRegionalRouteCache(options.routeProvider);
     this.customFetch = options?.fetch || globalThis.fetch.bind(globalThis);
   }
 
@@ -89,28 +96,56 @@ export class DefaultHttpTransport implements DatafnRemoteAdapter {
     body: unknown,
     signal?: AbortSignal,
     canRetryAuth = true,
+    canRetryRoute = true,
+    serializedBody = this.serializeBody(body),
   ): Promise<unknown> {
     try {
-      const url = `${this.baseUrl}/${endpoint}`;
+      const headers = await this.resolveHeaders();
+      const route = await this.regionalRoutes?.get();
+      const url = `${route?.httpUrl ?? this.baseUrl}/${endpoint}`;
+      if (route) {
+        if (this.options.credentials === "include") throw new Error("DATAFN_ROUTE_COOKIE_CREDENTIALS_FORBIDDEN");
+        for (const name of ["x-datafn-routing-assertion", "x-datafn-routing-namespace", "x-datafn-routing-region", "x-datafn-routing-epoch"]) headers.delete(name);
+        headers.delete("cookie");
+        headers.set(DATAFN_ROUTE_TICKET_HEADER, route.ticket);
+      }
       const response = await this.customFetch(url, {
         method: "POST",
-        headers: await this.resolveHeaders(),
-        credentials: await this.resolveCredentials(),
-        body: this.serializeBody(body),
+        headers,
+        credentials: route ? "omit" : await this.resolveCredentials(),
+        ...(route ? { redirect: "error" as const, cache: "no-store" as const } : {}),
+        body: serializedBody,
         signal,
+      }).catch(error => {
+        if (route && error?.name !== "AbortError") throw new DatafnRegionalTransportError("DATAFN_REGIONAL_ENDPOINT_UNAVAILABLE");
+        throw error;
       });
       const result = await response.json().catch(() => null);
 
       if (!response.ok) {
         const event = { endpoint, url, status: response.status, result };
+        const routingCode = result?.error?.code;
+        if (route && ["DATAFN_ROUTE_TICKET_EXPIRED", "DATAFN_REGION_MISMATCH", "DATAFN_NAMESPACE_MOVING"].includes(routingCode)) {
+          this.regionalRoutes!.invalidate(route);
+          if (canRetryRoute && result?.error?.details?.executionStarted === false &&
+            ((response.status === 401 && routingCode === "DATAFN_ROUTE_TICKET_EXPIRED") ||
+              (response.status === 409 && routingCode !== "DATAFN_ROUTE_TICKET_EXPIRED"))) {
+            return this.post(endpoint, body, signal, canRetryAuth, false, serializedBody);
+          }
+        }
+        if (route && typeof routingCode === "string" && routingCode.startsWith("DATAFN_ROUTE_")) {
+          this.options.onError?.(event);
+          return result;
+        }
         if (
           canRetryAuth &&
+          (!route || ["query", "search", "pull", "clone", "reconcile"].includes(endpoint) || result?.error?.details?.executionStarted === false) &&
           (response.status === 401 || response.status === 403) &&
           this.options.auth?.onUnauthorized
         ) {
           const decision = await this.options.auth.onUnauthorized(event);
           if (decision === "retry") {
-            return this.post(endpoint, body, signal, false);
+            return this.post(endpoint, body, signal, false, canRetryRoute, serializedBody);
           }
         }
         this.options.onError?.(event);

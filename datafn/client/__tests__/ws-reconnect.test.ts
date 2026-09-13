@@ -16,29 +16,33 @@ import type {
 // Mock WebSocket with manual control over lifecycle
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
+  readyState = 0;
   onopen: () => void = () => {};
   onmessage: (event: { data: string }) => void = () => {};
-  onclose: () => void = () => {};
+  onclose: (event?: { code: number }) => void = () => {};
   onerror: (e: any) => void = () => {};
   send = vi.fn();
   close = vi.fn(() => {
     // Simulate close event when close() is called
+    this.readyState = 3;
     setTimeout(() => this.onclose(), 0);
   });
 
   constructor(public url: string) {
     MockWebSocket.instances.push(this);
     // Auto-trigger onopen after a delay to simulate real WebSocket behavior
-    setTimeout(() => this.onopen(), 0);
+    setTimeout(() => this.triggerOpen(), 0);
   }
 
   // Manual trigger for testing
   triggerOpen() {
+    this.readyState = 1;
     this.onopen();
   }
 
-  triggerClose() {
-    this.onclose();
+  triggerClose(code = 1006) {
+    this.readyState = 3;
+    this.onclose({ code });
   }
 
   triggerError(error: any) {
@@ -48,6 +52,7 @@ class MockWebSocket {
 
 // Mock storage adapter for testing
 class MockStorageAdapter implements DatafnStorageAdapter {
+  async close(): Promise<void> {}
   public records = new Map<string, Map<string, Record<string, unknown>>>();
   public changelog: Array<DatafnChangelogEntry> = [];
   public hydrationStates = new Map<string, DatafnHydrationState>();
@@ -189,6 +194,60 @@ describe("WebSocket Reconnection (Phase 07)", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("retains bounded exponential backoff for rate-limited admissions after open", async () => {
+    const storage = new MockStorageAdapter();
+    vi.spyOn(DefaultHttpTransport.prototype, "clone").mockResolvedValue({ ok: true, result: { ok: true, data: {}, cursors: {} } });
+    vi.spyOn(DefaultHttpTransport.prototype, "pull").mockResolvedValue({ ok: true, result: { ok: true, records: {}, deleted: {}, cursors: {} } });
+    const bootstrap = vi.fn(async () => ({ version: 1 as const, httpUrl: "https://eu.example/datafn", wsUrl: "wss://eu.example/ws",
+      ticket: "test.ticket", expiresAt: Date.now() + 60_000, renewAfter: Date.now() + 48_000 }));
+    const client = createDatafnClient({ schema: defaultSchema, clientId: "rate-limit", storage,
+      sync: { offlinability: true, routeProvider: { bootstrap, renew: bootstrap }, ws: true,
+        wsReconnect: { baseDelayMs: 100, multiplier: 2, maxDelayMs: 250, jitterMs: 0 } } });
+    try {
+      await client.sync.start();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(MockWebSocket.instances).toHaveLength(1);
+      for (const [attempt, delay] of [100, 200, 250].entries()) {
+        MockWebSocket.instances[attempt].triggerClose(4503);
+        await vi.advanceTimersByTimeAsync(delay - 1);
+        expect(MockWebSocket.instances).toHaveLength(attempt + 1);
+        await vi.advanceTimersByTimeAsync(2);
+        expect(MockWebSocket.instances).toHaveLength(attempt + 2);
+      }
+      expect(bootstrap).toHaveBeenCalledTimes(4);
+      MockWebSocket.instances[3].triggerClose(4403);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(MockWebSocket.instances).toHaveLength(4);
+    } finally { await client.destroy(); }
+  });
+
+  it("queues reconnect recovery behind an older pull and uses its updated checkpoint", async () => {
+    const storage = new MockStorageAdapter();
+    vi.spyOn(DefaultHttpTransport.prototype, "clone").mockResolvedValue({ ok: true, result: { ok: true, data: {}, cursors: {} } });
+    const pull = vi.spyOn(DefaultHttpTransport.prototype, "pull").mockResolvedValue({ ok: true, result: { ok: true, records: {}, deleted: {}, cursors: {} } });
+    const client = createDatafnClient({ schema: defaultSchema, clientId: "catch-up", storage,
+      sync: { remote: "https://canonical.example/datafn", offlinability: true, ws: true,
+        wsReconnect: { baseDelayMs: 10, jitterMs: 0 } } });
+    let release!: (result: unknown) => void;
+    try {
+      await client.sync.start();
+      await vi.advanceTimersByTimeAsync(1);
+      pull.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+      const pending = client.sync.pullNow();
+      await vi.advanceTimersByTimeAsync(1);
+      const calls = pull.mock.calls.length;
+      MockWebSocket.instances[0].triggerClose();
+      await vi.advanceTimersByTimeAsync(11);
+      expect(MockWebSocket.instances).toHaveLength(2);
+      expect(pull).toHaveBeenCalledTimes(calls);
+      release({ ok: true, result: { ok: true, records: {}, deleted: {}, cursors: { task: "9" } } });
+      await pending;
+      await vi.advanceTimersByTimeAsync(1);
+      expect(pull).toHaveBeenCalledTimes(calls + 1);
+      expect(pull.mock.calls[calls][0]).toMatchObject({ cursors: { task: "9" } });
+    } finally { await client.destroy(); }
   });
 
   it("TV-WS-001: WebSocket reconnects automatically after disconnection", async () => {

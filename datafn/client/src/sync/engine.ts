@@ -1,3 +1,5 @@
+import { DATAFN_ROUTE_WS_PROTOCOL, DATAFN_ROUTE_WS_TICKET_PREFIX } from "@datafn/core";
+import { DefaultHttpTransport } from "../transport/http.js";
 /**
  * Sync Engine
  *
@@ -360,6 +362,7 @@ function hasTerminalMutationError(result: PushSyncResult): boolean {
 export class SyncEngine {
   private inFlight = false;
   private pullInFlight = false;
+  private pullAfterReconnect = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private pushBatchSize = 100;
   private pushMaxRetries = 3;
@@ -372,6 +375,10 @@ export class SyncEngine {
   private pushPausedForOffline = false;
   private ws: WebSocket | null = null;
   private wsUrl: string | undefined;
+  private wsGeneration = 0;
+  private started = false;
+  private wsRouteUnsubscribe?: () => void;
+  private wsExpiryTimer?: ReturnType<typeof setTimeout>;
   private hydrationPlan?: {
     bootResources?: string[];
     backgroundResources?: string[];
@@ -432,7 +439,9 @@ export class SyncEngine {
       ]),
     );
 
-    if (config?.ws && config?.remote) {
+    if (config?.ws && config.wsUrl) {
+      this.wsUrl = config.wsUrl;
+    } else if (config?.ws && config?.remote) {
       const remote = config.remote;
       const wsProtocol = remote.startsWith("https") ? "wss" : "ws";
       // Replace protocol (handles http/https)
@@ -446,10 +455,15 @@ export class SyncEngine {
    */
   async start() {
     // REL-005: Guard against duplicate push timers — if start() is called twice, skip
-    if (this.timer) return;
+    if (this.started) return;
+    this.started = true;
+    this.wsReconnectEnabled = true;
+    const generation = this.wsGeneration;
 
     // 1. Initial sync
-    await this.initializeSync();
+    try { await this.initializeSync(); }
+    catch (error) { this.started = false; throw error; }
+    if (!this.started || generation !== this.wsGeneration) return;
 
     // 2. Start push loop
     if (this.pushInterval) {
@@ -472,8 +486,8 @@ export class SyncEngine {
     }
 
     // 4. Connect WebSocket
-    if (this.wsUrl) {
-      this.connectWs();
+    if (this.wsUrl || (this.config?.ws && this.config.routeProvider)) {
+      void this.connectWs();
     }
   }
 
@@ -483,6 +497,12 @@ export class SyncEngine {
   stop() {
     // Disable reconnection
     this.wsReconnectEnabled = false;
+    this.started = false;
+    this.pullAfterReconnect = false;
+    this.wsGeneration++;
+    this.wsRouteUnsubscribe?.();
+    this.wsRouteUnsubscribe = undefined;
+    clearTimeout(this.wsExpiryTimer);
     
     // Clear reconnection timer
     if (this.wsReconnectTimer) {
@@ -514,20 +534,41 @@ export class SyncEngine {
   /**
    * Connect WebSocket for real-time updates
    */
-  private connectWs() {
-    if (typeof WebSocket === "undefined" || !this.wsUrl) return;
+  private async connectWs() {
+    const routes = this.remote instanceof DefaultHttpTransport ? this.remote.regionalRoutes : undefined;
+    if (typeof WebSocket === "undefined" || (!this.wsUrl && !routes) || !this.wsReconnectEnabled) return;
+    const generation = ++this.wsGeneration;
 
     try {
-      this.ws = new WebSocket(this.wsUrl);
+      const authProtocols = [...await this.config?.wsProtocols?.() ?? []];
+      const route = await routes?.get();
+      if (!this.wsReconnectEnabled || generation !== this.wsGeneration) return;
+      const url = route?.wsUrl ?? (route ? undefined : this.wsUrl);
+      if (!url) throw new Error("DATAFN_ROUTE_WEBSOCKET_UNAVAILABLE");
+      const socket = route
+        ? new WebSocket(url, [DATAFN_ROUTE_WS_PROTOCOL, `${DATAFN_ROUTE_WS_TICKET_PREFIX}${route.ticket}`, ...authProtocols])
+        : new WebSocket(url, authProtocols);
+      const reconnectAttempt = this.wsReconnectAttempt;
+      this.ws = socket;
+      if (route) {
+        this.wsExpiryTimer = setTimeout(() => socket.close(4511, "DATAFN_ROUTE_TICKET_EXPIRED"), Math.max(0, route.expiresAt - Date.now()));
+        this.wsRouteUnsubscribe = routes!.subscribe(() => {
+          // HTTP renewal/invalidation also refreshes the pinned socket. Close handler re-bootstraps.
+          socket.close(1000, "Regional route changed");
+        });
+      }
 
       this.ws.onopen = async () => {
         // Reset reconnection attempt counter on successful connection
         this.wsReconnectAttempt = 0;
 
-        const cursors = await this.buildPullCursors();
+        let cursors: Awaited<ReturnType<SyncEngine["buildPullCursors"]>>;
+        try { cursors = await this.buildPullCursors(); }
+        catch { socket.close(1011, "Sync checkpoint unavailable"); return; }
+        if (this.ws !== socket || socket.readyState !== 1) return;
         
         // Send hello with current cursors
-        this.ws?.send(
+        socket.send(
           JSON.stringify({
             type: "hello",
             clientId: this.clientId,
@@ -535,6 +576,10 @@ export class SyncEngine {
           }),
         );
         
+        // Hello is not a catch-up protocol: recover writes missed before this socket opened.
+        // If an earlier pull is still running, queue a fresh checkpoint-based pull behind it.
+        void this.pullNow(true);
+
         // Emit ws_connected event
         this.eventBus.emit({
           type: "ws_connected",
@@ -564,11 +609,23 @@ export class SyncEngine {
       };
 
       this.ws.onerror = (e) => {
-        console.error("WebSocket error:", e);
+        if (route) console.error("Regional WebSocket connection failed");
+        else console.error("WebSocket error:", e);
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (event) => {
+        if (this.ws !== socket) return;
+        this.wsRouteUnsubscribe?.();
+        this.wsRouteUnsubscribe = undefined;
+        clearTimeout(this.wsExpiryTimer);
+        routes?.invalidate(route);
         this.ws = null;
+        // An upgrade may open before admission rejects it. Preserve the attempt count
+        // across throttled admissions instead of resetting backoff on every open event.
+        if (event?.code === 4503 || event?.code === 1013) {
+          this.wsReconnectAttempt = Math.max(this.wsReconnectAttempt, reconnectAttempt);
+        }
+        if (route && (event.code === 4403 || event.code === 4401)) this.wsReconnectEnabled = false;
         
         // Emit ws_disconnected event
         this.eventBus.emit({
@@ -582,7 +639,7 @@ export class SyncEngine {
         }
       };
     } catch (e) {
-      console.error("Failed to connect WebSocket:", e);
+      if (this.wsReconnectEnabled && this.config?.wsReconnect?.enabled !== false) this.scheduleReconnect();
     }
   }
 
@@ -606,6 +663,7 @@ export class SyncEngine {
     // Cap at maxDelayMs
     const delay = Math.min(exponentialDelay + jitter, maxDelayMs);
     
+    if (this.wsReconnectTimer) clearTimeout(this.wsReconnectTimer);
     this.wsReconnectTimer = setTimeout(() => {
       this.wsReconnectAttempt++;
       this.connectWs();
@@ -1160,8 +1218,11 @@ export class SyncEngine {
    * Uses per-table cursors when storage is enabled (PHASE_05)
    * Implements HOOK-001 and EVT-003
    */
-  async pullNow() {
-    if (this.pullInFlight) return;
+  async pullNow(ensureAfterInFlight = false) {
+    if (this.pullInFlight) {
+      if (ensureAfterInFlight) this.pullAfterReconnect = true;
+      return;
+    }
     this.pullInFlight = true;
     this.emitSyncStarted("pull");
 
@@ -1193,6 +1254,10 @@ export class SyncEngine {
       });
     } finally {
       this.pullInFlight = false;
+      if (this.pullAfterReconnect) {
+        this.pullAfterReconnect = false;
+        void this.pullNow();
+      }
     }
   }
 
@@ -1813,11 +1878,13 @@ export class SyncEngine {
           return result;
         } else {
           // Protocol error (e.g. invalid clientId) or server rejection
-          throw new Error(response.error?.message || "Push rejected by server");
+          throw Object.assign(new Error(response.error?.message || "Push rejected by server"), {
+            code: response.error?.code, retryable: response.error?.details?.retryable,
+          });
         }
       } catch (err: any) {
         // If this was the last attempt
-        if (attempt === maxAttempts) {
+        if (attempt === maxAttempts || err.retryable === false) {
           this.eventBus.emit({
             type: "sync_failed",
             timestampMs: this.getTimestamp(),

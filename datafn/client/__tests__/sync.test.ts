@@ -15,16 +15,17 @@ import type {
 // Mock WebSocket
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
+  readyState = 0;
   onopen: () => void = () => {};
   onmessage: (event: { data: string }) => void = () => {};
   onclose: () => void = () => {};
   onerror: (e: any) => void = () => {};
   send = vi.fn();
-  close = vi.fn();
+  close = vi.fn(() => { this.readyState = 3; });
 
   constructor(public url: string) {
     MockWebSocket.instances.push(this);
-    setTimeout(() => this.onopen(), 0);
+    setTimeout(() => { this.readyState = 1; this.onopen(); }, 0);
   }
 }
 
@@ -986,7 +987,9 @@ describe("@datafn/client sync", () => {
 
   it("TV-WS-002: Unknown WebSocket messages do not trigger pull", async () => {
     const storage = new MockStorageAdapter();
-    const pullSpy = vi.spyOn(DefaultHttpTransport.prototype, "pull");
+    const pullSpy = vi.spyOn(DefaultHttpTransport.prototype, "pull").mockResolvedValue({
+      ok: true, result: { ok: true, records: {}, deleted: {}, cursors: {} },
+    });
 
     vi.spyOn(DefaultHttpTransport.prototype, "clone").mockResolvedValue({
       ok: true,
@@ -1008,6 +1011,9 @@ describe("@datafn/client sync", () => {
     await vi.runAllTimersAsync();
 
     const ws = MockWebSocket.instances[0];
+
+    // Ignore the initial connection catch-up; unknown messages must not add a pull.
+    pullSpy.mockClear();
 
     // Simulate unknown message
     ws.onmessage({
