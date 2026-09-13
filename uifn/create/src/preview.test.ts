@@ -82,3 +82,27 @@ it.each([[undefined, false], [null, false], [undefined, true]] as const)('keeps 
     expect(document.body.textContent).not.toContain('Iframe popup');
   } finally { await act(async () => root.unmount()); frame.remove(); }
 });
+
+it.each(['Menu', 'ContextMenu'] as const)('positions standalone %s content without a Positioner', async kind => {
+  const React = await import('react');
+  const { createRoot } = await import('react-dom/client');
+  const menu = kind === 'Menu' ? await import('@uifn/components-react/menu') : await import('@uifn/components-react/context-menu');
+  const parts = menu as Record<string, React.ElementType>;
+  const host = document.createElement('div');
+  const portal = document.createElement('div');
+  document.body.append(host, portal);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(React.createElement(parts[`${kind}Root`], { defaultOpen: true },
+      React.createElement(parts[`${kind}Trigger`], {}, 'Trigger'),
+      React.createElement(parts[`${kind}Content`], { forceMount: true, container: portal }, 'Standalone'))));
+    const content = portal.querySelector<HTMLElement>(`[data-uifn-component="${kind === 'Menu' ? 'menu' : 'context-menu'}"][data-uifn-part="content"]`)!;
+    expect(content).not.toBeNull();
+    await vi.waitFor(() => {
+      expect(content.style.position).toBe(kind === 'Menu' ? 'absolute' : 'fixed');
+      expect(content.style.left).not.toBe('');
+      expect(content.style.top).not.toBe('');
+    });
+    expect(host.contains(content)).toBe(false);
+  } finally { await act(async () => root.unmount()); host.remove(); portal.remove(); }
+});

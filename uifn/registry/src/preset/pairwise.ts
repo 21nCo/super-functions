@@ -5,7 +5,7 @@ function pairKey(leftAxis: string, leftValue: string, rightAxis: string, rightVa
   return `${leftAxis}:${leftValue}|${rightAxis}:${rightValue}`;
 }
 
-export function pairwisePresets(): UIFnPresetV1[] {
+function allPairs(): Set<string> {
   const uncovered = new Set<string>();
   for (let left = 0; left < PRESET_FIELD_ORDER.length; left += 1) {
     for (let right = left + 1; right < PRESET_FIELD_ORDER.length; right += 1) {
@@ -19,28 +19,37 @@ export function pairwisePresets(): UIFnPresetV1[] {
     }
   }
 
+  return uncovered;
+}
+
+function fillUnlockedAxes(candidate: UIFnPresetV1, locked: Set<PresetAxis>, uncovered: Set<string>): void {
+  for (const axis of PRESET_FIELD_ORDER) {
+    if (locked.has(axis)) continue;
+    let best = candidate[axis];
+    let bestScore = -1;
+    for (const value of PRESET_AXES[axis]) {
+      candidate[axis] = value as never;
+      const score = countCovered(candidate, uncovered);
+      if (score > bestScore) {
+        best = value as never;
+        bestScore = score;
+      }
+    }
+    candidate[axis] = best as never;
+  }
+}
+
+export function pairwisePresets(): UIFnPresetV1[] {
+  const uncovered = allPairs();
   const rows: UIFnPresetV1[] = [];
   while (uncovered.size > 0) {
-    const seed = [...uncovered][0];
+    const seed = uncovered.values().next().value!;
     const [leftPart, rightPart] = seed.split('|');
     const [leftAxis, leftValue] = leftPart.split(':') as [PresetAxis, string];
     const [rightAxis, rightValue] = rightPart.split(':') as [PresetAxis, string];
     const candidate = { ...PRESET_DEFAULTS, [leftAxis]: leftValue, [rightAxis]: rightValue } as UIFnPresetV1;
     const locked = new Set<PresetAxis>([leftAxis, rightAxis]);
-    for (const axis of PRESET_FIELD_ORDER) {
-      if (locked.has(axis)) continue;
-      let best = candidate[axis];
-      let bestScore = -1;
-      for (const value of PRESET_AXES[axis]) {
-        candidate[axis] = value as never;
-        const score = countCovered(candidate, uncovered);
-        if (score > bestScore) {
-          best = value as never;
-          bestScore = score;
-        }
-      }
-      candidate[axis] = best as never;
-    }
+    fillUnlockedAxes(candidate, locked, uncovered);
     const preset = normalizePreset(candidate);
     for (const pair of coveredPairs(preset)) uncovered.delete(pair);
     rows.push(preset);

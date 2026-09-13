@@ -251,6 +251,17 @@ it.each([true, false])('rejects dangling managed symlinks before planning or wri
   });
 });
 
+function npmLock(packageSource: string, lockfileVersion = 3): { lockfileVersion: number; packages: Record<string, { version?: string }> } {
+  const manifest = JSON.parse(packageSource);
+  return {
+    lockfileVersion,
+    packages: {
+      '': manifest,
+      ...Object.fromEntries(Object.entries({ ...manifest.dependencies, ...manifest.devDependencies }).map(([name, version]) => [`node_modules/${name}`, { version }])),
+    },
+  };
+}
+
 it.each(['iconLibrary', 'installMode'] as const)('reports required npm lock refresh when %s changes, including repeat applies', async axis => {
   await withProject(async parent => {
     const rootDir = path.join(parent, 'app');
@@ -258,20 +269,42 @@ it.each(['iconLibrary', 'installMode'] as const)('reports required npm lock refr
     const packagePath = path.join(rootDir, 'package.json');
     const lockPath = path.join(rootDir, 'package-lock.json');
     const originalPackage = readFileSync(packagePath, 'utf8');
-    const originalLock = JSON.stringify({ lockfileVersion: 3, packages: { '': JSON.parse(originalPackage) } });
+    const originalLock = JSON.stringify(npmLock(originalPackage));
     writeFileSync(lockPath, originalLock);
     expect(applyPreset({ rootDir, preset: encodePreset({}), dryRun: true }).requiredActions).toEqual([]);
     const code = encodePreset(axis === 'iconLibrary' ? { iconLibrary: 'phosphor' } : { installMode: 'source' });
     const dry = applyPreset({ rootDir, preset: code, dryRun: true });
     expect(dry.ok).toBe(true);
-    expect(dry.requiredActions).toMatchObject([{ code: 'UIFN_PRESET_LOCKFILE_REFRESH_REQUIRED', command: 'npm install --package-lock-only --ignore-scripts' }]);
+    expect(dry.requiredActions).toMatchObject([{ code: 'UIFN_PRESET_LOCKFILE_REFRESH_REQUIRED', command: 'npm install --package-lock-only --ignore-scripts --lockfile-version=3' }]);
     expect(readFileSync(packagePath, 'utf8')).toBe(originalPackage);
     const applied = applyPreset({ rootDir, preset: code });
     expect(applied.ok).toBe(true);
     expect(applied.requiredActions).toEqual(dry.requiredActions);
     expect(readFileSync(lockPath, 'utf8')).toBe(originalLock);
     expect(applyPreset({ rootDir, preset: code }).requiredActions).toEqual(dry.requiredActions);
-    writeFileSync(lockPath, JSON.stringify({ lockfileVersion: 3, packages: { '': JSON.parse(readFileSync(packagePath, 'utf8')) } }));
+    writeFileSync(lockPath, JSON.stringify(npmLock(readFileSync(packagePath, 'utf8'))));
     expect(applyPreset({ rootDir, preset: code }).requiredActions).toEqual([]);
+  });
+});
+
+
+it.each(['v1', 'missing', 'stale', 'invalid'] as const)('requires an actionable lock refresh for %s records', async scenario => {
+  await withProject(async parent => {
+    const rootDir = path.join(parent, 'app');
+    const preset = encodePreset({});
+    expect(initProject({ rootDir, preset }).ok).toBe(true);
+    const packageSource = readFileSync(path.join(rootDir, 'package.json'), 'utf8');
+    const lock = npmLock(packageSource);
+    if (scenario === 'v1') { lock.lockfileVersion = 1; delete (lock as any).packages; }
+    if (scenario === 'missing') delete lock.packages['node_modules/react'];
+    if (scenario === 'stale') lock.packages['node_modules/react'].version = '17.0.2';
+    const lockPath = path.join(rootDir, 'package-lock.json');
+    writeFileSync(lockPath, scenario === 'invalid' ? '{' : JSON.stringify(lock));
+    const dry = applyPreset({ rootDir, preset, dryRun: true });
+    expect(dry.requiredActions?.[0].command).toContain('--lockfile-version=3');
+    expect(dry.requiredActions?.[0].message).toContain('npm 7 or newer');
+    expect(applyPreset({ rootDir, preset }).requiredActions).toEqual(dry.requiredActions);
+    writeFileSync(lockPath, JSON.stringify(npmLock(packageSource)));
+    expect(applyPreset({ rootDir, preset, dryRun: true }).requiredActions).toEqual([]);
   });
 });

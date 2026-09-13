@@ -116,7 +116,12 @@ The repository-wide delivery gate also creates independent package/source consum
 When full `uifn apply` changes dependencies in a project with `package-lock.json`,
 the result includes `requiredActions` if the lockfile's root dependencies differ
 from the planned manifest. Dry-run reports the same requirement without writing.
-After applying, run `npm install --package-lock-only --ignore-scripts` in the
+After applying, run `npm install --package-lock-only --ignore-scripts --lockfile-version=3` in the
 project directory, review the updated lockfile, then use `npm ci`. UIFn does not
 run npm or modify the lockfile inside its file transaction. The required action
 continues to be reported on repeat applies until the lockfile is refreshed.
+
+Use npm 7 or newer for this refresh. Lockfile versions 2 and 3 are supported;
+version 1 requires the explicit format upgrade above. The check compares root
+declarations and the versions of their direct package records. It does not
+validate the entire transitive dependency tree or replace npm's own validation.

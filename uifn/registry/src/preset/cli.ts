@@ -35,46 +35,48 @@ export function runPresetCommand(options: {
 }): { ok: boolean; [key: string]: unknown } {
   const { action, positionals, flags, rootDir } = options;
   try {
-    if (action === 'encode') {
-      const preset = presetFromFlags(flags, positionals[0]);
-      const code = encodePreset(preset);
-      return { ok: true, code, preset, url: presetShareUrl(code) };
-    }
-    if (action === 'decode') {
-      const code = positionals[0] ?? (typeof flags.code === 'string' ? flags.code : '');
-      if (!code) return { ok: false, error: { code: 'UIFN_PRESET_USAGE', message: 'Usage: uifn preset decode <code>' } };
-      const preset = decodePreset(code);
-      return { ok: true, code: encodePreset(preset), preset, url: presetShareUrl(preset) };
-    }
-    if (action === 'url') {
-      const code = positionals[0] ?? (typeof flags.preset === 'string' ? flags.preset : encodePreset(presetFromFlags(flags)));
-      const origin = typeof flags.origin === 'string' ? flags.origin : PRESET_CREATE_ORIGIN;
-      const preset = decodePreset(code.startsWith('uifn') ? code : encodePreset(presetFromFlags(flags, code)));
-      return { ok: true, code: encodePreset(preset), url: presetShareUrl(preset, origin), preset };
-    }
-    if (action === 'open') {
-      const code = positionals[0] ?? (typeof flags.preset === 'string' ? flags.preset : '');
-      if (!code) return { ok: false, error: { code: 'UIFN_PRESET_USAGE', message: 'Usage: uifn preset open <code>' } };
-      const preset = decodePreset(code);
-      const url = presetShareUrl(preset);
-      if (!options.dryRun) {
-        const commands: Partial<Record<NodeJS.Platform, string>> = { darwin: 'open', win32: 'powershell.exe' };
-        const command = commands[process.platform] ?? 'xdg-open';
-        const args = process.platform === 'win32' ? ['-NoProfile', '-NonInteractive', '-Command', `Start-Process -FilePath '${url.replaceAll("'", "''")}' -ErrorAction Stop`] : [url];
-        const launched = spawnSync(command, args, { stdio: 'ignore', timeout: 10_000 });
-        if (launched.error && 'code' in launched.error && launched.error.code === 'ETIMEDOUT') throw new UIFnPresetError('UIFN_PRESET_OPEN_UNKNOWN', 'Browser launch timed out; the editor may already be open. Use the returned URL if needed.', { url });
-        if (launched.error || launched.status !== 0) throw new UIFnPresetError('UIFN_PRESET_OPEN_FAILED', 'Could not open the Create editor. Open the returned URL in your browser.', { url });
-      }
-      return { ok: true, code: encodePreset(preset), url, preset, opened: !options.dryRun, dryRun: options.dryRun };
-    }
-    if (action === 'resolve') {
-      return resolveProjectPreset(rootDir);
-    }
-    if (action === 'tokens') {
-      const preset = positionals[0] ? decodePreset(positionals[0]) : presetFromFlags(flags);
-      return { ok: true, code: encodePreset(preset), tokens: themeTokenDocument(preset), compile: compilePreset(preset) };
-    }
-    return { ok: false, error: { code: 'UIFN_PRESET_USAGE', message: 'Usage: uifn preset encode|decode|resolve|url|open|tokens' } };
+    const handlers = new Map<string, () => { ok: boolean; [key: string]: unknown }>([
+      ['encode', () => {
+        const preset = presetFromFlags(flags, positionals[0]);
+        const code = encodePreset(preset);
+        return { ok: true, code, preset, url: presetShareUrl(code) };
+      }],
+      ['decode', () => {
+        const code = positionals[0] ?? (typeof flags.code === 'string' ? flags.code : '');
+        if (!code) return { ok: false, error: { code: 'UIFN_PRESET_USAGE', message: 'Usage: uifn preset decode <code>' } };
+        const preset = decodePreset(code);
+        return { ok: true, code: encodePreset(preset), preset, url: presetShareUrl(preset) };
+      }],
+      ['url', () => {
+        const code = positionals[0] ?? (typeof flags.preset === 'string' ? flags.preset : encodePreset(presetFromFlags(flags)));
+        const origin = typeof flags.origin === 'string' ? flags.origin : PRESET_CREATE_ORIGIN;
+        const preset = decodePreset(code.startsWith('uifn') ? code : encodePreset(presetFromFlags(flags, code)));
+        return { ok: true, code: encodePreset(preset), url: presetShareUrl(preset, origin), preset };
+      }],
+      ['open', () => {
+        const code = positionals[0] ?? (typeof flags.preset === 'string' ? flags.preset : '');
+        if (!code) return { ok: false, error: { code: 'UIFN_PRESET_USAGE', message: 'Usage: uifn preset open <code>' } };
+        const preset = decodePreset(code);
+        const url = presetShareUrl(preset);
+        if (!options.dryRun) {
+          const commands: Partial<Record<NodeJS.Platform, string>> = { darwin: 'open', win32: 'powershell.exe' };
+          const command = commands[process.platform] ?? 'xdg-open';
+          const args = process.platform === 'win32' ? ['-NoProfile', '-NonInteractive', '-Command', `Start-Process -FilePath '${url.replaceAll("'", "''")}' -ErrorAction Stop`] : [url];
+          const launched = spawnSync(command, args, { stdio: 'ignore', timeout: 10_000 });
+          if (launched.error && 'code' in launched.error && launched.error.code === 'ETIMEDOUT') throw new UIFnPresetError('UIFN_PRESET_OPEN_UNKNOWN', 'Browser launch timed out; the editor may already be open. Use the returned URL if needed.', { url });
+          if (launched.error || launched.status !== 0) throw new UIFnPresetError('UIFN_PRESET_OPEN_FAILED', 'Could not open the Create editor. Open the returned URL in your browser.', { url });
+        }
+        return { ok: true, code: encodePreset(preset), url, preset, opened: !options.dryRun, dryRun: options.dryRun };
+      }],
+      ['resolve', () => {
+        return resolveProjectPreset(rootDir);
+      }],
+      ['tokens', () => {
+        const preset = positionals[0] ? decodePreset(positionals[0]) : presetFromFlags(flags);
+        return { ok: true, code: encodePreset(preset), tokens: themeTokenDocument(preset), compile: compilePreset(preset) };
+      }]
+    ]);
+    return handlers.get(action)?.() ?? { ok: false, error: { code: 'UIFN_PRESET_USAGE', message: 'Usage: uifn preset encode|decode|resolve|url|open|tokens' } };
   } catch (cause) {
     if (cause instanceof UIFnPresetError) return { ok: false, error: { code: cause.code, message: cause.message, ...cause.details } };
     throw cause;

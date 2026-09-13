@@ -33,6 +33,8 @@ export interface PresetMutationOptions {
   createRoot?: boolean;
 }
 
+type FileOperation = 'create' | 'update' | 'unchanged';
+
 interface RequiredProjectAction {
   code: 'UIFN_PRESET_LOCKFILE_REFRESH_REQUIRED';
   path: string;
@@ -50,7 +52,7 @@ export interface PresetMutationResult {
   plan?: {
     code: string;
     url: string;
-    files: Array<{ path: string; operation: 'create' | 'update' | 'unchanged' }>;
+    files: Array<{ path: string; operation: FileOperation }>;
     artifacts?: string[];
     commands: PresetCompilePlan['commands'];
   };
@@ -114,7 +116,7 @@ function mergePackageDependencies(
   dependencies: Array<{ name: string; resolvedVersion: string; operation: 'add' | 'present' }>,
 ): string {
   const parsed = JSON.parse(source) as { dependencies?: Record<string, string> };
-  const next = { ...(parsed.dependencies ?? {}) };
+  const next = { ...parsed.dependencies };
   for (const dependency of dependencies) {
     if (!next[dependency.name]) next[dependency.name] = dependency.resolvedVersion;
   }
@@ -170,9 +172,9 @@ function readManagedHashes(rootDir: string): Record<string, string> {
   }
 }
 
-function planFileChanges(rootDir: string, files: Record<string, string>): { changes: TransactionChange[]; summary: Array<{ path: string; operation: 'create' | 'update' | 'unchanged' }>; error?: PresetMutationResult } {
+function planFileChanges(rootDir: string, files: Record<string, string>): { changes: TransactionChange[]; summary: Array<{ path: string; operation: FileOperation }>; error?: PresetMutationResult } {
   const changes: TransactionChange[] = [];
-  const summary: Array<{ path: string; operation: 'create' | 'update' | 'unchanged' }> = [];
+  const summary: Array<{ path: string; operation: FileOperation }> = [];
   const tracked = readManagedHashes(rootDir);
   for (const [relativePath, contents] of Object.entries(files)) {
     const absolute = assertContainedPath(rootDir, relativePath);
@@ -209,7 +211,7 @@ export function readProjectPreset(rootDir: string): { ok: true; state: PresetPro
   if (!existsSync(pathname)) return presetFailure('UIFN_PRESET_PROJECT_MISSING', 'No .uifn/preset.json was found in this project.');
   try {
     const parsed = JSON.parse(readFileSync(pathname, 'utf8')) as PresetProjectState;
-    if (!parsed || parsed.schemaVersion !== 1 || !parsed.preset ||
+    if (parsed?.schemaVersion !== 1 || !parsed.preset ||
         !APPROVED_SUPPORT_MATRIX.templates.includes(parsed.template) ||
         !parsed.files || typeof parsed.files !== 'object' || Array.isArray(parsed.files) ||
         Object.values(parsed.files).some(hash => typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash))) {
@@ -234,6 +236,27 @@ export function resolveProjectPreset(rootDir: string) {
   return { ok: true as const, ...resolved.state, url: plan.url, commands: plan.commands, deviations: resolved.state.code === encodePreset(resolved.state.preset) ? [] : ['normalized-code'] };
 }
 
+// A root manifest alone does not prove that the resolved package records exist.
+// Generated manifests use exact versions, so their direct records must match too.
+type DependencySection = 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies';
+type NpmPackageRecord = Partial<Record<DependencySection, Record<string, string>>> & { version?: string };
+interface NpmLockfile { lockfileVersion?: number; packages?: Record<string, NpmPackageRecord> }
+
+function lockMatchesManifest(lock: NpmLockfile | null, manifest: Record<string, unknown>): boolean {
+  if (lock?.lockfileVersion !== 2 && lock?.lockfileVersion !== 3) return false;
+  const locked = lock.packages?.[''];
+  if (!locked) return false;
+  for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const) {
+    const desired = (manifest[section] ?? {}) as Record<string, string>;
+    const recorded = locked[section] ?? {};
+    if (Object.keys(desired).length !== Object.keys(recorded).length) return false;
+    for (const [name, version] of Object.entries(desired)) {
+      if (recorded[name] !== version || lock.packages?.[`node_modules/${name}`]?.version !== version) return false;
+    }
+  }
+  return true;
+}
+
 // Lock resolution belongs to npm. Never guess integrity hashes or run install
 // scripts inside the file transaction; expose the required follow-up explicitly.
 function requiredLockfileActions(rootDir: string, packageSource?: string): RequiredProjectAction[] {
@@ -243,77 +266,108 @@ function requiredLockfileActions(rootDir: string, packageSource?: string): Requi
   const manifest = JSON.parse(packageSource) as Record<string, unknown>;
   try {
     const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
-    const locked = lock?.packages?.[''];
-    const sections = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
-    const sorted = (value: Record<string, string> = {}) => JSON.stringify(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
-    if (locked && sections.every(section => sorted(locked[section]) === sorted(manifest[section] as Record<string, string>))) return [];
+    if (lockMatchesManifest(lock, manifest)) return [];
   } catch { /* An unreadable lock also requires npm to regenerate it. */ }
   return [{
     code: 'UIFN_PRESET_LOCKFILE_REFRESH_REQUIRED',
     path: 'package-lock.json',
-    command: 'npm install --package-lock-only --ignore-scripts',
-    message: 'After applying this plan, run npm install --package-lock-only --ignore-scripts in the project directory and review the lockfile before npm ci. The existing lockfile does not match the planned dependencies; uifn leaves it unchanged.',
+    command: 'npm install --package-lock-only --ignore-scripts --lockfile-version=3',
+    message: 'After applying this plan, use npm 7 or newer to run npm install --package-lock-only --ignore-scripts --lockfile-version=3 in the project directory and review the lockfile before npm ci. UIFn supports lockfile versions 2 and 3; older, malformed, or mismatched direct dependency records require refresh. UIFn leaves the lockfile unchanged. This check does not replace npm validation of the complete dependency tree.',
   }];
 }
 
-function mutate(options: PresetMutationOptions, mode: 'init' | 'apply'): PresetMutationResult {
+function mergePartialPreset(previous: UIFnPresetV1, incoming: UIFnPresetV1, only: PartialPresetDomain[]): UIFnPresetV1 {
+  const preset = { ...previous };
+  if (only.includes('font')) { preset.font = incoming.font; preset.headingFont = incoming.headingFont; }
+  if (only.includes('theme')) {
+    for (const field of ['style', 'baseColor', 'theme', 'chartColor', 'radius', 'density', 'menuTreatment'] as const) {
+      preset[field] = incoming[field] as never;
+    }
+  }
+  return preset;
+}
+
+function prepareProjectRoot(rootDir: string, mode: 'init' | 'apply', dryRun: boolean, createdDirectories: string[]): PresetMutationResult | undefined {
+  if (mode === 'init') {
+    if (!existsSync(rootDir)) {
+      if (!dryRun) {
+        for (let directory = rootDir; !existsSync(directory); directory = path.dirname(directory)) createdDirectories.push(directory);
+        mkdirSync(rootDir, { recursive: true });
+      }
+    } else if (readdirSync(rootDir).length > 0 && !existsSync(path.join(rootDir, PRESET_STATE_PATH))) {
+      return flag('UIFN_PRESET_PROJECT_AMBIGUOUS', 'Refusing to initialize a non-empty directory that is not already a uifn preset project.');
+    }
+  } else if (!existsSync(rootDir)) {
+    return flag('UIFN_PRESET_PROJECT_MISSING', 'Consumer project root does not exist.');
+  }
+}
+
+function mutationFailure(cause: unknown, dryRun: boolean): PresetMutationResult {
+  if (cause instanceof UIFnPresetError) return flag(cause.code, cause.message, cause.details);
+  const code = cause instanceof Error && 'code' in cause && typeof cause.code === 'string' && cause.code.startsWith('UIFN_') ? cause.code : 'UIFN_REGISTRY_CLI_ERROR';
+  return { ...flag(code, cause instanceof Error ? cause.message : String(cause)), dryRun };
+}
+
+function removeCreatedDirectories(directories: string[]): void {
+  for (const directory of directories) {
+    try { rmdirSync(directory); } catch { /* Preserve nonempty directories after incomplete rollback. */ }
+  }
+}
+
+function resolveMutationContext(options: PresetMutationOptions, mode: 'init' | 'apply', only?: PartialPresetDomain[]) {
   let template = options.template ?? 'react-vite';
+  let preset = resolveInput(options);
+  const rootDir = path.resolve(options.rootDir);
+  const hasState = existsSync(assertContainedPath(rootDir, PRESET_STATE_PATH));
+  let previous: PresetProjectState | undefined;
+  if (mode === 'apply' || hasState) {
+    const resolved = readProjectPreset(rootDir);
+    if (!resolved.ok) return { ok: false as const, result: { ...flag(resolved.error.code, resolved.error.message), dryRun: Boolean(options.dryRun) } };
+    previous = resolved.state;
+    template = options.template ?? previous.template;
+  }
+  if (mode === 'apply' && only && previous) preset = mergePartialPreset(previous.preset, preset, only);
+  assertApprovedInit(preset, template);
+  const plan = compilePreset(preset, template);
+  return { ok: true as const, rootDir, plan, previous };
+}
+
+function planSourceFiles(rootDir: string, plan: PresetCompilePlan, files: Record<string, string>, previous: PresetProjectState | undefined, allowMissingRoot: boolean) {
+  const installed = planInstall({ rootDir, artifacts: [...plan.project.artifacts], framework: plan.preset.framework, allowMissingRoot });
+  if (!installed.ok) return { ok: false as const, error: installed.error };
+  if (files['package.json']) {
+    files['package.json'] = mergePackageDependencies(files['package.json'], installed.plan.dependencies);
+    files[PRESET_STATE_PATH] = serializeState(plan, files, previous?.files);
+  }
+  return {
+    ok: true as const,
+    changes: installed.plan.changes.filter(change => change.path !== 'package.json'),
+    files: installed.plan.files.filter(file => file.path !== 'package.json').map(file => ({ path: file.path, operation: file.operation })),
+  };
+}
+
+function mutate(options: PresetMutationOptions, mode: 'init' | 'apply'): PresetMutationResult {
   const createdDirectories: string[] = [];
   let succeeded = false;
   const only = options.only?.length ? options.only : undefined;
   try {
-    let preset = resolveInput(options);
-    const rootDir = path.resolve(options.rootDir);
-    const hasState = existsSync(assertContainedPath(rootDir, PRESET_STATE_PATH));
-    let previous: PresetProjectState | undefined;
-    if (mode === 'apply' || hasState) {
-      const resolved = readProjectPreset(rootDir);
-      if (!resolved.ok) return { ...flag(resolved.error.code, resolved.error.message), dryRun: Boolean(options.dryRun) };
-      previous = resolved.state;
-      template = options.template ?? previous.template;
-    }
-    if (mode === 'apply' && only && previous) {
-      const incoming = preset;
-      preset = { ...previous.preset };
-      if (only.includes('font')) { preset.font = incoming.font; preset.headingFont = incoming.headingFont; }
-      if (only.includes('theme')) {
-        for (const field of ['style', 'baseColor', 'theme', 'chartColor', 'radius', 'density', 'menuTreatment'] as const) {
-          preset[field] = incoming[field] as never;
-        }
-      }
-    }
-    assertApprovedInit(preset, template);
-    const plan = compilePreset(preset, template);
-    if (mode === 'init') {
-      if (!existsSync(rootDir)) {
-        if (!options.dryRun) {
-          for (let directory = rootDir; !existsSync(directory); directory = path.dirname(directory)) createdDirectories.push(directory);
-          mkdirSync(rootDir, { recursive: true });
-        }
-      } else if (readdirSync(rootDir).length > 0 && !existsSync(path.join(rootDir, PRESET_STATE_PATH))) {
-        return flag('UIFN_PRESET_PROJECT_AMBIGUOUS', 'Refusing to initialize a non-empty directory that is not already a uifn preset project.');
-      }
-    } else if (!existsSync(rootDir)) {
-      return flag('UIFN_PRESET_PROJECT_MISSING', 'Consumer project root does not exist.');
-    }
+    const context = resolveMutationContext(options, mode, only);
+    if (!context.ok) return context.result;
+    const { rootDir, plan, previous } = context;
+    const rootError = prepareProjectRoot(rootDir, mode, Boolean(options.dryRun), createdDirectories);
+    if (rootError) return rootError;
 
     const domains: Array<'full' | PartialPresetDomain> = mode === 'init' || !only ? ['full'] : only;
     const files = desiredFiles(plan, domains);
     files[PRESET_STATE_PATH] = serializeState(plan, files, previous?.files);
 
     let artifactChanges: TransactionChange[] = [];
-    let artifactFiles: Array<{ path: string; operation: 'create' | 'update' | 'unchanged' }> = [];
+    let artifactFiles: Array<{ path: string; operation: FileOperation }> = [];
     if ((mode === 'init' || !only) && plan.preset.installMode === 'source') {
-      const installed = planInstall({ rootDir, artifacts: [...plan.project.artifacts], framework: plan.preset.framework, allowMissingRoot: mode === 'init' && options.dryRun });
+      const installed = planSourceFiles(rootDir, plan, files, previous, mode === 'init' && Boolean(options.dryRun));
       if (!installed.ok) return { ok: false, dryRun: Boolean(options.dryRun), written: [], unchanged: [], error: installed.error };
-      if (files['package.json']) {
-        files['package.json'] = mergePackageDependencies(files['package.json'], installed.plan.dependencies);
-        files[PRESET_STATE_PATH] = serializeState(plan, files, previous?.files);
-      }
-      artifactChanges = installed.plan.changes.filter((change) => change.path !== 'package.json');
-      artifactFiles = installed.plan.files
-        .filter((file) => file.path !== 'package.json')
-        .map((file) => ({ path: file.path, operation: file.operation }));
+      artifactChanges = installed.changes;
+      artifactFiles = installed.files;
     }
 
     const planned = planFileChanges(rootDir, files);
@@ -337,13 +391,9 @@ function mutate(options: PresetMutationOptions, mode: 'init' | 'apply'): PresetM
       plan: { code: plan.code, url: plan.url, files: summary, artifacts: plan.preset.installMode === 'source' ? plan.project.artifacts : [], commands: plan.commands },
     };
   } catch (cause) {
-    if (cause instanceof UIFnPresetError) return flag(cause.code, cause.message, cause.details);
-    const code = cause instanceof Error && 'code' in cause && typeof cause.code === 'string' && cause.code.startsWith('UIFN_') ? cause.code : 'UIFN_REGISTRY_CLI_ERROR';
-    return { ...flag(code, cause instanceof Error ? cause.message : String(cause)), dryRun: Boolean(options.dryRun) };
+    return mutationFailure(cause, Boolean(options.dryRun));
   } finally {
-    if (!succeeded) for (const directory of createdDirectories) {
-      try { rmdirSync(directory); } catch { /* Preserve nonempty directories after incomplete rollback. */ }
-    }
+    if (!succeeded) removeCreatedDirectories(createdDirectories);
   }
 }
 
