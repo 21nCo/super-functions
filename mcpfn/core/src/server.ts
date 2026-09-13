@@ -701,7 +701,7 @@ export class McpFnServer<TContext = undefined> {
     event: Omit<McpFnClientProfileEvidence, "formatVersion">,
   ): Promise<void> {
     try {
-      await this.clientProfiles?.evidence?.({ formatVersion: 1, ...event });
+      await this.clientProfiles?.evidence?.(structuredClone({ formatVersion: 1, ...event }));
     } catch {
       // Evidence sinks are observational and must never alter request behavior.
     }

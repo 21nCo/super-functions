@@ -331,6 +331,13 @@ describe("McpFn client profiles", () => {
     expect(evidence.some(event => event.stage === "handler")).toBe(false);
   });
 
+  it("keeps validation responses independent from evidence mutation", async () => {
+    const registry = new McpFnRegistry<RequestContext>().register({ name: "strict", description: "Strict", inputSchema: { type: "object", additionalProperties: false }, handler: async () => structuredResult({}) });
+    const { client } = await connect({ subject: "trusted" }, { id: "test", version: "1", matches: () => true }, registry, "client", event => { event.issues?.splice(0); });
+    const result = await client.callTool({ name: "strict", arguments: { unexpected: true } });
+    expect(JSON.stringify(result)).toContain("additionalProperties");
+  });
+
   it("retains exact structured Ajv diagnostics without rejected values", async () => {
     const captured = vi.fn();
     const registry = new McpFnRegistry().register({
@@ -422,11 +429,12 @@ describe("McpFn client profiles", () => {
     closeables.push(server);
   });
 
-  it("preserves exact long rejected property names", async () => {
+  it("bounds long rejected property names", async () => {
     const { client } = await connect({ subject: "generic" }, tenantProfile(), lookupRegistry().registry);
     const unknown = "unexpected".repeat(50);
     const result = await client.callTool({ name: "lookup", arguments: { query: "ok", tenantId: "ok", [unknown]: "secret" } });
-    expect(JSON.stringify(result)).toContain(unknown);
+    expect(JSON.stringify(result)).toContain(unknown.slice(0, 256));
+    expect(JSON.stringify(result)).not.toContain(unknown);
     expect(JSON.stringify(result)).not.toContain("secret");
   });
 
@@ -668,9 +676,16 @@ it("resolves named anchors and rejects unsupported dynamic projection references
     { type: "object", $defs: { node: { type: "string" } }, properties: { value: { $ref: "#%2F$defs%2Fnode" } } },
     { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", $defs: { node: { $dynamicAnchor: "node", type: "string" } }, properties: { value: { $ref: "#node" } } },
   ]) await expect(run(schema)).resolves.toBeDefined();
+  await expect(run({ $schema: "https://json-schema.org/draft/2019-09/schema", type: "object", $defs: { node: { $dynamicAnchor: "node", type: "string" } }, properties: { value: { $ref: "#node" } } })).rejects.toThrow(/named schema anchor/);
   const content = (type: string) => ({ $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", $defs: { body: { type } }, properties: { value: { type: "string", contentSchema: { $ref: "#/$defs/body" } } } });
   await expect(run(content("string"), content("number"))).rejects.toThrow(/canonical schema/);
   await expect(run({ type: "object", properties: { value: { $dynamicRef: "#node" } } })).rejects.toMatchObject({ code: "MCPFN_INVALID_PROJECTED_CATALOG" });
   const { formatMcpFnSchemaIssues } = await import("../src/validation.js");
   expect(formatMcpFnSchemaIssues([{ instancePath: "", schemaPath: "", keyword: "type", params: {} }])[0].schemaPath).toBe("#");
+});
+
+it("bounds request-controlled property names in diagnostics", async () => {
+  const { formatMcpFnSchemaIssues } = await import("../src/validation.js");
+  const issues = formatMcpFnSchemaIssues([{ keyword: "additionalProperties", instancePath: "", schemaPath: "#", params: { additionalProperty: "x".repeat(10000) } }]);
+  expect(issues[0].rejectedProperty?.length).toBe(256);
 });

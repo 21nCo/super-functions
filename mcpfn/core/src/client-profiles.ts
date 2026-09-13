@@ -536,7 +536,7 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
       throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Dynamic and recursive references are not supported in projected catalogs");
     }
     if (typeof schemaValue.$anchor === "string") ids.set(new URL(`#${schemaValue.$anchor}`, bases.get(resource) ?? parentBase).href, schemaValue);
-    if (typeof schemaValue.$dynamicAnchor === "string" && modernDialect(resource)) ids.set(new URL(`#${schemaValue.$dynamicAnchor}`, bases.get(resource) ?? parentBase).href, schemaValue);
+    if (typeof schemaValue.$dynamicAnchor === "string" && String(resource.$schema ?? root.$schema ?? "draft-07").includes("2020-12")) ids.set(new URL(`#${schemaValue.$dynamicAnchor}`, bases.get(resource) ?? parentBase).href, schemaValue);
     resources.set(value, resource);
     for (const [key, child] of Object.entries(value)) {
       mapSchemaKeyword(key, child, item => { index(item, resource); return item; }, modernDialect(resource));

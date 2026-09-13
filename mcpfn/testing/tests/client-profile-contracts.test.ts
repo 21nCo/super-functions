@@ -458,3 +458,7 @@ it("warns for named schema anchors", () => {
   const issues = validateMcpFnSchemaPortability({ $schema: "https://json-schema.org/draft/2020-12/schema", $anchor: "node", type: "object", properties: { next: { $ref: "#node" } } }, "input");
   expect(issues.some(issue => issue.keyword === "$anchor")).toBe(true);
 });
+
+it("uses draft 7 for undeclared tuple schemas", () => {
+  expect(validateMcpFnSchemaPortability({ type: "object", properties: { pair: { type: "array", items: [{ type: "string" }] } } }, "#").some(issue => issue.code === "schema-invalid")).toBe(false);
+});
