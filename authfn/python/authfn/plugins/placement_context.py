@@ -21,8 +21,6 @@ import idna
 from idna import idnadata
 
 from ..config import get_plugin_config
-from .multi_region import MultiRegionPluginConfig
-
 from ..http import _coerce_utc, _hash_secret, get_cookie_session_state
 from ..observability import emit_auth_event, resolve_request_id
 from ..plugins.gateway_routing import (
@@ -45,6 +43,7 @@ from ..types import (
     UnauthorizedError,
     ValidationError,
 )
+from .multi_region import MultiRegionPluginConfig
 
 CONTEXT_KIND = "placement-context"
 INTERNAL_HEADER_PREFIX = "x-authfn-routing-"

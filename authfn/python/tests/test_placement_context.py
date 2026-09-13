@@ -1077,15 +1077,15 @@ async def test_sync_verification_schedules_async_hook() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("cell", [None, "", "   ", "eu-west-1", "us-east-1"])
 async def test_gateway_issuer_requires_matching_regional_cell(cell: Optional[str]) -> None:
-    from authfn.plugins.multi_region import authfn_multi_region_plugin, MultiRegionPluginConfig
     from authfn.plugins.gateway_routing import CanonicalRoutingConfig
+    from authfn.plugins.multi_region import MultiRegionPluginConfig, authfn_multi_region_plugin
     setup = await _setup()
     setup.config.plugins.append(authfn_multi_region_plugin(MultiRegionPluginConfig(
         routing=CanonicalRoutingConfig(mode="gateway", cell_region_id=cell, public_authority="https://account.example.com")
     )))
-    kwargs = dict(config=setup.config, region_id="us-east-1", subject_secret=SUBJECT_SECRET,
-                  audiences=["nucleum-datafn"], public_authority="https://account.example.com",
-                  placement_directory=setup.directory, identity_key_for_user_id=lambda uid: f"person:{uid}")
+    kwargs = {"config": setup.config, "region_id": "us-east-1", "subject_secret": SUBJECT_SECRET,
+                  "audiences": ["nucleum-datafn"], "public_authority": "https://account.example.com",
+                  "placement_directory": setup.directory, "identity_key_for_user_id": lambda uid: f"person:{uid}"}
     if cell == "us-east-1":
         assert (await create_placement_context_issuer(**kwargs).derive(setup.request)).home_region == cell
     else:
@@ -1097,10 +1097,10 @@ async def test_gateway_issuer_requires_matching_regional_cell(cell: Optional[str
 @pytest.mark.parametrize("include", ["false", "true", 0, 1, None, False, True])
 async def test_user_id_disclosure_requires_boolean(include: Any) -> None:
     setup = await _setup()
-    kwargs = dict(config=setup.config, region_id="us-east-1", subject_secret=SUBJECT_SECRET,
-                  audiences=["nucleum-datafn"], public_authority="https://account.example.com",
-                  placement_directory=setup.directory, identity_key_for_user_id=lambda uid: f"person:{uid}",
-                  include_user_id=include)
+    kwargs = {"config": setup.config, "region_id": "us-east-1", "subject_secret": SUBJECT_SECRET,
+                  "audiences": ["nucleum-datafn"], "public_authority": "https://account.example.com",
+                  "placement_directory": setup.directory, "identity_key_for_user_id": lambda uid: f"person:{uid}",
+                  "include_user_id": include}
     if isinstance(include, bool):
         context = await create_placement_context_issuer(**kwargs).derive(setup.request)
         assert context.user_id == (setup.user["id"] if include else None)
