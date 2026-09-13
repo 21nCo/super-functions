@@ -12,6 +12,7 @@ it("uses the same byte digest and identifiers as the real artifact store", async
     const memory = new MemoryArtifactStore();
     const disk = new FileArtifactStore(root);
     const saved = await memory.put("test-log", content);
+    expect(saved).toEqual({ digest: "edc81f7e4ee358fb91e94bd9bd74079c3dcba36f40f2c8a36e7ae0567afecc8f", id: "test-log-edc81f7e4ee358fb91e94bd9bd74079c3dcba36f40f2c8a36e7ae0567afecc8f" });
     expect(saved).toEqual(await disk.put("test-log", content, 1));
     expect(await memory.get(saved.id)).toEqual(await disk.get(saved.id));
   } finally { await rm(root, { recursive: true, force: true }); }

@@ -47,6 +47,14 @@ runs:
         if ! [[ "$REVIEWFN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then exit 2; fi
         if ! [[ "$REVIEWFN_BASE" =~ ^[a-f0-9]{40}$ && "$REVIEWFN_HEAD" =~ ^[a-f0-9]{40}$ && "$REVIEWFN_PR" =~ ^[0-9]+$ ]]; then exit 2; fi
         test -z "${GITHUB_TOKEN:-}"
-        npx --ignore-scripts --yes --package "@superfunctions/reviewfn-cli@$REVIEWFN_VERSION" reviewfn review \
-          --base "$REVIEWFN_BASE" --head "$REVIEWFN_HEAD" --issue "$REVIEWFN_ISSUE" \
+        reviewfn_tool_dir=$(mktemp -d "${RUNNER_TEMP:?}/reviewfn-cli.XXXXXX")
+        trap 'rm -rf -- "$reviewfn_tool_dir"' EXIT
+        cd "$reviewfn_tool_dir"
+        : > "$reviewfn_tool_dir/npmrc.user"
+        : > "$reviewfn_tool_dir/npmrc.global"
+        npm install --prefix "$reviewfn_tool_dir" --ignore-scripts --no-audit --no-fund --package-lock=false \
+          --userconfig="$reviewfn_tool_dir/npmrc.user" --globalconfig="$reviewfn_tool_dir/npmrc.global" --registry=https://registry.npmjs.org \
+          --save-exact "@superfunctions/reviewfn-cli@$REVIEWFN_VERSION"
+        node "$reviewfn_tool_dir/node_modules/@superfunctions/reviewfn-cli/dist/main.js" review \
+          --root "${GITHUB_WORKSPACE:?}" --base "$REVIEWFN_BASE" --head "$REVIEWFN_HEAD" --issue "$REVIEWFN_ISSUE" \
           --pull-request "$REVIEWFN_PR" --output "$REVIEWFN_OUTPUT" --trusted-config-from-base

@@ -1,7 +1,7 @@
+import { describe, expect, it, vi } from "vitest";
 import * as fileSystem from "node:fs/promises";
 vi.mock("node:fs/promises", async importOriginal => ({ ...await importOriginal<typeof import("node:fs/promises")>() }));
 import * as safeFiles from "../src/safe-files.js";
-import { describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_CONFIG, DEFAULT_POLICY, FileArtifactStore, RepositoryMarkdownContextAdapter, applyRepositoryPolicy, buildReviewPrompt, deriveVerdict, digestJson, validateConfig, validateReport, type ReviewReport } from "../src/index.js";
 import { readFile, mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
