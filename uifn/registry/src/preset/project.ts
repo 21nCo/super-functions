@@ -285,13 +285,17 @@ function lockMatchesManifest(lock: NpmLockfile | null, manifest: Record<string, 
 // Read ancestor metadata only. Never add an ancestor lockfile to the write transaction.
 function governingLockfile(rootDir: string): { pathname: string; packageKey: string } | undefined {
   let directory = rootDir;
+  let localLock: { pathname: string; packageKey: string } | undefined;
   while (true) {
     const pathname = directory === rootDir ? assertContainedPath(rootDir, 'package-lock.json') : path.join(directory, 'package-lock.json');
-    if (existsSync(pathname) && (directory === rootDir || hasWorkspaceMetadata(directory, rootDir))) {
-      return { pathname, packageKey: path.relative(directory, rootDir).split(path.sep).join('/') };
+    if (existsSync(pathname)) {
+      if (directory === rootDir) localLock = { pathname, packageKey: '' };
+      else if (hasWorkspaceMetadata(directory, rootDir)) {
+        return { pathname, packageKey: path.relative(directory, rootDir).split(path.sep).join('/') };
+      }
     }
     const parent = path.dirname(directory);
-    if (parent === directory) return undefined;
+    if (parent === directory) return localLock;
     directory = parent;
   }
 }

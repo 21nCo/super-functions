@@ -16,7 +16,6 @@ import { TableRoot, TableTable, TableHeader, TableBody, TableRow, TableHead, Tab
 import {
   PRESET_AXES,
   PRESET_AXIS_LABELS,
-  PRESET_DEFAULTS,
   PRESET_FIELD_ORDER,
   compilePreset,
   encodePreset,
@@ -25,6 +24,7 @@ import {
   PRESET_FIXTURE_COMPONENTS,
   normalizePreset,
   presetFromUrl,
+  PRESET_DEFAULTS,
   randomPreset,
   themeTokenDocument,
   type PresetAxis,
@@ -40,13 +40,6 @@ const VIEWPORTS = {
   mobile: 390,
 } as const;
 
-function parseState(): UIFnPresetV1 {
-  try {
-    return presetFromUrl(window.location.href);
-  } catch {
-    return { ...PRESET_DEFAULTS };
-  }
-}
 
 function optionControl(axis: PresetAxis, preset: UIFnPresetV1, locked: Set<PresetAxis>): string {
   const options = (PRESET_AXES[axis] as readonly string[]).map((value) => `<option value="${value}" ${preset[axis] === value ? 'selected' : ''}>${value}</option>`).join('');
@@ -193,7 +186,19 @@ function syncUrl(preset: UIFnPresetV1) {
 }
 
 function boot() {
-  let preset = parseState();
+  let preset: UIFnPresetV1;
+  try {
+    const url = new URL(window.location.href);
+    const hasPreset = url.searchParams.has('preset') || url.searchParams.has('p') || url.hash.startsWith('#preset=');
+    preset = hasPreset ? presetFromUrl(url.href) : { ...PRESET_DEFAULTS };
+  } catch (error) {
+    const app = document.querySelector('#app');
+    if (app) {
+      app.setAttribute('role', 'alert');
+      app.textContent = `Unable to load this preset. ${error instanceof Error ? error.message : 'Invalid preset URL.'} Remove the preset from the URL to start a new configuration.`;
+    }
+    return;
+  }
   const locked = new Set<PresetAxis>(['framework', 'installMode']);
   let mode: 'light' | 'dark' = 'light';
   let viewport: keyof typeof VIEWPORTS = 'desktop';

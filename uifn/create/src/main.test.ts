@@ -36,3 +36,15 @@ it('ignores injected mode and viewport attributes and renders valid controls and
   expect(document.querySelector<HTMLElement>('[data-command="init"]')!.hidden).toBe(false);
   expect(document.querySelector<HTMLElement>('[data-unavailable="init"]')!.hidden).toBe(true);
 });
+
+it('keeps invalid preset URLs and shows an error instead of a default configuration', async () => {
+  vi.resetModules();
+  window.history.replaceState(null, '', '?preset=uifn99_invalid');
+  const original = window.location.href;
+  document.body.innerHTML = '<div id="app"></div>';
+  await import('./main');
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain('Unable to load this preset');
+  expect(document.querySelector('.preview-frame')).toBeNull();
+  expect(window.location.href).toBe(original);
+  window.history.replaceState(null, '', '/');
+});

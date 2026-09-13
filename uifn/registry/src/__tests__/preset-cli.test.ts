@@ -352,9 +352,7 @@ it.each(['hoisted', 'nested', 'missing', 'malformed'] as const)('checks ancestor
     expect(initProject({ rootDir, preset: initial }).ok).toBe(true);
     writeFileSync(path.join(parent, 'package.json'), JSON.stringify({ private: true, workspaces: ['packages/*'] }));
     const source = readFileSync(path.join(rootDir, 'package.json'), 'utf8');
-    const lock = npmLock(source);
-    lock.packages['packages/app'] = lock.packages[''];
-    lock.packages[''] = {};
+    const lock = workspaceLock(source);
     if (scenario === 'nested') {
       for (const key of Object.keys(lock.packages).filter(key => key.startsWith('node_modules/'))) {
         lock.packages[`packages/app/${key}`] = lock.packages[key];
@@ -374,9 +372,7 @@ it.each(['hoisted', 'nested', 'missing', 'malformed'] as const)('checks ancestor
       expect(result.requiredActions).toMatchObject([{ path: '../../package-lock.json', code: 'UIFN_PRESET_LOCKFILE_REFRESH_REQUIRED' }]);
       expect(readFileSync(lockPath, 'utf8')).toBe(original);
     }
-    const refreshed = npmLock(readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
-    refreshed.packages['packages/app'] = refreshed.packages[''];
-    refreshed.packages[''] = {};
+    const refreshed = workspaceLock(readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
     writeFileSync(lockPath, JSON.stringify(refreshed));
     expect(applyPreset({ rootDir, preset: changed, dryRun: true }).requiredActions).toEqual([]);
   });
@@ -401,9 +397,7 @@ it.each(['missing', 'malformed', 'valid'])('detects object-form workspaces with 
     expect(initProject({ rootDir, preset }).ok).toBe(true);
     writeFileSync(path.join(parent, 'package.json'), JSON.stringify({ workspaces: { packages: ['packages/*'] } }));
     const lockPath = path.join(parent, 'package-lock.json');
-    const valid = npmLock(readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
-    valid.packages['packages/app'] = valid.packages[''];
-    valid.packages[''] = {};
+    const valid = workspaceLock(readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
     const original = scenario === 'valid' ? JSON.stringify(valid) : scenario === 'missing' ? JSON.stringify({ lockfileVersion: 3, packages: {} }) : '{';
     writeFileSync(lockPath, original);
     for (const dryRun of [true, false]) {
@@ -422,9 +416,7 @@ it.each(['valid', 'wrong-version', 'missing-target', 'escape', 'absolute', 'cycl
     const preset = encodePreset({});
     expect(initProject({ rootDir, preset }).ok).toBe(true);
     writeFileSync(path.join(parent, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }));
-    const lock = npmLock(readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
-    lock.packages['packages/app'] = lock.packages[''];
-    lock.packages[''] = {};
+    const lock = workspaceLock(readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
     const version = lock.packages['node_modules/react'].version;
     const link: any = { link: true, resolved: 'packages/./react' };
     lock.packages['node_modules/react'] = link;
@@ -444,5 +436,36 @@ it.each(['valid', 'wrong-version', 'missing-target', 'escape', 'absolute', 'cycl
       expect(result.requiredActions?.length).toBe(scenario === 'valid' ? 0 : 1);
       expect(readFileSync(lockPath, 'utf8')).toBe(original);
     }
+  });
+});
+
+function workspaceLock(source: string) {
+  const lock = npmLock(source);
+  lock.packages['packages/app'] = lock.packages[''];
+  lock.packages[''] = {};
+  return lock;
+}
+
+it('rejects a valueless cwd before creating files', async () => {
+  await withProject(async rootDir => {
+    const before = snapshot(rootDir);
+    const result = await runCli(['init', '--preset', encodePreset({}), '--cwd'], { cwd: rootDir, stdout: () => {}, stderr: () => {} });
+    expect(result.exitCode).not.toBe(0);
+    expect(snapshot(rootDir)).toBe(before);
+  });
+});
+
+it('uses the governing workspace lock even when an ignored nested lock is valid', async () => {
+  await withProject(async parent => {
+    const rootDir = path.join(parent, 'packages/app');
+    expect(initProject({ rootDir, preset: encodePreset({}) }).ok).toBe(true);
+    writeFileSync(path.join(parent, 'package.json'), JSON.stringify({ private: true, workspaces: ['packages/*'] }));
+    const source = readFileSync(path.join(rootDir, 'package.json'), 'utf8');
+    writeFileSync(path.join(rootDir, 'package-lock.json'), JSON.stringify(npmLock(source)));
+    writeFileSync(path.join(parent, 'package-lock.json'), '{');
+    const before = snapshot(parent);
+    const result = applyPreset({ rootDir, preset: encodePreset({}), dryRun: true });
+    expect(result.requiredActions).toMatchObject([{ path: '../../package-lock.json' }]);
+    expect(snapshot(parent)).toBe(before);
   });
 });

@@ -59,6 +59,7 @@ export async function runCli(argv = process.argv.slice(2), options: CliRunOption
   const stdout = options.stdout ?? ((value) => console.log(value));
   const stderr = options.stderr ?? ((value) => console.error(value));
   try {
+    if (parsed.flags.cwd !== undefined && (typeof parsed.flags.cwd !== 'string' || !parsed.flags.cwd.trim())) throw new Error('--cwd requires a nonempty directory path');
     if (parsed.command === 'help' || parsed.command === '--help') {
       const result = PRESET_HELP;
       printResult(result, json, stdout); return { exitCode: 0, result };
