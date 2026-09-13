@@ -24,6 +24,7 @@ import {
 } from '../core/placement-context.js';
 import {
   createInMemoryAuthFnPlacementDirectory,
+  createInMemoryAuthFnRoutingReplayStore,
   tombstoneAuthFnIdentityPlacement
 } from '../core/gateway-routing.js';
 import { eventRequestId } from '../core/observability.js';
@@ -364,8 +365,9 @@ describe('AuthFn placement-bound auth context', () => {
     const session = await old.config.database.findOne({ model: 'sessions', namespace: 'authfn',
       where: [{ field: 'id', operator: 'eq', value: old.sessionId }] });
     await regionalDatabase.create({ model: 'sessions', namespace: 'authfn', data: { ...session, revokedAt: new Date() } });
+    const newRegion = await setupIssuer({ regionId: 'eu-west-1' });
     const current = createAuthFnPlacementContextIssuer({
-      config: { ...old.config, database: regionalDatabase }, regionId: 'eu-west-1',
+      config: { ...newRegion.config, database: regionalDatabase }, regionId: 'eu-west-1',
       subjectSecret: SUBJECT_SECRET, audiences: ['nucleum-datafn'], publicAuthority: 'https://account.example.com',
       placementDirectory: old.directory, identityKeyForUserId: (id) => `person:${id}`,
     });
@@ -757,6 +759,7 @@ async function setupIssuer(options?: {
   extraHeaders?: Record<string, string>;
   includeUserId?: boolean;
   skipPlacement?: boolean;
+  gatewayOnly?: boolean;
   directory?: ReturnType<typeof createInMemoryAuthFnPlacementDirectory> | {
     get: () => Promise<AuthFnIdentityPlacement | null>;
     putIfAbsent: () => Promise<{ inserted: boolean }>;
@@ -774,6 +777,10 @@ async function setupIssuer(options?: {
     environment: authFnMultiRegionEnvironment({
       routing: {
         mode: 'gateway',
+        ...(options?.gatewayOnly ? {} : {cell: {
+          regionId: options?.regionId ?? 'us-east-1',
+          audience: 'test-cell', keyring, replayStore: createInMemoryAuthFnRoutingReplayStore()
+        }}),
         publicAuthority: 'https://account.example.com',
         placementDirectory: createInMemoryAuthFnPlacementDirectory(),
         identityKeyForIdentifier: (identifier) => identifier,
@@ -860,4 +867,9 @@ it('keeps identity claims stable for shared issuer keys and changes them on iden
     expect(shared[claim]).toBe(first[claim]);
     expect(rotated[claim]).not.toBe(first[claim]);
   }
+});
+
+it('rejects a gateway-only issuer even with an explicit region and local session', async () => {
+  await expect(setupIssuer({gatewayOnly: true, regionId: 'us-east-1'}))
+    .rejects.toThrow('Gateway-only configurations cannot issue placement contexts');
 });

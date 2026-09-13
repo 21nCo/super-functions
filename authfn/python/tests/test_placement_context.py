@@ -1062,11 +1062,13 @@ async def test_sync_verification_schedules_async_hook() -> None:
     setup = await _setup()
     signed = await setup.issuer.issue_signed(setup.request)
     delivered = asyncio.Event()
+    seen = []
 
     async def on_event(event):
-        assert event["type"] == "authfn.placement_context.verified"
+        seen.append(event["type"])
         delivered.set()
 
     setup.issuer._verifier._on_event = on_event
     setup.issuer.verify_signed(signed["assertion"])
     await asyncio.wait_for(delivered.wait(), timeout=1)
+    assert seen == ["authfn.placement_context.verified"]

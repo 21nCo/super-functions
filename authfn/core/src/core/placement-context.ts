@@ -181,6 +181,9 @@ export function createAuthFnPlacementContextIssuer(
   options: AuthFnPlacementContextIssuerOptions
 ): AuthFnPlacementContextIssuer {
   const routing = getMultiRegionPluginConfig(options.config)?.routing;
+  if (routing?.mode === 'gateway' && !routing.cell) {
+    throw new AuthFnConfigError('Gateway-only configurations cannot issue placement contexts without a regional cell');
+  }
   const cellRegionId = routing?.mode === 'gateway' ? routing.cell?.regionId : undefined;
   const regionId = (options.regionId ?? cellRegionId)?.trim();
   if (!regionId || (typeof cellRegionId === 'string' && regionId !== cellRegionId.trim())) {
