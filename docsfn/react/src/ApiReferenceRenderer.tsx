@@ -1,19 +1,9 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { normalizeMediaContent } from "@docsfn/core/browser";
 import type { ApiReference } from "@docsfn/core";
 
-function rawMedia(value: unknown): RenderMediaContent[] {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-  return Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([mediaType, raw]) => {
-    const media = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
-    const examples = media.examples && typeof media.examples === "object" ? Object.entries(media.examples).map(([name, raw]) => {
-      const example = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
-      return { name, value: example.value, reference: typeof example.$ref === "string" ? example.$ref : undefined };
-    }) : [];
-    return { mediaType, schema: media.schema, example: media.example, examples };
-  });
-}
 
 function MediaPayload({ media }: { media: RenderMediaContent }) {
   if (media.schema === undefined && media.example === undefined && !media.examples?.length) return null;
@@ -224,7 +214,7 @@ function normalizeSpecModel(api: ApiReference): RenderSpecModel | null {
                     typeof responseRecord.description === "string"
                       ? responseRecord.description
                       : undefined,
-                  content: rawMedia(responseRecord.content),
+                  content: normalizeMediaContent(responseRecord.content, spec, { sourceId: api.id, sourcePath: api.path }),
                 };
               })
           : [];
@@ -241,7 +231,7 @@ function normalizeSpecModel(api: ApiReference): RenderSpecModel | null {
         tags,
         parameters,
         responses,
-        requestBody: operation.requestBody && typeof operation.requestBody === "object" ? { required: Boolean((operation.requestBody as Record<string, unknown>).required), content: rawMedia((operation.requestBody as Record<string, unknown>).content) } : undefined,
+        requestBody: operation.requestBody && typeof operation.requestBody === "object" ? { required: Boolean((operation.requestBody as Record<string, unknown>).required), content: normalizeMediaContent((operation.requestBody as Record<string, unknown>).content, spec, { sourceId: api.id, sourcePath: api.path }) } : undefined,
         routePath: `${api.path}/operations/${method.toLowerCase()}-${path.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase()}`,
       });
     }

@@ -548,3 +548,12 @@ it("counts final serialized bytes and applies the boundary after including metad
   expect(limited.bytes).toBe(Buffer.byteLength(JSON.stringify(limited)));
   expect(limited.diagnostics.find(item => item.severity === "warning")?.details?.bytes).toBe(limited.bytes);
 });
+
+it("indexes canonical operation terms and child routes in summary mode", async () => {
+  const manifest = createManifest();
+  manifest.apis["api:search"].spec = { operations: [{ id: "create", operationId: "createUser", method: "POST", path: "/users", routePath: "/docs/api/operations/create", summary: "Create user", description: "Register an account", tags: [] }] };
+  const artifact = await buildSearchIndex(manifest, { search: { enabled: true, scopes: ["api"], bodyIndexing: "summary" } });
+  const operation = artifact.documents.find(doc => doc.path === "/docs/api/operations/create");
+  expect(operation?.summary).toContain("Create user");
+  expect(operation?.body).toContain("createUser POST /users");
+});

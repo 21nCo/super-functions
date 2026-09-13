@@ -230,5 +230,5 @@ it.each(['path-prefix', 'path-segment'] as const)('rejects conflicting frontmatt
 });
 
 it.each(["guide?draft.mdx", "guide#section.mdx"])("rejects URL delimiters in source filenames: %s", sourcePath => {
-  expect(() => buildRoute({ collection: "docs", sourcePath, config: createConfig() })).toThrow(/query or fragment/);
+  expect(() => buildRoute({ collection: "docs", sourcePath, config: createConfig() })).toThrow(expect.objectContaining({ code: "DOCS_ENTRY_INVALID" }));
 });

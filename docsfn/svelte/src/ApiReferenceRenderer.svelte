@@ -1,18 +1,8 @@
 <script lang="ts">
-  import type { ApiReference } from "@docsfn/core/browser";
+  import { normalizeMediaContent } from "@docsfn/core/browser";
+import type { ApiReference } from "@docsfn/core/browser";
   import { Tabs, TabsList, TabsTrigger, TabsContent } from "@uifn/svelte";
 
-function rawMedia(value: unknown): RenderMediaContent[] {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-  return Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([mediaType, raw]) => {
-    const media = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
-    const examples = media.examples && typeof media.examples === "object" ? Object.entries(media.examples).map(([name, raw]) => {
-      const example = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
-      return { name, value: example.value, reference: typeof example.$ref === "string" ? example.$ref : undefined };
-    }) : [];
-    return { mediaType, schema: media.schema, example: media.example, examples };
-  });
-}
 
   export let api: ApiReference;
 
@@ -172,7 +162,7 @@ function rawMedia(value: unknown): RenderMediaContent[] {
 
                   return {
                     statusCode,
-                    content: rawMedia(responseRecord.content),
+                    content: normalizeMediaContent(responseRecord.content, spec, { sourceId: input.id, sourcePath: input.path }),
                     description:
                       typeof responseRecord.description === "string"
                         ? responseRecord.description
@@ -184,7 +174,7 @@ function rawMedia(value: unknown): RenderMediaContent[] {
         const requestBody =
           typeof operation.requestBody === "object" && operation.requestBody !== null
             ? {
-                content: rawMedia((operation.requestBody as Record<string, unknown>).content),
+                content: normalizeMediaContent((operation.requestBody as Record<string, unknown>).content, spec, { sourceId: input.id, sourcePath: input.path }),
               }
             : undefined;
 

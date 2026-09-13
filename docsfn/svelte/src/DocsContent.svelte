@@ -2,6 +2,7 @@
   import type { ComponentType } from "svelte";
   import {
     assertCompiledContentTrusted,
+    isUnsafeHtmlAllowed,
     compileSvelteContent,
     createDiagnostic,
     createDocsError,
@@ -38,7 +39,7 @@
       source: content,
       sourcePath,
       compatPreset,
-      allowRawHtml: allowUnsafeHtml,
+      allowRawHtml: isUnsafeHtmlAllowed(sourcePath, { allowUnsafeHtml, allowUnsafeHtmlAllowlist: unsafeHtmlAllowlist }),
     });
 
   $: if (compiled) {

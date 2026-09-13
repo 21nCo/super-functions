@@ -90,7 +90,7 @@ export function generateRSSFeed(
       <guid isPermaLink="true">${escapeXml(postLink)}</guid>
       <pubDate>${new Date(publish.publishedAt).toUTCString()}</pubDate>
       ${descriptionValue ? `<description><![CDATA[${escapeCdata(descriptionValue)}]]></description>` : ""}
-      ${post.author ? `<author>${escapeXml(post.author)}</author>` : ""}
+      ${post.author ? `<dc:creator>${escapeXml(post.author)}</dc:creator>` : ""}
       ${post.tags.map((tag) => `<category>${escapeXml(tag)}</category>`).join("\n      ")}
     </item>
   `;
@@ -104,7 +104,7 @@ export function generateRSSFeed(
   const lastBuildDate = resolveBlogLastBuildDate(posts);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
     <title>${escapeXml(title)}</title>
     <description>${escapeXml(description)}</description>

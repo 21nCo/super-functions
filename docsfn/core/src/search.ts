@@ -378,6 +378,19 @@ function collectSearchDocuments(input: {
         summary: redactSensitiveText(summary),
       }),
     });
+    const operations = (api.spec as { operations?: unknown } | undefined)?.operations;
+    if (Array.isArray(operations)) for (const operation of operations) {
+      if (!operation || typeof operation.routePath !== "string" || isProtected(api.frontmatter, operation.routePath)) continue;
+      const operationScope = resolveSearchScopeForRoute({ route: operation.routePath, kind: "api", routeScopeOverrides: input.routeScopeOverrides });
+      if (!input.scopes.includes(operationScope)) continue;
+      const operationSummary = redactSensitiveText(normalizeWhitespace([operation.operationId, operation.method, operation.path, operation.summary, operation.description].filter(value => typeof value === "string").join(" ")));
+      documents.push({
+        id: `${api.id}:operation:${operation.id}`, scope: operationScope, kind: "api", path: operation.routePath,
+        title: redactSensitiveText(operation.summary || `${operation.method} ${operation.path}`), summary: operationSummary,
+        headings: [], tags: Array.isArray(operation.tags) ? operation.tags.map((tag: string) => redactSensitiveText(tag)) : [],
+        body: resolveBodyField({ bodyIndexing: input.bodyIndexing, body: operationSummary, summary: operationSummary }),
+      });
+    }
   }
 
   for (const post of Object.values(input.manifest.posts)) {

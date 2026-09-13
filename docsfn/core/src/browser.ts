@@ -113,6 +113,7 @@ export { compileReactContent } from "./compile/react";
 // (assertCompiledContentTrusted uses process.env which is available via Vite/Webpack)
 export {
   assertCompiledContentTrusted,
+  isUnsafeHtmlAllowed,
   assertSourceEntriesTrusted,
   collectUnsafeHtmlDiagnostics,
   resolveUnsafeHtmlAllowlist,
@@ -143,3 +144,6 @@ export type {
   ThemeConfig,
   DocsTheme,
 } from "./theme";
+
+// Browser-safe media/reference normalization shared with canonical OpenAPI parsing.
+export { normalizeMediaContent } from "./openapi-media";

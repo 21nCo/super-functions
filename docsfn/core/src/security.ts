@@ -260,28 +260,8 @@ export function assertSourceEntriesTrusted(input: AssertSourceEntriesTrustedInpu
 export function assertCompiledContentTrusted(
   input: AssertCompiledContentTrustedInput
 ): void {
-  const policy = normalizeTrustPolicy(input.policy);
-  if (policy.allowUnsafeHtml) {
-    return;
-  }
-
+  if (isUnsafeHtmlAllowed(input.sourcePath, input.policy)) return;
   const sourceId = input.sourcePath ?? "compiled-content";
-  const allowlisted = matchesAllowlist(
-    {
-      id: sourceId,
-      collection: "docs",
-      relativePath: sourceId,
-      absolutePath: input.sourcePath,
-      entryType: "content",
-      frontmatter: {},
-      body: input.source,
-    },
-    policy.allowUnsafeHtmlAllowlist ?? []
-  );
-
-  if (allowlisted) {
-    return;
-  }
 
   const matches = findUnsafeHtml(input.source);
   if (matches.length === 0) {
@@ -396,4 +376,32 @@ export async function assertDocsRouteAccess(
     requiresAuth: true,
     allowed: true,
   };
+}
+
+export function isUnsafeHtmlAllowed(sourcePath?: string, policyInput?: SourceTrustPolicy): boolean {
+  const input = { sourcePath, policy: policyInput };
+  const policy = normalizeTrustPolicy(input.policy);
+  if (policy.allowUnsafeHtml) {
+    return true;
+  }
+
+  const sourceId = input.sourcePath ?? "compiled-content";
+  const allowlisted = matchesAllowlist(
+    {
+      id: sourceId,
+      collection: "docs",
+      relativePath: sourceId,
+      absolutePath: input.sourcePath,
+      entryType: "content",
+      frontmatter: {},
+      body: "",
+    },
+    policy.allowUnsafeHtmlAllowlist ?? []
+  );
+
+  if (allowlisted) {
+    return true;
+  }
+
+  return false;
 }

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   assertCompiledContentTrusted,
+  isUnsafeHtmlAllowed,
   compileReactContent,
   createDiagnostic,
   createDocsError,
@@ -284,7 +285,7 @@ export function DocsContent({
       source: content ?? "",
       sourcePath,
       compatPreset,
-      allowRawHtml: allowUnsafeHtml,
+      allowRawHtml: isUnsafeHtmlAllowed(sourcePath, { allowUnsafeHtml, allowUnsafeHtmlAllowlist: unsafeHtmlAllowlist }),
     });
   }, [
     compiled,

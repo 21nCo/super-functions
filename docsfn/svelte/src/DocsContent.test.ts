@@ -243,3 +243,9 @@ describe("DocsContent", () => {
     await expect(import(/* @vite-ignore */ invalidSpecifier)).rejects.toThrow();
   });
 });
+
+it("honors an unsafe HTML allowlisted source during compilation", () => {
+  const view = render(DocsContent, { content: '<iframe src="https://example.com"></iframe>', sourcePath: "legacy.mdx", unsafeHtmlAllowlist: ["legacy.mdx"] });
+  expect(view.container.querySelector("iframe")).not.toBeNull();
+  view.unmount();
+});

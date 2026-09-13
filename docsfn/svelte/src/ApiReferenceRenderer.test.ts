@@ -92,9 +92,9 @@ it.each([false, true])("renders operation media schemas and named examples (raw=
   operation.requestBody.content = [media("request")];
   operation.responses = [{ statusCode: "200", content: [media("response")] }];
   if (raw) {
-    const rawContent = (side: string) => { const item = media(side); return { [item.mediaType]: { ...item, examples: Object.fromEntries(item.examples.map(example => [example.name, { value: example.value }])) } }; };
+    const rawContent = (side: string) => { const item = media(side); return { [item.mediaType]: { ...item, examples: Object.fromEntries(item.examples.map(example => [example.name, { $ref: `#/components/examples/${side}` }])) } }; };
     api.path = "/docs/api/operations/post-x";
-    api.spec = { openapi: "3.0.3", info: { title: "Raw", version: "1" }, paths: { "/x": { post: { requestBody: { content: rawContent("request") }, responses: { "200": { content: rawContent("response") } } } } } };
+    api.spec = { openapi: "3.0.3", components: { examples: { request: { value: "request-value" }, response: { value: "response-value" } } }, info: { title: "Raw", version: "1" }, paths: { "/x": { post: { requestBody: { content: rawContent("request") }, responses: { "200": { content: rawContent("response") } } } } } };
   }
   const view = render(ApiReferenceRenderer, { api });
   try {

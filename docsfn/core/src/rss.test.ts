@@ -290,3 +290,10 @@ it.each([true, false])("excludes preview drafts from items and lastBuildDate (or
   expect(xml).not.toContain("Beta");
   expect(xml).not.toContain("02 Mar 2026");
 });
+
+it("uses creator metadata for display-name authors", () => {
+  const xml = generateRSSFeed(createManifest(), { title: "Blog", description: "Published", link: "https://example.com" });
+  expect(xml).toContain('xmlns:dc="http://purl.org/dc/elements/1.1/"');
+  expect(xml).toContain("<dc:creator>Core Team</dc:creator>");
+  expect(xml).not.toContain("<author>");
+});

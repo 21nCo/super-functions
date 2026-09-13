@@ -403,6 +403,6 @@ it("resolves reusable examples for request and response media", () => {
 });
 
 it("preserves external example references without failing normalization", () => {
-  const spec = buildOpenApiReference({ sourceId: "api:x", sourcePath: "x.json", fallbackTitle: "X", body: JSON.stringify({ openapi: "3.0.3", info: { title: "X", version: "1" }, paths: { "/x": { get: { responses: { "200": { content: { "application/json": { examples: { sample: { $ref: "./examples.json#/Sample" } } } } } } } } } }) });
-  expect(spec.operations[0].responses[0].content[0].examples[0]).toMatchObject({ name: "sample", reference: "./examples.json#/Sample", value: undefined });
+  const spec = buildOpenApiReference({ sourceId: "api:x", sourcePath: "x.json", fallbackTitle: "X", body: JSON.stringify({ openapi: "3.1.0", info: { title: "X", version: "1" }, paths: { "/x": { get: { responses: { "200": { content: { "application/json": { examples: { sample: { $ref: "./examples.json#/Sample", summary: "Local summary", description: "Local description" } } } } } } } } } }) });
+  expect(spec.operations[0].responses[0].content[0].examples[0]).toMatchObject({ name: "sample", reference: "./examples.json#/Sample", summary: "Local summary", description: "Local description", value: undefined });
 });
