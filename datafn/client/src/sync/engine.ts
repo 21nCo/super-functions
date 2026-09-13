@@ -550,11 +550,17 @@ export class SyncEngine {
         this.wsRouteUnsubscribe = routes?.subscribe(() => {
           this.wsRouteUnsubscribe?.();
           this.wsRouteUnsubscribe = undefined;
-          if (this.wsReconnectEnabled && generation === this.wsGeneration) void this.connectWs();
+          if (this.wsReconnectEnabled && this.config?.wsReconnect?.enabled !== false && generation === this.wsGeneration) void this.connectWs();
         });
         return;
       }
       const authProtocols = [...await this.config?.wsProtocols?.() ?? []];
+      if (!this.wsReconnectEnabled || generation !== this.wsGeneration) return;
+      // Credentials may take longer than a renewal or migration. Never pin the old grant.
+      if (routes && await routes.get() !== route) {
+        if (this.wsReconnectEnabled && this.config?.wsReconnect?.enabled !== false && generation === this.wsGeneration) void this.connectWs();
+        return;
+      }
       if (!this.wsReconnectEnabled || generation !== this.wsGeneration) return;
       const socket = route
         ? new WebSocket(url, [DATAFN_ROUTE_WS_PROTOCOL, `${DATAFN_ROUTE_WS_TICKET_PREFIX}${route.ticket}`, ...authProtocols])

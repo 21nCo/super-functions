@@ -135,6 +135,12 @@ describe("regional route grants", () => {
       } })).rejects.toMatchObject({ code: "DATAFN_ROUTE_FORBIDDEN" });
   });
 
+  it.each(["query", "websocket"] as const)("rejects %s grants outliving the authenticated session", async scope => {
+    await expect(validateDatafnRouteTicket({ request: request(signer.sign(claims()) as string), namespace: "tenant", regionId: "eu", scope,
+      runtime: { ...runtime(), authenticate: () => ({ namespace: "tenant", subject: "opaque-user", expiresAt: now + 1000 }) } }))
+      .rejects.toMatchObject({ code: "DATAFN_ROUTE_FORBIDDEN" });
+  });
+
   it("retains canonical assertion validation alongside public ticket ingress", async () => {
     const directory = createMemoryDatafnPlacementDirectory();
     await claimDatafnNamespacePlacement({ directory, namespace: "tenant", regionId: "eu" });

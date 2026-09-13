@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DatafnRegionalRouteDescriptor } from "@datafn/core";
+import { DATAFN_ROUTE_MAX_TTL_MS, type DatafnRegionalRouteDescriptor } from "@datafn/core";
 import { DatafnRegionalRouteCache, createDatafnHttpRouteProvider } from "./regional-route.js";
 import { DefaultHttpTransport } from "./http.js";
 
@@ -72,9 +72,11 @@ describe("direct regional client lifecycle", () => {
   it("accepts maximum TTL within bounded clock skew while preserving strict expiry", async () => {
     vi.useFakeTimers();
     const now = Date.now();
-    for (const ahead of [1, 5000, 5001]) {
-      const cache = new DatafnRegionalRouteCache({ bootstrap: async () => route({ expiresAt: now + 300_000 + ahead }), renew: async () => route() });
-      if (ahead <= 5000) expect((await cache.get()).expiresAt).toBe(now + 300_000 + ahead);
+    // The documented client skew allowance is five seconds.
+    const skew = 5000;
+    for (const ahead of [1, skew, skew + 1]) {
+      const cache = new DatafnRegionalRouteCache({ bootstrap: async () => route({ expiresAt: now + DATAFN_ROUTE_MAX_TTL_MS + ahead }), renew: async () => route() });
+      if (ahead <= skew) expect((await cache.get()).expiresAt).toBe(now + DATAFN_ROUTE_MAX_TTL_MS + ahead);
       else await expect(cache.get()).rejects.toMatchObject({ code: "DATAFN_ROUTE_DESCRIPTOR_INVALID" });
       cache.dispose();
     }

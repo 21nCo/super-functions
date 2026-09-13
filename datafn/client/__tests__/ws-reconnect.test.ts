@@ -239,7 +239,7 @@ describe("WebSocket Reconnection (Phase 07)", () => {
     } finally { await client.destroy(); }
   });
 
-  it("opens a socket when renewal adds WebSocket support to an HTTP-only route", async () => {
+  it.each([true, false])("respects reconnect=%s when renewal adds WebSocket support", async enabled => {
     vi.spyOn(DefaultHttpTransport.prototype, "clone").mockResolvedValue({ ok: true, result: { ok: true, data: {}, cursors: {} } });
     vi.spyOn(DefaultHttpTransport.prototype, "pull").mockResolvedValue({ ok: true, result: { ok: true, records: {}, deleted: {}, cursors: {} } });
     const descriptor = () => ({ version: 1 as const, httpUrl: "https://eu.example/datafn", ticket: "test.ticket",
@@ -247,17 +247,38 @@ describe("WebSocket Reconnection (Phase 07)", () => {
     const protocols = vi.fn(() => []);
     const client = createDatafnClient({ schema: defaultSchema, clientId: "upgrade", storage: new MockStorageAdapter(),
       sync: { routeProvider: { bootstrap: async () => descriptor(), renew: async () => ({ ...descriptor(), wsUrl: "wss://eu.example/ws" }) },
-        ws: true, wsProtocols: protocols } });
+        ws: true, wsProtocols: protocols, wsReconnect: { enabled } } });
     try {
       await client.sync.start();
       await vi.advanceTimersByTimeAsync(1);
       expect(MockWebSocket.instances).toHaveLength(0);
       await vi.advanceTimersByTimeAsync(48_000);
-      expect(MockWebSocket.instances).toHaveLength(1);
-      expect(protocols).toHaveBeenCalledTimes(1);
+      expect(MockWebSocket.instances).toHaveLength(enabled ? 1 : 0);
+      expect(protocols).toHaveBeenCalledTimes(enabled ? 1 : 0);
       client.sync.stop();
       await vi.advanceTimersByTimeAsync(60_000);
+      expect(MockWebSocket.instances).toHaveLength(enabled ? 1 : 0);
+    } finally { await client.destroy(); }
+  });
+
+  it("uses the renewed route when socket credentials resolve after renewal", async () => {
+    vi.spyOn(DefaultHttpTransport.prototype, "clone").mockResolvedValue({ ok: true, result: { ok: true, data: {}, cursors: {} } });
+    vi.spyOn(DefaultHttpTransport.prototype, "pull").mockResolvedValue({ ok: true, result: { ok: true, records: {}, deleted: {}, cursors: {} } });
+    const descriptor = (wsUrl: string) => ({ version: 1 as const, httpUrl: "https://eu.example/datafn", wsUrl, ticket: "test.ticket",
+      expiresAt: Date.now() + 60_000, renewAfter: Date.now() + 48_000 });
+    let release!: (protocols: string[]) => void;
+    const protocols = vi.fn().mockImplementationOnce(() => new Promise<string[]>(resolve => { release = resolve; })).mockResolvedValue([]);
+    const client = createDatafnClient({ schema: defaultSchema, clientId: "slow-auth", storage: new MockStorageAdapter(),
+      sync: { routeProvider: { bootstrap: async () => descriptor("wss://old.example/ws"), renew: async () => descriptor("wss://new.example/ws") },
+        ws: true, wsProtocols: protocols } });
+    try {
+      await client.sync.start();
+      await vi.advanceTimersByTimeAsync(48_001);
+      expect(MockWebSocket.instances).toHaveLength(0);
+      release([]);
+      await vi.advanceTimersByTimeAsync(1);
       expect(MockWebSocket.instances).toHaveLength(1);
+      expect(MockWebSocket.instances[0].url).toBe("wss://new.example/ws");
     } finally { await client.destroy(); }
   });
 
