@@ -220,3 +220,13 @@ it.each(["blank", "network"])("rejects invalid token evidence: %s", async mode =
   expect(result.status).toBe("failed");
   expect(result.responseStatus).toBe(mode === "network" ? undefined : 200);
 });
+
+it("rejects invalid-client errors even on a registered state-matching redirect", async () => {
+  const fixture = createHostedAuthorizationFixtures({issuer: "https://login.example.com", resource: "https://mcp.example.com/mcp"}).find(item => item.expected.errorCode === "invalid_client")!;
+  const [result] = await runHostedAuthorizationRegression({ issuer: "https://login.example.com", prepareRegistration: () => {}, request: async () => {
+    const callback = new URL(fixture.authorization.redirectUri);
+    callback.searchParams.set("error", "invalid_client"); callback.searchParams.set("state", fixture.authorization.state);
+    return Response.redirect(callback, 302);
+  } }, [fixture]);
+  expect(result.status).toBe("failed");
+});

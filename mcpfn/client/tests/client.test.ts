@@ -605,7 +605,7 @@ it("retains a cleanup gate when an aborted open fails after close", async () => 
   await connecting;
   await vi.waitFor(() => expect(cleanup).toHaveBeenCalledTimes(2));
   await expect(client.connect()).rejects.toThrow(/Retry close/);
-  await expect(client.close()).rejects.toThrow(/cleanup failed/);
+  await expect(client.close()).rejects.toMatchObject({ code: "MCPFN_OPERATION_FAILED", phase: "transport-close", retryable: true });
   retained = false;
   await client.close();
 });

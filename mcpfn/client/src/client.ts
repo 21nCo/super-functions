@@ -550,7 +550,7 @@ export class McpFnClient {
       } catch {
         this._state = "closing";
         await this.emit("transport-close", "failed", requestId);
-        throw new Error("MCP target cleanup failed");
+        throw new McpFnClientError("MCPFN_OPERATION_FAILED", "MCP target cleanup failed", { phase: "transport-close", retryable: true });
       }
       // Retain an observed continuation without leaving the aborted attempt as
       // the active connection. A custom target that ignores abort may settle
@@ -588,7 +588,7 @@ export class McpFnClient {
     if (strict && results.some((result) => result.status === "rejected")) {
       if (results[0].status === "rejected") this._protocol = protocol;
 
-      throw new Error("MCP target cleanup failed");
+      throw new McpFnClientError("MCPFN_OPERATION_FAILED", "MCP target cleanup failed", { phase: "transport-close", retryable: true });
     }
   }
 
@@ -606,7 +606,7 @@ export class McpFnClient {
       await pending;
     } catch {
       await this.emit("transport-close", "failed", this.requestId(), "MCPFN_CREDENTIAL_CLEANUP_FAILED");
-      if (strict) throw new Error("MCP target cleanup failed");
+      if (strict) throw new McpFnClientError("MCPFN_OPERATION_FAILED", "MCP target cleanup failed", { phase: "transport-close", retryable: true });
     }
   }
 

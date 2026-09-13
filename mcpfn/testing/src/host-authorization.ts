@@ -379,6 +379,7 @@ async function validateOAuthRejection(response: Response, fixture: McpFnHostedAu
     if (!registered?.includes(fixture.authorization.redirectUri)) throw new Error("Rejected redirect URI must not receive a callback");
     const errors = callback.searchParams.getAll("error");
     if (errors.length !== 1 || !errors[0] || callback.searchParams.has("code")) throw new Error("Invalid OAuth error callback");
+    if (errors[0] === "invalid_client") throw new Error("Invalid-client authorization failures must not redirect");
     callback.searchParams.delete("error");
     callback.searchParams.delete("error_description");
     callback.searchParams.delete("error_uri");
