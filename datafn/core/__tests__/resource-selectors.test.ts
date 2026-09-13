@@ -505,3 +505,8 @@ it("includes join endpoints touched by reconcile without expanding transitively"
   expect(result).toMatchObject({ ok: true, result: { selectors: ["public", "private"] } });
   expect(extractStructuralResourceSelectors("reconcile", payload).ok).toBe(false);
 });
+
+it("includes every endpoint of an enabled array-valued reconcile relation", () => {
+  const schema: any = { resources: [], relations: [{ type: "many-many", from: ["tasks", "projects"], to: ["tags", "owners"], relation: "links" }] };
+  expect(extractStructuralResourceSelectors("reconcile", { resources: ["tasks"], includeJoins: true }, { schema })).toMatchObject({ ok: true, result: { selectors: ["tasks", "projects", "tags", "owners"] } });
+});

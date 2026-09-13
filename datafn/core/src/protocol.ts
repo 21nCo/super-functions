@@ -528,7 +528,9 @@ function parseReconcilePayload(
   if (payload.includeJoins) {
     if (!schema) return err("DFQL_UNSUPPORTED", "Reconcile join selectors require trusted schema metadata", { path: "includeJoins" });
     const requested = new Set<string>(selectors.snapshot());
-    for (const endpoints of resolveJoinStoreResources(schema.relations ?? []).values()) {
+    for (const relation of schema.relations ?? []) {
+      if (relation.type !== "many-many") continue;
+      const endpoints = [relation.from, relation.to].flat();
       if (endpoints.some(endpoint => requested.has(endpoint))) {
         const joined = selectors.addAll(endpoints, "includeJoins");
         if (!joined.ok) return joined;
