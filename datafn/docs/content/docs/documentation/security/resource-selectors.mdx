@@ -95,7 +95,8 @@ authorize: (ctx, action, payload) => {
   if (["seed", "search", "clone", "pull"].includes(action)) {
     return ctx.session.role === "admin";
   }
-  const extracted = extractStructuralResourceSelectors(action, payload);
+  // Use the trusted schema configured on this server, never a client-supplied schema.
+  const extracted = extractStructuralResourceSelectors(action, payload, { schema });
   if (!extracted.ok) return false;
 
   return extracted.result.selectors.length > 0 && extracted.result.selectors.every((resource) =>
@@ -120,9 +121,9 @@ Current requests may omit `protocolVersion`; the parser stamps the parsed envelo
 - [Multi-region gateway](/docs/documentation/multi-region-gateway)
 - [Error types](/docs/reference/core/errors)
 
-For pull requests, pass trusted application schema metadata as the third argument:
+For join-aware pull, clone and reconcile requests, pass trusted application schema metadata as the third argument:
 `extractStructuralResourceSelectors("pull", payload, { schema })` (or
-`parseDatafnRequest("pull", payload, { schema })`). The parser translates known
+`parseDatafnRequest("pull", payload, { schema })`). Use the same `{ schema }` option for `clone` and `reconcile`; when `includeJoins` is enabled those actions fail closed with `DFQL_UNSUPPORTED` if schema is absent. Standard sync reconciliation enables joins, so its authorization callback must supply schema. The parser translates known
 many-to-many join cursor keys into their endpoint resources. Without schema
 metadata, cursor names remain selectors; unknown `join_` names are never silently
 ignored. Gateways handling relational sync must supply the same schema as the
