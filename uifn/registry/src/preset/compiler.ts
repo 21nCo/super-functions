@@ -275,7 +275,7 @@ function cssFromVars(vars: Record<string, string>, selector: string): string {
 
 function menuCss(preset: UIFnPresetV1, scope: string): string {
   const shadow = { elevated: '0 18px 48px rgb(15 23 42 / 16%)', inset: 'inset 0 1px 3px rgb(15 23 42 / 12%)', bordered: 'none' }[preset.menuTreatment];
-  return `${scope}[data-uifn-component="menu"][data-uifn-part="content"]{--uifn-component-shadow:${shadow};}`;
+  return ['menu', 'context-menu'].map(component => `${scope}[data-uifn-component="${component}"][data-uifn-part="content"]{--uifn-component-shadow:${shadow};}`).join('');
 }
 
 function frameworkPackages(preset: UIFnPresetV1): Array<{ name: string; version: string; relationship: 'runtime' | 'peer' }> {

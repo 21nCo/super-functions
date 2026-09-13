@@ -2,6 +2,7 @@ import path from 'node:path';
 
 // Use the same public sources for local preview and tests without rebuilding the monorepo.
 export const aliases = [
+  { find: '@uifn/react/fixture', replacement: path.resolve(__dirname, '../react/src/fixture.ts') },
   { find: '@uifn/registry/preset', replacement: path.resolve(__dirname, '../registry/src/preset/index.ts') },
   { find: /^@uifn\/components-react\/(.+)$/, replacement: path.resolve(__dirname, '../components-react/src/generated/$1.ts') },
   { find: /^@uifn\/react\/(.+)$/, replacement: path.resolve(__dirname, '../react/src/generated/$1.tsx') },

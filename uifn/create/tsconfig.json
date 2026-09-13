@@ -56,6 +56,9 @@
       "react-dom/*": [
         "./node_modules/@types/react-dom/*",
         "../../node_modules/@types/react-dom/*"
+      ],
+      "@uifn/react/fixture": [
+        "../react/src/fixture.ts"
       ]
     },
     "jsx": "react-jsx"

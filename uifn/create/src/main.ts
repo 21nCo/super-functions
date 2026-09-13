@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { renderPresetFixture } from '@uifn/react/fixture';
 import { createRoot, type Root } from 'react-dom/client';
 import '@uifn/components/styles.css';
 import { ButtonRoot } from '@uifn/components-react/button';
@@ -21,7 +22,7 @@ import {
   encodePreset,
   fixtureCss,
   presetFixtureTree,
-  type PresetFixtureNode,
+  PRESET_FIXTURE_COMPONENTS,
   normalizePreset,
   presetFromUrl,
   randomPreset,
@@ -30,12 +31,8 @@ import {
   type UIFnPresetV1,
 } from '@uifn/registry/preset';
 
-const components: Record<string, React.ElementType> = { ButtonRoot, CardRoot, CardHeader, CardTitle, CardContent, FieldRoot, FieldLabel, SelectRoot, SelectLabel, SelectTrigger, SelectValueText, SelectContent, SelectItem, InputRoot, CheckboxRoot, CheckboxControl, CheckboxLabel, SwitchRoot, SwitchControl, SwitchThumb, SwitchLabel, TabsRoot, TabsList, TabsTrigger, TabsContent, MenuRoot, MenuTrigger, MenuContent, MenuItem, DialogRoot, DialogPortal, DialogTrigger, DialogContent, DialogTitle, DialogClose, TableRoot, TableTable, TableHeader, TableBody, TableRow, TableHead, TableCell };
+const components: Record<keyof typeof PRESET_FIXTURE_COMPONENTS, React.ElementType> = { ButtonRoot, CardRoot, CardHeader, CardTitle, CardContent, FieldRoot, FieldLabel, SelectRoot, SelectLabel, SelectTrigger, SelectValueText, SelectContent, SelectItem, InputRoot, CheckboxRoot, CheckboxControl, CheckboxLabel, SwitchRoot, SwitchControl, SwitchThumb, SwitchLabel, TabsRoot, TabsList, TabsTrigger, TabsContent, MenuRoot, MenuTrigger, MenuContent, MenuItem, DialogRoot, DialogPortal, DialogTrigger, DialogContent, DialogTitle, DialogClose, TableRoot, TableTable, TableHeader, TableBody, TableRow, TableHead, TableCell };
 let preview: Root | undefined;
-export function renderFixture(node: PresetFixtureNode | string, key: number): React.ReactNode {
-  if (typeof node === 'string') return node;
-  return React.createElement(components[node.type] ?? node.type, { ...node.props, key, ...(['SelectContent', 'MenuContent', 'DialogPortal'].includes(node.type) ? { container: document.querySelector('.preview-root') } : {}) }, ...(node.children ?? []).map((child, index) => renderFixture(child, index)));
-}
 
 const VIEWPORTS = {
   desktop: 1120,
@@ -67,8 +64,10 @@ function render(preset: UIFnPresetV1, locked: Set<PresetAxis>, mode: 'light' | '
   const tokens = themeTokenDocument(preset);
   const app = document.querySelector('#app');
   if (!app) return;
-  preview?.unmount();
-  app.innerHTML = `
+  if (!app.querySelector('.preview-root')) {
+    preview?.unmount();
+    preview = undefined;
+    app.innerHTML = `
     <header class="shell-header">
       <div>
         <p class="kicker">uifn Create</p>
@@ -95,17 +94,20 @@ function render(preset: UIFnPresetV1, locked: Set<PresetAxis>, mode: 'light' | '
           </div>
         </div>
         <div class="preview-frame">
-          <style></style>
+          <style data-preset-theme></style>
+          <style data-preset-fonts></style>
           <div class="preview-root"></div>
         </div>
         <section class="outputs">
           <article>
             <h2>New project</h2>
-            ${plan.commands.init ? '<pre><code data-output="init"></code></pre>' : "<p>Project creation is currently available for React presets.</p>"}
+            <pre data-command="init"><code data-output="init"></code></pre>
+            <p data-unavailable="init">Project creation is currently available for React presets.</p>
           </article>
           <article>
             <h2>Existing project</h2>
-            ${plan.commands.apply ? '<pre><code data-output="apply"></code></pre>' : "<p>Full project application is currently available for React presets.</p>"}
+            <pre data-command="apply"><code data-output="apply"></code></pre>
+            <p data-unavailable="apply">Full project application is currently available for React presets.</p>
             <p>Apply theme only</p>
             <pre><code data-output="applyTheme"></code></pre>
             <p>Apply fonts only</p>
@@ -124,6 +126,20 @@ function render(preset: UIFnPresetV1, locked: Set<PresetAxis>, mode: 'light' | '
       </section>
     </main>
   `;
+  }
+  for (const axis of PRESET_FIELD_ORDER) {
+    const select = app.querySelector<HTMLSelectElement>(`select[data-axis="${axis}"]`);
+    if (select) select.value = preset[axis];
+    const checkbox = app.querySelector<HTMLInputElement>(`input[data-lock="${axis}"]`);
+    if (checkbox) checkbox.checked = locked.has(axis);
+  }
+  for (const button of app.querySelectorAll<HTMLButtonElement>('button[data-mode], button[data-viewport]')) {
+    button.setAttribute('aria-pressed', String(button.dataset.mode === mode || button.dataset.viewport === viewport));
+  }
+  for (const command of ['init', 'apply'] as const) {
+    app.querySelector<HTMLElement>(`[data-command="${command}"]`)!.hidden = !plan.commands[command];
+    app.querySelector<HTMLElement>(`[data-unavailable="${command}"]`)!.hidden = Boolean(plan.commands[command]);
+  }
   for (const [name, value] of Object.entries({ ...plan.commands, code: plan.code, url: plan.url, tokens: JSON.stringify(tokens, null, 2) })) {
     const output = app.querySelector(`[data-output="${name}"]`);
     if (output) output.textContent = value ?? '';
@@ -135,13 +151,16 @@ function render(preset: UIFnPresetV1, locked: Set<PresetAxis>, mode: 'light' | '
     frame.dataset.mode = mode;
     frame.style.width = `${VIEWPORTS[viewport]}px`;
   }
-  const style = app.querySelector('style');
-  if (style) style.textContent = plan.css.fonts + plan.css.light + plan.css.dark + fixtureCss();
+  const fonts = app.querySelector('[data-preset-fonts]');
+  if (fonts && fonts.textContent !== plan.css.fonts) fonts.textContent = plan.css.fonts;
+  const style = app.querySelector('[data-preset-theme]');
+  const css = plan.css.light + plan.css.dark + fixtureCss();
+  if (style && style.textContent !== css) style.textContent = css;
   const previewRoot = app.querySelector('.preview-root') as HTMLElement | null;
   if (previewRoot) {
     previewRoot.dataset.uifnMode = mode;
-    preview = createRoot(previewRoot);
-    preview.render(renderFixture(presetFixtureTree(plan), 0));
+    preview ??= createRoot(previewRoot);
+    preview.render(renderPresetFixture(presetFixtureTree(plan), components, previewRoot));
     const vars = mode === 'dark' ? plan.theme.darkVars : plan.theme.lightVars;
     Object.entries(vars).forEach(([name, value]) => previewRoot.style.setProperty(name, String(value)));
     previewRoot.style.background = vars['--uifn-color-surface-canvas'];

@@ -115,6 +115,7 @@ it('scopes every menu treatment to menus without changing dialog shadows', () =>
   expect(new Set(css).size).toBe(3);
   for (const text of css) {
     expect(text).toContain('[data-uifn-component="menu"][data-uifn-part="content"]{--uifn-component-shadow:');
+    expect(text).toContain('[data-uifn-component="context-menu"][data-uifn-part="content"]{--uifn-component-shadow:');
     expect(text).not.toContain('--uifn-component-shadow-overlay:');
   }
 });

@@ -92,7 +92,7 @@ function themeCss(plan: PresetCompilePlan): string {
 function appSource(plan: PresetCompilePlan): string {
   const imports = Object.entries(PRESET_FIXTURE_COMPONENTS).map(([name, module]) =>
     `import { ${name} } from '${plan.preset.installMode === 'source' ? '../components/uifn/react/' + module : '@uifn/components-react/' + module}';`).join('\n');
-  return `import * as React from 'react';\n${imports}\nimport '@uifn/components/styles.css';\nconst components: Record<string, React.ElementType> = { ${Object.keys(PRESET_FIXTURE_COMPONENTS).join(', ')} };\ntype Node = { type: string; props?: Record<string, unknown>; children?: Array<Node | string> };\nconst tree: Node = ${JSON.stringify(presetFixtureTree(plan))};\nfunction render(node: Node | string, key: number): React.ReactNode {\n  if (typeof node === 'string') return node;\n  return React.createElement(components[node.type] ?? node.type, { ...node.props, key, ...(['SelectContent', 'MenuContent', 'DialogPortal'].includes(node.type) && typeof document !== 'undefined' ? { container: document.getElementById('root') } : {}) }, ...(node.children ?? []).map(render));\n}\nexport function App() { return render(tree, 0); }\n`;
+  return `import * as React from 'react';\nimport { renderPresetFixture, type ReactFixtureNode } from '@uifn/react/fixture';\n${imports}\nimport '@uifn/components/styles.css';\nconst components: Record<string, React.ElementType> = { ${Object.keys(PRESET_FIXTURE_COMPONENTS).join(', ')} };\nconst tree: ReactFixtureNode = ${JSON.stringify(presetFixtureTree(plan))};\nexport function App() { return renderPresetFixture(tree, components, typeof document === 'undefined' ? undefined : document.getElementById('root')); }\n`;
 }
 
 function mainSource(): string {

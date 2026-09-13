@@ -22,6 +22,20 @@ it('renders public components and schema controls with working tabs', async () =
   const option = document.querySelector<HTMLElement>('[role="option"][data-value="staging"]')!;
   await act(async () => { option.click(); });
   expect(document.querySelector('[data-uifn-component="select"][data-uifn-part="valueText"]')?.textContent).toBe('Staging');
+  const preview = document.querySelector('.preview-root');
+  const styleNode = preview?.previousElementSibling;
+  const control = document.querySelector<HTMLSelectElement>('select[data-axis="style"]')!;
+  await act(async () => { document.querySelector<HTMLButtonElement>('button[data-mode="dark"]')!.click(); });
+  await act(async () => { document.querySelector<HTMLButtonElement>('button[data-viewport="mobile"]')!.click(); });
+  control.focus();
+  await act(async () => { control.value = 'atlas'; control.dispatchEvent(new Event('change', { bubbles: true })); });
+  expect(document.activeElement).toBe(control);
+  expect(document.querySelector('.preview-root')).toBe(preview);
+  expect(preview?.previousElementSibling).toBe(styleNode);
+  expect(document.querySelectorAll('[role="tab"]')[1]).toBe(tabs[1]);
+  expect(tabs[1].getAttribute('aria-selected')).toBe('true');
+  expect(document.querySelector('[data-uifn-part="valueText"]')?.textContent).toBe('Staging');
+
   const style = [...document.querySelectorAll('style')].map(node => node.textContent).join('');
   expect(style).not.toContain('.uifn-button{');
   expect(style).toContain('fonts.googleapis.com');
