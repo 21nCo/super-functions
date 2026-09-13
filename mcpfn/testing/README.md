@@ -190,3 +190,5 @@ The fixture starts a local mock server that publishes authorization-server disco
 See [Testing and CI](https://github.com/21nCo/super-functions/blob/main/mcpfn/TESTING.md) for the complete layered strategy.
 
 Client-profile lifecycle evidence uses `invalid-arguments-handler` when a registered invalid-argument fallback runs. This stage does not imply that the tool handler ran; normal tool execution uses `handler`. Projected schemas select their declared JSON Schema dialect, defaulting to draft 2020-12. Named `$anchor` definitions are portability-sensitive for older clients.
+
+Projected catalogs support local JSON Pointer and named-anchor references. Dynamic and recursive reference forms fail closed until dialect-correct dynamic-scope comparison is supported. A recovered invalid-input call emits failed input-validation evidence followed by the invalid-argument fallback stage.

@@ -321,6 +321,16 @@ describe("McpFn client profiles", () => {
     ).rejects.toThrow(/not found/);
   });
 
+  it("reports recovered invalid input as failed validation without a normal handler", async () => {
+    const evidence: McpFnClientProfileEvidence[] = [];
+    const registry = new McpFnRegistry<RequestContext>().register({ name: "recover", description: "Recover invalid input", inputSchema: { type: "object", required: ["value"] },
+      handleInvalidArguments: () => structuredResult({ recovered: true }), handler: async () => structuredResult({ recovered: false }) });
+    const { client } = await connect({ subject: "trusted" }, { id: "test", version: "1", matches: () => true }, registry, "client", event => { evidence.push(event); });
+    await client.callTool({ name: "recover", arguments: {} });
+    expect(evidence).toEqual(expect.arrayContaining([expect.objectContaining({ stage: "input-validation", outcome: "failed" }), expect.objectContaining({ stage: "invalid-arguments-handler", outcome: "succeeded" })]));
+    expect(evidence.some(event => event.stage === "handler")).toBe(false);
+  });
+
   it("retains exact structured Ajv diagnostics without rejected values", async () => {
     const captured = vi.fn();
     const registry = new McpFnRegistry().register({
@@ -645,4 +655,16 @@ it("normalizes invalid ownership pattern failures", async () => {
     context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" },
     profile: { id: "test", version: "1", matches: () => true, serverOwnedArguments: { test: ["tenant"] }, projectCatalog: () => [{ name: "test", inputSchema: { type: "object", additionalProperties: false, patternProperties: { "[": {} } } }] },
   } })).rejects.toMatchObject({ code: "MCPFN_INVALID_PROJECTED_CATALOG" });
+});
+
+it("resolves named anchors and rejects unsupported dynamic projection references", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+  const run = (before: any, after = before) => buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: before }], resolved: { context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" }, profile: { id: "test", version: "1", matches: () => true, projectCatalog: () => [{ name: "test", inputSchema: after }] } } });
+  await expect(run({ $schema: "http://json-schema.org/draft-07/schema#", type: "object", definitions: { node: { $id: "#node", type: "string" } }, properties: { value: { $ref: "#node" } } })).resolves.toBeDefined();
+  await expect(run({ type: "object", $defs: { node: { $anchor: "node", type: "string" } }, properties: { value: { $ref: "#node" } } })).resolves.toBeDefined();
+  const content = (type: string) => ({ type: "object", $defs: { body: { type } }, properties: { value: { type: "string", contentSchema: { $ref: "#/$defs/body" } } } });
+  await expect(run(content("string"), content("number"))).rejects.toThrow(/canonical schema/);
+  await expect(run({ type: "object", properties: { value: { $dynamicRef: "#node" } } })).rejects.toMatchObject({ code: "MCPFN_INVALID_PROJECTED_CATALOG" });
+  const { formatMcpFnSchemaIssues } = await import("../src/validation.js");
+  expect(formatMcpFnSchemaIssues([{ instancePath: "", schemaPath: "", keyword: "type", params: {} }])[0].schemaPath).toBe("#");
 });

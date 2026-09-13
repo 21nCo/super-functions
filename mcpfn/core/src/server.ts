@@ -687,7 +687,7 @@ export class McpFnServer<TContext = undefined> {
       if (!stages.has(stage)) continue;
       await this.emitProfileEvidence({
         stage,
-        outcome: "succeeded",
+        outcome: stage === "input-validation" && stages.has("invalid-arguments-handler") ? "failed" : "succeeded",
         profile: this.profileReference(resolved),
         tool,
       });

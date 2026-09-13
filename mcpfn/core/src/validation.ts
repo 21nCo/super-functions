@@ -29,7 +29,7 @@ export function formatMcpFnSchemaIssues(
     return {
       path: instancePath,
       instancePath,
-      schemaPath: typeof error.schemaPath === "string" && error.schemaPath.length <= 256 ? error.schemaPath : "#",
+      schemaPath: typeof error.schemaPath === "string" && error.schemaPath.length > 0 && error.schemaPath.length <= 256 ? error.schemaPath : "#",
       keyword: boundedStructuralField(error.keyword) ?? "validation",
       message:
         boundedStructuralField(error.message) ?? "Schema validation failed",

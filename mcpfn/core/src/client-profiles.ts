@@ -500,7 +500,7 @@ function mapSchemaKeyword(key: string, value: unknown, visit: (schema: unknown) 
   if (["allOf", "anyOf", "oneOf", "prefixItems"].includes(key) && Array.isArray(value)) return value.map(visit);
   if (key === "items") return Array.isArray(value) ? value.map(visit) : visit(value);
   if (key === "dependencies" && value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([name, child]) => [name, Array.isArray(child) ? child : visit(child)]));
-  if (["additionalItems", "additionalProperties", "contains", "not", "if", "then", "else", "unevaluatedProperties", "unevaluatedItems", "propertyNames"].includes(key)) return visit(value);
+  if (["additionalItems", "additionalProperties", "contains", "not", "if", "then", "else", "unevaluatedProperties", "unevaluatedItems", "propertyNames", "contentSchema"].includes(key)) return visit(value);
   return value;
 }
 
@@ -525,6 +525,11 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
       bases.set(value, id);
       resource = value as Record<string, unknown>;
     }
+    const schemaValue = value as Record<string, unknown>;
+    if (schemaValue.$dynamicRef !== undefined || schemaValue.$recursiveRef !== undefined) {
+      throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Dynamic and recursive references are not supported in projected catalogs");
+    }
+    if (typeof schemaValue.$anchor === "string") ids.set(new URL(`#${schemaValue.$anchor}`, bases.get(resource) ?? parentBase).href, schemaValue);
     resources.set(value, resource);
     for (const [key, child] of Object.entries(value)) {
       mapSchemaKeyword(key, child, item => { index(item, resource); return item; });
@@ -535,6 +540,12 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
     const reference = schema.$ref as string;
     let resource = resources.get(schema) ?? root;
     let fragment = reference;
+    const referenceAddress = new URL(reference, bases.get(resource) ?? "https://mcpfn.invalid/schema");
+    if (referenceAddress.hash && !referenceAddress.hash.startsWith("#/")) {
+      const anchored = ids.get(referenceAddress.href);
+      if (anchored) return anchored;
+      throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Unresolved named schema anchor");
+    }
     if (!reference.startsWith("#")) {
       const address = new URL(reference, bases.get(resource) ?? "https://mcpfn.invalid/schema");
       fragment = address.hash || "#";
