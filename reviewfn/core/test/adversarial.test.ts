@@ -274,3 +274,29 @@ it.skipIf(process.platform === "win32")("marks skipped glob symlinks incomplete 
 it.each(["provider", "model", "auth", "credentialEnv"])("rejects malformed inference %s before invoking a harness", key => {
   for (const value of [true, 42, {}, [], "", " "]) expect(() => validateConfig({ ...DEFAULT_CONFIG, inference: { ...DEFAULT_CONFIG.inference, [key]: value } })).toThrow(/inference/);
 });
+
+
+it("resolves Windows native tool names without applying synthetic POSIX modes", async () => {
+  const directory = await temporary();
+  const executable = path.join(directory, "git.exe");
+  await writeFile(executable, "fixture native executable");
+  await chmod(executable, 0o644);
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
+  try {
+    Object.defineProperty(process, "platform", { value: "win32" });
+    expect(await resolveTrustedExecutable("git", directory)).toBe(await import("node:fs/promises").then(fs => fs.realpath(executable)));
+    await mkdir(path.join(directory, ".git"));
+    await expect(resolveTrustedExecutable("git", directory)).rejects.toThrow(/No trusted executable/);
+  } finally { Object.defineProperty(process, "platform", descriptor); }
+});
+
+
+it("does not require coverage of comments whose authority is disabled", async () => {
+  const value = report();
+  const manifest = { ...context, sources: [...context.sources, { id: "comment", type: "comment" as const, content: "unaccepted request", status: "available" as const, digest: "comment", retrievedAt: "now" }] };
+  const disabled = { ...policy, sourceAuthority: { ...policy.sourceAuthority, commentsMayClarify: false } };
+  expect((await validateReport(value, disabled, source, ".", manifest)).errors).toEqual([]);
+  expect((await validateReport(value, policy, source, ".", manifest)).errors.join()).toMatch(/Extraction coverage for source comment/);
+  value.requirements[0].sources.push({ sourceId: "comment", anchor: "L1" });
+  expect((await validateReport(value, disabled, source, ".", manifest)).errors.join()).toMatch(/unauthorized source reference/);
+});

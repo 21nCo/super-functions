@@ -2,7 +2,7 @@
 
 `reviewfn evaluate --input evaluation.json` consumes frozen cases and observed outcomes. Each case records source/change digests, agent-authored requirements, known gaps, valid findings, acceptability, retrospective status and limitations.
 
-The result always includes numerators and denominators for requirement-extraction recall, gap-detection recall, finding precision, false-block rate, evidence validity and completion rate. Failed and missing outcomes remain in completion denominators. Runtime, tokens and measurable cost are reported only when observed; unavailable values remain null.
+The result always includes numerators and denominators for requirement-extraction recall, gap-detection recall, finding precision, false-block rate, evidence validity and completion rate. Failed and missing outcomes remain in completion denominators. The false-block denominator includes only acceptable cases with an observed outcome; when none exist, the rate is null rather than zero. Runtime, tokens and measurable cost are reported only when observed; unavailable values remain null.
 
 Comparisons name every changed harness, version, provider, model, prompt, context or budget dimension. A result with more than one changed dimension is confounded and must not be described as a model-only ranking.
 

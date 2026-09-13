@@ -36,3 +36,14 @@ it("rejects duplicate identities and impossible evaluation metrics", () => {
   expect(() => evaluate([item], [{ ...outcome, runtimeMs: -1 }])).toThrow(/metric/);
   expect(evaluate([item], [outcome]).evidenceValidity.value).toBe(1);
 });
+
+
+it("does not treat missing outcomes as observed non-blocking decisions", () => {
+  const item = { id: "observed", sourceSnapshotDigest: "s", changeSnapshotDigest: "c", adjudicatedRequirementIds: [], knownGapRequirementIds: [], validFindingFingerprints: [], acceptable: true, retrospective: false, limitations: [] };
+  const cases = [item, { ...item, id: "missing-1" }, { ...item, id: "missing-2" }];
+  const outcome = { caseId: "observed", completed: true, extractedRequirementIds: [], identifiedGapRequirementIds: [], findingFingerprints: [], blocked: true, evidenceReferences: 0, validEvidenceReferences: 0 };
+  const result = evaluate(cases, [outcome]);
+  expect(result.falseBlockRate).toEqual({ numerator: 1, denominator: 1, value: 1 });
+  expect(result.completionRate).toEqual({ numerator: 1, denominator: 3, value: 1 / 3 });
+  expect(evaluate(cases, []).falseBlockRate.value).toBeNull();
+});

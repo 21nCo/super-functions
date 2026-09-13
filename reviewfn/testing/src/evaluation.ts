@@ -62,8 +62,8 @@ export function evaluate(cases: readonly EvaluationCase[], outcomes: readonly Ev
     const outcome = outcomeByCase.get(testCase.id);
     requirements += testCase.adjudicatedRequirementIds.length;
     gaps += testCase.knownGapRequirementIds.length;
-    if (testCase.acceptable) acceptable += 1;
     if (!outcome) { limitations.add(`${testCase.id}: no outcome.`); continue; }
+    if (testCase.acceptable) acceptable += 1;
     completed += outcome.completed ? 1 : 0;
     requirementHits += intersection(outcome.extractedRequirementIds, testCase.adjudicatedRequirementIds);
     gapHits += intersection(outcome.identifiedGapRequirementIds, testCase.knownGapRequirementIds);
