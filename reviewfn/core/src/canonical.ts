@@ -45,7 +45,7 @@ export function createAttemptId(): string {
   return randomUUID();
 }
 
-/** Locale-independent order is required for reproducible digests across machines. */
+/** Locale-independent UTF-16 code-unit order, preserved as the v1 canonical format. */
 export function compareCodePoints(left: string, right: string): number {
   if (left === right) return 0;
   return left < right ? -1 : 1;

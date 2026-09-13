@@ -60,14 +60,22 @@ it("retrieves live-shaped linked specifications and explicit comment pagination"
       ? { successful: true, data: { issue: { id: "i", identifier: "ENG-1", title: "Feature", description: "Read https://linear.app/acme/document/design-abcdef123456", team: { name: "workspace-1" }, comments: { nodes: [] } } } }
       : data.query_or_mutation.includes("comments(")
         ? { data: { data: { issue: { comments: { nodes: [{ id: "c", body: "clarification" }], pageInfo: { hasNextPage: false } } } } } }
-        : { data: { data: { document: { id: "doc", title: "Design", content: "must preserve compatibility" } } } };
+        : data.query_or_mutation.includes("documents(") ? { data: { data: { issue: { documents: { nodes: [], pageInfo: { hasNextPage: false } } } } } } : { data: { data: { document: { id: "doc", title: "Design", content: "must preserve compatibility" } } } };
     return { code: 0, stdout: JSON.stringify(payload), stderr: "" };
   };
   const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
-  expect(result.sources.map(source => source.type)).toEqual(["issue", "comment", "document"]); expect(result.incompleteReasons).toEqual([]); expect(calls).toHaveLength(3);
+  expect(result.sources.map(source => source.type)).toEqual(["issue", "comment", "document"]); expect(result.incompleteReasons).toEqual([]); expect(calls).toHaveLength(4);
 });
 
 it("does not accept another workspace identity from nested comment metadata", async () => {
   const runner: ComposioRunner = async () => ({ code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "wrong issue", description: "x", organization: { id: "workspace-A" }, comments: { nodes: [{ body: "x", user: { organization: { id: "workspace-1" } } }] } } }) });
   await expect(new ComposioLinearContextAdapter({ runner }).fetch(request)).rejects.toThrow(/workspace mismatch/);
+});
+
+it("deduplicates document UUID and URL aliases", async () => {
+  const url = "https://linear.app/acme/document/design-abcdef123456";
+  const runner: ComposioRunner = async () => ({ code: 0, stderr: "", stdout: JSON.stringify({ issue: { id: "i", identifier: "ENG-1", title: "x", description: url, organization: { id: "workspace-1" }, comments: { nodes: [], pageInfo: { hasNextPage: false } }, documents: { nodes: [{ id: "uuid", title: "Design", url, content: "requirements" }], pageInfo: { hasNextPage: false } } } }) });
+  const result = await new ComposioLinearContextAdapter({ runner }).fetch(request);
+  expect(result.sources.filter(source => source.type === "document")).toHaveLength(1);
+  expect(result.incompleteReasons).toEqual([]);
 });

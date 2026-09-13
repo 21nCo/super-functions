@@ -152,7 +152,7 @@ export class CodexHarnessAdapter implements HarnessAdapter {
       if ((await stat(outputPath).catch(() => ({ size: 0 }))).size > input.policy.limits.maxOutputBytes) return emptyFailure("malformed", "Structured output exceeds byte budget.");
       const text = await readFile(outputPath, "utf8").catch(() => "");
       try {
-        const errors = validateHarnessPayload(omitOptionalNulls(JSON.parse(text)));
+        const errors = validateHarnessPayload(omitOptionalNulls(JSON.parse(redactText(text, secrets))));
         if (errors.length) throw new Error(errors.join("; "));
         const parsed = omitOptionalNulls(JSON.parse(redactText(text, secrets))) as Omit<HarnessOutput, "terminal" | "events" | "transcript">;
         return { terminal: "completed", requirements: parsed.requirements, assessments: parsed.assessments, evidence: parsed.evidence, findings: parsed.findings, inspectedPaths: parsed.inspectedPaths, uninspected: parsed.uninspected, events, transcript: `${stdout}\n${stderr}` };

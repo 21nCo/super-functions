@@ -24,11 +24,14 @@ fs.writeFileSync(process.argv[process.argv.indexOf('--output-last-message')+1],J
   writeFileSync(path.join(fixture, "README.md"), "Return the value\n"); writeFileSync(path.join(fixture, "value.js"), "export const value = 1;\n");
   const git = args => execFileSync(gitExecutable, args, { cwd: fixture, encoding: "utf8" });
   git(["init", "-q"]); git(["add", "."]); git(["-c", "user.name=ReviewFn", "-c", "user.email=reviewfn@example.invalid", "commit", "-qm", "fixture"]);
+  const base = git(["rev-parse", "HEAD"]).trim();
+  writeFileSync(path.join(fixture, "value.js"), "export const value = 2;\n");
+  git(["add", "."]); git(["-c", "user.name=ReviewFn", "-c", "user.email=reviewfn@example.invalid", "commit", "-qm", "change value"]);
   const head = git(["rev-parse", "HEAD"]).trim();
-  if (!JSON.parse(run(["preflight", "--base", head, "--head", head])).ok) throw new Error("External preflight failed.");
-  run(["review", "--base", head, "--head", head, "--output", "../output"]);
+  if (!JSON.parse(run(["preflight", "--base", base, "--head", head])).ok) throw new Error("External preflight failed.");
+  run(["review", "--base", base, "--head", head, "--output", "../output"]);
   const reportPath = path.join(consumer, "output/report.json"); const report = JSON.parse(readFileSync(reportPath, "utf8"));
-  if (report.verdict !== "ready" || report.change.headCommit !== head || report.requirements.length !== 1) throw new Error(`External consumer review failed: ${JSON.stringify(report.coverageReasons)}`);
+  if (report.verdict !== "ready" || report.change.headCommit !== head || report.requirements.length !== 1 || !report.change.changedPaths.includes("value.js")) throw new Error(`External consumer review failed: ${JSON.stringify(report.coverageReasons)}`);
   if (!run(["render", "--input", reportPath]).includes("Return the value")) throw new Error("External render failed.");
   return { head, verdict: report.verdict, harness: "deterministic fixture, not model-quality evidence", commands: ["init", "preflight", "review", "render"], artifacts: true };
 }

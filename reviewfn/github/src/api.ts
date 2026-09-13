@@ -6,9 +6,9 @@ export class GitHubApi {
   public constructor(private readonly options: GitHubApiOptions) {
     if (!/^[A-Za-z0-9_.-]+$/.test(options.owner) || !/^[A-Za-z0-9_.-]+$/.test(options.repository)) throw new Error("Invalid GitHub repository identity.");
     const endpoint = new URL(options.baseUrl ?? "https://api.github.com");
-    if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw new Error("GitHub API URL must be HTTPS without embedded credentials or query parameters.");
+    if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || /[?#]/.test(options.baseUrl ?? "")) throw new Error("GitHub API URL must be HTTPS without embedded credentials or query parameters.");
     this.fetcher = options.fetch ?? fetch;
-    this.baseUrl = (options.baseUrl ?? "https://api.github.com").replace(/\/$/, "");
+    this.baseUrl = endpoint.toString().replace(/\/$/, "");
   }
 
   public async request<T>(method: string, endpoint: string, body?: unknown): Promise<T> {

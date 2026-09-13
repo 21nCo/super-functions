@@ -23,13 +23,14 @@ export function deriveVerdict(report: Pick<ReviewReport, "execution" | "coverage
   if (report.assessments.some((assessment) => mandatory.has(assessment.requirementId) && ["missing", "partial"].includes(assessment.status))) return "changes_requested";
   if (report.assessments.some((assessment) => mandatory.has(assessment.requirementId) && assessment.status === "unverified")) return "needs_verification";
   if (report.findings.some((finding) => policy.blockingSeverities.includes(finding.severity) && ["new", "still_valid"].includes(finding.lifecycle))) return "changes_requested";
-  if (report.findings.some(finding => finding.lifecycle === "needs_revalidation")) return "needs_verification";
+  if (report.findings.some(finding => ["needs_revalidation", "resolved", "superseded"].includes(finding.lifecycle))) return "needs_verification";
   return "ready";
 }
 
 export async function validateReport(report: ReviewReport, policy: ReviewPolicy, sourceControl?: SourceControlAdapter, root?: string, context?: ContextManifest, artifacts?: ArtifactStore): Promise<ValidationResult> {
   const errors: string[] = [];
   const warnings: string[] = [];
+  if (context && context.digest !== report.contextManifestDigest) errors.push("Frozen context digest does not match the report.");
   const sources = new Map(context?.sources.map(source => [source.id, source]) ?? []);
   const referenceValid = (ref: SourceReference): boolean => {
     const source = sources.get(ref.sourceId);
@@ -71,6 +72,7 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
     for (const id of assessment.evidenceIds) if (!evidence.has(id)) errors.push(`Assessment ${assessment.requirementId} references unknown evidence ${id}.`);
   }
   for (const finding of report.findings) {
+    if (["resolved", "superseded"].includes(finding.lifecycle)) errors.push(`Finding ${finding.fingerprint} claims a historical lifecycle without supplied prior finding provenance.`);
     if (!finding.evidenceIds.length) errors.push(`Finding ${finding.fingerprint} has no evidence.`);
     if (!finding.trigger || !finding.impact || !finding.direction) errors.push(`Finding ${finding.fingerprint} is missing actionable detail.`);
     for (const id of finding.evidenceIds) if (!evidence.has(id)) errors.push(`Finding ${finding.fingerprint} references unknown evidence ${id}.`);
@@ -104,6 +106,7 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
       if (item.code && !(await sourceControl.verifyAnchor(root, item.code))) errors.push(`Evidence ${item.id} has an invalid code anchor.`);
     }
     for (const finding of report.findings) {
+    if (["resolved", "superseded"].includes(finding.lifecycle)) errors.push(`Finding ${finding.fingerprint} claims a historical lifecycle without supplied prior finding provenance.`);
     if (!finding.evidenceIds.length) errors.push(`Finding ${finding.fingerprint} has no evidence.`);
       if (finding.anchor && finding.anchor.commit !== report.change.headCommit) errors.push(`Finding ${finding.fingerprint} does not reference reviewed head.`);
       if (finding.anchor && !(await sourceControl.verifyAnchor(root, finding.anchor))) errors.push(`Finding ${finding.fingerprint} has an invalid code anchor.`);

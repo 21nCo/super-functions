@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
-import { readFile, lstat } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { homedir } from "node:os";
 
-import { resolveTrustedExecutable, sha256, type ContextAdapter, type ContextManifest, type ContextRequest, type ContextSource, type PreflightResult } from "@superfunctions/reviewfn-core";
+import { safeRead, resolveTrustedExecutable, sha256, type ContextAdapter, type ContextManifest, type ContextRequest, type ContextSource, type PreflightResult } from "@superfunctions/reviewfn-core";
 
 export interface ComposioCommandResult { code: number | null; stdout: string; stderr: string }
 export type ComposioRunner = (args: string[], signal?: AbortSignal) => Promise<ComposioCommandResult>;
@@ -79,19 +79,20 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     add({ id: `linear:issue:${issueId}`, type: "issue", canonicalUrl: stringField(issue, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), updatedAt: stringField(issue, "updatedAt"), providerVersion: "LINEAR_GET_LINEAR_ISSUE", status: "available", content: JSON.stringify(issueWithoutConnections(issue), null, 2) });
 
     let initialComments = issue.comments;
-    if (!initialComments || typeof initialComments !== "object" || !("pageInfo" in initialComments)) {
+    if (!hasPageInfo(initialComments)) {
       try { initialComments = findConnection(await this.fetchIssueConnection("comments", issueId, undefined, request.account, request.signal), "comments"); }
       catch { incompleteReasons.push("Unable to establish complete Linear comment pagination."); }
     }
     const comments = [...connectionNodes(initialComments)];
     let commentPage = pageInfo(initialComments);
-    if (!initialComments || typeof initialComments !== "object" || !("pageInfo" in initialComments)) incompleteReasons.push("Linear comment pagination metadata missing.");
+    if (!hasPageInfo(initialComments)) incompleteReasons.push("Linear comment pagination metadata missing.");
     const commentCursors = new Set<string>();
     while (commentPage.hasNextPage && commentPage.endCursor && !commentCursors.has(commentPage.endCursor) && comments.length < request.limits.maxSources) {
       commentCursors.add(commentPage.endCursor);
       const page = await this.fetchIssueConnection("comments", issueId, commentPage.endCursor, request.account, request.signal);
       const connection = findConnection(page, "comments");
       comments.push(...connectionNodes(connection));
+      if (!hasPageInfo(connection)) incompleteReasons.push("Linear comment pagination metadata missing or malformed.");
       commentPage = pageInfo(connection);
     }
     for (const comment of comments) {
@@ -101,24 +102,33 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
     if (commentPage.hasNextPage) incompleteReasons.push(`Linear comments for ${issueIdentifier} remain incomplete at cursor ${commentPage.endCursor ?? "unknown"}.`);
 
     const linkedDocuments = (text: string): Record<string, unknown>[] => [...text.matchAll(/https:\/\/linear\.app\/[^\s/)]+\/document\/([a-zA-Z0-9-]+)/g)].map(match => ({ id: match[1].split("-").at(-1)!, url: match[0] }));
-    const documents = [...connectionNodes(issue.documents), ...arrayObjects(issue.documents), ...linkedDocuments(JSON.stringify(issue)), ...comments.flatMap(comment => linkedDocuments(stringField(comment, "body") ?? ""))];
-    let documentPage = pageInfo(issue.documents);
+    let initialDocuments = issue.documents;
+    if (!hasPageInfo(initialDocuments)) {
+      try { initialDocuments = findConnection(await this.fetchIssueConnection("documents", issueId, undefined, request.account, request.signal), "documents"); }
+      catch { incompleteReasons.push("Unable to establish complete Linear document pagination."); }
+    }
+    if (!hasPageInfo(initialDocuments)) incompleteReasons.push("Linear document pagination metadata missing or malformed.");
+    const documents = [...connectionNodes(initialDocuments), ...connectionNodes(issue.documents), ...arrayObjects(issue.documents), ...linkedDocuments(JSON.stringify(issue)), ...comments.flatMap(comment => linkedDocuments(stringField(comment, "body") ?? ""))];
+    let documentPage = pageInfo(initialDocuments);
     const documentCursors = new Set<string>();
     while (documentPage.hasNextPage && documentPage.endCursor && !documentCursors.has(documentPage.endCursor) && documents.length < request.limits.maxSources) {
       documentCursors.add(documentPage.endCursor);
       const page = await this.fetchIssueConnection("documents", issueId, documentPage.endCursor, request.account, request.signal);
       const connection = findConnection(page, "documents");
       documents.push(...connectionNodes(connection));
+      if (!hasPageInfo(connection)) incompleteReasons.push("Linear document pagination metadata missing or malformed.");
       documentPage = pageInfo(connection);
     }
     if (documentPage.hasNextPage) incompleteReasons.push(`Linear documents for ${issueIdentifier} remain incomplete at cursor ${documentPage.endCursor ?? "unknown"}.`);
     const seenDocuments = new Set<string>();
+    const seenDocumentUrls = new Set<string>();
     const documentDepth = new Map(documents.map(document => [stringField(document, "id")!, 1]));
     for (const summary of documents) {
       if (request.signal?.aborted) throw new Error("Context retrieval canceled.");
       if (sources.length >= request.limits.maxSources || consumed >= request.limits.maxBytes) { incompleteReasons.push("Linear aggregate retrieval budget exhausted."); break; }
       const id = stringField(summary, "id");
-      if (!id || seenDocuments.has(id)) continue;
+      const summaryUrl = stringField(summary, "url");
+      if (!id || seenDocuments.has(id) || summaryUrl && seenDocumentUrls.has(summaryUrl)) continue;
       seenDocuments.add(id);
       let document = summary;
       if (!stringField(summary, "content")) {
@@ -129,6 +139,9 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
           continue;
         }
       }
+      const canonicalUrl = stringField(document, "url");
+      if (canonicalUrl && seenDocumentUrls.has(canonicalUrl)) continue;
+      if (canonicalUrl) seenDocumentUrls.add(canonicalUrl);
       const content = stringField(document, "content");
       if (!content) {
         add({ id: `linear:document:${id}`, type: "document", canonicalUrl: stringField(document, "url"), workspace: request.expectedWorkspace, retrievedAt: new Date().toISOString(), status: "unsupported", parentId: `linear:issue:${issueId}`, error: "Document content was not returned." });
@@ -154,9 +167,10 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
       if (payload.storedInFile) {
         const file = typeof payload.storedInFile === "string" ? payload.storedInFile : payload.filePath ?? payload.path;
         if (typeof file !== "string" || !path.resolve(file).startsWith(`${path.join(homedir(), ".composio")}${path.sep}`)) throw new Error("Unsafe Composio stored response path.");
-        const stat = await lstat(file);
+        const resolvedFile = path.resolve(file);
+        const stat = await lstat(resolvedFile);
         if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 5_000_000) throw new Error("Composio stored response exceeds bounds or is not a regular file.");
-        payload = JSON.parse(await readFile(file, "utf8"));
+        payload = JSON.parse((await safeRead(resolvedFile)).toString("utf8"));
       }
       if (records(payload).some(record => record.successful === false || (Array.isArray(record.errors) && record.errors.length))) throw new Error("Composio or Linear returned an error envelope.");
       return payload;
@@ -200,6 +214,13 @@ function findConnection(value: unknown, name: "comments" | "documents"): unknown
 function stringField(record: Record<string, unknown>, key: string): string | undefined { return typeof record[key] === "string" ? record[key] as string : undefined; }
 function arrayObjects(value: unknown): Record<string, unknown>[] { return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : []; }
 function connectionNodes(value: unknown): Record<string, unknown>[] { return value && typeof value === "object" ? arrayObjects((value as Record<string, unknown>).nodes) : []; }
+function hasPageInfo(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const info = (value as Record<string, unknown>).pageInfo;
+  if (!info || typeof info !== "object") return false;
+  const page = info as Record<string, unknown>;
+  return typeof page.hasNextPage === "boolean" && (!page.hasNextPage || typeof page.endCursor === "string" && page.endCursor.length > 0);
+}
 function pageInfo(value: unknown): { hasNextPage: boolean; endCursor?: string } {
   const candidate = value && typeof value === "object" ? (value as Record<string, unknown>).pageInfo : undefined;
   if (!candidate || typeof candidate !== "object") return { hasNextPage: false };

@@ -114,8 +114,10 @@ export class ReviewCoordinator {
     } catch (error) {
       output = { terminal: request.signal?.aborted ? "canceled" : "failed", requirements: [], assessments: [], evidence: [], findings: [], inspectedPaths: [], uninspected: [{ scope: "review", reason: error instanceof Error ? error.message : String(error) }], events: [], error: error instanceof Error ? error.message : String(error) };
     }
-    const payloadErrors = validateHarnessPayload(Object.fromEntries(["requirements", "assessments", "evidence", "findings", "inspectedPaths", "uninspected"].map(key => [key, output[key as keyof HarnessOutput]])));
-    if (payloadErrors.length) output = { terminal: "malformed", requirements: [], assessments: [], evidence: [], findings: [], inspectedPaths: [], uninspected: [{ scope: "structured output", reason: payloadErrors.join("; ") }], events: output.events ?? [] };
+    const secrets = [...collectSecrets(process.env), ...(request.config.inference.credentialEnv ? [process.env[request.config.inference.credentialEnv] ?? ""] : [])];
+    if (output) output = JSON.parse(redactText(JSON.stringify(output), secrets)) as HarnessOutput;
+    const payloadErrors = validateHarnessPayload(Object.fromEntries(["requirements", "assessments", "evidence", "findings", "inspectedPaths", "uninspected"].map(key => [key, output?.[key as keyof HarnessOutput]])));
+    if (payloadErrors.length) output = { terminal: "malformed", requirements: [], assessments: [], evidence: [], findings: [], inspectedPaths: [], uninspected: [{ scope: "structured output", reason: payloadErrors.join("; ") }], events: output?.events ?? [] };
     if (request.signal?.aborted) output.terminal = "canceled";
     output.requirements = output.requirements.map(requirement => ({ ...requirement, extraction: { harness: this.dependencies.harness.capabilities.id, promptDigest: prompt.digest } }));
     output.findings = output.findings.map((finding) => ({ ...finding, fingerprint: findingFingerprint(finding) }));
@@ -126,8 +128,6 @@ export class ReviewCoordinator {
     ].filter((sourceId) => !sourceIds.has(sourceId));
     if (unknownSources.length) output.uninspected.push({ scope: "context references", reason: `Unknown sources: ${[...new Set(unknownSources)].join(", ")}` });
 
-    const secrets = [...collectSecrets(process.env), ...(request.config.inference.credentialEnv ? [process.env[request.config.inference.credentialEnv] ?? ""] : [])];
-    output = JSON.parse(redactText(JSON.stringify(output), secrets)) as HarnessOutput;
     const eventArtifact = await this.dependencies.artifacts.put("normalized-events", redactText(JSON.stringify(output.events, null, 2), secrets), request.policy.retention.reportDays);
     const transcriptArtifact = request.config.retainTranscript && output.transcript ? await this.dependencies.artifacts.put("redacted-transcript", redactText(output.transcript, secrets), request.policy.retention.transcriptDays) : undefined;
     const coverageReasons = [

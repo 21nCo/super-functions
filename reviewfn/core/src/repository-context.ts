@@ -7,7 +7,8 @@ import type { ContextAdapter, ContextManifest, ContextRequest, ContextSource, Pr
 async function collectMarkdown(root: string, maxDepth: number, maxEntries: number, relative = "", state: { visited: number; reasons: string[] } = { visited: 0, reasons: [] }): Promise<string[]> {
   const directory = path.join(root, relative);
   const result: string[] = [];
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
+  const entries = await readdir(directory, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return []; throw error; });
+  for (const entry of entries.sort((a, b) => compareCodePoints(a.name, b.name))) {
     if (++state.visited > maxEntries) { state.reasons.push("Context directory traversal budget exhausted."); break; }
     if (entry.name === ".git" || entry.name === "node_modules") continue;
     const next = path.posix.join(relative.split(path.sep).join(path.posix.sep), entry.name);
@@ -106,7 +107,7 @@ export function combineContextManifests(manifests: readonly Omit<ContextManifest
     sources: boundedSources,
     selection: {
       candidates: [...new Set(manifests.flatMap((manifest) => manifest.selection.candidates))],
-      selected: [...new Set(manifests.flatMap((manifest) => manifest.selection.selected))],
+      selected: [...new Set(manifests.flatMap((manifest) => manifest.selection.selected))].filter(id => boundedSources.some(source => source.id === id)),
       rule: manifests.map((manifest) => manifest.selection.rule).join("; "),
     },
     limits,

@@ -55,11 +55,13 @@ it("never publishes after cancellation during inference", async () => {
   const result = await coordinator.run({ root: ".", base: "base", head: "head", config, policy: DEFAULT_POLICY, signal: controller.signal });
   expect(result.report.execution).toBe("canceled"); expect(result.report.verdict).toBeUndefined(); expect(publisher.requests).toHaveLength(0);
 });
-it("writes an incomplete artifact for structurally invalid harness output", async () => {
-  const invalid = { ...output, findings: undefined } as unknown as HarnessOutput;
-  const coordinator = new ReviewCoordinator({ sourceControl: new FakeSourceControlAdapter(), contexts: [new FakeContextAdapter("fixture", manifest)], harness: new FakeHarnessAdapter(invalid), execution: new FakeExecutionAdapter(), artifacts: new MemoryArtifactStore() });
+it.each([null, undefined, { ...output, findings: undefined }])("writes an incomplete artifact for invalid harness output %s", async value => {
+  const invalid = value as unknown as HarnessOutput;
+  const store = new MemoryArtifactStore();
+  const coordinator = new ReviewCoordinator({ sourceControl: new FakeSourceControlAdapter(), contexts: [new FakeContextAdapter("fixture", manifest)], harness: new FakeHarnessAdapter(invalid), execution: new FakeExecutionAdapter(), artifacts: store });
   const result = await coordinator.run({ root: ".", base: "base", head: "head", config, policy: DEFAULT_POLICY });
   expect(result.report.execution).toBe("failed"); expect(result.report.verdict).toBeUndefined(); expect(result.report.coverage).toBe("incomplete");
+  expect([...store.values.keys()].some(key => key.startsWith("review-report-"))).toBe(true);
 });
 it("uses content identity across attempts with different collection timestamps", async () => {
   const source = new FakeSourceControlAdapter(); const capture = source.capture.bind(source); let counter = 0;

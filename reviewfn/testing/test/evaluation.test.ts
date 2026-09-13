@@ -25,3 +25,14 @@ describe("fixture matrix", () => {
     expect(CONFORMANCE_FIXTURES.length).toBeGreaterThanOrEqual(50);
   });
 });
+
+it("rejects duplicate identities and impossible evaluation metrics", () => {
+  const item = { id: "a", sourceSnapshotDigest: "s", changeSnapshotDigest: "c", adjudicatedRequirementIds: ["r"], knownGapRequirementIds: [], validFindingFingerprints: [], acceptable: true, retrospective: false, limitations: [] };
+  const outcome = { caseId: "a", completed: true, extractedRequirementIds: [], identifiedGapRequirementIds: [], findingFingerprints: [], blocked: false, evidenceReferences: 1, validEvidenceReferences: 1 };
+  expect(() => evaluate([item, item], [])).toThrow(/Duplicate/);
+  expect(() => evaluate([item], [outcome, outcome])).toThrow(/Duplicate/);
+  expect(() => evaluate([{ ...item, adjudicatedRequirementIds: ["r", "r"] }], [])).toThrow(/Duplicate/);
+  expect(() => evaluate([item], [{ ...outcome, validEvidenceReferences: 2 }])).toThrow(/metric/);
+  expect(() => evaluate([item], [{ ...outcome, runtimeMs: -1 }])).toThrow(/metric/);
+  expect(evaluate([item], [outcome]).evidenceValidity.value).toBe(1);
+});

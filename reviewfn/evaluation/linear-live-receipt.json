@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-09-13T11:00:18.583651+00:00",
+  "recordedAt": "2026-09-13T11:43:59.535897+00:00",
   "accountAlias": "21n",
   "workspace": "Super functions",
   "issue": "SFNS-3",
@@ -7,6 +7,10 @@
     {
       "id": "linear:issue:2d345256-0a0a-4774-a363-2b969c2d2d93",
       "type": "issue",
+      "workspace": "Super functions",
+      "retrievedAt": "2026-09-13T11:42:53.998Z",
+      "updatedAt": "2026-09-13T10:31:30.350Z",
+      "providerVersion": "LINEAR_GET_LINEAR_ISSUE",
       "status": "available",
       "digest": "d80e71ad2a9aacea2614a43ab0f835ac3b8de738aaf949c00dfa5f01cdc4eb4d",
       "bytes": 10373
@@ -14,52 +18,93 @@
     {
       "id": "linear:comment:f888325b-5651-4b00-9531-46205c8d787f",
       "type": "comment",
+      "workspace": "Super functions",
+      "retrievedAt": "2026-09-13T11:42:56.811Z",
+      "updatedAt": "2026-09-13T07:05:06.815Z",
+      "providerVersion": "LINEAR_GET_LINEAR_ISSUE",
       "status": "available",
+      "parentId": "linear:issue:2d345256-0a0a-4774-a363-2b969c2d2d93",
       "digest": "e49eac0c79cec5637924a6d17099086eae833f6e90d476430883da3b75a0a359",
       "bytes": 475
     },
     {
       "id": "linear:comment:339c9d42-c29a-4c93-b202-98539f167329",
       "type": "comment",
+      "workspace": "Super functions",
+      "retrievedAt": "2026-09-13T11:42:56.812Z",
+      "updatedAt": "2026-09-12T14:02:40.490Z",
+      "providerVersion": "LINEAR_GET_LINEAR_ISSUE",
       "status": "available",
+      "parentId": "linear:issue:2d345256-0a0a-4774-a363-2b969c2d2d93",
       "digest": "bb13aaa93f6bef3dcd4179e97dabc887a4e859bddb8570649221ce5d7cba2aac",
       "bytes": 1003
     },
     {
       "id": "linear:comment:d5de962e-1940-438f-a6ab-db1f70660e21",
       "type": "comment",
+      "workspace": "Super functions",
+      "retrievedAt": "2026-09-13T11:42:56.812Z",
+      "updatedAt": "2026-09-12T13:56:05.759Z",
+      "providerVersion": "LINEAR_GET_LINEAR_ISSUE",
       "status": "available",
+      "parentId": "linear:issue:2d345256-0a0a-4774-a363-2b969c2d2d93",
       "digest": "8363f59786c39b3e16bbf5ae147ca9cd411f2dbfd00d6b3b7ec281eb7cd3a860",
       "bytes": 207
     },
     {
       "id": "linear:comment:88ac3d88-d304-4bf4-8775-10dce49f1fda",
       "type": "comment",
+      "workspace": "Super functions",
+      "retrievedAt": "2026-09-13T11:42:56.812Z",
+      "updatedAt": "2026-09-12T13:56:05.736Z",
+      "providerVersion": "LINEAR_GET_LINEAR_ISSUE",
       "status": "available",
+      "parentId": "linear:issue:2d345256-0a0a-4774-a363-2b969c2d2d93",
       "digest": "3a42540e2d9fcb00d0a81e403393c661f090557c8fe1633a3174b780cd0b8efe",
       "bytes": 47
     },
     {
-      "id": "linear:document:67021652aeb7",
+      "id": "linear:document:3b9323bd-a879-43eb-841f-157e526cf2e2",
       "type": "document",
+      "canonicalUrl": "https://linear.app/21n/document/reviewfn-phased-roadmap-evaluation-strategy-and-release-gates-10b829ea430f",
+      "workspace": "Super functions",
+      "retrievedAt": "2026-09-13T11:42:59.940Z",
+      "updatedAt": "2026-09-12T13:51:56.146Z",
+      "providerVersion": "LINEAR_RUN_QUERY_OR_MUTATION",
       "status": "available",
-      "digest": "88d657bea4062b5b556560f7bb239270e3b0a01361df99a5f3dc5055e1a2a420",
-      "bytes": 10859
+      "parentId": "linear:issue:2d345256-0a0a-4774-a363-2b969c2d2d93",
+      "digest": "c9d63fd6a484b189e8d5622683c56744dfb12ef06cf81c61a3cfd0586f40fe4b",
+      "bytes": 15668
     },
     {
-      "id": "linear:document:9a7dfabbacbb",
+      "id": "linear:document:b63a102b-97de-440d-b2a1-30afe6459f6e",
       "type": "document",
+      "canonicalUrl": "https://linear.app/21n/document/reviewfn-detailed-architecture-adapter-contracts-and-security-model-9a7dfabbacbb",
+      "workspace": "Super functions",
+      "retrievedAt": "2026-09-13T11:42:59.940Z",
+      "updatedAt": "2026-09-12T13:49:58.723Z",
+      "providerVersion": "LINEAR_RUN_QUERY_OR_MUTATION",
       "status": "available",
+      "parentId": "linear:issue:2d345256-0a0a-4774-a363-2b969c2d2d93",
       "digest": "295f3fdf1e2499267ec19036a3aef859a92652d26bdf840f0546a7ec774dc8e3",
       "bytes": 16747
     },
     {
-      "id": "linear:document:10b829ea430f",
+      "id": "linear:document:50f06cc0-9523-4ad4-a289-e14168a82baf",
       "type": "document",
+      "canonicalUrl": "https://linear.app/21n/document/reviewfn-product-ideation-positioning-and-user-experience-67021652aeb7",
+      "workspace": "Super functions",
+      "retrievedAt": "2026-09-13T11:42:59.940Z",
+      "updatedAt": "2026-09-12T13:47:49.310Z",
+      "providerVersion": "LINEAR_RUN_QUERY_OR_MUTATION",
       "status": "available",
-      "digest": "c9d63fd6a484b189e8d5622683c56744dfb12ef06cf81c61a3cfd0586f40fe4b",
-      "bytes": 15668
+      "parentId": "linear:issue:2d345256-0a0a-4774-a363-2b969c2d2d93",
+      "digest": "88d657bea4062b5b556560f7bb239270e3b0a01361df99a5f3dc5055e1a2a420",
+      "bytes": 10859
     }
   ],
-  "incompleteReasons": []
+  "incompleteReasons": [],
+  "limitations": [
+    "Metadata-only live observation; source content is not committed, so digests are not independently replayable from this receipt."
+  ]
 }

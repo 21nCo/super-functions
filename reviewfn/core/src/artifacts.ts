@@ -21,6 +21,7 @@ export class FileArtifactStore implements ArtifactStore {
     if (!Number.isInteger(retentionDays) || retentionDays <= 0) throw new ReviewFnError("REVIEWFN_ARTIFACT_UNSAFE", "retentionDays must be a positive integer.");
     await this.ensureSafeRoot();
     const bytes = Buffer.from(content);
+    if (bytes.length > 32 * 1024 * 1024) throw new ReviewFnError("REVIEWFN_ARTIFACT_UNSAFE", "Artifact exceeds the 32 MiB read/write budget.");
     const digest = sha256(bytes);
     const id = `${kind}-${digest}`;
     const dataPath = path.join(this.root, `${id}.artifact`);

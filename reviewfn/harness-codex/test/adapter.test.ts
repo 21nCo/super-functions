@@ -54,7 +54,7 @@ describe("CodexHarnessAdapter", () => {
     expect((await timeout.run(baseInput)).terminal).toBe("timed_out");
   });
 });
-it("rejects invalid schema and redacts custom credential values on every terminal path", async () => {
+it("rejects invalid schema and redacts custom credential values on malformed and failed terminal paths", async () => {
   for (const code of [0, 1]) {
     const adapter = new CodexHarnessAdapter({ environment: { REVIEW_AUTH: "private-custom-value" }, runner: async (_command, args) => {
       await writeFile(args[args.indexOf("--output-last-message") + 1], JSON.stringify({ requirements: [], assessments: [], evidence: [], inspectedPaths: [], uninspected: [] }));

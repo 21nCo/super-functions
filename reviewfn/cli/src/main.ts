@@ -99,7 +99,7 @@ async function run(): Promise<number> {
     const expectedHead = required(args.flags, "head");
     if (repository.length !== 2 || !process.env.GITHUB_TOKEN || !Number.isInteger(pullRequest) || pullRequest <= 0) throw new Error("Publication requires repository, PR number and GITHUB_TOKEN.");
     if (report.change.headCommit !== expectedHead || report.change.pullRequest !== pullRequest || report.execution !== "completed" || report.configuration.profile !== required(args.flags, "profile")) throw new Error("Artifact does not match trusted publication identity or is not completed.");
-    const publisher = new GitHubAdvisoryPublisher({ api: new GitHubApi({ owner: repository[0], repository: repository[1], token: process.env.GITHUB_TOKEN }), pullRequest });
+    const publisher = new GitHubAdvisoryPublisher({ api: new GitHubApi({ owner: repository[0], repository: repository[1], token: process.env.GITHUB_TOKEN }), pullRequest, publisherLogin: optional(args.flags, "publisher-login") });
     const result = await publisher.publish({ report, rendered: renderMarkdownReport(report), expectedHead, profile: report.configuration.profile });
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return result.status === "failed" || result.status === "stale" ? 1 : 0;
@@ -124,7 +124,9 @@ async function run(): Promise<number> {
   await execFileAsync("git", ["-c", "core.hooksPath=/dev/null", "clone", "--no-local", "--no-checkout", root, snapshot], { maxBuffer: 1_000_000 });
   await execFileAsync("git", ["-c", "core.hooksPath=/dev/null", "checkout", "--detach", immutableHead], { cwd: snapshot, maxBuffer: 1_000_000 });
   const remote = (await execFileAsync("git", ["config", "--get", "remote.origin.url"], { cwd: root }).catch(() => ({ stdout: "local" }))).stdout.trim();
-  await execFileAsync("git", ["remote", "set-url", "origin", remote], { cwd: snapshot });
+  let safeRemote = remote;
+  if (remote.includes("://")) { const url = new URL(remote); url.username = ""; url.password = ""; url.search = ""; url.hash = ""; safeRemote = url.toString(); }
+  await execFileAsync("git", ["remote", "set-url", "origin", safeRemote], { cwd: snapshot });
   const coordinator = await createCoordinator(snapshot, config, pullRequest);
   const request = { root: snapshot, base: immutableBase, head: immutableHead, pullRequest, config, policy, issue: optional(args.flags, "issue") };
   if (args.command === "preflight") {

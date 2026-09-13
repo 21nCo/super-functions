@@ -91,3 +91,7 @@ it("propagates unexpected Git identity failures", async () => {
   const adapter = new GitSourceControlAdapter({ runner: async args => { if (args[0] === "config") throw Object.assign(new Error("permission denied"), { code: 128 }); return "b".repeat(40); } });
   await expect(adapter.capture(".", "base", "head")).rejects.toThrow(/permission denied/);
 });
+
+it.each(["https://api.github.com?", "https://api.github.com#"])("rejects ambiguous API base %s", baseUrl => {
+  expect(() => new GitHubApi({ owner: "a", repository: "b", token: "fixture", baseUrl })).toThrow(/URL/);
+});

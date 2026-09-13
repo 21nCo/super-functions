@@ -54,7 +54,7 @@ export class GitHubAdvisoryPublisher implements ReportPublisher {
     if (await this.currentHead() !== request.expectedHead) return { status: "stale", error: "PR advanced while locating publication." };
     let status: PublishResult["status"];
     let reference: string;
-    if (existing?.body?.includes(runMarker)) {
+    if (existing?.body === body) {
       status = "unchanged";
       reference = `comment:${existing.id}`;
     } else if (existing) {

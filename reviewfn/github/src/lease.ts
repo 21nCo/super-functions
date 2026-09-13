@@ -1,13 +1,15 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { safeDirectory, sha256 } from "@superfunctions/reviewfn-core";
 
-/** Crash-safe local lease. CI additionally uses workflow concurrency across machines. */
+/** Exclusive local lease; interrupted acquisition requires operator cleanup. CI also needs cross-machine concurrency. */
 export async function publicationLease(identity: string): Promise<() => Promise<void>> {
   const root = path.join(tmpdir(), `reviewfn-publication-${process.getuid?.() ?? "user"}`);
   await safeDirectory(root);
+  const rootStat = await lstat(root);
+  if ((process.getuid && rootStat.uid !== process.getuid()) || (rootStat.mode & 0o077) !== 0) throw new Error("Publication lease root must be private and owned by the current user.");
   const directory = path.join(root, sha256(identity));
   try { await mkdir(directory, { mode: 0o700 }); }
   catch (error) {

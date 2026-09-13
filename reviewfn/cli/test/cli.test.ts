@@ -13,6 +13,7 @@ async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), "reviewfn-cli-test-")); roots.push(root);
   await exec("git", ["init", "-q", root]);
   await writeFile(path.join(root, "README.md"), "fixture\n");
+  await writeFile(path.join(root, ".gitattributes"), "README.md export-ignore\n");
   await exec("git", ["add", "."], { cwd: root });
   await exec("git", ["-c", "user.name=ReviewFn", "-c", "user.email=reviewfn@example.invalid", "commit", "-qm", "fixture"], { cwd: root });
   const head = (await exec("git", ["rev-parse", "HEAD"], { cwd: root })).stdout.trim();
@@ -56,7 +57,7 @@ describe.runIf(process.env.REVIEWFN_DOCKER_TESTS === "1")("Docker execution boun
     expect(receipt.exitCode).not.toBe(0);
     expect(receipt.limitations).toContain("Command exceeded output budget.");
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1500);
+    const timer = setInterval(() => { void exec("docker", ["ps", "--filter", "name=reviewfn-", "--format", "{{.Names}}" ]).then(result => { if (result.stdout.trim()) controller.abort(); }); }, 200);
     try {
       const receipts = await new LocalIsolatedExecutionAdapter().run(root, head, [["node", "-e", "setInterval(()=>{},1000)"]], DEFAULT_POLICY, controller.signal);
       expect(receipts[0].canceled).toBe(true);

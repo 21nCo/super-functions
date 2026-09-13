@@ -21,7 +21,7 @@ inputs:
     required: true
   output:
     description: Caller-owned output directory outside the checkout
-    default: reviewfn-output
+    default: ${{ runner.temp }}/reviewfn-output
 outputs:
   report:
     description: Review artifact directory
@@ -44,7 +44,7 @@ runs:
         REVIEWFN_OUTPUT: ${{ inputs.output }}
       run: |
         set -euo pipefail
-        if ! [[ "$REVIEWFN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][a-zA-Z0-9.-]+)?$ ]]; then exit 2; fi
+        if ! [[ "$REVIEWFN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then exit 2; fi
         if ! [[ "$REVIEWFN_BASE" =~ ^[a-f0-9]{40}$ && "$REVIEWFN_HEAD" =~ ^[a-f0-9]{40}$ && "$REVIEWFN_PR" =~ ^[0-9]+$ ]]; then exit 2; fi
         test -z "${GITHUB_TOKEN:-}"
         npx --ignore-scripts --yes --package "@superfunctions/reviewfn-cli@$REVIEWFN_VERSION" reviewfn review \

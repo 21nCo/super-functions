@@ -1,8 +1,8 @@
 import { afterEach, expect, it } from "vitest";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DEFAULT_CONFIG, DEFAULT_POLICY, FileArtifactStore, RepositoryMarkdownContextAdapter, combineContextManifests, deriveVerdict, digestJson, safeWrite, sha256, validateConfig, validateHarnessPayload, validatePolicy, validateReport, type ReviewReport, type ContextManifest } from "../src/index.js";
+import { DEFAULT_CONFIG, DEFAULT_POLICY, FileArtifactStore, RepositoryMarkdownContextAdapter, combineContextManifests, deriveVerdict, digestJson, resolveTrustedExecutable, safeWrite, sha256, validateConfig, validateHarnessPayload, validatePolicy, validateReport, type ReviewReport, type ContextManifest } from "../src/index.js";
 const roots: string[] = [];
 async function temporary() { const root = await mkdtemp(path.join(tmpdir(), "reviewfn-security-")); roots.push(root); return root; }
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -89,4 +89,30 @@ it("preserves bounded Markdown sources while reporting skipped deep directories"
   await writeFile(path.join(root, "docs", "design.md"), "design");
   const result = await new RepositoryMarkdownContextAdapter().fetch({ root, paths: ["docs/**/*.md"], limits: { maxSources: 10, maxBytes: 100, maxDepth: 2 } });
   expect(result.sources.map(source => source.id)).toEqual(["repo:docs/design.md"]); expect(result.incompleteReasons.join()).toMatch(/depth budget/);
+});
+
+it("preserves README context when a scoped glob directory is missing", async () => {
+  const root = await temporary(); await writeFile(path.join(root, "README.md"), "requirements");
+  const result = await new RepositoryMarkdownContextAdapter().fetch({ root, paths: ["README.md", "docs/**/*.md"], limits: context.limits });
+  expect(result.sources.map(source => source.id)).toEqual(["repo:README.md"]);
+  expect(result.incompleteReasons.join()).toMatch(/matched no sources/);
+});
+it.each(["resolved", "superseded"] as const)("rejects unproven historical lifecycle %s", async lifecycle => {
+  const value = report(); value.findings = [{ fingerprint: "f", severity: "high", category: "test", title: "Bug", trigger: "input", impact: "wrong", direction: "fix", evidenceIds: ["e"], basis: "inferred", requirementIds: ["r"], lifecycle }];
+  expect(deriveVerdict(value, policy)).toBe("needs_verification");
+  expect((await errors(value)).join()).toMatch(/prior finding provenance/);
+});
+it("rejects a report paired with another frozen context", async () => expect((await errors(report(), { ...context, digest: "other" })).join()).toMatch(/context digest/));
+it("normalizes traversal before both output validation and writing", async () => {
+  const root = await temporary(); await mkdir(path.join(root, "outside", "nested"), { recursive: true });
+  await symlink(path.join(root, "outside", "nested"), path.join(root, "alias"));
+  await safeWrite(`${root}/alias/../report.json`, "safe");
+  expect(await readFile(path.join(root, "report.json"), "utf8")).toBe("safe");
+  await expect(readFile(path.join(root, "outside", "report.json"))).rejects.toThrow();
+});
+
+it("rejects executable paths beneath a world-writable ancestor", async () => {
+  const root = await temporary(); await chmod(root, 0o777); await mkdir(path.join(root, "bin"));
+  await writeFile(path.join(root, "bin", "fixture-tool"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+  await expect(resolveTrustedExecutable("fixture-tool", path.join(root, "bin"))).rejects.toThrow(/trusted executable/);
 });

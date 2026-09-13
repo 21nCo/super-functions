@@ -15,6 +15,7 @@ export async function safeDirectory(directory: string): Promise<void> {
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`Expected real directory; refusing non-directory or symlink: ${absolute}`);
 }
 export async function safeRead(file: string): Promise<Buffer> {
+  file = path.resolve(file);
   await safeDirectory(path.dirname(file));
   const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
@@ -24,12 +25,14 @@ export async function safeRead(file: string): Promise<Buffer> {
   } finally { await handle.close(); }
 }
 export async function safeWrite(file: string, content: string | Uint8Array): Promise<void> {
+  file = path.resolve(file);
   await safeDirectory(path.dirname(file));
   const stat = await lstat(file).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? undefined : Promise.reject(error));
   if (stat && !stat.isFile()) throw new Error("Refusing non-regular output file.");
   const temporary = `${file}.${randomUUID()}.tmp`;
   const handle = await open(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
-  try { await handle.writeFile(content); await handle.sync(); }
-  finally { await handle.close(); }
-  try { await rename(temporary, file); } finally { await rm(temporary, { force: true }); }
+  try {
+    try { await handle.writeFile(content); await handle.sync(); } finally { await handle.close(); }
+    await rename(temporary, file);
+  } finally { await rm(temporary, { force: true }); }
 }

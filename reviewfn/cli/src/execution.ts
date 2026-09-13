@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -32,8 +32,14 @@ export class LocalIsolatedExecutionAdapter implements ExecutionAdapter {
       const inventory = await runProcess("git", ["ls-tree", "-r", "-l", headCommit], root, 30_000, 5_000_000, signal);
       const totalSize = inventory.stdout.split("\n").reduce((sum, line) => sum + Number(line.match(/^\d+ blob [a-f0-9]+\s+(\d+)\t/)?.[1] ?? 0), 0);
       if (inventory.exitCode !== 0 || inventory.outputLimited || totalSize > 256 * 1024 * 1024) throw new Error("Repository archive exceeds the 256 MiB input budget.");
-      const archived = await runProcess("git", ["archive", "--format=tar", `--output=${archive}`, headCommit], root, 60_000, 64_000, signal);
+      const archiveRepo = path.join(owned, "archive.git");
+      const cloned = await runProcess("git", ["clone", "--bare", "--shared", "--", root, archiveRepo], root, 60_000, 64_000, signal);
+      if (cloned.exitCode !== 0) throw new Error("Unable to prepare archive repository.");
+      await mkdir(path.join(archiveRepo, "info"), { recursive: true });
+      await writeFile(path.join(archiveRepo, "info", "attributes"), "* -export-ignore -export-subst\n");
+      const archived = await runProcess("git", ["--git-dir", archiveRepo, "archive", "--format=tar", `--output=${archive}`, headCommit], root, 60_000, 64_000, signal);
       if (archived.exitCode !== 0 || archived.canceled) throw new Error("Unable to archive reviewed commit.");
+      if ((await stat(archive)).size > 256 * 1024 * 1024) throw new Error("Generated archive exceeds the 256 MiB input budget.");
       const image = await runProcess("docker", ["image", "inspect", TEST_IMAGE, "--format", "{{.Id}}"], root, 10_000, 64_000, signal);
       if (image.exitCode !== 0 || !/^sha256:[a-f0-9]{64}$/.test(image.stdout.trim())) throw new Error("Required isolated test image is unavailable.");
       const deadline = Date.now() + policy.limits.testTimeoutMs;
