@@ -138,3 +138,21 @@ it.each(["x", "€"])("bounds long target failures under the minimum report cap:
   expect(report.status).toBe('incomplete');
   expect(Buffer.byteLength(JSON.stringify(report, null, 2))).toBeLessThanOrEqual(1024);
 });
+
+it("retains a complete report when only its compact encoding fits", async () => {
+  const run = async (maxReportBytes?: number) => {
+    const server = createMcpFnServer({ info: { name: "compact", version: "1" }, registry: new McpFnRegistry().register({ name: "echo", description: "Echo", inputSchema: { type: "object" }, handler: async input => structuredResult(input) }) });
+    return runMcpFnTargetSuite({ maxReportBytes, target: customTarget({ kind: "compact", open: async () => {
+      const [transport, peer] = InMemoryTransport.createLinkedPair();
+      await server.connect(peer);
+      return { transport, close: () => server.close() };
+    } }), scenarios: Array.from({ length: 5 }, (_, i) => ({ name: `echo-${i}`, tool: "echo", arguments: { value: "ok" }, expect: { structuredContent: { value: "ok" } } })) });
+  };
+  const full = await run();
+  const cap = Math.max(1024, new TextEncoder().encode(JSON.stringify(full)).byteLength + 128);
+  expect(cap).toBeLessThan(new TextEncoder().encode(JSON.stringify(full, null, 2)).byteLength);
+  const bounded = await run(cap);
+  expect(bounded.ok).toBe(true);
+  expect(bounded.droppedResults).toBe(0);
+  expect(new TextEncoder().encode(JSON.stringify(bounded)).byteLength).toBeLessThanOrEqual(cap);
+});

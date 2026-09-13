@@ -689,3 +689,15 @@ it("drains target cleanup only after live transport handles finish closing", asy
   await closing;
   expect(cleanup).toHaveBeenCalled();
 });
+
+it("escalates an in-flight temporary shutdown to permanent", async () => {
+  let finish!: () => void;
+  const gate = new Promise<void>(resolve => { finish = resolve; });
+  const client = createMcpFnClient({ target: customTarget({ kind: "shutdown-race", open: async () => { throw new Error("unused"); } }) });
+  (client as any).handle = { transport: { close: async () => {} }, close: async () => gate };
+  const automatic = client.close(false);
+  const permanent = client.close();
+  finish();
+  await Promise.all([automatic, permanent]);
+  expect(client.state).toBe("closed");
+});

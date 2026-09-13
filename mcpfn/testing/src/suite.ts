@@ -258,5 +258,5 @@ function validateReportCap(maxBytes: number): void {
 }
 
 function jsonBytes(value: unknown): number {
-  return new TextEncoder().encode(JSON.stringify(value, null, 2)).byteLength;
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }

@@ -84,6 +84,7 @@ export class McpFnClient {
   private targetCleanupPromise?: Promise<void>;
   private readonly openingSignals = new Set<AbortSignal>();
   private closePromise?: Promise<void>;
+  private permanentCloseRequested = false;
   private connectController?: AbortController;
 
   readonly tools = {
@@ -532,6 +533,7 @@ export class McpFnClient {
   }
 
   async close(permanent = true): Promise<void> {
+    this.permanentCloseRequested ||= permanent;
     if (this.closePromise) return this.closePromise;
     if (this._state === "closed" && permanent && this.pendingCleanup.size === 0 && !this.targetCleanupPending && this.openingSignals.size === 0) return;
     this.closePromise = (async () => {
@@ -556,8 +558,9 @@ export class McpFnClient {
       // the active connection. A custom target that ignores abort may settle
       // later, but its isolated handle is closed by openTargetAttempt().
       void pendingConnect?.catch(() => undefined);
-      this._state = permanent ? "closed" : "idle";
+      this._state = this.permanentCloseRequested ? "closed" : "idle";
       await this.emit("transport-close", "succeeded", requestId);
+      if (this.permanentCloseRequested) this._state = "closed";
     })().finally(() => {
       this.closePromise = undefined;
     });
