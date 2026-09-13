@@ -78,16 +78,8 @@ export class MemoryFn implements IMemoryFn {
 
   async search(input: SearchMemoryInput): Promise<SearchMemoryResult> {
     requireScope(input.tenantId, input.containerTags);
-    // 1. Process query (embed)
-    let embedding: number[] = [];
-    if (this.embedder) {
-        embedding = await this.embedder.embed(input.q);
-    } else {
-        // Deterministic zero vector for storage adapters that support lexical or
-        // metadata-only fallback search without a configured embedder.
-        console.warn('No embedder configured, search results may be invalid for vector search');
-        embedding = new Array(1536).fill(0);
-    }
+    if (!this.embedder) throw new Error('MEMORY_EMBEDDER_REQUIRED');
+    const embedding = await this.embedder.embed(input.q);
 
     // 2. Vector search
     const results = await this.storage.searchVectors({

@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { memoryfn, AddMemoryInput } from '../src';
 
 describe('MemoryFn Pipeline', () => {
+  it('rejects incompatible Postgres dimensions before opening a client', () => {
+    expect(() => memoryfn({ storage: { kind: 'pg', url: 'postgres://unused' }, embedder: { provider: 'openai', apiKey: 'test', dims: 768 } }))
+      .toThrow('MEMORY_PG_EMBEDDING_DIMENSION_MUST_BE_1536');
+  });
   it('should initialize successfully', () => {
     const memory = memoryfn({
       storage: {
@@ -35,7 +39,7 @@ describe('MemoryFn Pipeline', () => {
     expect(result.summary.created).toBe(1);
   });
 
-  it('should persist and search memories in the process-local adapter', async () => {
+  it('rejects semantic search without an embedder', async () => {
     const memory = memoryfn({
       storage: {
         kind: 'memory',
@@ -50,14 +54,7 @@ describe('MemoryFn Pipeline', () => {
       type: 'conversational'
     });
 
-    const result = await memory.search({
-      q: 'sky',
-      tenantId: 'test',
-      containerTags: ['user:test']
-    });
-
-    expect(result).toBeDefined();
-    expect(result.results).toHaveLength(1);
-    expect(result.results[0]?.content).toBe('The sky is blue');
+    await expect(memory.search({ q: 'sky', tenantId: 'test', containerTags: ['user:test'] }))
+      .rejects.toThrow('MEMORY_EMBEDDER_REQUIRED');
   });
 });

@@ -308,3 +308,38 @@ it('passes requested token scopes to the authorizer without consuming the handle
   const response = await secfn.router.handle(new Request('https://app.test/secfn/admin/service-tokens', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'broad', scopes: ['*'] }) }));
   expect(inspected).toEqual({ name: 'broad', scopes: ['*'] }); expect(response.status).toBe(403);
 });
+
+it("enforces runtime scope on omitted environments and every set member", async () => {
+  const { secfn, db } = createServer();
+  const scope = { tenantId: "tenant-a", namespace: "workspace-a", createdBy: "admin" };
+  const dev = await secfn.vault.createSecret({ ...scope, environment: "development", key: "DEV", value: "dev-only" });
+  const token = await secfn.vault.createServiceToken({ ...scope, name: "prod", environment: "production", scopes: ["secret:*", "set:app"] });
+  await expect(secfn.vault.verifyRuntimeToken(token.token, scope)).rejects.toThrow("environment mismatch");
+  const verified = await secfn.vault.verifyRuntimeToken(token.token, { ...scope, environment: "production" });
+  await expect(secfn.vault.readRuntimeSecret("DEV", verified, scope)).rejects.toThrow("scope mismatch");
+  await secfn.vault.createSecretSet({ ...scope, name: "app", members: [{ secretId: dev.id }] });
+  await expect(secfn.vault.resolveRuntimeSet("app", verified, { ...scope, environment: "production" })).rejects.toThrow("scope mismatch");
+  expect(db.dump("secfn_audit_events").filter(e => e.action === "runtime_read")).toHaveLength(0);
+});
+
+it("looks up tokens beyond 1000 rows and cleans up revoked secret history", async () => {
+  const { secfn, db } = createServer();
+  for (let i = 0; i < 1001; i++) await db.create({ model: "secfn_service_tokens", data: { id: `noise-${i}`, tokenHash: `noise-${i}` } });
+  const scope = { tenantId: "tenant-a", namespace: "workspace-a", createdBy: "admin" };
+  const token = await secfn.vault.createServiceToken({ ...scope, name: "last", scopes: ["secret:KEY"] });
+  await expect(secfn.vault.verifyRuntimeToken(token.token, scope)).resolves.toBeDefined();
+  const secret = await secfn.vault.createSecret({ ...scope, key: "KEY", value: "old" });
+  await secfn.vault.createSecretSet({ ...scope, name: "app", members: [{ secretId: secret.id }] });
+  await secfn.vault.revokeSecret(secret.id, "admin");
+  await expect(secfn.vault.createSecret({ ...scope, key: "KEY", value: "new" })).rejects.toThrow();
+  await secfn.vault.deleteSecret(secret.id, "admin");
+  expect(db.dump("secfn_secret_versions")).toHaveLength(0);
+  expect(db.dump("secfn_secret_set_members")).toHaveLength(0);
+  await expect(secfn.vault.createSecret({ ...scope, key: "KEY", value: "new" })).resolves.toBeDefined();
+});
+
+it("rejects namespace IDs belonging to another tenant", async () => {
+  const { secfn } = createServer();
+  const namespace = await secfn.vault.createNamespace({ tenantId: "other", slug: "private", createdBy: "admin" });
+  await expect(secfn.vault.createEnvironment({ tenantId: "tenant-a", namespaceId: namespace.id, name: "production", createdBy: "admin" })).rejects.toThrow("Namespace not found");
+});

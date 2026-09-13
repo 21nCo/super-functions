@@ -8,7 +8,7 @@ Base dev source: `93421d275fe80ee5d1e9417b07f47db95efdce65`. TypeScript LangFn, 
 
 This candidate set adds 111 selected integration actions across 13 provider modules, action effect/scope/resource/redaction/retry manifests, shared quota and workflow admission adapters, native Gemini tools/streaming, injected PostgreSQL memory storage and deletion lifecycle, secure CLI credential seams, and connected-account SendFn mail adapters. Rex retains ownership of membership, grants, approvals, durable agent state, automation and billing. Use Cloudflare Workflows/Queues for hosted scheduling, not local timers.
 
-Selected contracts are version 1.1.0. Resource parameters reference top-level input fields; parameterless hints reference a collection or the trusted connected account/site. Structured values require consumer interpretation. Hints are not authorization or exhaustive provider effect inventories. Changed manifest hashes require consumer re-review.
+Selected contracts are version 1.0.0. Resource parameters reference top-level input fields; parameterless hints reference a collection or the trusted connected account/site. Structured values require consumer interpretation. Hints are not authorization or exhaustive provider effect inventories. Changed manifest hashes require consumer re-review.
 
 Persisted account selection applies configured authorization even without an explicit actor, using the supplied trusted userId. Provider-returned scopes are retained on callback and refresh; automatic refresh rechecks authorization before dispatch. Consumers must supply server-derived identities and enforce current tenant, role, provider scope equivalence and resource policy.
 
@@ -44,3 +44,9 @@ The packed consumer script prints the immutable artifact-set hash and preserves 
 - Live provider and Gemini qualification is deferred to the user. Provider-specific payload/pagination completeness, provider OAuth approvals, real refresh/revocation and sandbox effect counts remain separately tracked. Do not claim public production readiness from these fixtures.
 
 See HOSTED.md for reproducible disposable Hyperdrive qualification. Never commit tokens or origin credentials. No registry publication or deployment is performed by opening this PR.
+
+### OAuth scope selection and review fixes
+
+Gmail and Outlook keep read-only default consent. Before requesting write actions, consumers must pass the union of their selected action manifests' `requiredScopes` to `plug.connections.getAuthUrl({ ...options, scopes })`. Outlook calendar capabilities likewise require explicit calendar scopes. Reconnect existing accounts when expanding permissions; executor scope checks reject missing grants before making provider requests. A default read-only connection is not a grant for every catalog action.
+
+SecFn revocation reserves a secret's key. Delete the revoked secret before recreating that key; deletion removes version history and secret-set memberships. A failed cleanup keeps the record revoked and may be retried. Runtime secret sets reject members outside the token's tenant, namespace or environment.

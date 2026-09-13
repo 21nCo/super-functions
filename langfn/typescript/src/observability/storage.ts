@@ -1,9 +1,9 @@
 import { Adapter, WhereClause } from "@superfunctions/db";
 
 import { TraceNotFoundError } from "../core/errors.js";
-import { Cost, TokenUsage } from "../core/types.js";
+import { Cost, TokenUsage, TraceScope } from "../core/types.js";
 
-export interface TraceRecord {
+export interface TraceRecord extends TraceScope {
   traceId: string;
   id?: string;
   kind?: string;
@@ -32,6 +32,7 @@ export interface SpanRecord {
 }
 
 export interface FeedbackRecord {
+  scope?: TraceScope;
   traceId: string;
   clientKey?: string;
   rating: number;
@@ -74,7 +75,7 @@ export class TraceStorage {
   }
 
   async saveFeedback(feedback: FeedbackRecord): Promise<FeedbackRecord> {
-    const trace = await this.findOne(feedback.traceId);
+    const trace = await this.findOne(feedback.traceId, feedback.scope);
     if (!trace) {
       throw new TraceNotFoundError(undefined, { metadata: { traceId: feedback.traceId } });
     }
@@ -116,8 +117,10 @@ export class TraceStorage {
     offset?: number;
     model?: string;
     provider?: string;
+    tenantId?: string;
+    userId?: string;
   } = {}): Promise<TraceRecord[]> {
-    const where: WhereClause[] = [];
+    const where: WhereClause[] = scopeWhere(options);
     if (options.model) {
       where.push({ field: "model", operator: "eq", value: options.model });
     }
@@ -134,10 +137,16 @@ export class TraceStorage {
     });
   }
 
-  async findOne(traceId: string): Promise<TraceRecord | null> {
+  async findOne(traceId: string, scope?: TraceScope): Promise<TraceRecord | null> {
     return this.db.findOne<TraceRecord>({
       model: this.traceTableName,
-      where: [{ field: "traceId", operator: "eq", value: traceId }]
+      where: [{ field: "traceId", operator: "eq", value: traceId }, ...scopeWhere(scope)]
     });
   }
+}
+
+function scopeWhere(scope?: TraceScope): WhereClause[] {
+  return (["tenantId", "userId"] as const).flatMap(field =>
+    scope?.[field] === undefined ? [] : [{ field, operator: "eq" as const, value: scope[field] }]
+  );
 }

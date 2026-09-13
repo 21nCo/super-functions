@@ -50,6 +50,7 @@ export class OllamaChatModel extends ChatModel {
     try {
       response = await this.client.request("/api/chat", {
         method: "POST",
+      signal: request.signal,
         body: JSON.stringify({
           model: this.model,
           messages: request.messages,
@@ -86,6 +87,7 @@ export class OllamaChatModel extends ChatModel {
     try {
       response = await this.client.request("/api/chat", {
         method: "POST",
+      signal: request.signal,
         body: JSON.stringify({
           model: this.model,
           messages: [{ role: "user", content: request.prompt }],

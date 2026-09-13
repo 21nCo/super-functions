@@ -83,8 +83,9 @@ export function createSecFnRuntime(config: SecFnRuntimeConfig): SecFnRuntime {
     },
 
     async getSet(name, options = {}) {
-      const query = options.environment ? `?environment=${encodeURIComponent(options.environment)}` : "";
-      const cacheKey = `set:${name}:${options.environment ?? ""}`;
+      const env = options.environment ?? config.environment;
+      const query = env ? `?environment=${encodeURIComponent(env)}` : "";
+      const cacheKey = `set:${name}:${env ?? ""}`;
       const data = await cached<RuntimeSecretSetResponse>(
         cacheKey,
         () => request<RuntimeSecretSetResponse>(

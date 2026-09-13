@@ -99,6 +99,7 @@ export class AnthropicChatModel extends ChatModel {
 
     const response = await this.client.request("/messages", {
       method: "POST",
+      signal: request.signal,
       body: JSON.stringify(payload)
     });
     await raiseForStatus(this.provider, response);
@@ -133,6 +134,7 @@ export class AnthropicChatModel extends ChatModel {
   async *stream(request: CompletionRequest): AsyncIterable<StreamEvent> {
     const response = await this.client.request("/messages", {
       method: "POST",
+      signal: request.signal,
       body: JSON.stringify({
         model: this.model,
         messages: [{ role: "user", content: request.prompt }],
@@ -251,7 +253,7 @@ function splitSystemMessage(messages: Message[]): {
 async function raiseForStatus(provider: string, response: Response): Promise<void> {
   if (response.ok) return;
   const text = await response.text();
-  let body: unknown = text;
+  let body: unknown;
   try {
     body = text ? JSON.parse(text) : {};
   } catch {

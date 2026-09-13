@@ -99,13 +99,11 @@ export class AccessService {
     return allowed;
   }
 
-  async getUserPermissions(principalId: string): Promise<string[]> {
-    const bindings = await this.db.findMany<RoleBindingRecord>({
-      model: "secfn_role_bindings",
-      where: [{ field: "principalId", operator: "eq", value: principalId }],
-    });
+  async getUserPermissions(principalId: string, scope: Omit<AccessCheckInput, "principalId" | "action"> = {}): Promise<string[]> {
+    const bindings = await this.findBindings({ ...scope, principalId });
     const permissions = new Set<string>();
     for (const binding of bindings) {
+      if (binding.expiresAt && !(Date.parse(binding.expiresAt) > Date.now())) continue;
       const role = await this.db.findOne<RoleRecord>({
         model: "secfn_roles",
         where: [{ field: "id", operator: "eq", value: binding.roleId }],
@@ -115,7 +113,7 @@ export class AccessService {
     return Array.from(permissions);
   }
 
-  private async findBindings(input: AccessCheckInput): Promise<RoleBindingRecord[]> {
+  private async findBindings(input: Omit<AccessCheckInput, "action">): Promise<RoleBindingRecord[]> {
     const where: WhereClause[] = [
       { field: "principalId", operator: "eq", value: input.principalId },
     ];

@@ -7,7 +7,6 @@ import {
   generateId,
   hashToken,
   nowIso,
-  verifyTokenHash,
 } from "@secfn/core";
 import type {
   EnvironmentRecord,
@@ -270,7 +269,7 @@ export class VaultService {
     if (!input.key.trim()) throw new SecFnValidationError("Secret key is required");
     const resolved = await this.resolveScope(input, { requireNamespace: true, requireEnvironment: true, create: true, actorId: input.createdBy });
     const existing = await this.findSecretByKey(input.key, resolved);
-    if (existing && !existing.revokedAt) {
+    if (existing) {
       throw new SecFnValidationError("Secret already exists", { key: input.key });
     }
 
@@ -471,6 +470,10 @@ export class VaultService {
 
   async deleteSecret(id: string, actorId: string): Promise<void> {
     const secret = await this.getSecret(id);
+    // Revoke first: a failed cleanup remains inaccessible and can be retried.
+    await this.db.update({ model: "secfn_secrets", where: [{ field: "id", operator: "eq", value: id }], data: { revokedAt: nowIso() } });
+    await this.db.deleteMany({ model: "secfn_secret_set_members", where: [{ field: "secretId", operator: "eq", value: id }] });
+    await this.db.deleteMany({ model: "secfn_secret_versions", where: [{ field: "secretId", operator: "eq", value: id }] });
     await this.db.delete({ model: "secfn_secrets", where: [{ field: "id", operator: "eq", value: id }] });
     await this.audit.write({
       type: "policy_violation",
@@ -489,7 +492,7 @@ export class VaultService {
 
   async createSecretSet(input: CreateSecretSetInput): Promise<SecretSetRecord> {
     if (!input.name.trim()) throw new SecFnValidationError("Secret set name is required");
-    const resolved = await this.resolveScope(input, { requireNamespace: true, create: true, actorId: input.createdBy });
+    const resolved = await this.resolveScope(input, { requireNamespace: true, ignoreEnvironment: true, create: true, actorId: input.createdBy });
     const duplicate = await this.db.findOne<SecretSetRecord>({
       model: "secfn_secret_sets",
       where: scopeWhere({ tenantId: input.tenantId, namespaceId: resolved.namespaceId, name: input.name }),
@@ -733,19 +736,17 @@ export class VaultService {
   }
 
   async verifyRuntimeToken(rawToken: string, scope: { tenantId?: string; namespace?: string; environment?: string }): Promise<VerifiedRuntimeToken> {
-    const candidates = await this.db.findMany<ServiceTokenRecord>({
+    const token = await this.db.findOne<ServiceTokenRecord>({
       model: "secfn_service_tokens",
-      where: [],
-      limit: 1000,
+      where: [{ field: "tokenHash", operator: "eq", value: hashToken(rawToken) }],
     });
-    const token = candidates.find((candidate) => verifyTokenHash(rawToken, candidate.tokenHash));
     if (!token || token.revokedAt) throw new SecFnForbiddenError("Invalid runtime token");
-    if (token.expiresAt && Date.parse(token.expiresAt) <= Date.now()) {
+    if (token.expiresAt && !(Date.parse(token.expiresAt) > Date.now())) {
       throw new SecFnForbiddenError("Runtime token has expired");
     }
     if (token.tenantId && token.tenantId !== scope.tenantId) throw new SecFnForbiddenError("Runtime token tenant mismatch");
     if (token.namespace && token.namespace !== scope.namespace) throw new SecFnForbiddenError("Runtime token namespace mismatch");
-    if (token.environment && scope.environment && token.environment !== scope.environment) throw new SecFnForbiddenError("Runtime token environment mismatch");
+    if (token.environment && token.environment !== (scope.environment ?? DEFAULT_ENVIRONMENT)) throw new SecFnForbiddenError("Runtime token environment mismatch");
     await this.db.update({
       model: "secfn_service_tokens",
       where: [{ field: "id", operator: "eq", value: token.id }],
@@ -766,6 +767,7 @@ export class VaultService {
     const resolved = await this.resolveScope(scope, { requireNamespace: true, requireEnvironment: true });
     const secret = await this.findSecretByKey(key, resolved);
     if (!secret || secret.revokedAt) throw new SecFnNotFoundError("Secret not found", { key });
+    this.assertRuntimeScope(secret, verified, resolved);
     return this.decryptRuntimeSecret(await this.hydrateSecret(secret), verified, requestMeta);
   }
 
@@ -793,10 +795,23 @@ export class VaultService {
     for (const member of members) {
       const secret = await this.getSecret(member.secretId);
       if (secret.revokedAt) continue;
+      this.assertRuntimeScope(secret, verified, { ...resolved, environment: scope.environment });
       const response = await this.decryptRuntimeSecret(secret, verified, requestMeta);
       secrets[member.alias ?? secret.key] = response.value;
     }
     return { name: set.name, namespace: resolved.namespace, secrets };
+  }
+
+  private assertRuntimeScope(secret: SecretRecord, verified: VerifiedRuntimeToken, scope: SecretScope): void {
+    const token = verified.token;
+    if ((token.tenantId && token.tenantId !== secret.tenantId) ||
+        (token.namespace && token.namespace !== secret.namespace) ||
+        (token.environment && token.environment !== secret.environment) ||
+        (scope.tenantId && scope.tenantId !== secret.tenantId) ||
+        (scope.namespaceId && scope.namespaceId !== secret.namespaceId) ||
+        (scope.environment && scope.environment !== secret.environment)) {
+      throw new SecFnForbiddenError("Runtime token secret scope mismatch");
+    }
   }
 
   private async resolveScope(
@@ -853,7 +868,13 @@ export class VaultService {
     createdBy: string;
     create?: boolean;
   }): Promise<NamespaceRecord> {
-    if (input.namespaceId) return this.getNamespace(input.namespaceId);
+    if (input.namespaceId) {
+      const namespace = await this.getNamespace(input.namespaceId);
+      if (input.tenantId !== undefined && namespace.tenantId !== input.tenantId) {
+        throw new SecFnNotFoundError("Namespace not found");
+      }
+      return namespace;
+    }
     const namespace = input.namespace ? await this.findNamespace(input) : null;
     if (namespace) return namespace;
     if (input.create === false && input.namespace) throw new SecFnNotFoundError("Namespace not found", { namespace: input.namespace });
@@ -873,7 +894,14 @@ export class VaultService {
     createdBy: string;
     create?: boolean;
   }): Promise<EnvironmentRecord> {
-    if (input.environmentId) return this.getEnvironment(input.environmentId);
+    if (input.environmentId) {
+      const environment = await this.getEnvironment(input.environmentId);
+      if ((input.tenantId !== undefined && environment.tenantId !== input.tenantId) ||
+          (environment.namespaceId && environment.namespaceId !== input.namespaceId)) {
+        throw new SecFnNotFoundError("Environment not found");
+      }
+      return environment;
+    }
     if (input.environment) {
       const existing = await this.findEnvironment(input);
       if (existing) return existing;

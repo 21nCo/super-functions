@@ -33,7 +33,7 @@ describe("release gate contract", () => {
     const rootReadme = read(resolve(langfnRoot, "README.md"));
     const tsReadme = read(resolve(langfnRoot, "typescript/README.md"));
     const compatibility = read(resolve(langfnRoot, "COMPATIBILITY.md"));
-    const releaseGate = read(resolve(langfnRoot, ".conduct/release-gate.md"));
+    const releaseGate = read(resolve(langfnRoot, "RELEASE_GATE.md"));
     const manifest = JSON.parse(read(resolve(repoRoot, "package.json")));
 
     expect(manifest.scripts["gate:langfn-release"]).toBe("node scripts/gate-langfn-release.mjs");
@@ -53,7 +53,7 @@ describe("release gate contract", () => {
     expect(compatibility).toContain("| anthropic | yes | yes | yes | yes | no | yes |");
     expect(compatibility).toContain("| ollama | yes | yes | yes | no | no | yes |");
     expect(compatibility).toContain("| google | yes | yes | yes | yes | no | yes |");
-    expect(compatibility).toContain("| mistral | yes | yes | yes | yes | no | yes |");
+    expect(compatibility).toContain("| mistral | yes | yes | buffered | yes | no | yes |");
   });
 
   it("pins the adopted TypeScript consumer to the current shared contracts", () => {

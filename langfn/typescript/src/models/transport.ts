@@ -67,17 +67,58 @@ export function getTransportClient(config: TransportClientConfig): TransportClie
   const client: TransportClient = {
     async request(path, init = {}) {
       const controller = new AbortController();
-      const timer = timeout > 0 ? setTimeout(() => controller.abort(), timeout) : undefined;
+      const abort = () => controller.abort(init.signal?.reason);
+      init.signal?.addEventListener("abort", abort, { once: true });
+      if (init.signal?.aborted) abort();
+      const timer = timeout > 0 ? setTimeout(() => controller.abort(new DOMException("Request timed out", "TimeoutError")), timeout) : undefined;
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        init.signal?.removeEventListener("abort", abort);
+      };
       try {
-        return await fetchImpl(`${normalizeBaseUrl(config.baseUrl)}${path}`, {
+        controller.signal.throwIfAborted();
+        const response = await fetchImpl(`${normalizeBaseUrl(config.baseUrl)}${path}`, {
           ...init,
-          signal: init.signal ?? controller.signal,
+          signal: controller.signal,
           headers: mergeHeaders(config.headers, init.headers)
         });
-      } finally {
-        if (timer) {
-          clearTimeout(timer);
-        }
+        controller.signal.throwIfAborted();
+        if (!response.body) { cleanup(); return response; }
+        const reader = response.body.getReader();
+        let finished = false;
+        let onAbort: () => void;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          controller.signal.removeEventListener("abort", onAbort);
+          cleanup();
+        };
+        const body = new ReadableStream<Uint8Array>({
+          start(stream) {
+            onAbort = () => {
+              if (finished) return;
+              finish();
+              stream.error(controller.signal.reason);
+              void reader.cancel(controller.signal.reason).catch(() => {});
+            };
+            controller.signal.addEventListener("abort", onAbort, { once: true });
+          },
+          async pull(stream) {
+            try {
+              const chunk = await reader.read();
+              if (finished) return;
+              if (chunk.done) { finish(); stream.close(); }
+              else stream.enqueue(chunk.value);
+            } catch (error) {
+              if (!finished) { finish(); stream.error(error); }
+            }
+          },
+          async cancel(reason) { finish(); await reader.cancel(reason); }
+        });
+        return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+      } catch (error) {
+        cleanup();
+        throw error;
       }
     }
   };

@@ -80,3 +80,13 @@ describe("secfn runtime", () => {
     await expect(runtime.get("API_KEY")).rejects.toThrow("denied");
   });
 });
+
+it("uses the configured set environment and separates cache entries", async () => {
+  const fetchMock = vi.fn(async (_url: string) => Response.json({ ok: true, data: { secrets: {} } }));
+  const runtime = createSecFnRuntime({ endpoint: "https://example.test", apiKey: "token", environment: "production", cache: { ttlMs: 1000 }, fetch: fetchMock as typeof fetch });
+  await runtime.getSet("app"); await runtime.getSet("app", { environment: "development" }); await runtime.getSet("app");
+  expect(fetchMock.mock.calls.map(call => call[0])).toEqual([
+    "https://example.test/runtime/secret-sets/app/resolve?environment=production",
+    "https://example.test/runtime/secret-sets/app/resolve?environment=development"
+  ]);
+});

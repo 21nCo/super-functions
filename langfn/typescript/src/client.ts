@@ -171,7 +171,7 @@ export class LangFn {
         async () => {
           try {
             return await callWithTimeoutAndCancel(
-              this.requireModel().complete(request),
+              (signal) => this.requireModel().complete({ ...request, signal }),
               options.timeout,
               options.cancelToken
             );
@@ -224,7 +224,7 @@ export class LangFn {
         async () => {
           try {
             return await callWithTimeoutAndCancel(
-              this.requireModel().chat(request),
+              (signal) => this.requireModel().chat({ ...request, signal }),
               options.timeout,
               options.cancelToken
             );
@@ -294,7 +294,8 @@ export class LangFn {
           await retryAsync(
             async () =>
               callWithTimeoutAndCancel(
-                this.requireModel().chat({
+                (signal) => this.requireModel().chat({
+                  signal,
                   messages: input,
                   metadata: options.metadata
                 }),
@@ -483,7 +484,12 @@ export class LangFn {
     }
 
     const storage = this.config.observability?.traceStorage;
+    if (request.scope) {
+      const trace = await storage?.findOne?.(traceId);
+      if (!trace || !matchesTraceScope(trace, request.scope)) throw new TraceNotFoundError("Trace not found");
+    }
     const payload = this.redactObservabilityPayload({
+      scope: request.scope,
       traceId,
       clientKey,
       rating: request.rating,
@@ -502,7 +508,8 @@ export class LangFn {
   }
 
   async getTraces(query: TraceQuery = {}): Promise<Record<string, unknown>[]> {
-    return (((await this.config.observability?.traceStorage?.findMany(query)) ?? []) as Record<string, unknown>[]);
+    const traces = ((await this.config.observability?.traceStorage?.findMany(query)) ?? []) as Record<string, unknown>[];
+    return traces.filter(trace => matchesTraceScope(trace, query));
   }
 
   async createReactAgent(tools: unknown[], options: { max_iterations?: number; system_prompt?: string } = {}) {
@@ -627,6 +634,7 @@ export class LangFn {
     const response = payload.response;
     const content = "content" in response ? response.content : response.message.content;
     const traceRecord = this.redactObservabilityPayload<TraceRecord>({
+      ...traceOwner(payload.request.metadata),
       traceId: payload.traceId,
       kind: payload.kind,
       provider: this.model.provider,
@@ -737,34 +745,26 @@ function normalizeUnknownError(error: unknown): LangFnError {
 }
 
 async function callWithTimeoutAndCancel<T>(
-  promise: Promise<T>,
+  operation: (signal: AbortSignal) => Promise<T>,
   timeout?: number,
   cancelToken?: CancellationToken
 ): Promise<T> {
-  if (cancelToken?.cancelled) {
-    throw new AbortError();
-  }
-
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  let cancelPromise: Promise<never> | undefined;
-  let timeoutPromise: Promise<never> | undefined;
-
-  if (cancelToken) {
-    cancelPromise = cancelToken.wait().then(() => {
-      throw new AbortError();
-    });
-  }
-
-  if (timeout !== undefined) {
-    timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => reject(new TimeoutError()), timeout);
-    });
-  }
-
+  if (cancelToken?.cancelled) throw new AbortError();
+  const controller = new AbortController();
+  const cancel = () => controller.abort(new AbortError());
+  cancelToken?.signal.addEventListener("abort", cancel, { once: true });
+  const timer = timeout === undefined ? undefined : setTimeout(() => controller.abort(new TimeoutError()), timeout);
+  let rejectAbort: () => void = () => {};
+  const aborted = new Promise<never>((_, reject) => {
+    rejectAbort = () => reject(controller.signal.reason);
+    controller.signal.addEventListener("abort", rejectAbort, { once: true });
+  });
   try {
-    return await Promise.race([promise, cancelPromise, timeoutPromise].filter(Boolean) as Promise<T>[]);
+    return await Promise.race([operation(controller.signal), aborted]);
   } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    if (timer) clearTimeout(timer);
+    cancelToken?.signal.removeEventListener("abort", cancel);
+    controller.signal.removeEventListener("abort", rejectAbort);
   }
 }
 
@@ -806,4 +806,16 @@ function randomTraceId(): string {
     return crypto.randomUUID();
   }
   return Math.random().toString(36).slice(2);
+}
+
+function traceOwner(metadata: unknown): { tenantId?: string; userId?: string } {
+  const value = metadata as Record<string, unknown> | undefined;
+  return {
+    tenantId: typeof value?.tenantId === "string" ? value.tenantId : undefined,
+    userId: typeof value?.userId === "string" ? value.userId : undefined
+  };
+}
+function matchesTraceScope(trace: { tenantId?: unknown; userId?: unknown }, scope: { tenantId?: string; userId?: string }): boolean {
+  return (scope.tenantId === undefined || trace.tenantId === scope.tenantId) &&
+    (scope.userId === undefined || trace.userId === scope.userId);
 }

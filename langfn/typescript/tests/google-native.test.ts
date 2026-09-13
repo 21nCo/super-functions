@@ -38,6 +38,7 @@ describe("Google native tool protocol", () => {
       tools: [{ name: "lookup", input_schema: { type: "object" } }],
     });
     expect(first.usage?.total_tokens).toBe(9);
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body).tools[0].functionDeclarations[0].description).toBe("lookup");
     await model.chat({
       messages: [
         { role: "user", content: "find" },

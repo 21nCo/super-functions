@@ -47,10 +47,11 @@ export class PostgresAdapter implements StorageAdapter {
 
     const now = new Date();
     const values = relationships.map(r => ({
+      ...(r.id === undefined ? {} : { id: r.id }),
       fromId: r.fromId!,
       toId: r.toId!,
       type: r.type || 'extends',
-      confidence: r.confidence || 1.0,
+      confidence: r.confidence ?? 1.0,
       reasoning: r.reasoning,
       createdAt: r.createdAt ? new Date(r.createdAt) : now,
     }));

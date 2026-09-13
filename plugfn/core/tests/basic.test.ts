@@ -480,7 +480,18 @@ describe('PlugFn SDK', () => {
       ).rejects.toThrow('Action failed');
     });
 
-    it('applies per-call retry options', async () => {
+    it.each([['stable-key', 2], ['', 1], ['   ', 1], [undefined, 1]])('retries provider-key writes only with a usable key %s', async (key, count) => {
+      let attempts = 0;
+      const provider = mockProvider('test', { mutate: mockResponse({ ok: true }) });
+      provider.actions.mutate.contract = { version: '1.0.0', effect: 'write', requiredScopes: [], resources: [], sensitiveKeys: [], pagination: { kind: 'none' }, retry: 'provider-key', idempotencyKeyParameter: 'requestId' };
+      provider.actions.mutate.execute = async () => { attempts++; throw Object.assign(new Error('temporary'), { status: 500 }); };
+      plug.providers.register(provider);
+      await adapter.createConnection(mockConnection('test-user', 'test'));
+      await expect(plug.test.mutate({ userId: 'test-user', params: { requestId: key }, retry: { maxAttempts: 2, delay: 0 } })).rejects.toThrow();
+      expect(attempts).toBe(count);
+    });
+
+    it('applies per-call retry options' , async () => {
       let attempts = 0;
       const provider = mockProvider('test', {
         'mutatingAction': mockResponse({ ok: true }),

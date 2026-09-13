@@ -13,3 +13,5 @@ await memory.close();
 Use injected Postgres storage for durable data and configure an embedder for semantic retrieval. The process-local adapter is intended for tests and explicit ephemeral use. SQLite requires a supplied adapter.
 
 Read [TypeScript storage, migrations and lifecycle](typescript/README.md). Application membership, sharing and authoritative deletion state remain the consumer's responsibility. This is an unpublished candidate; the registry version does not identify these local changes. Admin and Python packages have not been adopted into this dev worktree.
+
+Semantic search requires a configured embedder and fails with `MEMORY_EMBEDDER_REQUIRED` otherwise. The built-in PostgreSQL schema uses 1536 dimensions; the factory requests that dimension and rejects conflicting configuration, including injected `PostgresAdapter` instances.

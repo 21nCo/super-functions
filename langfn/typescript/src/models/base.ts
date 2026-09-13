@@ -17,6 +17,7 @@ export abstract class ChatModel {
   protected async completeFromChat(request: CompletionRequest): Promise<CompletionResponse> {
     const chat = await this.chat({
       messages: [{ role: "user", content: request.prompt }],
+      signal: request.signal,
       metadata: request.metadata
     });
     return {
@@ -70,6 +71,7 @@ export class CustomChatModel extends ChatModel {
     }
     const completion = await this.completeHandler({
       prompt: request.messages[request.messages.length - 1]?.content ?? "",
+      signal: request.signal,
       metadata: request.metadata
     });
     return {

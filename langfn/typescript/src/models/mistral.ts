@@ -51,6 +51,7 @@ export class MistralChatModel extends ChatModel {
   async complete(request: CompletionRequest): Promise<CompletionResponse> {
     const chat = await this.chat({
       messages: [{ role: "user", content: request.prompt }],
+      signal: request.signal,
       metadata: request.metadata
     });
     return { content: chat.message.content, usage: chat.usage, raw: chat.raw };
@@ -59,6 +60,7 @@ export class MistralChatModel extends ChatModel {
   async chat(request: ChatRequest): Promise<ChatResponse> {
     const response = await this.client.request("/chat/completions", {
       method: "POST",
+      signal: request.signal,
       body: JSON.stringify({
         model: this.model,
         messages: request.messages,

@@ -234,7 +234,7 @@ export class GoogleChatModel extends ChatModel {
         {
           functionDeclarations: request.tools.map((tool) => ({
             name: tool.name,
-            description: tool.description,
+            description: tool.description ?? tool.name,
             parametersJsonSchema: tool.input_schema ?? {
               type: "object",
               properties: {},

@@ -88,9 +88,9 @@ export function toHttpErrorPayload(error: unknown): {
     return { status: 400, code: "VALIDATION_ERROR", message: error.message, details: error.metadata };
   }
   if (error instanceof LangFnError) {
-    return { status: statusForLangFnCode(error.code), code: error.code, message: error.message, details: error.metadata };
+    return { status: statusForLangFnCode(error.code), code: error.code, message: "Request failed" };
   }
-  return { status: 500, code: "INTERNAL_ERROR", message: error instanceof Error ? error.message : String(error) };
+  return { status: 500, code: "INTERNAL_ERROR", message: "Internal server error" };
 }
 
 export async function parseJsonBody<T>(
@@ -234,6 +234,8 @@ function statusForLangFnCode(code: string): number {
   switch (code) {
     case "VALIDATION_ERROR":
       return 400;
+    case "TRACE_NOT_FOUND":
+      return 404;
     case "PROVIDER_AUTH":
       return 401;
     case "RATE_LIMITED":

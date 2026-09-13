@@ -22,6 +22,12 @@ suite('Postgres lifecycle integration', () => {
   });
   beforeEach(async () => { await client`TRUNCATE memory_relationships, memories`; });
   afterAll(async () => { await client?.end(); });
+  it('preserves explicit relationship IDs and zero confidence', async () => {
+    const rows = await adapter.insertMemories([0, 1].map(i => ({ tenantId: 'a', containerTags: [], content: String(i) })));
+    const id = '550e8400-e29b-41d4-a716-446655440000';
+    const [relation] = await adapter.insertRelationships([{ id, fromId: rows[0].id, toId: rows[1].id, confidence: 0 }]);
+    expect(relation).toMatchObject({ id, confidence: 0 });
+  });
   it('retrieves only the explicit tenant with all scope tags', async () => {
     await adapter.insertMemories([
       { tenantId: 'a', containerTags: ['shared'], content: 'public', embedding: vector(0) },

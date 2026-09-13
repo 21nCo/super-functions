@@ -36,7 +36,6 @@ export interface LangFnHttpOptions<TSession extends AuthSession = AuthSession> {
   };
 }
 
-const VERSION = "0.1.0";
 const HEALTH_METADATA = { status: "ok", name: "langfn", version: "0.1.0" } as const;
 
 export function createLangFnRoutes<TSession extends AuthSession = AuthSession>(
@@ -48,8 +47,9 @@ export function createLangFnRoutes<TSession extends AuthSession = AuthSession>(
     createLangFnRateLimitMiddleware({
       provider: options.rateLimit?.provider,
       routeId,
+      contextKey: options.auth?.contextKey,
       getTenantContext: (request, context) => {
-        const tenantContext = extractTenantContext(request, context.auth as AuthSession | undefined);
+        const tenantContext = extractTenantContext(request, context[options.auth?.contextKey ?? "auth"] as AuthSession | undefined);
         context.tenantContext = tenantContext;
         return tenantContext;
       }
@@ -202,7 +202,8 @@ export function createLangFnRoutes<TSession extends AuthSession = AuthSession>(
       handler: async (_request: Request, context: LangFnRouteContext & RouteContext) => {
         try {
           const parsed = parseTracesQuery(Object.fromEntries(context.query.entries()));
-          const traces = await lang.getTraces(parsed);
+          if (!context.tenantContext?.userId) return Response.json(createErrorEnvelope("AUTH_REQUIRED", "Authenticated identity required"), { status: 401 });
+          const traces = await lang.getTraces({ ...parsed, tenantId: context.tenantContext.tenantId, userId: context.tenantContext.userId });
           return Response.json(createSuccessEnvelope({ traces }), {
             status: 200,
             headers: { "content-type": "application/json" }
@@ -224,8 +225,10 @@ export function createLangFnRoutes<TSession extends AuthSession = AuthSession>(
         }
 
         try {
+          if (!context.tenantContext?.userId) return Response.json(createErrorEnvelope("AUTH_REQUIRED", "Authenticated identity required"), { status: 401 });
           await lang.feedback({
             ...body.data,
+            scope: { tenantId: context.tenantContext.tenantId, userId: context.tenantContext.userId },
             metadata: mergeMetadata(body.data.metadata, context.tenantContext)
           });
           return Response.json(createSuccessEnvelope({ accepted: true }, body.data.traceId ?? null), {
@@ -254,8 +257,8 @@ export function extractTenantContext(
   session?: AuthSession
 ): CanonicalTenantContext {
   return {
-    tenantId: request.headers.get("x-tenant-id") ?? session?.subject.tenantId,
-    userId: request.headers.get("x-user-id") ?? session?.subject.actorId,
+    tenantId: session?.subject.tenantId,
+    userId: session?.subject.actorId,
     runId: request.headers.get("x-run-id") ?? undefined,
     conversationId: request.headers.get("x-conversation-id") ?? undefined
   };

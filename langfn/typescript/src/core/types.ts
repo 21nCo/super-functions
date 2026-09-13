@@ -94,7 +94,13 @@ export interface BatchResult<TParsed = unknown> {
   error?: BatchError;
 }
 
+export interface TraceScope {
+  tenantId?: string;
+  userId?: string;
+}
+
 export interface FeedbackRequest {
+  scope?: TraceScope;
   traceId?: string;
   trace_id?: string;
   clientKey?: string;
@@ -104,7 +110,7 @@ export interface FeedbackRequest {
   metadata?: Record<string, unknown>;
 }
 
-export interface TraceQuery {
+export interface TraceQuery extends TraceScope {
   limit?: number;
   provider?: string;
   model?: string;

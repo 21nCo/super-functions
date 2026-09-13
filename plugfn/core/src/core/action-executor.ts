@@ -220,7 +220,10 @@ export class ActionExecutor {
         return this.retryMiddleware.execute(
           executeAction,
           `${provider}.${action}`,
-          contract?.retry === 'safe' || (!contract && actionObj.idempotent === true)
+          contract?.retry === 'safe' || (contract?.retry === 'provider-key' &&
+            typeof validatedParams[contract.idempotencyKeyParameter!] === 'string' &&
+            validatedParams[contract.idempotencyKeyParameter!].trim().length > 0) ||
+            (!contract && actionObj.idempotent === true)
             ? options.retry ?? {}
             : { maxAttempts: 1 }
         );

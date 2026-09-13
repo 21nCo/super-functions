@@ -68,7 +68,7 @@ describe("langfn http routes", () => {
     expect(body.error.details.issues[0].message).toContain("prompt");
   });
 
-  it("propagates tenant headers into metadata and rate limit keys", async () => {
+  it("uses authenticated identity despite spoofed tenant headers into metadata and rate limit keys", async () => {
     const observed: Record<string, unknown> = {};
     const router = createLangFnRouter(
       new LangFn({
@@ -123,17 +123,17 @@ describe("langfn http routes", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(observed.rateLimitKey).toBe("tenant_header:user_header:/complete");
+    expect(observed.rateLimitKey).toBe("tenant_from_session:user_from_session:/complete");
     expect(observed.rateLimitTenantContext).toEqual({
-      tenantId: "tenant_header",
-      userId: "user_header",
+      tenantId: "tenant_from_session",
+      userId: "user_from_session",
       runId: "run_123",
       conversationId: "conv_456"
     });
     expect(observed.metadata).toEqual({
       source: "test",
-      tenantId: "tenant_header",
-      userId: "user_header",
+      tenantId: "tenant_from_session",
+      userId: "user_from_session",
       runId: "run_123",
       conversationId: "conv_456"
     });

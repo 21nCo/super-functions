@@ -63,3 +63,14 @@ it("expires cached access at the binding boundary", async () => {
     expect(await access.check(input)).toBe(false);
   } finally { vi.useRealTimers(); }
 });
+
+it("lists only unexpired permissions for the requested scope", async () => {
+  const access = new AccessService(new MemoryAdapter());
+  const role = await access.createRole({ name: "reader", permissions: ["secret:read"] });
+  await access.assignRole({ principalId: "u", roleId: role.id, tenantId: "a", namespace: "n" });
+  await access.assignRole({ principalId: "expired", roleId: role.id, expiresAt: new Date(0).toISOString() });
+  expect(await access.getUserPermissions("u")).toEqual([]);
+  expect(await access.getUserPermissions("u", { tenantId: "b", namespace: "n" })).toEqual([]);
+  expect(await access.getUserPermissions("u", { tenantId: "a", namespace: "n" })).toEqual(["secret:read"]);
+  expect(await access.getUserPermissions("expired")).toEqual([]);
+});

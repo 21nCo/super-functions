@@ -100,6 +100,7 @@ export class OpenAIChatModel extends ChatModel {
 
     const response = await this.client.request("/chat/completions", {
       method: "POST",
+      signal: request.signal,
       body: JSON.stringify(payload)
     });
     await raiseForStatus(this.provider, response);
@@ -129,6 +130,7 @@ export class OpenAIChatModel extends ChatModel {
   async *stream(request: CompletionRequest): AsyncIterable<StreamEvent> {
     const response = await this.client.request("/chat/completions", {
       method: "POST",
+      signal: request.signal,
       body: JSON.stringify({
         model: this.model,
         messages: [{ role: "user", content: request.prompt }],
@@ -215,7 +217,7 @@ async function raiseForStatus(provider: string, response: Response): Promise<voi
 
   const retryAfterHeader = response.headers.get("retry-after");
   const text = await response.text();
-  let body: unknown = text;
+  let body: unknown;
   try {
     body = text ? JSON.parse(text) : {};
   } catch {

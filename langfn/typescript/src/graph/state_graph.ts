@@ -12,6 +12,8 @@ export interface InvokeGraphOptions<TState> {
 }
 
 export class CompiledGraph<TState extends Record<string, unknown>> {
+  private readonly checkpointStore = new InMemoryCheckpointStore<TState>();
+
   constructor(
     private readonly config: {
       initialState: TState;
@@ -25,7 +27,7 @@ export class CompiledGraph<TState extends Record<string, unknown>> {
 
   async invoke(state?: Partial<TState>, options: InvokeGraphOptions<TState> = {}): Promise<TState> {
     return await this.run({
-      checkpointStore: options.checkpointStore,
+      checkpointStore: options.checkpointStore ?? this.checkpointStore,
       currentNode: this.config.entrypoint,
       currentState: { ...this.config.initialState, ...(state ?? {}) } as TState,
       executedSteps: 0,
@@ -34,7 +36,7 @@ export class CompiledGraph<TState extends Record<string, unknown>> {
   }
 
   async resume(checkpointId: string, options: InvokeGraphOptions<TState> = {}): Promise<TState> {
-    const store = options.checkpointStore ?? new InMemoryCheckpointStore<TState>();
+    const store = options.checkpointStore ?? this.checkpointStore;
     const checkpoint = await store.load(checkpointId);
     if (!checkpoint) {
       throw new ValidationError(`Unknown checkpoint: ${checkpointId}`, { metadata: { checkpointId } });
