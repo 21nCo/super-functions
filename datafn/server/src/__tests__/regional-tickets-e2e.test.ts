@@ -117,9 +117,17 @@ describe("direct regional two-region network conformance", () => {
     await expect(invoke(f.eu.server)).resolves.toBeDefined();
     await expect(invoke(f.us.server)).rejects.toMatchObject({ code: "DATAFN_REGION_MISMATCH" });
     expect(f.us.authorize).not.toHaveBeenCalled();
-    // Neither the synthetic executor host nor a client-supplied flag conveys trust.
+    // Neither the synthetic executor host nor a client-supplied flag can elevate
+    // a valid, identity-bound ticket that lacks the requested query scope.
+    const descriptor = await f.provider.bootstrap();
+    const claims = await f.signer.verify(descriptor.ticket);
+    const mutationOnlyTicket = await f.signer.sign({ ...claims, scopes: ["mutation"] });
     const response = await f.eu.server.router.handle(new Request("http://datafn.internal/datafn/query", {
-      method: "POST", headers: { authorization: "Bearer app-session", "x-datafn-trusted-internal": "true" },
+      method: "POST", headers: {
+        authorization: "Bearer app-session",
+        "x-datafn-route-ticket": mutationOnlyTicket,
+        "x-datafn-trusted-internal": "true",
+      },
       body: JSON.stringify({ resource: "note", version: 1, trustedInternal: true }),
     }));
     expect(response.status).toBe(401);
