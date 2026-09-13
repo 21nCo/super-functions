@@ -5,6 +5,7 @@ import { checksumContent } from '../lockfile';
 import { assertContainedPath, commitTransaction, type TransactionChange } from '../transaction';
 import { decodePreset, encodePreset, normalizePreset } from './codec';
 import { assertApprovedInit, compilePreset, type PresetCompilePlan } from './compiler';
+import { PRESET_REACT_FIXTURE_SOURCE } from './fixture-source';
 import { fixtureCss } from './fixtures';
 import { presetFixtureTree, PRESET_FIXTURE_COMPONENTS } from './fixture-tree';
 import { APPROVED_SUPPORT_MATRIX, type ApprovedTemplate, type PartialPresetDomain, type UIFnPresetV1 } from './schema';
@@ -92,7 +93,7 @@ function themeCss(plan: PresetCompilePlan): string {
 function appSource(plan: PresetCompilePlan): string {
   const imports = Object.entries(PRESET_FIXTURE_COMPONENTS).map(([name, module]) =>
     `import { ${name} } from '${plan.preset.installMode === 'source' ? '../components/uifn/react/' + module : '@uifn/components-react/' + module}';`).join('\n');
-  return `import * as React from 'react';\nimport { renderPresetFixture, type ReactFixtureNode } from '@uifn/react/fixture';\n${imports}\nimport '@uifn/components/styles.css';\nconst components: Record<string, React.ElementType> = { ${Object.keys(PRESET_FIXTURE_COMPONENTS).join(', ')} };\nconst tree: ReactFixtureNode = ${JSON.stringify(presetFixtureTree(plan))};\nexport function App() { return renderPresetFixture(tree, components, typeof document === 'undefined' ? undefined : document.getElementById('root')); }\n`;
+  return `import * as React from 'react';\nimport { renderPresetFixture, type ReactFixtureNode } from './uifn-fixture';\n${imports}\nimport '@uifn/components/styles.css';\nconst components: Record<string, React.ElementType> = { ${Object.keys(PRESET_FIXTURE_COMPONENTS).join(', ')} };\nconst tree: ReactFixtureNode = ${JSON.stringify(presetFixtureTree(plan))};\nexport function App() { return renderPresetFixture(tree, components, typeof document === 'undefined' ? undefined : document.getElementById('root')); }\n`;
 }
 
 function mainSource(): string {
@@ -154,6 +155,7 @@ function desiredFiles(plan: PresetCompilePlan, domains: Array<'full' | PartialPr
     files['tsconfig.json'] = tsconfig();
     files['package.json'] = packageJson(plan);
     files[PRESET_APP_PATH] = appSource(plan);
+    files['src/uifn-fixture.ts'] = PRESET_REACT_FIXTURE_SOURCE;
     files[PRESET_MAIN_PATH] = mainSource();
     files['README.md'] = '# uifn app\n\nThe active preset code and settings are stored in `.uifn/preset.json`. This state is updated after full and partial applies.\n\nTo inspect or apply a preset, use `uifn preset decode <code>` or `uifn apply --preset <code>`.\n';
   }
@@ -287,7 +289,8 @@ function mergePartialPreset(previous: UIFnPresetV1, incoming: UIFnPresetV1, only
   return preset;
 }
 
-function prepareProjectRoot(rootDir: string, mode: 'init' | 'apply', dryRun: boolean, createdDirectories: string[]): PresetMutationResult | undefined {
+function prepareProjectRoot(rootDir: string, mode: 'init' | 'apply', dryRun: boolean, createdDirectories: string[], createRoot = true): PresetMutationResult | undefined {
+  if (!createRoot && !existsSync(rootDir)) return flag('UIFN_PRESET_PROJECT_MISSING', 'Consumer project root does not exist and createRoot is false.');
   if (mode === 'init') {
     if (!existsSync(rootDir)) {
       if (!dryRun) {
@@ -303,7 +306,7 @@ function prepareProjectRoot(rootDir: string, mode: 'init' | 'apply', dryRun: boo
 }
 
 function mutationFailure(cause: unknown, dryRun: boolean): PresetMutationResult {
-  if (cause instanceof UIFnPresetError) return flag(cause.code, cause.message, cause.details);
+  if (cause instanceof UIFnPresetError) return { ...flag(cause.code, cause.message, cause.details), dryRun };
   const code = cause instanceof Error && 'code' in cause && typeof cause.code === 'string' && cause.code.startsWith('UIFN_') ? cause.code : 'UIFN_REGISTRY_CLI_ERROR';
   return { ...flag(code, cause instanceof Error ? cause.message : String(cause)), dryRun };
 }
@@ -354,8 +357,8 @@ function mutate(options: PresetMutationOptions, mode: 'init' | 'apply'): PresetM
     const context = resolveMutationContext(options, mode, only);
     if (!context.ok) return context.result;
     const { rootDir, plan, previous } = context;
-    const rootError = prepareProjectRoot(rootDir, mode, Boolean(options.dryRun), createdDirectories);
-    if (rootError) return rootError;
+    const rootError = prepareProjectRoot(rootDir, mode, Boolean(options.dryRun), createdDirectories, options.createRoot);
+    if (rootError) return { ...rootError, dryRun: Boolean(options.dryRun) };
 
     const domains: Array<'full' | PartialPresetDomain> = mode === 'init' || !only ? ['full'] : only;
     const files = desiredFiles(plan, domains);
@@ -375,8 +378,9 @@ function mutate(options: PresetMutationOptions, mode: 'init' | 'apply'): PresetM
 
     const requiredActions = requiredLockfileActions(rootDir, files['package.json']);
     const summary = [...planned.summary, ...artifactFiles.filter((file) => !planned.summary.some((entry) => entry.path === file.path))];
+    const resultPlan = { code: plan.code, url: plan.url, files: summary, artifacts: plan.preset.installMode === 'source' ? plan.project.artifacts : [], commands: plan.commands };
     if (options.dryRun) {
-      return { ok: true, dryRun: true, requiredActions, written: [], unchanged: summary.filter((file) => file.operation === 'unchanged').map((file) => file.path), plan: { code: plan.code, url: plan.url, files: summary, artifacts: plan.preset.installMode === 'source' ? plan.project.artifacts : [], commands: plan.commands } };
+      return { ok: true, dryRun: true, requiredActions, written: [], unchanged: summary.filter((file) => file.operation === 'unchanged').map((file) => file.path), plan: resultPlan };
     }
 
     const committed = commitTransaction({ rootDir, changes: [...planned.changes, ...artifactChanges] }, { faultAfterWrites: options.faultAfterWrites });
@@ -388,7 +392,7 @@ function mutate(options: PresetMutationOptions, mode: 'init' | 'apply'): PresetM
       requiredActions,
       written: committed.committed,
       unchanged: summary.filter((file) => file.operation === 'unchanged').map((file) => file.path),
-      plan: { code: plan.code, url: plan.url, files: summary, artifacts: plan.preset.installMode === 'source' ? plan.project.artifacts : [], commands: plan.commands },
+      plan: resultPlan,
     };
   } catch (cause) {
     return mutationFailure(cause, Boolean(options.dryRun));
@@ -403,9 +407,9 @@ export function initProject(options: PresetMutationOptions): PresetMutationResul
 
 export function applyPreset(options: PresetMutationOptions): PresetMutationResult {
   if (options.only?.some((domain) => !APPROVED_SUPPORT_MATRIX.partialDomains.includes(domain))) {
-    return flag('UIFN_PRESET_UNKNOWN_OPTION', `Unsupported partial apply domain: ${options.only.join(', ')}.`, {
+    return { ...flag('UIFN_PRESET_UNKNOWN_OPTION', `Unsupported partial apply domain: ${options.only.join(', ')}.`, {
       allowed: APPROVED_SUPPORT_MATRIX.partialDomains,
-    });
+    }), dryRun: Boolean(options.dryRun) };
   }
   return mutate(options, 'apply');
 }

@@ -131,6 +131,8 @@ it.each(['svelte', 'solid'] as const)('omits unsupported %s project mutations', 
   const plan = compilePreset(normalizePreset({ framework }));
   expect(plan.commands.init).toBeUndefined();
   expect(plan.commands.apply).toBeUndefined();
+  expect(plan.commands.applyTheme).toBeUndefined();
+  expect(plan.commands.applyFont).toBeUndefined();
   expect(plan.commands.decode).toContain('decode');
 });
 it.each(['nova', 'meridian', 'atlas'] as const)('keeps radius none square for %s', style => {

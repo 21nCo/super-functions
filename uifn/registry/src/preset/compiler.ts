@@ -47,8 +47,8 @@ export interface PresetCompilePlan {
   commands: {
     init?: string;
     apply?: string;
-    applyTheme: string;
-    applyFont: string;
+    applyTheme?: string;
+    applyFont?: string;
     decode: string;
   };
   css: { light: string; dark: string; fonts: string };
@@ -367,9 +367,9 @@ export function compilePreset(preset: UIFnPresetV1, template: ApprovedTemplate =
       ...(preset.framework === 'react' ? {
         init: `uifn init --preset ${code} --template ${template}`,
         apply: `uifn apply --preset ${code}`,
+        applyTheme: `uifn apply --preset ${code} --only theme`,
+        applyFont: `uifn apply --preset ${code} --only font`,
       } : {}),
-      applyTheme: `uifn apply --preset ${code} --only theme`,
-      applyFont: `uifn apply --preset ${code} --only font`,
       decode: `uifn preset decode ${code}`,
     },
     css: {

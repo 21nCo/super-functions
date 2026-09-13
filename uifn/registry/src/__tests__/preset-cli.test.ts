@@ -308,3 +308,38 @@ it.each(['v1', 'missing', 'stale', 'invalid'] as const)('requires an actionable 
     expect(applyPreset({ rootDir, preset, dryRun: true }).requiredActions).toEqual([]);
   });
 });
+
+it('ships the canonical renderer locally in both install modes', async () => {
+  const { PRESET_REACT_FIXTURE_SOURCE } = await import('../preset/fixture-source');
+  expect(PRESET_REACT_FIXTURE_SOURCE).toBe(readFileSync(new URL('../../../react/src/fixture.ts', import.meta.url), 'utf8'));
+  await withProject(async parent => {
+    for (const installMode of ['package', 'source'] as const) {
+      const rootDir = path.join(parent, installMode);
+      expect(initProject({ rootDir, preset: encodePreset({ installMode }) }).ok).toBe(true);
+      expect(readFileSync(path.join(rootDir, 'src/uifn-fixture.ts'), 'utf8')).toBe(PRESET_REACT_FIXTURE_SOURCE);
+      const app = readFileSync(path.join(rootDir, 'src/App.tsx'), 'utf8');
+      expect(app).toContain("from './uifn-fixture'");
+      expect(app).not.toContain('@uifn/react/fixture');
+    }
+  });
+});
+
+it('honors createRoot false and preserves dry-run mode on errors', async () => {
+  await withProject(async parent => {
+    const rootDir = path.join(parent, 'absent');
+    const preset = encodePreset({});
+    for (const dryRun of [true, false]) {
+      expect(initProject({ rootDir, preset, dryRun, createRoot: false })).toMatchObject({ ok: false, dryRun, error: { code: 'UIFN_PRESET_PROJECT_MISSING' } });
+      expect(existsSync(rootDir)).toBe(false);
+      expect(applyPreset({ rootDir, preset, dryRun, only: ['invalid' as never] })).toMatchObject({ ok: false, dryRun });
+    }
+    writeFileSync(path.join(parent, 'unmanaged.txt'), 'keep');
+    expect(initProject({ rootDir: parent, preset, dryRun: true })).toMatchObject({ ok: false, dryRun: true });
+    expect(initProject({ rootDir, preset: 'invalid', dryRun: true })).toMatchObject({ ok: false, dryRun: true });
+  });
+});
+
+it.each(['preset', 'origin', 'code'])('rejects a missing --%s value', async flag => {
+  const result = await runCli(['preset', 'url', `--${flag}`], { stdout: () => {}, stderr: () => {} });
+  expect(result).toMatchObject({ exitCode: 1, result: { ok: false, error: { code: 'UIFN_PRESET_USAGE' } } });
+});

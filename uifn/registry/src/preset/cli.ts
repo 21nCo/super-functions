@@ -35,6 +35,9 @@ export function runPresetCommand(options: {
 }): { ok: boolean; [key: string]: unknown } {
   const { action, positionals, flags, rootDir } = options;
   try {
+    for (const name of ['preset', 'origin', 'code']) {
+      if (flags[name] !== undefined && (typeof flags[name] !== 'string' || !String(flags[name]).trim())) throw new UIFnPresetError('UIFN_PRESET_USAGE', `--${name} requires a value.`);
+    }
     const handlers = new Map<string, () => { ok: boolean; [key: string]: unknown }>([
       ['encode', () => {
         const preset = presetFromFlags(flags, positionals[0]);

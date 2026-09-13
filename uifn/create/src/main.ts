@@ -64,6 +64,13 @@ function render(preset: UIFnPresetV1, locked: Set<PresetAxis>, mode: 'light' | '
   const tokens = themeTokenDocument(preset);
   const app = document.querySelector('#app');
   if (!app) return;
+  ensureShell(app, preset, locked, mode, viewport);
+  syncControls(app, preset, locked, mode, viewport);
+  syncOutputs(app, plan, tokens);
+  updatePreview(app, plan, mode, viewport);
+}
+
+function ensureShell(app: Element, preset: UIFnPresetV1, locked: Set<PresetAxis>, mode: 'light' | 'dark', viewport: keyof typeof VIEWPORTS) {
   if (!app.querySelector('.preview-root')) {
     preview?.unmount();
     preview = undefined;
@@ -108,10 +115,10 @@ function render(preset: UIFnPresetV1, locked: Set<PresetAxis>, mode: 'light' | '
             <h2>Existing project</h2>
             <pre data-command="apply"><code data-output="apply"></code></pre>
             <p data-unavailable="apply">Full project application is currently available for React presets.</p>
-            <p>Apply theme only</p>
-            <pre><code data-output="applyTheme"></code></pre>
-            <p>Apply fonts only</p>
-            <pre><code data-output="applyFont"></code></pre>
+            <div data-command="applyTheme"><p>Apply theme only</p>
+            <pre><code data-output="applyTheme"></code></pre></div>
+            <div data-command="applyFont"><p>Apply fonts only</p>
+            <pre><code data-output="applyFont"></code></pre></div>
           </article>
           <article>
             <h2>Preset code</h2>
@@ -127,6 +134,9 @@ function render(preset: UIFnPresetV1, locked: Set<PresetAxis>, mode: 'light' | '
     </main>
   `;
   }
+}
+
+function syncControls(app: Element, preset: UIFnPresetV1, locked: Set<PresetAxis>, mode: 'light' | 'dark', viewport: keyof typeof VIEWPORTS) {
   for (const axis of PRESET_FIELD_ORDER) {
     const select = app.querySelector<HTMLSelectElement>(`select[data-axis="${axis}"]`);
     if (select) select.value = preset[axis];
@@ -136,9 +146,13 @@ function render(preset: UIFnPresetV1, locked: Set<PresetAxis>, mode: 'light' | '
   for (const button of app.querySelectorAll<HTMLButtonElement>('button[data-mode], button[data-viewport]')) {
     button.setAttribute('aria-pressed', String(button.dataset.mode === mode || button.dataset.viewport === viewport));
   }
-  for (const command of ['init', 'apply'] as const) {
+}
+
+function syncOutputs(app: Element, plan: ReturnType<typeof compilePreset>, tokens: ReturnType<typeof themeTokenDocument>) {
+  for (const command of ['init', 'apply', 'applyTheme', 'applyFont'] as const) {
     app.querySelector<HTMLElement>(`[data-command="${command}"]`)!.hidden = !plan.commands[command];
-    app.querySelector<HTMLElement>(`[data-unavailable="${command}"]`)!.hidden = Boolean(plan.commands[command]);
+    const unavailable = app.querySelector<HTMLElement>(`[data-unavailable="${command}"]`);
+    if (unavailable) unavailable.hidden = Boolean(plan.commands[command]);
   }
   for (const [name, value] of Object.entries({ ...plan.commands, code: plan.code, url: plan.url, tokens: JSON.stringify(tokens, null, 2) })) {
     const output = app.querySelector(`[data-output="${name}"]`);
@@ -146,6 +160,9 @@ function render(preset: UIFnPresetV1, locked: Set<PresetAxis>, mode: 'light' | '
   }
   const link = app.querySelector<HTMLAnchorElement>('[data-output="url"]');
   if (link) link.href = plan.url;
+}
+
+function updatePreview(app: Element, plan: ReturnType<typeof compilePreset>, mode: 'light' | 'dark', viewport: keyof typeof VIEWPORTS) {
   const frame = app.querySelector<HTMLElement>('.preview-frame');
   if (frame) {
     frame.dataset.mode = mode;

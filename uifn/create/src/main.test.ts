@@ -28,6 +28,8 @@ it('ignores injected mode and viewport attributes and renders valid controls and
   framework.value = 'svelte';
   framework.dispatchEvent(new Event('change', { bubbles: true }));
   expect(document.querySelector<HTMLElement>('[data-command="init"]')!.hidden).toBe(true);
+  expect(document.querySelector<HTMLElement>('[data-command="applyTheme"]')!.hidden).toBe(true);
+  expect(document.querySelector<HTMLElement>('[data-command="applyFont"]')!.hidden).toBe(true);
   expect(document.querySelector<HTMLElement>('[data-unavailable="init"]')!.hidden).toBe(false);
   framework.value = 'react';
   framework.dispatchEvent(new Event('change', { bubbles: true }));
