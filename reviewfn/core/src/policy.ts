@@ -15,6 +15,10 @@ function rejectUnknown(value: Record<string, unknown>, allowed: readonly string[
   if (unknown.length) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `${name} contains unknown fields: ${unknown.join(", ")}.`);
 }
 
+function nonemptyString(value: unknown, name: string): void {
+  if (typeof value !== "string" || !value.trim()) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `${name} must be a nonempty string.`);
+}
+
 function positiveInteger(value: unknown, name: string): number {
   if (!Number.isInteger(value) || (value as number) <= 0) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `${name} must be a positive integer.`);
   return value as number;
@@ -35,14 +39,16 @@ export function validateConfig(input: unknown): ReviewFnConfig {
   const config = structuredClone(value) as unknown as ReviewFnConfig;
   if (config.retainTranscript !== undefined && typeof config.retainTranscript !== "boolean") throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "retainTranscript must be boolean.");
   if (typeof config.profile !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(config.profile)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "profile must be 1–80 letters, digits, underscores or hyphens.");
-  if (!config.harness || typeof config.harness.adapter !== "string" || typeof config.harness.version !== "string") throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "harness.adapter and harness.version are required.");
   rejectUnknown(object(config.harness, "harness"), ["adapter", "version", "executable"], "harness");
-  if (!config.inference || !config.inference.provider || !config.inference.model || !config.inference.auth) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "inference provider, model, and auth are required.");
+  for (const key of ["adapter", "version"] as const) nonemptyString(config.harness[key], `harness.${key}`);
+  if (config.harness.executable !== undefined) nonemptyString(config.harness.executable, "harness.executable");
   rejectUnknown(object(config.inference, "inference"), ["provider", "model", "auth", "credentialEnv"], "inference");
+  for (const key of ["provider", "model", "auth"] as const) nonemptyString(config.inference[key], `inference.${key}`);
+  if (config.inference.credentialEnv !== undefined) nonemptyString(config.inference.credentialEnv, "inference.credentialEnv");
   if (!Array.isArray(config.context) || config.context.length === 0) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "At least one context adapter is required.");
   for (const [index, item] of config.context.entries()) {
     rejectUnknown(object(item, `context[${index}]`), ["adapter", "account", "expectedWorkspace", "issue", "paths"], `context[${index}]`);
-    if (!item.adapter || typeof item.adapter !== "string") throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `context[${index}].adapter is required.`);
+    nonemptyString(item.adapter, `context[${index}].adapter`);
     if (item.paths !== undefined) strings(item.paths, `context[${index}].paths`);
     for (const key of ["account", "expectedWorkspace", "issue"] as const) if (item[key] !== undefined && (typeof item[key] !== "string" || !item[key]!.trim())) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `context[${index}].${key} must be a nonempty string.`);
   }
@@ -67,7 +73,7 @@ export function validateConfig(input: unknown): ReviewFnConfig {
   if (!Array.isArray(config.fallback)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "fallback must be an array.");
   for (const [index, fallback] of config.fallback.entries()) {
     rejectUnknown(object(fallback, `fallback[${index}]`), ["harness", "provider", "model", "auth"], `fallback[${index}]`);
-    for (const key of ["harness", "provider", "model", "auth"] as const) if (!fallback[key]) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `fallback[${index}].${key} is required.`);
+    for (const key of ["harness", "provider", "model", "auth"] as const) nonemptyString(fallback[key], `fallback[${index}].${key}`);
   }
   return config;
 }

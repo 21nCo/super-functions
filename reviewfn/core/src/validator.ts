@@ -76,7 +76,7 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
     for (const id of assessment.evidenceIds) if (!evidence.has(id)) errors.push(`Assessment ${assessment.requirementId} references unknown evidence ${id}.`);
   }
   for (const finding of report.findings) {
-    if (["resolved", "superseded"].includes(finding.lifecycle)) errors.push(`Finding ${finding.fingerprint} claims a historical lifecycle without supplied prior finding provenance.`);
+    if (finding.lifecycle !== "new") errors.push(`Finding ${finding.fingerprint} claims a historical lifecycle without supplied prior finding provenance.`);
     if (!finding.evidenceIds.length) errors.push(`Finding ${finding.fingerprint} has no evidence.`);
     if (!finding.evidenceIds.some(id => ["code", "diff", "test"].includes(evidence.get(id)?.kind ?? ""))) errors.push(`Finding ${finding.fingerprint} has no implementation evidence.`);
     if (finding.basis === "reproduced") {

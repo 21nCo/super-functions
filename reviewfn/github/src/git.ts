@@ -2,7 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 
-import { isolatedGitEnvironment, compareCodePoints, sha256, type ChangeSnapshot, type CodeAnchor, type SourceControlAdapter } from "@superfunctions/reviewfn-core";
+import { isolatedGitEnvironment, resolveTrustedExecutable, compareCodePoints, sha256, type ChangeSnapshot, type CodeAnchor, type SourceControlAdapter } from "@superfunctions/reviewfn-core";
 
 const execFileAsync = promisify(execFile);
 export type GitRunner = (args: string[], cwd: string) => Promise<string>;
@@ -112,10 +112,11 @@ export function githubRepositoryIdentity(remote: string): string | undefined {
 }
 
 
-function streamDiffDigest(root: string, base: string, head: string): Promise<string> {
+async function streamDiffDigest(root: string, base: string, head: string): Promise<string> {
+  const executable = await resolveTrustedExecutable("git");
   return new Promise((resolve, reject) => {
     const hash = createHash("sha256");
-    const child = spawn("git", ["diff", "--no-ext-diff", "--no-textconv", "--binary", "--full-index", base, head], { cwd: root, env: isolatedGitEnvironment(), stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(executable, ["diff", "--no-ext-diff", "--no-textconv", "--binary", "--full-index", base, head], { cwd: root, env: isolatedGitEnvironment(), stdio: ["ignore", "pipe", "pipe"] });
     let timedOut = false;
     const timeout = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, 120_000);
     child.stdout.on("data", (chunk: Buffer) => hash.update(chunk));

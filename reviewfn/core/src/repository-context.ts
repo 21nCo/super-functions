@@ -15,7 +15,7 @@ async function collectMarkdown(root: string, maxDepth: number, maxEntries: numbe
     if (++state.visited > maxEntries) { state.reasons.push("Context directory traversal budget exhausted."); break; }
     if (entry.name === ".git" || entry.name === "node_modules") continue;
     const next = path.posix.join(relative.split(path.sep).join(path.posix.sep), entry.name);
-    if (entry.isSymbolicLink()) continue;
+    if (entry.isSymbolicLink()) { state.reasons.push(`Context symlink refused at ${next}; matching source coverage is incomplete.`); continue; }
     if (entry.isDirectory()) { if (next.split("/").length >= maxDepth) { state.reasons.push(`Context directory depth budget exhausted at ${next}.`); continue; } result.push(...await collectMarkdown(root, maxDepth, maxEntries, next, state)); }
     else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) result.push(next);
   }

@@ -97,9 +97,9 @@ it("preserves README context when a scoped glob directory is missing", async () 
   expect(result.sources.map(source => source.id)).toEqual(["repo:README.md"]);
   expect(result.incompleteReasons).toEqual([]);
 });
-it.each(["resolved", "superseded"] as const)("rejects unproven historical lifecycle %s", async lifecycle => {
+it.each(["resolved", "superseded", "still_valid", "needs_revalidation"] as const)("rejects unproven historical lifecycle %s", async lifecycle => {
   const value = report(); value.findings = [{ fingerprint: "f", severity: "high", category: "test", title: "Bug", trigger: "input", impact: "wrong", direction: "fix", evidenceIds: ["e"], basis: "inferred", requirementIds: ["r"], lifecycle }];
-  expect(deriveVerdict(value, policy)).toBe("needs_verification");
+  expect(deriveVerdict(value, policy)).toBe(lifecycle === "still_valid" ? "changes_requested" : "needs_verification");
   expect((await errors(value)).join()).toMatch(/prior finding provenance/);
 });
 it("rejects a report paired with another frozen context", async () => expect((await errors(report(), { ...context, digest: "other" })).join()).toMatch(/context digest/));
@@ -256,4 +256,21 @@ it("rejects ambiguous duplicate finding identities rather than merging locations
   const finding = { fingerprint: "same", severity: "high" as const, category: "behavior" as const, title: "Missing check", trigger: "invalid input", impact: "bad output", direction: "validate", evidenceIds: ["e"], basis: "inferred" as const, requirementIds: ["r"], lifecycle: "new" as const };
   value.findings = [finding, { ...finding, anchor: { commit: value.change.headCommit, path: "index.ts", startLine: 2 } }];
   expect((await errors(value)).join()).toMatch(/Duplicate finding fingerprint/);
+});
+
+
+it.skipIf(process.platform === "win32")("marks skipped glob symlinks incomplete even when README is available", async () => {
+  const root = await temporary(); const hidden = await temporary();
+  await writeFile(path.join(root, "README.md"), "visible requirements");
+  await mkdir(path.join(root, "docs"));
+  await writeFile(path.join(hidden, "required.md"), "hidden mandatory behavior");
+  await symlink(hidden, path.join(root, "docs", "shared"));
+  const output = await new RepositoryMarkdownContextAdapter().fetch({ root, paths: ["README.md", "docs/**/*.md"], limits: context.limits });
+  expect(output.sources.map(source => source.id)).toEqual(["repo:README.md"]);
+  expect(output.incompleteReasons.join()).toMatch(/symlink.*docs\/shared/);
+  expect(JSON.stringify(output)).not.toContain("hidden mandatory behavior");
+});
+
+it.each(["provider", "model", "auth", "credentialEnv"])("rejects malformed inference %s before invoking a harness", key => {
+  for (const value of [true, 42, {}, [], "", " "]) expect(() => validateConfig({ ...DEFAULT_CONFIG, inference: { ...DEFAULT_CONFIG.inference, [key]: value } })).toThrow(/inference/);
 });
