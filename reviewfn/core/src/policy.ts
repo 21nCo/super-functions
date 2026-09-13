@@ -44,6 +44,7 @@ export function validateConfig(input: unknown): ReviewFnConfig {
     rejectUnknown(object(item, `context[${index}]`), ["adapter", "account", "expectedWorkspace", "issue", "paths"], `context[${index}]`);
     if (!item.adapter || typeof item.adapter !== "string") throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `context[${index}].adapter is required.`);
     if (item.paths !== undefined) strings(item.paths, `context[${index}].paths`);
+    for (const key of ["account", "expectedWorkspace", "issue"] as const) if (item[key] !== undefined && (typeof item[key] !== "string" || !item[key]!.trim())) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `context[${index}].${key} must be a nonempty string.`);
   }
   if (!config.review || !Array.isArray(config.review.categories) || config.review.categories.some((entry) => !categories.has(entry))) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "review.categories contains an unsupported category.");
   rejectUnknown(object(config.review, "review"), ["categories", "evidenceRequired"], "review");

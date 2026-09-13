@@ -1,5 +1,6 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { createHash } from "node:crypto";
 
 import { isolatedGitEnvironment, compareCodePoints, sha256, type ChangeSnapshot, type CodeAnchor, type SourceControlAdapter } from "@superfunctions/reviewfn-core";
 
@@ -44,8 +45,8 @@ export class GitSourceControlAdapter implements SourceControlAdapter {
     if ((await this.runner(["status", "--porcelain", "--untracked-files=all"], root)).trim()) throw new Error("Review requires a clean immutable checkout, including untracked files.");
     if (checkoutHead !== headCommit) throw new Error(`Review workspace is at ${checkoutHead}, but requested head is ${headCommit}. Check out the exact head in an isolated workspace.`);
     const mergeBaseCommit = (await this.runner(["merge-base", baseCommit, headCommit], root)).trim();
-    const [diff, names, targetBranch] = await Promise.all([
-      this.runner(["diff", "--binary", "--full-index", mergeBaseCommit, headCommit], root),
+    const [diffDigest, names, targetBranch] = await Promise.all([
+      this.options.runner ? this.runner(["diff", "--binary", "--full-index", mergeBaseCommit, headCommit], root).then(sha256) : streamDiffDigest(root, mergeBaseCommit, headCommit),
       this.runner(["diff", "--name-only", "-z", mergeBaseCommit, headCommit], root),
       this.runner(["rev-parse", "--symbolic-full-name", "--verify", "--end-of-options", base], root),
     ]);
@@ -57,7 +58,7 @@ export class GitSourceControlAdapter implements SourceControlAdapter {
       baseCommit,
       headCommit,
       mergeBaseCommit,
-      diffDigest: sha256(diff),
+      diffDigest,
       changedPaths: names.split("\0").filter(Boolean).sort(compareCodePoints),
       capturedAt: new Date().toISOString(),
     };
@@ -108,4 +109,22 @@ export function githubRepositoryIdentity(remote: string): string | undefined {
   }
   repository = repository.replace(/\/$/, "").replace(/\.git$/, "");
   return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ? repository.toLowerCase() : undefined;
+}
+
+
+function streamDiffDigest(root: string, base: string, head: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash("sha256");
+    const child = spawn("git", ["diff", "--no-ext-diff", "--no-textconv", "--binary", "--full-index", base, head], { cwd: root, env: isolatedGitEnvironment(), stdio: ["ignore", "pipe", "pipe"] });
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, 120_000);
+    child.stdout.on("data", (chunk: Buffer) => hash.update(chunk));
+    child.stderr.resume();
+    child.once("error", error => { clearTimeout(timeout); reject(error); });
+    child.once("close", code => {
+      clearTimeout(timeout);
+      if (code === 0 && !timedOut) resolve(hash.digest("hex"));
+      else reject(new Error(timedOut ? "Git diff hashing timed out." : `Git diff hashing failed (${String(code)}).`));
+    });
+  });
 }

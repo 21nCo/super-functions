@@ -215,7 +215,7 @@ export class ComposioLinearContextAdapter implements ContextAdapter {
 
   private fetchIssueConnection(connection: "comments" | "documents", issueId: string, after: string | undefined, account: string, signal?: AbortSignal): Promise<unknown> {
     const fields = connection === "comments" ? "id body createdAt updatedAt parent { id } user { id name }" : "id title content url updatedAt";
-    const query = `query($issueId: String!, $after: String) { issue(id: $issueId) { id ${connection}(first: 50, after: $after) { nodes { ${fields} } pageInfo { hasNextPage endCursor } } } }`;
+    const query = `query($issueId: String!, $after: String) { issue(id: $issueId) { id identifier ${connection}(first: 50, after: $after) { nodes { ${fields} } pageInfo { hasNextPage endCursor } } } }`;
     return this.execute("LINEAR_RUN_QUERY_OR_MUTATION", { query_or_mutation: query, variables: { issueId, after } }, account, signal);
   }
 }
@@ -238,7 +238,7 @@ function findDocument(value: unknown, expected: string, requireContent = true): 
 }
 
 function findConnection(value: unknown, name: "comments" | "documents", issueId: string): unknown {
-  return records(value).find(record => record.id === issueId && record[name] && typeof record[name] === "object")?.[name];
+  return records(value).find(record => (record.id === issueId || typeof record.identifier === "string" && record.identifier.toLowerCase() === issueId.toLowerCase()) && record[name] && typeof record[name] === "object")?.[name];
 }
 
 function stringField(record: Record<string, unknown>, key: string): string | undefined { return typeof record[key] === "string" ? record[key] as string : undefined; }

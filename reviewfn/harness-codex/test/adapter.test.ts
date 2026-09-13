@@ -113,7 +113,7 @@ it("keeps transcript content out of retained normalized telemetry", async () => 
       { type: "item.completed", item: { type: "agent_message", text: content } },
       { type: "item.started", item: { type: "reasoning", text: content } },
       { type: "item.completed", item: { type: "command_execution", aggregated_output: content } },
-      { type: "turn.completed", usage: { input_tokens: 3, cached_input_tokens: 2, output_tokens: 1, text: content } },
+      { type: "turn.completed", usage: { input_tokens: 3, cached_input_tokens: 2, cache_write_input_tokens: 4, output_tokens: 1, reasoning_output_tokens: 5, text: content } },
     ];
     return { code: 0, signal: null, stdout: events.map(event => JSON.stringify(event)).join("\n"), stderr: "", timedOut: false, canceled: false };
   } });
@@ -121,5 +121,5 @@ it("keeps transcript content out of retained normalized telemetry", async () => 
   expect(output.terminal).toBe("completed");
   expect(output.transcript).toContain(content);
   expect(JSON.stringify(output.events)).not.toContain(content);
-  expect(output.events.at(-1)?.data.usage).toEqual({ input_tokens: 3, cached_input_tokens: 2, output_tokens: 1 });
+  expect(output.events.at(-1)?.data.usage).toEqual({ input_tokens: 3, cached_input_tokens: 2, cache_write_input_tokens: 4, output_tokens: 1, reasoning_output_tokens: 5 });
 });

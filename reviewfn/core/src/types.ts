@@ -55,6 +55,7 @@ export interface Evidence {
   code?: CodeAnchor;
   receiptId?: string;
   artifactDigest?: string;
+  sourceExclusionReason?: string;
 }
 
 export interface Requirement {

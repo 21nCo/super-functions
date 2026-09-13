@@ -187,3 +187,15 @@ it.each(["comments", "documents"] as const)("binds fallback and paginated %s con
   expect(JSON.stringify(output.sources)).not.toContain("wrong issue");
   expect(output.incompleteReasons).toEqual([]);
 });
+
+
+it("binds identifier-only initial issues without accepting an unrelated connection", async () => {
+  const adapter = new ComposioLinearContextAdapter({ runner: async args => {
+    if (args[1] === "LINEAR_GET_LINEAR_ISSUE") return { code: 0, stderr: "", stdout: JSON.stringify({ issue: { identifier: "ENG-1", title: "Requested", organization: { id: "workspace-1" }, documents: { nodes: [], pageInfo: { hasNextPage: false } } } }) };
+    return { code: 0, stderr: "", stdout: JSON.stringify({ wrong: { id: "other", identifier: "ENG-2", comments: { nodes: [{ id: "foreign", body: "wrong" }], pageInfo: { hasNextPage: false } } }, data: { issue: { id: "uuid", identifier: "ENG-1", comments: { nodes: [{ id: "right", body: "correct" }], pageInfo: { hasNextPage: false } } } } }) };
+  } });
+  const output = await adapter.fetch(request);
+  expect(output.sources.map(source => source.id)).toContain("linear:comment:right");
+  expect(JSON.stringify(output.sources)).not.toContain("foreign");
+  expect(output.incompleteReasons).toEqual([]);
+});

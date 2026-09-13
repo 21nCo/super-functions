@@ -237,3 +237,23 @@ it("does not treat deleted implementation as proof of an implemented requirement
   value.verdict = "changes_requested";
   expect((await validateReport(value, policy, adapter, ".", context)).errors).toEqual([]);
 });
+
+
+it("requires an explicit exclusion reason instead of an unused source citation", async () => {
+  const value = report();
+  const extra = { ...context, sources: [...context.sources, { id: "extra", type: "document" as const, content: "Supplemental historical context", status: "available" as const, retrievedAt: "now", digest: "extra" }] };
+  value.evidence.push({ id: "extra-source", kind: "source", description: "citation", source: { sourceId: "extra", anchor: "L1" } });
+  const validate = () => validateReport(value, policy, source, ".", extra);
+  expect((await validate()).errors.join()).toMatch(/Extraction coverage for source extra/);
+  Object.assign(value.evidence.at(-1)!, { sourceExclusionReason: "Historical context contains no accepted requirements for this change." });
+  expect((await validate()).errors).toEqual([]);
+  Object.assign(value.evidence.at(-1)!, { sourceExclusionReason: " " });
+  expect((await validate()).valid).toBe(false);
+});
+
+it("rejects ambiguous duplicate finding identities rather than merging locations", async () => {
+  const value = report(); value.verdict = "changes_requested";
+  const finding = { fingerprint: "same", severity: "high" as const, category: "behavior" as const, title: "Missing check", trigger: "invalid input", impact: "bad output", direction: "validate", evidenceIds: ["e"], basis: "inferred" as const, requirementIds: ["r"], lifecycle: "new" as const };
+  value.findings = [finding, { ...finding, anchor: { commit: value.change.headCommit, path: "index.ts", startLine: 2 } }];
+  expect((await errors(value)).join()).toMatch(/Duplicate finding fingerprint/);
+});

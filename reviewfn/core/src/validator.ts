@@ -45,7 +45,7 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
     if (!report.inspectedPaths.length) errors.push("No code paths were inspected.");
     for (const changed of report.change.changedPaths) if (!report.inspectedPaths.includes(changed) && !report.uninspected.some(item => item.scope === changed && item.reason.trim().length > 0)) errors.push(`Changed path ${changed} has no inspected or explicitly uninspected scope.`);
     for (const category of new Set([...policy.requiredCategories, ...(report.configuration.reviewCategories ?? [])])) if (!report.requirements.some(requirement => requirement.category === category)) errors.push(`Extraction coverage for required category ${category} is unverified.`);
-    for (const source of context?.sources ?? []) if (source.status === "available" && source.content !== "" && policy.sourceAuthority.acceptedTypes.includes(source.type) && !report.requirements.some(requirement => requirement.sources.some(ref => ref.sourceId === source.id)) && !report.evidence.some(evidence => evidence.kind === "source" && evidence.source?.sourceId === source.id && referenceValid(evidence.source))) errors.push(`Extraction coverage for source ${source.id} is unverified; cite its requirements or source-backed exclusion evidence.`);
+    for (const source of context?.sources ?? []) if (source.status === "available" && source.content !== "" && policy.sourceAuthority.acceptedTypes.includes(source.type) && !report.requirements.some(requirement => requirement.sources.some(ref => ref.sourceId === source.id)) && !report.evidence.some(evidence => evidence.kind === "source" && evidence.source?.sourceId === source.id && typeof evidence.sourceExclusionReason === "string" && evidence.sourceExclusionReason.trim().length > 0 && referenceValid(evidence.source))) errors.push(`Extraction coverage for source ${source.id} is unverified; cite its requirements or source-backed exclusion evidence.`);
     if (!context) errors.push("Frozen context is required to validate source authority.");
     for (const item of report.uninspected) if (!item.scope.trim() || !item.reason.trim()) errors.push("Uninspected scope requires a nonblank scope and reason.");
     if (report.uninspected.length && report.coverage === "complete") errors.push("Uninspected scope cannot claim complete coverage.");
@@ -54,6 +54,7 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
   const evidenceIds = report.evidence.map((item) => item.id);
   for (const id of duplicates(requirementIds)) errors.push(`Duplicate requirement id ${id}.`);
   for (const id of duplicates(evidenceIds)) errors.push(`Duplicate evidence id ${id}.`);
+  for (const id of duplicates(report.findings.map(finding => finding.fingerprint))) errors.push(`Duplicate finding fingerprint ${id}; supply distinct stable symbols or finding semantics before correlation.`);
 
   const assessments = new Map<string, Assessment[]>();
   for (const assessment of report.assessments) assessments.set(assessment.requirementId, [...(assessments.get(assessment.requirementId) ?? []), assessment]);
@@ -96,6 +97,7 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
   }
 
   for (const item of report.evidence) {
+    if (item.sourceExclusionReason !== undefined && (item.kind !== "source" || typeof item.sourceExclusionReason !== "string" || !item.sourceExclusionReason.trim())) errors.push(`Evidence ${item.id} has an invalid source exclusion reason.`);
     if (item.kind === "source" && (!item.source || !referenceValid(item.source))) errors.push(`Evidence ${item.id} has no verifiable source.`);
     if (["code", "diff"].includes(item.kind) && !item.code) errors.push(`Evidence ${item.id} has no code anchor.`);
     if (item.kind === "diff" && item.code && !report.change.changedPaths.includes(item.code.path)) errors.push(`Diff evidence ${item.id} is outside changed paths.`);

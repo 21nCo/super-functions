@@ -195,7 +195,7 @@ function normalizeEvents(jsonl: string): NormalizedRunEvent[] {
       // Content-bearing payloads belong only to the opt-in transcript artifact.
       if (raw.usage && typeof raw.usage === "object" && !Array.isArray(raw.usage)) {
         const usage: Record<string, JsonValue> = {};
-        for (const key of ["input_tokens", "cached_input_tokens", "output_tokens"]) {
+        for (const key of ["input_tokens", "cached_input_tokens", "cache_write_input_tokens", "output_tokens", "reasoning_output_tokens"]) {
           const value = (raw.usage as Record<string, unknown>)[key];
           if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) usage[key] = value;
         }

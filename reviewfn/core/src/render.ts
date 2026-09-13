@@ -31,7 +31,7 @@ export function renderMarkdownReport(report: ReviewReport): string {
     lines.push("");
   }
   lines.push("", "## Evidence", "");
-  for (const evidence of report.evidence) lines.push(`- ${escapeCell(evidence.id)} (${evidence.kind}): ${escapeCell(evidence.description)}; ${escapeCell(JSON.stringify(evidence.code ?? evidence.source ?? evidence.receiptId ?? evidence.artifactDigest ?? "unresolved"))}`);
+  for (const evidence of report.evidence) lines.push(`- ${escapeCell(evidence.id)} (${evidence.kind}): ${escapeCell(evidence.description)}${evidence.sourceExclusionReason ? `; source exclusion: ${escapeCell(evidence.sourceExclusionReason)}` : ""}; ${escapeCell(JSON.stringify(evidence.code ?? evidence.source ?? evidence.receiptId ?? evidence.artifactDigest ?? "unresolved"))}`);
   lines.push("", "## Verification", "");
   if (!report.tests.length) lines.push("No tests were run.");
   else for (const receipt of report.tests) lines.push(`- ${escapeCell(receipt.command.join(" "))}: ${receipt.exitCode === 0 && !receipt.timedOut && !receipt.canceled ? "passed" : "did not pass"} in ${receipt.runtimeMs} ms (receipt ${escapeCell(receipt.id)})`);

@@ -199,3 +199,8 @@ it("correlates the same finding across head revisions while distinguishing locat
 it.each(["with spaces", "dot.name", "a".repeat(81), ""])("rejects an unpublishable profile %s during configuration validation", profile => {
   expect(() => validateConfig({ ...DEFAULT_CONFIG, profile })).toThrow(/profile/);
 });
+
+
+it.each(["account", "expectedWorkspace", "issue"])("validates optional context %s as a nonempty string", key => {
+  for (const value of [true, 7, {}, [], "", " "]) expect(() => validateConfig({ ...DEFAULT_CONFIG, context: [{ adapter: "composio-linear", [key]: value }] })).toThrow(/context/);
+});

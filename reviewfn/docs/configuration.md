@@ -4,7 +4,7 @@ ReviewFn uses versioned JSON files at `.reviewfn/config.json` and `.reviewfn/pol
 
 In GitHub Actions, pass `--trusted-config-from-base`. ReviewFn reads both files using `git show BASE:path`, so a pull request cannot weaken the policy controlling its own review.
 
-The configuration selects the profile, harness, inference provider/model/auth, context adapters, approved argv test commands, outputs and retention. Commands are argv arrays and never pass through a shell.
+The configuration selects the profile, harness, inference provider/model/auth, context adapters, approved argv test commands, outputs and retention. Commands are argv arrays and never pass through a shell. Profiles contain 1–80 letters, digits, underscores or hyphens so accepted configurations remain publishable. Optional context identities must be nonempty strings when present.
 
 `composio-linear` requires:
 
@@ -18,4 +18,4 @@ Fallback entries are provenance only. ReviewFn never selects one automatically; 
 
 Version 0.1 accepts only `advisory` output mode. Both configuration and policy validation reject `gate`; required-check behavior needs a later, separately calibrated and authorized release.
 
-PR inference requires a trusted Docker image and action-proxy authentication with an explicit model. Local API-key and ChatGPT modes are restricted to trusted repositories. `local-isolated` names the mandatory Docker execution adapter; other adapter names fail preflight. Test commands use container paths such as `node`, not a host-specific executable path. See the security model for fixed resource bounds. `retainTranscript` is false unless explicitly enabled.
+PR inference requires a trusted Docker image and action-proxy authentication with an explicit model. Local API-key and ChatGPT modes are restricted to trusted repositories. `local-isolated` names the mandatory Docker execution adapter; other adapter names fail preflight. Test commands use container paths such as `node`, not a host-specific executable path. See the security model for fixed resource bounds. `retainTranscript` is false unless explicitly enabled. Normalized events retain only bounded telemetry counters, never message, reasoning or tool-output payloads; content-bearing JSONL belongs to the separately retained opt-in transcript.
