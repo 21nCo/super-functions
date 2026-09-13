@@ -37,5 +37,7 @@ export class GitHubApi {
     return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
   }
 
+  public repositoryHost(): string { const host = new URL(this.baseUrl).hostname; return host === "api.github.com" ? "github.com" : host; }
+
   public endpoint(path: string): string { return `/repos/${this.options.owner}/${this.options.repository}${path}`; }
 }

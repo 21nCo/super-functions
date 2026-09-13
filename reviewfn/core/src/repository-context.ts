@@ -59,7 +59,6 @@ export class RepositoryMarkdownContextAdapter implements ContextAdapter {
     const incompleteReasons: string[] = [];
     let consumed = 0;
     const paths = await expandPaths(root, request.paths ?? [], request.limits, incompleteReasons);
-    if (!paths.length) incompleteReasons.push("Configured Markdown paths matched no sources.");
     for (const relative of paths) {
       if (sources.length >= request.limits.maxSources) { incompleteReasons.push(`Repository Markdown source limit ${request.limits.maxSources} reached.`); break; }
       const absolute = path.join(root, relative);

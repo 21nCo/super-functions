@@ -103,11 +103,11 @@ export function redactRepositoryRemote(remote: string): string {
 }
 
 /** Normalize a recorded Git remote for comparison with a trusted GitHub repository. */
-export function githubRepositoryIdentity(remote: string): string | undefined {
-  const scp = /^(?:[^@/]+@)?github\.com:([^?#]+)$/i.exec(remote);
-  let repository = scp?.[1];
+export function githubRepositoryIdentity(remote: string, expectedHost = "github.com"): string | undefined {
+  const scp = /^(?:[^@/]+@)?([^/:]+):([^?#]+)$/.exec(remote);
+  let repository = scp?.[1].toLowerCase() === expectedHost.toLowerCase() ? scp[2] : undefined;
   if (!repository) {
-    try { const url = new URL(remote); if (url.hostname.toLowerCase() !== "github.com" || !["https:", "ssh:"].includes(url.protocol) || url.port && !(url.protocol === "ssh:" && url.port === "22") || url.search || url.hash) return undefined; repository = url.pathname.slice(1); } catch { return undefined; }
+    try { const url = new URL(remote); if (url.hostname.toLowerCase() !== expectedHost.toLowerCase() || !["https:", "ssh:"].includes(url.protocol) || url.port && !(url.protocol === "ssh:" && url.port === "22") || url.search || url.hash) return undefined; repository = url.pathname.slice(1); } catch { return undefined; }
   }
   repository = repository.replace(/\/$/, "").replace(/\.git$/, "");
   return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ? repository.toLowerCase() : undefined;

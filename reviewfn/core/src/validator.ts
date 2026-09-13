@@ -18,7 +18,7 @@ function duplicates(values: readonly string[]): string[] {
 
 export function deriveVerdict(report: Pick<ReviewReport, "execution" | "coverage" | "requirements" | "assessments" | "findings">, policy: ReviewPolicy): Verdict | undefined {
   if (report.execution !== "completed") return undefined;
-  if (report.coverage !== "complete") return "needs_verification";
+  if (report.coverage !== "complete" || !report.requirements.length || report.requirements.some(requirement => !requirement.statement.trim())) return "needs_verification";
   const mandatory = new Set(report.requirements.filter((requirement) => requirement.classification === "mandatory").map((requirement) => requirement.id));
   if (report.assessments.some((assessment) => mandatory.has(assessment.requirementId) && ["missing", "partial"].includes(assessment.status))) return "changes_requested";
   if (report.assessments.some((assessment) => mandatory.has(assessment.requirementId) && assessment.status === "unverified")) return "needs_verification";
@@ -41,6 +41,7 @@ export async function validateReport(report: ReviewReport, policy: ReviewPolicy,
     return !!match && Number(match[1]) > 0 && Number(match[2] ?? match[1]) >= Number(match[1]) && Number(match[2] ?? match[1]) <= source.content.split(/\r?\n/).length;
   };
   if (report.execution === "completed") {
+    for (const requirement of report.requirements) if (!requirement.statement.trim()) errors.push(`Requirement ${requirement.id} has a blank statement.`);
     if (!report.requirements.length) errors.push("No requirements were extracted; extraction coverage is unverified.");
     if (!report.inspectedPaths.length) errors.push("No code paths were inspected.");
     for (const changed of report.change.changedPaths) if (!report.inspectedPaths.includes(changed) && !report.uninspected.some(item => item.scope === changed && item.reason.trim().length > 0)) errors.push(`Changed path ${changed} has no inspected or explicitly uninspected scope.`);

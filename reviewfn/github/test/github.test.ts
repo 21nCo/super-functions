@@ -147,3 +147,12 @@ it.each(["head", "pull-request", "repository"])("rejects mismatched report publi
   expect(result.error).toMatch(/identity/);
   expect(calls).toBe(0);
 });
+
+it.each(["https://git.example.com/acme/repo.git", "git@git.example.com:acme/repo.git", "https://other.example.com/acme/repo"])("binds Enterprise publication to the configured host (%s)", async remote => {
+  let calls = 0;
+  const api = new GitHubApi({ owner: "acme", repository: "repo", token: "fixture", baseUrl: "https://git.example.com/api/v3", fetch: async (input, init) => { calls++; const url = String(input); return Response.json(url.includes("/pulls/") ? { head: { sha: "b".repeat(40) } } : url.includes("check-runs") ? { check_runs: [] } : init?.method === "GET" ? [] : { id: 1 }); } });
+  const value = report(); value.change.repositoryId = remote; value.change.host = "git.example.com";
+  const result = await new GitHubAdvisoryPublisher({ api, pullRequest: 1 }).publish({ report: value, rendered: "report", expectedHead: "b".repeat(40), profile: "requirements" });
+  expect(result.status).toBe(remote.includes("other.example") ? "failed" : "published");
+  expect(calls > 0).toBe(!remote.includes("other.example"));
+});

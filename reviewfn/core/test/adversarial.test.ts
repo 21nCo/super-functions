@@ -60,10 +60,10 @@ it("refuses retention metadata traversal without deleting outside files", async 
   await writeFile(path.join(root, "victim.artifact"), "safe"); await writeFile(path.join(root, "artifacts", "evil.json"), JSON.stringify({ id: "../victim", expiresAt: "2000-01-01" }));
   const result = await store.deleteExpired(); expect(result.errors.join()).toMatch(/Invalid artifact/); expect(await readFile(path.join(root, "victim.artifact"), "utf8")).toBe("safe");
 });
-it("marks unmatched Markdown sources incomplete and bounds large files", async () => {
+it("marks missing exact Markdown sources incomplete and bounds large files", async () => {
   const root = await temporary(); const adapter = new RepositoryMarkdownContextAdapter();
   const request = { root, paths: ["**/*.md"], limits: { maxSources: 1, maxBytes: 10, maxDepth: 2 } };
-  expect((await adapter.fetch(request)).incompleteReasons.join()).toMatch(/no sources/);
+  expect((await adapter.fetch({ ...request, paths: ["required.md"] })).incompleteReasons.join()).toMatch(/Unable to read required.md/);
   await writeFile(path.join(root, "big.md"), "x".repeat(10000)); const result = await adapter.fetch(request); expect(result.sources[0].status).toBe("truncated"); expect(Buffer.byteLength(result.sources[0].content!)).toBeLessThanOrEqual(10);
 });
 
@@ -319,4 +319,15 @@ it("keeps an authorized source with absent content explicitly incomplete", async
   const result = await validateReport(report(), policy, source, ".", manifest);
   expect(result.valid).toBe(false);
   expect(result.errors.join()).toMatch(/Available source missing has no content/);
+});
+
+it.each(["", " \n\t"])("rejects blank extracted requirement statements (%j)", async statement => {
+  const value = report(); value.requirements[0].statement = statement;
+  expect((await errors(value)).join()).toMatch(/statement/);
+});
+
+it("allows an unmatched optional glob without claiming source coverage", async () => {
+  const result = await new RepositoryMarkdownContextAdapter().fetch({ root: await temporary(), paths: ["docs/**/*.md"], limits: { maxSources: 10, maxBytes: 1000, maxDepth: 3 } });
+  expect(result.sources).toEqual([]);
+  expect(result.incompleteReasons).toEqual([]);
 });

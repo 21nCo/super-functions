@@ -30,7 +30,7 @@ export class GitHubAdvisoryPublisher implements ReportPublisher {
   }
 
   public async publish(request: PublishRequest): Promise<PublishResult> {
-    if (request.report.change.headCommit !== request.expectedHead || request.report.change.pullRequest !== this.options.pullRequest || this.options.api.endpoint("").toLowerCase() !== `/repos/${githubRepositoryIdentity(request.report.change.repositoryId)}`) return { status: "failed", error: "Report identity does not match the publication repository, pull request and expected head." };
+    if (request.report.change.headCommit !== request.expectedHead || request.report.change.pullRequest !== this.options.pullRequest || this.options.api.endpoint("").toLowerCase() !== `/repos/${githubRepositoryIdentity(request.report.change.repositoryId, this.options.api.repositoryHost())}`) return { status: "failed", error: "Report identity does not match the publication repository, pull request and expected head." };
     const key = this.options.api.endpoint(`/pulls/${this.options.pullRequest}`);
     const previous = locks.get(key) ?? Promise.resolve();
     let release!: () => void;
