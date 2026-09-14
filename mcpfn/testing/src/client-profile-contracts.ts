@@ -198,10 +198,19 @@ export function createMcpFnClientProfileSnapshot(
   return {
     formatVersion: 1,
     kind: "mcpfn.client-profile-snapshot",
-    profile: { ...profile },
+    profile: { id: profile.id, version: profile.version },
     catalogHash: hash(normalized),
     tools: normalized.map((tool) => ({ name: tool.name, hash: hash(tool) })),
   };
+}
+
+function assertSnapshotFields(value: unknown, fields: readonly string[]): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Client profile snapshot fields must be objects");
+  }
+  if (Object.keys(value).some(key => !fields.includes(key))) {
+    throw new Error("Client profile snapshot contains unsupported fields");
+  }
 }
 
 export function validateMcpFnClientProfileSnapshot(
@@ -210,6 +219,7 @@ export function validateMcpFnClientProfileSnapshot(
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Client profile snapshot must be an object");
   }
+  assertSnapshotFields(value, ["formatVersion", "kind", "profile", "catalogHash", "tools"]);
   const snapshot = value as Partial<McpFnClientProfileSnapshot>;
   if (
     snapshot.formatVersion !== 1 ||
@@ -219,6 +229,7 @@ export function validateMcpFnClientProfileSnapshot(
   }
   if (!snapshot.profile)
     throw new Error("Client profile snapshot requires profile metadata");
+  assertSnapshotFields(snapshot.profile, ["id", "version"]);
   assertProfileReference(snapshot.profile.id, snapshot.profile.version);
   if (
     typeof snapshot.catalogHash !== "string" ||
@@ -230,6 +241,7 @@ export function validateMcpFnClientProfileSnapshot(
     throw new Error("Client profile snapshot tools must be an array");
   let prior = "";
   for (const tool of snapshot.tools) {
+    assertSnapshotFields(tool, ["name", "hash"]);
     if (
       !tool ||
       typeof tool.name !== "string" ||

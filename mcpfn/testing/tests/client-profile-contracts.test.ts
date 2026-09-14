@@ -14,6 +14,7 @@ import {
   diffMcpFnClientProfileSnapshots,
   runMcpFnClientProfileContracts,
   validateMcpFnSchemaPortability,
+  validateMcpFnClientProfileSnapshot,
 } from "../src/index.js";
 
 interface Context {
@@ -488,4 +489,19 @@ it("does not misclassify contentSchema annotations as ref assertions", async () 
   const validate = new Ajv2020({ strict: false }).compile(schema);
   expect(validate("not JSON")).toBe(true);
   expect(validateMcpFnSchemaPortability(schema, "#", { warningsAsErrors: true }).some(issue => issue.keyword === "$ref")).toBe(false);
+});
+
+
+it.each(["root", "profile", "tool"])("rejects unsupported %s snapshot fields consistently before opening a target", async location => {
+  const snapshot = createMcpFnClientProfileSnapshot({ id: "consumer/trusted", version: "1" }, [projectedTool()]);
+  const extra = location === "root" ? snapshot : location === "profile" ? snapshot.profile : snapshot.tools[0];
+  Object.assign(extra, { note: "reviewer annotation" });
+  expect(() => validateMcpFnClientProfileSnapshot(snapshot)).toThrow(/unsupported fields/);
+  expect(() => diffMcpFnClientProfileSnapshots(snapshot, snapshot)).toThrow(/unsupported fields/);
+  const fixture = targetFor({ subject: "trusted-client", tenantId: "tenant" });
+  const open = vi.spyOn(fixture.target, "open");
+  await expect(runMcpFnClientProfileContracts({ profiles: [{
+    id: "consumer/trusted", version: "1", target: fixture.target, expectedSnapshot: snapshot,
+  }] })).rejects.toThrow(/unsupported fields/);
+  expect(open).not.toHaveBeenCalled();
 });
