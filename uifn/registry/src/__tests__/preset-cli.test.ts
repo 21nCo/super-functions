@@ -506,3 +506,35 @@ it('ignores stale ancestor package records after workspace removal', async () =>
     expect(applyPreset({ rootDir, preset, dryRun: true }).requiredActions).toMatchObject([{ path: 'package-lock.json' }]);
   });
 });
+
+
+it('safely removes preset sources and registry entries when switching to package mode', async () => {
+  await withProject(async rootDir => {
+    expect(initProject({ rootDir, preset: encodePreset({ installMode: 'source' }) }).ok).toBe(true);
+    const before = snapshot(rootDir);
+    const options = { rootDir, preset: encodePreset({ installMode: 'package' }) };
+    const dry = applyPreset({ ...options, dryRun: true });
+    expect(dry.ok).toBe(true);
+    expect(dry.plan?.files).toContainEqual({ path: 'components/uifn/react/button.ts', operation: 'delete' });
+    expect(snapshot(rootDir)).toBe(before);
+    const failed = applyPreset({ ...options, faultAfterWrites: 3 });
+    expect(failed.ok).toBe(false);
+    expect(failed.rolledBack).toBe(true);
+    expect(snapshot(rootDir)).toBe(before);
+    expect(applyPreset(options).ok).toBe(true);
+    expect(existsSync(path.join(rootDir, 'components/uifn/react/button.ts'))).toBe(false);
+    expect(JSON.parse(readFileSync(path.join(rootDir, '.uifn/registry.lock'), 'utf8')).items).toEqual({});
+    expect(JSON.parse(readFileSync(path.join(rootDir, '.uifn/selected-components.json'), 'utf8')).selected).toEqual({});
+    expect(applyPreset(options).written).toEqual([]);
+  });
+});
+it('preserves modified source files and project state when package migration conflicts', async () => {
+  await withProject(async rootDir => {
+    expect(initProject({ rootDir, preset: encodePreset({ installMode: 'source' }) }).ok).toBe(true);
+    writeFileSync(path.join(rootDir, 'components/uifn/react/button.ts'), '// consumer changes');
+    const before = snapshot(rootDir);
+    const result = applyPreset({ rootDir, preset: encodePreset({ installMode: 'package' }) });
+    expect(result.error?.code).toBe('UIFN_REGISTRY_DIRTY_CONFLICT');
+    expect(snapshot(rootDir)).toBe(before);
+  });
+});

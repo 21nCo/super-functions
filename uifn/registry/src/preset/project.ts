@@ -2,7 +2,8 @@ import { minimatch } from "minimatch";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync } from 'node:fs';
 import path from 'node:path';
 import { planInstall } from '../plan';
-import { checksumContent } from '../lockfile';
+import { checksumContent, readLockFile, selectedFromLock, serializeLockFile, serializeSelectedComponents } from '../lockfile';
+import { buildRegistry } from '../build-registry';
 import { assertContainedPath, commitTransaction, type TransactionChange } from '../transaction';
 import { decodePreset, encodePreset, normalizePreset } from './codec';
 import { assertApprovedInit, compilePreset, type PresetCompilePlan } from './compiler';
@@ -35,7 +36,7 @@ export interface PresetMutationOptions {
   createRoot?: boolean;
 }
 
-type FileOperation = 'create' | 'update' | 'unchanged';
+type FileOperation = 'create' | 'update' | 'delete' | 'unchanged';
 
 interface RequiredProjectAction {
   code: 'UIFN_PRESET_LOCKFILE_REFRESH_REQUIRED';
@@ -411,6 +412,54 @@ function planSourceFiles(rootDir: string, plan: PresetCompilePlan, files: Record
   };
 }
 
+function planSourceRemoval(rootDir: string, previous: PresetProjectState) {
+  for (const name of ['.uifn/registry.lock', '.uifn/selected-components.json']) assertContainedPath(rootDir, name);
+  const lock = readLockFile(rootDir);
+  const registry = buildRegistry();
+  if (!registry.ok) throw new UIFnPresetError('UIFN_REGISTRY_CATALOG_INVALID', 'Cannot safely resolve installed artifact dependencies.');
+  const keysFor = (slugs: string[]) => {
+    const keys = new Set<string>();
+    const visit = (slug: string) => {
+      const manifest = registry.bySlug[slug];
+      if (!manifest) throw new UIFnPresetError('UIFN_REGISTRY_ARTIFACT_NOT_FOUND', `Cannot safely remove dependencies of unknown artifact: ${slug}`);
+      if (keys.has(manifest.lockKey)) return;
+      keys.add(manifest.lockKey);
+      manifest.artifactDependencies.forEach(visit);
+    };
+    slugs.forEach(visit);
+    return keys;
+  };
+  const candidates = keysFor(compilePreset(previous.preset, previous.template).project.artifacts);
+  const retained = keysFor(Object.entries(lock.items).filter(([key]) => !candidates.has(key)).map(([, item]) => item.slug));
+  const removals = new Set([...candidates].filter(key => !retained.has(key)));
+  const retainedPaths = new Set(Object.entries(lock.items).filter(([key]) => !removals.has(key)).flatMap(([, item]) => item.files.map(file => file.path)));
+  const changes: TransactionChange[] = [];
+  const removedPaths = new Set<string>();
+  for (const key of removals) {
+    const item = lock.items[key];
+    if (!item) continue;
+    for (const file of item.files) {
+      if (retainedPaths.has(file.path) || removedPaths.has(file.path)) continue;
+      const absolute = assertContainedPath(rootDir, file.path);
+      if (!existsSync(absolute)) continue;
+      const hash = checksumContent(readFileSync(absolute));
+      if (hash !== file.installedSha256) throw new UIFnPresetError('UIFN_REGISTRY_DIRTY_CONFLICT', `Refusing to remove a locally modified file: ${file.path}`);
+      changes.push({ path: file.path, operation: 'delete', expectedSha256: hash });
+      removedPaths.add(file.path);
+    }
+    delete lock.items[key];
+  }
+  for (const [name, contents] of [
+    ['.uifn/registry.lock', serializeLockFile(lock)],
+    ['.uifn/selected-components.json', serializeSelectedComponents(selectedFromLock(lock))],
+  ]) {
+    const absolute = assertContainedPath(rootDir, name);
+    const before = existsSync(absolute) ? readFileSync(absolute, 'utf8') : undefined;
+    if (before !== contents) changes.push({ path: name, operation: before === undefined ? 'create' : 'update', contents, expectedSha256: before === undefined ? undefined : checksumContent(before) });
+  }
+  return { changes, files: changes.map(({ path, operation }) => ({ path, operation })) };
+}
+
 function mutate(options: PresetMutationOptions, mode: 'init' | 'apply'): PresetMutationResult {
   const createdDirectories: string[] = [];
   let succeeded = false;
@@ -433,6 +482,10 @@ function mutate(options: PresetMutationOptions, mode: 'init' | 'apply'): PresetM
       if (!installed.ok) return { ok: false, dryRun: Boolean(options.dryRun), written: [], unchanged: [], error: installed.error };
       artifactChanges = installed.changes;
       artifactFiles = installed.files;
+    } else if (!only && previous?.preset.installMode === 'source' && plan.preset.installMode === 'package') {
+      const removed = planSourceRemoval(rootDir, previous);
+      artifactChanges = removed.changes;
+      artifactFiles = removed.files;
     }
 
     const planned = planFileChanges(rootDir, files);
