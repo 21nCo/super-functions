@@ -87,7 +87,7 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
     input = specialValue(input);
     if (typeof input === "string") {
       if (role === "target" && field === "kind" && ["authenticated-streamable-http", "streamable-http", "stdio", "in-memory", "custom"].includes(input)) return input;
-      if ((role === "packages" && field === "testing") || (role === "runtime" && field === "node")) return input;
+      if ((role === "packages" && field === "testing") || (role === "runtime" && ["node", "reportSchemaVersion"].includes(field)) || (role === "root" && field === "suiteVersion")) return input;
       if ((role === "root" || role === "result") && field === "status" && ["passed", "failed", "incomplete", "complete"].includes(input)) return input;
       if ((role === "root" || role === "diagnostic") && field === "outcome" && ["started", "succeeded", "failed"].includes(input)) return input;
       if (role === "root" && field === "kind" && ["mcpfn.target-suite-report", "mcpfn.inspector-snapshot", "mcpfn.official-conformance-report"].includes(input)) return input;

@@ -475,3 +475,14 @@ it("revokes with an independent signal after acquisition is cancelled, including
   expect(signals.every(signal => !signal.aborted && signal !== acquisition.signal)).toBe(true);
   expect(signals[0]).not.toBe(signals[1]);
 });
+
+it.each(["1.0.0", "0.1.16"])("preserves structural report versions when credentials equal %s", async secret => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  const result = redactRemoteCredential({ headers: { "x-api-key": secret } }, {
+    kind: "mcpfn.official-conformance-report", suiteVersion: "0.1.16",
+    runtime: { reportSchemaVersion: "1.0.0" }, stdout: `echo ${secret}`,
+  }, { preserveKeys: true });
+  expect(result.suiteVersion).toBe("0.1.16");
+  expect(result.runtime.reportSchemaVersion).toBe("1.0.0");
+  expect(result.stdout).not.toContain(secret);
+});

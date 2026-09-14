@@ -18,6 +18,7 @@ import { McpFnInspector } from "@mcpfn/inspector";
 import {
   McpFnTestClient,
   McpFnAssertionError,
+  McpFnConformanceCleanupError,
   assertManifestContract,
   authenticatedHttpTarget,
   beginTargetCredentialRedaction,
@@ -210,6 +211,11 @@ export async function runCli(
         ? await runAuthenticatedOfficialConformance({
           ...conformanceOptions,
           credential: auth.credential,
+        }).catch(error => {
+          // Keep the library's retryable cleanup error contract, while allowing
+          // the CLI to persist its bounded, redacted failed result.
+          if (error instanceof McpFnConformanceCleanupError && error.result) return error.result;
+          throw error;
         })
         : await runOfficialConformance(conformanceOptions);
       if (result.stdout) stdout(result.stdout);

@@ -345,7 +345,7 @@ const retainedConformanceCleanup = new WeakMap<Error, () => Promise<void>>();
 
 /** Cleanup failed after retries. Retain this error and call retryCleanup(). */
 export class McpFnConformanceCleanupError extends Error {
-  constructor(release: () => Promise<void>) {
+  constructor(release: () => Promise<void>, readonly result?: OfficialConformanceResult) {
     super("Authenticated conformance credential cleanup failed; retry cleanup");
     this.name = "McpFnConformanceCleanupError";
     retainedConformanceCleanup.set(this, release);
@@ -380,12 +380,14 @@ export async function runAuthenticatedOfficialConformance(
     },
   );
   let proxy: AuthenticatedConformanceProxy | undefined;
+  let result: OfficialConformanceResult | undefined;
   try {
     proxy = await createAuthenticatedConformanceProxy({
       url: conformance.url,
       headers: lease.credential.headers,
     });
-    return redactRemoteCredential(lease.credential, await runConformance({ ...conformance, stdio: "pipe", url: proxy.url }, value => String(redactRemoteCredential(lease.credential, value))), { preserveKeys: true });
+    result = redactRemoteCredential(lease.credential, await runConformance({ ...conformance, stdio: "pipe", url: proxy.url }, value => String(redactRemoteCredential(lease.credential, value))), { preserveKeys: true });
+    return result;
   } finally {
     try {
       await proxy?.close();
@@ -394,7 +396,13 @@ export async function runAuthenticatedOfficialConformance(
       for (let attempt = 0; attempt < 3; attempt++) {
         try { await lease.release(); released = true; break; } catch { /* Retry transient revocation failure. */ }
       }
-      if (!released) throw new McpFnConformanceCleanupError(() => lease.release());
+      if (!released) {
+        const message = "Authenticated conformance credential cleanup failed; retry cleanup";
+        const failedResult = result ? { ...result, ok: false, exitCode: 1,
+          stderr: message, failure: normalizeMcpFnReportFailure(new Error(message), "upstream-conformance"),
+        } : undefined;
+        throw new McpFnConformanceCleanupError(() => lease.release(), failedResult);
+      }
     }
   }
 }

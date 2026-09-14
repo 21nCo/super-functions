@@ -40,6 +40,10 @@ it("retains permanently failing conformance cleanup for explicit retry", async (
   catch(error) { failure = error; }
   expect(failure).toBeInstanceOf(McpFnConformanceCleanupError);
   expect(revoke).toHaveBeenCalledTimes(3);
+  const report = (failure as McpFnConformanceCleanupError).result;
+  expect(report).toMatchObject({ ok: false, exitCode: 1, kind: "mcpfn.official-conformance-report" });
+  expect(JSON.stringify(report)).not.toContain("opaque-runner-value");
+  expect(JSON.stringify(report)).not.toContain("secret-cleanup-error");
   expect((failure as Error).message).not.toContain("secret-cleanup-error");
   revoke.mockResolvedValue(undefined);
   await (failure as McpFnConformanceCleanupError).retryCleanup();

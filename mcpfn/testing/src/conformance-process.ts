@@ -20,7 +20,7 @@ export async function terminateConformanceRunner(
         };
         try {
           execFile(path.win32.join(systemRoot, "System32", "taskkill.exe"),
-            ["/pid", String(child.pid), "/T", "/F"], { timeout: 2000 }, done);
+            ["/pid", String(child.pid), "/T", "/F"], { timeout: 2000, windowsHide: true }, done);
         } catch (error) { done(error as Error); }
       });
     } else if (child.pid) {
