@@ -539,7 +539,9 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
     if (!value || typeof value !== "object" || resources.has(value)) return;
     const parentBase = bases.get(resource) ?? "https://mcpfn.invalid/schema";
     if (!Array.isArray(value) && typeof (value as Record<string, unknown>).$id === "string") {
-      const id = new URL((value as Record<string, unknown>).$id as string, parentBase).href;
+      const address = new URL((value as Record<string, unknown>).$id as string, parentBase);
+      if (!address.hash) address.hash = "";
+      const id = address.href;
       ids.set(id, value as Record<string, unknown>);
       bases.set(value, id);
       resource = value as Record<string, unknown>;

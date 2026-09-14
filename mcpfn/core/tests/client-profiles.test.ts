@@ -806,9 +806,10 @@ it("reports a rejected task-store promise after the creation request has settled
   } finally { await client.close(); await server.close(); }
 });
 
-it("preserves empty same-resource references through list and call", async () => {
+it.each(["", "https://example.test/input"])("preserves equivalent resource references through list and call: %s", async reference => {
   const registry = new McpFnRegistry().register({ name: "recursive", description: "Recursive schema", inputSchema: {
-    type: "object", properties: { child: { $ref: "" } },
+    $schema: "http://json-schema.org/draft-07/schema#", $id: "https://example.test/input#",
+    type: "object", properties: { child: { $ref: reference } },
   }, handler: async () => structuredResult({ ok: true }) });
   const server = createMcpFnServer({ info: { name: "empty-ref", version: "1" }, registry,
     clientProfiles: { profiles: [{ id: "noop", version: "1", matches: () => true }], resolveVerifiedIdentity: () => ({ subject: "trusted" }) } });
