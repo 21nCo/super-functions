@@ -20,11 +20,14 @@ From the Superfunctions repository root:
 npm install
 ```
 
+Remaining commands run from `botfn/persistence` (or `npm run <script> --workspace @botfn/persistence-service` at the repo root).
+
 ### 2. Configure Postgres
 
-Set `DATABASE_URL` as a Wrangler secret (local: `.dev.vars`):
+Set `DATABASE_URL` as a Wrangler secret. For local Wrangler, put it in `.dev.vars` (Wrangler loads that file; Node scripts do not):
 
 ```bash
+cd botfn/persistence
 wrangler secret put DATABASE_URL
 ```
 
@@ -32,13 +35,18 @@ Schema lives in `src/schema.ts` (Drizzle `pgTable`). Apply equivalent Postgres D
 
 ### 3. Check the connection string
 
+`db:env:check` reads `process.env.DATABASE_URL` only. Export it in the shell (`.dev.vars` is not loaded):
+
 ```bash
+cd botfn/persistence
+export DATABASE_URL=postgres://...
 npm run db:env:check
 ```
 
 ## Development
 
 ```bash
+cd botfn/persistence
 npm run dev
 ```
 
@@ -47,6 +55,7 @@ The service will be available at `http://localhost:8787`.
 ## Deployment
 
 ```bash
+cd botfn/persistence
 npm run deploy
 ```
 

@@ -60,11 +60,12 @@ cd botfn/persistence
 wrangler secret put DATABASE_URL
 ```
 
-For local Wrangler, put `DATABASE_URL=postgres://...` in `.dev.vars`.
+For local Wrangler, put `DATABASE_URL=postgres://...` in `.dev.vars`. Wrangler loads that file; `db:env:check` does not.
 
-Apply the Drizzle schema in `src/schema.ts` to the database (equivalent Postgres DDL). Confirm the URL is set:
+Apply the Drizzle schema in `src/schema.ts` to the database (equivalent Postgres DDL). Confirm the URL is exported in the shell:
 
 ```bash
+export DATABASE_URL=postgres://...
 npm run db:env:check
 ```
 
