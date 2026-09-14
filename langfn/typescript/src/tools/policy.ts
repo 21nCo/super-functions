@@ -56,20 +56,18 @@ export function enforceOutboundPolicy(
   options: { allowPrivateNetwork?: boolean; allowedHosts?: readonly string[] } = {}
 ): void {
   const parsed = new URL(url);
+  if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw new ToolPolicyViolationError("Only HTTP(S) URLs without embedded credentials are allowed");
+  }
   const host = parsed.hostname.toLowerCase();
   if ((options.allowedHosts ?? []).map((item) => item.toLowerCase()).includes(host)) {
     return;
   }
-  const blockedHosts = new Set(["localhost", "metadata.google.internal"]);
-  if (blockedHosts.has(host)) {
-    if (!options.allowPrivateNetwork) {
-      throw new ToolPolicyViolationError("Blocked outbound destination", { metadata: { url, host } });
-    }
-    return;
-  }
-
-  if (isIpAddress(host) && isBlockedIp(host) && !options.allowPrivateNetwork) {
-    throw new ToolPolicyViolationError("Blocked outbound destination", { metadata: { url, host } });
+  if (options.allowPrivateNetwork) return;
+  // Fetch does not expose or pin DNS resolution consistently across Node and Workers.
+  // Require explicit trust for hostnames and IPv6 rather than performing a racy DNS precheck.
+  if (!isIpAddress(host) || isBlockedIp(host)) {
+    throw new ToolPolicyViolationError("Outbound host requires an explicit allowedHosts entry", { metadata: { host } });
   }
 }
 
@@ -81,6 +79,11 @@ function isBlockedIp(host: string): boolean {
   if (host === "169.254.169.254") return true;
   const parts = host.split(".").map((part) => Number(part));
   return (
+    parts[0] === 0 || parts[0] >= 224 ||
+    (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) ||
+    (parts[0] === 192 && parts[1] === 0) ||
+    (parts[0] === 198 && (parts[1] === 18 || parts[1] === 19 || parts[1] === 51)) ||
+    (parts[0] === 203 && parts[1] === 0) ||
     host.startsWith("127.") ||
     host.startsWith("10.") ||
     (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||

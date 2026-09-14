@@ -165,7 +165,9 @@ export class LangFn {
       const cacheKey = this.requireModel();
       const cached = await this.config.cache?.get(prompt, cacheKey.model, cacheKey.provider, request.metadata);
       if (cached) {
-        return this.finalizeCompletion(cached, traceId, options.structuredOutput ?? options.structured);
+        const finalized = this.finalizeCompletion(cached, traceId, options.structuredOutput ?? options.structured);
+        await this.persistTrace({ kind: "completion", traceId, request: { prompt, metadata: request.metadata }, response: finalized });
+        return finalized;
       }
 
       const response = await retryAsync(
@@ -174,13 +176,13 @@ export class LangFn {
             return await callWithTimeoutAndCancel(
               (signal) => this.requireModel().complete({ ...request, signal }),
               options.timeout,
-              options.cancelToken
+              options.cancelToken?.signal ?? (options.retry ?? this.config.retry)?.signal
             );
           } catch (error) {
             throw normalizeUnknownError(error);
           }
         },
-        { ...(options.retry ?? this.config.retry), signal: options.cancelToken?.signal }
+        { ...(options.retry ?? this.config.retry), signal: options.cancelToken?.signal ?? (options.retry ?? this.config.retry)?.signal }
       );
 
       const finalized = this.finalizeCompletion(response, traceId, options.structuredOutput ?? options.structured);
@@ -227,13 +229,13 @@ export class LangFn {
             return await callWithTimeoutAndCancel(
               (signal) => this.requireModel().chat({ ...request, signal }),
               options.timeout,
-              options.cancelToken
+              options.cancelToken?.signal ?? (options.retry ?? this.config.retry)?.signal
             );
           } catch (error) {
             throw normalizeUnknownError(error);
           }
         },
-        { ...(options.retry ?? this.config.retry), signal: options.cancelToken?.signal }
+        { ...(options.retry ?? this.config.retry), signal: options.cancelToken?.signal ?? (options.retry ?? this.config.retry)?.signal }
       );
 
       const finalized = this.finalizeChat(response, traceId, options.structuredOutput ?? options.structured);
@@ -274,7 +276,7 @@ export class LangFn {
         const controller = new AbortController();
         const stream = this.requireModel().stream({ prompt: input, metadata: options.metadata, signal: controller.signal });
         for await (const event of normalizeStream(
-          iterateWithTimeoutAndCancel(stream, options.timeout, options.cancelToken, controller),
+          iterateWithTimeoutAndCancel(stream, options.timeout, options.cancelToken?.signal ?? this.config.retry?.signal, controller),
           traceId
         )) {
           if (event.type === "content") {
@@ -302,9 +304,9 @@ export class LangFn {
                   metadata: options.metadata
                 }),
                 options.timeout,
-                options.cancelToken
+                options.cancelToken?.signal ?? this.config.retry?.signal
               ),
-            { ...this.config.retry, signal: options.cancelToken?.signal }
+            { ...this.config.retry, signal: options.cancelToken?.signal ?? this.config.retry?.signal }
           ),
           traceId
         );
@@ -752,12 +754,12 @@ function normalizeUnknownError(error: unknown): LangFnError {
 async function callWithTimeoutAndCancel<T>(
   operation: (signal: AbortSignal) => Promise<T>,
   timeout?: number,
-  cancelToken?: CancellationToken
+  cancelSignal?: AbortSignal
 ): Promise<T> {
-  if (cancelToken?.cancelled) throw new AbortError();
+  if (cancelSignal?.aborted) throw new AbortError();
   const controller = new AbortController();
   const cancel = () => controller.abort(new AbortError());
-  cancelToken?.signal.addEventListener("abort", cancel, { once: true });
+  cancelSignal?.addEventListener("abort", cancel, { once: true });
   const timer = timeout === undefined ? undefined : setTimeout(() => controller.abort(new TimeoutError()), timeout);
   let rejectAbort: () => void = () => {};
   const aborted = new Promise<never>((_, reject) => {
@@ -768,7 +770,7 @@ async function callWithTimeoutAndCancel<T>(
     return await Promise.race([operation(controller.signal), aborted]);
   } finally {
     if (timer) clearTimeout(timer);
-    cancelToken?.signal.removeEventListener("abort", cancel);
+    cancelSignal?.removeEventListener("abort", cancel);
     controller.signal.removeEventListener("abort", rejectAbort);
   }
 }
@@ -776,7 +778,7 @@ async function callWithTimeoutAndCancel<T>(
 async function* iterateWithTimeoutAndCancel(
   stream: AsyncIterable<StreamEvent>,
   timeout?: number,
-  cancelToken?: CancellationToken,
+  cancelSignal?: AbortSignal,
   controller = new AbortController()
 ): AsyncIterable<StreamEvent> {
   const iterator = stream[Symbol.asyncIterator]();
@@ -787,14 +789,14 @@ async function* iterateWithTimeoutAndCancel(
         signal.addEventListener("abort", abort, { once: true });
         try { return await iterator.next(); }
         finally { signal.removeEventListener("abort", abort); }
-      }, timeout, cancelToken);
+      }, timeout, cancelSignal);
       if (result.done) return;
       yield result.value;
     }
   } finally {
     controller.abort(new AbortError());
     // Custom iterators may ignore the signal; cleanup must not stall cancellation.
-    void Promise.resolve(iterator.return?.()).catch(() => {});
+    void Promise.resolve().then(() => iterator.return?.()).catch(() => {});
   }
 }
 

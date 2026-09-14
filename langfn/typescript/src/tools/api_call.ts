@@ -110,7 +110,8 @@ export async function executeApiCall(
   const response = await client.request(path, {
     method: (args.method ?? "GET").toUpperCase(),
     headers,
-    body
+    body,
+    redirect: "error"
   });
 
   const contentType = response.headers.get("content-type") ?? "";

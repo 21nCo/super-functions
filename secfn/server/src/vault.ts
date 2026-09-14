@@ -747,7 +747,7 @@ export class VaultService {
     });
   }
 
-  async verifyRuntimeToken(rawToken: string, scope: { tenantId?: string; namespace?: string; environment?: string }): Promise<VerifiedRuntimeToken> {
+  async verifyRuntimeToken(rawToken: string, scope: SecretScope): Promise<VerifiedRuntimeToken> {
     const token = await this.db.findOne<ServiceTokenRecord>({
       model: "secfn_service_tokens",
       where: [{ field: "tokenHash", operator: "eq", value: hashToken(rawToken) }],
@@ -757,11 +757,18 @@ export class VaultService {
       throw new SecFnForbiddenError("Runtime token has expired");
     }
     if (token.tenantId && token.tenantId !== scope.tenantId) throw new SecFnForbiddenError("Runtime token tenant mismatch");
-    if (token.namespace) {
-      const requested = await this.findNamespace({ tenantId: scope.tenantId, namespace: scope.namespace });
-      if ((requested?.slug ?? normalizeSlug(scope.namespace ?? "")) !== token.namespace) throw new SecFnForbiddenError("Runtime token namespace mismatch");
+    const namespace = scope.namespaceId
+      ? await this.ensureNamespace({ ...scope, createdBy: "system", create: false })
+      : await this.findNamespace({ tenantId: scope.tenantId, namespace: scope.namespace });
+    const environment = scope.environmentId
+      ? await this.ensureEnvironment({ ...scope, namespaceId: namespace?.id, createdBy: "system", create: false })
+      : undefined;
+    if (token.namespace && token.namespace !== (namespace?.slug ?? normalizeSlug(scope.namespace ?? ""))) {
+      throw new SecFnForbiddenError("Runtime token namespace mismatch");
     }
-    if (token.environment && token.environment !== (scope.environment ?? DEFAULT_ENVIRONMENT)) throw new SecFnForbiddenError("Runtime token environment mismatch");
+    if (token.environment && token.environment !== (environment?.name ?? normalizeName(scope.environment ?? DEFAULT_ENVIRONMENT))) {
+      throw new SecFnForbiddenError("Runtime token environment mismatch");
+    }
     await this.db.update({
       model: "secfn_service_tokens",
       where: [{ field: "id", operator: "eq", value: token.id }],
@@ -784,7 +791,7 @@ export class VaultService {
     if (!secret || secret.revokedAt) throw new SecFnNotFoundError("Secret not found", { key });
     const hydrated = await this.hydrateSecret(secret);
     this.assertRuntimeScope({ ...hydrated, namespace: resolved.namespace }, verified, resolved);
-    return this.decryptRuntimeSecret(await this.hydrateSecret(secret), verified, requestMeta);
+    return this.decryptRuntimeSecret(hydrated, verified, requestMeta);
   }
 
   async resolveRuntimeSet(
@@ -796,7 +803,7 @@ export class VaultService {
     if (!hasScope(verified.token.scopes, "set", name)) {
       throw new SecFnForbiddenError("Runtime token cannot read this secret set", { name });
     }
-    const resolved = await this.resolveScope(scope, { requireNamespace: true, ignoreEnvironment: true });
+    const resolved = await this.resolveScope(scope, { requireNamespace: true, requireEnvironment: true });
     const set = await this.db.findOne<SecretSetRecord>({
       model: "secfn_secret_sets",
       where: scopeWhere({ tenantId: resolved.tenantId, namespaceId: resolved.namespaceId, name }),
@@ -811,7 +818,7 @@ export class VaultService {
     for (const member of members) {
       const secret = await this.getSecret(member.secretId);
       if (secret.revokedAt) continue;
-      this.assertRuntimeScope({ ...secret, namespace: resolved.namespace }, verified, { ...resolved, environment: scope.environment ?? DEFAULT_ENVIRONMENT });
+      this.assertRuntimeScope({ ...secret, namespace: resolved.namespace }, verified, resolved);
       const response = await this.decryptRuntimeSecret(secret, verified, requestMeta);
       secrets[member.alias ?? secret.key] = response.value;
     }
@@ -855,7 +862,7 @@ export class VaultService {
       });
     if (options.requireNamespace && !namespace) throw new SecFnValidationError("Namespace is required");
     if (options.ignoreEnvironment) {
-      return { tenantId, namespaceId: namespace?.id, namespace: namespace?.label ?? namespace?.slug };
+      return { tenantId, namespaceId: namespace?.id, namespace: namespace?.slug };
     }
     const environment = allEnvironment
       ? undefined

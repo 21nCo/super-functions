@@ -1,10 +1,8 @@
 import {
   buildSecretAad,
-  createSecurityScanner,
   createStaticKeyProvider,
   decryptSecret,
   encryptSecret,
-  formatFindingsTable,
   getSecFnSchema,
 } from "../src/index.js";
 
@@ -27,12 +25,7 @@ async function main() {
   console.log("Decrypted length:", decrypted.length);
   console.log("Schema tables:", getSecFnSchema().map((table) => table.modelName).join(", "));
 
-  const scanner = createSecurityScanner();
-  const findings = scanner.scanContent(
-    "const token = 'REPLACE_WITH_YOUR_TOKEN';",
-    { path: "example.ts" },
-  );
-  console.log(formatFindingsTable(findings));
+
 }
 
 main().catch((error) => {

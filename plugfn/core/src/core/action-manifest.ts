@@ -95,7 +95,7 @@ function canonicalJson(value: unknown, depth = 0): string {
   throw new Error('Manifest must contain JSON values only');
 }
 
-// Manifest hashes require locale-independent UTF-16 ordering on every runtime.
+// Explicitly preserve the default UTF-16 ordering; localeCompare would change manifest hashes.
 function compareCanonicalKeys(left: string, right: string): number {
   if (left < right) return -1;
   if (left > right) return 1;

@@ -348,12 +348,26 @@ it("binds ID-issued tokens to canonical tenant, namespace and environment", asyn
   const { secfn } = createServer();
   const ns = await secfn.vault.createNamespace({ tenantId: "tenant-a", slug: "canonical", label: "Display Name", createdBy: "admin" });
   const env = await secfn.vault.createEnvironment({ tenantId: "tenant-a", namespaceId: ns.id, name: "production", createdBy: "admin" });
-  await secfn.vault.createSecret({ tenantId: "tenant-a", namespaceId: ns.id, environmentId: env.id, key: "KEY", value: "private", createdBy: "admin" });
-  const token = await secfn.vault.createServiceToken({ tenantId: "tenant-a", namespaceId: ns.id, environmentId: env.id, name: "by-id", scopes: ["secret:KEY"], createdBy: "admin" });
+  const secret = await secfn.vault.createSecret({ tenantId: "tenant-a", namespaceId: ns.id, environmentId: env.id, key: "KEY", value: "private", createdBy: "admin" });
+  const token = await secfn.vault.createServiceToken({ tenantId: "tenant-a", namespaceId: ns.id, environmentId: env.id, name: "by-id", scopes: ["secret:KEY", "set:app"], createdBy: "admin" });
   expect(token.record).toMatchObject({ tenantId: "tenant-a", namespace: "canonical", environment: "production" });
   const scope = { tenantId: "tenant-a", namespace: "canonical", environment: "production" };
   const verified = await secfn.vault.verifyRuntimeToken(token.token, scope);
   expect((await secfn.vault.readRuntimeSecret("KEY", verified, scope)).value).toBe("private");
+  await secfn.vault.createSecretSet({ tenantId: "tenant-a", namespaceId: ns.id, name: "app", members: [{ secretId: secret.id }], createdBy: "admin" });
+  expect((await secfn.vault.resolveRuntimeSet("app", verified, scope)).secrets).toEqual({ KEY: "private" });
+  const ids = { tenantId: "tenant-a", namespaceId: ns.id, environmentId: env.id };
+  const byIds = await secfn.vault.verifyRuntimeToken(token.token, ids);
+  expect((await secfn.vault.readRuntimeSecret("KEY", byIds, ids)).value).toBe("private");
+  expect((await secfn.vault.resolveRuntimeSet("app", byIds, ids)).secrets).toEqual({ KEY: "private" });
+  for (const path of ["secrets/KEY", "secret-sets/app/resolve"]) {
+    const response = await secfn.router.handle(new Request(`https://app.test/secfn/runtime/${path}?namespaceId=${ns.id}&environmentId=${env.id}`, { method: path.endsWith("resolve") ? "POST" : "GET", headers: { authorization: `Bearer ${token.token}` } }));
+    expect(response.status).toBe(200);
+  }
+  const foreign = await secfn.vault.createNamespace({ tenantId: "other", slug: "foreign", createdBy: "admin" });
+  await expect(secfn.vault.verifyRuntimeToken(token.token, { ...ids, namespaceId: foreign.id })).rejects.toThrow();
+  const wrongEnv = await secfn.vault.createEnvironment({ tenantId: "tenant-a", namespaceId: ns.id, name: "staging", createdBy: "admin" });
+  await expect(secfn.vault.verifyRuntimeToken(token.token, { ...ids, environmentId: wrongEnv.id })).rejects.toThrow();
   await expect(secfn.vault.verifyRuntimeToken(token.token, { ...scope, environment: "development" })).rejects.toThrow();
   await expect(secfn.vault.createServiceToken({ tenantId: "other", namespaceId: ns.id, name: "bad", scopes: ["*"], createdBy: "admin" })).rejects.toThrow();
 });

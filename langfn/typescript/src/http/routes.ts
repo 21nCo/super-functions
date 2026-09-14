@@ -1,6 +1,8 @@
 import type { AuthSession } from "@superfunctions/auth";
 import { createRouter, type Route, type RouteContext, type Router, type Middleware } from "@superfunctions/http";
 
+import { CancellationToken } from "../utils/cancel.js";
+import { ValidationError } from "../core/errors.js";
 import { LangFn } from "../client.js";
 import type { Message } from "../core/types.js";
 import { createLangFnAuthMiddleware, type LangFnAuthOptions } from "./auth.js";
@@ -42,6 +44,9 @@ export function createLangFnRoutes<TSession extends AuthSession = AuthSession>(
   lang: LangFn,
   options: LangFnHttpOptions<TSession> = {}
 ): Route<LangFnRouteContext>[] {
+  if (["tenantContext", "rateLimit", "params", "query", "url", "json", "formData", "text"].includes(options.auth?.contextKey ?? "auth")) {
+    throw new ValidationError("Auth contextKey collides with a reserved route context key");
+  }
   const secure = (routeId: string) => [
     createLangFnAuthMiddleware(options.auth),
     ((request, context, next) => {
@@ -150,21 +155,49 @@ export function createLangFnRoutes<TSession extends AuthSession = AuthSession>(
         const metadata = mergeMetadata(body.data.metadata, context.tenantContext);
         const input = "prompt" in body.data ? body.data.prompt : parseMessages(body.data.messages);
         const encoder = new TextEncoder();
+        const cancelToken = new CancellationToken();
+        const iterator = lang.streamSSE(input as string | Message[], { metadata, cancelToken })[Symbol.asyncIterator]();
+        let closed = false;
+        let streamController: ReadableStreamDefaultController<Uint8Array>;
+        const cleanup = () => request.signal.removeEventListener("abort", abort);
+        const stop = () => {
+          closed = true;
+          cleanup();
+          cancelToken.cancel();
+          void Promise.resolve().then(() => iterator.return?.()).catch(() => {});
+        };
+        const abort = () => {
+          if (closed) return;
+          stop();
+          streamController.close();
+        };
         const stream = new ReadableStream<Uint8Array>({
-          async start(controller) {
+          start(controller) {
+            streamController = controller;
+            request.signal.addEventListener("abort", abort, { once: true });
+            if (request.signal.aborted) abort();
+          },
+          async pull(controller) {
+            if (closed) return;
             try {
-              for await (const chunk of lang.streamSSE(input as string | Message[], { metadata })) {
-                controller.enqueue(encoder.encode(chunk));
+              const result = await iterator.next();
+              if (closed) return;
+              if (result.done) {
+                closed = true;
+                cleanup();
+                controller.close();
+              } else {
+                controller.enqueue(encoder.encode(result.value));
               }
             } catch (error) {
+              if (closed) return;
               const payload = toHttpErrorPayload(error);
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify(createErrorEnvelope(payload.code, payload.message, payload.details))}\n\n`)
-              );
-            } finally {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(createErrorEnvelope(payload.code, payload.message, payload.details))}\n\n`));
+              stop();
               controller.close();
             }
-          }
+          },
+          cancel() { stop(); }
         });
 
         return new Response(stream, {

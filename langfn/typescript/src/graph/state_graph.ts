@@ -37,11 +37,12 @@ export class CompiledGraph<TState extends Record<string, unknown>> {
 
   async resume(checkpointId: string, options: InvokeGraphOptions<TState> = {}): Promise<TState> {
     const store = options.checkpointStore ?? this.checkpointStore;
-    const checkpoint = await store.load(checkpointId);
+    if (!store.take) throw new ValidationError("Checkpoint store must support atomic take() to resume safely");
+    const checkpoint = await store.take(checkpointId);
     if (!checkpoint) {
       throw new ValidationError(`Unknown checkpoint: ${checkpointId}`, { metadata: { checkpointId } });
     }
-    const result = await this.run({
+    return await this.run({
       checkpointStore: store,
       currentNode: checkpoint.node,
       currentState: checkpoint.state,
@@ -49,8 +50,6 @@ export class CompiledGraph<TState extends Record<string, unknown>> {
       maxSteps: options.maxSteps ?? 100,
       skipInterruptFor: checkpoint.node
     });
-    await store.remove?.(checkpointId);
-    return result;
   }
 
   private async run(options: {

@@ -6,6 +6,8 @@ export interface GraphCheckpoint<TState> {
 }
 
 export interface CheckpointStore<TState> {
+  /** Atomically consume a checkpoint before running side effects. Required for resume. */
+  take?(id: string): Promise<GraphCheckpoint<TState> | undefined> | GraphCheckpoint<TState> | undefined;
   remove?(id: string): Promise<void> | void;
   save(checkpoint: GraphCheckpoint<TState>): Promise<void> | void;
   load(id: string): Promise<GraphCheckpoint<TState> | undefined> | GraphCheckpoint<TState> | undefined;
@@ -16,6 +18,12 @@ export class InMemoryCheckpointStore<TState> implements CheckpointStore<TState> 
 
   constructor(private readonly maxEntries = 1000) {
     if (!Number.isSafeInteger(maxEntries) || maxEntries < 1) throw new Error("Invalid checkpoint capacity");
+  }
+
+  async take(id: string): Promise<GraphCheckpoint<TState> | undefined> {
+    const checkpoint = this.checkpoints.get(id);
+    this.checkpoints.delete(id);
+    return checkpoint;
   }
 
   async remove(id: string): Promise<void> { this.checkpoints.delete(id); }

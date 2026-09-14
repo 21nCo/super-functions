@@ -1,6 +1,6 @@
 import { Adapter, WhereClause } from "@superfunctions/db";
 
-import { TraceNotFoundError } from "../core/errors.js";
+import { TraceNotFoundError, ValidationError } from "../core/errors.js";
 import { Cost, TokenUsage, TraceScope } from "../core/types.js";
 
 export interface TraceRecord extends TraceScope {
@@ -76,7 +76,16 @@ export class TraceStorage {
   }
 
   async saveFeedback(feedback: FeedbackRecord): Promise<FeedbackRecord> {
-    const trace = await this.findOne(feedback.traceId, feedback.scope);
+    const scope: TraceScope = {};
+    for (const field of ["tenantId", "userId"] as const) {
+      const top = feedback[field];
+      const nested = feedback.scope?.[field];
+      if (top !== undefined && nested !== undefined && top !== nested) {
+        throw new ValidationError(`Conflicting feedback ${field}`);
+      }
+      scope[field] = top ?? nested;
+    }
+    const trace = await this.findOne(feedback.traceId, scope);
     if (!trace) {
       throw new TraceNotFoundError(undefined, { metadata: { traceId: feedback.traceId } });
     }
@@ -87,7 +96,7 @@ export class TraceStorage {
         where: [
           { field: "traceId", operator: "eq", value: feedback.traceId },
           { field: "clientKey", operator: "eq", value: feedback.clientKey },
-          ...scopeWhere(feedback.scope)
+          ...scopeWhere(scope)
         ]
       });
       if (existing) {
@@ -97,6 +106,7 @@ export class TraceStorage {
 
     const record = {
       ...feedback,
+      scope,
       tenantId: trace.tenantId,
       userId: trace.userId,
       createdAt: feedback.createdAt ?? Date.now()

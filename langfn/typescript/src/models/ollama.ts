@@ -59,7 +59,6 @@ export class OllamaChatModel extends ChatModel {
       });
     } catch (error) {
       if (request.signal?.aborted) throw request.signal.reason;
-      if (error instanceof Error && error.name === "AbortError") throw error;
       throw new ProviderError("Could not connect to Ollama", { provider: this.provider, cause: error });
     }
 
@@ -98,7 +97,6 @@ export class OllamaChatModel extends ChatModel {
       });
     } catch (error) {
       if (request.signal?.aborted) throw request.signal.reason;
-      if (error instanceof Error && error.name === "AbortError") throw error;
       throw new ProviderError("Could not connect to Ollama", { provider: this.provider, cause: error });
     }
 

@@ -21,6 +21,10 @@ export function memoryfn(config: MemoryFnConfig): MemoryFn {
     throw new Error('MEMORY_PG_EMBEDDING_DIMENSION_MUST_BE_1536');
   }
 
+  if (config.embedder && config.embedder.provider !== 'openai') {
+    throw new Error(`MEMORY_EMBEDDER_UNSUPPORTED: ${config.embedder.provider}`);
+  }
+
   // Init Storage
   if (config.storage.adapter) {
     storage = config.storage.adapter;

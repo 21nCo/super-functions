@@ -1,4 +1,5 @@
 import {
+  Message,
   ChatRequest,
   ChatResponse,
   CompletionRequest,
@@ -93,7 +94,7 @@ export class OpenAIChatModel extends ChatModel {
   async chat(request: ChatRequest): Promise<ChatResponse> {
     const payload: Record<string, unknown> = {
       model: this.model,
-      messages: request.messages
+      messages: request.messages.map(toOpenAIMessage)
     };
     if (request.tools?.length) payload.tools = request.tools.map(toOpenAITool);
     if (request.tool_choice !== undefined) payload.tool_choice = request.tool_choice;
@@ -118,7 +119,8 @@ export class OpenAIChatModel extends ChatModel {
     return {
       message: {
         role: "assistant",
-        content: message.content ?? ""
+        content: message.content ?? "",
+        toolCalls
       },
       toolCalls,
       tool_calls: toolCalls,
@@ -172,6 +174,19 @@ export class OpenAIChatModel extends ChatModel {
 
     yield { type: "end", finish_reason: "stop" };
   }
+}
+
+function toOpenAIMessage(message: Message): Record<string, unknown> {
+  const wire: Record<string, unknown> = { role: message.role, content: message.content };
+  if (message.name !== undefined) wire.name = message.name;
+  if (message.tool_call_id !== undefined) wire.tool_call_id = message.tool_call_id;
+  const calls = message.toolCalls ?? parseToolCalls(message.tool_calls);
+  if (calls?.length) wire.tool_calls = calls.map(call => ({
+    id: call.id,
+    type: "function",
+    function: { name: call.name, arguments: JSON.stringify(call.arguments) }
+  }));
+  return wire;
 }
 
 function toOpenAITool(tool: ToolSpec): Record<string, unknown> {
