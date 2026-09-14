@@ -85,3 +85,24 @@ it("snapshots provider-owned headers before runner code can rotate them", async 
   expect(revoke).toHaveBeenCalledWith(acquired, expect.anything());
   expect(dispose).toHaveBeenCalledWith(acquired, expect.anything());
 });
+
+it("sanitizes conformance setup exceptions before releasing the original credential", async () => {
+  const acquired = { headers: { "x-api-key": "private-header-first\nprivate-header-second" } };
+  const revoke = vi.fn();
+  const dispose = vi.fn();
+  let failure: unknown;
+  try {
+    await runAuthenticatedOfficialConformance({
+      url: "http://127.0.0.1:1/mcp", credential: { acquire: () => acquired, revoke, dispose },
+    });
+  } catch (error) { failure = error; }
+  expect(failure).toBeInstanceOf(Error);
+  expect((failure as Error).message).toContain("[REDACTED]");
+  for (const value of [String(failure), (failure as Error).stack, JSON.stringify(failure)]) {
+    expect(value).not.toContain("private-header-first");
+    expect(value).not.toContain("private-header-second");
+  }
+  expect(revoke).toHaveBeenCalledWith(acquired, expect.anything());
+  expect(dispose).toHaveBeenCalledWith(acquired, expect.anything());
+  expect(spawn).not.toHaveBeenCalled();
+});

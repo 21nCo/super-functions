@@ -32,6 +32,20 @@ function credentialValues(headers: HeadersInit): Set<string> {
     if (separator > 0) {
       const token = trimmed.slice(separator).trim();
       if (token) secrets.add(token);
+      if (trimmed.slice(0, separator).toLowerCase() === "basic" && /^[A-Za-z0-9+/]+={0,2}$/.test(token)) {
+        const decoded = Buffer.from(token, "base64");
+        // Round-trip validation avoids interpreting malformed tokens as credentials.
+        if (decoded.toString("base64").replace(/=+$/, "") === token.replace(/=+$/, "")) {
+          for (const encoding of ["utf8", "latin1"] as const) {
+            const pair = decoded.toString(encoding);
+            const colon = pair.indexOf(":");
+            if (colon < 0) continue;
+            for (const value of [pair, pair.slice(0, colon), pair.slice(colon + 1)]) {
+              if (value) secrets.add(value);
+            }
+          }
+        }
+      }
     }
   }
   return secrets;

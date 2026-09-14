@@ -1,5 +1,5 @@
 import { startAuthenticatedServer } from "../../test-support/authenticated-server.js";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { McpFnClient } from "@mcpfn/client";
 import { authenticatedHttpTarget } from "@mcpfn/testing";
 import { McpFnInspector } from "../src/index.js";
@@ -81,7 +81,11 @@ it("redacts failed-open diagnostics after releasing malformed credentials", asyn
     target: authenticatedHttpTarget("http://127.0.0.1:1/mcp", { credential: { headers: { "x-api-key": secret } } }),
     diagnostics: event => { events.push(event); },
   });
-  await expect(client.connect()).rejects.toThrow();
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected outbound request"));
+  try {
+    await expect(client.connect()).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  } finally { fetch.mockRestore(); }
   expect(events.length).toBeGreaterThan(0);
   expect(JSON.stringify(events)).not.toContain("private-header-first");
   expect(JSON.stringify(events)).not.toContain("private-header-second");

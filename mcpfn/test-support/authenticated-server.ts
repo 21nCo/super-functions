@@ -1,4 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import type { AddressInfo } from "node:net";
 import { createAuthProviderMcpHandler } from "@mcpfn/auth";
 import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
@@ -29,7 +31,8 @@ export async function startAuthenticatedServer(expectedToken: string, echo = fal
         await protectedHandler!(await toWebRequest(request)),
       );
     } catch {
-      response.writeHead(500).end();
+      if (response.headersSent) response.destroy();
+      else response.writeHead(500).end();
     }
   });
   await listen(server);
@@ -81,7 +84,8 @@ async function toWebRequest(request: IncomingMessage): Promise<Request> {
 
 async function sendWebResponse(response: ServerResponse, web: Response): Promise<void> {
   response.writeHead(web.status, Object.fromEntries(web.headers));
-  response.end(Buffer.from(await web.arrayBuffer()));
+  if (!web.body) { response.end(); return; }
+  await pipeline(Readable.fromWeb(web.body as Parameters<typeof Readable.fromWeb>[0]), response);
 }
 
 export function listen(server: ReturnType<typeof createServer>): Promise<void> {

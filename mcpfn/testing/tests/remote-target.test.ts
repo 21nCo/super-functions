@@ -390,3 +390,29 @@ it.each(["1.0.0", "0.1.16"])("preserves structural report versions when credenti
   expect(result.runtime.reportSchemaVersion).toBe("1.0.0");
   expect(result.stdout).not.toContain(secret);
 });
+
+it.each(["Basic", "bAsIc"])("redacts decoded %s username and password, including colons in passwords", async (scheme) => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  const username = "opaque-basic-user";
+  const password = "opaque-basic-password:tail";
+  const token = Buffer.from(`${username}:${password}`).toString("base64");
+  const credential = { headers: { authorization: `${scheme} ${token}` } };
+  const result = redactRemoteCredential(credential, { username, password, pair: `${username}:${password}`, token });
+  expect(Object.values(result)).toEqual(Array(4).fill("[REDACTED]"));
+});
+
+it("redacts scenario credentials before truncation can leave a secret prefix", async () => {
+  const secret = "private-prefix-" + "z".repeat(200);
+  const fixture = await startAuthenticatedServer(secret);
+  try {
+    const report = await runMcpFnTargetSuite({
+      target: authenticatedHttpTarget(fixture.url, { credential: { headers: { authorization: `Bearer ${secret}` } } }),
+      scenarios: [{ name: "incomplete", tool: "identity", status: "incomplete", incompleteReason: "x".repeat(40) + secret }],
+      scenarioRun: { maxErrorBytes: 64 },
+    });
+    expect(report.results[0]?.status).toBe("incomplete");
+    expect(report.results[0]?.error).toContain("[REDACTED]");
+    expect(JSON.stringify(report)).not.toContain("private-");
+    expect(createMcpFnTargetSuiteJUnit(report)).not.toContain("private-");
+  } finally { await fixture.close(); }
+});

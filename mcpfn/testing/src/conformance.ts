@@ -383,7 +383,13 @@ export async function runAuthenticatedOfficialConformance(
   );
   let proxy: AuthenticatedConformanceProxy | undefined;
   let result: OfficialConformanceResult | undefined;
-  let operationFailure: { error: unknown } | undefined;
+  let operationFailure: { error: Error } | undefined;
+  const safeFailure = (error: unknown): { error: Error } => {
+    let message = "Authenticated conformance operation failed";
+    try { message = redactRemoteCredential(lease.credential, error instanceof Error ? error.message : String(error)); }
+    catch { /* Keep a safe fallback if redaction exceeds its budget. */ }
+    return { error: new Error(message) };
+  };
   try {
     proxy = await createAuthenticatedConformanceProxy({
       url: conformance.url,
@@ -391,10 +397,10 @@ export async function runAuthenticatedOfficialConformance(
     });
     result = redactRemoteCredential(lease.credential, await runConformance({ ...conformance, stdio: "pipe", url: proxy.url }, value => String(redactRemoteCredential(lease.credential, value))), { preserveKeys: true });
   } catch (error) {
-    operationFailure = { error };
+    operationFailure = safeFailure(error);
   }
   try { await proxy?.close(); }
-  catch (error) { operationFailure ??= { error }; }
+  catch (error) { operationFailure ??= safeFailure(error); }
   let released = false;
   for (let attempt = 0; attempt < 3; attempt++) {
     try { await lease.release(); released = true; break; } catch { /* Retry transient revocation failure. */ }

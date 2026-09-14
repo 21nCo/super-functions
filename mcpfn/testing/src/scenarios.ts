@@ -7,7 +7,6 @@ import type {
   Task,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { McpFnClientEvent, McpFnClientEventKind } from "@mcpfn/client";
-import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 import { McpFnAssertionError, assertStructuredTextParity, stableJson } from "./assertions.js";
 import type { McpFnTestClient } from "./client.js";
@@ -534,7 +533,7 @@ export async function runScenarios(
           ...common,
           status: "incomplete",
           durationMs: 0,
-          error: truncateError(`Skipped after timed-out scenario: ${timedOutScenario}`, options),
+          error: truncateError(`Skipped after timed-out scenario: ${timedOutScenario}`, options, client),
         });
         continue;
       }
@@ -547,6 +546,7 @@ export async function runScenarios(
           error: truncateError(
             `Missing scenario variables: ${resolved.missing.join(", ")}`,
             options,
+            client,
           ),
         });
         continue;
@@ -556,7 +556,7 @@ export async function runScenarios(
           ...common,
           status: "incomplete",
           durationMs: 0,
-          error: truncateError(scenario.incompleteReason ?? "Scenario is incomplete", options),
+          error: truncateError(scenario.incompleteReason ?? "Scenario is incomplete", options, client),
         });
         continue;
       }
@@ -588,7 +588,7 @@ export async function runScenarios(
           ...common,
           status: "failed",
           durationMs: performance.now() - startedAt,
-          error: truncateError(error instanceof Error ? error.message : String(error), options),
+          error: truncateError(error instanceof Error ? error.message : String(error), options, client),
         });
         if (timedOut) timedOutScenario = scenario.name;
       } finally {
@@ -854,8 +854,10 @@ async function executeAuthScenario(
   assertExpected(await runOptions.auth(scenario, signal), scenario.expect);
 }
 
-function truncateError(value: string, options: McpFnScenarioRunOptions): string {
-  const redacted = String(redactOAuthValue(value));
+function truncateError(value: string, options: McpFnScenarioRunOptions, client: McpFnTestClient): string {
+  let redacted = "Scenario error omitted because credential redaction failed";
+  try { redacted = String(client.session.redact(value)); }
+  catch { /* Report safely even when a diagnostic exceeds the redaction budget. */ }
   const maxBytes = options.maxErrorBytes ?? 4_096;
   const bytes = new TextEncoder().encode(redacted);
   if (bytes.byteLength <= maxBytes) return redacted;

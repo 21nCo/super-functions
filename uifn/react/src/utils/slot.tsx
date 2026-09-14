@@ -100,11 +100,17 @@ function preserveIntrinsicSemantics(child: React.ReactElement<AnyProps>, props: 
 export const Slot = React.forwardRef<HTMLElement, SlotProps>((props, forwardedRef) => {
   const { children, ...slotProps } = props;
 
-  if (!React.isValidElement(children)) {
+  const child = React.isValidElement(children) ? children as React.ReactElement<AnyProps> : null;
+  const childRef = child
+    ? (child.props as AnyProps & { ref?: React.Ref<HTMLElement> }).ref
+      ?? (child as unknown as { ref?: React.Ref<HTMLElement> }).ref
+    : undefined;
+  const mergedRef = React.useMemo(() => composeReactRefs(forwardedRef, childRef), [forwardedRef, childRef]);
+
+  if (!child) {
     return React.Children.count(children) > 1 ? React.Children.only(children) : null;
   }
 
-  const child = children as React.ReactElement<AnyProps>;
   const childType = child.type as unknown as {
     readonly $$typeof?: symbol;
     readonly prototype?: { readonly isReactComponent?: unknown };
@@ -121,8 +127,6 @@ export const Slot = React.forwardRef<HTMLElement, SlotProps>((props, forwardedRe
       details: { childType: typeof child.type === 'function' ? child.type.name || 'anonymous' : String(child.type) },
     });
   }
-  const childRef = (child.props as AnyProps & { ref?: React.Ref<HTMLElement> }).ref
-    ?? (child as unknown as { ref?: React.Ref<HTMLElement> }).ref;
 
   const merged = preserveIntrinsicSemantics(
     child,
@@ -130,7 +134,7 @@ export const Slot = React.forwardRef<HTMLElement, SlotProps>((props, forwardedRe
   );
   return React.cloneElement(child, {
     ...merged,
-    ref: composeReactRefs(forwardedRef, childRef),
+    ref: mergedRef,
   });
 });
 
