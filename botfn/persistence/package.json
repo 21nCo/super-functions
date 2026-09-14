@@ -15,7 +15,6 @@
     "zod": "^3.22.0",
     "@trpc/server": "^10.45.0",
     "@trpc/client": "^10.45.0",
-    "@superfunctions/db": "^0.2.0",
     "drizzle-orm": "^0.35.0",
     "postgres": "^3.4.8"
   },

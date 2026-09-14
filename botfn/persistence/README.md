@@ -1,42 +1,39 @@
 # Persistence Service
 
-tRPC-based persistence service for bot data using Hono and Cloudflare D1.
+tRPC-based persistence service for bot data using Hono, Drizzle, and Postgres. It runs as a Cloudflare Worker; the database is Postgres via `DATABASE_URL`, not D1.
 
 ## Features
 
 - **Type-safe API** with tRPC
 - **Runtime validation** with Zod
-- **Cloudflare D1** database
+- **Postgres** through `DATABASE_URL`
 - **Issue tracking** with GitHub/Linear integration
 - **Discord thread management** with many-to-many relationships
 
 ## Setup
 
-### 1. Create D1 Database
+### 1. Install dependencies
 
-```bash
-wrangler d1 create botfn-db
-```
+From the Superfunctions repository root:
 
-Copy the `database_id` from the output and update it in `wrangler.toml`.
-
-### 2. Initialize Database Schema
-
-For production:
-```bash
-npm run db:init
-```
-
-For local development:
-```bash
-npm run db:init-local
-```
-
-### 3. Install Dependencies
-
-From the monorepo root:
 ```bash
 npm install
+```
+
+### 2. Configure Postgres
+
+Set `DATABASE_URL` as a Wrangler secret (local: `.dev.vars`):
+
+```bash
+wrangler secret put DATABASE_URL
+```
+
+Schema lives in `src/schema.ts` (Drizzle `pgTable`). Apply equivalent Postgres DDL to the database before serving traffic.
+
+### 3. Check the connection string
+
+```bash
+npm run db:env:check
 ```
 
 ## Development
@@ -99,7 +96,7 @@ All tRPC procedures are available at `/trpc/*`:
 
 ## Usage from Discord Bot
 
-See the discord-bot integration for examples of using the tRPC client.
+See `botfn/bot-discord` for examples of using the tRPC client.
 
 ## Database Schema
 
@@ -108,4 +105,4 @@ The service uses two main tables:
 - **issues** - Stores issue metadata (GitHub/Linear IDs, status, notification state)
 - **discord_threads** - Many-to-many relationship between issues and Discord threads
 
-See `schema.sql` for full schema definition.
+See `src/schema.ts` for the Drizzle/Postgres definition.
