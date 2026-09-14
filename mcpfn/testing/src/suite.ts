@@ -94,7 +94,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     capabilities?: ServerCapabilities;
   } = { results: [] };
   try {
-    client = await McpFnTestClient.connectTarget(
+    client = McpFnTestClient.createTarget(
       options.target,
       options.clientInfo ?? { name: "mcpfn-suite", version: "0.0.1" },
       {
@@ -115,6 +115,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
         },
       },
     );
+    await client.session.connect();
     if (options.manifest) {
       manifestChecked = true;
       await assertManifestContract(client, options.manifest, {
@@ -146,8 +147,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     }
   } finally {
     try {
-      if (client) await client.close();
-      else await options.target.cleanup?.();
+      await client?.close();
     } catch (error) {
       cleanupFailure = normalizeMcpFnReportFailure({ name: "CleanupError", message: "Target cleanup failed", code: "MCPFN_TARGET_CLEANUP_FAILED", phase: "transport-close" });
       if (!failure) failure = cleanupFailure;

@@ -427,6 +427,8 @@ try {
   for (const workspace of [
     "@datafn/core",
     "@superfunctions/http",
+    // Server network conformance imports the built public client.
+    "@datafn/client",
   ]) {
     npmStep(`dependency:build:${workspace}`, ["run", "build", "--workspace", workspace]);
   }

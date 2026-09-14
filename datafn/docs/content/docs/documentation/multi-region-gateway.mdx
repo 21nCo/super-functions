@@ -9,6 +9,8 @@ DataFn supports an opt-in canonical-gateway model for applications that keep eac
 
 This capability does not provide active-active writes or automatic failover to an empty region. Existing single-region configurations and permission-directory grant indexing are unchanged unless a placement runtime is configured.
 
+For high-frequency sync, [direct regional sync tickets](./direct-regional-sync) provide an opt-in canonical bootstrap followed by direct regional HTTP/WebSocket traffic, with short-lived grants and the same placement fences.
+
 ## Separate ownership from permission projections
 
 `DatafnPlacementDirectoryAdapter` is the authority for namespace ownership. Its records contain a namespace, owning `regionId`, monotonically increasing `epoch`, lifecycle state, update time, and optional cache/destination metadata. `get`, `putIfAbsent`, and `compareAndSet` must all be linearizable for a namespace; for DynamoDB-backed atomic KV stores, configure strong reads (`consistentRead: true`).

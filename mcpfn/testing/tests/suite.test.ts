@@ -156,3 +156,15 @@ it("retains a complete report when only its compact encoding fits", async () => 
   expect(bounded.droppedResults).toBe(0);
   expect(new TextEncoder().encode(JSON.stringify(bounded)).byteLength).toBeLessThanOrEqual(cap);
 });
+
+it("does not repeat successful custom cleanup after an open failure", async () => {
+  const cleanup = vi.fn(async () => {
+    if (cleanup.mock.calls.length > 1) throw new Error("cleanup repeated");
+  });
+  const report = await runMcpFnTargetSuite({ target: customTarget({
+    kind: "failed-open", open: async () => { throw new Error("cannot open"); }, cleanup,
+  }) });
+  expect(report.ok).toBe(false);
+  expect(cleanup).toHaveBeenCalledOnce();
+  expect(report.incompleteReason).not.toContain("Target cleanup failed");
+});

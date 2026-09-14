@@ -25,6 +25,8 @@ export interface WebSocketClient {
  */
 export interface WsAuthContext {
   namespace: string;
+  /** Set only by the validated regional handshake. */
+  routeTicket?: { id: string; expiresAt: number; now?: () => number };
   /** Optional actor identity for principal-targeted invalidation. */
   actorId?: string;
   /** Optional resolved principal IDs for principal-targeted invalidation. */
@@ -95,6 +97,7 @@ export class WebSocketManager {
    * Reverse mapping: client → known principalIds for O(1) targeted index cleanup.
    */
   private clientPrincipals = new Map<WebSocketClient, Set<string>>();
+  private routeTickets = new Map<WebSocketClient, { id: string; expiresAt: number; now: () => number; timer: ReturnType<typeof setTimeout> }>();
   private clientPlacement = new Map<WebSocketClient, { regionId?: string; epoch?: number }>();
   /** Monotonic namespace fence generation closes the validation/registration race. */
   private namespaceFenceGeneration = new Map<string, number>();
@@ -285,6 +288,12 @@ export class WebSocketManager {
    */
   addClient(client: WebSocketClient, authContext: WsAuthContext): boolean {
     const { namespace } = authContext;
+    // A repeated admission must not leak the previous ticket deadline or indexes.
+    if (this.clientNamespace.has(client)) return false;
+    if (authContext.routeTicket && authContext.routeTicket.expiresAt <= (authContext.routeTicket.now ?? Date.now)()) {
+      this.closeClientSafely(client, 4511, "DATAFN_ROUTE_TICKET_EXPIRED", "ws-ticket-expired");
+      return false;
+    }
 
     if (this.closed) {
       this.closeClientSafely(client, 1001, "Going Away", "ws-closed-admission");
@@ -329,6 +338,13 @@ export class WebSocketManager {
         : {}),
     });
 
+    if (authContext.routeTicket) {
+      const { id, expiresAt, now = Date.now } = authContext.routeTicket;
+      const timer = setTimeout(() => this.expireRouteClient(client), Math.max(0, expiresAt - now()));
+      (timer as NodeJS.Timeout).unref?.();
+      this.routeTickets.set(client, { id, expiresAt, now, timer });
+    }
+
     // REL-007: Start heartbeat lazily on first connected client
     if (this.heartbeatTimer === null) {
       this.startHeartbeat();
@@ -340,7 +356,26 @@ export class WebSocketManager {
   /**
    * Handle disconnection.
    */
+  private expireRouteClient(client: WebSocketClient): void {
+    this.removeClient(client);
+    this.closeClientSafely(client, 4511, "DATAFN_ROUTE_TICKET_EXPIRED", "ws-ticket-expired");
+  }
+
+  revokeRouteTicket(ticketId: string): number {
+    let count = 0;
+    for (const [client, ticket] of this.routeTickets) {
+      if (ticket.id !== ticketId) continue;
+      this.removeClient(client);
+      this.closeClientSafely(client, 4403, "DATAFN_ROUTE_TICKET_REVOKED", "ws-ticket-revoked");
+      count++;
+    }
+    return count;
+  }
+
   removeClient(client: WebSocketClient) {
+    const ticket = this.routeTickets.get(client);
+    if (ticket) clearTimeout(ticket.timer);
+    this.routeTickets.delete(client);
     const namespace = this.clientNamespace.get(client);
     if (namespace !== undefined) {
       this.removeTargetingIndexes(client, namespace);
@@ -472,9 +507,16 @@ export class WebSocketManager {
         principals: mode === "targeted" ? Array.from(requestedPrincipals).sort() : undefined,
       },
     });
+    let sent = 0;
     for (const client of recipients) {
+      const ticket = this.routeTickets.get(client);
+      if (ticket && ticket.expiresAt <= ticket.now()) {
+        this.expireRouteClient(client);
+        continue;
+      }
       try {
         client.send(msg);
+        sent++;
       } catch (e) {
         this.logger?.error("Error sending to websocket client", { error: String(e), operation: "ws-broadcast" });
         this.removeClient(client);
@@ -485,7 +527,7 @@ export class WebSocketManager {
     return {
       mode,
       degraded,
-      wokenClients: mode === "namespace-broadcast" ? "all-in-namespace" : recipients.size,
+      wokenClients: mode === "namespace-broadcast" ? "all-in-namespace" : sent,
     };
   }
 
@@ -505,6 +547,8 @@ export class WebSocketManager {
     this.clientNamespace.clear();
     this.clientPrincipals.clear();
     this.clientPlacement.clear();
+    for (const ticket of this.routeTickets.values()) clearTimeout(ticket.timer);
+    this.routeTickets.clear();
     this.pendingPong.clear();
   }
 

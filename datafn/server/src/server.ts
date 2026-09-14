@@ -415,6 +415,8 @@ export interface DatafnServer<TContext = any> {
     ): Promise<boolean>;
     /** Closes stale sessions so clients reconnect through the canonical gateway. */
     fenceNamespace(namespace: string, minimumEpoch?: number): number;
+    /** Immediately revoke an admitted route ticket across this process. */
+    revokeRouteTicket(ticketId: string): number;
     removeClient(client: WebSocketClient): void;
     handleMessage(client: WebSocketClient, data: string): void;
     /** REL-007: Called by WS transport on native pong frame receipt. */
@@ -1142,13 +1144,14 @@ export async function createDatafnServer<TContext = any>(
       req: Request,
       ctx: TContext & { parsedBody?: unknown },
     ) => Promise<Response> | Response,
+    origin: "http" | "executor" = "http",
     rest = false,
   ): ((req: Request, ctx: TContext) => Promise<Response>) => {
     return async (req: Request, ctx: TContext): Promise<Response> => {
       const enrichedCtx = createEnrichedContext(ctx);
       // Body parsing consumes the original Request. Preserve one clone so a
       // signed routing assertion can bind the exact forwarded body.
-      const placementRequest = multiRegionRuntime?.placement ? req.clone() : undefined;
+      const placementRequest = multiRegionRuntime?.placement && origin === "http" ? req.clone() : undefined;
       let payload: unknown = null;
       // REL-009: Reject new requests immediately when shutting down
       if (shuttingDown) {
@@ -1344,6 +1347,8 @@ export async function createDatafnServer<TContext = any>(
               regionId: multiRegionRuntime.regionId,
               runtime: multiRegionRuntime.placement,
               request: placementRequest,
+              scope: action,
+              trustedInternal: origin === "executor",
             });
           } catch (error) {
             if (error instanceof DatafnRoutingError) {
@@ -1479,7 +1484,7 @@ export async function createDatafnServer<TContext = any>(
           ? await (configuredContext as (request: Request) => Promise<TContext> | TContext)(request)
           : configuredContext ?? ({} as TContext)
       );
-      response = await withAuth(action, handler)(request, executorContext);
+      response = await withAuth(action, handler, "executor")(request, executorContext);
     } catch {
       throw new DatafnExecutorError(
         { code: "INTERNAL", message: "Internal Server Error" },
@@ -1699,7 +1704,7 @@ export async function createDatafnServer<TContext = any>(
         meta: route.meta,
         // withAuth and the REST handler validate URL segments and complete DataFn response hooks.
         decodeParams: false,
-        handler: withAuth(action, route.handler as any, true),
+        handler: withAuth(action, route.handler as any, "http", true),
       });
     }
   }
@@ -1905,13 +1910,19 @@ export async function createDatafnServer<TContext = any>(
             regionId: multiRegionRuntime.regionId,
             runtime: multiRegionRuntime.placement,
             request: handshakeRequest,
+            scope: "websocket",
             trustedInternal:
-              !handshakeRequest && !multiRegionRuntime.placement.requireRoutingAssertion,
+              !handshakeRequest && !multiRegionRuntime.placement.requireRoutingAssertion && !multiRegionRuntime.placement.routeTickets,
           });
           added = wsManager.addClient(client, {
             ...authContext,
             regionId: validated.placement.regionId,
             routingEpoch: validated.placement.epoch,
+            routeTicket: validated.ticket ? {
+              id: validated.ticket.ticketId,
+              expiresAt: validated.ticket.expiresAt,
+              now: multiRegionRuntime.placement.routeTickets?.now,
+            } : undefined,
           });
           if (!added) return false;
           if (
@@ -1933,7 +1944,11 @@ export async function createDatafnServer<TContext = any>(
           if (added) wsManager.removeClient(client);
           try {
             client.close(
-              error instanceof DatafnRoutingError ? 4510 : 1011,
+              error instanceof DatafnRoutingError
+                ? error.code === "DATAFN_ROUTE_RATE_LIMITED" ? 4503
+                  : error.code === "DATAFN_ROUTE_TICKET_EXPIRED" ? 4511
+                  : error.code.startsWith("DATAFN_ROUTE_") ? 4403 : 4510
+                : 1011,
               error instanceof Error ? error.message : "Placement validation failed",
             );
           } catch {
@@ -1941,6 +1956,7 @@ export async function createDatafnServer<TContext = any>(
           return false;
         }
       },
+      revokeRouteTicket: (ticketId) => wsManager.revokeRouteTicket(ticketId),
       fenceNamespace: (namespace, minimumEpoch) =>
         wsManager.fenceNamespace(namespace, minimumEpoch),
       removeClient: (client) => wsManager.removeClient(client),

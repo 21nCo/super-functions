@@ -66,12 +66,13 @@ export class McpFnTestClient<TContext = undefined> {
     }), info, options);
   }
 
-  static async connectTarget<TContext = undefined>(
+  /** Create the session owner before connecting, so failed initialization remains closeable. */
+  static createTarget<TContext = undefined>(
     target: McpFnTarget,
     info?: Implementation,
     options: McpFnTestClientOptions = {},
-  ): Promise<McpFnTestClient<TContext>> {
-    const session = createMcpFnClient({
+  ): McpFnTestClient<TContext> {
+    return new McpFnTestClient<TContext>(createMcpFnClient({
       target,
       info: info ?? { name: "mcpfn-test-client", version: "1.0.0" },
       capabilities: options.capabilities,
@@ -79,12 +80,20 @@ export class McpFnTestClient<TContext = undefined> {
       events: options.events,
       configure: options.configure,
       diagnostics: options.diagnostics,
-    });
+    }));
+  }
+
+  static async connectTarget<TContext = undefined>(
+    target: McpFnTarget,
+    info?: Implementation,
+    options: McpFnTestClientOptions = {},
+  ): Promise<McpFnTestClient<TContext>> {
+    const client = this.createTarget<TContext>(target, info, options);
     try {
-      await session.connect();
-      return new McpFnTestClient<TContext>(session);
+      await client.session.connect();
+      return client;
     } catch (error) {
-      await session.close(true).catch(() => undefined);
+      await client.close().catch(() => undefined);
       throw error;
     }
   }

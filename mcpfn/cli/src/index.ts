@@ -254,12 +254,20 @@ export async function runCli(
           stdout(serialized);
         } finally { await inspector.close(); }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const safeMessage = redactTargetCredentials(target, message);
-        if (error instanceof McpFnClientError) {
-          throw new McpFnClientError(error.code, safeMessage, {phase: error.phase, retryable: error.retryable, details: redactTargetCredentials(target, error.details), cause: redactTargetCredentials(target, error)});
+        // Parsing has finished: connection, inventory, redaction and output errors
+        // are runtime failures. Even inspecting the thrown value can fail.
+        let failure: McpFnClientError;
+        try {
+          const message = error instanceof Error ? error.message : String(error);
+          const safeMessage = redactTargetCredentials(target, message);
+          failure = error instanceof McpFnClientError
+            ? new McpFnClientError(error.code, safeMessage, { phase: error.phase, retryable: error.retryable,
+              details: redactTargetCredentials(target, error.details), cause: redactTargetCredentials(target, error) })
+            : new McpFnClientError("MCPFN_OPERATION_FAILED", safeMessage, { phase: "capability-operation" });
+        } catch {
+          failure = new McpFnClientError("MCPFN_OPERATION_FAILED", "Inspect failed; unsafe error details omitted", { phase: "capability-operation" });
         }
-        throw new Error(safeMessage);
+        throw failure;
       } finally { finishRedaction(); }
     });
 
