@@ -148,7 +148,7 @@ The bundled signer uses HS256 with a domain-separated signing input, protected `
 | Audience | Unique per environment and regional endpoint; never share production and test audiences/keys. |
 | Browser security | Exact origin allowlists; a regional Origin header is denied unless explicitly allowed. The HTTP client uses `credentials: omit`, a ticket header, and refuses redirects. No regional cookies or credentialed CORS. |
 | CSRF | Regional calls require explicit route and application credentials. Canonical cookie-based bootstrap implementations must add their existing CSRF and Origin protections; the helper's POST-only policy is not a CSRF token check. |
-| Preflight | The CORS wrapper answers valid OPTIONS without querying placement or invoking the data handler. It returns no placement details and never uses wildcard origins. |
+| Preflight | The CORS wrapper allows GET, POST, PATCH, and DELETE and answers valid OPTIONS without querying placement or invoking the data handler. It returns no placement details and never uses wildcard origins. |
 | Exposure | Configure TLS, ingress/body/connection limits, rate limiting and DDoS controls on every public cell. `allowRequest` integrates a deployment-owned limiter before execution. |
 | Privacy | Redact `x-datafn-route-ticket`, Authorization and Sec-WebSocket-Protocol in all proxies and logs. Grant callbacks emit only event type and error code. Hash subjects before adding application telemetry; never log tokens or raw namespaces. |
 

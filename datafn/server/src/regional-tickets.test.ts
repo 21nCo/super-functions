@@ -188,13 +188,14 @@ describe("regional route grants", () => {
     }
   });
 
-  it("handles CORS preflight before application/placement access and never allows cookies", async () => {
+  it.each(["GET", "POST", "PATCH", "DELETE"])("handles %s CORS preflight before application/placement access and never allows cookies", async method => {
     const handler = vi.fn(async () => Response.json({ ok: true }, { headers: { "access-control-allow-credentials": "true" } }));
     const cors = withDatafnRegionalCors(handler, { origins: ["https://app.example"] });
     const preflight = await cors(new Request("https://eu.example/datafn/query", { method: "OPTIONS", headers: {
-      origin: "https://app.example", "access-control-request-method": "POST", "access-control-request-headers": "authorization, x-datafn-route-ticket",
+      origin: "https://app.example", "access-control-request-method": method, "access-control-request-headers": "authorization, x-datafn-route-ticket",
     } }));
     expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-methods")?.split(", ")).toContain(method);
     expect(handler).not.toHaveBeenCalled();
     expect(preflight.headers.has("access-control-allow-credentials")).toBe(false);
     expect((await cors(new Request("https://eu.example/datafn/query", { headers: { origin: "https://evil.example" } }))).status).toBe(403);
@@ -202,4 +203,17 @@ describe("regional route grants", () => {
     expect(response.headers.get("access-control-allow-origin")).toBe("https://app.example");
     expect(response.headers.has("access-control-allow-credentials")).toBe(false);
   });
+  it.each([
+    ["PUT", "authorization"], ["TRACE", "authorization"], ["PATCH", "x-unapproved"],
+  ])("rejects unsupported preflight method/header combinations: %s %s", async (method, headers) => {
+    const handler = vi.fn(async () => Response.json({ ok: true }));
+    const cors = withDatafnRegionalCors(handler, { origins: ["https://app.example"] });
+    const response = await cors(new Request("https://eu.example/datafn/resources/note/id", {
+      method: "OPTIONS", headers: { origin: "https://app.example",
+        "access-control-request-method": method, "access-control-request-headers": headers },
+    }));
+    expect(response.status).toBe(403);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
 });

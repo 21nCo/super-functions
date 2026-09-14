@@ -1,0 +1,44 @@
+name: ReviewFn release gate
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - "reviewfn/**"
+      - "scripts/gate-reviewfn-release.mjs"
+      - "scripts/reviewfn-consumer-smoke.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/reviewfn-release.yml"
+  push:
+    branches: [dev]
+    paths:
+      - "reviewfn/**"
+      - "scripts/gate-reviewfn-release.mjs"
+      - "scripts/reviewfn-consumer-smoke.mjs"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reviewfn-release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: docker pull node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
+      - run: npm run gate:reviewfn-release

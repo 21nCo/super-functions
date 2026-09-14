@@ -7,7 +7,7 @@ import { createDatafnClient, createDatafnHttpRouteProvider, DefaultHttpTransport
 import type { DatafnRouteScope } from "@datafn/core";
 import { createDatafnServer } from "../server.js";
 import { datafnMultiRegionPlugin } from "../plugins/multi-region.js";
-import { createDatafnHmacRouteTickets, createDatafnRouteBootstrap, type DatafnRegionalEndpoint } from "../regional-tickets.js";
+import { createDatafnHmacRouteTickets, createDatafnRouteBootstrap, withDatafnRegionalCors, type DatafnRegionalEndpoint } from "../regional-tickets.js";
 import { claimDatafnNamespacePlacement, createMemoryDatafnPlacementDirectory, migrateDatafnNamespace } from "../multi-region-routing.js";
 import { INTERNAL_TABLE_SCHEMAS } from "../execution/internal-tables.js";
 
@@ -63,14 +63,14 @@ async function fixture(ttlMs = 60_000, allowRequest?: () => boolean) {
   async function cell(regionId: string) {
     const db = memoryAdapter();
     const authorize = vi.fn(() => true);
-    const server = await createDatafnServer({ schema, database: db, allowUnknownResources: true,
+    const server = await createDatafnServer({ schema, database: db, allowUnknownResources: true, rest: true,
       context: auth, namespaceProvider: { getNamespace: (context: { namespace: string }) => context.namespace },
       plugins: [datafnMultiRegionPlugin({ regionId, directory: createMemoryIndexedDirectoryStore(),
-        placement: { directory, routeTickets: { verifier: signer, issuer: "app", audience: regionId, authenticate: auth, allowRequest } } })], authorize,
+        placement: { directory, routeTickets: { verifier: signer, issuer: "app", audience: regionId, authenticate: auth, allowRequest, allowedOrigins: ["https://app.example"] } } })], authorize,
       searchProvider: { name: "test", search: async () => [], searchAll: async () => [], updateIndices: async () => {} },
     });
     cleanups.push(() => server.close());
-    const ingress = await listen(request => server.router.handle(request));
+    const ingress = await listen(withDatafnRegionalCors(request => server.router.handle(request), { origins: ["https://app.example"] }));
     const wss = new WebSocketServer({ noServer: true, handleProtocols: protocols => protocols.has("datafn-sync-v1") ? "datafn-sync-v1" : false });
     const admitted: WebSocket[] = [];
     ingress.http.on("upgrade", (req, socket, head) => {
@@ -128,6 +128,38 @@ describe("direct regional two-region network conformance", () => {
     await f.directory.compareAndSet({ namespace: "tenant", expectedEpoch: placement.epoch,
       next: { ...placement, epoch: placement.epoch + 1, state: "moving" } });
     await expect(invoke(f.eu.server)).rejects.toMatchObject({ code: "DATAFN_NAMESPACE_MOVING" });
+  });
+
+  it("permits cross-origin REST updates and deletes while retaining ticket admission", async () => {
+    const f = await fixture();
+    await f.transport.mutation(mutation("rest"));
+    const descriptor = await f.transport.regionalRoutes!.get();
+    const url = `${descriptor.httpUrl}/resources/note/note:rest?clientId=client:rest`;
+    const headers = { origin: "https://app.example", authorization: "Bearer app-session",
+      "content-type": "application/json", "x-datafn-route-ticket": descriptor.ticket };
+    for (const method of ["PATCH", "DELETE"]) {
+      f.eu.authorize.mockClear();
+      const preflight = await fetch(url, { method: "OPTIONS", headers: {
+        origin: headers.origin, "access-control-request-method": method,
+        "access-control-request-headers": "content-type, authorization, x-datafn-route-ticket",
+      } });
+      expect(preflight.status).toBe(204);
+      expect(preflight.headers.get("access-control-allow-methods")?.split(", ")).toContain(method);
+      expect(f.eu.authorize).not.toHaveBeenCalled();
+      const init = { method, headers, ...(method === "PATCH" ? { body: JSON.stringify({ record: { title: "updated" } }) } : {}) };
+      const denied = await fetch(`${url}&mutationId=denied-${method}`, {
+        ...init, headers: { ...headers, "x-datafn-route-ticket": "forged" },
+      });
+      expect(denied.status).toBe(401);
+      expect(f.eu.authorize).not.toHaveBeenCalled();
+      const response = await fetch(`${url}&mutationId=${method}`, init);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true });
+      expect(response.headers.get("access-control-allow-origin")).toBe(headers.origin);
+      expect(response.headers.has("access-control-allow-credentials")).toBe(false);
+      const result = await f.transport.query({ resource: "note", version: 1, select: ["id", "title"] }) as any;
+      expect(result.result.data).toEqual(method === "PATCH" ? [{ id: "note:rest", title: "updated" }] : []);
+    }
   });
 
   it("recovers writes made in a disconnected interval from the saved checkpoint", async () => {
@@ -363,10 +395,19 @@ describe("direct regional two-region network conformance", () => {
     const f = await fixture();
     const valid = await f.provider.bootstrap();
     const claims = await f.signer.verify(valid.ticket);
+    // Structurally valid payloads reach ticket admission after protocol parsing.
+    const payloads: Record<Exclude<DatafnRouteScope, "websocket">, unknown> = {
+      query: { resource: "note", version: 1 }, mutation: mutation("denied"),
+      transact: { steps: [mutation("denied")] },
+      pull: { clientId: "client:denied", cursors: { note: "0" } },
+      push: { clientId: "client:denied", mutations: [mutation("denied")] },
+      reconcile: { resources: ["note"] }, clone: { tables: ["note"] },
+      seed: {}, search: { query: "example", resources: ["note"] },
+    };
     for (const operation of allScopes.filter(scope => scope !== "websocket")) {
       for (const token of [undefined, `${valid.ticket}forged`, await f.signer.sign({ ...claims, namespace: "other" })]) {
         const response = await fetch(`${valid.httpUrl}/${operation}`, { method: "POST",
-          headers: { authorization: "Bearer app-session", ...(token ? { "x-datafn-route-ticket": token } : {}) }, body: "{}" });
+          headers: { authorization: "Bearer app-session", ...(token ? { "x-datafn-route-ticket": token } : {}) }, body: JSON.stringify(payloads[operation]) });
         expect(response.status).toBe(401);
       }
     }

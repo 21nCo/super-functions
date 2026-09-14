@@ -1,0 +1,605 @@
+{
+  "metadata": {
+    "harness": {
+      "provider": "openai",
+      "model": "gpt-5.6-sol",
+      "auth": "chatgpt",
+      "harnessVersion": "codex-cli 0.145.0"
+    },
+    "scope": [
+      "datafn/core/src/protocol.ts",
+      "datafn/core/__tests__/resource-selectors.test.ts",
+      "datafn/server/src/__tests__/resource-selectors-preflight.test.ts",
+      "datafn/docs/content/docs/documentation/security/resource-selectors.mdx"
+    ],
+    "head": "4efa97a895556b745ea679250c0f77a9d432b04e",
+    "base": "e1b6a55209191fdc909c4e633982657b21096e9a",
+    "promptDigest": "85acb334018be69552f535ddf25ae0e80d70ab1883c1b53374aa6bdc316b5e8b",
+    "sourceDigest": "eee53996a33238d432b7018166c4ff1e7b3d618cb6b6bfdfd995067662519e6b",
+    "runtimeMs": 134710,
+    "method": "live-codex-retrospective-bounded-excerpt-review",
+    "limitations": [
+      "One retrospective bounded excerpt; not a held-out calibration set.",
+      "Source summary was authored by an agent; no human adjudication is claimed.",
+      "Downstream repository and full unchanged callers were unavailable.",
+      "This directly exercised the real Codex adapter; the external CLI smoke uses a deterministic harness separately."
+    ],
+    "recordedAt": "2026-09-13T11:00:18.582111+00:00"
+  },
+  "result": {
+    "terminal": "completed",
+    "requirements": [
+      {
+        "id": "DATA-6-R1",
+        "statement": "Resource selectors must be derived only from protocol-defined structural positions, without recursively scanning application records, filter operands, or other domain JSON, across every supported DataFn operation.",
+        "sources": [
+          {
+            "sourceId": "historical:labels",
+            "anchor": "content",
+            "excerpt": "DATA-6 requires structural-only resource selectors across all operations"
+          }
+        ],
+        "category": "behavior",
+        "scope": "DataFn core request parsing and selector extraction",
+        "classification": "mandatory",
+        "dependencies": [],
+        "ambiguity": "The authoritative operation contracts and unchanged callers are unavailable, so the supplied action inventory cannot be independently confirmed as complete.",
+        "extraction": {
+          "harness": "reviewfn-v1",
+          "promptDigest": "dda4484c5e49e162e651d142ad7e9b9ba6c4f5c7a56feec36fb7a8fdb84b4765"
+        }
+      },
+      {
+        "id": "DATA-6-R2",
+        "statement": "Selector extraction must be parser-aligned and return normalized selectors in a canonical result.",
+        "sources": [
+          {
+            "sourceId": "historical:labels",
+            "anchor": "content",
+            "excerpt": "parser-aligned normalized output"
+          }
+        ],
+        "category": "architecture",
+        "scope": "DataFn core parser, parsed-request visitor, and extraction API",
+        "classification": "mandatory",
+        "dependencies": [
+          "DATA-6-R1"
+        ],
+        "ambiguity": "The source does not define normalization precisely; the implementation interprets it as trimming, encounter-order preservation, and deduplication.",
+        "extraction": {
+          "harness": "reviewfn-v1",
+          "promptDigest": "dda4484c5e49e162e651d142ad7e9b9ba6c4f5c7a56feec36fb7a8fdb84b4765"
+        }
+      },
+      {
+        "id": "DATA-6-R3",
+        "statement": "Requests must use a versioned selector protocol, and unsupported versions must fail closed with a dedicated version failure.",
+        "sources": [
+          {
+            "sourceId": "historical:labels",
+            "anchor": "content",
+            "excerpt": "versioned failure"
+          }
+        ],
+        "category": "compatibility",
+        "scope": "DataFn request protocol parsing and error envelopes",
+        "classification": "mandatory",
+        "dependencies": [],
+        "extraction": {
+          "harness": "reviewfn-v1",
+          "promptDigest": "dda4484c5e49e162e651d142ad7e9b9ba6c4f5c7a56feec36fb7a8fdb84b4765"
+        }
+      },
+      {
+        "id": "DATA-6-R4",
+        "statement": "Selector extraction must remain policy-neutral: it may identify structural resources but must not grant access, evaluate permissions, or choose placement.",
+        "sources": [
+          {
+            "sourceId": "historical:labels",
+            "anchor": "content",
+            "excerpt": "policy-neutral results"
+          }
+        ],
+        "category": "architecture",
+        "scope": "DataFn core selector extraction API",
+        "classification": "mandatory",
+        "dependencies": [
+          "DATA-6-R1"
+        ],
+        "extraction": {
+          "harness": "reviewfn-v1",
+          "promptDigest": "dda4484c5e49e162e651d142ad7e9b9ba6c4f5c7a56feec36fb7a8fdb84b4765"
+        }
+      },
+      {
+        "id": "DATA-6-R5",
+        "statement": "Provide conformance tests covering structural selector extraction for all supported operations, normalization, failure behavior, and exclusion of resource-shaped application data.",
+        "sources": [
+          {
+            "sourceId": "historical:labels",
+            "anchor": "content",
+            "excerpt": "conformance tests"
+          }
+        ],
+        "category": "test",
+        "scope": "DataFn core and server test suites",
+        "classification": "mandatory",
+        "dependencies": [
+          "DATA-6-R1",
+          "DATA-6-R2",
+          "DATA-6-R3"
+        ],
+        "extraction": {
+          "harness": "reviewfn-v1",
+          "promptDigest": "dda4484c5e49e162e651d142ad7e9b9ba6c4f5c7a56feec36fb7a8fdb84b4765"
+        }
+      },
+      {
+        "id": "DATA-6-R6",
+        "statement": "Document the supported selector-extraction integration, structural positions, policy limitations, version behavior, and authorization guidance.",
+        "sources": [
+          {
+            "sourceId": "historical:labels",
+            "anchor": "content",
+            "excerpt": "integration documentation"
+          }
+        ],
+        "category": "documentation",
+        "scope": "DataFn security documentation",
+        "classification": "mandatory",
+        "dependencies": [
+          "DATA-6-R1",
+          "DATA-6-R3",
+          "DATA-6-R4"
+        ],
+        "extraction": {
+          "harness": "reviewfn-v1",
+          "promptDigest": "dda4484c5e49e162e651d142ad7e9b9ba6c4f5c7a56feec36fb7a8fdb84b4765"
+        }
+      },
+      {
+        "id": "DATA-6-R7",
+        "statement": "Integrate canonical structural-selector preflight into server routing and executor authorization before authorization callbacks run.",
+        "sources": [
+          {
+            "sourceId": "historical:labels",
+            "anchor": "content",
+            "excerpt": "unchanged server callers are unavailable: mark their requirements unverified"
+          }
+        ],
+        "category": "architecture",
+        "scope": "DataFn server routing, executor, and authorization callers",
+        "classification": "mandatory",
+        "dependencies": [
+          "DATA-6-R1",
+          "DATA-6-R3"
+        ],
+        "ambiguity": "The retrospective source identifies unchanged server callers as required review scope but does not provide their implementation.",
+        "extraction": {
+          "harness": "reviewfn-v1",
+          "promptDigest": "dda4484c5e49e162e651d142ad7e9b9ba6c4f5c7a56feec36fb7a8fdb84b4765"
+        }
+      },
+      {
+        "id": "DATA-6-R8",
+        "statement": "Verify migration of downstream Skillplane consumers to the canonical structural-selector API.",
+        "sources": [
+          {
+            "sourceId": "historical:labels",
+            "anchor": "content",
+            "excerpt": "downstream Skillplane migration verification"
+          }
+        ],
+        "category": "migration",
+        "scope": "Downstream Skillplane repository and integrations",
+        "classification": "mandatory",
+        "dependencies": [
+          "DATA-6-R1",
+          "DATA-6-R6"
+        ],
+        "ambiguity": "The downstream repository is explicitly unavailable in the frozen review input.",
+        "extraction": {
+          "harness": "reviewfn-v1",
+          "promptDigest": "dda4484c5e49e162e651d142ad7e9b9ba6c4f5c7a56feec36fb7a8fdb84b4765"
+        }
+      }
+    ],
+    "assessments": [
+      {
+        "requirementId": "DATA-6-R1",
+        "status": "partial",
+        "evidenceIds": [
+          "E2",
+          "E3",
+          "E4"
+        ],
+        "reasoning": "The supplied core implementation defines an action-indexed inventory and action-specific parsers that inspect only explicit selector positions, while tests exercise every locally listed action and application-data noise. Completeness across the repository's actual operation contracts cannot be verified because unchanged contracts and callers are absent.",
+        "gaps": [
+          "The authoritative unchanged action contracts and callers were not supplied, so the local action inventory cannot be proven exhaustive."
+        ],
+        "confidence": 0.9
+      },
+      {
+        "requirementId": "DATA-6-R2",
+        "status": "implemented",
+        "evidenceIds": [
+          "E5",
+          "E6",
+          "E7"
+        ],
+        "reasoning": "Parsing produces a discriminated request representation, the collector exhaustively visits that representation, and SelectorBuilder trims, deduplicates, preserves encounter order, and returns frozen snapshots.",
+        "gaps": [],
+        "confidence": 0.96
+      },
+      {
+        "requirementId": "DATA-6-R3",
+        "status": "implemented",
+        "evidenceIds": [
+          "E8",
+          "E9",
+          "E10"
+        ],
+        "reasoning": "The protocol declares version 1, defaults omitted versions, rejects non-string versions, and returns DATAFN_UNSUPPORTED_PROTOCOL_VERSION for unsupported top-level or nested envelope versions. Static tests cover these paths, though execution was not verified.",
+        "gaps": [],
+        "confidence": 0.94
+      },
+      {
+        "requirementId": "DATA-6-R4",
+        "status": "implemented",
+        "evidenceIds": [
+          "E11",
+          "E12"
+        ],
+        "reasoning": "The extraction API only parses and collects selectors; its contract explicitly states that returned selectors are policy inputs and that it does not grant access or choose placement. The documentation reiterates that execution-time policy remains necessary.",
+        "gaps": [],
+        "confidence": 0.97
+      },
+      {
+        "requirementId": "DATA-6-R5",
+        "status": "unverified",
+        "evidenceIds": [
+          "E3",
+          "E9",
+          "E13"
+        ],
+        "reasoning": "Comprehensive core and server test source is present, including operation coverage, application-noise exclusion, version failures, and preflight behavior. No test receipt was supplied, and the frozen source explicitly prohibits inferring successful tests from source alone.",
+        "gaps": [
+          "No test receipt or runnable dependency tree was provided.",
+          "The server implementation needed by the integration tests is absent."
+        ],
+        "confidence": 0.99
+      },
+      {
+        "requirementId": "DATA-6-R6",
+        "status": "implemented",
+        "evidenceIds": [
+          "E12",
+          "E14",
+          "E15"
+        ],
+        "reasoning": "The documentation identifies the supported API, enumerates selector positions for every listed action, warns against recursive scans and policy inference, describes empty-selector semantics, documents errors and protocol versioning, and provides authorization and schema-aware pull guidance.",
+        "gaps": [],
+        "confidence": 0.98
+      },
+      {
+        "requirementId": "DATA-6-R7",
+        "status": "unverified",
+        "evidenceIds": [
+          "E13"
+        ],
+        "reasoning": "The supplied server test expects routing and executor paths to reject unsupported versions before authorization and demonstrates authorization-callback use of the extractor, but createDatafnServer and the unchanged routing/executor callers are unavailable. Test expectations alone do not establish integration.",
+        "gaps": [
+          "Server router implementation unavailable.",
+          "Server executor implementation unavailable.",
+          "No passing integration-test receipt supplied."
+        ],
+        "confidence": 0.99
+      },
+      {
+        "requirementId": "DATA-6-R8",
+        "status": "unverified",
+        "evidenceIds": [
+          "E1"
+        ],
+        "reasoning": "The frozen context explicitly says the downstream repository is unavailable. No Skillplane source, migration diff, caller inventory, or verification receipt is present.",
+        "gaps": [
+          "Downstream Skillplane repository unavailable.",
+          "No downstream migration or verification evidence supplied."
+        ],
+        "confidence": 1
+      }
+    ],
+    "evidence": [
+      {
+        "id": "E1",
+        "kind": "source",
+        "description": "Retrospective source summary identifies downstream migration and unavailable-context limitations.",
+        "source": {
+          "sourceId": "historical:labels",
+          "anchor": "content",
+          "excerpt": "Downstream repository and unchanged server callers are unavailable: mark their requirements unverified. Do not infer successful tests from source alone."
+        },
+        "artifactDigest": "eee53996a33238d432b7018166c4ff1e7b3d618cb6b6bfdfd995067662519e6b"
+      },
+      {
+        "id": "E2",
+        "kind": "code",
+        "description": "Canonical action inventory and structural selector-position map cover the ten locally supported actions.",
+        "code": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/core/src/protocol.ts",
+          "startLine": 23,
+          "endLine": 63,
+          "symbol": "DATAFN_STRUCTURAL_SELECTOR_POSITIONS"
+        }
+      },
+      {
+        "id": "E3",
+        "kind": "test",
+        "description": "Core conformance fixtures enumerate all local actions and ensure the structural-position inventory has an entry for each.",
+        "code": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/core/__tests__/resource-selectors.test.ts",
+          "startLine": 73,
+          "endLine": 98,
+          "symbol": "DATAFN_REQUEST_ACTIONS conformance tests"
+        }
+      },
+      {
+        "id": "E4",
+        "kind": "code",
+        "description": "Action-specific parsers read explicit envelope locations rather than recursively traversing arbitrary JSON.",
+        "code": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/core/src/protocol.ts",
+          "startLine": 284,
+          "endLine": 522,
+          "symbol": "parseQueryPayload through parseReconcilePayload"
+        }
+      },
+      {
+        "id": "E5",
+        "kind": "code",
+        "description": "SelectorBuilder normalizes strings by trimming, deduplicates them in encounter order, and freezes result snapshots.",
+        "code": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/core/src/protocol.ts",
+          "startLine": 166,
+          "endLine": 220,
+          "symbol": "SelectorBuilder"
+        }
+      },
+      {
+        "id": "E6",
+        "kind": "code",
+        "description": "The parser returns a versioned discriminated ParsedDatafnRequest envelope.",
+        "code": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/core/src/protocol.ts",
+          "startLine": 565,
+          "endLine": 592,
+          "symbol": "parseDatafnRequest"
+        }
+      },
+      {
+        "id": "E7",
+        "kind": "code",
+        "description": "The exhaustive parsed-request visitor produces canonical structural selector results.",
+        "code": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/core/src/protocol.ts",
+          "startLine": 594,
+          "endLine": 658,
+          "symbol": "collectStructuralResourceSelectors"
+        }
+      },
+      {
+        "id": "E8",
+        "kind": "code",
+        "description": "Protocol-version parsing defaults omissions and produces dedicated unsupported-version envelopes.",
+        "code": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/core/src/protocol.ts",
+          "startLine": 14,
+          "endLine": 21,
+          "symbol": "DATAFN_REQUEST_PROTOCOL_VERSION"
+        }
+      },
+      {
+        "id": "E9",
+        "kind": "test",
+        "description": "Static conformance tests cover default, unsupported, non-string, and nested protocol versions.",
+        "code": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/core/__tests__/resource-selectors.test.ts",
+          "startLine": 331,
+          "endLine": 356,
+          "symbol": "TV-DATA-6-VERSION"
+        }
+      },
+      {
+        "id": "E10",
+        "kind": "code",
+        "description": "Version validation returns DATAFN_UNSUPPORTED_PROTOCOL_VERSION for values outside the supported inventory.",
+        "code": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/core/src/protocol.ts",
+          "startLine": 223,
+          "endLine": 243,
+          "symbol": "readProtocolVersion"
+        }
+      },
+      {
+        "id": "E11",
+        "kind": "code",
+        "description": "Convenience extraction composes parsing and collection and explicitly disclaims policy decisions.",
+        "code": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/core/src/protocol.ts",
+          "startLine": 661,
+          "endLine": 674,
+          "symbol": "extractStructuralResourceSelectors"
+        }
+      },
+      {
+        "id": "E12",
+        "kind": "code",
+        "description": "Security documentation explains that selectors are policy inputs, not complete execution access or authorization results.",
+        "code": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/docs/content/docs/documentation/security/resource-selectors.mdx",
+          "startLine": 80,
+          "endLine": 107,
+          "symbol": "Authorization preflight"
+        }
+      },
+      {
+        "id": "E13",
+        "kind": "test",
+        "description": "Server integration test source expects selector-aware authorization and rejection of unsupported versions before HTTP or executor authorization.",
+        "code": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/server/src/__tests__/resource-selectors-preflight.test.ts",
+          "startLine": 32,
+          "endLine": 104,
+          "symbol": "structural resource-selector preflight"
+        }
+      },
+      {
+        "id": "E14",
+        "kind": "code",
+        "description": "Documentation enumerates selector positions and selector-less behavior for every locally supported action.",
+        "code": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/docs/content/docs/documentation/security/resource-selectors.mdx",
+          "startLine": 40,
+          "endLine": 56,
+          "symbol": "Envelope coverage"
+        }
+      },
+      {
+        "id": "E15",
+        "kind": "code",
+        "description": "Documentation specifies malformed-input errors, unsupported-version behavior, omission defaults, and schema-aware pull integration.",
+        "code": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/docs/content/docs/documentation/security/resource-selectors.mdx",
+          "startLine": 109,
+          "endLine": 130,
+          "symbol": "Errors and pull integration guidance"
+        }
+      }
+    ],
+    "findings": [
+      {
+        "fingerprint": "data6-server-preflight-unverified",
+        "severity": "high",
+        "category": "architecture",
+        "title": "Security-sensitive server preflight integration cannot be verified",
+        "trigger": "The only supplied server file is a test; createDatafnServer, router, executor, and authorization call sites are absent.",
+        "impact": "If unchanged server callers do not invoke canonical parsing before authorization, unsupported protocol variants or structurally addressed resources could bypass the intended coarse authorization gate.",
+        "direction": "Inspect the server router and executor at head commit 4efa97a895556b745ea679250c0f77a9d432b04e and provide a passing integration-test receipt demonstrating parsing occurs before authorization on every entry point.",
+        "anchor": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/server/src/__tests__/resource-selectors-preflight.test.ts",
+          "startLine": 89,
+          "endLine": 104,
+          "symbol": "rejects nested unsupported versions before HTTP or executor authorization"
+        },
+        "evidenceIds": [
+          "E1",
+          "E13"
+        ],
+        "basis": "inferred",
+        "requirementIds": [
+          "DATA-6-R7"
+        ],
+        "lifecycle": "new"
+      },
+      {
+        "fingerprint": "data6-skillplane-migration-unverified",
+        "severity": "medium",
+        "category": "migration",
+        "title": "Downstream Skillplane migration has no review evidence",
+        "trigger": "The accepted requirement calls for downstream Skillplane migration verification, but the downstream repository and all migration evidence are unavailable.",
+        "impact": "Skillplane may continue using ad hoc payload traversal or an obsolete contract, leaving behavior inconsistent with the canonical structural-selector protocol.",
+        "direction": "Provide the immutable downstream commit, migrated caller inventory, and verification receipts for a follow-up review.",
+        "evidenceIds": [
+          "E1"
+        ],
+        "basis": "inferred",
+        "requirementIds": [
+          "DATA-6-R8"
+        ],
+        "lifecycle": "new"
+      },
+      {
+        "fingerprint": "data6-tests-no-receipts",
+        "severity": "medium",
+        "category": "test",
+        "title": "Conformance and integration tests were not shown to pass",
+        "trigger": "Test source is present, but the frozen review input contains no test receipts and the available repository snapshot lacks the dependency and implementation files needed to execute it.",
+        "impact": "Static expectations may fail to compile or execute, and regressions in parser or server integration behavior remain undetected.",
+        "direction": "Run the core resource-selector conformance suite and server preflight suite at the supplied head commit and attach immutable receipts.",
+        "anchor": {
+          "commit": "4efa97a895556b745ea679250c0f77a9d432b04e",
+          "path": "datafn/core/__tests__/resource-selectors.test.ts",
+          "startLine": 1,
+          "endLine": 6,
+          "symbol": "resource selector conformance suite"
+        },
+        "evidenceIds": [
+          "E3",
+          "E9",
+          "E13"
+        ],
+        "basis": "inferred",
+        "requirementIds": [
+          "DATA-6-R5"
+        ],
+        "lifecycle": "new"
+      }
+    ],
+    "inspectedPaths": [
+      "datafn/core/src/protocol.ts",
+      "datafn/core/__tests__/resource-selectors.test.ts",
+      "datafn/server/src/__tests__/resource-selectors-preflight.test.ts",
+      "datafn/docs/content/docs/documentation/security/resource-selectors.mdx"
+    ],
+    "uninspected": [
+      {
+        "scope": "Git diff and base/head object comparison",
+        "reason": "The supplied repository snapshot does not contain objects e1b6a55209191fdc909c4e633982657b21096e9a or 4efa97a895556b745ea679250c0f77a9d432b04e; git reported a bad base object."
+      },
+      {
+        "scope": "Unchanged DataFn server router, executor, authorization callers, exports, error contracts, schemas, joins, and operation contracts",
+        "reason": "Only the four historical files listed in inspectedPaths are available."
+      },
+      {
+        "scope": "Downstream Skillplane repository and migration",
+        "reason": "Explicitly unavailable in the frozen review context."
+      },
+      {
+        "scope": "Test execution and build/type-check verification",
+        "reason": "No test receipts or runnable project dependency tree were supplied."
+      }
+    ]
+  },
+  "usageEvents": [
+    {
+      "sequence": 14,
+      "at": "2026-09-13T10:59:12.249Z",
+      "type": "usage",
+      "data": {
+        "type": "turn.completed",
+        "usage": {
+          "input_tokens": 161385,
+          "cached_input_tokens": 117504,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 5627,
+          "reasoning_output_tokens": 505
+        }
+      }
+    }
+  ]
+}

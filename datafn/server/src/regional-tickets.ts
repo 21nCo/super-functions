@@ -271,15 +271,16 @@ export function withDatafnRegionalCors(
   }));
   const allowedHeaders = new Set(["content-type", "authorization", DATAFN_ROUTE_TICKET_HEADER,
     ...(options.headers ?? []).map(header => header.toLowerCase())]);
+  const allowedMethods = ["GET", "POST", "PATCH", "DELETE"];
   return async request => {
     const origin = request.headers.get("origin");
     if (origin && !origins.has(origin)) return routeTicketError("DATAFN_ROUTE_FORBIDDEN").toResponse();
     if (request.method === "OPTIONS") {
       const method = request.headers.get("access-control-request-method");
       const headers = (request.headers.get("access-control-request-headers") ?? "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-      if (!origin || !["GET", "POST"].includes(method ?? "") || headers.some(h => !allowedHeaders.has(h))) return new Response(null, { status: 403 });
+      if (!origin || !allowedMethods.includes(method ?? "") || headers.some(h => !allowedHeaders.has(h))) return new Response(null, { status: 403 });
       return new Response(null, { status: 204, headers: {
-        "access-control-allow-origin": origin, "access-control-allow-methods": "GET, POST",
+        "access-control-allow-origin": origin, "access-control-allow-methods": allowedMethods.join(", "),
         "access-control-allow-headers": [...allowedHeaders].join(", "),
         vary: "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
         "cache-control": "no-store",

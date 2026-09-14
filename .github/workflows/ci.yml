@@ -123,13 +123,14 @@ jobs:
             npx turbo run typecheck ${{ needs.plan.outputs.js_typecheck_filters }}
           fi
 
+      # Avoid oversubscribing hosted runners with many concurrent Vitest pools.
       - name: Test
         if: needs.plan.outputs.has_js_test == 'true'
         run: |
           if [ "${{ needs.plan.outputs.full_js }}" = "true" ]; then
-            npx turbo run test
+            ./node_modules/.bin/turbo run test --concurrency=2
           else
-            npx turbo run test ${{ needs.plan.outputs.js_test_filters }}
+            ./node_modules/.bin/turbo run test --concurrency=2 ${{ needs.plan.outputs.js_test_filters }}
           fi
 
       - name: Lint
