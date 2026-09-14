@@ -1,7 +1,7 @@
 import Ajv from "ajv";
 import Ajv2019 from "ajv/dist/2019.js";
 import Ajv2020 from "ajv/dist/2020.js";
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { ToolSchema, type Tool } from "@modelcontextprotocol/sdk/types.js";
 
 import { canonicalJson, compareCodeUnits, sha256 } from "./canonical.js";
 import { McpFnClientProfileError } from "./errors.js";
@@ -194,7 +194,7 @@ function assertProjectedCatalog(
   const known = new Map(knownTools.map((tool) => [tool.name, tool]));
   const seen = new Set<string>();
   for (const tool of projectedTools) {
-    if (!tool || typeof tool !== "object" || typeof tool.name !== "string" ||
+    if (!ToolSchema.safeParse(tool).success || !tool || typeof tool !== "object" || typeof tool.name !== "string" ||
         !tool.inputSchema || typeof tool.inputSchema !== "object" || Array.isArray(tool.inputSchema) || tool.inputSchema.type !== "object") {
       throw new McpFnClientProfileError(
         "MCPFN_INVALID_PROJECTED_CATALOG",
@@ -643,6 +643,7 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
     }
     if (Array.isArray(schema.required)) for (const name of schema.required) if (typeof name === "string") required.add(name);
     if (Array.isArray(schema.allOf)) [...schema.allOf].sort((left, right) => compareCodeUnits(branchKey(left), branchKey(right))).forEach((child, index) => visit(child, `${path}/allOf/${index}`));
+    seen.delete(value);
   };
   visit(root);
   return { properties, required, constraints: [...constraints].sort(compareCodeUnits), ownershipSensitive, prohibited };

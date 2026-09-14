@@ -525,7 +525,7 @@ describe("optional projected tool metadata", () => {
     await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: { type: "object" } }], resolved: {
       context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" },
       profile: { id: "test", version: "1", matches: () => true, projectCatalog: ({ tools }) => tools.map((tool) => ({ ...tool, outputSchema: null as any })) },
-    } })).rejects.toThrow(/preserve root constraints/);
+    } })).rejects.toThrow(/MCP tool definitions/);
   });
 });
 
@@ -574,7 +574,7 @@ describe("reference and ownership projection safety", () => {
       { ...visible, properties: { query: { $ref: "#/$defs/query" } }, $defs: { query: { type: "number" } } })).rejects.toThrow(/canonical schema/);
   });
   it.each([[null], [{ taskSupport: null }]])("rejects null execution metadata %j", async execution => {
-    await expect(project(canonical, visible, execution)).rejects.toThrow(/Invalid task execution metadata/);
+    await expect(project(canonical, visible, execution)).rejects.toThrow(/MCP tool definitions/);
   });
 });
 
@@ -688,4 +688,13 @@ it("bounds request-controlled property names in diagnostics", async () => {
   const { formatMcpFnSchemaIssues } = await import("../src/validation.js");
   const issues = formatMcpFnSchemaIssues([{ keyword: "additionalProperties", instancePath: "", schemaPath: "#", params: { additionalProperty: "x".repeat(10000) } }]);
   expect(issues[0].rejectedProperty?.length).toBe(256);
+});
+
+it("rejects invalid projected MCP metadata and ignores schema object aliasing", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+  const shared = { properties: { value: { type: "string" } } };
+  const tool = { name: "test", inputSchema: { type: "object" as const, allOf: [shared, shared] } };
+  const run = (projected: any) => buildMcpFnEffectiveCatalog({ canonicalTools: [tool], resolved: { context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" }, profile: { id: "test", version: "1", matches: () => true, projectCatalog: () => [projected] } } });
+  await expect(run(JSON.parse(JSON.stringify(tool)))).resolves.toBeDefined();
+  for (const metadata of [{ description: 5 }, { annotations: { readOnlyHint: "yes" } }]) await expect(run({ ...tool, ...metadata })).rejects.toMatchObject({ code: "MCPFN_INVALID_PROJECTED_CATALOG" });
 });
