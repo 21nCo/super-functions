@@ -606,10 +606,10 @@ it("accepts unchanged required keys without property declarations", async () => 
 it("rejects open ownership projections and malformed unused definitions", async () => {
   const { buildMcpFnEffectiveCatalog } = await import('../src/client-profiles.js');
   for (const patternProperties of [undefined, { '^tenant': {} }]) {
-    await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: 'test', inputSchema: { type: 'object', properties: { tenantId: { type: 'string' } }, required: ['tenantId'], patternProperties } }], resolved: {
+    await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: 'test', inputSchema: { type: 'object', properties: { tenantId: { type: 'string' } }, required: ['tenantId'], ...(patternProperties ? { patternProperties } : {}) } }], resolved: {
       context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: 'trusted' },
       profile: { id: 'test', version: '1', matches: () => true, serverOwnedArguments: { test: ['tenantId'] },
-        projectCatalog: () => [{ name: 'test', inputSchema: { type: 'object', patternProperties } }] },
+        projectCatalog: () => [{ name: 'test', inputSchema: { type: 'object', ...(patternProperties ? { patternProperties } : {}) } }] },
     } })).rejects.toThrow(/model-visible/);
   }
   await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: 'test', inputSchema: { type: 'object' } }], resolved: {
@@ -699,10 +699,55 @@ it("rejects invalid projected MCP metadata and ignores schema object aliasing", 
   const tool = { name: "test", inputSchema: { type: "object" as const, allOf: [shared, shared] } };
   const run = (projected: any) => buildMcpFnEffectiveCatalog({ canonicalTools: [tool], resolved: { context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" }, profile: { id: "test", version: "1", matches: () => true, projectCatalog: () => [projected] } } });
   await expect(run(JSON.parse(JSON.stringify(tool)))).resolves.toBeDefined();
-  for (const metadata of [{ _meta: { callback: () => {} } }, { _meta: { number: BigInt(1) } }, { description: 5 }, { annotations: { readOnlyHint: "yes" } }]) await expect(run({ ...tool, ...metadata })).rejects.toMatchObject({ code: "MCPFN_INVALID_PROJECTED_CATALOG" });
+  for (const metadata of [{ _meta: { missing: undefined } }, { _meta: { sparse: new Array(2) } }, { _meta: { callback: () => {} } }, { _meta: { number: BigInt(1) } }, { description: 5 }, { annotations: { readOnlyHint: "yes" } }]) await expect(run({ ...tool, ...metadata })).rejects.toMatchObject({ code: "MCPFN_INVALID_PROJECTED_CATALOG" });
 });
 
 it("matches Unicode schema patterns with Ajv semantics", async () => {
   const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
   await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: { type: "object", properties: { tenantId: { type: "string" } }, required: ["tenantId"] } }], resolved: { context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" }, profile: { id: "test", version: "1", matches: () => true, serverOwnedArguments: { test: ["tenantId"] }, projectCatalog: () => [{ name: "test", inputSchema: { type: "object", additionalProperties: false, patternProperties: { "\\p{L}": {} } } }] } } })).rejects.toMatchObject({ code: "MCPFN_PROFILE_ASYMMETRIC" });
+});
+
+
+it("resolves shared relative references independently in each embedded resource", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+  const shared = { $ref: "#/$defs/value" };
+  const schema = (secondType: string) => ({ type: "object" as const, properties: {
+    first: { $id: "first", type: "object", $defs: { value: { type: "string" } }, properties: { value: shared } },
+    second: { $id: "second", type: "object", $defs: { value: { type: secondType } }, properties: { value: shared } },
+  } });
+  const run = (type: string) => buildMcpFnEffectiveCatalog({
+    canonicalTools: [{ name: "shared", inputSchema: schema("string") }], resolved: {
+      context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" },
+      profile: { id: "test", version: "1", matches: () => true, projectCatalog: () => [{ name: "shared", inputSchema: schema(type) }] },
+    },
+  });
+  await expect(run("string")).resolves.toBeDefined();
+  await expect(run("number")).rejects.toMatchObject({ code: "MCPFN_PROFILE_ASYMMETRIC" });
+});
+
+
+it.each(["storage", "handler"])("orders task output evidence after predecessor stages on %s failure", async failure => {
+  const { InMemoryTaskStore } = await import("@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js");
+  const taskStore = new InMemoryTaskStore();
+  if (failure === "storage") vi.spyOn(taskStore, "storeTaskResult").mockRejectedValue(new Error("storage failed"));
+  const evidence: McpFnClientProfileEvidence[] = [];
+  const registry = new McpFnRegistry().register({
+    name: "task", description: "Task", inputSchema: { type: "object" }, execution: { taskSupport: "required" },
+    handler: async () => structuredResult({ ok: true }),
+    taskHandler: { createTask: async (_args, _context, extra) => {
+      const task = await extra.taskStore.createTask({ ttl: 1000 });
+      await extra.taskStore.storeTaskResult(task.taskId, "completed", structuredResult({ ok: true }));
+      throw new Error("handler failed after output");
+    } },
+  });
+  const server = createMcpFnServer({ info: { name: "test", version: "1" }, registry, taskStore,
+    clientProfiles: { profiles: [], resolveVerifiedIdentity: () => undefined, evidence: event => { evidence.push(event); } } });
+  const client = new Client({ name: "test", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left); await client.listTools();
+    try { for await (const _message of client.experimental.tasks.callToolStream({ name: "task", arguments: {} }, undefined, { task: { ttl: 1000 } })) { /* drain */ } } catch { /* Expected task failure. */ }
+    const stages = evidence.filter(event => ["input-validation", "handler", "output-validation"].includes(event.stage)).map(event => event.stage);
+    expect(stages).toEqual(["input-validation", "handler", "output-validation"]);
+  } finally { await client.close(); await server.close(); }
 });

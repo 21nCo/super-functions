@@ -190,7 +190,7 @@ function isJsonMetadata(value: unknown, ancestors = new Set<object>()): boolean 
   if (typeof value !== "object" || ancestors.has(value)) return false;
   if (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return false;
   const next = new Set(ancestors).add(value);
-  return Array.isArray(value) ? value.every(item => isJsonMetadata(item, next)) : Object.values(value).every(item => item === undefined || isJsonMetadata(item, next));
+  return Array.isArray(value) ? Array.from(value).every(item => isJsonMetadata(item, next)) : Object.values(value).every(item => isJsonMetadata(item, next));
 }
 
 function assertProjectedCatalog(
@@ -516,6 +516,9 @@ function mapSchemaKeyword(key: string, value: unknown, visit: (schema: unknown) 
 
 /** Resolve only root object composition; never traverse argument values. */
 function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { properties: Record<string, unknown>; required: Set<string>; constraints: string[]; ownershipSensitive: boolean; prohibited: Set<string> } {
+  // JSON transports duplicate aliases. Give each occurrence its own identity so
+  // relative references inherit the resource at that occurrence, not the first one.
+  root = JSON.parse(JSON.stringify(root)) as Record<string, unknown>;
   const properties: Record<string, unknown> = Object.create(null);
   const required = new Set<string>();
   const prohibited = new Set<string>();

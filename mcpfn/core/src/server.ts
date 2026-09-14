@@ -321,6 +321,12 @@ export class McpFnServer<TContext = undefined> {
           let currentStage: McpFnClientProfileLifecycleStage =
             "profile-resolution";
           let taskOutputReported = false;
+          let taskRequestSettled = false;
+          const pendingTaskOutput: Array<Omit<McpFnClientProfileEvidence, "formatVersion">> = [];
+          const flushTaskOutput = async () => {
+            taskRequestSettled = true;
+            for (const event of pendingTaskOutput.splice(0)) await this.emitProfileEvidence(event);
+          };
           try {
             resolved = await this.resolveProfile(context, extra);
             currentStage = "catalog-projection";
@@ -380,14 +386,16 @@ export class McpFnServer<TContext = undefined> {
               onTaskOutput: async (outcome: "succeeded" | "failed", error?: unknown) => {
                 taskOutputReported = true;
                 completedStages.delete("output-validation");
-                await this.emitProfileEvidence({
+                const event: Omit<McpFnClientProfileEvidence, "formatVersion"> = {
                   stage: "output-validation", outcome,
                   profile: this.profileReference(resolved),
                   tool: request.params.name,
                   ...(outcome === "failed" ? { code: "MCPFN_INVALID_OUTPUT",
                     ...(error instanceof McpFnOutputValidationError ? { issues: (error.details as { issues?: McpFnClientProfileEvidence["issues"] } | undefined)?.issues } : {}),
                   } : {}),
-                });
+                };
+                if (taskRequestSettled) await this.emitProfileEvidence(event);
+                else pendingTaskOutput.push(event);
               },
               onStage: (
                 stage: "input-validation" | "invalid-arguments-handler" | "handler" | "output-validation",
@@ -411,6 +419,7 @@ export class McpFnServer<TContext = undefined> {
                 resolved,
                 request.params.name,
               );
+              await flushTaskOutput();
               return result;
             }
             const result = await this.registry.callTool(
@@ -430,6 +439,7 @@ export class McpFnServer<TContext = undefined> {
             completedStages.delete(currentStage);
             if ((currentStage as McpFnClientProfileLifecycleStage) === "invalid-arguments-handler") completedStages.delete("input-validation");
             if (resolved) await this.emitCompletedToolStages(completedStages, resolved, request.params.name);
+            await flushTaskOutput();
             const profile = this.profileReference(resolved);
             const details =
               error instanceof McpFnError &&
