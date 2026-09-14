@@ -32,7 +32,7 @@ it('refreshes expired grants before returning a populated cache entry', async ()
   const executor = new ActionExecutor(manager as any, { get: () => provider } as any, logger, { enableLogging: false, enableMetrics: false, enableRateLimit: false });
   expect((await executor.execute('test', 'run', { userId: 'u', params: {} })).success).toBe(true);
   connection.expiresAt = new Date(0);
-  manager.getCredentials.mockImplementationOnce(async () => { connection.scopes = []; return { type: 'api-key', apiKey: 'key' }; });
+  manager.resolveConnectionForAction.mockResolvedValueOnce({ ...connection }).mockResolvedValueOnce({ ...connection, scopes: [] });
   const result = await executor.execute('test', 'run', { userId: 'u', params: {} });
   expect(result.success).toBe(false);
   expect(String(result.error)).toContain('ACTION_SCOPE_REQUIRED');

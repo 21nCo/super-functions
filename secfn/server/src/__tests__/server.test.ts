@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createSecFnServer } from "../index.js";
 import { MemoryAdapter } from "./memory-adapter.js";
 
-function createServer(options: { allowAdmin?: boolean; rateLimit?: boolean } = {}) {
+function createServer(options: { allowAdmin?: boolean; rateLimit?: boolean; namespaceScoped?: boolean } = {}) {
   const db = new MemoryAdapter();
   const secfn = createSecFnServer({
     db,
@@ -10,7 +10,7 @@ function createServer(options: { allowAdmin?: boolean; rateLimit?: boolean } = {
     context: (request) => ({
       actorId: request.headers.get("x-actor-id") ?? undefined,
       tenantId: request.headers.get("x-tenant-id") ?? "tenant-a",
-      namespace: request.headers.get("x-namespace") ?? "workspace-a",
+      namespace: options.namespaceScoped === false ? undefined : request.headers.get("x-namespace") ?? "workspace-a",
       ip: request.headers.get("x-forwarded-for") ?? "127.0.0.1",
       userAgent: request.headers.get("user-agent") ?? undefined,
       requestId: request.headers.get("x-request-id") ?? undefined,
@@ -421,7 +421,7 @@ it("derives secret-set tenant ownership from a namespace ID", async () => {
 });
 
 it("records scan-run ownership and isolates tenant lists", async () => {
-  const { secfn } = createServer();
+  const { secfn } = createServer({ namespaceScoped: false });
   expect(secfn.getSchema().find(table => table.modelName === "secfn_scan_runs")?.fields.tenantId).toMatchObject({ fieldName: "tenant_id" });
   for (const tenantId of ["tenant-a", "tenant-b"]) await secfn.vault.recordScanRun({ tenantId, target: tenantId, status: "completed", findingCount: 0, startedAt: new Date().toISOString() });
   const response = await secfn.router.handle(new Request("https://app.test/secfn/admin/scan-runs"));
@@ -473,4 +473,24 @@ it('rejects same-tenant foreign-namespace secret IDs', async () => {
   const secret = await secfn.vault.createSecret({ tenantId: 'tenant-a', namespace: 'foreign', key: 'PRIVATE', value: 'hidden', createdBy: 'admin' });
   const response = await secfn.router.handle(new Request(`https://app.test/secfn/admin/secrets/${secret.id}`));
   expect(response.status).toBe(403);
+});
+
+it('keeps trusted namespaces on collections and permits owned token revocation', async () => {
+  const { secfn } = createServer();
+  for (const namespace of ['workspace-a', 'foreign']) {
+    await secfn.vault.createSecret({ tenantId: 'tenant-a', namespace, key: 'KEY', value: 'value', createdBy: 'admin' });
+  }
+  for (const path of ['secrets', 'secret-sets', 'environments', 'audit-events']) {
+    const denied = await secfn.router.handle(new Request(`https://app.test/secfn/admin/${path}?namespace=foreign`));
+    expect(denied.status).toBe(403);
+    const own = await secfn.router.handle(new Request(`https://app.test/secfn/admin/${path}`));
+    expect(own.status).toBe(200);
+    expect(await own.text()).not.toContain('foreign');
+  }
+  expect((await secfn.router.handle(new Request('https://app.test/secfn/admin/scan-runs'))).status).toBe(403);
+  for (const namespace of ['workspace-a', 'foreign']) {
+    const { record } = await secfn.vault.createServiceToken({ tenantId: 'tenant-a', namespace, name: 'token', scopes: ['*'], createdBy: 'admin' });
+    const response = await secfn.router.handle(new Request(`https://app.test/secfn/admin/service-tokens/${record.id}/revoke`, { method: 'POST' }));
+    expect(response.status).toBe(namespace === 'workspace-a' ? 200 : 403);
+  }
 });

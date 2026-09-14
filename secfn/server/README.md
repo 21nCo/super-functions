@@ -61,3 +61,7 @@ not coordinate quotas across server instances. In-memory defaults are process-lo
 Schema version 3 adds the scan-run tenant index. PostgreSQL installations on
 version 2 should apply `migrations/0003_scan_run_tenant_index.sql` before recording
 version 3. Other adapters should apply the generated schema diff for the same index.
+
+A fixed host namespace also restricts admin collections and service-token revocation.
+Namespace creation/renaming and tenant-wide scan history require an operator context
+without a fixed namespace. Conflicting namespace queries are rejected.

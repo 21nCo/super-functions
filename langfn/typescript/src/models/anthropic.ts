@@ -196,7 +196,7 @@ function splitSystemMessage(messages: Message[]): {
 
   for (const message of messages as Array<Message & Record<string, unknown>>) {
     if (message.role === "system") {
-      system = message.content;
+      system = system === undefined ? message.content : `${system}\n\n${message.content}`;
       continue;
     }
 

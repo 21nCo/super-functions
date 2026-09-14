@@ -67,7 +67,8 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
 
   const routes: Route<TContext>[] = [
     adminRoute("GET", "/admin/namespaces", "namespaces:list", async (_request, ctx) => {
-      return ok(await services.vault.listNamespaces({ tenantId: ctx.tenantId ?? ctx.query.get("tenantId") ?? undefined }));
+      const rows = await services.vault.listNamespaces({ tenantId: ctx.tenantId ?? ctx.query.get("tenantId") ?? undefined });
+      return ok(ctx.namespace ? rows.filter(row => row.slug === ctx.namespace) : rows);
     }),
     adminRoute("POST", "/admin/namespaces", "namespaces:create", async (request, ctx) => {
       const body = await readJson<Record<string, unknown>>(request);
@@ -93,7 +94,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
       return ok(await services.vault.listEnvironments({
         tenantId: ctx.tenantId ?? ctx.query.get("tenantId") ?? undefined,
         namespaceId: ctx.query.get("namespaceId") ?? undefined,
-        namespace: asQueryString(ctx.query.get("namespace")),
+        namespace: ctx.namespace ?? asQueryString(ctx.query.get("namespace")),
       }));
     }),
     adminRoute("POST", "/admin/environments", "environments:create", async (request, ctx) => {
@@ -262,7 +263,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
     adminRoute("GET", "/admin/audit-events", "audit-events:list", async (_request, ctx) => {
       return ok(await services.audit.queryEvents({
         tenantId: ctx.tenantId ?? ctx.query.get("tenantId") ?? undefined,
-        namespace: ctx.query.get("namespace") ?? undefined,
+        namespace: ctx.namespace ?? ctx.query.get("namespace") ?? undefined,
         type: ctx.query.get("type") ?? undefined,
         severity: ctx.query.get("severity") ?? undefined,
         limit: Number(ctx.query.get("limit") ?? 100),
@@ -306,6 +307,8 @@ async function assertAdminTenant<TContext extends SecFnRequestContext>(config: S
   if (!ctx.tenantId && !ctx.namespace) return; // Explicitly authorized global operator; host owns this privilege.
   const reject = () => { throw new ForbiddenError("Resource is outside the authorized tenant", "SECFN_FORBIDDEN"); };
   if (ctx.tenantId && ctx.query.has('tenantId') && ctx.query.get('tenantId') !== ctx.tenantId) reject();
+  if (ctx.namespace && ctx.query.has('namespace') && ctx.query.get('namespace') !== ctx.namespace) reject();
+  if (ctx.namespace && ['namespaces:create', 'namespaces:update', 'scan-runs:list'].includes(action)) reject();
   const family = action.split(':')[0];
   const models: Record<string, string> = { secrets: 'secfn_secrets', 'secret-sets': 'secfn_secret_sets', 'secret-set-members': 'secfn_secret_sets', namespaces: 'secfn_namespaces', environments: 'secfn_environments', 'service-tokens': 'secfn_service_tokens' };
   async function owned(model: string, id: string) {
@@ -314,6 +317,8 @@ async function assertAdminTenant<TContext extends SecFnRequestContext>(config: S
     if (ctx.namespace) {
       if (model === 'secfn_namespaces') {
         if (row.slug !== ctx.namespace) reject();
+      } else if (model === 'secfn_service_tokens') {
+        if (row.namespace !== ctx.namespace) reject();
       } else if (row.namespaceId) {
         await owned('secfn_namespaces', String(row.namespaceId));
       } else { reject(); }
@@ -386,10 +391,11 @@ async function scope<TContext extends SecFnRequestContext>(
 ): Promise<SecretScope> {
   const environment = asQueryString(ctx.query.get("environment"));
   const namespace = asQueryString(ctx.query.get("namespace"));
+  if (ctx.namespace && namespace && namespace !== ctx.namespace) throw new ForbiddenError("Namespace is outside the authorized scope", "SECFN_FORBIDDEN");
   return {
     tenantId: ctx.tenantId,
     namespaceId: ctx.query.get("namespaceId") ?? undefined,
-    namespace: namespace ?? await config.namespaceProvider?.(ctx) ?? ctx.namespace,
+    namespace: ctx.namespace ?? namespace ?? await config.namespaceProvider?.(ctx),
     environmentId: ctx.query.get("environmentId") ?? undefined,
     environment: environment as SecretScope["environment"],
   };

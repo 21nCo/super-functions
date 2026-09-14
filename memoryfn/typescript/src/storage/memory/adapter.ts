@@ -1,6 +1,27 @@
 import type { Memory, MemoryRelationship } from '../../core/types';
 import { requireScope, type StorageAdapter, type MemoryScope, type MemoryUpdate, type MemoryDelete } from '../adapter';
 
+/** Reads through to the parent and stages only changed keys. */
+class StagedMap<K, V> extends Map<K, V> {
+  readonly writes = new Map<K, V>();
+  readonly removed = new Set<K>();
+  constructor(private readonly parent: Map<K, V>) { super(); }
+  get(key: K): V | undefined { return this.removed.has(key) ? undefined : this.writes.has(key) ? this.writes.get(key) : this.parent.get(key); }
+  has(key: K): boolean { return !this.removed.has(key) && (this.writes.has(key) || this.parent.has(key)); }
+  set(key: K, value: V): this { this.removed.delete(key); this.writes.set(key, value); return this; }
+  delete(key: K): boolean { const existed = this.has(key); this.writes.delete(key); this.removed.add(key); return existed; }
+  *entries(): IterableIterator<[K, V]> {
+    for (const [key, value] of this.parent) if (!this.removed.has(key) && !this.writes.has(key)) yield [key, value];
+    yield* this.writes;
+  }
+  *values(): IterableIterator<V> { for (const [, value] of this.entries()) yield value; }
+  [Symbol.iterator](): IterableIterator<[K, V]> { return this.entries(); }
+  commit(): void {
+    for (const key of this.removed) this.parent.delete(key);
+    for (const [key, value] of this.writes) this.parent.set(key, value);
+  }
+}
+
 function cloneMemory(memory: Memory): Memory {
   return {
     ...memory,
@@ -58,23 +79,24 @@ function jsonContains(actual: unknown, expected: unknown): boolean {
  * the Postgres adapter when storage must survive process restarts.
  */
 export class MemoryStorageAdapter implements StorageAdapter {
-  private readonly memories = new Map<string, Memory>();
-  private readonly relationships = new Map<string, MemoryRelationship>();
+  private memories = new Map<string, Memory>();
+  private relationships = new Map<string, MemoryRelationship>();
   private sequence = 0;
+  private mutationVersion = 0;
 
   async transaction<T>(operation: (storage: StorageAdapter) => Promise<T>): Promise<T> {
-    const snapshot = () => JSON.stringify([[...this.memories], [...this.relationships], this.sequence]);
-    const before = snapshot();
+    const version = this.mutationVersion;
     const staged = new MemoryStorageAdapter();
-    for (const [id, memory] of this.memories) staged.memories.set(id, cloneMemory(memory));
-    for (const [id, relationship] of this.relationships) staged.relationships.set(id, cloneRelationship(relationship));
+    const memories = new StagedMap(this.memories);
+    const relationships = new StagedMap(this.relationships);
+    staged.memories = memories; staged.relationships = relationships;
     staged.sequence = this.sequence;
     const result = await operation(staged);
-    if (snapshot() !== before) throw new Error('MEMORY_REVISION_CONFLICT');
-    this.memories.clear(); this.relationships.clear();
-    for (const [id, memory] of staged.memories) this.memories.set(id, cloneMemory(memory));
-    for (const [id, relationship] of staged.relationships) this.relationships.set(id, cloneRelationship(relationship));
+    if (this.mutationVersion !== version) throw new Error('MEMORY_REVISION_CONFLICT');
+    memories.commit(); relationships.commit();
     this.sequence = staged.sequence;
+    this.mutationVersion++;
+
     return result;
   }
 
@@ -105,6 +127,7 @@ export class MemoryStorageAdapter implements StorageAdapter {
       }
       ids.add(memory.id);
     }
+    this.mutationVersion++;
     for (const memory of saved) this.memories.set(memory.id, cloneMemory(memory));
     return saved.map(cloneMemory);
   }
@@ -134,6 +157,7 @@ export class MemoryStorageAdapter implements StorageAdapter {
       if (ids.has(relationship.id) || this.relationships.has(relationship.id)) throw new Error("MEMORY_RELATION_EXISTS");
       ids.add(relationship.id);
     }
+    this.mutationVersion++;
     for (const relationship of saved) this.relationships.set(relationship.id, cloneRelationship(relationship));
     return saved.map(cloneRelationship);
   }
@@ -179,6 +203,7 @@ export class MemoryStorageAdapter implements StorageAdapter {
     if (current.deletedAt != null || current.revision !== input.expectedRevision) throw new Error('MEMORY_REVISION_CONFLICT');
     const updated = cloneMemory({ ...current, ...input.changes, metadata: input.changes.metadata ?? current.metadata, isLatest: input.changes.isLatest ?? current.isLatest, id: current.id, tenantId: current.tenantId,
       containerTags: current.containerTags, revision: current.revision! + 1, updatedAt: Date.now() });
+    this.mutationVersion++;
     this.memories.set(updated.id, updated);
     return cloneMemory(updated);
   }
@@ -189,6 +214,7 @@ export class MemoryStorageAdapter implements StorageAdapter {
     if (!current || current.tenantId !== input.tenantId || !input.containerTags.every(tag => current.containerTags.includes(tag))) throw new Error('MEMORY_NOT_FOUND');
     if (current.deletedAt != null) return;
     if (input.expectedRevision !== undefined && current.revision !== input.expectedRevision) throw new Error('MEMORY_REVISION_CONFLICT');
+    this.mutationVersion++;
     this.memories.set(input.id, { ...current, content: '', embedding: null, metadata: {}, isLatest: false,
       deletedAt: Date.now(), updatedAt: Date.now(), revision: current.revision! + 1 });
     for (const [id, relation] of this.relationships) {
