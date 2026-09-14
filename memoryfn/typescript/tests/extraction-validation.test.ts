@@ -12,7 +12,7 @@ describe('extraction input validation', () => {
     { facts: [{ ...valid, confidence: Infinity }] }, { facts: [{ ...valid, confidence: -0.1 }] },
     { facts: [{ ...valid, confidence: 1.1 }] }, { facts: [{ ...valid, tags: [1] }] },
     { facts: [{ ...valid, tags: null }] }
-  ])('rejects the entire malformed batch before any embedding or persistence: %j', async result => {
+  ])('rejects the entire malformed batch before any embedding or persistence: %# %j', async result => {
     const storage = new MemoryStorageAdapter(); const insert = vi.spyOn(storage, 'insertMemories');
     const embedder = { embed: vi.fn(async () => [1, 0]), embedBatch: vi.fn(async () => [[1, 0]]) };
     const fn = new MemoryFn({ storage: { kind: 'adapter', adapter: storage } }, storage, embedder, { generateJSON: async () => result } as any);
@@ -27,6 +27,10 @@ describe('extraction input validation', () => {
     }
   });
   it.each(['hf', 'fastembed'] as const)('rejects unimplemented embedder %s at construction', provider => {
-    expect(() => memoryfn({ storage: { kind: 'pg', url: 'postgres://unused' }, embedder: { provider, model: 'test' } })).toThrow('MEMORY_EMBEDDER_UNSUPPORTED');
+    expect(() => memoryfn({ storage: { kind: 'pg', url: 'postgres://unused' }, embedder: { provider, model: 'test' } as any })).toThrow('MEMORY_EMBEDDER_UNSUPPORTED');
   });
+});
+
+it.each(['anthropic', 'google', 'ollama'])('rejects unsupported LLM %s instead of storing raw text', provider => {
+  expect(() => memoryfn({ storage: { kind: 'memory' }, llm: { provider, model: 'test' } as any })).toThrow('MEMORY_LLM_UNSUPPORTED');
 });

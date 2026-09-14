@@ -16,8 +16,8 @@ let root;
 try {
   if (!candidate || !lstatSync(candidate).isDirectory() || lstatSync(candidate).isSymbolicLink()) throw new Error("Invalid directory");
   root = realpathSync(candidate);
-} catch {
-  throw new Error("Temporary packed consumer directory is required; use a fresh sfns4-packed directory inside the OS temporary directory");
+} catch (cause) {
+  throw new Error("Temporary packed consumer directory is required; use a fresh sfns4-packed directory inside the OS temporary directory", { cause });
 }
 if (dirname(root) !== realpathSync(tmpdir()) || !/^sfns4-packed-[A-Za-z0-9]+$/.test(basename(root))) {
   throw new Error("Use a fresh sfns4-packed directory directly inside the OS temporary directory");

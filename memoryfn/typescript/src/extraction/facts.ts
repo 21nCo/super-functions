@@ -40,7 +40,7 @@ export class FactExtractor {
           !Array.isArray(value.tags) || !value.tags.every(tag => typeof tag === 'string' && tag.trim().length > 0)) {
         throw new Error('MEMORY_EXTRACTION_INVALID');
       }
-      return { content: value.content.trim(), type: value.type as Fact['type'], confidence: value.confidence, tags: [...value.tags] };
+      return { content: value.content.trim(), type: value.type as Fact['type'], confidence: value.confidence, tags: value.tags.map(tag => tag.trim()) };
     });
   }
 }

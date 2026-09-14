@@ -510,9 +510,20 @@ export class VaultService {
       createdAt: now,
       updatedAt: now,
     };
-    await this.db.create({ model: "secfn_secret_sets", data: set as unknown as Record<string, unknown> });
+    const members: SecretSetMemberRecord[] = [];
+    const outputNames = new Set<string>();
     for (const member of input.members ?? []) {
-      await this.addSecretSetMember(set.id, member.secretId, member.alias);
+      const secret = await this.getSecretRow(member.secretId);
+      if (secret.namespaceId !== set.namespaceId || secret.tenantId !== set.tenantId) throw new SecFnValidationError("Secret set members must belong to the same namespace");
+      const alias = cleanString(member.alias);
+      const outputName = alias ?? secret.key;
+      if (outputNames.has(outputName)) throw new SecFnValidationError("Secret set output names must be unique");
+      outputNames.add(outputName);
+      members.push({ id: generateId("member"), setId: set.id, secretId: secret.id, alias, createdAt: now });
+    }
+    await this.db.create({ model: "secfn_secret_sets", data: set as unknown as Record<string, unknown> });
+    for (const member of members) {
+      await this.db.create({ model: "secfn_secret_set_members", data: member as unknown as Record<string, unknown> });
     }
     return set;
   }
@@ -757,6 +768,7 @@ export class VaultService {
       throw new SecFnForbiddenError("Runtime token has expired");
     }
     if (token.tenantId && token.tenantId !== scope.tenantId) throw new SecFnForbiddenError("Runtime token tenant mismatch");
+    scope = await this.validateScopeRepresentations(scope);
     const namespace = scope.namespaceId
       ? await this.ensureNamespace({ ...scope, createdBy: "system", create: false })
       : await this.findNamespace({ tenantId: scope.tenantId, namespace: scope.namespace });
@@ -837,6 +849,29 @@ export class VaultService {
     }
   }
 
+  /** Resolve IDs and reject contradictory names before defaults or token comparisons. */
+  private async validateScopeRepresentations(scope: SecretScope): Promise<SecretScope> {
+    const result = { ...scope };
+    const environment = scope.environmentId ? await this.getEnvironment(scope.environmentId) : undefined;
+    if (environment) {
+      if (scope.tenantId !== undefined && environment.tenantId !== scope.tenantId) throw new SecFnNotFoundError("Environment not found");
+      if (scope.environment !== undefined && normalizeName(scope.environment) !== environment.name) throw new SecFnValidationError("Environment ID/name mismatch");
+      if (!result.namespaceId && !result.namespace) result.namespaceId = environment.namespaceId;
+      result.environment = environment.name;
+    }
+    const namespace = result.namespaceId ? await this.getNamespace(result.namespaceId) : undefined;
+    if (namespace) {
+      if (scope.tenantId !== undefined && namespace.tenantId !== scope.tenantId) throw new SecFnNotFoundError("Namespace not found");
+      if (scope.namespace !== undefined && normalizeSlug(scope.namespace) !== namespace.slug) throw new SecFnValidationError("Namespace ID/name mismatch");
+      result.namespace = namespace.slug;
+    }
+    if (environment?.namespaceId) {
+      const parent = namespace ?? (result.namespace ? await this.findNamespace(result) : undefined);
+      if (parent?.id !== environment.namespaceId) throw new SecFnValidationError("Environment namespace mismatch");
+    }
+    return result;
+  }
+
   private async resolveScope(
     scope: SecretScope,
     options: {
@@ -848,6 +883,7 @@ export class VaultService {
       actorId?: string;
     } = {},
   ): Promise<SecretScope> {
+    scope = await this.validateScopeRepresentations(scope);
     const tenantId = scope.tenantId;
     const allNamespace = options.allowAll && isAll(scope.namespace) && !scope.namespaceId;
     const allEnvironment = options.allowAll && isAll(scope.environment) && !scope.environmentId;
@@ -856,7 +892,7 @@ export class VaultService {
       : await this.ensureNamespace({
         tenantId,
         namespaceId: scope.namespaceId,
-        namespace: scope.namespace ?? (options.requireNamespace ? DEFAULT_NAMESPACE : undefined),
+        namespace: scope.namespace ?? (options.requireNamespace && !scope.namespaceId ? DEFAULT_NAMESPACE : undefined),
         createdBy: options.actorId ?? "system",
         create: options.create || options.requireNamespace,
       });
@@ -870,7 +906,7 @@ export class VaultService {
         tenantId,
         namespaceId: namespace?.id,
         environmentId: scope.environmentId,
-        environment: scope.environment ?? (options.requireEnvironment ? DEFAULT_ENVIRONMENT : undefined),
+        environment: scope.environment ?? (options.requireEnvironment && !scope.environmentId ? DEFAULT_ENVIRONMENT : undefined),
         createdBy: options.actorId ?? "system",
         create: options.create || options.requireEnvironment,
       });
@@ -896,6 +932,7 @@ export class VaultService {
       if (input.tenantId !== undefined && namespace.tenantId !== input.tenantId) {
         throw new SecFnNotFoundError("Namespace not found");
       }
+      if (input.namespace !== undefined && normalizeSlug(input.namespace) !== namespace.slug) throw new SecFnValidationError("Namespace ID/name mismatch");
       return namespace;
     }
     const namespace = input.namespace ? await this.findNamespace(input) : null;
@@ -923,6 +960,7 @@ export class VaultService {
           (environment.namespaceId && environment.namespaceId !== input.namespaceId)) {
         throw new SecFnNotFoundError("Environment not found");
       }
+      if (input.environment !== undefined && normalizeName(input.environment) !== environment.name) throw new SecFnValidationError("Environment ID/name mismatch");
       return environment;
     }
     if (input.environment) {

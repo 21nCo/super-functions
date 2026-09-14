@@ -35,3 +35,9 @@ The return value contains:
 - `getSchema()`
 
 SecFn does not re-export Express, Hono, Fastify, Next.js, or SvelteKit adapters. Mount the returned router with the existing shared HTTP adapter packages.
+
+Runtime scope IDs and names must agree when both are supplied, including a namespace
+provided by the host context. An environment ID alone derives its parent namespace;
+an explicit conflicting namespace is rejected. Hosts supporting selection across
+namespaces should omit a fixed namespace context rather than rely on query IDs to override it.
+Secret-set creation validates every member and output name before persisting the set.

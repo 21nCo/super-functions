@@ -176,7 +176,7 @@ export class OpenAIChatModel extends ChatModel {
   }
 }
 
-function toOpenAIMessage(message: Message): Record<string, unknown> {
+export function toOpenAIMessage(message: Message): Record<string, unknown> {
   const wire: Record<string, unknown> = { role: message.role, content: message.content };
   if (message.name !== undefined) wire.name = message.name;
   if (message.tool_call_id !== undefined) wire.tool_call_id = message.tool_call_id;

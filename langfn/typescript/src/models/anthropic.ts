@@ -121,7 +121,7 @@ export class AnthropicChatModel extends ChatModel {
       );
 
     return {
-      message: { role: "assistant", content },
+      message: { role: "assistant", content, toolCalls: toolCalls.length ? toolCalls : undefined },
       toolCalls: toolCalls.length ? toolCalls : undefined,
       tool_calls: toolCalls.length ? toolCalls : undefined,
       usage: data?.usage
@@ -214,6 +214,12 @@ function splitSystemMessage(messages: Message[]): {
       continue;
     }
 
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      const content: Array<Record<string, unknown>> = message.content ? [{ type: "text", text: message.content }] : [];
+      for (const call of message.toolCalls) content.push({ type: "tool_use", id: call.id, name: call.name, input: call.arguments });
+      result.push({ role: "assistant", content });
+      continue;
+    }
     if (message.role === "assistant" && Array.isArray(message.tool_calls)) {
       const content: Array<Record<string, unknown>> = [];
       if (message.content) {

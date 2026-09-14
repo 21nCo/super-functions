@@ -40,3 +40,8 @@ The HTTP router requires an `authorize(request)` callback returning trusted scop
 - Configure an embedder for meaningful vector search; the legacy no-embedder vector fallback is not a lexical search engine.
 
 Run the test suite with `MEMORYFN_TEST_DATABASE_URL` pointing only to a disposable database. Integration tests create tables and truncate memory data.
+
+The factory currently supports only OpenAI for `llm.provider` and `embedder.provider`.
+Other values supplied from JavaScript or unvalidated configuration fail at initialization;
+they never silently disable extraction or embeddings. The public TypeScript unions match
+these implemented providers. Custom providers may be injected through the `MemoryFn` constructor.

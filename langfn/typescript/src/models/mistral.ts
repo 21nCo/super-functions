@@ -8,6 +8,7 @@ import {
   tokenUsage
 } from "../core/types.js";
 import { ProviderAuthError, ProviderError, RateLimitError } from "../core/errors.js";
+import { toOpenAIMessage } from "./openai.js";
 import { ChatModel } from "./base.js";
 import { getTransportClient } from "./transport.js";
 
@@ -63,7 +64,7 @@ export class MistralChatModel extends ChatModel {
       signal: request.signal,
       body: JSON.stringify({
         model: this.model,
-        messages: request.messages,
+        messages: request.messages.map(toOpenAIMessage),
         tools: request.tools?.map((tool) => ({
           type: "function",
           function: {
@@ -99,7 +100,7 @@ export class MistralChatModel extends ChatModel {
       : undefined;
 
     return {
-      message: { role: "assistant", content: message.content ?? "" },
+      message: { role: "assistant", content: message.content ?? "", toolCalls },
       toolCalls,
       tool_calls: toolCalls,
       usage: data?.usage

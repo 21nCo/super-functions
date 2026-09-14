@@ -24,14 +24,14 @@ export interface MemoryFnConfig {
     password?: string;
   };
   llm?: {
-    provider: 'openai' | 'anthropic' | 'google' | 'ollama';
+    provider: 'openai';
     model: string;
     apiKey?: string;
     temperature?: number;
     maxTokens?: number;
   };
   embedder?: {
-    provider: 'openai' | 'fastembed' | 'hf';
+    provider: 'openai';
     model: string;
     apiKey?: string;
     dims?: number;

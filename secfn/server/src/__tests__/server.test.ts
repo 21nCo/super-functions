@@ -361,7 +361,7 @@ it("binds ID-issued tokens to canonical tenant, namespace and environment", asyn
   expect((await secfn.vault.readRuntimeSecret("KEY", byIds, ids)).value).toBe("private");
   expect((await secfn.vault.resolveRuntimeSet("app", byIds, ids)).secrets).toEqual({ KEY: "private" });
   for (const path of ["secrets/KEY", "secret-sets/app/resolve"]) {
-    const response = await secfn.router.handle(new Request(`https://app.test/secfn/runtime/${path}?namespaceId=${ns.id}&environmentId=${env.id}`, { method: path.endsWith("resolve") ? "POST" : "GET", headers: { authorization: `Bearer ${token.token}` } }));
+    const response = await secfn.router.handle(new Request(`https://app.test/secfn/runtime/${path}?namespaceId=${ns.id}&environmentId=${env.id}`, { method: path.endsWith("resolve") ? "POST" : "GET", headers: { authorization: `Bearer ${token.token}`, "x-namespace": "canonical" } }));
     expect(response.status).toBe(200);
   }
   const foreign = await secfn.vault.createNamespace({ tenantId: "other", slug: "foreign", createdBy: "admin" });
@@ -370,4 +370,39 @@ it("binds ID-issued tokens to canonical tenant, namespace and environment", asyn
   await expect(secfn.vault.verifyRuntimeToken(token.token, { ...ids, environmentId: wrongEnv.id })).rejects.toThrow();
   await expect(secfn.vault.verifyRuntimeToken(token.token, { ...scope, environment: "development" })).rejects.toThrow();
   await expect(secfn.vault.createServiceToken({ tenantId: "other", namespaceId: ns.id, name: "bad", scopes: ["*"], createdBy: "admin" })).rejects.toThrow();
+});
+
+it("rejects conflicting scope representations and derives an environment's parent", async () => {
+  const { secfn } = createServer();
+  const ns = await secfn.vault.createNamespace({ tenantId: "tenant-a", slug: "canonical", createdBy: "admin" });
+  const env = await secfn.vault.createEnvironment({ tenantId: "tenant-a", namespaceId: ns.id, name: "production", createdBy: "admin" });
+  const scope = { tenantId: "tenant-a", namespaceId: ns.id, environmentId: env.id };
+  await secfn.vault.createSecret({ ...scope, key: "KEY", value: "private", createdBy: "admin" });
+  const token = await secfn.vault.createServiceToken({ ...scope, name: "test", scopes: ["*"], createdBy: "admin" });
+  const onlyEnv = { tenantId: "tenant-a", environmentId: env.id };
+  const verified = await secfn.vault.verifyRuntimeToken(token.token, onlyEnv);
+  expect((await secfn.vault.readRuntimeSecret("KEY", verified, onlyEnv)).value).toBe("private");
+  for (const conflict of [{ namespace: "wrong" }, { environment: "development" }]) {
+    await expect(secfn.vault.verifyRuntimeToken(token.token, { ...scope, ...conflict })).rejects.toThrow("mismatch");
+    await expect(secfn.vault.readRuntimeSecret("KEY", verified, { ...scope, ...conflict })).rejects.toThrow("mismatch");
+  }
+  const response = await secfn.router.handle(new Request(`https://app.test/secfn/runtime/secrets/KEY?namespaceId=${ns.id}&environmentId=${env.id}`, { headers: { authorization: `Bearer ${token.token}` } }));
+  expect(response.status).toBeGreaterThanOrEqual(400);
+});
+
+it("validates all secret-set members before writing the set or any membership", async () => {
+  const { secfn, db } = createServer();
+  const scope = { tenantId: "tenant-a", namespace: "workspace-a", createdBy: "admin" };
+  const one = await secfn.vault.createSecret({ ...scope, key: "ONE", value: "one" });
+  const other = await secfn.vault.createSecret({ ...scope, namespace: "other", key: "OTHER", value: "other" });
+  for (const members of [
+    [{ secretId: one.id }, { secretId: "missing" }],
+    [{ secretId: one.id }, { secretId: other.id }],
+    [{ secretId: one.id }, { secretId: one.id, alias: " ONE " }]
+  ]) {
+    await expect(secfn.vault.createSecretSet({ ...scope, name: "retryable", members })).rejects.toThrow();
+    expect(db.dump("secfn_secret_sets")).toHaveLength(0);
+    expect(db.dump("secfn_secret_set_members")).toHaveLength(0);
+  }
+  await expect(secfn.vault.createSecretSet({ ...scope, name: "retryable", members: [{ secretId: one.id }] })).resolves.toMatchObject({ name: "retryable" });
 });

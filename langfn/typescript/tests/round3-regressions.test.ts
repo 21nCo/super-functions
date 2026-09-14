@@ -79,16 +79,16 @@ describe("third review regressions", () => {
   });
   it.each(["reader", "request"])("aborts provider work when the SSE %s is cancelled", async mode => {
     let signal: AbortSignal | undefined;
-    let started!: () => void; const ready = new Promise<void>(resolve => { started = resolve; });
+    let started = false;
     const model = new CustomChatModel({ stream: async function* (request) {
-      signal = request.signal; started();
+      signal = request.signal; started = true;
       await new Promise<void>((_resolve, reject) => signal!.addEventListener("abort", () => reject(signal!.reason), { once: true }));
     } });
     const controller = new AbortController();
     const router = createLangFnRouter(new LangFn({ model }));
     const response = await router.handle(new Request("https://test/stream", { method: "POST", body: JSON.stringify({ prompt: "hi" }), signal: controller.signal }));
     const reader = response.body!.getReader(); const pending = reader.read();
-    await ready;
+    await vi.waitFor(() => expect(started, "provider stream never started").toBe(true), { timeout: 2000 });
     if (mode === "reader") await reader.cancel(); else controller.abort();
     expect((await pending).done).toBe(true);
     await vi.waitFor(() => expect(signal?.aborted).toBe(true));
