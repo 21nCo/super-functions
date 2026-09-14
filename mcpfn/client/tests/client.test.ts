@@ -808,3 +808,37 @@ it.each([false, true])("waits for initialization cleanup during concurrent perma
   expect(client.state).toBe("closed");
   expect(closeHandle).toHaveBeenCalledOnce();
 });
+
+
+it.each(["success", "handle-failure", "target-failure"])("coordinates late aborted-open cleanup (%s)", async mode => {
+  let opened!: () => void;
+  let release!: () => void;
+  const started = new Promise<void>(resolve => { opened = resolve; });
+  const barrier = new Promise<void>(resolve => { release = resolve; });
+  const events: string[] = [];
+  let peerDisposed = false;
+  let failHandle = mode === "handle-failure";
+  let failTarget = mode === "target-failure";
+  const client = createMcpFnClient({ target: customTarget({ kind: "late", open: async () => {
+    opened(); await barrier;
+    return { transport: { start: async () => {}, send: async () => {}, close: async () => {} }, close: async () => {
+      events.push("handle");
+      if (failHandle) { failHandle = false; throw new Error("transient handle failure"); }
+      if (peerDisposed) throw new Error("target cleanup destroyed peer");
+    } };
+  }, cleanup: async () => {
+    events.push("target");
+    if (failTarget) { failTarget = false; throw new Error("transient target failure"); }
+    peerDisposed = true;
+  } }) });
+  const connection = client.connect().catch(() => undefined);
+  await started;
+  await expect(client.close()).rejects.toMatchObject({ retryable: true });
+  release(); await connection;
+  if (mode === "handle-failure") expect(events).toEqual(["handle"]);
+  if (mode === "target-failure") expect(events).toEqual(["handle", "target"]);
+  await Promise.all([client.close(), client.close()]);
+  expect(events).toEqual(mode === "handle-failure" ? ["handle", "handle", "target"]
+    : mode === "target-failure" ? ["handle", "target", "target"] : ["handle", "target"]);
+  expect(client.state).toBe("closed");
+});
