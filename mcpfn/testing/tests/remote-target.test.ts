@@ -527,3 +527,53 @@ it("preserves the structural target kind when a credential matches part of it", 
     expect(report.target.kind).toBe("authenticated-streamable-http");
   } finally { await fixture.close(); }
 });
+
+
+it.each(["x-api-key", "authorization"])("redacts URL and form encoded %s credentials across payload fields", async header => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  const secret = "opaque/a+b=c value";
+  const encoded = encodeURIComponent(secret);
+  const mixed = encoded.replace("%2F", "%2f").replace("%3D", "%3d");
+  const variants = [secret, encoded, mixed, encoded.replace(/%20/g, "+")];
+  const credential = { headers: { [header]: header === "authorization" ? `Bearer ${secret}` : secret } };
+  const result = redactRemoteCredential(credential, {
+    message: variants.join(" | "),
+    details: Object.fromEntries(variants.map(value => [value, new Error(value)])),
+    unrelated: "Keep CaseSensitive text",
+  });
+  const json = JSON.stringify(result);
+  for (const variant of variants) expect(json).not.toContain(variant);
+  expect(result.unrelated).toBe("Keep CaseSensitive text");
+});
+
+it("retains encoded redaction variants in report scopes after credential cleanup", async () => {
+  const { beginTargetCredentialRedaction, redactTargetCredentials } = await import("../src/remote-target.js");
+  const secret = "opaque/a+b=c";
+  const target = authenticatedHttpTarget("http://127.0.0.1:1/mcp", { credential: { headers: { "x-api-key": secret } } });
+  const end = beginTargetCredentialRedaction(target);
+  try {
+    const handle = await target.open({ signal: new AbortController().signal });
+    await handle.close();
+    await target.cleanup?.();
+    expect(redactTargetCredentials(target, encodeURIComponent(secret))).not.toContain(encodeURIComponent(secret));
+  } finally { end(); }
+});
+
+
+it("scrubs encoded cleanup errors from finalized JSON and JUnit reports", async () => {
+  const secret = "opaque/a+b=c";
+  const encoded = encodeURIComponent(secret);
+  const fixture = await startAuthenticatedServer(secret);
+  try {
+    const report = await runMcpFnTargetSuite({
+      target: authenticatedHttpTarget(fixture.url, { credential: {
+        acquire: () => ({ headers: { authorization: `Bearer ${secret}` } }),
+        revoke: () => { throw new Error(`cleanup failed: ${encoded}`); },
+      } }),
+    });
+    expect(report.ok).toBe(false);
+    expect(report.incompleteReason).toContain("Target cleanup failed");
+    expect(JSON.stringify(report)).not.toContain(encoded);
+    expect(createMcpFnTargetSuiteJUnit(report)).not.toContain(encoded);
+  } finally { await fixture.close(); }
+});

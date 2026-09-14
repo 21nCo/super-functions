@@ -48,6 +48,13 @@ function credentialValues(headers: HeadersInit): Set<string> {
       }
     }
   }
+  // Register reversible URL/form representations while the credential is owned,
+  // so report scopes retain these variants after credential release as well.
+  for (const secret of [...secrets]) {
+    const encoded = encodeURIComponent(secret);
+    secrets.add(encoded);
+    secrets.add(encoded.replace(/%20/g, "+"));
+  }
   return secrets;
 }
 
@@ -97,7 +104,11 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   // Check before either redactor allocates copies. Exceeding a budget is an
   // explicit failure, never silent truncation of a typed report collection.
   budget(value);
-  const secretPattern = secrets.length ? new RegExp(secrets.map(secret => secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g") : undefined;
+  const patterns = secrets.map(secret => secret
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    // Hex digits in percent escapes are case-insensitive; opaque text is not.
+    .replace(/%[0-9A-Fa-f]{2}/g, escape => escape.replace(/[A-Fa-f]/g, hex => `[${hex.toLowerCase()}${hex.toUpperCase()}]`)));
+  const secretPattern = patterns.length ? new RegExp(patterns.join("|"), "g") : undefined;
   const clientKinds = new Set(["logging.message", "progress", "tasks.status", "resources.updated", "tools.list_changed", "resources.list_changed", "prompts.list_changed", "resources.subscribed", "resources.unsubscribed", "client.roots", "client.sampling", "client.elicitation"]);
   const scrub = (input: unknown, role = "payload", field = ""): unknown => {
     input = specialValue(input);
