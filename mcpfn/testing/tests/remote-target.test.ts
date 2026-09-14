@@ -453,3 +453,25 @@ it("does not release another live handle during target cleanup", async () => {
   expect(revoke).toHaveBeenCalledTimes(1);
   await second.close!(); expect(revoke).toHaveBeenCalledTimes(2);
 });
+
+
+it("revokes with an independent signal after acquisition is cancelled, including retries", async () => {
+  const { acquireRemoteCredential } = await import("../src/remote-target.js");
+  const acquisition = new AbortController();
+  const signals: AbortSignal[] = [];
+  const revoke = vi.fn(async (_credential, context) => {
+    signals.push(context.signal);
+    context.signal.throwIfAborted();
+    if (signals.length === 1) throw new Error("retryable network failure");
+  });
+  const dispose = vi.fn(async (_credential, context) => context.signal.throwIfAborted());
+  const lease = await acquireRemoteCredential({ acquire: () => ({ headers: {} }), revoke, dispose },
+    { url: "https://test/mcp", requestId: "cancelled", signal: acquisition.signal });
+  acquisition.abort();
+  await expect(lease.release()).rejects.toThrow("cleanup failed");
+  await expect(lease.release()).resolves.toBeUndefined();
+  expect(revoke).toHaveBeenCalledTimes(2);
+  expect(dispose).toHaveBeenCalledTimes(1);
+  expect(signals.every(signal => !signal.aborted && signal !== acquisition.signal)).toBe(true);
+  expect(signals[0]).not.toBe(signals[1]);
+});

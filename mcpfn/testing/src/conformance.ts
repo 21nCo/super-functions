@@ -1,4 +1,5 @@
-import { execFile, spawn } from "node:child_process";
+import { terminateConformanceRunner } from "./conformance-process.js";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
@@ -276,12 +277,9 @@ async function runConformance(
       if (capturedBytes > 262_144) {
         outputExceeded = true;
         stdout = ""; stderr = "";
-        if (process.platform === "win32" && child.pid) {
-          execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], () => { child.stdout?.destroy(); child.stderr?.destroy(); });
-        } else if (child.pid) {
-          try { process.kill(-child.pid, "SIGKILL"); }
-          catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") child.kill("SIGKILL"); }
-        } else child.kill("SIGKILL");
+        // Always settle the failed report after the bounded termination attempt,
+        // even if the wrapper never emits close (for example, a failed taskkill).
+        void terminateConformanceRunner(child).finally(() => finish(1));
         return;
       }
       if (stream === "stdout") stdout += chunk.toString();
@@ -307,7 +305,7 @@ async function runConformance(
         failure,
       });
     });
-    child.once("close", (code) => {
+    const finish = (code: number | null) => {
       if (settled) return;
       settled = true;
       let exitCode = code ?? 1;
@@ -338,7 +336,8 @@ async function runConformance(
         stderr: safeStderr,
         ...(failure ? { failure } : {}),
       });
-    });
+    };
+    child.once("close", finish);
   });
 }
 

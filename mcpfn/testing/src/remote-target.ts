@@ -207,11 +207,13 @@ export async function acquireRemoteCredential(
     credential,
     release() {
       releasePromise ??= (async () => {
+        // Cancellation of acquisition must not cancel revocation or its retries.
+        const cleanupContext = { ...context, signal: new AbortController().signal };
         try {
           try {
-            if (!revoked) { await provider.revoke?.(credential, context); revoked = true; }
+            if (!revoked) { await provider.revoke?.(credential, cleanupContext); revoked = true; }
           } finally {
-            if (!disposed) { await provider.dispose?.(credential, context); disposed = true; }
+            if (!disposed) { await provider.dispose?.(credential, cleanupContext); disposed = true; }
           }
         } catch {
           throw new Error("Target credential cleanup failed");
