@@ -62,6 +62,8 @@ Do not read `payload.resource` or recursively search the body. Application recor
 
 ```typescript
 import { extractStructuralResourceSelectors } from "@datafn/server";
+// Application-owned module: export the same schema passed to createDatafnServer.
+import { schema } from "./server-schema";
 
 authorize: async (ctx, action, payload) => {
   if (!ctx.session?.userId) return false;
@@ -71,7 +73,7 @@ authorize: async (ctx, action, payload) => {
   if (["seed", "search", "clone", "pull"].includes(action)) {
     return ctx.session.isAdmin;
   }
-  const extracted = extractStructuralResourceSelectors(action, payload);
+  const extracted = extractStructuralResourceSelectors(action, payload, { schema });
   if (!extracted.ok) return false;
 
   return extracted.result.selectors.length > 0 && extracted.result.selectors.every((resource) =>

@@ -86,6 +86,8 @@ Selectors are structural anchors, **not the complete set of resources execution 
 
 ```typescript
 import { extractStructuralResourceSelectors } from "@datafn/server";
+// Application-owned module: export the same schema passed to createDatafnServer.
+import { schema } from "./server-schema";
 
 authorize: (ctx, action, payload) => {
   if (!ctx.session?.userId) return false;
