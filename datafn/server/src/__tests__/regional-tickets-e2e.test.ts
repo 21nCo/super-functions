@@ -12,7 +12,7 @@ import { claimDatafnNamespacePlacement, createMemoryDatafnPlacementDirectory, mi
 import { INTERNAL_TABLE_SCHEMAS } from "../execution/internal-tables.js";
 
 const schema = { resources: [{ name: "note", version: 1, fields: [{ name: "title", type: "string" as const, required: false }] }] };
-const allScopes: DatafnRouteScope[] = ["query", "mutation", "transact", "pull", "push", "reconcile", "clone", "seed", "search", "websocket"];
+const allScopes = ["query", "mutation", "transact", "pull", "push", "reconcile", "clone", "seed", "search", "websocket"] satisfies DatafnRouteScope[];
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.reverse()) await cleanup();
@@ -396,7 +396,7 @@ describe("direct regional two-region network conformance", () => {
     const valid = await f.provider.bootstrap();
     const claims = await f.signer.verify(valid.ticket);
     // Structurally valid payloads reach ticket admission after protocol parsing.
-    const payloads: Record<Exclude<DatafnRouteScope, "websocket">, unknown> = {
+    const payloads: Record<Exclude<(typeof allScopes)[number], "websocket">, unknown> = {
       query: { resource: "note", version: 1 }, mutation: mutation("denied"),
       transact: { steps: [mutation("denied")] },
       pull: { clientId: "client:denied", cursors: { note: "0" } },
