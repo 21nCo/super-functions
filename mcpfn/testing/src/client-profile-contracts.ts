@@ -321,12 +321,12 @@ function pointerSegment(value: string): string {
 function walkSchema(
   value: unknown,
   path: string,
-  visit: (keyword: string, path: string) => void,
+  visit: (keyword: string, path: string, schema: Record<string, unknown>) => void,
 ): void {
   if (!value || typeof value !== "object") return;
   const schema = value as Record<string, unknown>;
   for (const keyword of Object.keys(schema)) {
-    visit(keyword, `${path}/${pointerSegment(keyword)}`);
+    visit(keyword, `${path}/${pointerSegment(keyword)}`, schema);
   }
   for (const mapKeyword of [
     "$defs",
@@ -416,7 +416,23 @@ export function validateMcpFnSchemaPortability(
     });
   }
   const allowed = new Set(policy.allowKeywords ?? []);
-  walkSchema(schema, path, (keyword, keywordPath) => {
+  const modernDialect = /draft\/(2019-09|2020-12)\/schema#?$/.test(dialect);
+  const assertionKeywords = new Set([
+    "type", "enum", "const", "multipleOf", "maximum", "exclusiveMaximum", "minimum", "exclusiveMinimum",
+    "maxLength", "minLength", "pattern", "format", "maxItems", "minItems", "uniqueItems", "contains",
+    "minContains", "maxContains", "maxProperties", "minProperties", "required", "dependentRequired",
+    "properties", "patternProperties", "additionalProperties", "propertyNames", "dependentSchemas",
+    "items", "prefixItems", "additionalItems", "unevaluatedItems", "unevaluatedProperties",
+    "allOf", "anyOf", "oneOf", "not", "if", "then", "else",
+  ]);
+  walkSchema(schema, path, (keyword, keywordPath, node) => {
+    if (modernDialect && keyword === "$ref" && !allowed.has(keyword) &&
+        Object.keys(node).some(sibling => assertionKeywords.has(sibling))) {
+      issues.push({ severity: policy.warningsAsErrors ? "error" : "warning",
+        code: "schema-portability-warning", path: keywordPath, keyword,
+        message: "$ref assertion siblings are evaluated by modern dialects but ignored by draft-07 clients",
+      });
+    }
     if (!PORTABILITY_KEYWORDS.has(keyword) || allowed.has(keyword)) return;
     issues.push({
       severity: policy.warningsAsErrors ? "error" : "warning",

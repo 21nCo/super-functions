@@ -468,3 +468,15 @@ it.each([{}, { isError: true }])("rejects errors from minimal-valid fixtures eve
   const report = await runMcpFnClientProfileContracts({ profiles: [{ id: "test", version: "1", target: target.target, fixtures: [{ name: "valid", source: "minimal-valid", sideEffect: "read-only", tool: "lookup", arguments: { query: "ok" }, expect: expectValue }] }] });
   expect(report.profiles[0].fixtures[0]).toMatchObject({ status: "failed" });
 });
+
+
+it.each(["2019-09", "2020-12"])("flags %s ref assertion siblings and honors strict policy", dialect => {
+  const schema = { $schema: `https://json-schema.org/draft/${dialect}/schema`, type: "object",
+    $defs: { value: { type: "string" } }, properties: { value: { $ref: "#/$defs/value", maxLength: 3 } } };
+  expect(validateMcpFnSchemaPortability(schema, "#")).toContainEqual(expect.objectContaining({ keyword: "$ref", severity: "warning", path: "#/properties/value/$ref" }));
+  expect(validateMcpFnSchemaPortability(schema, "#", { warningsAsErrors: true })).toContainEqual(expect.objectContaining({ keyword: "$ref", severity: "error" }));
+  expect(validateMcpFnSchemaPortability(schema, "#", { allowKeywords: ["$ref"] }).some(issue => issue.keyword === "$ref")).toBe(false);
+  const metadataOnly = { ...schema, properties: { value: { $ref: "#/$defs/value", description: "Description" } } };
+  expect(validateMcpFnSchemaPortability(metadataOnly, "#").some(issue => issue.keyword === "$ref")).toBe(false);
+  expect(validateMcpFnSchemaPortability({ ...schema, $schema: "http://json-schema.org/draft-07/schema#" }, "#").some(issue => issue.keyword === "$ref")).toBe(false);
+});

@@ -322,7 +322,7 @@ export class McpFnServer<TContext = undefined> {
             "profile-resolution";
           let taskOutputFailureReported = false;
           let taskRequestSettled = false;
-          let reportedTaskStorageFailure: { error: unknown } | undefined;
+          let taskStorageFailureReported = false;
           const pendingTaskOutput: Array<Omit<McpFnClientProfileEvidence, "formatVersion">> = [];
           const flushTaskOutput = async () => {
             taskRequestSettled = true;
@@ -385,7 +385,7 @@ export class McpFnServer<TContext = undefined> {
 
             const observer = {
               onTaskStorageFailure: async (error: unknown) => {
-                reportedTaskStorageFailure = { error };
+                taskStorageFailureReported = true;
                 completedStages.delete("handler");
                 const event: Omit<McpFnClientProfileEvidence, "formatVersion"> = {
                   stage: "handler", outcome: "failed",
@@ -466,7 +466,7 @@ export class McpFnServer<TContext = undefined> {
             const issues = (error instanceof McpFnValidationError || error instanceof McpFnOutputValidationError) && ["input-validation", "output-validation"].includes(currentStage) && Array.isArray(details.issues)
               ? (details.issues as McpFnClientProfileEvidence["issues"])
               : undefined;
-            if (!(reportedTaskStorageFailure && reportedTaskStorageFailure.error === error) && !((currentStage as McpFnClientProfileLifecycleStage) === "output-validation" && taskOutputFailureReported) && !["profile-resolution", "catalog-projection"].includes(currentStage)) await this.emitProfileEvidence({
+            if (!(taskStorageFailureReported && (currentStage as McpFnClientProfileLifecycleStage) === "handler") && !((currentStage as McpFnClientProfileLifecycleStage) === "output-validation" && taskOutputFailureReported) && !["profile-resolution", "catalog-projection"].includes(currentStage)) await this.emitProfileEvidence({
               stage: currentStage,
               outcome: "failed",
               profile,

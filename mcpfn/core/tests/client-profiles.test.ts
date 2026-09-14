@@ -734,17 +734,22 @@ it("resolves shared relative references independently in each embedded resource"
 });
 
 
-it.each(["storage", "handler"])("orders task output evidence after predecessor stages on %s failure", async failure => {
+it.each(["storage", "wrapped-storage", "handler"])("orders task output evidence after predecessor stages on %s failure", async failure => {
   const { InMemoryTaskStore } = await import("@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js");
   const taskStore = new InMemoryTaskStore();
-  if (failure === "storage") vi.spyOn(taskStore, "storeTaskResult").mockRejectedValue(new Error("storage failed"));
+  if (failure !== "handler") vi.spyOn(taskStore, "storeTaskResult").mockRejectedValue(new Error("storage failed"));
   const evidence: McpFnClientProfileEvidence[] = [];
   const registry = new McpFnRegistry().register({
     name: "task", description: "Task", inputSchema: { type: "object" }, execution: { taskSupport: "required" },
     handler: async () => structuredResult({ ok: true }),
     taskHandler: { createTask: async (_args, _context, extra) => {
       const task = await extra.taskStore.createTask({ ttl: 1000 });
-      await extra.taskStore.storeTaskResult(task.taskId, "completed", structuredResult({ ok: true }));
+      try {
+        await extra.taskStore.storeTaskResult(task.taskId, "completed", structuredResult({ ok: true }));
+      } catch (error) {
+        if (failure === "wrapped-storage") throw new Error("wrapped storage failure", { cause: error });
+        throw error;
+      }
       throw new Error("handler failed after output");
     } },
   });
