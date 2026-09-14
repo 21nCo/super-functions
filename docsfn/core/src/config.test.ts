@@ -597,3 +597,49 @@ it("cleans staging after an async config export throws", async () => {
     else process.env.TMPDIR = previous;
   }
 });
+
+it("keeps module-relative location and resolver APIs bound to the original config", async () => {
+  const cwd = await createTempDir();
+  await writeFile(join(cwd, "asset.json"), '{}');
+  await writeFile(join(cwd, "docsfn.config.mjs"), `import {fileURLToPath} from 'node:url'; import {realpathSync} from 'node:fs';
+    if(import.meta.filename !== fileURLToPath(import.meta.url)) throw new Error('filename mismatch');
+    if(fileURLToPath(import.meta.resolve('./asset.json')) !== realpathSync(import.meta.dirname + '/asset.json')) throw new Error('resolve mismatch');
+    export default {schemaVersion:1,site:{title:"Test"},content:{root:import.meta.dirname}};`);
+  expect((await loadDocsConfig({ cwd })).content.root).toBe(cwd);
+  await writeFile(join(cwd, "docsfn.config.cjs"), `const path=require('node:path'); module.exports={schemaVersion:1,site:{title:"Test"},content:{root:path.dirname(require.resolve('./asset.json'))}};`);
+  expect((await loadDocsConfig({ cwd, configPath: 'docsfn.config.cjs' })).content.root).toBe(await (await import('node:fs/promises')).realpath(cwd));
+});
+it("tracks an invalid package manifest and recovers after repair", async () => {
+  const cwd = await createTempDir();
+  const manifest = join(cwd, 'package.json');
+  const config = join(cwd, 'docsfn.config.mjs');
+  await writeFile(manifest, '{broken');
+  await writeFile(config, "import title from '#title'; export default {schemaVersion:1,site:{title},content:{root:'.'}};");
+  await expect(loadDocsConfig({ cwd })).rejects.toThrow();
+  expect(getDocsConfigDependencies(config)).toContain(manifest);
+  await writeFile(manifest, JSON.stringify({type:'module',imports:{'#title':'./title.mjs'}}));
+  await writeFile(join(cwd,'title.mjs'), "export default 'repaired';");
+  expect((await loadDocsConfig({ cwd })).site.title).toBe('repaired');
+});
+it("rejects file URL variants instead of collapsing distinct module identities", async () => {
+  const cwd = await createTempDir();
+  const {pathToFileURL} = await import('node:url');
+  await writeFile(join(cwd,'theme.mjs'), "export default 'title';");
+  await writeFile(join(cwd,'docsfn.config.mjs'), `import title from ${JSON.stringify(pathToFileURL(join(cwd,'theme.mjs')).href+'?variant=1')}; export default {schemaVersion:1,site:{title},content:{root:'.'}};`);
+  await expect(loadDocsConfig({ cwd })).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringContaining('query or fragment')})});
+});
+it("rejects repeated separators in route bases", () => {
+  expect(() => validateDocsConfig({schemaVersion:1,site:{title:'Test',basePath:'/docs//v1'},content:{root:'.'}})).toThrow();
+});
+
+it.each([['--conditions=development'], ['-C', 'development']])("preserves active custom resolver conditions: %s", async (...args) => {
+  const cwd = await createTempDir();
+  await writeFile(join(cwd,'package.json'), JSON.stringify({type:'module',imports:{'#theme':{development:'./dev.mjs',default:'./prod.mjs'}}}));
+  await writeFile(join(cwd,'dev.mjs'), "export default 'development';");
+  await writeFile(join(cwd,'prod.mjs'), "export default 'production';");
+  await writeFile(join(cwd,'docsfn.config.mjs'), "import title from '#theme'; export default {schemaVersion:1,site:{title},content:{root:'.'}};");
+  const previous = process.execArgv;
+  process.execArgv = [...previous, ...args];
+  try { expect((await loadDocsConfig({cwd})).site.title).toBe('development'); }
+  finally { process.execArgv = previous; }
+});

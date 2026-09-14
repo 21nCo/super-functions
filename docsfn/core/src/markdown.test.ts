@@ -508,3 +508,8 @@ it.each(["/* note */", "/* multiline\n note */", "// note\n"])("transforms a nam
   expect(result.blocks.some(block => block.type === "tabs")).toBe(true);
   expect(result.transformedSource).not.toContain("fumadocs-ui/components/tabs");
 });
+
+it("collects custom and built-in components throughout the block tree", () => {
+  const result = compileMarkdown({sourcePath:'nested.mdx',source:'<Wrapper>\n\n<DemoCard />\n\n```mermaid\ngraph TD; A-->B\n```\n\n</Wrapper>'});
+  expect(result.componentsUsed).toEqual(expect.arrayContaining(['Wrapper','DemoCard','MermaidBlock']));
+});

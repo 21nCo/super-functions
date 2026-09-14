@@ -137,6 +137,12 @@ function filterManifest(manifest: DocsManifest, options: BuildLlmsTxtOptions): F
   };
 }
 
+function markdownLink(label: string, destination: string): string {
+  const text = label.replace(/[\r\n]+/g, " ").replace(/[\\`*_\[\]<>]/g, "\\$&");
+  const href = destination.replace(/[\s()<>\[\]\\]/gu, character => character === "(" ? "%28" : character === ")" ? "%29" : encodeURIComponent(character));
+  return `[${text}](${href})`;
+}
+
 function describePage(page: DocPage): string {
   const description = page.description ?? page.frontmatter?.description;
   return typeof description === "string" && description.length > 0 ? description : page.title;
@@ -194,7 +200,7 @@ export function buildLlmsTxt(manifest: DocsManifest, options: BuildLlmsTxtOption
     lines.push("");
     for (const page of filtered.pages) {
       const url = pathFor(options.canonicalUrl, page.path);
-      lines.push(`- [${page.title}](${url}) — ${describePage(page)}`);
+      lines.push(`- ${markdownLink(page.title, url)} — ${describePage(page)}`);
     }
     lines.push("");
   }
@@ -204,7 +210,7 @@ export function buildLlmsTxt(manifest: DocsManifest, options: BuildLlmsTxtOption
     lines.push("");
     for (const post of filtered.posts) {
       const url = pathFor(options.canonicalUrl, post.path);
-      lines.push(`- [${post.title}](${url}) — ${describePost(post)}`);
+      lines.push(`- ${markdownLink(post.title, url)} — ${describePost(post)}`);
     }
     lines.push("");
   }
@@ -214,7 +220,7 @@ export function buildLlmsTxt(manifest: DocsManifest, options: BuildLlmsTxtOption
     lines.push("");
     for (const api of filtered.apis) {
       const url = pathFor(options.canonicalUrl, api.path);
-      lines.push(`- [${api.title}](${url})`);
+      lines.push(`- ${markdownLink(api.title, url)}`);
       const summaries = summarizeOpenApiSpec(api);
       for (const summary of summaries) {
         lines.push(`  ${summary}`);

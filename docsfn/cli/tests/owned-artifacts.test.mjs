@@ -73,3 +73,13 @@ test("the next invocation recovers a crashed partial publication and recorded st
   await publishOwnedArtifacts(root, marker, { "a.txt": undefined, "b.txt": undefined });
   assert.deepEqual((await fs.readdir(root)).sort(), [marker]);
 }));
+
+test("cleanup before the first generation creates no directory or ownership marker", () => withDirectory(async root => {
+  const directory = join(root, 'missing');
+  assert.deepEqual(await publishOwnedArtifacts(directory, marker, {'a.txt':undefined}), []);
+  await assert.rejects(fs.stat(directory), {code:'ENOENT'});
+  await fs.mkdir(directory);
+  await fs.writeFile(join(directory,'a.txt'), 'manual');
+  assert.deepEqual(await publishOwnedArtifacts(directory, marker, {'a.txt':undefined}), ['a.txt']);
+  assert.deepEqual(await fs.readdir(directory), ['a.txt']);
+}));

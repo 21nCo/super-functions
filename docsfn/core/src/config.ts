@@ -78,7 +78,7 @@ const docsTopNavItemSchema: z.ZodType<any> = z.lazy(() =>
 
 export function isLocalRoute(value: string): boolean {
   // Framework catch-all parameters decode escapes; manifest keys must not retain them.
-  if (/%[0-9a-f]{2}/i.test(value)) return false;
+  if (/%[0-9a-f]{2}/i.test(value) || value.includes("//")) return false;
   if (!/^\/(?!\/)[^?#\\\u0000-\u0020]*$/.test(value)) return false;
   try {
     return value.split("/").every(segment => {
@@ -364,11 +364,11 @@ export function getDocsConfigDependencies(configPath: string): string[] {
   return configDependencyPaths.get(resolve(configPath)) ?? [];
 }
 
-async function isCommonJsScope(file: string): Promise<boolean> {
+async function isCommonJsScope(file: string, track: (file: string) => void): Promise<boolean> {
   let directory = dirname(file);
   while (true) {
     const manifest = join(directory, "package.json");
-    if (await fileExists(manifest)) return JSON.parse(await readFile(manifest, "utf8")).type !== "module";
+    if (await fileExists(manifest)) { track(manifest); return JSON.parse(await readFile(manifest, "utf8")).type !== "module"; }
     const parent = dirname(directory);
     if (parent === directory) return true;
     directory = parent;
@@ -385,6 +385,7 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
       source: string;
       commonjs: boolean;
       json: boolean;
+      prelude: string;
       replacements: Array<{ start: number; end: number; text: string }>;
       imports: Array<{
         start: number;
@@ -404,9 +405,9 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
     while (true) {
       const manifest = join(directory, "package.json");
       if (await fileExists(manifest)) {
+        unresolvedDependencies.add(manifest);
         const value = { path: manifest, name: JSON.parse(await readFile(manifest, "utf8")).name };
         packageScopes.set(key, value);
-        unresolvedDependencies.add(manifest);
         return value;
       }
       const parent = dirname(directory);
@@ -415,6 +416,17 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
     }
   }
   const resolveImport = promisify(execFile);
+  const conditions: string[] = [];
+  for (let index = 0; index < process.execArgv.length; index++) {
+    const argument = process.execArgv[index];
+    if (argument.startsWith("--conditions=") || argument.startsWith("-C=")) conditions.push(argument);
+    else if (argument === "--conditions" || argument === "-C") {
+      if (process.execArgv[index + 1]) conditions.push(argument, process.execArgv[++index]);
+    }
+  }
+  const resolverArgs = [...conditions, "--experimental-import-meta-resolve", "--input-type=module", "-e",
+    "process.stdout.write(JSON.stringify(import.meta.resolve(process.argv[1], process.argv[2])))"];
+
 
   let totalBytes = 0;
   async function visit(file: string): Promise<void> {
@@ -447,12 +459,13 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
     const commonjs =
       extname(file) === ".cjs" ||
       (!ts.isExternalModule(ast) && (["", ".js"].includes(extname(file))
-        ? await isCommonJsScope(file)
+        ? await isCommonJsScope(file, path => unresolvedDependencies.add(path))
         : /\b(?:module\.exports|exports\.)/.test(source)));
     const record = {
       source,
       commonjs,
       json: isJson,
+      prelude: "",
       replacements: [] as Array<{ start: number; end: number; text: string }>,
       imports: [] as Array<{
         start: number;
@@ -472,8 +485,22 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
       require: boolean;
     }> = [];
     function collect(node: import("typescript").Node): void {
-      if (ts.isPropertyAccessExpression(node) && node.name.text === "url" && ts.isMetaProperty(node.expression) && node.expression.keywordToken === ts.SyntaxKind.ImportKeyword) {
-        record.replacements.push({ start: node.getStart(ast), end: node.end, text: JSON.stringify(pathToFileURL(file).href) });
+      if (ts.isPropertyAccessExpression(node) && ts.isMetaProperty(node.expression) && node.expression.keywordToken === ts.SyntaxKind.ImportKeyword) {
+        const locations: Record<string, string> = { url: pathToFileURL(file).href, dirname: dirname(file), filename: file };
+        let text = Object.hasOwn(locations, node.name.text) ? JSON.stringify(locations[node.name.text]) : undefined;
+        if (node.name.text === "resolve") {
+          const helper = "__docsfnResolve_" + randomUUID().replaceAll("-", "");
+          record.prelude += commonjs ? `const ${helper} = require("node:child_process").execFileSync;\n`
+            : `import { execFileSync as ${helper} } from "node:child_process";\n`;
+          text = `((specifier) => JSON.parse(${helper}(${JSON.stringify(process.execPath)}, [...${JSON.stringify(resolverArgs)}, specifier, ${JSON.stringify(pathToFileURL(file).href)}], {encoding:"utf8", timeout:10000, maxBuffer:65536})))`;
+        }
+        if (text !== undefined) record.replacements.push({ start: node.getStart(ast), end: node.end, text });
+      }
+      if (ts.isPropertyAccessExpression(node) && node.name.text === "resolve" && ts.isIdentifier(node.expression) && node.expression.text === "require") {
+        const helper = "__docsfnRequire_" + randomUUID().replaceAll("-", "");
+        record.prelude += commonjs ? `const ${helper} = require("node:module").createRequire(${JSON.stringify(file)});\n`
+          : `import { createRequire as ${helper}Factory } from "node:module"; const ${helper} = ${helper}Factory(${JSON.stringify(file)});\n`;
+        record.replacements.push({ start: node.getStart(ast), end: node.end, text: `${helper}.resolve` });
       }
       if (
         (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
@@ -504,7 +531,11 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
       let target: string;
       if (specifier.startsWith(".")) target = resolve(dirname(file), specifier);
       else if (isAbsolute(specifier)) target = specifier;
-      else if (specifier.startsWith("file:")) target = fileURLToPath(specifier);
+      else if (specifier.startsWith("file:")) {
+        const url = new URL(specifier);
+        if (url.search || url.hash) throw new Error("Config file URL imports with query or fragment are unsupported");
+        target = fileURLToPath(url);
+      }
       else {
         const scope = await packageScope(file);
         const selfReference = typeof scope?.name === "string" && (specifier === scope.name || specifier.startsWith(scope.name + "/"));
@@ -514,16 +545,16 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
           // Native resolution preserves package imports/exports conditions. The
           // resolver process does not import or execute the configuration module.
           const { stdout } = await resolveImport(process.execPath, [
-            "--experimental-import-meta-resolve", "--input-type=module", "-e",
-            "process.stdout.write(JSON.stringify(import.meta.resolve(process.argv[1], process.argv[2])))",
-            specifier, pathToFileURL(file).href,
+            ...resolverArgs, specifier, pathToFileURL(file).href,
           ], { timeout: 10_000, maxBuffer: 65_536 });
           const resolvedUrl = JSON.parse(stdout);
           if (!resolvedUrl.startsWith("file:")) {
             record.replacements.push({ start: literal.getStart(ast), end: literal.end, text: JSON.stringify(resolvedUrl) });
             continue;
           }
-          target = fileURLToPath(resolvedUrl);
+          const resolvedFile = new URL(resolvedUrl);
+          if (resolvedFile.search || resolvedFile.hash) throw new Error("Config file URL imports with query or fragment are unsupported");
+          target = fileURLToPath(resolvedFile);
         }
       }
       if (!isAbsolute(target)) {
@@ -645,6 +676,7 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
       for (const entry of replacements.sort((a, b) => b.start - a.start)) {
         source = source.slice(0, entry.start) + entry.text + source.slice(entry.end);
       }
+      source = module.prelude + source;
       if (module.commonjs) source = `__dirname = ${JSON.stringify(dirname(file))}; __filename = ${JSON.stringify(file)};\n` + source;
       const output = outputPaths.get(file)!;
       await writeFile(output, source, { encoding: "utf8", mode: 0o600 });

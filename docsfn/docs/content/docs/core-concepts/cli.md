@@ -102,3 +102,10 @@ runtime imports are not dependency-tracked; ordinary external packages retain
 Node's cache behavior. CommonJS staging cache entries are evicted, but Node's ESM
 module cache cannot be unloaded: repeated reloads can retain memory in a long-lived
 watch process. Graph limits bound each load, not lifetime process memory.
+
+Module-relative `import.meta.dirname`, `import.meta.filename`,
+`import.meta.resolve()` and `require.resolve()` retain the source module context.
+ESM resolver subprocesses preserve custom `--conditions`/`-C` flags. File-URL imports
+with query strings or fragments are rejected explicitly; remove those suffixes
+from config dependencies. First-run failure cleanup creates no output directory
+or marker when no ownership record exists.

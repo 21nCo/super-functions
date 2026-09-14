@@ -28,10 +28,15 @@ export function Pagination({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (event.defaultPrevented || event.isComposing || (target instanceof Element && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]'))) return;
+
       if (event.altKey && event.key === "ArrowLeft" && resolvedPrevPage) {
+        event.preventDefault();
         navigateTo(resolvedPrevPage.path);
       }
       if (event.altKey && event.key === "ArrowRight" && resolvedNextPage) {
+        event.preventDefault();
         navigateTo(resolvedNextPage.path);
       }
     };

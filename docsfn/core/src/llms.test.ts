@@ -252,3 +252,10 @@ it("omits all programmatic mixed-mode LLM content without a classifier", () => {
   const control = buildLlmsTxtArtifacts(manifest, { auth: { enabled: true, mode: "mixed" }, isRoutePrivate: () => false });
   expect(control.llmsFullTxt).toContain("Ordinary public body marker");
 });
+
+it("emits valid links for titles with brackets and routes with spaces and parentheses", () => {
+  const manifest = createManifest();
+  const page = Object.values(manifest.pages)[0];
+  page.title = 'Hello]'; page.path = '/docs/hello world(test)';
+  expect(buildLlmsTxt(manifest)).toContain('[Hello\\]](/docs/hello%20world%28test%29)');
+});

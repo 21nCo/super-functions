@@ -54,3 +54,24 @@ The validation record accompanies the commit in the PR comment: complete core
 suite and build, CLI build/integration/failure tests, focused React trust tests,
 and config/security tests on Node 20. Hosted checks must rerun on the pushed head;
 local success is not evidence that Sonar or the full release gate has passed.
+
+## Follow-up review corrections
+
+Module-relative ESM `dirname`, `filename` and `resolve`, and CommonJS
+`require.resolve`, now use the original source context. ESM resolve remains
+synchronous via a bounded native resolver subprocess. Resolver subprocesses carry
+active custom `--conditions`/`-C` flags without forwarding unrelated execution
+flags. Ordinary Node `NODE_OPTIONS` inheritance remains intact. Package manifests
+are recorded before parsing so a watcher can recover after malformed JSON is
+repaired. File-URL module imports containing queries or fragments are explicitly
+unsupported and rejected, rather than silently collapsing their identities.
+
+Cleanup before any generation is non-creating when no ownership record exists.
+The reported missing-source HTML bypass was invalid: `isUnsafeHtmlAllowed` returns
+false, and `assertCompiledContentTrusted` then scans the content and rejects unsafe
+HTML. Existing missing-identity and React trust tests verify that behavior.
+
+Additional corrections reject repeated separators in configured route bases,
+escape LLM index link labels/destinations, collect required renderer names through
+the full block tree, and preserve editable-control keyboard shortcuts in both UI
+adapters while preventing browser history navigation for handled shortcuts.

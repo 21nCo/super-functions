@@ -991,25 +991,21 @@ export function compileMarkdown(input: CompileMarkdownInput): CompiledContentArt
       allowRawHtml: input.allowRawHtml,
     });
     const headings: Array<{ level: number; text: string; slug: string }> = [];
-    const collectHeadings = (nodes: CompiledContentBlock[]) => {
+    const collectMetadata = (nodes: CompiledContentBlock[]) => {
       for (const block of nodes) {
         if (block.type === "heading") headings.push({ level: block.level, text: block.text, slug: block.slug });
-        else if (block.type === "component" && block.children) collectHeadings(block.children);
-        else if (block.type === "tabs") for (const tab of block.tabs) collectHeadings(tab.nodes ?? []);
+        if (block.type === "component") {
+          componentsUsed.add(block.name);
+          if (block.children) collectMetadata(block.children);
+        } else if (block.type === "tabs") {
+          componentsUsed.add("DocsTabs");
+          componentsUsed.add("DocsTab");
+          for (const tab of block.tabs) collectMetadata(tab.nodes ?? []);
+        } else if (block.type === "mermaid") componentsUsed.add("MermaidBlock");
+        else if (block.type === "callout") componentsUsed.add("Callout");
       }
     };
-    collectHeadings(blocks);
-
-    if (blocks.some((block) => block.type === "tabs")) {
-      componentsUsed.add("DocsTabs");
-      componentsUsed.add("DocsTab");
-    }
-    if (blocks.some((block) => block.type === "mermaid")) {
-      componentsUsed.add("MermaidBlock");
-    }
-    if (blocks.some((block) => block.type === "callout")) {
-      componentsUsed.add("Callout");
-    }
+    collectMetadata(blocks);
 
     return {
       framework,

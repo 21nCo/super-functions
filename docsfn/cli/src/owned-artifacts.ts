@@ -61,6 +61,12 @@ export async function publishOwnedArtifacts(
     if (!name || name === "." || name === ".." || path.basename(name) !== name || /[\\/]/.test(name)) throw new Error("Artifact names must be single path segments");
   }
   if (names.includes(marker)) throw new Error("Artifact marker must be separate from outputs");
+  const cleanupOnly = Object.values(artifacts).every(content => content === undefined);
+  if (cleanupOnly && !(await inspect(path.join(directory, marker)))) {
+    const preserved: string[] = [];
+    for (const name of names) if (await inspect(path.join(directory, name))) preserved.push(name);
+    return preserved;
+  }
   await fs.mkdir(directory, { recursive: true });
   const markerPath = path.join(directory, marker);
   let ownership = await readOwnership(markerPath);
