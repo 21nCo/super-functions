@@ -442,3 +442,26 @@ it("retries disposal without repeating a successful revocation", async () => {
   expect(revoke).toHaveBeenCalledOnce();
   expect(dispose).toHaveBeenCalledTimes(2);
 });
+
+it.each(['oversized', 'throwing-proxy'])("returns a safe incomplete report when error redaction encounters %s", async mode => {
+  const secret = 'opaque-cause-secret';
+  const fixture = await startAuthenticatedServer(secret);
+  const cause = mode === 'oversized' ? {message: secret.repeat(30000)} : new Proxy({}, {ownKeys() { throw new Error(secret); }});
+  try {
+    const report = await runMcpFnTargetSuite({
+      target: authenticatedHttpTarget(fixture.url, {credential:{headers:{'x-api-key':secret, authorization:`Bearer ${secret}`}}}),
+      expectedToolNames: { [Symbol.iterator]() { throw new Error('inventory failure', {cause}); } } as any,
+    });
+    expect(report.status).toBe('incomplete');
+    expect(report.failure?.code).toBe('MCPFN_REDACTION_FAILED');
+    expect(JSON.stringify(report)).not.toContain(secret);
+  } finally { await fixture.close(); }
+});
+it('accepts the entire IPv4 literal loopback range for conformance upstreams', async () => {
+  const {createAuthenticatedConformanceProxy} = await import('../src/conformance.js');
+  for (const host of ['127.0.0.2','127.255.255.254']) {
+    const proxy = await createAuthenticatedConformanceProxy({url:`http://${host}:1/mcp`, headers:{'x-api-key':'test'}});
+    await proxy.close();
+  }
+  await expect(createAuthenticatedConformanceProxy({url:'http://128.0.0.1/mcp',headers:{'x-api-key':'test'}})).rejects.toThrow(/loopback/);
+});

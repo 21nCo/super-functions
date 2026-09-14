@@ -21,6 +21,7 @@ import {
   McpFnConformanceCleanupError,
   assertManifestContract,
   authenticatedHttpTarget,
+  validateRemoteCredentialHeaders,
   beginTargetCredentialRedaction,
   redactTargetCredentials,
   createMcpFnTargetSuiteJUnit,
@@ -432,9 +433,9 @@ function readRemoteCredential(
   if (!value.trim()) throw new Error("API key must not be blank");
   const headerName = options.apiKeyHeader ?? "x-api-key";
   try {
-    new Headers({ [headerName]: value });
+    validateRemoteCredentialHeaders({ [headerName]: value });
   } catch {
-    throw new Error("--api-key-header must be a valid HTTP header name");
+    throw new Error("--api-key-header must be an allowed credential header with a valid value");
   }
   return {
     environmentName,

@@ -185,8 +185,9 @@ export async function createAuthenticatedConformanceProxy(
 
 function normalizeLoopbackHostname(
   hostname: string,
-): "127.0.0.1" | "::1" | undefined {
-  if (hostname === "127.0.0.1") return "127.0.0.1";
+): string | undefined {
+  const parts = hostname.split(".");
+  if (parts.length === 4 && parts[0] === "127" && parts.every(part => /^\d{1,3}$/.test(part) && Number(part) <= 255)) return hostname;
   if (hostname === "[::1]") return "::1";
   return undefined;
 }

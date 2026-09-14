@@ -413,3 +413,14 @@ describe("mcpfn CLI", () => {
     expect(JSON.parse(output).ok).toBe(false);
   });
 });
+
+it.each(['host','content-length','connection'])("rejects forbidden API-key header %s as usage error", async header => {
+  const key='MCPFN_FORBIDDEN_HEADER_TEST'; const previous=process.env[key]; process.env[key]='opaque-private';
+  try {
+    for (const command of ['inspect','test-target']) {
+      let stderr='';
+      expect(await runCli([command,'http://127.0.0.1:1/mcp','--api-key-env',key,'--api-key-header',header], {stderr:text=>{stderr+=text;},stdout:()=>{}})).toBe(2);
+      expect(stderr).not.toContain('opaque-private');
+    }
+  } finally { if(previous===undefined) delete process.env[key]; else process.env[key]=previous; }
+});

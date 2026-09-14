@@ -138,7 +138,12 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
       capabilities: client.session.getServerCapabilities(),
     };
   } catch (error) {
-    failure = normalizeMcpFnReportFailure(redactTargetCredentials(options.target, error, { preserveKeys: true }));
+    try {
+      failure = normalizeMcpFnReportFailure(redactTargetCredentials(options.target, error, { preserveKeys: true }));
+    } catch {
+      // Arbitrary error properties/proxies can throw, including secret-bearing errors.
+      failure = normalizeMcpFnReportFailure({ name: "RedactionError", code: "MCPFN_REDACTION_FAILED", message: "Target failure omitted because credential redaction failed" });
+    }
   } finally {
     try {
       await client?.close();
