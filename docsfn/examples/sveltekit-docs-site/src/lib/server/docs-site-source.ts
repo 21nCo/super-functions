@@ -65,7 +65,8 @@ async function contentSignature(root: string): Promise<string> {
       }
     }
   }
-  parts.sort();
+  // Fingerprints require deterministic code-unit order, independent of locale.
+  parts.sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
   return parts.join("\n");
 }
 

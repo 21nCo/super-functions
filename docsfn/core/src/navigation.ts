@@ -104,9 +104,9 @@ function buildDirectoryGraph(pages: NormalizedPageRecord[]): DirectoryNode {
 function regexFromGlob(glob: string): RegExp {
   const escaped = glob
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*/g, "__DOUBLE_STAR__")
-    .replace(/\*/g, "[^/]*")
-    .replace(/__DOUBLE_STAR__/g, ".*");
+    .replaceAll("**", "__DOUBLE_STAR__")
+    .replaceAll("*", "[^/]*")
+    .replaceAll("__DOUBLE_STAR__", ".*");
 
   return new RegExp(`^${escaped}$`);
 }

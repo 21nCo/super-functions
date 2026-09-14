@@ -588,3 +588,11 @@ it.each(["operations", "schemas", "tags"])("omits malformed canonical API %s rec
   expect(artifact.documents.some(document => document.id === api.id)).toBe(false);
   expect(JSON.stringify(artifact)).not.toContain("Hidden malformed child detail");
 });
+
+it("omits all programmatic mixed-mode search content without a classifier", async () => {
+  const manifest = createManifest();
+  const artifact = await buildSearchIndex(manifest, { auth: { enabled: true, mode: "mixed" }, search: { enabled: true, bodyIndexing: "full" } });
+  expect(artifact.documents).toEqual([]);
+  const control = await buildSearchIndex(manifest, { auth: { enabled: true, mode: "mixed" }, isRoutePrivate: () => false, search: { enabled: true } });
+  expect(control.documents.length).toBeGreaterThan(0);
+});

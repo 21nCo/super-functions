@@ -158,7 +158,7 @@ export function isDocsContentProtected(input: {
   const frontmatterPrivate =
     input.frontmatter?.private === true || input.frontmatter?.auth === "private";
   const routePrivate = /\/private(?:\/|$)/i.test(input.route);
-  return frontmatterPrivate || routePrivate || Boolean(input.isRoutePrivate?.(input.route));
+  return frontmatterPrivate || routePrivate || (input.isRoutePrivate ? input.isRoutePrivate(input.route) : true);
 }
 
 export function redactSensitiveText(value: string): string {

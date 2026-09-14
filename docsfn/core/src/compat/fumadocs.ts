@@ -38,7 +38,8 @@ function parseImportSpecifiers(source: string): ImportSpecifier[] {
 function stripImportComments(source: string): string | null {
   let result = "";
   let quote = "";
-  for (let index = 0; index < source.length; index++) {
+  let index = 0;
+  while (index < source.length) {
     const character = source[index];
     if (quote) {
       result += character;
@@ -54,6 +55,7 @@ function stripImportComments(source: string): string | null {
       if (end < 0) return null;
       result += " "; index = end + 1;
     } else result += character;
+    index++;
   }
   return result;
 }

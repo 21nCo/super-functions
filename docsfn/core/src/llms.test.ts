@@ -190,6 +190,7 @@ describe("buildLlmsTxtArtifacts", () => {
     });
     const artifacts = buildLlmsTxtArtifacts(manifest, {
       auth: { enabled: true, mode: "mixed" },
+      isRoutePrivate: () => false,
     });
     expect(artifacts.llmsTxt).toContain("Public");
     expect(artifacts.llmsTxt).not.toContain("Secret");
@@ -240,4 +241,14 @@ it.each(["operations", "schemas", "tags"])("omits malformed canonical API %s rec
   manifest.apis.bad = { kind: "api", id: "bad", slug: "bad", path: "/docs/api", title: "Hidden malformed API", frontmatter: {}, spec: { operations: [], schemas: [], tags: [], [field]: [{ description: "Hidden malformed child" }] } };
   const artifacts = buildLlmsTxtArtifacts(manifest, { auth: { enabled: true, mode: "mixed" }, isRoutePrivate: () => false, embedOpenApiSpec: true });
   expect(JSON.stringify(artifacts)).not.toContain("Hidden malformed");
+});
+
+it("omits all programmatic mixed-mode LLM content without a classifier", () => {
+  const manifest = createManifest();
+  const page = Object.values(manifest.pages)[0];
+  page.title = "Ordinary public marker"; page.body = "Ordinary public body marker";
+  const artifacts = buildLlmsTxtArtifacts(manifest, { auth: { enabled: true, mode: "mixed" } });
+  expect(artifacts.llmsTxt + artifacts.llmsFullTxt).not.toContain("Ordinary public");
+  const control = buildLlmsTxtArtifacts(manifest, { auth: { enabled: true, mode: "mixed" }, isRoutePrivate: () => false });
+  expect(control.llmsFullTxt).toContain("Ordinary public body marker");
 });

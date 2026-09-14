@@ -78,17 +78,21 @@ export function splitMarkdownContainerPrefix(line: string): {
 export function matchFenceLine(line: string, containerIndent = 0): FenceLineMatch | null {
   const remaining = stripLeadingContainerIndent(line, containerIndent);
   const { quoteDepth, content } = splitMarkdownContainerPrefix(remaining);
-  const match = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
-  if (!match) {
-    return null;
-  }
-  const fence = match[1];
-  const marker = fence[0] as "`" | "~";
-  const info = match[2] ?? "";
+  let start = 0;
+  while (start < 3 && content[start] === " ") start++;
+  const marker = content[start];
+  if (marker !== "`" && marker !== "~") return null;
+  let end = start;
+  while (content[end] === marker) end++;
+  if (end - start < 3) return null;
+  // Scan markers separately so malformed long runs cannot force backtracking.
+  const suffix = content.slice(end).match(/^(.*)$/);
+  if (!suffix) return null;
+  const info = suffix[1];
   if (marker === "`" && info.includes("`")) {
     return null;
   }
-  return { marker, length: fence.length, info, quoteDepth };
+  return { marker, length: end - start, info, quoteDepth };
 }
 
 export function isClosingFence(open: FenceState, candidate: FenceLineMatch): boolean {

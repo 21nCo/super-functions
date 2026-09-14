@@ -514,7 +514,7 @@ function resolveConfigWatchPaths(cwd: string, configPath?: string): string[] {
   if (configPath) {
     paths.push(path.resolve(cwd, configPath));
   }
-  return [...new Set([...paths, ...paths.flatMap(getDocsConfigDependencies)])];
+  return [...new Set([...paths, ...paths.flatMap(configFile => getDocsConfigDependencies(configFile))])];
 }
 
 function isConfigWatchPath(changedPath: string, cwd: string, configPath?: string): boolean {

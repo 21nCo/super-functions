@@ -69,7 +69,7 @@ export function resolveLocalReference(
     catch { throw createOpenApiParseError({ message: `malformed local reference ${reference}`, sourceId: input.sourceId, sourcePath: input.sourcePath }); }
     for (const segment of pointer.split("/")) {
       if (/~(?![01])/.test(segment)) throw createOpenApiParseError({ message: `malformed local reference ${reference}`, sourceId: input.sourceId, sourcePath: input.sourcePath });
-      const key = segment.replace(/~1/g, "/").replace(/~0/g, "~");
+      const key = segment.replaceAll("~1", "/").replaceAll("~0", "~");
       const object = toObject(resolved);
       resolved = Object.prototype.hasOwnProperty.call(object, key)
         ? object[key]

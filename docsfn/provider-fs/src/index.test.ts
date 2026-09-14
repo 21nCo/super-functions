@@ -294,16 +294,16 @@ describe("FsContentProvider", () => {
       "docs:zeta.mdx",
     ]);
   });
-});
 
-it("honors constructor directories through the legacy list helper", async () => {
-  const root = await createTempRoot();
-  const directories = { docsDir: "manual", pagesDir: "product", blogDir: "articles", apiDir: "specs", assetsDir: "images" };
-  for (const dir of Object.values(directories)) await mkdir(join(root, dir));
-  for (const dir of ["manual", "product", "articles"]) await writeFile(join(root, dir, "index.md"), `# ${dir}`);
-  await writeFile(join(root, "specs/openapi.json"), '{"openapi":"3.0.0"}');
-  await writeFile(join(root, "images/logo.svg"), '<svg/>');
-  const entries = await new FsContentProvider({ root, ...directories }).list();
-  const serialized = JSON.stringify(entries);
-  for (const dir of Object.values(directories)) expect(serialized).toContain(join(root, dir));
+  it("honors constructor directories through the legacy list helper", async () => {
+    const root = await createTempRoot();
+    const directories = { docsDir: "manual", pagesDir: "product", blogDir: "articles", apiDir: "specs", assetsDir: "images" };
+    for (const dir of Object.values(directories)) await mkdir(join(root, dir));
+    for (const dir of ["manual", "product", "articles"]) await writeFile(join(root, dir, "index.md"), `# ${dir}`);
+    await writeFile(join(root, "specs/openapi.json"), '{"openapi":"3.0.0"}');
+    await writeFile(join(root, "images/logo.svg"), '<svg/>');
+    const entries = await new FsContentProvider({ root, ...directories }).list();
+    const serialized = JSON.stringify(entries);
+    for (const dir of Object.values(directories)) expect(serialized).toContain(join(root, dir));
+  });
 });

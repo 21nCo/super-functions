@@ -1,3 +1,4 @@
+import { matchFenceLine } from "./markdown-fences";
 import { describe, expect, it } from "vitest";
 import { scanFenceLines, splitMarkdownContainerPrefix } from "./markdown-fences";
 
@@ -69,4 +70,9 @@ it('retains tab-indented list fence continuations', () => {
   expect(states[2].isFenceLine).toBe(true);
   expect(states[3].inFence).toBe(false);
 });
+});
+
+it("handles long fence marker runs with invalid suffixes in linear scans", () => {
+  expect(matchFenceLine("`".repeat(100_000) + "\nx")).toBeNull();
+  expect(matchFenceLine("~".repeat(100_000) + "text")).toMatchObject({ marker: "~", length: 100_000, info: "text" });
 });

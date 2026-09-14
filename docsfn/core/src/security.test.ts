@@ -235,8 +235,10 @@ describe("security", () => {
         auth,
         frontmatter: {},
         route: "/docs/guide",
+        isRoutePrivate: () => false,
       })
     ).toBe(false);
+    expect(isDocsContentProtected({ auth, route: "/docs/guide" })).toBe(true);
   });
 
   it("blocks browser-permissive tags and keeps encoded literals as text", () => {

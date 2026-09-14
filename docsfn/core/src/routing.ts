@@ -50,6 +50,9 @@ export function deriveLogicalPathFromSourcePath(sourcePath: string): string {
     if (decodedDots === "." || decodedDots === "..") throw createDocsError({
       code: "DOCS_ENTRY_INVALID", message: "Source routes must not contain URL dot segments",
     });
+    if (/%[0-9a-f]{2}/i.test(segment)) throw createDocsError({
+      code: "DOCS_ENTRY_INVALID", message: "Source routes must not contain percent escapes",
+    });
   }
   if (segments.length === 0) {
     return "";

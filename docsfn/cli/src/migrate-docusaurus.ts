@@ -382,7 +382,49 @@ async function listFilesRecursive(root: string): Promise<string[]> {
   return files.sort((left, right) => normalizePath(left).localeCompare(normalizePath(right)));
 }
 
+/** Refuse existing symlinks/junctions at every destination, including file leaves. */
+class MigrationOutput {
+  constructor(private readonly root: string) {}
+
+  async assertPath(destination: string): Promise<void> {
+    const relative = path.relative(this.root, destination);
+    if (path.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path.sep}`)) {
+      throw new Error("Migration output must stay inside the target root");
+    }
+    let current = this.root;
+    for (const segment of ["", ...relative.split(path.sep).filter(Boolean)]) {
+      if (segment) current = path.join(current, segment);
+      try {
+        if ((await fs.lstat(current)).isSymbolicLink()) {
+          throw new Error("Migration output must not traverse symlinks or junctions");
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+        throw error;
+      }
+    }
+  }
+
+  async mkdir(directory: string): Promise<void> {
+    await this.assertPath(directory);
+    await fs.mkdir(directory, { recursive: true });
+  }
+
+  async writeFile(destination: string, body: string): Promise<void> {
+    await this.mkdir(path.dirname(destination));
+    await this.assertPath(destination);
+    await fs.writeFile(destination, body, "utf8");
+  }
+
+  async copyFile(source: string, destination: string): Promise<void> {
+    await this.mkdir(path.dirname(destination));
+    await this.assertPath(destination);
+    await fs.copyFile(source, destination);
+  }
+}
+
 async function copyFileMaybe(input: {
+  output: MigrationOutput;
   source: string;
   target: string;
   dryRun?: boolean;
@@ -390,8 +432,7 @@ async function copyFileMaybe(input: {
   if (input.dryRun) {
     return;
   }
-  await fs.mkdir(path.dirname(input.target), { recursive: true });
-  await fs.copyFile(input.source, input.target);
+  await input.output.copyFile(input.source, input.target);
 }
 
 function resolveMaybeAbsolute(root: string, value: string): string {
@@ -866,6 +907,7 @@ function filterRecordsToSidebar(input: {
 }
 
 async function writeMetaFiles(input: {
+  output: MigrationOutput;
   targetDocsDir: string;
   metaByDir: Map<string, MetaDocumentDraft>;
   dryRun?: boolean;
@@ -889,8 +931,7 @@ async function writeMetaFiles(input: {
       2
     );
     if (!input.dryRun) {
-      await fs.mkdir(path.dirname(targetPath), { recursive: true });
-      await fs.writeFile(targetPath, `${body}\n`, "utf8");
+      await input.output.writeFile(targetPath, `${body}\n`);
     }
     count += 1;
   }
@@ -1066,6 +1107,7 @@ function rewriteColocatedAssets(source: string, record: ContentRecord): string {
 }
 
 async function copyContentRecords(input: {
+  output: MigrationOutput;
   records: ContentRecord[];
   warnings?: string[];
   dryRun?: boolean;
@@ -1086,22 +1128,19 @@ async function copyContentRecords(input: {
         const withoutDocusaurusDateLine = removeDocusaurusDateLine(transformed);
         const migrated = upsertFrontmatterValue(withoutDocusaurusDateLine, "date", inferredDate);
         if (!input.dryRun) {
-          await fs.mkdir(path.dirname(record.targetPath), { recursive: true });
-          await fs.writeFile(record.targetPath, migrated, "utf8");
+          await input.output.writeFile(record.targetPath, migrated);
         }
       } else {
         input.warnings?.push(
           `Could not infer changelog date for ${record.relativePath}; copied without date metadata.`
         );
         if (!input.dryRun) {
-          await fs.mkdir(path.dirname(record.targetPath), { recursive: true });
-          await fs.writeFile(record.targetPath, transformed, "utf8");
+          await input.output.writeFile(record.targetPath, transformed);
         }
       }
     } else {
       if (!input.dryRun) {
-        await fs.mkdir(path.dirname(record.targetPath), { recursive: true });
-        await fs.writeFile(record.targetPath, transformed, "utf8");
+        await input.output.writeFile(record.targetPath, transformed);
       }
     }
     copied += 1;
@@ -1110,6 +1149,7 @@ async function copyContentRecords(input: {
 }
 
 async function copyDirectoryFiles(input: {
+  output: MigrationOutput;
   sourceDir: string;
   targetDir: string;
   filter?: (file: string) => boolean;
@@ -1123,6 +1163,7 @@ async function copyDirectoryFiles(input: {
     }
     const relative = path.relative(input.sourceDir, file);
     await copyFileMaybe({
+      output: input.output,
       source: file,
       target: path.join(input.targetDir, relative),
       dryRun: input.dryRun,
@@ -1133,6 +1174,7 @@ async function copyDirectoryFiles(input: {
 }
 
 async function ensureContentDirectories(input: {
+  output: MigrationOutput;
   targetRoot: string;
   dryRun?: boolean;
 }): Promise<void> {
@@ -1141,7 +1183,7 @@ async function ensureContentDirectories(input: {
   }
   await Promise.all(
     ["content/docs", "content/changelog", "content/blog", "content/api", "content/pages", "static"].map(
-      (dir) => fs.mkdir(path.join(input.targetRoot, dir), { recursive: true })
+      (dir) => input.output.mkdir(path.join(input.targetRoot, dir))
     )
   );
 }
@@ -1149,6 +1191,7 @@ async function ensureContentDirectories(input: {
 export async function migrateDocusaurus(input: DocusaurusMigrateOptions): Promise<DocusaurusMigrateResult> {
   const sourceRoot = path.resolve(input.source);
   const targetRoot = path.resolve(input.target);
+  const output = new MigrationOutput(targetRoot);
   const docsDir = resolveMaybeAbsolute(sourceRoot, input.docsDir ?? "docs");
   const pagesDir = input.pagesDir ? resolveMaybeAbsolute(sourceRoot, input.pagesDir) : undefined;
   const changelogDir = resolveMaybeAbsolute(sourceRoot, input.changelogDir ?? "blog");
@@ -1175,7 +1218,9 @@ export async function migrateDocusaurus(input: DocusaurusMigrateOptions): Promis
   const migrationDir = path.join(targetRoot, ".docsfn-migration");
   const warnings: string[] = [];
 
+  await output.assertPath(targetPagesDir);
   await ensureContentDirectories({
+    output,
     targetRoot,
     dryRun: input.dryRun,
   });
@@ -1272,26 +1317,31 @@ export async function migrateDocusaurus(input: DocusaurusMigrateOptions): Promis
   }
 
   const docsCopied = await copyContentRecords({
+    output,
     records: docRecords,
     warnings,
     dryRun: input.dryRun,
   });
   const pagesCopied = await copyContentRecords({
+    output,
     records: pageRecords,
     warnings,
     dryRun: input.dryRun,
   });
   const changelogCopied = await copyContentRecords({
+    output,
     records: changelogRecords,
     warnings,
     dryRun: input.dryRun,
   });
   const staticAssetsCopied = await copyDirectoryFiles({
+    output,
     sourceDir: staticDir,
     targetDir: targetStaticDir,
     dryRun: input.dryRun,
   });
   const docAssetsCopied = await copyDirectoryFiles({
+    output,
     sourceDir: docsDir,
     targetDir: path.join(targetStaticDir, "docs-assets"),
     filter: (file) => !MARKDOWN_EXTENSIONS.has(path.extname(file)),
@@ -1309,6 +1359,7 @@ export async function migrateDocusaurus(input: DocusaurusMigrateOptions): Promis
   }
 
   const metaFilesWritten = await writeMetaFiles({
+    output,
     targetDocsDir,
     metaByDir,
     dryRun: input.dryRun,
@@ -1321,21 +1372,18 @@ export async function migrateDocusaurus(input: DocusaurusMigrateOptions): Promis
   });
 
   if (!input.dryRun) {
-    await fs.mkdir(migrationDir, { recursive: true });
-    await fs.writeFile(
+    await output.mkdir(migrationDir);
+    await output.writeFile(
       path.join(migrationDir, "redirects.json"),
-      `${JSON.stringify(redirects, null, 2)}\n`,
-      "utf8"
+      `${JSON.stringify(redirects, null, 2)}\n`
     );
-    await fs.writeFile(
+    await output.writeFile(
       path.join(migrationDir, "cloudflare-redirects.txt"),
-      stringifyRedirects(redirects),
-      "utf8"
+      stringifyRedirects(redirects)
     );
-    await fs.writeFile(
+    await output.writeFile(
       path.join(targetRoot, "docsfn.config.migration.ts"),
-      generateDocsfnConfig({ docsBasePath, changelogBasePath }),
-      "utf8"
+      generateDocsfnConfig({ docsBasePath, changelogBasePath })
     );
   }
 
@@ -1364,8 +1412,8 @@ export async function migrateDocusaurus(input: DocusaurusMigrateOptions): Promis
   });
 
   if (!input.dryRun) {
-    await fs.mkdir(migrationDir, { recursive: true });
-    await fs.writeFile(reportPath, report, "utf8");
+    await output.mkdir(migrationDir);
+    await output.writeFile(reportPath, report);
   }
 
   return {

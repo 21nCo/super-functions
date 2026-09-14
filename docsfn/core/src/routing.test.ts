@@ -237,6 +237,9 @@ it.each(["guide?draft.mdx", "guide#section.mdx"])("rejects URL delimiters in sou
 it.each(["%2e", "%2E%2e", ".%2e", "%2e."])("rejects encoded dot route segment %s", segment => {
   expect(() => buildRoute({ collection: "docs", sourcePath: `guide/${segment}/page`, config: createConfig() })).toThrow(/dot segments/);
 });
-it("preserves a percent-bearing name that is not a URL dot segment", () => {
-  expect(buildRoute({ collection: "docs", sourcePath: "guide/%2E../page", config: createConfig() }).path).toContain("%2E..");
+it.each(["faq%41", "%2E..", "%2F", "%5c", "%00", "%25"])("rejects escaped source segment %s", segment => {
+  expect(() => buildRoute({ collection: "docs", sourcePath: `guide/${segment}/page`, config: createConfig() })).toThrow(/percent escapes/);
+});
+it("preserves literal percent signs that are not escapes", () => {
+  expect(buildRoute({ collection: "docs", sourcePath: "guide/100%/page", config: createConfig() }).path).toContain("100%");
 });
