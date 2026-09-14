@@ -1,5 +1,5 @@
 import { applySelectedResources } from '../shared/selected-resources.js';
-import document from '../google/discovery/calendar.json' with { type: 'json' };
+import document from '../google/discovery/calendar.js';
 import { googleDiscoveryProvider, type Discovery } from '../google/discovery-provider.js';
 export const googleCalendarProvider = googleDiscoveryProvider('google-calendar', document as Discovery,
 {

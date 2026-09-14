@@ -1,4 +1,5 @@
-{
+// Generated discovery data; plain modules support the declared Node range.
+export default {
   "source": "https://gmail.googleapis.com/$discovery/rest?version=v1",
   "sourceSha256": "679719496d4ea5c00ce7f851d04e6b1156dcb76a6b435369c79b2391d99d1256",
   "revision": "20260907",
@@ -893,4 +894,4 @@
       "description": "A draft email in the user's mailbox."
     }
   }
-}
+};

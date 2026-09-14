@@ -1,5 +1,5 @@
 import { applySelectedResources } from '../shared/selected-resources.js';
-import document from '../google/discovery/sheets.json' with { type: 'json' };
+import document from '../google/discovery/sheets.js';
 import { googleDiscoveryProvider, type Discovery } from '../google/discovery-provider.js';
 export const googleSheetsProvider = googleDiscoveryProvider('google-sheets', document as Discovery,
 {

@@ -1,4 +1,5 @@
-{
+// Generated discovery data; plain modules support the declared Node range.
+export default {
   "source": "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest",
   "sourceSha256": "f7eeb6b15b41b9fde5823982671748a8b4fcf80ab52d754644cb4ad9f7a31f8f",
   "revision": "20260826",
@@ -1631,4 +1632,4 @@
       "id": "ConferenceParametersAddOnParameters"
     }
   }
-}
+};

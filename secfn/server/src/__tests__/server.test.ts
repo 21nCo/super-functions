@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { createSecFnServer } from "../index.js";
 import { MemoryAdapter } from "./memory-adapter.js";
 
-function createServer(options: { allowAdmin?: boolean; rateLimit?: boolean; namespaceScoped?: boolean } = {}) {
+function createServer(options: { allowAdmin?: boolean; rateLimit?: boolean; namespaceScoped?: boolean; noTenant?: boolean } = {}) {
   const db = new MemoryAdapter();
   const secfn = createSecFnServer({
     db,
     encryption: { masterKey: "test-master-key", keyId: "test" },
     context: (request) => ({
       actorId: request.headers.get("x-actor-id") ?? undefined,
-      tenantId: request.headers.get("x-tenant-id") ?? "tenant-a",
+      tenantId: options.noTenant ? undefined : request.headers.get("x-tenant-id") ?? "tenant-a",
       namespace: options.namespaceScoped === false ? undefined : request.headers.get("x-namespace") ?? "workspace-a",
       ip: request.headers.get("x-forwarded-for") ?? "127.0.0.1",
       userAgent: request.headers.get("user-agent") ?? undefined,
@@ -493,4 +493,24 @@ it('keeps trusted namespaces on collections and permits owned token revocation',
     const response = await secfn.router.handle(new Request(`https://app.test/secfn/admin/service-tokens/${record.id}/revoke`, { method: 'POST' }));
     expect(response.status).toBe(namespace === 'workspace-a' ? 200 : 403);
   }
+});
+
+it('derives environment ownership and rejects body scope overrides', async () => {
+  const { secfn } = createServer();
+  const foreign = await secfn.vault.createNamespace({ tenantId: 'tenant-a', slug: 'foreign', createdBy: 'admin' });
+  for (const body of [{ name: 'prod', namespace: 'foreign' }, { name: 'prod', namespaceId: foreign.id }]) {
+    const response = await secfn.router.handle(new Request('https://app.test/secfn/admin/environments', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
+    expect(response.status).toBe(403);
+  }
+  const response = await secfn.router.handle(new Request('https://app.test/secfn/admin/environments', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'production' }) }));
+  expect(response.status).toBe(201);
+  const body = await response.json();
+  const owned = await secfn.vault.listNamespaces({ tenantId: 'tenant-a' });
+  expect(body.data.namespaceId).toBe(owned.find(row => row.slug === 'workspace-a')?.id);
+});
+it('requires tenant identity for namespace-scoped administration', async () => {
+  const { secfn } = createServer({ noTenant: true });
+  const token = await secfn.vault.createServiceToken({ tenantId: 'tenant-b', namespace: 'workspace-a', name: 'foreign', scopes: ['*'], createdBy: 'admin' });
+  const response = await secfn.router.handle(new Request(`https://app.test/secfn/admin/service-tokens/${token.record.id}/revoke`, { method: 'POST' }));
+  expect(response.status).toBe(403);
 });

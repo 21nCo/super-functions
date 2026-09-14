@@ -1,4 +1,5 @@
-{
+// Generated discovery data; plain modules support the declared Node range.
+export default {
   "source": "https://docs.googleapis.com/$discovery/rest?version=v1",
   "sourceSha256": "4deee830449244b659933afa16b28aef8989d7b5c30f6bdb20203eb9a596053b",
   "revision": "20260904",
@@ -4814,4 +4815,4 @@
       "description": "A mask that indicates which of the fields on the base DateElementProperties have been changed in this suggestion. For any field set to true, there's a new suggested value."
     }
   }
-}
+};

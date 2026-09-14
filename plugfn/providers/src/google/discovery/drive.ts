@@ -1,4 +1,5 @@
-{
+// Generated discovery data; plain modules support the declared Node range.
+export default {
   "source": "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
   "sourceSha256": "d97c14140a699f902ff04fc72edbec7cda28fe49ca571a3883639ee53eb7c962",
   "revision": "20260904",
@@ -1733,4 +1734,4 @@
       "id": "DecryptionMetadata"
     }
   }
-}
+};

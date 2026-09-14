@@ -32,3 +32,14 @@ it('does not retain a new conflict record when its superseding revision fails', 
   const records = await search({ tenantId: 't', containerTags: ['c'], embedding: [1, 0], topK: 10 });
   expect(records.map(row => row.id)).toEqual([old.id]);
 });
+
+it('does not invalidate a writer for overlapping no-op operations', async () => {
+  const storage = new MemoryStorageAdapter();
+  await storage.transaction(async tx => {
+    await tx.insertMemories([{ tenantId: 't', containerTags: ['c'], content: 'value', id: 'kept' }]);
+    await storage.transaction(async () => {});
+    await storage.insertMemories([]);
+    await storage.insertRelationships([]);
+  });
+  expect(await storage.getMemory({ tenantId: 't', containerTags: ['c'], id: 'kept' })).not.toBeNull();
+});

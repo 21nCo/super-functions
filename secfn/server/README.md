@@ -65,3 +65,7 @@ version 3. Other adapters should apply the generated schema diff for the same in
 A fixed host namespace also restricts admin collections and service-token revocation.
 Namespace creation/renaming and tenant-wide scan history require an operator context
 without a fixed namespace. Conflicting namespace queries are rejected.
+
+Namespace-scoped contexts must include `tenantId`, since namespace slugs are only
+unique within a tenant. Environment creation derives that trusted scope and rejects
+conflicting namespace names or IDs in its body.

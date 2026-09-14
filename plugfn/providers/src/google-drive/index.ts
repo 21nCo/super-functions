@@ -1,6 +1,6 @@
 import { applySelectedResources } from '../shared/selected-resources.js';
 import type { ActionContext } from 'plugfn';
-import document from '../google/discovery/drive.json' with { type: 'json' };
+import document from '../google/discovery/drive.js';
 import { googleDiscoveryProvider, type Discovery } from '../google/discovery-provider.js';
 export const googleDriveProvider = googleDiscoveryProvider('google-drive', document as Discovery,
 {

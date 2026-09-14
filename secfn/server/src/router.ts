@@ -99,10 +99,19 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
     }),
     adminRoute("POST", "/admin/environments", "environments:create", async (request, ctx) => {
       const body = await readJson<Record<string, unknown>>(request);
+      if (ctx.namespace && body.namespace !== undefined && body.namespace !== ctx.namespace) throw new ForbiddenError("Namespace is outside the authorized scope", "SECFN_FORBIDDEN");
+      if (ctx.namespace && body.namespaceId !== undefined) {
+        const namespace = await config.db.findOne<Record<string, unknown>>({ model: "secfn_namespaces", where: [
+          { field: "id", operator: "eq", value: String(body.namespaceId) },
+          { field: "tenantId", operator: "eq", value: ctx.tenantId },
+          { field: "slug", operator: "eq", value: ctx.namespace },
+        ] });
+        if (!namespace) throw new ForbiddenError("Namespace is outside the authorized scope", "SECFN_FORBIDDEN");
+      }
       return ok(await services.vault.createEnvironment({
         tenantId: ctx.tenantId,
         namespaceId: asOptionalString(body.namespaceId),
-        namespace: asOptionalString(body.namespace),
+        namespace: ctx.namespace ?? asOptionalString(body.namespace),
         name: requiredString(body.name ?? ""),
         description: asOptionalString(body.description),
         metadata: isRecord(body.metadata) ? body.metadata : undefined,
@@ -304,6 +313,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
 
 /** Tenant context is trusted; request identifiers may narrow it but cannot replace it. */
 async function assertAdminTenant<TContext extends SecFnRequestContext>(config: SecFnServerConfig<TContext>, ctx: Context<TContext>, action: SecFnAdminAction) {
+  if (ctx.namespace && !ctx.tenantId) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
   if (!ctx.tenantId && !ctx.namespace) return; // Explicitly authorized global operator; host owns this privilege.
   const reject = () => { throw new ForbiddenError("Resource is outside the authorized tenant", "SECFN_FORBIDDEN"); };
   if (ctx.tenantId && ctx.query.has('tenantId') && ctx.query.get('tenantId') !== ctx.tenantId) reject();
@@ -389,6 +399,7 @@ async function scope<TContext extends SecFnRequestContext>(
   config: SecFnServerConfig<TContext>,
   ctx: Context<TContext>,
 ): Promise<SecretScope> {
+  if (ctx.namespace && !ctx.tenantId) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
   const environment = asQueryString(ctx.query.get("environment"));
   const namespace = asQueryString(ctx.query.get("namespace"));
   if (ctx.namespace && namespace && namespace !== ctx.namespace) throw new ForbiddenError("Namespace is outside the authorized scope", "SECFN_FORBIDDEN");

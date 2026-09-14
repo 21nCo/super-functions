@@ -95,12 +95,13 @@ export class MemoryStorageAdapter implements StorageAdapter {
     if (this.mutationVersion !== version) throw new Error('MEMORY_REVISION_CONFLICT');
     memories.commit(); relationships.commit();
     this.sequence = staged.sequence;
-    this.mutationVersion++;
+    if (memories.writes.size || memories.removed.size || relationships.writes.size || relationships.removed.size) this.mutationVersion++;
 
     return result;
   }
 
   async insertMemories(inputs: Partial<Memory>[]): Promise<Memory[]> {
+    if (!inputs.length) return [];
     const now = Date.now();
     const saved = inputs.map((input) => {
       requireScope(input.tenantId, input.containerTags ?? []);
@@ -133,6 +134,7 @@ export class MemoryStorageAdapter implements StorageAdapter {
   }
 
   async insertRelationships(inputs: Partial<MemoryRelationship>[]): Promise<MemoryRelationship[]> {
+    if (!inputs.length) return [];
     const now = Date.now();
     const saved = inputs.map((input) => {
       if (!input.fromId || !input.toId) {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Action } from "plugfn";
-import document from "../google/discovery/gmail.json" with { type: "json" };
+import document from "../google/discovery/gmail.js";
 import {
   googleDiscoveryProvider,
   type Discovery,

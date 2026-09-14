@@ -1,4 +1,5 @@
-{
+// Generated discovery data; plain modules support the declared Node range.
+export default {
   "source": "https://sheets.googleapis.com/$discovery/rest?version=v4",
   "sourceSha256": "a1bc106e476ee4da1f7547d3a2461f5042a92637ae5386d1cac4564f3996a432",
   "revision": "20260904",
@@ -7350,4 +7351,4 @@
       "type": "object"
     }
   }
-}
+};
