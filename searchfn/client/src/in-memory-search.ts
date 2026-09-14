@@ -28,6 +28,8 @@ export interface InMemorySearchOptions {
 
 export interface InMemorySearchDetailedOptions extends InMemorySearchOptions {
   includeStored?: boolean;
+  /** Optional deterministic ordering for equal-score hits, before limit truncation. */
+  compareEqualScores?: (left: InMemorySearchResultItem, right: InMemorySearchResultItem) => number;
 }
 
 export interface InMemorySearchResultItem {
@@ -213,6 +215,10 @@ export class InMemorySearchFn {
       { k1: 1.2, b: 0.75, d: 0.5 }
     );
 
+    if (options.compareEqualScores) {
+      const compareEqualScores = options.compareEqualScores;
+      scored.sort((left, right) => right.score - left.score || compareEqualScores(left, right));
+    }
     return scored.slice(0, Math.max(options.limit ?? 10, 0)).map((entry: { docId: string | number; score: number }) => ({
       docId: entry.docId,
       score: entry.score,
