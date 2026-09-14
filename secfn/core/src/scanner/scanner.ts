@@ -33,6 +33,9 @@ export class SecurityScanner {
       "coverage/**",
     ];
     this.maxFileSize = options.maxFileSize ?? 1024 * 1024;
+    if (!Number.isSafeInteger(this.maxFileSize) || this.maxFileSize < 0 || this.maxFileSize >= 2 ** 32) {
+      throw new RangeError("maxFileSize must be a nonnegative integer below 2^32");
+    }
   }
 
   scanContent(content: string, target: ScanTarget): SecurityFinding[] {
@@ -42,13 +45,21 @@ export class SecurityScanner {
   }
 
   async scanFile(filePath: string): Promise<SecurityFinding[]> {
-    const { readFile, stat } = await import("node:fs/promises");
-    if ((await stat(filePath)).size > this.maxFileSize) return [];
-    const content = await readFile(filePath, "utf8");
-    if (Buffer.byteLength(content, "utf8") > this.maxFileSize) {
-      return [];
+    const { open } = await import("node:fs/promises");
+    const file = await open(filePath, "r");
+    try {
+      const buffer = Buffer.alloc(this.maxFileSize + 1);
+      let size = 0;
+      while (size < buffer.length) {
+        const { bytesRead } = await file.read(buffer, size, buffer.length - size, null);
+        if (!bytesRead) break;
+        size += bytesRead;
+      }
+      if (size > this.maxFileSize) return [];
+      return this.scanContent(buffer.subarray(0, size).toString("utf8"), { path: filePath });
+    } finally {
+      await file.close();
     }
-    return this.scanContent(content, { path: filePath });
   }
 
   async scanDirectory(dir: string): Promise<SecurityFinding[]> {

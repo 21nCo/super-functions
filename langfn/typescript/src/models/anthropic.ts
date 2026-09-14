@@ -1,3 +1,4 @@
+import { readStreamLines } from "./stream-lines.js";
 import {
   ChatRequest,
   ChatResponse,
@@ -89,12 +90,11 @@ export class AnthropicChatModel extends ChatModel {
     if (system) payload.system = system;
     if (request.tools?.length) payload.tools = request.tools.map(toAnthropicTool);
     if (request.tool_choice !== undefined) {
-      payload.tool_choice =
-        typeof request.tool_choice === "string"
-          ? request.tool_choice === "auto"
-            ? { type: "auto" }
-            : request.tool_choice === "required" ? { type: "any" } : request.tool_choice === "none" ? { type: "none" } : { type: "tool", name: request.tool_choice }
-          : request.tool_choice;
+      const choice = request.tool_choice;
+      if (typeof choice !== "string") payload.tool_choice = choice;
+      else if (choice === "auto" || choice === "none") payload.tool_choice = { type: choice };
+      else if (choice === "required") payload.tool_choice = { type: "any" };
+      else payload.tool_choice = { type: "tool", name: choice };
     }
 
     const response = await this.client.request("/messages", {
@@ -147,31 +147,28 @@ export class AnthropicChatModel extends ChatModel {
       throw new ProviderError("Anthropic stream response was empty", { provider: this.provider });
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const rawLine of lines) {
-        const line = rawLine.trim();
-        if (!line.startsWith("data:")) continue;
-        const chunk = line.slice(5).trim();
-        if (!chunk) continue;
-        const event = JSON.parse(chunk);
-        if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
-          const delta = String(event.delta.text ?? "");
-          yield { type: "content", content: delta, delta };
-        }
-        if (event.type === "message_stop") {
-          yield { type: "end", finish_reason: "stop" };
-          return;
-        }
+    let promptTokens = 0;
+    let completionTokens = 0;
+    for await (const rawLine of readStreamLines(response.body)) {
+      const line = rawLine.trim();
+      if (!line.startsWith("data:")) continue;
+      const chunk = line.slice(5).trim();
+      if (!chunk) continue;
+      const event = JSON.parse(chunk);
+      const usage = event.type === "message_start" ? event.message?.usage : event.usage;
+      if (usage) {
+        promptTokens = Number(usage.input_tokens ?? promptTokens);
+        completionTokens = Number(usage.output_tokens ?? completionTokens);
+        yield { type: "token_usage", prompt_tokens: promptTokens, completion_tokens: completionTokens };
+      }
+      if (event.type === "error") throw new ProviderError("Anthropic stream failed", { provider: this.provider });
+      if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+        const delta = String(event.delta.text ?? "");
+        yield { type: "content", content: delta, delta };
+      }
+      if (event.type === "message_stop") {
+        yield { type: "end", finish_reason: "stop" };
+        return;
       }
     }
 

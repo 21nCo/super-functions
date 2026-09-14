@@ -52,3 +52,30 @@ Gmail and Outlook keep read-only default consent. Before requesting write action
 SecFn revocation reserves a secret's key. Delete the revoked secret before recreating that key; deletion removes version history and secret-set memberships. A failed cleanup keeps the record revoked and may be retried. Runtime secret sets reject members outside the token's tenant, namespace or environment.
 
 Secret sets default to the development environment, matching direct runtime reads. Mixed-environment sets fail closed if any member falls outside the requested or token environment; create separate sets for each environment. Token scope IDs are resolved at issuance and runtime verification. Both direct reads and secret sets compare canonical namespace slugs rather than display labels, including requests that supply only namespace/environment IDs.
+
+
+### Contract remediation
+
+Jira site-specific actions accept an optional `cloudId` obtained from `sites.list`.
+When supplied, each action validates the selected site and required scopes against
+Atlassian accessible resources using the connected credential before dispatch.
+The routing field is not sent in the action payload. Existing trusted
+`connectionMetadata.cloudId` integrations remain supported.
+
+SecFn secret-set creation and deletion require transactional storage. Set rows
+and memberships commit together; failed writes can be retried. Apply the packaged
+schema-3 migration with the deployment schema on PostgreSQL `search_path`; it
+adds nullable `tenant_id` before rebuilding its index. Legacy scan rows stay
+unowned. Admin authorization receives the host's resolved namespace before
+execution, without mutating a shared context object.
+
+Run disposable PostgreSQL regression tests with `SECFN_TEST_DATABASE_URL` and
+`npm --prefix secfn/server test`. The suite creates and removes its own unique
+schema and verifies insertion/deletion rollback and schema-2 upgrades.
+
+Streaming usage now reaches the common budget check for OpenAI, Anthropic,
+Ollama, Mistral and custom completion fallbacks. Google already emits usage.
+The check rejects reported over-budget usage before successful completion; it
+cannot undo provider charges or guarantee a spending cap before usage arrives.
+When a budget is configured, missing pricing, missing usage and invalid costs
+fail closed. Without a budget, unpriced models report no cost estimate.

@@ -1,6 +1,6 @@
 import { applySelectedResources } from '../shared/selected-resources.js';
 import { z } from "zod";
-import { AuthType, type ActionContext, type Provider } from "plugfn";
+import { AuthType, type ActionContext, type Action, type Provider } from "plugfn";
 import {
   restAction,
   jsonObject,
@@ -22,7 +22,7 @@ const paging = z.object({
 const ok = z.object({ success: z.literal(true) });
 const read = ["read:jira-work"];
 const write = ["write:jira-work"];
-export const jiraProvider: Provider = {
+export const jiraProvider: Provider<Record<string, Action>> = {
   name: "jira",
   displayName: "Jira",
   description: "Atlassian Cloud site-bound Jira actions",
@@ -163,5 +163,25 @@ export const jiraProvider: Provider = {
     }),
   },
 };
+
+// Public callers select a site using action input. Validate it against the same
+// credential's accessible resources before dispatching any site-specific action.
+for (const [name, action] of Object.entries(jiraProvider.actions)) {
+  if (name === "sites.list") continue;
+  const parameters = (action.parameters as z.AnyZodObject).extend({ cloudId: remoteId.optional() });
+  const execute = action.execute;
+  action.parameters = parameters;
+  action.execute = async (input, context) => {
+    const { cloudId, ...params } = parameters.parse(input);
+    if (cloudId === undefined) return execute(params, context);
+    const response = await context.http.get("https://api.atlassian.com/oauth/token/accessible-resources", { redirect: "error" });
+    const resources = z.array(z.object({ id: z.string(), scopes: z.array(z.string()) })).parse(response.data);
+    const selected = resources.find(resource => resource.id === cloudId);
+    if (!selected || !(action.contract?.requiredScopes ?? []).every(scope => selected.scopes.includes(scope))) {
+      throw new Error("JIRA_CONNECTION_SITE_FORBIDDEN");
+    }
+    return execute(params, { ...context, connectionMetadata: { ...context.connectionMetadata, cloudId } });
+  };
+}
 
 applySelectedResources(jiraProvider);

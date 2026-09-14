@@ -292,6 +292,7 @@ export class LangFn {
             };
             this.enforceBudget(this.attachCost(latestUsage)?.total);
           }
+          if (event.type === "end" && !latestUsage) this.enforceBudget(undefined);
           yield event;
         }
       } else {
@@ -340,14 +341,12 @@ export class LangFn {
               completionTokens: event.completion_tokens,
               totalTokens: event.prompt_tokens + event.completion_tokens
             };
-            this.enforceBudget(this.attachCost(latestUsage)?.total);
           }
           yield event;
         }
       }
 
       const streamCost = this.attachCost(latestUsage);
-      this.enforceBudget(streamCost?.total);
       await this.persistTrace({
         kind: Array.isArray(input) ? "stream_chat" : "stream_completion",
         traceId,
@@ -617,6 +616,9 @@ export class LangFn {
 
   private attachCost(usage: CompletionResponse["usage"]): CompletionResponse["cost"] {
     if (!usage) return undefined;
+    if (![usage.prompt_tokens, usage.completion_tokens].every(value => Number.isFinite(value) && value >= 0)) {
+      throw new LangFnError("Provider reported invalid token usage", { code: "INVALID_TOKEN_USAGE" });
+    }
     return this.config.observability?.costMeter?.estimate(
       this.requireModel().provider,
       this.requireModel().model,
@@ -626,7 +628,12 @@ export class LangFn {
 
   private enforceBudget(totalCost?: number): void {
     const limit = this.config.observability?.budgets?.perRequestUsd;
-    if (limit !== undefined && totalCost !== undefined && totalCost > limit) {
+    if (limit === undefined) return;
+    if (!Number.isFinite(limit) || limit < 0) throw new LangFnError("Invalid request budget", { code: "INVALID_BUDGET" });
+    if (totalCost === undefined || !Number.isFinite(totalCost) || totalCost < 0) {
+      throw new LangFnError("Request budget requires valid usage and pricing", { code: "BUDGET_COST_UNAVAILABLE" });
+    }
+    if (totalCost > limit) {
       throw new LangFnError("Budget exceeded", {
         code: "BUDGET_EXCEEDED",
         metadata: { perRequestUsd: limit, totalCost }

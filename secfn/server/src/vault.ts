@@ -513,6 +513,7 @@ export class VaultService {
   }
 
   async createSecretSet(input: CreateSecretSetInput): Promise<SecretSetRecord> {
+    if (!this.db.capabilities.transactions.supported) throw new SecFnValidationError("Secret set creation requires transactional storage");
     if (!input.name.trim()) throw new SecFnValidationError("Secret set name is required");
     const resolved = await this.resolveScope(input, { requireNamespace: true, ignoreEnvironment: true, create: true, actorId: input.createdBy });
     const tenantId = input.tenantId ?? (await this.getNamespace(resolved.namespaceId!)).tenantId;
@@ -544,10 +545,12 @@ export class VaultService {
       outputNames.add(outputName);
       members.push({ id: generateId("member"), setId: set.id, secretId: secret.id, alias, createdAt: now });
     }
-    await this.db.create({ model: "secfn_secret_sets", data: set as unknown as Record<string, unknown> });
-    for (const member of members) {
-      await this.db.create({ model: "secfn_secret_set_members", data: member as unknown as Record<string, unknown> });
-    }
+    await this.db.transaction(async (trx) => {
+      await trx.create({ model: "secfn_secret_sets", data: set as unknown as Record<string, unknown> });
+      for (const member of members) {
+        await trx.create({ model: "secfn_secret_set_members", data: member as unknown as Record<string, unknown> });
+      }
+    });
     return set;
   }
 
@@ -675,13 +678,16 @@ export class VaultService {
 
   async deleteSecretSet(id: string, actorId: string): Promise<void> {
     const set = await this.getSecretSet(id);
-    await this.db.deleteMany({
+    if (!this.db.capabilities.transactions.supported) throw new SecFnValidationError("Secret set deletion requires transactional storage");
+    await this.db.transaction(async (trx) => {
+    await trx.deleteMany({
       model: "secfn_secret_set_members",
       where: [{ field: "setId", operator: "eq", value: id }],
     });
-    await this.db.delete({
+    await trx.delete({
       model: "secfn_secret_sets",
       where: [{ field: "id", operator: "eq", value: id }],
+    });
     });
     await this.audit.write({
       type: "policy_violation",

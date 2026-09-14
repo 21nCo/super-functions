@@ -33,3 +33,15 @@ it('omits plaintext matches and context from JSON reports', () => {
   expect(JSON.parse(report).findings[0]).not.toHaveProperty('context');
   expect(JSON.parse(report).findings[0]).not.toHaveProperty('match');
 });
+
+it('scans an exact byte limit and rejects larger input',async()=>{
+ const {mkdtemp,writeFile,rm}=await import('node:fs/promises');
+ const {tmpdir}=await import('node:os');
+ const dir=await mkdtemp(`${tmpdir()}/rex-scanner-`);
+ try {
+  const secret='AKIAIOSFODNN7EXAMPLE';const file=`${dir}/key`;
+  const scanner=createSecurityScanner({maxFileSize:Buffer.byteLength(secret)});
+  await writeFile(file,secret);expect(await scanner.scanFile(file)).toHaveLength(1);
+  await writeFile(file,secret+'x');expect(await scanner.scanFile(file)).toEqual([]);
+ }finally{await rm(dir,{recursive:true});}
+});

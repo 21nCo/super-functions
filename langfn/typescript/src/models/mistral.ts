@@ -113,6 +113,7 @@ export class MistralChatModel extends ChatModel {
   async *stream(request: CompletionRequest): AsyncIterable<StreamEvent> {
     const completion = await this.complete(request);
     yield { type: "content", content: completion.content, delta: completion.content };
+    if (completion.usage) yield { type: "token_usage", prompt_tokens: completion.usage.prompt_tokens, completion_tokens: completion.usage.completion_tokens };
     yield { type: "end", finish_reason: "stop" };
   }
 }

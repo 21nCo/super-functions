@@ -32,6 +32,8 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
     method,
     path,
     handler: async (request, ctx) => {
+      ctx = await resolveContext(config, ctx);
+      if (ctx.namespace && !ctx.tenantId) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
       const rate = await services.rateLimit.check({
         userId: ctx.actorId,
         ip: ctx.ip,
@@ -60,7 +62,6 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
           throw new ForbiddenError("Authorization denied", "SECFN_FORBIDDEN");
         }
       }
-      ctx.namespace = ctx.namespace ?? await config.namespaceProvider?.(ctx);
       if (!ctx.tenantId && ctx.query.get("namespace")) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
       await assertAdminTenant(config, ctx, action);
       return handler(request, ctx);
@@ -130,7 +131,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
     }),
     adminRoute("GET", "/admin/secrets", "secrets:list", async (_request, ctx) => {
       const page = await services.vault.listSecrets({
-        ...(await scope(config, ctx)),
+        ...(await scope(ctx)),
         limit: Number(ctx.query.get("limit") ?? 50),
         cursor: ctx.query.get("cursor") ?? undefined,
         search: ctx.query.get("search") ?? undefined,
@@ -148,7 +149,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
         tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
         metadata: isRecord(body.metadata) ? body.metadata : undefined,
         createdBy: ctx.actorId ?? "system",
-        ...(await scope(config, ctx)),
+        ...(await scope(ctx)),
       }), { status: 201 });
     }),
     adminRoute("GET", "/admin/secrets/:id", "secrets:read", async (_request, ctx) => {
@@ -162,7 +163,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
         tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
         actorId: ctx.actorId ?? "system",
         requireRenameConfirmation: body.confirmRename === true,
-        ...(await scope(config, ctx)),
+        ...(await scope(ctx)),
       }));
     }),
     adminRoute("POST", "/admin/secrets/:id/reveal", "secrets:reveal", async (request, ctx) => {
@@ -193,7 +194,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
       return emptyOk();
     }),
     adminRoute("GET", "/admin/secret-sets", "secret-sets:list", async (_request, ctx) => {
-      return ok(await services.vault.listSecretSets(await scope(config, ctx)));
+      return ok(await services.vault.listSecretSets(await scope(ctx)));
     }),
     adminRoute("POST", "/admin/secret-sets", "secret-sets:create", async (request, ctx) => {
       const body = await readJson<Record<string, unknown>>(request);
@@ -205,7 +206,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
           alias: asOptionalString((member as Record<string, unknown>).alias),
         })) : undefined,
         createdBy: ctx.actorId ?? "system",
-        ...(await scope(config, ctx)),
+        ...(await scope(ctx)),
       }), { status: 201 });
     }),
     adminRoute("GET", "/admin/secret-sets/:id", "secret-sets:read", async (_request, ctx) => {
@@ -264,7 +265,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
         scopes: Array.isArray(body.scopes) ? body.scopes.map(String) : [],
         expiresAt: asOptionalString(body.expiresAt),
         createdBy: ctx.actorId ?? "system",
-        ...(await scope(config, ctx)),
+        ...(await scope(ctx)),
       }), { status: 201 });
     }),
     adminRoute("POST", "/admin/service-tokens/:id/revoke", "service-tokens:revoke", async (_request, ctx) => {
@@ -353,6 +354,7 @@ async function runtimeRead<TContext extends SecFnRequestContext>(
   services: RouterServices,
   kind: "secret" | "set",
 ): Promise<Response> {
+  ctx = await resolveContext(config, ctx);
   const endpoint = new URL(request.url).pathname;
   const rate = await services.rateLimit.check({
     userId: undefined,
@@ -365,7 +367,7 @@ async function runtimeRead<TContext extends SecFnRequestContext>(
 
   const tokenValue = bearerToken(request);
   if (!tokenValue) throw new UnauthorizedError("Missing runtime token", "SECFN_UNAUTHORIZED");
-  const requestScope = await scope(config, ctx);
+  const requestScope = await scope(ctx);
   const environment = ctx.query.get("environment") ?? undefined;
   const fullScope: SecretScope = {
     ...requestScope,
@@ -397,14 +399,17 @@ async function runtimeRead<TContext extends SecFnRequestContext>(
   }
 }
 
+async function resolveContext<TContext extends SecFnRequestContext, TRequest extends TContext>(config: SecFnServerConfig<TContext>, ctx: TRequest): Promise<TRequest> {
+  return { ...ctx, namespace: ctx.namespace ?? await config.namespaceProvider?.(ctx) };
+}
+
 async function scope<TContext extends SecFnRequestContext>(
-  config: SecFnServerConfig<TContext>,
   ctx: Context<TContext>,
 ): Promise<SecretScope> {
   if (ctx.namespace && !ctx.tenantId) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
   const environment = asQueryString(ctx.query.get("environment"));
   const namespace = asQueryString(ctx.query.get("namespace"));
-  const trustedNamespace = ctx.namespace ?? await config.namespaceProvider?.(ctx);
+  const trustedNamespace = ctx.namespace;
   const effectiveNamespace = trustedNamespace ?? namespace;
   if (effectiveNamespace && !ctx.tenantId) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
   if (trustedNamespace && namespace && namespace !== trustedNamespace) throw new ForbiddenError("Namespace is outside the authorized scope", "SECFN_FORBIDDEN");

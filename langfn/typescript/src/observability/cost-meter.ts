@@ -31,8 +31,9 @@ export class CostMeter {
     this.prices = options.prices ?? COST_MAP;
   }
 
-  estimate(provider: string, model: string, usage: TokenUsage): Cost {
-    const rates = this.prices[provider]?.[model] || { prompt: 0, completion: 0 };
+  estimate(provider: string, model: string, usage: TokenUsage): Cost | undefined {
+    const rates = this.prices[provider]?.[model];
+    if (!rates) return undefined;
 
     const promptCost = (usage.prompt_tokens / 1000) * rates.prompt;
     const completionCost = (usage.completion_tokens / 1000) * rates.completion;

@@ -1,3 +1,4 @@
+import { readStreamLines } from "./stream-lines.js";
 import {
   ChatRequest,
   ChatResponse,
@@ -110,28 +111,17 @@ export class OllamaChatModel extends ChatModel {
       throw new ProviderError("Ollama stream response was empty", { provider: this.provider });
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const chunk = JSON.parse(line);
-        if (chunk.done) {
-          yield { type: "end", finish_reason: "stop" };
-          return;
-        }
-        const delta = String(chunk.message?.content ?? "");
-        if (delta) {
-          yield { type: "content", content: delta, delta };
-        }
+    for await (const rawLine of readStreamLines(response.body)) {
+      const line = rawLine;
+      if (!line.trim()) continue;
+      const chunk = JSON.parse(line);
+      if (chunk.prompt_eval_count !== undefined || chunk.eval_count !== undefined) yield { type: "token_usage", prompt_tokens: Number(chunk.prompt_eval_count ?? 0), completion_tokens: Number(chunk.eval_count ?? 0) };
+      if (chunk.error) throw new ProviderError("Ollama stream failed", { provider: this.provider });
+      const delta = String(chunk.message?.content ?? "");
+      if (delta) yield { type: "content", content: delta, delta };
+      if (chunk.done) {
+        yield { type: "end", finish_reason: "stop" };
+        return;
       }
     }
 

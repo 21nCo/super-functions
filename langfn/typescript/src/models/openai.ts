@@ -1,3 +1,4 @@
+import { readStreamLines } from "./stream-lines.js";
 import {
   Message,
   ChatRequest,
@@ -136,7 +137,8 @@ export class OpenAIChatModel extends ChatModel {
       body: JSON.stringify({
         model: this.model,
         messages: [{ role: "user", content: request.prompt }],
-        stream: true
+        stream: true,
+        stream_options: { include_usage: true }
       })
     });
     await raiseForStatus(this.provider, response);
@@ -145,30 +147,21 @@ export class OpenAIChatModel extends ChatModel {
       throw new ProviderError("OpenAI stream response was empty", { provider: this.provider });
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const rawLine of lines) {
-        const line = rawLine.trim();
-        if (!line.startsWith("data:")) continue;
-        const chunk = line.slice(5).trim();
-        if (chunk === "[DONE]") {
-          yield { type: "end", finish_reason: "stop" };
-          return;
-        }
-        const data = JSON.parse(chunk);
-        const delta = data?.choices?.[0]?.delta?.content;
-        if (delta) {
-          yield { type: "content", content: delta, delta };
-        }
+    for await (const rawLine of readStreamLines(response.body)) {
+      const line = rawLine.trim();
+      if (!line.startsWith("data:")) continue;
+      const chunk = line.slice(5).trim();
+      if (chunk === "[DONE]") {
+        yield { type: "end", finish_reason: "stop" };
+        return;
+      }
+      if (!chunk) continue;
+      const data = JSON.parse(chunk);
+      if (data.error) throw new ProviderError("OpenAI stream failed", { provider: this.provider });
+      if (data.usage) yield { type: "token_usage", prompt_tokens: Number(data.usage.prompt_tokens ?? 0), completion_tokens: Number(data.usage.completion_tokens ?? 0) };
+      const delta = data?.choices?.[0]?.delta?.content;
+      if (delta) {
+        yield { type: "content", content: delta, delta };
       }
     }
 

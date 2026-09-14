@@ -51,7 +51,7 @@ export const onedriveProvider: Provider = {
       authorizationUrl:
         "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-      scopes: ["offline_access", ...write],
+      scopes: ["offline_access", ...read, ...write],
     },
   },
   actions: {
