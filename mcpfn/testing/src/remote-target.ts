@@ -48,13 +48,6 @@ function credentialValues(headers: HeadersInit): Set<string> {
       }
     }
   }
-  // Register reversible URL/form representations while the credential is owned,
-  // so report scopes retain these variants after credential release as well.
-  for (const secret of [...secrets]) {
-    const encoded = encodeURIComponent(secret);
-    secrets.add(encoded);
-    secrets.add(encoded.replace(/%20/g, "+"));
-  }
   return secrets;
 }
 
@@ -86,7 +79,13 @@ function specialValue(input: unknown): unknown {
 }
 
 function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = false, redactionMarker?: string): T {
-  const secrets = [...values].filter(Boolean).sort((a, b) => b.length - a.length);
+  // Preserve whether a pattern came from opaque text or a serializer. Literal
+  // percent sequences in credentials must not acquire URL hex-case semantics.
+  const variants = [...values].filter(Boolean).flatMap(secret => [
+    { value: secret, encoded: false },
+    { value: encodeURIComponent(secret), encoded: true },
+    { value: new URLSearchParams({ value: secret }).toString().slice("value=".length), encoded: true },
+  ]).sort((a, b) => b.value.length - a.value.length);
   let entries = 0, stringBytes = 0;
   const budget = (input: unknown, depth = 0): void => {
     input = specialValue(input);
@@ -104,10 +103,13 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   // Check before either redactor allocates copies. Exceeding a budget is an
   // explicit failure, never silent truncation of a typed report collection.
   budget(value);
-  const patterns = secrets.map(secret => secret
-    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-    // Hex digits in percent escapes are case-insensitive; opaque text is not.
-    .replace(/%[0-9A-Fa-f]{2}/g, escape => escape.replace(/[A-Fa-f]/g, hex => `[${hex.toLowerCase()}${hex.toUpperCase()}]`)));
+  const patterns = variants.map(({ value, encoded }) => {
+    const literal = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Only generated percent escapes accept mixed-case hex digits.
+    return encoded
+      ? literal.replace(/%[0-9A-Fa-f]{2}/g, escape => escape.replace(/[A-Fa-f]/g, hex => `[${hex.toLowerCase()}${hex.toUpperCase()}]`))
+      : literal;
+  });
   const secretPattern = patterns.length ? new RegExp(patterns.join("|"), "g") : undefined;
   const clientKinds = new Set(["logging.message", "progress", "tasks.status", "resources.updated", "tools.list_changed", "resources.list_changed", "prompts.list_changed", "resources.subscribed", "resources.unsubscribed", "client.roots", "client.sampling", "client.elicitation"]);
   const scrub = (input: unknown, role = "payload", field = ""): unknown => {

@@ -533,7 +533,7 @@ it.each(["x-api-key", "authorization"])("redacts URL and form encoded %s credent
   const { redactRemoteCredential } = await import("../src/remote-target.js");
   const secret = "opaque/a+b=c value";
   const encoded = encodeURIComponent(secret);
-  const mixed = encoded.replace("%2F", "%2f").replace("%3D", "%3d");
+  const mixed = encoded.replaceAll("%2F", "%2f").replaceAll("%3D", "%3d");
   const variants = [secret, encoded, mixed, encoded.replace(/%20/g, "+")];
   const credential = { headers: { [header]: header === "authorization" ? `Bearer ${secret}` : secret } };
   const result = redactRemoteCredential(credential, {
@@ -576,4 +576,17 @@ it("scrubs encoded cleanup errors from finalized JSON and JUnit reports", async 
     expect(JSON.stringify(report)).not.toContain(encoded);
     expect(createMcpFnTargetSuiteJUnit(report)).not.toContain(encoded);
   } finally { await fixture.close(); }
+});
+
+
+it("uses form serialization for punctuation while preserving literal percent credential case", async () => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  const secret = "opaque!a'b(c)d~e f";
+  const form = new URLSearchParams({ value: secret }).toString().slice("value=".length);
+  expect(form).toContain("%21");
+  expect(redactRemoteCredential({ headers: { "x-api-key": secret } }, form)).not.toContain(form);
+  const credential = { headers: { "x-api-key": "opaque%2Fsecret" } };
+  expect(redactRemoteCredential(credential, "opaque%2fsecret")).toBe("opaque%2fsecret");
+  expect(redactRemoteCredential(credential, "opaque%2Fsecret")).not.toContain("opaque%2Fsecret");
+  expect(redactRemoteCredential(credential, "opaque%252Fsecret")).not.toContain("opaque%252Fsecret");
 });
