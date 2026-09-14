@@ -178,7 +178,7 @@ describe("mcpfn CLI", () => {
     });
   });
 
-  it("enforces max-report-bytes against the exact CLI serialization", async () => {
+  it.each([1025, 1_048_576])("enforces the exact CLI serialization cap %s, including the default", async (cap) => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-report-cap-"));
     roots.push(root);
     const coreUrl = pathToFileURL(testRequire.resolve("@mcpfn/core")).href;
@@ -195,8 +195,8 @@ describe("mcpfn CLI", () => {
     );
     await writeFile(
       path.join(root, "scenarios.json"),
-      JSON.stringify(Array.from({ length: 30 }, (_, index) => ({
-        name: `initialize ${index} ${"x".repeat(80)}`,
+      JSON.stringify(Array.from({ length: cap === 1025 ? 30 : 1000 }, (_, index) => ({
+        name: `initialize ${index} ${"x".repeat(cap === 1025 ? 80 : 1100)}`,
         kind: "initialize",
       }))),
     );
@@ -205,12 +205,13 @@ describe("mcpfn CLI", () => {
       "test",
       "server.mjs",
       "scenarios.json",
-      "--max-report-bytes",
-      "1025",
+      ...(cap === 1025 ? ["--max-report-bytes", "1025"] : []),
+      "--output", "report.json",
     ], { cwd: root, stdout: (value) => { output += value; } });
 
     expect(exitCode).toBe(1);
-    expect(new TextEncoder().encode(output).byteLength).toBeLessThanOrEqual(1_025);
+    expect(new TextEncoder().encode(output).byteLength).toBeLessThanOrEqual(cap);
+    expect(await readFile(path.join(root, "report.json"), "utf8")).toBe(output);
     expect(JSON.parse(output)).toMatchObject({ status: "incomplete" });
   });
 

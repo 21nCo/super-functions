@@ -145,17 +145,15 @@ export async function runCli(
         const outputMaxBytes = parsePositiveInteger(
           options.maxReportBytes,
           "--max-report-bytes",
-        );
-        if (outputMaxBytes !== undefined && outputMaxBytes < 1_025) {
+        ) ?? 1_048_576;
+        if (outputMaxBytes < 1_025) {
           throw new Error("--max-report-bytes must be an integer of at least 1025");
         }
         const report = createMcpFnScenarioReport(results, {
           manifestHash: loaded.manifest.hash,
-          maxBytes: outputMaxBytes === undefined ? undefined : outputMaxBytes - 1,
+          maxBytes: outputMaxBytes - 1,
         });
-        const serialized = outputMaxBytes === undefined
-          ? `${JSON.stringify(report, null, 2)}\n`
-          : `${JSON.stringify(report)}\n`;
+        const serialized = `${JSON.stringify(report)}\n`;
         if (options.output) {
           await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
         }
