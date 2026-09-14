@@ -83,6 +83,7 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   // percent sequences in credentials must not acquire URL hex-case semantics.
   const variants = [...values].filter(Boolean).flatMap(secret => [
     { value: secret, encoded: false },
+    { value: JSON.stringify(secret).slice(1, -1), encoded: false },
     { value: encodeURIComponent(secret), encoded: true },
     { value: new URLSearchParams({ value: secret }).toString().slice("value=".length), encoded: true },
   ]).sort((a, b) => b.value.length - a.value.length);

@@ -126,7 +126,7 @@ it("marks otherwise successful suites incomplete when custom close rejects", asy
     const [client, remote] = InMemoryTransport.createLinkedPair();
     await server.connect(remote);
     return { transport: client, close: async () => { await server.close(); throw new Error("opaque-cleanup-value"); } };
-  } }) }).catch(error => {
+  } }) }).then(() => { throw new Error("Expected cleanup rejection"); }, error => {
       expect(error).toBeInstanceOf(McpFnTargetSuiteCleanupError);
       return (error as McpFnTargetSuiteCleanupError).report;
     });
@@ -240,4 +240,45 @@ it("transfers failed shutdown ownership and serializes safe cleanup retries", as
   await error.retryCleanup();
   expect(close).toHaveBeenCalledTimes(calls);
   expect(error.report.ok).toBe(false); // Immutable historical failure evidence.
+});
+
+it.each(["complete", "passed"])("keeps suite structure when a custom secret is %s", async secret => {
+  const server = createMcpFnServer({ info: { name: secret, version: "1" }, registry: new McpFnRegistry() });
+  const report = await runMcpFnTargetSuite({ target: customTarget({ kind: "custom", descriptor: { label: secret },
+    redact: <T>(value: T): T => JSON.parse(JSON.stringify(value).replaceAll(secret, "[REDACTED]")),
+    open: async () => {
+      const [client, remote] = InMemoryTransport.createLinkedPair();
+      await server.connect(remote);
+      return { transport: client, close: () => server.close() };
+    },
+  }) });
+  expect(report.status).toBe("complete");
+  expect(report.kind).toBe("mcpfn.target-suite-report");
+  expect(report.passed).toBe(0);
+  expect(report.server?.name).toBe("[REDACTED]");
+  expect(report.target.label).toBe("[REDACTED]");
+});
+
+it("delivers diagnostics after exactly one custom redaction and bounds their retained bytes", async () => {
+  const server = createMcpFnServer({ info: { name: "diagnostics", version: "1" }, registry: new McpFnRegistry() });
+  const observed: unknown[] = [];
+  const report = await runMcpFnTargetSuite({ maxReportBytes: 4096,
+    client: { diagnostics: event => { observed.push(event); } },
+    target: customTarget({ kind: "custom", redact: <T>(value: T): T => {
+      if (value && typeof value === "object" && "phase" in value) {
+        if ("redactionCount" in value) throw new Error("duplicate redaction");
+        return { ...value, redactionCount: 1, details: { large: "x".repeat(6000) } } as T;
+      }
+      return value;
+    }, open: async () => {
+      const [client, remote] = InMemoryTransport.createLinkedPair();
+      await server.connect(remote);
+      return { transport: client, close: () => server.close() };
+    } }),
+  });
+  expect(observed.length).toBeGreaterThan(0);
+  expect(observed.every(event => (event as { redactionCount: number }).redactionCount === 1)).toBe(true);
+  expect(report.droppedTimelineEvents).toBeGreaterThan(0);
+  expect(report.timeline.length).toBeLessThan(observed.length);
+  expect(Buffer.byteLength(JSON.stringify(report))).toBeLessThanOrEqual(4096);
 });

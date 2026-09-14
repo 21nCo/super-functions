@@ -6,7 +6,6 @@ import type {
   McpFnTargetDescriptor,
 } from "@mcpfn/client";
 import type { McpFnManifest } from "@mcpfn/core";
-import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 import { assertManifestContract, McpFnAssertionError, stableJson } from "./assertions.js";
 import { McpFnTestClient, type McpFnTestClientOptions } from "./client.js";
@@ -106,6 +105,8 @@ function redactSuiteArtifact<T>(target: McpFnTarget, value: T, options: { preser
 async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpFnTargetSuiteReport> {
   const timeline: McpFnDiagnosticEvent[] = [];
   let droppedTimelineEvents = 0;
+  let timelineBytes = 0;
+  const timelineSizes: number[] = [];
   const maxTimelineEvents = options.maxTimelineEvents ?? 500;
   if (!Number.isInteger(maxTimelineEvents) || maxTimelineEvents < 1) {
     throw new Error("maxTimelineEvents must be a positive integer");
@@ -136,12 +137,22 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
               code: event.code, phase: event.phase,
             });
           }
-          timeline.push(redactOAuthValue(redactSuiteArtifact(options.target, event, { preserveKeys: true })) as unknown as McpFnDiagnosticEvent);
-          if (timeline.length > maxTimelineEvents) {
-            timeline.shift();
+          // Production-client dispatch already applied the custom target hook.
+          const safeEvent = redactTargetCredentials(options.target, event, { preserveKeys: true });
+          const bytes = jsonBytes(safeEvent);
+          if (bytes > maxReportBytes) {
             droppedTimelineEvents += 1;
+          } else {
+            timeline.push(safeEvent);
+            timelineSizes.push(bytes);
+            timelineBytes += bytes;
+            while (timeline.length > maxTimelineEvents || timelineBytes > maxReportBytes) {
+              timeline.shift();
+              timelineBytes -= timelineSizes.shift()!;
+              droppedTimelineEvents += 1;
+            }
           }
-          await consumerDiagnostic?.(redactSuiteArtifact(options.target, event, { preserveKeys: true }));
+          await consumerDiagnostic?.(safeEvent);
         },
       },
     );
@@ -241,8 +252,24 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   try {
     // Descriptors and final serialization share the same fail-closed boundary.
     // Scrub opaque credentials before generic redaction can truncate a match.
-    report.target = redactOAuthValue(redactSuiteArtifact(options.target, { target: options.target.describe() }, { preserveKeys: true }).target) as unknown as McpFnTargetDescriptor;
-    finalized = enforceReportCap(redactSuiteArtifact(options.target, report, { preserveKeys: true }), maxReportBytes);
+    const { kind, ...descriptor } = options.target.describe();
+    // Rebuild the authored envelope. Custom hooks only see target payloads,
+    // never report discriminators, counters, or already-redacted diagnostics.
+    const projected: McpFnTargetSuiteReport = {
+      ...report,
+      target: { ...redactSuiteArtifact(options.target, descriptor), kind },
+      server: report.server === undefined ? undefined : redactSuiteArtifact(options.target, report.server),
+      capabilities: report.capabilities === undefined ? undefined : redactSuiteArtifact(options.target, report.capabilities),
+      ...(report.manifestHash === undefined ? {} : { manifestHash: redactSuiteArtifact(options.target, report.manifestHash) }),
+      results: report.results.map(result => ({
+        ...result,
+        name: redactSuiteArtifact(options.target, result.name),
+        operation: redactSuiteArtifact(options.target, result.operation),
+        ...(result.tool === undefined ? {} : { tool: redactSuiteArtifact(options.target, result.tool) }),
+        // Scenario errors have already passed through client.session.redact.
+      })),
+    };
+    finalized = enforceReportCap(redactTargetCredentials(options.target, projected, { preserveKeys: true }), maxReportBytes);
   } catch (error) {
     finalized = enforceReportCap({ ...report, ok: false, status: "incomplete",
       incompleteReason: error instanceof McpFnRedactionLimitError

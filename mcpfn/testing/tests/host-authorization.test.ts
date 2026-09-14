@@ -230,3 +230,14 @@ it("rejects invalid-client errors even on a registered state-matching redirect",
   } }, [fixture]);
   expect(result.status).toBe("failed");
 });
+
+it.each([null, undefined, false, 0, ""])( "records falsy adapter rejections without skipping remaining fixtures (%j)", async failure => {
+  const fixtures = createHostedAuthorizationFixtures({ issuer: "https://login.example.com", resource: "https://mcp.example.com" });
+  const results = await runHostedAuthorizationRegression({
+    issuer: "https://login.example.com",
+    prepareRegistration: async () => { throw failure; },
+    request: async () => { throw new Error("unexpected request"); },
+  }, fixtures);
+  expect(results).toHaveLength(fixtures.length);
+  expect(results.every(result => result.status === "failed")).toBe(true);
+});

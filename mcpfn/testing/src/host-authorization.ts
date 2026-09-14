@@ -318,10 +318,11 @@ async function runHostedCase(
     }
     return assessHostedCase(fixture, phase, responseStatus);
   } catch (error) {
-    const safe = redactOAuthValue(error) as Record<string, unknown>;
+    const redacted = redactOAuthValue(error);
+    const safe = redacted && typeof redacted === "object" ? redacted as Record<string, unknown> : {};
     const code = typeof safe.code === "string" ? safe.code : undefined;
-    const message = typeof safe.message === "string" ? safe.message : String(safe);
-    return assessHostedCase(fixture, phase, responseStatus, code, message);
+    const message = typeof safe.message === "string" ? safe.message : String(redacted);
+    return assessHostedCase(fixture, phase, responseStatus, code, message || "Hosted adapter failed");
   }
 }
 

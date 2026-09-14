@@ -35,7 +35,7 @@ describe("authenticated remote MCP targets", () => {
         acquire: () => ({ headers: { authorization: "Bearer cleanup-secret" } }),
         revoke: () => { throw new Error("revoke failed: cleanup-secret"); },
       } }), expectedToolNames: ["missing-tool"],
-    }).catch(error => {
+    }).then(() => { throw new Error("Expected cleanup rejection"); }, error => {
       expect(error).toBeInstanceOf(McpFnTargetSuiteCleanupError);
       return (error as McpFnTargetSuiteCleanupError).report;
     });
@@ -201,7 +201,7 @@ it("redacts invalid-header cleanup errors and credential-shaped fields", async (
     acquire: () => ({ headers: { host: "opaque-invalid-credential" } }),
     revoke: () => { throw new Error("opaque-invalid-credential"); },
   } });
-  const report = await runMcpFnTargetSuite({ target }).catch(error => {
+  const report = await runMcpFnTargetSuite({ target }).then(() => { throw new Error("Expected cleanup rejection"); }, error => {
       expect(error).toBeInstanceOf(McpFnTargetSuiteCleanupError);
       return (error as McpFnTargetSuiteCleanupError).report;
     });
@@ -577,7 +577,7 @@ it("scrubs encoded cleanup errors from finalized JSON and JUnit reports", async 
         acquire: () => ({ headers: { authorization: `Bearer ${secret}` } }),
         revoke: () => { throw new Error(`cleanup failed: ${encoded}`); },
       } }),
-    }).catch(error => {
+    }).then(() => { throw new Error("Expected cleanup rejection"); }, error => {
       expect(error).toBeInstanceOf(McpFnTargetSuiteCleanupError);
       return (error as McpFnTargetSuiteCleanupError).report;
     });
@@ -618,4 +618,13 @@ it.each(["revoke", "dispose"])("retains suite ownership for a failed credential 
     await error.retryCleanup();
     expect(dispose).toHaveBeenCalledTimes(phase === "dispose" ? 2 : 1);
   } finally { await fixture.close(); }
+});
+
+it("scrubs JSON-string-escaped opaque credentials in serialized error text", async () => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  const secret = 'opaque"quoted\\value';
+  const serialized = JSON.stringify({ reflected: secret });
+  const result = redactRemoteCredential({ headers: { "x-api-key": secret } }, serialized);
+  expect(result).not.toContain(JSON.stringify(secret).slice(1, -1));
+  expect(result).toContain("REDACTED");
 });
