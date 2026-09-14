@@ -168,3 +168,46 @@ it("does not repeat successful custom cleanup after an open failure", async () =
   expect(cleanup).toHaveBeenCalledOnce();
   expect(report.incompleteReason).not.toContain("Target cleanup failed");
 });
+
+
+it.each(["metadata", "failure", "throwing-redactor"])("applies custom target redaction to finalized suite %s", async mode => {
+  const secret = "custom-owned-secret";
+  const server = createMcpFnServer({
+    info: { name: secret, version: "1.0.0" },
+    registry: new McpFnRegistry().register({
+      name: "visible-tool", description: "Fixture tool", inputSchema: { type: "object" },
+      handler: async () => structuredResult({ ok: true }),
+    }),
+  });
+  const target = customTarget({
+    kind: "custom",
+    descriptor: { label: secret },
+    redact: <T>(value: T): T => {
+      if (mode === "throwing-redactor") throw new Error(secret);
+      const plain = value instanceof Error ? { name: value.name, message: value.message } : value;
+      return JSON.parse(JSON.stringify(plain).replaceAll(secret, "[REDACTED]")) as T;
+    },
+    open: async () => {
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await server.connect(serverTransport);
+      return { transport: clientTransport, close: () => server.close() };
+    },
+  });
+  const report = await runMcpFnTargetSuite({
+    target,
+    ...(mode === "failure" ? { expectedToolNames: [secret] } : {}),
+  });
+  expect(JSON.stringify(report)).not.toContain(secret);
+  if (mode === "metadata") {
+    expect(report.ok).toBe(true);
+    expect(report.server?.name).toBe("[REDACTED]");
+    expect(report.target.label).toBe("[REDACTED]");
+  } else if (mode === "failure") {
+    expect(report.ok).toBe(false);
+    expect(report.failure?.message).toContain("[REDACTED]");
+  } else {
+    expect(report.status).toBe("incomplete");
+    expect(report.server).toBeUndefined();
+    expect(report.timeline).toEqual([]);
+  }
+});

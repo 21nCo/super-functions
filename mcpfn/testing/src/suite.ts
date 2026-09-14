@@ -74,6 +74,12 @@ export async function runMcpFnTargetSuite(
   finally { finishRedaction(); }
 }
 
+/** Apply the target-owned scrubber before the bounded generic artifact pass. */
+function redactSuiteArtifact<T>(target: McpFnTarget, value: T, options: { preserveKeys?: boolean } = {}): T {
+  const scrubbed = target.redact ? target.redact(value) : value;
+  return redactTargetCredentials(target, scrubbed, options);
+}
+
 async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpFnTargetSuiteReport> {
   const timeline: McpFnDiagnosticEvent[] = [];
   let droppedTimelineEvents = 0;
@@ -106,12 +112,12 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
               code: event.code, phase: event.phase,
             });
           }
-          timeline.push(redactOAuthValue(redactTargetCredentials(options.target, event, { preserveKeys: true })) as unknown as McpFnDiagnosticEvent);
+          timeline.push(redactOAuthValue(redactSuiteArtifact(options.target, event, { preserveKeys: true })) as unknown as McpFnDiagnosticEvent);
           if (timeline.length > maxTimelineEvents) {
             timeline.shift();
             droppedTimelineEvents += 1;
           }
-          await consumerDiagnostic?.(redactTargetCredentials(options.target, event, { preserveKeys: true }));
+          await consumerDiagnostic?.(redactSuiteArtifact(options.target, event, { preserveKeys: true }));
         },
       },
     );
@@ -140,7 +146,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     };
   } catch (error) {
     try {
-      failure = normalizeMcpFnReportFailure(redactTargetCredentials(options.target, error, { preserveKeys: true }));
+      failure = normalizeMcpFnReportFailure(redactSuiteArtifact(options.target, error, { preserveKeys: true }));
     } catch {
       // Arbitrary error properties/proxies can throw, including secret-bearing errors.
       failure = normalizeMcpFnReportFailure({ name: "RedactionError", code: "MCPFN_REDACTION_FAILED", message: "Target failure omitted because credential redaction failed" });
@@ -208,8 +214,8 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   try {
     // Descriptors and final serialization share the same fail-closed boundary.
     // Scrub opaque credentials before generic redaction can truncate a match.
-    report.target = redactOAuthValue(redactTargetCredentials(options.target, { target: options.target.describe() }, { preserveKeys: true }).target) as unknown as McpFnTargetDescriptor;
-    return enforceReportCap(redactTargetCredentials(options.target, report, { preserveKeys: true }), maxReportBytes);
+    report.target = redactOAuthValue(redactSuiteArtifact(options.target, { target: options.target.describe() }, { preserveKeys: true }).target) as unknown as McpFnTargetDescriptor;
+    return enforceReportCap(redactSuiteArtifact(options.target, report, { preserveKeys: true }), maxReportBytes);
   } catch (error) {
     return enforceReportCap({ ...report, ok: false, status: "incomplete",
       incompleteReason: error instanceof McpFnRedactionLimitError
