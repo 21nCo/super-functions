@@ -206,7 +206,7 @@ it.each(['token-exchange', 'token-refresh'])('rejects HTTP 201 during %s and pre
   expect(result).toMatchObject({ status: 'failed', phase, responseStatus: 201 });
 });
 
-it.each(["blank", "network"])("rejects invalid token evidence: %s", async mode => {
+it.each(["blank", "network", "embedded space", "invalid:character", "bad=padding"])("rejects invalid token evidence: %s", async mode => {
   const fixture = createHostedAuthorizationFixtures({issuer: "https://login.example.com", resource: "https://mcp.example.com/mcp"})[0];
   const [result] = await runHostedAuthorizationRegression({issuer: "https://login.example.com", prepareRegistration: () => {}, request: async request => {
     if (new URL(request.url).pathname.endsWith("authorize")) {
@@ -215,7 +215,7 @@ it.each(["blank", "network"])("rejects invalid token evidence: %s", async mode =
       return Response.redirect(callback, 302);
     }
     if (mode === "network") throw new Error("network failure");
-    return Response.json({ access_token: "   ", token_type: "Bearer", refresh_token: "refresh" });
+    return Response.json({ access_token: mode === "blank" ? "   " : mode, token_type: "Bearer", refresh_token: "refresh" });
   }}, [fixture]);
   expect(result.status).toBe("failed");
   expect(result.responseStatus).toBe(mode === "network" ? undefined : 200);

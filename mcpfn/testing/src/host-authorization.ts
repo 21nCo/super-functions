@@ -426,7 +426,7 @@ async function validatedTokenSet(response: Response): Promise<{ refresh_token?: 
   if (response.status !== 200) throw new Error("Successful token responses must use HTTP 200");
   if (!isJsonResponse(response)) throw new Error("Token response must use a JSON media type");
   const value = await response.clone().json() as Record<string, unknown> | null;
-  if (!value || typeof value.access_token !== "string" || !value.access_token.trim() ||
+  if (!value || typeof value.access_token !== "string" || !/^[A-Za-z0-9._~+/-]+=*$/.test(value.access_token) ||
       typeof value.token_type !== "string" || value.token_type.toLowerCase() !== "bearer") {
     throw new Error("Token response requires an access token and Bearer token type");
   }

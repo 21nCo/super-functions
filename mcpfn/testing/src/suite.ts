@@ -208,7 +208,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   try {
     // Descriptors and final serialization share the same fail-closed boundary.
     // Scrub opaque credentials before generic redaction can truncate a match.
-    report.target = redactOAuthValue(redactTargetCredentials(options.target, options.target.describe(), { preserveKeys: true })) as unknown as McpFnTargetDescriptor;
+    report.target = redactOAuthValue(redactTargetCredentials(options.target, { target: options.target.describe() }, { preserveKeys: true }).target) as unknown as McpFnTargetDescriptor;
     return enforceReportCap(redactTargetCredentials(options.target, report, { preserveKeys: true }), maxReportBytes);
   } catch (error) {
     return enforceReportCap({ ...report, ok: false, status: "incomplete",

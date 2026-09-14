@@ -516,3 +516,14 @@ it("does not expose provider acquisition errors before credentials are available
   expect(credential.revoke).not.toHaveBeenCalled();
   expect(credential.dispose).not.toHaveBeenCalled();
 });
+
+it("preserves the structural target kind when a credential matches part of it", async () => {
+  const fixture = await startAuthenticatedServer("http");
+  try {
+    const report = await runMcpFnTargetSuite({ target: authenticatedHttpTarget(fixture.url, {
+      credential: { headers: { authorization: "Bearer http" } },
+    }) });
+    expect(report.ok).toBe(true);
+    expect(report.target.kind).toBe("authenticated-streamable-http");
+  } finally { await fixture.close(); }
+});

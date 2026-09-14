@@ -708,3 +708,38 @@ it("clears the permanent-close request when explicitly reopening", async () => {
   await vi.waitFor(() => expect(client.state).toBe("idle"));
   await client.close();
 });
+
+it.each([false, true])("finishes protocol shutdown before handle cleanup (retry=%s)", async retry => {
+  const server = createMcpFnServer({ info: { name: "shutdown-order", version: "1" }, registry: new McpFnRegistry() });
+  const handleClose = vi.fn(async () => server.close());
+  const client = createMcpFnClient({ target: customTarget({ kind: "in-memory", open: async () => {
+    const [transport, peer] = InMemoryTransport.createLinkedPair();
+    await server.connect(peer);
+    return { transport, close: handleClose };
+  } }) });
+  await client.connect();
+  const originalClose = client.protocol.close.bind(client.protocol);
+  let release!: () => void;
+  const barrier = new Promise<void>(resolve => { release = resolve; });
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const close = vi.spyOn(client.protocol, "close").mockImplementationOnce(async () => {
+    entered(); await barrier;
+    if (retry) throw new Error("temporary protocol shutdown failure");
+    await originalClose();
+  });
+  try {
+    const closing = client.close();
+    const rejected = retry ? expect(closing).rejects.toMatchObject({ phase: "transport-close" }) : undefined;
+    await started;
+    expect(handleClose).not.toHaveBeenCalled();
+    release();
+    if (retry) {
+      await rejected;
+      expect(handleClose).not.toHaveBeenCalled();
+      close.mockImplementation(originalClose);
+      await client.close();
+    } else await closing;
+    expect(handleClose).toHaveBeenCalledOnce();
+  } finally { release(); close.mockRestore(); await client.close(); await server.close(); }
+});
