@@ -25,6 +25,11 @@
       "types": "./dist/generated/*.d.ts",
       "import": "./dist/generated/*.mjs",
       "require": "./dist/generated/*.js"
+    },
+    "./fixture": {
+      "types": "./dist/fixture.d.ts",
+      "import": "./dist/fixture.mjs",
+      "require": "./dist/fixture.js"
     }
   },
   "scripts": {
