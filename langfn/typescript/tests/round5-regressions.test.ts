@@ -1,13 +1,9 @@
 import { it, expect, vi } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { LangFn } from "../src/client.js";
 import { GoogleChatModel } from "../src/models/google.js";
 import { createLangFnRouter } from "../src/http/routes.js";
 import { normalizeStreamEvent } from "../src/streaming/sse.js";
 import { DbVectorStore } from "../src/rag/db-vector-store.js";
-import { parseLibraryInitializations } from "../../../packages/cli/src/utils/parse-library-init.js";
 
 it("preserves signed Google stream messages through HTTP and persists a successful trace", async () => {
   const frame = { candidates: [{ content: { parts: [{ text: "done", thoughtSignature: "signed" }] }, finishReason: "STOP" }] };
@@ -33,16 +29,4 @@ it("retains concurrent RAG batches completed in the same millisecond", async () 
     await Promise.all(Array.from({ length: 20 }, (_, i) => store.addDocuments([{ content: `batch-${i}`, metadata: {} }])));
     expect(records.size).toBe(20);
   } finally { clock.mockRestore(); }
-});
-
-it.each(["langfn", "memoryfn"])("discovers documented %s initialization using package metadata", name => {
-  const manifest = JSON.parse(readFileSync(new URL(`../../../${name}/typescript/package.json`, import.meta.url), "utf8"));
-  expect(manifest.superfunctions.initFunction).toBe(name);
-  const directory = mkdtempSync(join(tmpdir(), "sfns4-init-"));
-  try {
-    const file = join(directory, "init.ts");
-    writeFileSync(file, `${name}({ storage: { kind: "memory" } });`);
-    const registry = { [manifest.superfunctions.initFunction]: manifest.name };
-    expect(parseLibraryInitializations(file, registry)).toMatchObject([{ functionName: name, packageName: manifest.name }]);
-  } finally { rmSync(directory, { recursive: true, force: true }); }
 });

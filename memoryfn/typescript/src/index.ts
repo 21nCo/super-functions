@@ -1,4 +1,4 @@
-import { MemoryFnConfig } from './core/config';
+import { MemoryFnConfig, validateMemoryPolicies } from './core/config';
 import { MemoryFn } from './core/pipeline';
 import { StorageAdapter } from './storage/adapter';
 import { MemoryStorageAdapter } from './storage/memory/adapter';
@@ -12,6 +12,7 @@ import * as schema from './storage/pg/schema';
 
 // Simple factory for now
 export function memoryfn(config: MemoryFnConfig): MemoryFn {
+  validateMemoryPolicies(config);
   let storage: StorageAdapter;
   let embedder: Embedder | undefined;
   let llm: LLMProvider | undefined;

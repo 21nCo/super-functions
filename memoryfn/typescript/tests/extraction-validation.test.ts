@@ -34,3 +34,9 @@ describe('extraction input validation', () => {
 it.each(['anthropic', 'google', 'ollama'])('rejects unsupported LLM %s instead of storing raw text', provider => {
   expect(() => memoryfn({ storage: { kind: 'memory' }, llm: { provider, model: 'test' } as any })).toThrow('MEMORY_LLM_UNSUPPORTED');
 });
+
+it.each(['hash', 'mask', 'drop'])('rejects unsupported redaction mode %s in factory and direct constructor', mode => {
+  const config = { storage: { kind: 'memory' as const }, policies: { redaction: { patterns: ['secret'], mode } } } as any;
+  expect(() => memoryfn(config)).toThrow('MEMORY_REDACTION_UNSUPPORTED');
+  expect(() => new MemoryFn(config, new MemoryStorageAdapter())).toThrow('MEMORY_REDACTION_UNSUPPORTED');
+});

@@ -224,6 +224,7 @@ export interface SecurityMetrics {
 
 export interface SecurityScanRun {
   id: string;
+  tenantId?: string;
   startedAt: string;
   completedAt?: string;
   target: string;

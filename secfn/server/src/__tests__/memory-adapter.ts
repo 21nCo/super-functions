@@ -30,7 +30,7 @@ export class MemoryAdapter implements Adapter {
   readonly id = "memory-test";
   readonly name = "Memory Test Adapter";
   readonly version = "0.0.0";
-  readonly capabilities = DEFAULT_CAPABILITIES;
+  readonly capabilities = { ...DEFAULT_CAPABILITIES, transactions: { ...DEFAULT_CAPABILITIES.transactions, supported: true } };
   readonly internal: InternalCrud;
 
   private readonly tables = new Map<string, Row[]>();
@@ -112,7 +112,13 @@ export class MemoryAdapter implements Adapter {
   }
 
   async transaction<R>(callback: (trx: TransactionAdapter) => Promise<R>): Promise<R> {
-    return callback(this as unknown as TransactionAdapter);
+    const snapshot = new Map([...this.tables].map(([name, rows]) => [name, clone(rows)]));
+    try { return await callback(this as unknown as TransactionAdapter); }
+    catch (error) {
+      this.tables.clear();
+      for (const [name, rows] of snapshot) this.tables.set(name, rows);
+      throw error;
+    }
   }
 
   async initialize(): Promise<void> {}

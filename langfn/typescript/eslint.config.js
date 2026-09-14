@@ -8,7 +8,7 @@ export default [
     ignores: ["dist/**", "node_modules/**"],
   },
   {
-    files: ["src/**/*.ts", "__tests__/**/*.ts"],
+    files: ["src/**/*.ts"],
     languageOptions: {
       parser: tsParser,
       parserOptions: {

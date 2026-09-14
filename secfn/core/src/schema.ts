@@ -1,6 +1,6 @@
 import type { TableSchema } from "@superfunctions/db";
 
-export const SECFN_SCHEMA_VERSION = 1;
+export const SECFN_SCHEMA_VERSION = 2;
 
 export function getSecFnSchema(): TableSchema[] {
   return withIsoDateDefaults([
@@ -193,6 +193,7 @@ export function getSecFnSchema(): TableSchema[] {
       modelName: "secfn_scan_runs",
       fields: {
         id: { type: "string", required: true },
+        tenantId: { type: "string", required: false, fieldName: "tenant_id" },
         startedAt: { type: "date", required: true, fieldName: "started_at" },
         completedAt: { type: "date", required: false, fieldName: "completed_at" },
         target: { type: "string", required: true },

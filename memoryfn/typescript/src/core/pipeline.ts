@@ -1,4 +1,4 @@
-import { MemoryFnConfig, IMemoryFn } from './config';
+import { MemoryFnConfig, IMemoryFn, validateMemoryPolicies } from './config';
 import { AddMemoryInput, AddMemoryResult, SearchMemoryInput, SearchMemoryResult, Memory, MemoryRelationship } from './types';
 import { requireScope, type StorageAdapter, type MemoryScope, type MemoryDelete } from '../storage/adapter';
 import { Embedder, LLMProvider } from '../providers/types';
@@ -15,6 +15,7 @@ export class MemoryFn implements IMemoryFn {
   private resolver?: ConflictResolver;
 
   constructor(_config: MemoryFnConfig, storage: StorageAdapter, embedder?: Embedder, llm?: LLMProvider) {
+    validateMemoryPolicies(_config);
     this.storage = storage;
     this.embedder = embedder;
     this.llm = llm;

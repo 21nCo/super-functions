@@ -45,3 +45,7 @@ The factory currently supports only OpenAI for `llm.provider` and `embedder.prov
 Other values supplied from JavaScript or unvalidated configuration fail at initialization;
 they never silently disable extraction or embeddings. The public TypeScript unions match
 these implemented providers. Custom providers may be injected through the `MemoryFn` constructor.
+
+`policies.redaction` is not implemented. Both the factory and direct `MemoryFn`
+constructor reject it with `MEMORY_REDACTION_UNSUPPORTED`, before extraction or
+persistence; the TypeScript configuration does not advertise it as supported.

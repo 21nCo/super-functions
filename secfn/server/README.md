@@ -41,3 +41,13 @@ provided by the host context. An environment ID alone derives its parent namespa
 an explicit conflicting namespace is rejected. Hosts supporting selection across
 namespaces should omit a fixed namespace context rather than rely on query IDs to override it.
 Secret-set creation validates every member and output name before persisting the set.
+
+Schema version 2 adds nullable `tenant_id` to `secfn_scan_runs`. Apply the generated
+migration before using tenant-scoped scan history. Existing unowned rows remain
+hidden from tenant lists; backfill only from a trusted ownership mapping. Persist
+new runs with `vault.recordScanRun({ tenantId, startedAt, target, status, findingCount })`;
+the scanner itself remains a pure producer of findings.
+
+Secret rotation requires an adapter advertising transaction support. The encrypted
+version insert and version-pointer advance commit together; a failed
+pointer update rolls back the new version. Nontransactional adapters fail before writing.

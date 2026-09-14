@@ -19,6 +19,7 @@ import type {
   SecretSetRecord,
   SecretVersionRecord,
   ServiceTokenRecord,
+  SecurityScanRun,
 } from "@secfn/core";
 import { SecFnForbiddenError, SecFnNotFoundError, SecFnValidationError } from "@secfn/core";
 import type { AuditService } from "./audit.js";
@@ -384,6 +385,7 @@ export class VaultService {
   }
 
   async rotateSecret(id: string, input: RotateSecretInput): Promise<SecretRecord> {
+    if (!this.db.capabilities.transactions.supported) throw new SecFnValidationError("Secret rotation requires transactional storage");
     const secret = await this.getSecret(id);
     const nextVersion = secret.currentVersion + 1;
     const updated: Partial<SecretRecord> = {
@@ -391,11 +393,14 @@ export class VaultService {
       updatedAt: nowIso(),
     };
     const version = await this.createVersion({ ...secret, currentVersion: nextVersion }, input.value, input.actorId);
-    await this.db.create({ model: "secfn_secret_versions", data: version as unknown as Record<string, unknown> });
-    const saved = await this.db.update<SecretRecord>({
-      model: "secfn_secrets",
-      where: [{ field: "id", operator: "eq", value: id }],
-      data: updated as Record<string, unknown>,
+    const saved = await this.db.transaction(async (trx) => {
+      await trx.create({ model: "secfn_secret_versions", data: version as unknown as Record<string, unknown> });
+      const saved = await trx.update<SecretRecord>({
+        model: "secfn_secrets",
+        where: [{ field: "id", operator: "eq", value: id }],
+        data: updated as Record<string, unknown>,
+      });
+      return saved;
     });
     await this.audit.write({
       type: "secret_accessed",
@@ -488,6 +493,14 @@ export class VaultService {
       action: "delete",
       metadata: { secretId: secret.id },
     });
+  }
+
+  /** Hosts supply trusted ownership when persisting scanner results. */
+  async recordScanRun(input: Omit<SecurityScanRun, "id"> & { tenantId: string }): Promise<SecurityScanRun> {
+    if (!input.tenantId.trim()) throw new SecFnValidationError("Scan run tenant is required");
+    const run: SecurityScanRun = { ...input, id: generateId("scan") };
+    await this.db.create({ model: "secfn_scan_runs", data: run as unknown as Record<string, unknown> });
+    return run;
   }
 
   async createSecretSet(input: CreateSecretSetInput): Promise<SecretSetRecord> {

@@ -418,3 +418,33 @@ it("derives secret-set tenant ownership from a namespace ID", async () => {
   await expect(secfn.vault.createSecretSet(input)).rejects.toThrow("already exists");
   await expect(secfn.vault.createSecretSet({ ...input, tenantId: "other", name: "invalid" })).rejects.toThrow();
 });
+
+it("records scan-run ownership and isolates tenant lists", async () => {
+  const { secfn } = createServer();
+  expect(secfn.getSchema().find(table => table.modelName === "secfn_scan_runs")?.fields.tenantId).toMatchObject({ fieldName: "tenant_id" });
+  for (const tenantId of ["tenant-a", "tenant-b"]) await secfn.vault.recordScanRun({ tenantId, target: tenantId, status: "completed", findingCount: 0, startedAt: new Date().toISOString() });
+  const response = await secfn.router.handle(new Request("https://app.test/secfn/admin/scan-runs"));
+  expect(response.status).toBe(200);
+  const body = await response.json();
+  expect(JSON.stringify(body)).toContain("tenant-a");
+  expect(JSON.stringify(body)).not.toContain("tenant-b");
+});
+
+it("rolls back failed rotation and permits retry without an orphan version", async () => {
+  const { secfn, db } = createServer();
+  const secret = await secfn.vault.createSecret({ tenantId: "tenant-a", namespace: "workspace-a", key: "ROLLBACK", value: "old", createdBy: "admin" });
+  const update = db.update.bind(db);
+  let fail = true;
+  db.update = async (params: any) => {
+    if (params.model === "secfn_secrets" && fail) { fail = false; throw new Error("injected update failure"); }
+    return update(params);
+  };
+  await expect(secfn.vault.rotateSecret(secret.id, { value: "new", actorId: "admin" })).rejects.toThrow("injected");
+  expect(db.dump("secfn_secret_versions")).toHaveLength(1);
+  expect((await secfn.vault.getSecret(secret.id)).currentVersion).toBe(1);
+  expect((await secfn.vault.rotateSecret(secret.id, { value: "new", actorId: "admin" })).currentVersion).toBe(2);
+  expect(db.dump("secfn_secret_versions")).toHaveLength(2);
+  db.capabilities.transactions.supported = false;
+  await expect(secfn.vault.rotateSecret(secret.id, { value: "never", actorId: "admin" })).rejects.toThrow("transactional storage");
+  expect(db.dump("secfn_secret_versions")).toHaveLength(2);
+});

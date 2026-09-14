@@ -58,11 +58,8 @@ export interface MemoryFnConfig {
     };
   };
   policies?: {
-    redaction?: {
-      patterns: string[];
-      mode: 'hash' | 'mask' | 'drop';
-      applyTo?: string[];
-    };
+    /** Redaction is not implemented; explicitly configured values are rejected. */
+    redaction?: never;
     maxMemoriesPerContainer?: number;
     maxMemorySizeBytes?: number;
   };
@@ -83,4 +80,10 @@ export interface IMemoryFn {
   add(input: AddMemoryInput): Promise<AddMemoryResult>;
   search(input: SearchMemoryInput): Promise<SearchMemoryResult>;
   // update, delete, getProfile, etc.
+}
+
+export function validateMemoryPolicies(config: MemoryFnConfig): void {
+  if (config.policies?.redaction !== undefined) {
+    throw new Error('MEMORY_REDACTION_UNSUPPORTED');
+  }
 }
