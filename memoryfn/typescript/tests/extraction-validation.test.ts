@@ -40,3 +40,9 @@ it.each(['hash', 'mask', 'drop'])('rejects unsupported redaction mode %s in fact
   expect(() => memoryfn(config)).toThrow('MEMORY_REDACTION_UNSUPPORTED');
   expect(() => new MemoryFn(config, new MemoryStorageAdapter())).toThrow('MEMORY_REDACTION_UNSUPPORTED');
 });
+
+it.each(['maxMemoriesPerContainer', 'maxMemorySizeBytes'])('rejects unsupported %s', key => {
+  const config = { storage: { kind: 'memory' }, policies: { [key]: 1 } } as any;
+  expect(() => memoryfn(config)).toThrow('MEMORY_LIMITS_UNSUPPORTED');
+  expect(() => new MemoryFn(config, new MemoryStorageAdapter())).toThrow('MEMORY_LIMITS_UNSUPPORTED');
+});

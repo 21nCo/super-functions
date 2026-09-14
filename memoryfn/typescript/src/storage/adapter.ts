@@ -11,6 +11,8 @@ export interface StorageAdapter {
   /** Fixed vector dimension, shared across bundled entrypoints. */
   readonly embeddingDimensions?: number;
   close?(): Promise<void>;
+  /** Commit all callback writes together, or leave storage unchanged on failure. */
+  transaction?<T>(operation: (storage: StorageAdapter) => Promise<T>): Promise<T>;
   insertMemories(memories: Partial<Memory>[]): Promise<Memory[]>;
   insertRelationships(relationships: Partial<MemoryRelationship>[]): Promise<MemoryRelationship[]>;
   searchVectors(params: {

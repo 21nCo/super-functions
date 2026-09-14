@@ -45,23 +45,32 @@ export class MemoryFn implements IMemoryFn {
       if (embedding && await this.deduplicator.findDuplicate(input.tenantId!, embedding, tags)) { deduplicated++; continue; }
       const related = embedding && this.resolver ? await this.storage.searchVectors({ tenantId: input.tenantId, containerTags: tags, embedding, threshold: 0.75, topK: 3 }) : [];
       const resolutions = this.resolver ? await Promise.all(related.map(async memory => ({ memory, resolution: await this.resolver!.resolve(fact.content, memory) }))) : [];
-      const [memory] = await this.storage.insertMemories([{
-        tenantId: input.tenantId, containerTags: tags, content: fact.content, type: fact.type,
-        embedding, metadata: { ...input.metadata, extractedTags: fact.tags, confidence: fact.confidence }, isLatest: true,
-      }]);
-      saved.push(memory);
-      for (const { memory: existing, resolution } of resolutions) {
-        if (resolution.type === 'none') continue;
-        if (resolution.type === 'updates') {
-          await this.storage.updateMemory({ tenantId: input.tenantId!, containerTags: tags, id: existing.id,
-            expectedRevision: existing.revision ?? 1,
-            changes: { content: existing.content, embedding: existing.embedding, isLatest: false } });
-          updated++;
+      const persist = async (storage: StorageAdapter) => {
+        const links: MemoryRelationship[] = [];
+        let count = 0;
+        const [memory] = await storage.insertMemories([{
+          tenantId: input.tenantId, containerTags: tags, content: fact.content, type: fact.type,
+          embedding, metadata: { ...input.metadata, extractedTags: fact.tags, confidence: fact.confidence }, isLatest: true,
+        }]);
+
+        for (const { memory: existing, resolution } of resolutions) {
+          if (resolution.type === 'none') continue;
+          if (resolution.type === 'updates') {
+            await storage.updateMemory({ tenantId: input.tenantId!, containerTags: tags, id: existing.id,
+              expectedRevision: existing.revision ?? 1,
+              changes: { content: existing.content, embedding: existing.embedding, isLatest: false } });
+            count++;
+          }
+          links.push(...await storage.insertRelationships([{
+            fromId: memory.id, toId: existing.id, type: resolution.type, confidence: 1, reasoning: resolution.reasoning,
+          }]));
         }
-        relationships.push(...await this.storage.insertRelationships([{
-          fromId: memory.id, toId: existing.id, type: resolution.type, confidence: 1, reasoning: resolution.reasoning,
-        }]));
-      }
+        return { memory, links, count };
+      };
+      const hasConflicts = resolutions.some(item => item.resolution.type !== "none");
+      if (hasConflicts && !this.storage.transaction) throw new Error("MEMORY_TRANSACTION_REQUIRED");
+      const committed = hasConflicts ? await this.storage.transaction!(persist) : await persist(this.storage);
+      saved.push(committed.memory); relationships.push(...committed.links); updated += committed.count;
     }
     return { memories: saved, relationships, summary: { created: saved.length, updated, deduplicated } };
   }

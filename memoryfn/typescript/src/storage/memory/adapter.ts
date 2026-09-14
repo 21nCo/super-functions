@@ -62,6 +62,22 @@ export class MemoryStorageAdapter implements StorageAdapter {
   private readonly relationships = new Map<string, MemoryRelationship>();
   private sequence = 0;
 
+  async transaction<T>(operation: (storage: StorageAdapter) => Promise<T>): Promise<T> {
+    const snapshot = () => JSON.stringify([[...this.memories], [...this.relationships], this.sequence]);
+    const before = snapshot();
+    const staged = new MemoryStorageAdapter();
+    for (const [id, memory] of this.memories) staged.memories.set(id, cloneMemory(memory));
+    for (const [id, relationship] of this.relationships) staged.relationships.set(id, cloneRelationship(relationship));
+    staged.sequence = this.sequence;
+    const result = await operation(staged);
+    if (snapshot() !== before) throw new Error('MEMORY_REVISION_CONFLICT');
+    this.memories.clear(); this.relationships.clear();
+    for (const [id, memory] of staged.memories) this.memories.set(id, cloneMemory(memory));
+    for (const [id, relationship] of staged.relationships) this.relationships.set(id, cloneRelationship(relationship));
+    this.sequence = staged.sequence;
+    return result;
+  }
+
   async insertMemories(inputs: Partial<Memory>[]): Promise<Memory[]> {
     const now = Date.now();
     const saved = inputs.map((input) => {

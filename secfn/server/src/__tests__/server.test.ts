@@ -467,3 +467,10 @@ it("rolls back initial secret creation when its version fails and allows retry",
   expect(db.dump("secfn_secrets")).toHaveLength(1);
   expect(db.dump("secfn_secret_versions")).toHaveLength(1);
 });
+
+it('rejects same-tenant foreign-namespace secret IDs', async () => {
+  const { secfn } = createServer();
+  const secret = await secfn.vault.createSecret({ tenantId: 'tenant-a', namespace: 'foreign', key: 'PRIVATE', value: 'hidden', createdBy: 'admin' });
+  const response = await secfn.router.handle(new Request(`https://app.test/secfn/admin/secrets/${secret.id}`));
+  expect(response.status).toBe(403);
+});

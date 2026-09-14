@@ -49,3 +49,9 @@ these implemented providers. Custom providers may be injected through the `Memor
 `policies.redaction` is not implemented. Both the factory and direct `MemoryFn`
 constructor reject it with `MEMORY_REDACTION_UNSUPPORTED`, before extraction or
 persistence; the TypeScript configuration does not advertise it as supported.
+
+`maxMemoriesPerContainer` and `maxMemorySizeBytes` are also unsupported and rejected
+at initialization with `MEMORY_LIMITS_UNSUPPORTED`. Conflict persistence requires
+an adapter transaction: the new record, revision changes, and relationships commit
+together. Both bundled adapters support this; custom adapters without transactions
+reject conflicts before writing. Memory storage uses optimistic conflict detection.

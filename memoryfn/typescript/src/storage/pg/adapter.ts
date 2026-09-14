@@ -13,6 +13,10 @@ export class PostgresAdapter implements StorageAdapter {
     this.db = db;
   }
 
+  async transaction<T>(operation: (storage: StorageAdapter) => Promise<T>): Promise<T> {
+    return this.db.transaction(tx => operation(new PostgresAdapter(tx as unknown as PostgresJsDatabase<any>)));
+  }
+
   async close(): Promise<void> { await this.dispose?.(); }
 
   async insertMemories(memoryInputs: Partial<Memory>[]): Promise<Memory[]> {

@@ -60,8 +60,8 @@ export interface MemoryFnConfig {
   policies?: {
     /** Redaction is not implemented; explicitly configured values are rejected. */
     redaction?: never;
-    maxMemoriesPerContainer?: number;
-    maxMemorySizeBytes?: number;
+    maxMemoriesPerContainer?: never;
+    maxMemorySizeBytes?: never;
   };
   cache?: {
     enabled: boolean;
@@ -85,5 +85,8 @@ export interface IMemoryFn {
 export function validateMemoryPolicies(config: MemoryFnConfig): void {
   if (config.policies?.redaction !== undefined) {
     throw new Error('MEMORY_REDACTION_UNSUPPORTED');
+  }
+  if (config.policies?.maxMemoriesPerContainer !== undefined || config.policies?.maxMemorySizeBytes !== undefined) {
+    throw new Error('MEMORY_LIMITS_UNSUPPORTED');
   }
 }

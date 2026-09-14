@@ -57,3 +57,7 @@ version are inserted together, so a failed version insert leaves no unusable sec
 Shared rate limiting must use `rateLimit.atomicStore` with linearizable compare-and-set.
 Legacy `rateLimit.persistence` is accepted only with `singleProcess: true`; it does
 not coordinate quotas across server instances. In-memory defaults are process-local.
+
+Schema version 3 adds the scan-run tenant index. PostgreSQL installations on
+version 2 should apply `migrations/0003_scan_run_tenant_index.sql` before recording
+version 3. Other adapters should apply the generated schema diff for the same index.

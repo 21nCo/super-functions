@@ -18,7 +18,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "migrations"
   ],
   "scripts": {
     "build": "tsup",
@@ -62,7 +63,7 @@
   },
   "superfunctions": {
     "initFunction": "createSecFnServer",
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "libraryNames": [
       "secfn"
     ]

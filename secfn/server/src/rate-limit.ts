@@ -24,7 +24,7 @@ export class SecFnRateLimiter {
   private readonly limits: Required<Required<SecFnRateLimitConfig>["limits"]>;
 
   constructor(config: SecFnRateLimitConfig | undefined, private readonly audit: AuditService) {
-    if (config?.persistence && !config.singleProcess) throw new Error("SecFn shared rate limits require atomicStore; persistence requires singleProcess: true");
+    if (config?.persistence && !config.singleProcess) throw new Error("persistence requires singleProcess: true; for shared rate limits replace persistence with atomicStore");
     if (config?.persistence && config.atomicStore) throw new Error("Choose one rate-limit storage backend");
     this.enabled = config?.enabled ?? false;
     this.limits = {

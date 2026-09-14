@@ -303,14 +303,21 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
 
 /** Tenant context is trusted; request identifiers may narrow it but cannot replace it. */
 async function assertAdminTenant<TContext extends SecFnRequestContext>(config: SecFnServerConfig<TContext>, ctx: Context<TContext>, action: SecFnAdminAction) {
-  if (!ctx.tenantId) return; // Explicitly authorized global operator; host owns this privilege.
+  if (!ctx.tenantId && !ctx.namespace) return; // Explicitly authorized global operator; host owns this privilege.
   const reject = () => { throw new ForbiddenError("Resource is outside the authorized tenant", "SECFN_FORBIDDEN"); };
-  if (ctx.query.has('tenantId') && ctx.query.get('tenantId') !== ctx.tenantId) reject();
+  if (ctx.tenantId && ctx.query.has('tenantId') && ctx.query.get('tenantId') !== ctx.tenantId) reject();
   const family = action.split(':')[0];
   const models: Record<string, string> = { secrets: 'secfn_secrets', 'secret-sets': 'secfn_secret_sets', 'secret-set-members': 'secfn_secret_sets', namespaces: 'secfn_namespaces', environments: 'secfn_environments', 'service-tokens': 'secfn_service_tokens' };
   async function owned(model: string, id: string) {
-    const row = await config.db.findOne<Record<string, unknown>>({ model, where: [{ field: 'id', operator: 'eq', value: id }, { field: 'tenantId', operator: 'eq', value: ctx.tenantId }] });
-    if (!row) reject();
+    const row = await config.db.findOne<Record<string, unknown>>({ model, where: [{ field: 'id', operator: 'eq', value: id }, ...(ctx.tenantId ? [{ field: 'tenantId', operator: 'eq' as const, value: ctx.tenantId }] : [])] });
+    if (!row) { reject(); return; }
+    if (ctx.namespace) {
+      if (model === 'secfn_namespaces') {
+        if (row.slug !== ctx.namespace) reject();
+      } else if (row.namespaceId) {
+        await owned('secfn_namespaces', String(row.namespaceId));
+      } else { reject(); }
+    }
   }
   if (ctx.params.id && models[family]) await owned(models[family], ctx.params.id);
   for (const [key, model] of [['namespaceId','secfn_namespaces'], ['environmentId','secfn_environments']]) {

@@ -153,6 +153,19 @@ export class ActionExecutor {
             )
         : undefined;
 
+      // Get credentials
+      const credentials = await this.connectionManager.getCredentials(connection.id);
+
+      // Refresh may change granted scopes. Reapply consumer authorization against
+      // the persisted refreshed connection before any external dispatch.
+      if (connection.expiresAt && new Date() >= connection.expiresAt) {
+        const refreshed = await this.connectionManager.resolveConnectionForAction({
+          userId: options.userId, provider, connectionId: connection.id, actor: options.actor,
+        });
+        if (!refreshed) throw new Error("Connection unavailable after refresh");
+        requireScopes(refreshed.scopes);
+      }
+
       // Check cache only after resolving the concrete connection.
       if (cacheKey) {
         const cachedResult = await this.cacheMiddleware.getEntry<T>(cacheKey);
@@ -170,19 +183,6 @@ export class ActionExecutor {
             timestamp: new Date(),
           };
         }
-      }
-
-      // Get credentials
-      const credentials = await this.connectionManager.getCredentials(connection.id);
-
-      // Refresh may change granted scopes. Reapply consumer authorization against
-      // the persisted refreshed connection before any external dispatch.
-      if (connection.expiresAt && new Date() >= connection.expiresAt) {
-        const refreshed = await this.connectionManager.resolveConnectionForAction({
-          userId: options.userId, provider, connectionId: connection.id, actor: options.actor,
-        });
-        if (!refreshed) throw new Error("Connection unavailable after refresh");
-        requireScopes(refreshed.scopes);
       }
 
       // Apply rate limiting

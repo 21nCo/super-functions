@@ -1,6 +1,6 @@
 import type { TableSchema } from "@superfunctions/db";
 
-export const SECFN_SCHEMA_VERSION = 2;
+export const SECFN_SCHEMA_VERSION = 3;
 
 export function getSecFnSchema(): TableSchema[] {
   return withIsoDateDefaults([
