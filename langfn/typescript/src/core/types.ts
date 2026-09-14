@@ -143,6 +143,7 @@ export interface ToolResultEvent {
 
 export interface TokenUsageEvent {
   type: "token_usage";
+  total_tokens?: number;
   prompt_tokens: number;
   completion_tokens: number;
   traceId?: string;

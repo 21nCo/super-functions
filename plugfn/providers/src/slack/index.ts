@@ -1,5 +1,6 @@
 import { applySelectedResources } from '../shared/selected-resources.js';
 import { slackActions } from './actions.js';
+const botActions = Object.fromEntries(Object.entries(slackActions).filter(([name]) => name !== 'search.messages'));
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -198,7 +199,7 @@ export const slackProvider: Provider = {
         return response.data;
       },
     },
-    ...slackActions,
+    ...botActions,
   },
 
   triggers: {
@@ -287,6 +288,7 @@ function secureEqual(actual: string, expected: string): boolean {
 export const slackUserProvider: Provider = {
   ...slackProvider,
   displayName: 'Slack (user)',
+  actions: { ...slackProvider.actions, ...slackActions },
   auth: { type: AuthType.OAuth2, config: {
     ...(slackProvider.auth.config as OAuth2Config),
     scopes: ['chat:write', 'channels:read', 'channels:history', 'groups:read', 'groups:history', 'im:read', 'im:history', 'mpim:read', 'mpim:history', 'users:read', 'search:read', 'files:write'],

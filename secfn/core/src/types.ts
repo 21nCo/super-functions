@@ -125,6 +125,8 @@ export interface SecretVersionRecord {
 
 export interface SecretSetRecord {
   id: string;
+  /** Optional immutable environment binding; legacy sets are unbound. */
+  environmentId?: string;
   tenantId?: string;
   namespaceId: string;
   namespace?: string;

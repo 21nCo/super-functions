@@ -548,19 +548,44 @@ it('preserves canonical namespace and committed writes when audit sink fails', a
   expect(db.dump('secfn_audit_events').length).toBeGreaterThan(0);
 });
 
-it('supplies the same resolved namespace to authorization and execution without mutating host context', async () => {
-  const context = { tenantId: 'tenant-a', namespace: undefined as string | undefined };
+it("supplies the same resolved namespace to authorization and execution without mutating host context", async () => {
+  const context = {
+    tenantId: "tenant-a",
+    namespace: undefined as string | undefined,
+  };
   const seen: Array<string | undefined> = [];
-  const secfn = createSecFnServer({db:new MemoryAdapter(), encryption:{masterKey:'test'}, context,
-    namespaceProvider:()=> 'workspace-a', authorize:async ctx=>{seen.push(ctx.namespace);return ctx.namespace==='workspace-a';}});
-  const response=await secfn.router.handle(new Request('https://test/secfn/admin/secrets'));
+  const secfn = createSecFnServer({
+    db: new MemoryAdapter(),
+    encryption: { masterKey: "test" },
+    context,
+    namespaceProvider: () => "workspace-a",
+    authorize: async (ctx) => {
+      seen.push(ctx.namespace);
+      return ctx.namespace === "workspace-a";
+    },
+  });
+  const response = await secfn.router.handle(
+    new Request("https://test/secfn/admin/secrets"),
+  );
   expect(response.status).toBe(200);
-  expect(seen).toEqual(['workspace-a']);
+  expect(seen).toEqual(["workspace-a"]);
   expect(context.namespace).toBeUndefined();
 });
-it('resolves a missing namespace only once before authorization',async()=>{
- let calls=0;
- const secfn=createSecFnServer({db:new MemoryAdapter(),encryption:{masterKey:'test'},context:{tenantId:'t'},namespaceProvider:()=>{calls++;return calls===1?undefined:'unexpected';},authorize:async()=>true});
- const response=await secfn.router.handle(new Request('https://test/secfn/admin/secrets'));
- expect(response.status).toBe(200);expect(calls).toBe(1);
+it("resolves a missing namespace only once before authorization", async () => {
+  let calls = 0;
+  const secfn = createSecFnServer({
+    db: new MemoryAdapter(),
+    encryption: { masterKey: "test" },
+    context: { tenantId: "t" },
+    namespaceProvider: () => {
+      calls++;
+      return calls === 1 ? undefined : "unexpected";
+    },
+    authorize: async () => true,
+  });
+  const response = await secfn.router.handle(
+    new Request("https://test/secfn/admin/secrets"),
+  );
+  expect(response.status).toBe(200);
+  expect(calls).toBe(1);
 });

@@ -1,3 +1,4 @@
+import { providerUsage } from "../core/usage.js";
 import { readStreamLines } from "./stream-lines.js";
 import {
   ChatRequest,
@@ -7,7 +8,6 @@ import {
   StreamEvent,
   ToolCall,
   ToolSpec,
-  tokenUsage
 } from "../core/types.js";
 import {
   ContextLengthError,
@@ -125,7 +125,7 @@ export class AnthropicChatModel extends ChatModel {
       toolCalls: toolCalls.length ? toolCalls : undefined,
       tool_calls: toolCalls.length ? toolCalls : undefined,
       usage: data?.usage
-        ? tokenUsage(Number(data.usage.input_tokens ?? 0), Number(data.usage.output_tokens ?? 0))
+        ? providerUsage(data.usage.input_tokens, data.usage.output_tokens)
         : undefined,
       raw: data
     };
@@ -147,8 +147,8 @@ export class AnthropicChatModel extends ChatModel {
       throw new ProviderError("Anthropic stream response was empty", { provider: this.provider });
     }
 
-    let promptTokens = 0;
-    let completionTokens = 0;
+    let promptTokens: unknown;
+    let completionTokens: unknown;
     for await (const rawLine of readStreamLines(response.body)) {
       const line = rawLine.trim();
       if (!line.startsWith("data:")) continue;
@@ -157,9 +157,9 @@ export class AnthropicChatModel extends ChatModel {
       const event = JSON.parse(chunk);
       const usage = event.type === "message_start" ? event.message?.usage : event.usage;
       if (usage) {
-        promptTokens = Number(usage.input_tokens ?? promptTokens);
-        completionTokens = Number(usage.output_tokens ?? completionTokens);
-        yield { type: "token_usage", prompt_tokens: promptTokens, completion_tokens: completionTokens };
+        if (usage.input_tokens !== undefined) promptTokens = usage.input_tokens;
+        if (usage.output_tokens !== undefined) completionTokens = usage.output_tokens;
+        yield { type: "token_usage", ...providerUsage(promptTokens, completionTokens) };
       }
       if (event.type === "error") throw new ProviderError("Anthropic stream failed", { provider: this.provider });
       if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {

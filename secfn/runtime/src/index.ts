@@ -117,6 +117,7 @@ export function createSecFnRuntime(config: SecFnRuntimeConfig): SecFnRuntime {
 
     async injectEnv(secretSetName, options = {}) {
       const values = await runtime.toEnv(secretSetName, options);
+      Object.keys(values).forEach(assertEnvName);
       for (const [key, value] of Object.entries(values)) {
         if (options.override || process.env[key] === undefined) {
           process.env[key] = value;
@@ -134,6 +135,7 @@ export function createSecFnRuntime(config: SecFnRuntimeConfig): SecFnRuntime {
 }
 
 export function formatDotEnv(values: Record<string, string>): string {
+  Object.keys(values).forEach(assertEnvName);
   return Object.entries(values)
     .map(([key, value]) => `${key}=${quoteDotEnvValue(value)}`)
     .join("\n");
@@ -148,4 +150,8 @@ function trimSuffix(value: string, suffix: string): string {
   let end = value.length;
   while (end > 0 && value[end - 1] === suffix) end--;
   return value.slice(0, end);
+}
+
+function assertEnvName(key: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new Error("Invalid environment variable name");
 }

@@ -1,9 +1,12 @@
+import { LangFnError, TimeoutError } from "../core/errors.js";
 export interface TransportClientConfig {
   baseUrl: string;
   headers?: HeadersInit;
   /** Total response deadline including the body, in milliseconds; 0 disables it. */
   timeout?: number;
   fetchImpl?: typeof fetch;
+  /** Maximum decoded response bytes, including streaming bodies. */
+  maxResponseBytes?: number;
 }
 
 export interface TransportClient {
@@ -48,10 +51,13 @@ function mergeHeaders(left?: HeadersInit, right?: HeadersInit): Headers {
 }
 
 export function getTransportClient(config: TransportClientConfig): TransportClient {
+  const maxResponseBytes = config.maxResponseBytes;
+  if (maxResponseBytes !== undefined && (!Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 0)) throw new RangeError("maxResponseBytes must be a nonnegative safe integer");
   const key = JSON.stringify({
     baseUrl: normalizeBaseUrl(config.baseUrl),
     headers: normalizeHeaders(config.headers),
     timeout: config.timeout ?? 60_000,
+    maxResponseBytes,
     fetchId: getFetchId(config.fetchImpl)
   });
   const cached = clients.get(key);
@@ -71,7 +77,7 @@ export function getTransportClient(config: TransportClientConfig): TransportClie
       const abort = () => controller.abort(init.signal?.reason);
       init.signal?.addEventListener("abort", abort, { once: true });
       if (init.signal?.aborted) abort();
-      const timer = timeout > 0 ? setTimeout(() => controller.abort(new DOMException("Request timed out", "TimeoutError")), timeout) : undefined;
+      const timer = timeout > 0 ? setTimeout(() => controller.abort(new TimeoutError("Request timed out")), timeout) : undefined;
       const cleanup = () => {
         if (timer) clearTimeout(timer);
         init.signal?.removeEventListener("abort", abort);
@@ -87,6 +93,7 @@ export function getTransportClient(config: TransportClientConfig): TransportClie
         if (!response.body) { cleanup(); return response; }
         const reader = response.body.getReader();
         let finished = false;
+        let received = 0;
         let onAbort: () => void;
         const finish = () => {
           if (finished) return;
@@ -109,7 +116,16 @@ export function getTransportClient(config: TransportClientConfig): TransportClie
               const chunk = await reader.read();
               if (finished) return;
               if (chunk.done) { finish(); stream.close(); }
-              else stream.enqueue(chunk.value);
+              else {
+                received += chunk.value.byteLength;
+                if (maxResponseBytes !== undefined && received > maxResponseBytes) {
+                  const error = new LangFnError("Response body exceeds configured byte limit", { code: "RESPONSE_TOO_LARGE" });
+                  finish(); stream.error(error);
+                  await reader.cancel(error);
+                  return;
+                }
+                stream.enqueue(chunk.value);
+              }
             } catch (error) {
               if (!finished) { finish(); stream.error(error); }
             }

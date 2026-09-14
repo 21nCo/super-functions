@@ -1,14 +1,14 @@
+import { readStreamLines } from "./stream-lines.js";
+import { providerUsage } from "../core/usage.js";
 import {
   ChatRequest,
   ChatResponse,
   CompletionRequest,
   CompletionResponse,
-  StreamEvent,
-  ToolCall,
-  tokenUsage
+  StreamEvent
 } from "../core/types.js";
 import { ProviderAuthError, ProviderError, RateLimitError } from "../core/errors.js";
-import { toOpenAIMessage } from "./openai.js";
+import { parseToolCalls, toOpenAIMessage } from "./openai.js";
 import { ChatModel } from "./base.js";
 import { getTransportClient } from "./transport.js";
 
@@ -79,41 +79,38 @@ export class MistralChatModel extends ChatModel {
     await raiseForStatus(this.provider, response);
     const data = await response.json();
     const message = data?.choices?.[0]?.message ?? {};
-    const toolCalls = Array.isArray(message.tool_calls)
-      ? message.tool_calls.map((entry: Record<string, any>) => {
-          const fn = entry.function ?? {};
-          let argumentsValue: Record<string, unknown> = {};
-          try {
-            argumentsValue =
-              typeof fn.arguments === "string"
-                ? (JSON.parse(fn.arguments) as Record<string, unknown>)
-                : ((fn.arguments ?? {}) as Record<string, unknown>);
-          } catch {
-            argumentsValue = {};
-          }
-          return {
-            id: String(entry.id ?? ""),
-            name: String(fn.name ?? ""),
-            arguments: argumentsValue
-          } satisfies ToolCall;
-        })
-      : undefined;
+    const toolCalls = parseToolCalls(message.tool_calls);
 
     return {
       message: { role: "assistant", content: message.content ?? "", toolCalls },
       toolCalls,
       tool_calls: toolCalls,
       usage: data?.usage
-        ? tokenUsage(Number(data.usage.prompt_tokens ?? 0), Number(data.usage.completion_tokens ?? 0))
+        ? providerUsage(data.usage.prompt_tokens, data.usage.completion_tokens, data.usage.total_tokens)
         : undefined,
       raw: data
     };
   }
 
   async *stream(request: CompletionRequest): AsyncIterable<StreamEvent> {
-    const completion = await this.complete(request);
-    yield { type: "content", content: completion.content, delta: completion.content };
-    if (completion.usage) yield { type: "token_usage", prompt_tokens: completion.usage.prompt_tokens, completion_tokens: completion.usage.completion_tokens };
+    const response = await this.client.request("/chat/completions", {
+      method: "POST", signal: request.signal,
+      body: JSON.stringify({ model: this.model, messages: [{ role: "user", content: request.prompt }], stream: true })
+    });
+    await raiseForStatus(this.provider, response);
+    if (!response.body) throw new ProviderError("Mistral stream response was empty");
+    for await (const rawLine of readStreamLines(response.body)) {
+      const line = rawLine.trim();
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (payload === "[DONE]") break;
+      if (!payload) continue;
+      const data = JSON.parse(payload);
+      if (data.error) throw new ProviderError("Mistral stream failed");
+      if (data.usage) yield { type: "token_usage", ...providerUsage(data.usage.prompt_tokens, data.usage.completion_tokens, data.usage.total_tokens) };
+      const delta = data.choices?.[0]?.delta?.content;
+      if (delta) yield { type: "content", content: delta, delta };
+    }
     yield { type: "end", finish_reason: "stop" };
   }
 }

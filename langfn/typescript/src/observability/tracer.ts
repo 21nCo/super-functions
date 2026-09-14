@@ -1,3 +1,4 @@
+import { secureRandomUUID } from "../utils/random.js";
 import { redact } from "./redaction.js";
 import { ObservabilityExporter, type ObservabilityExporterConfig } from "./exporter.js";
 import type { SpanRecord, TraceStorage } from "./storage.js";
@@ -133,10 +134,7 @@ export class Tracer {
 }
 
 function randomId(): string {
-  if (typeof globalThis.crypto?.randomUUID !== "function") {
-    throw new Error("Web Crypto randomUUID is required for trace identifiers");
-  }
-  return globalThis.crypto.randomUUID();
+  return secureRandomUUID();
 }
 
 function serializeError(error: unknown): Record<string, unknown> {

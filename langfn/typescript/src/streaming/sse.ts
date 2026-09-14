@@ -1,3 +1,4 @@
+import { providerUsage } from "../core/usage.js";
 import { LangFn } from "../client.js";
 import { ValidationError } from "../core/errors.js";
 import {
@@ -79,15 +80,18 @@ export function normalizeStreamEvent(event: EventLike, traceId: string): StreamE
         },
         traceId
       );
-    case "token_usage":
-      return withTrace<TokenUsageEvent>(
-        {
-          type,
-          prompt_tokens: Number(raw.prompt_tokens ?? raw.promptTokens ?? 0),
-          completion_tokens: Number(raw.completion_tokens ?? raw.completionTokens ?? 0)
-        },
-        traceId
+    case "token_usage": {
+      const total = raw.total_tokens !== undefined ? raw.total_tokens : raw.totalTokens;
+      const usage = providerUsage(
+        raw.prompt_tokens !== undefined ? raw.prompt_tokens : raw.promptTokens,
+        raw.completion_tokens !== undefined ? raw.completion_tokens : raw.completionTokens,
+        total,
       );
+      return withTrace<TokenUsageEvent>({
+        type, prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens,
+        ...(total !== undefined ? { total_tokens: usage.total_tokens } : {}),
+      }, traceId);
+    }
     case "trace_event":
       return withTrace<TraceEvent>(
         {

@@ -90,3 +90,17 @@ it("uses the configured set environment and separates cache entries", async () =
     "https://example.test/runtime/secret-sets/app/resolve?environment=development"
   ]);
 });
+
+it.each(["SAFE=x\nINJECTED", "A=B", "A\rB", "", "1BAD", "A-B"])("rejects invalid dotenv keys: %s", (key) => {
+  expect(() => formatDotEnv({ [key]: "secret" })).toThrow("Invalid environment variable name");
+});
+it("validates all names before mutating process environment", async () => {
+  const key = `REX_TEST_${Date.now()}`;
+  const runtime = createSecFnRuntime({ endpoint: "https://secfn.example/secfn", apiKey: "test",
+    fetch: async () => Response.json({ ok: true, data: { secrets: { [key]: "value", "BAD=NAME": "secret" } } }),
+  });
+  try {
+    await expect(runtime.injectEnv("app")).rejects.toThrow("Invalid environment variable name");
+    expect(process.env[key]).toBeUndefined();
+  } finally { delete process.env[key]; }
+});

@@ -53,7 +53,7 @@ describe("release gate contract", () => {
     expect(compatibility).toContain("| anthropic | yes | yes | yes | yes | no | yes |");
     expect(compatibility).toContain("| ollama | yes | yes | yes | no | no | yes |");
     expect(compatibility).toContain("| google | yes | yes | yes | yes | no | yes |");
-    expect(compatibility).toContain("| mistral | yes | yes | buffered | yes | no | yes |");
+    expect(compatibility).toContain("| mistral | yes | yes | yes | yes | no | yes |");
   });
 
   it("pins the adopted TypeScript consumer to the current shared contracts", () => {
@@ -124,8 +124,8 @@ describe("release gate contract", () => {
     });
     const mistral = new MistralChatModel({
       apiKey: "mistral-test",
-      fetchImpl: createFetch(() =>
-        jsonResponse({
+      fetchImpl: createFetch((_url, body) =>
+        body.includes('"stream":true') ? textResponse('data: {"choices":[{"delta":{"content":"mistral-chat"}}]}\n\ndata: [DONE]\n\n') : jsonResponse({
           choices: [
             {
               message: {

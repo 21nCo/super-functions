@@ -75,6 +75,7 @@ export async function executeApiCall(
     secretProvider?: (secretRef: string) => string | undefined;
     fetchImpl?: typeof fetch;
     timeout?: number;
+    maxResponseBytes?: number;
   } = {}
 ): Promise<unknown> {
   enforceOutboundPolicy(args.url, {
@@ -104,6 +105,7 @@ export async function executeApiCall(
   const client = getTransportClient({
     baseUrl: url.origin,
     timeout: options.timeout ?? 30_000,
+    maxResponseBytes: options.maxResponseBytes ?? 8 * 1024 * 1024,
     fetchImpl: options.fetchImpl
   });
   const path = `${url.pathname || "/"}${url.search}`;

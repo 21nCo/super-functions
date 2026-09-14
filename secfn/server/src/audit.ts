@@ -106,21 +106,33 @@ export class AuditService {
   }
 
   async getMetrics(): Promise<SecurityMetrics> {
-    const events = await this.queryEvents({ limit: 10_000 });
+    let totalEvents = 0;
+    let afterId: string | undefined;
     const eventsByType: Record<string, number> = {};
     const eventsBySeverity: Record<string, number> = {};
     const actors = new Map<string, number>();
     const ips = new Map<string, number>();
 
-    for (const event of events) {
-      eventsByType[event.type] = (eventsByType[event.type] ?? 0) + 1;
-      eventsBySeverity[event.severity] = (eventsBySeverity[event.severity] ?? 0) + 1;
-      if (event.actorId) actors.set(event.actorId, (actors.get(event.actorId) ?? 0) + 1);
-      if (event.ip) ips.set(event.ip, (ips.get(event.ip) ?? 0) + 1);
+    while (true) {
+      const events = await this.options.db.findMany<SecurityAuditEvent>({
+        model: "secfn_audit_events",
+        where: afterId ? [{ field: "id", operator: "gt", value: afterId }] : [],
+        orderBy: [{ field: "id", direction: "asc" }],
+        limit: 1000,
+      });
+      if (!events.length) break;
+      totalEvents += events.length;
+      for (const event of events) {
+        eventsByType[event.type] = (eventsByType[event.type] ?? 0) + 1;
+        eventsBySeverity[event.severity] = (eventsBySeverity[event.severity] ?? 0) + 1;
+        if (event.actorId) actors.set(event.actorId, (actors.get(event.actorId) ?? 0) + 1);
+        if (event.ip) ips.set(event.ip, (ips.get(event.ip) ?? 0) + 1);
+      }
+      afterId = events.at(-1)!.id;
     }
 
     return {
-      totalEvents: events.length,
+      totalEvents,
       eventsByType,
       eventsBySeverity,
       topActors: sortedCounts(actors, "actorId"),

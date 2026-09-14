@@ -1,6 +1,6 @@
 import type { TableSchema } from "@superfunctions/db";
 
-export const SECFN_SCHEMA_VERSION = 3;
+export const SECFN_SCHEMA_VERSION = 4;
 
 export function getSecFnSchema(): TableSchema[] {
   return withIsoDateDefaults([
@@ -83,6 +83,7 @@ export function getSecFnSchema(): TableSchema[] {
         tenantId: { type: "string", required: false, fieldName: "tenant_id" },
         namespaceId: { type: "string", required: true, fieldName: "namespace_id" },
         namespace: { type: "string", required: false },
+        environmentId: { type: "string", required: false, fieldName: "environment_id" },
         name: { type: "string", required: true },
         description: { type: "string", required: false },
         createdBy: { type: "string", required: true, fieldName: "created_by" },

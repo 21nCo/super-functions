@@ -5,12 +5,15 @@ const result = await build({
   stdin: {
     contents: `
     import { Hono } from 'hono';
+    import { LangFn } from 'langfn';
     import { memoryAdapter } from '@superfunctions/db/adapters/memory';
     import { createSecFnServer } from '@secfn/server';
     import { createStaticKeyProvider, encryptSecret, decryptSecret } from '@secfn/core';
     import { memoryfn, MemoryStorageAdapter } from '@memoryfn/core';
     const app = new Hono();
     app.get('/check', async c => {
+      const completion = await new LangFn({ model: 'mock' }).complete('worker trace');
+      if (!completion.traceId) throw new Error('Worker trace ID missing');
       const keys = createStaticKeyProvider(new Uint8Array(32).fill(7), 'test');
       const encrypted = await encryptSecret('worker-test', keys, 'tenant-a');
       if (await decryptSecret(encrypted, keys, 'tenant-a') !== 'worker-test') throw new Error('Encryption mismatch');
@@ -36,7 +39,8 @@ const result = await build({
   write: false,
   format: "esm",
   platform: "neutral",
-  conditions: ["workerd", "worker", "import"],
+  conditions: ["workerd", "worker", "browser", "import"],
+  mainFields: ["browser", "module", "main"],
   external: ["node:*"],
   plugins: [
     {
@@ -67,7 +71,7 @@ try {
   if (response.status !== 200 || !(await response.json()).ok)
     throw new Error(`Platform Worker failed: ${response.status}`);
   console.log(
-    "workerd: Hono, SecFn encryption/AAD/admin denial and injected MemoryFn lifecycle passed",
+    "workerd: LangFn mock trace, Hono, SecFn encryption/AAD/admin denial and injected MemoryFn lifecycle passed",
   );
 } finally {
   await mf.dispose();

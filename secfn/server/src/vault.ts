@@ -515,7 +515,7 @@ export class VaultService {
   async createSecretSet(input: CreateSecretSetInput): Promise<SecretSetRecord> {
     if (!this.db.capabilities.transactions.supported) throw new SecFnValidationError("Secret set creation requires transactional storage");
     if (!input.name.trim()) throw new SecFnValidationError("Secret set name is required");
-    const resolved = await this.resolveScope(input, { requireNamespace: true, ignoreEnvironment: true, create: true, actorId: input.createdBy });
+    const resolved = await this.resolveScope(input, { requireNamespace: true, ignoreEnvironment: !input.environment && !input.environmentId, create: true, actorId: input.createdBy });
     const tenantId = input.tenantId ?? (await this.getNamespace(resolved.namespaceId!)).tenantId;
     const duplicate = await this.db.findOne<SecretSetRecord>({
       model: "secfn_secret_sets",
@@ -526,6 +526,7 @@ export class VaultService {
     const set: SecretSetRecord = {
       id: generateId("set"),
       tenantId,
+      environmentId: resolved.environmentId,
       namespaceId: resolved.namespaceId!,
       namespace: resolved.namespace,
       name: input.name,
@@ -539,6 +540,7 @@ export class VaultService {
     for (const member of input.members ?? []) {
       const secret = await this.getSecretRow(member.secretId);
       if (secret.namespaceId !== set.namespaceId || secret.tenantId !== set.tenantId) throw new SecFnValidationError("Secret set members must belong to the same namespace");
+      this.assertSetMemberScope(set, secret);
       const alias = cleanString(member.alias);
       const outputName = alias ?? secret.key;
       if (outputNames.has(outputName)) throw new SecFnValidationError("Secret set output names must be unique");
@@ -614,6 +616,7 @@ export class VaultService {
     if (secret.namespaceId !== set.namespaceId) {
       throw new SecFnValidationError("Secret set members must belong to the same namespace", { setId, secretId });
     }
+    this.assertSetMemberScope(set, secret);
     await this.assertUniqueSetOutputName(setId, { secretId, alias }, secret);
     const member: SecretSetMemberRecord = {
       id: generateId("member"),
@@ -648,6 +651,7 @@ export class VaultService {
     if (nextSecret.namespaceId !== set.namespaceId) {
       throw new SecFnValidationError("Secret set members must belong to the same namespace", { setId: set.id, secretId: nextSecretId });
     }
+    this.assertSetMemberScope(set, nextSecret);
     const data: Record<string, unknown> = {};
     if (input.secretId !== undefined) data.secretId = input.secretId;
     if (input.alias !== undefined) data.alias = cleanString(input.alias ?? undefined);
@@ -849,7 +853,7 @@ export class VaultService {
       model: "secfn_secret_sets",
       where: scopeWhere({ tenantId: resolved.tenantId, namespaceId: resolved.namespaceId, name }),
     });
-    if (!set) throw new SecFnNotFoundError("Secret set not found", { name });
+    if (!set || (set.environmentId && set.environmentId !== resolved.environmentId)) throw new SecFnNotFoundError("Secret set not found", { name });
     const members = await this.db.findMany<SecretSetMemberRecord>({
       model: "secfn_secret_set_members",
       where: [{ field: "setId", operator: "eq", value: set.id }],
@@ -1074,6 +1078,13 @@ export class VaultService {
       limit: uniqueIds.length,
     });
     return new Map(rows.map((row) => [row.id, row]));
+  }
+
+  private assertSetMemberScope(set: SecretSetRecord, secret: SecretRecord): void {
+    if (secret.tenantId !== set.tenantId || secret.namespaceId !== set.namespaceId ||
+        (set.environmentId && secret.environmentId !== set.environmentId)) {
+      throw new SecFnValidationError("Secret set member scope mismatch");
+    }
   }
 
   private async getSecretSetRow(id: string): Promise<SecretSetRecord> {

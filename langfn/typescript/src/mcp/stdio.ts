@@ -1,4 +1,4 @@
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import type { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { ReadBuffer, serializeMessage } from "@modelcontextprotocol/sdk/shared/stdio.js";
 import type {
   Transport,
@@ -34,7 +34,7 @@ export class StdioMCPTransport implements Transport {
   constructor(private readonly options: StdioMCPTransportOptions) {}
 
   async start(): Promise<void> {
-    if (this.started) throw new MCPTransportError("MCP stdio transport is already started");
+    if (this.started || this.closed) throw new MCPTransportError("MCP stdio transport is already started or closed");
     this.started = true;
 
     const endpoint = this.options.streams;
@@ -47,6 +47,8 @@ export class StdioMCPTransport implements Transport {
     }
 
     if (this.options.command) {
+      const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+      if (this.closed) throw new MCPTransportError("MCP stdio transport closed during start");
       this.delegate = new StdioClientTransport({
         command: this.options.command,
         ...(this.options.args ? { args: this.options.args } : {}),

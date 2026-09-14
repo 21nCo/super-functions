@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createSecurityScanner } from "../scanner/scanner.js";
 import { formatFindingsSarif, formatFindingsJson } from "../scanner/reporters.js";
 
@@ -44,4 +44,19 @@ it('scans an exact byte limit and rejects larger input',async()=>{
   await writeFile(file,secret);expect(await scanner.scanFile(file)).toHaveLength(1);
   await writeFile(file,secret+'x');expect(await scanner.scanFile(file)).toEqual([]);
  }finally{await rm(dir,{recursive:true});}
+});
+
+it("does not allocate the configured ceiling for a tiny file", async () => {
+  const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const dir = await mkdtemp(`${tmpdir()}/rex-small-scan-`);
+  try {
+    await writeFile(`${dir}/key`, "AKIAIOSFODNN7EXAMPLE");
+    const allocate = Buffer.alloc;
+    const spy = vi.spyOn(Buffer, "alloc").mockImplementation((size) => {
+      if (size > 64 * 1024) throw new Error("Eager allocation");
+      return allocate(size);
+    });
+    try { expect(await createSecurityScanner({ maxFileSize: 2 ** 32 - 1 }).scanFile(`${dir}/key`)).toHaveLength(1); } finally { spy.mockRestore(); }
+  } finally { await rm(dir, { recursive: true }); }
 });

@@ -69,3 +69,7 @@ without a fixed namespace. Conflicting namespace queries are rejected.
 Namespace-scoped contexts must include `tenantId`, since namespace slugs are only
 unique within a tenant. Environment creation derives that trusted scope and rejects
 conflicting namespace names or IDs in its body.
+
+Schema version 4 adds optional immutable environment bindings to secret sets. Apply `migrations/0004_secret_set_environment.sql` after schema 3 (or the equivalent generated schema diff). Existing sets remain unbound. Creating a set with an explicit environment stores its ID and enforces it on creation, member additions/replacements, and runtime resolution.
+
+Audit metrics walk all event pages by stable ID instead of a 10,000-event cap; the walk is not a transactional snapshot of concurrent writes. Multi-scope rate limits preflight every configured limit before charging. Shared CAS contention can still conservatively retain earlier charges; no stale-snapshot rollback is attempted.

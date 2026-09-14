@@ -1,3 +1,4 @@
+import { providerUsage } from "../core/usage.js";
 import { readStreamLines } from "./stream-lines.js";
 import {
   Message,
@@ -8,7 +9,6 @@ import {
   StreamEvent,
   ToolCall,
   ToolSpec,
-  tokenUsage
 } from "../core/types.js";
 import {
   ContextLengthError,
@@ -111,10 +111,7 @@ export class OpenAIChatModel extends ChatModel {
     const message = data?.choices?.[0]?.message ?? {};
     const toolCalls = parseToolCalls(message.tool_calls);
     const usage = data?.usage
-      ? tokenUsage(
-          Number(data.usage.prompt_tokens ?? 0),
-          Number(data.usage.completion_tokens ?? 0)
-        )
+      ? providerUsage(data.usage.prompt_tokens, data.usage.completion_tokens, data.usage.total_tokens)
       : undefined;
 
     return {
@@ -158,7 +155,7 @@ export class OpenAIChatModel extends ChatModel {
       if (!chunk) continue;
       const data = JSON.parse(chunk);
       if (data.error) throw new ProviderError("OpenAI stream failed", { provider: this.provider });
-      if (data.usage) yield { type: "token_usage", prompt_tokens: Number(data.usage.prompt_tokens ?? 0), completion_tokens: Number(data.usage.completion_tokens ?? 0) };
+      if (data.usage) yield { type: "token_usage", ...providerUsage(data.usage.prompt_tokens, data.usage.completion_tokens, data.usage.total_tokens) };
       const delta = data?.choices?.[0]?.delta?.content;
       if (delta) {
         yield { type: "content", content: delta, delta };
@@ -193,31 +190,23 @@ function toOpenAITool(tool: ToolSpec): Record<string, unknown> {
   };
 }
 
-function parseToolCalls(raw: unknown): ToolCall[] | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const toolCalls = raw
-    .map((entry) => {
-      const call = entry as Record<string, any>;
-      const fn = call.function ?? {};
-      try {
-        return {
-          id: String(call.id ?? ""),
-          name: String(fn.name ?? ""),
-          arguments:
-            typeof fn.arguments === "string"
-              ? (JSON.parse(fn.arguments) as Record<string, unknown>)
-              : ((fn.arguments ?? {}) as Record<string, unknown>)
-        } satisfies ToolCall;
-      } catch {
-        return {
-          id: String(call.id ?? ""),
-          name: String(fn.name ?? ""),
-          arguments: {}
-        } satisfies ToolCall;
-      }
-    })
-    .filter((call) => call.name);
-  return toolCalls.length ? toolCalls : undefined;
+export function parseToolCalls(raw: unknown): ToolCall[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw)) throw new ProviderError("Invalid tool calls");
+  return raw.map((entry) => {
+    if (!entry || typeof entry !== "object") throw new ProviderError("Invalid tool call");
+    const fn = entry.function ?? entry;
+    let args: unknown = fn.arguments;
+    if (typeof args === "string") {
+      try { args = JSON.parse(args); }
+      catch { throw new ProviderError("Invalid tool call arguments JSON"); }
+    }
+    if (typeof entry.id !== "string" || !entry.id || typeof fn.name !== "string" || !fn.name ||
+        !args || typeof args !== "object" || Array.isArray(args)) {
+      throw new ProviderError("Invalid tool call shape");
+    }
+    return { id: entry.id, name: fn.name, arguments: args as Record<string, unknown> };
+  });
 }
 
 async function raiseForStatus(provider: string, response: Response): Promise<void> {

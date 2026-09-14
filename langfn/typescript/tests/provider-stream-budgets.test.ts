@@ -38,10 +38,7 @@ const fixtures = [
   ],
   [
     MistralChatModel,
-    JSON.stringify({
-      choices: [{ message: { content: "hello" } }],
-      usage: { prompt_tokens: 1000, completion_tokens: 2 },
-    }),
+    sse([{ choices: [{ delta: { content: "hello" } }], usage: { prompt_tokens: 1000, completion_tokens: 2 } }, "[DONE]" ]),
   ],
 ] as const;
 for (const [Model, wire] of fixtures) {

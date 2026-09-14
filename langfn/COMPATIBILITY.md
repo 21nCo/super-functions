@@ -8,7 +8,7 @@ This unpublished TypeScript adoption has the following adapter capabilities. Pyt
 | anthropic | yes | yes | yes | yes | no | yes | Native streamed messages API with tool-use support. |
 | ollama | yes | yes | yes | no | no | yes | Local model adapter; streaming is supported, tool mapping is not first-party. |
 | google | yes | yes | yes | yes | no | yes | Native REST/SSE, signed tool continuation and cancellation. Live qualification is separate. |
-| mistral | yes | yes | buffered | yes | no | yes | `stream` emits the completed response in one content event; native token streaming is not implemented. Tool-call mapping is supported on chat completions. |
+| mistral | yes | yes | yes | yes | no | yes | Native SSE content and usage; cancellation closes the response. Tool-call mapping is supported on chat completions. |
 
 ## Notes
 

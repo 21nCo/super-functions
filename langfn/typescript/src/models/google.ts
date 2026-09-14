@@ -1,3 +1,5 @@
+import { secureRandomUUID } from "../utils/random.js";
+import { parseToolCalls } from "./openai.js";
 import {
   ChatRequest,
   ChatResponse,
@@ -137,6 +139,7 @@ export class GoogleChatModel extends ChatModel {
           type: "token_usage",
           prompt_tokens: usage.prompt_tokens,
           completion_tokens: usage.completion_tokens,
+          total_tokens: usage.total_tokens,
         };
       // Preserve exact signed parts for the next turn, including non-text thought signatures.
       yield {
@@ -197,12 +200,13 @@ export class GoogleChatModel extends ChatModel {
         ];
         pending.delete(call.id);
       } else {
+        const calls = message.toolCalls ?? parseToolCalls(message.tool_calls) ?? [];
         const preserved = message.providerData?.googleParts;
         parts = preserved
           ? structuredClone(preserved)
           : [
               ...(message.content ? [{ text: message.content }] : []),
-              ...(message.toolCalls ?? []).map((call) => ({
+              ...calls.map((call) => ({
                 functionCall: {
                   id: call.id,
                   name: call.name,
@@ -210,7 +214,7 @@ export class GoogleChatModel extends ChatModel {
                 },
               })),
             ];
-        for (const call of message.toolCalls ?? []) {
+        for (const call of calls) {
           const wire = parts.find(
             (part) => part.functionCall?.id === call.id,
           )?.functionCall;
@@ -359,7 +363,7 @@ export class GoogleChatModel extends ChatModel {
     return parts
       .filter((part) => part.functionCall)
       .map((part) => ({
-        id: part.functionCall.id ?? crypto.randomUUID(),
+        id: part.functionCall.id ?? secureRandomUUID(),
         name: part.functionCall.name,
         arguments: part.functionCall.args ?? {},
       }));

@@ -15,6 +15,8 @@ export interface ScanDirectoryOptions {
 export interface GitHistoryScanOptions {
   commits?: number;
   branch?: string;
+  /** Fail explicitly if one commit exceeds this many bytes; default 32 MiB. */
+  maxCommitBytes?: number;
 }
 
 export class SecurityScanner {
@@ -48,15 +50,17 @@ export class SecurityScanner {
     const { open } = await import("node:fs/promises");
     const file = await open(filePath, "r");
     try {
-      const buffer = Buffer.alloc(this.maxFileSize + 1);
+      const chunks: Buffer[] = [];
       let size = 0;
-      while (size < buffer.length) {
-        const { bytesRead } = await file.read(buffer, size, buffer.length - size, null);
+      while (size <= this.maxFileSize) {
+        const buffer = Buffer.alloc(Math.min(64 * 1024, this.maxFileSize + 1 - size));
+        const { bytesRead } = await file.read(buffer, 0, buffer.length, null);
         if (!bytesRead) break;
         size += bytesRead;
+        if (size > this.maxFileSize) return [];
+        chunks.push(buffer.subarray(0, bytesRead));
       }
-      if (size > this.maxFileSize) return [];
-      return this.scanContent(buffer.subarray(0, size).toString("utf8"), { path: filePath });
+      return this.scanContent(Buffer.concat(chunks, size).toString("utf8"), { path: filePath });
     } finally {
       await file.close();
     }
@@ -85,12 +89,14 @@ export class SecurityScanner {
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
     const execFileAsync = promisify(execFile);
+    const maxBuffer = options.maxCommitBytes ?? 32 * 1024 * 1024;
+    if (!Number.isSafeInteger(maxBuffer) || maxBuffer < 1) throw new RangeError("maxCommitBytes must be a positive safe integer");
     const commits = String(options.commits ?? 100);
     const branch = options.branch ?? "HEAD";
     const { stdout } = await execFileAsync("git", ["log", branch, `-n${commits}`, "--format=%H"]);
     const findings: SecurityFinding[] = [];
     for (const hash of stdout.split("\n").filter(Boolean)) {
-      const shown = await execFileAsync("git", ["show", "--format=medium", "--no-ext-diff", hash]);
+      const shown = await execFileAsync("git", ["show", "--format=medium", "--no-ext-diff", hash], { maxBuffer });
       const commitFindings = this.scanContent(shown.stdout, {
         path: `commit:${hash}`,
         displayPath: `commit:${hash.slice(0, 12)}`,

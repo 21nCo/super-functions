@@ -88,7 +88,7 @@ export class CustomChatModel extends ChatModel {
     }
     const completion = await this.complete(request);
     yield { type: "content", content: completion.content, delta: completion.content };
-    if (completion.usage) yield { type: "token_usage", prompt_tokens: completion.usage.prompt_tokens, completion_tokens: completion.usage.completion_tokens };
+    if (completion.usage) yield { type: "token_usage", prompt_tokens: completion.usage.prompt_tokens, completion_tokens: completion.usage.completion_tokens, total_tokens: completion.usage.total_tokens };
     yield { type: "end", finish_reason: "stop" };
   }
 }

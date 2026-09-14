@@ -84,7 +84,14 @@ The packed UI probe is an internal function invoked with the consumer directory
 created by the package gate; it no longer accepts an arbitrary CLI destination.
 All probe files use exclusive creation. Run its filesystem regression checks from
 the repository root with `node --test scripts/sfns4/packed-ui.test.mjs`.
-LangFn trace identifiers require Web Crypto `randomUUID`; runtimes without it
-fail explicitly instead of using pseudorandom fallback identifiers.
+LangFn trace identifiers use Web Crypto `randomUUID`, with Node crypto as the fallback on Node 18. Neither path uses pseudorandom identifiers. Runtimes with neither implementation fail explicitly.
 
-See [Sonar triage](SONAR.md) for the per-issue evidence, resource-template compatibility checks, and the pending generated-discovery duplication setting.
+See [Sonar triage](SONAR.md) for the per-issue evidence, resource-template compatibility checks, and the verified generated-discovery duplication setting.
+
+Model stream lines are limited to 1 MiB. API-tool responses default to an 8 MiB decoded-byte cap; trusted callers of `executeApiCall` can configure `maxResponseBytes`. Oversized bodies cancel the reader. Git history scans default to a 32 MiB per-commit cap, configurable as `maxCommitBytes`, and fail explicitly above it.
+
+Outlook retains read/profile OAuth consent by default, like Gmail. Write and calendar actions require the host to explicitly configure and obtain their listed grants; merely advertising an action never grants permission or silently broadens consent.
+
+The local platform canary now imports LangFn and creates a mock completion/trace in workerd. Node-only MCP process transport loads only when a stdio command connection starts, keeping the Workers import path usable. This remains local emulation, not live model/provider qualification.
+
+September 14 follow-up verification from review snapshot `cfd1a7a24e142e80b1894d859c2c4be28988b4dc`: 148 LangFn, 476 provider, 42 SecFn server (including five real PostgreSQL contracts), 10 SecFn core, 13 SecFn runtime and 23 shared rate-limit tests passed. Node 18.20.8 ran a mock completion and trace generation without global Web Crypto. The local workerd platform canary and 38-package consumer gate passed; final artifact-set digest: `0a6401bb0a17fc3a000ea72e4e50b389475b8dae78c9d7ca8618c63cd4623b62`. The disposable PostgreSQL container was removed. These checks do not substitute for fresh hosted CI, review, or the user-deferred live provider/model tests.

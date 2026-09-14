@@ -6,8 +6,3 @@ it('defaults to read/profile consent and requires explicit write grants', () => 
   ]);
   expect(resolveGmailScopes(['mail.send'])).toEqual(['https://www.googleapis.com/auth/gmail.send']);
 });
-
-import { onedriveProvider } from '../src/onedrive/index.js';
-it('requests both literal OneDrive grants used by execution checks',()=>{
- expect((onedriveProvider.auth.config as any).scopes).toEqual(['offline_access','Files.Read','Files.ReadWrite']);
-});

@@ -33,6 +33,6 @@ it.each(
     jiraProvider.actions["projects.list"].execute({ cloudId: "site" }, {
       http: { get },
     } as any),
-  ).rejects.toThrow();
+  ).rejects.toThrow("JIRA_CONNECTION_SITE_FORBIDDEN");
   expect(get).toHaveBeenCalledTimes(1);
 });

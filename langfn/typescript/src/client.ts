@@ -1,3 +1,4 @@
+import { secureRandomUUID } from "./utils/random.js";
 import {
   BatchRequest,
   BatchResult,
@@ -285,10 +286,10 @@ export class LangFn {
             latestUsage = {
               prompt_tokens: event.prompt_tokens,
               completion_tokens: event.completion_tokens,
-              total_tokens: event.prompt_tokens + event.completion_tokens,
+              total_tokens: event.total_tokens ?? event.prompt_tokens + event.completion_tokens,
               promptTokens: event.prompt_tokens,
               completionTokens: event.completion_tokens,
-              totalTokens: event.prompt_tokens + event.completion_tokens
+              totalTokens: event.total_tokens ?? event.prompt_tokens + event.completion_tokens
             };
             this.enforceBudget(this.attachCost(latestUsage)?.total);
           }
@@ -323,7 +324,8 @@ export class LangFn {
               yield {
                 type: "token_usage",
                 prompt_tokens: response.usage.prompt_tokens,
-                completion_tokens: response.usage.completion_tokens
+                completion_tokens: response.usage.completion_tokens,
+                total_tokens: response.usage.total_tokens
               };
             }
             yield { type: "end", finish_reason: "stop" };
@@ -336,10 +338,10 @@ export class LangFn {
             latestUsage = {
               prompt_tokens: event.prompt_tokens,
               completion_tokens: event.completion_tokens,
-              total_tokens: event.prompt_tokens + event.completion_tokens,
+              total_tokens: event.total_tokens ?? event.prompt_tokens + event.completion_tokens,
               promptTokens: event.prompt_tokens,
               completionTokens: event.completion_tokens,
-              totalTokens: event.prompt_tokens + event.completion_tokens
+              totalTokens: event.total_tokens ?? event.prompt_tokens + event.completion_tokens
             };
           }
           yield event;
@@ -616,7 +618,7 @@ export class LangFn {
 
   private attachCost(usage: CompletionResponse["usage"]): CompletionResponse["cost"] {
     if (!usage) return undefined;
-    if (![usage.prompt_tokens, usage.completion_tokens].every(value => Number.isFinite(value) && value >= 0)) {
+    if (![usage.prompt_tokens, usage.completion_tokens, usage.total_tokens].every(value => Number.isFinite(value) && value >= 0)) {
       throw new LangFnError("Provider reported invalid token usage", { code: "INVALID_TOKEN_USAGE" });
     }
     return this.config.observability?.costMeter?.estimate(
@@ -812,10 +814,7 @@ async function* iterateWithTimeoutAndCancel(
 }
 
 function randomTraceId(): string {
-  if (typeof globalThis.crypto?.randomUUID !== "function") {
-    throw new Error("Web Crypto randomUUID is required for trace identifiers");
-  }
-  return globalThis.crypto.randomUUID();
+  return secureRandomUUID();
 }
 
 function traceOwner(metadata: unknown): { tenantId?: string; userId?: string } {

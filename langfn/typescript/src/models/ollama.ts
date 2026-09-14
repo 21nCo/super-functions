@@ -1,13 +1,13 @@
+import { providerUsage } from "../core/usage.js";
 import { readStreamLines } from "./stream-lines.js";
 import {
   ChatRequest,
   ChatResponse,
   CompletionRequest,
   CompletionResponse,
-  StreamEvent,
-  tokenUsage
+  StreamEvent
 } from "../core/types.js";
-import { ProviderError } from "../core/errors.js";
+import { LangFnError, ProviderError } from "../core/errors.js";
 import { ChatModel } from "./base.js";
 import { getTransportClient } from "./transport.js";
 
@@ -60,6 +60,7 @@ export class OllamaChatModel extends ChatModel {
       });
     } catch (error) {
       if (request.signal?.aborted) throw request.signal.reason;
+      if (error instanceof LangFnError) throw error;
       throw new ProviderError("Could not connect to Ollama", { provider: this.provider, cause: error });
     }
 
@@ -77,8 +78,8 @@ export class OllamaChatModel extends ChatModel {
         content: data?.message?.content ?? ""
       },
       usage:
-        data?.eval_count !== undefined
-          ? tokenUsage(Number(data.prompt_eval_count ?? 0), Number(data.eval_count ?? 0))
+        data?.eval_count !== undefined || data?.prompt_eval_count !== undefined
+          ? providerUsage(data.prompt_eval_count, data.eval_count)
           : undefined,
       raw: data
     };
@@ -98,6 +99,7 @@ export class OllamaChatModel extends ChatModel {
       });
     } catch (error) {
       if (request.signal?.aborted) throw request.signal.reason;
+      if (error instanceof LangFnError) throw error;
       throw new ProviderError("Could not connect to Ollama", { provider: this.provider, cause: error });
     }
 
@@ -115,7 +117,7 @@ export class OllamaChatModel extends ChatModel {
       const line = rawLine;
       if (!line.trim()) continue;
       const chunk = JSON.parse(line);
-      if (chunk.prompt_eval_count !== undefined || chunk.eval_count !== undefined) yield { type: "token_usage", prompt_tokens: Number(chunk.prompt_eval_count ?? 0), completion_tokens: Number(chunk.eval_count ?? 0) };
+      if (chunk.prompt_eval_count !== undefined || chunk.eval_count !== undefined) yield { type: "token_usage", ...providerUsage(chunk.prompt_eval_count, chunk.eval_count) };
       if (chunk.error) throw new ProviderError("Ollama stream failed", { provider: this.provider });
       const delta = String(chunk.message?.content ?? "");
       if (delta) yield { type: "content", content: delta, delta };

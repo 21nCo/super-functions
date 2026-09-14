@@ -56,27 +56,20 @@ export class SecFnRateLimiter {
       });
     }
 
-    for (const check of checks) {
-      const result = await this.limiter.check({ key: check.key, limit: check.limit });
-      if (!result.allowed) {
-        await this.audit.write({
-          type: "rate_limit_exceeded",
-          severity: "medium",
-          tenantId: input.tenantId,
-          namespace: input.namespace,
-          actorId: input.userId,
-          ip: input.ip,
-          resource: input.endpoint,
-          action: "request",
-          metadata: { scope: check.scope, key: check.key, limit: check.limit },
-        });
-        return {
-          allowed: false,
-          remaining: result.remaining,
-          resetAt: result.resetAt,
-          scope: check.scope,
-        };
-      }
+    const result = await this.limiter.checkMany({
+      keys: checks.map(check => check.key),
+      limitsByKey: Object.fromEntries(checks.map(check => [check.key, check.limit])),
+    });
+    if (!result.allowed) {
+      const check = checks.find(check => result.blockedKeys?.includes(check.key)) ?? checks[0];
+      await this.audit.write({
+        type: "rate_limit_exceeded", severity: "medium", tenantId: input.tenantId,
+        namespace: input.namespace, actorId: input.userId, ip: input.ip,
+        resource: input.endpoint, action: "request",
+        metadata: { scope: check.scope, key: check.key, limit: check.limit },
+      });
+      return { allowed: false, remaining: result.remainingByKey.get(check.key),
+        resetAt: result.resetAt, scope: check.scope };
     }
 
     return { allowed: true };
