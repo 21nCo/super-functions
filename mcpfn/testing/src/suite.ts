@@ -138,7 +138,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
       capabilities: client.session.getServerCapabilities(),
     };
   } catch (error) {
-    failure = normalizeMcpFnReportFailure(error);
+    failure = normalizeMcpFnReportFailure(redactTargetCredentials(options.target, error, { preserveKeys: true }));
   } finally {
     try {
       await client?.close();

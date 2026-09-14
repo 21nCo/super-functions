@@ -234,12 +234,13 @@ it("rejects non-string headers and releases the acquired lease", async () => {
   expect(dispose).toHaveBeenCalledOnce();
   expect(report.failure?.message).toContain("Authenticated target could not be opened");
 });
-it("retries failed cleanup without repeating successful disposal", async () => {
+it("retries revocation before disposing provider state", async () => {
   const { acquireRemoteCredential } = await import("../src/remote-target.js");
   const revoke = vi.fn().mockRejectedValueOnce(new Error("retry")).mockResolvedValue(undefined);
   const dispose = vi.fn();
   const lease = await acquireRemoteCredential({ acquire: () => ({ headers: { "x-api-key": "secret" } }), revoke, dispose }, { url: "https://test/mcp", requestId: "test" });
   await expect(lease.release()).rejects.toThrow(/cleanup failed/);
+  expect(dispose).not.toHaveBeenCalled();
   await expect(lease.release()).resolves.toBeUndefined();
   await lease.release();
   expect(revoke).toHaveBeenCalledTimes(2);
@@ -415,4 +416,29 @@ it("redacts scenario credentials before truncation can leave a secret prefix", a
     expect(JSON.stringify(report)).not.toContain("private-");
     expect(createMcpFnTargetSuiteJUnit(report)).not.toContain("private-");
   } finally { await fixture.close(); }
+});
+
+it("redacts suite-level failures before truncating registered credentials", async () => {
+  const secret = "private-prefix-" + "z".repeat(200);
+  const fixture = await startAuthenticatedServer(secret);
+  try {
+    const report = await runMcpFnTargetSuite({
+      target: authenticatedHttpTarget(fixture.url, { credential: { headers: { authorization: `Bearer ${secret}` } } }),
+      expectedToolNames: ["x".repeat(1980) + secret],
+    });
+    expect(report.status).toBe("incomplete");
+    expect(report.failure?.message).toContain("[REDACTED]");
+    expect(JSON.stringify(report)).not.toContain("private-prefix");
+    expect(createMcpFnTargetSuiteJUnit(report)).not.toContain("private-prefix");
+  } finally { await fixture.close(); }
+});
+it("retries disposal without repeating a successful revocation", async () => {
+  const { acquireRemoteCredential } = await import("../src/remote-target.js");
+  const revoke = vi.fn();
+  const dispose = vi.fn().mockRejectedValueOnce(new Error("retry")).mockResolvedValue(undefined);
+  const lease = await acquireRemoteCredential({ acquire: () => ({ headers: {} }), revoke, dispose }, { url: "https://test/mcp", requestId: "test" });
+  await expect(lease.release()).rejects.toThrow(/cleanup failed/);
+  await lease.release();
+  expect(revoke).toHaveBeenCalledOnce();
+  expect(dispose).toHaveBeenCalledTimes(2);
 });

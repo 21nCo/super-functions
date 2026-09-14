@@ -1,11 +1,14 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const spawn = vi.hoisted(() => vi.fn());
 vi.mock("node:child_process", () => ({ spawn }));
 import { McpFnConformanceCleanupError, runAuthenticatedOfficialConformance } from "../src/conformance.js";
 
+afterEach(() => vi.unstubAllGlobals());
 beforeEach(() => {
+  // These tests use a mocked runner; exercise its supported runtime independently of the host.
+  vi.stubGlobal("process", { ...process, versions: { ...process.versions, node: "22.0.0" } });
   spawn.mockReset();
   spawn.mockImplementation(() => {
     const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn() });
@@ -104,5 +107,11 @@ it("sanitizes conformance setup exceptions before releasing the original credent
   }
   expect(revoke).toHaveBeenCalledWith(acquired, expect.anything());
   expect(dispose).toHaveBeenCalledWith(acquired, expect.anything());
+  expect(spawn).not.toHaveBeenCalled();
+});
+
+it("rejects the real runner requirement on Node 20 before spawning", async () => {
+  vi.stubGlobal("process", { ...process, versions: { ...process.versions, node: "20.0.0" } });
+  await expect(runAuthenticatedOfficialConformance({ url: "http://127.0.0.1:1/mcp", headers: { "x-api-key": "test" } })).rejects.toThrow(/requires Node.js 22/);
   expect(spawn).not.toHaveBeenCalled();
 });

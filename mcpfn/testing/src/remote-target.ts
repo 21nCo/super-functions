@@ -70,7 +70,7 @@ const envelopeKeys: Record<string, Set<string>> = Object.fromEntries(Object.entr
 }).map(([role, keys]) => [role, new Set(keys.split(" "))]));
 
 function specialValue(input: unknown): unknown {
-  if (input instanceof Error) return { ...input, name: input.name, message: input.message, stack: input.stack };
+  if (input instanceof Error) return { ...input, name: input.name, message: input.message, stack: input.stack, ...(input.cause === undefined ? {} : { cause: input.cause }) };
   if (input instanceof Date) return Number.isNaN(input.getTime()) ? "Invalid Date" : input.toISOString();
   if (input instanceof URL) return input.href;
   if (input instanceof Map) return { type: "Map", entries: [...input.entries()] };
@@ -238,11 +238,9 @@ export async function acquireRemoteCredential(
         // Cancellation of acquisition must not cancel revocation or its retries.
         const cleanupContext = { ...context, signal: new AbortController().signal };
         try {
-          try {
-            if (!revoked) { await provider.revoke?.(acquired, cleanupContext); revoked = true; }
-          } finally {
-            if (!disposed) { await provider.dispose?.(acquired, cleanupContext); disposed = true; }
-          }
+          // Provider-local state may be required to retry revocation.
+          if (!revoked) { await provider.revoke?.(acquired, cleanupContext); revoked = true; }
+          if (!disposed) { await provider.dispose?.(acquired, cleanupContext); disposed = true; }
         } catch {
           throw new Error("Target credential cleanup failed");
         }
