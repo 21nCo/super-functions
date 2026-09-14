@@ -381,8 +381,9 @@ describe("mcpfn CLI", () => {
 
   it.each(["bearer-token-env", "api-key-env"])("rejects blank credentials for %s", async flag => {
     const variable = "MCPFN_BLANK_TEST";
+    const previous = process.env[variable];
     process.env[variable] = "   ";
-    try { expect(await runCli(["inspect", "http://127.0.0.1:1/mcp", `--${flag}`, variable], { stderr: () => {}, stdout: () => {} })).toBe(2); } finally { delete process.env[variable]; }
+    try { expect(await runCli(["inspect", "http://127.0.0.1:1/mcp", `--${flag}`, variable], { stderr: () => {}, stdout: () => {} })).toBe(2); } finally { if (previous === undefined) delete process.env[variable]; else process.env[variable] = previous; }
   });
 
   it("rejects multiline Bearer credentials without printing their contents", async () => {

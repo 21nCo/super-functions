@@ -267,12 +267,24 @@ async function runConformance(
     });
     let stdout = "";
     let stderr = "";
-    child.stdout?.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr?.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
+    let capturedBytes = 0;
+    let outputExceeded = false;
+    const capture = (chunk: string, stream: "stdout" | "stderr") => {
+      if (outputExceeded) return;
+      capturedBytes += Buffer.byteLength(chunk, "utf8");
+      if (capturedBytes > 262_144) {
+        outputExceeded = true;
+        stdout = ""; stderr = "";
+        child.kill("SIGKILL");
+        return;
+      }
+      if (stream === "stdout") stdout += chunk.toString();
+      else stderr += chunk.toString();
+    };
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", chunk => capture(chunk, "stdout"));
+    child.stderr?.on("data", chunk => capture(chunk, "stderr"));
     let settled = false;
     child.once("error", (error) => {
       if (settled) return;
@@ -296,12 +308,13 @@ async function runConformance(
       let safeStdout = "";
       let safeStderr = "";
       try {
+        if (outputExceeded) throw new Error("capture limit");
         safeStdout = redactOutput(stdout);
         safeStderr = redactOutput(stderr);
       } catch {
         exitCode = 1;
         safeStdout = "";
-        safeStderr = "Conformance output omitted because credential redaction exceeded its bounds";
+        safeStderr = outputExceeded ? "Conformance output exceeded its capture limit" : "Conformance output omitted because credential redaction exceeded its bounds";
       }
       const failure = exitCode === 0
         ? undefined

@@ -603,7 +603,7 @@ it("retains a cleanup gate when an aborted open fails after close", async () => 
   retained = true;
   rejectOpen(new Error("late setup failure"));
   await connecting;
-  await vi.waitFor(() => expect(cleanup).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(cleanup).toHaveBeenCalledTimes(1));
   await expect(client.connect()).rejects.toThrow(/Retry close/);
   await expect(client.close()).rejects.toMatchObject({ code: "MCPFN_OPERATION_FAILED", phase: "transport-close", retryable: true });
   retained = false;
@@ -623,26 +623,19 @@ it("does not reconnect after authorization when target cleanup fails", async () 
   await client.close();
 });
 
-it("drains late-open cleanup after an earlier cleanup snapshot finishes", async () => {
+it("defers non-idempotent target cleanup until an aborted open finishes", async () => {
   let rejectOpen!: (reason: Error) => void;
-  let finishFirstCleanup!: () => void;
-  const cleanup = vi.fn().mockImplementationOnce(() => new Promise<void>(resolve => {finishFirstCleanup = resolve;}))
-    .mockRejectedValueOnce(new Error("late lease revoke failed")).mockResolvedValue(undefined);
-  const client = createMcpFnClient({target: customTarget({kind: "cleanup-race", cleanup,
-    open: () => new Promise((_, reject) => {rejectOpen = reject;}),
-  })});
+  const cleanup = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValue(new Error("duplicate cleanup"));
+  const client = createMcpFnClient({ target: customTarget({ kind: "late", cleanup, open: () => new Promise((_, reject) => { rejectOpen = reject; }) }) });
   const connecting = client.connect().catch(() => undefined);
   await vi.waitFor(() => expect(rejectOpen).toBeDefined());
-  const closing = client.close();
-  await vi.waitFor(() => expect(finishFirstCleanup).toBeDefined());
-  rejectOpen(new Error("late setup failure"));
-  finishFirstCleanup();
-  await closing;
-  await connecting;
-  await vi.waitFor(() => expect(cleanup).toHaveBeenCalledTimes(2));
-  await expect(client.connect()).rejects.toThrow(/Retry close/);
   await client.close();
-  expect(cleanup).toHaveBeenCalledTimes(3);
+  expect(cleanup).not.toHaveBeenCalled();
+  rejectOpen(new Error("aborted open"));
+  await connecting;
+  expect(cleanup).toHaveBeenCalledOnce();
+  await client.close();
+  expect(cleanup).toHaveBeenCalledOnce();
 });
 
 
@@ -700,4 +693,18 @@ it("escalates an in-flight temporary shutdown to permanent", async () => {
   finish();
   await Promise.all([automatic, permanent]);
   expect(client.state).toBe("closed");
+});
+
+it("clears the permanent-close request when explicitly reopening", async () => {
+  let server!: ReturnType<typeof createMcpFnServer>;
+  const client = createMcpFnClient({ target: customTarget({ kind: "reopen", open: async () => {
+    server = createMcpFnServer({ info: { name: "reopen", version: "1" }, registry: new McpFnRegistry() });
+    const [transport, peer] = InMemoryTransport.createLinkedPair();
+    await server.connect(peer);
+    return { transport, close: () => server.close() };
+  } }) });
+  await client.connect(); await client.close(); await client.connect();
+  await server.close();
+  await vi.waitFor(() => expect(client.state).toBe("idle"));
+  await client.close();
 });

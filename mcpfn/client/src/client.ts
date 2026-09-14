@@ -85,6 +85,7 @@ export class McpFnClient {
   private readonly openingSignals = new Set<AbortSignal>();
   private closePromise?: Promise<void>;
   private permanentCloseRequested = false;
+  private pendingTargetOpens = 0;
   private connectController?: AbortController;
 
   readonly tools = {
@@ -283,7 +284,7 @@ export class McpFnClient {
         { phase: "authorization-request", retryable: true },
       );
     }
-    if (this._state === "closed") this._state = "idle";
+    if (this._state === "closed") { this._state = "idle"; this.permanentCloseRequested = false; }
     const controller = new AbortController();
     this.connectController = controller;
     let connectPromise: Promise<void>;
@@ -332,6 +333,7 @@ export class McpFnClient {
     signal: AbortSignal,
   ): Promise<{ error: unknown } | undefined> {
     this.openingSignals.add(signal);
+    this.pendingTargetOpens += 1;
     try {
       const handle = await this.options.target.open({
         requestId,
@@ -364,6 +366,7 @@ export class McpFnClient {
         { phase: "transport-connect", retryable: true, cause: error },
       );
     } finally {
+      this.pendingTargetOpens -= 1;
       if (signal.aborted) {
         try {
           // A close already in progress may have snapshotted cleanup before
@@ -585,7 +588,8 @@ export class McpFnClient {
     if (handle) handles.add(handle);
     const results = await Promise.allSettled([protocol?.close(), ...[...handles].map(item => this.closeRetainedHandle(item, strict))]);
     // Retained target leases must outlive transport shutdown (including retries).
-    if (results.every(result => result.status === "fulfilled")) {
+    if (this.pendingTargetOpens > 0) this.targetCleanupPending = true;
+    if (this.pendingTargetOpens === 0 && results.every(result => result.status === "fulfilled")) {
       results.push(...await Promise.allSettled([this.cleanupTarget()]));
     }
     if (strict && results.some((result) => result.status === "rejected")) {

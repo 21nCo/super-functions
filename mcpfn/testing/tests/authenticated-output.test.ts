@@ -8,7 +8,7 @@ import { McpFnConformanceCleanupError, runAuthenticatedOfficialConformance } fro
 beforeEach(() => {
   spawn.mockReset();
   spawn.mockImplementation(() => {
-    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn() });
     queueMicrotask(() => { child.stdout.write('{"echo":"opaque-runner-value"}'); child.stderr.write("failure opaque-runner-value"); child.emit("close", 1); });
     return child;
   });
@@ -49,10 +49,13 @@ it("retains permanently failing conformance cleanup for explicit retry", async (
 it("redacts credentials crossing the conformance output truncation boundary", async () => {
   const secret = "opaque-boundary-credential";
   spawn.mockImplementation(() => {
-    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn() });
     queueMicrotask(() => { child.stdout.write("x".repeat(262_140) + secret); child.emit("close", 0); });
     return child;
   });
   const result = await runAuthenticatedOfficialConformance({ url: "http://127.0.0.1:1/mcp", headers: { "x-api-key": secret } });
   expect(result.stdout).not.toContain("opaq");
+  expect(result.ok).toBe(false);
+  expect(result.stderr).toContain("capture limit");
+  expect(spawn.mock.results[0].value.kill).toHaveBeenCalledWith("SIGKILL");
 });
