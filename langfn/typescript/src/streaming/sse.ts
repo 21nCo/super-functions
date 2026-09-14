@@ -4,6 +4,8 @@ import {
   StreamEvent,
   withTrace,
   type ContentEvent,
+  type MessageEvent,
+  type Message,
   type EndEvent,
   type ErrorEvent,
   type ReasoningEvent,
@@ -40,6 +42,15 @@ export function normalizeStreamEvent(event: EventLike, traceId: string): StreamE
   const raw = event as Record<string, unknown>;
   const type = raw.type;
   switch (type) {
+    case "message": {
+      const message = raw.message;
+      if (!message || typeof message !== "object" || Array.isArray(message) ||
+          !("role" in message) || typeof message.role !== "string" || !["system", "user", "assistant", "tool"].includes(message.role) ||
+          !("content" in message) || typeof message.content !== "string") {
+        throw new ValidationError("Stream message event requires a valid message");
+      }
+      return withTrace<MessageEvent>({ type, message: message as Message }, traceId);
+    }
     case "content":
       return withTrace<ContentEvent>(
         {

@@ -64,6 +64,7 @@ export class StdioMCPTransport implements Transport {
   }
 
   async send(message: JSONRPCMessage, _options?: TransportSendOptions): Promise<void> {
+    void _options; // Stdio has no resumable-event or related-request framing.
     if (!this.started || this.closed) {
       throw new MCPTransportError("MCP stdio transport is not started or is closed");
     }

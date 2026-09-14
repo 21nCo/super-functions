@@ -493,15 +493,16 @@ export class VaultService {
   async createSecretSet(input: CreateSecretSetInput): Promise<SecretSetRecord> {
     if (!input.name.trim()) throw new SecFnValidationError("Secret set name is required");
     const resolved = await this.resolveScope(input, { requireNamespace: true, ignoreEnvironment: true, create: true, actorId: input.createdBy });
+    const tenantId = input.tenantId ?? (await this.getNamespace(resolved.namespaceId!)).tenantId;
     const duplicate = await this.db.findOne<SecretSetRecord>({
       model: "secfn_secret_sets",
-      where: scopeWhere({ tenantId: input.tenantId, namespaceId: resolved.namespaceId, name: input.name }),
+      where: scopeWhere({ tenantId, namespaceId: resolved.namespaceId, name: input.name }),
     });
     if (duplicate) throw new SecFnValidationError("Secret set already exists", { name: input.name });
     const now = nowIso();
     const set: SecretSetRecord = {
       id: generateId("set"),
-      tenantId: input.tenantId,
+      tenantId,
       namespaceId: resolved.namespaceId!,
       namespace: resolved.namespace,
       name: input.name,

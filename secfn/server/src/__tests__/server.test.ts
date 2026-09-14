@@ -387,7 +387,7 @@ it("rejects conflicting scope representations and derives an environment's paren
     await expect(secfn.vault.readRuntimeSecret("KEY", verified, { ...scope, ...conflict })).rejects.toThrow("mismatch");
   }
   const response = await secfn.router.handle(new Request(`https://app.test/secfn/runtime/secrets/KEY?namespaceId=${ns.id}&environmentId=${env.id}`, { headers: { authorization: `Bearer ${token.token}` } }));
-  expect(response.status).toBeGreaterThanOrEqual(400);
+  expect(response.status).toBe(400);
 });
 
 it("validates all secret-set members before writing the set or any membership", async () => {
@@ -405,4 +405,16 @@ it("validates all secret-set members before writing the set or any membership", 
     expect(db.dump("secfn_secret_set_members")).toHaveLength(0);
   }
   await expect(secfn.vault.createSecretSet({ ...scope, name: "retryable", members: [{ secretId: one.id }] })).resolves.toMatchObject({ name: "retryable" });
+});
+
+it("derives secret-set tenant ownership from a namespace ID", async () => {
+  const { secfn } = createServer();
+  const ns = await secfn.vault.createNamespace({ tenantId: "tenant-a", slug: "owned", createdBy: "admin" });
+  const secret = await secfn.vault.createSecret({ tenantId: "tenant-a", namespaceId: ns.id, key: "KEY", value: "value", createdBy: "admin" });
+  const input = { namespaceId: ns.id, name: "by-id", members: [{ secretId: secret.id }], createdBy: "admin" };
+  const set = await secfn.vault.createSecretSet(input);
+  expect(set.tenantId).toBe("tenant-a");
+  expect(await secfn.vault.listSecretSetMembers(set.id)).toHaveLength(1);
+  await expect(secfn.vault.createSecretSet(input)).rejects.toThrow("already exists");
+  await expect(secfn.vault.createSecretSet({ ...input, tenantId: "other", name: "invalid" })).rejects.toThrow();
 });

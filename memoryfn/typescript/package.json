@@ -73,7 +73,7 @@
     "access": "public"
   },
   "superfunctions": {
-    "initFunction": "memoryFn",
+    "initFunction": "memoryfn",
     "schemaVersion": 1,
     "namespace": "memoryfn"
   },

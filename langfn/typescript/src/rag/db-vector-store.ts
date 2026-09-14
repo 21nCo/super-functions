@@ -54,7 +54,7 @@ export class DbVectorStore extends VectorStore {
     const texts = documents.map((document) => document.content);
     const vectors = await this.embeddings.embedDocuments(texts);
     const records: DocumentRecord[] = documents.map((document, index) => ({
-      id: `doc_${index}_${Date.now()}`,
+      id: `doc_${crypto.randomUUID()}`,
       content: document.content,
       embedding: vectors[index]!,
       metadata: { ...document.metadata },
