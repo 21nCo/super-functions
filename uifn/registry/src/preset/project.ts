@@ -308,7 +308,7 @@ function hasWorkspaceMetadata(directory: string, rootDir: string): boolean {
     if (Array.isArray(workspaces)) {
       const relative = path.relative(directory, rootDir).split(path.sep).join('/');
       const patterns = workspaces.filter((value): value is string => typeof value === 'string');
-      const matches = (pattern: string) => minimatch(relative, pattern.replace(/^\.\//, '').replace(/\/$/, ''));
+      const matches = (pattern: string) => minimatch(relative, pattern.replace(/^(?:\.\/|\/)+/, '').replace(/\/$/, ''));
       let included = false;
       for (const pattern of patterns) {
         const prefix = /^!*/.exec(pattern)![0].length;
@@ -316,11 +316,9 @@ function hasWorkspaceMetadata(directory: string, rootDir: string): boolean {
       }
       return included;
     }
-  } catch { /* A lock package record can still identify the workspace. */ }
-  try {
-    const lock = JSON.parse(readFileSync(path.join(directory, 'package-lock.json'), 'utf8'));
-    return Boolean(lock?.packages?.[path.relative(directory, rootDir).split(path.sep).join('/')]);
-  } catch { return false; }
+    return false;
+  } catch { /* Unreadable workspace metadata cannot establish ownership. */ }
+  return false;
 }
 
 // Lock resolution belongs to npm. Never guess integrity hashes or run install

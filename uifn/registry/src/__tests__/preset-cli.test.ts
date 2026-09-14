@@ -484,7 +484,7 @@ it.each([['other/*'], ['packages/*', '!packages/app']])('retains local locks for
   });
 });
 
-it.each([['packages/*', '!packages/app', 'packages/app'], ['!!packages/app']])('honors ordered workspace re-inclusion: %j', async (...patterns) => {
+it.each([['packages/*', '!packages/app', 'packages/app'], ['!!packages/app'], ['/packages/*']])('honors ordered workspace re-inclusion: %j', async (...patterns) => {
   await withProject(async parent => {
     const rootDir = path.join(parent, 'packages/app');
     const preset = encodePreset({});
@@ -493,5 +493,16 @@ it.each([['packages/*', '!packages/app', 'packages/app'], ['!!packages/app']])('
     writeFileSync(path.join(parent, 'package-lock.json'), '{');
     writeFileSync(path.join(rootDir, 'package-lock.json'), JSON.stringify(npmLock(readFileSync(path.join(rootDir, 'package.json'), 'utf8'))));
     expect(applyPreset({ rootDir, preset, dryRun: true }).requiredActions).toMatchObject([{ path: '../../package-lock.json' }]);
+  });
+});
+
+it('ignores stale ancestor package records after workspace removal', async () => {
+  await withProject(async parent => {
+    const rootDir = path.join(parent, 'packages/app'); const preset = encodePreset({});
+    expect(initProject({ rootDir, preset }).ok).toBe(true);
+    writeFileSync(path.join(parent, 'package.json'), '{}');
+    writeFileSync(path.join(parent, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { 'packages/app': {} } }));
+    writeFileSync(path.join(rootDir, 'package-lock.json'), '{');
+    expect(applyPreset({ rootDir, preset, dryRun: true }).requiredActions).toMatchObject([{ path: 'package-lock.json' }]);
   });
 });
