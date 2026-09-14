@@ -33,3 +33,16 @@ describe("DocsSiteShell", () => {
     expect(document.querySelector(".docsfn-site-shell--embedded")).toBeTruthy();
   });
 });
+
+it('uses the current embed mode after layout props change', async () => {
+  const {rerender}=render(DocsSiteShell,{embedded:false});
+  const link=document.createElement('a'); link.href='/docs/guide';document.body.append(link);
+  // Stop default navigation after the capture listener has inspected the click.
+  link.addEventListener('click',event=>event.preventDefault());
+  const click=()=>link.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+  try {
+    click(); expect(link.getAttribute('href')).toBe('/docs/guide');
+    await rerender({embedded:true}); click(); expect(link.getAttribute('href')).toContain('embed=1');
+    link.href='/docs/guide'; await rerender({embedded:false}); click(); expect(link.getAttribute('href')).toBe('/docs/guide');
+  } finally {link.remove();}
+});

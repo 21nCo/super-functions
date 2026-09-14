@@ -75,3 +75,19 @@ Additional corrections reject repeated separators in configured route bases,
 escape LLM index link labels/destinations, collect required renderer names through
 the full block tree, and preserve editable-control keyboard shortcuts in both UI
 adapters while preventing browser history navigation for handled shortcuts.
+
+Config identity now follows native real paths by default, including symlinked
+entry configs and graph dependencies; `--preserve-symlinks` preserves lexical
+identity. The optional `import.meta.resolve` parent is honored when Node's
+`--experimental-import-meta-resolve` feature is enabled. Generated preludes follow
+hashbangs and directive prologues, preserving CommonJS strict mode. A native-loader
+regression exercises quoted and newline-containing filesystem paths: runtime
+paths and argument arrays are serialized as JSON literals before interpolation.
+The corresponding CodeQL sanitization findings were assessed against those exact
+scalar/array inputs; this does not expand the trust boundary for executable config.
+
+RSS and dated JSON feeds now accept the same auth/classifier policy as other public
+artifacts; callers must supply it because manifests do not contain that policy.
+Mixed mode without a classifier fails closed. Additional coverage includes OpenAPI
+3.2 QUERY operations, changing embedded mode in persistent Svelte shells, and
+intersection of explicit React search scopes with the loaded artifact.

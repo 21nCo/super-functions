@@ -1,8 +1,13 @@
 import { assertValidBlogPublishMetadata, resolveBlogLastBuildDate, parseDraftFlag } from "./blog";
 import { normalizeDatedCollectionId } from "./provider";
-import type { BlogPost, DocsManifest } from "./types";
+import { isDocsContentProtected } from "./security";
+import type { BlogPost, DocsManifest, DocsConfig } from "./types";
 
 export interface RSSFeedOptions {
+  /** Pass the site's auth policy when generating a public feed. */
+  auth?: DocsConfig["auth"];
+  /** Mixed mode fails closed when this classifier is omitted. */
+  isRoutePrivate?: (route: string) => boolean;
   title: string;
   description: string;
   /**
@@ -76,7 +81,8 @@ export function generateRSSFeed(
       ? orderedPostsFromManifest
       : fallbackPosts;
 
-  const items = posts
+  const publicPosts = posts.filter(post => !isDocsContentProtected({auth: options.auth, isRoutePrivate: options.isRoutePrivate, frontmatter: post.frontmatter, route: post.path}));
+  const items = publicPosts
     .map((post) => {
       const publish = assertValidBlogPublishMetadata(post);
       const postLink = options.itemHref
@@ -101,7 +107,7 @@ export function generateRSSFeed(
     ? collectionSurface?.feedPath ?? "/rss.xml"
     : manifest.blog?.feedPath ?? "/rss.xml";
   const feedLink = options.feedHref ?? resolveSameOriginUrl(siteOrigin, feedPath);
-  const lastBuildDate = resolveBlogLastBuildDate(posts);
+  const lastBuildDate = resolveBlogLastBuildDate(publicPosts);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">

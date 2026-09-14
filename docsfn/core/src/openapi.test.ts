@@ -411,3 +411,8 @@ it("preserves terminal external example references and externalValue", () => {
   const spec = buildOpenApiReference({ sourceId: "api:x", sourcePath: "x.json", fallbackTitle: "X", body: JSON.stringify({ openapi: "3.1.0", info: { title: "X", version: "1" }, paths: { "/x": { get: { responses: { "200": { content: { "application/json": { examples: { linked: { $ref: "#/components/examples/remote", summary: "Override" }, payload: { externalValue: "https://example.com/payload.json" } } } } } } } } }, components: { examples: { remote: { $ref: "./examples.json#/Sample", summary: "Base" } } } }) });
   expect(spec.operations[0].responses[0].content[0].examples).toEqual(expect.arrayContaining([expect.objectContaining({ name: "linked", reference: "./examples.json#/Sample", summary: "Override" }), expect.objectContaining({ name: "payload", externalValue: "https://example.com/payload.json" })]));
 });
+
+it("preserves OpenAPI 3.2 QUERY operations", () => {
+  const result=buildOpenApiReference({sourcePath:'query.json',body:JSON.stringify({openapi:'3.2.0',info:{title:'Query',version:'1'},paths:{'/search':{query:{operationId:'querySearch',responses:{200:{description:'OK'}}}}}})});
+  expect(result.operations).toContainEqual(expect.objectContaining({method:'QUERY',methodLower:'query',path:'/search'}));
+});

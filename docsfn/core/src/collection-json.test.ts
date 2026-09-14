@@ -151,3 +151,14 @@ describe("buildDatedCollectionJsonFeed", () => {
     );
   });
 });
+
+it("filters private dated posts before applying the public feed limit", () => {
+  const manifest=createManifest(); const posts=Object.values(manifest.posts).filter(post=>post.collectionId==='changelog');
+  for(const post of posts) post.frontmatter.private=true;
+  const options={collectionId:'changelog',auth:{enabled:true,mode:'mixed' as const},isRoutePrivate:()=>false,limit:1};
+  expect(buildDatedCollectionJsonFeed(manifest,options).items).toEqual([]);
+  expect(buildDatedCollectionJsonFeed(manifest,options).latest).toBeNull();
+  posts[0].frontmatter.private=false;
+  expect(buildDatedCollectionJsonFeed(manifest,options).items.map(item=>item.id)).toEqual([posts[0].id]);
+  expect(buildDatedCollectionJsonFeed(manifest,{...options,isRoutePrivate:undefined}).items).toEqual([]);
+});

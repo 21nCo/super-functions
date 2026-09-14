@@ -297,3 +297,14 @@ it("uses creator metadata for display-name authors", () => {
   expect(xml).toContain("<dc:creator>Core Team</dc:creator>");
   expect(xml).not.toContain("<author>");
 });
+
+it("omits protected posts and their metadata from public RSS", () => {
+  const manifest=createManifest();
+  for(const post of Object.values(manifest.posts)) {post.frontmatter.private=true;post.title='private-feed-title';post.excerpt='private-feed-excerpt';}
+  const options={title:'Public',description:'Public',link:'https://example.com',auth:{enabled:true,mode:'mixed' as const},isRoutePrivate:()=>false};
+  const xml=generateRSSFeed(manifest,options);
+  expect(xml).not.toContain('<item>'); expect(xml).not.toContain('private-feed-');
+  for(const post of Object.values(manifest.posts)) post.frontmatter.private=false;
+  expect(generateRSSFeed(manifest,{...options,isRoutePrivate:undefined})).not.toContain('<item>');
+  expect(generateRSSFeed(manifest,options)).toContain('<item>');
+});

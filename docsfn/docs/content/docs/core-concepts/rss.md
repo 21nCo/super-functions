@@ -41,3 +41,14 @@ The docsfn docs site implements **`GET /blog/rss.xml`** this way.
 ## Next.js
 
 Use a **Route Handler** or **`getServerSideProps`-less** static route with the same helper; set the `Content-Type` header to RSS XML.
+
+## Public feeds on authenticated sites
+
+Pass `auth: config.auth` to `generateRSSFeed` and
+`buildDatedCollectionJsonFeed` (also accepted by the Next/SvelteKit JSON response
+helpers). Pass the same `isRoutePrivate(route)` classifier used for search and LLM
+artifacts. Private mode excludes all posts; mixed mode excludes protected routes
+and private frontmatter, and excludes all posts when no classifier is supplied.
+Filtering occurs before JSON limits/latest selection and RSS metadata generation.
+Omitting `auth`, or disabling it, retains public-site behavior. The manifest alone
+does not carry the site's authentication policy.

@@ -11,6 +11,7 @@ export const GET: RequestHandler = async ({ url }) => {
   const changelogLink = `${origin}${listRoute}`;
 
   const xml = generateRSSFeed(source.manifest, {
+    auth: source.config.auth,
     collectionId: "changelog",
     title: `${source.siteTitle} Changelog`,
     description: "Product updates and release notes.",

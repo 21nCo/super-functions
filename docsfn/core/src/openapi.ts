@@ -13,6 +13,7 @@ const HTTP_METHOD_ORDER = [
   "options",
   "head",
   "trace",
+  "query",
 ] as const;
 
 const HTTP_METHOD_SET = new Set<string>(HTTP_METHOD_ORDER);

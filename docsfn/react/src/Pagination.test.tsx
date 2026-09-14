@@ -25,16 +25,24 @@ describe("Pagination", () => {
     fireEvent.keyDown(window, { altKey: true, key: "ArrowLeft" });
     expect(navigateTo).toHaveBeenLastCalledWith("/docs/previous");
   });
-});
 
-it("preserves editor shortcuts and prevents native history for handled navigation", () => {
-  vi.mocked(navigateTo).mockClear();
-  render(<><Pagination nextPage={{title:'Next',path:'/next'}} /><input aria-label="editor" /><div contentEditable suppressContentEditableWarning role="textbox"><span>editable child</span></div></>);
-  fireEvent.keyDown(screen.getByLabelText('editor'), {altKey:true,key:'ArrowRight'});
-  fireEvent.keyDown(screen.getByText('editable child'), {altKey:true,key:'ArrowRight'});
-  expect(navigateTo).not.toHaveBeenCalled();
-  const event = new KeyboardEvent('keydown', {altKey:true,key:'ArrowRight',cancelable:true});
-  window.dispatchEvent(event);
-  expect(event.defaultPrevented).toBe(true);
-  expect(navigateTo).toHaveBeenCalledWith('/next');
+  it("preserves editor shortcuts and prevents native history for handled navigation", () => {
+    vi.mocked(navigateTo).mockClear();
+    render(
+      <>
+        <Pagination nextPage={{ title: "Next", path: "/next" }} />
+        <input aria-label="editor" />
+        <div contentEditable suppressContentEditableWarning role="textbox">
+          <span>editable child</span>
+        </div>
+      </>
+    );
+    fireEvent.keyDown(screen.getByLabelText("editor"), { altKey: true, key: "ArrowRight" });
+    fireEvent.keyDown(screen.getByText("editable child"), { altKey: true, key: "ArrowRight" });
+    expect(navigateTo).not.toHaveBeenCalled();
+    const event = new KeyboardEvent("keydown", { altKey: true, key: "ArrowRight", cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(navigateTo).toHaveBeenCalledWith("/next");
+  });
 });

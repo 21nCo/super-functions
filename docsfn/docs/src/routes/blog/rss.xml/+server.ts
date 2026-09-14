@@ -8,6 +8,7 @@ export const GET: RequestHandler = async ({ url }) => {
   const blogLink = `${origin}/blog`;
 
   const xml = generateRSSFeed(source.manifest, {
+    auth: source.config.auth,
     title: `${source.siteTitle} Blog`,
     description: source.config.site.description ?? "Blog posts",
     link: blogLink,

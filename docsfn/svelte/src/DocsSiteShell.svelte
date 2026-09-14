@@ -27,11 +27,8 @@
   }
 
   onMount(() => {
-    if (!embedded) {
-      return;
-    }
-
     const handleClick = (event: MouseEvent) => {
+      if (!embedded) return;
       if (event.defaultPrevented || event.button !== 0) {
         return;
       }

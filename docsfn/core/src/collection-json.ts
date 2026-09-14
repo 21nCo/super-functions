@@ -1,6 +1,7 @@
 import { assertValidBlogPublishMetadata } from "./blog";
 import { normalizeDatedCollectionId } from "./provider";
-import type { BlogPost, DocsManifest } from "./types";
+import { isDocsContentProtected } from "./security";
+import type { BlogPost, DocsManifest, DocsConfig } from "./types";
 
 export interface DatedCollectionJsonFeedItem {
   id: string;
@@ -29,6 +30,10 @@ export interface DatedCollectionJsonFeed {
 }
 
 export interface BuildDatedCollectionJsonFeedOptions {
+  /** Pass the site's auth policy when generating a public feed. */
+  auth?: DocsConfig["auth"];
+  /** Mixed mode fails closed when this classifier is omitted. */
+  isRoutePrivate?: (route: string) => boolean;
   collectionId: string;
   title?: string;
   description?: string;
@@ -170,6 +175,7 @@ export function buildDatedCollectionJsonFeed(
     collectionId,
     includeDrafts: Boolean(options.includeDrafts),
   })
+    .filter(post => !isDocsContentProtected({auth: options.auth, isRoutePrivate: options.isRoutePrivate, frontmatter: post.frontmatter, route: post.path}))
     .slice(0, limit)
     .map((post) =>
       toFeedItem({

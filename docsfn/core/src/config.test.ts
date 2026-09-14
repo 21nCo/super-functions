@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readdir, rm, unlink, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, readdir, rm, unlink, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -24,7 +24,7 @@ afterEach(async () => {
 });
 
 async function createTempDir(): Promise<string> {
-  const dirPath = await mkdtemp(join(tmpdir(), "docsfn-config-test-"));
+  const dirPath = await realpath(await mkdtemp(join(tmpdir(), "docsfn-config-test-")));
   tempDirs.push(dirPath);
   return dirPath;
 }
@@ -642,4 +642,45 @@ it.each([['--conditions=development'], ['-C', 'development']])("preserves active
   process.execArgv = [...previous, ...args];
   try { expect((await loadDocsConfig({cwd})).site.title).toBe('development'); }
   finally { process.execArgv = previous; }
+});
+
+it.each(['mjs','cjs'])("preserves hashbangs and strict directives in %s configs", async extension => {
+  const cwd = await createTempDir();
+  await writeFile(join(cwd,'asset.json'), '{}');
+  const source = extension === 'cjs'
+    ? '#!/usr/bin/env node\n"use strict";\nif ((function(){return this})() !== undefined) throw new Error("strict mode lost"); require.resolve("./asset.json"); module.exports={schemaVersion:1,site:{title:"Strict"},content:{root:"."}};'
+    : '#!/usr/bin/env node\nimport.meta.resolve("./asset.json"); export default {schemaVersion:1,site:{title:"Hashbang"},content:{root:"."}};';
+  const configPath = `docsfn.config.${extension}`;
+  await writeFile(join(cwd, configPath), source);
+  expect((await loadDocsConfig({cwd,configPath})).site.title).toBe(extension==='cjs'?'Strict':'Hashbang');
+});
+it("honors the optional resolver parent when the Node feature is enabled", async () => {
+  const cwd=await createTempDir(); const alternate=join(cwd,'alternate'); await mkdir(alternate);
+  await writeFile(join(alternate,'asset.json'),'{}');
+  const {pathToFileURL}=await import('node:url');
+  const parent=pathToFileURL(join(alternate,'parent.mjs')).href;
+  await writeFile(join(cwd,'docsfn.config.mjs'), `import {fileURLToPath} from 'node:url'; export default {schemaVersion:1,site:{title:fileURLToPath(import.meta.resolve('./asset.json',${JSON.stringify(parent)}))},content:{root:'.'}};`);
+  const previous=process.execArgv; process.execArgv=[...previous,'--experimental-import-meta-resolve'];
+  try { expect((await loadDocsConfig({cwd})).site.title).toBe(join(alternate,'asset.json')); }
+  finally { process.execArgv=previous; }
+});
+it.each(['mjs','cjs'])("uses native source identity for a symlinked %s config", async (extension, context) => {
+  const cwd=await createTempDir(); const source=join(cwd,'real'); const alias=join(cwd,'alias');
+  await mkdir(source); await mkdir(alias); await writeFile(join(source,'theme.cjs'), 'module.exports="real-theme";');
+  const file=`docsfn.config.${extension}`;
+  const body=extension==='mjs' ? `import theme from './theme.cjs'; export default {schemaVersion:1,site:{title:theme},content:{root:import.meta.dirname}};`
+    : `module.exports={schemaVersion:1,site:{title:require('./theme.cjs')},content:{root:__dirname}};`;
+  await writeFile(join(source,file), body);
+  const {symlink}=await import('node:fs/promises');
+  try {await symlink(join(source,file),join(alias,file),'file');}
+  catch(error) {if(process.platform==='win32' && (error as NodeJS.ErrnoException).code==='EPERM') {context.skip();return;} throw error;}
+  const loaded=await loadDocsConfig({cwd:alias,configPath:file});
+  expect(loaded.site.title).toBe('real-theme'); expect(loaded.content.root).toBe(source);
+  expect(getDocsConfigDependencies(join(alias,file))).toContain(join(source,file));
+  await writeFile(join(alias,'theme.cjs'), 'module.exports="alias-theme";');
+  const previous=process.execArgv; process.execArgv=[...previous,'--preserve-symlinks'];
+  try {
+    const preserved=await loadDocsConfig({cwd:alias,configPath:file});
+    expect(preserved.site.title).toBe('alias-theme'); expect(preserved.content.root).toBe(alias);
+  } finally {process.execArgv=previous;}
 });

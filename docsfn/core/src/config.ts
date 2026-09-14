@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
-import { access, readFile, readdir, stat, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { access, readFile, readdir, realpath, stat, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -397,6 +397,9 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
     }
   >();
   const unresolvedDependencies = new Set<string>();
+  const hasNodeFlag = (flag: string) => process.execArgv.includes(flag) || (process.env.NODE_OPTIONS ?? "").split(/[\s"']+/).includes(flag);
+  const preserveSymlinks = hasNodeFlag("--preserve-symlinks");
+  const explicitResolveParent = hasNodeFlag("--experimental-import-meta-resolve");
   const packageScopes = new Map<string, { path: string; name?: string } | undefined>();
   async function packageScope(file: string): Promise<{ path: string; name?: string } | undefined> {
     let directory = dirname(file);
@@ -424,6 +427,7 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
       if (process.execArgv[index + 1]) conditions.push(argument, process.execArgv[++index]);
     }
   }
+  if (preserveSymlinks) conditions.push("--preserve-symlinks");
   const resolverArgs = [...conditions, "--experimental-import-meta-resolve", "--input-type=module", "-e",
     "process.stdout.write(JSON.stringify(import.meta.resolve(process.argv[1], process.argv[2])))"];
 
@@ -492,7 +496,7 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
           const helper = "__docsfnResolve_" + randomUUID().replaceAll("-", "");
           record.prelude += commonjs ? `const ${helper} = require("node:child_process").execFileSync;\n`
             : `import { execFileSync as ${helper} } from "node:child_process";\n`;
-          text = `((specifier) => JSON.parse(${helper}(${JSON.stringify(process.execPath)}, [...${JSON.stringify(resolverArgs)}, specifier, ${JSON.stringify(pathToFileURL(file).href)}], {encoding:"utf8", timeout:10000, maxBuffer:65536})))`;
+          text = `((specifier, parent = ${JSON.stringify(pathToFileURL(file).href)}) => JSON.parse(${helper}(${JSON.stringify(process.execPath)}, [...${JSON.stringify(resolverArgs)}, specifier, ${explicitResolveParent ? "String(parent)" : JSON.stringify(pathToFileURL(file).href)}], {encoding:"utf8", timeout:10000, maxBuffer:65536})))`;
         }
         if (text !== undefined) record.replacements.push({ start: node.getStart(ast), end: node.end, text });
       }
@@ -574,6 +578,8 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
         }
         target = found;
       }
+      unresolvedDependencies.add(target);
+      if (!preserveSymlinks) target = await realpath(target);
       const loadable = ["", ".js", ".mjs", ".ts", ".cjs", ".json"].includes(extname(target));
       let stripEnd: number | undefined;
       if (extname(target) === ".json" && !isRequire) {
@@ -594,11 +600,13 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
       if (loadable) await visit(target);
     }
   }
-  configPath = resolve(configPath);
+  const requestedConfigPath = resolve(configPath);
+  unresolvedDependencies.add(requestedConfigPath);
+  configPath = preserveSymlinks ? requestedConfigPath : await realpath(requestedConfigPath);
   try {
     await visit(configPath);
   } finally {
-    configDependencyPaths.set(configPath, [
+    configDependencyPaths.set(requestedConfigPath, [
       ...new Set([
         ...modules.keys(),
         ...unresolvedDependencies,
@@ -676,8 +684,16 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
       for (const entry of replacements.sort((a, b) => b.start - a.start)) {
         source = source.slice(0, entry.start) + entry.text + source.slice(entry.end);
       }
-      source = module.prelude + source;
-      if (module.commonjs) source = `__dirname = ${JSON.stringify(dirname(file))}; __filename = ${JSON.stringify(file)};\n` + source;
+      let prelude = module.prelude;
+      if (module.commonjs) prelude = `__dirname = ${JSON.stringify(dirname(file))}; __filename = ${JSON.stringify(file)};\n` + prelude;
+      // Keep the hashbang first and directive prologues active in CommonJS.
+      const outputAst = ts.createSourceFile(file, source, ts.ScriptTarget.ES2022, true, ts.ScriptKind.JS);
+      let insertion = ts.getShebang(source)?.length ?? 0;
+      for (const statement of outputAst.statements) {
+        if (!ts.isExpressionStatement(statement) || !ts.isStringLiteral(statement.expression)) break;
+        insertion = statement.end;
+      }
+      source = source.slice(0, insertion) + "\n" + prelude + source.slice(insertion);
       const output = outputPaths.get(file)!;
       await writeFile(output, source, { encoding: "utf8", mode: 0o600 });
     }
