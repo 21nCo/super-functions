@@ -60,6 +60,8 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
           throw new ForbiddenError("Authorization denied", "SECFN_FORBIDDEN");
         }
       }
+      ctx.namespace = ctx.namespace ?? await config.namespaceProvider?.(ctx);
+      if (!ctx.tenantId && ctx.query.get("namespace")) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
       await assertAdminTenant(config, ctx, action);
       return handler(request, ctx);
     },
@@ -402,11 +404,13 @@ async function scope<TContext extends SecFnRequestContext>(
   if (ctx.namespace && !ctx.tenantId) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
   const environment = asQueryString(ctx.query.get("environment"));
   const namespace = asQueryString(ctx.query.get("namespace"));
+  const effectiveNamespace = ctx.namespace ?? namespace ?? await config.namespaceProvider?.(ctx);
+  if (effectiveNamespace && !ctx.tenantId) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
   if (ctx.namespace && namespace && namespace !== ctx.namespace) throw new ForbiddenError("Namespace is outside the authorized scope", "SECFN_FORBIDDEN");
   return {
     tenantId: ctx.tenantId,
     namespaceId: ctx.query.get("namespaceId") ?? undefined,
-    namespace: ctx.namespace ?? namespace ?? await config.namespaceProvider?.(ctx),
+    namespace: effectiveNamespace,
     environmentId: ctx.query.get("environmentId") ?? undefined,
     environment: environment as SecretScope["environment"],
   };

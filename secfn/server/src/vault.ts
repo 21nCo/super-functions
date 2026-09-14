@@ -316,29 +316,35 @@ export class VaultService {
   async listSecrets(input: SecretListInput = {}): Promise<SecretPage> {
     const scope = await this.resolveScope(input, { allowAll: true });
     const limit = clampLimit(input.limit ?? 50);
-    let rows = await this.db.findMany<SecretRecord>({
-      model: "secfn_secrets",
-      where: scopeWhere(scope),
-      orderBy: [{ field: "updatedAt", direction: "desc" }, { field: "id", direction: "desc" }],
-      limit: 1000,
+    let cursor = input.cursor ? decodeCursor(input.cursor) : undefined;
+    const matches: SecretRecord[] = [];
+    const query = input.search?.trim().toLowerCase();
+    const tag = input.tag?.trim();
+    const fetchRows = (extra: WhereClause[], count: number) => this.db.findMany<SecretRecord>({
+      model: "secfn_secrets", where: [...scopeWhere(scope), ...extra],
+      orderBy: [{ field: "updatedAt", direction: "desc" }, { field: "id", direction: "desc" }], limit: count,
     });
-    if (input.cursor) {
-      const cursor = decodeCursor(input.cursor);
-      rows = rows.filter((row) => compareCursor(row, cursor) > 0);
+    while (matches.length <= limit) {
+      const count = limit + 1;
+      let rows: SecretRecord[];
+      if (cursor) {
+        const sameTime = await fetchRows([{ field: "updatedAt", operator: "eq", value: cursor.updatedAt }, { field: "id", operator: "lt", value: cursor.id }], count);
+        const older = sameTime.length < count ? await fetchRows([{ field: "updatedAt", operator: "lt", value: cursor.updatedAt }], count - sameTime.length) : [];
+        rows = [...sameTime, ...older];
+      } else { rows = await fetchRows([], count); }
+      for (const row of rows) {
+        if (query && !row.key.toLowerCase().includes(query) && !(row.description ?? "").toLowerCase().includes(query)) continue;
+        if (tag && !row.tags.includes(tag)) continue;
+        matches.push(row);
+        if (matches.length > limit) break;
+      }
+      if (rows.length < count || matches.length > limit) break;
+      const last = rows[rows.length - 1];
+      cursor = { updatedAt: last.updatedAt, id: last.id };
     }
-    if (input.search?.trim()) {
-      const query = input.search.trim().toLowerCase();
-      rows = rows.filter((row) =>
-        row.key.toLowerCase().includes(query) ||
-        (row.description ?? "").toLowerCase().includes(query),
-      );
-    }
-    if (input.tag?.trim()) {
-      rows = rows.filter((row) => row.tags.includes(input.tag!.trim()));
-    }
-    const items = await this.hydrateSecrets(rows.slice(0, limit));
-    const next = rows[limit];
-    return { items, nextCursor: next ? encodeCursor(next) : undefined };
+    const page = matches.slice(0, limit);
+    const items = await this.hydrateSecrets(page);
+    return { items, nextCursor: matches.length > limit ? encodeCursor(page[page.length - 1]) : undefined };
   }
 
   async getSecret(id: string): Promise<SecretRecord> {
@@ -1294,13 +1300,6 @@ function decodeCursor(cursor: string): { updatedAt: string; id: string } {
   return { updatedAt, id };
 }
 
-function compareCursor(row: SecretRecord, cursor: { updatedAt: string; id: string }): number {
-  if (row.updatedAt < cursor.updatedAt) return 1;
-  if (row.updatedAt > cursor.updatedAt) return -1;
-  if (row.id < cursor.id) return 1;
-  if (row.id > cursor.id) return -1;
-  return 0;
-}
 
 function formatDotEnv(values: Record<string, string>): string {
   return Object.entries(values)

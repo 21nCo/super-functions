@@ -514,3 +514,19 @@ it('requires tenant identity for namespace-scoped administration', async () => {
   const response = await secfn.router.handle(new Request(`https://app.test/secfn/admin/service-tokens/${token.record.id}/revoke`, { method: 'POST' }));
   expect(response.status).toBe(403);
 });
+
+it('paginates beyond 1000 rows without dropping page boundaries', async () => {
+  const { secfn, db } = createServer({ namespaceScoped: false });
+  for (let i = 0; i < 1005; i++) await db.create({ model: 'secfn_secrets', data: { id: String(i).padStart(5, '0'), tenantId: 'tenant-a', key: `KEY${i}`, tags: [], updatedAt: i < 500 ? '2026-01-01T00:00:00.000Z' : '2026-01-02T00:00:00.000Z', currentVersion: 1 } });
+  const seen: string[] = []; let cursor: string | undefined;
+  do {
+    const page = await secfn.vault.listSecrets({ tenantId: 'tenant-a', limit: 100, cursor });
+    seen.push(...page.items.map(row => row.id)); cursor = page.nextCursor;
+  } while (cursor);
+  expect(seen).toHaveLength(1005); expect(new Set(seen).size).toBe(1005);
+});
+it('rejects provider-derived and query namespaces without a tenant', async () => {
+  const secfn = createSecFnServer({ db: new MemoryAdapter(), encryption: { masterKey: 'test' }, context: {}, namespaceProvider: () => 'shared', authorize: async () => true });
+  expect((await secfn.router.handle(new Request('https://app.test/secfn/admin/secrets'))).status).toBe(403);
+  expect((await secfn.router.handle(new Request('https://app.test/secfn/admin/secrets?namespace=shared'))).status).toBe(403);
+});

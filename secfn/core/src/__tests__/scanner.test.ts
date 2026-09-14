@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createSecurityScanner } from "../scanner/scanner.js";
-import { formatFindingsSarif } from "../scanner/reporters.js";
+import { formatFindingsSarif, formatFindingsJson } from "../scanner/reporters.js";
 
 describe("security scanner", () => {
   it("detects default secret rules in content", () => {
@@ -22,4 +22,14 @@ describe("security scanner", () => {
     expect(sarif.version).toBe("2.1.0");
     expect(sarif.runs[0].results[0].ruleId).toBe("secret.aws_access_key");
   });
+});
+
+it('omits plaintext matches and context from JSON reports', () => {
+  const secret = 'AKIAIOSFODNN7EXAMPLE';
+  const findings = createSecurityScanner().scanContent(secret, { path: 'aws.txt' });
+  expect(findings.length).toBeGreaterThan(0);
+  const report = formatFindingsJson(findings);
+  expect(report).not.toContain(secret);
+  expect(JSON.parse(report).findings[0]).not.toHaveProperty('context');
+  expect(JSON.parse(report).findings[0]).not.toHaveProperty('match');
 });

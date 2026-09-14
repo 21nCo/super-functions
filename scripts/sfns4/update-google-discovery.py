@@ -10,8 +10,8 @@ urls = {
 }
 gmail = ['users.messages.list','users.messages.get','users.threads.get','users.messages.attachments.get','users.labels.list','users.messages.modify','users.drafts.create','users.drafts.update','users.drafts.send','users.messages.send']
 for name in sys.argv[1:] or urls:
- path = root / (name + '.json')
- selected = gmail if name == 'gmail' else list(json.loads(path.read_text())['methods'])
+ path = root / (name + '.ts')
+ selected = gmail if name == 'gmail' else list(json.loads(path.read_text().split('export default ', 1)[1].rstrip().removesuffix(';'))['methods'])
  raw = urllib.request.urlopen(urls[name], timeout=60).read()
  doc = json.loads(raw)
  methods = {}
@@ -30,5 +30,5 @@ for name in sys.argv[1:] or urls:
    for child in value: refs(child)
  refs(chosen)
  result = dict(source=urls[name], sourceSha256=hashlib.sha256(raw).hexdigest(), revision=doc['revision'], rootUrl=doc['rootUrl'], servicePath=doc['servicePath'], methods=chosen, schemas=schemas)
- path.write_text(json.dumps(result, indent=2) + '\n')
+ path.write_text('// Generated discovery data; plain modules support the declared Node range.\nexport default ' + json.dumps(result, indent=2) + ';\n')
  print(name, len(chosen), 'methods', len(schemas), 'schemas')

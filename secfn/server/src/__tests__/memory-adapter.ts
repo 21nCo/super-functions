@@ -195,19 +195,22 @@ function matchesWhere(row: Row, where: WhereClause[]): boolean {
 }
 
 function matchClause(value: unknown, clause: WhereClause): boolean {
+  const comparable = (item: unknown): any => item instanceof Date ? item.toISOString() : item;
+  value = comparable(value);
+  const expected = comparable(clause.value);
   switch (clause.operator) {
     case "eq":
-      return value === clause.value;
+      return value === expected;
     case "ne":
-      return value !== clause.value;
+      return value !== expected;
     case "gt":
-      return Number(value) > Number(clause.value);
+      return (value as any) > expected;
     case "gte":
-      return Number(value) >= Number(clause.value);
+      return (value as any) >= expected;
     case "lt":
-      return Number(value) < Number(clause.value);
+      return (value as any) < expected;
     case "lte":
-      return Number(value) <= Number(clause.value);
+      return (value as any) <= expected;
     case "in":
       return Array.isArray(clause.value) && clause.value.includes(value);
     case "not_in":

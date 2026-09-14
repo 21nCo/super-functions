@@ -29,7 +29,7 @@ export function formatFindingsTable(findings: SecurityFinding[]): string {
 }
 
 export function formatFindingsJson(findings: SecurityFinding[]): string {
-  return JSON.stringify({ findings }, null, 2);
+  return JSON.stringify({ findings: findings.map(finding => { const safe = { ...finding }; delete safe.match; delete safe.context; return safe; }) }, null, 2);
 }
 
 export function formatFindingsSarif(findings: SecurityFinding[]): string {
