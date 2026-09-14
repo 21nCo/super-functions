@@ -1,0 +1,72 @@
+{
+  "name": "@secfn/core",
+  "version": "0.0.2",
+  "description": "Core contracts, encryption, scanning, and schema primitives for SecFn",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./id": {
+      "types": "./dist/id.d.ts",
+      "default": "./dist/id.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "security",
+    "secrets",
+    "scanning",
+    "rbac",
+    "rate-limiting",
+    "access-control",
+    "vault",
+    "monitoring",
+    "self-hosted"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "dependencies": {
+    "glob": "^10.4.5"
+  },
+  "devDependencies": {
+    "@superfunctions/db": "0.2.0",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^9.0.0",
+    "fake-indexeddb": "^6.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "@superfunctions/db": "0.2.0"
+  },
+  "bugs": {
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "secfn/core"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

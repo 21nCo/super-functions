@@ -1,9 +1,12 @@
+import { applySelectedResources } from '../shared/selected-resources.js';
+import { slackActions } from './actions.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import {
   AuthType,
   TriggerType,
   type ActionContext,
+  type OAuth2Config,
   type Provider,
   type WebhookVerificationContext,
 } from 'plugfn';
@@ -24,14 +27,10 @@ export const slackProvider: Provider = {
     config: {
       authorizationUrl: 'https://slack.com/oauth/v2/authorize',
       tokenUrl: 'https://slack.com/api/oauth.v2.access',
-      scopes: [
-        'chat:write',
-        'channels:read',
-        'channels:history',
-        'groups:read',
-        'groups:history',
-        'users:read',
-      ],
+      scopes: ['chat:write', 'channels:read', 'channels:history', 'groups:read', 'groups:history', 'users:read', 'files:write'],
+      supportsPkce: false,
+      revocationUrl: 'https://slack.com/api/auth.revoke',
+      revocationResponse: 'json-ok',
       scopeSeparator: ',',
     },
   },
@@ -199,6 +198,7 @@ export const slackProvider: Provider = {
         return response.data;
       },
     },
+    ...slackActions,
   },
 
   triggers: {
@@ -282,3 +282,17 @@ function secureEqual(actual: string, expected: string): boolean {
   const expectedBuffer = Buffer.from(expected, 'utf8');
   return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
 }
+
+/** Use instead of slackProvider for delegated user actions including search.messages. */
+export const slackUserProvider: Provider = {
+  ...slackProvider,
+  displayName: 'Slack (user)',
+  auth: { type: AuthType.OAuth2, config: {
+    ...(slackProvider.auth.config as OAuth2Config),
+    scopes: ['chat:write', 'channels:read', 'channels:history', 'groups:read', 'groups:history', 'im:read', 'im:history', 'mpim:read', 'mpim:history', 'users:read', 'search:read', 'files:write'],
+    scopeParameter: 'user_scope',
+    authorizationCodeTokenPath: ['authed_user'],
+  } },
+};
+
+applySelectedResources(slackUserProvider);
