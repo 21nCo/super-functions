@@ -92,3 +92,20 @@ it("redacts failed-open diagnostics after releasing malformed credentials", asyn
   expect(JSON.stringify(events)).not.toContain("private-header-second");
   await client.close();
 });
+
+it.each(["custom", "connected", "mcpfn.inspector-snapshot"])("preserves snapshot structure around custom credential %s", async secret => {
+  const fixture = await startAuthenticatedServer("server-key", true);
+  const target = authenticatedHttpTarget(fixture.url, { credential: { headers: { authorization: "Bearer server-key" } } });
+  const original = target.redact!.bind(target);
+  target.redact = <T>(value: T): T => JSON.parse(JSON.stringify(original(value)).replaceAll(secret, "[REDACTED]"));
+  target.describe = () => ({ kind: "custom", label: secret });
+  const inspector = new McpFnInspector(new McpFnClient({ target }));
+  try {
+    await inspector.connect();
+    const report = await inspector.snapshot();
+    expect(report.kind).toBe("mcpfn.inspector-snapshot");
+    expect(report.target.kind).toBe("custom");
+    expect(report.clientState).toBe("connected");
+    expect(report.target.label).toBe("[REDACTED]");
+  } finally { await inspector.close(); await fixture.close(); }
+});

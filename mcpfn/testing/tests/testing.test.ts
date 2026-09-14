@@ -600,16 +600,18 @@ describe("McpFn testing", () => {
   });
 
   it("rejects invalid authenticated conformance URLs before acquiring credentials", async () => {
+    const acquire = vi.fn(() => ({ headers: { authorization: "Bearer conformance-secret" } }));
     const revoke = vi.fn();
     const dispose = vi.fn();
     await expect(runAuthenticatedOfficialConformance({
       url: "https://mcp.example.com/mcp",
       credential: {
-        acquire: () => ({ headers: { authorization: "Bearer conformance-secret" } }),
+        acquire,
         revoke,
         dispose,
       },
     })).rejects.toThrow(/literal loopback address/);
+    expect(acquire).not.toHaveBeenCalled();
     expect(revoke).not.toHaveBeenCalled();
     expect(dispose).not.toHaveBeenCalled();
   });

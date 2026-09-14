@@ -143,7 +143,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
           // Production-client dispatch already applied the custom target hook.
           const safeEvent = redactTargetCredentials(options.target, event, { preserveKeys: true });
           let bytes: number;
-          try { bytes = jsonBytes(safeEvent); }
+          try { bytes = jsonBytes(safeEvent); structuredClone(safeEvent); }
           catch {
             timelineSerializationFailed = true;
             droppedTimelineEvents += 1;

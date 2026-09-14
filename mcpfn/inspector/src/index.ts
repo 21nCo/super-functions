@@ -161,32 +161,28 @@ export class McpFnInspector {
     };
     const inventoryComplete = Object.values(droppedInventoryEntries)
       .every((count) => count === 0);
-    const snapshot = this.client.redact({
+    const redaction = { maxArrayEntries: Math.max(this.maxEvents, this.maxInventoryEntries, 1) };
+    const { kind, ...descriptor } = this.client.getTargetDescriptor();
+    const server = this.client.getServerVersion();
+    // Custom hooks receive payloads only; reconstruct authored discriminators.
+    return {
       formatVersion: 2,
       kind: "mcpfn.inspector-snapshot",
-      target: this.client.getTargetDescriptor(),
+      target: { ...this.client.redact(descriptor, redaction), kind },
       clientState: this.client.state,
-      server: this.client.getServerVersion(),
-      capabilities,
-      tools: tools.items,
-      resources: resources.items,
-      resourceTemplates: resourceTemplates.items,
-      prompts: prompts.items,
-      timeline: [],
+      server: server === undefined ? undefined : this.client.redact(server, redaction),
+      capabilities: capabilities === undefined ? undefined : this.client.redact(capabilities, redaction),
+      tools: this.client.redact(tools.items, redaction),
+      resources: this.client.redact(resources.items, redaction),
+      resourceTemplates: this.client.redact(resourceTemplates.items, redaction),
+      prompts: this.client.redact(prompts.items, redaction),
+      // Stored events already passed through the client hook; never reapply it.
+      timeline: redactOAuthValue(this.events, { maxArrayEntries: this.maxEvents }) as unknown as McpFnInspectorTimelineEvent[],
       droppedEvents: this.droppedEvents,
       timelineComplete: this.droppedEvents === 0,
       droppedInventoryEntries,
       inventoryComplete,
-    }, {
-      maxArrayEntries: Math.max(
-        this.maxEvents,
-        this.maxInventoryEntries,
-        1,
-      ),
-    }) as unknown as McpFnInspectorSnapshot;
-    // Stored events already passed through the client hook; never reapply it.
-    snapshot.timeline = redactOAuthValue(this.events, { maxArrayEntries: this.maxEvents }) as unknown as McpFnInspectorTimelineEvent[];
-    return snapshot;
+    };
   }
 
   async run(operation: McpFnInspectorOperation): Promise<McpFnInspectorOperationResult> {

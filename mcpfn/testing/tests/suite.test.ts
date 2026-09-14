@@ -286,11 +286,11 @@ it("delivers diagnostics after exactly one custom redaction and bounds their ret
 });
 
 
-it("marks unserializable diagnostic data as dropped and incomplete", async () => {
-  const server = createMcpFnServer({ info: { name: "bigint", version: "1" }, registry: new McpFnRegistry() });
-  const report = await runMcpFnTargetSuite({ target: customTarget({ kind: "custom",
+it.each([1n, () => undefined, Symbol("diagnostic")])("marks unserializable diagnostic data as dropped and incomplete (%s)", async amount => {
+  const server = createMcpFnServer({ info: { name: "bigint", version: "1" }, registry: new McpFnRegistry().register({ name: "echo", description: "Fixture", inputSchema: { type: "object" }, handler: async () => structuredResult({ ok: true }) }) });
+  const report = await runMcpFnTargetSuite({ scenarios: [{ name: "retained", tool: "echo" }], target: customTarget({ kind: "custom",
     redact: <T>(value: T): T => value && typeof value === "object" && "phase" in value
-      ? { ...value, details: { amount: 1n } } as T : value,
+      ? { ...value, details: { amount } } as T : value,
     open: async () => {
       const [client, remote] = InMemoryTransport.createLinkedPair();
       await server.connect(remote);
@@ -298,6 +298,8 @@ it("marks unserializable diagnostic data as dropped and incomplete", async () =>
     },
   }) });
   expect(report.status).toBe("incomplete");
+  expect(report.results).toHaveLength(1);
+  expect(report.results[0].status).toBe("passed");
   expect(report.droppedTimelineEvents).toBeGreaterThan(0);
   expect(report.incompleteReason).toContain("non-JSON data");
   expect(() => JSON.stringify(report)).not.toThrow();

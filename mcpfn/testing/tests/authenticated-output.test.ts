@@ -115,3 +115,23 @@ it("rejects the real runner requirement on Node 20 before spawning", async () =>
   await expect(runAuthenticatedOfficialConformance({ url: "http://127.0.0.1:1/mcp", headers: { "x-api-key": "test" } })).rejects.toThrow(/requires Node.js 22/);
   expect(spawn).not.toHaveBeenCalled();
 });
+
+it.each(["oauth", "api-key"] as const)("attributes %s cleanup failures outside a successful upstream run", async kind => {
+  spawn.mockImplementation(() => {
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn() });
+    queueMicrotask(() => child.emit("close", 0));
+    return child;
+  });
+  const revoke = vi.fn().mockRejectedValue(new Error("release failed"));
+  const error = await runAuthenticatedOfficialConformance({url: "http://127.0.0.1:1/mcp", credential: {
+    acquire: () => ({ kind, headers: { "x-api-key": "opaque-runner-value" } }), revoke,
+  }}).catch(error => error);
+  expect(error).toBeInstanceOf(McpFnConformanceCleanupError);
+  expect(error.result.cleanupFailure).toMatchObject({
+    phase: kind === "oauth" ? "token-revocation" : "transport-close",
+    layer: kind === "oauth" ? "authorization-server" : "mcpfn-preflight",
+  });
+  expect(error.result.failure).toEqual(error.result.cleanupFailure);
+  revoke.mockResolvedValue(undefined);
+  await error.retryCleanup();
+});
