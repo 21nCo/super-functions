@@ -66,3 +66,14 @@ Diagnostics and analytics pipelines run redaction helpers so accidental paste of
 Comma-separated globs (from **`process.env`** or API input) matched against entry **`id`**, **`relativePath`**, and **`absolutePath`**. Any match allows that Markdown entry through the unsafe-HTML gate when policy merges the allowlist.
 
 Use sparingly and only for trusted paths.
+
+Allowlist matching is case-sensitive and preserves whitespace in source identities.
+Backslashes normalize to `/`. `*` matches within one path segment, `**` crosses
+segments, and `**/` also matches zero directory prefixes. Other characters are
+literal. Wildcard matches exceeding one million pattern-length × candidate-length
+work units fail closed rather than running an unbounded regular expression.
+
+Compiled content without a source identity cannot gain trust from an allowlist,
+even `**`. The host must supply trustworthy source metadata; this check does not
+authenticate a caller-supplied identity. Explicit `allowUnsafeHtml: true` remains
+a global opt-in and should only be used for trusted content.

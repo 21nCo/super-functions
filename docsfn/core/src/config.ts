@@ -1,8 +1,11 @@
+import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
+import { promisify } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
 import { access, readFile, readdir, stat, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import {
   createDiagnostic,
@@ -319,8 +322,9 @@ async function fileExists(targetPath: string): Promise<boolean> {
   try {
     await access(targetPath);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) return false;
+    throw error;
   }
 }
 
@@ -392,6 +396,26 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
     }
   >();
   const unresolvedDependencies = new Set<string>();
+  const packageScopes = new Map<string, { path: string; name?: string } | undefined>();
+  async function packageScope(file: string): Promise<{ path: string; name?: string } | undefined> {
+    let directory = dirname(file);
+    const key = directory;
+    if (packageScopes.has(key)) return packageScopes.get(key);
+    while (true) {
+      const manifest = join(directory, "package.json");
+      if (await fileExists(manifest)) {
+        const value = { path: manifest, name: JSON.parse(await readFile(manifest, "utf8")).name };
+        packageScopes.set(key, value);
+        unresolvedDependencies.add(manifest);
+        return value;
+      }
+      const parent = dirname(directory);
+      if (parent === directory) { packageScopes.set(key, undefined); return undefined; }
+      directory = parent;
+    }
+  }
+  const resolveImport = promisify(execFile);
+
   let totalBytes = 0;
   async function visit(file: string): Promise<void> {
     if (modules.has(file)) return;
@@ -476,8 +500,36 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
     }
     collect(ast);
     for (const { literal, require: isRequire } of literals) {
-      if (!literal.text.startsWith(".")) continue;
-      let target = resolve(dirname(file), literal.text);
+      const specifier = literal.text;
+      let target: string;
+      if (specifier.startsWith(".")) target = resolve(dirname(file), specifier);
+      else if (isAbsolute(specifier)) target = specifier;
+      else if (specifier.startsWith("file:")) target = fileURLToPath(specifier);
+      else {
+        const scope = await packageScope(file);
+        const selfReference = typeof scope?.name === "string" && (specifier === scope.name || specifier.startsWith(scope.name + "/"));
+        if (!specifier.startsWith("#") && !selfReference) continue;
+        if (isRequire) target = createRequire(file).resolve(specifier);
+        else {
+          // Native resolution preserves package imports/exports conditions. The
+          // resolver process does not import or execute the configuration module.
+          const { stdout } = await resolveImport(process.execPath, [
+            "--experimental-import-meta-resolve", "--input-type=module", "-e",
+            "process.stdout.write(JSON.stringify(import.meta.resolve(process.argv[1], process.argv[2])))",
+            specifier, pathToFileURL(file).href,
+          ], { timeout: 10_000, maxBuffer: 65_536 });
+          const resolvedUrl = JSON.parse(stdout);
+          if (!resolvedUrl.startsWith("file:")) {
+            record.replacements.push({ start: literal.getStart(ast), end: literal.end, text: JSON.stringify(resolvedUrl) });
+            continue;
+          }
+          target = fileURLToPath(resolvedUrl);
+        }
+      }
+      if (!isAbsolute(target)) {
+        record.replacements.push({ start: literal.getStart(ast), end: literal.end, text: JSON.stringify(target) });
+        continue;
+      }
       if (!extname(target)) {
         const extensions = [".ts", ".js", ".mjs", ".cjs", ".json"];
         const candidates = [target, ...extensions.map(extension => target + extension), ...extensions.map(extension => join(target, `index${extension}`))];
@@ -601,6 +653,10 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
       await import(pathToFileURL(outputPaths.get(configPath)!).href),
     );
   } finally {
+    const cache = createRequire(configPath).cache;
+    for (const file of Object.keys(cache)) {
+      if (file.startsWith(stagingRoot + "/") || file.startsWith(stagingRoot + "\\")) delete cache[file];
+    }
     await rm(stagingRoot, { recursive: true, force: true });
   }
 }

@@ -52,28 +52,40 @@ export interface DocsRouteAccessResult {
 }
 
 function normalizeMatchCandidate(value: string): string {
-  return value.replaceAll("\\", "/").trim();
+  return value.replaceAll("\\", "/");
 }
 
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function toGlobRegex(glob: string): RegExp {
-  const pattern = normalizeMatchCandidate(glob);
-  let source = "";
+// Dynamic programming avoids regex backtracking on provider-controlled paths.
+// Exhausting the per-match work budget denies trust rather than skipping validation.
+function matchesGlob(pattern: string, candidate: string): boolean {
+  if (!pattern.includes("*")) return pattern === candidate;
+  if (pattern.length * (candidate.length + 1) > 1_000_000) return false;
+  const tokens: string[] = [];
   for (let index = 0; index < pattern.length; index++) {
-    if (pattern[index] !== "*") {
-      source += escapeRegex(pattern[index]);
-    } else if (pattern[index + 1] === "*") {
+    if (pattern[index] === "*" && pattern[index + 1] === "*") {
       index++;
-      if (pattern[index + 1] === "/") {
-        index++;
-        source += "(?:.*/)?";
-      } else source += ".*";
-    } else source += "[^/]*";
+      if (pattern[index + 1] === "/") { index++; tokens.push("**/"); }
+      else tokens.push("**");
+    } else tokens.push(pattern[index]);
   }
-  return new RegExp(`^${source}$`);
+  let next = new Uint8Array(candidate.length + 1);
+  next[candidate.length] = 1;
+  for (let index = tokens.length - 1; index >= 0; index--) {
+    const token = tokens[index];
+    const current = new Uint8Array(candidate.length + 1);
+    let directoryMatch = 0;
+    for (let offset = candidate.length; offset >= 0; offset--) {
+      const hasCharacter = offset < candidate.length;
+      if (token === "**/") {
+        if (hasCharacter && candidate[offset] === "/" && next[offset + 1]) directoryMatch = 1;
+        current[offset] = next[offset] || directoryMatch;
+      } else if (token === "**" || token === "*") {
+        current[offset] = next[offset] || (hasCharacter && (token === "**" || candidate[offset] !== "/") ? current[offset + 1] : 0);
+      } else current[offset] = hasCharacter && candidate[offset] === token ? next[offset + 1] : 0;
+    }
+    next = current;
+  }
+  return next[0] === 1;
 }
 
 function matchesAllowlist(entry: DocsSourceEntry, allowlist: string[]): boolean {
@@ -86,12 +98,11 @@ function matchesAllowlist(entry: DocsSourceEntry, allowlist: string[]): boolean 
     .map(normalizeMatchCandidate);
 
   for (const rule of allowlist) {
-    const trimmedRule = normalizeMatchCandidate(rule);
+    const trimmedRule = normalizeMatchCandidate(rule).trim();
     if (!trimmedRule) {
       continue;
     }
-    const regex = toGlobRegex(trimmedRule);
-    if (candidates.some((candidate) => regex.test(candidate))) {
+    if (candidates.some((candidate) => matchesGlob(trimmedRule, candidate))) {
       return true;
     }
   }
@@ -398,7 +409,8 @@ export function isUnsafeHtmlAllowed(sourcePath?: string, policyInput?: SourceTru
     return true;
   }
 
-  const sourceId = input.sourcePath ?? "compiled-content";
+  if (!input.sourcePath) return false;
+  const sourceId = input.sourcePath;
   const allowlisted = matchesAllowlist(
     {
       id: sourceId,

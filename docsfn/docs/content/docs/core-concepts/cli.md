@@ -67,13 +67,38 @@ For day-to-day authoring, run **`docsfn dev`** in one terminal and your framewor
 
 See also: [Search](./search), [Content providers](./content-providers).
 
-Successful `docsfn llms` runs record hashes in `.docsfn-llms-outputs.json` beside
-the generated files. If the next pipeline fails, only files whose hashes still
-match that record are removed. Hand-maintained files, manually edited outputs,
-and files from older runs without an ownership record are preserved. A successful
-regeneration establishes ownership for subsequent failure cleanup.
+## Output ownership and failure recovery
+
+Build/dev record ownership in `.docsfn-build-outputs.json`; `docsfn llms` uses
+`.docsfn-llms-outputs.json`. Records identify generated files by content hash and
+filesystem identity. Legacy LLM hash-only records remain readable, with their
+older hash-only identity guarantees until successful regeneration.
+
+Files are staged completely, journaled, then renamed into place. Publication is
+atomic per file, not across the output set. A failed publication attempts to
+remove all still-owned outputs; cleanup failures are reported. The next invocation
+can recover staged files recorded by an interrupted publication.
+
+Removal preserves edited outputs, manual replacements and older files without an
+ownership record, and reports preserved artifact names. Inspect these warnings:
+unmanaged files can remain stale. Successful generation can replace regular files
+at the requested output names and establishes ownership for subsequent cleanup.
+Artifact and marker symlinks are rejected. The chosen directory must be trusted;
+this does not protect against concurrent filesystem replacement. A crash before
+the journal is written may leave an unrecorded temporary file.
+
+## Config loading
 
 Config import graphs are compiled into a temporary directory, so deployment
 source directories can be read-only. Static local imports and literal dynamic
-imports are staged together; package resolution retains Node's import/require
-conditions. The temporary graph is removed after the config export resolves.
+imports are staged together. Package-local aliases and package self references
+resolve using Node's import/require conditions; their package manifest is tracked
+as a config dependency. Only missing paths permit discovery to continue; access
+errors fail loading instead of silently selecting default configuration.
+
+The temporary graph is removed after the config export resolves, including on
+failure. Configuration is trusted executable JavaScript, not a sandbox. Computed
+runtime imports are not dependency-tracked; ordinary external packages retain
+Node's cache behavior. CommonJS staging cache entries are evicted, but Node's ESM
+module cache cannot be unloaded: repeated reloads can retain memory in a long-lived
+watch process. Graph limits bound each load, not lifetime process memory.

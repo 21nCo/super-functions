@@ -558,3 +558,42 @@ it("loads config from a read-only source tree with local modules and conditional
     expect((await readdir(modules)).sort()).toEqual(["cjs.cjs", "esm.js", "package.json"]);
   } finally { await chmod(modules, 0o755); await chmod(cwd, 0o755); }
 });
+
+it("refreshes package-local aliases and self references with the correct import conditions", async () => {
+  const cwd = await createTempDir();
+  const manifest = join(cwd, "package.json");
+  await writeFile(manifest, JSON.stringify({ name: "docsfn-config-fixture", type: "module", imports: { "#path": "path", "#theme": { import: "./theme.mjs", require: "./theme.cjs" } }, exports: { "./theme": "./theme.mjs" } }));
+  await writeFile(join(cwd, "theme.mjs"), 'export default "Before";');
+  await writeFile(join(cwd, "theme.cjs"), 'module.exports = "CommonJS";');
+  await writeFile(join(cwd, "docsfn.config.mjs"), 'import {basename} from "#path"; if(basename("a/b")!=="b") throw new Error("alias failed"); import title from "#theme"; import self from "docsfn-config-fixture/theme"; export default {schemaVersion:1,site:{title:title+"/"+self},content:{root:"."}};');
+  expect((await loadDocsConfig({ cwd })).site.title).toBe("Before/Before");
+  expect(getDocsConfigDependencies(join(cwd, "docsfn.config.mjs"))).toContain(manifest);
+  await writeFile(join(cwd, "theme.mjs"), 'export default "After";');
+  expect((await loadDocsConfig({ cwd })).site.title).toBe("After/After");
+  await writeFile(join(cwd, "docsfn.config.cjs"), 'module.exports={schemaVersion:1,site:{title:require("#theme")},content:{root:"."}};');
+  expect((await loadDocsConfig({ cwd, configPath: "docsfn.config.cjs" })).site.title).toBe("CommonJS");
+});
+
+it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("does not replace an inaccessible configuration with defaults", async () => {
+  const cwd = await createTempDir();
+  await writeFile(join(cwd, "docsfn.config.mjs"), 'export default {schemaVersion:1,site:{title:"Private"},content:{root:"."}};');
+  await chmod(cwd, 0o000);
+  try { await expect(loadDocsConfig({ cwd })).rejects.toThrow(); }
+  finally { await chmod(cwd, 0o755); }
+});
+
+it("cleans staging after an async config export throws", async () => {
+  const cwd = await createTempDir();
+  const scratch = join(cwd, "scratch");
+  await mkdir(scratch);
+  await writeFile(join(cwd, "docsfn.config.mjs"), 'export default async () => { await Promise.resolve(); throw new Error("export failure"); };');
+  const previous = process.env.TMPDIR;
+  process.env.TMPDIR = scratch;
+  try {
+    await expect(loadDocsConfig({ cwd })).rejects.toThrow();
+    expect(await readdir(scratch)).toEqual([]);
+  } finally {
+    if (previous === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = previous;
+  }
+});

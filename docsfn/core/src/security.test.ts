@@ -285,3 +285,14 @@ it.each([
     else expect(check).toThrow(/DOCS_HTML_UNSAFE|unsafe HTML/);
   }
 });
+
+it("never grants path-based trust to content with no source identity", () => {
+  expect(() => assertCompiledContentTrusted({ source: "<script>alert(1)</script>", policy: { allowUnsafeHtmlAllowlist: ["**"] } })).toThrow();
+  expect(() => assertCompiledContentTrusted({ source: "<script>alert(1)</script>", policy: { allowUnsafeHtml: true } })).not.toThrow();
+});
+
+it("treats whitespace in source identities literally and bounds wildcard work", () => {
+  const body = "<script>alert(1)</script>";
+  expect(() => assertSourceEntriesTrusted({ entries: [createEntry({ id: " approved ", relativePath: "other", body })], policy: { allowUnsafeHtmlAllowlist: ["approved"] } })).toThrow();
+  expect(() => assertCompiledContentTrusted({ source: body, sourcePath: "a".repeat(10000), policy: { allowUnsafeHtmlAllowlist: ["*a".repeat(100) + "b"] } })).toThrow();
+});

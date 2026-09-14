@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { publishOwnedArtifacts } from "./owned-artifacts.js";
 import path from "node:path";
 import cac from "cac";
 import chokidar from "chokidar";
@@ -391,36 +391,13 @@ async function runPipeline(input: PipelineInput): Promise<PipelineResult> {
 }
 
 async function writeArtifacts(outDir: string, result: PipelineResult): Promise<void> {
-  await fs.mkdir(outDir, { recursive: true });
-
-  await fs.writeFile(
-    path.join(outDir, "diagnostics.json"),
-    JSON.stringify(result.diagnostics, null, 2)
-  );
-
-  await fs.writeFile(
-    path.join(outDir, "compat-report.json"),
-    JSON.stringify(result.compatReport, null, 2)
-  );
-
-  if (result.manifest) {
-    await fs.writeFile(
-      path.join(outDir, "manifest.json"),
-      JSON.stringify(result.manifest, null, 2)
-    );
-  } else {
-    await fs.rm(path.join(outDir, "manifest.json"), { force: true });
-  }
-
-  const searchEnabled = result.config?.search?.enabled ?? true;
-  if (searchEnabled && result.searchArtifact) {
-    await fs.writeFile(
-      path.join(outDir, "search.json"),
-      JSON.stringify(result.searchArtifact)
-    );
-  } else {
-    await fs.rm(path.join(outDir, "search.json"), { force: true });
-  }
+  const preserved = await publishOwnedArtifacts(outDir, ".docsfn-build-outputs.json", {
+    "diagnostics.json": JSON.stringify(result.diagnostics, null, 2),
+    "compat-report.json": JSON.stringify(result.compatReport, null, 2),
+    "manifest.json": result.manifest ? JSON.stringify(result.manifest, null, 2) : undefined,
+    "search.json": (result.config?.search?.enabled ?? true) && result.searchArtifact ? JSON.stringify(result.searchArtifact) : undefined,
+  });
+  if (preserved.length) console.warn(`Preserved unmanaged artifacts: ${preserved.join(", ")}`);
 }
 
 function printDiagnostics(diagnostics: DocsDiagnostic[]): void {
@@ -696,24 +673,6 @@ async function runDevCommand(
   });
 }
 
-const llmsOutputNames = ["llms.txt", "llms-full.txt"] as const;
-const llmsOwnershipFile = ".docsfn-llms-outputs.json";
-function llmsOutputHash(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-async function removeOwnedLlmsOutputs(staticDir: string): Promise<void> {
-  let ownership: Record<string, unknown>;
-  try { ownership = JSON.parse(await fs.readFile(path.join(staticDir, llmsOwnershipFile), "utf8")); }
-  catch { return; }
-  if (!ownership || typeof ownership !== "object") return;
-  for (const name of llmsOutputNames) {
-    let content: string;
-    try { content = await fs.readFile(path.join(staticDir, name), "utf8"); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") continue; throw error; }
-    if (ownership[name] === llmsOutputHash(content)) await fs.rm(path.join(staticDir, name), { force: true });
-  }
-}
-
 async function runLlmsCommand(
   rootArg: string | undefined,
   options: LlmsCommandOptions
@@ -728,51 +687,55 @@ async function runLlmsCommand(
   console.log(pc.blue("ℹ Generating llms.txt artifacts..."));
   const start = Date.now();
 
-  const result = await runPipeline({
-    cwd,
-    configPath: options.config,
-  });
+  try {
+    const result = await runPipeline({
+      cwd,
+      configPath: options.config,
+    });
 
-  printDiagnostics(result.diagnostics);
-  printCommandSummary("llms", result);
+    printDiagnostics(result.diagnostics);
+    printCommandSummary("llms", result);
 
-  if (hasErrorDiagnostics(result.diagnostics) || !result.manifest) {
-    await removeOwnedLlmsOutputs(staticDir);
-    process.exitCode = 1;
-    return;
+    if (hasErrorDiagnostics(result.diagnostics) || !result.manifest) {
+      const preserved = await publishOwnedArtifacts(staticDir, ".docsfn-llms-outputs.json", { "llms.txt": undefined, "llms-full.txt": undefined });
+      if (preserved.length) console.warn(`Preserved unmanaged artifacts: ${preserved.join(", ")}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const llmsOptions: BuildLlmsFullTxtOptions = {
+      canonicalUrl: result.config?.site?.canonicalUrl,
+      embedOpenApiSpec: options.embedOpenapi === true,
+      includeBlog: options.blog !== false,
+      auth: result.config?.auth,
+      isRoutePrivate: publicArtifactClassifier(result.config),
+    };
+
+    const artifacts = buildLlmsTxtArtifacts(result.manifest, llmsOptions);
+    await publishOwnedArtifacts(staticDir, ".docsfn-llms-outputs.json", {
+      "llms.txt": artifacts.llmsTxt,
+      "llms-full.txt": artifacts.llmsFullTxt,
+    });
+
+    const llmsTxtBytes = Buffer.byteLength(artifacts.llmsTxt, "utf8");
+    const llmsFullTxtBytes = Buffer.byteLength(artifacts.llmsFullTxt, "utf8");
+
+    console.log(
+      pc.green(
+        `✔ Wrote ${path.relative(cwd, path.join(staticDir, "llms.txt"))} (${llmsTxtBytes} bytes)`
+      )
+    );
+    console.log(
+      pc.green(
+        `✔ Wrote ${path.relative(cwd, path.join(staticDir, "llms-full.txt"))} (${llmsFullTxtBytes} bytes)`
+      )
+    );
+    console.log(pc.dim(`Generated in ${Date.now() - start}ms`));
+  } catch (error) {
+    try { await publishOwnedArtifacts(staticDir, ".docsfn-llms-outputs.json", { "llms.txt": undefined, "llms-full.txt": undefined }); }
+    catch (cleanup) { throw new AggregateError([error, cleanup], "LLM generation and owned-output cleanup failed"); }
+    throw error;
   }
-
-  const llmsOptions: BuildLlmsFullTxtOptions = {
-    canonicalUrl: result.config?.site?.canonicalUrl,
-    embedOpenApiSpec: options.embedOpenapi === true,
-    includeBlog: options.blog !== false,
-    auth: result.config?.auth,
-    isRoutePrivate: publicArtifactClassifier(result.config),
-  };
-
-  const artifacts = buildLlmsTxtArtifacts(result.manifest, llmsOptions);
-  await fs.mkdir(staticDir, { recursive: true });
-  await fs.writeFile(path.join(staticDir, "llms.txt"), artifacts.llmsTxt, "utf8");
-  await fs.writeFile(path.join(staticDir, "llms-full.txt"), artifacts.llmsFullTxt, "utf8");
-  await fs.writeFile(path.join(staticDir, llmsOwnershipFile), JSON.stringify({
-    "llms.txt": llmsOutputHash(artifacts.llmsTxt),
-    "llms-full.txt": llmsOutputHash(artifacts.llmsFullTxt),
-  }), "utf8");
-
-  const llmsTxtBytes = Buffer.byteLength(artifacts.llmsTxt, "utf8");
-  const llmsFullTxtBytes = Buffer.byteLength(artifacts.llmsFullTxt, "utf8");
-
-  console.log(
-    pc.green(
-      `✔ Wrote ${path.relative(cwd, path.join(staticDir, "llms.txt"))} (${llmsTxtBytes} bytes)`
-    )
-  );
-  console.log(
-    pc.green(
-      `✔ Wrote ${path.relative(cwd, path.join(staticDir, "llms-full.txt"))} (${llmsFullTxtBytes} bytes)`
-    )
-  );
-  console.log(pc.dim(`Generated in ${Date.now() - start}ms`));
 }
 
 async function runDocusaurusMigrateCommand(
