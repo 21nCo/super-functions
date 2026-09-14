@@ -148,7 +148,7 @@ export const gmailProvider: Provider = {
     config: {
       authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
       tokenUrl: 'https://oauth2.googleapis.com/token',
-      scopes: resolveGmailScopes(),
+      scopes: [...new Set([...resolveGmailScopes(), ...Object.values(gmailActions).flatMap(action => action.contract?.requiredScopes ?? [])])],
       scopeSeparator: ' ',
       revocationUrl: 'https://oauth2.googleapis.com/revoke',
       extraAuthParams: { access_type: 'offline', include_granted_scopes: 'true' },

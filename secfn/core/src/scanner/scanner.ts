@@ -42,7 +42,8 @@ export class SecurityScanner {
   }
 
   async scanFile(filePath: string): Promise<SecurityFinding[]> {
-    const { readFile } = await import("node:fs/promises");
+    const { readFile, stat } = await import("node:fs/promises");
+    if ((await stat(filePath)).size > this.maxFileSize) return [];
     const content = await readFile(filePath, "utf8");
     if (Buffer.byteLength(content, "utf8") > this.maxFileSize) {
       return [];

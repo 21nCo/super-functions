@@ -537,3 +537,13 @@ it('prevents runtime query namespace from overriding namespaceProvider', async (
   const response = await secfn.router.handle(new Request('https://app.test/secfn/runtime/secrets/KEY?namespace=foreign', { headers: { authorization: `Bearer ${token.token}` } }));
   expect(response.status).toBe(403);
 });
+
+it('preserves canonical namespace and committed writes when audit sink fails', async () => {
+  const db = new MemoryAdapter();
+  const secfn = createSecFnServer({ db, encryption: { masterKey: 'test' }, auditSink: async () => { throw new Error('sink offline'); } });
+  await secfn.vault.createNamespace({ tenantId: 't', slug: 'canonical', label: 'Display Label', createdBy: 'admin' });
+  const secret = await secfn.vault.createSecret({ tenantId: 't', namespace: 'canonical', key: 'KEY', value: 'value', createdBy: 'admin' });
+  expect((await secfn.vault.getSecret(secret.id)).namespace).toBe('canonical');
+  expect(db.dump('secfn_secrets')).toHaveLength(1);
+  expect(db.dump('secfn_audit_events').length).toBeGreaterThan(0);
+});

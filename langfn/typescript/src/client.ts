@@ -290,6 +290,7 @@ export class LangFn {
               completionTokens: event.completion_tokens,
               totalTokens: event.prompt_tokens + event.completion_tokens
             };
+            this.enforceBudget(this.attachCost(latestUsage)?.total);
           }
           yield event;
         }
@@ -339,11 +340,14 @@ export class LangFn {
               completionTokens: event.completion_tokens,
               totalTokens: event.prompt_tokens + event.completion_tokens
             };
+            this.enforceBudget(this.attachCost(latestUsage)?.total);
           }
           yield event;
         }
       }
 
+      const streamCost = this.attachCost(latestUsage);
+      this.enforceBudget(streamCost?.total);
       await this.persistTrace({
         kind: Array.isArray(input) ? "stream_chat" : "stream_completion",
         traceId,
@@ -355,7 +359,7 @@ export class LangFn {
           usage: latestUsage,
           traceId,
           trace_id: traceId,
-          cost: this.attachCost(latestUsage)
+          cost: streamCost
         }
       });
     } catch (error) {

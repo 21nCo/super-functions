@@ -38,13 +38,17 @@ export class AuditService {
       data: event as unknown as Record<string, unknown>,
     });
 
-    const summary = sanitizeForLog(event);
-    if (event.severity === "critical" || event.severity === "high") {
-      this.options.logger?.warn("secfn security event", summary);
-    } else {
-      this.options.logger?.info("secfn security event", summary);
+    // The durable event has committed. Secondary delivery cannot fail the mutation.
+    try {
+      const summary = sanitizeForLog(event);
+      if (event.severity === "critical" || event.severity === "high") {
+        this.options.logger?.warn("secfn security event", summary);
+      } else { this.options.logger?.info("secfn security event", summary); }
+    } catch { /* A host logger must not change committed operation semantics. */ }
+    try { await this.options.sink?.(event); }
+    catch {
+      try { this.options.logger?.warn("secfn audit sink delivery failed", { eventId: event.id }); } catch { /* Durable event remains available. */ }
     }
-    await this.options.sink?.(event);
     return event;
   }
 

@@ -243,3 +243,11 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   }
   return values;
 }
+
+it('rejects streaming usage above the per-request budget before done', async () => {
+  const model = { provider: 'mock', model: 'mock-1', async *stream() { yield { type: 'token_usage', prompt_tokens: 1000, completion_tokens: 0 }; yield { type: 'done' }; } } as any;
+  const client = new LangFn({ model, observability: { costMeter: new CostMeter({ prices: { mock: { 'mock-1': { prompt: 1, completion: 0 } } } }), budgets: { perRequestUsd: 0.5 } } });
+  const events = []; for await (const event of client.stream('hello')) events.push(event);
+  expect(events.some(event => event.type === 'error' && event.error.code === 'BUDGET_EXCEEDED')).toBe(true);
+  expect(events.some(event => event.type === 'done')).toBe(false);
+});

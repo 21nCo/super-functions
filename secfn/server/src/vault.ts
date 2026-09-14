@@ -1199,7 +1199,7 @@ export class VaultService {
   ): SecretRecord {
     return {
       ...row,
-      namespace: namespace?.label ?? namespace?.slug ?? row.namespace,
+      namespace: namespace?.slug ?? row.namespace,
       environment: environment?.name ?? row.environment,
     };
   }
@@ -1221,7 +1221,7 @@ export class VaultService {
   private applySetLabels(row: SecretSetRecord, namespace: NamespaceRecord | null): SecretSetRecord {
     return {
       ...row,
-      namespace: namespace?.label ?? namespace?.slug ?? row.namespace,
+      namespace: namespace?.slug ?? row.namespace,
     };
   }
 
