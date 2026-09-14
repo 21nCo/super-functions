@@ -477,7 +477,8 @@ describe("McpFn client profiles", () => {
     await registry.createToolTask("delayed", {}, undefined, { taskStore: { storeTaskResult: stored } } as unknown as McpFnTaskRequestExtra, { onStage: stages, onTaskOutput: outcome });
     expect(outcome).not.toHaveBeenCalled();
     await expect(finish()).rejects.toThrow(/Invalid output/);
-    expect(stages).toHaveBeenLastCalledWith("output-validation");
+    expect(stages).toHaveBeenCalledWith("output-validation");
+    expect(stages).toHaveBeenLastCalledWith("handler");
     expect(outcome).toHaveBeenCalledWith("failed", expect.any(Error));
     expect(stored).not.toHaveBeenCalled();
   });
@@ -734,21 +735,21 @@ it("resolves shared relative references independently in each embedded resource"
 });
 
 
-it.each(["storage", "wrapped-storage", "retried-storage", "handler"])("orders task output evidence after predecessor stages on %s failure", async failure => {
+it.each(["storage", "wrapped-storage", "retried-storage", "handler", "invalid-output"])("orders task output evidence after predecessor stages on %s failure", async failure => {
   const { InMemoryTaskStore } = await import("@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js");
   const taskStore = new InMemoryTaskStore();
-  if (failure !== "handler") vi.spyOn(taskStore, "storeTaskResult").mockRejectedValue(new Error("storage failed"));
+  if (!["handler", "invalid-output"].includes(failure)) vi.spyOn(taskStore, "storeTaskResult").mockRejectedValue(new Error("storage failed"));
   const evidence: McpFnClientProfileEvidence[] = [];
   const registry = new McpFnRegistry().register({
-    name: "task", description: "Task", inputSchema: { type: "object" }, execution: { taskSupport: "required" },
+    name: "task", description: "Task", outputSchema: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] }, inputSchema: { type: "object" }, execution: { taskSupport: "required" },
     handler: async () => structuredResult({ ok: true }),
     taskHandler: { createTask: async (_args, _context, extra) => {
       const task = await extra.taskStore.createTask({ ttl: 1000 });
       try {
-        await extra.taskStore.storeTaskResult(task.taskId, "completed", structuredResult({ ok: true }));
+        await extra.taskStore.storeTaskResult(task.taskId, "completed", structuredResult({ ok: failure === "invalid-output" ? "bad" : true }));
       } catch (error) {
         if (failure === "wrapped-storage") throw new Error("wrapped storage failure", { cause: error });
-        if (failure === "retried-storage") await extra.taskStore.storeTaskResult(task.taskId, "completed", structuredResult({ ok: true }));
+        if (failure === "retried-storage") await extra.taskStore.storeTaskResult(task.taskId, "completed", structuredResult({ ok: failure === "invalid-output" ? "bad" : true }));
         throw error;
       }
       throw new Error("handler failed after output");
@@ -762,8 +763,8 @@ it.each(["storage", "wrapped-storage", "retried-storage", "handler"])("orders ta
     await server.connect(right); await client.connect(left); await client.listTools();
     try { for await (const _message of client.experimental.tasks.callToolStream({ name: "task", arguments: {} }, undefined, { task: { ttl: 1000 } })) { /* drain */ } } catch { /* Expected task failure. */ }
     const stages = evidence.filter(event => ["input-validation", "handler", "output-validation"].includes(event.stage)).map(event => [event.stage, event.outcome]);
-    expect(stages).toEqual([["input-validation", "succeeded"], ["output-validation", "succeeded"], ...(failure === "retried-storage" ? [["output-validation", "succeeded"]] : []), ["handler", "failed"]]);
-    expect(evidence.filter(event => event.stage === "task-result-storage")).toHaveLength(failure === "handler" ? 0 : 1);
+    expect(stages).toEqual([["input-validation", "succeeded"], ["output-validation", failure === "invalid-output" ? "failed" : "succeeded"], ...(failure === "retried-storage" ? [["output-validation", "succeeded"]] : []), ["handler", "failed"]]);
+    expect(evidence.filter(event => event.stage === "task-result-storage")).toHaveLength(["handler", "invalid-output"].includes(failure) ? 0 : 1);
   } finally { await client.close(); await server.close(); }
 });
 
@@ -817,5 +818,21 @@ it("preserves empty same-resource references through list and call", async () =>
     await server.connect(right); await client.connect(left);
     expect((await client.listTools()).tools[0].name).toBe("recursive");
     expect(await client.callTool({ name: "recursive", arguments: { child: { child: {} } } })).toMatchObject({ structuredContent: { ok: true } });
+  } finally { await client.close(); await server.close(); }
+});
+
+it.each(["resolver", "projector"])("preserves framework fallback evidence from a throwing %s", async hook => {
+  const evidence: McpFnClientProfileEvidence[] = [];
+  const fail = () => { throw new Error("hook failure"); };
+  const registry = new McpFnRegistry().register({ name: "test", description: "test", inputSchema: { type: "object" }, handler: () => structuredResult({ ok: true }) });
+  const server = createMcpFnServer({ info: { name: "test", version: "1" }, registry,
+    clientProfiles: { profiles: [{ id: "test", version: "1", matches: () => true, ...(hook === "projector" ? { projectCatalog: fail } : {}) }],
+      resolveVerifiedIdentity: hook === "resolver" ? fail : () => ({ subject: "trusted" }), evidence: event => { evidence.push(event); } } });
+  const client = new Client({ name: "test", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left);
+    await expect(client.listTools()).rejects.toThrow();
+    expect(evidence).toContainEqual(expect.objectContaining({ outcome: "failed", code: hook === "resolver" ? "MCPFN_PROFILE_RESOLUTION_FAILED" : "MCPFN_CATALOG_PROJECTION_FAILED" }));
   } finally { await client.close(); await server.close(); }
 });

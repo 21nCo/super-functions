@@ -422,9 +422,9 @@ it("does not copy opaque connection error values into reports", async () => {
   expect(JSON.stringify(report)).not.toContain("customer-123");
   expect(report.profiles[0]).toMatchObject({ phase: "connect", ok: false });
 });
-it("requires a discriminator beyond isError for captured failures", async () => {
+it.each([undefined, { rejectedProperty: undefined }])("requires a defined discriminator for captured failures: %s", async validationIssue => {
   await expect(runMcpFnClientProfileContracts({ profiles: [{ id: "test", version: "1", target: targetFor({}).target,
-    fixtures: [{ name: "weak", tool: "lookup", arguments: {}, sideEffect: "read-only", source: "captured-failure", expect: { isError: true } }],
+    fixtures: [{ name: "weak", tool: "lookup", arguments: {}, sideEffect: "read-only", source: "captured-failure", expect: { isError: true, validationIssue } }],
   }] })).rejects.toThrow(/meaningful error expectations/);
 });
 it('rejects misspelled captured failure sources', async () => {

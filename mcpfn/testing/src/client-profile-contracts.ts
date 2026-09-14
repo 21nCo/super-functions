@@ -519,8 +519,9 @@ function fixtureFailure(
     const issues = Array.isArray(details?.issues)
       ? (details.issues as Record<string, unknown>[])
       : [];
-    const matched = issues.some((issue) =>
-      Object.entries(expected.validationIssue!).every(
+    const fields = Object.entries(expected.validationIssue).filter(([, value]) => value !== undefined);
+    const matched = fields.length > 0 && issues.some((issue) =>
+      fields.every(
         ([key, value]) => issue[key] === value,
       ),
     );
@@ -713,7 +714,7 @@ export async function runMcpFnClientProfileContracts(
     for (const fixture of profile.fixtures ?? []) {
       if (fixture.source === "captured-failure" && (!fixture.expect || fixture.expect.isError === false ||
           !(fixture.expect.structuredContent !== undefined || fixture.expect.errorCode || fixture.expect.lifecycleStage ||
-            (fixture.expect.validationIssue && Object.keys(fixture.expect.validationIssue).length)))) {
+            (fixture.expect.validationIssue && Object.values(fixture.expect.validationIssue).some(value => value !== undefined))))) {
         throw new Error(`Captured-failure fixture ${fixture.name} requires meaningful error expectations`);
       }
       if (fixture.source !== undefined && !["minimal-valid", "captured-failure"].includes(fixture.source)) throw new Error("Invalid fixture source");

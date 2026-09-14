@@ -994,6 +994,7 @@ export class McpFnRegistry<TContext = undefined> {
               validated = this.finalizeResult(registered, status === "failed" ? { ...result, isError: true } : result);
             } catch (error) {
               await observer.onTaskOutput?.("failed", error);
+              observer.onStage?.("handler");
               throw error;
             }
             await observer.onTaskOutput?.("succeeded");
