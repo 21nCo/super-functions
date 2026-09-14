@@ -62,7 +62,7 @@ export class PostgresAdapter implements StorageAdapter {
     }));
 
     const result = await this.db.transaction(async tx => {
-      const ids = [...new Set(values.flatMap(value => [value.fromId, value.toId]))].sort();
+      const ids = [...new Set(values.flatMap(value => [value.fromId, value.toId]))].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
       const rows = await tx.select().from(memories).where(and(inArray(memories.id, ids), isNull(memories.deletedAt))).orderBy(memories.id).for('update');
       const byId = new Map(rows.map(row => [row.id, row]));
       for (const value of values) {

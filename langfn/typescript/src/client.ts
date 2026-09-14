@@ -812,10 +812,10 @@ async function* iterateWithTimeoutAndCancel(
 }
 
 function randomTraceId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
+  if (typeof globalThis.crypto?.randomUUID !== "function") {
+    throw new Error("Web Crypto randomUUID is required for trace identifiers");
   }
-  return Math.random().toString(36).slice(2);
+  return globalThis.crypto.randomUUID();
 }
 
 function traceOwner(metadata: unknown): { tenantId?: string; userId?: string } {

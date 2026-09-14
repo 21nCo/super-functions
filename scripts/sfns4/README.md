@@ -79,3 +79,10 @@ The check rejects reported over-budget usage before successful completion; it
 cannot undo provider charges or guarantee a spending cap before usage arrives.
 When a budget is configured, missing pricing, missing usage and invalid costs
 fail closed. Without a budget, unpriced models report no cost estimate.
+
+The packed UI probe is an internal function invoked with the consumer directory
+created by the package gate; it no longer accepts an arbitrary CLI destination.
+All probe files use exclusive creation. Run its filesystem regression checks from
+the repository root with `node --test scripts/sfns4/packed-ui.test.mjs`.
+LangFn trace identifiers require Web Crypto `randomUUID`; runtimes without it
+fail explicitly instead of using pseudorandom fallback identifiers.

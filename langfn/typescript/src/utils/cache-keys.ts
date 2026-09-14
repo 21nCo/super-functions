@@ -57,7 +57,8 @@ function normalizeValue(value: unknown): CanonicalValue | undefined {
   }
   if (typeof value === "object") {
     const normalized: Record<string, CanonicalValue> = {};
-    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+    // Canonical keys use UTF-16 code-unit order, independent of host locale.
+    for (const key of Object.keys(value as Record<string, unknown>).sort((a, b) => a < b ? -1 : a > b ? 1 : 0)) {
       const next = normalizeValue((value as Record<string, unknown>)[key]);
       if (next !== undefined) {
         normalized[key] = next;

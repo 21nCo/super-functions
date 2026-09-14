@@ -138,7 +138,8 @@ try {
     ],
     temporary,
   );
-  run(process.execPath, ["scripts/sfns4/packed-ui.mjs", temporary]);
+  const { verifyPackedUI } = await import("./packed-ui.mjs");
+  await verifyPackedUI(temporary);
   const artifactSet = createHash('sha256').update(JSON.stringify(integrity)).digest('hex');
   const artifactDirectory = join('.conduct', 'SFNS-4', 'artifacts', artifactSet.slice(0, 16));
   mkdirSync(artifactDirectory, { recursive: true });

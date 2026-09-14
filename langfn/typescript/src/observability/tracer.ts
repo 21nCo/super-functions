@@ -133,10 +133,10 @@ export class Tracer {
 }
 
 function randomId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
+  if (typeof globalThis.crypto?.randomUUID !== "function") {
+    throw new Error("Web Crypto randomUUID is required for trace identifiers");
   }
-  return Math.random().toString(36).slice(2, 10);
+  return globalThis.crypto.randomUUID();
 }
 
 function serializeError(error: unknown): Record<string, unknown> {
