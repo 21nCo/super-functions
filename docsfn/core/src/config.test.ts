@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rm, unlink, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, rm, unlink, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -535,4 +535,26 @@ it.each(["path-prefix", "path-segment"])("requires one default for %s routing", 
 });
 it.each(["//evil.test", "/docs?x=1", "/docs#x", "/docs\\bad", "/docs path"])("rejects invalid programmatic route %s", (basePath) => {
   expect(() => validateDocsConfig({ schemaVersion: 1, site: { title: "Test", basePath }, content: { root: "." } })).toThrow();
+});
+
+
+it("loads config from a read-only source tree with local modules and conditional package exports", async () => {
+  const cwd = await createTempDir();
+  const modules = join(cwd, "node_modules/fixture-package");
+  await mkdir(modules, { recursive: true });
+  await writeFile(join(modules, "package.json"), JSON.stringify({ name: "fixture-package", type: "module", exports: { import: "./esm.js", require: "./cjs.cjs" } }));
+  await writeFile(join(modules, "esm.js"), 'export default "ESM package";');
+  await writeFile(join(modules, "cjs.cjs"), 'module.exports = "CJS package";');
+  await writeFile(join(cwd, "local.cjs"), 'module.exports = { title: require("fixture-package"), root: __dirname };');
+  await writeFile(join(cwd, "docsfn.config.mjs"), `import title from 'fixture-package'; import direct from './node_modules/fixture-package/esm.js'; import { fileURLToPath } from 'node:url'; export default async () => { await Promise.resolve(); const {default: local} = await import('./local.cjs'); if (direct !== title || !fileURLToPath(import.meta.url).endsWith('docsfn.config.mjs')) throw new Error('Resolution changed'); return { schemaVersion: 1, site: { title: title + '/' + local.title }, content: { root: local.root } }; };`);
+  const before = await readdir(cwd);
+  await chmod(cwd, 0o555);
+  await chmod(modules, 0o555);
+  try {
+    const config = await loadDocsConfig({ cwd });
+    expect(config.site.title).toBe("ESM package/CJS package");
+    expect(config.content.root).toBe(cwd);
+    expect(await readdir(cwd)).toEqual(before);
+    expect((await readdir(modules)).sort()).toEqual(["cjs.cjs", "esm.js", "package.json"]);
+  } finally { await chmod(modules, 0o755); await chmod(cwd, 0o755); }
 });

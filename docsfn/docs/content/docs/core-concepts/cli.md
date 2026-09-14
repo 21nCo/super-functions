@@ -66,3 +66,14 @@ Runs the full pipeline and writes output under **`--out-dir`** (default **`.docs
 For day-to-day authoring, run **`docsfn dev`** in one terminal and your framework dev server in another so JSON artifacts stay fresh.
 
 See also: [Search](./search), [Content providers](./content-providers).
+
+Successful `docsfn llms` runs record hashes in `.docsfn-llms-outputs.json` beside
+the generated files. If the next pipeline fails, only files whose hashes still
+match that record are removed. Hand-maintained files, manually edited outputs,
+and files from older runs without an ownership record are preserved. A successful
+regeneration establishes ownership for subsequent failure cleanup.
+
+Config import graphs are compiled into a temporary directory, so deployment
+source directories can be read-only. Static local imports and literal dynamic
+imports are staged together; package resolution retains Node's import/require
+conditions. The temporary graph is removed after the config export resolves.

@@ -10,7 +10,7 @@ This guide mirrors the layout used by the official docsfn docs app: a **singleto
 ## Prerequisites
 
 - **SvelteKit 2** and **Svelte 5**
-- **Node.js 18+** (20+ recommended)
+- **Node.js 20–24**
 - **TypeScript** enabled in the Kit project
 
 ## Svelte `script` blocks in this guide

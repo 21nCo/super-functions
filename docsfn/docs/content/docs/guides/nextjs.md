@@ -11,7 +11,7 @@ Use **`@docsfn/next`** with **`@docsfn/core`**, **`@docsfn/react`**, and **`@doc
 
 - **Next.js 15** (App Router)
 - **React 19** (or 18; see package peer ranges)
-- **Node.js 18+**
+- **Node.js 20–24**
 
 ---
 

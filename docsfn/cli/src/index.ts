@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import cac from "cac";
 import chokidar from "chokidar";
@@ -695,6 +696,24 @@ async function runDevCommand(
   });
 }
 
+const llmsOutputNames = ["llms.txt", "llms-full.txt"] as const;
+const llmsOwnershipFile = ".docsfn-llms-outputs.json";
+function llmsOutputHash(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+async function removeOwnedLlmsOutputs(staticDir: string): Promise<void> {
+  let ownership: Record<string, unknown>;
+  try { ownership = JSON.parse(await fs.readFile(path.join(staticDir, llmsOwnershipFile), "utf8")); }
+  catch { return; }
+  if (!ownership || typeof ownership !== "object") return;
+  for (const name of llmsOutputNames) {
+    let content: string;
+    try { content = await fs.readFile(path.join(staticDir, name), "utf8"); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") continue; throw error; }
+    if (ownership[name] === llmsOutputHash(content)) await fs.rm(path.join(staticDir, name), { force: true });
+  }
+}
+
 async function runLlmsCommand(
   rootArg: string | undefined,
   options: LlmsCommandOptions
@@ -718,9 +737,7 @@ async function runLlmsCommand(
   printCommandSummary("llms", result);
 
   if (hasErrorDiagnostics(result.diagnostics) || !result.manifest) {
-    await Promise.all(["llms.txt", "llms-full.txt"].map(name =>
-      fs.rm(path.join(staticDir, name), { force: true }),
-    ));
+    await removeOwnedLlmsOutputs(staticDir);
     process.exitCode = 1;
     return;
   }
@@ -737,6 +754,10 @@ async function runLlmsCommand(
   await fs.mkdir(staticDir, { recursive: true });
   await fs.writeFile(path.join(staticDir, "llms.txt"), artifacts.llmsTxt, "utf8");
   await fs.writeFile(path.join(staticDir, "llms-full.txt"), artifacts.llmsFullTxt, "utf8");
+  await fs.writeFile(path.join(staticDir, llmsOwnershipFile), JSON.stringify({
+    "llms.txt": llmsOutputHash(artifacts.llmsTxt),
+    "llms-full.txt": llmsOutputHash(artifacts.llmsFullTxt),
+  }), "utf8");
 
   const llmsTxtBytes = Buffer.byteLength(artifacts.llmsTxt, "utf8");
   const llmsFullTxtBytes = Buffer.byteLength(artifacts.llmsFullTxt, "utf8");

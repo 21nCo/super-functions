@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import { access, readFile, stat, unlink, writeFile } from "node:fs/promises";
-import { dirname, extname, isAbsolute, join, resolve } from "node:path";
+import { access, readFile, readdir, stat, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { dirname, extname, isAbsolute, join, parse, relative, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import {
@@ -380,6 +381,7 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
       source: string;
       commonjs: boolean;
       json: boolean;
+      replacements: Array<{ start: number; end: number; text: string }>;
       imports: Array<{
         start: number;
         end: number;
@@ -427,6 +429,7 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
       source,
       commonjs,
       json: isJson,
+      replacements: [] as Array<{ start: number; end: number; text: string }>,
       imports: [] as Array<{
         start: number;
         end: number;
@@ -445,6 +448,9 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
       require: boolean;
     }> = [];
     function collect(node: import("typescript").Node): void {
+      if (ts.isPropertyAccessExpression(node) && node.name.text === "url" && ts.isMetaProperty(node.expression) && node.expression.keywordToken === ts.SyntaxKind.ImportKeyword) {
+        record.replacements.push({ start: node.getStart(ast), end: node.end, text: JSON.stringify(pathToFileURL(file).href) });
+      }
       if (
         (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
         node.moduleSpecifier &&
@@ -485,8 +491,7 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
         }
         target = found;
       }
-      if (!["", ".js", ".mjs", ".ts", ".cjs", ".json"].includes(extname(target)))
-        continue;
+      const loadable = ["", ".js", ".mjs", ".ts", ".cjs", ".json"].includes(extname(target));
       let stripEnd: number | undefined;
       if (extname(target) === ".json" && !isRequire) {
         // JSON dependencies become CommonJS wrappers, so neither static nor
@@ -503,7 +508,7 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
         require: isRequire,
         stripEnd,
       });
-      await visit(target);
+      if (loadable) await visit(target);
     }
   }
   configPath = resolve(configPath);
@@ -527,40 +532,76 @@ async function loadFreshConfigGraph(configPath: string): Promise<unknown> {
     fingerprint.update(file).update(module.source);
   const version = fingerprint.digest("hex").slice(0, 24);
   const loadNonce = randomUUID();
+  const stagingRoot = await mkdtemp(join(tmpdir(), "docsfn-config-graph-"));
+  const stagePath = (file: string): string => {
+    const root = parse(file).root;
+    return join(stagingRoot, createHash("sha256").update(root).digest("hex").slice(0, 8), relative(root, file));
+  };
   const outputPaths = new Map(
     [...modules.keys()].map((file) => [
       file,
       join(
-        dirname(file),
+        dirname(stagePath(file)),
         `.docsfn.${version}.${loadNonce}.${createHash("sha256").update(file).digest("hex").slice(0, 16)}.${modules.get(file)!.json || modules.get(file)!.commonjs ? "cjs" : "mjs"}`,
       ),
     ]),
   );
-  const written: string[] = [];
   try {
+    // Mirror ancestor package lookup paths without writing into the deployment tree.
+    // Links keep Node's import/require export conditions and package-relative assets intact.
+    for (const output of outputPaths.values()) await mkdir(dirname(output), { recursive: true });
+    const linkDependencies = async (source: string, destination: string): Promise<void> => {
+      if (!(await stat(destination).then(() => true, () => false))) {
+        await symlink(source, destination, process.platform === "win32" ? "junction" : "dir");
+        return;
+      }
+      // Graph modules may themselves live under node_modules. Do not place an
+      // ancestor link over their staging directories or write through a link.
+      for (const entry of await readdir(source, { withFileTypes: true })) {
+        const from = join(source, entry.name), to = join(destination, entry.name);
+        if ((await stat(from)).isDirectory()) await linkDependencies(from, to);
+        else if (!(await stat(to).then(() => true, () => false))) {
+          await writeFile(to, await readFile(from));
+        }
+      }
+    };
+    const prepared = new Set<string>();
+    for (const file of modules.keys()) {
+      let directory = dirname(file);
+      while (!prepared.has(directory)) {
+        prepared.add(directory);
+        const staged = stagePath(directory);
+        await mkdir(staged, { recursive: true });
+        const dependencies = join(directory, "node_modules");
+        if (await stat(dependencies).then(info => info.isDirectory(), () => false)) {
+          await linkDependencies(dependencies, join(staged, "node_modules"));
+        }
+        const parent = dirname(directory);
+        if (parent === directory) break;
+        directory = parent;
+      }
+    }
     for (const [file, module] of modules) {
       let source = module.json ? `module.exports = JSON.parse(${JSON.stringify(module.source)});\n` : module.source;
-      for (const entry of [...module.imports].sort(
-        (a, b) => b.start - a.start,
-      )) {
-        source =
-          source.slice(0, entry.start) +
-          JSON.stringify(
-            entry.require
-              ? outputPaths.get(entry.target)!
-              : pathToFileURL(outputPaths.get(entry.target)!).href,
-          ) +
-          source.slice(entry.stripEnd ?? entry.end);
+      const replacements = [...module.replacements, ...module.imports.map(entry => ({
+        start: entry.start,
+        end: entry.stripEnd ?? entry.end,
+        text: JSON.stringify(entry.require
+          ? outputPaths.get(entry.target) ?? entry.target
+          : pathToFileURL(outputPaths.get(entry.target) ?? entry.target).href),
+      }))];
+      for (const entry of replacements.sort((a, b) => b.start - a.start)) {
+        source = source.slice(0, entry.start) + entry.text + source.slice(entry.end);
       }
+      if (module.commonjs) source = `__dirname = ${JSON.stringify(dirname(file))}; __filename = ${JSON.stringify(file)};\n` + source;
       const output = outputPaths.get(file)!;
       await writeFile(output, source, { encoding: "utf8", mode: 0o600 });
-      written.push(output);
     }
-    return resolveConfigExport(
+    return await resolveConfigExport(
       await import(pathToFileURL(outputPaths.get(configPath)!).href),
     );
   } finally {
-    for (const file of written) await unlink(file).catch(() => undefined);
+    await rm(stagingRoot, { recursive: true, force: true });
   }
 }
 

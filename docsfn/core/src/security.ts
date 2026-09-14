@@ -73,7 +73,7 @@ function toGlobRegex(glob: string): RegExp {
       } else source += ".*";
     } else source += "[^/]*";
   }
-  return new RegExp(`^${source}$`, "i");
+  return new RegExp(`^${source}$`);
 }
 
 function matchesAllowlist(entry: DocsSourceEntry, allowlist: string[]): boolean {

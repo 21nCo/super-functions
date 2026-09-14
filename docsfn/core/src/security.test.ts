@@ -270,6 +270,7 @@ it.each(['<!-->', '<!--->', '<!-- comment --!>'])('rejects executable attributes
 
 it.each([
   ["docs:legacy/*", "legacy/direct.mdx", true],
+  ["docs:Legacy/*", "legacy/direct.mdx", false],
   ["docs:legacy/*", "legacy/nested/page.mdx", false],
   ["docs:legacy/**", "legacy/nested/page.mdx", true],
   ["docs:legacy/**/*.mdx", "legacy/direct.mdx", true],

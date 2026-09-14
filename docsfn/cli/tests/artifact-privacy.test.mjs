@@ -81,3 +81,21 @@ test("failed LLM regeneration removes only owned outputs in the selected static 
     assert.equal(await readFile(join(directory, "keep.txt"), "utf8"), "Unrelated content");
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+
+test("failed LLM generation preserves hand-maintained and edited files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "docsfn-llms-manual-"));
+  try {
+    await mkdir(join(root, "static"));
+    await writeFile(join(root, "static/llms.txt"), "Hand-maintained index");
+    await writeFile(join(root, "static/llms-full.txt"), "Hand-maintained content");
+    await writeFile(join(root, "docsfn.config.mjs"), "export default {schemaVersion: 999};");
+    await assert.rejects(execute(process.execPath, [cli, "llms", root], { timeout: 30000 }));
+    assert.equal(await readFile(join(root, "static/llms.txt"), "utf8"), "Hand-maintained index");
+    // An outdated ownership hash must not authorize removal after a manual edit.
+    await writeFile(join(root, "static/.docsfn-llms-outputs.json"), JSON.stringify({ "llms.txt": "old-hash" }));
+    await assert.rejects(execute(process.execPath, [cli, "llms", root], { timeout: 30000 }));
+    assert.equal(await readFile(join(root, "static/llms-full.txt"), "utf8"), "Hand-maintained content");
+    assert.equal(await readFile(join(root, "static/llms.txt"), "utf8"), "Hand-maintained index");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
