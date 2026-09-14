@@ -51,3 +51,9 @@ the scanner itself remains a pure producer of findings.
 Secret rotation requires an adapter advertising transaction support. The encrypted
 version insert and version-pointer advance commit together; a failed
 pointer update rolls back the new version. Nontransactional adapters fail before writing.
+
+Secret creation also requires transactional storage: the secret and initial encrypted
+version are inserted together, so a failed version insert leaves no unusable secret.
+Shared rate limiting must use `rateLimit.atomicStore` with linearizable compare-and-set.
+Legacy `rateLimit.persistence` is accepted only with `singleProcess: true`; it does
+not coordinate quotas across server instances. In-memory defaults are process-local.

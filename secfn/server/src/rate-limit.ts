@@ -24,6 +24,8 @@ export class SecFnRateLimiter {
   private readonly limits: Required<Required<SecFnRateLimitConfig>["limits"]>;
 
   constructor(config: SecFnRateLimitConfig | undefined, private readonly audit: AuditService) {
+    if (config?.persistence && !config.singleProcess) throw new Error("SecFn shared rate limits require atomicStore; persistence requires singleProcess: true");
+    if (config?.persistence && config.atomicStore) throw new Error("Choose one rate-limit storage backend");
     this.enabled = config?.enabled ?? false;
     this.limits = {
       perIP: config?.limits?.perIP ?? 120,
@@ -35,6 +37,7 @@ export class SecFnRateLimiter {
       maxRequests: Math.max(this.limits.perIP, this.limits.perUser, this.limits.perEndpoint),
       algorithm: config?.algorithm ?? "token-bucket",
       persistence: config?.persistence,
+      atomicStore: config?.atomicStore,
       keyPrefix: "secfn:ratelimit:",
     });
   }

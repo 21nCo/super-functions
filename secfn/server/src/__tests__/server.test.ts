@@ -20,6 +20,7 @@ function createServer(options: { allowAdmin?: boolean; rateLimit?: boolean } = {
       ? {
         enabled: true,
         persistence: db,
+        singleProcess: true,
         windowMs: 60_000,
         limits: { perIP: 1, perUser: 1, perEndpoint: 1 },
       }
@@ -447,4 +448,22 @@ it("rolls back failed rotation and permits retry without an orphan version", asy
   db.capabilities.transactions.supported = false;
   await expect(secfn.vault.rotateSecret(secret.id, { value: "never", actorId: "admin" })).rejects.toThrow("transactional storage");
   expect(db.dump("secfn_secret_versions")).toHaveLength(2);
+});
+
+
+it("rolls back initial secret creation when its version fails and allows retry", async () => {
+  const { secfn, db } = createServer();
+  const create = db.create.bind(db);
+  let fail = true;
+  db.create = async (params: any) => {
+    if (params.model === "secfn_secret_versions" && fail) { fail = false; throw new Error("version insert failed"); }
+    return create(params);
+  };
+  const input = { tenantId: "tenant-a", namespace: "workspace-a", key: "INITIAL", value: "value", createdBy: "admin" };
+  await expect(secfn.vault.createSecret(input)).rejects.toThrow("version insert failed");
+  expect(db.dump("secfn_secrets")).toHaveLength(0);
+  expect(db.dump("secfn_secret_versions")).toHaveLength(0);
+  await secfn.vault.createSecret(input);
+  expect(db.dump("secfn_secrets")).toHaveLength(1);
+  expect(db.dump("secfn_secret_versions")).toHaveLength(1);
 });

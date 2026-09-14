@@ -6,6 +6,7 @@ export default defineConfig({
     alias: {
       "@secfn/core/id": resolve(__dirname, "../core/src/id.ts"),
       "@secfn/core": resolve(__dirname, "../core/src/index.ts"),
+      "@superfunctions/db/adapters": resolve(__dirname, "../../packages/db/src/adapters/index.ts"),
       "@superfunctions/db": resolve(__dirname, "../../packages/db/src/index.ts"),
       "@superfunctions/http": resolve(__dirname, "../../packages/http/src/index.ts"),
       "@superfunctions/middleware/rate-limit": resolve(

@@ -1,4 +1,4 @@
-import type { Adapter, KVStoreAdapter } from "@superfunctions/db";
+import type { Adapter, KVStoreAdapter, AtomicKVStoreAdapter } from "@superfunctions/db";
 import type {
   KeyProvider,
   SecFnEnvironment,
@@ -53,7 +53,11 @@ export type SecFnAdminAction =
   | "scan-runs:list";
 
 export interface SecFnRateLimitConfig extends SecFnRateLimitPolicyConfig {
+  /** Required for shared, multi-instance rate limiting. Must provide linearizable CAS. */
+  atomicStore?: AtomicKVStoreAdapter;
+  /** Non-atomic persistence requires explicit single-process mode. */
   persistence?: Adapter | KVStoreAdapter;
+  singleProcess?: boolean;
 }
 
 export interface SecFnServerConfig<TContext extends SecFnRequestContext = SecFnRequestContext> {

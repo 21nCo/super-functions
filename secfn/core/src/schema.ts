@@ -201,6 +201,7 @@ export function getSecFnSchema(): TableSchema[] {
         findingCount: { type: "number", required: true, fieldName: "finding_count" },
         metadata: { type: "json", required: false },
       },
+      indexes: [{ name: "idx_secfn_scan_runs_tenant", fields: ["tenantId"] }],
     },
     {
       modelName: "secfn_scan_findings",

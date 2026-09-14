@@ -1,7 +1,7 @@
 import {
   createCipheriv,
   createDecipheriv,
-  pbkdf2Sync,
+  pbkdf2,
   randomBytes,
   timingSafeEqual,
   createHash,
@@ -43,7 +43,7 @@ export async function encryptSecret(
   const material = await keyProvider.resolveKey({ purpose: "encrypt" });
   const salt = randomBytes(SALT_LENGTH);
   const iv = randomBytes(IV_LENGTH);
-  const key = deriveKey(material, salt);
+  const key = await deriveKey(material, salt);
   const cipher = createCipheriv(ALGORITHM, key, iv);
   cipher.setAAD(Buffer.from(aad, "utf8"));
 
@@ -72,7 +72,7 @@ export async function decryptSecret(
       keyId: payload.keyId,
       purpose: "decrypt",
     });
-    const key = deriveKey(material, Buffer.from(payload.salt, "base64url"));
+    const key = await deriveKey(material, Buffer.from(payload.salt, "base64url"));
     const decipher = createDecipheriv(
       ALGORITHM,
       key,
@@ -102,9 +102,13 @@ export function verifyTokenHash(token: string, expectedHash: string): boolean {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-function deriveKey(material: KeyMaterial, salt: Buffer): Buffer {
+function deriveKey(material: KeyMaterial, salt: Buffer): Promise<Buffer> {
   const secret = typeof material.secret === "string"
     ? Buffer.from(material.secret, "utf8")
     : Buffer.from(material.secret);
-  return pbkdf2Sync(secret, salt, ITERATIONS, KEY_LENGTH, "sha256");
+  return new Promise((resolve, reject) => {
+    pbkdf2(secret, salt, ITERATIONS, KEY_LENGTH, "sha256", (error, key) => {
+      if (error) reject(error); else resolve(key);
+    });
+  });
 }

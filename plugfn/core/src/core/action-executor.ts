@@ -128,6 +128,13 @@ export class ActionExecutor {
         throw new Error(`No connection found for provider ${provider} and user ${options.userId}`);
       }
 
+      const requireScopes = (scopes: string[] | undefined) => {
+        if (contract?.requiredScopes.some(scope => !scopes?.includes(scope))) {
+          throw new Error("ACTION_SCOPE_REQUIRED");
+        }
+      };
+      requireScopes(connection.scopes);
+
       const cacheKey = shouldUseCache
         ? typeof options.cache === 'object' && options.cache.key
           ? this.cacheMiddleware.generateCustomKey(
@@ -171,9 +178,11 @@ export class ActionExecutor {
       // Refresh may change granted scopes. Reapply consumer authorization against
       // the persisted refreshed connection before any external dispatch.
       if (connection.expiresAt && new Date() >= connection.expiresAt) {
-        await this.connectionManager.resolveConnectionForAction({
+        const refreshed = await this.connectionManager.resolveConnectionForAction({
           userId: options.userId, provider, connectionId: connection.id, actor: options.actor,
         });
+        if (!refreshed) throw new Error("Connection unavailable after refresh");
+        requireScopes(refreshed.scopes);
       }
 
       // Apply rate limiting

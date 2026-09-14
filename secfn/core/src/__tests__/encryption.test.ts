@@ -33,3 +33,11 @@ describe("secret encryption", () => {
     });
   });
 });
+
+it("allows other event-loop work during key derivation", async () => {
+  let completed = false;
+  const encryption = encryptSecret("value", createStaticKeyProvider("key"), "aad").then(value => { completed = true; return value; });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(completed).toBe(false);
+  await encryption;
+});

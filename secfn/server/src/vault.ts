@@ -267,6 +267,7 @@ export class VaultService {
   }
 
   async createSecret(input: CreateSecretInput): Promise<SecretRecord> {
+    if (!this.db.capabilities.transactions.supported) throw new SecFnValidationError("Secret creation requires transactional storage");
     if (!input.key.trim()) throw new SecFnValidationError("Secret key is required");
     const resolved = await this.resolveScope(input, { requireNamespace: true, requireEnvironment: true, create: true, actorId: input.createdBy });
     const existing = await this.findSecretByKey(input.key, resolved);
@@ -292,8 +293,10 @@ export class VaultService {
       metadata: input.metadata,
     };
     const version = await this.createVersion(secret, input.value, input.createdBy);
-    await this.db.create({ model: "secfn_secrets", data: secret as unknown as Record<string, unknown> });
-    await this.db.create({ model: "secfn_secret_versions", data: version as unknown as Record<string, unknown> });
+    await this.db.transaction(async (trx) => {
+      await trx.create({ model: "secfn_secrets", data: secret as unknown as Record<string, unknown> });
+      await trx.create({ model: "secfn_secret_versions", data: version as unknown as Record<string, unknown> });
+    });
     await this.audit.write({
       type: "secret_accessed",
       severity: "info",
