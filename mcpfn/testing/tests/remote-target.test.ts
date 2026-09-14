@@ -1,3 +1,4 @@
+import { McpFnTargetSuiteCleanupError } from "../src/suite.js";
 import { startAuthenticatedServer, listen, closeServer } from "../../test-support/authenticated-server.js";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -34,6 +35,9 @@ describe("authenticated remote MCP targets", () => {
         acquire: () => ({ headers: { authorization: "Bearer cleanup-secret" } }),
         revoke: () => { throw new Error("revoke failed: cleanup-secret"); },
       } }), expectedToolNames: ["missing-tool"],
+    }).catch(error => {
+      expect(error).toBeInstanceOf(McpFnTargetSuiteCleanupError);
+      return (error as McpFnTargetSuiteCleanupError).report;
     });
     expect(report.ok).toBe(false);
     expect(report.failure?.message).toContain("Tool inventory mismatch");
@@ -197,7 +201,10 @@ it("redacts invalid-header cleanup errors and credential-shaped fields", async (
     acquire: () => ({ headers: { host: "opaque-invalid-credential" } }),
     revoke: () => { throw new Error("opaque-invalid-credential"); },
   } });
-  const report = await runMcpFnTargetSuite({ target });
+  const report = await runMcpFnTargetSuite({ target }).catch(error => {
+      expect(error).toBeInstanceOf(McpFnTargetSuiteCleanupError);
+      return (error as McpFnTargetSuiteCleanupError).report;
+    });
   expect(report.ok).toBe(false);
   expect(JSON.stringify(report)).not.toContain("opaque-invalid-credential");
   expect(JSON.stringify(redactTargetCredentials(target, { access_token: "unrelated-secret" }))).not.toContain("unrelated-secret");
@@ -570,6 +577,9 @@ it("scrubs encoded cleanup errors from finalized JSON and JUnit reports", async 
         acquire: () => ({ headers: { authorization: `Bearer ${secret}` } }),
         revoke: () => { throw new Error(`cleanup failed: ${encoded}`); },
       } }),
+    }).catch(error => {
+      expect(error).toBeInstanceOf(McpFnTargetSuiteCleanupError);
+      return (error as McpFnTargetSuiteCleanupError).report;
     });
     expect(report.ok).toBe(false);
     expect(report.incompleteReason).toContain("Target cleanup failed");
@@ -589,4 +599,23 @@ it("uses form serialization for punctuation while preserving literal percent cre
   expect(redactRemoteCredential(credential, "opaque%2fsecret")).toBe("opaque%2fsecret");
   expect(redactRemoteCredential(credential, "opaque%2Fsecret")).not.toContain("opaque%2Fsecret");
   expect(redactRemoteCredential(credential, "opaque%252Fsecret")).not.toContain("opaque%252Fsecret");
+});
+
+it.each(["revoke", "dispose"])("retains suite ownership for a failed credential %s", async phase => {
+  const fixture = await startAuthenticatedServer("retry-owned-secret");
+  const revoke = vi.fn(async () => undefined);
+  const dispose = vi.fn(async () => undefined);
+  (phase === "revoke" ? revoke : dispose).mockRejectedValueOnce(new Error("retry-owned-secret"));
+  try {
+    const error = await runMcpFnTargetSuite({ target: authenticatedHttpTarget(fixture.url, {
+      credential: { acquire: () => ({ headers: { authorization: "Bearer retry-owned-secret" } }), revoke, dispose },
+    }) }).catch(error => error);
+    expect(error).toBeInstanceOf(McpFnTargetSuiteCleanupError);
+    expect(JSON.stringify(error.report)).not.toContain("retry-owned-secret");
+    await Promise.all([error.retryCleanup(), error.retryCleanup()]);
+    expect(revoke).toHaveBeenCalledTimes(phase === "revoke" ? 2 : 1);
+    expect(dispose).toHaveBeenCalledTimes(phase === "dispose" ? 2 : 1);
+    await error.retryCleanup();
+    expect(dispose).toHaveBeenCalledTimes(phase === "dispose" ? 2 : 1);
+  } finally { await fixture.close(); }
 });

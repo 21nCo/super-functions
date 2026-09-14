@@ -19,6 +19,7 @@ import {
   McpFnTestClient,
   McpFnAssertionError,
   McpFnConformanceCleanupError,
+  McpFnTargetSuiteCleanupError,
   assertManifestContract,
   authenticatedHttpTarget,
   validateRemoteCredentialHeaders,
@@ -309,6 +310,12 @@ export async function runCli(
           .map((name) => name.trim())
           .filter(Boolean),
         maxReportBytes: (maxReportBytes ?? 1_048_576) - 1,
+      }).catch(async error => {
+        if (!(error instanceof McpFnTargetSuiteCleanupError)) throw error;
+        // CLI execution has no interactive retry owner. Make one bounded retry,
+        // then persist the failed snapshot even if cleanup subsequently succeeds.
+        await error.retryCleanup().catch(() => undefined);
+        return error.report;
       });
       const serialized = `${JSON.stringify(report)}\n`;
       // The suite reserves one byte for this trailing newline and enforces the cap.

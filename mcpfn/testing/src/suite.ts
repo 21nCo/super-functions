@@ -65,6 +65,29 @@ export interface McpFnTargetSuiteReport {
   results: McpFnScenarioResult[];
 }
 
+const suiteCleanupOwners = new WeakMap<McpFnTargetSuiteCleanupError, { close: () => Promise<void>; pending?: Promise<void> }>();
+
+/** Final cleanup failed. The bounded report is a snapshot; retain this error to retry. */
+export class McpFnTargetSuiteCleanupError extends Error {
+  constructor(readonly report: McpFnTargetSuiteReport, close: () => Promise<void>) {
+    super("Target suite cleanup failed; retain this error and retryCleanup()");
+    this.name = "McpFnTargetSuiteCleanupError";
+    suiteCleanupOwners.set(this, { close });
+  }
+
+  retryCleanup(): Promise<void> {
+    const owner = suiteCleanupOwners.get(this);
+    if (!owner) return Promise.resolve();
+    if (owner.pending) return owner.pending;
+    const pending = Promise.resolve().then(owner.close).then(
+      () => { suiteCleanupOwners.delete(this); },
+      () => { throw this; },
+    ).finally(() => { owner.pending = undefined; });
+    owner.pending = pending;
+    return pending;
+  }
+}
+
 /** Runs local, stdio, HTTP, or custom targets through the production session engine. */
 export async function runMcpFnTargetSuite(
   options: RunMcpFnTargetSuiteOptions,
@@ -94,6 +117,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   let manifestChecked = false;
   let failure: McpFnReportFailure | undefined;
   let cleanupFailure: McpFnReportFailure | undefined;
+  let retainedCleanup: (() => Promise<void>) | undefined;
   let execution: {
     results: McpFnScenarioResult[];
     server?: Implementation;
@@ -155,6 +179,8 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     try {
       await client?.close();
     } catch (error) {
+      const owner = client;
+      if (owner) retainedCleanup = () => owner.close();
       cleanupFailure = normalizeMcpFnReportFailure({ name: "CleanupError", message: "Target cleanup failed", code: "MCPFN_TARGET_CLEANUP_FAILED", phase: "transport-close" });
       if (!failure) failure = cleanupFailure;
     }
@@ -211,13 +237,14 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     droppedTimelineEvents,
     results,
   };
+  let finalized: McpFnTargetSuiteReport;
   try {
     // Descriptors and final serialization share the same fail-closed boundary.
     // Scrub opaque credentials before generic redaction can truncate a match.
     report.target = redactOAuthValue(redactSuiteArtifact(options.target, { target: options.target.describe() }, { preserveKeys: true }).target) as unknown as McpFnTargetDescriptor;
-    return enforceReportCap(redactSuiteArtifact(options.target, report, { preserveKeys: true }), maxReportBytes);
+    finalized = enforceReportCap(redactSuiteArtifact(options.target, report, { preserveKeys: true }), maxReportBytes);
   } catch (error) {
-    return enforceReportCap({ ...report, ok: false, status: "incomplete",
+    finalized = enforceReportCap({ ...report, ok: false, status: "incomplete",
       incompleteReason: error instanceof McpFnRedactionLimitError
         ? "Credential redaction exceeded its traversal budget"
         : "Report content omitted because safe serialization failed",
@@ -226,6 +253,8 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
       droppedResults: report.results.length, droppedTimelineEvents: report.droppedTimelineEvents + report.timeline.length,
     }, maxReportBytes);
   }
+  if (retainedCleanup) throw new McpFnTargetSuiteCleanupError(finalized, retainedCleanup);
+  return finalized;
 }
 
 function enforceReportCap(

@@ -177,3 +177,14 @@ failure; successful revoke/dispose steps are not repeated.
 Authenticated targets provide credential-aware redaction to client diagnostic/event listeners and inspector snapshots and exports while their credentials are active. Export raw operation results before closing the client; application-facing protocol return values retain their original contents. Recorded inspector events are scrubbed before storage.
 
 When authenticated conformance cleanup exhausts retries, `McpFnConformanceCleanupError.result` retains the original runner stdout, stderr, exit code (or 1 for an otherwise successful run), and failure. A separate `cleanupFailure` records cleanup exhaustion; the overall result is failed. The CLI persists this redacted result before exiting nonzero.
+
+
+### Retrying failed suite cleanup
+
+If final session cleanup fails, `runMcpFnTargetSuite` rejects with
+`McpFnTargetSuiteCleanupError`. Its `report` contains the bounded, redacted failed
+snapshot. Retain the error and call `await error.retryCleanup()` to retry the
+owned session cleanup. Concurrent retries share one operation; successful cleanup
+releases ownership and later retries do nothing. A failed retry rejects with the
+same safe error. Retrying does not rewrite the historical report as passing.
+The CLI makes one cleanup retry and emits the failed report with exit code 1.

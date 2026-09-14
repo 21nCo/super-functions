@@ -1,3 +1,4 @@
+import { McpFnTargetSuiteCleanupError } from "../src/suite.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it, vi } from "vitest";
 import { customTarget } from "@mcpfn/client";
@@ -125,7 +126,10 @@ it("marks otherwise successful suites incomplete when custom close rejects", asy
     const [client, remote] = InMemoryTransport.createLinkedPair();
     await server.connect(remote);
     return { transport: client, close: async () => { await server.close(); throw new Error("opaque-cleanup-value"); } };
-  } }) });
+  } }) }).catch(error => {
+      expect(error).toBeInstanceOf(McpFnTargetSuiteCleanupError);
+      return (error as McpFnTargetSuiteCleanupError).report;
+    });
   expect(report.ok).toBe(false);
   expect(report.incompleteReason).toContain("Target cleanup failed");
   expect(JSON.stringify(report)).not.toContain("opaque-cleanup-value");
@@ -210,4 +214,30 @@ it.each(["metadata", "failure", "throwing-redactor"])("applies custom target red
     expect(report.server).toBeUndefined();
     expect(report.timeline).toEqual([]);
   }
+});
+
+
+it("transfers failed shutdown ownership and serializes safe cleanup retries", async () => {
+  const secret = "private-cleanup-secret";
+  const server = createMcpFnServer({ info: { name: "cleanup", version: "1" }, registry: new McpFnRegistry() });
+  let fail = true;
+  const close = vi.fn(async () => { if (fail) throw new Error(secret); await server.close(); });
+  const target = customTarget({ kind: "custom", open: async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    return { transport: clientTransport, close };
+  } });
+  const error = await runMcpFnTargetSuite({ target }).catch(error => error);
+  expect(error).toBeInstanceOf(McpFnTargetSuiteCleanupError);
+  expect(error.report.ok).toBe(false);
+  expect(JSON.stringify(error)).not.toContain(secret);
+  const first = error.retryCleanup();
+  expect(error.retryCleanup()).toBe(first);
+  await expect(first).rejects.toBe(error);
+  fail = false;
+  await Promise.all([error.retryCleanup(), error.retryCleanup()]);
+  const calls = close.mock.calls.length;
+  await error.retryCleanup();
+  expect(close).toHaveBeenCalledTimes(calls);
+  expect(error.report.ok).toBe(false); // Immutable historical failure evidence.
 });
