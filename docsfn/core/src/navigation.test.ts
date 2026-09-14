@@ -291,3 +291,10 @@ describe("navigation", () => {
     expect(pagination.next?.path).toBe("/docs/operations/troubleshooting");
   });
 });
+
+it("keeps directory descendants beside a same-named page", () => {
+  const pages = [createPage({ id: "guide", sourcePath: "guide", path: "/docs/guide", title: "Guide" }), createPage({ id: "install", sourcePath: "guide/install", path: "/docs/guide/install", title: "Install" })];
+  const sidebars = buildSidebars({ pages, metaByDirectory: new Map(), config: createConfig() });
+  expect(JSON.stringify(sidebars.default)).toContain("/docs/guide/install");
+  expect(JSON.stringify(sidebars.default)).toContain('"link":"/docs/guide"');
+});

@@ -1,3 +1,4 @@
+import { createDocsError } from "./diagnostics";
 import {
   resolveBreadcrumbsFromSidebar,
   resolvePaginationFromSidebar,
@@ -41,11 +42,19 @@ interface PaginationOverride {
   title?: string;
 }
 
+function safePaginationPath(value: string): string {
+  const path = value.trim();
+  if (!path || /[\u0000-\u0020\u007f\\]/.test(path) || path.startsWith("//") || (/^[a-z][a-z0-9+.-]*:/i.test(path) && !/^https?:\/\//i.test(path))) {
+    throw createDocsError({ code: "DOCS_ENTRY_INVALID", message: "Pagination overrides require local paths or HTTP(S) URLs" });
+  }
+  return path;
+}
+
 function normalizePaginationOverride(
   input: unknown
 ): PaginationOverride | undefined {
   if (typeof input === "string" && input.length > 0) {
-    return { path: input };
+    return { path: safePaginationPath(input) };
   }
 
   if (typeof input !== "object" || input === null) {
@@ -62,7 +71,7 @@ function normalizePaginationOverride(
   }
 
   return {
-    path: pathCandidate,
+    path: safePaginationPath(pathCandidate),
     title: typeof candidate.title === "string" ? candidate.title : undefined,
   };
 }

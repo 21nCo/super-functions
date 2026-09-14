@@ -249,3 +249,12 @@ it("honors an unsafe HTML allowlisted source during compilation", () => {
   expect(view.container.querySelector("iframe")).not.toBeNull();
   view.unmount();
 });
+
+it("rejects unsafe HTML when the source is outside the allowlist", () => {
+  expect(() => render(DocsContent, { content: '<iframe src="https://example.com"></iframe>', sourcePath: "other.mdx", unsafeHtmlAllowlist: ["legacy.mdx"] })).toThrow();
+});
+
+it("resolves raw embedded Markdown links with route context", () => {
+  const view = render(EmbeddedPage, { title: "Embedded", route: "/embedded/guide/page", sourcePath: "docs:guide/page.mdx", content: "[Other](./other.md)" });
+  expect(view.getByRole("link", { name: "Other" }).getAttribute("href")).toBe("/embedded/guide/other");
+});

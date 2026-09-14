@@ -18,7 +18,7 @@ import type { ApiReference } from "@docsfn/core/browser";
     mediaType: string;
     schema?: unknown;
     example?: unknown;
-    examples?: Array<{ name: string; value?: unknown; reference?: string }>;
+    examples?: Array<{ name: string; value?: unknown; reference?: string; externalValue?: string }>;
   }
 
   interface RenderResponse {
@@ -327,7 +327,7 @@ import type { ApiReference } from "@docsfn/core/browser";
                             <div class="docsfn-api-request-media">
                               <h4>{media.mediaType}</h4>
                               {#if media.schema !== undefined}<h5>Schema</h5><pre class="docsfn-api-code">{JSON.stringify(media.schema, null, 2)}</pre>{/if}
-                              {#each media.examples ?? [] as example (example.name)}<h5>{example.name}</h5><pre class="docsfn-api-code">{example.reference ? `External example reference: ${example.reference}` : JSON.stringify(example.value, null, 2)}</pre>{/each}
+                              {#each media.examples ?? [] as example (example.name)}<h5>{example.name}</h5><pre class="docsfn-api-code">{example.reference ? `External example reference: ${example.reference}` : example.externalValue ? `External example value: ${example.externalValue}` : JSON.stringify(example.value, null, 2)}</pre>{/each}
                               {#if typeof media.example !== "undefined"}
                                 <h5>Example</h5><pre class="docsfn-api-code">{JSON.stringify(media.example, null, 2)}</pre>
                               {/if}
@@ -350,7 +350,7 @@ import type { ApiReference } from "@docsfn/core/browser";
                               <h4>{media.mediaType}</h4>
                               {#if media.schema !== undefined}<h5>Schema</h5><pre class="docsfn-api-code">{JSON.stringify(media.schema, null, 2)}</pre>{/if}
                               {#if media.example !== undefined}<h5>Example</h5><pre class="docsfn-api-code">{JSON.stringify(media.example, null, 2)}</pre>{/if}
-                              {#each media.examples ?? [] as example (example.name)}<h5>{example.name}</h5><pre class="docsfn-api-code">{example.reference ? `External example reference: ${example.reference}` : JSON.stringify(example.value, null, 2)}</pre>{/each}
+                              {#each media.examples ?? [] as example (example.name)}<h5>{example.name}</h5><pre class="docsfn-api-code">{example.reference ? `External example reference: ${example.reference}` : example.externalValue ? `External example value: ${example.externalValue}` : JSON.stringify(example.value, null, 2)}</pre>{/each}
                               </div>
                             {/each}
                           </div>

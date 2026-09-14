@@ -623,8 +623,10 @@ async function runDevCommand(
   });
   let activeWatchTargets = new Set(watchTargets);
 
-  async function refreshWatchTargets(config: DocsConfig): Promise<void> {
-    const metadata = await resolveProviderWatchMetadata(config, cwd);
+  let lastWatchConfig = initialResult.config;
+  async function refreshWatchTargets(config = lastWatchConfig): Promise<void> {
+    if (config) lastWatchConfig = config;
+    const metadata = config ? await resolveProviderWatchMetadata(config, cwd) : undefined;
     const nextTargets = new Set(
       resolveWatchTargets({
         cwd,
@@ -665,7 +667,7 @@ async function runDevCommand(
         } else {
           process.exitCode = 0;
         }
-        if (result.config && isConfigWatchPath(absolutePath, cwd, options.config)) {
+        if (isConfigWatchPath(absolutePath, cwd, options.config)) {
           await refreshWatchTargets(result.config);
         }
       })

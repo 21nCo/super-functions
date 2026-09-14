@@ -1,8 +1,11 @@
 import React from "react";
+import { compileReactContent, resolveMarkdownRelativeLinks } from "@docsfn/core/browser";
 import type { CompiledContentArtifact, DocHeading, DocsCompatPreset } from "@docsfn/core";
 import { DocsContent } from "./DocsContent";
 
 export interface EmbeddedPageModel {
+  path?: string;
+  id?: string;
   title: string;
   description?: string;
   body: string;
@@ -29,6 +32,7 @@ export function EmbeddedPage({
   pageActionsSlot,
 }: EmbeddedPageProps) {
   const headings = page.headings ?? [];
+  const resolved = React.useMemo(() => page.path ? resolveMarkdownRelativeLinks({ compiled: compiled ?? compileReactContent({ source: page.body, sourcePath: page.id, compatPreset }), route: page.path, sourcePath: page.id }) : compiled, [compiled, page.path, page.id, page.body, compatPreset]);
 
   return (
     <article className="docsfn-embedded-page" data-docsfn-embedded-page="true">
@@ -51,8 +55,9 @@ export function EmbeddedPage({
       ) : null}
 
       <DocsContent
-        compiled={compiled}
+        compiled={resolved}
         content={page.body}
+        sourcePath={page.id}
         compatPreset={compatPreset}
         components={components}
         pageActionsSlot={pageActionsSlot}

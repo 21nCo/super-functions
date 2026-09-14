@@ -5,6 +5,7 @@ import React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { compileReactContent } from "@docsfn/core";
 import { vi } from "vitest";
+import { EmbeddedPage } from "./EmbeddedPage";
 import { DocsContent } from "./DocsContent";
 
 const FIXTURE_ROOT = resolve(
@@ -126,5 +127,15 @@ describe("DocsContent", () => {
 it("honors an unsafe HTML allowlisted source during compilation", () => {
   const view = render(<DocsContent content={'<iframe src="https://example.com"></iframe>'} sourcePath="legacy.mdx" unsafeHtmlAllowlist={["legacy.mdx"]} />);
   expect(view.container.querySelector("iframe")).not.toBeNull();
+  view.unmount();
+});
+
+it("rejects unsafe HTML when the source is outside the allowlist", () => {
+  expect(() => render(<DocsContent content={'<iframe src="https://example.com"></iframe>'} sourcePath="other.mdx" unsafeHtmlAllowlist={["legacy.mdx"]} />)).toThrow();
+});
+
+it("resolves raw embedded Markdown links with route context", () => {
+  const view = render(<EmbeddedPage page={{ title: "Embedded", path: "/embedded/guide/page", id: "docs:guide/page.mdx", body: "[Other](./other.md)" }} />);
+  expect(view.getByRole("link", { name: "Other" }).getAttribute("href")).toBe("/embedded/guide/other");
   view.unmount();
 });

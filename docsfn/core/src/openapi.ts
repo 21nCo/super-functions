@@ -23,6 +23,7 @@ export interface CanonicalOpenApiExample {
   name: string;
   /** Unresolved external example reference; never fetched during normalization. */
   reference?: string;
+  externalValue?: string;
   summary?: string;
   description?: string;
   value: unknown;

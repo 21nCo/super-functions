@@ -406,3 +406,8 @@ it("preserves external example references without failing normalization", () => 
   const spec = buildOpenApiReference({ sourceId: "api:x", sourcePath: "x.json", fallbackTitle: "X", body: JSON.stringify({ openapi: "3.1.0", info: { title: "X", version: "1" }, paths: { "/x": { get: { responses: { "200": { content: { "application/json": { examples: { sample: { $ref: "./examples.json#/Sample", summary: "Local summary", description: "Local description" } } } } } } } } } }) });
   expect(spec.operations[0].responses[0].content[0].examples[0]).toMatchObject({ name: "sample", reference: "./examples.json#/Sample", summary: "Local summary", description: "Local description", value: undefined });
 });
+
+it("preserves terminal external example references and externalValue", () => {
+  const spec = buildOpenApiReference({ sourceId: "api:x", sourcePath: "x.json", fallbackTitle: "X", body: JSON.stringify({ openapi: "3.1.0", info: { title: "X", version: "1" }, paths: { "/x": { get: { responses: { "200": { content: { "application/json": { examples: { linked: { $ref: "#/components/examples/remote", summary: "Override" }, payload: { externalValue: "https://example.com/payload.json" } } } } } } } } }, components: { examples: { remote: { $ref: "./examples.json#/Sample", summary: "Base" } } } }) });
+  expect(spec.operations[0].responses[0].content[0].examples).toEqual(expect.arrayContaining([expect.objectContaining({ name: "linked", reference: "./examples.json#/Sample", summary: "Override" }), expect.objectContaining({ name: "payload", externalValue: "https://example.com/payload.json" })]));
+});

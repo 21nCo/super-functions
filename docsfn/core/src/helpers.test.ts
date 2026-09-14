@@ -30,3 +30,8 @@ it("projects API subroutes without mutating the manifest overview", () => {
   expect(spec.operations).toHaveLength(2);
   expect(selectApiReferenceRoute(api, api.path)).toBe(api);
 });
+
+it.each(["javascript:alert(1)", " JaVaScRiPt:alert(1)", "java\nscript:alert(1)", "data:text/html,x", "//evil.example/x", "\\evil.example/x"])("rejects unsafe pagination override %s", value => {
+  const page = { kind: "page", id: "x", slug: "x", path: "/x", title: "X", body: "", headings: [], frontmatter: { prev: value } } as DocPage;
+  expect(() => getPaginationFromSidebarWithTitles("/x", { id: "docs", items: [] }, { x: page })).toThrow(expect.objectContaining({ code: "DOCS_ENTRY_INVALID" }));
+});

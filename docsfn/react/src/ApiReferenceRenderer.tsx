@@ -11,7 +11,7 @@ function MediaPayload({ media }: { media: RenderMediaContent }) {
     <h4>{media.mediaType}</h4>
     {media.schema !== undefined ? <><h5>Schema</h5><pre className="docsfn-api-code">{JSON.stringify(media.schema, null, 2)}</pre></> : null}
     {media.example !== undefined ? <><h5>Example</h5><pre className="docsfn-api-code">{JSON.stringify(media.example, null, 2)}</pre></> : null}
-    {media.examples?.map(example => <div key={example.name}><h5>{example.name}</h5><pre className="docsfn-api-code">{example.reference ? `External example reference: ${example.reference}` : JSON.stringify(example.value, null, 2)}</pre></div>)}
+    {media.examples?.map(example => <div key={example.name}><h5>{example.name}</h5><pre className="docsfn-api-code">{example.reference ? `External example reference: ${example.reference}` : example.externalValue ? `External example value: ${example.externalValue}` : JSON.stringify(example.value, null, 2)}</pre></div>)}
   </div>;
 }
 
@@ -33,7 +33,7 @@ interface RenderMediaContent {
   mediaType: string;
   schema?: unknown;
   example?: unknown;
-  examples?: Array<{ name: string; value: unknown; reference?: string }>;
+  examples?: Array<{ name: string; value: unknown; reference?: string; externalValue?: string }>;
 }
 
 interface RenderResponse {

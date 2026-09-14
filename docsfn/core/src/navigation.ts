@@ -213,6 +213,7 @@ function renderDirectory(input: {
     }
 
     const filePage = input.node.files.get(key);
+    const childDirectory = input.node.children.get(key);
     if (filePage) {
       items.push({
         type: "link",
@@ -220,10 +221,9 @@ function renderDirectory(input: {
         link: filePage.path,
         ...rulePresentation(rule, filePage.description),
       });
-      continue;
+      if (!childDirectory) continue;
     }
 
-    const childDirectory = input.node.children.get(key);
     if (!childDirectory) {
       continue;
     }

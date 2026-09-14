@@ -1,8 +1,11 @@
 <script lang="ts">
+  import { compileSvelteContent, resolveMarkdownRelativeLinks } from "@docsfn/core/browser";
   import type { CompiledContentArtifact, DocHeading, DocsCompatPreset } from "@docsfn/core/browser";
   import type { ComponentType } from "svelte";
   import DocsContent from "./DocsContent.svelte";
 
+  export let route: string | undefined = undefined;
+  export let sourcePath: string | undefined = undefined;
   export let title = "";
   export let description: string | undefined = undefined;
   export let content = "";
@@ -12,6 +15,7 @@
   export let components: Record<string, ComponentType | undefined> = {};
   export let showToc = true;
   export let tocLabel = "On this page";
+  $: resolved = route ? resolveMarkdownRelativeLinks({ compiled: compiled ?? compileSvelteContent({ source: content, sourcePath, compatPreset }), route, sourcePath }) : compiled;
 </script>
 
 <article class="docsfn-embedded-page" data-docsfn-embedded-page="true">
@@ -35,7 +39,7 @@
     </nav>
   {/if}
 
-  <DocsContent {compiled} {content} {compatPreset} {components}>
+  <DocsContent compiled={resolved} {sourcePath} {content} {compatPreset} {components}>
     <slot name="page-actions" slot="page-actions" />
   </DocsContent>
 </article>

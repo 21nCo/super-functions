@@ -11,20 +11,14 @@ export function normalizeExamples(value: unknown, document: Record<string, unkno
   return Object.keys(record)
     .sort(compareStrings)
     .map((name) => {
-      const raw = toObject(record[name]);
-      if (typeof raw.$ref === "string" && !raw.$ref.startsWith("#")) return {
-        name, reference: raw.$ref, value: undefined,
-        ...(typeof document.openapi === "string" && Number(document.openapi.split(".")[1]) >= 1 ? {
-          summary: typeof raw.summary === "string" ? raw.summary : undefined,
-          description: typeof raw.description === "string" ? raw.description : undefined,
-        } : {}),
-      };
-      const item = toObject(resolveLocalReference(record[name], document, input));
+      const item = toObject(resolveLocalReference(record[name], document, input, true));
       return {
         name,
         summary: typeof item.summary === "string" ? item.summary : undefined,
         description: typeof item.description === "string" ? item.description : undefined,
         value: "value" in item ? item.value : undefined,
+        reference: typeof item.$ref === "string" ? item.$ref : undefined,
+        externalValue: typeof item.externalValue === "string" ? item.externalValue : undefined,
       };
     });
 }
@@ -47,7 +41,8 @@ export function normalizeMediaContent(value: unknown, document: Record<string, u
 export function resolveLocalReference(
   value: unknown,
   document: Record<string, unknown>,
-  input: NormalizeOpenApiReferenceInput
+  input: NormalizeOpenApiReferenceInput,
+  allowExternal = false
 ): unknown {
   let resolved = value;
   const visited = new Set<string>();
@@ -59,6 +54,7 @@ export function resolveLocalReference(
       }
     }
     const reference = toObject(resolved).$ref as string;
+    if (allowExternal && !reference.startsWith("#")) { resolved = { $ref: reference, ...overrides }; break; }
     if (!reference.startsWith("#/") || visited.has(reference)) {
       throw createOpenApiParseError({
         message: `unsupported or cyclic local reference ${reference}`,
