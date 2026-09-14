@@ -232,3 +232,11 @@ it.each(['path-prefix', 'path-segment'] as const)('rejects conflicting frontmatt
 it.each(["guide?draft.mdx", "guide#section.mdx"])("rejects URL delimiters in source filenames: %s", sourcePath => {
   expect(() => buildRoute({ collection: "docs", sourcePath, config: createConfig() })).toThrow(expect.objectContaining({ code: "DOCS_ENTRY_INVALID" }));
 });
+
+
+it.each(["%2e", "%2E%2e", ".%2e", "%2e."])("rejects encoded dot route segment %s", segment => {
+  expect(() => buildRoute({ collection: "docs", sourcePath: `guide/${segment}/page`, config: createConfig() })).toThrow(/dot segments/);
+});
+it("preserves a percent-bearing name that is not a URL dot segment", () => {
+  expect(buildRoute({ collection: "docs", sourcePath: "guide/%2E../page", config: createConfig() }).path).toContain("%2E..");
+});

@@ -99,3 +99,5 @@ that API entirely. With a custom mixed-mode classifier, normalize raw OpenAPI in
 into a canonical reference before artifact generation; unclassified raw API specs
 are omitted conservatively. Search artifacts also omit draft posts from preview
 manifests.
+
+The standard CLI cannot load a host route classifier. For enabled mixed-mode auth, `docsfn build` and `docsfn llms` warn and omit all routes from public search/LLM artifacts. Generate selected public content through the programmatic API with the same `isRoutePrivate` predicate as the runtime. Canonical API child arrays must all exist and each child must carry an absolute route; malformed or incomplete API route inventories are omitted.

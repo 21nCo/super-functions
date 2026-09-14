@@ -44,6 +44,13 @@ export function segmentsToSlug(segments: string[]): string {
 export function deriveLogicalPathFromSourcePath(sourcePath: string): string {
   if (/[?#]/.test(sourcePath)) throw createDocsError({ code: "DOCS_ENTRY_INVALID", message: "Source paths must not contain URL query or fragment delimiters" });
   const segments = slugToSegments(sourcePath);
+  for (const segment of segments) {
+    // WHATWG URL navigation normalizes encoded dot segments before routing.
+    const decodedDots = segment.replace(/%2e/gi, ".");
+    if (decodedDots === "." || decodedDots === "..") throw createDocsError({
+      code: "DOCS_ENTRY_INVALID", message: "Source routes must not contain URL dot segments",
+    });
+  }
   if (segments.length === 0) {
     return "";
   }

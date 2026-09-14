@@ -578,3 +578,13 @@ it("omits API overviews containing protected children and preview drafts", async
   expect(JSON.stringify(artifact)).not.toContain("Restricted operation detail");
   expect(JSON.stringify(artifact)).not.toContain("Unpublished draft detail");
 });
+
+
+it.each(["operations", "schemas", "tags"])("omits malformed canonical API %s records from public search", async field => {
+  const manifest = createManifest();
+  const api = Object.values(manifest.apis)[0];
+  api.spec = { operations: [], schemas: [], tags: [], [field]: [{ summary: "Hidden malformed child detail" }] };
+  const artifact = await buildSearchIndex(manifest, { auth: { enabled: true, mode: "mixed" }, isRoutePrivate: () => false, search: { enabled: true, bodyIndexing: "full" } });
+  expect(artifact.documents.some(document => document.id === api.id)).toBe(false);
+  expect(JSON.stringify(artifact)).not.toContain("Hidden malformed child detail");
+});

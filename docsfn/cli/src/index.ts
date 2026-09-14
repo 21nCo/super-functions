@@ -288,6 +288,12 @@ function compileManifestSources(
   return transformedFiles;
 }
 
+// The CLI cannot receive the host's route classifier. Public exports must
+// therefore omit every route in mixed mode; hosts can use the programmatic API.
+function publicArtifactClassifier(config?: DocsConfig): ((route: string) => boolean) | undefined {
+  return config?.auth?.enabled && config.auth.mode === "mixed" ? () => true : undefined;
+}
+
 async function runPipeline(input: PipelineInput): Promise<PipelineResult> {
   const diagnostics: DocsDiagnostic[] = [];
   let config: DocsConfig | undefined;
@@ -307,6 +313,10 @@ async function runPipeline(input: PipelineInput): Promise<PipelineResult> {
   }
 
   if (config) {
+    if (publicArtifactClassifier(config)) diagnostics.push(createDiagnostic({
+      code: "DOCS_CONFIG_UNSUPPORTED", severity: "warning",
+      message: "Mixed-mode CLI search and LLM artifacts omit all routes because the host route classifier is unavailable. Use the programmatic artifact API with isRoutePrivate to publish selected public routes.",
+    }));
     const provider = createProvider(config, input.cwd);
 
     try {
@@ -327,6 +337,7 @@ async function runPipeline(input: PipelineInput): Promise<PipelineResult> {
         searchArtifact = await buildSearchIndex(manifest, {
           search: config.search,
           auth: config.auth,
+          isRoutePrivate: publicArtifactClassifier(config),
         });
       } catch (error) {
         diagnostics.push(
@@ -720,6 +731,7 @@ async function runLlmsCommand(
     embedOpenApiSpec: options.embedOpenapi === true,
     includeBlog: options.blog !== false,
     auth: result.config?.auth,
+    isRoutePrivate: publicArtifactClassifier(result.config),
   };
 
   const artifacts = buildLlmsTxtArtifacts(result.manifest, llmsOptions);

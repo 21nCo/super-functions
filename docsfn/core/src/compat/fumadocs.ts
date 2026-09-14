@@ -185,9 +185,16 @@ export function transformFumadocsV15(
       return;
     }
 
-    if (importLines.length || /^\s*import\s*\{/.test(line)) {
+    if (importLines.length || /^\s*import(?:\s|\{|\/[/*])/.test(line)) {
       importLines.push(line);
-      if (!parseNamedImport(importLines.join("\n"))) return;
+      const candidate = importLines.join("\n");
+      const uncommented = stripImportComments(candidate);
+      if (uncommented === null || uncommented.trim() === "import") return;
+      if (!/^\s*import\s*\{/.test(uncommented)) {
+        keptLines.push(...importLines); importLines = [];
+        return;
+      }
+      if (!parseNamedImport(candidate)) return;
     }
     const importMatch = parseNamedImport(importLines.length ? importLines.join("\n") : line);
     if (!importMatch) { keptLines.push(line); return; }

@@ -501,3 +501,10 @@ import {
   expect(artifact.componentsUsed).toEqual(expect.arrayContaining(["DocsTabs", "DocsTab"]));
   expect(artifact.blocks.some(block => block.type === "tabs")).toBe(true);
 });
+
+
+it.each(["/* note */", "/* multiline\n note */", "// note\n"])("transforms a named import with leading comment %s", comment => {
+  const result = compileMarkdown({ source: `import ${comment} { Tabs, Tab } from 'fumadocs-ui/components/tabs';\n\n<Tabs items={['One']}>\n<Tab value="One">Content</Tab>\n</Tabs>`, sourcePath: "comment.mdx", compatPreset: "fumadocs-v15" });
+  expect(result.blocks.some(block => block.type === "tabs")).toBe(true);
+  expect(result.transformedSource).not.toContain("fumadocs-ui/components/tabs");
+});

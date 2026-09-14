@@ -233,3 +233,11 @@ it("omits API overviews and embedded specs with protected child routes", () => {
   expect(buildLlmsTxt(manifest, options)).not.toContain("Restricted");
   expect(buildLlmsFullTxt(manifest, options)).not.toContain("Restricted");
 });
+
+
+it.each(["operations", "schemas", "tags"])("omits malformed canonical API %s records from LLM artifacts", field => {
+  const manifest = createManifest();
+  manifest.apis.bad = { kind: "api", id: "bad", slug: "bad", path: "/docs/api", title: "Hidden malformed API", frontmatter: {}, spec: { operations: [], schemas: [], tags: [], [field]: [{ description: "Hidden malformed child" }] } };
+  const artifacts = buildLlmsTxtArtifacts(manifest, { auth: { enabled: true, mode: "mixed" }, isRoutePrivate: () => false, embedOpenApiSpec: true });
+  expect(JSON.stringify(artifacts)).not.toContain("Hidden malformed");
+});
