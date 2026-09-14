@@ -61,7 +61,8 @@ export type McpFnClientProfileLifecycleStage =
   | "input-validation"
   | "invalid-arguments-handler"
   | "handler"
-  | "output-validation";
+  | "output-validation"
+  | "task-result-storage";
 
 export interface McpFnClientProfileEvidence {
   formatVersion: 1;
@@ -558,6 +559,7 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
   const referenceTarget = (schema: Record<string, unknown>): unknown => {
     const reference = schema.$ref as string;
     let resource = resources.get(schema) ?? root;
+    if (reference === "") return resource;
     let fragment = reference;
     const referenceAddress = new URL(reference, bases.get(resource) ?? "https://mcpfn.invalid/schema");
     let decodedFragment: string;

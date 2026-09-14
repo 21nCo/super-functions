@@ -385,10 +385,10 @@ export class McpFnServer<TContext = undefined> {
 
             const observer = {
               onTaskStorageFailure: async (error: unknown) => {
+                if (taskStorageFailureReported) return;
                 taskStorageFailureReported = true;
-                completedStages.delete("handler");
                 const event: Omit<McpFnClientProfileEvidence, "formatVersion"> = {
-                  stage: "handler", outcome: "failed",
+                  stage: "task-result-storage", outcome: "failed",
                   profile: this.profileReference(resolved), tool: request.params.name,
                   code: error instanceof McpFnError ? error.code : "MCPFN_TOOL_ERROR",
                 };
@@ -466,7 +466,7 @@ export class McpFnServer<TContext = undefined> {
             const issues = (error instanceof McpFnValidationError || error instanceof McpFnOutputValidationError) && ["input-validation", "output-validation"].includes(currentStage) && Array.isArray(details.issues)
               ? (details.issues as McpFnClientProfileEvidence["issues"])
               : undefined;
-            if (!(taskStorageFailureReported && (currentStage as McpFnClientProfileLifecycleStage) === "handler") && !((currentStage as McpFnClientProfileLifecycleStage) === "output-validation" && taskOutputFailureReported) && !["profile-resolution", "catalog-projection"].includes(currentStage)) await this.emitProfileEvidence({
+            if (!((currentStage as McpFnClientProfileLifecycleStage) === "output-validation" && taskOutputFailureReported) && !["profile-resolution", "catalog-projection"].includes(currentStage)) await this.emitProfileEvidence({
               stage: currentStage,
               outcome: "failed",
               profile,

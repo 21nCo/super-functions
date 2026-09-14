@@ -734,7 +734,7 @@ it("resolves shared relative references independently in each embedded resource"
 });
 
 
-it.each(["storage", "wrapped-storage", "handler"])("orders task output evidence after predecessor stages on %s failure", async failure => {
+it.each(["storage", "wrapped-storage", "retried-storage", "handler"])("orders task output evidence after predecessor stages on %s failure", async failure => {
   const { InMemoryTaskStore } = await import("@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js");
   const taskStore = new InMemoryTaskStore();
   if (failure !== "handler") vi.spyOn(taskStore, "storeTaskResult").mockRejectedValue(new Error("storage failed"));
@@ -748,6 +748,7 @@ it.each(["storage", "wrapped-storage", "handler"])("orders task output evidence 
         await extra.taskStore.storeTaskResult(task.taskId, "completed", structuredResult({ ok: true }));
       } catch (error) {
         if (failure === "wrapped-storage") throw new Error("wrapped storage failure", { cause: error });
+        if (failure === "retried-storage") await extra.taskStore.storeTaskResult(task.taskId, "completed", structuredResult({ ok: true }));
         throw error;
       }
       throw new Error("handler failed after output");
@@ -761,7 +762,8 @@ it.each(["storage", "wrapped-storage", "handler"])("orders task output evidence 
     await server.connect(right); await client.connect(left); await client.listTools();
     try { for await (const _message of client.experimental.tasks.callToolStream({ name: "task", arguments: {} }, undefined, { task: { ttl: 1000 } })) { /* drain */ } } catch { /* Expected task failure. */ }
     const stages = evidence.filter(event => ["input-validation", "handler", "output-validation"].includes(event.stage)).map(event => [event.stage, event.outcome]);
-    expect(stages).toEqual([["input-validation", "succeeded"], ["output-validation", "succeeded"], ["handler", "failed"]]);
+    expect(stages).toEqual([["input-validation", "succeeded"], ["output-validation", "succeeded"], ...(failure === "retried-storage" ? [["output-validation", "succeeded"]] : []), ["handler", "failed"]]);
+    expect(evidence.filter(event => event.stage === "task-result-storage")).toHaveLength(failure === "handler" ? 0 : 1);
   } finally { await client.close(); await server.close(); }
 });
 
@@ -794,9 +796,26 @@ it("reports a rejected task-store promise after the creation request has settled
     const beforeStorage = evidence.length;
     await expect(persist()).rejects.toBe(failure);
     expect(evidence.slice(beforeStorage).map(event => [event.stage, event.outcome])).toEqual([
-      ["output-validation", "succeeded"], ["handler", "failed"],
+      ["output-validation", "succeeded"], ["task-result-storage", "failed"],
     ]);
-    expect(evidence.filter(event => event.stage === "handler" && event.outcome === "failed")).toHaveLength(1);
+    await expect(persist()).rejects.toBe(failure);
+    expect(evidence.filter(event => event.stage === "task-result-storage")).toHaveLength(1);
+    expect(evidence.filter(event => event.stage === "handler").map(event => event.outcome)).toEqual(["succeeded"]);
     expect(JSON.stringify(evidence)).not.toContain("private-storage-diagnosis");
+  } finally { await client.close(); await server.close(); }
+});
+
+it("preserves empty same-resource references through list and call", async () => {
+  const registry = new McpFnRegistry().register({ name: "recursive", description: "Recursive schema", inputSchema: {
+    type: "object", properties: { child: { $ref: "" } },
+  }, handler: async () => structuredResult({ ok: true }) });
+  const server = createMcpFnServer({ info: { name: "empty-ref", version: "1" }, registry,
+    clientProfiles: { profiles: [{ id: "noop", version: "1", matches: () => true }], resolveVerifiedIdentity: () => ({ subject: "trusted" }) } });
+  const client = new Client({ name: "test", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left);
+    expect((await client.listTools()).tools[0].name).toBe("recursive");
+    expect(await client.callTool({ name: "recursive", arguments: { child: { child: {} } } })).toMatchObject({ structuredContent: { ok: true } });
   } finally { await client.close(); await server.close(); }
 });

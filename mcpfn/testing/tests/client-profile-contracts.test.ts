@@ -480,3 +480,12 @@ it.each(["2019-09", "2020-12"])("flags %s ref assertion siblings and honors stri
   expect(validateMcpFnSchemaPortability(metadataOnly, "#").some(issue => issue.keyword === "$ref")).toBe(false);
   expect(validateMcpFnSchemaPortability({ ...schema, $schema: "http://json-schema.org/draft-07/schema#" }, "#").some(issue => issue.keyword === "$ref")).toBe(false);
 });
+
+it("does not misclassify contentSchema annotations as ref assertions", async () => {
+  const { default: Ajv2020 } = await import("ajv/dist/2020.js");
+  const schema = { $schema: "https://json-schema.org/draft/2020-12/schema", $defs: { value: { type: "string" } },
+    $ref: "#/$defs/value", contentMediaType: "application/json", contentSchema: { type: "number" } };
+  const validate = new Ajv2020({ strict: false }).compile(schema);
+  expect(validate("not JSON")).toBe(true);
+  expect(validateMcpFnSchemaPortability(schema, "#", { warningsAsErrors: true }).some(issue => issue.keyword === "$ref")).toBe(false);
+});

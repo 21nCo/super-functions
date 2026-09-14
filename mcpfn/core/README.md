@@ -183,3 +183,10 @@ not replace the canonical validator.
 Structural diagnostics retain exact unknown property names and instance paths;
 consumer report sinks must apply an aggregate size cap (the testing suite defaults
 to one MiB) rather than silently shortening property names.
+
+Task profile evidence distinguishes the creation handler from result persistence.
+`handler` reports the creation callback's outcome; `task-result-storage: failed`
+reports the first observed persistence failure for that request, including delayed
+writes after creation returns. Retries do not repeat that failure event. It does
+not reverse handler success or claim a final task status. Output validation still
+runs for each attempted result before persistence.
