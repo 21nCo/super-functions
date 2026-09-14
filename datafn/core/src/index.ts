@@ -286,3 +286,5 @@ export {
 
 // Re-export search provider interface
 export type { SearchProvider } from "./search-provider.js";
+
+export * from "./regional-route.js";
