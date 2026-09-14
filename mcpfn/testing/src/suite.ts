@@ -106,7 +106,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
               code: event.code, phase: event.phase,
             });
           }
-          timeline.push(redactTargetCredentials(options.target, redactOAuthValue(event), { preserveKeys: true }) as unknown as McpFnDiagnosticEvent);
+          timeline.push(redactOAuthValue(redactTargetCredentials(options.target, event, { preserveKeys: true })) as unknown as McpFnDiagnosticEvent);
           if (timeline.length > maxTimelineEvents) {
             timeline.shift();
             droppedTimelineEvents += 1;
@@ -146,7 +146,8 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     }
   } finally {
     try {
-      await client?.close();
+      if (client) await client.close();
+      else await options.target.cleanup?.();
     } catch (error) {
       cleanupFailure = normalizeMcpFnReportFailure({ name: "CleanupError", message: "Target cleanup failed", code: "MCPFN_TARGET_CLEANUP_FAILED", phase: "transport-close" });
       if (!failure) failure = cleanupFailure;
@@ -174,9 +175,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
       packages: { testing: MCPFN_TESTING_VERSION },
     },
     ok: failed === 0 && !artifactIncomplete,
-    target: redactOAuthValue(
-      options.target.describe(),
-    ) as unknown as McpFnTargetDescriptor,
+    target: { kind: "custom" },
     server: execution.server,
     capabilities: execution.capabilities,
     manifestChecked,
@@ -207,11 +206,15 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     results,
   };
   try {
+    // Descriptors and final serialization share the same fail-closed boundary.
+    // Scrub opaque credentials before generic redaction can truncate a match.
+    report.target = redactOAuthValue(redactTargetCredentials(options.target, options.target.describe(), { preserveKeys: true })) as unknown as McpFnTargetDescriptor;
     return enforceReportCap(redactTargetCredentials(options.target, report, { preserveKeys: true }), maxReportBytes);
   } catch (error) {
-    if (!(error instanceof McpFnRedactionLimitError)) throw error;
     return enforceReportCap({ ...report, ok: false, status: "incomplete",
-      incompleteReason: "Credential redaction exceeded its traversal budget",
+      incompleteReason: error instanceof McpFnRedactionLimitError
+        ? "Credential redaction exceeded its traversal budget"
+        : "Report content omitted because safe serialization failed",
       target: { kind: "custom" }, server: undefined, capabilities: undefined, manifestHash: undefined,
       failure: undefined, results: [], timeline: [],
       droppedResults: report.results.length, droppedTimelineEvents: report.droppedTimelineEvents + report.timeline.length,

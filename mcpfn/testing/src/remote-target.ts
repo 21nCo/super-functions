@@ -177,7 +177,8 @@ export interface McpFnRemoteCredentialContext {
 /**
  * Application-owned credential lifecycle for external MCP targets. McpFn
  * acquires once per target open, revokes before disposal, and never serializes
- * the returned headers into descriptors or reports.
+ * the returned headers into descriptors or reports. If acquisition rejects, the
+ * provider must roll back its own partial resources; no lease has been returned.
  */
 export interface McpFnRemoteCredentialProvider {
   acquire(
@@ -216,10 +217,16 @@ export async function acquireRemoteCredential(
   source: McpFnRemoteCredential | McpFnRemoteCredentialProvider,
   context: McpFnRemoteCredentialContext,
 ): Promise<McpFnRemoteCredentialLease> {
-  const provider = isCredentialProvider(source)
-    ? source
-    : staticRemoteCredentialProvider(source);
-  const acquired = await provider.acquire(context);
+  let provider: McpFnRemoteCredentialProvider;
+  let acquired: McpFnRemoteCredential;
+  try {
+    provider = isCredentialProvider(source) ? source : staticRemoteCredentialProvider(source);
+    acquired = await provider.acquire(context);
+  } catch {
+    // Until acquisition returns, its opaque secrets are unknown to the redactor.
+    // The provider owns rollback of resources allocated before it rejects.
+    throw new Error("Target credential acquisition failed");
+  }
   let credential = acquired;
   try {
     // Detach all valid header forms from provider-owned mutable storage.

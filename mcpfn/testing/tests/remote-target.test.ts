@@ -465,3 +465,54 @@ it('accepts the entire IPv4 literal loopback range for conformance upstreams', a
   }
   await expect(createAuthenticatedConformanceProxy({url:'http://128.0.0.1/mcp',headers:{'x-api-key':'test'}})).rejects.toThrow(/loopback/);
 });
+
+it("drains a retained credential lease when initialization never returns a client", async () => {
+  const fixture = await startAuthenticatedServer("expected");
+  const revoke = vi.fn().mockRejectedValueOnce(new Error("temporary")).mockResolvedValue(undefined);
+  const dispose = vi.fn();
+  try {
+    const report = await runMcpFnTargetSuite({ target: authenticatedHttpTarget(fixture.url, {
+      credential: { acquire: () => ({ headers: { authorization: "Bearer wrong" } }), revoke, dispose },
+    }) });
+    expect(report.ok).toBe(false);
+    expect(revoke).toHaveBeenCalledTimes(2);
+    expect(dispose).toHaveBeenCalledOnce();
+  } finally { await fixture.close(); }
+});
+
+it.each(["throw", "proxy", "long-secret"])("safely serializes a %s target descriptor after cleanup", async mode => {
+  const secret = "opaque-descriptor-" + "z".repeat(5000);
+  const fixture = await startAuthenticatedServer(secret);
+  const revoke = vi.fn();
+  const target = authenticatedHttpTarget(fixture.url, {
+    credential: { acquire: () => ({ headers: { authorization: `Bearer ${secret}` } }), revoke },
+  });
+  const original = target.describe;
+  target.describe = () => {
+    if (revoke.mock.calls.length === 0) return original(); // Exercise the final reporting boundary after release.
+    if (mode === "throw") throw new Error(secret);
+    if (mode === "proxy") return new Proxy({}, { ownKeys() { throw new Error(secret); } }) as any;
+    return { kind: "custom", label: secret };
+  };
+  try {
+    const report = await runMcpFnTargetSuite({ target });
+    expect(revoke).toHaveBeenCalledOnce();
+    expect(JSON.stringify(report)).not.toContain("opaque-descriptor-");
+    if (mode !== "long-secret") expect(report).toMatchObject({ ok: false, status: "incomplete" });
+  } finally { await fixture.close(); }
+});
+
+
+it("does not expose provider acquisition errors before credentials are available for redaction", async () => {
+  const { runAuthenticatedOfficialConformance } = await import("../src/conformance.js");
+  const secret = "provider-internal-opaque-secret";
+  const credential = { acquire: () => { throw new Error(secret); }, revoke: vi.fn(), dispose: vi.fn() };
+  const url = "http://127.0.0.1:1/mcp";
+  const report = await runMcpFnTargetSuite({ target: authenticatedHttpTarget(url, { credential }) });
+  expect(report.ok).toBe(false);
+  expect(report.failure?.message).toContain("credential acquisition failed");
+  expect(JSON.stringify(report)).not.toContain(secret);
+  await expect(runAuthenticatedOfficialConformance({ url, credential })).rejects.toThrow("Target credential acquisition failed");
+  expect(credential.revoke).not.toHaveBeenCalled();
+  expect(credential.dispose).not.toHaveBeenCalled();
+});

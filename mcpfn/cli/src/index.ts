@@ -421,7 +421,7 @@ function readRemoteCredential(
   if (options.bearerTokenEnv) {
     try { new Headers({ authorization: `Bearer ${value}` }); }
     catch { throw new Error("Bearer token must be a valid HTTP header value"); }
-    if (!value.trim()) throw new Error("Bearer token must not be blank");
+    if (!/^[A-Za-z0-9._~+/-]+=*$/.test(value)) throw new Error("Bearer token must follow the RFC 6750 token grammar");
     return {
       environmentName,
       credential: {

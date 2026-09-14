@@ -401,6 +401,21 @@ describe("mcpfn CLI", () => {
     } finally { if (previous === undefined) delete process.env[variable]; else process.env[variable] = previous; }
   });
 
+  it.each(["abc def", "abc\tdef", "abc=def", "abc:private", "ümlaut"])("rejects malformed Bearer token %s as configuration", async token => {
+    const variable = "MCPFN_GRAMMAR_TEST";
+    const previous = process.env[variable];
+    process.env[variable] = token;
+    try {
+      let stderr = "";
+      expect(await runCli(["inspect", "http://127.0.0.1:1/mcp", "--bearer-token-env", variable], {
+        stderr: text => { stderr += text; }, stdout: () => {},
+      })).toBe(2);
+      expect(stderr).not.toContain(token);
+    } finally {
+      if (previous === undefined) delete process.env[variable]; else process.env[variable] = previous;
+    }
+  });
+
   it("returns compact bounded target failure reports", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cap-"));
     roots.push(root);

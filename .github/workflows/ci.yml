@@ -74,7 +74,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ["20", "22"]
+        node: ["22"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -144,6 +144,35 @@ jobs:
           else
             ./node_modules/.bin/turbo run lint ${{ needs.plan.outputs.js_lint_filters }}
           fi
+
+  mcpfn-node20:
+    name: McpFn Node 20 compatibility
+    needs: plan
+    if: needs.plan.outputs.run_mcpfn == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ensure Rollup native package
+        run: node scripts/ci-install-rollup-native.mjs
+
+      - name: Build compatibility targets and dependencies
+        run: ./node_modules/.bin/turbo run build --filter='@mcpfn/testing...' --filter='@mcpfn/cli...'
+
+      - name: Check transport-neutral client, testing, and CLI on Node 20
+        run: |
+          npm run typecheck --workspace=@mcpfn/client --workspace=@mcpfn/testing --workspace=@mcpfn/cli
+          npm test --workspace=@mcpfn/client --workspace=@mcpfn/testing --workspace=@mcpfn/cli
 
   python:
     name: Python

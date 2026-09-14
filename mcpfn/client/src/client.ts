@@ -884,28 +884,42 @@ export class McpFnClient {
     code?: string,
     details?: Record<string, unknown>,
   ): Promise<void> {
-    await this.dispatch({
-      phase,
-      outcome,
-      ...(code ? { code } : {}),
-      requestId,
-      at: (this.options.clock?.() ?? new Date()).toISOString(),
-      target: this.options.target.describe(),
-      ...(details ? { details } : {}),
-    });
+    let event: McpFnDiagnosticEvent;
+    try {
+      event = {
+        phase,
+        outcome,
+        ...(code ? { code } : {}),
+        requestId,
+        at: (this.options.clock?.() ?? new Date()).toISOString(),
+        target: this.options.target.describe(),
+        ...(details ? { details } : {}),
+      };
+    } catch {
+      // Diagnostic construction can fail before dispatch redacts the value.
+      // Never reject a background protocol callback with an arbitrary error.
+      event = diagnosticRedactionFailure();
+    }
+    await this.dispatch(event);
   }
 
   private async dispatch(event: McpFnDiagnosticEvent): Promise<void> {
     let redacted: McpFnDiagnosticEvent;
     try { redacted = this.redact(event) as unknown as McpFnDiagnosticEvent; }
     catch {
-      redacted = { phase: "capability-operation", outcome: "failed", code: "MCPFN_DIAGNOSTIC_REDACTION_FAILED",
-        at: new Date().toISOString(), requestId: "redacted", target: { kind: "custom" }, details: { omitted: true } };
+      redacted = diagnosticRedactionFailure();
     }
     await Promise.allSettled(
       [...this.listeners].map(async (listener) => listener(redacted)),
     );
   }
+}
+
+function diagnosticRedactionFailure(): McpFnDiagnosticEvent {
+  return {
+    phase: "capability-operation", outcome: "failed", code: "MCPFN_DIAGNOSTIC_REDACTION_FAILED",
+    at: new Date().toISOString(), requestId: "redacted", target: { kind: "custom" }, details: { omitted: true },
+  };
 }
 
 export function createMcpFnClient(options: McpFnClientOptions): McpFnClient {
