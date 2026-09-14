@@ -100,11 +100,6 @@
   "publishConfig": {
     "access": "public"
   },
-  "superfunctions": {
-    "initFunction": "langfn",
-    "schemaVersion": 1,
-    "namespace": "langfn"
-  },
   "dependencies": {
     "@mcpfn/core": "0.0.4",
     "@modelcontextprotocol/sdk": "1.29.0",

@@ -13,6 +13,7 @@ import { MCPServer } from "../src/mcp/server.js";
 import { SSEMCPTransport } from "../src/mcp/sse.js";
 import { StdioMCPTransport } from "../src/mcp/stdio.js";
 import { MockChatModel } from "../src/models/mock.js";
+import { ToolPolicy } from "../src/tools/policy.js";
 import { Tool } from "../src/tools/base.js";
 
 const addTool = new Tool({
@@ -41,7 +42,8 @@ describe("mcp and evaluation parity", () => {
   it("round-trips tools/list and tools/call over stdio", async () => {
     const clientToServer = new PassThrough();
     const serverToClient = new PassThrough();
-    const server = new MCPServer([addTool]);
+    const policy = new ToolPolicy();
+    const server = new MCPServer([new Tool({ name: "add", description: "Add", schema: addTool.schema, execute: async (input: any, context) => { expect(context.policy).toBe(policy); return input.a + input.b; } })], policy);
     await server.connect(new StdioServerTransport(clientToServer, serverToClient));
     const transport = new StdioMCPTransport({
       streams: {

@@ -72,11 +72,6 @@
   "publishConfig": {
     "access": "public"
   },
-  "superfunctions": {
-    "initFunction": "memoryfn",
-    "schemaVersion": 1,
-    "namespace": "memoryfn"
-  },
   "peerDependenciesMeta": {
     "@watchfn/core": {
       "optional": true

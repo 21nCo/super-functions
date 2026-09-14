@@ -212,15 +212,15 @@ function matchClause(value: unknown, clause: WhereClause): boolean {
     case "lte":
       return (value as any) <= expected;
     case "in":
-      return Array.isArray(clause.value) && clause.value.includes(value);
+      return Array.isArray(clause.value) && clause.value.map(comparable).includes(value);
     case "not_in":
-      return Array.isArray(clause.value) && !clause.value.includes(value);
+      return Array.isArray(clause.value) && !clause.value.map(comparable).includes(value);
     case "contains":
-      return String(value).includes(String(clause.value));
+      return String(value).includes(String(expected));
     case "starts_with":
-      return String(value).startsWith(String(clause.value));
+      return String(value).startsWith(String(expected));
     case "ends_with":
-      return String(value).endsWith(String(clause.value));
+      return String(value).endsWith(String(expected));
     default:
       return false;
   }

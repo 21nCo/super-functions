@@ -55,3 +55,7 @@ at initialization with `MEMORY_LIMITS_UNSUPPORTED`. Conflict persistence require
 an adapter transaction: the new record, revision changes, and relationships commit
 together. Both bundled adapters support this; custom adapters without transactions
 reject conflicts before writing. Memory storage uses optimistic conflict detection.
+
+CLI schema discovery is not supported. PostgreSQL hosts must apply the bundled
+`migrations/0001-initial.sql` and `0002-memory-lifecycle.sql`; in-memory storage
+needs no migration. This package does not export the shared `getSchema` contract.

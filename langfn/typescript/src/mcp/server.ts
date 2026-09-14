@@ -20,7 +20,7 @@ export class MCPServer {
   readonly registry: McpFnRegistry;
   private readonly activeServers = new Set<McpFnServer>();
 
-  constructor(readonly tools: Array<Tool<any, any>>) {
+  constructor(readonly tools: Array<Tool<any, any>>, readonly policy: ToolPolicy = new ToolPolicy()) {
     this.registry = new McpFnRegistry();
     for (const tool of tools) {
       const definition = tool.json_schema();
@@ -33,7 +33,7 @@ export class MCPServer {
         handler: async (args) => {
           const context: ToolContext = {
             metadata: { transport: "mcp" },
-            policy: new ToolPolicy()
+            policy: this.policy
           };
           const result = await tool.run(args, context);
           return structuredResult({ result: result ?? null });

@@ -56,3 +56,6 @@ npm run gate:langfn-release
 ## Compatibility
 
 See [../COMPATIBILITY.md](../COMPATIBILITY.md) for first-party provider support across completion, chat, streaming, tools, embeddings, and evaluation.
+
+CLI schema discovery is not supported: this package does not export the shared
+`getSchema` contract. Hosts must provision adapter tables explicitly.

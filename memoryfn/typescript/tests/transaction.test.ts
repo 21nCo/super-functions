@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { MemoryStorageAdapter } from '../src/storage/memory/adapter';
+import { ConflictResolver } from '../src/extraction/resolver';
 import { MemoryFn } from '../src/core/pipeline';
 
 it('rolls back staged writes and rejects a concurrent commit without losing it', async () => {
@@ -42,4 +43,12 @@ it('does not invalidate a writer for overlapping no-op operations', async () => 
     await storage.insertRelationships([]);
   });
   expect(await storage.getMemory({ tenantId: 't', containerTags: ['c'], id: 'kept' })).not.toBeNull();
+});
+
+it('propagates resolver errors and rejects malformed resolutions', async () => {
+  const existing = { content: 'old' } as any;
+  const failing = new ConflictResolver({ generateJSON: async () => { throw new Error('provider unavailable'); } } as any);
+  await expect(failing.resolve('new', existing)).rejects.toThrow('provider unavailable');
+  const invalid = new ConflictResolver({ generateJSON: async () => ({ type: 'invented' }) } as any);
+  await expect(invalid.resolve('new', existing)).rejects.toThrow('MEMORY_RESOLUTION_INVALID');
 });

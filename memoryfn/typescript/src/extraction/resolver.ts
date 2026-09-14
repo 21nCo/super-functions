@@ -33,11 +33,10 @@ export class ConflictResolver {
     }
     `;
 
-    try {
-      return await this.llm.generateJSON<ResolutionResult>(prompt);
-    } catch (e) {
-      console.error('Resolution failed', e);
-      return { type: 'none', reasoning: 'Resolution failed' };
+    const result = await this.llm.generateJSON<ResolutionResult>(prompt);
+    if (!result || !['updates', 'extends', 'contradicts', 'none'].includes(result.type) || typeof result.reasoning !== 'string') {
+      throw new Error('MEMORY_RESOLUTION_INVALID');
     }
+    return result;
   }
 }

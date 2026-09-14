@@ -530,3 +530,10 @@ it('rejects provider-derived and query namespaces without a tenant', async () =>
   expect((await secfn.router.handle(new Request('https://app.test/secfn/admin/secrets'))).status).toBe(403);
   expect((await secfn.router.handle(new Request('https://app.test/secfn/admin/secrets?namespace=shared'))).status).toBe(403);
 });
+
+it('prevents runtime query namespace from overriding namespaceProvider', async () => {
+  const secfn = createSecFnServer({ db: new MemoryAdapter(), encryption: { masterKey: 'test' }, context: { tenantId: 'tenant-a' }, namespaceProvider: () => 'workspace-a', authorize: async () => true });
+  const token = await secfn.vault.createServiceToken({ tenantId: 'tenant-a', namespace: 'foreign', name: 'token', scopes: ['*'], createdBy: 'admin' });
+  const response = await secfn.router.handle(new Request('https://app.test/secfn/runtime/secrets/KEY?namespace=foreign', { headers: { authorization: `Bearer ${token.token}` } }));
+  expect(response.status).toBe(403);
+});

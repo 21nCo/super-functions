@@ -93,7 +93,7 @@ export class AnthropicChatModel extends ChatModel {
         typeof request.tool_choice === "string"
           ? request.tool_choice === "auto"
             ? { type: "auto" }
-            : { type: "tool", name: request.tool_choice }
+            : request.tool_choice === "required" ? { type: "any" } : { type: "tool", name: request.tool_choice }
           : request.tool_choice;
     }
 

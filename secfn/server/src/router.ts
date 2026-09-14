@@ -404,9 +404,10 @@ async function scope<TContext extends SecFnRequestContext>(
   if (ctx.namespace && !ctx.tenantId) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
   const environment = asQueryString(ctx.query.get("environment"));
   const namespace = asQueryString(ctx.query.get("namespace"));
-  const effectiveNamespace = ctx.namespace ?? namespace ?? await config.namespaceProvider?.(ctx);
+  const trustedNamespace = ctx.namespace ?? await config.namespaceProvider?.(ctx);
+  const effectiveNamespace = trustedNamespace ?? namespace;
   if (effectiveNamespace && !ctx.tenantId) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
-  if (ctx.namespace && namespace && namespace !== ctx.namespace) throw new ForbiddenError("Namespace is outside the authorized scope", "SECFN_FORBIDDEN");
+  if (trustedNamespace && namespace && namespace !== trustedNamespace) throw new ForbiddenError("Namespace is outside the authorized scope", "SECFN_FORBIDDEN");
   return {
     tenantId: ctx.tenantId,
     namespaceId: ctx.query.get("namespaceId") ?? undefined,
