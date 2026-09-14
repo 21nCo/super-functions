@@ -462,3 +462,9 @@ it("warns for named schema anchors", () => {
 it("uses draft 7 for undeclared tuple schemas", () => {
   expect(validateMcpFnSchemaPortability({ type: "object", properties: { pair: { type: "array", items: [{ type: "string" }] } } }, "#").some(issue => issue.code === "schema-invalid")).toBe(false);
 });
+
+it.each([{}, { isError: true }])("rejects errors from minimal-valid fixtures even with expectations %j", async expectValue => {
+  const target = targetFor({ subject: "trusted-client", tenantId: "trusted" }, vi.fn(async () => { throw new Error("broken handler"); }));
+  const report = await runMcpFnClientProfileContracts({ profiles: [{ id: "test", version: "1", target: target.target, fixtures: [{ name: "valid", source: "minimal-valid", sideEffect: "read-only", tool: "lookup", arguments: { query: "ok" }, expect: expectValue }] }] });
+  expect(report.profiles[0].fixtures[0]).toMatchObject({ status: "failed" });
+});

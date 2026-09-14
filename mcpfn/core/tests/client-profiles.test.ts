@@ -332,9 +332,11 @@ describe("McpFn client profiles", () => {
   });
 
   it("keeps validation responses independent from evidence mutation", async () => {
+    let mutatedIssues = false;
     const registry = new McpFnRegistry<RequestContext>().register({ name: "strict", description: "Strict", inputSchema: { type: "object", additionalProperties: false }, handler: async () => structuredResult({}) });
-    const { client } = await connect({ subject: "trusted" }, { id: "test", version: "1", matches: () => true }, registry, "client", event => { event.issues?.splice(0); });
+    const { client } = await connect({ subject: "trusted" }, { id: "test", version: "1", matches: () => true }, registry, "client", event => { if (event.issues?.length) { mutatedIssues = true; event.issues.splice(0); } });
     const result = await client.callTool({ name: "strict", arguments: { unexpected: true } });
+    expect(mutatedIssues).toBe(true);
     expect(JSON.stringify(result)).toContain("additionalProperties");
   });
 
@@ -447,6 +449,7 @@ describe("McpFn client profiles", () => {
     await client.callTool({ name: "lookup", arguments: { query: "ok", tenantId: "ok" } });
     expect(events.filter(e => e.stage === "handler" && e.outcome === "failed")).toHaveLength(1);
     expect(JSON.stringify(events)).not.toContain("secret-input");
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ stage: "input-validation", outcome: "succeeded" })]));
   });
 
   it("reports validation when a delayed task result is stored", async () => {
@@ -696,5 +699,10 @@ it("rejects invalid projected MCP metadata and ignores schema object aliasing", 
   const tool = { name: "test", inputSchema: { type: "object" as const, allOf: [shared, shared] } };
   const run = (projected: any) => buildMcpFnEffectiveCatalog({ canonicalTools: [tool], resolved: { context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" }, profile: { id: "test", version: "1", matches: () => true, projectCatalog: () => [projected] } } });
   await expect(run(JSON.parse(JSON.stringify(tool)))).resolves.toBeDefined();
-  for (const metadata of [{ description: 5 }, { annotations: { readOnlyHint: "yes" } }]) await expect(run({ ...tool, ...metadata })).rejects.toMatchObject({ code: "MCPFN_INVALID_PROJECTED_CATALOG" });
+  for (const metadata of [{ _meta: { callback: () => {} } }, { _meta: { number: BigInt(1) } }, { description: 5 }, { annotations: { readOnlyHint: "yes" } }]) await expect(run({ ...tool, ...metadata })).rejects.toMatchObject({ code: "MCPFN_INVALID_PROJECTED_CATALOG" });
+});
+
+it("matches Unicode schema patterns with Ajv semantics", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+  await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: { type: "object", properties: { tenantId: { type: "string" } }, required: ["tenantId"] } }], resolved: { context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" }, profile: { id: "test", version: "1", matches: () => true, serverOwnedArguments: { test: ["tenantId"] }, projectCatalog: () => [{ name: "test", inputSchema: { type: "object", additionalProperties: false, patternProperties: { "\\p{L}": {} } } }] } } })).rejects.toMatchObject({ code: "MCPFN_PROFILE_ASYMMETRIC" });
 });

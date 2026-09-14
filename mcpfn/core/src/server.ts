@@ -317,6 +317,7 @@ export class McpFnServer<TContext = undefined> {
           const context = await this.contextFactory(extra);
           const isTaskRequest = Boolean(request.params.task);
           let resolved: McpFnResolvedClientProfile<TContext> | undefined;
+          const completedStages = new Set<McpFnClientProfileLifecycleStage>();
           let currentStage: McpFnClientProfileLifecycleStage =
             "profile-resolution";
           let taskOutputReported = false;
@@ -374,7 +375,7 @@ export class McpFnServer<TContext = undefined> {
               profile: this.profileReference(resolved),
               tool: request.params.name,
             });
-            const completedStages = new Set<McpFnClientProfileLifecycleStage>();
+
             const observer = {
               onTaskOutput: async (outcome: "succeeded" | "failed", error?: unknown) => {
                 taskOutputReported = true;
@@ -426,6 +427,9 @@ export class McpFnServer<TContext = undefined> {
             );
             return result;
           } catch (error) {
+            completedStages.delete(currentStage);
+            if ((currentStage as McpFnClientProfileLifecycleStage) === "invalid-arguments-handler") completedStages.delete("input-validation");
+            if (resolved) await this.emitCompletedToolStages(completedStages, resolved, request.params.name);
             const profile = this.profileReference(resolved);
             const details =
               error instanceof McpFnError &&

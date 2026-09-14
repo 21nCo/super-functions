@@ -457,6 +457,7 @@ function fixtureFailure(
   fixture: McpFnClientProfileFixture,
 ): string | undefined {
   const expected = fixture.expect;
+  if (fixture.source !== "captured-failure" && result.isError) return "Minimal-valid fixture returned isError=true";
   if (fixture.source === "captured-failure" && !result.isError) return "Captured failure did not reproduce an error";
   if (!expected)
     return result.isError ? "Tool returned isError=true" : undefined;

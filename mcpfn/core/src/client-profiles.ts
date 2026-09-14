@@ -184,6 +184,15 @@ export async function resolveMcpFnClientProfile<TContext>(
   return { ...input, verifiedIdentity, profile: matches[0] };
 }
 
+function isJsonMetadata(value: unknown, ancestors = new Set<object>()): boolean {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value !== "object" || ancestors.has(value)) return false;
+  if (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return false;
+  const next = new Set(ancestors).add(value);
+  return Array.isArray(value) ? value.every(item => isJsonMetadata(item, next)) : Object.values(value).every(item => item === undefined || isJsonMetadata(item, next));
+}
+
 function assertProjectedCatalog(
   canonicalTools: McpFnListedTool[],
   knownTools: McpFnListedTool[],
@@ -194,7 +203,7 @@ function assertProjectedCatalog(
   const known = new Map(knownTools.map((tool) => [tool.name, tool]));
   const seen = new Set<string>();
   for (const tool of projectedTools) {
-    if (!ToolSchema.safeParse(tool).success || !tool || typeof tool !== "object" || typeof tool.name !== "string" ||
+    if (!isJsonMetadata(tool) || !ToolSchema.safeParse(tool).success || !tool || typeof tool !== "object" || typeof tool.name !== "string" ||
         !tool.inputSchema || typeof tool.inputSchema !== "object" || Array.isArray(tool.inputSchema) || tool.inputSchema.type !== "object") {
       throw new McpFnClientProfileError(
         "MCPFN_INVALID_PROJECTED_CATALOG",
@@ -616,7 +625,7 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
         const properties = schema.properties as Record<string, unknown> | undefined;
         const patterns = Object.keys((schema.patternProperties ?? {}) as object);
         if (!Object.hasOwn(properties ?? {}, name) && !patterns.some(pattern => {
-          try { return new RegExp(pattern).test(name); }
+          try { return new RegExp(pattern, "u").test(name); }
           catch { throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Invalid patternProperties expression"); }
         })) prohibited.add(name);
       }
