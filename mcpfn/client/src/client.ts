@@ -521,6 +521,7 @@ export class McpFnClient {
     try { await this.cleanupAttempt(true); }
     catch (error) { this._state = "closing"; throw error; }
     this._state = "idle";
+    this.permanentCloseRequested = false;
     await this.connect();
   }
 
@@ -528,6 +529,7 @@ export class McpFnClient {
   async reconnect(): Promise<void> {
     await this.close(false);
     this._state = "idle";
+    this.permanentCloseRequested = false;
     await this.connect();
   }
 
@@ -589,10 +591,10 @@ export class McpFnClient {
     const results = await Promise.allSettled([protocol?.close(), ...[...handles].map(item => this.closeRetainedHandle(item, strict))]);
     // Retained target leases must outlive transport shutdown (including retries).
     if (this.pendingTargetOpens > 0) this.targetCleanupPending = true;
-    if (this.pendingTargetOpens === 0 && results.every(result => result.status === "fulfilled")) {
+    if (this.pendingTargetOpens === 0 && (this.targetCleanupPending || protocol || handles.size > 0) && results.every(result => result.status === "fulfilled")) {
       results.push(...await Promise.allSettled([this.cleanupTarget()]));
     }
-    if (strict && results.some((result) => result.status === "rejected")) {
+    if (strict && (this.pendingTargetOpens > 0 || results.some((result) => result.status === "rejected"))) {
       if (results[0].status === "rejected") this._protocol = protocol;
 
       throw new McpFnClientError("MCPFN_OPERATION_FAILED", "MCP target cleanup failed", { phase: "transport-close", retryable: true });

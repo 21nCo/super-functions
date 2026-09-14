@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
@@ -261,6 +261,7 @@ async function runConformance(
 
   return await new Promise<OfficialConformanceResult>((resolve) => {
     const child = spawn(invocation.command, invocation.args, {
+      detached: process.platform !== "win32",
       cwd: options.cwd,
       env: childEnvironment,
       stdio: options.stdio === "inherit" ? "inherit" : "pipe",
@@ -275,7 +276,12 @@ async function runConformance(
       if (capturedBytes > 262_144) {
         outputExceeded = true;
         stdout = ""; stderr = "";
-        child.kill("SIGKILL");
+        if (process.platform === "win32" && child.pid) {
+          execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], () => { child.stdout?.destroy(); child.stderr?.destroy(); });
+        } else if (child.pid) {
+          try { process.kill(-child.pid, "SIGKILL"); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") child.kill("SIGKILL"); }
+        } else child.kill("SIGKILL");
         return;
       }
       if (stream === "stdout") stdout += chunk.toString();

@@ -197,12 +197,12 @@ describe("McpFn production client", () => {
       code: "MCPFN_CONNECT_ABORTED",
     });
     await vi.waitFor(() => expect(targetSignal).toBeDefined());
-    const closing = client.close();
+    const closing = expect(client.close()).rejects.toMatchObject({ code: "MCPFN_OPERATION_FAILED", retryable: true });
     await vi.waitFor(() => expect(targetSignal?.aborted).toBe(true));
-    await expect(closing).resolves.toBeUndefined();
-    expect(client.state).toBe("closed");
+    await closing;
+    expect(client.state).toBe("closing");
     expect(closeHandle).not.toHaveBeenCalled();
-    await expect(client.reconnect()).rejects.toThrow(/Retry close/);
+    await expect(client.reconnect()).rejects.toMatchObject({ code: "MCPFN_OPERATION_FAILED" });
     expect(openCalls).toBe(1);
     resolveOpen({ transport: lateClientTransport, close: closeHandle });
 
@@ -561,7 +561,7 @@ it("retains a late aborted handle whose cleanup fails", async () => {
   const connecting = client.connect();
   const rejected = expect(connecting).rejects.toMatchObject({ code: "MCPFN_CONNECT_ABORTED" });
   await vi.waitFor(() => expect(resolveOpen).toBeDefined());
-  await client.close();
+  await expect(client.close()).rejects.toMatchObject({ code: "MCPFN_OPERATION_FAILED", retryable: true });
   const [transport] = InMemoryTransport.createLinkedPair();
   resolveOpen({ transport, close: cleanup });
   await rejected;
@@ -579,7 +579,7 @@ it("shares cleanup of a late aborted handle across close calls", async () => {
   const connecting = client.connect();
   const rejected = expect(connecting).rejects.toMatchObject({ code: "MCPFN_CONNECT_ABORTED" });
   await vi.waitFor(() => expect(resolveOpen).toBeDefined());
-  await client.close();
+  await expect(client.close()).rejects.toMatchObject({ code: "MCPFN_OPERATION_FAILED", retryable: true });
   const [transport] = InMemoryTransport.createLinkedPair();
   resolveOpen({ transport, close: cleanup });
   await vi.waitFor(() => expect(cleanup).toHaveBeenCalledOnce());
@@ -599,7 +599,7 @@ it("retains a cleanup gate when an aborted open fails after close", async () => 
   })});
   const connecting = client.connect().catch(() => undefined);
   await vi.waitFor(() => expect(rejectOpen).toBeDefined());
-  await client.close();
+  await expect(client.close()).rejects.toMatchObject({ code: "MCPFN_OPERATION_FAILED", retryable: true });
   retained = true;
   rejectOpen(new Error("late setup failure"));
   await connecting;
@@ -629,7 +629,7 @@ it("defers non-idempotent target cleanup until an aborted open finishes", async 
   const client = createMcpFnClient({ target: customTarget({ kind: "late", cleanup, open: () => new Promise((_, reject) => { rejectOpen = reject; }) }) });
   const connecting = client.connect().catch(() => undefined);
   await vi.waitFor(() => expect(rejectOpen).toBeDefined());
-  await client.close();
+  await expect(client.close()).rejects.toMatchObject({ code: "MCPFN_OPERATION_FAILED", retryable: true });
   expect(cleanup).not.toHaveBeenCalled();
   rejectOpen(new Error("aborted open"));
   await connecting;
@@ -703,7 +703,7 @@ it("clears the permanent-close request when explicitly reopening", async () => {
     await server.connect(peer);
     return { transport, close: () => server.close() };
   } }) });
-  await client.connect(); await client.close(); await client.connect();
+  await client.connect(); await client.close(); await client.reconnect();
   await server.close();
   await vi.waitFor(() => expect(client.state).toBe("idle"));
   await client.close();

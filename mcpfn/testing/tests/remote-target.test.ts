@@ -443,3 +443,13 @@ it("enforces encoded byte limits while collecting redaction secrets", async () =
   const { redactRemoteCredential } = await import("../src/remote-target.js");
   expect(() => redactRemoteCredential({ headers: { "x-key": "€".repeat(3000) } }, "report")).toThrow(/value-size limit/);
 });
+
+it("does not release another live handle during target cleanup", async () => {
+  const revoke = vi.fn();
+  const target = authenticatedHttpTarget('http://127.0.0.1:1/mcp', { credential: { acquire: () => ({ headers: { 'x-api-key': 'shared-target-key' } }), revoke } });
+  const first = await target.open({ requestId: 'first', diagnostic: async () => {} });
+  const second = await target.open({ requestId: 'second', diagnostic: async () => {} });
+  await first.close!(); await target.cleanup!();
+  expect(revoke).toHaveBeenCalledTimes(1);
+  await second.close!(); expect(revoke).toHaveBeenCalledTimes(2);
+});

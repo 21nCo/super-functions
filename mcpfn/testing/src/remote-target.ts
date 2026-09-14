@@ -257,7 +257,8 @@ export function authenticatedHttpTarget(
       const lease = await acquireRemoteCredential(options.credential, context);
       const secrets = new Set<string>();
       const release = async () => {
-        await lease.release();
+        try { await lease.release(); }
+        catch (error) { pendingReleases.add(release); throw error; }
         pendingReleases.delete(release);
         {
           for (const secret of secrets) {
@@ -267,7 +268,6 @@ export function authenticatedHttpTarget(
           secrets.clear();
         }
       };
-      pendingReleases.add(release);
       let handle: McpFnTransportHandle | undefined;
       try {
         for (const secret of credentialValues(lease.credential.headers)) {
