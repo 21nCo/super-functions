@@ -1,0 +1,19 @@
+datafn/server/src/__tests__/regional-tickets-e2e.test.ts
+  s_0434c9990ef7d4::t_90ff28d1084dac 15,399
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "fed9ce7ba1ff433610a02e724561277edcce13f4",
+  "prompts": {},
+  "sessions": {
+    "s_0434c9990ef7d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09433-0d85-7c73-b6d3-8256f2b2aa01",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
