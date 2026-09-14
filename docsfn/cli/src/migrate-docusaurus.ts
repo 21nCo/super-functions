@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { isLocalRoute } from "@docsfn/core";
 import fsSync from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -138,7 +139,9 @@ function ensureLeadingSlash(value: string): string {
 }
 
 function normalizeRouteBase(value: string | undefined, fallback: string): string {
-  return stripTrailingSlash(ensureLeadingSlash(value ?? fallback));
+  const route = ensureLeadingSlash(value ?? fallback);
+  if (!isLocalRoute(route)) throw new Error("Route base must be a local URL path without dot segments");
+  return stripTrailingSlash(route);
 }
 
 function joinRoute(basePath: string, slug: string): string {
@@ -1163,6 +1166,10 @@ export async function migrateDocusaurus(input: DocusaurusMigrateOptions): Promis
     "pages",
     pagesBasePath.replace(/^\/+/, "")
   );
+  const relativePagesDir = path.relative(targetRoot, targetPagesDir);
+  if (path.isAbsolute(relativePagesDir) || relativePagesDir === ".." || relativePagesDir.startsWith(`..${path.sep}`)) {
+    throw new Error("Migrated page output must stay inside the target root");
+  }
   const targetChangelogDir = path.join(targetRoot, "content", "changelog");
   const targetStaticDir = path.join(targetRoot, "static");
   const migrationDir = path.join(targetRoot, ".docsfn-migration");

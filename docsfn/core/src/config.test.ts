@@ -519,7 +519,7 @@ it.each(['theme', 'theme/index.js'])('reloads CommonJS exact and directory modul
   expect((await loadDocsConfig({ cwd, configPath: 'docsfn.config.cjs' })).site.title).toBe('After');
 });
 
-it.each(['//outside.example', '/docs?x=1', '/docs#anchor', '/\\outside'])('rejects nonlocal route configuration %s', async route => {
+it.each(['//outside.example', '/docs?x=1', '/docs#anchor', '/\\outside', '/docs/../internal', '/docs/./internal', '/docs/%2e%2e/internal', '/docs/.%2E/internal', '/docs/%2e/internal', '/docs/%2e%2f../internal', '/docs/%zz'])('rejects nonlocal route configuration %s', async route => {
   const cwd = await createTempDir();
   const base = { schemaVersion: 1, site: { title: 'Routes', basePath: '/docs' }, content: { root: cwd, docsDir: 'content/docs' } };
   for (const extra of [{ site: { ...base.site, basePath: route } }, { blog: { routeBase: route } }, { blog: { feedPath: route } }, { collections: { posts: { dir: 'posts', routeBase: route } } }]) {

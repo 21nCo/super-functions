@@ -19,6 +19,7 @@ for (const mode of ["mixed", "public"]) {
     try {
       await mkdir(join(root, "content/docs/internal"), { recursive: true });
       await writeFile(join(root, "content/docs/internal/hidden.md"), "---\ntitle: Opaque classified title\n---\n\nOpaque classified body");
+      await writeFile(join(root, "content/docs/public.md"), "---\ntitle: Ordinary public title\n---\n\nOrdinary public body");
       await writeFile(join(root, "docsfn.config.mjs"), `export default ${JSON.stringify({ schemaVersion: 1, site: { title: "Fixture" }, content: { root: "." }, auth: { enabled: mode === "mixed", mode }, search: { enabled: true, scopes: ["docs"], bodyIndexing: "full" } })};`);
       const built = await run(process.execPath, [cli, "build", root, "--out-dir", "out"], { timeout: 30000 });
       await run(process.execPath, [cli, "llms", root, "--static-dir", "static"], { timeout: 30000 });
@@ -27,11 +28,17 @@ for (const mode of ["mixed", "public"]) {
       const full = await readFile(join(root, "static/llms-full.txt"), "utf8");
       if (mode === "mixed") {
         assert.equal(search.documents.length, 0);
-        for (const artifact of [JSON.stringify(search), llms, full]) assert.ok(!artifact.includes("Opaque classified"));
+        for (const artifact of [JSON.stringify(search), llms, full]) {
+          assert.ok(!artifact.includes("Opaque classified"));
+          assert.ok(!artifact.includes("Ordinary public"));
+        }
         assert.match(built.stdout + built.stderr, /omit all routes/);
       } else {
         assert.ok(search.documents.length > 0);
-        assert.match(full, /Opaque classified body/);
+        for (const artifact of [JSON.stringify(search), llms, full]) {
+          assert.match(artifact, /Opaque classified/);
+          assert.match(artifact, /Ordinary public/);
+        }
       }
     } finally { await rm(root, { recursive: true, force: true }); }
   });

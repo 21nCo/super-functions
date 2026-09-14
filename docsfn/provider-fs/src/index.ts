@@ -182,6 +182,11 @@ export class FsContentProvider implements DocsContentProvider {
         ...config,
         content: {
           ...config.content,
+          docsDir: this.options.docsDir ?? config.content.docsDir,
+          pagesDir: this.options.pagesDir ?? config.content.pagesDir,
+          blogDir: this.options.blogDir ?? config.content.blogDir,
+          apiDir: this.options.apiDir ?? config.content.apiDir,
+          assetsDir: this.options.assetsDir ?? config.content.assetsDir,
           root: this.options.root,
         },
       },

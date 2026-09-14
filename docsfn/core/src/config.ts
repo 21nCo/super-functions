@@ -72,8 +72,14 @@ const docsTopNavItemSchema: z.ZodType<any> = z.lazy(() =>
   })
 );
 
-function isLocalRoute(value: string): boolean {
-  return /^\/(?!\/)[^?#\\\u0000-\u0020]*$/.test(value);
+export function isLocalRoute(value: string): boolean {
+  if (!/^\/(?!\/)[^?#\\\u0000-\u0020]*$/.test(value)) return false;
+  try {
+    return value.split("/").every(segment => {
+      const decoded = decodeURIComponent(segment);
+      return decoded !== "." && decoded !== ".." && !/[\/\\\u0000-\u001f]/.test(decoded);
+    });
+  } catch { return false; }
 }
 
 const absoluteRouteSchema = (pathLabel: string) =>
