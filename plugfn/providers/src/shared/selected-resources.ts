@@ -4,884 +4,286 @@ import type { Provider, ActionContract } from "plugfn";
  * structured inputs need consumer interpretation. Parameterless hints refer to
  * collections or the trusted connected account/site. Optional fields do not
  * imply a narrower scope when omitted. Never infer a grant from these hints. */
+const repositoryResources: ActionContract["resources"] = [
+  { kind: "owner", parameter: "owner" },
+  { kind: "repository", parameter: "repo" },
+];
+const repositoryIssueResources: ActionContract["resources"] = [
+  { kind: "owner", parameter: "owner" },
+  { kind: "repository", parameter: "repo" },
+  { kind: "issue", parameter: "issueNumber" },
+];
+const pullRequestResources: ActionContract["resources"] = [
+  { kind: "owner", parameter: "owner" },
+  { kind: "repository", parameter: "repo" },
+  { kind: "pull-request", parameter: "pullNumber" },
+];
+const teamResources: ActionContract["resources"] = [
+  { kind: "team", parameter: "teamId" },
+];
+const issueResources: ActionContract["resources"] = [
+  { kind: "issue", parameter: "issueId" },
+];
+const documentCollectionResources: ActionContract["resources"] = [
+  { kind: "document-collection" },
+];
+const pageResources: ActionContract["resources"] = [
+  { kind: "page", parameter: "pageId" },
+];
+const blockResources: ActionContract["resources"] = [
+  { kind: "block", parameter: "blockId" },
+];
+const listResources: ActionContract["resources"] = [
+  { kind: "list", parameter: "listId" },
+];
+const taskResources: ActionContract["resources"] = [
+  { kind: "task", parameter: "taskId" },
+];
+const conversationMessageResources: ActionContract["resources"] = [
+  { kind: "conversation", parameter: "channel" },
+  { kind: "message", parameter: "ts" },
+];
+const connectedMailboxResources: ActionContract["resources"] = [
+  { kind: "connected-mailbox" },
+];
+const messageResources: ActionContract["resources"] = [
+  { kind: "message", parameter: "id" },
+];
+const draftResources: ActionContract["resources"] = [
+  { kind: "draft", parameter: "id" },
+];
+const driveSearchResources: ActionContract["resources"] = [
+  { kind: "drive", parameter: "driveId" },
+  { kind: "search-query", parameter: "q" },
+];
+const fileResources: ActionContract["resources"] = [
+  { kind: "file", parameter: "fileId" },
+];
+const documentResources: ActionContract["resources"] = [
+  { kind: "document", parameter: "documentId" },
+];
+const spreadsheetRangesResources: ActionContract["resources"] = [
+  { kind: "spreadsheet", parameter: "spreadsheetId" },
+  { kind: "range", parameter: "ranges" },
+];
+const spreadsheetRangeResources: ActionContract["resources"] = [
+  { kind: "spreadsheet", parameter: "spreadsheetId" },
+  { kind: "range", parameter: "range" },
+];
+const calendarCollectionResources: ActionContract["resources"] = [
+  { kind: "calendar-collection" },
+];
+const calendarResources: ActionContract["resources"] = [
+  { kind: "calendar", parameter: "calendarId" },
+];
+const calendarEventResources: ActionContract["resources"] = [
+  { kind: "calendar", parameter: "calendarId" },
+  { kind: "event", parameter: "eventId" },
+];
+const siteIssueResources: ActionContract["resources"] = [
+  { kind: "connected-site" },
+  { kind: "issue", parameter: "issueIdOrKey" },
+];
+const eventResources: ActionContract["resources"] = [
+  { kind: "event", parameter: "id" },
+];
+const driveItemResources: ActionContract["resources"] = [
+  { kind: "drive", parameter: "driveId" },
+  { kind: "drive-item", parameter: "itemId" },
+];
+
+// Each action receives independent hint objects, preserving the public mutable shape.
+function copyHints(
+  hints: ActionContract["resources"],
+): ActionContract["resources"] {
+  return hints.map((hint) => ({ ...hint }));
+}
+
 export const selectedResources: Record<
   string,
   Record<string, ActionContract["resources"]>
 > = {
   github: {
-    "repos.list": [
-      {
-        kind: "repository-collection",
-      },
-    ],
-    "issues.list": [
-      {
-        kind: "owner",
-        parameter: "owner",
-      },
-      {
-        kind: "repository",
-        parameter: "repo",
-      },
-    ],
-    "issues.get": [
-      {
-        kind: "owner",
-        parameter: "owner",
-      },
-      {
-        kind: "repository",
-        parameter: "repo",
-      },
-      {
-        kind: "issue",
-        parameter: "issueNumber",
-      },
-    ],
-    "issues.create": [
-      {
-        kind: "owner",
-        parameter: "owner",
-      },
-      {
-        kind: "repository",
-        parameter: "repo",
-      },
-    ],
-    "issues.update": [
-      {
-        kind: "owner",
-        parameter: "owner",
-      },
-      {
-        kind: "repository",
-        parameter: "repo",
-      },
-      {
-        kind: "issue",
-        parameter: "issueNumber",
-      },
-    ],
-    "issues.comments.list": [
-      {
-        kind: "owner",
-        parameter: "owner",
-      },
-      {
-        kind: "repository",
-        parameter: "repo",
-      },
-    ],
-    "issues.comments.create": [
-      {
-        kind: "owner",
-        parameter: "owner",
-      },
-      {
-        kind: "repository",
-        parameter: "repo",
-      },
-      {
-        kind: "issue",
-        parameter: "issueNumber",
-      },
-    ],
-    "pulls.list": [
-      {
-        kind: "owner",
-        parameter: "owner",
-      },
-      {
-        kind: "repository",
-        parameter: "repo",
-      },
-    ],
-    "pulls.get": [
-      {
-        kind: "owner",
-        parameter: "owner",
-      },
-      {
-        kind: "repository",
-        parameter: "repo",
-      },
-      {
-        kind: "pull-request",
-        parameter: "pullNumber",
-      },
-    ],
+    "repos.list": [{ kind: "repository-collection" }],
+    "issues.list": copyHints(repositoryResources),
+    "issues.get": copyHints(repositoryIssueResources),
+    "issues.create": copyHints(repositoryResources),
+    "issues.update": copyHints(repositoryIssueResources),
+    "issues.comments.list": copyHints(repositoryResources),
+    "issues.comments.create": copyHints(repositoryIssueResources),
+    "pulls.list": copyHints(repositoryResources),
+    "pulls.get": copyHints(pullRequestResources),
     "pulls.create": [
-      {
-        kind: "owner",
-        parameter: "owner",
-      },
-      {
-        kind: "repository",
-        parameter: "repo",
-      },
-      {
-        kind: "branch",
-        parameter: "head",
-      },
-      {
-        kind: "branch",
-        parameter: "base",
-      },
+      { kind: "owner", parameter: "owner" },
+      { kind: "repository", parameter: "repo" },
+      { kind: "branch", parameter: "head" },
+      { kind: "branch", parameter: "base" },
     ],
-    "pulls.review": [
-      {
-        kind: "owner",
-        parameter: "owner",
-      },
-      {
-        kind: "repository",
-        parameter: "repo",
-      },
-      {
-        kind: "pull-request",
-        parameter: "pullNumber",
-      },
-    ],
+    "pulls.review": copyHints(pullRequestResources),
   },
   linear: {
-    "teams.list": [
-      {
-        kind: "team-collection",
-      },
-    ],
-    "issues.search": [
-      {
-        kind: "team",
-        parameter: "teamId",
-      },
-    ],
-    "issues.list": [
-      {
-        kind: "team",
-        parameter: "teamId",
-      },
-    ],
-    "issues.get": [
-      {
-        kind: "issue",
-        parameter: "issueId",
-      },
-    ],
-    "issues.create": [
-      {
-        kind: "team",
-        parameter: "teamId",
-      },
-    ],
-    "issues.update": [
-      {
-        kind: "issue",
-        parameter: "issueId",
-      },
-    ],
-    "comments.list": [
-      {
-        kind: "comment-collection",
-      },
-    ],
-    "comments.create": [
-      {
-        kind: "issue",
-        parameter: "issueId",
-      },
-    ],
-    "documents.list": [
-      {
-        kind: "document-collection",
-      },
-    ],
-    "documents.get": [
-      {
-        kind: "document",
-        parameter: "id",
-      },
-    ],
+    "teams.list": [{ kind: "team-collection" }],
+    "issues.search": copyHints(teamResources),
+    "issues.list": copyHints(teamResources),
+    "issues.get": copyHints(issueResources),
+    "issues.create": copyHints(teamResources),
+    "issues.update": copyHints(issueResources),
+    "comments.list": [{ kind: "comment-collection" }],
+    "comments.create": copyHints(issueResources),
+    "documents.list": copyHints(documentCollectionResources),
+    "documents.get": [{ kind: "document", parameter: "id" }],
   },
   notion: {
-    search: [
-      {
-        kind: "shared-content-collection",
-      },
-    ],
-    "pages.get": [
-      {
-        kind: "page",
-        parameter: "pageId",
-      },
-    ],
-    "pages.create": [
-      {
-        kind: "parent",
-        parameter: "parent",
-      },
-    ],
-    "pages.update": [
-      {
-        kind: "page",
-        parameter: "pageId",
-      },
-    ],
-    "blocks.children.list": [
-      {
-        kind: "block",
-        parameter: "blockId",
-      },
-    ],
-    "blocks.children.append": [
-      {
-        kind: "block",
-        parameter: "blockId",
-      },
-    ],
-    "dataSources.list": [
-      {
-        kind: "database",
-        parameter: "databaseId",
-      },
-    ],
-    "dataSources.query": [
-      {
-        kind: "data-source",
-        parameter: "dataSourceId",
-      },
-    ],
+    search: [{ kind: "shared-content-collection" }],
+    "pages.get": copyHints(pageResources),
+    "pages.create": [{ kind: "parent", parameter: "parent" }],
+    "pages.update": copyHints(pageResources),
+    "blocks.children.list": copyHints(blockResources),
+    "blocks.children.append": copyHints(blockResources),
+    "dataSources.list": [{ kind: "database", parameter: "databaseId" }],
+    "dataSources.query": [{ kind: "data-source", parameter: "dataSourceId" }],
   },
   clickup: {
-    "spaces.list": [
-      {
-        kind: "workspace",
-        parameter: "teamId",
-      },
-    ],
+    "spaces.list": [{ kind: "workspace", parameter: "teamId" }],
     "lists.list": [
-      {
-        kind: "space",
-        parameter: "spaceId",
-      },
-      {
-        kind: "folder",
-        parameter: "folderId",
-      },
+      { kind: "space", parameter: "spaceId" },
+      { kind: "folder", parameter: "folderId" },
     ],
-    "tasks.list": [
-      {
-        kind: "list",
-        parameter: "listId",
-      },
-    ],
-    "tasks.get": [
-      {
-        kind: "task",
-        parameter: "taskId",
-      },
-    ],
-    "tasks.create": [
-      {
-        kind: "list",
-        parameter: "listId",
-      },
-    ],
-    "tasks.update": [
-      {
-        kind: "task",
-        parameter: "taskId",
-      },
-    ],
-    "comments.list": [
-      {
-        kind: "task",
-        parameter: "taskId",
-      },
-    ],
-    "comments.create": [
-      {
-        kind: "task",
-        parameter: "taskId",
-      },
-    ],
+    "tasks.list": copyHints(listResources),
+    "tasks.get": copyHints(taskResources),
+    "tasks.create": copyHints(listResources),
+    "tasks.update": copyHints(taskResources),
+    "comments.list": copyHints(taskResources),
+    "comments.create": copyHints(taskResources),
   },
   slack: {
-    "conversations.list": [
-      {
-        kind: "conversation-collection",
-      },
-    ],
-    "conversations.history": [
-      {
-        kind: "conversation",
-        parameter: "channel",
-      },
-    ],
-    "conversations.replies": [
-      {
-        kind: "conversation",
-        parameter: "channel",
-      },
-      {
-        kind: "message",
-        parameter: "ts",
-      },
-    ],
-    "search.messages": [
-      {
-        kind: "search-query",
-        parameter: "query",
-      },
-    ],
-    "users.info": [
-      {
-        kind: "user",
-        parameter: "user",
-      },
-    ],
+    "conversations.list": [{ kind: "conversation-collection" }],
+    "conversations.history": [{ kind: "conversation", parameter: "channel" }],
+    "conversations.replies": copyHints(conversationMessageResources),
+    "search.messages": [{ kind: "search-query", parameter: "query" }],
+    "users.info": [{ kind: "user", parameter: "user" }],
     "messages.post": [
-      {
-        kind: "conversation",
-        parameter: "channel",
-      },
-      {
-        kind: "message",
-        parameter: "thread_ts",
-      },
+      { kind: "conversation", parameter: "channel" },
+      { kind: "message", parameter: "thread_ts" },
     ],
-    "messages.update": [
-      {
-        kind: "conversation",
-        parameter: "channel",
-      },
-      {
-        kind: "message",
-        parameter: "ts",
-      },
-    ],
+    "messages.update": copyHints(conversationMessageResources),
     "files.upload": [
-      {
-        kind: "conversation",
-        parameter: "channel_id",
-      },
-      {
-        kind: "message",
-        parameter: "thread_ts",
-      },
+      { kind: "conversation", parameter: "channel_id" },
+      { kind: "message", parameter: "thread_ts" },
     ],
   },
   gmail: {
-    "messages.list": [
-      {
-        kind: "connected-mailbox",
-      },
-    ],
-    "messages.get": [
-      {
-        kind: "message",
-        parameter: "id",
-      },
-    ],
-    "threads.get": [
-      {
-        kind: "thread",
-        parameter: "id",
-      },
-    ],
+    "messages.list": copyHints(connectedMailboxResources),
+    "messages.get": copyHints(messageResources),
+    "threads.get": [{ kind: "thread", parameter: "id" }],
     "attachments.get": [
-      {
-        kind: "message",
-        parameter: "messageId",
-      },
-      {
-        kind: "attachment",
-        parameter: "id",
-      },
+      { kind: "message", parameter: "messageId" },
+      { kind: "attachment", parameter: "id" },
     ],
-    "labels.list": [
-      {
-        kind: "connected-mailbox",
-      },
-    ],
-    "messages.modify": [
-      {
-        kind: "message",
-        parameter: "id",
-      },
-    ],
-    "drafts.create": [
-      {
-        kind: "connected-mailbox",
-      },
-    ],
-    "drafts.update": [
-      {
-        kind: "draft",
-        parameter: "id",
-      },
-    ],
-    "drafts.send": [
-      {
-        kind: "draft-input",
-        parameter: "body",
-      },
-    ],
-    "messages.send": [
-      {
-        kind: "connected-mailbox",
-      },
-    ],
+    "labels.list": copyHints(connectedMailboxResources),
+    "messages.modify": copyHints(messageResources),
+    "drafts.create": copyHints(connectedMailboxResources),
+    "drafts.update": copyHints(draftResources),
+    "drafts.send": [{ kind: "draft-input", parameter: "body" }],
+    "messages.send": copyHints(connectedMailboxResources),
   },
   "google-drive": {
-    "files.search": [
-      {
-        kind: "drive",
-        parameter: "driveId",
-      },
-      {
-        kind: "search-query",
-        parameter: "q",
-      },
-    ],
-    "files.get": [
-      {
-        kind: "file",
-        parameter: "fileId",
-      },
-    ],
-    "files.download": [
-      {
-        kind: "file",
-        parameter: "fileId",
-      },
-    ],
-    "files.export": [
-      {
-        kind: "file",
-        parameter: "fileId",
-      },
-    ],
-    "files.create": [
-      {
-        kind: "file-parent-input",
-        parameter: "body",
-      },
-    ],
+    "files.search": copyHints(driveSearchResources),
+    "files.get": copyHints(fileResources),
+    "files.download": copyHints(fileResources),
+    "files.export": copyHints(fileResources),
+    "files.create": [{ kind: "file-parent-input", parameter: "body" }],
     "files.update": [
-      {
-        kind: "file",
-        parameter: "fileId",
-      },
-      {
-        kind: "parent",
-        parameter: "addParents",
-      },
-      {
-        kind: "parent",
-        parameter: "removeParents",
-      },
+      { kind: "file", parameter: "fileId" },
+      { kind: "parent", parameter: "addParents" },
+      { kind: "parent", parameter: "removeParents" },
     ],
-    "permissions.list": [
-      {
-        kind: "file",
-        parameter: "fileId",
-      },
-    ],
-    "permissions.create": [
-      {
-        kind: "file",
-        parameter: "fileId",
-      },
-    ],
+    "permissions.list": copyHints(fileResources),
+    "permissions.create": copyHints(fileResources),
     "permissions.delete": [
-      {
-        kind: "file",
-        parameter: "fileId",
-      },
-      {
-        kind: "permission",
-        parameter: "permissionId",
-      },
+      { kind: "file", parameter: "fileId" },
+      { kind: "permission", parameter: "permissionId" },
     ],
   },
   "google-docs": {
-    "documents.get": [
-      {
-        kind: "document",
-        parameter: "documentId",
-      },
-    ],
-    "documents.create": [
-      {
-        kind: "document-collection",
-      },
-    ],
-    "documents.batchUpdate": [
-      {
-        kind: "document",
-        parameter: "documentId",
-      },
-    ],
+    "documents.get": copyHints(documentResources),
+    "documents.create": copyHints(documentCollectionResources),
+    "documents.batchUpdate": copyHints(documentResources),
   },
   "google-sheets": {
-    "spreadsheets.get": [
-      {
-        kind: "spreadsheet",
-        parameter: "spreadsheetId",
-      },
-      {
-        kind: "range",
-        parameter: "ranges",
-      },
-    ],
-    "spreadsheets.create": [
-      {
-        kind: "spreadsheet-collection",
-      },
-    ],
-    "values.get": [
-      {
-        kind: "spreadsheet",
-        parameter: "spreadsheetId",
-      },
-      {
-        kind: "range",
-        parameter: "range",
-      },
-    ],
-    "values.batchGet": [
-      {
-        kind: "spreadsheet",
-        parameter: "spreadsheetId",
-      },
-      {
-        kind: "range",
-        parameter: "ranges",
-      },
-    ],
-    "values.update": [
-      {
-        kind: "spreadsheet",
-        parameter: "spreadsheetId",
-      },
-      {
-        kind: "range",
-        parameter: "range",
-      },
-    ],
-    "values.append": [
-      {
-        kind: "spreadsheet",
-        parameter: "spreadsheetId",
-      },
-      {
-        kind: "range",
-        parameter: "range",
-      },
-    ],
+    "spreadsheets.get": copyHints(spreadsheetRangesResources),
+    "spreadsheets.create": [{ kind: "spreadsheet-collection" }],
+    "values.get": copyHints(spreadsheetRangeResources),
+    "values.batchGet": copyHints(spreadsheetRangesResources),
+    "values.update": copyHints(spreadsheetRangeResources),
+    "values.append": copyHints(spreadsheetRangeResources),
     "spreadsheets.batchUpdate": [
-      {
-        kind: "spreadsheet",
-        parameter: "spreadsheetId",
-      },
+      { kind: "spreadsheet", parameter: "spreadsheetId" },
     ],
   },
   "google-calendar": {
-    "calendars.list": [
-      {
-        kind: "calendar-collection",
-      },
-    ],
-    "events.list": [
-      {
-        kind: "calendar",
-        parameter: "calendarId",
-      },
-    ],
-    "events.get": [
-      {
-        kind: "calendar",
-        parameter: "calendarId",
-      },
-      {
-        kind: "event",
-        parameter: "eventId",
-      },
-    ],
-    "events.create": [
-      {
-        kind: "calendar",
-        parameter: "calendarId",
-      },
-    ],
-    "events.update": [
-      {
-        kind: "calendar",
-        parameter: "calendarId",
-      },
-      {
-        kind: "event",
-        parameter: "eventId",
-      },
-    ],
-    "events.delete": [
-      {
-        kind: "calendar",
-        parameter: "calendarId",
-      },
-      {
-        kind: "event",
-        parameter: "eventId",
-      },
-    ],
-    "freebusy.query": [
-      {
-        kind: "calendar-input",
-        parameter: "body",
-      },
-    ],
+    "calendars.list": copyHints(calendarCollectionResources),
+    "events.list": copyHints(calendarResources),
+    "events.get": copyHints(calendarEventResources),
+    "events.create": copyHints(calendarResources),
+    "events.update": copyHints(calendarEventResources),
+    "events.delete": copyHints(calendarEventResources),
+    "freebusy.query": [{ kind: "calendar-input", parameter: "body" }],
   },
   jira: {
-    "sites.list": [
-      {
-        kind: "accessible-site-collection",
-      },
-    ],
-    "projects.list": [
-      {
-        kind: "connected-site",
-      },
-    ],
+    "sites.list": [{ kind: "accessible-site-collection" }],
+    "projects.list": [{ kind: "connected-site" }],
     "issues.search": [
-      {
-        kind: "connected-site",
-      },
-      {
-        kind: "search-query",
-        parameter: "jql",
-      },
+      { kind: "connected-site" },
+      { kind: "search-query", parameter: "jql" },
     ],
-    "issues.get": [
-      {
-        kind: "connected-site",
-      },
-      {
-        kind: "issue",
-        parameter: "issueIdOrKey",
-      },
-    ],
+    "issues.get": copyHints(siteIssueResources),
     "issues.create": [
-      {
-        kind: "connected-site",
-      },
-      {
-        kind: "issue-fields",
-        parameter: "fields",
-      },
+      { kind: "connected-site" },
+      { kind: "issue-fields", parameter: "fields" },
     ],
-    "issues.update": [
-      {
-        kind: "connected-site",
-      },
-      {
-        kind: "issue",
-        parameter: "issueIdOrKey",
-      },
-    ],
-    "comments.list": [
-      {
-        kind: "connected-site",
-      },
-      {
-        kind: "issue",
-        parameter: "issueIdOrKey",
-      },
-    ],
-    "comments.create": [
-      {
-        kind: "connected-site",
-      },
-      {
-        kind: "issue",
-        parameter: "issueIdOrKey",
-      },
-    ],
-    "transitions.list": [
-      {
-        kind: "connected-site",
-      },
-      {
-        kind: "issue",
-        parameter: "issueIdOrKey",
-      },
-    ],
+    "issues.update": copyHints(siteIssueResources),
+    "comments.list": copyHints(siteIssueResources),
+    "comments.create": copyHints(siteIssueResources),
+    "transitions.list": copyHints(siteIssueResources),
     "transitions.apply": [
-      {
-        kind: "connected-site",
-      },
-      {
-        kind: "issue",
-        parameter: "issueIdOrKey",
-      },
-      {
-        kind: "transition",
-        parameter: "transitionId",
-      },
+      { kind: "connected-site" },
+      { kind: "issue", parameter: "issueIdOrKey" },
+      { kind: "transition", parameter: "transitionId" },
     ],
   },
   outlook: {
-    "mail.messages.list": [
-      {
-        kind: "connected-mailbox",
-      },
-    ],
-    "mail.messages.get": [
-      {
-        kind: "message",
-        parameter: "id",
-      },
-    ],
+    "mail.messages.list": copyHints(connectedMailboxResources),
+    "mail.messages.get": copyHints(messageResources),
     "mail.attachments.get": [
-      {
-        kind: "message",
-        parameter: "id",
-      },
-      {
-        kind: "attachment",
-        parameter: "attachmentId",
-      },
+      { kind: "message", parameter: "id" },
+      { kind: "attachment", parameter: "attachmentId" },
     ],
-    "mail.drafts.create": [
-      {
-        kind: "connected-mailbox",
-      },
-    ],
-    "mail.drafts.send": [
-      {
-        kind: "draft",
-        parameter: "id",
-      },
-    ],
-    "mail.messages.send": [
-      {
-        kind: "connected-mailbox",
-      },
-    ],
-    "calendars.list": [
-      {
-        kind: "calendar-collection",
-      },
-    ],
-    "events.list": [
-      {
-        kind: "calendar",
-        parameter: "calendarId",
-      },
-    ],
-    "events.get": [
-      {
-        kind: "event",
-        parameter: "id",
-      },
-    ],
-    "events.create": [
-      {
-        kind: "calendar",
-        parameter: "calendarId",
-      },
-    ],
-    "events.update": [
-      {
-        kind: "event",
-        parameter: "id",
-      },
-    ],
-    "events.delete": [
-      {
-        kind: "event",
-        parameter: "id",
-      },
-    ],
+    "mail.drafts.create": copyHints(connectedMailboxResources),
+    "mail.drafts.send": copyHints(draftResources),
+    "mail.messages.send": copyHints(connectedMailboxResources),
+    "calendars.list": copyHints(calendarCollectionResources),
+    "events.list": copyHints(calendarResources),
+    "events.get": copyHints(eventResources),
+    "events.create": copyHints(calendarResources),
+    "events.update": copyHints(eventResources),
+    "events.delete": copyHints(eventResources),
   },
   onedrive: {
-    "drives.list": [
-      {
-        kind: "drive-collection",
-      },
-    ],
-    "items.search": [
-      {
-        kind: "drive",
-        parameter: "driveId",
-      },
-      {
-        kind: "search-query",
-        parameter: "q",
-      },
-    ],
-    "items.get": [
-      {
-        kind: "drive",
-        parameter: "driveId",
-      },
-      {
-        kind: "drive-item",
-        parameter: "itemId",
-      },
-    ],
-    "items.download": [
-      {
-        kind: "drive",
-        parameter: "driveId",
-      },
-      {
-        kind: "drive-item",
-        parameter: "itemId",
-      },
-    ],
+    "drives.list": [{ kind: "drive-collection" }],
+    "items.search": copyHints(driveSearchResources),
+    "items.get": copyHints(driveItemResources),
+    "items.download": copyHints(driveItemResources),
     "items.upload": [
-      {
-        kind: "drive",
-        parameter: "driveId",
-      },
-      {
-        kind: "parent-item",
-        parameter: "parentId",
-      },
+      { kind: "drive", parameter: "driveId" },
+      { kind: "parent-item", parameter: "parentId" },
     ],
-    "permissions.list": [
-      {
-        kind: "drive",
-        parameter: "driveId",
-      },
-      {
-        kind: "drive-item",
-        parameter: "itemId",
-      },
-    ],
-    "permissions.create": [
-      {
-        kind: "drive",
-        parameter: "driveId",
-      },
-      {
-        kind: "drive-item",
-        parameter: "itemId",
-      },
-    ],
+    "permissions.list": copyHints(driveItemResources),
+    "permissions.create": copyHints(driveItemResources),
     "permissions.delete": [
-      {
-        kind: "drive",
-        parameter: "driveId",
-      },
-      {
-        kind: "drive-item",
-        parameter: "itemId",
-      },
-      {
-        kind: "permission",
-        parameter: "permissionId",
-      },
+      { kind: "drive", parameter: "driveId" },
+      { kind: "drive-item", parameter: "itemId" },
+      { kind: "permission", parameter: "permissionId" },
     ],
   },
 };

@@ -86,3 +86,5 @@ All probe files use exclusive creation. Run its filesystem regression checks fro
 the repository root with `node --test scripts/sfns4/packed-ui.test.mjs`.
 LangFn trace identifiers require Web Crypto `randomUUID`; runtimes without it
 fail explicitly instead of using pseudorandom fallback identifiers.
+
+See [Sonar triage](SONAR.md) for the per-issue evidence, resource-template compatibility checks, and the pending generated-discovery duplication setting.

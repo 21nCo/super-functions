@@ -71,7 +71,7 @@ export const onedriveProvider: Provider = {
       method: "GET",
       path: (p) =>
         graphPageUrl(
-          `${base}/drives/${segment(p.driveId)}/root/search(q='${segment(p.q.replace(/'/g, "''"))}')`,
+          `${base}/drives/${segment(p.driveId)}/root/search(q='${segment(p.q.replaceAll("'", "''"))}')`,
           p.nextLink,
         ),
       parameters: z

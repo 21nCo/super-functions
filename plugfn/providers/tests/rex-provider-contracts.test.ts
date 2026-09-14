@@ -15,13 +15,11 @@ const context = (data: unknown, status = 200) =>
     http: Object.fromEntries(
       ["get", "post", "put", "patch", "delete"].map((method) => [
         method,
-        vi
-          .fn()
-          .mockResolvedValue({
-            data,
-            status,
-            headers: { "content-type": "application/octet-stream" },
-          }),
+        vi.fn().mockResolvedValue({
+          data,
+          status,
+          headers: { "content-type": "application/octet-stream" },
+        }),
       ]),
     ),
   }) as any;
@@ -42,16 +40,17 @@ describe("selected provider wire contracts", () => {
         params: { q: "trashed=false", pageToken: "previous", pageSize: 10 },
       }),
     );
-    const binary = context(new Uint8Array([0, 255, 128]).buffer);
+    const bytes = Uint8Array.from({ length: 8448 }, (_, i) => i % 256);
+    const binary = context(bytes.buffer);
     expect(
       await googleDriveProvider.actions["files.download"].execute(
         { fileId: "f1" },
         binary,
       ),
     ).toEqual({
-      base64: "AP+A",
+      base64: Buffer.from(bytes).toString("base64"),
       mimeType: "application/octet-stream",
-      byteLength: 3,
+      byteLength: bytes.length,
     });
     expect(binary.http.get.mock.calls[0][1]).toMatchObject({
       responseType: "arrayBuffer",
@@ -60,17 +59,21 @@ describe("selected provider wire contracts", () => {
   });
   it("sends Drive metadata and binary upload without corrupting bytes", async () => {
     const c = context({ id: "new-file" });
+    const bytes = Uint8Array.from({ length: 256 }, (_, i) => i);
     await googleDriveProvider.actions["files.create"].execute(
       {
         body: { name: "test.bin" },
-        media: { base64: "AP+A", mimeType: "application/octet-stream" },
+        media: {
+          base64: Buffer.from(bytes).toString("base64"),
+          mimeType: "application/octet-stream",
+        },
       },
       c,
     );
     const [url, payload, config] = c.http.post.mock.calls[0];
     expect(url).toBe("https://www.googleapis.com/upload/drive/v3/files");
     expect(config.params.uploadType).toBe("multipart");
-    expect(Array.from(payload as Uint8Array).join(",")).toContain("0,255,128");
+    expect(Buffer.from(payload).includes(Buffer.from(bytes))).toBe(true);
   });
   it("retains revision-aware Docs edits and rejects invalid path types before effects", async () => {
     const c = context({ documentId: "doc", replies: [] });
