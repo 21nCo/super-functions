@@ -204,12 +204,13 @@ export function createMcpFnClientProfileSnapshot(
   };
 }
 
-function assertSnapshotFields(value: unknown, fields: readonly string[]): void {
+function assertSnapshotFields(value: unknown, fields: readonly string[], location: string): void {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Client profile snapshot fields must be objects");
+    throw new Error(`Client profile snapshot ${location} must be an object`);
   }
-  if (Object.keys(value).some(key => !fields.includes(key))) {
-    throw new Error("Client profile snapshot contains unsupported fields");
+  const key = Object.keys(value).find(key => !fields.includes(key));
+  if (key !== undefined) {
+    throw new Error(`Client profile snapshot contains unsupported fields at ${location}: ${JSON.stringify(key.slice(0, 128))}`);
   }
 }
 
@@ -219,7 +220,7 @@ export function validateMcpFnClientProfileSnapshot(
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Client profile snapshot must be an object");
   }
-  assertSnapshotFields(value, ["formatVersion", "kind", "profile", "catalogHash", "tools"]);
+  assertSnapshotFields(value, ["formatVersion", "kind", "profile", "catalogHash", "tools"], "root");
   const snapshot = value as Partial<McpFnClientProfileSnapshot>;
   if (
     snapshot.formatVersion !== 1 ||
@@ -229,7 +230,7 @@ export function validateMcpFnClientProfileSnapshot(
   }
   if (!snapshot.profile)
     throw new Error("Client profile snapshot requires profile metadata");
-  assertSnapshotFields(snapshot.profile, ["id", "version"]);
+  assertSnapshotFields(snapshot.profile, ["id", "version"], "profile");
   assertProfileReference(snapshot.profile.id, snapshot.profile.version);
   if (
     typeof snapshot.catalogHash !== "string" ||
@@ -240,8 +241,8 @@ export function validateMcpFnClientProfileSnapshot(
   if (!Array.isArray(snapshot.tools))
     throw new Error("Client profile snapshot tools must be an array");
   let prior = "";
-  for (const tool of snapshot.tools) {
-    assertSnapshotFields(tool, ["name", "hash"]);
+  for (const [index, tool] of snapshot.tools.entries()) {
+    assertSnapshotFields(tool, ["name", "hash"], `tools[${index}]`);
     if (
       !tool ||
       typeof tool.name !== "string" ||

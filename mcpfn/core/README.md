@@ -190,3 +190,5 @@ reports the first observed persistence failure for that request, including delay
 writes after creation returns. Retries do not repeat that failure event. It does
 not reverse handler success or claim a final task status. Output validation still
 runs for each attempted result before persistence.
+
+Lifecycle evidence retains only recognized framework error codes; application-defined codes become `MCPFN_TOOL_ERROR`. Protocol error responses preserve the original application code and details.

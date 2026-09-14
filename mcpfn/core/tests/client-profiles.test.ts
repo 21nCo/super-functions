@@ -443,7 +443,7 @@ describe("McpFn client profiles", () => {
   it("omits handler-supplied issue payloads from evidence", async () => {
     const events: McpFnClientProfileEvidence[] = [];
     const { registry } = lookupRegistry(vi.fn(async () => {
-      throw new McpFnError("HANDLER_ERROR", "secret-input", { issues: [{ message: "secret-input" }] });
+      throw new McpFnError("secret-input".repeat(10000), "secret-input", { issues: [{ message: "secret-input" }] });
     }));
     const { client } = await connect({ subject: "generic" }, tenantProfile(), registry, "reported", event => { events.push(event); });
     await client.callTool({ name: "lookup", arguments: { query: "ok", tenantId: "ok" } });
@@ -772,7 +772,7 @@ it("reports a rejected task-store promise after the creation request has settled
   const { InMemoryTaskStore } = await import("@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js");
   const { CreateTaskResultSchema } = await import("@modelcontextprotocol/sdk/types.js");
   const taskStore = new InMemoryTaskStore();
-  const failure = new Error("private-storage-diagnosis");
+  const failure = new McpFnError("private-storage-diagnosis".repeat(10000), "private-storage-diagnosis");
   vi.spyOn(taskStore, "storeTaskResult").mockRejectedValue(failure);
   const evidence: McpFnClientProfileEvidence[] = [];
   let persist!: () => Promise<void>;

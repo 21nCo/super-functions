@@ -727,7 +727,7 @@ export class McpFnServer<TContext = undefined> {
     event: Omit<McpFnClientProfileEvidence, "formatVersion">,
   ): Promise<void> {
     try {
-      await this.clientProfiles?.evidence?.(structuredClone({ formatVersion: 1, ...event }));
+      await this.clientProfiles?.evidence?.(structuredClone({ formatVersion: 1, ...event, ...(event.code === undefined ? {} : { code: profileEvidenceCode(event.code) }) }));
     } catch {
       // Evidence sinks are observational and must never alter request behavior.
     }
@@ -948,4 +948,9 @@ export function createMcpFnServer<TContext = undefined>(
   options: McpFnServerOptions<TContext>,
 ): McpFnServer<TContext> {
   return new McpFnServer(options);
+}
+
+const PROFILE_EVIDENCE_CODES = new Set(["MCPFN_AMBIGUOUS_CLIENT_PROFILE", "MCPFN_DUPLICATE_CLIENT_PROFILE", "MCPFN_FORGED_SERVER_ARGUMENT", "MCPFN_INVALID_ARGUMENTS", "MCPFN_INVALID_CLIENT_PROFILE", "MCPFN_INVALID_OUTPUT", "MCPFN_INVALID_PROFILE_ARGUMENTS", "MCPFN_INVALID_PROJECTED_CATALOG", "MCPFN_INVALID_VERIFIED_IDENTITY", "MCPFN_MISSING_TRUSTED_CONTEXT", "MCPFN_PROFILE_ARGUMENT_MUTATION", "MCPFN_PROFILE_ASYMMETRIC", "MCPFN_PROFILE_ENRICHER_REQUIRED", "MCPFN_PROJECTED_TOOL_DUPLICATE", "MCPFN_PROJECTED_TOOL_UNKNOWN", "MCPFN_SERVER_ARGUMENT_NOT_REQUIRED", "MCPFN_SERVER_ARGUMENT_TOOL_UNKNOWN", "MCPFN_TOOL_ERROR"]);
+function profileEvidenceCode(code: string): string {
+  return PROFILE_EVIDENCE_CODES.has(code) ? code : "MCPFN_TOOL_ERROR";
 }

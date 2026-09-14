@@ -496,7 +496,7 @@ it.each(["root", "profile", "tool"])("rejects unsupported %s snapshot fields con
   const snapshot = createMcpFnClientProfileSnapshot({ id: "consumer/trusted", version: "1" }, [projectedTool()]);
   const extra = location === "root" ? snapshot : location === "profile" ? snapshot.profile : snapshot.tools[0];
   Object.assign(extra, { note: "reviewer annotation" });
-  expect(() => validateMcpFnClientProfileSnapshot(snapshot)).toThrow(/unsupported fields/);
+  expect(() => validateMcpFnClientProfileSnapshot(snapshot)).toThrow(`unsupported fields at ${location === "tool" ? "tools[0]" : location}: "note"`);
   expect(() => diffMcpFnClientProfileSnapshots(snapshot, snapshot)).toThrow(/unsupported fields/);
   const fixture = targetFor({ subject: "trusted-client", tenantId: "tenant" });
   const open = vi.spyOn(fixture.target, "open");
