@@ -1,3 +1,4 @@
+import { compareSearchIdentity } from "./search-order";
 import { createDiagnostic, createDocsError } from "./diagnostics";
 import type { DocsSearchArtifact, DocsSearchDocument, DocsSearchScope } from "./search";
 import {
@@ -82,24 +83,7 @@ function sortResults(
       if (right.score !== left.score) {
         return right.score - left.score;
       }
-      const titleCompare = left.title.localeCompare(right.title, "en", {
-        sensitivity: "variant",
-        numeric: true,
-      });
-      if (titleCompare !== 0) {
-        return titleCompare;
-      }
-      const pathCompare = left.path.localeCompare(right.path, "en", {
-        sensitivity: "variant",
-        numeric: true,
-      });
-      if (pathCompare !== 0) {
-        return pathCompare;
-      }
-      return left.id.localeCompare(right.id, "en", {
-        sensitivity: "variant",
-        numeric: true,
-      });
+      return compareSearchIdentity(left, right);
     })
     .slice(0, Math.max(1, limit));
 }

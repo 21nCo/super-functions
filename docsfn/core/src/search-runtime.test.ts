@@ -308,7 +308,7 @@ describe("search runtime", () => {
   });
 });
 
-it("bounds scoped engine retrieval to the requested limit", async () => {
+it("requests a bounded engine batch despite a smaller requested limit", async () => {
   const { InMemorySearchFn } = await import("@searchfn/client");
   const spy = vi.spyOn(InMemorySearchFn.prototype, "searchDetailed");
   try {
@@ -320,4 +320,16 @@ it("bounds scoped engine retrieval to the requested limit", async () => {
     // The runtime requests a bounded 20-hit cache batch, then returns one item.
     expect(spy).toHaveBeenLastCalledWith("adapter", expect.objectContaining({ limit: 20 }));
   } finally { spy.mockRestore(); }
+});
+
+it("selects deterministic equal-score winners before the engine batch is truncated", async () => {
+  const manifest = createManifest();
+  const base = Object.values(manifest.pages)[0];
+  manifest.pages = Object.fromEntries(Array.from({ length: 50 }, (_, index) => {
+    const id = `id:${index}`;
+    return [id, { ...base, id, path: `/docs/${50-index}`, title: `Adapter ${50-index}`, body: "adapter", description: "adapter", headings: [] }];
+  }));
+  const artifact = await buildSearchIndex(manifest, { search: { enabled: true } });
+  const runtime = createDocsSearchRuntime({ artifact });
+  expect((await runtime.query({ query: "adapter", scope: "docs", limit: 1 }))[0].title).toBe("Adapter 1");
 });

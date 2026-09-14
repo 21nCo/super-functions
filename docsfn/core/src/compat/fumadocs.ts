@@ -34,8 +34,34 @@ function parseImportSpecifiers(source: string): ImportSpecifier[] {
     .filter((specifier) => specifier.imported.length > 0 && specifier.local.length > 0);
 }
 
+// Only used on candidate import declarations; preserve quoted module strings.
+function stripImportComments(source: string): string | null {
+  let result = "";
+  let quote = "";
+  for (let index = 0; index < source.length; index++) {
+    const character = source[index];
+    if (quote) {
+      result += character;
+      if (character === "\\") result += source[++index] ?? "";
+      else if (character === quote) quote = "";
+    } else if (character === '"' || character === "'") {
+      quote = character; result += character;
+    } else if (source.startsWith("//", index)) {
+      while (index < source.length && source[index] !== "\n") index++;
+      result += "\n";
+    } else if (source.startsWith("/*", index)) {
+      const end = source.indexOf("*/", index + 2);
+      if (end < 0) return null;
+      result += " "; index = end + 1;
+    } else result += character;
+  }
+  return result;
+}
+
 function parseNamedImport(line: string): { rawSpecifiers: string; moduleName: string } | null {
-  const trimmed = line.trim().replace(/;$/, "").trimEnd();
+  const uncommented = stripImportComments(line);
+  if (uncommented === null) return null;
+  const trimmed = uncommented.trim().replace(/;$/, "").trimEnd();
   if (!trimmed.startsWith("import")) return null;
   const open = trimmed.indexOf("{");
   const close = trimmed.indexOf("}", open + 1);

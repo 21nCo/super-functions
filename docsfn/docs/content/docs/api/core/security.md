@@ -92,3 +92,10 @@ predicate and `auth` configuration to `buildSearchIndex`, `buildLlmsTxt`,
 `buildLlmsFullTxt`, and `buildLlmsTxtArtifacts`. Public artifacts are built outside
 the HTTP request gate and must use the same route classification to omit protected
 content. Private frontmatter and `/private` routes remain excluded as well.
+
+An API overview can contain every child operation's content. If any canonical
+operation, schema, or tag route is protected, public search and LLM artifacts omit
+that API entirely. With a custom mixed-mode classifier, normalize raw OpenAPI input
+into a canonical reference before artifact generation; unclassified raw API specs
+are omitted conservatively. Search artifacts also omit draft posts from preview
+manifests.

@@ -488,3 +488,16 @@ it("compiles supported multiline Fumadocs imports and aliases", () => {
   expect(artifact.transformedSource).not.toContain("fumadocs-ui/components/tabs");
   expect(artifact.blocks[0].type).toBe("tabs");
 });
+
+it("keeps commented named imports separate and accepts comments between specifiers", () => {
+  const artifact = compileMarkdown({ sourcePath: "comments.mdx", compatPreset: "fumadocs-v15", source: `import { Local } from "./local"; // local helper
+import {
+  Tabs, // group
+  /* a tab */ Tab,
+} from "fumadocs-ui/components/tabs"; // supported
+<Tabs items={["JS"]}>
+<Tab value="JS">Example</Tab>
+</Tabs>` });
+  expect(artifact.componentsUsed).toEqual(expect.arrayContaining(["DocsTabs", "DocsTab"]));
+  expect(artifact.blocks.some(block => block.type === "tabs")).toBe(true);
+});

@@ -1,3 +1,4 @@
+import { compareSearchIdentity } from "./search-order";
 import { createDiagnostic, createDocsError } from "./diagnostics";
 import type { DocsSearchArtifact, DocsSearchDocument } from "./search";
 import type { DocsSearchRuntimeResultItem } from "./search-runtime";
@@ -21,6 +22,7 @@ interface SnapshotSearchEngine extends DocsSearchIndexEngine {
     options: {
       fields?: string[];
       limit?: number;
+      compareEqualScores?: (left: { docId: string | number; score: number }, right: { docId: string | number; score: number }) => number;
     }
   ): Array<{ docId: string | number; score: number }>;
 }
@@ -101,6 +103,11 @@ class SearchFnRuntimeBackend implements DocsSearchRuntimeBackend {
     const engineResults = this.engineForScope(input.scope).searchDetailed(input.query, {
       fields: this.artifact.fields,
       limit: input.limit,
+      compareEqualScores: (left, right) => {
+        const a = this.documents.get(String(left.docId));
+        const b = this.documents.get(String(right.docId));
+        return a && b ? compareSearchIdentity(a, b) : String(left.docId).localeCompare(String(right.docId));
+      },
     });
 
     return engineResults

@@ -566,3 +566,15 @@ it("omits mixed-mode routes classified private by the host", async () => {
   expect(JSON.stringify(artifact)).not.toContain("Hidden classified");
   expect(artifact.documents.length).toBeGreaterThan(0);
 });
+
+it("omits API overviews containing protected children and preview drafts", async () => {
+  const manifest = createManifest();
+  const api = Object.values(manifest.apis)[0];
+  api.spec = { operations: [{ id: "secret", method: "GET", path: "/hidden", routePath: "/internal/operation", summary: "Restricted operation detail" }] };
+  const post = Object.values(manifest.posts)[0];
+  post.draft = true; post.title = "Unpublished draft detail";
+  const artifact = await buildSearchIndex(manifest, { auth: { enabled: true, mode: "mixed" }, isRoutePrivate: route => route.startsWith("/internal/"), search: { enabled: true, bodyIndexing: "full" } });
+  expect(artifact.documents.some(document => document.id === api.id)).toBe(false);
+  expect(JSON.stringify(artifact)).not.toContain("Restricted operation detail");
+  expect(JSON.stringify(artifact)).not.toContain("Unpublished draft detail");
+});

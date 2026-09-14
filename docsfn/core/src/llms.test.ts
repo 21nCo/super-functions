@@ -223,3 +223,13 @@ it("omits host-classified private routes from both public LLM artifacts", () => 
   expect(artifacts.llmsFullTxt).not.toContain("Hidden classified");
   expect(artifacts.llmsFullTxt).toContain(Object.values(manifest.pages)[1].body);
 });
+
+it("omits API overviews and embedded specs with protected child routes", () => {
+  const manifest = createManifest();
+  const api = { kind: "api" as const, id: "api:test", slug: "test", path: "/docs/api", title: "API", frontmatter: {}, spec: {} as any };
+  manifest.apis[api.id] = api;
+  api.spec = { operations: [{ id: "secret", method: "GET", path: "/hidden", routePath: "/internal/operation", summary: "Restricted operation detail" }], spec: { hidden: "Restricted embedded detail" } };
+  const options = { auth: { enabled: true, mode: "mixed" as const }, isRoutePrivate: (route: string) => route.startsWith("/internal/"), embedOpenApiSpec: true };
+  expect(buildLlmsTxt(manifest, options)).not.toContain("Restricted");
+  expect(buildLlmsFullTxt(manifest, options)).not.toContain("Restricted");
+});

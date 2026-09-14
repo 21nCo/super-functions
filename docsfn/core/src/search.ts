@@ -1,3 +1,4 @@
+import { isApiArtifactProtected } from "./artifact-security";
 import { createDiagnostic, createDocsError } from "./diagnostics";
 import {
   getDefaultDocsSearchEngineAdapter,
@@ -344,7 +345,7 @@ function collectSearchDocuments(input: {
   }
 
   for (const api of Object.values(input.manifest.apis)) {
-    if (isProtected(api.frontmatter, api.path)) {
+    if (isApiArtifactProtected(api, route => isProtected(api.frontmatter, route), Boolean(input.auth?.enabled && input.auth.mode === "mixed" && input.isRoutePrivate))) {
       continue;
     }
     const scope = resolveSearchScopeForRoute({
@@ -398,7 +399,7 @@ function collectSearchDocuments(input: {
   }
 
   for (const post of Object.values(input.manifest.posts)) {
-    if (isProtected(post.frontmatter, post.path)) {
+    if (post.draft || isProtected(post.frontmatter, post.path)) {
       continue;
     }
     const scope = resolveSearchScopeForRoute({

@@ -1,3 +1,4 @@
+import { isApiArtifactProtected } from "./artifact-security";
 import { isDocsContentProtected } from "./security";
 import type { ApiReference, BlogPost, DocPage, DocsConfig, DocsManifest } from "./types";
 
@@ -124,7 +125,7 @@ function selectPosts(manifest: DocsManifest, options: BuildLlmsTxtOptions): Blog
 function selectApis(manifest: DocsManifest, options: BuildLlmsTxtOptions): ApiReference[] {
   if (options.includeOpenApi === false) return [];
   return Object.values(manifest.apis)
-    .filter((api) => !isProtectedContent(options, api.frontmatter, api.path))
+    .filter((api) => !isApiArtifactProtected(api, route => isProtectedContent(options, api.frontmatter, route), Boolean(options.auth?.enabled && options.auth.mode === "mixed" && options.isRoutePrivate)))
     .sort(compareById);
 }
 
