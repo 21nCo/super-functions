@@ -759,3 +759,39 @@ it.each(["storage", "handler"])("orders task output evidence after predecessor s
     expect(stages).toEqual([["input-validation", "succeeded"], ["output-validation", "succeeded"], ["handler", "failed"]]);
   } finally { await client.close(); await server.close(); }
 });
+
+
+it("reports a rejected task-store promise after the creation request has settled", async () => {
+  const { InMemoryTaskStore } = await import("@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js");
+  const { CreateTaskResultSchema } = await import("@modelcontextprotocol/sdk/types.js");
+  const taskStore = new InMemoryTaskStore();
+  const failure = new Error("private-storage-diagnosis");
+  vi.spyOn(taskStore, "storeTaskResult").mockRejectedValue(failure);
+  const evidence: McpFnClientProfileEvidence[] = [];
+  let persist!: () => Promise<void>;
+  const registry = new McpFnRegistry().register({
+    name: "delayed", description: "Delayed task", inputSchema: { type: "object" },
+    execution: { taskSupport: "required" }, handler: async () => structuredResult({ ok: true }),
+    taskHandler: { createTask: async (_args, _context, extra) => {
+      const task = await extra.taskStore.createTask({ ttl: 1000 });
+      persist = () => extra.taskStore.storeTaskResult(task.taskId, "completed", structuredResult({ ok: true }));
+      return { task };
+    } },
+  });
+  const server = createMcpFnServer({ info: { name: "test", version: "1" }, registry, taskStore,
+    clientProfiles: { profiles: [], resolveVerifiedIdentity: () => undefined, evidence: event => { evidence.push(event); } } });
+  const client = new Client({ name: "test", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left);
+    const created = await client.request({ method: "tools/call", params: { name: "delayed", arguments: {}, task: { ttl: 1000 } } }, CreateTaskResultSchema);
+    expect(created.task.status).toBe("working");
+    const beforeStorage = evidence.length;
+    await expect(persist()).rejects.toBe(failure);
+    expect(evidence.slice(beforeStorage).map(event => [event.stage, event.outcome])).toEqual([
+      ["output-validation", "succeeded"], ["handler", "failed"],
+    ]);
+    expect(evidence.filter(event => event.stage === "handler" && event.outcome === "failed")).toHaveLength(1);
+    expect(JSON.stringify(evidence)).not.toContain("private-storage-diagnosis");
+  } finally { await client.close(); await server.close(); }
+});

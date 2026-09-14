@@ -999,7 +999,12 @@ export class McpFnRegistry<TContext = undefined> {
             await observer.onTaskOutput?.("succeeded");
             // Validation completed; storage and subsequent work belong to the handler.
             observer.onStage?.("handler");
-            return target.storeTaskResult(taskId, status, validated);
+            try {
+              return await target.storeTaskResult(taskId, status, validated);
+            } catch (error) {
+              await observer.onTaskStorageFailure?.(error);
+              throw error;
+            }
           };
         }
         const value = Reflect.get(target, property, receiver) as unknown;
