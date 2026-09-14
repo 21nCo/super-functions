@@ -997,6 +997,8 @@ export class McpFnRegistry<TContext = undefined> {
               throw error;
             }
             await observer.onTaskOutput?.("succeeded");
+            // Validation completed; storage and subsequent work belong to the handler.
+            observer.onStage?.("handler");
             return target.storeTaskResult(taskId, status, validated);
           };
         }

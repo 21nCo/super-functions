@@ -452,6 +452,14 @@ describe("McpFn client profiles", () => {
     expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ stage: "input-validation", outcome: "succeeded" })]));
   });
 
+  it.each(["domain detail", ["domain", 1], 42, null])("preserves non-object domain error details: %j", async details => {
+    const { registry } = lookupRegistry(vi.fn(async () => { throw new McpFnError("DOMAIN_ERROR", "Domain failure", details); }));
+    const { client } = await connect({ subject: "generic" }, tenantProfile(), registry);
+    const result = await client.callTool({ name: "lookup", arguments: { query: "ok", tenantId: "ok" } });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({ error: { details } });
+  });
+
   it("reports validation when a delayed task result is stored", async () => {
     let finish!: () => Promise<unknown>;
     const stored = vi.fn();
@@ -747,7 +755,7 @@ it.each(["storage", "handler"])("orders task output evidence after predecessor s
   try {
     await server.connect(right); await client.connect(left); await client.listTools();
     try { for await (const _message of client.experimental.tasks.callToolStream({ name: "task", arguments: {} }, undefined, { task: { ttl: 1000 } })) { /* drain */ } } catch { /* Expected task failure. */ }
-    const stages = evidence.filter(event => ["input-validation", "handler", "output-validation"].includes(event.stage)).map(event => event.stage);
-    expect(stages).toEqual(["input-validation", "handler", "output-validation"]);
+    const stages = evidence.filter(event => ["input-validation", "handler", "output-validation"].includes(event.stage)).map(event => [event.stage, event.outcome]);
+    expect(stages).toEqual([["input-validation", "succeeded"], ["output-validation", "succeeded"], ["handler", "failed"]]);
   } finally { await client.close(); await server.close(); }
 });

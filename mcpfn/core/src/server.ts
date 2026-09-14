@@ -320,7 +320,7 @@ export class McpFnServer<TContext = undefined> {
           const completedStages = new Set<McpFnClientProfileLifecycleStage>();
           let currentStage: McpFnClientProfileLifecycleStage =
             "profile-resolution";
-          let taskOutputReported = false;
+          let taskOutputFailureReported = false;
           let taskRequestSettled = false;
           const pendingTaskOutput: Array<Omit<McpFnClientProfileEvidence, "formatVersion">> = [];
           const flushTaskOutput = async () => {
@@ -384,7 +384,7 @@ export class McpFnServer<TContext = undefined> {
 
             const observer = {
               onTaskOutput: async (outcome: "succeeded" | "failed", error?: unknown) => {
-                taskOutputReported = true;
+                taskOutputFailureReported = outcome === "failed";
                 completedStages.delete("output-validation");
                 const event: Omit<McpFnClientProfileEvidence, "formatVersion"> = {
                   stage: "output-validation", outcome,
@@ -454,7 +454,7 @@ export class McpFnServer<TContext = undefined> {
             const issues = (error instanceof McpFnValidationError || error instanceof McpFnOutputValidationError) && ["input-validation", "output-validation"].includes(currentStage) && Array.isArray(details.issues)
               ? (details.issues as McpFnClientProfileEvidence["issues"])
               : undefined;
-            if (!((currentStage as McpFnClientProfileLifecycleStage) === "output-validation" && taskOutputReported) && !["profile-resolution", "catalog-projection"].includes(currentStage)) await this.emitProfileEvidence({
+            if (!((currentStage as McpFnClientProfileLifecycleStage) === "output-validation" && taskOutputFailureReported) && !["profile-resolution", "catalog-projection"].includes(currentStage)) await this.emitProfileEvidence({
               stage: currentStage,
               outcome: "failed",
               profile,
@@ -465,7 +465,7 @@ export class McpFnServer<TContext = undefined> {
             });
             if (error instanceof McpError) throw error;
             const lifecycleError =
-              error instanceof McpFnError
+              error instanceof McpFnError && (error.details === undefined || (error.details !== null && typeof error.details === "object" && !Array.isArray(error.details)))
                 ? new McpFnError(error.code, error.message, {
                     ...details,
                     lifecycleStage: currentStage,
