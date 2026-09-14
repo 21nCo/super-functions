@@ -215,7 +215,10 @@ export async function runCli(
           // Keep the library's retryable cleanup error contract, while allowing
           // the CLI to persist its bounded, redacted failed result.
           if (error instanceof McpFnConformanceCleanupError && error.result) return error.result;
-          throw error;
+          // The proxy's explicit input validators use TypeError. Operational
+          // failures must not be presented as invalid CLI usage or leak secrets.
+          if (error instanceof TypeError) throw error;
+          throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Authenticated conformance failed before producing a report", { phase: "capability-operation" });
         })
         : await runOfficialConformance(conformanceOptions);
       if (result.stdout) stdout(result.stdout);
