@@ -743,3 +743,30 @@ it.each([false, true])("finishes protocol shutdown before handle cleanup (retry=
     expect(handleClose).toHaveBeenCalledOnce();
   } finally { release(); close.mockRestore(); await client.close(); await server.close(); }
 });
+
+it.each([false, true])("retains failed initialization shutdown before a connection retry (permanent=%s)", async permanent => {
+  const closeHandle = vi.fn(async () => {});
+  const transport = { start: async () => {}, send: async () => {}, close: async () => {} } as McpFnTransportHandle["transport"];
+  const open = vi.fn(async () => ({ transport, close: closeHandle }));
+  let shutdown: ReturnType<typeof vi.spyOn>;
+  const client = createMcpFnClient({
+    target: customTarget({ kind: "failed-initialization-shutdown", open }), connectRetries: 2,
+    configure: protocol => {
+      shutdown = vi.spyOn(protocol, "close").mockRejectedValue(new Error("shutdown failed"));
+      throw new Error("initialization failed");
+    },
+  });
+  await expect(client.connect()).rejects.toMatchObject({ phase: "transport-close", retryable: true });
+  expect(client.state).toBe("closing");
+  expect(open).toHaveBeenCalledOnce();
+  expect(closeHandle).not.toHaveBeenCalled();
+  await expect(client.connect()).rejects.toMatchObject({ phase: "transport-close" });
+  if (permanent) {
+    await expect(client.close()).rejects.toMatchObject({ phase: "transport-close" });
+    expect(closeHandle).not.toHaveBeenCalled();
+  }
+  shutdown!.mockResolvedValue(undefined);
+  await client.close();
+  expect(closeHandle).toHaveBeenCalledOnce();
+  expect(open).toHaveBeenCalledOnce();
+});

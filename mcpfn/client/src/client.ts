@@ -644,7 +644,17 @@ export class McpFnClient {
     const ownsHandle = this.handle === handle;
     if (ownsProtocol) this._protocol = undefined;
     if (ownsHandle) this.handle = undefined;
-    if (ownsProtocol) await protocol.close().catch(() => undefined);
+    if (ownsProtocol) {
+      try { await protocol.close(); }
+      catch {
+        this._protocol = protocol;
+        if (ownsHandle) this.pendingCleanup.add(handle);
+        this._state = "closing";
+        throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Retry close after initialization shutdown failed", {
+          phase: "transport-close", retryable: true,
+        });
+      }
+    }
     if (ownsHandle) await this.closeRetainedHandle(handle);
   }
 
