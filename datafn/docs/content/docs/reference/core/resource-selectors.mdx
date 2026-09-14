@@ -34,6 +34,7 @@ type StructuralResourceSelection = {
 function parseDatafnRequest(
   action: string,
   payload: unknown,
+  options?: { schema?: Pick<DatafnSchema, "resources" | "relations"> },
 ): DatafnEnvelope<ParsedDatafnRequest>;
 
 function collectStructuralResourceSelectors(
@@ -43,14 +44,15 @@ function collectStructuralResourceSelectors(
 function extractStructuralResourceSelectors(
   action: string,
   payload: unknown,
+  options?: { schema?: Pick<DatafnSchema, "resources" | "relations"> },
 ): DatafnEnvelope<StructuralResourceSelection>;
 ```
 
 `parseDatafnRequest` validates protocol envelope shape and selector-field types. It does not traverse application records or filter operands. `collectStructuralResourceSelectors` is exhaustive over `ParsedDatafnRequest`.
 
-For pull requests, pass trusted application schema metadata as the third argument:
+For join-aware pull, clone and reconcile requests, pass trusted application schema metadata as the third argument:
 `extractStructuralResourceSelectors("pull", payload, { schema })` (or
-`parseDatafnRequest("pull", payload, { schema })`). The parser translates known
+`parseDatafnRequest("pull", payload, { schema })`). The same option is required for `clone` and `reconcile` when `includeJoins` is enabled; omitting it returns `DFQL_UNSUPPORTED`. Standard sync reconciliation enables joins. Import `schema` from the application-owned configuration used to create the DataFn server. The parser translates known
 many-to-many join cursor keys into their endpoint resources. Without schema
 metadata, cursor names remain selectors; unknown `join_` names are never silently
 ignored. Gateways handling relational sync must supply the same schema as the
