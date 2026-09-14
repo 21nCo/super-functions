@@ -74,10 +74,14 @@ it("snapshots provider-owned headers before runner code can rotate them", async 
     headers.set("x-api-key", "rotated-value");
     return original(...args);
   });
-  const revoke = vi.fn();
+  const acquired = { headers };
+  const retained = new WeakMap([[acquired, "opaque-runner-value"]]);
+  const revoke = vi.fn(credential => { expect(retained.get(credential)).toBe("opaque-runner-value"); });
+  const dispose = vi.fn(credential => { expect(credential).toBe(acquired); });
   const result = await runAuthenticatedOfficialConformance({
-    url: "http://127.0.0.1:1/mcp", credential: { acquire: () => ({ headers }), revoke },
+    url: "http://127.0.0.1:1/mcp", credential: { acquire: () => acquired, revoke, dispose },
   });
   expect(JSON.stringify(result)).not.toContain("opaque-runner-value");
-  expect(new Headers(revoke.mock.calls[0][0].headers).get("x-api-key")).toBe("opaque-runner-value");
+  expect(revoke).toHaveBeenCalledWith(acquired, expect.anything());
+  expect(dispose).toHaveBeenCalledWith(acquired, expect.anything());
 });

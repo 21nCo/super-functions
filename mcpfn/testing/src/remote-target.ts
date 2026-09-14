@@ -225,9 +225,9 @@ export async function acquireRemoteCredential(
         const cleanupContext = { ...context, signal: new AbortController().signal };
         try {
           try {
-            if (!revoked) { await provider.revoke?.(credential, cleanupContext); revoked = true; }
+            if (!revoked) { await provider.revoke?.(acquired, cleanupContext); revoked = true; }
           } finally {
-            if (!disposed) { await provider.dispose?.(credential, cleanupContext); disposed = true; }
+            if (!disposed) { await provider.dispose?.(acquired, cleanupContext); disposed = true; }
           }
         } catch {
           throw new Error("Target credential cleanup failed");
@@ -306,9 +306,14 @@ export function authenticatedHttpTarget(
         });
         handle = await target.open(targetContext);
       } catch (error) {
+        // Sanitize while the lease still supplies its immutable header snapshot.
+        // Cleanup removes active secrets before the client emits failed-open diagnostics.
+        let message = "Authenticated target could not be opened";
+        try { message = redactRemoteCredential(lease.credential, error instanceof Error ? error.message : String(error)); }
+        catch { /* Invalid or oversized credentials must not escape through diagnostics. */ }
         pendingReleases.add(release);
         await release();
-        throw error;
+        throw new Error(message);
       }
 
       let closePromise: Promise<void> | undefined;
