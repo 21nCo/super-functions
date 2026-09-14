@@ -538,3 +538,23 @@ it('preserves modified source files and project state when package migration con
     expect(snapshot(rootDir)).toBe(before);
   });
 });
+
+it.each(['lock', 'record', 'source'])('rejects incomplete source migration ownership: %s', async missing => {
+  await withProject(async rootDir => {
+    expect(initProject({ rootDir, preset: encodePreset({ installMode: 'source' }) }).ok).toBe(true);
+    const lockPath = path.join(rootDir, '.uifn/registry.lock');
+    if (missing === 'lock') rmSync(lockPath);
+    else if (missing === 'source') rmSync(path.join(rootDir, 'components/uifn/react/button.ts'));
+    else {
+      const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+      delete lock.items['component:button'];
+      writeFileSync(lockPath, JSON.stringify(lock));
+    }
+    const before = snapshot(rootDir);
+    for (const dryRun of [true, false]) {
+      const result = applyPreset({ rootDir, preset: encodePreset({ installMode: 'package' }), dryRun });
+      expect(result.error?.code).toBe(missing === 'source' ? 'UIFN_REGISTRY_DIRTY_CONFLICT' : 'UIFN_REGISTRY_LOCK_INVALID');
+      expect(snapshot(rootDir)).toBe(before);
+    }
+  });
+});

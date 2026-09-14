@@ -416,12 +416,12 @@ function planSourceRemoval(rootDir: string, previous: PresetProjectState) {
   for (const name of ['.uifn/registry.lock', '.uifn/selected-components.json']) assertContainedPath(rootDir, name);
   const lock = readLockFile(rootDir);
   const registry = buildRegistry();
-  if (!registry.ok) throw new UIFnPresetError('UIFN_REGISTRY_CATALOG_INVALID', 'Cannot safely resolve installed artifact dependencies.');
+  if (!registry.ok) throw Object.assign(new Error('Cannot safely resolve installed artifact dependencies.'), { code: 'UIFN_REGISTRY_CATALOG_INVALID' });
   const keysFor = (slugs: string[]) => {
     const keys = new Set<string>();
     const visit = (slug: string) => {
       const manifest = registry.bySlug[slug];
-      if (!manifest) throw new UIFnPresetError('UIFN_REGISTRY_ARTIFACT_NOT_FOUND', `Cannot safely remove dependencies of unknown artifact: ${slug}`);
+      if (!manifest) throw Object.assign(new Error(`Cannot safely remove dependencies of unknown artifact: ${slug}`), { code: 'UIFN_REGISTRY_ARTIFACT_NOT_FOUND' });
       if (keys.has(manifest.lockKey)) return;
       keys.add(manifest.lockKey);
       manifest.artifactDependencies.forEach(visit);
@@ -430,6 +430,9 @@ function planSourceRemoval(rootDir: string, previous: PresetProjectState) {
     return keys;
   };
   const candidates = keysFor(compilePreset(previous.preset, previous.template).project.artifacts);
+  for (const key of candidates) {
+    if (!lock.items[key]) throw Object.assign(new Error(`Missing source ownership record: ${key}`), { code: 'UIFN_REGISTRY_LOCK_INVALID' });
+  }
   const retained = keysFor(Object.entries(lock.items).filter(([key]) => !candidates.has(key)).map(([, item]) => item.slug));
   const removals = new Set([...candidates].filter(key => !retained.has(key)));
   const retainedPaths = new Set(Object.entries(lock.items).filter(([key]) => !removals.has(key)).flatMap(([, item]) => item.files.map(file => file.path)));
@@ -441,9 +444,9 @@ function planSourceRemoval(rootDir: string, previous: PresetProjectState) {
     for (const file of item.files) {
       if (retainedPaths.has(file.path) || removedPaths.has(file.path)) continue;
       const absolute = assertContainedPath(rootDir, file.path);
-      if (!existsSync(absolute)) continue;
+      if (!existsSync(absolute)) throw Object.assign(new Error(`Missing managed source file: ${file.path}`), { code: 'UIFN_REGISTRY_DIRTY_CONFLICT' });
       const hash = checksumContent(readFileSync(absolute));
-      if (hash !== file.installedSha256) throw new UIFnPresetError('UIFN_REGISTRY_DIRTY_CONFLICT', `Refusing to remove a locally modified file: ${file.path}`);
+      if (hash !== file.installedSha256) throw Object.assign(new Error(`Refusing to remove a locally modified file: ${file.path}`), { code: 'UIFN_REGISTRY_DIRTY_CONFLICT' });
       changes.push({ path: file.path, operation: 'delete', expectedSha256: hash });
       removedPaths.add(file.path);
     }
