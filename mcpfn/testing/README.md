@@ -6,6 +6,7 @@ It includes:
 
 - the production McpFn client exposed as a fixture;
 - exact manifest assertions across tools, resources, templates, and prompts;
+- deterministic generic and authenticated client-profile catalogs, fixtures, and snapshots;
 - resource, prompt, completion, subscription, and task client methods;
 - reusable API-key and OAuth resource-server regression matrices;
 - an in-memory authorization-code, PKCE, refresh, and revocation server;
@@ -21,6 +22,12 @@ It includes:
 - orchestration of the official `@modelcontextprotocol/conformance` runner.
 
 Official conformance validates protocol behavior. McpFn scenarios validate product behavior. Production MCP servers should run both. For a protected local endpoint, use `runAuthenticatedOfficialConformance({ url, headers })`; it requires a literal loopback upstream, binds a temporary loopback-only streaming proxy, pins every request to the configured upstream path, injects the configured headers without printing them, and always closes the proxy after the pinned official runner exits.
+
+Deterministic client-profile compatibility is a third, separate gate. It proves
+the effective authenticated catalog, schema portability, trusted enrichment,
+canonical validation, handler reachability, and structured error fidelity. It
+does not replace protocol conformance or product scenarios and does not emulate
+a proprietary hosted model.
 
 Use `runMcpFnTargetSuite({ target, scenarios, manifest })` when a test should
 exercise a subprocess or deployed target. It constructs the same session used
@@ -53,6 +60,67 @@ try {
   await client.close();
 }
 ```
+
+## Client-profile contract suite
+
+`runMcpFnClientProfileContracts()` accepts one case per generic or configured
+profile. Each case supplies a production `McpFnTarget`, client initialization
+metadata/capabilities, an optional reviewed snapshot, and explicit fixtures.
+This supports in-memory, stdio, authenticated Streamable HTTP, and custom
+targets without a test-only server adapter.
+
+```ts
+import {
+  createMcpFnClientProfileSnapshot,
+  runMcpFnClientProfileContracts,
+} from "@mcpfn/testing";
+
+const report = await runMcpFnClientProfileContracts({
+  profiles: [{
+    id: "generic",
+    version: "canonical",
+    target: genericTarget,
+  }, {
+    id: "consumer/trusted",
+    version: "1",
+    target: authenticatedTarget,
+    clientInfo: { name: "consumer", version: "2.0.0" },
+    capabilities: { roots: { listChanged: true } },
+    expectedSnapshot: reviewedSnapshot,
+    fixtures: [{
+      name: "captured unknown property",
+      tool: "lookup",
+      arguments: capturedAndRedactedArguments,
+      sideEffect: "read-only",
+      source: "captured-failure",
+      expect: {
+        isError: true,
+        errorCode: "MCPFN_INVALID_ARGUMENTS",
+        lifecycleStage: "input-validation",
+        validationIssue: {
+          keyword: "additionalProperties",
+          rejectedProperty: "unexpectedField",
+        },
+      },
+    }],
+  }],
+});
+```
+
+Fixtures are executed through `McpFnTestClient.connectTarget()`, the same
+production session engine used by applications, inspector, and CLI. Fixture
+argument values never appear in reports. `read-only` fixtures run by default;
+`idempotent` and `non-idempotent` fixtures require explicit suite or CLI
+authorization.
+
+`createMcpFnClientProfileSnapshot()`,
+`validateMcpFnClientProfileSnapshot()`, and
+`diffMcpFnClientProfileSnapshots()` create reviewable effective-catalog
+baselines. Portability validation compiles each schema using its declared
+draft-07, 2019-09, or 2020-12 dialect and recursively reports reviewed
+compatibility-sensitive keywords. Invalid schemas, dialects, and references
+are errors; valid compatibility reductions are warnings unless policy promotes
+them to errors.
 
 Scenarios run serially so stateful workflows and idempotency checks remain
 deterministic. Legacy arrays are readable; portable artifacts use
@@ -120,3 +188,7 @@ test("accepts extensible OAuth client metadata", async ({ page, mcpfnOAuth }) =>
 The fixture starts a local mock server that publishes authorization-server discovery, consent UI, callback capture, client metadata variants, PKCE token exchange, refresh rotation, revocation, and an SDK-compatible access-token verifier. Extend the exported `test` with Skillplane's signed-in page or database fixtures; do not copy the OAuth machinery into the application.
 
 See [Testing and CI](https://github.com/21nCo/super-functions/blob/main/mcpfn/TESTING.md) for the complete layered strategy.
+
+Client-profile lifecycle evidence uses `invalid-arguments-handler` when a registered invalid-argument fallback runs. This stage does not imply that the tool handler ran; normal tool execution uses `handler`. Projected schemas select their declared JSON Schema dialect, defaulting to draft 7 to match canonical registry validation. Named `$anchor` definitions are portability-sensitive for older clients.
+
+Projected catalogs support local JSON Pointer and named-anchor references. Dynamic and recursive reference forms fail closed until dialect-correct dynamic-scope comparison is supported. A recovered invalid-input call emits failed input-validation evidence followed by the invalid-argument fallback stage.

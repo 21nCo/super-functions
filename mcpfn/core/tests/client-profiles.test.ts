@@ -1,0 +1,838 @@
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import {
+  McpFnRegistry,
+  McpFnValidationError,
+  McpFnError,
+  type McpFnClientProfileEvidence,
+  type McpFnTaskRequestExtra,
+  createMcpFnServer,
+  structuredResult,
+  type McpFnClientProfile,
+} from "../src/index.js";
+
+interface RequestContext {
+  subject?: string;
+  tenantId?: string;
+}
+
+describe("McpFn client profiles", () => {
+  const closeables: Array<{ close(): Promise<void> }> = [];
+
+  afterEach(async () => {
+    await Promise.all(
+      closeables.splice(0).map((value) => value.close().catch(() => undefined)),
+    );
+  });
+
+  async function connect(
+    context: RequestContext,
+    profile: McpFnClientProfile<RequestContext>,
+    registry: McpFnRegistry<RequestContext>,
+    clientName = "reported-client",
+    evidence?: (event: McpFnClientProfileEvidence) => void,
+  ) {
+    const server = createMcpFnServer({
+      info: { name: "profile-server", version: "1.0.0" },
+      registry,
+      context: () => context,
+      clientProfiles: {
+        profiles: [profile],
+        evidence,
+        resolveVerifiedIdentity: ({ context: trusted }) =>
+          trusted.subject ? { subject: trusted.subject } : undefined,
+      },
+    });
+    const client = new Client(
+      { name: clientName, version: "9.9.9" },
+      { capabilities: { roots: { listChanged: true } } },
+    );
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+    return { client, server };
+  }
+
+  function tenantProfile(
+    observeReportedClient: (name: string | undefined) => void = () => undefined,
+  ): McpFnClientProfile<RequestContext> {
+    return {
+      id: "consumer/trusted",
+      version: "1",
+      matches: ({ subject }) => subject === "authenticated-client",
+      serverOwnedArguments: { lookup: ["tenantId"] },
+      projectCatalog: ({ tools, reportedClient }) => {
+        observeReportedClient(reportedClient.info?.name);
+        return tools.map((tool) => {
+          if (tool.name !== "lookup") return tool;
+          const { tenantId: _tenantId, ...properties } =
+            tool.inputSchema.properties ?? {};
+          return {
+            ...tool,
+            inputSchema: {
+              ...tool.inputSchema,
+              properties,
+              required: tool.inputSchema.required?.filter(
+                (name) => name !== "tenantId",
+              ),
+            },
+          };
+        });
+      },
+      enrichArguments: ({ arguments: args, context }) =>
+        context.tenantId ? { ...args, tenantId: context.tenantId } : args,
+    };
+  }
+
+  function lookupRegistry(
+    handler = vi.fn(async (args: Record<string, unknown>) =>
+      structuredResult(args),
+    ),
+  ) {
+    return {
+      handler,
+      registry: new McpFnRegistry<RequestContext>().register({
+        name: "lookup",
+        description: "Look up a value in the authenticated tenant.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+            tenantId: { type: "string" },
+          },
+          required: ["query", "tenantId"],
+          additionalProperties: false,
+        },
+        handler,
+      }),
+    };
+  }
+
+  it("projects and enriches one authenticated production lifecycle", async () => {
+    const reported = vi.fn();
+    const { registry, handler } = lookupRegistry();
+    const { client } = await connect(
+      { subject: "authenticated-client", tenantId: "trusted-tenant" },
+      tenantProfile(reported),
+      registry,
+    );
+
+    const listed = await client.listTools();
+    expect(listed.tools[0]?.inputSchema).toMatchObject({
+      properties: { query: { type: "string" } },
+      required: ["query"],
+    });
+    expect(listed.tools[0]?.inputSchema.properties).not.toHaveProperty(
+      "tenantId",
+    );
+    await expect(
+      client.callTool({
+        name: "lookup",
+        arguments: { query: "safe" },
+      }),
+    ).resolves.toMatchObject({
+      structuredContent: { query: "safe", tenantId: "trusted-tenant" },
+    });
+    expect(handler).toHaveBeenCalledWith(
+      { query: "safe", tenantId: "trusted-tenant" },
+      expect.objectContaining({ subject: "authenticated-client" }),
+      expect.anything(),
+    );
+    expect(reported).toHaveBeenCalledWith("reported-client");
+  });
+
+  it("keeps generic clients canonical when no verified profile matches", async () => {
+    const { registry } = lookupRegistry();
+    const { client } = await connect(
+      { subject: "generic-client" },
+      tenantProfile(),
+      registry,
+    );
+    expect((await client.listTools()).tools[0]?.inputSchema.required).toEqual([
+      "query",
+      "tenantId",
+    ]);
+    await expect(
+      client.callTool({
+        name: "lookup",
+        arguments: { query: "safe", tenantId: "model-value" },
+      }),
+    ).resolves.toMatchObject({
+      structuredContent: { query: "safe", tenantId: "model-value" },
+    });
+  });
+
+  it("fails forged and missing server-owned arguments before the handler", async () => {
+    const first = lookupRegistry();
+    const forged = await connect(
+      { subject: "authenticated-client", tenantId: "trusted-tenant" },
+      tenantProfile(),
+      first.registry,
+    );
+    const forgedResult = await forged.client.callTool({
+      name: "lookup",
+      arguments: { query: "safe", tenantId: "forged" },
+    });
+    expect(forgedResult).toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: {
+          code: "MCPFN_FORGED_SERVER_ARGUMENT",
+          details: {
+            lifecycleStage: "argument-enrichment",
+            rejectedProperty: "tenantId",
+          },
+        },
+      },
+    });
+    expect(first.handler).not.toHaveBeenCalled();
+
+    const second = lookupRegistry();
+    const missing = await connect(
+      { subject: "authenticated-client" },
+      tenantProfile(),
+      second.registry,
+    );
+    const missingResult = await missing.client.callTool({
+      name: "lookup",
+      arguments: { query: "safe" },
+    });
+    expect(missingResult).toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: {
+          code: "MCPFN_MISSING_TRUSTED_CONTEXT",
+          details: { lifecycleStage: "argument-enrichment" },
+        },
+      },
+    });
+    expect(second.handler).not.toHaveBeenCalled();
+  });
+
+  it("rejects projection/enrichment asymmetry while listing", async () => {
+    const { registry } = lookupRegistry();
+    const asymmetric: McpFnClientProfile<RequestContext> = {
+      id: "consumer/asymmetric",
+      version: "1",
+      matches: () => true,
+      projectCatalog: ({ tools }) =>
+        tools.map((tool) => ({
+          ...tool,
+          inputSchema: {
+            ...tool.inputSchema,
+            properties: { query: { type: "string" } },
+            required: ["query"],
+          },
+        })),
+    };
+    const { client } = await connect(
+      { subject: "authenticated-client" },
+      asymmetric,
+      registry,
+    );
+    await expect(client.listTools()).rejects.toThrow(
+      /without trusted enrichment/,
+    );
+  });
+
+  it("rejects invented and duplicate projected tools", async () => {
+    const inventedRegistry = lookupRegistry();
+    const invented = await connect(
+      { subject: "authenticated-client" },
+      {
+        id: "consumer/invented",
+        version: "1",
+        matches: () => true,
+        projectCatalog: ({ tools }) => [
+          ...tools,
+          { ...tools[0]!, name: "invented" },
+        ],
+      },
+      inventedRegistry.registry,
+    );
+    await expect(invented.client.listTools()).rejects.toThrow(/unknown tool/);
+
+    const duplicateRegistry = lookupRegistry();
+    const duplicate = await connect(
+      { subject: "authenticated-client" },
+      {
+        id: "consumer/duplicate",
+        version: "1",
+        matches: () => true,
+        projectCatalog: ({ tools }) => [tools[0]!, tools[0]!],
+      },
+      duplicateRegistry.registry,
+    );
+    await expect(duplicate.client.listTools()).rejects.toThrow(
+      /duplicate tool/,
+    );
+  });
+
+  it("applies canonical visibility before projection and preserves call symmetry", async () => {
+    const hidden = {
+      name: "hidden",
+      description: "Hidden.",
+      inputSchema: {
+        type: "object" as const,
+        properties: { tenantId: { type: "string" } },
+        required: ["tenantId"],
+        additionalProperties: false,
+      },
+      handler: async () => structuredResult({ ok: true }),
+    };
+    const visible = lookupRegistry();
+    visible.registry.register(hidden);
+    const configured = tenantProfile();
+    configured.serverOwnedArguments = {
+      ...configured.serverOwnedArguments,
+      hidden: ["tenantId"],
+    };
+    const server = createMcpFnServer({
+      info: { name: "visibility-profile", version: "1.0.0" },
+      registry: visible.registry,
+      context: () => ({ subject: "authenticated-client", tenantId: "trusted" }),
+      toolVisibility: ({ tool }) => tool.name !== "hidden",
+      clientProfiles: {
+        profiles: [configured],
+        resolveVerifiedIdentity: ({ context }) => ({
+          subject: context.subject!,
+        }),
+      },
+    });
+    const client = new Client(
+      { name: "visibility-client", version: "1.0.0" },
+      { capabilities: {} },
+    );
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+
+    expect((await client.listTools()).tools.map(({ name }) => name)).toEqual([
+      "lookup",
+    ]);
+    await expect(
+      client.callTool({ name: "hidden", arguments: {} }),
+    ).rejects.toThrow(/not found/);
+  });
+
+  it.each([false, true])("reports invalid input even when recovery throws: %s", async (throws) => {
+    const evidence: McpFnClientProfileEvidence[] = [];
+    const registry = new McpFnRegistry<RequestContext>().register({ name: "recover", description: "Recover invalid input", inputSchema: { type: "object", required: ["value"] },
+      handleInvalidArguments: () => { if (throws) throw new Error("recovery failed"); return structuredResult({ recovered: true }); }, handler: async () => structuredResult({ recovered: false }) });
+    const { client } = await connect({ subject: "trusted" }, { id: "test", version: "1", matches: () => true }, registry, "client", event => { evidence.push(event); });
+    await client.callTool({ name: "recover", arguments: {} });
+    expect(evidence).toEqual(expect.arrayContaining([expect.objectContaining({ stage: "input-validation", outcome: "failed" }), expect.objectContaining({ stage: "invalid-arguments-handler", outcome: throws ? "failed" : "succeeded" })]));
+    expect(evidence.some(event => event.stage === "handler")).toBe(false);
+  });
+
+  it("keeps validation responses independent from evidence mutation", async () => {
+    let mutatedIssues = false;
+    const registry = new McpFnRegistry<RequestContext>().register({ name: "strict", description: "Strict", inputSchema: { type: "object", additionalProperties: false }, handler: async () => structuredResult({}) });
+    const { client } = await connect({ subject: "trusted" }, { id: "test", version: "1", matches: () => true }, registry, "client", event => { if (event.issues?.length) { mutatedIssues = true; event.issues.splice(0); } });
+    const result = await client.callTool({ name: "strict", arguments: { unexpected: true } });
+    expect(mutatedIssues).toBe(true);
+    expect(JSON.stringify(result)).toContain("additionalProperties");
+  });
+
+  it("retains exact structured Ajv diagnostics without rejected values", async () => {
+    const captured = vi.fn();
+    const registry = new McpFnRegistry().register({
+      name: "strict",
+      description: "Strict input.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          nested: { type: "object", properties: { count: { type: "number" } } },
+        },
+        additionalProperties: false,
+      },
+      handleInvalidArguments: async (_args, issues) => {
+        captured(issues);
+        return structuredResult({ issues });
+      },
+      handler: async () => structuredResult({ ok: true }),
+    });
+    await registry.callTool(
+      "strict",
+      { secretUnexpected: "must-not-leak" },
+      undefined,
+      {} as never,
+    );
+    expect(captured).toHaveBeenCalledWith([
+      {
+        path: "/",
+        instancePath: "/",
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        message: "must NOT have additional properties",
+        rejectedProperty: "secretUnexpected",
+      },
+    ]);
+    expect(JSON.stringify(captured.mock.calls)).not.toContain("must-not-leak");
+  });
+
+  it("attributes handler failures to the handler lifecycle stage", async () => {
+    const registry = new McpFnRegistry<RequestContext>().register({
+      name: "fails",
+      description: "Fail inside the handler.",
+      inputSchema: { type: "object", additionalProperties: false },
+      handler: async () => {
+        throw new McpFnValidationError("Domain validation failed");
+      },
+    });
+    const { client } = await connect(
+      { subject: "generic" },
+      tenantProfile(),
+      registry,
+    );
+    await expect(
+      client.callTool({ name: "fails", arguments: {} }),
+    ).resolves.toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: { details: { lifecycleStage: "handler" } },
+      },
+    });
+  });
+  it("rejects a projected type incompatible with canonical validation", async () => {
+    const { registry } = lookupRegistry();
+    const bad = tenantProfile();
+    const project = bad.projectCatalog!;
+    bad.projectCatalog = async (input) => (await project(input)).map(tool => ({
+      ...tool, inputSchema: { ...tool.inputSchema, properties: { query: { type: "number" } } },
+    }));
+    const { client } = await connect({ subject: "authenticated-client", tenantId: "trusted" }, bad, registry);
+    await expect(client.listTools()).rejects.toThrow(/canonical schema/);
+  });
+
+  it.each([[null], ["tenantId"], [["tenantId", "tenantId"]], [[42]], [["__proto__"]]])(
+    "rejects malformed ownership declarations: %j", (value) => {
+      const bad = tenantProfile();
+      bad.serverOwnedArguments = { lookup: value } as never;
+      expect(() => createMcpFnServer({
+        info: { name: "bad", version: "1" }, registry: lookupRegistry().registry,
+        context: () => ({}), clientProfiles: { profiles: [bad], resolveVerifiedIdentity: () => undefined },
+      })).toThrow();
+    },
+  );
+
+  it("requires sessions for hooks that consume initialization metadata", async () => {
+    const server = createMcpFnServer({
+      info: { name: "http-profile", version: "1" }, registry: lookupRegistry().registry,
+      context: () => ({}), clientProfiles: { profiles: [tenantProfile()], resolveVerifiedIdentity: () => undefined },
+    });
+    await expect(server.createWebStandardHandler()).rejects.toThrow(/session/i);
+    closeables.push(server);
+  });
+
+  it("bounds long rejected property names", async () => {
+    const { client } = await connect({ subject: "generic" }, tenantProfile(), lookupRegistry().registry);
+    const unknown = "unexpected".repeat(50);
+    const result = await client.callTool({ name: "lookup", arguments: { query: "ok", tenantId: "ok", [unknown]: "secret" } });
+    expect(JSON.stringify(result)).toContain(unknown.slice(0, 256));
+    expect(JSON.stringify(result)).not.toContain(unknown);
+    expect(JSON.stringify(result)).not.toContain("secret");
+  });
+
+  it("omits handler-supplied issue payloads from evidence", async () => {
+    const events: McpFnClientProfileEvidence[] = [];
+    const { registry } = lookupRegistry(vi.fn(async () => {
+      throw new McpFnError("secret-input".repeat(10000), "secret-input", { issues: [{ message: "secret-input" }] });
+    }));
+    const { client } = await connect({ subject: "generic" }, tenantProfile(), registry, "reported", event => { events.push(event); });
+    await client.callTool({ name: "lookup", arguments: { query: "ok", tenantId: "ok" } });
+    expect(events.filter(e => e.stage === "handler" && e.outcome === "failed")).toHaveLength(1);
+    expect(JSON.stringify(events)).not.toContain("secret-input");
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ stage: "input-validation", outcome: "succeeded" })]));
+  });
+
+  it.each(["domain detail", ["domain", 1], 42, null])("preserves non-object domain error details: %j", async details => {
+    const { registry } = lookupRegistry(vi.fn(async () => { throw new McpFnError("DOMAIN_ERROR", "Domain failure", details); }));
+    const { client } = await connect({ subject: "generic" }, tenantProfile(), registry);
+    const result = await client.callTool({ name: "lookup", arguments: { query: "ok", tenantId: "ok" } });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({ error: { details } });
+  });
+
+  it("reports validation when a delayed task result is stored", async () => {
+    let finish!: () => Promise<unknown>;
+    const stored = vi.fn();
+    const outcome = vi.fn();
+    const stages = vi.fn();
+    const registry = new McpFnRegistry().register({
+      name: "delayed", description: "Delayed result", inputSchema: { type: "object" },
+      outputSchema: { type: "object", properties: { value: { type: "string" } }, required: ["value"] },
+      execution: { taskSupport: "required" }, handler: async () => structuredResult({ value: "ok" }),
+      taskHandler: { createTask: async (_args, _context, extra) => {
+        finish = () => extra.taskStore.storeTaskResult("task", "completed", structuredResult({ value: 42 }));
+        return { task: { taskId: "task", status: "working", createdAt: new Date().toISOString(), lastUpdatedAt: new Date().toISOString(), ttl: null } };
+      } },
+    });
+    await registry.createToolTask("delayed", {}, undefined, { taskStore: { storeTaskResult: stored } } as unknown as McpFnTaskRequestExtra, { onStage: stages, onTaskOutput: outcome });
+    expect(outcome).not.toHaveBeenCalled();
+    await expect(finish()).rejects.toThrow(/Invalid output/);
+    expect(stages).toHaveBeenCalledWith("output-validation");
+    expect(stages).toHaveBeenLastCalledWith("handler");
+    expect(outcome).toHaveBeenCalledWith("failed", expect.any(Error));
+    expect(stored).not.toHaveBeenCalled();
+  });
+
+});
+
+describe("projected contract boundaries", () => {
+  it.each(["additionalProperties", "minProperties", "outputSchema", "taskSupport"])("rejects changed %s", async (change) => {
+    const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+    const tool = { name: "test", description: "test", inputSchema: { type: "object" as const, properties: {}, additionalProperties: false } };
+    await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [tool], resolved: {
+      context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" },
+      profile: { id: "test", version: "1", matches: () => true, projectCatalog: ({ tools }) => tools.map((entry) => ({ ...entry,
+        ...(change === "outputSchema" ? { outputSchema: { type: "object" as const } } :
+          change === "taskSupport" ? { execution: { taskSupport: "required" as const } } :
+          { inputSchema: { ...entry.inputSchema, [change]: change === "additionalProperties" ? true : 2 } }),
+      })) },
+    } })).rejects.toThrow(/preserve root constraints/);
+  });
+
+  it("accepts an unchanged local root reference", async () => {
+    const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+    await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: { type: "object", $ref: "#" } }], resolved: {
+      context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" },
+      profile: { id: "test", version: "1", matches: () => true },
+    } })).resolves.toMatchObject({ changes: [] });
+  });
+
+  it("persists failed task results without applying success output requirements", async () => {
+    const stored = vi.fn();
+    const registry = new McpFnRegistry().register({ name: "task", description: "test", inputSchema: { type: "object" },
+      outputSchema: { type: "object", required: ["answer"] }, execution: { taskSupport: "required" },
+      handler: async () => structuredResult({ answer: true }),
+      taskHandler: { createTask: async (_args, _context, extra) => {
+        await extra.taskStore.storeTaskResult("task:1", "failed", { content: [{ type: "text", text: "Failed" }] });
+        return { task: { taskId: "task:1", status: "failed", createdAt: new Date().toISOString(), lastUpdatedAt: new Date().toISOString(), ttl: null } };
+      } },
+    });
+    await registry.createToolTask("task", {}, undefined, { taskStore: { storeTaskResult: stored } } as unknown as McpFnTaskRequestExtra);
+    expect(stored).toHaveBeenCalledWith("task:1", "failed", expect.objectContaining({ isError: true }));
+  });
+});
+
+
+describe("optional projected tool metadata", () => {
+  it.each([false, true])("treats forbidden task support as the default (%s)", async (explicit) => {
+    const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+    const tool = { name: "test", inputSchema: { type: "object" as const }, ...(explicit ? { execution: { taskSupport: "forbidden" as const } } : {}) };
+    await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [tool], resolved: {
+      context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" },
+      profile: { id: "test", version: "1", matches: () => true, projectCatalog: ({ tools }) => tools.map(({ execution, ...entry }) => ({ ...entry, ...(!explicit ? { execution: { taskSupport: "forbidden" as const } } : {}) })) },
+    } })).resolves.toBeDefined();
+  });
+  it("rejects a null projected output schema when the canonical schema is absent", async () => {
+    const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+    await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: { type: "object" } }], resolved: {
+      context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" },
+      profile: { id: "test", version: "1", matches: () => true, projectCatalog: ({ tools }) => tools.map((tool) => ({ ...tool, outputSchema: null as any })) },
+    } })).rejects.toThrow(/MCP tool definitions/);
+  });
+});
+
+describe("reference and ownership projection safety", () => {
+  async function project(inputSchema: any, projected: any, execution?: any) {
+    const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+    return buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema }], resolved: {
+      context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" },
+      profile: { id: "test", version: "1", matches: () => true,
+        serverOwnedArguments: { test: ["tenantId"] }, enrichArguments: ({ arguments: args }) => ({ ...args, tenantId: "trusted" }),
+        projectCatalog: () => [{ name: "test", inputSchema: projected, ...(execution === undefined ? {} : { execution }) }],
+      },
+    } });
+  }
+  const canonical = { type: "object", additionalProperties: false, properties: { tenantId: { type: "string" }, query: { type: "string" } }, required: ["tenantId"] };
+  const visible = { type: "object", additionalProperties: false, properties: { query: { type: "string" } } };
+  it.each(["dependencies", "dependentRequired"])("rejects owned-field %s even when copied unchanged", async keyword => {
+    const constraint = { [keyword]: { tenantId: ["query"] } };
+    await expect(project({ ...canonical, ...constraint }, { ...visible, ...constraint })).rejects.toThrow(/whole-object constraints/);
+  });
+  it("allows ownership projection inside local root definitions", async () => {
+    await expect(project({ type: "object", $ref: "#/$defs/input", $defs: { input: canonical } },
+      { type: "object", $ref: "#/$defs/input", $defs: { input: visible } })).resolves.toBeDefined();
+  });
+  it("accepts reordered allOf branches without moving constraints", async () => {
+    const branches = [{ properties: { a: { type: "string" } }, additionalProperties: false }, { properties: { b: { type: "string" } } }];
+    await expect(project({ ...canonical, allOf: branches }, { ...visible, allOf: [...branches].reverse() })).resolves.toBeDefined();
+  });
+  it("preserves allOf constraint ownership", async () => {
+    const branches = [{ properties: { a: { type: "string" } }, additionalProperties: false }, { properties: { b: { type: "string" } } }];
+    await expect(project({ ...canonical, allOf: branches }, { ...visible, allOf: [
+      { properties: branches[0].properties }, { ...branches[1], additionalProperties: false },
+    ] })).rejects.toThrow(/preserve root constraints/);
+  });
+  it("resolves percent-encoded definition names", async () => {
+    await expect(project({ type: "object", $ref: "#/$defs/first%20name", $defs: { "first name": canonical } },
+      { type: "object", $ref: "#/$defs/first%20name", $defs: { "first name": visible } })).resolves.toBeDefined();
+  });
+  it("keeps recursive fragments inside their embedded resource", async () => {
+    const child = { $id: "https://example.test/child", type: "object", properties: { next: { $ref: "#" } } };
+    await expect(project({ ...canonical, properties: { ...canonical.properties, child } },
+      { ...visible, properties: { ...visible.properties, child } })).resolves.toBeDefined();
+  });
+  it("rejects a changed referenced model-owned property", async () => {
+    await expect(project({ ...canonical, properties: { ...canonical.properties, query: { $ref: "#/$defs/query" } }, $defs: { query: { type: "string" } } },
+      { ...visible, properties: { query: { $ref: "#/$defs/query" } }, $defs: { query: { type: "number" } } })).rejects.toThrow(/canonical schema/);
+  });
+  it.each([[null], [{ taskSupport: null }]])("rejects null execution metadata %j", async execution => {
+    await expect(project(canonical, visible, execution)).rejects.toThrow(/MCP tool definitions/);
+  });
+});
+
+it.each(['optional', 'root-ref', 'const', 'enum'])('rejects asymmetric projection %s', async kind => {
+  const { buildMcpFnEffectiveCatalog } = await import('../src/client-profiles.js');
+  const inputSchema: any = { type: 'object', properties: { tenantId: { type: 'string' }, query: kind === 'root-ref' ? { $ref: '#' } : { type: 'string' } }, required: ['tenantId'], additionalProperties: false };
+  if (kind === 'const') inputSchema.const = { tenantId: 'trusted' };
+  if (kind === 'enum') inputSchema.enum = [{ tenantId: 'trusted' }];
+  const visible = { ...inputSchema, properties: kind === 'optional' ? {} : { query: inputSchema.properties.query }, required: [] };
+  await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: 'test', inputSchema }], resolved: { context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: 'trusted' }, profile: { id: 'test', version: '1', matches: () => true, serverOwnedArguments: { test: ['tenantId'] }, enrichArguments: ({ arguments: args }) => ({ ...args, tenantId: 'trusted' }), projectCatalog: () => [{ name: 'test', inputSchema: visible }] } } })).rejects.toThrow();
+});
+it('preserves an unchanged recursive property schema', async () => {
+  const { buildMcpFnEffectiveCatalog } = await import('../src/client-profiles.js');
+  const tool: any = { name: 'test', inputSchema: { type: 'object', properties: { child: { $ref: '#' } } } };
+  await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [tool], resolved: { context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: 'trusted' }, profile: { id: 'test', version: '1', matches: () => true } } })).resolves.toMatchObject({ changes: [] });
+});
+
+it("accepts unchanged required keys without property declarations", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+  await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: { type: "object", required: ["token"] } }], resolved: {
+    context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" }, profile: { id: "test", version: "1", matches: () => true },
+  } })).resolves.toMatchObject({ changes: [] });
+});
+
+
+it("rejects open ownership projections and malformed unused definitions", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import('../src/client-profiles.js');
+  for (const patternProperties of [undefined, { '^tenant': {} }]) {
+    await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: 'test', inputSchema: { type: 'object', properties: { tenantId: { type: 'string' } }, required: ['tenantId'], ...(patternProperties ? { patternProperties } : {}) } }], resolved: {
+      context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: 'trusted' },
+      profile: { id: 'test', version: '1', matches: () => true, serverOwnedArguments: { test: ['tenantId'] },
+        projectCatalog: () => [{ name: 'test', inputSchema: { type: 'object', ...(patternProperties ? { patternProperties } : {}) } }] },
+    } })).rejects.toThrow(/model-visible/);
+  }
+  await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: 'test', inputSchema: { type: 'object' } }], resolved: {
+    context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: 'trusted' },
+    profile: { id: 'test', version: '1', matches: () => true, projectCatalog: () => [{ name: 'test', inputSchema: { type: 'object', $defs: { unused: { type: 123 } } } as any }] },
+  } })).rejects.toThrow(/valid JSON Schema/);
+});
+
+it("compares boolean and embedded-resource schemas and equivalent branch references", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import('../src/client-profiles.js');
+  const run = (before: any, after: any, name = 'test') => buildMcpFnEffectiveCatalog({ canonicalTools: [{ name, inputSchema: before }], resolved: {
+    context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: 'trusted' },
+    profile: { id: 'test', version: '1', matches: () => true, serverOwnedArguments: {}, projectCatalog: () => [{ name, inputSchema: after }] },
+  } });
+  await expect(run({ type: 'object', allOf: [true] }, { type: 'object', allOf: [false] })).rejects.toThrow(/preserve root constraints/);
+  const schema = (type: string) => ({ type: 'object', properties: { value: { $ref: 'https://example.test/value' } }, $defs: { value: { $id: 'https://example.test/value', type } } });
+  await expect(run(schema('string'), schema('number'))).rejects.toThrow(/canonical schema/);
+  const defs = { a: { properties: { a: { type: 'string' } } }, z: { properties: { z: { type: 'string' } } } };
+  await expect(run({ type: 'object', $defs: defs, allOf: [{ $ref: '#/$defs/a' }, { $ref: '#/$defs/z' }] },
+    { type: 'object', $defs: defs, allOf: [{ $ref: '#/$defs/z' }, { $ref: '#/$defs/%61' }] })).resolves.toBeDefined();
+  for (const name of ['constructor', 'toString', '__proto__']) await expect(run({ type: 'object' }, { type: 'object' }, name)).resolves.toBeDefined();
+});
+
+it("marks invalid-argument callbacks as handlers and bounds diagnostic paths", async () => {
+  const { formatMcpFnSchemaIssues } = await import('../src/validation.js');
+  const issue = formatMcpFnSchemaIssues([{ instancePath: '/' + 'x'.repeat(1000), schemaPath: '#/' + 'x'.repeat(1000), keyword: 'type', params: {}, message: 'bad' }])[0];
+  expect(issue.instancePath).toBe('/');
+  expect(issue.schemaPath).toBe('#');
+  const stages: string[] = [];
+  const registry = new McpFnRegistry().register({ name: 'test', description: 'Test validation observer', inputSchema: { type: 'object', required: ['value'] },
+    handleInvalidArguments: () => { throw new McpFnValidationError('private', { issues: [{ secret: 'private' }] }); },
+    handler: async () => structuredResult({}) });
+  await expect(registry.callTool('test', {}, undefined, {} as any, { onStage: stage => stages.push(stage) })).rejects.toThrow('private');
+  expect(stages.at(-1)).toBe('invalid-arguments-handler');
+});
+
+it("accepts embedded root references, modern dialects and literal ref data", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+  for (const schema of [
+    { type: "object", $defs: { payload: { $id: "payload", type: "object", properties: { value: { type: "string" } } } }, $ref: "payload" },
+    { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", properties: { values: { type: "array", prefixItems: [{ type: "string" }] } } },
+    { type: "object", properties: { value: { const: { $ref: "literal-not-schema" }, default: { $id: "data-id", $ref: "literal" } } } },
+  ]) {
+    await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: schema }], resolved: {
+      context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" },
+      profile: { id: "test", version: "1", matches: () => true, projectCatalog: () => [{ name: "test", inputSchema: schema }] },
+    } })).resolves.toBeDefined();
+  }
+});
+
+it("normalizes invalid ownership pattern failures", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+  await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: { type: "object", properties: { tenant: { type: "string" } }, required: ["tenant"] } }], resolved: {
+    context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" },
+    profile: { id: "test", version: "1", matches: () => true, serverOwnedArguments: { test: ["tenant"] }, projectCatalog: () => [{ name: "test", inputSchema: { type: "object", additionalProperties: false, patternProperties: { "[": {} } } }] },
+  } })).rejects.toMatchObject({ code: "MCPFN_INVALID_PROJECTED_CATALOG" });
+});
+
+it("resolves named anchors and rejects unsupported dynamic projection references", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+  const run = (before: any, after = before) => buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: before }], resolved: { context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" }, profile: { id: "test", version: "1", matches: () => true, projectCatalog: () => [{ name: "test", inputSchema: after }] } } });
+  await expect(run({ $schema: "http://json-schema.org/draft-07/schema#", type: "object", definitions: { node: { $id: "#node", type: "string" } }, properties: { value: { $ref: "#node" } } })).resolves.toBeDefined();
+  await expect(run({ $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", $defs: { node: { $anchor: "node", type: "string" } }, properties: { value: { $ref: "#node" } } })).resolves.toBeDefined();
+  for (const schema of [
+    { type: "object", properties: { values: { type: "array", items: [{ type: "string" }] } } },
+    { type: "object", properties: { value: { contentSchema: { $ref: "literal-extension-value" } } } },
+    { type: "object", $defs: { node: { type: "string" } }, properties: { value: { $ref: "#%2F$defs%2Fnode" } } },
+    { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", $defs: { node: { $dynamicAnchor: "node", type: "string" } }, properties: { value: { $ref: "#node" } } },
+  ]) await expect(run(schema)).resolves.toBeDefined();
+  await expect(run({ $schema: "https://json-schema.org/draft/2019-09/schema", type: "object", $defs: { node: { $dynamicAnchor: "node", type: "string" } }, properties: { value: { $ref: "#node" } } })).rejects.toThrow(/named schema anchor/);
+  const content = (type: string) => ({ $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", $defs: { body: { type } }, properties: { value: { type: "string", contentSchema: { $ref: "#/$defs/body" } } } });
+  await expect(run(content("string"), content("number"))).rejects.toThrow(/canonical schema/);
+  await expect(run({ type: "object", properties: { value: { $dynamicRef: "#node" } } })).rejects.toMatchObject({ code: "MCPFN_INVALID_PROJECTED_CATALOG" });
+  const { formatMcpFnSchemaIssues } = await import("../src/validation.js");
+  expect(formatMcpFnSchemaIssues([{ instancePath: "", schemaPath: "", keyword: "type", params: {} }])[0].schemaPath).toBe("#");
+});
+
+it("bounds request-controlled property names in diagnostics", async () => {
+  const { formatMcpFnSchemaIssues } = await import("../src/validation.js");
+  const issues = formatMcpFnSchemaIssues([{ keyword: "additionalProperties", instancePath: "", schemaPath: "#", params: { additionalProperty: "x".repeat(10000) } }]);
+  expect(issues[0].rejectedProperty?.length).toBe(256);
+});
+
+it("rejects invalid projected MCP metadata and ignores schema object aliasing", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+  const shared = { properties: { value: { type: "string" } } };
+  const tool = { name: "test", inputSchema: { type: "object" as const, allOf: [shared, shared] } };
+  const run = (projected: any) => buildMcpFnEffectiveCatalog({ canonicalTools: [tool], resolved: { context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" }, profile: { id: "test", version: "1", matches: () => true, projectCatalog: () => [projected] } } });
+  await expect(run(JSON.parse(JSON.stringify(tool)))).resolves.toBeDefined();
+  for (const metadata of [{ _meta: { missing: undefined } }, { _meta: { sparse: new Array(2) } }, { _meta: { callback: () => {} } }, { _meta: { number: BigInt(1) } }, { description: 5 }, { annotations: { readOnlyHint: "yes" } }]) await expect(run({ ...tool, ...metadata })).rejects.toMatchObject({ code: "MCPFN_INVALID_PROJECTED_CATALOG" });
+});
+
+it("matches Unicode schema patterns with Ajv semantics", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+  await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "test", inputSchema: { type: "object", properties: { tenantId: { type: "string" } }, required: ["tenantId"] } }], resolved: { context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" }, profile: { id: "test", version: "1", matches: () => true, serverOwnedArguments: { test: ["tenantId"] }, projectCatalog: () => [{ name: "test", inputSchema: { type: "object", additionalProperties: false, patternProperties: { "\\p{L}": {} } } }] } } })).rejects.toMatchObject({ code: "MCPFN_PROFILE_ASYMMETRIC" });
+});
+
+
+it("resolves shared relative references independently in each embedded resource", async () => {
+  const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+  const shared = { $ref: "#/$defs/value" };
+  const schema = (secondType: string) => ({ type: "object" as const, properties: {
+    first: { $id: "first", type: "object", $defs: { value: { type: "string" } }, properties: { value: shared } },
+    second: { $id: "second", type: "object", $defs: { value: { type: secondType } }, properties: { value: shared } },
+  } });
+  const run = (type: string) => buildMcpFnEffectiveCatalog({
+    canonicalTools: [{ name: "shared", inputSchema: schema("string") }], resolved: {
+      context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" },
+      profile: { id: "test", version: "1", matches: () => true, projectCatalog: () => [{ name: "shared", inputSchema: schema(type) }] },
+    },
+  });
+  await expect(run("string")).resolves.toBeDefined();
+  await expect(run("number")).rejects.toMatchObject({ code: "MCPFN_PROFILE_ASYMMETRIC" });
+});
+
+
+it.each(["storage", "wrapped-storage", "retried-storage", "handler", "invalid-output"])("orders task output evidence after predecessor stages on %s failure", async failure => {
+  const { InMemoryTaskStore } = await import("@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js");
+  const taskStore = new InMemoryTaskStore();
+  if (!["handler", "invalid-output"].includes(failure)) vi.spyOn(taskStore, "storeTaskResult").mockRejectedValue(new Error("storage failed"));
+  const evidence: McpFnClientProfileEvidence[] = [];
+  const registry = new McpFnRegistry().register({
+    name: "task", description: "Task", outputSchema: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] }, inputSchema: { type: "object" }, execution: { taskSupport: "required" },
+    handler: async () => structuredResult({ ok: true }),
+    taskHandler: { createTask: async (_args, _context, extra) => {
+      const task = await extra.taskStore.createTask({ ttl: 1000 });
+      try {
+        await extra.taskStore.storeTaskResult(task.taskId, "completed", structuredResult({ ok: failure === "invalid-output" ? "bad" : true }));
+      } catch (error) {
+        if (failure === "wrapped-storage") throw new Error("wrapped storage failure", { cause: error });
+        if (failure === "retried-storage") await extra.taskStore.storeTaskResult(task.taskId, "completed", structuredResult({ ok: failure === "invalid-output" ? "bad" : true }));
+        throw error;
+      }
+      throw new Error("handler failed after output");
+    } },
+  });
+  const server = createMcpFnServer({ info: { name: "test", version: "1" }, registry, taskStore,
+    clientProfiles: { profiles: [], resolveVerifiedIdentity: () => undefined, evidence: event => { evidence.push(event); } } });
+  const client = new Client({ name: "test", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left); await client.listTools();
+    try { for await (const _message of client.experimental.tasks.callToolStream({ name: "task", arguments: {} }, undefined, { task: { ttl: 1000 } })) { /* drain */ } } catch { /* Expected task failure. */ }
+    const stages = evidence.filter(event => ["input-validation", "handler", "output-validation"].includes(event.stage)).map(event => [event.stage, event.outcome]);
+    expect(stages).toEqual([["input-validation", "succeeded"], ["output-validation", failure === "invalid-output" ? "failed" : "succeeded"], ...(failure === "retried-storage" ? [["output-validation", "succeeded"]] : []), ["handler", "failed"]]);
+    expect(evidence.filter(event => event.stage === "task-result-storage")).toHaveLength(["handler", "invalid-output"].includes(failure) ? 0 : 1);
+  } finally { await client.close(); await server.close(); }
+});
+
+
+it("reports a rejected task-store promise after the creation request has settled", async () => {
+  const { InMemoryTaskStore } = await import("@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js");
+  const { CreateTaskResultSchema } = await import("@modelcontextprotocol/sdk/types.js");
+  const taskStore = new InMemoryTaskStore();
+  const failure = new McpFnError("private-storage-diagnosis".repeat(10000), "private-storage-diagnosis");
+  vi.spyOn(taskStore, "storeTaskResult").mockRejectedValue(failure);
+  const evidence: McpFnClientProfileEvidence[] = [];
+  let persist!: () => Promise<void>;
+  const registry = new McpFnRegistry().register({
+    name: "delayed", description: "Delayed task", inputSchema: { type: "object" },
+    execution: { taskSupport: "required" }, handler: async () => structuredResult({ ok: true }),
+    taskHandler: { createTask: async (_args, _context, extra) => {
+      const task = await extra.taskStore.createTask({ ttl: 1000 });
+      persist = () => extra.taskStore.storeTaskResult(task.taskId, "completed", structuredResult({ ok: true }));
+      return { task };
+    } },
+  });
+  const server = createMcpFnServer({ info: { name: "test", version: "1" }, registry, taskStore,
+    clientProfiles: { profiles: [], resolveVerifiedIdentity: () => undefined, evidence: event => { evidence.push(event); } } });
+  const client = new Client({ name: "test", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left);
+    const created = await client.request({ method: "tools/call", params: { name: "delayed", arguments: {}, task: { ttl: 1000 } } }, CreateTaskResultSchema);
+    expect(created.task.status).toBe("working");
+    const beforeStorage = evidence.length;
+    await expect(persist()).rejects.toBe(failure);
+    expect(evidence.slice(beforeStorage).map(event => [event.stage, event.outcome])).toEqual([
+      ["output-validation", "succeeded"], ["task-result-storage", "failed"],
+    ]);
+    await expect(persist()).rejects.toBe(failure);
+    expect(evidence.filter(event => event.stage === "task-result-storage")).toHaveLength(1);
+    expect(evidence.filter(event => event.stage === "handler").map(event => event.outcome)).toEqual(["succeeded"]);
+    expect(JSON.stringify(evidence)).not.toContain("private-storage-diagnosis");
+  } finally { await client.close(); await server.close(); }
+});
+
+it("preserves empty same-resource references through list and call", async () => {
+  const registry = new McpFnRegistry().register({ name: "recursive", description: "Recursive schema", inputSchema: {
+    type: "object", properties: { child: { $ref: "" } },
+  }, handler: async () => structuredResult({ ok: true }) });
+  const server = createMcpFnServer({ info: { name: "empty-ref", version: "1" }, registry,
+    clientProfiles: { profiles: [{ id: "noop", version: "1", matches: () => true }], resolveVerifiedIdentity: () => ({ subject: "trusted" }) } });
+  const client = new Client({ name: "test", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left);
+    expect((await client.listTools()).tools[0].name).toBe("recursive");
+    expect(await client.callTool({ name: "recursive", arguments: { child: { child: {} } } })).toMatchObject({ structuredContent: { ok: true } });
+  } finally { await client.close(); await server.close(); }
+});
+
+it.each(["resolver", "projector"])("preserves framework fallback evidence from a throwing %s", async hook => {
+  const evidence: McpFnClientProfileEvidence[] = [];
+  const fail = () => { throw new Error("hook failure"); };
+  const registry = new McpFnRegistry().register({ name: "test", description: "test", inputSchema: { type: "object" }, handler: () => structuredResult({ ok: true }) });
+  const server = createMcpFnServer({ info: { name: "test", version: "1" }, registry,
+    clientProfiles: { profiles: [{ id: "test", version: "1", matches: () => true, ...(hook === "projector" ? { projectCatalog: fail } : {}) }],
+      resolveVerifiedIdentity: hook === "resolver" ? fail : () => ({ subject: "trusted" }), evidence: event => { evidence.push(event); } } });
+  const client = new Client({ name: "test", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left);
+    await expect(client.listTools()).rejects.toThrow();
+    expect(evidence).toContainEqual(expect.objectContaining({ outcome: "failed", code: hook === "resolver" ? "MCPFN_PROFILE_RESOLUTION_FAILED" : "MCPFN_CATALOG_PROJECTION_FAILED" }));
+  } finally { await client.close(); await server.close(); }
+});
