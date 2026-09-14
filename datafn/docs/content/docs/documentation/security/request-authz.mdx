@@ -69,14 +69,16 @@ authorize: async (ctx, action, payload) => {
   if (!ctx.session?.userId) return false;
   if (action === "status") return true;
 
-  // Broad operations need an explicit action policy, even with no selectors.
-  if (["seed", "search", "clone", "pull"].includes(action)) {
-    return ctx.session.isAdmin;
-  }
+  // Parse first so scoped search/clone/pull requests use resource permissions.
   const extracted = extractStructuralResourceSelectors(action, payload, { schema });
   if (!extracted.ok) return false;
+  if (action === "seed") return ctx.session.isAdmin;
+  if (extracted.result.selectors.length === 0) {
+    // Global forms need a separate policy; empty batch/no-op forms are denied here.
+    return ["search", "clone", "pull"].includes(action) && (ctx.session.isAdmin);
+  }
 
-  return extracted.result.selectors.length > 0 && extracted.result.selectors.every((resource) =>
+  return extracted.result.selectors.every((resource) =>
     ctx.session.allowedResources.includes(resource),
   );
 }

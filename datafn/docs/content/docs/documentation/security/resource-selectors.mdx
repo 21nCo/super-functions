@@ -93,15 +93,16 @@ authorize: (ctx, action, payload) => {
   if (!ctx.session?.userId) return false;
   if (action === "status") return true;
 
-  // Broad operations need an explicit action policy, even with no selectors.
-  if (["seed", "search", "clone", "pull"].includes(action)) {
-    return ctx.session.role === "admin";
-  }
-  // Use the trusted schema configured on this server, never a client-supplied schema.
+  // Parse first so scoped search/clone/pull requests use resource permissions.
   const extracted = extractStructuralResourceSelectors(action, payload, { schema });
   if (!extracted.ok) return false;
+  if (action === "seed") return ctx.session.role === "admin";
+  if (extracted.result.selectors.length === 0) {
+    // Global forms need a separate policy; empty batch/no-op forms are denied here.
+    return ["search", "clone", "pull"].includes(action) && (ctx.session.role === "admin");
+  }
 
-  return extracted.result.selectors.length > 0 && extracted.result.selectors.every((resource) =>
+  return extracted.result.selectors.every((resource) =>
     ctx.session.allowedResources.includes(resource),
   );
 }
