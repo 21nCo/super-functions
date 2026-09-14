@@ -284,7 +284,7 @@ import type { ApiReference } from "@docsfn/core/browser";
                     <p class="docsfn-api-method-description">{operation.description}</p>
                   {/if}
 
-                  <Tabs defaultValue="parameters">
+                  <Tabs defaultValue="parameters" items={["parameters", "request", "responses"]}>
                     <TabsList>
                       <TabsTrigger value="parameters">Parameters</TabsTrigger>
                       <TabsTrigger value="request">Request</TabsTrigger>

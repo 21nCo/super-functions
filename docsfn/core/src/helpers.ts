@@ -47,7 +47,7 @@ function safePaginationPath(value: string): string {
   if (!path || /[\u0000-\u001f\u007f\\]/.test(path) || path.startsWith("//") || (/^[a-z][a-z0-9+.-]*:/i.test(path) && !/^https?:\/\//i.test(path))) {
     throw createDocsError({ code: "DOCS_ENTRY_INVALID", message: "Pagination overrides require local paths or HTTP(S) URLs" });
   }
-  return path.replaceAll(" ", "%20");
+  return path;
 }
 
 function normalizePaginationOverride(
@@ -187,7 +187,7 @@ export function getPaginationFromSidebarWithTitles(
   for (const [direction, override] of [["prev", previousOverride], ["next", nextOverride]] as const) {
     if (currentPage?.frontmatter?.[direction] === false) pagination[direction] = undefined;
     else if (override) pagination[direction] = {
-      path: override.path,
+      path: override.path.replaceAll(" ", "%20"),
       title: override.title?.trim() || resolveTitleForPath(override.path, pages, override.path),
     };
   }

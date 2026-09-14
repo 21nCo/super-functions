@@ -165,7 +165,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest run"
+    "test": "vitest run && vitest run --config vitest.tabs.config.ts"
   },
   "author": "21n",
   "license": "MIT",

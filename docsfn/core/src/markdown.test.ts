@@ -474,3 +474,17 @@ it.each([["./other.md?view=1#part", "/docs/other?view=1#part"], ["./guide/index.
 it('rejects declared tab items without a matching tab', () => {
   expect(() => compileMarkdown({ sourcePath: 'tabs.mdx', source: '<DocsTabs items={["python"]}>\n<DocsTab value="js">JavaScript</DocsTab>\n</DocsTabs>' })).toThrow(/must match tab values/);
 });
+
+it("compiles supported multiline Fumadocs imports and aliases", () => {
+  const artifact = compileMarkdown({ sourcePath: "multiline.mdx", compatPreset: "fumadocs-v15", source: `import {
+  Tabs as Examples,
+  Tab as Example,
+} from "fumadocs-ui/components/tabs";
+
+<Examples items={["JS"]}>
+<Example value="JS">JavaScript</Example>
+</Examples>` });
+  expect(JSON.stringify(artifact)).toContain("JavaScript");
+  expect(artifact.transformedSource).not.toContain("fumadocs-ui/components/tabs");
+  expect(artifact.blocks[0].type).toBe("tabs");
+});

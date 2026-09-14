@@ -6,6 +6,8 @@ export interface BuildLlmsTxtOptions {
   canonicalUrl?: string;
   /** Auth policy used to omit private content from public LLM artifacts. */
   auth?: DocsConfig["auth"];
+  /** Use the same mixed-mode route classifier supplied to assertDocsRouteAccess. */
+  isRoutePrivate?: (route: string) => boolean;
   /** Glob-style include patterns (e.g., ["docs/**"]). When omitted, every page is included. */
   includePages?: string[];
   /** Glob-style exclude patterns (e.g., ["docs/blog/**"]). */
@@ -85,6 +87,7 @@ function isProtectedContent(
 ): boolean {
   return isDocsContentProtected({
     auth: options.auth,
+    isRoutePrivate: options.isRoutePrivate,
     frontmatter,
     route,
   });

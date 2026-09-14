@@ -46,7 +46,6 @@ const DEFAULT_COLLECTIONS: DocsCollection[] = [
   "pages",
   "blog",
   "api",
-  "assets",
 ];
 
 function getConfiguredDatedCollectionIds(config: DocsConfig): string[] {

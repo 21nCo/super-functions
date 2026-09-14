@@ -557,3 +557,12 @@ it("indexes canonical operation terms and child routes in summary mode", async (
   expect(operation?.summary).toContain("Create user");
   expect(operation?.body).toContain("createUser POST /users");
 });
+
+it("omits mixed-mode routes classified private by the host", async () => {
+  const manifest = createManifest();
+  const page = Object.values(manifest.pages)[0];
+  page.path = "/internal/secrets"; page.title = "Hidden classified title"; page.body = "Hidden classified body";
+  const artifact = await buildSearchIndex(manifest, { auth: { enabled: true, mode: "mixed" }, isRoutePrivate: route => route.startsWith("/internal/"), search: { enabled: true, bodyIndexing: "full" } });
+  expect(JSON.stringify(artifact)).not.toContain("Hidden classified");
+  expect(artifact.documents.length).toBeGreaterThan(0);
+});

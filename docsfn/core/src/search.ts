@@ -57,6 +57,8 @@ export interface DocsSearchArtifact {
 export interface BuildSearchIndexOptions {
   search?: DocsConfig["search"];
   auth?: DocsConfig["auth"];
+  /** Use the same mixed-mode route classifier supplied to assertDocsRouteAccess. */
+  isRoutePrivate?: (route: string) => boolean;
   searchAdapter?: DocsSearchEngineAdapter;
 }
 
@@ -293,6 +295,7 @@ function collectSearchDocuments(input: {
   manifest: DocsManifest;
   scopes: DocsSearchScope[];
   auth: DocsConfig["auth"] | undefined;
+  isRoutePrivate?: (route: string) => boolean;
   bodyIndexing: DocsSearchBodyIndexing;
   routeScopeOverrides?: DocsSearchRouteScopeOverride[];
 }): DocsSearchDocument[] {
@@ -301,6 +304,7 @@ function collectSearchDocuments(input: {
   function isProtected(frontmatter: Record<string, unknown> | undefined, route: string): boolean {
     return isDocsContentProtected({
       auth: input.auth,
+      isRoutePrivate: input.isRoutePrivate,
       frontmatter,
       route,
     });
@@ -502,6 +506,7 @@ export async function buildSearchIndex(
     manifest,
     scopes,
     auth: options.auth,
+    isRoutePrivate: options.isRoutePrivate,
     bodyIndexing,
     routeScopeOverrides: searchConfig?.routeScopeOverrides,
   });

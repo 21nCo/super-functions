@@ -139,6 +139,7 @@ export function resolveDocsAuthMode(config: Pick<DocsConfig, "auth">): DocsAuthM
 
 export function isDocsContentProtected(input: {
   auth: DocsConfig["auth"] | undefined;
+  isRoutePrivate?: (route: string) => boolean;
   frontmatter?: Record<string, unknown>;
   route: string;
 }): boolean {
@@ -157,7 +158,7 @@ export function isDocsContentProtected(input: {
   const frontmatterPrivate =
     input.frontmatter?.private === true || input.frontmatter?.auth === "private";
   const routePrivate = /\/private(?:\/|$)/i.test(input.route);
-  return frontmatterPrivate || routePrivate;
+  return frontmatterPrivate || routePrivate || Boolean(input.isRoutePrivate?.(input.route));
 }
 
 export function redactSensitiveText(value: string): string {

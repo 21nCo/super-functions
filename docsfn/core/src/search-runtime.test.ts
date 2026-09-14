@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildSearchIndex } from "./search";
 import { maybeEmitAnalyticsEvent } from "./analytics";
 import { createDocsSearchRuntime } from "./search-runtime";
@@ -306,4 +306,18 @@ describe("search runtime", () => {
     expect(emitted).toBe(false);
     expect(events).toEqual([]);
   });
+});
+
+it("bounds scoped engine retrieval to the requested limit", async () => {
+  const { InMemorySearchFn } = await import("@searchfn/client");
+  const spy = vi.spyOn(InMemorySearchFn.prototype, "searchDetailed");
+  try {
+    const artifact = await buildSearchIndex(createManifest(), { search: { enabled: true, bodyIndexing: "full" } });
+    const runtime = createDocsSearchRuntime({ artifact });
+    const results = await runtime.query({ query: "adapter", scope: "docs", limit: 1 });
+    expect(results).toHaveLength(1);
+    expect(results[0].scope).toBe("docs");
+    // The runtime requests a bounded 20-hit cache batch, then returns one item.
+    expect(spy).toHaveBeenLastCalledWith("adapter", expect.objectContaining({ limit: 20 }));
+  } finally { spy.mockRestore(); }
 });

@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildManifest } from "./manifest";
 import { resolveOpenApiRoute } from "./openapi";
 import { createNamedCollection, createSourceEntryId, isNamedCollection } from "./provider";
@@ -776,4 +776,12 @@ it.each(['page', 'surface'])('rejects embedded %s URLs claimed by content', asyn
     id: createSourceEntryId('docs', relativePath), collection: 'docs' as const, relativePath, entryType: 'content' as const, frontmatter: { title: 'Guide' }, body: '# Guide',
   })));
   await expect(buildManifest(provider, createConfig())).rejects.toMatchObject({ code: 'DOCS_ROUTE_CONFLICT' });
+});
+
+it("does not discover unused asset metadata during manifest builds", async () => {
+  const provider = new InMemorySourceProvider([]);
+  const list = vi.spyOn(provider, "listEntries");
+  await buildManifest(provider, createConfig());
+  expect(list).toHaveBeenCalled();
+  expect(list.mock.calls[0][0].collections).not.toContain("assets");
 });

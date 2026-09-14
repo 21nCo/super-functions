@@ -213,3 +213,13 @@ it("summarizes resolved OpenAPI Path Item references", () => {
   expect(buildLlmsTxt(manifest)).toContain("GET /items — List referenced items");
   expect(buildLlmsFullTxt(manifest)).toContain("GET /items — List referenced items");
 });
+
+it("omits host-classified private routes from both public LLM artifacts", () => {
+  const manifest = createManifest();
+  const page = Object.values(manifest.pages)[0];
+  page.path = "/internal/secrets"; page.title = "Hidden classified title"; page.body = "Hidden classified body";
+  const artifacts = buildLlmsTxtArtifacts(manifest, { auth: { enabled: true, mode: "mixed" }, isRoutePrivate: route => route.startsWith("/internal/") });
+  expect(artifacts.llmsTxt).not.toContain("Hidden classified");
+  expect(artifacts.llmsFullTxt).not.toContain("Hidden classified");
+  expect(artifacts.llmsFullTxt).toContain(Object.values(manifest.pages)[1].body);
+});

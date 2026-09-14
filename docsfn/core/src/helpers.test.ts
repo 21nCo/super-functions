@@ -40,3 +40,9 @@ it("encodes spaces in local pagination overrides", () => {
   const page = { kind: "page", id: "x", slug: "x", path: "/x", title: "X", body: "", headings: [], frontmatter: { prev: "/docs/Getting Started" } } as DocPage;
   expect(getPaginationFromSidebarWithTitles("/x", { id: "docs", items: [] }, { x: page }).prev?.path).toBe("/docs/Getting%20Started");
 });
+
+it("resolves pagination titles before encoding href spaces", () => {
+  const target = { kind: "page", id: "target", slug: "Getting Started", path: "/docs/Getting Started", title: "Welcome", body: "", headings: [], frontmatter: {} } as DocPage;
+  const page = { ...target, id: "current", path: "/current", frontmatter: { prev: target.path } };
+  expect(getPaginationFromSidebarWithTitles(page.path, { id: "docs", items: [] }, { page, target }).prev).toEqual({ path: "/docs/Getting%20Started", title: "Welcome" });
+});

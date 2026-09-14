@@ -151,17 +151,21 @@ export function transformFumadocsV15(
   const importedComponents = new Set<string>();
   const aliases = new Map<string, "DocsTabs" | "DocsTab">();
 
+  let importLines: string[] = [];
   scanFenceLines(lines, (line, inFence) => {
+    if (inFence && importLines.length) { keptLines.push(...importLines); importLines = []; }
     if (inFence) {
       keptLines.push(line);
       return;
     }
 
-    const importMatch = parseNamedImport(line);
-    if (!importMatch) {
-      keptLines.push(line);
-      return;
+    if (importLines.length || /^\s*import\s*\{/.test(line)) {
+      importLines.push(line);
+      if (!parseNamedImport(importLines.join("\n"))) return;
     }
+    const importMatch = parseNamedImport(importLines.length ? importLines.join("\n") : line);
+    if (!importMatch) { keptLines.push(line); return; }
+    importLines = [];
 
     const { rawSpecifiers, moduleName } = importMatch;
     const specifiers = parseImportSpecifiers(rawSpecifiers);
@@ -181,6 +185,7 @@ export function transformFumadocsV15(
     }
   });
 
+  keptLines.push(...importLines);
   const rewrittenChunks: string[] = [];
   let pending: string[] = [];
   const flushPending = () => {

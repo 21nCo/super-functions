@@ -85,3 +85,10 @@ description: HTML trust, auth, and redaction helpers in @docsfn/core.
 ## Redaction
 
 **`redactSensitiveText`**, **`redactSensitivePayload`** — strip common secret patterns from strings and nested objects (used by search + analytics).
+
+
+For mixed-mode sites with a custom `isRoutePrivate` predicate, pass that same
+predicate and `auth` configuration to `buildSearchIndex`, `buildLlmsTxt`,
+`buildLlmsFullTxt`, and `buildLlmsTxtArtifacts`. Public artifacts are built outside
+the HTTP request gate and must use the same route classification to omit protected
+content. Private frontmatter and `/private` routes remain excluded as well.

@@ -67,15 +67,40 @@ class SearchFnRuntimeBackend implements DocsSearchRuntimeBackend {
   constructor(
     private readonly artifact: DocsSearchArtifact,
     private readonly documents: Map<string, DocsSearchDocument>,
-    private readonly engine: SnapshotSearchEngine
+    private readonly engine: SnapshotSearchEngine,
+    private readonly createEngine: () => SnapshotSearchEngine,
   ) {}
+
+  private readonly scopeEngines = new Map<string, SnapshotSearchEngine>();
+
+  private engineForScope(scope: string): SnapshotSearchEngine {
+    if (scope === "all") return this.engine;
+    let scoped = this.scopeEngines.get(scope);
+    if (!scoped) {
+      scoped = this.createEngine();
+      const ids = new Set([...this.documents.values()].filter(document => document.scope === scope).map(document => document.id));
+      // Filter the serialized index, preserving legacy artifacts whose body text
+      // exists only in postings. Build once per scope, never per keystroke.
+      const postings = this.artifact.snapshot.postings.map(bucket => ({ ...bucket,
+        documents: bucket.documents.filter(document => ids.has(String(document.docId))),
+      })).filter(bucket => bucket.documents.length > 0);
+      const terms = new Set(postings.map(bucket => bucket.term));
+      scoped.importSnapshot({ ...this.artifact.snapshot, postings,
+        stats: this.artifact.snapshot.stats.filter(document => ids.has(String(document.docId))),
+        documents: this.artifact.snapshot.documents.filter(document => ids.has(String(document.docId))),
+        vocabulary: this.artifact.snapshot.vocabulary.filter(term => terms.has(term)),
+      });
+      this.scopeEngines.set(scope, scoped);
+    }
+    return scoped;
+  }
 
   async query(
     input: DocsSearchRuntimeBackendQueryInput
   ): Promise<DocsSearchRuntimeResultItem[]> {
-    const engineResults = this.engine.searchDetailed(input.query, {
+    const engineResults = this.engineForScope(input.scope).searchDetailed(input.query, {
       fields: this.artifact.fields,
-      limit: input.scope === "all" ? input.limit : this.artifact.documents.length || input.limit,
+      limit: input.limit,
     });
 
     return engineResults
@@ -116,6 +141,6 @@ export const searchFnSearchAdapter: DocsSearchEngineAdapter = {
       pipeline: SEARCHFN_PIPELINE,
     });
     engine.importSnapshot(input.artifact.snapshot);
-    return new SearchFnRuntimeBackend(input.artifact, input.documents, engine);
+    return new SearchFnRuntimeBackend(input.artifact, input.documents, engine, () => new InMemorySearchFn({ fields: input.artifact.fields, pipeline: SEARCHFN_PIPELINE }));
   },
 };
