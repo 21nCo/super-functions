@@ -470,3 +470,7 @@ it.each([["./other.md?view=1#part", "/docs/other?view=1#part"], ["./guide/index.
   const resolved = resolveMarkdownRelativeLinks({ compiled, route: "/docs", sourcePath: "docs:index.md" });
   expect(resolved.blocks[0]).toMatchObject({ html: `<a href="${expected}">Link</a>` });
 });
+
+it('rejects declared tab items without a matching tab', () => {
+  expect(() => compileMarkdown({ sourcePath: 'tabs.mdx', source: '<DocsTabs items={["python"]}>\n<DocsTab value="js">JavaScript</DocsTab>\n</DocsTabs>' })).toThrow(/must match tab values/);
+});

@@ -31,6 +31,7 @@ export const load: PageServerLoad = async ({ params, parent }) => {
 
   return {
     page,
+    route: `/embedded/${slug}`,
     compatPreset: source.compatPreset,
   };
 };

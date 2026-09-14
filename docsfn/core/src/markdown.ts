@@ -450,6 +450,7 @@ function parseTabsBlock(input: {
     });
   }
 
+  if (declaredItems.some(item => !tabs.some(tab => tab.value === item))) throw createMdxCompileError({ message: "declared tab items must match tab values", sourcePath: input.sourcePath });
   const items = declaredItems.length > 0 ? declaredItems : tabs.map((tab) => tab.value);
   return {
     block: {

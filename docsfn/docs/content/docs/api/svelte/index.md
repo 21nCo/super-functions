@@ -33,3 +33,7 @@ Detailed props: **[Components](./components)**.
 | **VersionSwitcher** | Dropdown for **`manifest.versions`**. |
 | **EmbeddedPage** | Compact article + optional mini TOC. |
 | **ApiReferenceRenderer** | OpenAPI reference layout. |
+
+### Embedded article route context
+
+Pass `route` as the actual URL hosting the embedded article, which can differ from its canonical docs URL. Pass the original source identity as Svelte `sourcePath` (React `page.id`) so index-page links resolve correctly. React uses `page.path` only as a fallback when `route` is omitted. For raw Markdown, these values let EmbeddedPage compile and resolve relative links before rendering.

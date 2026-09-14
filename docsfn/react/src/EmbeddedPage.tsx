@@ -14,6 +14,8 @@ export interface EmbeddedPageModel {
 
 export interface EmbeddedPageProps {
   page: EmbeddedPageModel;
+  /** Actual route hosting this embedded article; defaults to page.path. */
+  route?: string;
   compiled?: CompiledContentArtifact;
   compatPreset?: DocsCompatPreset;
   components?: Record<string, React.ComponentType<{ children?: React.ReactNode }>>;
@@ -24,6 +26,7 @@ export interface EmbeddedPageProps {
 
 export function EmbeddedPage({
   page,
+  route = page.path,
   compiled,
   compatPreset = "none",
   components,
@@ -32,7 +35,7 @@ export function EmbeddedPage({
   pageActionsSlot,
 }: EmbeddedPageProps) {
   const headings = page.headings ?? [];
-  const resolved = React.useMemo(() => page.path ? resolveMarkdownRelativeLinks({ compiled: compiled ?? compileReactContent({ source: page.body, sourcePath: page.id, compatPreset }), route: page.path, sourcePath: page.id }) : compiled, [compiled, page.path, page.id, page.body, compatPreset]);
+  const resolved = React.useMemo(() => route ? resolveMarkdownRelativeLinks({ compiled: compiled ?? compileReactContent({ source: page.body, sourcePath: page.id, compatPreset }), route, sourcePath: page.id }) : compiled, [compiled, route, page.id, page.body, compatPreset]);
 
   return (
     <article className="docsfn-embedded-page" data-docsfn-embedded-page="true">

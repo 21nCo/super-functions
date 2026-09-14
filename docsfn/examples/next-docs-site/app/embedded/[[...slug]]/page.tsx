@@ -42,6 +42,7 @@ export default async function EmbeddedPage(props: {
     <section data-docsfn-proof-surface="embedded">
       <ReactEmbeddedPage
         page={page}
+        route={`/embedded/${(params.slug ?? []).join("/")}`}
         compatPreset={source.compatPreset}
       />
     </section>

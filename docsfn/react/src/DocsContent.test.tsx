@@ -135,7 +135,14 @@ it("rejects unsafe HTML when the source is outside the allowlist", () => {
 });
 
 it("resolves raw embedded Markdown links with route context", () => {
-  const view = render(<EmbeddedPage page={{ title: "Embedded", path: "/embedded/guide/page", id: "docs:guide/page.mdx", body: "[Other](./other.md)" }} />);
+  const view = render(<EmbeddedPage route="/embedded/guide/page" page={{ title: "Embedded", path: "/docs/guide/page", id: "docs:guide/page.mdx", body: "[Other](./other.md)" }} />);
   expect(view.getByRole("link", { name: "Other" }).getAttribute("href")).toBe("/embedded/guide/other");
+  view.unmount();
+});
+
+it("renders illustrative unsafe HTML inside embedded code fences", () => {
+  const view = render(<EmbeddedPage route="/embedded/page" page={{ title: "Example", body: '```html\n<iframe src="https://example.com"></iframe>\n```' }} />);
+  expect(view.container.querySelector("iframe")).toBeNull();
+  expect(view.container.textContent).toContain("<iframe");
   view.unmount();
 });

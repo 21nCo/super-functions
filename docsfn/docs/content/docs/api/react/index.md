@@ -39,3 +39,7 @@ Many components accept an optional **`surface`** shaped like the object returned
 ## Styles
 
 Components rely on **`docsfn-*`** class names (e.g. **`docsfn-layout`**, **`docsfn-sidebar`**). Import your docs site CSS that targets these classes, or the default theme package your starter uses.
+
+### Embedded article route context
+
+Pass `route` as the actual URL hosting the embedded article, which can differ from its canonical docs URL. Pass the original source identity as Svelte `sourcePath` (React `page.id`) so index-page links resolve correctly. React uses `page.path` only as a fallback when `route` is omitted. For raw Markdown, these values let EmbeddedPage compile and resolve relative links before rendering.

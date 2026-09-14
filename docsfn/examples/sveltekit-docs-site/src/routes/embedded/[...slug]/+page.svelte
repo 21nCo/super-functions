@@ -7,7 +7,7 @@
 
 <div data-docsfn-proof-surface="embedded">
   <EmbeddedPage
-    route={data.page.path}
+    route={data.route}
     sourcePath={data.page.id}
     title={data.page.title}
     description={data.page.description}

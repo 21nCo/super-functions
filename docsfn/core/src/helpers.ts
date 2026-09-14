@@ -44,10 +44,10 @@ interface PaginationOverride {
 
 function safePaginationPath(value: string): string {
   const path = value.trim();
-  if (!path || /[\u0000-\u0020\u007f\\]/.test(path) || path.startsWith("//") || (/^[a-z][a-z0-9+.-]*:/i.test(path) && !/^https?:\/\//i.test(path))) {
+  if (!path || /[\u0000-\u001f\u007f\\]/.test(path) || path.startsWith("//") || (/^[a-z][a-z0-9+.-]*:/i.test(path) && !/^https?:\/\//i.test(path))) {
     throw createDocsError({ code: "DOCS_ENTRY_INVALID", message: "Pagination overrides require local paths or HTTP(S) URLs" });
   }
-  return path;
+  return path.replaceAll(" ", "%20");
 }
 
 function normalizePaginationOverride(

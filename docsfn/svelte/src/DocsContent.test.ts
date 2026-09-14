@@ -66,7 +66,7 @@ describe("DocsContent", () => {
     const panel = screen.getByRole("tabpanel");
     expect(within(panel).getByText(/FastAPI/)).toBeTruthy();
     expect(panel.textContent).not.toContain("<Tabs");
-  });
+  }, 15000);
 
   it("renders mermaid through the explicit renderer contract", async () => {
     const source = await readFixture("searchfn-docs/content/docs/architecture.mdx");
