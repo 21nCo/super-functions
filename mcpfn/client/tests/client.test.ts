@@ -770,3 +770,41 @@ it.each([false, true])("retains failed initialization shutdown before a connecti
   expect(closeHandle).toHaveBeenCalledOnce();
   expect(open).toHaveBeenCalledOnce();
 });
+
+it.each([false, true])("waits for initialization cleanup during concurrent permanent close (reject=%s)", async rejectShutdown => {
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  let finish!: () => void;
+  const barrier = new Promise<void>(resolve => { finish = resolve; });
+  const closeHandle = vi.fn(async () => {});
+  const transport = { start: async () => {}, send: async () => {}, close: async () => {} } as McpFnTransportHandle["transport"];
+  let shutdown: ReturnType<typeof vi.spyOn>;
+  const client = createMcpFnClient({ target: customTarget({ kind: "concurrent-init-cleanup", open: async () => ({ transport, close: closeHandle }) }),
+    configure: protocol => {
+      shutdown = vi.spyOn(protocol, "close").mockImplementation(async () => {
+        entered(); await barrier;
+        if (rejectShutdown) throw new Error("shutdown rejected");
+      });
+      throw new Error("initialization failed");
+    },
+  });
+  const connected = client.connect().catch(error => error);
+  await started;
+  let settled = false;
+  const closing = client.close().then(() => { settled = true; return undefined; }, error => { settled = true; return error; });
+  await new Promise(resolve => setImmediate(resolve));
+  expect(settled).toBe(false);
+  expect(closeHandle).not.toHaveBeenCalled();
+  finish();
+  const error = await closing;
+  await connected;
+  if (rejectShutdown) {
+    expect(error).toMatchObject({ phase: "transport-close", retryable: true });
+    expect(client.state).toBe("closing");
+    expect(closeHandle).not.toHaveBeenCalled();
+    shutdown!.mockResolvedValue(undefined);
+    await client.close();
+  } else expect(error).toBeUndefined();
+  expect(client.state).toBe("closed");
+  expect(closeHandle).toHaveBeenCalledOnce();
+});

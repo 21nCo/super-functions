@@ -79,6 +79,7 @@ export class McpFnClient {
   private handle?: McpFnTransportHandle;
   private readonly pendingCleanup = new Set<McpFnTransportHandle>();
   private readonly cleanupPromises = new Map<McpFnTransportHandle, Promise<void>>();
+  private readonly attemptCleanup = new Map<Client, Promise<void>>();
   private connectPromise?: Promise<void>;
   private targetCleanupPending = false;
   private targetCleanupPromise?: Promise<void>;
@@ -548,7 +549,7 @@ export class McpFnClient {
   async close(permanent = true): Promise<void> {
     this.permanentCloseRequested ||= permanent;
     if (this.closePromise) return this.closePromise;
-    if (this._state === "closed" && permanent && this.pendingCleanup.size === 0 && !this.targetCleanupPending && this.openingSignals.size === 0) return;
+    if (this._state === "closed" && permanent && this.pendingCleanup.size === 0 && this.attemptCleanup.size === 0 && !this.targetCleanupPending && this.openingSignals.size === 0) return;
     this.closePromise = (async () => {
       this._state = "closing";
       const requestId = this.requestId();
@@ -590,6 +591,16 @@ export class McpFnClient {
   }
 
   private async cleanupAttempt(strict = false): Promise<void> {
+    // Initialization cleanup temporarily owns the detached protocol and handle.
+    // Wait for that owner, not connect(), which can be stuck in an abort-ignoring open.
+    if (this.attemptCleanup.size > 0) {
+      const attempts = await Promise.allSettled(this.attemptCleanup.values());
+      if (attempts.some(result => result.status === "rejected")) {
+        throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Retry close after initialization shutdown failed", {
+          phase: "transport-close", retryable: true,
+        });
+      }
+    }
     const protocol = this._protocol;
     const handle = this.handle;
     this._protocol = undefined;
@@ -636,26 +647,31 @@ export class McpFnClient {
     }
   }
 
-  private async cleanupOwnedAttempt(
-    protocol: Client,
-    handle: McpFnTransportHandle,
-  ): Promise<void> {
-    const ownsProtocol = this._protocol === protocol;
-    const ownsHandle = this.handle === handle;
-    if (ownsProtocol) this._protocol = undefined;
-    if (ownsHandle) this.handle = undefined;
-    if (ownsProtocol) {
-      try { await protocol.close(); }
-      catch {
-        this._protocol = protocol;
-        if (ownsHandle) this.pendingCleanup.add(handle);
-        this._state = "closing";
-        throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Retry close after initialization shutdown failed", {
-          phase: "transport-close", retryable: true,
-        });
+  private cleanupOwnedAttempt(protocol: Client, handle: McpFnTransportHandle): Promise<void> {
+    const existing = this.attemptCleanup.get(protocol);
+    if (existing) return existing;
+    // Register before detaching owners or calling arbitrary transport shutdown.
+    const cleanup = Promise.resolve().then(async () => {
+      const ownsProtocol = this._protocol === protocol;
+      const ownsHandle = this.handle === handle;
+      if (ownsProtocol) this._protocol = undefined;
+      if (ownsHandle) this.handle = undefined;
+      if (ownsProtocol) {
+        try { await protocol.close(); }
+        catch {
+          this._protocol = protocol;
+          if (ownsHandle) this.pendingCleanup.add(handle);
+          this._state = "closing";
+          throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Retry close after initialization shutdown failed", {
+            phase: "transport-close", retryable: true,
+          });
+        }
       }
-    }
-    if (ownsHandle) await this.closeRetainedHandle(handle);
+      if (ownsHandle) await this.closeRetainedHandle(handle);
+    });
+    this.attemptCleanup.set(protocol, cleanup);
+    void cleanup.finally(() => { this.attemptCleanup.delete(protocol); }).catch(() => undefined);
+    return cleanup;
   }
 
   private async listTools(options?: RequestOptions): Promise<Tool[]> {
