@@ -628,3 +628,14 @@ it("scrubs JSON-string-escaped opaque credentials in serialized error text", asy
   expect(result).not.toContain(JSON.stringify(secret).slice(1, -1));
   expect(result).toContain("REDACTED");
 });
+
+it.each(["Map", "Set"])("rejects oversized %s before materializing its entries", async kind => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  const collection = kind === "Map" ? new Map<number, number>() : new Set<number>();
+  for (let index = 0; index <= 100_000; index++) {
+    if (collection instanceof Map) collection.set(index, index);
+    else collection.add(index);
+  }
+  Object.defineProperty(collection, "size", { get: () => 0 }); // Cannot bypass the intrinsic bound.
+  expect(() => redactRemoteCredential({ headers: { "x-api-key": "secret" } }, collection)).toThrow(/traversal budget/);
+});

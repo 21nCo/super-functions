@@ -279,6 +279,8 @@ it("delivers diagnostics after exactly one custom redaction and bounds their ret
   expect(observed.length).toBeGreaterThan(0);
   expect(observed.every(event => (event as { redactionCount: number }).redactionCount === 1)).toBe(true);
   expect(report.droppedTimelineEvents).toBeGreaterThan(0);
+  expect(report.incompleteReason).toContain("maxReportBytes");
+  expect(report.incompleteReason).not.toContain("maxTimelineEvents");
   expect(report.timeline.length).toBeLessThan(observed.length);
   expect(Buffer.byteLength(JSON.stringify(report))).toBeLessThanOrEqual(4096);
 });

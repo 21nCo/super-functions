@@ -1,3 +1,4 @@
+import { redactOAuthValue } from "@superfunctions/oauth-core";
 import type {
   CallToolResult,
   CreateTaskResult,
@@ -160,7 +161,7 @@ export class McpFnInspector {
     };
     const inventoryComplete = Object.values(droppedInventoryEntries)
       .every((count) => count === 0);
-    return this.client.redact({
+    const snapshot = this.client.redact({
       formatVersion: 2,
       kind: "mcpfn.inspector-snapshot",
       target: this.client.getTargetDescriptor(),
@@ -171,7 +172,7 @@ export class McpFnInspector {
       resources: resources.items,
       resourceTemplates: resourceTemplates.items,
       prompts: prompts.items,
-      timeline: [...this.events],
+      timeline: [],
       droppedEvents: this.droppedEvents,
       timelineComplete: this.droppedEvents === 0,
       droppedInventoryEntries,
@@ -183,6 +184,9 @@ export class McpFnInspector {
         1,
       ),
     }) as unknown as McpFnInspectorSnapshot;
+    // Stored events already passed through the client hook; never reapply it.
+    snapshot.timeline = redactOAuthValue(this.events, { maxArrayEntries: this.maxEvents }) as unknown as McpFnInspectorTimelineEvent[];
+    return snapshot;
   }
 
   async run(operation: McpFnInspectorOperation): Promise<McpFnInspectorOperationResult> {
@@ -242,7 +246,7 @@ export class McpFnInspector {
     at: string,
     raw: McpFnDiagnosticEvent | McpFnClientEvent,
   ): void {
-    let event: McpFnInspectorTimelineEvent = this.client.redact({
+    let event: McpFnInspectorTimelineEvent = redactOAuthValue({
       formatVersion: 1,
       source,
       kind,

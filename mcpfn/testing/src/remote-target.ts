@@ -73,8 +73,14 @@ function specialValue(input: unknown): unknown {
   if (input instanceof Error) return { ...input, name: input.name, message: input.message, stack: input.stack, ...(input.cause === undefined ? {} : { cause: input.cause }) };
   if (input instanceof Date) return Number.isNaN(input.getTime()) ? "Invalid Date" : input.toISOString();
   if (input instanceof URL) return input.href;
-  if (input instanceof Map) return { type: "Map", entries: [...input.entries()] };
-  if (input instanceof Set) return { type: "Set", values: [...input.values()] };
+  if (input instanceof Map) {
+    if (Object.getOwnPropertyDescriptor(Map.prototype, "size")!.get!.call(input) > 100_000) throw new McpFnRedactionLimitError();
+    return { type: "Map", entries: [...Map.prototype.entries.call(input)] };
+  }
+  if (input instanceof Set) {
+    if (Object.getOwnPropertyDescriptor(Set.prototype, "size")!.get!.call(input) > 100_000) throw new McpFnRedactionLimitError();
+    return { type: "Set", values: [...Set.prototype.values.call(input)] };
+  }
   return input;
 }
 

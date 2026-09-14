@@ -106,6 +106,8 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   const timeline: McpFnDiagnosticEvent[] = [];
   let droppedTimelineEvents = 0;
   let timelineBytes = 0;
+  let timelineCountExceeded = false;
+  let timelineBytesExceeded = false;
   const timelineSizes: number[] = [];
   const maxTimelineEvents = options.maxTimelineEvents ?? 500;
   if (!Number.isInteger(maxTimelineEvents) || maxTimelineEvents < 1) {
@@ -141,12 +143,15 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
           const safeEvent = redactTargetCredentials(options.target, event, { preserveKeys: true });
           const bytes = jsonBytes(safeEvent);
           if (bytes > maxReportBytes) {
+            timelineBytesExceeded = true;
             droppedTimelineEvents += 1;
           } else {
             timeline.push(safeEvent);
             timelineSizes.push(bytes);
             timelineBytes += bytes;
             while (timeline.length > maxTimelineEvents || timelineBytes > maxReportBytes) {
+              timelineCountExceeded ||= timeline.length > maxTimelineEvents;
+              timelineBytesExceeded ||= timelineBytes > maxReportBytes;
               timeline.shift();
               timelineBytes -= timelineSizes.shift()!;
               droppedTimelineEvents += 1;
@@ -234,9 +239,8 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
         incompleteReason: [
           ...(failure ? [`${failure.layer}: ${failure.message}`] : []),
           ...(cleanupFailure ? [`Cleanup: ${cleanupFailure.message}`] : []),
-          ...(droppedTimelineEvents > 0
-            ? ["Diagnostic timeline exceeded maxTimelineEvents"]
-            : []),
+          ...(timelineCountExceeded ? ["Diagnostic timeline exceeded maxTimelineEvents"] : []),
+          ...(timelineBytesExceeded ? ["Diagnostic timeline exceeded maxReportBytes"] : []),
           ...(droppedObservedEvents > 0
             ? ["Observed client events exceeded maxObservedEvents"]
             : []),
