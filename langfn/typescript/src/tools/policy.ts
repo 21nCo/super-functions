@@ -95,6 +95,7 @@ function isBlockedIp(host: string): boolean {
 export class ToolPolicy {
   readonly secretProvider?: SecretProvider;
   readonly sanitizer: OutputSanitizer;
+  readonly maxResponseBytes?: number;
   readonly allowedHosts: readonly string[];
   readonly allowPrivateNetwork: boolean;
   readonly sandboxExecutor?: SandboxExecutor;
@@ -104,12 +105,14 @@ export class ToolPolicy {
   constructor(options: {
     secretProvider?: SecretProvider;
     sanitizer?: OutputSanitizer;
+    maxResponseBytes?: number;
     allowedHosts?: readonly string[];
     allowPrivateNetwork?: boolean;
     sandboxExecutor?: SandboxExecutor;
     searchBackend?: SearchBackend;
     redactKeys?: readonly string[];
   } = {}) {
+    this.maxResponseBytes = options.maxResponseBytes;
     this.secretProvider = options.secretProvider;
     this.sanitizer = options.sanitizer ?? sanitizeOutput;
     this.allowedHosts = [...(options.allowedHosts ?? [])];

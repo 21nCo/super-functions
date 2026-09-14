@@ -22,8 +22,8 @@ export async function* readStreamLines(
         if (bufferedBytes > maxLineBytes) throw new LangFnError("Provider stream line exceeds byte limit", { code: "RESPONSE_TOO_LARGE" });
         buffer += decoder.decode(value.subarray(start, end), { stream: true });
         if (newline === -1) break;
-        buffer += decoder.decode();
-        yield buffer;
+        buffer += decoder.decode(value.subarray(newline, newline + 1), { stream: true });
+        yield buffer.slice(0, -1);
         buffer = "";
         bufferedBytes = 0;
         start = newline + 1;

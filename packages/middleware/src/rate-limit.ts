@@ -433,6 +433,7 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
       const effectiveWindowMs =
         (input.windowSeconds !== undefined ? input.windowSeconds * 1000 : undefined) ?? windowMs;
       const effectiveLimit = input.limit ?? maxRequests;
+      const limits = uniqueKeys.map((key) => input.limitsByKey && Object.prototype.hasOwnProperty.call(input.limitsByKey, key) ? input.limitsByKey[key] ?? effectiveLimit : effectiveLimit);
       const namespacedKeys = uniqueKeys.map((key) => `${keyPrefix}${key}`);
 
       if (uniqueKeys.length === 0) {
@@ -449,7 +450,7 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
         const currentTime = now();
         const preflight = await Promise.all(
           namespacedKeys.map((key, index) =>
-            evaluateConfiguredKey(key, currentTime, effectiveWindowMs, input.limitsByKey?.[uniqueKeys[index]] ?? effectiveLimit, false)
+            evaluateConfiguredKey(key, currentTime, effectiveWindowMs, limits[index], false)
           )
         );
         const blocked = preflight.filter((result) => !result.allowed);
@@ -480,7 +481,7 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
             key,
             currentTime,
             effectiveWindowMs,
-            input.limitsByKey?.[uniqueKeys[index]] ?? effectiveLimit,
+            limits[index],
             true,
           );
           committed.push(result);

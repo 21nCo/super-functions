@@ -253,3 +253,44 @@ it("does not spawn a process if stdio closes during lazy loading", async () => {
     start.mockRestore();
   }
 });
+
+it("preserves BOM characters after the start of a UTF-8 stream", async () => {
+  const bytes = new TextEncoder().encode("\uFEFFfirst\n\uFEFFsecond\nlast");
+  const body = new ReadableStream<Uint8Array>({ start(c) { for (const byte of bytes) c.enqueue(Uint8Array.of(byte)); c.close(); } });
+  const lines = [];
+  for await (const line of readStreamLines(body)) lines.push(line);
+  expect(lines).toEqual(["first", "\uFEFFsecond", "last"]);
+});
+
+it("requires real credentials even with an injected OpenAI transport", async () => {
+  const fetchImpl = vi.fn();
+  const model = new OpenAIChatModel({ fetchImpl });
+  await expect(model.complete({prompt:"x"})).rejects.toMatchObject({code:"NOT_CONFIGURED"});
+  await expect(collect(model.stream({prompt:"x"}))).rejects.toMatchObject({code:"NOT_CONFIGURED"});
+  const { LangFn } = await import("../src/client.js");
+  await expect(new LangFn({model}).embed("x")).rejects.toMatchObject({code:"NOT_CONFIGURED"});
+  expect(fetchImpl).not.toHaveBeenCalled();
+});
+
+it("shares endpoint, fetch, organization and rotating credentials with embeddings", async () => {
+  const { LangFn } = await import("../src/client.js");
+  let key = "first";
+  const fetchImpl = vi.fn(async () => new Response(JSON.stringify({data:[{index:0,embedding:[1,2]}]})));
+  const lang = new LangFn({model:new OpenAIChatModel({apiKeyRef:"key", secretProvider:()=>key, baseUrl:"https://proxy.example/v1", organization:"org", fetchImpl})});
+  expect(await lang.embed("x")).toEqual([1,2]);
+  key = "second";
+  await lang.embed(["y"]);
+  expect(fetchImpl.mock.calls.map(c=>String(c[0]))).toEqual(["https://proxy.example/v1/embeddings","https://proxy.example/v1/embeddings"]);
+  expect(new Headers(fetchImpl.mock.calls[1][1]?.headers).get("authorization")).toBe("Bearer second");
+  expect(new Headers(fetchImpl.mock.calls[1][1]?.headers).get("openai-organization")).toBe("org");
+});
+
+it("forwards only trusted policy response limits through the API tool", async () => {
+  const { ApiCallTool } = await import("../src/tools/api_call.js");
+  const { ToolPolicy } = await import("../src/tools/policy.js");
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("hello")));
+  try {
+    await expect(ApiCallTool.run({url:"https://limit.example",maxResponseBytes:1000}, {metadata:{},policy:new ToolPolicy({allowedHosts:["limit.example"],maxResponseBytes:4})})).rejects.toMatchObject({code:"RESPONSE_TOO_LARGE"});
+    expect(await ApiCallTool.run({url:"https://limit.example"}, {metadata:{},policy:new ToolPolicy({allowedHosts:["limit.example"],maxResponseBytes:5})})).toBe("hello");
+  } finally { vi.unstubAllGlobals(); }
+});

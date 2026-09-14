@@ -228,31 +228,65 @@ it.skipIf(!url)(
     expect(metrics.eventsByType["metric-test"]).toBe(10001);
   },
 );
-it.skipIf(!url)(
-  "adds the optional binding to a schema-3 table idempotently",
-  async () => {
-    await client!.unsafe("CREATE SCHEMA rex_schema3_binding");
-    try {
-      await client!.unsafe("SET search_path TO rex_schema3_binding");
-      await client!.unsafe(
-        "CREATE TABLE secfn_secret_sets (id text PRIMARY KEY)",
-      );
-      await client!.unsafe("INSERT INTO secfn_secret_sets VALUES ('legacy')");
-      const migration = await readFile(
-        new URL(
-          "../../migrations/0004_secret_set_environment.sql",
-          import.meta.url,
-        ),
-        "utf8",
-      );
-      await client!.unsafe(migration);
-      await client!.unsafe(migration);
-      expect(await client!`SELECT * FROM secfn_secret_sets`).toEqual([
-        { id: "legacy", environment_id: null },
-      ]);
-    } finally {
-      await client!.unsafe(`SET search_path TO ${schemaName}`);
-      await client!.unsafe("DROP SCHEMA rex_schema3_binding CASCADE");
-    }
-  },
-);
+it.skipIf(!url)("migrates a schema outside search_path twice and enforces environment identity", async () => {
+  const migrationSchema = `rex_upgrade_${crypto.randomUUID().replaceAll("-", "")}`;
+  const migrationClient = postgres(url!, { max: 1, onnotice: () => {} });
+  try {
+    await migrationClient.unsafe(`CREATE SCHEMA ${migrationSchema}`);
+    await migrationClient.unsafe(`CREATE TABLE ${migrationSchema}.secfn_secret_sets (id text PRIMARY KEY, tenant_id text, namespace_id text, name text)`);
+    await migrationClient.unsafe(`INSERT INTO ${migrationSchema}.secfn_secret_sets VALUES ('legacy', 'tenant', 'namespace', 'app')`);
+    await migrationClient`SELECT set_config('secfn.migration_schema', ${migrationSchema}, false)`;
+    const migration = await readFile(new URL("../../migrations/0004_secret_set_environment.sql", import.meta.url), "utf8");
+    await migrationClient.unsafe(migration);
+    await migrationClient.unsafe(migration);
+    expect((await migrationClient.unsafe(`SELECT environment_id FROM ${migrationSchema}.secfn_secret_sets`))[0].environment_id).toBeNull();
+    await migrationClient.unsafe(`INSERT INTO ${migrationSchema}.secfn_secret_sets VALUES ('production', 'tenant', 'namespace', 'app', 'prod'), ('staging', 'tenant', 'namespace', 'app', 'stage')`);
+    await expect(migrationClient.unsafe(`INSERT INTO ${migrationSchema}.secfn_secret_sets VALUES ('duplicate', 'tenant', 'namespace', 'app', 'prod')`)).rejects.toMatchObject({code:'23505'});
+    await expect(migrationClient.unsafe(`INSERT INTO ${migrationSchema}.secfn_secret_sets VALUES ('duplicate-legacy', 'tenant', 'namespace', 'app', null)`)).rejects.toMatchObject({code:'23505'});
+  } finally {
+    await migrationClient.unsafe('ROLLBACK');
+    await migrationClient.unsafe(`DROP SCHEMA IF EXISTS ${migrationSchema} CASCADE`);
+    await migrationClient.end();
+  }
+});
+
+it.skipIf(!url)("derives ownership and resolves same-name sets per environment including legacy fallback", async () => {
+  const v = server.vault;
+  const ns = await v.createNamespace({tenantId:"identity",slug:"identity",createdBy:"test"});
+  const prod = await v.createEnvironment({namespaceId:ns.id,name:"production",createdBy:"test"});
+  const stage = await v.createEnvironment({namespaceId:ns.id,name:"staging",createdBy:"test"});
+  expect(prod.tenantId).toBe("identity");
+  const secret = await v.createSecret({environmentId:prod.id,key:"KEY",value:"prod",createdBy:"test"});
+  expect(secret.tenantId).toBe("identity");
+  const staged = await v.createSecret({namespaceId:ns.id,environmentId:stage.id,key:"KEY",value:"stage",createdBy:"test"});
+  expect(staged.tenantId).toBe("identity");
+  const legacy = await v.createSecretSet({namespaceId:ns.id,name:"app",createdBy:"test"});
+  const bound = await v.createSecretSet({namespaceId:ns.id,environmentId:prod.id,name:"app",members:[{secretId:secret.id}],createdBy:"test"});
+  await v.createSecretSet({namespaceId:ns.id,environmentId:stage.id,name:"app",members:[{secretId:staged.id}],createdBy:"test"});
+  expect((await v.listSecretSets({namespaceId:ns.id,environmentId:prod.id})).map(set=>set.id)).toEqual([bound.id]);
+  await expect(v.createSecretSet({namespaceId:ns.id,environmentId:prod.id,name:"app",createdBy:"test"})).rejects.toThrow("already exists");
+  const issued = await v.createServiceToken({tenantId:"identity",namespaceId:ns.id,name:"token",scopes:["set:app"],createdBy:"test"});
+  for (const [environmentId,value] of [[prod.id,"prod"],[stage.id,"stage"]]) {
+    const scope = {tenantId:"identity",namespaceId:ns.id,environmentId};
+    const verified = await v.verifyRuntimeToken(issued.token,scope);
+    expect((await v.resolveRuntimeSet("app",verified,scope)).secrets).toEqual({KEY:value});
+  }
+  await v.deleteSecretSet(bound.id,"test");
+  const scope = {tenantId:"identity",namespaceId:ns.id,environmentId:prod.id};
+  expect((await v.resolveRuntimeSet("app",await v.verifyRuntimeToken(issued.token,scope),scope)).secrets).toEqual({});
+  expect((await v.getSecretSet(legacy.id)).name).toBe("app");
+});
+
+it.skipIf(!url)("lists and resolves all 1001 members instead of silently truncating", async () => {
+  const v = server.vault;
+  const scope = {tenantId:"large",namespace:"large",environment:"production",createdBy:"test"};
+  const secret = await v.createSecret({...scope,key:"VALUE",value:"test"});
+  const set = await v.createSecretSet({...scope,name:"large"});
+  await client!`INSERT INTO secfn_secret_set_members(id,set_id,secret_id,alias,created_at) SELECT 'large-' || lpad(i::text,6,'0'), ${set.id}, ${secret.id}, 'KEY_' || i::text, now() FROM generate_series(1,1001) i`;
+  expect(await v.listSecretSetMembers(set.id)).toHaveLength(1001);
+  await expect(v.addSecretSetMember(set.id, secret.id, "KEY_1001")).rejects.toThrow("unique");
+  const issued = await v.createServiceToken({...scope,name:"token",scopes:["set:large"]});
+  const result = await v.resolveRuntimeSet("large",await v.verifyRuntimeToken(issued.token,scope),scope);
+  expect(Object.keys(result.secrets)).toHaveLength(1001);
+  expect(result.secrets.KEY_1001).toBe("test");
+},60000);

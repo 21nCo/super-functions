@@ -59,7 +59,7 @@ describe("provider and client contract", () => {
         { status: 200, headers: { "content-type": "application/json" } }
       );
 
-    const client = new LangFn().withModel("openai", {
+    const client = new LangFn().withModel("openai", { apiKey: "fixture",
       model: "gpt-4o-mini",
       fetchImpl: successFetch
     });
@@ -80,7 +80,7 @@ describe("provider and client contract", () => {
 
     const authFetch: typeof fetch = async () =>
       new Response(JSON.stringify({ error: { message: "bad key" } }), { status: 401 });
-    const authClient = new LangFn().withModel("openai", { fetchImpl: authFetch });
+    const authClient = new LangFn().withModel("openai", { apiKey: "fixture", fetchImpl: authFetch });
     await expect(authClient.complete("x")).rejects.toBeInstanceOf(ProviderAuthError);
 
     let rateLimitAttempts = 0;
@@ -100,7 +100,7 @@ describe("provider and client contract", () => {
         { status: 200 }
       );
     };
-    const retryClient = new LangFn().withModel("openai", { fetchImpl: rateLimitFetch });
+    const retryClient = new LangFn().withModel("openai", { apiKey: "fixture", fetchImpl: rateLimitFetch });
     await expect(
       retryClient.complete("retry me", { retry: { maxAttempts: 2, baseDelayMs: 0, maxDelayMs: 0 } })
     ).resolves.toMatchObject({ content: "ok" });

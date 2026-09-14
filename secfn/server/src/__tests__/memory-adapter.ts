@@ -200,9 +200,9 @@ function matchClause(value: unknown, clause: WhereClause): boolean {
   const expected = comparable(clause.value);
   switch (clause.operator) {
     case "eq":
-      return value === expected;
+      return expected === null ? value == null : value === expected;
     case "ne":
-      return value !== expected;
+      return expected === null ? value != null : value !== expected;
     case "gt":
       return (value as any) > expected;
     case "gte":

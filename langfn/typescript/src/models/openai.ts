@@ -63,13 +63,10 @@ export class OpenAIChatModel extends ChatModel {
     if (resolved) {
       return resolved;
     }
-    if (!this.apiKeyRef && this.fetchImpl) {
-      return "test-api-key";
-    }
     return "";
   }
 
-  private get client() {
+  get transport() {
     const apiKey = this.apiKey;
     if (!apiKey) {
       throw new NotConfiguredError("OpenAI API key is required");
@@ -100,7 +97,7 @@ export class OpenAIChatModel extends ChatModel {
     if (request.tools?.length) payload.tools = request.tools.map(toOpenAITool);
     if (request.tool_choice !== undefined) payload.tool_choice = request.tool_choice;
 
-    const response = await this.client.request("/chat/completions", {
+    const response = await this.transport.request("/chat/completions", {
       method: "POST",
       signal: request.signal,
       body: JSON.stringify(payload)
@@ -128,7 +125,7 @@ export class OpenAIChatModel extends ChatModel {
   }
 
   async *stream(request: CompletionRequest): AsyncIterable<StreamEvent> {
-    const response = await this.client.request("/chat/completions", {
+    const response = await this.transport.request("/chat/completions", {
       method: "POST",
       signal: request.signal,
       body: JSON.stringify({

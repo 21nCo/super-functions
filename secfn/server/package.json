@@ -65,7 +65,7 @@
   },
   "superfunctions": {
     "initFunction": "createSecFnServer",
-    "schemaVersion": 3,
+    "schemaVersion": 4,
     "libraryNames": [
       "secfn"
     ]

@@ -91,7 +91,7 @@ export function getSecFnSchema(): TableSchema[] {
         updatedAt: { type: "date", required: true, fieldName: "updated_at" },
       },
       indexes: [
-        { name: "idx_secfn_secret_sets_lookup", fields: ["tenantId", "namespaceId", "name"], unique: true },
+        { name: "idx_secfn_secret_sets_lookup", fields: ["tenantId", "namespaceId", "environmentId", "name"], unique: true },
       ],
     },
     {

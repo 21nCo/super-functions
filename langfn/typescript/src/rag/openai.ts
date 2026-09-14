@@ -1,19 +1,27 @@
+import { getTransportClient, type TransportClient } from "../models/transport.js";
+import { NotConfiguredError, ProviderError } from "../core/errors.js";
 import { Embeddings } from "./base.js";
 
 export interface OpenAIEmbeddingsConfig {
   apiKey: string;
   model?: string;
   baseUrl?: string;
+  fetchImpl?: typeof fetch;
+  timeout?: number;
+  transport?: () => TransportClient;
 }
 
 export class OpenAIEmbeddings extends Embeddings {
-  private apiKey: string;
+  private readonly transport: () => TransportClient;
   private model: string;
   private baseUrl: string;
 
   constructor(config: OpenAIEmbeddingsConfig) {
     super();
-    this.apiKey = config.apiKey;
+    this.transport = config.transport ?? (() => {
+      if (!config.apiKey) throw new NotConfiguredError("OpenAI API key is required");
+      return getTransportClient({ baseUrl: this.baseUrl, timeout: config.timeout ?? 60_000, fetchImpl: config.fetchImpl, headers: { authorization: `Bearer ${config.apiKey}`, "content-type": "application/json" } });
+    });
     this.model = config.model || "text-embedding-3-small";
     this.baseUrl = config.baseUrl || "https://api.openai.com/v1";
   }
@@ -24,12 +32,8 @@ export class OpenAIEmbeddings extends Embeddings {
   }
 
   async embedDocuments(texts: string[]): Promise<number[][]> {
-    const response = await fetch(`${this.baseUrl}/embeddings`, {
+    const response = await this.transport().request("/embeddings", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${this.apiKey}`
-      },
       body: JSON.stringify({
         input: texts,
         model: this.model
@@ -37,7 +41,8 @@ export class OpenAIEmbeddings extends Embeddings {
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI Embeddings Error: ${await response.text()}`);
+      await response.body?.cancel();
+      throw new ProviderError("OpenAI embeddings request failed", { metadata: { status: response.status } });
     }
 
     const data = await response.json();

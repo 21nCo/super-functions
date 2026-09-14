@@ -216,22 +216,24 @@ export class VaultService {
   async createEnvironment(input: CreateEnvironmentInput): Promise<EnvironmentRecord> {
     const name = normalizeName(input.name);
     if (!name) throw new SecFnValidationError("Environment name is required");
-    const namespaceId = input.namespaceId || input.namespace
+    const namespace = input.namespaceId || input.namespace
       ? (await this.ensureNamespace({
         tenantId: input.tenantId,
         namespaceId: input.namespaceId,
         namespace: input.namespace,
         createdBy: input.createdBy,
-      })).id
+      }))
       : undefined;
-    const existing = await this.findEnvironment({ tenantId: input.tenantId, namespaceId, environment: name });
+    const namespaceId = namespace?.id;
+    const tenantId = input.tenantId ?? namespace?.tenantId;
+    const existing = await this.findEnvironment({ tenantId, namespaceId, environment: name });
     if (existing) throw new SecFnValidationError("Environment already exists", { name });
     const now = nowIso();
     return this.db.create<EnvironmentRecord>({
       model: "secfn_environments",
       data: {
         id: generateId("env"),
-        tenantId: input.tenantId,
+        tenantId,
         namespaceId,
         name,
         description: cleanString(input.description),
@@ -278,7 +280,7 @@ export class VaultService {
     const now = nowIso();
     const secret: SecretRecord = {
       id: generateId("secret"),
-      tenantId: input.tenantId,
+      tenantId: resolved.tenantId,
       namespaceId: resolved.namespaceId!,
       namespace: resolved.namespace,
       key: input.key,
@@ -519,7 +521,7 @@ export class VaultService {
     const tenantId = input.tenantId ?? (await this.getNamespace(resolved.namespaceId!)).tenantId;
     const duplicate = await this.db.findOne<SecretSetRecord>({
       model: "secfn_secret_sets",
-      where: scopeWhere({ tenantId, namespaceId: resolved.namespaceId, name: input.name }),
+      where: [...scopeWhere({ tenantId, namespaceId: resolved.namespaceId, name: input.name }), { field: "environmentId", operator: "eq", value: resolved.environmentId ?? null }],
     });
     if (duplicate) throw new SecFnValidationError("Secret set already exists", { name: input.name });
     const now = nowIso();
@@ -561,10 +563,10 @@ export class VaultService {
   }
 
   async listSecretSets(scope: SecretScope = {}): Promise<SecretSetRecord[]> {
-    const resolved = await this.resolveScope(scope, { allowAll: true, ignoreEnvironment: true });
+    const resolved = await this.resolveScope(scope, { allowAll: true, ignoreEnvironment: !scope.environment && !scope.environmentId });
     const rows = await this.db.findMany<SecretSetRecord>({
       model: "secfn_secret_sets",
-      where: scopeWhere({ tenantId: resolved.tenantId, namespaceId: resolved.namespaceId }),
+      where: scopeWhere({ tenantId: resolved.tenantId, namespaceId: resolved.namespaceId, environmentId: resolved.environmentId }),
       orderBy: [{ field: "updatedAt", direction: "desc" }],
       limit: 500,
     });
@@ -580,7 +582,7 @@ export class VaultService {
       if (name !== existing.name) {
         const duplicate = await this.db.findOne<SecretSetRecord>({
           model: "secfn_secret_sets",
-          where: scopeWhere({ tenantId: existing.tenantId, namespaceId: existing.namespaceId, name }),
+          where: [...scopeWhere({ tenantId: existing.tenantId, namespaceId: existing.namespaceId, name }), { field: "environmentId", operator: "eq", value: existing.environmentId ?? null }],
         });
         if (duplicate && duplicate.id !== id) throw new SecFnValidationError("Secret set already exists", { name });
         data.name = name;
@@ -631,12 +633,20 @@ export class VaultService {
 
   async listSecretSetMembers(setId: string): Promise<SecretSetMemberRecord[]> {
     await this.getSecretSetRow(setId);
-    return this.db.findMany<SecretSetMemberRecord>({
-      model: "secfn_secret_set_members",
-      where: [{ field: "setId", operator: "eq", value: setId }],
-      orderBy: [{ field: "createdAt", direction: "asc" }],
-      limit: 1000,
-    });
+    const members: SecretSetMemberRecord[] = [];
+    let afterId: string | undefined;
+    while (true) {
+      const page = await this.db.findMany<SecretSetMemberRecord>({
+        model: "secfn_secret_set_members",
+        where: [{ field: "setId", operator: "eq", value: setId }, ...(afterId ? [{ field: "id", operator: "gt" as const, value: afterId }] : [])],
+        orderBy: [{ field: "id", direction: "asc" }],
+        limit: 1000,
+      });
+      members.push(...page);
+      if (page.length < 1000) break;
+      afterId = page[page.length - 1].id;
+    }
+    return members.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
   }
 
   async updateSecretSetMember(id: string, input: UpdateSecretSetMemberInput): Promise<SecretSetMemberRecord> {
@@ -849,16 +859,14 @@ export class VaultService {
       throw new SecFnForbiddenError("Runtime token cannot read this secret set", { name });
     }
     const resolved = await this.resolveScope(scope, { requireNamespace: true, requireEnvironment: true });
-    const set = await this.db.findOne<SecretSetRecord>({
+    const findSet = (environmentId: string | null) => this.db.findOne<SecretSetRecord>({
       model: "secfn_secret_sets",
-      where: scopeWhere({ tenantId: resolved.tenantId, namespaceId: resolved.namespaceId, name }),
+      where: [...scopeWhere({ tenantId: resolved.tenantId, namespaceId: resolved.namespaceId, name }), { field: "environmentId", operator: "eq", value: environmentId }],
     });
-    if (!set || (set.environmentId && set.environmentId !== resolved.environmentId)) throw new SecFnNotFoundError("Secret set not found", { name });
-    const members = await this.db.findMany<SecretSetMemberRecord>({
-      model: "secfn_secret_set_members",
-      where: [{ field: "setId", operator: "eq", value: set.id }],
-      limit: 1000,
-    });
+    // An exact binding wins; legacy unbound sets remain a fallback.
+    const set = await findSet(resolved.environmentId!) ?? await findSet(null);
+    if (!set) throw new SecFnNotFoundError("Secret set not found", { name });
+    const members = await this.listSecretSetMembers(set.id);
     const secrets: Record<string, string> = {};
     for (const member of members) {
       const secret = await this.getSecret(member.secretId);
@@ -890,12 +898,14 @@ export class VaultService {
       if (scope.tenantId !== undefined && environment.tenantId !== scope.tenantId) throw new SecFnNotFoundError("Environment not found");
       if (scope.environment !== undefined && normalizeName(scope.environment) !== environment.name) throw new SecFnValidationError("Environment ID/name mismatch");
       if (!result.namespaceId && !result.namespace) result.namespaceId = environment.namespaceId;
+      result.tenantId ??= environment.tenantId;
       result.environment = environment.name;
     }
     const namespace = result.namespaceId ? await this.getNamespace(result.namespaceId) : undefined;
     if (namespace) {
       if (scope.tenantId !== undefined && namespace.tenantId !== scope.tenantId) throw new SecFnNotFoundError("Namespace not found");
       if (scope.namespace !== undefined && normalizeSlug(scope.namespace) !== namespace.slug) throw new SecFnValidationError("Namespace ID/name mismatch");
+      result.tenantId ??= namespace.tenantId;
       result.namespace = namespace.slug;
     }
     if (environment?.namespaceId) {
@@ -1247,11 +1257,7 @@ export class VaultService {
     next: { secretId: string; alias?: string | null; memberId?: string },
     nextSecret?: SecretRecord,
   ): Promise<void> {
-    const members = await this.db.findMany<SecretSetMemberRecord>({
-      model: "secfn_secret_set_members",
-      where: [{ field: "setId", operator: "eq", value: setId }],
-      limit: 1000,
-    });
+    const members = await this.listSecretSetMembers(setId);
     const secrets = await this.getSecretRows([
       next.secretId,
       ...members.map((member) => member.secretId),

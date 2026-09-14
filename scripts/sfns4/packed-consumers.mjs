@@ -115,6 +115,10 @@ try {
     const memory = await import('@memoryfn/core');
     const cli = await import('@clifn/core');
     const sec = await import('@secfn/server');
+    const secCore = await import('@secfn/core');
+    const fs = await import('node:fs');
+    const secMetadata = JSON.parse(fs.readFileSync('node_modules/@secfn/server/package.json', 'utf8'));
+    if (secMetadata.superfunctions.schemaVersion !== secCore.SECFN_SCHEMA_VERSION) throw new Error('Packed SecFn schema metadata is stale');
     const file = await import('@filefn/server');
     const data = await import('@datafn/server');
     const auth = await import('authfn');

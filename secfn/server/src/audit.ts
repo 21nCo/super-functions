@@ -106,6 +106,7 @@ export class AuditService {
   }
 
   async getMetrics(): Promise<SecurityMetrics> {
+    const cutoff = nowIso();
     let totalEvents = 0;
     let afterId: string | undefined;
     const eventsByType: Record<string, number> = {};
@@ -116,7 +117,7 @@ export class AuditService {
     while (true) {
       const events = await this.options.db.findMany<SecurityAuditEvent>({
         model: "secfn_audit_events",
-        where: afterId ? [{ field: "id", operator: "gt", value: afterId }] : [],
+        where: [{ field: "timestamp", operator: "lt", value: cutoff }, ...(afterId ? [{ field: "id", operator: "gt" as const, value: afterId }] : [])],
         orderBy: [{ field: "id", direction: "asc" }],
         limit: 1000,
       });

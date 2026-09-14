@@ -131,6 +131,7 @@ export const ApiCallTool = new Tool<ApiCallArgs, unknown>({
     executeApiCall(args, {
       allowPrivateNetwork: context.policy.allowPrivateNetwork,
       allowedHosts: context.policy.allowedHosts,
+      maxResponseBytes: context.policy.maxResponseBytes,
       secretProvider: context.policy.secretProvider
     })
 });

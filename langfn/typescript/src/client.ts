@@ -458,7 +458,7 @@ export class LangFn {
       }
       this._embeddings = new OpenAIEmbeddings({
         apiKey: model.apiKey,
-        baseUrl: model.baseUrl
+        transport: () => model.transport
       });
     }
 

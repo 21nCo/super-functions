@@ -589,3 +589,22 @@ it("resolves a missing namespace only once before authorization", async () => {
   expect(response.status).toBe(200);
   expect(calls).toBe(1);
 });
+
+it("defers audit writes made during a paged metrics read to the next request", async () => {
+  const { db, secfn } = createServer();
+  for (let i=0;i<1001;i++) await db.create({model:"secfn_audit_events",data:{id:`original-${String(i).padStart(6,"0")}`,timestamp:"2000-01-01T00:00:00.000Z",type:"original",severity:"info"}});
+  const read = db.findMany.bind(db);
+  let inserted = false;
+  db.findMany = async (params) => {
+    const rows = await read(params);
+    if (params.model === "secfn_audit_events" && !inserted) {
+      inserted = true;
+      await db.create({model:"secfn_audit_events",data:{id:"aaa-new",timestamp:new Date().toISOString(),type:"during",severity:"info"}});
+      await db.create({model:"secfn_audit_events",data:{id:"zzz-new",timestamp:new Date().toISOString(),type:"during",severity:"info"}});
+    }
+    return rows;
+  };
+  expect((await secfn.audit.getMetrics()).totalEvents).toBe(1001);
+  await new Promise(resolve=>setTimeout(resolve,2));
+  expect((await secfn.audit.getMetrics()).totalEvents).toBe(1003);
+});

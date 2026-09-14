@@ -41,10 +41,10 @@ plugfn/providers/src/google/discovery/sheets.ts
 
 Do not exclude the directory globally, handwritten provider code, tests, or security analysis. See [SonarSource duplication exclusion documentation](https://docs.sonarsource.com/sonarqube-cloud/managing-your-projects/project-analysis/setting-analysis-scope/exclude-from-coverage-duplication).
 
-The setting was saved through the signed-in personal Aside profile and verified by reloading on September 14, 2026. Automatic analysis remains on. No security exclusions or quality thresholds changed. The next push will trigger fresh analysis; the previous result was 10.3% duplication with security, reliability and maintainability all A and zero open security/reliability findings.
+The setting was saved through the signed-in personal Aside profile and verified by reloading on September 14, 2026. Automatic analysis remains on. No security exclusions or quality thresholds changed. At `cfd1a7a`, before the exclusions were analyzed, the result was 10.3% duplication with security, reliability and maintainability all A and zero open security/reliability findings.
 
 ## Recorded verification for the cfd1a7a remediation
 
-Provider suite: 476 tests; connected mailbox: 4 tests; LangFn tool/policy: 4 tests; SecFn core: 9 tests. Provider and SecFn core typechecks pass. The original one-time manifest fingerprint comparison passed. The ongoing regression check retains independent mutable objects without coupling every future catalog addition to an opaque digest. Hosted analysis must rerun after the push; the prior head still failed security and duplication, while reliability had reached A following the contextual dispositions.
+Provider suite: 476 tests; connected mailbox: 4 tests; LangFn tool/policy: 4 tests; SecFn core: 9 tests. Provider and SecFn core typechecks pass. The original one-time manifest fingerprint comparison passed. The ongoing regression check retains independent mutable objects without coupling every future catalog addition to an opaque digest. At the original `896545d` input snapshot, security and duplication failed while reliability was A. The later `cfd1a7a` result is recorded above. At `de37986be127f912a4cbd3762d259f11a451e3ac`, Sonar passed with 0.3% duplication (GitHub check completed September 14, 2026 at 17:38:33 UTC). These are three separate analyses.
 
 The packed consumer gate passed for 38 packages, including Svelte SSR, hydration and keyboard interaction. Artifact-set SHA-256: `295b0ed7b643f14d597cc6d18daecb235327efcfd9756694df6443e870a8023c`.

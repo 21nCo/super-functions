@@ -1,7 +1,7 @@
 import { LangFnError } from "./errors.js";
 import { tokenUsage } from "./types.js";
 
-/** Missing counters are unknown, never zero-priced usage. */
+/** An absent usage report is unknown. A present but incomplete report is invalid, never zero-priced usage. */
 export function providerUsage(
   prompt: unknown,
   completion: unknown,

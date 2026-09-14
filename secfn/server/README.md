@@ -70,6 +70,10 @@ Namespace-scoped contexts must include `tenantId`, since namespace slugs are onl
 unique within a tenant. Environment creation derives that trusted scope and rejects
 conflicting namespace names or IDs in its body.
 
-Schema version 4 adds optional immutable environment bindings to secret sets. Apply `migrations/0004_secret_set_environment.sql` after schema 3 (or the equivalent generated schema diff). Existing sets remain unbound. Creating a set with an explicit environment stores its ID and enforces it on creation, member additions/replacements, and runtime resolution.
+Schema version 4 adds optional immutable environment bindings to secret sets. Apply `migrations/0004_secret_set_environment.sql` after schema 3; a generated diff alone does not express its null-safe uniqueness constraint. Existing sets remain unbound. Creating a set with an explicit environment stores its ID and enforces it on creation, member additions/replacements, and runtime resolution.
 
 Audit metrics walk all event pages by stable ID instead of a 10,000-event cap; the walk is not a transactional snapshot of concurrent writes. Multi-scope rate limits preflight every configured limit before charging. Shared CAS contention can still conservatively retain earlier charges; no stale-snapshot rollback is attempted.
+
+Schema 4 requires PostgreSQL 15+ and migration `0004_secret_set_environment.sql`, including on a fresh installation generated from the portable schema. The migration enforces NULLS NOT DISTINCT uniqueness for `(tenant_id, namespace_id, environment_id, name)`. Set `secfn.migration_schema` on the migration connection when multiple deployments share a database; otherwise the migration requires exactly one matching table and fails rather than guessing. Bound sets with the same name coexist across environments; runtime resolution prefers an exact binding then a legacy unbound set. Members of legacy sets still must pass runtime scope checks.
+
+Metrics capture an exclusive timestamp cutoff before pagination, so writes timestamped during the scan are deferred to the next request. This is a bounded observational read, not a database snapshot: backdated events or transactions begun earlier but committed during the scan require a host-provided consistent snapshot for exact point-in-time accounting.
