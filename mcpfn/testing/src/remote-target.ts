@@ -118,6 +118,12 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
       : literal;
   });
   const secretPattern = patterns.length ? new RegExp(patterns.join("|"), "g") : undefined;
+  // A requested marker is itself output and must not reproduce a credential.
+  if (redactionMarker !== undefined && secretPattern) {
+    const markerContainsSecret = secretPattern.test(redactionMarker);
+    secretPattern.lastIndex = 0;
+    if (markerContainsSecret) redactionMarker = "";
+  }
   const clientKinds = new Set(["logging.message", "progress", "tasks.status", "resources.updated", "tools.list_changed", "resources.list_changed", "prompts.list_changed", "resources.subscribed", "resources.unsubscribed", "client.roots", "client.sampling", "client.elicitation"]);
   const scrub = (input: unknown, role = "payload", field = ""): unknown => {
     input = specialValue(input);
@@ -151,7 +157,7 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   };
   const timelineEvent = value && typeof value === "object" && ["client", "diagnostic"].includes((value as { source?: string }).source ?? "");
   const scrubbed = scrub(value, preserveKeys ? (timelineEvent ? "inspectorEvent" : "root") : "payload");
-  return redactOAuthValue(scrubbed, { maxStringLength: 262_144, maxDepth: 64, maxArrayEntries: 100_000, maxObjectEntries: 100_000, ...(redactionMarker ? { redactionMarker } : {}) }) as T;
+  return redactOAuthValue(scrubbed, { maxStringLength: 262_144, maxDepth: 64, maxArrayEntries: 100_000, maxObjectEntries: 100_000, ...(redactionMarker !== undefined ? { redactionMarker } : {}) }) as T;
 }
 
 /** Remove known opaque credential values as well as credential-shaped fields. */

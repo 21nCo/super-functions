@@ -2,10 +2,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-const state = vi.hoisted(() => ({ failure: undefined as Error | undefined }));
+const state = vi.hoisted(() => ({ failure: undefined as Error | undefined, realPath: false }));
 vi.mock("@mcpfn/testing", async importOriginal => {
   const actual = await importOriginal<typeof import("@mcpfn/testing")>();
-  return { ...actual, runAuthenticatedOfficialConformance: async () => {
+  return { ...actual, runAuthenticatedOfficialConformance: async (options: Parameters<typeof actual.runAuthenticatedOfficialConformance>[0]) => {
+    if (state.realPath) return actual.runAuthenticatedOfficialConformance(options);
     if (state.failure) throw state.failure;
     throw new actual.McpFnConformanceCleanupError(async () => {}, {
       formatVersion: 1, kind: "mcpfn.official-conformance-report", suiteVersion: "0.1.16",
@@ -45,6 +46,20 @@ it("classifies proxy operational failures as exit1 with safe output, while keepi
     expect(await runCli(args, { stderr: () => {} })).toBe(2);
   } finally {
     state.failure = undefined;
+    if (previous === undefined) delete process.env.MCPFN_CLEANUP_TEST_KEY;
+    else process.env.MCPFN_CLEANUP_TEST_KEY = previous;
+  }
+});
+
+
+it.each(["not-a-url", "ftp://127.0.0.1/mcp", "https://example.com/mcp", "http://user:password@127.0.0.1/mcp", "http://127.0.0.1/mcp#fragment"])("classifies real authenticated input validation as exit2 (%s)", async url => {
+  const previous = process.env.MCPFN_CLEANUP_TEST_KEY;
+  process.env.MCPFN_CLEANUP_TEST_KEY = "secret";
+  state.realPath = true;
+  try {
+    expect(await runCli(["conformance", url, "--api-key-env", "MCPFN_CLEANUP_TEST_KEY"], { stderr: () => {} })).toBe(2);
+  } finally {
+    state.realPath = false;
     if (previous === undefined) delete process.env.MCPFN_CLEANUP_TEST_KEY;
     else process.env.MCPFN_CLEANUP_TEST_KEY = previous;
   }

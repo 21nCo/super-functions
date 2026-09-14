@@ -599,7 +599,7 @@ describe("McpFn testing", () => {
     })).rejects.toThrow(/at least one credential header/);
   });
 
-  it("releases authenticated conformance credentials when proxy setup fails", async () => {
+  it("rejects invalid authenticated conformance URLs before acquiring credentials", async () => {
     const revoke = vi.fn();
     const dispose = vi.fn();
     await expect(runAuthenticatedOfficialConformance({
@@ -610,8 +610,8 @@ describe("McpFn testing", () => {
         dispose,
       },
     })).rejects.toThrow(/literal loopback address/);
-    expect(revoke).toHaveBeenCalledOnce();
-    expect(dispose).toHaveBeenCalledOnce();
+    expect(revoke).not.toHaveBeenCalled();
+    expect(dispose).not.toHaveBeenCalled();
   });
 
   it("closes the conformance proxy while streaming requests are active", async () => {

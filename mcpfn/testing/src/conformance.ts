@@ -73,15 +73,8 @@ export interface AuthenticatedOfficialConformanceOptions extends OfficialConform
   headers?: HeadersInit;
 }
 
-/**
- * Start a loopback-only streaming proxy for runners that cannot send auth
- * headers. Authenticated requests use one fixed upstream authority and path.
- * Host-manipulation probes are forwarded without injected credentials.
- */
-export async function createAuthenticatedConformanceProxy(
-  options: AuthenticatedConformanceProxyOptions,
-): Promise<AuthenticatedConformanceProxy> {
-  const upstream = new URL(options.url);
+function validateAuthenticatedConformanceUrl(url: string): { upstream: URL; hostname: string } {
+  const upstream = new URL(url);
   if (!["http:", "https:"].includes(upstream.protocol)) {
     throw new TypeError(
       "Authenticated conformance upstream must use HTTP or HTTPS",
@@ -98,6 +91,18 @@ export async function createAuthenticatedConformanceProxy(
       "Authenticated conformance upstream must use a literal loopback address",
     );
   }
+  return { upstream, hostname };
+}
+
+/**
+ * Start a loopback-only streaming proxy for runners that cannot send auth
+ * headers. Authenticated requests use one fixed upstream authority and path.
+ * Host-manipulation probes are forwarded without injected credentials.
+ */
+export async function createAuthenticatedConformanceProxy(
+  options: AuthenticatedConformanceProxyOptions,
+): Promise<AuthenticatedConformanceProxy> {
+  const { upstream, hostname } = validateAuthenticatedConformanceUrl(options.url);
   const protocol = upstream.protocol === "https:" ? "https:" : "http:";
   const port = upstream.port === "" ? undefined : Number(upstream.port);
   const requestPath = `${upstream.pathname}${upstream.search}`;
@@ -375,6 +380,7 @@ export async function runAuthenticatedOfficialConformance(
   if ((headers === undefined) === (credential === undefined)) {
     throw new TypeError("Provide exactly one of credential or headers for authenticated conformance");
   }
+  validateAuthenticatedConformanceUrl(conformance.url);
   const lease = await acquireRemoteCredential(
     credential ?? { headers: headers! },
     {

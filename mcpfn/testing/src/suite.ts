@@ -108,6 +108,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   let timelineBytes = 0;
   let timelineCountExceeded = false;
   let timelineBytesExceeded = false;
+  let timelineSerializationFailed = false;
   const timelineSizes: number[] = [];
   const maxTimelineEvents = options.maxTimelineEvents ?? 500;
   if (!Number.isInteger(maxTimelineEvents) || maxTimelineEvents < 1) {
@@ -141,7 +142,14 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
           }
           // Production-client dispatch already applied the custom target hook.
           const safeEvent = redactTargetCredentials(options.target, event, { preserveKeys: true });
-          const bytes = jsonBytes(safeEvent);
+          let bytes: number;
+          try { bytes = jsonBytes(safeEvent); }
+          catch {
+            timelineSerializationFailed = true;
+            droppedTimelineEvents += 1;
+            await consumerDiagnostic?.(safeEvent);
+            return;
+          }
           if (bytes > maxReportBytes) {
             timelineBytesExceeded = true;
             droppedTimelineEvents += 1;
@@ -239,6 +247,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
         incompleteReason: [
           ...(failure ? [`${failure.layer}: ${failure.message}`] : []),
           ...(cleanupFailure ? [`Cleanup: ${cleanupFailure.message}`] : []),
+          ...(timelineSerializationFailed ? ["Diagnostic timeline contained non-JSON data"] : []),
           ...(timelineCountExceeded ? ["Diagnostic timeline exceeded maxTimelineEvents"] : []),
           ...(timelineBytesExceeded ? ["Diagnostic timeline exceeded maxReportBytes"] : []),
           ...(droppedObservedEvents > 0

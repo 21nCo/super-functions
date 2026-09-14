@@ -7,7 +7,7 @@ import { McpFnInspector } from "../src/index.js";
 describe("authenticated programmatic artifacts", () => {
  const closeCallbacks: Array<() => Promise<void>> = [];
  afterEach(async () => { await Promise.allSettled(closeCallbacks.splice(0).map(close => close())); });
-  it.each(["opaque-programmatic-secret", "opaque.[*]+secret"])("redacts programmatic inspector artifacts for %s", async (secret) => {
+  it.each(["opaque-programmatic-secret", "opaque.[*]+secret", "MCPFN_SECRET", "SECRET"])("redacts programmatic inspector artifacts for %s", async (secret) => {
     const fixture = await startAuthenticatedServer(secret, true);
     closeCallbacks.push(fixture.close);
     const events: unknown[] = [];
@@ -52,7 +52,8 @@ describe("authenticated programmatic artifacts", () => {
     expect(event.payload.data.echo).not.toBe(secret);
     expect(snapshot.timeline.some(entry => entry.kind === "logging.message")).toBe(true);
     const exported = inspector.exportScenario("reflection", operation, result);
-    expect(JSON.stringify(exported)).toContain("${MCPFN_SECRET}");
+    if (secret === "MCPFN") expect(JSON.stringify(exported)).not.toContain("MCPFN_SECRET");
+    else expect(JSON.stringify(exported)).toContain("${MCPFN_SECRET}");
   });
 
   it("keeps oversized diagnostic payloads from breaking a tool operation", async () => {

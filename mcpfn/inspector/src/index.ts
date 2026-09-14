@@ -253,7 +253,9 @@ export class McpFnInspector {
       at,
       event: raw,
     }) as unknown as McpFnInspectorTimelineEvent;
-    let bytes = encodedBytes(event);
+    let bytes: number;
+    try { bytes = encodedBytes(event); }
+    catch { this.droppedEvents += 1; return; }
     if (bytes > this.maxTimelineBytes) {
       event = {
         formatVersion: 1,

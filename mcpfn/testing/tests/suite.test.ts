@@ -284,3 +284,21 @@ it("delivers diagnostics after exactly one custom redaction and bounds their ret
   expect(report.timeline.length).toBeLessThan(observed.length);
   expect(Buffer.byteLength(JSON.stringify(report))).toBeLessThanOrEqual(4096);
 });
+
+
+it("marks unserializable diagnostic data as dropped and incomplete", async () => {
+  const server = createMcpFnServer({ info: { name: "bigint", version: "1" }, registry: new McpFnRegistry() });
+  const report = await runMcpFnTargetSuite({ target: customTarget({ kind: "custom",
+    redact: <T>(value: T): T => value && typeof value === "object" && "phase" in value
+      ? { ...value, details: { amount: 1n } } as T : value,
+    open: async () => {
+      const [client, remote] = InMemoryTransport.createLinkedPair();
+      await server.connect(remote);
+      return { transport: client, close: () => server.close() };
+    },
+  }) });
+  expect(report.status).toBe("incomplete");
+  expect(report.droppedTimelineEvents).toBeGreaterThan(0);
+  expect(report.incompleteReason).toContain("non-JSON data");
+  expect(() => JSON.stringify(report)).not.toThrow();
+});

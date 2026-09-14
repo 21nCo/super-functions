@@ -268,4 +268,24 @@ describe("McpFn inspector", () => {
       expect(diagnosticEvents.every(event => (event.event as any).customRedacted)).toBe(true);
     } finally { await inspector.close(); }
   });
+
+  it("counts non-JSON diagnostics as dropped instead of silently losing them", async () => {
+    const server = createMcpFnServer({ info: { name: "bigint", version: "1" }, registry: new McpFnRegistry() });
+    const inspector = McpFnInspector.create({ target: customTarget({ kind: "custom",
+      redact: <T>(value: T): T => value && typeof value === "object" && "phase" in value
+        ? { ...value, details: { amount: 1n } } as T : value,
+      open: async () => {
+        const [client, remote] = InMemoryTransport.createLinkedPair();
+        await server.connect(remote);
+        return { transport: client, close: () => server.close() };
+      },
+    }) });
+    try {
+      await inspector.connect();
+      const report = await inspector.snapshot();
+      expect(report.droppedEvents).toBeGreaterThan(0);
+      expect(report.timelineComplete).toBe(false);
+      expect(() => JSON.stringify(report)).not.toThrow();
+    } finally { await inspector.close(); }
+  });
 });
