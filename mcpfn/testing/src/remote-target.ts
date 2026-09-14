@@ -44,7 +44,7 @@ export class McpFnRedactionLimitError extends Error {
 // Only these locally authored envelope paths retain structural keys. Unknown
 // children (including inspector events and server metadata) are always payloads.
 const envelopeKeys: Record<string, Set<string>> = Object.fromEntries(Object.entries({
-  root: "formatVersion kind status runtime ok target server capabilities manifestChecked manifestHash total passed failed incomplete droppedResults droppedObservedEvents incompleteReason failure timeline droppedTimelineEvents results count clientState tools resources resourceTemplates prompts droppedEvents timelineComplete droppedInventoryEntries inventoryComplete suiteVersion exitCode stdout stderr phase outcome code requestId at details",
+  root: "formatVersion kind status runtime ok target server capabilities manifestChecked manifestHash total passed failed incomplete droppedResults droppedObservedEvents incompleteReason failure timeline droppedTimelineEvents results count clientState tools resources resourceTemplates prompts droppedEvents timelineComplete droppedInventoryEntries inventoryComplete suiteVersion exitCode stdout stderr phase outcome code requestId at details payload",
   result: "formatVersion name operation tool status sideEffect durationMs error droppedObservedEvents",
   diagnostic: "phase outcome code requestId at target details",
   inspectorEvent: "formatVersion source kind at event",
@@ -83,9 +83,13 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   // Check before either redactor allocates copies. Exceeding a budget is an
   // explicit failure, never silent truncation of a typed report collection.
   budget(value);
+  const secretPattern = secrets.length ? new RegExp(secrets.map(secret => secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g") : undefined;
+  const clientKinds = new Set(["logging.message", "progress", "tasks.status", "resources.updated", "tools.list_changed", "resources.list_changed", "prompts.list_changed", "resources.subscribed", "resources.unsubscribed", "client.roots", "client.sampling", "client.elicitation"]);
   const scrub = (input: unknown, role = "payload", field = ""): unknown => {
     input = specialValue(input);
     if (typeof input === "string") {
+      if ((role === "root" || role === "inspectorEvent") && field === "kind" && clientKinds.has(input)) return input;
+      if (role === "root" && field === "clientState" && ["idle", "connecting", "authorization-required", "connected", "closing", "closed"].includes(input)) return input;
       if (role === "target" && field === "kind" && ["authenticated-streamable-http", "streamable-http", "stdio", "in-memory", "custom"].includes(input)) return input;
       if ((role === "packages" && field === "testing") || (role === "runtime" && ["node", "reportSchemaVersion"].includes(field)) || (role === "root" && field === "suiteVersion")) return input;
       if ((role === "root" || role === "result") && field === "status" && ["passed", "failed", "incomplete", "complete"].includes(input)) return input;
@@ -95,7 +99,7 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
       if (role === "failure" && field === "layer" && ["mcpfn-preflight", "authorization-server", "resource-server", "mcp-initialization", "scenario", "upstream-conformance"].includes(input)) return input;
       if (role === "inspectorEvent" && field === "source" && ["diagnostic", "client"].includes(input)) return input;
       if (role === "result" && field === "sideEffect" && ["none", "idempotent", "non-idempotent"].includes(input)) return input;
-      return secrets.reduce((text, secret) => text.split(secret).join(redactionMarker ?? (secret.length < 10 ? (secret.includes("*") ? "#" : "*").repeat(secret.length) : "[REDACTED]")), input);
+      return secretPattern ? input.replace(secretPattern, secret => redactionMarker ?? (secret.length < 10 ? (secret.includes("*") ? "#" : "*").repeat(secret.length) : "[REDACTED]")) : input;
     }
     if (Array.isArray(input)) return input.map(entry => scrub(entry, role));
     if (input && typeof input === "object") return Object.fromEntries(Object.entries(input).map(([key, entry]) => {
@@ -105,12 +109,14 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
         if (key === "results") childRole = "result";
         else if (key === "timeline") childRole = (value as any)?.kind === "mcpfn.inspector-snapshot" ? "inspectorEvent" : "diagnostic";
         else if (["failure", "runtime", "packages", "droppedInventoryEntries", "target"].includes(key)) childRole = key;
+        else if (role === "inspectorEvent" && key === "event") childRole = (input as { source?: string }).source === "client" ? "root" : "diagnostic";
       }
       return [fixed ? key : scrub(key), typeof entry === "string" ? scrub(entry, fixed ? role : "payload", key) : scrub(entry, childRole)];
     }));
     return input;
   };
-  const scrubbed = scrub(value, preserveKeys ? "root" : "payload");
+  const timelineEvent = value && typeof value === "object" && ["client", "diagnostic"].includes((value as { source?: string }).source ?? "");
+  const scrubbed = scrub(value, preserveKeys ? (timelineEvent ? "inspectorEvent" : "root") : "payload");
   return redactOAuthValue(scrubbed, { maxStringLength: 262_144, maxDepth: 64, maxArrayEntries: 100_000, maxObjectEntries: 100_000, ...(redactionMarker ? { redactionMarker } : {}) }) as T;
 }
 
@@ -199,7 +205,15 @@ export async function acquireRemoteCredential(
   const provider = isCredentialProvider(source)
     ? source
     : staticRemoteCredentialProvider(source);
-  const credential = await provider.acquire(context);
+  const acquired = await provider.acquire(context);
+  let credential = acquired;
+  try {
+    // Detach all valid header forms from provider-owned mutable storage.
+    credential = { ...acquired, headers: boundedCredentialEntries(acquired.headers) };
+  } catch {
+    // Invalid headers are rejected by the caller's validation inside its cleanup
+    // boundary. Keep the acquired object so that rejection can still revoke it.
+  }
   let releasePromise: Promise<void> | undefined;
   let revoked = false;
   let disposed = false;

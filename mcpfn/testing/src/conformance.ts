@@ -383,30 +383,32 @@ export async function runAuthenticatedOfficialConformance(
   );
   let proxy: AuthenticatedConformanceProxy | undefined;
   let result: OfficialConformanceResult | undefined;
+  let operationFailure: { error: unknown } | undefined;
   try {
     proxy = await createAuthenticatedConformanceProxy({
       url: conformance.url,
       headers: lease.credential.headers,
     });
     result = redactRemoteCredential(lease.credential, await runConformance({ ...conformance, stdio: "pipe", url: proxy.url }, value => String(redactRemoteCredential(lease.credential, value))), { preserveKeys: true });
-    return result;
-  } finally {
-    try {
-      await proxy?.close();
-    } finally {
-      let released = false;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try { await lease.release(); released = true; break; } catch { /* Retry transient revocation failure. */ }
-      }
-      if (!released) {
-        const message = "Authenticated conformance credential cleanup failed; retry cleanup";
-        const cleanupFailure = normalizeMcpFnReportFailure(new Error(message), "upstream-conformance");
-        const failedResult = result ? { ...result, ok: false, exitCode: result.exitCode || 1,
-          cleanupFailure,
-          ...(result.failure ? {} : { failure: cleanupFailure }),
-        } : undefined;
-        throw new McpFnConformanceCleanupError(() => lease.release(), failedResult);
-      }
-    }
+  } catch (error) {
+    operationFailure = { error };
   }
+  try { await proxy?.close(); }
+  catch (error) { operationFailure ??= { error }; }
+  let released = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { await lease.release(); released = true; break; } catch { /* Retry transient revocation failure. */ }
+  }
+  if (!released) {
+    const message = "Authenticated conformance credential cleanup failed; retry cleanup";
+    const cleanupFailure = normalizeMcpFnReportFailure(new Error(message), "upstream-conformance");
+    const failedResult = result ? { ...result, ok: false, exitCode: result.exitCode || 1,
+      cleanupFailure,
+      ...(result.failure ? {} : { failure: cleanupFailure }),
+    } : undefined;
+    throw new McpFnConformanceCleanupError(() => lease.release(), failedResult);
+  }
+  if (operationFailure) throw operationFailure.error;
+  if (!result) throw new Error("Conformance produced no result");
+  return result;
 }

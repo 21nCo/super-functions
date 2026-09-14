@@ -66,3 +66,18 @@ it("redacts credentials crossing the conformance output truncation boundary", as
   expect(result.stderr).toContain("capture limit");
   expect(spawn.mock.results[0].value.kill).toHaveBeenCalledWith("SIGKILL");
 });
+
+it("snapshots provider-owned headers before runner code can rotate them", async () => {
+  const headers = new Headers({ "x-api-key": "opaque-runner-value" });
+  const original = spawn.getMockImplementation()!;
+  spawn.mockImplementation((...args) => {
+    headers.set("x-api-key", "rotated-value");
+    return original(...args);
+  });
+  const revoke = vi.fn();
+  const result = await runAuthenticatedOfficialConformance({
+    url: "http://127.0.0.1:1/mcp", credential: { acquire: () => ({ headers }), revoke },
+  });
+  expect(JSON.stringify(result)).not.toContain("opaque-runner-value");
+  expect(new Headers(revoke.mock.calls[0][0].headers).get("x-api-key")).toBe("opaque-runner-value");
+});

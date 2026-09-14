@@ -855,14 +855,19 @@ export class McpFnClient {
   }
 
   private async emitEvent(kind: McpFnClientEventKind, payload?: unknown): Promise<void> {
-    const event = this.redact({
+    let event: McpFnClientEvent;
+    try { event = this.redact({
       formatVersion: 1,
       kind,
       at: (this.options.clock?.() ?? new Date()).toISOString(),
       requestId: this.requestId(),
       target: this.options.target.describe(),
       ...(payload !== undefined ? { payload } : {}),
-    }) as unknown as McpFnClientEvent;
+    }) as unknown as McpFnClientEvent; }
+    catch {
+      event = { formatVersion: 1, kind, at: new Date().toISOString(), requestId: "redacted",
+        target: { kind: "custom" }, payload: { omitted: true, reason: "diagnostic-redaction-failed" } };
+    }
     await Promise.allSettled(
       [...this.eventListeners].map(async (listener) => listener(event)),
     );
@@ -891,7 +896,12 @@ export class McpFnClient {
   }
 
   private async dispatch(event: McpFnDiagnosticEvent): Promise<void> {
-    const redacted = this.redact(event) as unknown as McpFnDiagnosticEvent;
+    let redacted: McpFnDiagnosticEvent;
+    try { redacted = this.redact(event) as unknown as McpFnDiagnosticEvent; }
+    catch {
+      redacted = { phase: "capability-operation", outcome: "failed", code: "MCPFN_DIAGNOSTIC_REDACTION_FAILED",
+        at: new Date().toISOString(), requestId: "redacted", target: { kind: "custom" }, details: { omitted: true } };
+    }
     await Promise.allSettled(
       [...this.listeners].map(async (listener) => listener(redacted)),
     );

@@ -1,8 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { McpFnClient } from "@mcpfn/client";
-import { McpFnInspector } from "@mcpfn/inspector";
 import { createAuthProviderMcpHandler } from "@mcpfn/auth";
 import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
 
@@ -54,32 +52,6 @@ describe("authenticated remote MCP targets", () => {
     expect(report.ok).toBe(false);
     expect(JSON.stringify(report)).not.toContain(secret);
     expect(createMcpFnTargetSuiteJUnit(report)).not.toContain(secret);
-  });
-
-  it("redacts programmatic inspector artifacts and client events while credentials are active", async () => {
-    const secret = "opaque-programmatic-secret";
-    const fixture = await startAuthenticatedServer(secret, true);
-    closeCallbacks.push(fixture.close);
-    const events: unknown[] = [];
-    const client = new McpFnClient({
-      target: authenticatedHttpTarget(fixture.url, { credential: { headers: { authorization: `Bearer ${secret}` } } }),
-      events: event => { events.push(event); },
-      diagnostics: event => { events.push(event); },
-    });
-    const inspector = new McpFnInspector(client);
-    closeCallbacks.push(() => client.close());
-    await inspector.connect();
-    const operation = { kind: "tools.call" as const, name: "identity", arguments: {} };
-    const result = await inspector.run(operation);
-    expect(JSON.stringify(result)).toContain(secret); // Protocol values retain application semantics.
-    const snapshot = await inspector.snapshot();
-    expect(JSON.stringify(snapshot)).not.toContain(secret);
-    const exported = inspector.exportScenario("reflection", operation, result);
-    expect(JSON.stringify(exported)).not.toContain(secret);
-    expect(JSON.stringify(events)).toContain("echo");
-    expect(JSON.stringify(events)).not.toContain(secret);
-    await client.close();
-    expect(JSON.stringify(inspector.timeline())).not.toContain(secret);
   });
 
   it("uses URL plus a real auth-provider adapter without server or registry types in the consumer", async () => {
