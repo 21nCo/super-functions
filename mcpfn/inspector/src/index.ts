@@ -23,7 +23,6 @@ import {
   createMcpFnScenario,
   type McpFnScenario,
 } from "@mcpfn/testing";
-import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 const SCENARIO_REDACTION_LIMITS = {
   maxDepth: 8,
@@ -161,7 +160,7 @@ export class McpFnInspector {
     };
     const inventoryComplete = Object.values(droppedInventoryEntries)
       .every((count) => count === 0);
-    return redactOAuthValue({
+    return this.client.redact({
       formatVersion: 2,
       kind: "mcpfn.inspector-snapshot",
       target: this.client.getTargetDescriptor(),
@@ -217,7 +216,7 @@ export class McpFnInspector {
     result: McpFnInspectorOperationResult,
   ): McpFnExportedScenario {
     const scenario = createMcpFnScenario(name, operation, result);
-    const redacted = redactOAuthValue(scenario, {
+    const redacted = this.client.redact(scenario, {
       ...SCENARIO_REDACTION_LIMITS,
       redactionMarker: SCENARIO_SECRET_MARKER,
     });
@@ -243,7 +242,7 @@ export class McpFnInspector {
     at: string,
     raw: McpFnDiagnosticEvent | McpFnClientEvent,
   ): void {
-    let event: McpFnInspectorTimelineEvent = redactOAuthValue({
+    let event: McpFnInspectorTimelineEvent = this.client.redact({
       formatVersion: 1,
       source,
       kind,

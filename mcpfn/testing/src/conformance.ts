@@ -49,6 +49,8 @@ export interface OfficialConformanceResult {
   stdout: string;
   stderr: string;
   failure?: McpFnReportFailure;
+  /** Credential cleanup failure, separate from the upstream runner diagnosis. */
+  cleanupFailure?: McpFnReportFailure;
 }
 
 export interface AuthenticatedConformanceProxy {
@@ -398,8 +400,10 @@ export async function runAuthenticatedOfficialConformance(
       }
       if (!released) {
         const message = "Authenticated conformance credential cleanup failed; retry cleanup";
-        const failedResult = result ? { ...result, ok: false, exitCode: 1,
-          stderr: message, failure: normalizeMcpFnReportFailure(new Error(message), "upstream-conformance"),
+        const cleanupFailure = normalizeMcpFnReportFailure(new Error(message), "upstream-conformance");
+        const failedResult = result ? { ...result, ok: false, exitCode: result.exitCode || 1,
+          cleanupFailure,
+          ...(result.failure ? {} : { failure: cleanupFailure }),
         } : undefined;
         throw new McpFnConformanceCleanupError(() => lease.release(), failedResult);
       }

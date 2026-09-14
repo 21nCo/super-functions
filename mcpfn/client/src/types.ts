@@ -107,6 +107,8 @@ export interface McpFnTarget {
   open(context: McpFnTargetContext): Promise<McpFnTransportHandle>;
   /** Retry cleanup for resources retained by failed opens; live handles are separate. */
   cleanup?(): Promise<void>;
+  /** Scrub target-owned opaque credentials before diagnostic serialization. */
+  redact?<T>(value: T, options?: { redactionMarker?: string }): T;
 }
 
 export type McpFnClientState =

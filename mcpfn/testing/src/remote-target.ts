@@ -64,7 +64,7 @@ function specialValue(input: unknown): unknown {
   return input;
 }
 
-function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = false): T {
+function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = false, redactionMarker?: string): T {
   const secrets = [...values].filter(Boolean).sort((a, b) => b.length - a.length);
   let entries = 0, stringBytes = 0;
   const budget = (input: unknown, depth = 0): void => {
@@ -95,7 +95,7 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
       if (role === "failure" && field === "layer" && ["mcpfn-preflight", "authorization-server", "resource-server", "mcp-initialization", "scenario", "upstream-conformance"].includes(input)) return input;
       if (role === "inspectorEvent" && field === "source" && ["diagnostic", "client"].includes(input)) return input;
       if (role === "result" && field === "sideEffect" && ["none", "idempotent", "non-idempotent"].includes(input)) return input;
-      return secrets.reduce((text, secret) => text.split(secret).join(secret.length < 10 ? (secret.includes("*") ? "#" : "*").repeat(secret.length) : "[REDACTED]"), input);
+      return secrets.reduce((text, secret) => text.split(secret).join(redactionMarker ?? (secret.length < 10 ? (secret.includes("*") ? "#" : "*").repeat(secret.length) : "[REDACTED]")), input);
     }
     if (Array.isArray(input)) return input.map(entry => scrub(entry, role));
     if (input && typeof input === "object") return Object.fromEntries(Object.entries(input).map(([key, entry]) => {
@@ -111,13 +111,13 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
     return input;
   };
   const scrubbed = scrub(value, preserveKeys ? "root" : "payload");
-  return redactOAuthValue(scrubbed, { maxStringLength: 262_144, maxDepth: 64, maxArrayEntries: 100_000, maxObjectEntries: 100_000 }) as T;
+  return redactOAuthValue(scrubbed, { maxStringLength: 262_144, maxDepth: 64, maxArrayEntries: 100_000, maxObjectEntries: 100_000, ...(redactionMarker ? { redactionMarker } : {}) }) as T;
 }
 
 /** Remove known opaque credential values as well as credential-shaped fields. */
-export function redactTargetCredentials<T>(target: McpFnTarget, value: T, options: { preserveKeys?: boolean } = {}): T {
+export function redactTargetCredentials<T>(target: McpFnTarget, value: T, options: { preserveKeys?: boolean; redactionMarker?: string } = {}): T {
   const state = targetSecrets.get(target);
-  return scrubCredentials(value, new Set([...(state?.active.keys() ?? []), ...[...(state?.scopes ?? [])].flatMap((scope) => [...scope])]), options.preserveKeys);
+  return scrubCredentials(value, new Set([...(state?.active.keys() ?? []), ...[...(state?.scopes ?? [])].flatMap((scope) => [...scope])]), options.preserveKeys, options.redactionMarker);
 }
 
 /** Redact authenticated conformance output using the acquired credential. */
@@ -246,6 +246,7 @@ export function authenticatedHttpTarget(
       url: descriptorUrl.toString(),
       authenticated: true,
     },
+    redact: (value, redaction) => redactTargetCredentials(authenticated, value, { preserveKeys: true, ...redaction }),
     async cleanup() {
       const results = await Promise.allSettled([...pendingReleases].map(release => release()));
       if (results.some(result => result.status === "rejected")) throw new Error("Target credential cleanup failed");

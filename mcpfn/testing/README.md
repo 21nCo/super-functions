@@ -173,3 +173,7 @@ is returned. `outputDir` is rejected before credentials are acquired because the
 upstream runner writes raw artifacts directly. Persist the returned redacted result
 if an authenticated run needs an artifact. Credential cleanup may be retried after
 failure; successful revoke/dispose steps are not repeated.
+
+Authenticated targets provide credential-aware redaction to client diagnostic/event listeners and inspector snapshots and exports while their credentials are active. Export raw operation results before closing the client; application-facing protocol return values retain their original contents. Recorded inspector events are scrubbed before storage.
+
+When authenticated conformance cleanup exhausts retries, `McpFnConformanceCleanupError.result` retains the original runner stdout, stderr, exit code (or 1 for an otherwise successful run), and failure. A separate `cleanupFailure` records cleanup exhaustion; the overall result is failed. The CLI persists this redacted result before exiting nonzero.

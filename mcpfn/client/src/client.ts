@@ -225,6 +225,14 @@ export class McpFnClient {
     return this._protocol?.getServerVersion();
   }
 
+  /** Redact diagnostic artifacts, including credentials owned by the target. */
+  redact<T>(value: T, options: Parameters<typeof redactOAuthValue>[1] = {}): T {
+    const scrubbed = this.options.target.redact
+      ? this.options.target.redact(value, options)
+      : value;
+    return redactOAuthValue(scrubbed, options) as T;
+  }
+
   getTargetDescriptor() {
     return this.options.target.describe();
   }
@@ -847,7 +855,7 @@ export class McpFnClient {
   }
 
   private async emitEvent(kind: McpFnClientEventKind, payload?: unknown): Promise<void> {
-    const event = redactOAuthValue({
+    const event = this.redact({
       formatVersion: 1,
       kind,
       at: (this.options.clock?.() ?? new Date()).toISOString(),
@@ -877,21 +885,13 @@ export class McpFnClient {
       ...(code ? { code } : {}),
       requestId,
       at: (this.options.clock?.() ?? new Date()).toISOString(),
-      target: redactOAuthValue(
-        this.options.target.describe(),
-      ) as unknown as McpFnTargetDescriptor,
-      ...(details
-        ? {
-            details: redactOAuthValue(
-              details,
-            ) as unknown as Record<string, unknown>,
-          }
-        : {}),
+      target: this.options.target.describe(),
+      ...(details ? { details } : {}),
     });
   }
 
   private async dispatch(event: McpFnDiagnosticEvent): Promise<void> {
-    const redacted = redactOAuthValue(event) as unknown as McpFnDiagnosticEvent;
+    const redacted = this.redact(event) as unknown as McpFnDiagnosticEvent;
     await Promise.allSettled(
       [...this.listeners].map(async (listener) => listener(redacted)),
     );
