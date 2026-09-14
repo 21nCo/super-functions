@@ -382,7 +382,11 @@ async function listFilesRecursive(root: string): Promise<string[]> {
   return files.sort((left, right) => normalizePath(left).localeCompare(normalizePath(right)));
 }
 
-/** Refuse existing symlinks/junctions at every destination, including file leaves. */
+/**
+ * Refuse links at the selected root and below, including file leaves.
+ * Ancestor aliases (e.g. macOS /var) identify the selected root, not an escape from it.
+ * This check does not claim protection against concurrent filesystem replacement.
+ */
 class MigrationOutput {
   constructor(private readonly root: string) {}
 

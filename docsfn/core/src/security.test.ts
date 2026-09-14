@@ -267,3 +267,20 @@ it.each(['<!-->', '<!--->', '<!-- comment --!>'])('rejects executable attributes
   expect(() => assertCompiledContentTrusted({ source: `${prefix}<img src=x onerror=alert(1)>` })).toThrow();
   expect(() => assertCompiledContentTrusted({ source: `${prefix}<a href="javascript:alert(1)">go</a>` })).toThrow();
 });
+
+it.each([
+  ["docs:legacy/*", "legacy/direct.mdx", true],
+  ["docs:legacy/*", "legacy/nested/page.mdx", false],
+  ["docs:legacy/**", "legacy/nested/page.mdx", true],
+  ["docs:legacy/**/*.mdx", "legacy/direct.mdx", true],
+  ["docs:legacy/**/*.mdx", "legacy/nested/page.mdx", true],
+])("enforces allowlist %s for %s", (glob, relativePath, allowed) => {
+  const body = "<script>alert(1)</script>";
+  const policy = { allowUnsafeHtmlAllowlist: [glob] };
+  const source = () => assertSourceEntriesTrusted({ entries: [createEntry({ id: `docs:${relativePath}`, relativePath, body })], policy });
+  const compiled = () => assertCompiledContentTrusted({ source: body, sourcePath: `docs:${relativePath}`, policy });
+  for (const check of [source, compiled]) {
+    if (allowed) expect(check).not.toThrow();
+    else expect(check).toThrow(/DOCS_HTML_UNSAFE|unsafe HTML/);
+  }
+});

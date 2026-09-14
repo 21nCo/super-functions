@@ -60,8 +60,20 @@ function escapeRegex(value: string): string {
 }
 
 function toGlobRegex(glob: string): RegExp {
-  const escaped = escapeRegex(normalizeMatchCandidate(glob)).replace(/\\\*/g, ".*");
-  return new RegExp(`^${escaped}$`, "i");
+  const pattern = normalizeMatchCandidate(glob);
+  let source = "";
+  for (let index = 0; index < pattern.length; index++) {
+    if (pattern[index] !== "*") {
+      source += escapeRegex(pattern[index]);
+    } else if (pattern[index + 1] === "*") {
+      index++;
+      if (pattern[index + 1] === "/") {
+        index++;
+        source += "(?:.*/)?";
+      } else source += ".*";
+    } else source += "[^/]*";
+  }
+  return new RegExp(`^${source}$`, "i");
 }
 
 function matchesAllowlist(entry: DocsSourceEntry, allowlist: string[]): boolean {

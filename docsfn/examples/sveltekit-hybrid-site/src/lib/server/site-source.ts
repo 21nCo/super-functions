@@ -61,7 +61,7 @@ async function contentSignature(roots: string[]): Promise<string> {
     }
     parts.push(`${current}\0${info.mtimeMs}\0${info.size}`);
   }
-  // Fingerprints require deterministic code-unit order, independent of locale.
+  // Explicitly preserve Array.sort's default code-unit order for cache fingerprints.
   parts.sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
   return parts.join("\n");
 }

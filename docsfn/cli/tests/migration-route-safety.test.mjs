@@ -35,7 +35,7 @@ test("migration rejects parent routes before creating output or overwriting outs
 });
 
 for (const placement of ["page-directory", "page-file", "static-file", "report-file"]) {
-  test(`migration rejects an existing ${placement} symlink without overwriting its target`, async () => {
+  test(`migration rejects an existing ${placement} symlink without overwriting its target`, async (t) => {
     const root = await mkdtemp(join(tmpdir(), "docsfn-migration-link-"));
     try {
       const source = join(root, "source");
@@ -59,7 +59,12 @@ for (const placement of ["page-directory", "page-file", "static-file", "report-f
       } else {
         const destination = placement === "page-file" ? "content/pages/product/page.md"
           : placement === "static-file" ? "static/asset.txt" : ".docsfn-migration/report.md";
-        await symlink(sentinel, join(target, destination), "file");
+        try { await symlink(sentinel, join(target, destination), "file"); }
+        catch (error) {
+          if (process.platform !== "win32" || error.code !== "EPERM") throw error;
+          t.skip("File symlinks require Windows elevation or Developer Mode");
+          return;
+        }
       }
       await assert.rejects(execute(process.execPath, [cli, "migrate", "docusaurus", source,
         "--out-dir", target, "--pages-dir", "pages", "--pages-base-path", "/product"], { timeout: 30000 }),
@@ -68,3 +73,22 @@ for (const placement of ["page-directory", "page-file", "static-file", "report-f
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 }
+
+
+test("migration accepts an ancestor alias while confining outputs to the selected root", async () => {
+  const root = await mkdtemp(join(tmpdir(), "docsfn-migration-parent-"));
+  try {
+    const source = join(root, "source");
+    const actual = join(root, "actual");
+    const alias = join(root, "alias");
+    await mkdir(join(source, "docs"), { recursive: true });
+    await mkdir(actual);
+    await writeFile(join(source, "docs/index.md"), "# Docs");
+    await writeFile(join(actual, "sentinel.txt"), "Keep parent content");
+    await symlink(actual, alias, process.platform === "win32" ? "junction" : "dir");
+    await execute(process.execPath, [cli, "migrate", "docusaurus", source,
+      "--out-dir", join(alias, "target")], { timeout: 30000 });
+    assert.match(await readFile(join(actual, "target/content/docs/index.md"), "utf8"), /Docs/);
+    assert.equal(await readFile(join(actual, "sentinel.txt"), "utf8"), "Keep parent content");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

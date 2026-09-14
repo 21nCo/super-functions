@@ -339,6 +339,7 @@ async function runPipeline(input: PipelineInput): Promise<PipelineResult> {
           auth: config.auth,
           isRoutePrivate: publicArtifactClassifier(config),
         });
+        diagnostics.push(...searchArtifact.diagnostics);
       } catch (error) {
         diagnostics.push(
           ...diagnosticsFromUnknownError(error, {
@@ -716,12 +717,10 @@ async function runLlmsCommand(
   printDiagnostics(result.diagnostics);
   printCommandSummary("llms", result);
 
-  if (hasErrorDiagnostics(result.diagnostics)) {
-    process.exitCode = 1;
-    return;
-  }
-
-  if (!result.manifest) {
+  if (hasErrorDiagnostics(result.diagnostics) || !result.manifest) {
+    await Promise.all(["llms.txt", "llms-full.txt"].map(name =>
+      fs.rm(path.join(staticDir, name), { force: true }),
+    ));
     process.exitCode = 1;
     return;
   }

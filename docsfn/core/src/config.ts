@@ -73,6 +73,8 @@ const docsTopNavItemSchema: z.ZodType<any> = z.lazy(() =>
 );
 
 export function isLocalRoute(value: string): boolean {
+  // Framework catch-all parameters decode escapes; manifest keys must not retain them.
+  if (/%[0-9a-f]{2}/i.test(value)) return false;
   if (!/^\/(?!\/)[^?#\\\u0000-\u0020]*$/.test(value)) return false;
   try {
     return value.split("/").every(segment => {
