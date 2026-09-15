@@ -186,8 +186,9 @@ export class LangFn {
         { ...(options.retry ?? this.config.retry), signal: options.cancelToken?.signal ?? (options.retry ?? this.config.retry)?.signal }
       );
 
-      const finalized = this.finalizeCompletion(response, traceId, options.structuredOutput ?? options.structured);
-      await this.config.cache?.set(prompt, cacheKey.model, cacheKey.provider, finalized, request.metadata);
+      const cacheable = withoutParsedCompletion(response);
+      const finalized = this.finalizeCompletion(cacheable, traceId, options.structuredOutput ?? options.structured);
+      await this.config.cache?.set(prompt, cacheKey.model, cacheKey.provider, cacheable, request.metadata);
       await this.persistTrace({
         kind: "completion",
         traceId,
@@ -582,7 +583,7 @@ export class LangFn {
   ): CompletionResponse<TParsed> {
     const finalized = withTrace(
       {
-        ...response,
+        ...withoutParsedCompletion(response),
         cost: this.attachCost(response.usage)
       },
       traceId
@@ -712,6 +713,12 @@ export class LangFn {
     }
     return redact(payload, { keys: this.config.observability?.redactionKeys });
   }
+}
+
+function withoutParsedCompletion(response: CompletionResponse): CompletionResponse {
+  const cacheable = { ...response };
+  delete cacheable.parsed;
+  return cacheable;
 }
 
 export function langfn(config: LangFnConfig = {}): LangFn {

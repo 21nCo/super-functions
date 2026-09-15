@@ -31,6 +31,25 @@ describe("connected mailbox adapter", () => {
     ).toMatchObject({ success: false, error: { retryable: false } });
     expect(dispatch).toHaveBeenCalledTimes(1);
   });
+  it("builds Gmail MIME when Web Crypto is not installed globally", async () => {
+    const dispatch = vi.fn().mockResolvedValue({ id: "sent" });
+    const adapter = connectedMailboxAdapter({
+      provider: "gmail",
+      address: mail.from,
+      dispatch,
+      isConnected: async () => true,
+    });
+    vi.stubGlobal("crypto", undefined);
+    try {
+      await expect(adapter.sendEmail(mail)).resolves.toMatchObject({
+        success: true,
+        providerMessageId: "sent",
+      });
+      expect(dispatch).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it("round-trips all byte values across the base64 chunk boundary", async () => {
     const dispatch = vi.fn().mockResolvedValue({ success: true });
     const adapter = connectedMailboxAdapter({

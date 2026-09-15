@@ -761,6 +761,7 @@ export class VaultService {
       );
       Object.defineProperty(secrets, outputName, { value, enumerable: true, configurable: true });
     }
+    const dotenv = formatDotEnv(secrets);
     await this.audit.write({
       type: "secret_accessed",
       severity: "info",
@@ -775,7 +776,7 @@ export class VaultService {
       action: "reveal",
       metadata: { setId: set.id, count: Object.keys(secrets).length },
     });
-    return { name: set.name, secrets, dotenv: formatDotEnv(secrets) };
+    return { name: set.name, secrets, dotenv };
   }
 
   async createServiceToken(input: CreateServiceTokenInput): Promise<{ token: string; record: Omit<ServiceTokenRecord, "tokenHash"> }> {
@@ -1351,7 +1352,12 @@ function decodeCursor(cursor: string): { updatedAt: string; id: string } {
 
 function formatDotEnv(values: Record<string, string>): string {
   return Object.entries(values)
-    .map(([key, value]) => `${key}=${quoteDotEnvValue(value)}`)
+    .map(([key, value]) => {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+        throw new SecFnValidationError("Invalid environment variable name", { outputName: key });
+      }
+      return `${key}=${quoteDotEnvValue(value)}`;
+    })
     .join("\n");
 }
 

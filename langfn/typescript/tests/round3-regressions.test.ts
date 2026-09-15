@@ -64,6 +64,30 @@ describe("third review regressions", () => {
     await lang.feedback({ traceId: second.traceId!, rating: 1, scope: metadata });
     expect(tables.langfn_traces).toHaveLength(2); expect(tables.langfn_trace_feedback).toHaveLength(1);
   });
+  it("keeps parser-specific completion data out of the shared cache", async () => {
+    let cached: any;
+    const complete = vi.fn(async () => ({ content: '{"value":1}' }));
+    const lang = new LangFn({
+      model: new CustomChatModel({ complete }),
+      cache: {
+        get: async () => cached,
+        set: async (_prompt, _model, _provider, value) => { cached = value; },
+      },
+    });
+
+    const structured = await lang.complete("cached", {
+      structured: { parse: (content) => JSON.parse(content) },
+    });
+    expect(structured.parsed).toEqual({ value: 1 });
+    expect(cached).not.toHaveProperty("parsed");
+
+    const plain = await lang.complete("cached");
+    expect(plain).not.toHaveProperty("parsed");
+    expect(complete).toHaveBeenCalledOnce();
+
+    cached = { content: "legacy", parsed: { stale: true } };
+    await expect(lang.complete("legacy")).resolves.not.toHaveProperty("parsed");
+  });
   it("normalizes both feedback scope forms and rejects conflicts", async () => {
     const { storage, tables } = traces();
     for (const tenantId of ["a", "b"]) {

@@ -618,6 +618,16 @@ it("commits repeatable-read writes and schema versions in the test adapter", asy
   expect(await db.getSchemaVersion("secfn")).toBe(4);
 });
 
+it("keeps test-adapter writes visible to their transaction and hidden until commit", async () => {
+  const db = new MemoryAdapter();
+  await db.transaction(async trx => {
+    await trx.create({model:"records",data:{id:"staged"}});
+    await expect(trx.findOne({model:"records",where:[{field:"id",operator:"eq",value:"staged"}]})).resolves.toEqual({id:"staged"});
+    await expect(db.findOne({model:"records",where:[{field:"id",operator:"eq",value:"staged"}]})).resolves.toBeNull();
+  }, {isolationLevel:"read_committed"});
+  await expect(db.findOne({model:"records",where:[{field:"id",operator:"eq",value:"staged"}]})).resolves.toEqual({id:"staged"});
+});
+
 it("rejects unsupported nested test-adapter transactions without deadlocking", async () => {
   const db = new MemoryAdapter();
   await db.transaction(async trx => {
@@ -652,4 +662,14 @@ it("rejects legacy duplicate output names in both administrator and runtime read
   await expect(v.revealSecretSet(set.id,{actorId:"test"})).rejects.toThrow("unique");
   const issued = await v.createServiceToken({...scope,name:"runtime",scopes:["set:app"]});
   await expect(v.resolveRuntimeSet("app",await v.verifyRuntimeToken(issued.token,scope),scope)).rejects.toThrow("unique");
+});
+
+it("rejects invalid dotenv output names before auditing a secret-set reveal", async () => {
+  const {db,secfn} = createServer();
+  const v = secfn.vault;
+  const scope = {tenantId:"tenant-a",namespace:"dotenv",environment:"production",createdBy:"test"};
+  const secret = await v.createSecret({...scope,key:"KEY",value:"value"});
+  const set = await v.createSecretSet({...scope,name:"app",members:[{secretId:secret.id,alias:"SAFE=x\nINJECTED"}]});
+  await expect(v.revealSecretSet(set.id,{actorId:"test"})).rejects.toThrow("Invalid environment variable name");
+  expect(db.dump("secfn_audit_events").filter(event => event.action === "reveal")).toHaveLength(0);
 });

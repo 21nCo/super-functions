@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from "uuid";
 import type {
   EmailProvider,
   SendEmailRequest,
@@ -114,7 +115,7 @@ export function connectedMailboxAdapter(
         if (!result || result.success !== true)
           throw new Error("SENDFN_MAILBOX_DISPATCH_UNCONFIRMED");
       } else {
-        const boundary = `sendfn-${crypto.randomUUID()}`;
+        const boundary = `sendfn-${uuidv4()}`;
         const headers = [
           `From: ${options.address}`,
           `To: ${request.to.join(", ")}`,
