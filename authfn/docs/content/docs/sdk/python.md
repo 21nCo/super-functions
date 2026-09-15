@@ -89,14 +89,7 @@ def openapi_authfn():
 
 ### Starlette
 
-```python
-from starlette.applications import Starlette
-from starlette.routing import Route
-from superfunctions_starlette import to_starlette
-
-routes = [*to_starlette(auth.router, base_path="/auth")]
-app = Starlette(routes=routes)
-```
+There is no `superfunctions_starlette` adapter. Mount through FastAPI (`pip install "authfn[fastapi]"`) — see [Frameworks → FastAPI](../frameworks/fastapi).
 
 ## Reading the session
 
