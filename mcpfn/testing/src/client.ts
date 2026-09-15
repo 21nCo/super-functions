@@ -37,6 +37,35 @@ export interface McpFnTestClientOptions {
   diagnostics?: McpFnDiagnosticSink;
 }
 
+const testClientCleanupOwners = new WeakMap<
+  McpFnTestClientCleanupError,
+  { close: () => Promise<void>; pending?: Promise<void> }
+>();
+
+/** Connection failed and cleanup is still owned by this retryable error. */
+export class McpFnTestClientCleanupError extends Error {
+  constructor(close: () => Promise<void>, cause: unknown) {
+    super(
+      "Test client connection failed and cleanup remains pending; retain this error and retryCleanup()",
+      { cause },
+    );
+    this.name = "McpFnTestClientCleanupError";
+    testClientCleanupOwners.set(this, { close });
+  }
+
+  retryCleanup(): Promise<void> {
+    const owner = testClientCleanupOwners.get(this);
+    if (!owner) return Promise.resolve();
+    if (owner.pending) return owner.pending;
+    const pending = Promise.resolve().then(owner.close).then(
+      () => { testClientCleanupOwners.delete(this); },
+      () => { throw this; },
+    ).finally(() => { owner.pending = undefined; });
+    owner.pending = pending;
+    return pending;
+  }
+}
+
 export class McpFnTestClient<TContext = undefined> {
   readonly session: McpFnClient;
 
@@ -66,12 +95,13 @@ export class McpFnTestClient<TContext = undefined> {
     }), info, options);
   }
 
-  static async connectTarget<TContext = undefined>(
+  /** Create the session owner before connecting, so failed initialization remains closeable. */
+  static createTarget<TContext = undefined>(
     target: McpFnTarget,
     info?: Implementation,
     options: McpFnTestClientOptions = {},
-  ): Promise<McpFnTestClient<TContext>> {
-    const session = createMcpFnClient({
+  ): McpFnTestClient<TContext> {
+    return new McpFnTestClient<TContext>(createMcpFnClient({
       target,
       info: info ?? { name: "mcpfn-test-client", version: "1.0.0" },
       capabilities: options.capabilities,
@@ -79,12 +109,24 @@ export class McpFnTestClient<TContext = undefined> {
       events: options.events,
       configure: options.configure,
       diagnostics: options.diagnostics,
-    });
+    }));
+  }
+
+  static async connectTarget<TContext = undefined>(
+    target: McpFnTarget,
+    info?: Implementation,
+    options: McpFnTestClientOptions = {},
+  ): Promise<McpFnTestClient<TContext>> {
+    const client = this.createTarget<TContext>(target, info, options);
     try {
-      await session.connect();
-      return new McpFnTestClient<TContext>(session);
+      await client.session.connect();
+      return client;
     } catch (error) {
-      await session.close(true).catch(() => undefined);
+      const connectionFailure = error instanceof Error && error.cause !== undefined
+        ? error.cause
+        : error;
+      try { await client.close(); }
+      catch { throw new McpFnTestClientCleanupError(() => client.close(), connectionFailure); }
       throw error;
     }
   }

@@ -241,4 +241,114 @@ describe("McpFn inspector", () => {
 
     expect(inspector.timeline()).toEqual([]);
   });
+
+  it("does not apply custom event redaction again during recording or snapshots", async () => {
+    const server = createMcpFnServer({ info: { name: "one-pass", version: "1" }, registry: new McpFnRegistry() });
+    const inspector = McpFnInspector.create({ target: customTarget({ kind: "custom",
+      redact: <T>(value: T): T => {
+        if (value && typeof value === "object" && "needsRedaction" in value) {
+          if ("customRedacted" in value) throw new Error("duplicate redaction");
+          return { ...value, customRedacted: true } as T;
+        }
+        if (value && typeof value === "object" && "timeline" in value && (value as any).timeline.length) throw new Error("duplicate timeline redaction");
+        return value;
+      }, open: async context => {
+        await context.diagnostic({
+          phase: "capability-operation", outcome: "succeeded",
+          requestId: context.requestId, at: new Date().toISOString(),
+          target: { kind: "custom" }, details: { needsRedaction: true },
+        });
+        const [client, remote] = InMemoryTransport.createLinkedPair();
+        await server.connect(remote);
+        return { transport: client, close: () => server.close() };
+      },
+    }) });
+    try {
+      await inspector.connect();
+      const snapshot = await inspector.snapshot();
+      expect(snapshot.timeline.length).toBeGreaterThan(0);
+      expect(snapshot.droppedEvents).toBe(0);
+      const diagnosticEvents = snapshot.timeline.filter(event => event.source === "diagnostic");
+      expect(diagnosticEvents.length).toBeGreaterThan(0);
+      expect(diagnosticEvents.some(event =>
+        (event.event as any).details?.customRedacted === true,
+      )).toBe(true);
+    } finally { await inspector.close(); }
+  });
+
+  it("counts non-JSON diagnostics as dropped instead of silently losing them", async () => {
+    const server = createMcpFnServer({ info: { name: "bigint", version: "1" }, registry: new McpFnRegistry() });
+    const inspector = McpFnInspector.create({ target: customTarget({ kind: "custom",
+      open: async context => {
+        await context.diagnostic({
+          phase: "capability-operation", outcome: "succeeded",
+          requestId: context.requestId, at: new Date().toISOString(),
+          target: { kind: "custom" }, details: { amount: 1n },
+        });
+        const [client, remote] = InMemoryTransport.createLinkedPair();
+        await server.connect(remote);
+        return { transport: client, close: () => server.close() };
+      },
+    }) });
+    try {
+      await inspector.connect();
+      const report = await inspector.snapshot();
+      expect(report.droppedEvents).toBeGreaterThan(0);
+      expect(report.timelineComplete).toBe(false);
+      expect(() => JSON.stringify(report)).not.toThrow();
+    } finally { await inspector.close(); }
+  });
+});
+
+
+it("records diagnostic redaction omissions as incomplete timeline evidence", async () => {
+  const server = createMcpFnServer({ info: { name: "fixture", version: "1" }, registry: new McpFnRegistry() });
+  const inspector = McpFnInspector.create({ target: customTarget({ kind: "custom",
+    redact: <T>(value: T): T => {
+      if (value && typeof value === "object" && "privateRedactionState" in value) {
+        throw new Error("private-redaction-state");
+      }
+      return value;
+    },
+    open: async context => {
+      await context.diagnostic({
+        phase: "capability-operation", outcome: "succeeded",
+        requestId: context.requestId, at: new Date().toISOString(),
+        target: { kind: "custom" }, details: { privateRedactionState: true },
+      });
+      const [client, remote] = InMemoryTransport.createLinkedPair();
+      await server.connect(remote);
+      return { transport: client, close: () => server.close() };
+    },
+  }) });
+  try {
+    await inspector.connect();
+    const report = await inspector.snapshot();
+    expect(report.timelineComplete).toBe(false);
+    expect(report.droppedEvents).toBeGreaterThan(0);
+    expect(report.timeline.some(entry => "code" in entry.event && entry.event.code === "MCPFN_DIAGNOSTIC_REDACTION_FAILED")).toBe(true);
+    expect(JSON.stringify(report)).not.toContain("private-redaction-state");
+  } finally { await inspector.close(); }
+});
+
+
+it("does not count a target-authored diagnostic code collision as an omission", async () => {
+  const server = createMcpFnServer({ info: { name: "fixture", version: "1" }, registry: new McpFnRegistry() });
+  const target = customTarget({ kind: "custom", open: async context => {
+    await context.diagnostic({ phase: "capability-operation", outcome: "succeeded",
+      code: "MCPFN_DIAGNOSTIC_REDACTION_FAILED", requestId: context.requestId,
+      at: new Date().toISOString(), target: { kind: "custom" }, details: { message: "Target-authored status" },
+    });
+    const [client, remote] = InMemoryTransport.createLinkedPair();
+    await server.connect(remote);
+    return { transport: client, close: () => server.close() };
+  } });
+  const inspector = McpFnInspector.create({ target });
+  try {
+    await inspector.connect();
+    const report = await inspector.snapshot();
+    expect(report.timelineComplete).toBe(true);
+    expect(report.droppedEvents).toBe(0);
+    expect(report.timeline.some(entry => "code" in entry.event && entry.event.code === "MCPFN_DIAGNOSTIC_REDACTION_FAILED")).toBe(true);
+  } finally { await inspector.close(); }
 });

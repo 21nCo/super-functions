@@ -299,6 +299,11 @@ function verifyPackedConsumer() {
     "-e",
     `for (const name of ${JSON.stringify(packageNames)}) { const loaded = require(name); if (!Object.keys(loaded).length) throw new Error(name + " has no exports"); }`,
   ], { cwd: consumerRoot });
+  run("consumer:external-harness-exports", process.execPath, [
+    "--input-type=module",
+    "-e",
+    `const testing = await import("@mcpfn/testing"); for (const name of ["authenticatedHttpTarget", "runMcpFnTargetSuite", "createMcpFnTargetSuiteJUnit", "runAuthenticatedOfficialConformance", "createHostedAuthorizationFixtures"]) { if (typeof testing[name] !== "function") throw new Error("missing export " + name); }`,
+  ], { cwd: consumerRoot });
 
   const stdioServer = path.join(consumerRoot, "stdio-server.mjs");
   const roundtrip = path.join(consumerRoot, "roundtrip.mjs");
@@ -418,6 +423,9 @@ try {
   npmStep("inspector:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/inspector"]);
   npmStep("inspector:test", ["run", "test", "--workspace", "@mcpfn/inspector"]);
   npmStep("inspector:build", ["run", "build", "--workspace", "@mcpfn/inspector"]);
+  run("packages:mixed-entry-redaction", process.execPath, [
+    "scripts/test-mcpfn-mixed-entry-redaction.mjs",
+  ]);
 
   for (const workspace of [
     "@datafn/core",
@@ -473,6 +481,9 @@ try {
   run("example:production-client", process.execPath, [
     "scripts/test-mcpfn-calculator-example.mjs",
   ], { timeout: 30_000 });
+  run("example:external-authenticated-server", process.execPath, [
+    "scripts/test-mcpfn-external-server.mjs",
+  ], { timeout: 60_000 });
   run("official:conformance", process.execPath, ["scripts/test-mcpfn-conformance.mjs"]);
 
   const packageNames = ["@mcpfn/core", "@mcpfn/client", "@mcpfn/auth", "@mcpfn/testing", "@mcpfn/inspector", "@mcpfn/datafn", "@mcpfn/cli"];

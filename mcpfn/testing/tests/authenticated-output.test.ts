@@ -1,0 +1,137 @@
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+const spawn = vi.hoisted(() => vi.fn());
+vi.mock("node:child_process", () => ({ spawn }));
+import { McpFnConformanceCleanupError, runAuthenticatedOfficialConformance } from "../src/conformance.js";
+
+afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => {
+  // These tests use a mocked runner; exercise its supported runtime independently of the host.
+  vi.stubGlobal("process", { ...process, versions: { ...process.versions, node: "22.0.0" } });
+  spawn.mockReset();
+  spawn.mockImplementation(() => {
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn() });
+    queueMicrotask(() => { child.stdout.write('{"echo":"opaque-runner-value"}'); child.stderr.write("failure opaque-runner-value"); child.emit("close", 1); });
+    return child;
+  });
+});
+
+it("scrubs opaque credentials from runner output and never inherits authenticated stdio", async () => {
+  const result = await runAuthenticatedOfficialConformance({ url: "http://127.0.0.1:1/mcp", headers: { "x-api-key": "opaque-runner-value" }, stdio: "inherit" });
+  expect(result.ok).toBe(false);
+  expect(JSON.stringify(result)).not.toContain("opaque-runner-value");
+  expect(result.stdout).toContain("[REDACTED]");
+  expect(spawn.mock.calls[0][2].stdio).toBe("pipe");
+});
+
+it("rejects raw output artifacts before credential acquisition", async () => {
+  const acquire = vi.fn();
+  await expect(runAuthenticatedOfficialConformance({ url: "http://127.0.0.1:1/mcp", credential: { acquire }, outputDir: "/tmp/unsafe-output" })).rejects.toThrow(/outputDir/);
+  expect(acquire).not.toHaveBeenCalled();
+});
+
+it("retries transient conformance credential revocation", async () => {
+  const revoke = vi.fn().mockRejectedValueOnce(new Error("temporary")).mockResolvedValue(undefined);
+  await runAuthenticatedOfficialConformance({url: "http://127.0.0.1:1/mcp", credential: {acquire: () => ({headers: {"x-api-key": "opaque-runner-value"}}), revoke}});
+  expect(revoke).toHaveBeenCalledTimes(2);
+});
+it("retains permanently failing conformance cleanup for explicit retry", async () => {
+  const revoke = vi.fn().mockRejectedValue(new Error("secret-cleanup-error"));
+  let failure: unknown;
+  try { await runAuthenticatedOfficialConformance({url: "http://127.0.0.1:1/mcp", credential: {acquire: () => ({headers: {"x-api-key": "opaque-runner-value"}}), revoke}}); }
+  catch(error) { failure = error; }
+  expect(failure).toBeInstanceOf(McpFnConformanceCleanupError);
+  expect(revoke).toHaveBeenCalledTimes(3);
+  const report = (failure as McpFnConformanceCleanupError).result;
+  expect(report).toMatchObject({ ok: false, exitCode: 1, kind: "mcpfn.official-conformance-report" });
+  expect(JSON.stringify(report)).not.toContain("opaque-runner-value");
+  expect(JSON.stringify(report)).not.toContain("secret-cleanup-error");
+  expect(report?.stderr).toBe("failure [REDACTED]");
+  expect(report?.failure?.message).not.toContain("cleanup");
+  expect(report?.cleanupFailure?.message).toContain("cleanup failed");
+  expect((failure as Error).message).not.toContain("secret-cleanup-error");
+  revoke.mockResolvedValue(undefined);
+  await (failure as McpFnConformanceCleanupError).retryCleanup();
+  expect(revoke).toHaveBeenCalledTimes(4);
+});
+
+it("redacts credentials crossing the conformance output truncation boundary", async () => {
+  const secret = "opaque-boundary-credential";
+  spawn.mockImplementation(() => {
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn() });
+    queueMicrotask(() => { child.stdout.write("x".repeat(262_140) + secret); child.emit("close", 0); });
+    return child;
+  });
+  const result = await runAuthenticatedOfficialConformance({ url: "http://127.0.0.1:1/mcp", headers: { "x-api-key": secret } });
+  expect(result.stdout).not.toContain("opaq");
+  expect(result.ok).toBe(false);
+  expect(result.stderr).toContain("capture limit");
+  expect(spawn.mock.results[0].value.kill).toHaveBeenCalledWith("SIGKILL");
+});
+
+it("snapshots provider-owned headers before runner code can rotate them", async () => {
+  const headers = new Headers({ "x-api-key": "opaque-runner-value" });
+  const original = spawn.getMockImplementation()!;
+  spawn.mockImplementation((...args) => {
+    headers.set("x-api-key", "rotated-value");
+    return original(...args);
+  });
+  const acquired = { headers };
+  const retained = new WeakMap([[acquired, "opaque-runner-value"]]);
+  const revoke = vi.fn(credential => { expect(retained.get(credential)).toBe("opaque-runner-value"); });
+  const dispose = vi.fn(credential => { expect(credential).toBe(acquired); });
+  const result = await runAuthenticatedOfficialConformance({
+    url: "http://127.0.0.1:1/mcp", credential: { acquire: () => acquired, revoke, dispose },
+  });
+  expect(JSON.stringify(result)).not.toContain("opaque-runner-value");
+  expect(revoke).toHaveBeenCalledWith(acquired, expect.anything());
+  expect(dispose).toHaveBeenCalledWith(acquired, expect.anything());
+});
+
+it("sanitizes conformance setup exceptions before releasing the original credential", async () => {
+  const acquired = { headers: { "x-api-key": "private-header-first\nprivate-header-second" } };
+  const revoke = vi.fn();
+  const dispose = vi.fn();
+  let failure: unknown;
+  try {
+    await runAuthenticatedOfficialConformance({
+      url: "http://127.0.0.1:1/mcp", credential: { acquire: () => acquired, revoke, dispose },
+    });
+  } catch (error) { failure = error; }
+  expect(failure).toBeInstanceOf(Error);
+  expect((failure as Error).message).toContain("[REDACTED]");
+  for (const value of [String(failure), (failure as Error).stack, JSON.stringify(failure)]) {
+    expect(value).not.toContain("private-header-first");
+    expect(value).not.toContain("private-header-second");
+  }
+  expect(revoke).toHaveBeenCalledWith(acquired, expect.anything());
+  expect(dispose).toHaveBeenCalledWith(acquired, expect.anything());
+  expect(spawn).not.toHaveBeenCalled();
+});
+
+it("rejects the real runner requirement on Node 20 before spawning", async () => {
+  vi.stubGlobal("process", { ...process, versions: { ...process.versions, node: "20.0.0" } });
+  await expect(runAuthenticatedOfficialConformance({ url: "http://127.0.0.1:1/mcp", headers: { "x-api-key": "test" } })).rejects.toThrow(/requires Node.js 22/);
+  expect(spawn).not.toHaveBeenCalled();
+});
+
+it.each(["oauth", "api-key"] as const)("attributes %s cleanup failures outside a successful upstream run", async kind => {
+  spawn.mockImplementation(() => {
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn() });
+    queueMicrotask(() => child.emit("close", 0));
+    return child;
+  });
+  const revoke = vi.fn().mockRejectedValue(new Error("release failed"));
+  const error = await runAuthenticatedOfficialConformance({url: "http://127.0.0.1:1/mcp", credential: {
+    acquire: () => ({ kind, headers: { "x-api-key": "opaque-runner-value" } }), revoke,
+  }}).catch(error => error);
+  expect(error).toBeInstanceOf(McpFnConformanceCleanupError);
+  expect(error.result.cleanupFailure).toMatchObject({
+    phase: kind === "oauth" ? "token-revocation" : "transport-close",
+    layer: kind === "oauth" ? "authorization-server" : "mcpfn-preflight",
+  });
+  expect(error.result.failure).toEqual(error.result.cleanupFailure);
+  revoke.mockResolvedValue(undefined);
+  await error.retryCleanup();
+});

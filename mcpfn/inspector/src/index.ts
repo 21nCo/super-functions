@@ -23,7 +23,6 @@ import {
   createMcpFnScenario,
   type McpFnScenario,
 } from "@mcpfn/testing";
-import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 const SCENARIO_REDACTION_LIMITS = {
   maxDepth: 8,
@@ -32,6 +31,12 @@ const SCENARIO_REDACTION_LIMITS = {
   maxStringLength: 2_048,
 } as const;
 const SCENARIO_SECRET_MARKER = "${MCPFN_SECRET}";
+const SCENARIO_SECRET_MARKERS = [
+  SCENARIO_SECRET_MARKER,
+  "${SECRET}",
+  "${CREDENTIAL}",
+  ...Array.from({ length: 26 }, (_, index) => `\${${String.fromCharCode(65 + index)}}`),
+];
 
 export interface McpFnInspectorSnapshot {
   formatVersion: 2;
@@ -161,29 +166,28 @@ export class McpFnInspector {
     };
     const inventoryComplete = Object.values(droppedInventoryEntries)
       .every((count) => count === 0);
-    return redactOAuthValue({
+    const redaction = { maxArrayEntries: Math.max(this.maxEvents, this.maxInventoryEntries, 1) };
+    const { kind, ...descriptor } = this.client.getTargetDescriptor();
+    const server = this.client.getServerVersion();
+    // Custom hooks receive payloads only; reconstruct authored discriminators.
+    return {
       formatVersion: 2,
       kind: "mcpfn.inspector-snapshot",
-      target: this.client.getTargetDescriptor(),
+      target: { ...this.client.redact(descriptor, redaction), kind },
       clientState: this.client.state,
-      server: this.client.getServerVersion(),
-      capabilities,
-      tools: tools.items,
-      resources: resources.items,
-      resourceTemplates: resourceTemplates.items,
-      prompts: prompts.items,
-      timeline: [...this.events],
+      server: server === undefined ? undefined : this.client.redact(server, redaction),
+      capabilities: capabilities === undefined ? undefined : this.client.redact(capabilities, redaction),
+      tools: this.client.redact(tools.items, redaction),
+      resources: this.client.redact(resources.items, redaction),
+      resourceTemplates: this.client.redact(resourceTemplates.items, redaction),
+      prompts: this.client.redact(prompts.items, redaction),
+      // Stored events already passed through the client hook; never reapply it.
+      timeline: structuredClone(this.events),
       droppedEvents: this.droppedEvents,
       timelineComplete: this.droppedEvents === 0,
       droppedInventoryEntries,
       inventoryComplete,
-    }, {
-      maxArrayEntries: Math.max(
-        this.maxEvents,
-        this.maxInventoryEntries,
-        1,
-      ),
-    }) as unknown as McpFnInspectorSnapshot;
+    };
   }
 
   async run(operation: McpFnInspectorOperation): Promise<McpFnInspectorOperationResult> {
@@ -217,16 +221,40 @@ export class McpFnInspector {
     result: McpFnInspectorOperationResult,
   ): McpFnExportedScenario {
     const scenario = createMcpFnScenario(name, operation, result);
-    const redacted = redactOAuthValue(scenario, {
-      ...SCENARIO_REDACTION_LIMITS,
-      redactionMarker: SCENARIO_SECRET_MARKER,
-    });
+    const { formatVersion, kind, sideEffect, ...payload } = scenario;
+    const secretMarker = selectScenarioSecretMarker(this.client);
+    let redacted: Record<string, unknown>;
+    try {
+      redacted = {
+        ...Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, this.client.redact(value, {
+          ...SCENARIO_REDACTION_LIMITS,
+          // These are user payloads, even when their keys resemble an envelope.
+          preserveKeys: false,
+          redactionMarker: secretMarker ?? "",
+        })])),
+        formatVersion, kind, sideEffect,
+      };
+    } catch {
+      return {
+        formatVersion,
+        kind,
+        sideEffect,
+        name: "",
+        status: "incomplete",
+        incompleteReason: "Inspector export omitted payload because credential redaction failed",
+      } as McpFnExportedScenario;
+    }
     const replaced = redacted as unknown as McpFnExportedScenario;
-    const exported = exceedsRedactionBounds(scenario, redacted, SCENARIO_REDACTION_LIMITS)
+    const incompleteReason = secretMarker === undefined
+      ? "Inspector export could not select a replayable redaction placeholder"
+      : exceedsRedactionBounds(scenario, redacted, SCENARIO_REDACTION_LIMITS)
+        ? "Inspector export exceeded redaction bounds and was truncated"
+        : undefined;
+    const exported = incompleteReason
       ? {
         ...replaced,
         status: "incomplete" as const,
-        incompleteReason: "Inspector export exceeded redaction bounds and was truncated",
+        incompleteReason,
       }
       : replaced;
     const variables = collectVariables(exported);
@@ -243,14 +271,20 @@ export class McpFnInspector {
     at: string,
     raw: McpFnDiagnosticEvent | McpFnClientEvent,
   ): void {
-    let event: McpFnInspectorTimelineEvent = redactOAuthValue({
+    if (this.client.isRedactionOmission(raw)) {
+      // The fallback is useful evidence, but the original event is missing.
+      this.droppedEvents += 1;
+    }
+    let event: McpFnInspectorTimelineEvent = {
       formatVersion: 1,
       source,
       kind,
       at,
       event: raw,
-    }) as unknown as McpFnInspectorTimelineEvent;
-    let bytes = encodedBytes(event);
+    };
+    let bytes: number;
+    try { event = structuredClone(event); bytes = encodedBytes(event); }
+    catch { this.droppedEvents += 1; return; }
     if (bytes > this.maxTimelineBytes) {
       event = {
         formatVersion: 1,
@@ -281,6 +315,20 @@ export class McpFnInspector {
   }
 }
 
+function selectScenarioSecretMarker(client: McpFnClient): string | undefined {
+  return SCENARIO_SECRET_MARKERS.find((marker) => {
+    try {
+      return client.redact(marker, {
+        ...SCENARIO_REDACTION_LIMITS,
+        preserveKeys: false,
+        redactionMarker: "",
+      }) === marker;
+    } catch {
+      return false;
+    }
+  });
+}
+
 function validateLimit(value: number, name: string): number {
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new TypeError(`${name} must be a positive safe integer`);
@@ -299,7 +347,10 @@ function exceedsRedactionBounds(
   depth = 0,
   ancestors = new WeakSet<object>(),
 ): boolean {
-  if (redacted === SCENARIO_SECRET_MARKER) return false;
+  if (
+    typeof redacted === "string" &&
+    /^\$\{[A-Z][A-Z0-9_]*\}$/.test(redacted)
+  ) return false;
   if (depth > limits.maxDepth) return true;
   if (typeof value === "string") return isTruncatedString(redacted, limits.maxStringLength);
   if (!value || typeof value !== "object" || value instanceof Date) return false;
@@ -463,7 +514,10 @@ function collectVariables(value: unknown): string[] {
     } else if (Array.isArray(entry)) {
       entry.forEach(visit);
     } else if (entry && typeof entry === "object") {
-      Object.values(entry as Record<string, unknown>).forEach(visit);
+      for (const [key, value] of Object.entries(entry as Record<string, unknown>)) {
+        visit(key);
+        visit(value);
+      }
     }
   };
   visit(value);

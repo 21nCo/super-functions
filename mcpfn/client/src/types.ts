@@ -105,6 +105,11 @@ export interface McpFnTarget {
   readonly kind: string;
   describe(): McpFnTargetDescriptor;
   open(context: McpFnTargetContext): Promise<McpFnTransportHandle>;
+  /** Retry cleanup for resources retained by failed opens; live handles are separate. */
+  cleanup?(): Promise<void>;
+  /** Scrub target-owned opaque credentials. With preserveKeys=false, treat all
+   * fields as payload data, without exemptions for diagnostic envelope fields. */
+  redact?<T>(value: T, options?: { redactionMarker?: string; preserveKeys?: boolean }): T;
 }
 
 export type McpFnClientState =

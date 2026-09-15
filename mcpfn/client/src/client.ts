@@ -70,6 +70,8 @@ export interface McpFnBoundedInventory<T> {
   complete: boolean;
 }
 
+const redactionOmissions = new WeakSet<object>();
+
 export class McpFnClient {
   private readonly options: McpFnClientOptions;
   private readonly listeners = new Set<McpFnDiagnosticSink>();
@@ -77,8 +79,17 @@ export class McpFnClient {
   private _state: McpFnClientState = "idle";
   private _protocol?: Client;
   private handle?: McpFnTransportHandle;
+  private readonly pendingCleanup = new Set<McpFnTransportHandle>();
+  private readonly pendingProtocols = new Set<Client>();
+  private cleanupDrain?: Promise<void>;
+  private cleanupFailure?: McpFnClientError;
   private connectPromise?: Promise<void>;
+  private targetCleanupPending = false;
+  private targetCleanupPromise?: Promise<void>;
+  private readonly openingSignals = new Set<AbortSignal>();
   private closePromise?: Promise<void>;
+  private permanentCloseRequested = false;
+  private pendingTargetOpens = 0;
   private connectController?: AbortController;
 
   readonly tools = {
@@ -218,8 +229,25 @@ export class McpFnClient {
     return this._protocol?.getServerVersion();
   }
 
+  /** Redact diagnostic artifacts, including credentials owned by the target. */
+  redact<T>(value: T, options: Parameters<typeof redactOAuthValue>[1] & { preserveKeys?: boolean } = {}): T {
+    if (this.options.target.redact) {
+      const marker = this.options.target.redact(options?.redactionMarker ?? "[REDACTED]", { redactionMarker: "" });
+      options = { ...options, redactionMarker: typeof marker === "string" ? marker : "" };
+    }
+    const scrubbed = this.options.target.redact
+      ? this.options.target.redact(value, options)
+      : value;
+    return redactOAuthValue(scrubbed, options) as T;
+  }
+
   getTargetDescriptor() {
     return this.options.target.describe();
+  }
+
+  /** Identify omissions produced by this client instance, across ESM/CJS consumers. */
+  isRedactionOmission(event: McpFnDiagnosticEvent | McpFnClientEvent): boolean {
+    return redactionOmissions.has(event);
   }
 
   onDiagnostic(listener: McpFnDiagnosticSink): () => void {
@@ -267,6 +295,7 @@ export class McpFnClient {
 
   async connect(): Promise<void> {
     if (this.closePromise) await this.closePromise;
+    if (this._state === "closing" || this.pendingCleanup.size > 0 || this.pendingProtocols.size > 0 || this.targetCleanupPending || [...this.openingSignals].some(signal => signal.aborted)) throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Retry close before reconnecting after failed cleanup", { phase: "transport-close", retryable: true });
     if (this._state === "connected") return;
     if (this.connectPromise) return this.connectPromise;
     if (this._state === "authorization-required") {
@@ -276,11 +305,13 @@ export class McpFnClient {
         { phase: "authorization-request", retryable: true },
       );
     }
-    if (this._state === "closed") this._state = "idle";
+    if (this._state === "closed") { this._state = "idle"; this.permanentCloseRequested = false; }
     const controller = new AbortController();
     this.connectController = controller;
     let connectPromise: Promise<void>;
+    this.openingSignals.add(controller.signal);
     connectPromise = this.connectInternal(controller.signal).finally(() => {
+      this.openingSignals.delete(controller.signal);
       if (this.connectController === controller) this.connectController = undefined;
       if (this.connectPromise === connectPromise) this.connectPromise = undefined;
     });
@@ -295,7 +326,9 @@ export class McpFnClient {
       if (signal.aborted) throw connectAbortedError(lastError);
       const requestId = this.requestId();
       this._state = "connecting";
+      this.openingSignals.add(signal);
       await this.emit("transport-connect", "started", requestId, undefined, { attempt });
+      if (signal.aborted) throw connectAbortedError();
       const openFailure = await this.openTargetAttempt(requestId, attempt, retries, signal);
       if (openFailure) {
         lastError = openFailure.error;
@@ -320,24 +353,45 @@ export class McpFnClient {
     retries: number,
     signal: AbortSignal,
   ): Promise<{ error: unknown } | undefined> {
+    this.openingSignals.add(signal);
+    this.pendingTargetOpens += 1;
+    let opening = true;
+    let receivedHandle = false;
+    const finishOpen = () => {
+      if (opening) { opening = false; this.pendingTargetOpens -= 1; }
+    };
     try {
       const handle = await this.options.target.open({
         requestId,
         signal,
         diagnostic: (event) => this.dispatch(event),
       });
+      receivedHandle = true;
+      finishOpen();
       if (signal.aborted) {
-        await closeTransportHandle(handle);
+        await this.closeRetainedHandle(handle);
         throw connectAbortedError();
       }
       this.handle = handle;
       return undefined;
     } catch (error) {
-      if (signal.aborted) throw connectAbortedError(error);
-      await this.emit("transport-connect", "failed", requestId, "MCPFN_TARGET_OPEN_FAILED", {
-        attempt,
-        message: errorMessage(error),
-      });
+      finishOpen();
+      if (signal.aborted) {
+        if (!receivedHandle) this.targetCleanupPending = true;
+        throw connectAbortedError(error);
+      }
+      this.targetCleanupPending = true;
+      try { await this.drainCleanup(); }
+      catch {
+        await this.emit("transport-close", "failed", requestId, "MCPFN_CREDENTIAL_CLEANUP_FAILED");
+        this._state = "closing";
+        throw new McpFnClientError(
+          "MCPFN_OPERATION_FAILED",
+          "Retry close after target cleanup failed",
+          { phase: "transport-close", retryable: true, cause: error },
+        );
+      }
+      await this.emit("transport-connect", "failed", requestId, "MCPFN_TARGET_OPEN_FAILED", { attempt, message: errorMessage(error) });
       if (attempt < retries) {
         await this.connectRetryDelay(signal);
         return { error };
@@ -348,6 +402,13 @@ export class McpFnClient {
         "Failed to open the MCP target",
         { phase: "transport-connect", retryable: true, cause: error },
       );
+    } finally {
+      finishOpen();
+      if (signal.aborted) {
+        try { await this.drainCleanup(); }
+        catch { /* A failed drain remains owned until explicit close retries it. */ }
+      }
+      this.openingSignals.delete(signal);
     }
   }
 
@@ -405,12 +466,8 @@ export class McpFnClient {
 
   private handleProtocolClose(protocol: Client): void {
     if (this._protocol !== protocol || this._state !== "connected") return;
-    const handle = this.handle;
-    this._protocol = undefined;
-    this.handle = undefined;
-    this._state = "idle";
-    void closeTransportHandle(handle);
-    void this.emit("transport-close", "succeeded", this.requestId());
+    // Use the same retryable cleanup owner as explicit close.
+    void this.close(false).catch(() => undefined);
   }
 
   private async rejectAbortedInitialization(
@@ -454,6 +511,10 @@ export class McpFnClient {
       attempt,
     });
     await this.cleanupOwnedAttempt(protocol, handle);
+    if (this.pendingCleanup.size > 0 || this.pendingProtocols.size > 0 || this.targetCleanupPending) {
+      this._state = "closing";
+      throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Retry close before another connection attempt", { phase: "transport-close", retryable: true });
+    }
     return { connected: false, error };
   }
 
@@ -490,8 +551,10 @@ export class McpFnClient {
         { phase: "token-exchange", cause: error },
       );
     }
-    await this.cleanupAttempt();
+    try { await this.cleanupAttempt(true); }
+    catch (error) { this._state = "closing"; throw error; }
     this._state = "idle";
+    this.permanentCloseRequested = false;
     await this.connect();
   }
 
@@ -499,6 +562,7 @@ export class McpFnClient {
   async reconnect(): Promise<void> {
     await this.close(false);
     this._state = "idle";
+    this.permanentCloseRequested = false;
     await this.connect();
   }
 
@@ -507,49 +571,116 @@ export class McpFnClient {
   }
 
   async close(permanent = true): Promise<void> {
+    this.permanentCloseRequested ||= permanent;
     if (this.closePromise) return this.closePromise;
-    if (this._state === "closed" && permanent) return;
+    if (this._state === "closed" && permanent && this.pendingCleanup.size === 0 && this.pendingProtocols.size === 0 && !this.cleanupDrain && !this.targetCleanupPending && this.openingSignals.size === 0) return;
     this.closePromise = (async () => {
       this._state = "closing";
       const requestId = this.requestId();
       await this.emit("transport-close", "started", requestId);
       const pendingConnect = this.connectPromise;
       const pendingController = this.connectController;
+      void pendingConnect?.catch(() => undefined);
       pendingController?.abort();
+
       if (this.connectPromise === pendingConnect) this.connectPromise = undefined;
       if (this.connectController === pendingController) this.connectController = undefined;
-      await this.cleanupAttempt();
+      try {
+        await this.cleanupAttempt(true);
+      } catch {
+        this._state = "closing";
+        await this.emit("transport-close", "failed", requestId);
+        throw new McpFnClientError("MCPFN_OPERATION_FAILED", "MCP target cleanup failed", { phase: "transport-close", retryable: true });
+      }
       // Retain an observed continuation without leaving the aborted attempt as
       // the active connection. A custom target that ignores abort may settle
       // later, but its isolated handle is closed by openTargetAttempt().
       void pendingConnect?.catch(() => undefined);
-      this._state = permanent ? "closed" : "idle";
+      this._state = this.permanentCloseRequested ? "closed" : "idle";
       await this.emit("transport-close", "succeeded", requestId);
+      if (this.permanentCloseRequested) this._state = "closed";
     })().finally(() => {
       this.closePromise = undefined;
     });
     return this.closePromise;
   }
 
-  private async cleanupAttempt(): Promise<void> {
-    const protocol = this._protocol;
-    const handle = this.handle;
-    this._protocol = undefined;
-    this.handle = undefined;
-    await protocol?.close().catch(() => undefined);
-    await closeTransportHandle(handle);
+  private cleanupTarget(): Promise<void> {
+    if (this.targetCleanupPromise) return this.targetCleanupPromise;
+    this.targetCleanupPending = true;
+    this.targetCleanupPromise = Promise.resolve().then(() => this.options.target.cleanup?.())
+      .then(() => { this.targetCleanupPending = false; })
+      .finally(() => { this.targetCleanupPromise = undefined; });
+    return this.targetCleanupPromise;
   }
 
-  private async cleanupOwnedAttempt(
-    protocol: Client,
-    handle: McpFnTransportHandle,
-  ): Promise<void> {
-    const ownsProtocol = this._protocol === protocol;
-    const ownsHandle = this.handle === handle;
-    if (ownsProtocol) this._protocol = undefined;
-    if (ownsHandle) this.handle = undefined;
-    if (ownsProtocol) await protocol.close().catch(() => undefined);
-    if (ownsHandle) await closeTransportHandle(handle);
+  /** Register ownership before detaching it; all shutdown paths share one drain. */
+  private retainAttempt(protocol: Client | undefined, handle: McpFnTransportHandle | undefined): void {
+    if (protocol) {
+      this.pendingProtocols.add(protocol);
+      if (this._protocol === protocol) this._protocol = undefined;
+    }
+    if (handle) {
+      this.pendingCleanup.add(handle);
+      if (this.handle === handle) this.handle = undefined;
+    }
+    if (protocol || handle) this.targetCleanupPending = true;
+  }
+
+  private drainCleanup(retryFailed = false): Promise<void> {
+    if (this.cleanupDrain) return this.cleanupDrain;
+    if (this.cleanupFailure && !retryFailed) return Promise.reject(this.cleanupFailure);
+    this.cleanupFailure = undefined;
+    const drain = Promise.resolve().then(async () => {
+      // New late owners may arrive during an await. Drain until the queues empty.
+      while (this.pendingProtocols.size || this.pendingCleanup.size) {
+        for (const protocol of this.pendingProtocols) {
+          await protocol.close();
+          this.pendingProtocols.delete(protocol);
+        }
+        const handle = this.pendingCleanup.values().next().value;
+        if (handle) {
+          await closeTransportHandle(handle, true);
+          this.pendingCleanup.delete(handle);
+        }
+      }
+      // Opens and live sessions may still need peer state/credentials. Their
+      // eventual owner registration will request another drain without awaiting open.
+      if (this.pendingTargetOpens || this._protocol || this.handle) return;
+      if (this.targetCleanupPending) await this.cleanupTarget();
+    }).catch(() => {
+      this._state = "closing";
+      this.cleanupFailure = new McpFnClientError("MCPFN_OPERATION_FAILED", "MCP target cleanup failed; retry close", {
+        phase: "transport-close", retryable: true,
+      });
+      throw this.cleanupFailure;
+    }).finally(() => { this.cleanupDrain = undefined; });
+    this.cleanupDrain = drain;
+    return drain;
+  }
+
+  private async cleanupAttempt(strict = false): Promise<void> {
+    this.retainAttempt(this._protocol, this.handle);
+    if (this.pendingTargetOpens) this.targetCleanupPending = true;
+    await this.drainCleanup(true);
+    if (strict && this.pendingTargetOpens) {
+      throw new McpFnClientError("MCPFN_OPERATION_FAILED", "MCP target cleanup failed", { phase: "transport-close", retryable: true });
+    }
+  }
+
+  private async closeRetainedHandle(handle: McpFnTransportHandle | undefined, strict = false): Promise<void> {
+    if (!handle) return;
+    this.retainAttempt(undefined, handle);
+    try { await this.drainCleanup(); }
+    catch {
+      await this.emit("transport-close", "failed", this.requestId(), "MCPFN_CREDENTIAL_CLEANUP_FAILED");
+      if (strict) throw this.cleanupFailure;
+    }
+  }
+
+  private cleanupOwnedAttempt(protocol: Client, handle: McpFnTransportHandle): Promise<void> {
+    this.retainAttempt(this._protocol === protocol ? protocol : undefined, this.handle === handle ? handle : undefined);
+    return this.drainCleanup();
   }
 
   private async listTools(options?: RequestOptions): Promise<Tool[]> {
@@ -768,14 +899,25 @@ export class McpFnClient {
   }
 
   private async emitEvent(kind: McpFnClientEventKind, payload?: unknown): Promise<void> {
-    const event = redactOAuthValue({
-      formatVersion: 1,
-      kind,
-      at: (this.options.clock?.() ?? new Date()).toISOString(),
-      requestId: this.requestId(),
-      target: this.options.target.describe(),
-      ...(payload !== undefined ? { payload } : {}),
-    }) as unknown as McpFnClientEvent;
+    let event: McpFnClientEvent;
+    try {
+      const { kind: targetKind, ...descriptor } = this.options.target.describe();
+      event = {
+        formatVersion: 1,
+        kind,
+        at: (this.options.clock?.() ?? new Date()).toISOString(),
+        requestId: this.redact(this.requestId(), { preserveKeys: false }),
+        target: { ...this.redact(descriptor, { preserveKeys: false }), kind: targetKind },
+        ...(payload !== undefined
+          ? { payload: this.redact(payload, { preserveKeys: false }) }
+          : {}),
+      };
+    }
+    catch {
+      event = { formatVersion: 1, kind, at: new Date().toISOString(), requestId: "redacted",
+        target: { kind: "custom" }, payload: { omitted: true, reason: "diagnostic-redaction-failed" } };
+      redactionOmissions.add(event);
+    }
     await Promise.allSettled(
       [...this.eventListeners].map(async (listener) => listener(event)),
     );
@@ -792,31 +934,65 @@ export class McpFnClient {
     code?: string,
     details?: Record<string, unknown>,
   ): Promise<void> {
-    await this.dispatch({
-      phase,
-      outcome,
-      ...(code ? { code } : {}),
-      requestId,
-      at: (this.options.clock?.() ?? new Date()).toISOString(),
-      target: redactOAuthValue(
-        this.options.target.describe(),
-      ) as unknown as McpFnTargetDescriptor,
-      ...(details
-        ? {
-            details: redactOAuthValue(
-              details,
-            ) as unknown as Record<string, unknown>,
-          }
-        : {}),
-    });
+    let event: McpFnDiagnosticEvent;
+    try {
+      event = {
+        phase,
+        outcome,
+        ...(code ? { code } : {}),
+        requestId,
+        at: (this.options.clock?.() ?? new Date()).toISOString(),
+        // Cleanup retries may follow partial release of custom credential state.
+        target: phase === "transport-close" ? { kind: "custom" } : this.options.target.describe(),
+        ...(details ? { details } : {}),
+      };
+    } catch {
+      // Diagnostic construction can fail before dispatch redacts the value.
+      // Never reject a background protocol callback with an arbitrary error.
+      event = diagnosticRedactionFailure();
+    }
+    await this.dispatch(event);
   }
 
   private async dispatch(event: McpFnDiagnosticEvent): Promise<void> {
-    const redacted = redactOAuthValue(event) as unknown as McpFnDiagnosticEvent;
+    let redacted: McpFnDiagnosticEvent;
+    try {
+      if (this.isRedactionOmission(event)) {
+        redacted = event;
+      } else {
+        const { phase, outcome, code, requestId, at, target, details } = event;
+        const { kind, ...descriptor } = target;
+        redacted = {
+          phase,
+          outcome,
+          ...(code === undefined
+            ? {}
+            : { code: this.redact(code, { preserveKeys: false }) }),
+          requestId: this.redact(requestId, { preserveKeys: false }),
+          at,
+          target: { ...this.redact(descriptor, { preserveKeys: false }), kind },
+          ...(details === undefined
+            ? {}
+            : { details: this.redact(details, { preserveKeys: false }) }),
+        };
+      }
+    }
+    catch {
+      redacted = diagnosticRedactionFailure();
+    }
     await Promise.allSettled(
       [...this.listeners].map(async (listener) => listener(redacted)),
     );
   }
+}
+
+function diagnosticRedactionFailure(): McpFnDiagnosticEvent {
+  const event: McpFnDiagnosticEvent = {
+    phase: "capability-operation", outcome: "failed", code: "MCPFN_DIAGNOSTIC_REDACTION_FAILED",
+    at: new Date().toISOString(), requestId: "redacted", target: { kind: "custom" }, details: { omitted: true },
+  };
+  redactionOmissions.add(event);
+  return event;
 }
 
 export function createMcpFnClient(options: McpFnClientOptions): McpFnClient {
@@ -848,13 +1024,12 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-async function closeTransportHandle(handle: McpFnTransportHandle | undefined): Promise<void> {
+async function closeTransportHandle(handle: McpFnTransportHandle | undefined, strict = false): Promise<void> {
   if (!handle) return;
-  if (handle.close) {
-    await handle.close().catch(() => undefined);
-  } else {
-    await handle.transport.close().catch(() => undefined);
-  }
+  try {
+    if (handle.close) await handle.close();
+    else await handle.transport.close();
+  } catch (error) { if (strict) throw error; }
 }
 
 function connectAbortedError(cause?: unknown): McpFnClientError {

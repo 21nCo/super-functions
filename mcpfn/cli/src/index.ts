@@ -18,11 +18,20 @@ import { McpFnInspector } from "@mcpfn/inspector";
 import {
   McpFnTestClient,
   McpFnAssertionError,
+  McpFnConformanceCleanupError,
+  McpFnTargetSuiteCleanupError,
   assertManifestContract,
+  authenticatedHttpTarget,
+  validateRemoteCredentialHeaders,
+  beginTargetCredentialRedaction,
+  redactTargetCredentials,
+  createMcpFnTargetSuiteJUnit,
+  runAuthenticatedOfficialConformance,
   runOfficialConformance,
   runMcpFnTargetSuite,
   runScenarios,
   createMcpFnScenarioReport,
+  type McpFnRemoteCredential,
 } from "@mcpfn/testing";
 
 import { loadManifestSource, loadScenarios } from "./load.js";
@@ -41,6 +50,12 @@ export const MCPFN_CLI_EXIT_SUCCESS = 0;
 export const MCPFN_CLI_EXIT_TEST_FAILURE = 1;
 export const MCPFN_CLI_EXIT_USAGE = 2;
 export const MCPFN_CLI_VERSION = __MCPFN_CLI_VERSION__;
+
+interface RemoteAuthCliOptions {
+  bearerTokenEnv?: string;
+  apiKeyEnv?: string;
+  apiKeyHeader?: string;
+}
 
 export async function runCli(
   argv = process.argv.slice(2),
@@ -132,17 +147,15 @@ export async function runCli(
         const outputMaxBytes = parsePositiveInteger(
           options.maxReportBytes,
           "--max-report-bytes",
-        );
-        if (outputMaxBytes !== undefined && outputMaxBytes < 1_025) {
+        ) ?? 1_048_576;
+        if (outputMaxBytes < 1_025) {
           throw new Error("--max-report-bytes must be an integer of at least 1025");
         }
         const report = createMcpFnScenarioReport(results, {
           manifestHash: loaded.manifest.hash,
-          maxBytes: outputMaxBytes === undefined ? undefined : outputMaxBytes - 1,
+          maxBytes: outputMaxBytes - 1,
         });
-        const serialized = outputMaxBytes === undefined
-          ? `${JSON.stringify(report, null, 2)}\n`
-          : `${JSON.stringify(report)}\n`;
+        const serialized = `${JSON.stringify(report)}\n`;
         if (options.output) {
           await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
         }
@@ -159,6 +172,11 @@ export async function runCli(
     .option("--expected-failures <path>", "Expected-failures baseline")
     .option("--output-dir <path>", "Directory for official conformance artifacts")
     .option("--spec-version <version>", "MCP specification version")
+    .option("--bearer-token-env <name>", "Read an OAuth Bearer token from an environment variable")
+    .option("--api-key-env <name>", "Read an API key from an environment variable")
+    .option("--api-key-header <name>", "API-key header name (default: x-api-key)")
+    .option("--report <path>", "Write the redacted McpFn conformance report")
+    .option("--max-report-bytes <bytes>", "Maximum aggregate McpFn report size")
     .option("--verbose", "Show official runner diagnostics")
     .action(async (url: string, options: {
       suite?: "active" | "all" | "pending";
@@ -166,9 +184,16 @@ export async function runCli(
       expectedFailures?: string;
       outputDir?: string;
       specVersion?: string;
+      report?: string;
+      maxReportBytes?: string;
       verbose?: boolean;
-    }) => {
-      const result = await runOfficialConformance({
+    } & RemoteAuthCliOptions) => {
+      const maxBytes = parseCliReportCap(options.maxReportBytes);
+      if (options.maxReportBytes !== undefined && !options.report) {
+        throw new Error("--max-report-bytes requires --report for conformance");
+      }
+      const auth = readRemoteCredential(options);
+      const conformanceOptions = {
         url,
         suite: options.suite,
         scenario: options.scenario,
@@ -180,9 +205,31 @@ export async function runCli(
         verbose: options.verbose,
         cwd,
         stdio: "pipe",
-      });
+        ...(auth ? { sensitiveEnvironmentVariables: [auth.environmentName] } : {}),
+      } as const;
+      const result = auth
+        ? await runAuthenticatedOfficialConformance({
+          ...conformanceOptions,
+          credential: auth.credential,
+        }).catch(error => {
+          // Keep the library's retryable cleanup error contract, while allowing
+          // the CLI to persist its bounded, redacted failed result.
+          if (error instanceof McpFnConformanceCleanupError && error.result) return error.result;
+          // The proxy's explicit input validators use TypeError. Operational
+          // failures must not be presented as invalid CLI usage or leak secrets.
+          if (error instanceof TypeError) throw error;
+          throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Authenticated conformance failed before producing a report", { phase: "capability-operation" });
+        })
+        : await runOfficialConformance(conformanceOptions);
       if (result.stdout) stdout(result.stdout);
       if (result.stderr) stderr(result.stderr);
+      if (options.report) {
+        await writeFile(
+          path.resolve(cwd, options.report),
+          serializeBoundedReport(result, maxBytes),
+          "utf8",
+        );
+      }
       exitCode = result.exitCode;
     });
 
@@ -190,41 +237,102 @@ export async function runCli(
     .option("--stdio", "Treat target as an executable instead of an HTTP URL")
     .option("--args <json>", "JSON array of stdio executable arguments")
     .option("--output <path>", "Write the redacted JSON snapshot")
+    .option("--bearer-token-env <name>", "Read an OAuth Bearer token from an environment variable")
+    .option("--api-key-env <name>", "Read an API key from an environment variable")
+    .option("--api-key-header <name>", "API-key header name (default: x-api-key)")
     .action(async (targetValue: string, options: {
       stdio?: boolean;
       args?: string;
       output?: string;
-    }) => {
+    } & RemoteAuthCliOptions) => {
       const target = parseTarget(targetValue, options, cwd);
       const inspector = McpFnInspector.create({ target });
+      const finishRedaction = beginTargetCredentialRedaction(target);
       try {
-        await inspector.connect();
-        const serialized = `${JSON.stringify(await inspector.snapshot(), null, 2)}\n`;
-        if (options.output) {
-          await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+        try {
+          await inspector.connect();
+          const serialized = `${JSON.stringify(redactTargetCredentials(target, await inspector.snapshot(), { preserveKeys: true }), null, 2)}\n`;
+          if (options.output) {
+            await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+          }
+          stdout(serialized);
+        } finally { await inspector.close(); }
+      } catch (error) {
+        // Parsing has finished: connection, inventory, redaction and output errors
+        // are runtime failures. Even inspecting the thrown value can fail.
+        let failure: McpFnClientError;
+        try {
+          const message = error instanceof Error ? error.message : String(error);
+          const safeMessage = redactTargetCredentials(target, message);
+          failure = error instanceof McpFnClientError
+            ? new McpFnClientError(error.code, safeMessage, { phase: error.phase, retryable: error.retryable,
+              details: redactTargetCredentials(target, error.details), cause: redactTargetCredentials(target, error) })
+            : new McpFnClientError("MCPFN_OPERATION_FAILED", safeMessage, { phase: "capability-operation" });
+        } catch {
+          failure = new McpFnClientError("MCPFN_OPERATION_FAILED", "Inspect failed; unsafe error details omitted", { phase: "capability-operation" });
         }
-        stdout(serialized);
-      } finally {
-        await inspector.close();
-      }
+        throw failure;
+      } finally { finishRedaction(); }
     });
 
   cli.command("test-target <target> <scenarios>", "Run scenarios against an HTTP or stdio MCP target")
     .option("--stdio", "Treat target as an executable instead of an HTTP URL")
     .option("--args <json>", "JSON array of stdio executable arguments")
     .option("--output <path>", "Write the JSON report")
+    .option("--junit <path>", "Write a bounded, redacted JUnit report")
+    .option("--manifest <path>", "Validate an optional explicit manifest against live inventory")
+    .option("--max-report-bytes <bytes>", "Maximum aggregate JSON/JUnit report size")
+    .option(
+      "--visible-tools <names>",
+      "Comma-separated tool names expected for a request-filtered server",
+    )
+    .option("--bearer-token-env <name>", "Read an OAuth Bearer token from an environment variable")
+    .option("--api-key-env <name>", "Read an API key from an environment variable")
+    .option("--api-key-header <name>", "API-key header name (default: x-api-key)")
     .action(async (targetValue: string, scenariosPath: string, options: {
       stdio?: boolean;
       args?: string;
       output?: string;
-    }) => {
+      junit?: string;
+      manifest?: string;
+      maxReportBytes?: string;
+      visibleTools?: string;
+    } & RemoteAuthCliOptions) => {
+      const maxReportBytes = parseCliReportCap(options.maxReportBytes);
+      const manifest = options.manifest
+        ? validateManifest(JSON.parse(
+          await readFile(path.resolve(cwd, options.manifest), "utf8"),
+        ))
+        : undefined;
       const report = await runMcpFnTargetSuite({
         target: parseTarget(targetValue, options, cwd),
         scenarios: await loadScenarios(scenariosPath, cwd),
+        manifest,
+        expectedToolNames: options.visibleTools
+          ?.split(",")
+          .map((name) => name.trim())
+          .filter(Boolean),
+        maxReportBytes: (maxReportBytes ?? 1_048_576) - 1,
+      }).catch(async error => {
+        if (!(error instanceof McpFnTargetSuiteCleanupError)) throw error;
+        // CLI execution has no interactive retry owner. Make one bounded retry,
+        // then persist the failed snapshot even if cleanup subsequently succeeds.
+        await error.retryCleanup().catch(() => undefined);
+        return error.report;
       });
-      const serialized = `${JSON.stringify(report, null, 2)}\n`;
+      const serialized = `${JSON.stringify(report)}\n`;
+      // The suite reserves one byte for this trailing newline and enforces the cap.
       if (options.output) {
         await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+      }
+      if (options.junit) {
+        await writeFile(
+          path.resolve(cwd, options.junit),
+          createMcpFnTargetSuiteJUnit(report, {
+            maxBytes: maxReportBytes === undefined ? undefined : maxReportBytes - 1,
+          }),
+          "utf8",
+        );
       }
       stdout(serialized);
       if (!report.ok) exitCode = 1;
@@ -275,14 +383,98 @@ function parsePositiveInteger(value: string | undefined, name: string): number |
   return parsed;
 }
 
+function parseCliReportCap(value: string | undefined): number | undefined {
+  const parsed = parsePositiveInteger(value, "--max-report-bytes");
+  if (parsed !== undefined && parsed < 1_025) {
+    throw new Error("--max-report-bytes must be an integer of at least 1025");
+  }
+  return parsed;
+}
+
+function serializeBoundedReport(value: unknown, maxBytes?: number): string {
+  const serialize = (candidate: unknown) => `${JSON.stringify(candidate, null, 2)}\n`;
+  let serialized = serialize(value);
+  if (maxBytes === undefined || new TextEncoder().encode(serialized).byteLength <= maxBytes) {
+    return serialized;
+  }
+  if (
+    value && typeof value === "object" &&
+    (value as { kind?: unknown }).kind === "mcpfn.official-conformance-report"
+  ) {
+    const bounded = structuredClone(value) as {
+      stdout?: string;
+      stderr?: string;
+      failure?: { message?: string; details?: unknown };
+    };
+    bounded.stdout = bounded.stdout ? "[TRUNCATED]" : "";
+    bounded.stderr = bounded.stderr ? "[TRUNCATED]" : "";
+    if (bounded.failure) {
+      bounded.failure.message = bounded.failure.message ? Array.from(bounded.failure.message).slice(0, 64).join("") : undefined;
+      bounded.failure.details = undefined;
+    }
+    serialized = serialize(bounded);
+    if (new TextEncoder().encode(serialized).byteLength <= maxBytes) return serialized;
+  }
+  throw new Error("Serialized report exceeds --max-report-bytes");
+}
+
+function readRemoteCredential(
+  options: RemoteAuthCliOptions,
+): { credential: McpFnRemoteCredential; environmentName: string } | undefined {
+  if (options.bearerTokenEnv && options.apiKeyEnv) {
+    throw new Error("Use only one of --bearer-token-env or --api-key-env");
+  }
+  if (options.apiKeyHeader && !options.apiKeyEnv) {
+    throw new Error("--api-key-header requires --api-key-env");
+  }
+  const environmentName = options.bearerTokenEnv ?? options.apiKeyEnv;
+  if (!environmentName) return undefined;
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(environmentName)) {
+    throw new Error("Credential environment variable names must be portable identifiers");
+  }
+  const value = process.env[environmentName];
+  if (value === undefined || value.length === 0) {
+    throw new Error(`Credential environment variable ${environmentName} is missing or empty`);
+  }
+  if (options.bearerTokenEnv) {
+    try { new Headers({ authorization: `Bearer ${value}` }); }
+    catch { throw new Error("Bearer token must be a valid HTTP header value"); }
+    if (!/^[A-Za-z0-9._~+/-]+=*$/.test(value)) throw new Error("Bearer token must follow the RFC 6750 token grammar");
+    return {
+      environmentName,
+      credential: {
+        kind: "oauth",
+        headers: { authorization: `Bearer ${value}` },
+      },
+    };
+  }
+  if (!value.trim()) throw new Error("API key must not be blank");
+  const headerName = options.apiKeyHeader ?? "x-api-key";
+  try {
+    validateRemoteCredentialHeaders({ [headerName]: value });
+  } catch {
+    throw new Error("--api-key-header must be an allowed credential header with a valid value");
+  }
+  return {
+    environmentName,
+    credential: { kind: "api-key", headers: { [headerName]: value } },
+  };
+}
+
 function parseTarget(
   targetValue: string,
-  options: { stdio?: boolean; args?: string },
+  options: { stdio?: boolean; args?: string } & RemoteAuthCliOptions,
   cwd: string,
 ): McpFnTarget {
   if (!options.stdio) {
     if (options.args) throw new Error("--args requires --stdio");
-    return streamableHttpTarget(targetValue);
+    const auth = readRemoteCredential(options);
+    return auth
+      ? authenticatedHttpTarget(targetValue, { credential: auth.credential })
+      : streamableHttpTarget(targetValue);
+  }
+  if (options.bearerTokenEnv || options.apiKeyEnv || options.apiKeyHeader) {
+    throw new Error("Credential options require an HTTP target");
   }
   let args: string[] | undefined;
   if (options.args) {

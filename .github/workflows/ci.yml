@@ -109,18 +109,18 @@ jobs:
         if: needs.plan.outputs.has_js_build == 'true'
         run: |
           if [ "${{ needs.plan.outputs.full_js }}" = "true" ]; then
-            npx turbo run build
+            ./node_modules/.bin/turbo run build
           else
-            npx turbo run build ${{ needs.plan.outputs.js_build_filters }}
+            ./node_modules/.bin/turbo run build ${{ needs.plan.outputs.js_build_filters }}
           fi
 
       - name: Typecheck
         if: needs.plan.outputs.has_js_typecheck == 'true'
         run: |
           if [ "${{ needs.plan.outputs.full_js }}" = "true" ]; then
-            npx turbo run typecheck
+            ./node_modules/.bin/turbo run typecheck
           else
-            npx turbo run typecheck ${{ needs.plan.outputs.js_typecheck_filters }}
+            ./node_modules/.bin/turbo run typecheck ${{ needs.plan.outputs.js_typecheck_filters }}
           fi
 
       # Avoid oversubscribing hosted runners with many concurrent Vitest pools.
@@ -137,10 +137,43 @@ jobs:
         if: needs.plan.outputs.has_js_lint == 'true'
         run: |
           if [ "${{ needs.plan.outputs.full_js }}" = "true" ]; then
-            npx turbo run lint
+            ./node_modules/.bin/turbo run lint
           else
-            npx turbo run lint ${{ needs.plan.outputs.js_lint_filters }}
+            ./node_modules/.bin/turbo run lint ${{ needs.plan.outputs.js_lint_filters }}
           fi
+
+  mcpfn-node20:
+    name: McpFn Node 20 compatibility
+    needs: plan
+    if: needs.plan.outputs.run_mcpfn == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # Only the build tool needs its installation hook in this compatibility lane.
+      - name: Build trusted esbuild binary
+        run: npm rebuild esbuild
+
+      - name: Ensure Rollup native package
+        run: node scripts/ci-install-rollup-native.mjs
+
+      - name: Build compatibility targets and dependencies
+        run: ./node_modules/.bin/turbo run build --filter='@mcpfn/testing...' --filter='@mcpfn/cli...'
+
+      - name: Check transport-neutral client, testing, and CLI on Node 20
+        run: |
+          npm run typecheck --workspace=@mcpfn/client --workspace=@mcpfn/testing --workspace=@mcpfn/cli
+          npm test --workspace=@mcpfn/client --workspace=@mcpfn/testing --workspace=@mcpfn/cli
 
   python:
     name: Python
@@ -204,6 +237,17 @@ jobs:
 
       - name: Run McpFn release gate
         run: npm run gate:mcpfn-release
+        env:
+          MCPFN_ARTIFACT_DIR: artifacts/mcpfn
+
+      - name: Upload McpFn regression artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcpfn-regression-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/mcpfn
+          if-no-files-found: warn
+          retention-days: 14
 
   mcpfn-node18-cjs:
     name: McpFn Node 18 CommonJS
