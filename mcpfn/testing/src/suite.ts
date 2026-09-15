@@ -131,6 +131,12 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     capabilities?: ServerCapabilities;
   } = { results: [] };
   try {
+    // Known transport kinds are structural and safe even if acquisition fails.
+    // Defer arbitrary descriptor values until credentials are available to redact.
+    const kind = options.target.kind;
+    if (["stdio", "streamable-http", "authenticated-streamable-http", "in-memory", "custom"].includes(kind)) {
+      capturedTarget = { kind };
+    }
     client = McpFnTestClient.createTarget(
       options.target,
       options.clientInfo ?? { name: "mcpfn-suite", version: "0.0.1" },
@@ -229,7 +235,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
             ...(result.tool === undefined ? {} : { tool: redactSuiteArtifact(options.target, result.tool) }),
           })),
         };
-      } else if (execution.results.length || execution.server || options.manifest) {
+      } else if (execution.results.length || execution.server || execution.capabilities) {
         projectionFailed = true;
       }
     } catch { projectionFailed = true; }

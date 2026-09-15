@@ -348,3 +348,37 @@ it.each([new Map([["key", "evidence"]]), new Set(["evidence"])])("preserves cont
   expect(persisted.timeline[0].details.amount).toEqual(expected);
   expect(() => JSON.stringify(report)).not.toThrow();
 });
+
+
+it.each(["stdio", "streamable-http", "authenticated-streamable-http"])("preserves %s connection failure with an unchecked manifest", async kind => {
+  const server = createMcpFnServer({ info: { name: "manifest", version: "1" }, registry: new McpFnRegistry() });
+  const report = await runMcpFnTargetSuite({ manifest: server.manifest(), target: customTarget({ kind,
+    open: async () => { throw new Error("Connection refused"); },
+  }) });
+  expect(report.target.kind).toBe(kind);
+  expect(report.manifestChecked).toBe(false);
+  expect(report.manifestHash).toBeUndefined();
+  expect(report.failure?.phase).toBe("transport-connect");
+  expect(report.incompleteReason).not.toContain("serialization");
+  expect(report.ok).toBe(false);
+});
+
+it.each(["throw", "proxy"])("fails closed for a hostile live descriptor (%s)", async mode => {
+  const secret = "hostile-live-descriptor-secret";
+  const server = createMcpFnServer({ info: { name: "fixture", version: "1" }, registry: new McpFnRegistry() });
+  const close = vi.fn(() => server.close());
+  const target = customTarget({ kind: "custom", open: async () => {
+    const [client, remote] = InMemoryTransport.createLinkedPair();
+    await server.connect(remote);
+    return { transport: client, close };
+  } });
+  target.describe = () => {
+    if (mode === "throw") throw new Error(secret);
+    return new Proxy({ kind: "custom" }, { ownKeys() { throw new Error(secret); } });
+  };
+  const report = await runMcpFnTargetSuite({ target });
+  expect(close).toHaveBeenCalledOnce();
+  expect(report).toMatchObject({ ok: false, status: "incomplete", target: { kind: "custom" }, results: [], timeline: [] });
+  expect(report.incompleteReason).toContain("safe serialization failed");
+  expect(JSON.stringify(report)).not.toContain(secret);
+});
