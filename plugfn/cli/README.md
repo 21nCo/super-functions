@@ -25,18 +25,6 @@ Creates:
 - Environment template (`.env.example`)
 - Example code
 
-### `plugfn generate-types`
-
-Generate TypeScript types for providers.
-
-```bash
-# Generate types for a specific provider
-plugfn generate-types --provider github --output ./types
-
-# Generate types for all providers
-plugfn generate-types --all --output ./types
-```
-
 ### `plugfn add-provider`
 
 Create a new provider from template.
@@ -80,12 +68,6 @@ plugfn add-provider --name shopify --auth api-key
 
 This creates a provider template at `src/providers/shopify/index.ts`.
 
-### Generate types
-
-```bash
-plugfn generate-types --all
-```
-
 ## License
 
-Apache-2.0
+MIT

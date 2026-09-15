@@ -94,9 +94,3 @@ Expected interpretation:
 - old package names should be absent from public docs
 - machine-specific absolute paths should be absent from public docs
 - broad unsupported readiness claims should be absent from the primary contract docs
-
-## Historical baseline at Phase 00
-
-- repo-root release gate: not implemented yet
-- global production-ready claim: not allowed
-- provider truth source: [../provider-readiness-matrix.md](../provider-readiness-matrix.md)
