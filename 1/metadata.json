@@ -1,0 +1,62 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2JNWHAF5XZKFVAD9P03CK8T",
+  "session_id": "01a0a522-f7e4-7422-a0fb-002c30b622cc",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-15T14:00:18.207147Z",
+  "branch": "codex/mcp-1-transport-neutral-conformance-0910",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "d27de4e4ba49",
+  "checkpoint_transcript_start": 504,
+  "transcript_lines_at_start": 504,
+  "compact_transcript_start": 66,
+  "token_usage": {
+    "input_tokens": 148055,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 5737216,
+    "output_tokens": 24545,
+    "api_call_count": 51
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 6158,
+      "user_lines_removed": 1,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".codex/hooks.json": 88,
+        ".conduct/pr-reports/21nco-super-functions-pr-116-20260821-223157.md": 621,
+        ".conduct/pr-reports/21nco-super-functions-pr-116-comments.json": 5311,
+        "devfn/cli/package.json": 1,
+        "superconsole/.conduct/SFNS-2/evidence/result.json": 7,
+        "superconsole/.conduct/SFNS-2/evidence/server.txt": 5,
+        "superconsole/.conduct/SFNS-2/migration.md": 59,
+        "superconsole/.conduct/SFNS-2/port-matrix.md": 66
+      },
+      "user_removed_per_file": {
+        "devfn/cli/package.json": 1
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 589,
+      "user_lines_removed": 0,
+      "agent_lines_added": 6070,
+      "agent_lines_removed": 1,
+      "user_added_per_file": {
+        ".codex/hooks.json": 88,
+        ".factory/settings.json": 85,
+        ".opencode/plugins/entire.ts": 269,
+        ".pi/extensions/entire/index.ts": 147
+      }
+    }
+  ]
+}
