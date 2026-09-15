@@ -610,7 +610,21 @@ export class VaultService {
     return this.hydrateSet(saved);
   }
 
+  private async withSetLock<T>(setId: string, operation: (vault: VaultService) => Promise<T>): Promise<T> {
+    if (!this.db.capabilities.transactions.configurableIsolation || !this.db.capabilities.transactions.isolation?.includes("read_committed")) throw new SecFnValidationError("Secret set mutation requires read_committed transaction support");
+    return this.db.transaction(async trx => {
+      // Updating the parent takes a database row lock shared by all member writers.
+      await trx.update({ model: "secfn_secret_sets", where: [{ field: "id", operator: "eq", value: setId }], data: { updatedAt: nowIso() } });
+      const scopedDb: Adapter = { ...trx, transaction: async () => { throw new SecFnValidationError("Nested secret-set transactions are not supported"); }, close: async () => {} };
+      return operation(new VaultService(scopedDb, this.keyProvider, this.audit));
+    }, { isolationLevel: "read_committed" });
+  }
+
   async addSecretSetMember(setId: string, secretId: string, alias?: string): Promise<SecretSetMemberRecord> {
+    return this.withSetLock(setId, vault => vault.addSecretSetMemberLocked(setId, secretId, alias));
+  }
+
+  private async addSecretSetMemberLocked(setId: string, secretId: string, alias?: string): Promise<SecretSetMemberRecord> {
     const [set, secret] = await Promise.all([
       this.getSecretSetRow(setId),
       this.getSecretRow(secretId),
@@ -650,6 +664,12 @@ export class VaultService {
   }
 
   async updateSecretSetMember(id: string, input: UpdateSecretSetMemberInput): Promise<SecretSetMemberRecord> {
+    const member = await this.db.findOne<SecretSetMemberRecord>({ model: "secfn_secret_set_members", where: [{ field: "id", operator: "eq", value: id }] });
+    if (!member) throw new SecFnNotFoundError("Secret set member not found", { id });
+    return this.withSetLock(member.setId, vault => vault.updateSecretSetMemberLocked(id, input));
+  }
+
+  private async updateSecretSetMemberLocked(id: string, input: UpdateSecretSetMemberInput): Promise<SecretSetMemberRecord> {
     const existing = await this.db.findOne<SecretSetMemberRecord>({
       model: "secfn_secret_set_members",
       where: [{ field: "id", operator: "eq", value: id }],
@@ -692,16 +712,9 @@ export class VaultService {
 
   async deleteSecretSet(id: string, actorId: string): Promise<void> {
     const set = await this.getSecretSet(id);
-    if (!this.db.capabilities.transactions.supported) throw new SecFnValidationError("Secret set deletion requires transactional storage");
-    await this.db.transaction(async (trx) => {
-    await trx.deleteMany({
-      model: "secfn_secret_set_members",
-      where: [{ field: "setId", operator: "eq", value: id }],
-    });
-    await trx.delete({
-      model: "secfn_secret_sets",
-      where: [{ field: "id", operator: "eq", value: id }],
-    });
+    await this.withSetLock(id, async vault => {
+      await vault.db.deleteMany({ model: "secfn_secret_set_members", where: [{ field: "setId", operator: "eq", value: id }] });
+      await vault.db.delete({ model: "secfn_secret_sets", where: [{ field: "id", operator: "eq", value: id }] });
     });
     await this.audit.write({
       type: "policy_violation",
@@ -727,7 +740,9 @@ export class VaultService {
       const secret = await this.getSecret(member.secretId);
       if (secret.revokedAt) continue;
       const version = await this.getSecretVersion(secret.id, secret.currentVersion);
-      secrets[member.alias ?? secret.key] = await decryptSecret(
+      const outputName = member.alias ?? secret.key;
+      if (Object.prototype.hasOwnProperty.call(secrets, outputName)) throw new SecFnValidationError("Secret set output names must be unique");
+      const value = await decryptSecret(
         version.encryptedPayload,
         this.keyProvider,
         buildSecretAad({
@@ -737,6 +752,7 @@ export class VaultService {
           version: version.version,
         }),
       );
+      Object.defineProperty(secrets, outputName, { value, enumerable: true, configurable: true });
     }
     await this.audit.write({
       type: "secret_accessed",
@@ -810,8 +826,8 @@ export class VaultService {
     if (token.expiresAt && !(Date.parse(token.expiresAt) > Date.now())) {
       throw new SecFnForbiddenError("Runtime token has expired");
     }
-    if (token.tenantId && token.tenantId !== scope.tenantId) throw new SecFnForbiddenError("Runtime token tenant mismatch");
     scope = await this.validateScopeRepresentations(scope);
+    if (token.tenantId && token.tenantId !== scope.tenantId) throw new SecFnForbiddenError("Runtime token tenant mismatch");
     const namespace = scope.namespaceId
       ? await this.ensureNamespace({ ...scope, createdBy: "system", create: false })
       : await this.findNamespace({ tenantId: scope.tenantId, namespace: scope.namespace });
@@ -873,7 +889,9 @@ export class VaultService {
       if (secret.revokedAt) continue;
       this.assertRuntimeScope({ ...secret, namespace: resolved.namespace }, verified, resolved);
       const response = await this.decryptRuntimeSecret(secret, verified, requestMeta);
-      secrets[member.alias ?? secret.key] = response.value;
+      const outputName = member.alias ?? secret.key;
+      if (Object.prototype.hasOwnProperty.call(secrets, outputName)) throw new SecFnValidationError("Secret set output names must be unique");
+      Object.defineProperty(secrets, outputName, { value: response.value, enumerable: true, configurable: true });
     }
     return { name: set.name, namespace: resolved.namespace, secrets };
   }

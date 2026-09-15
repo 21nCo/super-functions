@@ -1,9 +1,10 @@
 import { getTransportClient, type TransportClient } from "../models/transport.js";
-import { NotConfiguredError, ProviderError } from "../core/errors.js";
+import { raiseForStatus } from "../models/openai.js";
+import { NotConfiguredError } from "../core/errors.js";
 import { Embeddings } from "./base.js";
 
 export interface OpenAIEmbeddingsConfig {
-  apiKey: string;
+  apiKey?: string;
   model?: string;
   baseUrl?: string;
   fetchImpl?: typeof fetch;
@@ -40,10 +41,7 @@ export class OpenAIEmbeddings extends Embeddings {
       })
     });
 
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new ProviderError("OpenAI embeddings request failed", { metadata: { status: response.status } });
-    }
+    await raiseForStatus("openai", response);
 
     const data = await response.json();
     return data.data

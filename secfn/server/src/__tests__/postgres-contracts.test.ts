@@ -16,8 +16,9 @@ import { createSecFnServer } from "../index.js";
 const url = process.env.SECFN_TEST_DATABASE_URL;
 const schemaName = `rex_contract_${crypto.randomUUID().replaceAll("-", "")}`;
 let created = false;
-const client = url ? postgres(url, { max: 1, onnotice: () => {} }) : undefined;
+const client = url ? postgres(url, { max: 4, connection: { search_path: schemaName }, onnotice: () => {} }) : undefined;
 let server: ReturnType<typeof createSecFnServer>;
+let database: ReturnType<typeof drizzleAdapter>;
 beforeAll(async () => {
   if (!client) return;
   await client.unsafe(`CREATE SCHEMA ${schemaName}`);
@@ -54,11 +55,9 @@ beforeAll(async () => {
     schema[table.modelName] = pgTable(table.modelName, columns);
     await client.unsafe(`CREATE TABLE "${table.modelName}" (${sql.join(",")})`);
   }
+  database = drizzleAdapter({ db: drizzle(client, { schema }), dialect: "postgres" });
   server = createSecFnServer({
-    db: drizzleAdapter({
-      db: drizzle(client, { schema }),
-      dialect: "postgres",
-    }),
+    db: database,
     encryption: { masterKey: "test" },
     authorize: async () => true,
   });
@@ -140,8 +139,14 @@ it.skipIf(!url)(
       ),
       "utf8",
     );
-    await client!.unsafe(migration);
-    await client!.unsafe(migration);
+    const migrationConnection = await client!.reserve();
+    try {
+      await migrationConnection.unsafe(migration);
+      await migrationConnection.unsafe(migration);
+    } finally {
+      await migrationConnection.unsafe("ROLLBACK");
+      migrationConnection.release();
+    }
     expect(
       await client!`SELECT tenant_id FROM secfn_scan_runs WHERE id='legacy'`,
     ).toEqual([{ tenant_id: null }]);
@@ -290,3 +295,84 @@ it.skipIf(!url)("lists and resolves all 1001 members instead of silently truncat
   expect(Object.keys(result.secrets)).toHaveLength(1001);
   expect(result.secrets.KEY_1001).toBe("test");
 },60000);
+
+it.skipIf(!url)("holds a stable audit snapshot across a backdated late commit", async () => {
+  const writer = postgres(url!, { max: 1, onnotice: () => {} });
+  let commit!: () => void;
+  let ready!: () => void;
+  const readyPromise = new Promise<void>(resolve => { ready = resolve; });
+  const commitPromise = new Promise<void>(resolve => { commit = resolve; });
+  const write = writer.begin(async sql => {
+    await sql.unsafe(`INSERT INTO ${schemaName}.secfn_audit_events (id,timestamp,type,severity,resolved) VALUES ('aaa-late','1999-01-01','late-commit','info',false),('zzz-late','1999-01-01','late-commit','info',false)`);
+    ready();
+    await commitPromise;
+  });
+  const transaction = database.transaction.bind(database);
+  try {
+    await Promise.race([readyPromise, write]);
+    const expected = (await client!`SELECT count(*)::int AS n FROM secfn_audit_events`)[0].n;
+    let committed = false;
+    database.transaction = (callback, options) => transaction(async trx => {
+      expect(options?.isolationLevel).toBe("repeatable_read");
+      const findMany = trx.findMany.bind(trx);
+      trx.findMany = async params => {
+        const rows = await findMany(params);
+        if (params.model === "secfn_audit_events" && !committed) {
+          committed = true;
+          commit();
+          await write;
+        }
+        return rows;
+      };
+      return callback(trx);
+    }, options);
+    expect((await server.audit.getMetrics()).totalEvents).toBe(expected);
+    expect((await server.audit.getMetrics()).totalEvents).toBe(expected + 2);
+  } finally {
+    commit();
+    await write;
+    database.transaction = transaction;
+    await writer.end();
+  }
+});
+
+it.skipIf(!url)("serializes conflicting member additions and replacements", async () => {
+  const v = server.vault;
+  const scope = {tenantId:"concurrent",namespace:"concurrent",environment:"production",createdBy:"test"};
+  const one = await v.createSecret({...scope,key:"ONE",value:"one"});
+  const two = await v.createSecret({...scope,key:"TWO",value:"two"});
+  const set = await v.createSecretSet({...scope,name:"concurrent"});
+  const results = await Promise.allSettled([v.addSecretSetMember(set.id,one.id,"SAME"),v.addSecretSetMember(set.id,two.id,"SAME")]);
+  expect(results.filter(r=>r.status==="fulfilled")).toHaveLength(1);
+  expect(await v.listSecretSetMembers(set.id)).toHaveLength(1);
+  const a = await v.addSecretSetMember(set.id,one.id,"A");
+  const b = await v.addSecretSetMember(set.id,two.id,"B");
+  const updates = await Promise.allSettled([v.updateSecretSetMember(a.id,{alias:"RENAMED"}),v.updateSecretSetMember(b.id,{alias:"RENAMED"})]);
+  expect(updates.filter(r=>r.status==="fulfilled")).toHaveLength(1);
+  expect((await v.listSecretSetMembers(set.id)).filter(m=>m.alias==="RENAMED")).toHaveLength(1);
+});
+
+it.skipIf(!url)("preflights duplicate legacy sets without deleting their data", async () => {
+  const name = `rex_duplicates_${crypto.randomUUID().replaceAll("-","")}`;
+  const sql = postgres(url!,{max:1,onnotice:()=>{}});
+  try {
+    await sql.unsafe(`CREATE SCHEMA ${name}`);
+    await sql.unsafe(`CREATE TABLE ${name}.secfn_secret_sets(id text PRIMARY KEY, tenant_id text, namespace_id text, name text)`);
+    await sql.unsafe(`CREATE UNIQUE INDEX idx_secfn_secret_sets_lookup ON ${name}.secfn_secret_sets(tenant_id,namespace_id,name)`);
+    await sql.unsafe(`INSERT INTO ${name}.secfn_secret_sets VALUES ('one',null,'ns','app'),('two',null,'ns','app')`);
+    await sql`SELECT set_config('secfn.migration_schema',${name},false)`;
+    const migration = await readFile(new URL("../../migrations/0004_secret_set_environment.sql",import.meta.url),"utf8");
+    await expect(sql.unsafe(migration)).rejects.toMatchObject({code:"23505",message:"SecFn schema 4 has duplicate secret-set identities"});
+    await sql.unsafe("ROLLBACK");
+    expect((await sql.unsafe(`SELECT count(*)::int AS n FROM ${name}.secfn_secret_sets`))[0].n).toBe(2);
+    expect((await sql`SELECT count(*)::int AS n FROM pg_indexes WHERE schemaname=${name} AND indexname='idx_secfn_secret_sets_lookup'`)[0].n).toBe(1);
+    // Explicit operator-selected names preserve both records and member IDs.
+    await sql.unsafe(`UPDATE ${name}.secfn_secret_sets SET name=id`);
+    await sql.unsafe(migration);
+    expect((await sql.unsafe(`SELECT name FROM ${name}.secfn_secret_sets ORDER BY name`)).map(r=>r.name)).toEqual(['one','two']);
+  } finally {
+    await sql.unsafe("ROLLBACK");
+    await sql.unsafe(`DROP SCHEMA IF EXISTS ${name} CASCADE`);
+    await sql.end();
+  }
+});

@@ -1,3 +1,4 @@
+import { parseToolCalls } from "./openai.js";
 import { providerUsage } from "../core/usage.js";
 import { readStreamLines } from "./stream-lines.js";
 import {
@@ -211,34 +212,10 @@ function splitSystemMessage(messages: Message[]): {
       continue;
     }
 
-    if (message.role === "assistant" && message.toolCalls?.length) {
+    if (message.role === "assistant" && (message.toolCalls || message.tool_calls)) {
       const content: Array<Record<string, unknown>> = message.content ? [{ type: "text", text: message.content }] : [];
-      for (const call of message.toolCalls) content.push({ type: "tool_use", id: call.id, name: call.name, input: call.arguments });
-      result.push({ role: "assistant", content });
-      continue;
-    }
-    if (message.role === "assistant" && Array.isArray(message.tool_calls)) {
-      const content: Array<Record<string, unknown>> = [];
-      if (message.content) {
-        content.push({ type: "text", text: message.content });
-      }
-      for (const rawCall of message.tool_calls as Array<Record<string, unknown>>) {
-        const fn = (rawCall.function ?? {}) as Record<string, unknown>;
-        let input: Record<string, unknown> = {};
-        try {
-          input =
-            typeof fn.arguments === "string"
-              ? (JSON.parse(fn.arguments) as Record<string, unknown>)
-              : ((fn.arguments ?? {}) as Record<string, unknown>);
-        } catch {
-          input = {};
-        }
-        content.push({
-          type: "tool_use",
-          id: rawCall.id,
-          name: fn.name,
-          input
-        });
+      for (const call of parseToolCalls(message.toolCalls ?? message.tool_calls) ?? []) {
+        content.push({ type: "tool_use", id: call.id, name: call.name, input: call.arguments });
       }
       result.push({ role: "assistant", content });
       continue;

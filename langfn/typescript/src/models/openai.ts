@@ -167,7 +167,7 @@ export function toOpenAIMessage(message: Message): Record<string, unknown> {
   const wire: Record<string, unknown> = { role: message.role, content: message.content };
   if (message.name !== undefined) wire.name = message.name;
   if (message.tool_call_id !== undefined) wire.tool_call_id = message.tool_call_id;
-  const calls = message.toolCalls ?? parseToolCalls(message.tool_calls);
+  const calls = parseToolCalls(message.toolCalls ?? message.tool_calls);
   if (calls?.length) wire.tool_calls = calls.map(call => ({
     id: call.id,
     type: "function",
@@ -206,7 +206,7 @@ export function parseToolCalls(raw: unknown): ToolCall[] | undefined {
   });
 }
 
-async function raiseForStatus(provider: string, response: Response): Promise<void> {
+export async function raiseForStatus(provider: string, response: Response): Promise<void> {
   if (response.ok) return;
 
   const retryAfterHeader = response.headers.get("retry-after");

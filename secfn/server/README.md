@@ -72,8 +72,24 @@ conflicting namespace names or IDs in its body.
 
 Schema version 4 adds optional immutable environment bindings to secret sets. Apply `migrations/0004_secret_set_environment.sql` after schema 3; a generated diff alone does not express its null-safe uniqueness constraint. Existing sets remain unbound. Creating a set with an explicit environment stores its ID and enforces it on creation, member additions/replacements, and runtime resolution.
 
-Audit metrics walk all event pages by stable ID instead of a 10,000-event cap; the walk is not a transactional snapshot of concurrent writes. Multi-scope rate limits preflight every configured limit before charging. Shared CAS contention can still conservatively retain earlier charges; no stale-snapshot rollback is attempted.
+Audit metrics walk event pages by stable ID inside one repeatable-read transaction, including events committed before its first read and excluding later commits regardless of event timestamps. Multi-scope rate limits preflight every configured limit before charging. Shared CAS contention can still conservatively retain earlier charges; no stale-snapshot rollback is attempted.
 
 Schema 4 requires PostgreSQL 15+ and migration `0004_secret_set_environment.sql`, including on a fresh installation generated from the portable schema. The migration enforces NULLS NOT DISTINCT uniqueness for `(tenant_id, namespace_id, environment_id, name)`. Set `secfn.migration_schema` on the migration connection when multiple deployments share a database; otherwise the migration requires exactly one matching table and fails rather than guessing. Bound sets with the same name coexist across environments; runtime resolution prefers an exact binding then a legacy unbound set. Members of legacy sets still must pass runtime scope checks.
 
-Metrics capture an exclusive timestamp cutoff before pagination, so writes timestamped during the scan are deferred to the next request. This is a bounded observational read, not a database snapshot: backdated events or transactions begun earlier but committed during the scan require a host-provided consistent snapshot for exact point-in-time accounting.
+Metrics require `capabilities.transactions.configurableIsolation` and `repeatable_read` support; adapters without those guarantees fail explicitly. The shared PostgreSQL Drizzle adapter implements per-call isolation. Namespace, schema and observability wrappers preserve it. Ordinary transaction calls without options retain their previous behavior.
+
+Member additions and replacements acquire the parent set row lock in a read-committed transaction before checking output names. Set deletion takes the same lock before deleting members. Both runtime resolution and administrator reveal reject duplicate output names in legacy/corrupt sets instead of overwriting values. Secret renames can change the default output name of members without aliases; assign explicit unique aliases when those names collide.
+
+### Existing duplicate set identities
+
+Schema 4 preflights duplicate identities before changing the unique index and fails with an actionable `23505` error. It never deletes or merges sets or their members. A failed migration leaves the old schema intact after rollback. Inspect duplicate groups with the following query, replacing `deployment` with the selected schema:
+
+```sql
+SELECT tenant_id, namespace_id, to_jsonb(s)->>'environment_id' AS environment_id,
+       name, array_agg(id ORDER BY id) AS set_ids
+FROM deployment.secfn_secret_sets AS s
+GROUP BY tenant_id, namespace_id, to_jsonb(s)->>'environment_id', name
+HAVING count(*) > 1;
+```
+
+Choose one name per set before rerunning the migration. A deterministic candidate is each conflicting set's unique `id`: verify that no other set in that identity scope already uses the candidate as its name, then rename only the selected conflicting rows by ID in a transaction. Keep the original IDs and member references. If a candidate collides with an existing name, choose a distinct explicit name instead. The migration verifies uniqueness again; abort and review any remaining conflicts rather than dropping data. Migration connections must roll back a failed `BEGIN…COMMIT` script before issuing cleanup or retry statements.

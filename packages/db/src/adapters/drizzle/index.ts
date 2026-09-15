@@ -362,7 +362,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
         return typeof v === 'number' ? v : Number(v ?? 0);
       },
 
-      async transaction<R>(fn: (trx: any) => Promise<R>): Promise<R> {
+      async transaction<R>(fn: (trx: any) => Promise<R>, options?: Parameters<Adapter["transaction"]>[1]): Promise<R> {
         if (dialect === 'sqlite') {
           throw new OperationNotSupportedError('transaction', 'DrizzleAdapter (SQLite async transactions)');
         }
@@ -379,7 +379,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
             rollback: async () => { },
           };
           return await fn(txAdapter);
-        });
+        }, options ? { isolationLevel: options.isolationLevel.replaceAll("_", " ") } : undefined);
       },
 
       async initialize(): Promise<void> { return; },
@@ -443,7 +443,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
       capabilities: {
         types: { json: true, dates: true, booleans: true, bigint: true, uuid: true, enum: true },
         operations: { batch: true, upsert: true, streaming: false, fulltext: true, returning: config.dialect !== 'mysql', strictUpdateNotFound: true },
-        transactions: { supported: config.dialect !== 'sqlite', nested: false, isolation: undefined },
+        transactions: { supported: config.dialect !== 'sqlite', nested: false, configurableIsolation: config.dialect === 'postgres', isolation: config.dialect === 'postgres' ? ['read_committed', 'repeatable_read', 'serializable'] : undefined },
         performance: { supportsJoins: true, supportsPreparedStatements: true },
         schema: { migrations: false, constraints: true, indexes: true },
         advanced: { customIdGeneration: false, numericIds: true, schemaNamespaces: true, customTypes: true },

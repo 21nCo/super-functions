@@ -21,7 +21,7 @@ class FakeEmbeddings extends Embeddings {
 }
 
 describe("performance and scaling", () => {
-  it("reuses pooled transport clients for equivalent configs", () => {
+  it("does not globally retain transports for equivalent configs", () => {
     const fetchImpl = async () => new Response(null, { status: 204 });
     const left = getTransportClient({
       baseUrl: "https://api.example.com/",
@@ -36,7 +36,7 @@ describe("performance and scaling", () => {
       fetchImpl
     });
 
-    expect(left).toBe(right);
+    expect(left).not.toBe(right);
   });
 
   it("derives stable cache keys across metadata ordering and request types", async () => {

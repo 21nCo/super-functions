@@ -144,10 +144,10 @@ describe("provider and client contract", () => {
     await expect(client.complete("cancelled", { cancelToken })).rejects.toBeInstanceOf(AbortError);
   });
 
-  it("reuses shared transport clients for identical configs", () => {
+  it("creates independently owned transports for identical configs", () => {
     const fetchImpl: typeof fetch = async () => new Response("ok", { status: 200 });
     const first = getTransportClient({ baseUrl: "https://example.com", fetchImpl });
     const second = getTransportClient({ baseUrl: "https://example.com", fetchImpl });
-    expect(first).toBe(second);
+    expect(first).not.toBe(second);
   });
 });

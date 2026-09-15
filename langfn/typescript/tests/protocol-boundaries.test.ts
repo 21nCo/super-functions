@@ -294,3 +294,36 @@ it("forwards only trusted policy response limits through the API tool", async ()
     expect(await ApiCallTool.run({url:"https://limit.example"}, {metadata:{},policy:new ToolPolicy({allowedHosts:["limit.example"],maxResponseBytes:5})})).toBe("hello");
   } finally { vi.unstubAllGlobals(); }
 });
+
+it.each(["{", "null", "[]", "1"])("rejects malformed Anthropic continuation %s before sending", async args => {
+  const fetchImpl = vi.fn();
+  const model = new AnthropicChatModel({apiKey:"test",fetchImpl});
+  await expect(model.chat({messages:[{role:"assistant",content:"",tool_calls:[{id:"call",function:{name:"tool",arguments:args}}]}]})).rejects.toMatchObject({code:"PROVIDER_ERROR"});
+  expect(fetchImpl).not.toHaveBeenCalled();
+});
+
+it("resolves one credential per embedding request and preserves provider errors", async () => {
+  const {LangFn} = await import("../src/client.js");
+  const secretProvider = vi.fn().mockReturnValueOnce("first").mockReturnValueOnce("second");
+  const fetchImpl = vi.fn(async (_: unknown, init?: RequestInit) => {
+    const key = new Headers(init?.headers).get("authorization");
+    return key === "Bearer first" ? new Response("{}",{status:401}) : new Response("{}",{status:429,headers:{"retry-after":"3"}});
+  });
+  const lang = new LangFn({model:new OpenAIChatModel({apiKeyRef:"key",secretProvider,fetchImpl})});
+  await expect(lang.embed("x")).rejects.toMatchObject({code:"PROVIDER_AUTH",provider:"openai"});
+  expect(secretProvider).toHaveBeenCalledTimes(1);
+  await expect(lang.embed("y")).rejects.toMatchObject({code:"PROVIDER_RATE_LIMIT",retryAfter:3,provider:"openai"});
+  expect(secretProvider).toHaveBeenCalledTimes(2);
+});
+
+it.each([-1,NaN,Infinity,1.5])("rejects invalid API response policy at configuration: %s", async maxResponseBytes => {
+  const {ToolPolicy} = await import("../src/tools/policy.js");
+  expect(()=>new ToolPolicy({maxResponseBytes})).toThrow("nonnegative safe integer");
+});
+
+it.each([OpenAIChatModel,AnthropicChatModel,GoogleChatModel,MistralChatModel])("rejects malformed canonical continuation objects across adapters", async Model => {
+  const fetchImpl = vi.fn();
+  const model = new Model({apiKey:"test",fetchImpl});
+  await expect(model.chat({messages:[{role:"assistant",content:"",toolCalls:[{id:"call",name:"tool",arguments:null as any}]}]})).rejects.toMatchObject({code:"PROVIDER_ERROR"});
+  expect(fetchImpl).not.toHaveBeenCalled();
+});

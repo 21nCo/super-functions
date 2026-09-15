@@ -30,7 +30,7 @@ export class MemoryAdapter implements Adapter {
   readonly id = "memory-test";
   readonly name = "Memory Test Adapter";
   readonly version = "0.0.0";
-  readonly capabilities = { ...DEFAULT_CAPABILITIES, transactions: { ...DEFAULT_CAPABILITIES.transactions, supported: true } };
+  readonly capabilities = { ...DEFAULT_CAPABILITIES, transactions: { ...DEFAULT_CAPABILITIES.transactions, supported: true, configurableIsolation: true, isolation: ["read_committed", "repeatable_read"] as import("@superfunctions/db").TransactionIsolation[] } };
   readonly internal: InternalCrud;
 
   private readonly tables = new Map<string, Row[]>();
@@ -111,14 +111,24 @@ export class MemoryAdapter implements Adapter {
     return this.table(params.model).filter((row) => matchesWhere(row, params.where ?? [])).length;
   }
 
-  async transaction<R>(callback: (trx: TransactionAdapter) => Promise<R>): Promise<R> {
+  private transactionTail: Promise<void> = Promise.resolve();
+  async transaction<R>(callback: (trx: TransactionAdapter) => Promise<R>, options?: Parameters<Adapter["transaction"]>[1]): Promise<R> {
+    if (options?.isolationLevel === "repeatable_read") {
+      const snapshot = new MemoryAdapter();
+      for (const [name, rows] of this.tables) snapshot.tables.set(name, clone(rows));
+      return callback(snapshot as unknown as TransactionAdapter);
+    }
+    const previous = this.transactionTail;
+    let release!: () => void;
+    this.transactionTail = new Promise<void>(resolve => { release = resolve; });
+    await previous;
     const snapshot = new Map([...this.tables].map(([name, rows]) => [name, clone(rows)]));
     try { return await callback(this as unknown as TransactionAdapter); }
     catch (error) {
       this.tables.clear();
       for (const [name, rows] of snapshot) this.tables.set(name, rows);
       throw error;
-    }
+    } finally { release(); }
   }
 
   async initialize(): Promise<void> {}

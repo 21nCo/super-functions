@@ -112,6 +112,9 @@ export class ToolPolicy {
     searchBackend?: SearchBackend;
     redactKeys?: readonly string[];
   } = {}) {
+    if (options.maxResponseBytes !== undefined && (!Number.isSafeInteger(options.maxResponseBytes) || options.maxResponseBytes < 0)) {
+      throw new RangeError("maxResponseBytes must be a nonnegative safe integer");
+    }
     this.maxResponseBytes = options.maxResponseBytes;
     this.secretProvider = options.secretProvider;
     this.sanitizer = options.sanitizer ?? sanitizeOutput;

@@ -590,21 +590,47 @@ it("resolves a missing namespace only once before authorization", async () => {
   expect(calls).toBe(1);
 });
 
-it("defers audit writes made during a paged metrics read to the next request", async () => {
+it("uses an isolated metrics snapshot without wall-clock sleeps", async () => {
   const { db, secfn } = createServer();
-  for (let i=0;i<1001;i++) await db.create({model:"secfn_audit_events",data:{id:`original-${String(i).padStart(6,"0")}`,timestamp:"2000-01-01T00:00:00.000Z",type:"original",severity:"info"}});
-  const read = db.findMany.bind(db);
+  await db.create({model:"secfn_audit_events",data:{id:"old",timestamp:"2000-01-01",type:"original",severity:"info"}});
+  const transaction = db.transaction.bind(db);
   let inserted = false;
-  db.findMany = async (params) => {
-    const rows = await read(params);
-    if (params.model === "secfn_audit_events" && !inserted) {
+  db.transaction = (callback, options) => transaction(async snapshot => {
+    if (!inserted) {
       inserted = true;
-      await db.create({model:"secfn_audit_events",data:{id:"aaa-new",timestamp:new Date().toISOString(),type:"during",severity:"info"}});
-      await db.create({model:"secfn_audit_events",data:{id:"zzz-new",timestamp:new Date().toISOString(),type:"during",severity:"info"}});
+      await db.create({model:"secfn_audit_events",data:{id:"late",timestamp:"1999-01-01",type:"late",severity:"info"}});
     }
-    return rows;
-  };
-  expect((await secfn.audit.getMetrics()).totalEvents).toBe(1001);
-  await new Promise(resolve=>setTimeout(resolve,2));
-  expect((await secfn.audit.getMetrics()).totalEvents).toBe(1003);
+    return callback(snapshot);
+  }, options);
+  expect((await secfn.audit.getMetrics()).totalEvents).toBe(1);
+  expect((await secfn.audit.getMetrics()).totalEvents).toBe(2);
+});
+
+it("rejects metrics when the adapter cannot guarantee a snapshot", async () => {
+  const {db,secfn} = createServer();
+  db.capabilities.transactions.isolation = [];
+  await expect(secfn.audit.getMetrics()).rejects.toThrow("repeatable_read");
+});
+
+it("checks token tenant after canonicalizing IDs without touching lastUsedAt on denial", async () => {
+  const {db,secfn} = createServer();
+  const a = await secfn.vault.createNamespace({tenantId:"a",slug:"a",createdBy:"test"});
+  const b = await secfn.vault.createNamespace({tenantId:"b",slug:"b",createdBy:"test"});
+  const issued = await secfn.vault.createServiceToken({tenantId:"a",namespaceId:a.id,name:"token",scopes:["*"],createdBy:"test"});
+  await expect(secfn.vault.verifyRuntimeToken(issued.token,{namespaceId:b.id})).rejects.toThrow("tenant mismatch");
+  const row = await db.findOne({model:"secfn_service_tokens",where:[{field:"id",operator:"eq",value:issued.record.id}]});
+  expect(row.lastUsedAt).toBeUndefined();
+  expect((await secfn.vault.verifyRuntimeToken(issued.token,{namespaceId:a.id})).token.tenantId).toBe("a");
+});
+
+it("rejects legacy duplicate output names in both administrator and runtime reads", async () => {
+  const {db,secfn} = createServer();
+  const v = secfn.vault;
+  const scope = {tenantId:"tenant-a",namespace:"duplicates",environment:"production",createdBy:"test"};
+  const secret = await v.createSecret({...scope,key:"KEY",value:"value"});
+  const set = await v.createSecretSet({...scope,name:"app",members:[{secretId:secret.id}]});
+  await db.create({model:"secfn_secret_set_members",data:{id:"legacy-duplicate",setId:set.id,secretId:secret.id,createdAt:new Date().toISOString()}});
+  await expect(v.revealSecretSet(set.id,{actorId:"test"})).rejects.toThrow("unique");
+  const issued = await v.createServiceToken({...scope,name:"runtime",scopes:["set:app"]});
+  await expect(v.resolveRuntimeSet("app",await v.verifyRuntimeToken(issued.token,scope),scope)).rejects.toThrow("unique");
 });

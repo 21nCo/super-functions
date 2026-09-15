@@ -1,4 +1,4 @@
-import type { Adapter, WhereClause } from "@superfunctions/db";
+import type { Adapter, TransactionAdapter, WhereClause } from "@superfunctions/db";
 import { generateId, nowIso } from "@secfn/core/id";
 import type { SecurityAuditEvent, SecurityMetrics, SecFnLogger } from "@secfn/core";
 import type { AuditWriteInput } from "./types.js";
@@ -106,7 +106,13 @@ export class AuditService {
   }
 
   async getMetrics(): Promise<SecurityMetrics> {
-    const cutoff = nowIso();
+    if (!this.options.db.capabilities.transactions.configurableIsolation || !this.options.db.capabilities.transactions.isolation?.includes("repeatable_read")) {
+      throw new Error("Audit metrics require repeatable_read transaction support");
+    }
+    return this.options.db.transaction(db => this.collectMetrics(db), { isolationLevel: "repeatable_read" });
+  }
+
+  private async collectMetrics(db: TransactionAdapter): Promise<SecurityMetrics> {
     let totalEvents = 0;
     let afterId: string | undefined;
     const eventsByType: Record<string, number> = {};
@@ -115,9 +121,9 @@ export class AuditService {
     const ips = new Map<string, number>();
 
     while (true) {
-      const events = await this.options.db.findMany<SecurityAuditEvent>({
+      const events = await db.findMany<SecurityAuditEvent>({
         model: "secfn_audit_events",
-        where: [{ field: "timestamp", operator: "lt", value: cutoff }, ...(afterId ? [{ field: "id", operator: "gt" as const, value: afterId }] : [])],
+        where: afterId ? [{ field: "id", operator: "gt", value: afterId }] : [],
         orderBy: [{ field: "id", direction: "asc" }],
         limit: 1000,
       });

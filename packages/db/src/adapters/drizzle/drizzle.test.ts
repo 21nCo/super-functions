@@ -697,3 +697,10 @@ describe('DrizzleAdapter - Postgres/MySQL Dialect Support', () => {
     expect(executeCalls[0].type).toBe('execute');
   });
 });
+
+it('rejects per-call isolation when the dialect does not implement it', async () => {
+  const callback = vi.fn();
+  const adapter = drizzleAdapter({db:{},dialect:'mysql'});
+  await expect(adapter.transaction(callback,{isolationLevel:'repeatable_read'})).rejects.toThrow('unsupported');
+  expect(callback).not.toHaveBeenCalled();
+});

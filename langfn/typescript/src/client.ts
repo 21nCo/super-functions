@@ -457,7 +457,6 @@ export class LangFn {
         throw new ValidationError("embed() requires an OpenAI model or configured embeddings provider");
       }
       this._embeddings = new OpenAIEmbeddings({
-        apiKey: model.apiKey,
         transport: () => model.transport
       });
     }

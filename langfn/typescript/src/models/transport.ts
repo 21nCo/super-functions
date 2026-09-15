@@ -13,33 +13,8 @@ export interface TransportClient {
   request(path: string, init?: RequestInit): Promise<Response>;
 }
 
-const clients = new Map<string, TransportClient>();
-const fetchIds = new WeakMap<object, number>();
-let nextFetchId = 1;
-
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-}
-
-function normalizeHeaders(headers?: HeadersInit): [string, string][] {
-  if (!headers) return [];
-  if (headers instanceof Headers) {
-    return Array.from(headers.entries()).sort(([left], [right]) => left.localeCompare(right));
-  }
-  if (Array.isArray(headers)) {
-    return [...headers].sort(([left], [right]) => left.localeCompare(right));
-  }
-  return Object.entries(headers).sort(([left], [right]) => left.localeCompare(right));
-}
-
-function getFetchId(fetchImpl?: typeof fetch): string {
-  if (!fetchImpl) return "global";
-  const candidate = fetchImpl as object;
-  const existing = fetchIds.get(candidate);
-  if (existing) return String(existing);
-  const created = nextFetchId++;
-  fetchIds.set(candidate, created);
-  return String(created);
 }
 
 function mergeHeaders(left?: HeadersInit, right?: HeadersInit): Headers {
@@ -53,18 +28,8 @@ function mergeHeaders(left?: HeadersInit, right?: HeadersInit): Headers {
 export function getTransportClient(config: TransportClientConfig): TransportClient {
   const maxResponseBytes = config.maxResponseBytes;
   if (maxResponseBytes !== undefined && (!Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 0)) throw new RangeError("maxResponseBytes must be a nonnegative safe integer");
-  const key = JSON.stringify({
-    baseUrl: normalizeBaseUrl(config.baseUrl),
-    headers: normalizeHeaders(config.headers),
-    timeout: config.timeout ?? 60_000,
-    maxResponseBytes,
-    fetchId: getFetchId(config.fetchImpl)
-  });
-  const cached = clients.get(key);
-  if (cached) {
-    return cached;
-  }
-
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  const headers = new Headers(config.headers);
   const fetchImpl = config.fetchImpl ?? globalThis.fetch;
   const timeout = config.timeout ?? 60_000;
   if (!fetchImpl) {
@@ -84,10 +49,10 @@ export function getTransportClient(config: TransportClientConfig): TransportClie
       };
       try {
         controller.signal.throwIfAborted();
-        const response = await fetchImpl(`${normalizeBaseUrl(config.baseUrl)}${path}`, {
+        const response = await fetchImpl(`${baseUrl}${path}`, {
           ...init,
           signal: controller.signal,
-          headers: mergeHeaders(config.headers, init.headers)
+          headers: mergeHeaders(headers, init.headers)
         });
         controller.signal.throwIfAborted();
         if (!response.body) { cleanup(); return response; }
@@ -144,6 +109,5 @@ export function getTransportClient(config: TransportClientConfig): TransportClie
     }
   };
 
-  clients.set(key, client);
   return client;
 }
