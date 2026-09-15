@@ -1,0 +1,31 @@
+langfn/typescript/tests/round3-regressions.test.ts
+  s_74c100180e3979::t_be2cb314a2ece3 67-90
+secfn/server/src/__tests__/server.test.ts
+  s_74c100180e3979::t_be2cb314a2ece3 621-630,666-675
+sendfn/typescript/tests/connected-mailbox.test.ts
+  s_74c100180e3979::t_be2cb314a2ece3 34-52
+secfn/server/src/vault.ts
+  s_74c100180e3979::t_558a70ee2e91fa 764
+  s_74c100180e3979::t_be2cb314a2ece3 779,1355-1360
+sendfn/typescript/src/email/connected-mailbox-adapter.ts
+  s_74c100180e3979::t_be2cb314a2ece3 1,118
+langfn/typescript/src/client.ts
+  s_74c100180e3979::t_be2cb314a2ece3 189-191,586,718-721
+  s_74c100180e3979::t_da8b09f0ca7ea3 722-723
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a0a4adbc473be799a995bf0b70ddb2039cecadd5",
+  "prompts": {},
+  "sessions": {
+    "s_74c100180e3979": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a4a8-4cc6-7b03-a1c5-d382213eae73",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
