@@ -144,6 +144,8 @@ export interface McpFnScenarioResult {
   error?: string;
   /** Observed client events discarded while this scenario was running. */
   droppedObservedEvents?: number;
+  /** Dropped observed events whose original payload could not be safely redacted. */
+  redactionOmittedObservedEvents?: number;
 }
 
 export interface McpFnScenarioReport {
@@ -157,6 +159,7 @@ export interface McpFnScenarioReport {
   incomplete: number;
   droppedResults: number;
   droppedObservedEvents: number;
+  redactionOmittedObservedEvents?: number;
   incompleteReason?: string;
   results: McpFnScenarioResult[];
 }
@@ -498,20 +501,32 @@ export async function runScenarios(
   const observedEvents: McpFnClientEvent[] = [];
   const maxObservedEvents = options.maxObservedEvents ?? 500;
   let droppedObservedEvents = 0;
+  let redactionOmittedObservedEvents = 0;
   let attributedDroppedObservedEvents = 0;
+  let attributedRedactionOmittedObservedEvents = 0;
   const pushResult = (result: McpFnScenarioResult): void => {
     const newlyDropped = droppedObservedEvents - attributedDroppedObservedEvents;
+    const newlyRedactionOmitted = redactionOmittedObservedEvents -
+      attributedRedactionOmittedObservedEvents;
     results.push({
       ...result,
       ...(newlyDropped > 0
         ? { droppedObservedEvents: (result.droppedObservedEvents ?? 0) + newlyDropped }
         : {}),
+      ...(newlyRedactionOmitted > 0
+        ? {
+          redactionOmittedObservedEvents:
+            (result.redactionOmittedObservedEvents ?? 0) + newlyRedactionOmitted,
+        }
+        : {}),
     });
     attributedDroppedObservedEvents = droppedObservedEvents;
+    attributedRedactionOmittedObservedEvents = redactionOmittedObservedEvents;
   };
   const unsubscribe = client.session.onEvent((event) => {
     if (client.session.isRedactionOmission(event)) {
       droppedObservedEvents += 1;
+      redactionOmittedObservedEvents += 1;
       return;
     }
     observedEvents.push(event);
@@ -606,6 +621,12 @@ export async function runScenarios(
       lastResult.droppedObservedEvents =
         (lastResult.droppedObservedEvents ?? 0) + unattributed;
     }
+    const unattributedRedaction = redactionOmittedObservedEvents -
+      attributedRedactionOmittedObservedEvents;
+    if (lastResult && unattributedRedaction > 0) {
+      lastResult.redactionOmittedObservedEvents =
+        (lastResult.redactionOmittedObservedEvents ?? 0) + unattributedRedaction;
+    }
     unsubscribe();
   }
   return results;
@@ -645,12 +666,19 @@ function resolveScenarioVariables(
     if (typeof value === "string") return visitString(value);
     if (Array.isArray(value)) return value.map(visit);
     if (value && typeof value === "object") {
-      return Object.fromEntries(
-        Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
-          visitString(key),
-          visit(entry),
-        ]),
-      );
+      const entries: Array<[string, unknown]> = [];
+      const keys = new Set<string>();
+      for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+        const resolvedKey = visitString(key);
+        if (keys.has(resolvedKey)) {
+          throw new Error(
+            `Scenario variable substitution creates duplicate object key: ${resolvedKey}`,
+          );
+        }
+        keys.add(resolvedKey);
+        entries.push([resolvedKey, visit(entry)]);
+      }
+      return Object.fromEntries(entries);
     }
     return value;
   };
@@ -673,6 +701,11 @@ export function createMcpFnScenarioReport(
     (total, result) => total + (result.droppedObservedEvents ?? 0),
     0,
   );
+  const redactionOmittedObservedEvents = results.reduce(
+    (total, result) => total + (result.redactionOmittedObservedEvents ?? 0),
+    0,
+  );
+  const overflowedObservedEvents = droppedObservedEvents - redactionOmittedObservedEvents;
   const report: McpFnScenarioReport = {
     formatVersion: 1,
     kind: "mcpfn.scenario-report",
@@ -684,8 +717,18 @@ export function createMcpFnScenarioReport(
     incomplete,
     droppedResults: 0,
     droppedObservedEvents,
+    ...(redactionOmittedObservedEvents > 0 ? { redactionOmittedObservedEvents } : {}),
     ...(droppedObservedEvents > 0
-      ? { incompleteReason: "Observed client events exceeded maxObservedEvents" }
+      ? {
+        incompleteReason: [
+          ...(redactionOmittedObservedEvents > 0
+            ? ["Observed client events were omitted because credential redaction failed"]
+            : []),
+          ...(overflowedObservedEvents > 0
+            ? ["Observed client events exceeded maxObservedEvents"]
+            : []),
+        ].join("; "),
+      }
       : {}),
     results: structuredClone(results),
   };

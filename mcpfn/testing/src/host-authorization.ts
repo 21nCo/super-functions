@@ -22,6 +22,7 @@ export interface McpFnHostedAuthorizationRequestFixture {
 
 export interface McpFnHostedTokenRequestFixture {
   grantType: string;
+  /** Optional independently-authored code override for negative token-exchange cases. */
   code?: string;
   refreshToken?: string;
   refreshAfterExchange?: boolean;
@@ -119,7 +120,6 @@ export function createHostedAuthorizationFixtures(
       authorization: authorization(chatgptId, chatgptRedirect),
       token: {
         grantType: "authorization_code",
-        code: "chatgpt-code",
         refreshAfterExchange: true,
       },
       expected: { outcome: "allowed" },
@@ -136,7 +136,6 @@ export function createHostedAuthorizationFixtures(
       authorization: authorization(claudeId, claudeRedirect),
       token: {
         grantType: "authorization_code",
-        code: "claude-code",
         refreshAfterExchange: true,
       },
       expected: { outcome: "allowed" },
@@ -146,7 +145,7 @@ export function createHostedAuthorizationFixtures(
       host: "generic",
       registration: registration(dcrId, "dynamic", "http://127.0.0.1/callback", supported),
       authorization: authorization(dcrId, "http://127.0.0.1/callback"),
-      token: { grantType: "authorization_code", code: "dcr-code" },
+      token: { grantType: "authorization_code" },
       expected: { outcome: "allowed" },
     },
     {
@@ -242,13 +241,13 @@ async function runHostedCase(
     responseStatus = authorizationResponse.status;
     const authorizationError = await oauthError(authorizationResponse);
     if (authorizationError) {
-      await validateOAuthRejection(authorizationResponse, fixture, true);
+      await validateOAuthRejection(authorizationResponse, fixture, target.issuer, true);
       return assessHostedCase(fixture, phase, authorizationResponse.status, authorizationError);
     }
     if (!isRedirect(authorizationResponse.status)) {
       throw new Error(`Authorization request did not redirect (HTTP ${authorizationResponse.status})`);
     }
-    const code = validatedRedirectCode(authorizationResponse, fixture);
+    const code = validatedRedirectCode(authorizationResponse, fixture, target.issuer);
     if (fixture.token) {
       phase = fixture.token.grantType === "refresh_token"
         ? "token-refresh"
@@ -279,7 +278,7 @@ async function runHostedCase(
       responseStatus = tokenResponse.status;
       const tokenError = await oauthError(tokenResponse);
       if (tokenError) {
-        await validateOAuthRejection(tokenResponse, fixture);
+        await validateOAuthRejection(tokenResponse, fixture, target.issuer);
         return assessHostedCase(fixture, phase, tokenResponse.status, tokenError);
       }
       if (!tokenResponse.ok) throw new Error(`Token request returned HTTP ${tokenResponse.status}`);
@@ -308,7 +307,7 @@ async function runHostedCase(
         responseStatus = refreshResponse.status;
         const refreshError = await oauthError(refreshResponse);
         if (refreshError) {
-          await validateOAuthRejection(refreshResponse, fixture);
+          await validateOAuthRejection(refreshResponse, fixture, target.issuer);
           return assessHostedCase(fixture, phase, refreshResponse.status, refreshError);
         }
         if (!refreshResponse.ok) {
@@ -374,7 +373,12 @@ async function oauthError(response: Response): Promise<string | undefined> {
   return typeof body?.error === "string" ? body.error : undefined;
 }
 
-async function validateOAuthRejection(response: Response, fixture: McpFnHostedAuthorizationCase, authorization = false): Promise<void> {
+async function validateOAuthRejection(
+  response: Response,
+  fixture: McpFnHostedAuthorizationCase,
+  issuer: string,
+  authorization = false,
+): Promise<void> {
   if (authorization && isRedirect(response.status)) {
     const callback = new URL(response.headers.get("location") ?? "");
     // Redirects must target the registered URI, never a rejected requested URI.
@@ -387,7 +391,11 @@ async function validateOAuthRejection(response: Response, fixture: McpFnHostedAu
     callback.searchParams.delete("error_description");
     callback.searchParams.delete("error_uri");
     callback.searchParams.set("code", "error-envelope-validation");
-    validatedRedirectCode(new Response(null, { status: response.status, headers: { location: callback.toString() } }), fixture);
+    validatedRedirectCode(
+      new Response(null, { status: response.status, headers: { location: callback.toString() } }),
+      fixture,
+      issuer,
+    );
   } else {
     const body = await response.clone().json().catch(() => undefined);
     // An unrecognized/incompatible client must not receive a redirect. Other
@@ -403,7 +411,11 @@ async function validateOAuthRejection(response: Response, fixture: McpFnHostedAu
   }
 }
 
-function validatedRedirectCode(response: Response, fixture: McpFnHostedAuthorizationCase): string {
+function validatedRedirectCode(
+  response: Response,
+  fixture: McpFnHostedAuthorizationCase,
+  issuer: string,
+): string {
   const location = response.headers.get("location");
   if (!location) throw new Error("Authorization callback is missing");
   const callback = new URL(location);
@@ -413,12 +425,14 @@ function validatedRedirectCode(response: Response, fixture: McpFnHostedAuthoriza
   if (codes.length !== 1 || !codes[0] || states.length !== 1 || states[0] !== fixture.authorization.state) {
     throw new Error("Authorization callback code or state is invalid");
   }
-  callback.searchParams.delete("code");
-  callback.searchParams.delete("state");
+  const issuers = callback.searchParams.getAll("iss");
+  if (issuers.length > 1 || (issuers.length === 1 && issuers[0] !== issuer)) {
+    throw new Error("Authorization callback issuer is invalid");
+  }
   if (callback.protocol !== expected.protocol || callback.host !== expected.host ||
       callback.username !== expected.username || callback.password !== expected.password ||
       callback.pathname !== expected.pathname || callback.hash !== expected.hash ||
-      [...new Set([...expected.searchParams.keys(), ...callback.searchParams.keys()])].some((key) =>
+      [...new Set(expected.searchParams.keys())].some((key) =>
         JSON.stringify(callback.searchParams.getAll(key)) !== JSON.stringify(expected.searchParams.getAll(key)))) {
     throw new Error("Authorization callback destination is invalid");
   }

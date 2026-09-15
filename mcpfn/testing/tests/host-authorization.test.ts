@@ -53,7 +53,15 @@ describe("hosted role-3 regression harness", () => {
       async prepareRegistration(fixture) {
         registrations.set(fixture.clientId, normalizeMcpClientRegistration(fixture));
       },
-      request: handler,
+      request: async (request) => {
+        if (new URL(request.url).pathname.endsWith("token")) {
+          const body = new URLSearchParams(await request.clone().text());
+          if (body.get("grant_type") === "authorization_code") {
+            expect(body.get("code")).toBe(`${body.get("client_id")}-code`);
+          }
+        }
+        return handler(request);
+      },
     }, fixtures);
 
     expect(results).toHaveLength(6);
@@ -258,6 +266,31 @@ it("submits an independently configured authorization code", async () => {
   }, [fixture]);
   expect(result.status).toBe("passed");
   expect(submittedCode).toBe("independent-fixture-code");
+});
+
+it.each([
+  ["matching issuer", "https://login.example.com", "passed"],
+  ["mismatched issuer", "https://other.example.com", "failed"],
+] as const)("allows authorization-response extensions with a %s", async (_label, responseIssuer, status) => {
+  const issuer = "https://login.example.com";
+  const fixture = createHostedAuthorizationFixtures({
+    issuer,
+    resource: "https://mcp.example.com/mcp",
+  })[0]!;
+  fixture.token = undefined;
+  const [result] = await runHostedAuthorizationRegression({
+    issuer,
+    prepareRegistration: async () => {},
+    request: async () => {
+      const callback = new URL(fixture.authorization.redirectUri);
+      callback.searchParams.set("code", "server-issued-code");
+      callback.searchParams.set("state", fixture.authorization.state);
+      callback.searchParams.set("iss", responseIssuer);
+      callback.searchParams.set("extension_parameter", "extension-value");
+      return Response.redirect(callback, 302);
+    },
+  }, [fixture]);
+  expect(result.status).toBe(status);
 });
 
 it("classifies a direct refresh grant as token refresh", async () => {

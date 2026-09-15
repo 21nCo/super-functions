@@ -56,8 +56,18 @@ describe("McpFn testing", () => {
         return { outcome: "allowed" };
       },
     });
-    expect(results[0]).toMatchObject({ status: "passed", droppedObservedEvents: 1 });
+    expect(results[0]).toMatchObject({
+      status: "passed",
+      droppedObservedEvents: 1,
+      redactionOmittedObservedEvents: 1,
+    });
     expect(results[1]).toMatchObject({ status: "failed" });
+    expect(createMcpFnScenarioReport(results)).toMatchObject({
+      status: "incomplete",
+      droppedObservedEvents: 1,
+      redactionOmittedObservedEvents: 1,
+      incompleteReason: "Observed client events were omitted because credential redaction failed",
+    });
   });
 
   it("substitutes declared variables in scenario property keys", async () => {
@@ -87,6 +97,35 @@ describe("McpFn testing", () => {
       }], { variables: { MCPFN_SECRET: resolvedKey } })).resolves.toMatchObject([
         { status: "passed" },
       ]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("rejects property-key collisions before executing the affected scenario", async () => {
+    const execute = vi.fn(async (input: unknown) => structuredResult(input));
+    const server = createMcpFnServer({
+      info: { name: "variable-key-collisions", version: "1.0.0" },
+      registry: new McpFnRegistry().register({
+        name: "echo-key",
+        description: "Echo a variable-keyed input.",
+        inputSchema: { type: "object", additionalProperties: true },
+        handler: execute,
+      }),
+    });
+    const client = await McpFnTestClient.connect(server);
+    try {
+      await expect(runScenarios(client, [
+        {
+          name: "colliding key",
+          tool: "echo-key",
+          variables: ["FIELD"],
+          arguments: { "${FIELD}": 1, actual: 2 },
+        },
+      ], { variables: { FIELD: "actual" } })).rejects.toThrow(
+        "Scenario variable substitution creates duplicate object key: actual",
+      );
+      expect(execute).not.toHaveBeenCalled();
     } finally {
       await client.close();
     }

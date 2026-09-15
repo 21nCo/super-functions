@@ -62,8 +62,8 @@ export class McpFnRedactionLimitError extends Error {
 // Only these locally authored envelope paths retain structural keys. Unknown
 // children (including inspector events and server metadata) are always payloads.
 const envelopeKeys: Record<string, Set<string>> = Object.fromEntries(Object.entries({
-  root: "formatVersion kind status runtime ok target server capabilities manifestChecked manifestHash total passed failed incomplete droppedResults droppedObservedEvents incompleteReason failure timeline droppedTimelineEvents results count clientState tools resources resourceTemplates prompts droppedEvents timelineComplete droppedInventoryEntries inventoryComplete suiteVersion exitCode stdout stderr phase outcome code requestId at details payload",
-  result: "formatVersion name operation tool status sideEffect durationMs error droppedObservedEvents",
+  root: "formatVersion kind status runtime ok target server capabilities manifestChecked manifestHash total passed failed incomplete droppedResults droppedObservedEvents redactionOmittedObservedEvents incompleteReason failure timeline droppedTimelineEvents results count clientState tools resources resourceTemplates prompts droppedEvents timelineComplete droppedInventoryEntries inventoryComplete suiteVersion exitCode stdout stderr phase outcome code requestId at details payload",
+  result: "formatVersion name operation tool status sideEffect durationMs error droppedObservedEvents redactionOmittedObservedEvents",
   diagnostic: "phase outcome code requestId at target details",
   inspectorEvent: "formatVersion source kind at event",
   failure: "name message layer code phase details",
@@ -123,6 +123,18 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   });
   const secretPattern = patterns.length ? new RegExp(patterns.join("|"), "g") : undefined;
   const replacementPattern = patterns.length ? new RegExp(patterns.join("|")) : undefined;
+  const structuralMatchers = patterns.map((pattern) => ({
+    pattern,
+    expression: new RegExp(pattern),
+  }));
+  const structuralPatterns = new Set<string>();
+  const preserveStructural = (input: string): string => {
+    if (!replacementPattern?.test(input)) return input;
+    for (const { pattern, expression } of structuralMatchers) {
+      if (expression.test(input)) structuralPatterns.add(pattern);
+    }
+    return input;
+  };
   // A requested marker is itself output and must not reproduce a credential.
   if (secretPattern) {
     const markerContainsSecret = secretPattern.test(redactionMarker ?? "[REDACTED]");
@@ -133,17 +145,17 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   const scrub = (input: unknown, role = "payload", field = "", finalPass = false): unknown => {
     input = specialValue(input);
     if (typeof input === "string") {
-      if ((role === "root" || role === "inspectorEvent") && field === "kind" && clientKinds.has(input)) return input;
-      if (role === "root" && field === "clientState" && ["idle", "connecting", "authorization-required", "connected", "closing", "closed"].includes(input)) return input;
-      if (role === "target" && field === "kind" && ["authenticated-streamable-http", "streamable-http", "stdio", "in-memory", "custom"].includes(input)) return input;
-      if ((role === "packages" && field === "testing") || (role === "runtime" && ["node", "reportSchemaVersion"].includes(field)) || (role === "root" && field === "suiteVersion")) return input;
-      if ((role === "root" || role === "result") && field === "status" && ["passed", "failed", "incomplete", "complete"].includes(input)) return input;
-      if ((role === "root" || role === "diagnostic") && field === "outcome" && ["started", "succeeded", "failed"].includes(input)) return input;
-      if (role === "root" && field === "kind" && ["mcpfn.target-suite-report", "mcpfn.inspector-snapshot", "mcpfn.official-conformance-report"].includes(input)) return input;
-      if ((role === "root" || role === "diagnostic" || role === "failure") && field === "phase" && ["resource-discovery", "authorization-server-discovery", "client-registration", "authorization-request", "authorization-callback", "token-exchange", "token-refresh", "token-revocation", "transport-connect", "mcp-initialize", "capability-operation", "transport-close"].includes(input)) return input;
-      if (role === "failure" && field === "layer" && ["mcpfn-preflight", "authorization-server", "resource-server", "mcp-initialization", "scenario", "upstream-conformance"].includes(input)) return input;
-      if (role === "inspectorEvent" && field === "source" && ["diagnostic", "client"].includes(input)) return input;
-      if (role === "result" && field === "sideEffect" && ["none", "idempotent", "non-idempotent"].includes(input)) return input;
+      if ((role === "root" || role === "inspectorEvent") && field === "kind" && clientKinds.has(input)) return preserveStructural(input);
+      if (role === "root" && field === "clientState" && ["idle", "connecting", "authorization-required", "connected", "closing", "closed"].includes(input)) return preserveStructural(input);
+      if (role === "target" && field === "kind" && ["authenticated-streamable-http", "streamable-http", "stdio", "in-memory", "custom"].includes(input)) return preserveStructural(input);
+      if ((role === "packages" && field === "testing") || (role === "runtime" && ["node", "reportSchemaVersion"].includes(field)) || (role === "root" && field === "suiteVersion")) return preserveStructural(input);
+      if ((role === "root" || role === "result") && field === "status" && ["passed", "failed", "incomplete", "complete"].includes(input)) return preserveStructural(input);
+      if ((role === "root" || role === "diagnostic") && field === "outcome" && ["started", "succeeded", "failed"].includes(input)) return preserveStructural(input);
+      if (role === "root" && field === "kind" && ["mcpfn.target-suite-report", "mcpfn.inspector-snapshot", "mcpfn.official-conformance-report"].includes(input)) return preserveStructural(input);
+      if ((role === "root" || role === "diagnostic" || role === "failure") && field === "phase" && ["resource-discovery", "authorization-server-discovery", "client-registration", "authorization-request", "authorization-callback", "token-exchange", "token-refresh", "token-revocation", "transport-connect", "mcp-initialize", "capability-operation", "transport-close"].includes(input)) return preserveStructural(input);
+      if (role === "failure" && field === "layer" && ["mcpfn-preflight", "authorization-server", "resource-server", "mcp-initialization", "scenario", "upstream-conformance"].includes(input)) return preserveStructural(input);
+      if (role === "inspectorEvent" && field === "source" && ["diagnostic", "client"].includes(input)) return preserveStructural(input);
+      if (role === "result" && field === "sideEffect" && ["none", "idempotent", "non-idempotent"].includes(input)) return preserveStructural(input);
       // Whole-string rejection cannot compose another credential by joining pieces.
       // Run after both redactors; never feed this result through another redactor.
       if (finalPass) return replacementPattern?.test(input) ? "" : input;
@@ -161,6 +173,7 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
     if (input && typeof input === "object") {
       const result = Object.fromEntries(Object.entries(input).map(([key, entry]) => {
         const fixed = envelopeKeys[role]?.has(key) ?? false;
+        if (fixed) preserveStructural(key);
         let childRole = "payload";
         if (fixed) {
           if (key === "results") childRole = "result";
@@ -179,7 +192,15 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   const role = preserveKeys ? (timelineEvent ? "inspectorEvent" : "root") : "payload";
   const scrubbed = scrub(value, role);
   const generic = redactOAuthValue(scrubbed, { maxStringLength: 262_144, maxDepth: 64, maxArrayEntries: 100_000, maxObjectEntries: 100_000, ...(redactionMarker !== undefined ? { redactionMarker } : {}) });
-  return scrub(generic, role, "", true) as T;
+  const result = scrub(generic, role, "", true) as T;
+  const boundaryPatterns = patterns.filter((pattern) => !structuralPatterns.has(pattern));
+  assertPayloadSerialization(
+    result,
+    "payload",
+    true,
+    boundaryPatterns.length ? new RegExp(boundaryPatterns.join("|")) : undefined,
+  );
+  return result;
 }
 
 function assertPayloadSerialization(

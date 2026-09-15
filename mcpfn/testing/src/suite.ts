@@ -57,6 +57,7 @@ export interface McpFnTargetSuiteReport {
   incomplete: number;
   droppedResults: number;
   droppedObservedEvents: number;
+  redactionOmittedObservedEvents?: number;
   incompleteReason?: string;
   failure?: McpFnReportFailure;
   timeline: McpFnDiagnosticEvent[];
@@ -262,6 +263,11 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     (total, result) => total + (result.droppedObservedEvents ?? 0),
     0,
   );
+  const redactionOmittedObservedEvents = results.reduce(
+    (total, result) => total + (result.redactionOmittedObservedEvents ?? 0),
+    0,
+  );
+  const overflowedObservedEvents = droppedObservedEvents - redactionOmittedObservedEvents;
   const artifactIncomplete = Boolean(failure) || incomplete > 0 ||
     droppedTimelineEvents > 0 ||
     droppedObservedEvents > 0;
@@ -287,6 +293,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     incomplete,
     droppedResults: 0,
     droppedObservedEvents,
+    ...(redactionOmittedObservedEvents > 0 ? { redactionOmittedObservedEvents } : {}),
     ...(failure || droppedTimelineEvents > 0 || droppedObservedEvents > 0
       ? {
         incompleteReason: [
@@ -296,7 +303,10 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
           ...(timelineRedactionFailed ? ["Diagnostic timeline redaction failed; original events omitted"] : []),
           ...(timelineCountExceeded ? ["Diagnostic timeline exceeded maxTimelineEvents"] : []),
           ...(timelineBytesExceeded ? ["Diagnostic timeline exceeded maxReportBytes"] : []),
-          ...(droppedObservedEvents > 0
+          ...(redactionOmittedObservedEvents > 0
+            ? ["Observed client events were omitted because credential redaction failed"]
+            : []),
+          ...(overflowedObservedEvents > 0
             ? ["Observed client events exceeded maxObservedEvents"]
             : []),
         ].join("; "),

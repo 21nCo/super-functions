@@ -385,7 +385,11 @@ export class McpFnClient {
       catch {
         await this.emit("transport-close", "failed", requestId, "MCPFN_CREDENTIAL_CLEANUP_FAILED");
         this._state = "closing";
-        throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Retry close after target cleanup failed", {phase: "transport-close", retryable: true});
+        throw new McpFnClientError(
+          "MCPFN_OPERATION_FAILED",
+          "Retry close after target cleanup failed",
+          { phase: "transport-close", retryable: true, cause: error },
+        );
       }
       await this.emit("transport-connect", "failed", requestId, "MCPFN_TARGET_OPEN_FAILED", { attempt, message: errorMessage(error) });
       if (attempt < retries) {

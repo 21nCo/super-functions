@@ -118,6 +118,52 @@ describe("McpFn target suite", () => {
       ],
     });
   });
+
+  it("distinguishes redaction omissions from observed-event overflow", async () => {
+    let server: ReturnType<typeof createMcpFnServer>;
+    server = createMcpFnServer({
+      info: { name: "redaction-omission-target", version: "1.0.0" },
+      additionalCapabilities: { logging: {} },
+      registry: new McpFnRegistry().register({
+        name: "notify",
+        description: "Emit an event whose payload cannot be redacted.",
+        inputSchema: { type: "object" },
+        handler: async () => {
+          await server.sendLoggingMessage({ level: "info", data: { privateRedactionState: true } });
+          return structuredResult({ ok: true });
+        },
+      }),
+    });
+    const report = await runMcpFnTargetSuite({
+      target: customTarget({
+        kind: "fixture",
+        redact: <T>(value: T): T => {
+          const data = value && typeof value === "object"
+            ? (value as { data?: unknown }).data
+            : undefined;
+          if (data && typeof data === "object" && "privateRedactionState" in data) {
+            throw new Error("event redaction unavailable");
+          }
+          return value;
+        },
+        open: async () => {
+          const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+          await server.connect(serverTransport);
+          return { transport: clientTransport, close: () => server.close() };
+        },
+      }),
+      scenarios: [{ name: "notify", tool: "notify" }],
+    });
+    expect(report).toMatchObject({
+      ok: false,
+      status: "incomplete",
+      droppedObservedEvents: 1,
+      redactionOmittedObservedEvents: 1,
+      incompleteReason: "Observed client events were omitted because credential redaction failed",
+      results: [{ status: "passed", redactionOmittedObservedEvents: 1 }],
+    });
+    expect(report.incompleteReason).not.toContain("maxObservedEvents");
+  });
 });
 
 it("marks otherwise successful suites incomplete when custom close rejects", async () => {

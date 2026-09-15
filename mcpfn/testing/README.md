@@ -141,6 +141,9 @@ Claude-shaped Client ID Metadata Document, and dynamic-registration cases cover
 authorization code with S256 PKCE and refresh. Advertised JWT bearer, device,
 and custom grants remain compatible when authorization code is supported, while
 an actual unsupported token request must return `unsupported_grant_type`.
+Allowed fixtures exchange the code returned by the authorization server. Set
+the optional token-request `code` only to exercise an independently authored
+negative case such as an expired or unknown authorization code.
 
 ## Playwright fixture
 
@@ -192,4 +195,5 @@ The CLI makes one cleanup retry and emits the failed report with exit code 1.
 Direct `McpFnTestClient.connectTarget()` callers receive
 `McpFnTestClientCleanupError` when connection failure is followed by cleanup
 failure. Retain that error and call `await error.retryCleanup()`; the failed
-session remains owned until a retry succeeds.
+session remains owned until a retry succeeds. Its `cause` preserves the original
+connection failure for diagnosis.

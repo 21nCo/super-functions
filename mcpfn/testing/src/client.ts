@@ -44,8 +44,11 @@ const testClientCleanupOwners = new WeakMap<
 
 /** Connection failed and cleanup is still owned by this retryable error. */
 export class McpFnTestClientCleanupError extends Error {
-  constructor(close: () => Promise<void>) {
-    super("Test client connection failed and cleanup remains pending; retain this error and retryCleanup()");
+  constructor(close: () => Promise<void>, cause: unknown) {
+    super(
+      "Test client connection failed and cleanup remains pending; retain this error and retryCleanup()",
+      { cause },
+    );
     this.name = "McpFnTestClientCleanupError";
     testClientCleanupOwners.set(this, { close });
   }
@@ -119,8 +122,11 @@ export class McpFnTestClient<TContext = undefined> {
       await client.session.connect();
       return client;
     } catch (error) {
+      const connectionFailure = error instanceof Error && error.cause !== undefined
+        ? error.cause
+        : error;
       try { await client.close(); }
-      catch { throw new McpFnTestClientCleanupError(() => client.close()); }
+      catch { throw new McpFnTestClientCleanupError(() => client.close(), connectionFailure); }
       throw error;
     }
   }

@@ -22,12 +22,13 @@ describe("authenticated remote MCP targets", () => {
   });
 
   it("retains failed connection cleanup ownership for caller retries", async () => {
+    const connectionFailure = new Error("connection failed");
     const cleanup = vi.fn(async () => {
       if (cleanup.mock.calls.length < 3) throw new Error("temporary cleanup failure");
     });
     const target = customTarget({
       kind: "custom",
-      open: async () => { throw new Error("connection failed"); },
+      open: async () => { throw connectionFailure; },
       cleanup,
     });
     const failure = await McpFnTestClient.connectTarget(target).then(
@@ -35,6 +36,7 @@ describe("authenticated remote MCP targets", () => {
       error => error as McpFnTestClientCleanupError,
     );
     expect(failure).toBeInstanceOf(McpFnTestClientCleanupError);
+    expect(failure.cause).toBe(connectionFailure);
     expect(cleanup).toHaveBeenCalledTimes(2);
     await expect(failure.retryCleanup()).resolves.toBeUndefined();
     expect(cleanup).toHaveBeenCalledTimes(3);
@@ -753,6 +755,16 @@ it("fails closed when JSON separators reconstruct an opaque credential", async (
   expect(() => redactRemoteCredential(
     { headers: { "x-api-key": 'foo":"bar' } },
     { foo: "bar" },
+    { preserveKeys: true },
+  )).toThrow(/safe serialized output/);
+});
+
+it("checks non-structural credentials when another credential matches report structure", async () => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  expect(() => redactRemoteCredential(
+    { headers: { "x-structural": "passed", "x-composed": 'foo":"bar' } },
+    { status: "passed", foo: "bar" },
+    { preserveKeys: true },
   )).toThrow(/safe serialized output/);
 });
 
