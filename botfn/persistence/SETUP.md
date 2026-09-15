@@ -1,18 +1,16 @@
 # Persistence Service Setup Guide
 
-## What Was Created
+The persistence service is a tRPC-based API that stores relationships between GitHub/Linear issues and Discord threads in Postgres. It deploys as a Cloudflare Worker; it does not use D1.
 
-The persistence service is a tRPC-based API that stores relationships between GitHub/Linear issues and Discord threads using Cloudflare D1.
-
-### Files Created
+### Files
 
 ```
-services/persistence/
+botfn/persistence/
 ├── src/
 │   ├── core.ts                    # tRPC router with business logic
-│   ├── index.cloudflare.ts       # Cloudflare Workers entry point
+│   ├── index.cloudflare.ts        # Cloudflare Workers entry point
+│   ├── schema.ts                  # Drizzle Postgres schema
 │   └── client.ts                  # tRPC client helper
-├── schema.sql                     # D1 database schema
 ├── package.json                   # Dependencies and scripts
 ├── wrangler.toml                  # Cloudflare Workers config
 ├── tsconfig.json                  # TypeScript config
@@ -23,93 +21,80 @@ services/persistence/
 ### Database Schema
 
 **issues** table:
-- `id` - Primary key (auto-generated)
+
+- `id` - Primary key
 - `github_issue_id` - GitHub issue identifier (e.g., "owner/repo#123")
 - `linear_issue_id` - Linear issue ID
 - `status` - Issue status: "Backlog", "InProgress", or "Live"
 - `is_live_status_notified_on_discord` - Boolean flag
 - `created_at` - Unix timestamp
-- `updated_at` - Unix timestamp (auto-updated)
+- `updated_at` - Unix timestamp
 
 **discord_threads** table:
-- `id` - Primary key (auto-generated)
+
+- `id` - Primary key
 - `issue_id` - Foreign key to issues table
 - `guild_id` - Discord guild ID
 - `channel_id` - Discord channel ID
 - `thread_url` - Discord thread URL
 - `created_at` - Unix timestamp
 
-**Relationship**: One issue can have multiple Discord threads (many-to-many).
+**Relationship**: One issue can have multiple Discord threads.
 
 ## Setup Instructions
 
 ### 1. Install Dependencies
 
-From the monorepo root:
+From the Superfunctions repository root:
 
 ```bash
 npm install
 ```
 
-### 2. Create Cloudflare D1 Database
+### 2. Configure Postgres
+
+Provide a Postgres connection string as `DATABASE_URL`. For Cloudflare:
 
 ```bash
-cd services/persistence
-wrangler d1 create botfn-db
+cd botfn/persistence
+wrangler secret put DATABASE_URL
 ```
 
-This will output a `database_id`. Copy it and update `wrangler.toml`:
+For local Wrangler, put `DATABASE_URL=postgres://...` in `.dev.vars`. Wrangler loads that file; `db:env:check` does not.
 
-```toml
-[[d1_databases]]
-binding = "DB"
-database_name = "botfn-db"
-database_id = "YOUR_D1_DATABASE_ID"  # Replace this
-```
+Apply the Drizzle schema in `src/schema.ts` to the database (equivalent Postgres DDL). Confirm the URL is exported in the shell:
 
-### 3. Initialize Database Schema
-
-**For production (remote database):**
 ```bash
-wrangler d1 execute botfn-db --remote --file=./schema.sql
+export DATABASE_URL=postgres://...
+npm run db:env:check
 ```
 
-**For local development:**
-```bash
-wrangler d1 execute botfn-db --local --file=./schema.sql
-```
+`wrangler.toml` does not bind a D1 database.
 
-### 4. Deploy to Cloudflare Workers
+### 3. Deploy to Cloudflare Workers
 
 ```bash
 npm run deploy
 ```
 
 After deployment, you'll get a URL like:
+
 ```
 https://botfn-persistence-service.YOUR-SUBDOMAIN.workers.dev
 ```
 
-### 5. Update Discord Bot Configuration
+### 4. Update Discord Bot Configuration
 
-Update `bots/discord-bot/wrangler.toml` with your actual persistence service URL:
+Update `botfn/bot-discord/wrangler.toml` with the persistence service URL:
 
 ```toml
 [vars]
 PERSISTENCE_SERVICE_URL = "https://botfn-persistence-service.YOUR-SUBDOMAIN.workers.dev"
 ```
 
-### 6. Install Discord Bot Dependencies
-
-From monorepo root:
-
-```bash
-npm install
-```
-
 ## Discord Bot Integration
 
-The discord-bot now automatically persists issues when:
+`botfn/bot-discord` persists issues when:
 
 1. **Creating GitHub issues** (`/create-github-issue`)
    - Creates issue in persistence DB with `githubIssueId` and initial Discord thread
@@ -130,11 +115,13 @@ The discord-bot now automatically persists issues when:
 ### tRPC Procedures
 
 **Mutations:**
+
 - `createIssue` - Create new issue with Discord thread
 - `updateIssue` - Update issue fields (status, IDs, notification flag)
 - `addDiscordThread` - Add Discord thread to existing issue
 
 **Queries:**
+
 - `getIssue` - Get issue by internal ID
 - `getIssueByGithubId` - Get issue by GitHub issue ID
 - `getIssueByLinearId` - Get issue by Linear issue ID
@@ -143,20 +130,23 @@ The discord-bot now automatically persists issues when:
 ## Local Development
 
 **Start persistence service:**
+
 ```bash
-cd services/persistence
+cd botfn/persistence
 npm run dev
 ```
 
 The service will be available at `http://localhost:8787`.
 
 **Start discord-bot:**
+
 ```bash
-cd bots/discord-bot
+cd botfn/bot-discord
 npm run dev
 ```
 
-Update discord-bot's local `.dev.vars` file:
+Update the discord-bot local `.dev.vars` file:
+
 ```
 PERSISTENCE_SERVICE_URL=http://localhost:8787
 ```
@@ -191,13 +181,16 @@ await client.updateIssue.mutate({
 ## Troubleshooting
 
 **Issue: tRPC client errors**
+
 - Ensure `PERSISTENCE_SERVICE_URL` is correctly set
 - Check that persistence service is deployed and accessible
 
-**Issue: Database not found**
-- Run `npm run db:init` (production) or `npm run db:init-local` (dev)
-- Verify `database_id` in `wrangler.toml` matches D1 database
+**Issue: Database connection errors**
+
+- Confirm `DATABASE_URL` is set (`npm run db:env:check`)
+- Confirm the Postgres schema from `src/schema.ts` has been applied
 
 **Issue: Persistence failures in discord-bot**
+
 - Check Cloudflare Workers logs: `wrangler tail`
 - Persistence errors are logged but don't fail commands
