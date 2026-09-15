@@ -22,7 +22,7 @@ auth = create_authfn(AuthFnConfig(
 ))
 
 app = FastAPI()
-app.include_router(create_router(auth.get_routes(), prefix="/auth"))
+app.include_router(create_router(auth.get_routes()))
 
 @app.get("/me")
 async def me(request: Request):

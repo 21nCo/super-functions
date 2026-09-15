@@ -58,7 +58,7 @@ from superfunctions_fastapi import create_router
 from auth import auth
 
 app = FastAPI()
-app.include_router(create_router(auth.get_routes(), prefix="/auth"))
+app.include_router(create_router(auth.get_routes()))
 
 @app.get("/protected")
 async def protected(request: Request):
@@ -77,7 +77,7 @@ from superfunctions_flask import create_blueprint
 from auth import auth
 
 app = Flask(__name__)
-app.register_blueprint(create_blueprint(auth.get_routes(), url_prefix="/auth"))
+app.register_blueprint(create_blueprint(auth.get_routes()))
 
 @app.get("/protected")
 async def protected():

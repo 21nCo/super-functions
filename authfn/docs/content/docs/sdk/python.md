@@ -66,7 +66,7 @@ from fastapi import FastAPI, Request
 from superfunctions_fastapi import create_router
 
 app = FastAPI()
-app.include_router(create_router(auth.get_routes(), prefix="/auth"))
+app.include_router(create_router(auth.get_routes()))
 
 @app.get("/openapi-authfn.json")
 async def openapi_authfn():
@@ -80,7 +80,7 @@ from flask import Flask
 from superfunctions_flask import create_blueprint
 
 app = Flask(__name__)
-app.register_blueprint(create_blueprint(auth.get_routes(), url_prefix="/auth"))
+app.register_blueprint(create_blueprint(auth.get_routes()))
 
 @app.get("/openapi-authfn.json")
 def openapi_authfn():

@@ -4627,7 +4627,7 @@ auth = create_authfn(AuthFnConfig(
 ))
 
 app = FastAPI()
-app.include_router(create_router(auth.get_routes(), prefix="/auth"))
+app.include_router(create_router(auth.get_routes()))
 
 @app.get("/me")
 async def me(request: Request):
@@ -4688,7 +4688,7 @@ auth = create_authfn(AuthFnConfig(
 ))
 
 app = Flask(__name__)
-app.register_blueprint(create_blueprint(auth.get_routes(), url_prefix="/auth"))
+app.register_blueprint(create_blueprint(auth.get_routes()))
 
 @app.get("/me")
 async def me():
@@ -4935,7 +4935,7 @@ Starlette apps should mount through [FastAPI](./fastapi). FastAPI is Starlette-b
 pip install authfn superfunctions-fastapi
 ```
 
-See [Frameworks → FastAPI](./fastapi) for the mount example (`create_router(auth.get_routes(), prefix="/auth")`).
+See [Frameworks → FastAPI](./fastapi) for the mount example (`create_router(auth.get_routes())`).
 
 ## Related
 
@@ -7493,7 +7493,7 @@ from superfunctions_fastapi import create_router
 from auth import auth
 
 app = FastAPI()
-app.include_router(create_router(auth.get_routes(), prefix="/auth"))
+app.include_router(create_router(auth.get_routes()))
 
 @app.get("/protected")
 async def protected(request: Request):
@@ -7512,7 +7512,7 @@ from superfunctions_flask import create_blueprint
 from auth import auth
 
 app = Flask(__name__)
-app.register_blueprint(create_blueprint(auth.get_routes(), url_prefix="/auth"))
+app.register_blueprint(create_blueprint(auth.get_routes()))
 
 @app.get("/protected")
 async def protected():
@@ -10531,7 +10531,7 @@ from fastapi import FastAPI, Request
 from superfunctions_fastapi import create_router
 
 app = FastAPI()
-app.include_router(create_router(auth.get_routes(), prefix="/auth"))
+app.include_router(create_router(auth.get_routes()))
 
 @app.get("/openapi-authfn.json")
 async def openapi_authfn():
@@ -10545,7 +10545,7 @@ from flask import Flask
 from superfunctions_flask import create_blueprint
 
 app = Flask(__name__)
-app.register_blueprint(create_blueprint(auth.get_routes(), url_prefix="/auth"))
+app.register_blueprint(create_blueprint(auth.get_routes()))
 
 @app.get("/openapi-authfn.json")
 def openapi_authfn():

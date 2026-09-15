@@ -22,7 +22,7 @@ auth = create_authfn(AuthFnConfig(
 ))
 
 app = Flask(__name__)
-app.register_blueprint(create_blueprint(auth.get_routes(), url_prefix="/auth"))
+app.register_blueprint(create_blueprint(auth.get_routes()))
 
 @app.get("/me")
 async def me():

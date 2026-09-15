@@ -13,7 +13,7 @@ Starlette apps should mount through [FastAPI](./fastapi). FastAPI is Starlette-b
 pip install authfn superfunctions-fastapi
 ```
 
-See [Frameworks → FastAPI](./fastapi) for the mount example (`create_router(auth.get_routes(), prefix="/auth")`).
+See [Frameworks → FastAPI](./fastapi) for the mount example (`create_router(auth.get_routes())`).
 
 ## Related
 
