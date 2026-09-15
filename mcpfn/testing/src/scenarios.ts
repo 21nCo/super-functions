@@ -671,9 +671,7 @@ function resolveScenarioVariables(
       for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
         const resolvedKey = visitString(key);
         if (keys.has(resolvedKey)) {
-          throw new Error(
-            `Scenario variable substitution creates duplicate object key: ${resolvedKey}`,
-          );
+          throw new Error("Scenario variable substitution creates duplicate object key");
         }
         keys.add(resolvedKey);
         entries.push([resolvedKey, visit(entry)]);

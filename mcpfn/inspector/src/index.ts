@@ -31,6 +31,12 @@ const SCENARIO_REDACTION_LIMITS = {
   maxStringLength: 2_048,
 } as const;
 const SCENARIO_SECRET_MARKER = "${MCPFN_SECRET}";
+const SCENARIO_SECRET_MARKERS = [
+  SCENARIO_SECRET_MARKER,
+  "${SECRET}",
+  "${CREDENTIAL}",
+  ...Array.from({ length: 26 }, (_, index) => `\${${String.fromCharCode(65 + index)}}`),
+];
 
 export interface McpFnInspectorSnapshot {
   formatVersion: 2;
@@ -216,21 +222,39 @@ export class McpFnInspector {
   ): McpFnExportedScenario {
     const scenario = createMcpFnScenario(name, operation, result);
     const { formatVersion, kind, sideEffect, ...payload } = scenario;
-    const redacted = {
-      ...Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, this.client.redact(value, {
-        ...SCENARIO_REDACTION_LIMITS,
-        // These are user payloads, even when their keys resemble an envelope.
-        preserveKeys: false,
-        redactionMarker: SCENARIO_SECRET_MARKER,
-      })])),
-      formatVersion, kind, sideEffect,
-    };
+    const secretMarker = selectScenarioSecretMarker(this.client);
+    let redacted: Record<string, unknown>;
+    try {
+      redacted = {
+        ...Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, this.client.redact(value, {
+          ...SCENARIO_REDACTION_LIMITS,
+          // These are user payloads, even when their keys resemble an envelope.
+          preserveKeys: false,
+          redactionMarker: secretMarker ?? "",
+        })])),
+        formatVersion, kind, sideEffect,
+      };
+    } catch {
+      return {
+        formatVersion,
+        kind,
+        sideEffect,
+        name: "",
+        status: "incomplete",
+        incompleteReason: "Inspector export omitted payload because credential redaction failed",
+      } as McpFnExportedScenario;
+    }
     const replaced = redacted as unknown as McpFnExportedScenario;
-    const exported = exceedsRedactionBounds(scenario, redacted, SCENARIO_REDACTION_LIMITS)
+    const incompleteReason = secretMarker === undefined
+      ? "Inspector export could not select a replayable redaction placeholder"
+      : exceedsRedactionBounds(scenario, redacted, SCENARIO_REDACTION_LIMITS)
+        ? "Inspector export exceeded redaction bounds and was truncated"
+        : undefined;
+    const exported = incompleteReason
       ? {
         ...replaced,
         status: "incomplete" as const,
-        incompleteReason: "Inspector export exceeded redaction bounds and was truncated",
+        incompleteReason,
       }
       : replaced;
     const variables = collectVariables(exported);
@@ -291,6 +315,20 @@ export class McpFnInspector {
   }
 }
 
+function selectScenarioSecretMarker(client: McpFnClient): string | undefined {
+  return SCENARIO_SECRET_MARKERS.find((marker) => {
+    try {
+      return client.redact(marker, {
+        ...SCENARIO_REDACTION_LIMITS,
+        preserveKeys: false,
+        redactionMarker: "",
+      }) === marker;
+    } catch {
+      return false;
+    }
+  });
+}
+
 function validateLimit(value: number, name: string): number {
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new TypeError(`${name} must be a positive safe integer`);
@@ -309,7 +347,10 @@ function exceedsRedactionBounds(
   depth = 0,
   ancestors = new WeakSet<object>(),
 ): boolean {
-  if (redacted === SCENARIO_SECRET_MARKER) return false;
+  if (
+    typeof redacted === "string" &&
+    /^\$\{[A-Z][A-Z0-9_]*\}$/.test(redacted)
+  ) return false;
   if (depth > limits.maxDepth) return true;
   if (typeof value === "string") return isTruncatedString(redacted, limits.maxStringLength);
   if (!value || typeof value !== "object" || value instanceof Date) return false;

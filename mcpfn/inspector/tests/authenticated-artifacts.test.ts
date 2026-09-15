@@ -223,6 +223,73 @@ it("declares placeholders introduced in redacted property keys", () => {
   });
 });
 
+it("selects a replayable placeholder when the preferred marker contains the credential", () => {
+  const secret = "MCPFN";
+  const target = customTarget({
+    kind: "custom",
+    open: async () => { throw new Error("unused"); },
+    redact: <T>(value: T, options): T => JSON.parse(
+      JSON.stringify(value).replaceAll(secret, options?.redactionMarker ?? "[REDACTED]"),
+    ) as T,
+  });
+  const inspector = new McpFnInspector(new McpFnClient({ target }));
+  const scenario = inspector.exportScenario(
+    "redacted key",
+    { kind: "tools.call", name: "echo", arguments: { [secret]: "value" } },
+    { content: [] },
+  );
+  expect(scenario.variables).toEqual(["SECRET"]);
+  expect(scenario.arguments).toEqual({ "${SECRET}": "${SECRET}" });
+});
+
+it("marks an export incomplete when credential redaction collapses payload keys", async () => {
+  const secret = "opaque-secret";
+  const fixture = await startAuthenticatedServer(secret);
+  const client = new McpFnClient({
+    target: authenticatedHttpTarget(fixture.url, {
+      credential: { headers: { authorization: `Bearer ${secret}` } },
+    }),
+  });
+  const inspector = new McpFnInspector(client);
+  try {
+    await inspector.connect();
+    const scenario = inspector.exportScenario(
+      "colliding keys",
+      {
+        kind: "tools.call",
+        name: "echo",
+        arguments: { [secret]: 1, "${MCPFN_SECRET}": 2 },
+      },
+      { content: [] },
+    );
+    expect(scenario).toMatchObject({
+      kind: "tools.call",
+      status: "incomplete",
+      incompleteReason: "Inspector export omitted payload because credential redaction failed",
+    });
+    expect(JSON.stringify(scenario)).not.toContain(secret);
+  } finally {
+    try { await inspector.close(); } finally { await fixture.close(); }
+  }
+});
+
+it("marks an export incomplete when no replayable placeholder is safe", () => {
+  const target = customTarget({
+    kind: "custom",
+    open: async () => { throw new Error("unused"); },
+    redact: <T>(): T => "" as T,
+  });
+  const inspector = new McpFnInspector(new McpFnClient({ target }));
+  expect(inspector.exportScenario(
+    "redacted key",
+    { kind: "tools.call", name: "echo", arguments: { secret: "value" } },
+    { content: [] },
+  )).toMatchObject({
+    status: "incomplete",
+    incompleteReason: "Inspector export could not select a replayable redaction placeholder",
+  });
+});
+
 
 it.each(["connected", "passed", "logging.message", "custom"])("redacts envelope-shaped scenario payloads containing %s", async secret => {
   const fixture = await startAuthenticatedServer(secret, true);

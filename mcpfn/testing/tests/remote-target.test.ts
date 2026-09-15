@@ -568,7 +568,10 @@ it.each(["x-api-key", "authorization"])("redacts URL and form encoded %s credent
   const credential = { headers: { [header]: header === "authorization" ? `Bearer ${secret}` : secret } };
   const result = redactRemoteCredential(credential, {
     message: variants.join(" | "),
-    details: Object.fromEntries(variants.map(value => [value, new Error(value)])),
+    details: Object.fromEntries(variants.map((value, index) => [
+      `variant-${index}-${value}`,
+      new Error(value),
+    ])),
     unrelated: "Keep CaseSensitive text",
   });
   const json = JSON.stringify(result);
@@ -772,4 +775,12 @@ it("checks generic redaction markers in the final output", async () => {
   const { redactRemoteCredential } = await import("../src/remote-target.js");
   const output = redactRemoteCredential({ headers: { "x-secret": "[REDACTED]" } }, { password: "unknown" });
   expect(output.password).not.toContain("[REDACTED]");
+});
+
+it("fails closed when distinct payload keys redact to the same key", async () => {
+  const { redactRemoteCredential, McpFnRedactionLimitError } = await import("../src/remote-target.js");
+  expect(() => redactRemoteCredential(
+    { headers: { "x-api-key": "opaque-secret" } },
+    { "opaque-secret": 1, "[REDACTED]": 2 },
+  )).toThrow(McpFnRedactionLimitError);
 });

@@ -171,7 +171,9 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
       return result;
     }
     if (input && typeof input === "object") {
-      const result = Object.fromEntries(Object.entries(input).map(([key, entry]) => {
+      const entries: Array<[string, unknown]> = [];
+      const keys = new Set<string>();
+      for (const [key, entry] of Object.entries(input)) {
         const fixed = envelopeKeys[role]?.has(key) ?? false;
         if (fixed) preserveStructural(key);
         let childRole = "payload";
@@ -181,8 +183,21 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
           else if (["failure", "runtime", "packages", "droppedInventoryEntries", "target"].includes(key)) childRole = key;
           else if (role === "inspectorEvent" && key === "event") childRole = (input as { source?: string }).source === "client" ? "root" : "diagnostic";
         }
-        return [fixed ? key : scrub(key, "payload", "", finalPass), typeof entry === "string" ? scrub(entry, fixed ? role : "payload", key, finalPass) : scrub(entry, childRole, "", finalPass)];
-      }));
+        const scrubbedKey = fixed ? key : scrub(key, "payload", "", finalPass) as string;
+        if (keys.has(scrubbedKey)) {
+          throw new McpFnRedactionLimitError(
+            "Credential redaction created duplicate object keys",
+          );
+        }
+        keys.add(scrubbedKey);
+        entries.push([
+          scrubbedKey,
+          typeof entry === "string"
+            ? scrub(entry, fixed ? role : "payload", key, finalPass)
+            : scrub(entry, childRole, "", finalPass),
+        ]);
+      }
+      const result = Object.fromEntries(entries);
       assertPayloadSerialization(result, role, finalPass, replacementPattern);
       return result;
     }

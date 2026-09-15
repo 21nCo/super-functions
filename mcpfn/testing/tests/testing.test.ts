@@ -115,16 +115,19 @@ describe("McpFn testing", () => {
     });
     const client = await McpFnTestClient.connect(server);
     try {
-      await expect(runScenarios(client, [
+      const error = await runScenarios(client, [
         {
           name: "colliding key",
           tool: "echo-key",
           variables: ["FIELD"],
           arguments: { "${FIELD}": 1, actual: 2 },
         },
-      ], { variables: { FIELD: "actual" } })).rejects.toThrow(
-        "Scenario variable substitution creates duplicate object key: actual",
+      ], { variables: { FIELD: "actual" } }).then(
+        () => { throw new Error("Expected a variable-key collision"); },
+        failure => failure as Error,
       );
+      expect(error.message).toBe("Scenario variable substitution creates duplicate object key");
+      expect(error.message).not.toContain("actual");
       expect(execute).not.toHaveBeenCalled();
     } finally {
       await client.close();
