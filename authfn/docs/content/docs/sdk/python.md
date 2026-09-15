@@ -12,7 +12,6 @@ pip install authfn
 # or with framework extras
 pip install "authfn[fastapi]"
 pip install "authfn[flask]"
-pip install "authfn[starlette]"
 ```
 
 ## Mental model
@@ -34,10 +33,11 @@ from authfn import (
     authfn_social_oauth_plugin,
     create_authfn,
 )
-from authfn.adapters.memory import memory_adapter
 
+# Replace `my_database_adapter` with any Superfunctions db adapter
+# (e.g. superfunctions_sqlalchemy.create_adapter(engine)).
 auth = create_authfn(AuthFnConfig(
-    database=memory_adapter(),
+    database=my_database_adapter,
     namespace="authfn",
     plugins=[
         authfn_password_plugin(),
@@ -128,13 +128,12 @@ Hook names use Python's `snake_case`. The behavior matches the Node kernel.
 
 ## Adapters
 
-Python's `@superfunctions/db` analogue ships:
+Pass any Superfunctions `db` adapter as `AuthFnConfig.database`. There is no `authfn.adapters` package.
 
-- `memory_adapter` (testing).
-- `sqlalchemy_adapter` (Postgres / SQLite via SQLAlchemy).
-- `drizzle-style` adapter for those who keep schema in TypeScript and run migrations cross-language.
+- Tests and examples typically use a local in-memory adapter that implements the contract.
+- Production Python apps use `superfunctions_sqlalchemy.create_adapter(engine)` for Postgres / SQLite.
 
-The contract is identical to the Node adapter — see [Adapters → Database](../adapters/database).
+The contract matches the Node adapter — see [Adapters → Database](../adapters/database).
 
 ## OpenAPI parity
 

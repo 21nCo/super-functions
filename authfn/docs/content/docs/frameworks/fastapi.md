@@ -13,10 +13,10 @@ pip install "authfn[fastapi]"
 from fastapi import FastAPI, Request
 from superfunctions_fastapi import to_fastapi
 from authfn import create_authfn, AuthFnConfig, authfn_password_plugin
-from authfn.adapters.memory import memory_adapter
 
+# Replace `my_database_adapter` with any Superfunctions db adapter.
 auth = create_authfn(AuthFnConfig(
-    database=memory_adapter(),
+    database=my_database_adapter,
     namespace="authfn",
     plugins=[authfn_password_plugin()],
 ))

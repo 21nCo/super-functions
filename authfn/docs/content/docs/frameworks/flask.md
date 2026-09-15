@@ -13,10 +13,10 @@ pip install "authfn[flask]"
 from flask import Flask, request, jsonify
 from superfunctions_flask import to_flask
 from authfn import create_authfn, AuthFnConfig, authfn_password_plugin
-from authfn.adapters.memory import memory_adapter
 
+# Replace `my_database_adapter` with any Superfunctions db adapter.
 auth = create_authfn(AuthFnConfig(
-    database=memory_adapter(),
+    database=my_database_adapter,
     namespace="authfn",
     plugins=[authfn_password_plugin()],
 ))

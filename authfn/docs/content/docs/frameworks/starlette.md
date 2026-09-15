@@ -6,7 +6,7 @@ description: Mount the Python authfn kernel on Starlette / pure ASGI.
 # Starlette
 
 ```bash
-pip install "authfn[starlette]"
+pip install authfn
 ```
 
 ```python
@@ -15,10 +15,10 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from superfunctions_starlette import to_starlette
 from authfn import create_authfn, AuthFnConfig, authfn_password_plugin
-from authfn.adapters.memory import memory_adapter
 
+# Replace `my_database_adapter` with any Superfunctions db adapter.
 auth = create_authfn(AuthFnConfig(
-    database=memory_adapter(),
+    database=my_database_adapter,
     namespace="authfn",
     plugins=[authfn_password_plugin()],
 ))
