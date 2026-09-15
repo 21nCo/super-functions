@@ -103,6 +103,7 @@ The output is deterministic and matches the TypeScript path surface.
 - Python authfn follows the same canonical envelopes and error codes as TypeScript.
 - FastAPI and Flask cookie propagation is covered by the shared package layer and authfn parity tests.
 - Sensitive values such as passwords, OTP codes, API key secrets, and OAuth tokens are omitted or redacted from observability events.
+- CI discovers this package from the monorepo root (`.github/workflows/ci.yml`) and runs pytest, ruff, and `python -m build`.
 
 ### Awaiting placement verification telemetry
 

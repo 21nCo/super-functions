@@ -9,10 +9,9 @@ The `authfn` Python package is a port of the Node kernel. It exposes the same `c
 
 ```bash
 pip install authfn
-# or with framework extras
-pip install "authfn[fastapi]"
-pip install "authfn[flask]"
-pip install "authfn[starlette]"
+# plus a framework adapter
+pip install superfunctions-fastapi
+pip install superfunctions-flask
 ```
 
 ## Mental model
@@ -34,10 +33,11 @@ from authfn import (
     authfn_social_oauth_plugin,
     create_authfn,
 )
-from authfn.adapters.memory import memory_adapter
 
+# Replace `my_database_adapter` with any Superfunctions db adapter
+# (e.g. superfunctions_sqlalchemy.create_adapter(engine)).
 auth = create_authfn(AuthFnConfig(
-    database=memory_adapter(),
+    database=my_database_adapter,
     namespace="authfn",
     plugins=[
         authfn_password_plugin(),
@@ -63,10 +63,10 @@ auth = create_authfn(AuthFnConfig(
 
 ```python
 from fastapi import FastAPI, Request
-from superfunctions_fastapi import to_fastapi
+from superfunctions_fastapi import create_router
 
 app = FastAPI()
-app.include_router(to_fastapi(auth.router), prefix="/auth")
+app.include_router(create_router(auth.get_routes()))
 
 @app.get("/openapi-authfn.json")
 async def openapi_authfn():
@@ -77,10 +77,10 @@ async def openapi_authfn():
 
 ```python
 from flask import Flask
-from superfunctions_flask import to_flask
+from superfunctions_flask import create_blueprint
 
 app = Flask(__name__)
-to_flask(app, auth.router, base_path="/auth")
+app.register_blueprint(create_blueprint(auth.get_routes()))
 
 @app.get("/openapi-authfn.json")
 def openapi_authfn():
@@ -89,14 +89,7 @@ def openapi_authfn():
 
 ### Starlette
 
-```python
-from starlette.applications import Starlette
-from starlette.routing import Route
-from superfunctions_starlette import to_starlette
-
-routes = [*to_starlette(auth.router, base_path="/auth")]
-app = Starlette(routes=routes)
-```
+There is no `superfunctions_starlette` adapter. Mount through FastAPI (`pip install authfn superfunctions-fastapi`) — see [Frameworks → FastAPI](../frameworks/fastapi).
 
 ## Reading the session
 
@@ -128,13 +121,12 @@ Hook names use Python's `snake_case`. The behavior matches the Node kernel.
 
 ## Adapters
 
-Python's `@superfunctions/db` analogue ships:
+Pass any Superfunctions `db` adapter as `AuthFnConfig.database`. There is no `authfn.adapters` package.
 
-- `memory_adapter` (testing).
-- `sqlalchemy_adapter` (Postgres / SQLite via SQLAlchemy).
-- `drizzle-style` adapter for those who keep schema in TypeScript and run migrations cross-language.
+- Tests and examples typically use a local in-memory adapter that implements the contract.
+- Production Python apps use `superfunctions_sqlalchemy.create_adapter(engine)` for Postgres / SQLite.
 
-The contract is identical to the Node adapter — see [Adapters → Database](../adapters/database).
+The contract matches the Node adapter — see [Adapters → Database](../adapters/database).
 
 ## OpenAPI parity
 
