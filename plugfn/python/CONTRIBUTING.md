@@ -14,8 +14,8 @@ Thank you for your interest in contributing to PlugFn! This document provides gu
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/superfunctions/superfunctions.git
-cd superfunctions/plugfn/python
+git clone https://github.com/21nCo/super-functions.git
+cd super-functions/plugfn/python
 ```
 
 2. Create a virtual environment:
@@ -372,7 +372,7 @@ Include:
 
 (For maintainers)
 
-1. Update version in `pyproject.toml` and `setup.py`
+1. Update version in `pyproject.toml`
 2. Update CHANGELOG.md
 3. Create git tag: `git tag v0.1.0`
 4. Push tag: `git push origin v0.1.0`
@@ -402,13 +402,13 @@ Report violations to: support@superfunctions.dev
 ## Questions?
 
 - **Documentation**: https://docs.superfunctions.dev/plugfn
-- **GitHub Issues**: https://github.com/superfunctions/superfunctions/issues
+- **GitHub Issues**: https://github.com/21nCo/super-functions/issues
 - **Discord**: Join our community
 - **Email**: support@superfunctions.dev
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the Apache-2.0 License.
+By contributing, you agree that your contributions will be licensed under the MIT License.
 
 ## Recognition
 

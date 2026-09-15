@@ -119,6 +119,7 @@
     "deploy:uifn-catalogs:production": "node scripts/deploy-uifn-catalogs.mjs production",
     "gate:mailfn-release": "node scripts/gate-mailfn-release.mjs",
     "gate:mcpfn-release": "node scripts/gate-mcpfn-release.mjs",
+    "gate:plugfn-release": "node plugfn/scripts/gate-plugfn-release.mjs",
     "gate:reviewfn-release": "node scripts/gate-reviewfn-release.mjs",
     "test:watch": "turbo run test:watch",
     "test:coverage": "turbo run test:coverage",
