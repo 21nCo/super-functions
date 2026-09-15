@@ -70,12 +70,7 @@ export interface McpFnBoundedInventory<T> {
   complete: boolean;
 }
 
-const diagnosticOmissions = new WeakSet<object>();
-
-/** Identify a live client-generated fallback; serialized codes are not provenance. */
-export function isMcpFnDiagnosticOmission(event: McpFnDiagnosticEvent): boolean {
-  return diagnosticOmissions.has(event);
-}
+const redactionOmissions = new WeakSet<object>();
 
 export class McpFnClient {
   private readonly options: McpFnClientOptions;
@@ -248,6 +243,11 @@ export class McpFnClient {
 
   getTargetDescriptor() {
     return this.options.target.describe();
+  }
+
+  /** Identify omissions produced by this client instance, across ESM/CJS consumers. */
+  isRedactionOmission(event: McpFnDiagnosticEvent | McpFnClientEvent): boolean {
+    return redactionOmissions.has(event);
   }
 
   onDiagnostic(listener: McpFnDiagnosticSink): () => void {
@@ -902,14 +902,17 @@ export class McpFnClient {
         formatVersion: 1,
         kind,
         at: (this.options.clock?.() ?? new Date()).toISOString(),
-        requestId: this.redact(this.requestId()),
-        target: { ...this.redact(descriptor), kind: targetKind },
-        ...(payload !== undefined ? { payload: this.redact(payload) } : {}),
+        requestId: this.redact(this.requestId(), { preserveKeys: false }),
+        target: { ...this.redact(descriptor, { preserveKeys: false }), kind: targetKind },
+        ...(payload !== undefined
+          ? { payload: this.redact(payload, { preserveKeys: false }) }
+          : {}),
       };
     }
     catch {
       event = { formatVersion: 1, kind, at: new Date().toISOString(), requestId: "redacted",
         target: { kind: "custom" }, payload: { omitted: true, reason: "diagnostic-redaction-failed" } };
+      redactionOmissions.add(event);
     }
     await Promise.allSettled(
       [...this.eventListeners].map(async (listener) => listener(event)),
@@ -949,7 +952,27 @@ export class McpFnClient {
 
   private async dispatch(event: McpFnDiagnosticEvent): Promise<void> {
     let redacted: McpFnDiagnosticEvent;
-    try { redacted = isMcpFnDiagnosticOmission(event) ? event : this.redact(event) as unknown as McpFnDiagnosticEvent; }
+    try {
+      if (this.isRedactionOmission(event)) {
+        redacted = event;
+      } else {
+        const { phase, outcome, code, requestId, at, target, details } = event;
+        const { kind, ...descriptor } = target;
+        redacted = {
+          phase,
+          outcome,
+          ...(code === undefined
+            ? {}
+            : { code: this.redact(code, { preserveKeys: false }) }),
+          requestId: this.redact(requestId, { preserveKeys: false }),
+          at,
+          target: { ...this.redact(descriptor, { preserveKeys: false }), kind },
+          ...(details === undefined
+            ? {}
+            : { details: this.redact(details, { preserveKeys: false }) }),
+        };
+      }
+    }
     catch {
       redacted = diagnosticRedactionFailure();
     }
@@ -964,7 +987,7 @@ function diagnosticRedactionFailure(): McpFnDiagnosticEvent {
     phase: "capability-operation", outcome: "failed", code: "MCPFN_DIAGNOSTIC_REDACTION_FAILED",
     at: new Date().toISOString(), requestId: "redacted", target: { kind: "custom" }, details: { omitted: true },
   };
-  diagnosticOmissions.add(event);
+  redactionOmissions.add(event);
   return event;
 }
 

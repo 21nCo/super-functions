@@ -14,7 +14,6 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import {
   McpFnClient,
-  isMcpFnDiagnosticOmission,
   type McpFnClientOptions,
   type McpFnClientEvent,
   type McpFnDiagnosticEvent,
@@ -248,8 +247,8 @@ export class McpFnInspector {
     at: string,
     raw: McpFnDiagnosticEvent | McpFnClientEvent,
   ): void {
-    if (source === "diagnostic" && isMcpFnDiagnosticOmission(raw as McpFnDiagnosticEvent)) {
-      // The fallback is useful evidence, but the original diagnostic is missing.
+    if (this.client.isRedactionOmission(raw)) {
+      // The fallback is useful evidence, but the original event is missing.
       this.droppedEvents += 1;
     }
     let event: McpFnInspectorTimelineEvent = {
@@ -474,7 +473,10 @@ function collectVariables(value: unknown): string[] {
     } else if (Array.isArray(entry)) {
       entry.forEach(visit);
     } else if (entry && typeof entry === "object") {
-      Object.values(entry as Record<string, unknown>).forEach(visit);
+      for (const [key, value] of Object.entries(entry as Record<string, unknown>)) {
+        visit(key);
+        visit(value);
+      }
     }
   };
   visit(value);

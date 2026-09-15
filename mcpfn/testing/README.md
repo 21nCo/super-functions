@@ -188,3 +188,8 @@ owned session cleanup. Concurrent retries share one operation; successful cleanu
 releases ownership and later retries do nothing. A failed retry rejects with the
 same safe error. Retrying does not rewrite the historical report as passing.
 The CLI makes one cleanup retry and emits the failed report with exit code 1.
+
+Direct `McpFnTestClient.connectTarget()` callers receive
+`McpFnTestClientCleanupError` when connection failure is followed by cleanup
+failure. Retain that error and call `await error.retryCleanup()`; the failed
+session remains owned until a retry succeeds.

@@ -3,9 +3,11 @@ import { startAuthenticatedServer, listen, closeServer } from "../../test-suppor
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { customTarget } from "@mcpfn/client";
 
 import {
   authenticatedHttpTarget,
+  McpFnTestClientCleanupError,
   McpFnTestClient,
   createMcpFnTargetSuiteJUnit,
   runMcpFnTargetSuite,
@@ -17,6 +19,25 @@ describe("authenticated remote MCP targets", () => {
 
   afterEach(async () => {
     await Promise.allSettled(closeCallbacks.splice(0).map((close) => close()));
+  });
+
+  it("retains failed connection cleanup ownership for caller retries", async () => {
+    const cleanup = vi.fn(async () => {
+      if (cleanup.mock.calls.length < 3) throw new Error("temporary cleanup failure");
+    });
+    const target = customTarget({
+      kind: "custom",
+      open: async () => { throw new Error("connection failed"); },
+      cleanup,
+    });
+    const failure = await McpFnTestClient.connectTarget(target).then(
+      () => { throw new Error("Expected connection failure"); },
+      error => error as McpFnTestClientCleanupError,
+    );
+    expect(failure).toBeInstanceOf(McpFnTestClientCleanupError);
+    expect(cleanup).toHaveBeenCalledTimes(2);
+    await expect(failure.retryCleanup()).resolves.toBeUndefined();
+    expect(cleanup).toHaveBeenCalledTimes(3);
   });
 
 
@@ -725,6 +746,14 @@ it.each([
       expect(value).not.toContain(secret);
     }
   }
+});
+
+it("fails closed when JSON separators reconstruct an opaque credential", async () => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  expect(() => redactRemoteCredential(
+    { headers: { "x-api-key": 'foo":"bar' } },
+    { foo: "bar" },
+  )).toThrow(/safe serialized output/);
 });
 
 it("checks generic redaction markers in the final output", async () => {

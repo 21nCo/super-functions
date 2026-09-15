@@ -250,13 +250,15 @@ async function runHostedCase(
     }
     const code = validatedRedirectCode(authorizationResponse, fixture);
     if (fixture.token) {
-      phase = "token-exchange";
+      phase = fixture.token.grantType === "refresh_token"
+        ? "token-refresh"
+        : "token-exchange";
       const tokenBody = new URLSearchParams({
         grant_type: fixture.token.grantType,
         client_id: fixture.authorization.clientId,
       });
       if (fixture.token.grantType === "authorization_code") {
-        tokenBody.set("code", code);
+        tokenBody.set("code", fixture.token.code ?? code);
         tokenBody.set("redirect_uri", fixture.authorization.redirectUri);
         tokenBody.set("code_verifier", fixture.authorization.codeVerifier);
         tokenBody.set("resource", fixture.authorization.resource);

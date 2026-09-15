@@ -75,6 +75,67 @@ describe("authenticated programmatic artifacts", () => {
 
 });
 
+it("redacts client-event payloads in payload mode and records fallbacks as omissions", async () => {
+  const events: any[] = [];
+  let throwOnPayload = false;
+  const target = customTarget({
+    kind: "custom",
+    open: async () => { throw new Error("unused"); },
+    redact: <T>(value: T, options): T => {
+      if (throwOnPayload && value && typeof value === "object" && "status" in value) {
+        throw new Error("payload redaction unavailable");
+      }
+      if (options?.preserveKeys !== false) return value;
+      return JSON.parse(JSON.stringify(value).replaceAll("passed", "[REDACTED]")) as T;
+    },
+  });
+  const client = new McpFnClient({ target, events: event => { events.push(event); } });
+  const inspector = new McpFnInspector(client);
+  const emitEvent = (client as unknown as {
+    emitEvent(kind: "logging.message", payload: unknown): Promise<void>;
+  }).emitEvent.bind(client);
+  await emitEvent("logging.message", { status: "passed" });
+  expect(events[0].kind).toBe("logging.message");
+  expect(events[0].payload.status).toBe("[REDACTED]");
+  throwOnPayload = true;
+  await emitEvent("logging.message", { status: "passed" });
+  expect(events[1].payload).toMatchObject({ omitted: true });
+  expect(client.isRedactionOmission(events[1])).toBe(true);
+  const snapshot = await inspector.snapshot();
+  expect(snapshot.timelineComplete).toBe(false);
+  expect(snapshot.droppedEvents).toBe(1);
+});
+
+it("reconstructs diagnostic discriminators around payload redaction", async () => {
+  const observed: any[] = [];
+  const target = customTarget({
+    kind: "custom",
+    open: async () => { throw new Error("unused"); },
+    redact: <T>(value: T): T => JSON.parse(
+      JSON.stringify(value)
+        .replaceAll("transport-close", "[REDACTED]")
+        .replaceAll("failed", "[REDACTED]"),
+    ) as T,
+  });
+  const client = new McpFnClient({ target, diagnostics: event => { observed.push(event); } });
+  const dispatch = (client as unknown as {
+    dispatch(event: Record<string, unknown>): Promise<void>;
+  }).dispatch.bind(client);
+  await dispatch({
+    phase: "transport-close",
+    outcome: "failed",
+    requestId: "request",
+    at: new Date(0).toISOString(),
+    target: { kind: "custom" },
+    details: { phase: "transport-close", outcome: "failed" },
+  });
+  expect(observed[0]).toMatchObject({
+    phase: "transport-close",
+    outcome: "failed",
+    details: { phase: "[REDACTED]", outcome: "[REDACTED]" },
+  });
+});
+
 it("redacts failed-open diagnostics after releasing malformed credentials", async () => {
   const secret = "private-header-first\nprivate-header-second";
   const events: unknown[] = [];
@@ -138,6 +199,28 @@ it.each(["tools.call", "non-idempotent", "none"])("preserves exported scenario d
   expect(scenario.kind).toBe(secret === "none" ? "resources.read" : "tools.call");
   expect(scenario.sideEffect).toBe(secret === "none" ? "none" : "non-idempotent");
   expect(scenario.name).toBe("[REDACTED]");
+});
+
+it("declares placeholders introduced in redacted property keys", () => {
+  const secret = "opaque-property-key";
+  const target = customTarget({
+    kind: "custom",
+    open: async () => { throw new Error("unused"); },
+    redact: <T>(value: T, options): T => JSON.parse(
+      JSON.stringify(value).replaceAll(secret, options?.redactionMarker ?? "[REDACTED]"),
+    ) as T,
+  });
+  const inspector = new McpFnInspector(new McpFnClient({ target }));
+  const scenario = inspector.exportScenario(
+    "redacted key",
+    { kind: "tools.call", name: "echo", arguments: { [secret]: "value" } },
+    { content: [], structuredContent: { [secret]: "value" } },
+  );
+  expect(scenario.variables).toEqual(["MCPFN_SECRET"]);
+  expect(scenario.arguments).toEqual({ "${MCPFN_SECRET}": "${MCPFN_SECRET}" });
+  expect(scenario.expect?.structuredContent).toEqual({
+    "${MCPFN_SECRET}": "${MCPFN_SECRET}",
+  });
 });
 
 

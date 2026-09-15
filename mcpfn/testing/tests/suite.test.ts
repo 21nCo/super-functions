@@ -262,36 +262,49 @@ it.each(["complete", "passed"])("keeps suite structure when a custom secret is %
 it("delivers diagnostics after exactly one custom redaction and bounds their retained bytes", async () => {
   const server = createMcpFnServer({ info: { name: "diagnostics", version: "1" }, registry: new McpFnRegistry() });
   const observed: unknown[] = [];
-  const report = await runMcpFnTargetSuite({ maxReportBytes: 4096,
+  let redactionCalls = 0;
+  const report = await runMcpFnTargetSuite({ maxReportBytes: 1024,
     client: { diagnostics: event => { observed.push(event); } },
     target: customTarget({ kind: "custom", redact: <T>(value: T): T => {
-      if (value && typeof value === "object" && "phase" in value) {
+      if (value && typeof value === "object" && "large" in value) {
         if ("redactionCount" in value) throw new Error("duplicate redaction");
-        return { ...value, redactionCount: 1, details: { large: "x".repeat(6000) } } as T;
+        redactionCalls += 1;
+        return { ...value, redactionCount: 1 } as T;
       }
       return value;
-    }, open: async () => {
+    }, open: async context => {
+      await context.diagnostic({
+        phase: "capability-operation", outcome: "succeeded",
+        requestId: context.requestId, at: new Date().toISOString(),
+        target: { kind: "custom" }, details: { large: "x".repeat(6000) },
+      });
       const [client, remote] = InMemoryTransport.createLinkedPair();
       await server.connect(remote);
       return { transport: client, close: () => server.close() };
     } }),
   });
   expect(observed.length).toBeGreaterThan(0);
-  expect(observed.every(event => (event as { redactionCount: number }).redactionCount === 1)).toBe(true);
+  expect(redactionCalls).toBe(1);
+  expect(observed.some(event =>
+    (event as { details?: { redactionCount?: number } }).details?.redactionCount === 1,
+  )).toBe(true);
   expect(report.droppedTimelineEvents).toBeGreaterThan(0);
   expect(report.incompleteReason).toContain("maxReportBytes");
   expect(report.incompleteReason).not.toContain("maxTimelineEvents");
   expect(report.timeline.length).toBeLessThan(observed.length);
-  expect(Buffer.byteLength(JSON.stringify(report))).toBeLessThanOrEqual(4096);
+  expect(Buffer.byteLength(JSON.stringify(report))).toBeLessThanOrEqual(1024);
 });
 
 
 it.each([1n, () => undefined, Symbol("diagnostic"), undefined, NaN, Infinity])("marks unserializable diagnostic data as dropped and incomplete (%s)", async amount => {
   const server = createMcpFnServer({ info: { name: "bigint", version: "1" }, registry: new McpFnRegistry().register({ name: "echo", description: "Fixture", inputSchema: { type: "object" }, handler: async () => structuredResult({ ok: true }) }) });
   const report = await runMcpFnTargetSuite({ scenarios: [{ name: "retained", tool: "echo" }], target: customTarget({ kind: "custom",
-    redact: <T>(value: T): T => value && typeof value === "object" && "phase" in value
-      ? { ...value, details: { amount } } as T : value,
-    open: async () => {
+    open: async context => {
+      await context.diagnostic({
+        phase: "capability-operation", outcome: "succeeded",
+        requestId: context.requestId, at: new Date().toISOString(),
+        target: { kind: "custom" }, details: { amount },
+      });
       const [client, remote] = InMemoryTransport.createLinkedPair();
       await server.connect(remote);
       return { transport: client, close: () => server.close() };
@@ -326,12 +339,18 @@ it("scrubs custom metadata while the target still owns its credential state", as
 });
 
 
-it.each([new Map([["key", "evidence"]]), new Set(["evidence"])])("preserves container diagnostic evidence in JSON (%s)", async amount => {
+it.each([
+  { name: "Map", amount: new Map([["key", "evidence"]]) },
+  { name: "Set", amount: new Set(["evidence"]) },
+])("preserves $name diagnostic evidence in JSON", async ({ amount }) => {
   const server = createMcpFnServer({ info: { name: "containers", version: "1" }, registry: new McpFnRegistry().register({ name: "echo", description: "Fixture", inputSchema: { type: "object" }, handler: async () => structuredResult({ ok: true }) }) });
   const report = await runMcpFnTargetSuite({ scenarios: [{ name: "retained", tool: "echo" }], target: customTarget({ kind: "custom",
-    redact: <T>(value: T): T => value && typeof value === "object" && "phase" in value
-      ? { ...value, details: { amount } } as T : value,
-    open: async () => {
+    open: async context => {
+      await context.diagnostic({
+        phase: "capability-operation", outcome: "succeeded",
+        requestId: context.requestId, at: new Date().toISOString(),
+        target: { kind: "custom" }, details: { amount },
+      });
       const [client, remote] = InMemoryTransport.createLinkedPair();
       await server.connect(remote);
       return { transport: client, close: () => server.close() };
@@ -345,7 +364,9 @@ it.each([new Map([["key", "evidence"]]), new Set(["evidence"])])("preserves cont
   const expected = amount instanceof Map
     ? { type: "Map", entries: [["key", "evidence"]] }
     : { type: "Set", values: ["evidence"] };
-  expect(persisted.timeline[0].details.amount).toEqual(expected);
+  expect(persisted.timeline.find((event: { details?: { amount?: unknown } }) =>
+    event.details?.amount !== undefined,
+  )?.details.amount).toEqual(expected);
   expect(() => JSON.stringify(report)).not.toThrow();
 });
 

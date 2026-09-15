@@ -56,7 +56,7 @@ function credentialValues(headers: HeadersInit): Set<string> {
 }
 
 export class McpFnRedactionLimitError extends Error {
-  constructor() { super("Credential redaction exceeded its traversal budget"); }
+  constructor(message = "Credential redaction exceeded its traversal budget") { super(message); }
 }
 
 // Only these locally authored envelope paths retain structural keys. Unknown
@@ -153,18 +153,26 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
         return replacementPattern!.test(replacement) ? "" : replacement;
       }) : input;
     }
-    if (Array.isArray(input)) return input.map(entry => scrub(entry, role, "", finalPass));
-    if (input && typeof input === "object") return Object.fromEntries(Object.entries(input).map(([key, entry]) => {
-      const fixed = envelopeKeys[role]?.has(key) ?? false;
-      let childRole = "payload";
-      if (fixed) {
-        if (key === "results") childRole = "result";
-        else if (key === "timeline") childRole = (value as any)?.kind === "mcpfn.inspector-snapshot" ? "inspectorEvent" : "diagnostic";
-        else if (["failure", "runtime", "packages", "droppedInventoryEntries", "target"].includes(key)) childRole = key;
-        else if (role === "inspectorEvent" && key === "event") childRole = (input as { source?: string }).source === "client" ? "root" : "diagnostic";
-      }
-      return [fixed ? key : scrub(key, "payload", "", finalPass), typeof entry === "string" ? scrub(entry, fixed ? role : "payload", key, finalPass) : scrub(entry, childRole, "", finalPass)];
-    }));
+    if (Array.isArray(input)) {
+      const result = input.map(entry => scrub(entry, role, "", finalPass));
+      assertPayloadSerialization(result, role, finalPass, replacementPattern);
+      return result;
+    }
+    if (input && typeof input === "object") {
+      const result = Object.fromEntries(Object.entries(input).map(([key, entry]) => {
+        const fixed = envelopeKeys[role]?.has(key) ?? false;
+        let childRole = "payload";
+        if (fixed) {
+          if (key === "results") childRole = "result";
+          else if (key === "timeline") childRole = (value as any)?.kind === "mcpfn.inspector-snapshot" ? "inspectorEvent" : "diagnostic";
+          else if (["failure", "runtime", "packages", "droppedInventoryEntries", "target"].includes(key)) childRole = key;
+          else if (role === "inspectorEvent" && key === "event") childRole = (input as { source?: string }).source === "client" ? "root" : "diagnostic";
+        }
+        return [fixed ? key : scrub(key, "payload", "", finalPass), typeof entry === "string" ? scrub(entry, fixed ? role : "payload", key, finalPass) : scrub(entry, childRole, "", finalPass)];
+      }));
+      assertPayloadSerialization(result, role, finalPass, replacementPattern);
+      return result;
+    }
     return input;
   };
   const timelineEvent = value && typeof value === "object" && ["client", "diagnostic"].includes((value as { source?: string }).source ?? "");
@@ -172,6 +180,21 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   const scrubbed = scrub(value, role);
   const generic = redactOAuthValue(scrubbed, { maxStringLength: 262_144, maxDepth: 64, maxArrayEntries: 100_000, maxObjectEntries: 100_000, ...(redactionMarker !== undefined ? { redactionMarker } : {}) });
   return scrub(generic, role, "", true) as T;
+}
+
+function assertPayloadSerialization(
+  value: unknown,
+  role: string,
+  finalPass: boolean,
+  credentialPattern: RegExp | undefined,
+): void {
+  if (!finalPass || role !== "payload" || !credentialPattern) return;
+  const serialized = JSON.stringify(value);
+  if (serialized !== undefined && credentialPattern.test(serialized)) {
+    throw new McpFnRedactionLimitError(
+      "Credential redaction could not guarantee safe serialized output",
+    );
+  }
 }
 
 /** Remove known opaque credential values as well as credential-shaped fields. */

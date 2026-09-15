@@ -1,6 +1,7 @@
 import { createServer, request as httpRequest } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryTaskStore } from "@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js";
+import { customTarget } from "@mcpfn/client";
 import {
   McpFnRegistry,
   createMcpFnServer,
@@ -23,6 +24,74 @@ import {
 } from "../src/index.js";
 
 describe("McpFn testing", () => {
+  it("counts redaction-fallback client events as omitted evidence", async () => {
+    const client = McpFnTestClient.createTarget(customTarget({
+      kind: "custom",
+      open: async () => { throw new Error("unused"); },
+      redact: <T>(value: T): T => {
+        if (value && typeof value === "object" && "secret" in value) {
+          throw new Error("event redaction unavailable");
+        }
+        return value;
+      },
+    }));
+    const emitEvent = (client.session as unknown as {
+      emitEvent(kind: "logging.message", payload: unknown): Promise<void>;
+    }).emitEvent.bind(client.session);
+    const results = await runScenarios(client, [
+      {
+        name: "emit fallback",
+        kind: "auth.assert",
+        phase: "emit-event",
+        expect: { outcome: "allowed" },
+      },
+      {
+        name: "do not match omitted event",
+        kind: "events.expect",
+        event: "logging.message",
+      },
+    ], {
+      auth: async () => {
+        await emitEvent("logging.message", { secret: true });
+        return { outcome: "allowed" };
+      },
+    });
+    expect(results[0]).toMatchObject({ status: "passed", droppedObservedEvents: 1 });
+    expect(results[1]).toMatchObject({ status: "failed" });
+  });
+
+  it("substitutes declared variables in scenario property keys", async () => {
+    const resolvedKey = "resolved-key";
+    const server = createMcpFnServer({
+      info: { name: "variable-keys", version: "1.0.0" },
+      registry: new McpFnRegistry().register({
+        name: "echo-key",
+        description: "Echo a variable-keyed input.",
+        inputSchema: {
+          type: "object",
+          properties: { [resolvedKey]: { type: "string" } },
+          required: [resolvedKey],
+          additionalProperties: false,
+        },
+        handler: async input => structuredResult(input),
+      }),
+    });
+    const client = await McpFnTestClient.connect(server);
+    try {
+      await expect(runScenarios(client, [{
+        name: "resolves key",
+        tool: "echo-key",
+        variables: ["MCPFN_SECRET"],
+        arguments: { "${MCPFN_SECRET}": "value" },
+        expect: { structuredContent: { "${MCPFN_SECRET}": "value" } },
+      }], { variables: { MCPFN_SECRET: resolvedKey } })).resolves.toMatchObject([
+        { status: "passed" },
+      ]);
+    } finally {
+      await client.close();
+    }
+  });
+
   it("checks manifests and deterministic semantic scenarios", async () => {
     const registry = new McpFnRegistry().register({
       name: "echo",

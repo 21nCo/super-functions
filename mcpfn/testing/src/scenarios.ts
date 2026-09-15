@@ -510,6 +510,10 @@ export async function runScenarios(
     attributedDroppedObservedEvents = droppedObservedEvents;
   };
   const unsubscribe = client.session.onEvent((event) => {
+    if (client.session.isRedactionOmission(event)) {
+      droppedObservedEvents += 1;
+      return;
+    }
     observedEvents.push(event);
     if (observedEvents.length > maxObservedEvents) {
       observedEvents.shift();
@@ -628,20 +632,24 @@ function resolveScenarioVariables(
   const required = new Set(scenario.variables ?? []);
   const marker = /\$\{([A-Z][A-Z0-9_]*)\}/g;
   const encodedMarker = /%24%7[Bb]([A-Z][A-Z0-9_]*)%7[Dd]/g;
+  const visitString = (value: string): string => {
+    for (const match of value.matchAll(marker)) required.add(match[1]);
+    for (const match of value.matchAll(encodedMarker)) required.add(match[1]);
+    return value
+      .replace(marker, (original, name: string) => values[name] ?? original)
+      .replace(encodedMarker, (original, name: string) =>
+        values[name] === undefined ? original : encodeURIComponent(values[name]),
+      );
+  };
   const visit = (value: unknown): unknown => {
-    if (typeof value === "string") {
-      for (const match of value.matchAll(marker)) required.add(match[1]);
-      for (const match of value.matchAll(encodedMarker)) required.add(match[1]);
-      return value
-        .replace(marker, (original, name: string) => values[name] ?? original)
-        .replace(encodedMarker, (original, name: string) =>
-          values[name] === undefined ? original : encodeURIComponent(values[name]),
-        );
-    }
+    if (typeof value === "string") return visitString(value);
     if (Array.isArray(value)) return value.map(visit);
     if (value && typeof value === "object") {
       return Object.fromEntries(
-        Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, visit(entry)]),
+        Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+          visitString(key),
+          visit(entry),
+        ]),
       );
     }
     return value;

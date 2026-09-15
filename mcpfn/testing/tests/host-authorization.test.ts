@@ -231,6 +231,67 @@ it("rejects invalid-client errors even on a registered state-matching redirect",
   expect(result.status).toBe("failed");
 });
 
+it("submits an independently configured authorization code", async () => {
+  const issuer = "https://login.example.com";
+  const fixture = createHostedAuthorizationFixtures({
+    issuer,
+    resource: "https://mcp.example.com/mcp",
+  })[0]!;
+  fixture.token = {
+    grantType: "authorization_code",
+    code: "independent-fixture-code",
+  };
+  let submittedCode: string | null = null;
+  const [result] = await runHostedAuthorizationRegression({
+    issuer,
+    prepareRegistration: async () => {},
+    request: async request => {
+      if (new URL(request.url).pathname.endsWith("authorize")) {
+        const callback = new URL(fixture.authorization.redirectUri);
+        callback.searchParams.set("code", "redirect-code");
+        callback.searchParams.set("state", fixture.authorization.state);
+        return Response.redirect(callback, 302);
+      }
+      submittedCode = new URLSearchParams(await request.text()).get("code");
+      return Response.json({ access_token: "token", token_type: "Bearer" });
+    },
+  }, [fixture]);
+  expect(result.status).toBe("passed");
+  expect(submittedCode).toBe("independent-fixture-code");
+});
+
+it("classifies a direct refresh grant as token refresh", async () => {
+  const issuer = "https://login.example.com";
+  const fixture = createHostedAuthorizationFixtures({
+    issuer,
+    resource: "https://mcp.example.com/mcp",
+  })[0]!;
+  fixture.token = { grantType: "refresh_token", refreshToken: "expired-refresh" };
+  fixture.expected = {
+    outcome: "rejected",
+    errorCode: "invalid_grant",
+    phase: "token-refresh",
+  };
+  const [result] = await runHostedAuthorizationRegression({
+    issuer,
+    prepareRegistration: async () => {},
+    request: async request => {
+      if (new URL(request.url).pathname.endsWith("authorize")) {
+        const callback = new URL(fixture.authorization.redirectUri);
+        callback.searchParams.set("code", "redirect-code");
+        callback.searchParams.set("state", fixture.authorization.state);
+        return Response.redirect(callback, 302);
+      }
+      return Response.json({ error: "invalid_grant" }, { status: 400 });
+    },
+  }, [fixture]);
+  expect(result).toMatchObject({
+    status: "passed",
+    phase: "token-refresh",
+    errorCode: "invalid_grant",
+  });
+});
+
 it.each([null, undefined, false, 0, ""])( "records falsy adapter rejections without skipping remaining fixtures (%j)", async failure => {
   const fixtures = createHostedAuthorizationFixtures({ issuer: "https://login.example.com", resource: "https://mcp.example.com" });
   const results = await runHostedAuthorizationRegression({

@@ -423,6 +423,9 @@ try {
   npmStep("inspector:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/inspector"]);
   npmStep("inspector:test", ["run", "test", "--workspace", "@mcpfn/inspector"]);
   npmStep("inspector:build", ["run", "build", "--workspace", "@mcpfn/inspector"]);
+  run("packages:mixed-entry-redaction", process.execPath, [
+    "scripts/test-mcpfn-mixed-entry-redaction.mjs",
+  ]);
 
   for (const workspace of [
     "@datafn/core",
