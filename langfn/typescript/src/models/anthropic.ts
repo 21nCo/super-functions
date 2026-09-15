@@ -1,4 +1,4 @@
-import { parseToolCalls } from "./openai.js";
+import { parseMessageToolCalls } from "./openai.js";
 import { providerUsage } from "../core/usage.js";
 import { readStreamLines } from "./stream-lines.js";
 import {
@@ -212,9 +212,10 @@ function splitSystemMessage(messages: Message[]): {
       continue;
     }
 
-    if (message.role === "assistant" && (message.toolCalls || message.tool_calls)) {
+    const toolCalls = parseMessageToolCalls(message);
+    if (message.role === "assistant" && toolCalls?.length) {
       const content: Array<Record<string, unknown>> = message.content ? [{ type: "text", text: message.content }] : [];
-      for (const call of parseToolCalls(message.toolCalls ?? message.tool_calls) ?? []) {
+      for (const call of toolCalls) {
         content.push({ type: "tool_use", id: call.id, name: call.name, input: call.arguments });
       }
       result.push({ role: "assistant", content });

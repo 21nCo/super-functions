@@ -1,5 +1,5 @@
 import { secureRandomUUID } from "../utils/random.js";
-import { parseToolCalls } from "./openai.js";
+import { parseMessageToolCalls } from "./openai.js";
 import {
   ChatRequest,
   ChatResponse,
@@ -200,7 +200,7 @@ export class GoogleChatModel extends ChatModel {
         ];
         pending.delete(call.id);
       } else {
-        const calls = parseToolCalls(message.toolCalls ?? message.tool_calls) ?? [];
+        const calls = parseMessageToolCalls(message) ?? [];
         const preserved = message.providerData?.googleParts;
         parts = preserved
           ? structuredClone(preserved)

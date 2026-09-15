@@ -606,6 +606,25 @@ it("uses an isolated metrics snapshot without wall-clock sleeps", async () => {
   expect((await secfn.audit.getMetrics()).totalEvents).toBe(2);
 });
 
+it("commits repeatable-read writes and schema versions in the test adapter", async () => {
+  const db = new MemoryAdapter();
+  await db.setSchemaVersion("secfn", 3);
+  await db.transaction(async trx => {
+    expect(await trx.getSchemaVersion("secfn")).toBe(3);
+    await trx.create({model:"records",data:{id:"created"}});
+    await trx.setSchemaVersion("secfn", 4);
+  }, {isolationLevel:"repeatable_read"});
+  expect(db.dump("records")).toEqual([{id:"created"}]);
+  expect(await db.getSchemaVersion("secfn")).toBe(4);
+});
+
+it("rejects unsupported nested test-adapter transactions without deadlocking", async () => {
+  const db = new MemoryAdapter();
+  await db.transaction(async trx => {
+    await expect((trx as unknown as MemoryAdapter).transaction(async () => undefined)).rejects.toThrow("Nested transactions are unsupported");
+  });
+});
+
 it("rejects metrics when the adapter cannot guarantee a snapshot", async () => {
   const {db,secfn} = createServer();
   db.capabilities.transactions.isolation = [];

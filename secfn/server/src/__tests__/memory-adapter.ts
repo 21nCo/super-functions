@@ -25,6 +25,7 @@ type InternalWhereClauseLike = {
   op: string;
   value: unknown;
 };
+type Mutation = (adapter: MemoryAdapter) => Promise<void>;
 
 export class MemoryAdapter implements Adapter {
   readonly id = "memory-test";
@@ -35,6 +36,7 @@ export class MemoryAdapter implements Adapter {
 
   private readonly tables = new Map<string, Row[]>();
   private readonly schemaVersions = new Map<string, number>();
+  private mutationLog?: Mutation[];
 
   constructor() {
     this.internal = createInternalCrud(this);
@@ -43,6 +45,7 @@ export class MemoryAdapter implements Adapter {
   async create<T = any>(params: CreateParams): Promise<T> {
     const row = clone(params.data);
     this.table(params.model).push(row);
+    this.mutationLog?.push(async adapter => { await adapter.create(clone(params)); });
     return clone(row) as T;
   }
 
@@ -65,6 +68,7 @@ export class MemoryAdapter implements Adapter {
     const row = rows.find((candidate) => matchesWhere(candidate, params.where));
     if (!row) throw new Error(`Row not found in ${params.model}`);
     Object.assign(row, clone(params.data));
+    this.mutationLog?.push(async adapter => { await adapter.update(clone(params)); });
     return clone(row) as T;
   }
 
@@ -88,6 +92,7 @@ export class MemoryAdapter implements Adapter {
         count++;
       }
     }
+    this.mutationLog?.push(async adapter => { await adapter.updateMany(clone(params)); });
     return count;
   }
 
@@ -96,6 +101,7 @@ export class MemoryAdapter implements Adapter {
     const kept = rows.filter((row) => !matchesWhere(row, params.where));
     const deleted = rows.length - kept.length;
     this.tables.set(params.model, kept);
+    this.mutationLog?.push(async adapter => { await adapter.deleteMany(clone(params)); });
     return deleted;
   }
 
@@ -113,21 +119,39 @@ export class MemoryAdapter implements Adapter {
 
   private transactionTail: Promise<void> = Promise.resolve();
   async transaction<R>(callback: (trx: TransactionAdapter) => Promise<R>, options?: Parameters<Adapter["transaction"]>[1]): Promise<R> {
-    if (options?.isolationLevel === "repeatable_read") {
-      const snapshot = new MemoryAdapter();
-      for (const [name, rows] of this.tables) snapshot.tables.set(name, clone(rows));
-      return callback(snapshot as unknown as TransactionAdapter);
+    if (options && !this.capabilities.transactions.isolation.includes(options.isolationLevel)) {
+      throw new Error(`Requested transaction isolation is unsupported: ${options.isolationLevel}`);
     }
     const previous = this.transactionTail;
     let release!: () => void;
     this.transactionTail = new Promise<void>(resolve => { release = resolve; });
     await previous;
-    const snapshot = new Map([...this.tables].map(([name, rows]) => [name, clone(rows)]));
-    try { return await callback(this as unknown as TransactionAdapter); }
-    catch (error) {
-      this.tables.clear();
-      for (const [name, rows] of snapshot) this.tables.set(name, rows);
-      throw error;
+    const snapshot = new MemoryAdapter();
+    for (const [name, rows] of this.tables) snapshot.tables.set(name, clone(rows));
+    for (const [namespace, version] of this.schemaVersions) snapshot.schemaVersions.set(namespace, version);
+    snapshot.mutationLog = [];
+    const trx = new Proxy(snapshot, {
+      get(target, property) {
+        if (property === "transaction") return async () => { throw new Error("Nested transactions are unsupported"); };
+        if (property === "close") return async () => {};
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as unknown as TransactionAdapter;
+    try {
+      const result = await callback(trx);
+      const tablesBeforeCommit = new Map([...this.tables].map(([name, rows]) => [name, clone(rows)]));
+      const versionsBeforeCommit = new Map(this.schemaVersions);
+      try {
+        for (const apply of snapshot.mutationLog) await apply(this);
+      } catch (error) {
+        this.tables.clear();
+        for (const [name, rows] of tablesBeforeCommit) this.tables.set(name, rows);
+        this.schemaVersions.clear();
+        for (const [namespace, version] of versionsBeforeCommit) this.schemaVersions.set(namespace, version);
+        throw error;
+      }
+      return result;
     } finally { release(); }
   }
 
@@ -145,6 +169,7 @@ export class MemoryAdapter implements Adapter {
 
   async setSchemaVersion(namespace: string, version: number): Promise<void> {
     this.schemaVersions.set(namespace, version);
+    this.mutationLog?.push(async adapter => { await adapter.setSchemaVersion(namespace, version); });
   }
 
   async validateSchema(_schema: TableSchema): Promise<ValidationResult> {

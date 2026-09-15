@@ -327,3 +327,28 @@ it.each([OpenAIChatModel,AnthropicChatModel,GoogleChatModel,MistralChatModel])("
   await expect(model.chat({messages:[{role:"assistant",content:"",toolCalls:[{id:"call",name:"tool",arguments:null as any}]}]})).rejects.toMatchObject({code:"PROVIDER_ERROR"});
   expect(fetchImpl).not.toHaveBeenCalled();
 });
+
+it.each([OpenAIChatModel,AnthropicChatModel,GoogleChatModel,MistralChatModel])("rejects conflicting continuation aliases across adapters", async Model => {
+  const fetchImpl = vi.fn();
+  const model = new Model({apiKey:"test",fetchImpl});
+  await expect(model.chat({messages:[{
+    role:"assistant",
+    content:"",
+    toolCalls:[{id:"canonical",name:"tool",arguments:{value:1}}],
+    tool_calls:[{id:"compatibility",function:{name:"tool",arguments:"{\"value\":1}"}}],
+  }]})).rejects.toThrow("Conflicting tool call aliases");
+  expect(fetchImpl).not.toHaveBeenCalled();
+});
+
+it("uses a non-empty compatibility continuation when the canonical alias is empty", async () => {
+  const fetchImpl = vi.fn(async () => Response.json({content:[{type:"text",text:"done"}]}));
+  const model = new AnthropicChatModel({apiKey:"test",fetchImpl});
+  await model.chat({messages:[{
+    role:"assistant",
+    content:"",
+    toolCalls:[],
+    tool_calls:[{id:"compatibility",function:{name:"tool",arguments:"{\"value\":1}"}}],
+  }]});
+  const body = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body));
+  expect(body.messages[0].content).toEqual([{type:"tool_use",id:"compatibility",name:"tool",input:{value:1}}]);
+});

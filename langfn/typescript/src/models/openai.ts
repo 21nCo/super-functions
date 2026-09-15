@@ -167,7 +167,7 @@ export function toOpenAIMessage(message: Message): Record<string, unknown> {
   const wire: Record<string, unknown> = { role: message.role, content: message.content };
   if (message.name !== undefined) wire.name = message.name;
   if (message.tool_call_id !== undefined) wire.tool_call_id = message.tool_call_id;
-  const calls = parseToolCalls(message.toolCalls ?? message.tool_calls);
+  const calls = parseMessageToolCalls(message);
   if (calls?.length) wire.tool_calls = calls.map(call => ({
     id: call.id,
     type: "function",
@@ -204,6 +204,33 @@ export function parseToolCalls(raw: unknown): ToolCall[] | undefined {
     }
     return { id: entry.id, name: fn.name, arguments: args as Record<string, unknown> };
   });
+}
+
+export function parseMessageToolCalls(
+  message: Pick<Message, "toolCalls" | "tool_calls">,
+): ToolCall[] | undefined {
+  const canonical = parseToolCalls(message.toolCalls);
+  const compatibility = parseToolCalls(message.tool_calls);
+  if (canonical?.length && compatibility?.length) {
+    if (stableToolCalls(canonical) !== stableToolCalls(compatibility)) {
+      throw new ProviderError("Conflicting tool call aliases");
+    }
+    return canonical;
+  }
+  return canonical?.length ? canonical : compatibility?.length ? compatibility : undefined;
+}
+
+function stableToolCalls(calls: ToolCall[]): string {
+  const sortKeys = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(sortKeys);
+    if (!value || typeof value !== "object") return value;
+    return Object.fromEntries(
+      Object.keys(value as Record<string, unknown>)
+        .sort()
+        .map((key) => [key, sortKeys((value as Record<string, unknown>)[key])]),
+    );
+  };
+  return JSON.stringify(sortKeys(calls));
 }
 
 export async function raiseForStatus(provider: string, response: Response): Promise<void> {

@@ -615,7 +615,14 @@ export class VaultService {
     return this.db.transaction(async trx => {
       // Updating the parent takes a database row lock shared by all member writers.
       await trx.update({ model: "secfn_secret_sets", where: [{ field: "id", operator: "eq", value: setId }], data: { updatedAt: nowIso() } });
-      const scopedDb: Adapter = { ...trx, transaction: async () => { throw new SecFnValidationError("Nested secret-set transactions are not supported"); }, close: async () => {} };
+      const scopedDb = new Proxy(trx as unknown as Adapter, {
+        get(target, property) {
+          if (property === "transaction") return async () => { throw new SecFnValidationError("Nested secret-set transactions are not supported"); };
+          if (property === "close") return async () => {};
+          const value = Reflect.get(target, property, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
       return operation(new VaultService(scopedDb, this.keyProvider, this.audit));
     }, { isolationLevel: "read_committed" });
   }
