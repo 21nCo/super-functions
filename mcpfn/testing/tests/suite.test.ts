@@ -324,3 +324,27 @@ it("scrubs custom metadata while the target still owns its credential state", as
   expect(report.target.label).toBe("[REDACTED]");
   expect(JSON.stringify(report)).not.toContain(secret);
 });
+
+
+it.each([new Map([["key", "evidence"]]), new Set(["evidence"])])("preserves container diagnostic evidence in JSON (%s)", async amount => {
+  const server = createMcpFnServer({ info: { name: "containers", version: "1" }, registry: new McpFnRegistry().register({ name: "echo", description: "Fixture", inputSchema: { type: "object" }, handler: async () => structuredResult({ ok: true }) }) });
+  const report = await runMcpFnTargetSuite({ scenarios: [{ name: "retained", tool: "echo" }], target: customTarget({ kind: "custom",
+    redact: <T>(value: T): T => value && typeof value === "object" && "phase" in value
+      ? { ...value, details: { amount } } as T : value,
+    open: async () => {
+      const [client, remote] = InMemoryTransport.createLinkedPair();
+      await server.connect(remote);
+      return { transport: client, close: () => server.close() };
+    },
+  }) });
+  expect(report.status).toBe("complete");
+  expect(report.results).toHaveLength(1);
+  expect(report.results[0].status).toBe("passed");
+  expect(report.droppedTimelineEvents).toBe(0);
+  const persisted = JSON.parse(JSON.stringify(report));
+  const expected = amount instanceof Map
+    ? { type: "Map", entries: [["key", "evidence"]] }
+    : { type: "Set", values: ["evidence"] };
+  expect(persisted.timeline[0].details.amount).toEqual(expected);
+  expect(() => JSON.stringify(report)).not.toThrow();
+});

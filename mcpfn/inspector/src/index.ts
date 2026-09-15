@@ -219,6 +219,8 @@ export class McpFnInspector {
     const redacted = {
       ...Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, this.client.redact(value, {
         ...SCENARIO_REDACTION_LIMITS,
+        // These are user payloads, even when their keys resemble an envelope.
+        preserveKeys: false,
         redactionMarker: SCENARIO_SECRET_MARKER,
       })])),
       formatVersion, kind, sideEffect,

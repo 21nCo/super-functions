@@ -139,3 +139,24 @@ it.each(["tools.call", "non-idempotent", "none"])("preserves exported scenario d
   expect(scenario.sideEffect).toBe(secret === "none" ? "none" : "non-idempotent");
   expect(scenario.name).toBe("[REDACTED]");
 });
+
+
+it.each(["connected", "passed", "logging.message", "custom"])("redacts envelope-shaped scenario payloads containing %s", async secret => {
+  const fixture = await startAuthenticatedServer(secret, true);
+  const client = new McpFnClient({ target: authenticatedHttpTarget(fixture.url, {
+    credential: { headers: { authorization: `Bearer ${secret}` } },
+  }) });
+  const inspector = new McpFnInspector(client);
+  try {
+    await inspector.connect();
+    const payload = { clientState: secret, status: secret, kind: secret,
+      target: { kind: secret }, nested: [{ clientState: secret }] };
+    const scenario = inspector.exportScenario("reflection", {
+      kind: "tools.call", name: "identity", arguments: payload,
+    }, { content: [], structuredContent: payload });
+    expect(scenario.kind).toBe("tools.call");
+    expect(scenario.sideEffect).toBe("non-idempotent");
+    expect(JSON.stringify(scenario)).not.toContain(secret);
+    expect(JSON.stringify(scenario)).toContain("${MCPFN_SECRET}");
+  } finally { try { await client.close(); } finally { await fixture.close(); } }
+});
