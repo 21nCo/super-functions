@@ -1,0 +1,1 @@
+I made some entire CLI hook changes locally. Commit and push directly to origin dev only those changes.
