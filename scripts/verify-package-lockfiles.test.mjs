@@ -86,6 +86,21 @@ test("script passes for root lock plus documented leftovers", () => {
   }
 });
 
+test("script fails if the root package-lock.json is not tracked", () => {
+  const { root, git } = gitRepo();
+  try {
+    git("rm", "--quiet", "package-lock.json");
+    git("commit", "--quiet", "-m", "drop root lock");
+    assert.throws(() => run(root), (error) => {
+      assert.equal(error.status, 1);
+      assert.match(error.stderr, /root package-lock\.json must stay tracked/);
+      return true;
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("script fails if a nested lock such as packages/db is re-added", () => {
   const { root, git } = gitRepo();
   try {
