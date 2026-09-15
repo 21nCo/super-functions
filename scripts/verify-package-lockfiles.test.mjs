@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -45,6 +45,12 @@ function gitRepo() {
   git("commit", "--quiet", "-m", "root lock");
   return { root, git };
 }
+
+test("gitBinary is an absolute existing path", () => {
+  const binary = gitBinary();
+  assert.equal(path.isAbsolute(binary), true);
+  assert.equal(existsSync(binary), true);
+});
 
 test("allowlist is root lock plus documented leftovers from #180/#183", () => {
   assert.deepEqual(ALLOWED_PACKAGE_LOCKFILES, [

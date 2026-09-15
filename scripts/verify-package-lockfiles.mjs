@@ -2,6 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Root lock is the workspace install source of truth (.gitignore:
@@ -16,9 +17,12 @@ export const ALLOWED_PACKAGE_LOCKFILES = [
 const GIT_BINARIES = ["/usr/bin/git", "/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"];
 
 export function gitBinary() {
-  const binary = GIT_BINARIES.find((candidate) => existsSync(candidate));
+  const candidates = [process.env.GIT_BINARY, ...GIT_BINARIES].filter(
+    (candidate) => typeof candidate === "string" && path.isAbsolute(candidate)
+  );
+  const binary = candidates.find((candidate) => existsSync(candidate));
   if (!binary) {
-    throw new Error("git not found in fixed directories");
+    throw new Error("git not found: set GIT_BINARY to an absolute path or install git in a standard directory");
   }
   return binary;
 }
