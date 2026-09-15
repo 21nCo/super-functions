@@ -646,3 +646,45 @@ it.each(["[REDACTED]", "REDACTED"])("keeps implicit markers from reproducing %s"
   const result = redactRemoteCredential({ headers: { "x-api-key": secret } }, { echo: secret, authorization: secret });
   expect(JSON.stringify(result)).not.toContain(secret);
 });
+
+
+it("retains credentials until transport shutdown succeeds and serializes retries", async () => {
+  const secret = "shutdown-lease-secret";
+  const order: string[] = [];
+  const revoke = vi.fn(async () => { order.push("revoke"); });
+  const dispose = vi.fn(async () => { order.push("dispose"); });
+  const target = authenticatedHttpTarget("http://127.0.0.1:1/mcp", {
+    credential: { acquire: () => ({ headers: { authorization: `Bearer ${secret}` } }), revoke, dispose },
+  });
+  const handle = await target.open({ requestId: "shutdown", diagnostic: async () => {} } as any);
+  const close = vi.spyOn(handle.transport, "close")
+    .mockImplementationOnce(async () => { order.push("transport-failed"); throw new Error("transient shutdown"); })
+    .mockImplementation(async () => { order.push("transport-closed"); });
+  await expect(handle.close!()).rejects.toThrow();
+  expect(revoke).not.toHaveBeenCalled();
+  expect(dispose).not.toHaveBeenCalled();
+  expect(target.redact!(secret)).not.toContain(secret);
+  await target.cleanup!();
+  expect(revoke).not.toHaveBeenCalled();
+  await Promise.all([handle.close!(), handle.close!()]);
+  expect(order).toEqual(["transport-failed", "transport-closed", "revoke", "dispose"]);
+  expect(close).toHaveBeenCalledTimes(2);
+  await handle.close!();
+  expect(close).toHaveBeenCalledTimes(2);
+});
+
+it.each(["revoke", "dispose"])("retries only the credential stage after %s fails", async stage => {
+  const revoke = vi.fn();
+  const dispose = vi.fn();
+  (stage === "revoke" ? revoke : dispose).mockRejectedValueOnce(new Error("transient"));
+  const target = authenticatedHttpTarget("http://127.0.0.1:1/mcp", {
+    credential: { acquire: () => ({ headers: { authorization: "Bearer lease" } }), revoke, dispose },
+  });
+  const handle = await target.open({ requestId: "shutdown", diagnostic: async () => {} } as any);
+  const close = vi.spyOn(handle.transport, "close").mockResolvedValue(undefined);
+  await expect(handle.close!()).rejects.toThrow();
+  await Promise.all([handle.close!(), handle.close!()]);
+  expect(close).toHaveBeenCalledOnce();
+  expect(revoke).toHaveBeenCalledTimes(stage === "revoke" ? 2 : 1);
+  expect(dispose).toHaveBeenCalledTimes(stage === "dispose" ? 2 : 1);
+});

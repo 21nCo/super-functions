@@ -362,15 +362,22 @@ export function authenticatedHttpTarget(
       }
 
       let closePromise: Promise<void> | undefined;
+      let transportClosed = false;
       return {
         transport: handle.transport,
         finishAuthorization: handle.finishAuthorization,
         terminateSession: handle.terminateSession,
         close() {
-          closePromise ??= closeAuthenticatedHandle(
-            handle!,
-            { ...lease, release },
-          ).catch(async (error) => {
+          closePromise ??= Promise.resolve().then(async () => {
+            // The client coordinator retains this handle until both stages finish.
+            // Never release authentication while transport shutdown still needs retry.
+            if (!transportClosed) {
+              if (handle!.close) await handle!.close();
+              else await handle!.transport.close();
+              transportClosed = true;
+            }
+            await release();
+          }).catch(async (error) => {
             closePromise = undefined;
             await targetContext.diagnostic({
               phase: "transport-close", outcome: "failed", code: "MCPFN_CREDENTIAL_CLEANUP_FAILED",
@@ -461,16 +468,4 @@ export function validateRemoteCredentialHeaders(value: HeadersInit): Headers {
     throw new TypeError("Credential headers exceed the aggregate size limit");
   }
   return headers;
-}
-
-async function closeAuthenticatedHandle(
-  handle: McpFnTransportHandle,
-  lease: McpFnRemoteCredentialLease,
-): Promise<void> {
-  try {
-    if (handle.close) await handle.close();
-    else await handle.transport.close();
-  } finally {
-    await lease.release();
-  }
 }
