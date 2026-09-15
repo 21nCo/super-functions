@@ -709,3 +709,26 @@ it.each(["authorization", "Authorization", "proxy-authorization"])("extracts rec
   const { redactRemoteCredential } = await import("../src/remote-target.js");
   expect(redactRemoteCredential({ headers: { [header]: "bEaReR tokenvalue" } }, { reflected: "tokenvalue" }).reflected).not.toBe("tokenvalue");
 });
+
+
+it.each([
+  { name: "adjacent masks", secrets: ["a", "b", "**"], input: "ab" },
+  { name: "deletion joins surrounding text", secrets: ["abc", "***", "xy"], input: "xabcy" },
+  { name: "mask joins existing text", secrets: ["abc", "***x"], input: "abcx" },
+])("checks the final output for $name", async ({ secrets, input }) => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  const headers = Object.fromEntries(secrets.map((secret, index) => [`x-secret-${index}`, secret]));
+  const output = redactRemoteCredential({ headers }, { [input]: input });
+  for (const [key, value] of Object.entries(output)) {
+    for (const secret of secrets) {
+      expect(key).not.toContain(secret);
+      expect(value).not.toContain(secret);
+    }
+  }
+});
+
+it("checks generic redaction markers in the final output", async () => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  const output = redactRemoteCredential({ headers: { "x-secret": "[REDACTED]" } }, { password: "unknown" });
+  expect(output.password).not.toContain("[REDACTED]");
+});

@@ -130,7 +130,7 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
     if (markerContainsSecret) redactionMarker = "";
   }
   const clientKinds = new Set(["logging.message", "progress", "tasks.status", "resources.updated", "tools.list_changed", "resources.list_changed", "prompts.list_changed", "resources.subscribed", "resources.unsubscribed", "client.roots", "client.sampling", "client.elicitation"]);
-  const scrub = (input: unknown, role = "payload", field = ""): unknown => {
+  const scrub = (input: unknown, role = "payload", field = "", finalPass = false): unknown => {
     input = specialValue(input);
     if (typeof input === "string") {
       if ((role === "root" || role === "inspectorEvent") && field === "kind" && clientKinds.has(input)) return input;
@@ -144,13 +144,16 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
       if (role === "failure" && field === "layer" && ["mcpfn-preflight", "authorization-server", "resource-server", "mcp-initialization", "scenario", "upstream-conformance"].includes(input)) return input;
       if (role === "inspectorEvent" && field === "source" && ["diagnostic", "client"].includes(input)) return input;
       if (role === "result" && field === "sideEffect" && ["none", "idempotent", "non-idempotent"].includes(input)) return input;
+      // Whole-string rejection cannot compose another credential by joining pieces.
+      // Run after both redactors; never feed this result through another redactor.
+      if (finalPass) return replacementPattern?.test(input) ? "" : input;
       return secretPattern ? input.replace(secretPattern, secret => {
         const replacement = redactionMarker ?? (secret.length < 10 ? (secret.includes("*") ? "#" : "*").repeat(secret.length) : "[REDACTED]");
         // Every generated mask must be safe against the entire credential set.
         return replacementPattern!.test(replacement) ? "" : replacement;
       }) : input;
     }
-    if (Array.isArray(input)) return input.map(entry => scrub(entry, role));
+    if (Array.isArray(input)) return input.map(entry => scrub(entry, role, "", finalPass));
     if (input && typeof input === "object") return Object.fromEntries(Object.entries(input).map(([key, entry]) => {
       const fixed = envelopeKeys[role]?.has(key) ?? false;
       let childRole = "payload";
@@ -160,13 +163,15 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
         else if (["failure", "runtime", "packages", "droppedInventoryEntries", "target"].includes(key)) childRole = key;
         else if (role === "inspectorEvent" && key === "event") childRole = (input as { source?: string }).source === "client" ? "root" : "diagnostic";
       }
-      return [fixed ? key : scrub(key), typeof entry === "string" ? scrub(entry, fixed ? role : "payload", key) : scrub(entry, childRole)];
+      return [fixed ? key : scrub(key, "payload", "", finalPass), typeof entry === "string" ? scrub(entry, fixed ? role : "payload", key, finalPass) : scrub(entry, childRole, "", finalPass)];
     }));
     return input;
   };
   const timelineEvent = value && typeof value === "object" && ["client", "diagnostic"].includes((value as { source?: string }).source ?? "");
-  const scrubbed = scrub(value, preserveKeys ? (timelineEvent ? "inspectorEvent" : "root") : "payload");
-  return redactOAuthValue(scrubbed, { maxStringLength: 262_144, maxDepth: 64, maxArrayEntries: 100_000, maxObjectEntries: 100_000, ...(redactionMarker !== undefined ? { redactionMarker } : {}) }) as T;
+  const role = preserveKeys ? (timelineEvent ? "inspectorEvent" : "root") : "payload";
+  const scrubbed = scrub(value, role);
+  const generic = redactOAuthValue(scrubbed, { maxStringLength: 262_144, maxDepth: 64, maxArrayEntries: 100_000, maxObjectEntries: 100_000, ...(redactionMarker !== undefined ? { redactionMarker } : {}) });
+  return scrub(generic, role, "", true) as T;
 }
 
 /** Remove known opaque credential values as well as credential-shaped fields. */
