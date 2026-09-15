@@ -286,7 +286,7 @@ it("delivers diagnostics after exactly one custom redaction and bounds their ret
 });
 
 
-it.each([1n, () => undefined, Symbol("diagnostic")])("marks unserializable diagnostic data as dropped and incomplete (%s)", async amount => {
+it.each([1n, () => undefined, Symbol("diagnostic"), undefined, NaN, Infinity])("marks unserializable diagnostic data as dropped and incomplete (%s)", async amount => {
   const server = createMcpFnServer({ info: { name: "bigint", version: "1" }, registry: new McpFnRegistry().register({ name: "echo", description: "Fixture", inputSchema: { type: "object" }, handler: async () => structuredResult({ ok: true }) }) });
   const report = await runMcpFnTargetSuite({ scenarios: [{ name: "retained", tool: "echo" }], target: customTarget({ kind: "custom",
     redact: <T>(value: T): T => value && typeof value === "object" && "phase" in value
@@ -303,4 +303,24 @@ it.each([1n, () => undefined, Symbol("diagnostic")])("marks unserializable diagn
   expect(report.droppedTimelineEvents).toBeGreaterThan(0);
   expect(report.incompleteReason).toContain("non-JSON data");
   expect(() => JSON.stringify(report)).not.toThrow();
+});
+
+
+it("scrubs custom metadata while the target still owns its credential state", async () => {
+  const secret = "ephemeral-secret";
+  let credential: string | undefined = secret;
+  const server = createMcpFnServer({ info: { name: secret, version: "1" }, registry: new McpFnRegistry() });
+  const report = await runMcpFnTargetSuite({ target: customTarget({ kind: "custom", descriptor: { label: secret },
+    redact: <T>(value: T): T => credential ? JSON.parse(JSON.stringify(value).replaceAll(credential, "[REDACTED]")) : value,
+    open: async () => {
+      const [client, remote] = InMemoryTransport.createLinkedPair();
+      await server.connect(remote);
+      return { transport: client, close: async () => { credential = undefined; await server.close(); } };
+    },
+  }) });
+  expect(credential).toBeUndefined();
+  expect(report.ok).toBe(true);
+  expect(report.server?.name).toBe("[REDACTED]");
+  expect(report.target.label).toBe("[REDACTED]");
+  expect(JSON.stringify(report)).not.toContain(secret);
 });

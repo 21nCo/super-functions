@@ -122,6 +122,9 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   let failure: McpFnReportFailure | undefined;
   let cleanupFailure: McpFnReportFailure | undefined;
   let retainedCleanup: (() => Promise<void>) | undefined;
+  let capturedTarget: McpFnTargetDescriptor = { kind: "custom" };
+  let capturedManifestHash: string | undefined;
+  let projectionFailed = false;
   let execution: {
     results: McpFnScenarioResult[];
     server?: Implementation;
@@ -143,7 +146,16 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
           // Production-client dispatch already applied the custom target hook.
           const safeEvent = redactTargetCredentials(options.target, event, { preserveKeys: true });
           let bytes: number;
-          try { bytes = jsonBytes(safeEvent); structuredClone(safeEvent); }
+          try {
+            const json = JSON.stringify(safeEvent, (_key, value: unknown) => {
+              if (value === undefined || (typeof value === "number" && !Number.isFinite(value))) {
+                throw new Error("Diagnostic contains a non-JSON value");
+              }
+              return value;
+            });
+            bytes = Buffer.byteLength(json);
+            structuredClone(safeEvent);
+          }
           catch {
             timelineSerializationFailed = true;
             droppedTimelineEvents += 1;
@@ -201,6 +213,27 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     }
   } finally {
     try {
+      // Custom hooks may depend on credentials cleared by close. Capture every
+      // target-controlled report value while the session still owns that state.
+      if (client?.session.state === "connected") {
+        const { kind, ...descriptor } = options.target.describe();
+        capturedTarget = { ...redactSuiteArtifact(options.target, descriptor), kind };
+        capturedManifestHash = options.manifest ? redactSuiteArtifact(options.target, options.manifest.hash) : undefined;
+        execution = {
+          server: execution.server === undefined ? undefined : redactSuiteArtifact(options.target, execution.server),
+          capabilities: execution.capabilities === undefined ? undefined : redactSuiteArtifact(options.target, execution.capabilities),
+          results: execution.results.map(result => ({
+            ...result,
+            name: redactSuiteArtifact(options.target, result.name),
+            operation: redactSuiteArtifact(options.target, result.operation),
+            ...(result.tool === undefined ? {} : { tool: redactSuiteArtifact(options.target, result.tool) }),
+          })),
+        };
+      } else if (execution.results.length || execution.server || options.manifest) {
+        projectionFailed = true;
+      }
+    } catch { projectionFailed = true; }
+    try {
       await client?.close();
     } catch (error) {
       const owner = client;
@@ -231,11 +264,11 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
       packages: { testing: MCPFN_TESTING_VERSION },
     },
     ok: failed === 0 && !artifactIncomplete,
-    target: { kind: "custom" },
+    target: capturedTarget,
     server: execution.server,
     capabilities: execution.capabilities,
     manifestChecked,
-    ...(options.manifest ? { manifestHash: options.manifest.hash } : {}),
+    ...(capturedManifestHash === undefined ? {} : { manifestHash: capturedManifestHash }),
     total: results.length,
     passed: results.length - failed - incomplete,
     failed,
@@ -263,26 +296,10 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   };
   let finalized: McpFnTargetSuiteReport;
   try {
-    // Descriptors and final serialization share the same fail-closed boundary.
-    // Scrub opaque credentials before generic redaction can truncate a match.
-    const { kind, ...descriptor } = options.target.describe();
-    // Rebuild the authored envelope. Custom hooks only see target payloads,
-    // never report discriminators, counters, or already-redacted diagnostics.
-    const projected: McpFnTargetSuiteReport = {
-      ...report,
-      target: { ...redactSuiteArtifact(options.target, descriptor), kind },
-      server: report.server === undefined ? undefined : redactSuiteArtifact(options.target, report.server),
-      capabilities: report.capabilities === undefined ? undefined : redactSuiteArtifact(options.target, report.capabilities),
-      ...(report.manifestHash === undefined ? {} : { manifestHash: redactSuiteArtifact(options.target, report.manifestHash) }),
-      results: report.results.map(result => ({
-        ...result,
-        name: redactSuiteArtifact(options.target, result.name),
-        operation: redactSuiteArtifact(options.target, result.operation),
-        ...(result.tool === undefined ? {} : { tool: redactSuiteArtifact(options.target, result.tool) }),
-        // Scenario errors have already passed through client.session.redact.
-      })),
-    };
-    finalized = enforceReportCap(redactTargetCredentials(options.target, projected, { preserveKeys: true }), maxReportBytes);
+    if (projectionFailed) throw new Error("Report payload redaction failed");
+    // Custom redaction already completed before cleanup. Built-in report scopes
+    // remain active here for bounded final serialization.
+    finalized = enforceReportCap(redactTargetCredentials(options.target, report, { preserveKeys: true }), maxReportBytes);
   } catch (error) {
     finalized = enforceReportCap({ ...report, ok: false, status: "incomplete",
       incompleteReason: error instanceof McpFnRedactionLimitError

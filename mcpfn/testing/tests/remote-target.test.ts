@@ -487,7 +487,7 @@ it("drains a retained credential lease when initialization never returns a clien
   } finally { await fixture.close(); }
 });
 
-it.each(["throw", "proxy", "long-secret"])("safely serializes a %s target descriptor after cleanup", async mode => {
+it.each(["throw", "proxy", "long-secret"])("captures a safe descriptor before its %s post-cleanup behavior", async mode => {
   const secret = "opaque-descriptor-" + "z".repeat(5000);
   const fixture = await startAuthenticatedServer(secret);
   const revoke = vi.fn();
@@ -505,7 +505,7 @@ it.each(["throw", "proxy", "long-secret"])("safely serializes a %s target descri
     const report = await runMcpFnTargetSuite({ target });
     expect(revoke).toHaveBeenCalledOnce();
     expect(JSON.stringify(report)).not.toContain("opaque-descriptor-");
-    if (mode !== "long-secret") expect(report).toMatchObject({ ok: false, status: "incomplete" });
+    expect(report).toMatchObject({ ok: true, status: "complete" });
   } finally { await fixture.close(); }
 });
 

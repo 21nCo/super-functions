@@ -215,10 +215,14 @@ export class McpFnInspector {
     result: McpFnInspectorOperationResult,
   ): McpFnExportedScenario {
     const scenario = createMcpFnScenario(name, operation, result);
-    const redacted = this.client.redact(scenario, {
-      ...SCENARIO_REDACTION_LIMITS,
-      redactionMarker: SCENARIO_SECRET_MARKER,
-    });
+    const { formatVersion, kind, sideEffect, ...payload } = scenario;
+    const redacted = {
+      ...Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, this.client.redact(value, {
+        ...SCENARIO_REDACTION_LIMITS,
+        redactionMarker: SCENARIO_SECRET_MARKER,
+      })])),
+      formatVersion, kind, sideEffect,
+    };
     const replaced = redacted as unknown as McpFnExportedScenario;
     const exported = exceedsRedactionBounds(scenario, redacted, SCENARIO_REDACTION_LIMITS)
       ? {

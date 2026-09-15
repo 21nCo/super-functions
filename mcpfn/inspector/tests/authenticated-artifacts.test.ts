@@ -1,6 +1,6 @@
 import { startAuthenticatedServer } from "../../test-support/authenticated-server.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { McpFnClient } from "@mcpfn/client";
+import { McpFnClient, customTarget } from "@mcpfn/client";
 import { authenticatedHttpTarget } from "@mcpfn/testing";
 import { McpFnInspector } from "../src/index.js";
 
@@ -110,4 +110,32 @@ it.each(["custom", "connected", "mcpfn.inspector-snapshot"])("preserves snapshot
   } finally {
     try { await inspector.close(); } finally { await fixture.close(); }
   }
+});
+
+
+it("preserves live event kinds under custom exact-value redaction", async () => {
+  const fixture = await startAuthenticatedServer("server-key", true);
+  const target = authenticatedHttpTarget(fixture.url, { credential: { headers: { authorization: "Bearer server-key" } } });
+  const original = target.redact!.bind(target);
+  target.redact = <T>(value: T): T => JSON.parse(JSON.stringify(original(value)).replaceAll("logging.message", "[REDACTED]"));
+  const events: any[] = [];
+  const client = new McpFnClient({ target, events: event => { events.push(event); } });
+  try {
+    await client.connect();
+    await client.tools.call("identity", {});
+    expect(events.some(event => event.kind === "logging.message")).toBe(true);
+  } finally { try { await client.close(); } finally { await fixture.close(); } }
+});
+
+it.each(["tools.call", "non-idempotent", "none"])("preserves exported scenario discriminators matching %s", secret => {
+  const client = new McpFnClient({ target: customTarget({ kind: "custom", open: async () => { throw new Error("unused"); },
+    redact: <T>(value: T): T => JSON.parse(JSON.stringify(value).replaceAll(secret, "[REDACTED]")),
+  }) });
+  const inspector = new McpFnInspector(client);
+  const scenario = secret === "none"
+    ? inspector.exportScenario(secret, { kind: "resources.read", uri: "test://resource" }, { contents: [] })
+    : inspector.exportScenario(secret, { kind: "tools.call", name: "echo" }, { content: [] });
+  expect(scenario.kind).toBe(secret === "none" ? "resources.read" : "tools.call");
+  expect(scenario.sideEffect).toBe(secret === "none" ? "none" : "non-idempotent");
+  expect(scenario.name).toBe("[REDACTED]");
 });

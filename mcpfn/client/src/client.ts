@@ -889,14 +889,17 @@ export class McpFnClient {
 
   private async emitEvent(kind: McpFnClientEventKind, payload?: unknown): Promise<void> {
     let event: McpFnClientEvent;
-    try { event = this.redact({
-      formatVersion: 1,
-      kind,
-      at: (this.options.clock?.() ?? new Date()).toISOString(),
-      requestId: this.requestId(),
-      target: this.options.target.describe(),
-      ...(payload !== undefined ? { payload } : {}),
-    }) as unknown as McpFnClientEvent; }
+    try {
+      const { kind: targetKind, ...descriptor } = this.options.target.describe();
+      event = {
+        formatVersion: 1,
+        kind,
+        at: (this.options.clock?.() ?? new Date()).toISOString(),
+        requestId: this.redact(this.requestId()),
+        target: { ...this.redact(descriptor), kind: targetKind },
+        ...(payload !== undefined ? { payload: this.redact(payload) } : {}),
+      };
+    }
     catch {
       event = { formatVersion: 1, kind, at: new Date().toISOString(), requestId: "redacted",
         target: { kind: "custom" }, payload: { omitted: true, reason: "diagnostic-redaction-failed" } };
@@ -925,7 +928,8 @@ export class McpFnClient {
         ...(code ? { code } : {}),
         requestId,
         at: (this.options.clock?.() ?? new Date()).toISOString(),
-        target: this.options.target.describe(),
+        // Cleanup retries may follow partial release of custom credential state.
+        target: phase === "transport-close" ? { kind: "custom" } : this.options.target.describe(),
         ...(details ? { details } : {}),
       };
     } catch {
