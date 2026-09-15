@@ -1,0 +1,65 @@
+langfn/typescript/src/utils/random.ts
+  s_74c100180e3979::t_4f4cdba73d8115 2,4,10,13-21
+  s_d2a882e8cbcc02::t_d0a38889703891 22
+langfn/typescript/src/rag/db-vector-store.ts
+  s_74c100180e3979::t_4f4cdba73d8115 3,58
+langfn/typescript/tests/streaming-observability.test.ts
+  s_74c100180e3979::t_07c4e29240f0e8 125-142
+langfn/typescript/tests/canonical-cache-order.test.ts
+  s_74c100180e3979::t_4f4cdba73d8115 1-2,6,9-10,12
+  s_74c100180e3979::t_74fb01f9a7699d 7-8,11
+  s_74c100180e3979::t_8025b52315cb31 13
+plugfn/core/tests/action-manifest.test.ts
+  s_74c100180e3979::t_4f4cdba73d8115 1,18-25
+  s_d2a882e8cbcc02::t_cab078f36eec9c 26
+plugfn/core/tests/execution-coordinator.test.ts
+  s_74c100180e3979::t_4f4cdba73d8115 1,22-29
+  s_d2a882e8cbcc02::t_0a01466565adc4 30
+langfn/typescript/tests/round5-regressions.test.ts
+  s_74c100180e3979::t_4f4cdba73d8115 7,34-47
+  s_d2a882e8cbcc02::t_05831fbf63a043 48
+secfn/server/src/vault.ts
+  s_74c100180e3979::t_07c4e29240f0e8 813-817,826-828,832
+plugfn/core/src/core/action-manifest.ts
+  s_74c100180e3979::t_4f4cdba73d8115 1,69
+secfn/server/src/__tests__/postgres-contracts.test.ts
+  s_74c100180e3979::t_4f4cdba73d8115 2,18,238,357
+langfn/typescript/src/client.ts
+  s_74c100180e3979::t_07c4e29240f0e8 264,267,270-278,300-301,351-352,373-374,385-401,403
+langfn/typescript/src/utils/cache-keys.ts
+  s_74c100180e3979::t_4f4cdba73d8115 1-2,81
+plugfn/providers/src/google/discovery-provider.ts
+  s_74c100180e3979::t_4f4cdba73d8115 1,201
+plugfn/providers/tests/rex-provider-contracts.test.ts
+  s_74c100180e3979::t_4f4cdba73d8115 78-98
+secfn/server/src/__tests__/server.test.ts
+  s_74c100180e3979::t_07c4e29240f0e8 498-519
+langfn/typescript/src/graph/state_graph.ts
+  s_74c100180e3979::t_4f4cdba73d8115 2,203
+plugfn/core/src/core/execution-coordinator.ts
+  s_74c100180e3979::t_4f4cdba73d8115 1,31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62a6d257480148551d72643a8fec4af0fa77c2f8",
+  "prompts": {},
+  "sessions": {
+    "s_74c100180e3979": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a4a8-4cc6-7b03-a1c5-d382213eae73",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_d2a882e8cbcc02": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a522-f7e4-7422-a0fb-002c30b622cc",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
