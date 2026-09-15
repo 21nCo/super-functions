@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { SEARCH_ADAPTER_DISPOSED, SearchAdapterError } from "../src/index";
+import { CONFORMANCE_ASSERTIONS, runConformanceSuite } from "../src/testing";
 
 describe("adapter contracts scaffolding", () => {
   it("exports constants and errors", () => {
     expect(SEARCH_ADAPTER_DISPOSED).toBe("SEARCH_ADAPTER_DISPOSED");
     const err = new SearchAdapterError("X", "msg");
     expect(err.code).toBe("X");
+  });
+
+  it("exports the shared conformance harness", () => {
+    expect(typeof runConformanceSuite).toBe("function");
+    expect(CONFORMANCE_ASSERTIONS.length).toBeGreaterThan(0);
   });
 });

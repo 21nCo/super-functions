@@ -335,9 +335,3 @@ export const STOP_WORDS_FR = new Set([
   "eussiez",
   "eussent"
 ]);
-
-/**
- * Default stop words (English).
- * Kept for backwards compatibility.
- */
-export const DEFAULT_STOP_WORDS = STOP_WORDS_EN;

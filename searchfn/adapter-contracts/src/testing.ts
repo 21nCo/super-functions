@@ -5,8 +5,8 @@
  * To use: call `runConformanceSuite(adapterFactory)` inside a `describe` block.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import type { SearchAdapter } from "@searchfn/adapter-contracts";
-import { SEARCH_ADAPTER_DISPOSED } from "@searchfn/adapter-contracts";
+import type { SearchAdapter } from "./index";
+import { SEARCH_ADAPTER_DISPOSED } from "./index";
 
 export interface ConformanceAdapterFactory {
   /** Human-readable adapter name for test labels */
