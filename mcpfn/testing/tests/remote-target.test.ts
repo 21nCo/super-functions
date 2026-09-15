@@ -688,3 +688,24 @@ it.each(["revoke", "dispose"])("retries only the credential stage after %s fails
   expect(revoke).toHaveBeenCalledTimes(stage === "revoke" ? 2 : 1);
   expect(dispose).toHaveBeenCalledTimes(stage === "dispose" ? 2 : 1);
 });
+
+
+it.each(["***", "[REDACTED]", "#"])("never emits another credential as a generated mask (%s)", async mask => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  const credentials = { headers: { "x-api-key": "abc", "x-secondary-key": mask } };
+  const redacted = redactRemoteCredential(credentials, { value: "abc", other: mask });
+  expect(JSON.stringify(redacted)).not.toContain("abc");
+  expect(JSON.stringify(redacted)).not.toContain(mask);
+});
+
+it.each(["foo name", "Bearer name", "Basic name"])("keeps an opaque API key whole during extraction (%s)", async secret => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  const redacted = redactRemoteCredential({ headers: { "x-api-key": secret } }, { name: "name", echoed: secret });
+  expect(redacted.name).toBe("name");
+  expect(JSON.stringify(redacted)).not.toContain(secret);
+});
+
+it.each(["authorization", "Authorization", "proxy-authorization"])("extracts recognized bearer credentials from %s", async header => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  expect(redactRemoteCredential({ headers: { [header]: "bEaReR tokenvalue" } }, { reflected: "tokenvalue" }).reflected).not.toBe("tokenvalue");
+});

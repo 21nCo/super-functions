@@ -21,18 +21,22 @@ export function beginTargetCredentialRedaction(target: McpFnTarget): () => void 
 }
 
 function credentialValues(headers: HeadersInit): Set<string> {
-  const values = boundedCredentialEntries(headers).map((entry) => entry[1]);
+  const values = boundedCredentialEntries(headers);
   const secrets = new Set<string>();
-  for (const raw of values) {
+  for (const [header, raw] of values) {
     if (typeof raw !== "string" || !raw.trim()) continue;
     secrets.add(raw);
     secrets.add(raw.trim());
     const trimmed = raw.trim();
     const separator = trimmed.search(/\s/);
-    if (separator > 0) {
+    const scheme = separator > 0 ? trimmed.slice(0, separator).toLowerCase() : "";
+    const authorization = ["authorization", "proxy-authorization"].includes(header.toLowerCase());
+    // Authorization headers carry schemes, including supported custom ones.
+    // Other credential headers are opaque even when their values contain spaces.
+    if (authorization && separator > 0) {
       const token = trimmed.slice(separator).trim();
       if (token) secrets.add(token);
-      if (trimmed.slice(0, separator).toLowerCase() === "basic" && /^[A-Za-z0-9+/]+={0,2}$/.test(token)) {
+      if (scheme === "basic" && /^[A-Za-z0-9+/]+={0,2}$/.test(token)) {
         const decoded = Buffer.from(token, "base64");
         // Round-trip validation avoids interpreting malformed tokens as credentials.
         if (decoded.toString("base64").replace(/=+$/, "") === token.replace(/=+$/, "")) {
@@ -118,6 +122,7 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
       : literal;
   });
   const secretPattern = patterns.length ? new RegExp(patterns.join("|"), "g") : undefined;
+  const replacementPattern = patterns.length ? new RegExp(patterns.join("|")) : undefined;
   // A requested marker is itself output and must not reproduce a credential.
   if (secretPattern) {
     const markerContainsSecret = secretPattern.test(redactionMarker ?? "[REDACTED]");
@@ -139,7 +144,11 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
       if (role === "failure" && field === "layer" && ["mcpfn-preflight", "authorization-server", "resource-server", "mcp-initialization", "scenario", "upstream-conformance"].includes(input)) return input;
       if (role === "inspectorEvent" && field === "source" && ["diagnostic", "client"].includes(input)) return input;
       if (role === "result" && field === "sideEffect" && ["none", "idempotent", "non-idempotent"].includes(input)) return input;
-      return secretPattern ? input.replace(secretPattern, secret => redactionMarker ?? (secret.length < 10 ? (secret.includes("*") ? "#" : "*").repeat(secret.length) : "[REDACTED]")) : input;
+      return secretPattern ? input.replace(secretPattern, secret => {
+        const replacement = redactionMarker ?? (secret.length < 10 ? (secret.includes("*") ? "#" : "*").repeat(secret.length) : "[REDACTED]");
+        // Every generated mask must be safe against the entire credential set.
+        return replacementPattern!.test(replacement) ? "" : replacement;
+      }) : input;
     }
     if (Array.isArray(input)) return input.map(entry => scrub(entry, role));
     if (input && typeof input === "object") return Object.fromEntries(Object.entries(input).map(([key, entry]) => {
