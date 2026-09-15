@@ -1,0 +1,9 @@
+I made some entire CLI hook changes locally. Commit and push directly to origin dev only those changes.
+
+---
+
+Why are the hook-based changes still present in local worktree uncommitted changes?
+
+---
+
+What local changes present in the local dev branch should be preserved and what can be deleted?

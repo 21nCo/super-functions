@@ -3,7 +3,7 @@
   "checkpoint_id": "01M2JNWHAF5XZKFVAD9P03CK8T",
   "strategy": "manual-commit",
   "branch": "codex/mcp-1-transport-neutral-conformance-0910",
-  "checkpoints_count": 3,
+  "checkpoints_count": 6,
   "files_touched": null,
   "sessions": [
     {
@@ -19,13 +19,20 @@
       "compact_transcript": "/1/transcript.jsonl",
       "content_hash": "/1/content_hash.txt",
       "prompt": "/1/prompt.txt"
+    },
+    {
+      "metadata": "/2/metadata.json",
+      "transcript": "/2/full.jsonl",
+      "compact_transcript": "/2/transcript.jsonl",
+      "content_hash": "/2/content_hash.txt",
+      "prompt": "/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 428528,
+    "input_tokens": 474378,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 9164544,
-    "output_tokens": 51480,
-    "api_call_count": 84
+    "cache_read_tokens": 10461440,
+    "output_tokens": 63575,
+    "api_call_count": 106
   }
 }
