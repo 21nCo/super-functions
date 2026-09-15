@@ -1,0 +1,74 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2JCZX7DMTE0C15MKYEN88W7",
+  "session_id": "01a0a496-fa30-7f70-ac42-1e7080963f28",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-15T11:24:48.727163Z",
+  "branch": "codex/mcp-1-transport-neutral-conformance-0910",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "mcpfn/client/src/client.ts",
+    "mcpfn/inspector/src/index.ts",
+    "mcpfn/inspector/tests/authenticated-artifacts.test.ts",
+    "mcpfn/inspector/tests/inspector.test.ts",
+    "mcpfn/testing/README.md",
+    "mcpfn/testing/src/client.ts",
+    "mcpfn/testing/src/host-authorization.ts",
+    "mcpfn/testing/src/remote-target.ts",
+    "mcpfn/testing/src/scenarios.ts",
+    "mcpfn/testing/src/suite.ts",
+    "mcpfn/testing/tests/host-authorization.test.ts",
+    "mcpfn/testing/tests/remote-target.test.ts",
+    "mcpfn/testing/tests/suite.test.ts",
+    "mcpfn/testing/tests/testing.test.ts",
+    "scripts/gate-mcpfn-release.mjs",
+    "scripts/test-mcpfn-mixed-entry-redaction.mjs"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "fa49358bd542",
+  "checkpoint_transcript_start": 617,
+  "transcript_lines_at_start": 617,
+  "compact_transcript_start": 84,
+  "token_usage": {
+    "input_tokens": 64234,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4468096,
+    "output_tokens": 10224,
+    "api_call_count": 41
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-15T11:24:48.547089Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 6756,
+    "human_modified": 162,
+    "human_removed": 0,
+    "total_committed": 6756,
+    "total_lines_changed": 6918,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 6158,
+      "user_lines_removed": 1,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".codex/hooks.json": 88,
+        ".conduct/pr-reports/21nco-super-functions-pr-116-20260821-223157.md": 621,
+        ".conduct/pr-reports/21nco-super-functions-pr-116-comments.json": 5311,
+        "devfn/cli/package.json": 1,
+        "superconsole/.conduct/SFNS-2/evidence/result.json": 7,
+        "superconsole/.conduct/SFNS-2/evidence/server.txt": 5,
+        "superconsole/.conduct/SFNS-2/migration.md": 59,
+        "superconsole/.conduct/SFNS-2/port-matrix.md": 66
+      },
+      "user_removed_per_file": {
+        "devfn/cli/package.json": 1
+      }
+    }
+  ]
+}
