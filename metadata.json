@@ -3,8 +3,15 @@
   "checkpoint_id": "01M2JJN5ZM2WRX0PSHH7G5SPJV",
   "strategy": "manual-commit",
   "branch": "sfns-4-rex-upstream",
-  "checkpoints_count": 1,
-  "files_touched": null,
+  "checkpoints_count": 2,
+  "files_touched": [
+    "langfn/typescript/src/client.ts",
+    "langfn/typescript/tests/round3-regressions.test.ts",
+    "secfn/server/src/__tests__/server.test.ts",
+    "secfn/server/src/vault.ts",
+    "sendfn/typescript/src/email/connected-mailbox-adapter.ts",
+    "sendfn/typescript/tests/connected-mailbox.test.ts"
+  ],
   "sessions": [
     {
       "metadata": "/0/metadata.json",
@@ -12,13 +19,20 @@
       "compact_transcript": "/0/transcript.jsonl",
       "content_hash": "/0/content_hash.txt",
       "prompt": "/0/prompt.txt"
+    },
+    {
+      "metadata": "/1/metadata.json",
+      "transcript": "/1/full.jsonl",
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
-    "input_tokens": 270430,
+    "input_tokens": 424431,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 3956736,
-    "output_tokens": 14126,
-    "api_call_count": 33
+    "cache_read_tokens": 6631808,
+    "output_tokens": 31165,
+    "api_call_count": 63
   }
 }
