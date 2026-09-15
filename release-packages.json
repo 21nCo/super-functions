@@ -154,7 +154,6 @@
   { "slug": "plugfn-admin", "path": "plugfn/admin", "name": "@plugfn/admin" },
   { "slug": "plugfn-cli", "path": "plugfn/cli", "name": "@plugfn/cli" },
   { "slug": "plugfn-client", "path": "plugfn/client", "name": "@plugfn/client" },
-  { "slug": "plugfn-providers", "path": "plugfn/providers", "name": "@plugfn/providers" },
   { "slug": "sendfn", "path": "sendfn/typescript", "name": "sendfn" },
   { "slug": "sendfn-admin", "path": "sendfn/admin", "name": "@sendfn/admin" },
   {"slug": "reviewfn-core", "path": "reviewfn/core", "name": "@superfunctions/reviewfn-core"},
