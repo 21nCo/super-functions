@@ -1,0 +1,35 @@
+mcpfn/testing/tests/testing.test.ts
+  s_d2a882e8cbcc02::t_09910372d0cd7a 118,125-127,129-130
+mcpfn/testing/src/scenarios.ts
+  s_d2a882e8cbcc02::t_00b9a770dfa315 674
+mcpfn/testing/src/remote-target.ts
+  s_d2a882e8cbcc02::t_00b9a770dfa315 174-176,186-200
+mcpfn/testing/tests/remote-target.test.ts
+  s_d2a882e8cbcc02::t_6241048dae9172 571-574
+  s_d2a882e8cbcc02::t_09910372d0cd7a 779-786
+mcpfn/inspector/tests/authenticated-artifacts.test.ts
+  s_d2a882e8cbcc02::t_7ad47966aead60 250
+  s_d2a882e8cbcc02::t_0ea78d626aa08b 261
+  s_d2a882e8cbcc02::t_09910372d0cd7a 226-244
+  s_d2a882e8cbcc02::t_150afa90cba71b 245-249,251-260,262-292
+mcpfn/inspector/src/index.ts
+  s_d2a882e8cbcc02::t_00b9a770dfa315 34-39,248-253,257,318,330-331,350-353
+  s_d2a882e8cbcc02::t_dbee9607c76426 225-246
+  s_d2a882e8cbcc02::t_a8066ab8915946 319-329
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "451f20bdf125ce8c1d0d5919144f881db8422b83",
+  "prompts": {},
+  "sessions": {
+    "s_d2a882e8cbcc02": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a522-f7e4-7422-a0fb-002c30b622cc",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
