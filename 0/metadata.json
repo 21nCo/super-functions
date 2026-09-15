@@ -1,0 +1,69 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2JK5RXWJS589HFNKKGVHN4R",
+  "session_id": "01a0a522-f7e4-7422-a0fb-002c30b622cc",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-15T13:12:52.515877Z",
+  "branch": "codex/mcp-1-transport-neutral-conformance-0910",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "mcpfn/client/src/client.ts",
+    "mcpfn/testing/README.md",
+    "mcpfn/testing/src/client.ts",
+    "mcpfn/testing/src/host-authorization.ts",
+    "mcpfn/testing/src/remote-target.ts",
+    "mcpfn/testing/src/scenarios.ts",
+    "mcpfn/testing/src/suite.ts",
+    "mcpfn/testing/tests/host-authorization.test.ts",
+    "mcpfn/testing/tests/remote-target.test.ts",
+    "mcpfn/testing/tests/suite.test.ts",
+    "mcpfn/testing/tests/testing.test.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "eda0cb76a2e6",
+  "checkpoint_transcript_start": 258,
+  "transcript_lines_at_start": 258,
+  "compact_transcript_start": 32,
+  "token_usage": {
+    "input_tokens": 59640,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 6390528,
+    "output_tokens": 15170,
+    "api_call_count": 34
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-15T13:12:52.344177Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 5560,
+    "human_modified": 155,
+    "human_removed": 0,
+    "total_committed": 5560,
+    "total_lines_changed": 5715,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 6158,
+      "user_lines_removed": 1,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".codex/hooks.json": 88,
+        ".conduct/pr-reports/21nco-super-functions-pr-116-20260821-223157.md": 621,
+        ".conduct/pr-reports/21nco-super-functions-pr-116-comments.json": 5311,
+        "devfn/cli/package.json": 1,
+        "superconsole/.conduct/SFNS-2/evidence/result.json": 7,
+        "superconsole/.conduct/SFNS-2/evidence/server.txt": 5,
+        "superconsole/.conduct/SFNS-2/migration.md": 59,
+        "superconsole/.conduct/SFNS-2/port-matrix.md": 66
+      },
+      "user_removed_per_file": {
+        "devfn/cli/package.json": 1
+      }
+    }
+  ]
+}
