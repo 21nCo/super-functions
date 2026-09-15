@@ -1,5 +1,6 @@
 import { Adapter, WhereClause } from "@superfunctions/db";
 import { NonProductionBackendError } from "../core/errors.js";
+import { secureRandomUUID } from "../utils/random.js";
 import { cosineSimilarity, Document, Embeddings, matchesRetrievalFilter, RetrievalOptions, VectorStore } from "./base.js";
 
 export interface DocumentRecord {
@@ -54,7 +55,7 @@ export class DbVectorStore extends VectorStore {
     const texts = documents.map((document) => document.content);
     const vectors = await this.embeddings.embedDocuments(texts);
     const records: DocumentRecord[] = documents.map((document, index) => ({
-      id: `doc_${crypto.randomUUID()}`,
+      id: `doc_${secureRandomUUID()}`,
       content: document.content,
       embedding: vectors[index]!,
       metadata: { ...document.metadata },

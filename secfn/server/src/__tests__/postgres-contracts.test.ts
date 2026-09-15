@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -14,7 +15,7 @@ import { drizzleAdapter } from "../../../../packages/db/src/adapters/drizzle/ind
 import { getSecFnSchema } from "../../../core/src/schema.js";
 import { createSecFnServer } from "../index.js";
 const url = process.env.SECFN_TEST_DATABASE_URL;
-const schemaName = `rex_contract_${crypto.randomUUID().replaceAll("-", "")}`;
+const schemaName = `rex_contract_${randomUUID().replaceAll("-", "")}`;
 let created = false;
 const client = url ? postgres(url, { max: 4, connection: { search_path: schemaName }, onnotice: () => {} }) : undefined;
 let server: ReturnType<typeof createSecFnServer>;
@@ -234,7 +235,7 @@ it.skipIf(!url)(
   },
 );
 it.skipIf(!url)("migrates a schema outside search_path twice and enforces environment identity", async () => {
-  const migrationSchema = `rex_upgrade_${crypto.randomUUID().replaceAll("-", "")}`;
+  const migrationSchema = `rex_upgrade_${randomUUID().replaceAll("-", "")}`;
   const migrationClient = postgres(url!, { max: 1, onnotice: () => {} });
   try {
     await migrationClient.unsafe(`CREATE SCHEMA ${migrationSchema}`);
@@ -353,7 +354,7 @@ it.skipIf(!url)("serializes conflicting member additions and replacements", asyn
 });
 
 it.skipIf(!url)("preflights duplicate legacy sets without deleting their data", async () => {
-  const name = `rex_duplicates_${crypto.randomUUID().replaceAll("-","")}`;
+  const name = `rex_duplicates_${randomUUID().replaceAll("-","")}`;
   const sql = postgres(url!,{max:1,onnotice:()=>{}});
   try {
     await sql.unsafe(`CREATE SCHEMA ${name}`);

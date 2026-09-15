@@ -810,6 +810,11 @@ export class VaultService {
   }
 
   async revokeServiceToken(id: string, actorId: string): Promise<void> {
+    const token = await this.db.findOne<ServiceTokenRecord>({
+      model: "secfn_service_tokens",
+      where: [{ field: "id", operator: "eq", value: id }],
+    });
+    if (!token) throw new SecFnNotFoundError("Service token not found", { id });
     await this.db.update({
       model: "secfn_service_tokens",
       where: [{ field: "id", operator: "eq", value: id }],
@@ -818,10 +823,13 @@ export class VaultService {
     await this.audit.write({
       type: "policy_violation",
       severity: "info",
+      tenantId: token.tenantId,
+      namespace: token.namespace,
+      environment: token.environment,
       actorId,
       resource: `service-token:${id}`,
       action: "revoke",
-      metadata: {},
+      metadata: { tokenId: id },
     });
   }
 

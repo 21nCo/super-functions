@@ -495,6 +495,28 @@ it('keeps trusted namespaces on collections and permits owned token revocation',
   }
 });
 
+it('keeps canonical service-token scope on revocation audit events', async () => {
+  const { secfn } = createServer();
+  const token = await secfn.vault.createServiceToken({
+    tenantId: 'tenant-a',
+    namespace: 'workspace-a',
+    environment: 'production',
+    name: 'runtime',
+    scopes: ['*'],
+    createdBy: 'admin',
+  });
+  await secfn.vault.revokeServiceToken(token.record.id, 'admin');
+  await expect(secfn.audit.queryEvents({tenantId:'tenant-a',namespace:'workspace-a'})).resolves.toContainEqual(
+    expect.objectContaining({
+      tenantId: 'tenant-a',
+      namespace: 'workspace-a',
+      environment: 'production',
+      action: 'revoke',
+      resource: `service-token:${token.record.id}`,
+    }),
+  );
+});
+
 it('derives environment ownership and rejects body scope overrides', async () => {
   const { secfn } = createServer();
   const foreign = await secfn.vault.createNamespace({ tenantId: 'tenant-a', slug: 'foreign', createdBy: 'admin' });

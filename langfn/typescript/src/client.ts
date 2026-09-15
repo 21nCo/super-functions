@@ -261,19 +261,21 @@ export class LangFn {
   ): AsyncIterable<StreamEvent> {
     const traceId = randomTraceId();
     const tracer = this.resolveTracer();
-    const span = tracer && this.config.observability?.enabled
-      ? await tracer.span(SPAN_TYPES.PROVIDER_STREAM, {
-          traceId,
-          metadata: {
-            metadata: options.metadata ?? {},
-            mode: Array.isArray(input) ? "chat" : "completion"
-          }
-        })
-      : undefined;
+    let span: Awaited<ReturnType<Tracer["span"]>> | undefined;
     const streamedContent: string[] = [];
     let latestUsage: CompletionResponse["usage"];
+    let terminalEvent: StreamEvent | undefined;
 
     try {
+      span = tracer && this.config.observability?.enabled
+        ? await tracer.span(SPAN_TYPES.PROVIDER_STREAM, {
+            traceId,
+            metadata: {
+              metadata: options.metadata ?? {},
+              mode: Array.isArray(input) ? "chat" : "completion"
+            }
+          })
+        : undefined;
       if (typeof input === "string") {
         const controller = new AbortController();
         const stream = this.requireModel().stream({ prompt: input, metadata: options.metadata, signal: controller.signal });
@@ -295,7 +297,8 @@ export class LangFn {
             this.enforceBudget(this.attachCost(latestUsage)?.total);
           }
           if (event.type === "end" && !latestUsage) this.enforceBudget(undefined);
-          yield event;
+          if (event.type === "end" || event.type === "error") terminalEvent = event;
+          else yield event;
         }
       } else {
         const response = this.finalizeChat(
@@ -345,7 +348,8 @@ export class LangFn {
               totalTokens: event.total_tokens ?? event.prompt_tokens + event.completion_tokens
             };
           }
-          yield event;
+          if (event.type === "end" || event.type === "error") terminalEvent = event;
+          else yield event;
         }
       }
 
@@ -366,8 +370,8 @@ export class LangFn {
       });
     } catch (error) {
       const normalizedError = normalizeUnknownError(error);
-      await span?.fail(normalizedError);
-      yield withTrace<StreamEvent>(
+      try { await span?.fail(normalizedError); } catch { /* Preserve the primary stream failure. */ }
+      terminalEvent = withTrace<StreamEvent>(
         {
           type: "error",
           error: {
@@ -378,8 +382,25 @@ export class LangFn {
         traceId
       );
     } finally {
-      await span?.[Symbol.asyncDispose]();
+      try {
+        await span?.[Symbol.asyncDispose]();
+      } catch (error) {
+        if (!terminalEvent || terminalEvent.type === "end") {
+          const normalizedError = normalizeUnknownError(error);
+          terminalEvent = withTrace<StreamEvent>(
+            {
+              type: "error",
+              error: {
+                code: normalizedError.code,
+                message: normalizedError.message
+              }
+            },
+            traceId
+          );
+        }
+      }
     }
+    if (terminalEvent) yield terminalEvent;
   }
 
   async *streamSSE(

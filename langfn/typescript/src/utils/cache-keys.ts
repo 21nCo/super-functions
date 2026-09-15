@@ -1,3 +1,5 @@
+import { secureSha256Hex } from "./random.js";
+
 export interface CompletionCacheKeyInput {
   provider: string;
   model: string;
@@ -73,19 +75,10 @@ export function stableSerializeCachePayload(value: unknown): string {
   return JSON.stringify(normalizeValue(value) ?? null);
 }
 
-async function sha256Hex(input: string): Promise<string> {
-  if (!globalThis.crypto?.subtle) {
-    throw new Error("crypto.subtle is not available in this runtime");
-  }
-  const bytes = new TextEncoder().encode(input);
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
-}
-
 async function buildCacheKey(kind: string, payload: unknown): Promise<string> {
   const normalizedPayload =
     payload && typeof payload === "object" ? (payload as Record<string, unknown>) : { value: payload };
-  return await sha256Hex(
+  return await secureSha256Hex(
     stableSerializeCachePayload({
       version: 1,
       kind,

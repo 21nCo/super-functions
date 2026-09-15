@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   AuthType,
@@ -197,7 +198,7 @@ export function googleDiscoveryProvider(
         let body = validated.body;
         let uploadConfig = {};
         if (validated.media) {
-          const boundary = `plugfn-${crypto.randomUUID()}`;
+          const boundary = `plugfn-${randomUUID()}`;
           const decoded = atob(validated.media.base64);
           if (decoded.length > 20 * 1024 * 1024)
             throw new Error("GOOGLE_MEDIA_TOO_LARGE");

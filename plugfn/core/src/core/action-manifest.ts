@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { Action, ActionContract } from '../types/action.js';
 import { redactTelemetry } from '../security/redaction.js';
@@ -65,10 +66,7 @@ export async function createActionManifest(
     outputSchema: schemas.output,
   };
   const canonical = canonicalJson(manifest);
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
-  const hash = Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, '0')
-  ).join('');
+  const hash = createHash('sha256').update(canonical).digest('hex');
   return { ...manifest, hash: `sha256-${hash}` };
 }
 

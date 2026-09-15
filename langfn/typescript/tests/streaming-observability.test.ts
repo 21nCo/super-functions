@@ -122,6 +122,24 @@ describe("streaming and observability", () => {
     expect(timeoutEvents[0]).toMatchObject({ type: "error", error: { code: "PROVIDER_TIMEOUT" } });
   });
 
+  it("emits one terminal error when trace persistence fails after provider completion", async () => {
+    const client = new LangFn({
+      model: new MockChatModel({ responses: ["done"] }),
+      observability: {
+        enabled: true,
+        traceStorage: {
+          saveTrace: async () => { throw new Error("trace unavailable"); },
+          findMany: async () => [],
+        },
+      },
+    });
+
+    const events = await collect(client.stream("hello"));
+    expect(events.filter((event) => event.type === "end" || event.type === "error"))
+      .toEqual([expect.objectContaining({ type: "error" })]);
+    expect(events.some((event) => event.type === "end")).toBe(false);
+  });
+
   it("persists fresh traces and idempotent feedback through shared storage", async () => {
     const adapter = new InMemoryAdapter();
     const storage = new TraceStorage(adapter as never);

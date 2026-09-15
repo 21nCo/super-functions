@@ -75,6 +75,27 @@ describe("selected provider wire contracts", () => {
     expect(config.params.uploadType).toBe("multipart");
     expect(Buffer.from(payload).includes(Buffer.from(bytes))).toBe(true);
   });
+  it("builds Drive uploads without relying on global Web Crypto", async () => {
+    const c = context({ id: "new-file" });
+    vi.stubGlobal("crypto", undefined);
+    try {
+      await expect(
+        googleDriveProvider.actions["files.create"].execute(
+          {
+            body: { name: "test.txt" },
+            media: {
+              base64: Buffer.from("content").toString("base64"),
+              mimeType: "text/plain",
+            },
+          },
+          c,
+        ),
+      ).resolves.toEqual({ id: "new-file" });
+      expect(c.http.post).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it("retains revision-aware Docs edits and rejects invalid path types before effects", async () => {
     const c = context({ documentId: "doc", replies: [] });
     const input = {

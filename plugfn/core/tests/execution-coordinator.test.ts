@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createMemoryAtomicKVStore } from '@superfunctions/db/adapters/memory';
 import { ExecutionCoordinator } from '../src/core/execution-coordinator.js';
 describe('shared workflow execution admission', () => {
@@ -18,5 +18,14 @@ describe('shared workflow execution admission', () => {
     await expect(a.reconcile('event', 'wrong')).rejects.toThrow('CONFLICT');
     await a.reconcile('event', (await a.inspect('event'))!.token);
     expect(await a.run('event', async () => 'reconciled')).toBe('reconciled');
+  });
+  it('creates ownership claims without relying on global Web Crypto', async () => {
+    vi.stubGlobal('crypto', undefined);
+    try {
+      const coordinator = new ExecutionCoordinator(createMemoryAtomicKVStore());
+      await expect(coordinator.run('event', async () => 'done')).resolves.toBe('done');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

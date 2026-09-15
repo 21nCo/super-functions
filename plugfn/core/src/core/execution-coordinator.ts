@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { AtomicKVStoreAdapter } from '@superfunctions/db';
 
 interface Claim {
@@ -27,7 +28,7 @@ export class ExecutionCoordinator {
     if (claim && claim.state !== 'idle') throw new Error('EXECUTION_OUTCOME_UNCERTAIN');
     const owned: Claim = {
       state: 'running',
-      token: crypto.randomUUID(),
+      token: randomUUID(),
       expiresAt: this.now() + (this.options.leaseMs ?? 60_000),
     };
     const serialized = JSON.stringify(owned);

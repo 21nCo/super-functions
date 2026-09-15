@@ -1,4 +1,5 @@
 import { GraphInterruptError, GraphMaxStepsError, InternalError, ValidationError } from "../core/errors.js";
+import { secureRandomUUID } from "../utils/random.js";
 import { InMemoryCheckpointStore, type CheckpointStore, type GraphCheckpoint } from "./checkpoint.js";
 
 export const END = "__end__";
@@ -199,5 +200,5 @@ export class StateGraph<TState extends Record<string, unknown>> {
 }
 
 function randomCheckpointId(): string {
-  return `chk_${crypto.randomUUID()}`;
+  return `chk_${secureRandomUUID()}`;
 }
