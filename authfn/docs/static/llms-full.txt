@@ -4611,12 +4611,12 @@ If you're behind a reverse proxy (Nginx, ELB), set `app.set('trust proxy', 1)` s
 # FastAPI
 
 ```bash
-pip install "authfn[fastapi]"
+pip install authfn superfunctions-fastapi
 ```
 
 ```python
 from fastapi import FastAPI, Request
-from superfunctions_fastapi import to_fastapi
+from superfunctions_fastapi import create_router
 from authfn import create_authfn, AuthFnConfig, authfn_password_plugin
 
 # Replace `my_database_adapter` with any Superfunctions db adapter.
@@ -4627,7 +4627,7 @@ auth = create_authfn(AuthFnConfig(
 ))
 
 app = FastAPI()
-app.include_router(to_fastapi(auth.router), prefix="/auth")
+app.include_router(create_router(auth.get_routes(), prefix="/auth"))
 
 @app.get("/me")
 async def me(request: Request):
@@ -4655,7 +4655,7 @@ async def protected(session = Depends(require_session)):
 
 ## ASGI middleware
 
-`to_fastapi` is itself an `APIRouter`. If you want to add middleware (CORS, logging) before authfn, do so on the FastAPI app — it composes naturally.
+`create_router` returns a FastAPI `APIRouter`. If you want to add middleware (CORS, logging) before authfn, do so on the FastAPI app — it composes naturally.
 
 ## Related
 
@@ -4672,12 +4672,12 @@ async def protected(session = Depends(require_session)):
 # Flask
 
 ```bash
-pip install "authfn[flask]"
+pip install authfn superfunctions-flask
 ```
 
 ```python
 from flask import Flask, request, jsonify
-from superfunctions_flask import to_flask
+from superfunctions_flask import create_blueprint
 from authfn import create_authfn, AuthFnConfig, authfn_password_plugin
 
 # Replace `my_database_adapter` with any Superfunctions db adapter.
@@ -4688,7 +4688,7 @@ auth = create_authfn(AuthFnConfig(
 ))
 
 app = Flask(__name__)
-to_flask(app, auth.router, base_path="/auth")
+app.register_blueprint(create_blueprint(auth.get_routes(), url_prefix="/auth"))
 
 @app.get("/me")
 async def me():
@@ -4929,13 +4929,13 @@ works as long as your DB adapter is edge-compatible.
 
 There is no `authfn[starlette]` extra and no `superfunctions_starlette` adapter.
 
-Starlette apps should mount through [FastAPI](./fastapi) (`pip install "authfn[fastapi]"`). FastAPI is Starlette-based, and `superfunctions_fastapi` is the supported Python ASGI adapter.
+Starlette apps should mount through [FastAPI](./fastapi). FastAPI is Starlette-based, and `superfunctions-fastapi` is the supported Python ASGI adapter.
 
 ```bash
-pip install "authfn[fastapi]"
+pip install authfn superfunctions-fastapi
 ```
 
-See [Frameworks → FastAPI](./fastapi) for the mount example.
+See [Frameworks → FastAPI](./fastapi) for the mount example (`create_router(auth.get_routes(), prefix="/auth")`).
 
 ## Related
 
@@ -7446,9 +7446,8 @@ The Python `authfn` package mirrors the TypeScript kernel: same routes, same env
 
 ```bash
 pip install authfn
-# or
-pip install "authfn[fastapi]"
-pip install "authfn[flask]"
+pip install superfunctions-fastapi
+pip install superfunctions-flask
 ```
 
 ## 2. Create the runtime
@@ -7490,11 +7489,11 @@ auth = create_authfn(AuthFnConfig(
 ```python
 # main.py
 from fastapi import FastAPI, Request
-from superfunctions_fastapi import to_fastapi
+from superfunctions_fastapi import create_router
 from auth import auth
 
 app = FastAPI()
-app.include_router(to_fastapi(auth.router), prefix="/auth")
+app.include_router(create_router(auth.get_routes(), prefix="/auth"))
 
 @app.get("/protected")
 async def protected(request: Request):
@@ -7509,11 +7508,11 @@ async def protected(request: Request):
 ```python
 # main.py
 from flask import Flask, request
-from superfunctions_flask import to_flask
+from superfunctions_flask import create_blueprint
 from auth import auth
 
 app = Flask(__name__)
-to_flask(app, auth.router, base_path="/auth")
+app.register_blueprint(create_blueprint(auth.get_routes(), url_prefix="/auth"))
 
 @app.get("/protected")
 async def protected():
@@ -10475,9 +10474,9 @@ The `authfn` Python package is a port of the Node kernel. It exposes the same `c
 
 ```bash
 pip install authfn
-# or with framework extras
-pip install "authfn[fastapi]"
-pip install "authfn[flask]"
+# plus a framework adapter
+pip install superfunctions-fastapi
+pip install superfunctions-flask
 ```
 
 ## Mental model
@@ -10529,10 +10528,10 @@ auth = create_authfn(AuthFnConfig(
 
 ```python
 from fastapi import FastAPI, Request
-from superfunctions_fastapi import to_fastapi
+from superfunctions_fastapi import create_router
 
 app = FastAPI()
-app.include_router(to_fastapi(auth.router), prefix="/auth")
+app.include_router(create_router(auth.get_routes(), prefix="/auth"))
 
 @app.get("/openapi-authfn.json")
 async def openapi_authfn():
@@ -10543,10 +10542,10 @@ async def openapi_authfn():
 
 ```python
 from flask import Flask
-from superfunctions_flask import to_flask
+from superfunctions_flask import create_blueprint
 
 app = Flask(__name__)
-to_flask(app, auth.router, base_path="/auth")
+app.register_blueprint(create_blueprint(auth.get_routes(), url_prefix="/auth"))
 
 @app.get("/openapi-authfn.json")
 def openapi_authfn():
@@ -10555,7 +10554,7 @@ def openapi_authfn():
 
 ### Starlette
 
-There is no `superfunctions_starlette` adapter. Mount through FastAPI (`pip install "authfn[fastapi]"`) — see [Frameworks → FastAPI](../frameworks/fastapi).
+There is no `superfunctions_starlette` adapter. Mount through FastAPI (`pip install authfn superfunctions-fastapi`) — see [Frameworks → FastAPI](../frameworks/fastapi).
 
 ## Reading the session
 

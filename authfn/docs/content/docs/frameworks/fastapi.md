@@ -6,12 +6,12 @@ description: Mount the Python authfn kernel on FastAPI.
 # FastAPI
 
 ```bash
-pip install "authfn[fastapi]"
+pip install authfn superfunctions-fastapi
 ```
 
 ```python
 from fastapi import FastAPI, Request
-from superfunctions_fastapi import to_fastapi
+from superfunctions_fastapi import create_router
 from authfn import create_authfn, AuthFnConfig, authfn_password_plugin
 
 # Replace `my_database_adapter` with any Superfunctions db adapter.
@@ -22,7 +22,7 @@ auth = create_authfn(AuthFnConfig(
 ))
 
 app = FastAPI()
-app.include_router(to_fastapi(auth.router), prefix="/auth")
+app.include_router(create_router(auth.get_routes(), prefix="/auth"))
 
 @app.get("/me")
 async def me(request: Request):
@@ -50,7 +50,7 @@ async def protected(session = Depends(require_session)):
 
 ## ASGI middleware
 
-`to_fastapi` is itself an `APIRouter`. If you want to add middleware (CORS, logging) before authfn, do so on the FastAPI app — it composes naturally.
+`create_router` returns a FastAPI `APIRouter`. If you want to add middleware (CORS, logging) before authfn, do so on the FastAPI app — it composes naturally.
 
 ## Related
 
