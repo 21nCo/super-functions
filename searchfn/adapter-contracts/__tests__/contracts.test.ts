@@ -1,6 +1,11 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { SEARCH_ADAPTER_DISPOSED, SearchAdapterError } from "../src/index";
 import { CONFORMANCE_ASSERTIONS, runConformanceSuite } from "../src/testing";
+
+const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+  exports: { "./testing": { types?: string; import?: string; require?: string } };
+};
 
 describe("adapter contracts scaffolding", () => {
   it("exports constants and errors", () => {
@@ -12,5 +17,10 @@ describe("adapter contracts scaffolding", () => {
   it("exports the shared conformance harness", () => {
     expect(typeof runConformanceSuite).toBe("function");
     expect(CONFORMANCE_ASSERTIONS.length).toBeGreaterThan(0);
+  });
+
+  it("advertises the testing subpath as ESM-only", () => {
+    expect(pkg.exports["./testing"].import).toBe("./dist/testing.js");
+    expect(pkg.exports["./testing"].require).toBeUndefined();
   });
 });

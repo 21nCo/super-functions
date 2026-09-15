@@ -5,7 +5,7 @@
  * To use: call `runConformanceSuite(adapterFactory)` inside a `describe` block.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import type { SearchAdapter } from "./index";
+import type { InitializeResourceConfig, SearchAdapter, SearchDocument } from "./index";
 import { SEARCH_ADAPTER_DISPOSED } from "./index";
 
 export interface ConformanceAdapterFactory {
@@ -19,6 +19,29 @@ export interface ConformanceAdapterFactory {
   cleanup?(): Promise<void>;
   /** Optional callback that returns true when tests should be skipped (e.g., backend unavailable) */
   shouldSkip?(): boolean;
+}
+
+const ITEMS: InitializeResourceConfig[] = [{ name: "items", searchFields: ["title"] }];
+const ITEMS_AND_NOTES: InitializeResourceConfig[] = [
+  { name: "items", searchFields: ["title"] },
+  { name: "notes", searchFields: ["body"] },
+];
+
+async function initialize(
+  adapter: SearchAdapter,
+  resources: InitializeResourceConfig[] = ITEMS
+): Promise<void> {
+  if (adapter.initialize) {
+    await adapter.initialize({ resources });
+  }
+}
+
+async function index(
+  adapter: SearchAdapter,
+  documents: SearchDocument[],
+  resource = "items"
+): Promise<void> {
+  await adapter.index({ resource, documents });
 }
 
 /**
@@ -45,8 +68,6 @@ export function runConformanceSuite(factory: ConformanceAdapterFactory): void {
     }
   });
 
-  // ── Contract shape ──────────────────────────────────────────────
-
   describe("contract shape", () => {
     it("has a non-empty name", () => {
       expect(typeof adapter.name).toBe("string");
@@ -67,49 +88,29 @@ export function runConformanceSuite(factory: ConformanceAdapterFactory): void {
     });
   });
 
-  // ── Index + Search basics ───────────────────────────────────────
-
   describe("index and search", () => {
     it("returns matching ids after indexing documents", async () => {
-      if (adapter.initialize) {
-        await adapter.initialize({ resources: [{ name: "items", searchFields: ["title"] }] });
-      }
-      await adapter.index({
-        resource: "items",
-        documents: [
-          { id: "d1", fields: { title: "alpha beta" } },
-          { id: "d2", fields: { title: "gamma delta" } },
-        ],
-      });
+      await initialize(adapter);
+      await index(adapter, [
+        { id: "d1", fields: { title: "alpha beta" } },
+        { id: "d2", fields: { title: "gamma delta" } },
+      ]);
       const results = await adapter.search({ resource: "items", query: "alpha", limit: 10 });
       expect(results).toContain("d1");
       expect(results).not.toContain("d2");
     });
 
     it("returns empty array when no documents match", async () => {
-      if (adapter.initialize) {
-        await adapter.initialize({ resources: [{ name: "items", searchFields: ["title"] }] });
-      }
-      await adapter.index({
-        resource: "items",
-        documents: [{ id: "d1", fields: { title: "alpha" } }],
-      });
+      await initialize(adapter);
+      await index(adapter, [{ id: "d1", fields: { title: "alpha" } }]);
       const results = await adapter.search({ resource: "items", query: "zzzzz", limit: 10 });
       expect(results).toEqual([]);
     });
 
     it("upserts on duplicate id", async () => {
-      if (adapter.initialize) {
-        await adapter.initialize({ resources: [{ name: "items", searchFields: ["title"] }] });
-      }
-      await adapter.index({
-        resource: "items",
-        documents: [{ id: "d1", fields: { title: "alpha" } }],
-      });
-      await adapter.index({
-        resource: "items",
-        documents: [{ id: "d1", fields: { title: "beta" } }],
-      });
+      await initialize(adapter);
+      await index(adapter, [{ id: "d1", fields: { title: "alpha" } }]);
+      await index(adapter, [{ id: "d1", fields: { title: "beta" } }]);
       const alphaResults = await adapter.search({ resource: "items", query: "alpha", limit: 10 });
       expect(alphaResults).not.toContain("d1");
       const betaResults = await adapter.search({ resource: "items", query: "beta", limit: 10 });
@@ -117,54 +118,40 @@ export function runConformanceSuite(factory: ConformanceAdapterFactory): void {
     });
 
     it("respects limit parameter", async () => {
-      if (adapter.initialize) {
-        await adapter.initialize({ resources: [{ name: "items", searchFields: ["title"] }] });
-      }
-      const docs = Array.from({ length: 20 }, (_, i) => ({
-        id: `d${i}`,
-        fields: { title: "common term" },
-      }));
-      await adapter.index({ resource: "items", documents: docs });
+      await initialize(adapter);
+      await index(
+        adapter,
+        Array.from({ length: 20 }, (_, i) => ({
+          id: `d${i}`,
+          fields: { title: "common term" },
+        }))
+      );
       const results = await adapter.search({ resource: "items", query: "common", limit: 5 });
       expect(results.length).toBeLessThanOrEqual(5);
     });
   });
 
-  // ── Deterministic tie-breaking ──────────────────────────────────
-
   describe("deterministic ordering", () => {
     it("produces consistent order for equal-score documents", async () => {
-      if (adapter.initialize) {
-        await adapter.initialize({ resources: [{ name: "items", searchFields: ["title"] }] });
-      }
-      await adapter.index({
-        resource: "items",
-        documents: [
-          { id: "b", fields: { title: "same" } },
-          { id: "a", fields: { title: "same" } },
-          { id: "c", fields: { title: "same" } },
-        ],
-      });
+      await initialize(adapter);
+      await index(adapter, [
+        { id: "b", fields: { title: "same" } },
+        { id: "a", fields: { title: "same" } },
+        { id: "c", fields: { title: "same" } },
+      ]);
       const r1 = await adapter.search({ resource: "items", query: "same", limit: 10 });
       const r2 = await adapter.search({ resource: "items", query: "same", limit: 10 });
       expect(r1).toEqual(r2);
     });
   });
 
-  // ── Remove ──────────────────────────────────────────────────────
-
   describe("remove", () => {
     it("removes documents by id", async () => {
-      if (adapter.initialize) {
-        await adapter.initialize({ resources: [{ name: "items", searchFields: ["title"] }] });
-      }
-      await adapter.index({
-        resource: "items",
-        documents: [
-          { id: "d1", fields: { title: "alpha" } },
-          { id: "d2", fields: { title: "alpha" } },
-        ],
-      });
+      await initialize(adapter);
+      await index(adapter, [
+        { id: "d1", fields: { title: "alpha" } },
+        { id: "d2", fields: { title: "alpha" } },
+      ]);
       await adapter.remove({ resource: "items", ids: ["d1"] });
       const results = await adapter.search({ resource: "items", query: "alpha", limit: 10 });
       expect(results).not.toContain("d1");
@@ -172,85 +159,43 @@ export function runConformanceSuite(factory: ConformanceAdapterFactory): void {
     });
 
     it("is idempotent for already-removed ids", async () => {
-      if (adapter.initialize) {
-        await adapter.initialize({ resources: [{ name: "items", searchFields: ["title"] }] });
-      }
-      await adapter.index({
-        resource: "items",
-        documents: [{ id: "d1", fields: { title: "alpha" } }],
-      });
+      await initialize(adapter);
+      await index(adapter, [{ id: "d1", fields: { title: "alpha" } }]);
       await adapter.remove({ resource: "items", ids: ["d1"] });
-      // Second remove should not throw
       await expect(adapter.remove({ resource: "items", ids: ["d1"] })).resolves.toBeUndefined();
     });
   });
 
-  // ── Clear ───────────────────────────────────────────────────────
-
   describe("clear", () => {
     it("removes all documents from a resource", async () => {
-      if (adapter.initialize) {
-        await adapter.initialize({ resources: [{ name: "items", searchFields: ["title"] }] });
-      }
-      await adapter.index({
-        resource: "items",
-        documents: [{ id: "d1", fields: { title: "alpha" } }],
-      });
+      await initialize(adapter);
+      await index(adapter, [{ id: "d1", fields: { title: "alpha" } }]);
       await adapter.clear("items");
       const results = await adapter.search({ resource: "items", query: "alpha", limit: 10 });
       expect(results).toEqual([]);
     });
 
     it("does not affect other resources", async () => {
-      if (adapter.initialize) {
-        await adapter.initialize({
-          resources: [
-            { name: "items", searchFields: ["title"] },
-            { name: "notes", searchFields: ["body"] },
-          ],
-        });
-      }
-      await adapter.index({
-        resource: "items",
-        documents: [{ id: "d1", fields: { title: "alpha" } }],
-      });
-      await adapter.index({
-        resource: "notes",
-        documents: [{ id: "n1", fields: { body: "alpha" } }],
-      });
+      await initialize(adapter, ITEMS_AND_NOTES);
+      await index(adapter, [{ id: "d1", fields: { title: "alpha" } }]);
+      await index(adapter, [{ id: "n1", fields: { body: "alpha" } }], "notes");
       await adapter.clear("items");
       const notesResults = await adapter.search({ resource: "notes", query: "alpha", limit: 10 });
       expect(notesResults).toContain("n1");
     });
   });
 
-  // ── searchAll (optional) ────────────────────────────────────────
-
   describe("searchAll", () => {
     it("merges results across resources with deterministic ordering", async () => {
-      if (!adapter.searchAll) return; // skip if not supported
+      if (!adapter.searchAll) return;
 
-      if (adapter.initialize) {
-        await adapter.initialize({
-          resources: [
-            { name: "items", searchFields: ["title"] },
-            { name: "notes", searchFields: ["body"] },
-          ],
-        });
-      }
-      await adapter.index({
-        resource: "items",
-        documents: [{ id: "d1", fields: { title: "common term" } }],
-      });
-      await adapter.index({
-        resource: "notes",
-        documents: [{ id: "n1", fields: { body: "common term" } }],
-      });
+      await initialize(adapter, ITEMS_AND_NOTES);
+      await index(adapter, [{ id: "d1", fields: { title: "common term" } }]);
+      await index(adapter, [{ id: "n1", fields: { body: "common term" } }], "notes");
 
       const results = await adapter.searchAll({ query: "common", limit: 10 });
       expect(results.length).toBeGreaterThanOrEqual(1);
 
-      // Verify deterministic ordering: score desc, resource asc, id asc
       for (let i = 1; i < results.length; i++) {
         const prev = results[i - 1];
         const curr = results[i];
@@ -265,23 +210,16 @@ export function runConformanceSuite(factory: ConformanceAdapterFactory): void {
     });
   });
 
-  // ── Lifecycle (initialize / dispose) ────────────────────────────
-
   describe("lifecycle", () => {
     it("blocks operations after dispose", async () => {
       if (!adapter.dispose) return;
 
-      if (adapter.initialize) {
-        await adapter.initialize({ resources: [{ name: "items", searchFields: ["title"] }] });
-      }
+      await initialize(adapter);
       await adapter.dispose();
 
       try {
         await adapter.search({ resource: "items", query: "test", limit: 10 });
-        // If it doesn't throw, the adapter allows post-dispose search (some might)
-        // but it MUST NOT return stale data if persistent=false
       } catch (err) {
-        // Expected: adapter should reject after dispose
         expect(err).toBeDefined();
         if (err instanceof Error && "code" in err) {
           expect((err as { code: string }).code).toBe(SEARCH_ADAPTER_DISPOSED);
@@ -292,21 +230,15 @@ export function runConformanceSuite(factory: ConformanceAdapterFactory): void {
     it("can reinitialize after dispose", async () => {
       if (!adapter.dispose || !adapter.initialize) return;
 
-      await adapter.initialize({ resources: [{ name: "items", searchFields: ["title"] }] });
-      await adapter.index({
-        resource: "items",
-        documents: [{ id: "d1", fields: { title: "alpha" } }],
-      });
+      await initialize(adapter);
+      await index(adapter, [{ id: "d1", fields: { title: "alpha" } }]);
       await adapter.dispose();
-      await adapter.initialize({ resources: [{ name: "items", searchFields: ["title"] }] });
+      await initialize(adapter);
 
-      // After reinitialize, adapter should be operational
-      // For non-persistent adapters, previous data may be gone
       const results = await adapter.search({ resource: "items", query: "alpha", limit: 10 });
       if (factory.persistent) {
         expect(results).toContain("d1");
       }
-      // For non-persistent, just verify it doesn't throw
       expect(Array.isArray(results)).toBe(true);
     });
   });

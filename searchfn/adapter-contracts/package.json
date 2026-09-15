@@ -15,15 +15,14 @@
     },
     "./testing": {
       "types": "./dist/testing.d.ts",
-      "import": "./dist/testing.js",
-      "require": "./dist/testing.cjs"
+      "import": "./dist/testing.js"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsup",
     "build:watch": "tsup --watch",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
