@@ -247,6 +247,10 @@ export class McpFnInspector {
     at: string,
     raw: McpFnDiagnosticEvent | McpFnClientEvent,
   ): void {
+    if (source === "diagnostic" && "code" in raw && raw.code === "MCPFN_DIAGNOSTIC_REDACTION_FAILED") {
+      // The fallback is useful evidence, but the original diagnostic is missing.
+      this.droppedEvents += 1;
+    }
     let event: McpFnInspectorTimelineEvent = {
       formatVersion: 1,
       source,

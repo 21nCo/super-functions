@@ -109,6 +109,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   let timelineCountExceeded = false;
   let timelineBytesExceeded = false;
   let timelineSerializationFailed = false;
+  let timelineRedactionFailed = false;
   const timelineSizes: number[] = [];
   const maxTimelineEvents = options.maxTimelineEvents ?? 500;
   if (!Number.isInteger(maxTimelineEvents) || maxTimelineEvents < 1) {
@@ -143,6 +144,11 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
       {
         ...options.client,
         diagnostics: async (event) => {
+          if (event.code === "MCPFN_DIAGNOSTIC_REDACTION_FAILED") {
+            // Retain the safe fallback as evidence, but count the original omission.
+            timelineRedactionFailed = true;
+            droppedTimelineEvents += 1;
+          }
           if (event.phase === "transport-close" && event.outcome === "failed") {
             cleanupFailure = normalizeMcpFnReportFailure({
               name: "CleanupError", message: "Target cleanup failed",
@@ -287,6 +293,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
           ...(failure ? [`${failure.layer}: ${failure.message}`] : []),
           ...(cleanupFailure ? [`Cleanup: ${cleanupFailure.message}`] : []),
           ...(timelineSerializationFailed ? ["Diagnostic timeline contained non-JSON data"] : []),
+          ...(timelineRedactionFailed ? ["Diagnostic timeline redaction failed; original events omitted"] : []),
           ...(timelineCountExceeded ? ["Diagnostic timeline exceeded maxTimelineEvents"] : []),
           ...(timelineBytesExceeded ? ["Diagnostic timeline exceeded maxReportBytes"] : []),
           ...(droppedObservedEvents > 0

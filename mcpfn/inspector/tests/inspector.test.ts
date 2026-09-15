@@ -289,3 +289,27 @@ describe("McpFn inspector", () => {
     } finally { await inspector.close(); }
   });
 });
+
+
+it("records diagnostic redaction omissions as incomplete timeline evidence", async () => {
+  const server = createMcpFnServer({ info: { name: "fixture", version: "1" }, registry: new McpFnRegistry() });
+  const inspector = McpFnInspector.create({ target: customTarget({ kind: "custom",
+    redact: <T>(value: T): T => {
+      if (value && typeof value === "object" && "phase" in value) throw new Error("private-redaction-state");
+      return value;
+    },
+    open: async () => {
+      const [client, remote] = InMemoryTransport.createLinkedPair();
+      await server.connect(remote);
+      return { transport: client, close: () => server.close() };
+    },
+  }) });
+  try {
+    await inspector.connect();
+    const report = await inspector.snapshot();
+    expect(report.timelineComplete).toBe(false);
+    expect(report.droppedEvents).toBeGreaterThan(0);
+    expect(report.timeline.some(entry => "code" in entry.event && entry.event.code === "MCPFN_DIAGNOSTIC_REDACTION_FAILED")).toBe(true);
+    expect(JSON.stringify(report)).not.toContain("private-redaction-state");
+  } finally { await inspector.close(); }
+});
