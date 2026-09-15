@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import {
   ALLOWED_PACKAGE_LOCKFILES,
   disallowedPackageLockfiles,
+  gitBinary,
   trackedPackageLockfiles,
 } from "./verify-package-lockfiles.mjs";
 
@@ -32,7 +33,7 @@ function gitRepo() {
     GIT_COMMITTER_EMAIL: "lockfile@example.invalid",
   };
   const git = (...args) =>
-    execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", ...args], {
+    execFileSync(gitBinary(), ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", ...args], {
       cwd: root,
       env,
       encoding: "utf8",

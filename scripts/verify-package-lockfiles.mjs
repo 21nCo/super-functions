@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // Root lock is the workspace install source of truth (.gitignore:
@@ -12,8 +13,18 @@ export const ALLOWED_PACKAGE_LOCKFILES = [
   "searchfn/client/package-lock.json",
 ];
 
+const GIT_BINARIES = ["/usr/bin/git", "/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"];
+
+export function gitBinary() {
+  const binary = GIT_BINARIES.find((candidate) => existsSync(candidate));
+  if (!binary) {
+    throw new Error("git not found in fixed directories");
+  }
+  return binary;
+}
+
 export function trackedPackageLockfiles(cwd = process.cwd()) {
-  return execFileSync("git", ["ls-files", "-z", "--", "package-lock.json", "**/package-lock.json"], {
+  return execFileSync(gitBinary(), ["ls-files", "-z", "--", "package-lock.json", "**/package-lock.json"], {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
