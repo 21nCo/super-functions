@@ -1,4 +1,3 @@
-import { redactOAuthValue } from "@superfunctions/oauth-core";
 import type {
   CallToolResult,
   CreateTaskResult,
@@ -177,7 +176,7 @@ export class McpFnInspector {
       resourceTemplates: this.client.redact(resourceTemplates.items, redaction),
       prompts: this.client.redact(prompts.items, redaction),
       // Stored events already passed through the client hook; never reapply it.
-      timeline: redactOAuthValue(this.events, { maxArrayEntries: this.maxEvents }) as unknown as McpFnInspectorTimelineEvent[],
+      timeline: structuredClone(this.events),
       droppedEvents: this.droppedEvents,
       timelineComplete: this.droppedEvents === 0,
       droppedInventoryEntries,
@@ -242,15 +241,15 @@ export class McpFnInspector {
     at: string,
     raw: McpFnDiagnosticEvent | McpFnClientEvent,
   ): void {
-    let event: McpFnInspectorTimelineEvent = redactOAuthValue({
+    let event: McpFnInspectorTimelineEvent = {
       formatVersion: 1,
       source,
       kind,
       at,
       event: raw,
-    }) as unknown as McpFnInspectorTimelineEvent;
+    };
     let bytes: number;
-    try { bytes = encodedBytes(event); }
+    try { event = structuredClone(event); bytes = encodedBytes(event); }
     catch { this.droppedEvents += 1; return; }
     if (bytes > this.maxTimelineBytes) {
       event = {

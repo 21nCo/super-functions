@@ -229,8 +229,8 @@ export class McpFnClient {
 
   /** Redact diagnostic artifacts, including credentials owned by the target. */
   redact<T>(value: T, options: Parameters<typeof redactOAuthValue>[1] = {}): T {
-    if (options?.redactionMarker !== undefined && this.options.target.redact) {
-      const marker = this.options.target.redact(options.redactionMarker, { redactionMarker: "" });
+    if (this.options.target.redact) {
+      const marker = this.options.target.redact(options?.redactionMarker ?? "[REDACTED]", { redactionMarker: "" });
       options = { ...options, redactionMarker: typeof marker === "string" ? marker : "" };
     }
     const scrubbed = this.options.target.redact

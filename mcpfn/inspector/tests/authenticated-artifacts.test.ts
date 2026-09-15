@@ -7,7 +7,7 @@ import { McpFnInspector } from "../src/index.js";
 describe("authenticated programmatic artifacts", () => {
  const closeCallbacks: Array<() => Promise<void>> = [];
  afterEach(async () => { await Promise.allSettled(closeCallbacks.splice(0).map(close => close())); });
-  it.each(["opaque-programmatic-secret", "opaque.[*]+secret", "MCPFN_SECRET", "SECRET"])("redacts programmatic inspector artifacts for %s", async (secret) => {
+  it.each(["opaque-programmatic-secret", "opaque.[*]+secret", "MCPFN_SECRET", "SECRET", "[REDACTED]", "REDACTED"])("redacts programmatic inspector artifacts for %s", async (secret) => {
     const fixture = await startAuthenticatedServer(secret, true);
     closeCallbacks.push(fixture.close);
     const events: unknown[] = [];
@@ -107,5 +107,7 @@ it.each(["custom", "connected", "mcpfn.inspector-snapshot"])("preserves snapshot
     expect(report.target.kind).toBe("custom");
     expect(report.clientState).toBe("connected");
     expect(report.target.label).toBe("[REDACTED]");
-  } finally { await inspector.close(); await fixture.close(); }
+  } finally {
+    try { await inspector.close(); } finally { await fixture.close(); }
+  }
 });

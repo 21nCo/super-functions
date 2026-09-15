@@ -119,8 +119,8 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   });
   const secretPattern = patterns.length ? new RegExp(patterns.join("|"), "g") : undefined;
   // A requested marker is itself output and must not reproduce a credential.
-  if (redactionMarker !== undefined && secretPattern) {
-    const markerContainsSecret = secretPattern.test(redactionMarker);
+  if (secretPattern) {
+    const markerContainsSecret = secretPattern.test(redactionMarker ?? "[REDACTED]");
     secretPattern.lastIndex = 0;
     if (markerContainsSecret) redactionMarker = "";
   }

@@ -639,3 +639,10 @@ it.each(["Map", "Set"])("rejects oversized %s before materializing its entries",
   Object.defineProperty(collection, "size", { get: () => 0 }); // Cannot bypass the intrinsic bound.
   expect(() => redactRemoteCredential({ headers: { "x-api-key": "secret" } }, collection)).toThrow(/traversal budget/);
 });
+
+
+it.each(["[REDACTED]", "REDACTED"])("keeps implicit markers from reproducing %s", async secret => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  const result = redactRemoteCredential({ headers: { "x-api-key": secret } }, { echo: secret, authorization: secret });
+  expect(JSON.stringify(result)).not.toContain(secret);
+});
