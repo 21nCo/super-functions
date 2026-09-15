@@ -70,6 +70,13 @@ export interface McpFnBoundedInventory<T> {
   complete: boolean;
 }
 
+const diagnosticOmissions = new WeakSet<object>();
+
+/** Identify a live client-generated fallback; serialized codes are not provenance. */
+export function isMcpFnDiagnosticOmission(event: McpFnDiagnosticEvent): boolean {
+  return diagnosticOmissions.has(event);
+}
+
 export class McpFnClient {
   private readonly options: McpFnClientOptions;
   private readonly listeners = new Set<McpFnDiagnosticSink>();
@@ -942,7 +949,7 @@ export class McpFnClient {
 
   private async dispatch(event: McpFnDiagnosticEvent): Promise<void> {
     let redacted: McpFnDiagnosticEvent;
-    try { redacted = this.redact(event) as unknown as McpFnDiagnosticEvent; }
+    try { redacted = isMcpFnDiagnosticOmission(event) ? event : this.redact(event) as unknown as McpFnDiagnosticEvent; }
     catch {
       redacted = diagnosticRedactionFailure();
     }
@@ -953,10 +960,12 @@ export class McpFnClient {
 }
 
 function diagnosticRedactionFailure(): McpFnDiagnosticEvent {
-  return {
+  const event: McpFnDiagnosticEvent = {
     phase: "capability-operation", outcome: "failed", code: "MCPFN_DIAGNOSTIC_REDACTION_FAILED",
     at: new Date().toISOString(), requestId: "redacted", target: { kind: "custom" }, details: { omitted: true },
   };
+  diagnosticOmissions.add(event);
+  return event;
 }
 
 export function createMcpFnClient(options: McpFnClientOptions): McpFnClient {

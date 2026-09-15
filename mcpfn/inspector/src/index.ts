@@ -14,6 +14,7 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import {
   McpFnClient,
+  isMcpFnDiagnosticOmission,
   type McpFnClientOptions,
   type McpFnClientEvent,
   type McpFnDiagnosticEvent,
@@ -247,7 +248,7 @@ export class McpFnInspector {
     at: string,
     raw: McpFnDiagnosticEvent | McpFnClientEvent,
   ): void {
-    if (source === "diagnostic" && "code" in raw && raw.code === "MCPFN_DIAGNOSTIC_REDACTION_FAILED") {
+    if (source === "diagnostic" && isMcpFnDiagnosticOmission(raw as McpFnDiagnosticEvent)) {
       // The fallback is useful evidence, but the original diagnostic is missing.
       this.droppedEvents += 1;
     }

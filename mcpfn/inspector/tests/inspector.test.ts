@@ -313,3 +313,25 @@ it("records diagnostic redaction omissions as incomplete timeline evidence", asy
     expect(JSON.stringify(report)).not.toContain("private-redaction-state");
   } finally { await inspector.close(); }
 });
+
+
+it("does not count a target-authored diagnostic code collision as an omission", async () => {
+  const server = createMcpFnServer({ info: { name: "fixture", version: "1" }, registry: new McpFnRegistry() });
+  const target = customTarget({ kind: "custom", open: async context => {
+    await context.diagnostic({ phase: "capability-operation", outcome: "succeeded",
+      code: "MCPFN_DIAGNOSTIC_REDACTION_FAILED", requestId: context.requestId,
+      at: new Date().toISOString(), target: { kind: "custom" }, details: { message: "Target-authored status" },
+    });
+    const [client, remote] = InMemoryTransport.createLinkedPair();
+    await server.connect(remote);
+    return { transport: client, close: () => server.close() };
+  } });
+  const inspector = McpFnInspector.create({ target });
+  try {
+    await inspector.connect();
+    const report = await inspector.snapshot();
+    expect(report.timelineComplete).toBe(true);
+    expect(report.droppedEvents).toBe(0);
+    expect(report.timeline.some(entry => "code" in entry.event && entry.event.code === "MCPFN_DIAGNOSTIC_REDACTION_FAILED")).toBe(true);
+  } finally { await inspector.close(); }
+});

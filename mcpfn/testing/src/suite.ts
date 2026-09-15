@@ -1,3 +1,4 @@
+import { isMcpFnDiagnosticOmission } from "@mcpfn/client";
 import { McpFnRedactionLimitError, beginTargetCredentialRedaction, redactTargetCredentials } from "./remote-target.js";
 import type { Implementation, ServerCapabilities } from "@modelcontextprotocol/sdk/types.js";
 import type {
@@ -144,7 +145,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
       {
         ...options.client,
         diagnostics: async (event) => {
-          if (event.code === "MCPFN_DIAGNOSTIC_REDACTION_FAILED") {
+          if (isMcpFnDiagnosticOmission(event)) {
             // Retain the safe fallback as evidence, but count the original omission.
             timelineRedactionFailed = true;
             droppedTimelineEvents += 1;
