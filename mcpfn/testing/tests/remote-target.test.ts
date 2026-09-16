@@ -666,6 +666,30 @@ it.each(["Map", "Set"])("rejects oversized %s before materializing its entries",
   expect(() => redactRemoteCredential({ headers: { "x-api-key": "secret" } }, collection)).toThrow(/traversal budget/);
 });
 
+it("bounds enumerable Error fields before copying their values", async () => {
+  const { redactRemoteCredential, McpFnRedactionLimitError } = await import("../src/remote-target.js");
+  const error = new Error("failure");
+  for (let index = 0; index < 100_000; index += 1) {
+    Object.defineProperty(error, `field-${index}`, {
+      enumerable: true,
+      value: index,
+    });
+  }
+  let overflowRead = false;
+  Object.defineProperty(error, "overflow", {
+    enumerable: true,
+    get() {
+      overflowRead = true;
+      return "secret";
+    },
+  });
+  expect(() => redactRemoteCredential(
+    { headers: { "x-api-key": "secret" } },
+    error,
+  )).toThrow(McpFnRedactionLimitError);
+  expect(overflowRead).toBe(false);
+});
+
 
 it.each(["[REDACTED]", "REDACTED"])("keeps implicit markers from reproducing %s", async secret => {
   const { redactRemoteCredential } = await import("../src/remote-target.js");

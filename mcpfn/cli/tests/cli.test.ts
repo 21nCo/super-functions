@@ -5,12 +5,16 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   McpFnRegistry,
   createManifest,
   structuredResult,
 } from "@mcpfn/core";
+import {
+  McpFnTestClient,
+  McpFnTestClientCleanupError,
+} from "@mcpfn/testing";
 
 import {
   loadManifestSource,
@@ -248,6 +252,38 @@ describe("mcpfn CLI", () => {
     });
     expect(errors).toContain("Tool inventory mismatch");
     expect(exitCode).toBe(1);
+  });
+
+  it("retries retained test-client cleanup and returns test-failure exit code 1", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-cleanup-owner-"));
+    roots.push(root);
+    const coreUrl = pathToFileURL(testRequire.resolve("@mcpfn/core")).href;
+    await writeFile(
+      path.join(root, "server.mjs"),
+      `import { McpFnRegistry, createMcpFnServer } from ${JSON.stringify(coreUrl)};
+       export default createMcpFnServer({
+         info: { name: "cleanup-owner", version: "1.0.0" },
+         registry: new McpFnRegistry()
+       });`,
+    );
+    await writeFile(path.join(root, "scenarios.json"), "[]\n");
+    const retryCleanup = vi.fn().mockResolvedValue(undefined);
+    const failure = new McpFnTestClientCleanupError(
+      retryCleanup,
+      new Error("connection failed"),
+    );
+    const connect = vi.spyOn(McpFnTestClient, "connect").mockRejectedValueOnce(failure);
+    let errors = "";
+    try {
+      expect(await runCli(["test", "server.mjs", "scenarios.json"], {
+        cwd: root,
+        stderr: (value) => { errors += value; },
+      })).toBe(1);
+      expect(retryCleanup).toHaveBeenCalledOnce();
+      expect(errors).toContain("cleanup remains pending");
+    } finally {
+      connect.mockRestore();
+    }
   });
 
   it("loads every shared scenario operation shape", async () => {

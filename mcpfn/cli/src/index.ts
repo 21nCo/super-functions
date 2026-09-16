@@ -17,6 +17,7 @@ import {
 import { McpFnInspector } from "@mcpfn/inspector";
 import {
   McpFnTestClient,
+  McpFnTestClientCleanupError,
   McpFnAssertionError,
   McpFnConformanceCleanupError,
   McpFnTargetSuiteCleanupError,
@@ -366,6 +367,10 @@ export async function runCli(
     await cli.runMatchedCommand();
   } catch (error) {
     stderr(`${error instanceof Error ? error.message : String(error)}\n`);
+    if (error instanceof McpFnTestClientCleanupError) {
+      try { await error.retryCleanup(); } catch { /* Ownership remains on the error. */ }
+      return MCPFN_CLI_EXIT_TEST_FAILURE;
+    }
     if (error instanceof McpFnAssertionError || error instanceof McpFnClientError) {
       return MCPFN_CLI_EXIT_TEST_FAILURE;
     }

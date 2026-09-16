@@ -74,7 +74,20 @@ const envelopeKeys: Record<string, Set<string>> = Object.fromEntries(Object.entr
 }).map(([role, keys]) => [role, new Set(keys.split(" "))]));
 
 function specialValue(input: unknown): unknown {
-  if (input instanceof Error) return { ...input, name: input.name, message: input.message, stack: input.stack, ...(input.cause === undefined ? {} : { cause: input.cause }) };
+  if (input instanceof Error) {
+    const normalized: Record<string, unknown> = {};
+    let enumerableFields = 0;
+    for (const key in input) {
+      if (!Object.hasOwn(input, key)) continue;
+      if (++enumerableFields > 100_000) throw new McpFnRedactionLimitError();
+      normalized[key] = (input as unknown as Record<string, unknown>)[key];
+    }
+    normalized.name = input.name;
+    normalized.message = input.message;
+    normalized.stack = input.stack;
+    if (input.cause !== undefined) normalized.cause = input.cause;
+    return normalized;
+  }
   if (input instanceof Date) return Number.isNaN(input.getTime()) ? "Invalid Date" : input.toISOString();
   if (input instanceof URL) return input.href;
   if (input instanceof Map) {
