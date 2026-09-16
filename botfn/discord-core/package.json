@@ -15,7 +15,6 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@botfn/shared-types": "*",
     "zod": "^3.22.0"
   },
   "devDependencies": {

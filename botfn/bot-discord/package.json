@@ -21,10 +21,10 @@
     "@botfn/linear-integration": "*",
     "@botfn/shared-types": "*",
     "@botfn/persistence-service": "*",
-    "@trpc/client": "^10.45.0",
-    "discord.js": "^14.24.0"
+    "@trpc/client": "^10.45.0"
   },
   "devDependencies": {
+    "discord.js": "^14.24.0",
     "dotenv": "^16.3.1",
     "typescript": "^5.0.0",
     "wrangler": "^3.0.0",

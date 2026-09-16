@@ -12,7 +12,6 @@ services/persistence/
 │   ├── core.ts                    # tRPC router with business logic
 │   ├── index.cloudflare.ts       # Cloudflare Workers entry point
 │   └── client.ts                  # tRPC client helper
-├── schema.sql                     # D1 database schema
 ├── package.json                   # Dependencies and scripts
 ├── wrangler.toml                  # Cloudflare Workers config
 ├── tsconfig.json                  # TypeScript config
@@ -51,35 +50,7 @@ From the monorepo root:
 npm install
 ```
 
-### 2. Create Cloudflare D1 Database
-
-```bash
-cd services/persistence
-wrangler d1 create botfn-db
-```
-
-This will output a `database_id`. Copy it and update `wrangler.toml`:
-
-```toml
-[[d1_databases]]
-binding = "DB"
-database_name = "botfn-db"
-database_id = "YOUR_D1_DATABASE_ID"  # Replace this
-```
-
-### 3. Initialize Database Schema
-
-**For production (remote database):**
-```bash
-wrangler d1 execute botfn-db --remote --file=./schema.sql
-```
-
-**For local development:**
-```bash
-wrangler d1 execute botfn-db --local --file=./schema.sql
-```
-
-### 4. Deploy to Cloudflare Workers
+### 2. Deploy to Cloudflare Workers
 
 ```bash
 npm run deploy
@@ -90,7 +61,7 @@ After deployment, you'll get a URL like:
 https://botfn-persistence-service.YOUR-SUBDOMAIN.workers.dev
 ```
 
-### 5. Update Discord Bot Configuration
+### 3. Update Discord Bot Configuration
 
 Update `bots/discord-bot/wrangler.toml` with your actual persistence service URL:
 
@@ -99,7 +70,7 @@ Update `bots/discord-bot/wrangler.toml` with your actual persistence service URL
 PERSISTENCE_SERVICE_URL = "https://botfn-persistence-service.YOUR-SUBDOMAIN.workers.dev"
 ```
 
-### 6. Install Discord Bot Dependencies
+### 4. Install Discord Bot Dependencies
 
 From monorepo root:
 
@@ -193,10 +164,6 @@ await client.updateIssue.mutate({
 **Issue: tRPC client errors**
 - Ensure `PERSISTENCE_SERVICE_URL` is correctly set
 - Check that persistence service is deployed and accessible
-
-**Issue: Database not found**
-- Run `npm run db:init` (production) or `npm run db:init-local` (dev)
-- Verify `database_id` in `wrangler.toml` matches D1 database
 
 **Issue: Persistence failures in discord-bot**
 - Check Cloudflare Workers logs: `wrangler tail`

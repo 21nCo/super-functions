@@ -107,5 +107,3 @@ The service uses two main tables:
 
 - **issues** - Stores issue metadata (GitHub/Linear IDs, status, notification state)
 - **discord_threads** - Many-to-many relationship between issues and Discord threads
-
-See `schema.sql` for full schema definition.
