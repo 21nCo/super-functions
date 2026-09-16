@@ -368,7 +368,9 @@ export async function runCli(
   } catch (error) {
     stderr(`${error instanceof Error ? error.message : String(error)}\n`);
     if (error instanceof McpFnTestClientCleanupError) {
-      try { await error.retryCleanup(); } catch { /* Ownership remains on the error. */ }
+      // A failed retry must keep the owning error reachable by programmatic
+      // callers. The executable entry point terminates after receiving it.
+      await error.retryCleanup();
       return MCPFN_CLI_EXIT_TEST_FAILURE;
     }
     if (error instanceof McpFnAssertionError || error instanceof McpFnClientError) {

@@ -75,7 +75,9 @@ const envelopeKeys: Record<string, Set<string>> = Object.fromEntries(Object.entr
 
 function specialValue(input: unknown): unknown {
   if (input instanceof Error) {
-    const normalized: Record<string, unknown> = {};
+    // Error instances may expose attacker-controlled enumerable keys. A
+    // null-prototype accumulator keeps `__proto__` as ordinary payload data.
+    const normalized = Object.create(null) as Record<string, unknown>;
     let enumerableFields = 0;
     for (const key in input) {
       if (!Object.hasOwn(input, key)) continue;

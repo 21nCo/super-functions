@@ -305,6 +305,47 @@ it.each(["complete", "passed"])("keeps suite structure when a custom secret is %
   expect(report.target.label).toBe("[REDACTED]");
 });
 
+it("uses payload redaction for standalone suite projections", async () => {
+  const secret = "passed";
+  const server = createMcpFnServer({
+    info: { name: secret, version: "1" },
+    registry: new McpFnRegistry().register({
+      name: secret,
+      description: "Fixture tool",
+      inputSchema: { type: "object" },
+      handler: async () => structuredResult({ ok: true }),
+    }),
+  });
+  const modes: Array<boolean | undefined> = [];
+  const report = await runMcpFnTargetSuite({
+    target: customTarget({
+      kind: "custom",
+      descriptor: { label: secret },
+      redact: <T>(value: T, options?: { preserveKeys?: boolean }): T => {
+        modes.push(options?.preserveKeys);
+        if (options?.preserveKeys !== false) return value;
+        return JSON.parse(JSON.stringify(value).replaceAll(secret, "[REDACTED]")) as T;
+      },
+      open: async () => {
+        const [client, remote] = InMemoryTransport.createLinkedPair();
+        await server.connect(remote);
+        return { transport: client, close: () => server.close() };
+      },
+    }),
+    scenarios: [{ name: secret, tool: secret }],
+  });
+
+  expect(modes).toContain(false);
+  expect(report.status).toBe("complete");
+  expect(report.results[0]).toMatchObject({
+    status: "passed",
+    name: "[REDACTED]",
+    tool: "[REDACTED]",
+  });
+  expect(report.server?.name).toBe("[REDACTED]");
+  expect(report.target.label).toBe("[REDACTED]");
+});
+
 it("delivers diagnostics after exactly one custom redaction and bounds their retained bytes", async () => {
   const server = createMcpFnServer({ info: { name: "diagnostics", version: "1" }, registry: new McpFnRegistry() });
   const observed: unknown[] = [];

@@ -309,6 +309,25 @@ it("redacts dynamic inspector keys without corrupting result statuses", async ()
   expect(() => redactRemoteCredential(credential, new Array(1_000_000))).toThrow(McpFnRedactionLimitError);
 });
 
+it("treats enumerable Error __proto__ fields as payload without mutating prototypes", async () => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  const secret = "prototype-owned-secret";
+  const error = new Error("failed");
+  Object.defineProperty(error, "__proto__", {
+    enumerable: true,
+    value: { private: secret },
+  });
+
+  const redacted = redactRemoteCredential(
+    { headers: { "x-api-key": secret } },
+    error,
+  ) as unknown as Record<string, unknown>;
+
+  expect(Object.prototype.hasOwnProperty.call(redacted, "__proto__")).toBe(true);
+  expect(Object.getPrototypeOf(redacted)).toBe(Object.prototype);
+  expect(JSON.stringify(redacted)).not.toContain(secret);
+});
+
 it("retains failed pre-handle releases for a cleanup retry", async () => {
   const revoke = vi.fn().mockRejectedValueOnce(new Error("temporary")).mockResolvedValue(undefined);
   const target = authenticatedHttpTarget("http://127.0.0.1:1/mcp", { credential: {

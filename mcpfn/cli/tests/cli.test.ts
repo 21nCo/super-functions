@@ -286,6 +286,41 @@ describe("mcpfn CLI", () => {
     }
   });
 
+  it("rethrows a retained cleanup owner when the bounded retry also fails", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-cleanup-retry-"));
+    roots.push(root);
+    const coreUrl = pathToFileURL(testRequire.resolve("@mcpfn/core")).href;
+    await writeFile(
+      path.join(root, "server.mjs"),
+      `import { McpFnRegistry, createMcpFnServer } from ${JSON.stringify(coreUrl)};
+       export default createMcpFnServer({
+         info: { name: "cleanup-owner", version: "1.0.0" },
+         registry: new McpFnRegistry()
+       });`,
+    );
+    await writeFile(path.join(root, "scenarios.json"), "[]\n");
+    let failure: McpFnTestClientCleanupError;
+    const retryCleanup = vi.fn(async () => {
+      if (retryCleanup.mock.calls.length === 1) throw failure;
+    });
+    failure = new McpFnTestClientCleanupError(
+      retryCleanup,
+      new Error("connection failed"),
+    );
+    const connect = vi.spyOn(McpFnTestClient, "connect").mockRejectedValueOnce(failure);
+    try {
+      await expect(runCli(["test", "server.mjs", "scenarios.json"], {
+        cwd: root,
+        stderr: () => {},
+      })).rejects.toBe(failure);
+      expect(retryCleanup).toHaveBeenCalledOnce();
+      await expect(failure.retryCleanup()).resolves.toBeUndefined();
+      expect(retryCleanup).toHaveBeenCalledTimes(2);
+    } finally {
+      connect.mockRestore();
+    }
+  });
+
   it("loads every shared scenario operation shape", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-scenarios-"));
     roots.push(root);

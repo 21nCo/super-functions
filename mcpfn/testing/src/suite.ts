@@ -99,7 +99,7 @@ export async function runMcpFnTargetSuite(
 
 /** Apply the target-owned scrubber before the bounded generic artifact pass. */
 function redactSuiteArtifact<T>(target: McpFnTarget, value: T, options: { preserveKeys?: boolean } = {}): T {
-  const scrubbed = target.redact ? target.redact(value) : value;
+  const scrubbed = target.redact ? target.redact(value, options) : value;
   return redactTargetCredentials(target, scrubbed, options);
 }
 
@@ -230,16 +230,24 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
       // target-controlled report value while the session still owns that state.
       if (client?.session.state === "connected") {
         const { kind, ...descriptor } = options.target.describe();
-        capturedTarget = { ...redactSuiteArtifact(options.target, descriptor), kind };
-        capturedManifestHash = options.manifest ? redactSuiteArtifact(options.target, options.manifest.hash) : undefined;
+        capturedTarget = { ...redactSuiteArtifact(options.target, descriptor, { preserveKeys: false }), kind };
+        capturedManifestHash = options.manifest
+          ? redactSuiteArtifact(options.target, options.manifest.hash, { preserveKeys: false })
+          : undefined;
         execution = {
-          server: execution.server === undefined ? undefined : redactSuiteArtifact(options.target, execution.server),
-          capabilities: execution.capabilities === undefined ? undefined : redactSuiteArtifact(options.target, execution.capabilities),
+          server: execution.server === undefined
+            ? undefined
+            : redactSuiteArtifact(options.target, execution.server, { preserveKeys: false }),
+          capabilities: execution.capabilities === undefined
+            ? undefined
+            : redactSuiteArtifact(options.target, execution.capabilities, { preserveKeys: false }),
           results: execution.results.map(result => ({
             ...result,
-            name: redactSuiteArtifact(options.target, result.name),
-            operation: redactSuiteArtifact(options.target, result.operation),
-            ...(result.tool === undefined ? {} : { tool: redactSuiteArtifact(options.target, result.tool) }),
+            name: redactSuiteArtifact(options.target, result.name, { preserveKeys: false }),
+            operation: redactSuiteArtifact(options.target, result.operation, { preserveKeys: false }),
+            ...(result.tool === undefined ? {} : {
+              tool: redactSuiteArtifact(options.target, result.tool, { preserveKeys: false }),
+            }),
           })),
         };
       } else if (execution.results.length || execution.server || execution.capabilities) {
