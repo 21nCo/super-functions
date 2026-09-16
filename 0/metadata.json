@@ -1,0 +1,76 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2N2BR2M6QY0VD1MK766B38H",
+  "session_id": "01a0a4a8-4cc6-7b03-a1c5-d382213eae73",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-16T12:16:47.260792Z",
+  "branch": "codex/mcp-1-transport-neutral-conformance-0910",
+  "checkpoints_count": 1,
+  "save_step_count": 3,
+  "files_touched": [],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "2a8b65c6014a",
+  "checkpoint_transcript_start": 1478,
+  "transcript_lines_at_start": 1478,
+  "compact_transcript_start": 183,
+  "token_usage": {
+    "input_tokens": 274181,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3916160,
+    "output_tokens": 20248,
+    "api_call_count": 29
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 6158,
+      "user_lines_removed": 1,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".codex/hooks.json": 88,
+        ".conduct/pr-reports/21nco-super-functions-pr-116-20260821-223157.md": 621,
+        ".conduct/pr-reports/21nco-super-functions-pr-116-comments.json": 5311,
+        "devfn/cli/package.json": 1,
+        "superconsole/.conduct/SFNS-2/evidence/result.json": 7,
+        "superconsole/.conduct/SFNS-2/evidence/server.txt": 5,
+        "superconsole/.conduct/SFNS-2/migration.md": 59,
+        "superconsole/.conduct/SFNS-2/port-matrix.md": 66
+      },
+      "user_removed_per_file": {
+        "devfn/cli/package.json": 1
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 88,
+      "user_lines_removed": 0,
+      "agent_lines_added": 6070,
+      "agent_lines_removed": 1,
+      "user_added_per_file": {
+        ".codex/hooks.json": 88
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 88,
+      "user_lines_removed": 0,
+      "agent_lines_added": 6070,
+      "agent_lines_removed": 1,
+      "user_added_per_file": {
+        ".codex/hooks.json": 88
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
