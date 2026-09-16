@@ -1,0 +1,50 @@
+memoryfn/typescript/src/storage/adapter.ts
+  s_0ec42cbf5a9107::t_3064a339334c39 19
+langfn/typescript/src/models/openai.ts
+  s_0ec42cbf5a9107::t_3064a339334c39 239,254,275-276,280
+  s_0ec42cbf5a9107::t_2e910d6210343b 277-279
+  s_0ec42cbf5a9107::t_713c012956ebb8 281
+langfn/typescript/src/core/errors.ts
+  s_0ec42cbf5a9107::t_3064a339334c39 51-55,57-58,61
+langfn/typescript/src/utils/retry.ts
+  s_0ec42cbf5a9107::t_3064a339334c39 35-40
+secfn/server/src/envelopes.ts
+  s_0ec42cbf5a9107::t_3064a339334c39 42-46
+langfn/typescript/src/rag/db-vector-store.ts
+  s_0ec42cbf5a9107::t_3064a339334c39 17-19,39,52,72-73,120-121
+memoryfn/typescript/src/storage/pg/adapter.ts
+  s_0ec42cbf5a9107::t_3064a339334c39 91,115
+langfn/typescript/tests/provider-client.test.ts
+  s_0ec42cbf5a9107::t_2e910d6210343b 114-129
+  s_0ec42cbf5a9107::t_1f20f27f48c749 1,14-19,169-185
+  s_0ec42cbf5a9107::t_5c2bca2e66ac06 186-187
+memoryfn/typescript/tests/lifecycle.test.ts
+  s_0ec42cbf5a9107::t_1f20f27f48c749 9
+langfn/typescript/tests/orchestration-graph-agent.test.ts
+  s_0ec42cbf5a9107::t_1f20f27f48c749 187-193
+secfn/server/src/__tests__/server.test.ts
+  s_0ec42cbf5a9107::t_1f20f27f48c749 33-63
+langfn/typescript/src/agents/multi_agent.ts
+  s_0ec42cbf5a9107::t_3064a339334c39 47-49
+langfn/typescript/tests/round5-regressions.test.ts
+  s_0ec42cbf5a9107::t_1f20f27f48c749 8-9,37-51
+  s_0ec42cbf5a9107::t_a1ed0afd838197 52-53
+memoryfn/typescript/src/storage/memory/adapter.ts
+  s_0ec42cbf5a9107::t_3064a339334c39 168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e200f50d639431417e6ec5b3196dcd190414b62f",
+  "prompts": {},
+  "sessions": {
+    "s_0ec42cbf5a9107": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0aa3d-c6e5-7963-9f4b-4f57675b7e35",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
