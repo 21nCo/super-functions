@@ -182,19 +182,19 @@ Beyond these, define your own codes — the server passes them through.
 Use the shared test suite:
 
 ```typescript
-import { runAdapterContractTests } from "@searchfn/adapter-contracts/testing";
+import { runConformanceSuite } from "@searchfn/adapter-contracts/testing";
 import { MyAdapter } from "./my-adapter";
 
 describe("MyAdapter contract", () => {
-  runAdapterContractTests({
+  runConformanceSuite({
     name: "my-adapter",
-    create: async () => new MyAdapter({ /* config */ }),
-    teardown: async (adapter) => adapter.dispose?.(),
+    create: () => new MyAdapter({ /* config */ }),
+    persistent: true,
   });
 });
 ```
 
-The contract suite exercises every method, edge case, abort handling, idempotency, and concurrent access. If your adapter passes, the server can use it.
+The `/testing` export is ESM-only and requires `vitest`. The conformance suite exercises contract shape, index/search, upsert, limits, remove, clear, optional `searchAll`, and dispose/reinitialize. If your adapter passes, the server can use it.
 
 ## Skeleton
 
