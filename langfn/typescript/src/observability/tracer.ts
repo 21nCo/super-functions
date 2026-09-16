@@ -138,11 +138,13 @@ function randomId(): string {
 }
 
 function serializeError(error: unknown): Record<string, unknown> {
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message
-    };
+  if (error && typeof error === "object") {
+    const candidate = error as Record<string, unknown>;
+    const serialized: Record<string, unknown> = {};
+    for (const field of ["name", "message", "code"] as const) {
+      if (typeof candidate[field] === "string") serialized[field] = candidate[field];
+    }
+    if (Object.keys(serialized).length > 0) return serialized;
   }
   return { message: String(error) };
 }

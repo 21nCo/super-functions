@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { LangFn } from "../src/client.js";
+import { TimeoutError } from "../src/core/errors.js";
 import { GoogleChatModel } from "../src/models/google.js";
 const reply = (parts: unknown[], extra = {}) => ({
   candidates: [{ content: { parts }, finishReason: "STOP" }],
@@ -182,5 +184,50 @@ describe("Google native tool protocol", () => {
     await expect(
       bad.chat({ messages: [{ role: "user", content: "x" }] }),
     ).rejects.toThrow("Malformed");
+  });
+
+  it("preserves timeout identity during headers and retries the request", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) throw new Error("missing request signal");
+        signal.addEventListener(
+          "abort",
+          () => reject(new DOMException("The operation was aborted", "AbortError")),
+          { once: true },
+        );
+      }),
+    );
+    const client = new LangFn({
+      model: new GoogleChatModel({ apiKey: "key", timeout: 5, fetchImpl }),
+      retry: { maxAttempts: 2, baseDelayMs: 0, maxDelayMs: 0 },
+    });
+
+    await expect(client.complete("slow")).rejects.toMatchObject({
+      code: "PROVIDER_TIMEOUT",
+      provider: "google",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves timeout identity while consuming the response body", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("missing request signal");
+      return new Response(new ReadableStream({
+        start(controller) {
+          signal.addEventListener(
+            "abort",
+            () => controller.error(new DOMException("The operation was aborted", "AbortError")),
+            { once: true },
+          );
+        },
+      }));
+    });
+    const model = new GoogleChatModel({ apiKey: "key", timeout: 5, fetchImpl });
+
+    await expect(model.chat({
+      messages: [{ role: "user", content: "slow" }],
+    })).rejects.toBeInstanceOf(TimeoutError);
   });
 });

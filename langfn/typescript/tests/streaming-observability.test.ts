@@ -160,6 +160,27 @@ describe("streaming and observability", () => {
       .toEqual([expect.objectContaining({ type: "error", error: providerError })]);
   });
 
+  it("persists structured provider terminal errors on the stream span", async () => {
+    const adapter = new InMemoryAdapter();
+    const providerError = { code: "PROVIDER_FAILED", message: "model unavailable" };
+    const client = new LangFn({
+      model: new MockChatModel({
+        streams: [[{ type: "error", error: providerError }]],
+      }),
+      observability: {
+        enabled: true,
+        traceStorage: new TraceStorage(adapter as never),
+      },
+    });
+
+    await collect(client.stream("hello"));
+
+    expect(adapter.spans).toContainEqual(expect.objectContaining({
+      status: "error",
+      error: providerError,
+    }));
+  });
+
   it("persists fresh traces and idempotent feedback through shared storage", async () => {
     const adapter = new InMemoryAdapter();
     const storage = new TraceStorage(adapter as never);

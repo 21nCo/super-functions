@@ -14,6 +14,7 @@ import {
   ProviderAuthError,
   ProviderError,
   RateLimitError,
+  TimeoutError,
 } from "../core/errors.js";
 import { ChatModel } from "./base.js";
 
@@ -61,6 +62,8 @@ export class GoogleChatModel extends ChatModel {
     try {
       const data = await operation.response.json();
       return this.parse(data);
+    } catch (error) {
+      throwAbortReason(error, operation.signal);
     } finally {
       operation.close();
     }
@@ -155,6 +158,8 @@ export class GoogleChatModel extends ChatModel {
         type: "end",
         finish_reason: calls.length ? "tool_calls" : finish.toLowerCase(),
       };
+    } catch (error) {
+      throwAbortReason(error, operation.signal);
     } finally {
       await reader.cancel().catch(() => {});
       reader.releaseLock();
@@ -276,7 +281,7 @@ export class GoogleChatModel extends ChatModel {
     const timer =
       timeout > 0
         ? setTimeout(
-            () => controller.abort(new Error("Google request timed out")),
+            () => controller.abort(new TimeoutError("Google request timed out", { provider: this.provider })),
             timeout,
           )
         : undefined;
@@ -318,10 +323,10 @@ export class GoogleChatModel extends ChatModel {
           options,
         );
       }
-      return { response, close };
+      return { response, signal: controller.signal, close };
     } catch (error) {
       close();
-      throw error;
+      throwAbortReason(error, controller.signal);
     }
   }
 
@@ -404,4 +409,9 @@ export class GoogleChatModel extends ChatModel {
   private error(message: string) {
     return new ProviderError(message, { provider: this.provider });
   }
+}
+
+function throwAbortReason(error: unknown, signal: AbortSignal): never {
+  if (signal.aborted && signal.reason !== undefined) throw signal.reason;
+  throw error;
 }

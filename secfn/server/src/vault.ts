@@ -1066,12 +1066,18 @@ export class VaultService {
   private async findNamespace(input: { tenantId?: string; namespace?: string }): Promise<NamespaceRecord | null> {
     const value = normalizeSlug(input.namespace ?? "");
     if (!value) return null;
-    const rows = await this.db.findMany<NamespaceRecord>({
+    const scope: WhereClause[] = input.tenantId
+      ? [{ field: "tenantId", operator: "eq", value: input.tenantId }]
+      : [];
+    const bySlug = await this.db.findOne<NamespaceRecord>({
       model: "secfn_namespaces",
-      where: input.tenantId ? [{ field: "tenantId", operator: "eq", value: input.tenantId }] : [],
-      limit: 1000,
+      where: [...scope, { field: "slug", operator: "eq", value }],
     });
-    return rows.find((row) => row.slug === value || row.label === input.namespace) ?? null;
+    if (bySlug || input.namespace === undefined) return bySlug;
+    return this.db.findOne<NamespaceRecord>({
+      model: "secfn_namespaces",
+      where: [...scope, { field: "label", operator: "eq", value: input.namespace }],
+    });
   }
 
   private async getEnvironment(id: string): Promise<EnvironmentRecord> {

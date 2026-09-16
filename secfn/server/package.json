@@ -8,13 +8,11 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": "./dist/index.js"
     },
     "./audit": {
       "types": "./dist/audit.d.ts",
-      "import": "./dist/audit.js",
-      "require": "./dist/audit.cjs"
+      "import": "./dist/audit.js"
     }
   },
   "files": [

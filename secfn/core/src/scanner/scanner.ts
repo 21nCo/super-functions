@@ -77,6 +77,7 @@ export class SecurityScanner {
       cwd: dir,
       absolute: true,
       onlyFiles: true,
+      followSymbolicLinks: false,
       ignore: this.excludePaths,
     });
     const findings: SecurityFinding[] = [];

@@ -1,4 +1,5 @@
-import { createRouter, type Route } from '@superfunctions/http';
+import { createRouter } from '../../../../packages/http/src/router.js';
+import type { Route } from '../../../../packages/http/src/types.js';
 import { z } from 'zod';
 import type { IMemoryFn } from '../core/config';
 import { requireScope, type MemoryScope } from '../storage/adapter';

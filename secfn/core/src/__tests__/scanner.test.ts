@@ -86,3 +86,24 @@ it("propagates rule evaluation failures from directory scans", async () => {
     await rm(dir, { recursive: true });
   }
 });
+
+it("does not follow file or directory symlinks outside the scan root", async () => {
+  const { mkdtemp, mkdir, writeFile, symlink, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const base = await mkdtemp(`${tmpdir()}/rex-symlink-scan-`);
+  const root = join(base, "root");
+  const outside = join(base, "outside");
+  try {
+    await mkdir(root);
+    await mkdir(outside);
+    const secret = join(outside, "secret.txt");
+    await writeFile(secret, "AKIAIOSFODNN7EXAMPLE");
+    await symlink(outside, join(root, "linked-directory"));
+    await symlink(secret, join(root, "linked-file"));
+
+    await expect(createSecurityScanner().scanDirectory(root)).resolves.toEqual([]);
+  } finally {
+    await rm(base, { recursive: true });
+  }
+});

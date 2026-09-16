@@ -547,6 +547,40 @@ it('paginates beyond 1000 rows without dropping page boundaries', async () => {
   } while (cursor);
   expect(seen).toHaveLength(1005); expect(new Set(seen).size).toBe(1005);
 });
+it('resolves namespaces beyond the first 1000 rows by slug or label', async () => {
+  const { secfn, db } = createServer({ namespaceScoped: false });
+  for (let i = 0; i < 1001; i++) {
+    await db.create({
+      model: 'secfn_namespaces',
+      data: { id: `ns-${i}`, tenantId: 'tenant-a', slug: `namespace-${i}`, label: `Namespace ${i}` },
+    });
+  }
+  const target = await secfn.vault.createNamespace({
+    tenantId: 'tenant-a',
+    slug: 'canonical-late',
+    label: 'Late Namespace',
+    createdBy: 'admin',
+  });
+
+  const bySlug = await secfn.vault.createSecret({
+    tenantId: 'tenant-a',
+    namespace: 'canonical-late',
+    key: 'BY_SLUG',
+    value: 'secret',
+    createdBy: 'admin',
+  });
+  const byLabel = await secfn.vault.createSecret({
+    tenantId: 'tenant-a',
+    namespace: 'Late Namespace',
+    key: 'BY_LABEL',
+    value: 'secret',
+    createdBy: 'admin',
+  });
+
+  expect(bySlug.namespaceId).toBe(target.id);
+  expect(byLabel.namespaceId).toBe(target.id);
+  expect(db.dump('secfn_namespaces')).toHaveLength(1002);
+});
 it('rejects provider-derived and query namespaces without a tenant', async () => {
   const secfn = createSecFnServer({ db: new MemoryAdapter(), encryption: { masterKey: 'test' }, context: {}, namespaceProvider: () => 'shared', authorize: async () => true });
   expect((await secfn.router.handle(new Request('https://app.test/secfn/admin/secrets'))).status).toBe(403);

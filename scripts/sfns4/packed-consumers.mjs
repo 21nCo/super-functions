@@ -118,7 +118,9 @@ try {
     const secCore = await import('@secfn/core');
     const fs = await import('node:fs');
     const secMetadata = JSON.parse(fs.readFileSync('node_modules/@secfn/server/package.json', 'utf8'));
+    const secRuntimeMetadata = JSON.parse(fs.readFileSync('node_modules/@secfn/runtime/package.json', 'utf8'));
     if (secMetadata.superfunctions.schemaVersion !== secCore.SECFN_SCHEMA_VERSION) throw new Error('Packed SecFn schema metadata is stale');
+    if (Object.hasOwn(secMetadata.exports['.'], 'require') || Object.hasOwn(secMetadata.exports['./audit'], 'require') || Object.hasOwn(secRuntimeMetadata.exports['.'], 'require')) throw new Error('Packed SecFn metadata advertises unsupported CommonJS');
     const file = await import('@filefn/server');
     const data = await import('@datafn/server');
     const auth = await import('authfn');
@@ -152,7 +154,7 @@ try {
     const http = require('@memoryfn/core/http');
     const mcp = require('@memoryfn/core/mcp');
     const pg = require('@memoryfn/core/storage/pg');
-    if (!memory.MemoryStorageAdapter || !Object.keys(http).length || !Object.keys(mcp).length || !pg.PostgresAdapter) throw new Error('Packed CommonJS MemoryFn export missing');
+    if (!memory.MemoryStorageAdapter || !http.createMemoryRouter || !mcp.MemoryMCP || !pg.PostgresAdapter || !pg.memories) throw new Error('Packed CommonJS MemoryFn export missing');
     console.log('packed CommonJS MemoryFn exports passed');
   `,
     ],

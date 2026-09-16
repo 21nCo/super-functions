@@ -45,7 +45,6 @@
     "@mcpfn/core": "0.0.4",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@superfunctions/db": "0.2.0",
-    "@superfunctions/http": "0.2.0",
     "drizzle-orm": "^0.45.1",
     "postgres": "^3.4.8",
     "zod": "^3.22.4",
