@@ -1,0 +1,50 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2NDCJ8036MFMVB2XX6FHR1V",
+  "session_id": "01a0aa3d-a004-7df3-b812-85a576729d2d",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-16T15:29:26.412832Z",
+  "branch": "codex/mcp-1-transport-neutral-conformance-0910",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "mcpfn/cli/src/index.ts",
+    "mcpfn/cli/tests/conformance-cleanup.test.ts",
+    "mcpfn/client/src/client.ts",
+    "mcpfn/testing/src/conformance.ts",
+    "mcpfn/testing/src/remote-target.ts",
+    "mcpfn/testing/tests/authenticated-output.test.ts",
+    "mcpfn/testing/tests/remote-target.test.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-terra",
+  "turn_id": "e1bc18f00b49",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 102175,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1273856,
+    "output_tokens": 9234,
+    "api_call_count": 24
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-16T15:29:26.345663Z",
+    "agent_lines": 67,
+    "agent_removed": 16,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 67,
+    "total_lines_changed": 83,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
