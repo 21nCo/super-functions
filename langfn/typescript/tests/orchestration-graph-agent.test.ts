@@ -184,6 +184,13 @@ describe("orchestration, graph, and agents", () => {
     expect(coordination.decisions).toEqual(["researcher", "writer"]);
     expect(coordination.output).toContain("draft:");
 
+    const inheritedName = new MultiAgentCoordinator({
+      agents: {},
+      coordinator: async () => "toString",
+      max_iterations: 1
+    });
+    await expect(inheritedName.run("reject inherited keys")).rejects.toBeInstanceOf(ValidationError);
+
     await expect(
       new PlanExecuteAgent({ planner: async () => [], executor: async () => "noop" }).run("fail")
     ).rejects.toBeInstanceOf(ValidationError);

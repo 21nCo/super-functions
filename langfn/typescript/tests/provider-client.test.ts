@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LangFn } from "../src/client.js";
 import {
@@ -11,6 +11,12 @@ import {
 } from "../src/core/errors.js";
 import { CancellationToken } from "../src/utils/cancel.js";
 import { getTransportClient } from "../src/models/transport.js";
+import { retryAsync } from "../src/utils/retry.js";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 describe("provider and client contract", () => {
   it("constructs the required first-party providers plus custom SPI", async () => {
@@ -105,6 +111,22 @@ describe("provider and client contract", () => {
       retryClient.complete("retry me", { retry: { maxAttempts: 2, baseDelayMs: 0, maxDelayMs: 0 } })
     ).resolves.toMatchObject({ content: "ok" });
     expect(rateLimitAttempts).toBe(2);
+
+    const invalidRetryAfterClient = new LangFn().withModel("openai", {
+      apiKey: "fixture",
+      fetchImpl: async () => new Response("rate limited", {
+        status: 429,
+        headers: { "retry-after": "not-a-delay" }
+      })
+    });
+    const invalidRetryAfter = await invalidRetryAfterClient.complete("retry later", {
+      retry: { maxAttempts: 1 }
+    }).catch((error: unknown) => error);
+    expect(invalidRetryAfter).toMatchObject({
+      code: "PROVIDER_RATE_LIMIT",
+      retryAfter: undefined
+    });
+    expect((invalidRetryAfter as RateLimitError).metadata).not.toHaveProperty("retry_after");
   });
 
   it("supports timeout, cancellation, and ordered partial batch results", async () => {
@@ -142,6 +164,25 @@ describe("provider and client contract", () => {
     const cancelToken = new CancellationToken();
     cancelToken.cancel();
     await expect(client.complete("cancelled", { cancelToken })).rejects.toBeInstanceOf(AbortError);
+  });
+
+  it("falls back to exponential backoff for invalid retry-after values", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    let attempts = 0;
+    const result = retryAsync(async () => {
+      attempts += 1;
+      if (attempts === 1) throw new RateLimitError("limited", { retryAfter: Number.NaN });
+      return "ok";
+    }, { maxAttempts: 2, baseDelayMs: 100, maxDelayMs: 100 });
+
+    await Promise.resolve();
+    expect(attempts).toBe(1);
+    await vi.advanceTimersByTimeAsync(99);
+    expect(attempts).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(result).resolves.toBe("ok");
+    expect(attempts).toBe(2);
   });
 
   it("creates independently owned transports for identical configs", () => {

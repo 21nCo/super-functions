@@ -32,7 +32,12 @@ export async function retryAsync<T>(
 
       let delay = Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1));
       delay = delay * (0.8 + Math.random() * 0.4);
-      if (error instanceof RateLimitError && error.retryAfter !== undefined) {
+      if (
+        error instanceof RateLimitError
+        && error.retryAfter !== undefined
+        && Number.isFinite(error.retryAfter)
+        && error.retryAfter >= 0
+      ) {
         delay = Math.max(delay, error.retryAfter * 1_000);
       }
       await new Promise<void>((resolve, reject) => {

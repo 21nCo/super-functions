@@ -165,7 +165,7 @@ export class MemoryStorageAdapter implements StorageAdapter {
   }
 
   async searchVectors(params: {
-    tenantId?: string;
+    tenantId: string;
     embedding: number[];
     containerTags: string[];
     filters?: Record<string, unknown>;

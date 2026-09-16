@@ -6,6 +6,7 @@ describe('memory lifecycle and scope', () => {
     const store = new MemoryStorageAdapter();
     await expect(store.insertMemories([{ content: 'secret' }])).rejects.toThrow('SCOPE');
     await store.insertMemories([{ id: 'one', tenantId: 'a', containerTags: ['shared'], content: 'secret', embedding: [1, 0] }]);
+    // @ts-expect-error Direct vector searches require an explicit tenant boundary.
     await expect(store.searchVectors({ embedding: [1, 0], containerTags: [], topK: 10 })).rejects.toThrow('SCOPE');
     for (const scope of [{ tenantId: 'b', containerTags: [] }, { tenantId: 'a', containerTags: ['shared', 'private'] }]) {
       expect(await store.searchVectors({ ...scope, embedding: [1, 0], topK: 10 })).toEqual([]);

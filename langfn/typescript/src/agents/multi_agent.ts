@@ -44,7 +44,9 @@ export class MultiAgentCoordinator {
         };
       }
 
-      const agent = this.options.agents[decision];
+      const agent = Object.hasOwn(this.options.agents, decision)
+        ? this.options.agents[decision]
+        : undefined;
       if (!agent) {
         throw new ValidationError(`Unknown agent: ${decision}`, { metadata: { agent: decision } });
       }

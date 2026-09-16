@@ -236,7 +236,7 @@ function stableToolCalls(calls: ToolCall[]): string {
 export async function raiseForStatus(provider: string, response: Response): Promise<void> {
   if (response.ok) return;
 
-  const retryAfterHeader = response.headers.get("retry-after");
+  const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
   const text = await response.text();
   let body: unknown;
   try {
@@ -251,7 +251,7 @@ export async function raiseForStatus(provider: string, response: Response): Prom
   if (response.status === 429) {
     throw new RateLimitError(undefined, {
       provider,
-      retryAfter: retryAfterHeader ? Number(retryAfterHeader) : undefined,
+      retryAfter,
       metadata: { status: response.status, body }
     });
   }
@@ -271,4 +271,11 @@ export async function raiseForStatus(provider: string, response: Response): Prom
     provider,
     metadata: { status: response.status, body }
   });
+}
+
+function parseRetryAfter(value: string | null): number | undefined {
+  const normalized = value?.trim();
+  if (!normalized) return undefined;
+  const seconds = Number(normalized);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
 }

@@ -14,6 +14,9 @@ export interface DocumentRecord {
 }
 
 export interface DbVectorStoreOptions {
+  /** Row-level namespace passed to the backing database adapter. Defaults to `namespace`. */
+  adapterNamespace?: string;
+  /** Logical namespace stored on and used to filter document records. */
   namespace?: string;
   mode?: "reference" | "production";
   pageSize?: number;
@@ -33,6 +36,7 @@ export interface DbVectorStoreOptions {
 export class DbVectorStore extends VectorStore {
   readonly backendType: "reference" | "production";
   private readonly tableName = "langfn_documents";
+  private readonly adapterNamespace: string;
   private readonly namespace: string;
   private readonly pageSize: number;
   private readonly maxScan: number;
@@ -45,6 +49,7 @@ export class DbVectorStore extends VectorStore {
   ) {
     super();
     this.namespace = options.namespace ?? "default";
+    this.adapterNamespace = options.adapterNamespace ?? this.namespace;
     this.backendType = options.mode ?? "reference";
     this.pageSize = Math.max(1, options.pageSize ?? 64);
     this.maxScan = Math.max(this.pageSize, options.maxScan ?? 512);
@@ -64,7 +69,8 @@ export class DbVectorStore extends VectorStore {
     }));
     await this.db.createMany({
       model: this.tableName,
-      data: records
+      data: records,
+      namespace: this.adapterNamespace
     });
   }
 
@@ -111,7 +117,8 @@ export class DbVectorStore extends VectorStore {
         model: this.tableName,
         where,
         limit,
-        offset
+        offset,
+        namespace: this.adapterNamespace
       });
       if (!records.length) {
         break;

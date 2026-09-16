@@ -48,12 +48,17 @@ export class RateLimitError extends LangFnError {
       metadata?: Record<string, unknown>;
     } = {}
   ) {
+    const retryAfter = options.retryAfter !== undefined
+      && Number.isFinite(options.retryAfter)
+      && options.retryAfter >= 0
+      ? options.retryAfter
+      : undefined;
     const metadata = { ...(options.metadata ?? {}) };
-    if (options.retryAfter !== undefined) {
-      metadata.retry_after = options.retryAfter;
+    if (retryAfter !== undefined) {
+      metadata.retry_after = retryAfter;
     }
     super(message, { ...options, metadata, code: "PROVIDER_RATE_LIMIT" });
-    this.retryAfter = options.retryAfter;
+    this.retryAfter = retryAfter;
   }
 }
 

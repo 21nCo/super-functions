@@ -30,6 +30,37 @@ function createServer(options: { allowAdmin?: boolean; rateLimit?: boolean; name
 }
 
 describe("createSecFnServer", () => {
+  it("separates malformed JSON from request-body transport failures", async () => {
+    const { secfn } = createServer();
+    const malformed = await secfn.router.handle(new Request("https://app.test/secfn/admin/secrets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    }));
+    await expect(malformed.json()).resolves.toMatchObject({
+      ok: false,
+      error: { code: "SECFN_BAD_JSON" },
+    });
+    expect(malformed.status).toBe(400);
+
+    const failingBody = new ReadableStream({
+      start(controller) {
+        controller.error(new Error("request body transport failed"));
+      },
+    });
+    const transportFailure = await secfn.router.handle(new Request("https://app.test/secfn/admin/secrets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: failingBody,
+      duplex: "half",
+    } as RequestInit));
+    await expect(transportFailure.json()).resolves.toMatchObject({
+      ok: false,
+      error: { code: "SECFN_INTERNAL" },
+    });
+    expect(transportFailure.status).toBe(500);
+  });
+
   it("requires admin authorization and returns the stable error envelope", async () => {
     const { secfn, db } = createServer({ allowAdmin: false });
 

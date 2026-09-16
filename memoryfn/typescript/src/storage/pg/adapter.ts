@@ -88,7 +88,7 @@ export class PostgresAdapter implements StorageAdapter {
   }
 
   async searchVectors(params: {
-    tenantId?: string;
+    tenantId: string;
     embedding: number[];
     containerTags: string[];
     filters?: Record<string, any>;
@@ -112,7 +112,7 @@ export class PostgresAdapter implements StorageAdapter {
     .from(memories);
 
     // Build Where Clauses
-    const conditions = [eq(memories.tenantId, tenantId!), isNull(memories.deletedAt), eq(memories.isLatest, true)];
+    const conditions = [eq(memories.tenantId, tenantId), isNull(memories.deletedAt), eq(memories.isLatest, true)];
 
     // All supplied tags constrain retrieval within the explicit tenant.
     if (containerTags && containerTags.length > 0) {

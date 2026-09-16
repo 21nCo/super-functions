@@ -39,8 +39,11 @@ export function errorResponse(error: unknown): Response {
 export async function readJson<T>(request: Request): Promise<T> {
   try {
     return await request.json() as T;
-  } catch {
-    throw new BadRequestError("Invalid JSON", "SECFN_BAD_JSON");
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new BadRequestError("Invalid JSON", "SECFN_BAD_JSON");
+    }
+    throw error;
   }
 }
 

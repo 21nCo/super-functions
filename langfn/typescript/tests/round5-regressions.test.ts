@@ -5,6 +5,8 @@ import { createLangFnRouter } from "../src/http/routes.js";
 import { normalizeStreamEvent } from "../src/streaming/sse.js";
 import { DbVectorStore } from "../src/rag/db-vector-store.js";
 import { StateGraph } from "../src/graph/state_graph.js";
+import { wrapWithRowLevelNamespace } from "@superfunctions/db";
+import { memoryAdapter } from "@superfunctions/db/testing";
 
 it("preserves signed Google stream messages through HTTP and persists a successful trace", async () => {
   const frame = { candidates: [{ content: { parts: [{ text: "done", thoughtSignature: "signed" }] }, finishReason: "STOP" }] };
@@ -30,6 +32,23 @@ it("retains concurrent RAG batches completed in the same millisecond", async () 
     await Promise.all(Array.from({ length: 20 }, (_, i) => store.addDocuments([{ content: `batch-${i}`, metadata: {} }])));
     expect(records.size).toBe(20);
   } finally { clock.mockRestore(); }
+});
+
+it("passes an explicit adapter namespace through reference RAG writes and reads", async () => {
+  const db = wrapWithRowLevelNamespace(memoryAdapter({ debug: false }), { enabled: true });
+  const embeddings = {
+    embedDocuments: async (texts: string[]) => texts.map(() => [1, 0]),
+    embedQuery: async () => [1, 0]
+  };
+  const store = new DbVectorStore(db, embeddings, {
+    namespace: "documents",
+    adapterNamespace: "tenant-a"
+  });
+
+  await store.addDocuments([{ content: "scoped document", metadata: {} }]);
+  await expect(store.search("scoped")).resolves.toMatchObject([
+    { content: "scoped document" }
+  ]);
 });
 
 it("creates RAG and graph identifiers without relying on global Web Crypto", async () => {
