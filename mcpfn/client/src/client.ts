@@ -907,7 +907,7 @@ export class McpFnClient {
         kind,
         at: (this.options.clock?.() ?? new Date()).toISOString(),
         requestId: this.redact(this.requestId(), { preserveKeys: false }),
-        target: { ...this.redact(descriptor, { preserveKeys: false }), kind: targetKind },
+        target: this.redact({ ...descriptor, kind: targetKind }, { preserveKeys: false }) as McpFnClientEvent["target"],
         ...(payload !== undefined
           ? { payload: this.redact(payload, { preserveKeys: false }) }
           : {}),
@@ -970,7 +970,7 @@ export class McpFnClient {
             : { code: this.redact(code, { preserveKeys: false }) }),
           requestId: this.redact(requestId, { preserveKeys: false }),
           at,
-          target: { ...this.redact(descriptor, { preserveKeys: false }), kind },
+          target: this.redact({ ...descriptor, kind }, { preserveKeys: false }) as McpFnDiagnosticEvent["target"],
           ...(details === undefined
             ? {}
             : { details: this.redact(details, { preserveKeys: false }) }),

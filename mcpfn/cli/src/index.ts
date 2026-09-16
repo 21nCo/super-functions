@@ -216,6 +216,7 @@ export async function runCli(
           // Keep the library's retryable cleanup error contract, while allowing
           // the CLI to persist its bounded, redacted failed result.
           if (error instanceof McpFnConformanceCleanupError && error.result) return error.result;
+          if (error instanceof McpFnConformanceCleanupError) throw error;
           // The proxy's explicit input validators use TypeError. Operational
           // failures must not be presented as invalid CLI usage or leak secrets.
           if (error instanceof TypeError) throw error;
@@ -371,6 +372,12 @@ export async function runCli(
       // A failed retry must keep the owning error reachable by programmatic
       // callers. The executable entry point terminates after receiving it.
       await error.retryCleanup();
+      return MCPFN_CLI_EXIT_TEST_FAILURE;
+    }
+    if (error instanceof McpFnConformanceCleanupError) {
+      // The executable has no programmatic owner to retain. Attempt one final
+      // bounded cleanup, then terminate even if the provider remains unavailable.
+      await error.retryCleanup().catch(() => undefined);
       return MCPFN_CLI_EXIT_TEST_FAILURE;
     }
     if (error instanceof McpFnAssertionError || error instanceof McpFnClientError) {

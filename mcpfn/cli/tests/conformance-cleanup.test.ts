@@ -31,6 +31,19 @@ it("writes a failed conformance report after credential cleanup exhaustion", asy
   }
 });
 
+it("terminates with a test failure when cleanup exhausts before a report exists", async () => {
+  const previous = process.env.MCPFN_CLEANUP_TEST_KEY;
+  process.env.MCPFN_CLEANUP_TEST_KEY = "secret";
+  try {
+    state.failure = new (await import("@mcpfn/testing")).McpFnConformanceCleanupError(async () => {}, undefined);
+    expect(await runCli(["conformance", "http://127.0.0.1:1/mcp", "--api-key-env", "MCPFN_CLEANUP_TEST_KEY"], { stderr: () => {} })).toBe(1);
+  } finally {
+    state.failure = undefined;
+    if (previous === undefined) delete process.env.MCPFN_CLEANUP_TEST_KEY;
+    else process.env.MCPFN_CLEANUP_TEST_KEY = previous;
+  }
+});
+
 
 it("classifies proxy operational failures as exit1 with safe output, while keeping input errors exit2", async () => {
   const previous = process.env.MCPFN_CLEANUP_TEST_KEY;

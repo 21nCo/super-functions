@@ -311,6 +311,8 @@ export interface McpFnRemoteCredentialProvider {
 export interface McpFnRemoteCredentialLease {
   credential: McpFnRemoteCredential;
   release(): Promise<void>;
+  /** The lifecycle stage that most recently prevented credential release. */
+  cleanupPhase(): "token-revocation" | "transport-close";
 }
 
 export interface McpFnAuthenticatedHttpTargetOptions
@@ -352,16 +354,30 @@ export async function acquireRemoteCredential(
   let releasePromise: Promise<void> | undefined;
   let revoked = false;
   let disposed = false;
+  let cleanupPhase: "token-revocation" | "transport-close" = credential.kind === "oauth"
+    ? "token-revocation"
+    : "transport-close";
   return {
     credential,
+    cleanupPhase: () => cleanupPhase,
     release() {
       releasePromise ??= (async () => {
         // Cancellation of acquisition must not cancel revocation or its retries.
         const cleanupContext = { ...context, signal: new AbortController().signal };
         try {
           // Provider-local state may be required to retry revocation.
-          if (!revoked) { await provider.revoke?.(acquired, cleanupContext); revoked = true; }
-          if (!disposed) { await provider.dispose?.(acquired, cleanupContext); disposed = true; }
+          if (!revoked) {
+            cleanupPhase = credential.kind === "oauth" ? "token-revocation" : "transport-close";
+            await provider.revoke?.(acquired, cleanupContext);
+            revoked = true;
+          }
+          if (!disposed) {
+            // Revocation already completed: a later disposal failure is not an
+            // authorization-server failure.
+            cleanupPhase = "transport-close";
+            await provider.dispose?.(acquired, cleanupContext);
+            disposed = true;
+          }
         } catch {
           throw new Error("Target credential cleanup failed");
         }

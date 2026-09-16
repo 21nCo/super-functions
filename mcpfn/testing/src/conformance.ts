@@ -414,7 +414,7 @@ export async function runAuthenticatedOfficialConformance(
   }
   if (!released) {
     const message = "Authenticated conformance credential cleanup failed; retry cleanup";
-    const cleanupFailure = normalizeMcpFnReportFailure(new Error(message), lease.credential.kind === "oauth" ? "token-revocation" : "transport-close");
+    const cleanupFailure = normalizeMcpFnReportFailure(new Error(message), lease.cleanupPhase());
     const failedResult = result ? { ...result, ok: false, exitCode: result.exitCode || 1,
       cleanupFailure,
       ...(result.failure ? {} : { failure: cleanupFailure }),

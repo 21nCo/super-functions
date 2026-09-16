@@ -135,3 +135,13 @@ it.each(["oauth", "api-key"] as const)("attributes %s cleanup failures outside a
   revoke.mockResolvedValue(undefined);
   await error.retryCleanup();
 });
+
+it("attributes disposal failures after OAuth revocation to transport cleanup", async () => {
+  const revoke = vi.fn();
+  const dispose = vi.fn().mockRejectedValue(new Error("release failed"));
+  const error = await runAuthenticatedOfficialConformance({ url: "http://127.0.0.1:1/mcp", credential: {
+    acquire: () => ({ kind: "oauth", headers: { "x-api-key": "opaque-runner-value" } }), revoke, dispose,
+  }}).catch(error => error);
+  expect(error).toBeInstanceOf(McpFnConformanceCleanupError);
+  expect(error.result.cleanupFailure).toMatchObject({ phase: "transport-close", layer: "mcpfn-preflight" });
+});
