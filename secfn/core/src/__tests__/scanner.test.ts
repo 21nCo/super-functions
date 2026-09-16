@@ -60,3 +60,29 @@ it("does not allocate the configured ceiling for a tiny file", async () => {
     try { expect(await createSecurityScanner({ maxFileSize: 2 ** 32 - 1 }).scanFile(`${dir}/key`)).toHaveLength(1); } finally { spy.mockRestore(); }
   } finally { await rm(dir, { recursive: true }); }
 });
+
+it("propagates rule evaluation failures from directory scans", async () => {
+  const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const dir = await mkdtemp(`${tmpdir()}/rex-rule-failure-`);
+  try {
+    await writeFile(`${dir}/input.txt`, "scan me");
+    const scanner = createSecurityScanner({
+      rulePacks: [{
+        id: "failing-pack",
+        name: "Failing pack",
+        rules: [{
+          id: "failing-rule",
+          name: "Failing rule",
+          description: "throws during evaluation",
+          severity: "high",
+          evaluate() { throw new Error("rule evaluation failed"); },
+        }],
+      }],
+    });
+
+    await expect(scanner.scanDirectory(dir)).rejects.toThrow("rule evaluation failed");
+  } finally {
+    await rm(dir, { recursive: true });
+  }
+});

@@ -140,6 +140,26 @@ describe("streaming and observability", () => {
     expect(events.some((event) => event.type === "end")).toBe(false);
   });
 
+  it("preserves a provider terminal error when trace persistence also fails", async () => {
+    const providerError = { code: "PROVIDER_FAILED", message: "model unavailable" };
+    const client = new LangFn({
+      model: new MockChatModel({
+        streams: [[{ type: "error", error: providerError }]],
+      }),
+      observability: {
+        enabled: true,
+        traceStorage: {
+          saveTrace: async () => { throw new Error("trace unavailable"); },
+          findMany: async () => [],
+        },
+      },
+    });
+
+    const events = await collect(client.stream("hello"));
+    expect(events.filter((event) => event.type === "end" || event.type === "error"))
+      .toEqual([expect.objectContaining({ type: "error", error: providerError })]);
+  });
+
   it("persists fresh traces and idempotent feedback through shared storage", async () => {
     const adapter = new InMemoryAdapter();
     const storage = new TraceStorage(adapter as never);

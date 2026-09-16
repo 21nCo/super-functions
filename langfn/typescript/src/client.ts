@@ -354,6 +354,9 @@ export class LangFn {
       }
 
       const streamCost = this.attachCost(latestUsage);
+      if (terminalEvent?.type === "error") {
+        try { await span?.fail(terminalEvent.error); } catch { /* Preserve the provider failure. */ }
+      }
       await this.persistTrace({
         kind: Array.isArray(input) ? "stream_chat" : "stream_completion",
         traceId,
@@ -371,16 +374,18 @@ export class LangFn {
     } catch (error) {
       const normalizedError = normalizeUnknownError(error);
       try { await span?.fail(normalizedError); } catch { /* Preserve the primary stream failure. */ }
-      terminalEvent = withTrace<StreamEvent>(
-        {
-          type: "error",
-          error: {
-            code: normalizedError.code,
-            message: normalizedError.message
-          }
-        },
-        traceId
-      );
+      if (!terminalEvent || terminalEvent.type === "end") {
+        terminalEvent = withTrace<StreamEvent>(
+          {
+            type: "error",
+            error: {
+              code: normalizedError.code,
+              message: normalizedError.message
+            }
+          },
+          traceId
+        );
+      }
     } finally {
       try {
         await span?.[Symbol.asyncDispose]();

@@ -3,24 +3,29 @@
   "version": "0.0.3",
   "description": "Self-hostable AI memory system for agents and applications",
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     },
     "./http": {
       "types": "./dist/http/index.d.ts",
-      "default": "./dist/http/index.js"
+      "import": "./dist/http/index.js",
+      "require": "./dist/http/index.cjs"
     },
     "./mcp": {
       "types": "./dist/mcp/index.d.ts",
-      "default": "./dist/mcp/index.js"
+      "import": "./dist/mcp/index.js",
+      "require": "./dist/mcp/index.cjs"
     },
     "./storage/pg": {
       "types": "./dist/storage/pg/index.d.ts",
-      "default": "./dist/storage/pg/index.js"
+      "import": "./dist/storage/pg/index.js",
+      "require": "./dist/storage/pg/index.cjs"
     }
   },
   "files": [

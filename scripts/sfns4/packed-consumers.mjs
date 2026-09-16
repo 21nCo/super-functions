@@ -142,6 +142,22 @@ try {
     ],
     temporary,
   );
+  run(
+    process.execPath,
+    [
+      "--input-type=commonjs",
+      "-e",
+      `
+    const memory = require('@memoryfn/core');
+    const http = require('@memoryfn/core/http');
+    const mcp = require('@memoryfn/core/mcp');
+    const pg = require('@memoryfn/core/storage/pg');
+    if (!memory.MemoryStorageAdapter || !Object.keys(http).length || !Object.keys(mcp).length || !pg.PostgresAdapter) throw new Error('Packed CommonJS MemoryFn export missing');
+    console.log('packed CommonJS MemoryFn exports passed');
+  `,
+    ],
+    temporary,
+  );
   const { verifyPackedUI } = await import("./packed-ui.mjs");
   await verifyPackedUI(temporary);
   const artifactSet = createHash('sha256').update(JSON.stringify(integrity)).digest('hex');

@@ -47,6 +47,11 @@ export class SecurityScanner {
   }
 
   async scanFile(filePath: string): Promise<SecurityFinding[]> {
+    const content = await this.readFileContent(filePath);
+    return content === undefined ? [] : this.scanContent(content, { path: filePath });
+  }
+
+  private async readFileContent(filePath: string): Promise<string | undefined> {
     const { open } = await import("node:fs/promises");
     const file = await open(filePath, "r");
     try {
@@ -57,30 +62,33 @@ export class SecurityScanner {
         const { bytesRead } = await file.read(buffer, 0, buffer.length, null);
         if (!bytesRead) break;
         size += bytesRead;
-        if (size > this.maxFileSize) return [];
+        if (size > this.maxFileSize) return undefined;
         chunks.push(buffer.subarray(0, bytesRead));
       }
-      return this.scanContent(Buffer.concat(chunks, size).toString("utf8"), { path: filePath });
+      return Buffer.concat(chunks, size).toString("utf8");
     } finally {
       await file.close();
     }
   }
 
   async scanDirectory(dir: string): Promise<SecurityFinding[]> {
-    const { glob } = await import("glob");
+    const { default: glob } = await import("fast-glob");
     const files = await glob("**/*", {
       cwd: dir,
       absolute: true,
-      nodir: true,
+      onlyFiles: true,
       ignore: this.excludePaths,
     });
     const findings: SecurityFinding[] = [];
     for (const file of files) {
+      let content: string | undefined;
       try {
-        findings.push(...await this.scanFile(file));
+        content = await this.readFileContent(file);
       } catch {
-        // Binary/unreadable files are ignored by design.
+        // Unreadable files are ignored by design; rule failures run outside this boundary.
+        continue;
       }
+      if (content !== undefined) findings.push(...this.scanContent(content, { path: file }));
     }
     return findings;
   }
