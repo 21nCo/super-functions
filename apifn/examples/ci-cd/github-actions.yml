@@ -6,9 +6,14 @@ on:
       - "apifn/**"
       - ".apifn/**"
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   api-check:
-    uses: ./apifn/.github/workflows/api-check.yml
+    # Same-repo callers can use: uses: ./.github/workflows/apifn-api-check.yml
+    uses: 21nCo/super-functions/.github/workflows/apifn-api-check.yml@dev
     with:
       spec_path: .apifn/openapi.yml
       collection_dir: .apifn/collection

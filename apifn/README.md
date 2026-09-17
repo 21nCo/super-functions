@@ -80,7 +80,20 @@ console.log(formatDiffAsText(result));
 
 ## CI/CD
 
-ApiFn provides a reusable GitHub Actions workflow at `apifn/.github/workflows/api-check.yml`.
+ApiFn provides a reusable GitHub Actions workflow at `.github/workflows/apifn-api-check.yml` (repo root, so GitHub Actions can register and call it).
+
+Call it from another repository:
+
+```yaml
+jobs:
+  api-check:
+    uses: 21nCo/super-functions/.github/workflows/apifn-api-check.yml@dev
+    with:
+      spec_path: .apifn/openapi.yml
+      collection_dir: .apifn/collection
+```
+
+Same-repo callers can use `uses: ./.github/workflows/apifn-api-check.yml` instead.
 
 ### What it does
 
