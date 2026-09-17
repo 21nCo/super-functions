@@ -28,12 +28,26 @@ export function errorResponse(error: unknown): Response {
     {
       ok: false,
       error: {
-        code: routerError.code ?? "SECFN_INTERNAL",
+        code: routerError.code ?? codeForStatus(routerError.statusCode),
         message: routerError.message,
       },
     },
     { status: routerError.statusCode },
   );
+}
+
+function codeForStatus(statusCode: number): string {
+  return ({
+    400: "SECFN_BAD_REQUEST",
+    401: "SECFN_UNAUTHORIZED",
+    403: "SECFN_FORBIDDEN",
+    404: "SECFN_NOT_FOUND",
+    405: "SECFN_METHOD_NOT_ALLOWED",
+    409: "SECFN_CONFLICT",
+    413: "SECFN_PAYLOAD_TOO_LARGE",
+    422: "SECFN_UNPROCESSABLE_ENTITY",
+    429: "SECFN_RATE_LIMITED",
+  } as Record<number, string>)[statusCode] ?? (statusCode >= 500 ? "SECFN_INTERNAL" : "SECFN_HTTP_ERROR");
 }
 
 export async function readJson<T>(request: Request): Promise<T> {

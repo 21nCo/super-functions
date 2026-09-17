@@ -30,6 +30,26 @@ function createServer(options: { allowAdmin?: boolean; rateLimit?: boolean; name
 }
 
 describe("createSecFnServer", () => {
+  it("returns stable non-internal codes for router-generated 404 and 405 errors", async () => {
+    const { secfn } = createServer();
+    const notFound = await secfn.router.handle(new Request("https://app.test/secfn/missing"));
+    const methodNotAllowed = await secfn.router.handle(new Request("https://app.test/secfn/runtime/health", {
+      method: "POST",
+    }));
+
+    expect(notFound.status).toBe(404);
+    await expect(notFound.json()).resolves.toMatchObject({
+      ok: false,
+      error: { code: "SECFN_NOT_FOUND" },
+    });
+    expect(methodNotAllowed.status).toBe(405);
+    expect(methodNotAllowed.headers.get("allow")).toBe("GET");
+    await expect(methodNotAllowed.json()).resolves.toMatchObject({
+      ok: false,
+      error: { code: "SECFN_METHOD_NOT_ALLOWED" },
+    });
+  });
+
   it("separates malformed JSON from request-body transport failures", async () => {
     const { secfn } = createServer();
     const malformed = await secfn.router.handle(new Request("https://app.test/secfn/admin/secrets", {

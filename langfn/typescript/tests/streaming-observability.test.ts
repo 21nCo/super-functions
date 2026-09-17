@@ -7,6 +7,7 @@ import { MockChatModel } from "../src/models/mock.js";
 import { CostMeter } from "../src/observability/cost-meter.js";
 import { TraceStorage } from "../src/observability/storage.js";
 import { normalizeStream } from "../src/streaming/sse.js";
+import { Tracer } from "../src/observability/tracer.js";
 
 class InMemoryAdapter {
   traces: Record<string, unknown>[] = [];
@@ -52,6 +53,21 @@ class InMemoryAdapter {
 }
 
 describe("streaming and observability", () => {
+  it("preserves the provider error when recording the failed span also fails", async () => {
+    const providerError = new Error("provider unavailable");
+    const tracer = new Tracer({
+      storage: {
+        saveSpan: async () => { throw new Error("telemetry unavailable"); }
+      } as never
+    });
+
+    const result = await tracer.trace("provider.call", {}, async () => {
+      throw providerError;
+    }).catch((error: unknown) => error);
+
+    expect(result).toBe(providerError);
+  });
+
   it("normalizes the canonical stream taxonomy and enforces terminal events", async () => {
     const client = new LangFn({
       model: new MockChatModel({

@@ -4,6 +4,7 @@ import { MemoryFn } from '../src/core/pipeline';
 describe('memory lifecycle and scope', () => {
   it('requires an explicit tenant and all requested tags', async () => {
     const store = new MemoryStorageAdapter();
+    // @ts-expect-error Memory inserts require an explicit tenant and container tags.
     await expect(store.insertMemories([{ content: 'secret' }])).rejects.toThrow('SCOPE');
     await store.insertMemories([{ id: 'one', tenantId: 'a', containerTags: ['shared'], content: 'secret', embedding: [1, 0] }]);
     // @ts-expect-error Direct vector searches require an explicit tenant boundary.

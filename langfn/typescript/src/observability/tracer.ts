@@ -125,7 +125,11 @@ export class Tracer {
     try {
       return await fn();
     } catch (error) {
-      await span.fail(error);
+      try {
+        await span.fail(error);
+      } catch {
+        // Observability is secondary: never replace the operation's primary failure.
+      }
       throw error;
     } finally {
       await span[Symbol.asyncDispose]();

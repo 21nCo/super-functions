@@ -1,5 +1,6 @@
 import { LangFnError, ValidationError } from "../core/errors.js";
 import type { FeedbackRequest, Message } from "../core/types.js";
+import { PayloadTooLargeError } from "@superfunctions/http";
 
 export interface CompleteBody {
   prompt: string;
@@ -94,13 +95,20 @@ export function toHttpErrorPayload(error: unknown): {
 }
 
 export async function parseJsonBody<T>(
-  request: Request,
+  bodyReader: Pick<Request, "json">,
   parser: (value: unknown) => T
 ): Promise<{ ok: true; data: T } | { ok: false; status: number; body: CanonicalErrorEnvelope }> {
   try {
-    const parsed = parser(await request.json());
+    const parsed = parser(await bodyReader.json());
     return { ok: true, data: parsed };
   } catch (error) {
+    if (error instanceof PayloadTooLargeError) {
+      return {
+        ok: false,
+        status: error.statusCode,
+        body: createErrorEnvelope(error.code ?? "PAYLOAD_TOO_LARGE", error.message)
+      };
+    }
     const issues =
       error instanceof ValidationError
         ? [{ message: error.message, ...(error.metadata ? { metadata: error.metadata } : {}) }]

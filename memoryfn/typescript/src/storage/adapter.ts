@@ -1,6 +1,7 @@
 import { Memory, MemoryRelationship } from '../core/types';
 
 export interface MemoryScope { tenantId: string; containerTags: string[] }
+export type MemoryInsert = MemoryScope & Partial<Omit<Memory, keyof MemoryScope>>;
 export interface MemoryUpdate extends MemoryScope {
   id: string;
   expectedRevision: number;
@@ -13,7 +14,7 @@ export interface StorageAdapter {
   close?(): Promise<void>;
   /** Commit all callback writes together, or leave storage unchanged on failure. */
   transaction?<T>(operation: (storage: StorageAdapter) => Promise<T>): Promise<T>;
-  insertMemories(memories: Partial<Memory>[]): Promise<Memory[]>;
+  insertMemories(memories: MemoryInsert[]): Promise<Memory[]>;
   insertRelationships(relationships: Partial<MemoryRelationship>[]): Promise<MemoryRelationship[]>;
   searchVectors(params: {
     tenantId: string;
@@ -28,7 +29,7 @@ export interface StorageAdapter {
   deleteMemory(input: MemoryDelete): Promise<void>;
 }
 
-export function requireScope(tenantId: string | undefined, tags: string[]): asserts tenantId is string {
+export function requireScope(tenantId: string | undefined, tags: string[] | undefined): asserts tenantId is string {
   if (!tenantId?.trim() || !Array.isArray(tags) || tags.some(tag => typeof tag !== 'string' || !tag.trim())) {
     throw new Error('MEMORY_SCOPE_REQUIRED');
   }

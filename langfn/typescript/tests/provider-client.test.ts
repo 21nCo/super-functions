@@ -127,6 +127,23 @@ describe("provider and client contract", () => {
       retryAfter: undefined
     });
     expect((invalidRetryAfter as RateLimitError).metadata).not.toHaveProperty("retry_after");
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2030-01-01T00:00:00.000Z"));
+    const dateRetryAfterClient = new LangFn().withModel("openai", {
+      apiKey: "fixture",
+      fetchImpl: async () => new Response("rate limited", {
+        status: 429,
+        headers: { "retry-after": "Tue, 01 Jan 2030 00:00:05 GMT" }
+      })
+    });
+    const dateRetryAfter = await dateRetryAfterClient.complete("retry at date", {
+      retry: { maxAttempts: 1 }
+    }).catch((error: unknown) => error);
+    expect(dateRetryAfter).toMatchObject({
+      code: "PROVIDER_RATE_LIMIT",
+      retryAfter: 5
+    });
   });
 
   it("supports timeout, cancellation, and ordered partial batch results", async () => {

@@ -52,7 +52,7 @@ export class DbVectorStore extends VectorStore {
     this.adapterNamespace = options.adapterNamespace ?? this.namespace;
     this.backendType = options.mode ?? "reference";
     this.pageSize = Math.max(1, options.pageSize ?? 64);
-    this.maxScan = Math.max(this.pageSize, options.maxScan ?? 512);
+    this.maxScan = Math.max(1, options.maxScan ?? 512);
     this.indexedSearch = options.indexedSearch;
   }
 
@@ -76,6 +76,11 @@ export class DbVectorStore extends VectorStore {
 
   async search(query: string, options: RetrievalOptions = {}): Promise<Document[]> {
     const k = options.k ?? 4;
+    if (this.backendType === "production" && !this.indexedSearch) {
+      throw new NonProductionBackendError("Production retrieval requires adapter-native indexed search or memoryfn", {
+        metadata: { backend: "db-vector-store" }
+      });
+    }
     const queryEmbedding = await this.embeddings.embedQuery(query);
     const records = this.indexedSearch
       ? await this.indexedSearch({
@@ -116,6 +121,10 @@ export class DbVectorStore extends VectorStore {
       const records = await this.db.findMany<DocumentRecord>({
         model: this.tableName,
         where,
+        orderBy: [
+          { field: "createdAt", direction: "asc" },
+          { field: "id", direction: "asc" }
+        ],
         limit,
         offset,
         namespace: this.adapterNamespace

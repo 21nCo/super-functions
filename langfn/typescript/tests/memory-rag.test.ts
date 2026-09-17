@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { LangFn } from "../src/client.js";
 import { NonProductionBackendError, ValidationError } from "../src/core/errors.js";
@@ -127,6 +127,47 @@ describe("memory and rag", () => {
     await expect(productionStore.search("Tell me about Paris", { k: 1 })).rejects.toBeInstanceOf(
       NonProductionBackendError
     );
+  });
+
+  it("rejects production fallback before embedding the query", async () => {
+    const embeddings = new FakeEmbeddings();
+    const embedQuery = vi.spyOn(embeddings, "embedQuery");
+    const store = new DbVectorStore({} as any, embeddings, { mode: "production" });
+
+    await expect(store.search("must not be embedded")).rejects.toBeInstanceOf(NonProductionBackendError);
+    expect(embedQuery).not.toHaveBeenCalled();
+  });
+
+  it("uses a stable page order and honors maxScan below pageSize", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const records = Array.from({ length: 5 }, (_, index) => ({
+      id: `doc-${index}`,
+      content: `document ${index}`,
+      embedding: [1, 0],
+      metadata: {},
+      namespace: "default",
+      createdAt: index
+    }));
+    const db = {
+      async findMany(input: Record<string, unknown>) {
+        calls.push(input);
+        const offset = Number(input.offset ?? 0);
+        const limit = Number(input.limit ?? records.length);
+        return records.slice(offset, offset + limit);
+      }
+    } as any;
+    const store = new DbVectorStore(db, new FakeEmbeddings(), { pageSize: 5, maxScan: 2 });
+
+    await expect(store.search("document", { k: 5 })).resolves.toHaveLength(2);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      limit: 2,
+      offset: 0,
+      orderBy: [
+        { field: "createdAt", direction: "asc" },
+        { field: "id", direction: "asc" }
+      ]
+    });
   });
 });
 

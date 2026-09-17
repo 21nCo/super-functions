@@ -124,15 +124,15 @@ describe('MemoryStorageAdapter', () => {
   it('rejects duplicate IDs atomically', async () => {
     const storage = new MemoryStorageAdapter();
     await expect(storage.insertMemories([
-      { tenantId: 'default', id: 'duplicate', embedding: [1, 0] },
-      { tenantId: 'default', id: 'duplicate', embedding: [1, 0] },
+      { tenantId: 'default', containerTags: [], id: 'duplicate', embedding: [1, 0] },
+      { tenantId: 'default', containerTags: [], id: 'duplicate', embedding: [1, 0] },
     ])).rejects.toThrow(/already exists/);
     await expect(storage.searchVectors({ tenantId: 'default', embedding: [1, 0], containerTags: [], topK: 10 })).resolves.toEqual([]);
   });
 
   it('excludes dimension-mismatched embeddings when no threshold is supplied', async () => {
     const storage = new MemoryStorageAdapter();
-    await storage.insertMemories([{ tenantId: 'default', id: 'wrong-dimension', embedding: [1, 0, 0] }]);
+    await storage.insertMemories([{ tenantId: 'default', containerTags: [], id: 'wrong-dimension', embedding: [1, 0, 0] }]);
     await expect(storage.searchVectors({ tenantId: 'default', embedding: [1, 0], containerTags: [], topK: 10 })).resolves.toEqual([]);
   });
 });

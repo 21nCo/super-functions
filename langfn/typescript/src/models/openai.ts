@@ -277,5 +277,8 @@ function parseRetryAfter(value: string | null): number | undefined {
   const normalized = value?.trim();
   if (!normalized) return undefined;
   const seconds = Number(normalized);
-  return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
+  if (Number.isFinite(seconds)) return seconds >= 0 ? seconds : undefined;
+  const retryAt = Date.parse(normalized);
+  if (!Number.isFinite(retryAt)) return undefined;
+  return Math.max(0, (retryAt - Date.now()) / 1_000);
 }

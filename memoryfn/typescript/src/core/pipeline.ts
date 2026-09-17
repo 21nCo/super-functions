@@ -27,7 +27,8 @@ export class MemoryFn implements IMemoryFn {
   }
 
   async add(input: AddMemoryInput): Promise<AddMemoryResult> {
-    requireScope(input.tenantId, input.containerTags);
+    const tenantId = input.tenantId;
+    requireScope(tenantId, input.containerTags);
     const content = input.content ?? input.messages?.map(message => `${message.role}: ${message.content}`).join('\n') ?? '';
     if (!content.trim()) throw new Error('MEMORY_CONTENT_REQUIRED');
     const facts = this.extractor ? await this.extractor.extract(content) : [{ content, type: input.type ?? 'conversational', tags: [], confidence: 1 }];
@@ -42,21 +43,21 @@ export class MemoryFn implements IMemoryFn {
       // Model-generated tags are descriptive metadata, never authority or scope.
       const tags = [...input.containerTags];
       const embedding = embeddings[i] ?? null;
-      if (embedding && await this.deduplicator.findDuplicate(input.tenantId!, embedding, tags)) { deduplicated++; continue; }
-      const related = embedding && this.resolver ? await this.storage.searchVectors({ tenantId: input.tenantId, containerTags: tags, embedding, threshold: 0.75, topK: 3 }) : [];
+      if (embedding && await this.deduplicator.findDuplicate(tenantId, embedding, tags)) { deduplicated++; continue; }
+      const related = embedding && this.resolver ? await this.storage.searchVectors({ tenantId, containerTags: tags, embedding, threshold: 0.75, topK: 3 }) : [];
       const resolutions = this.resolver ? await Promise.all(related.map(async memory => ({ memory, resolution: await this.resolver!.resolve(fact.content, memory) }))) : [];
       const persist = async (storage: StorageAdapter) => {
         const links: MemoryRelationship[] = [];
         let count = 0;
         const [memory] = await storage.insertMemories([{
-          tenantId: input.tenantId, containerTags: tags, content: fact.content, type: fact.type,
+          tenantId, containerTags: tags, content: fact.content, type: fact.type,
           embedding, metadata: { ...input.metadata, extractedTags: fact.tags, confidence: fact.confidence }, isLatest: true,
         }]);
 
         for (const { memory: existing, resolution } of resolutions) {
           if (resolution.type === 'none') continue;
           if (resolution.type === 'updates') {
-            await storage.updateMemory({ tenantId: input.tenantId!, containerTags: tags, id: existing.id,
+            await storage.updateMemory({ tenantId, containerTags: tags, id: existing.id,
               expectedRevision: existing.revision ?? 1,
               changes: { content: existing.content, embedding: existing.embedding, isLatest: false } });
             count++;

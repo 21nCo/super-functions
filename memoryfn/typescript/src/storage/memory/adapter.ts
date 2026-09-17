@@ -1,5 +1,5 @@
 import type { Memory, MemoryRelationship } from '../../core/types';
-import { requireScope, type StorageAdapter, type MemoryScope, type MemoryUpdate, type MemoryDelete } from '../adapter';
+import { requireScope, type StorageAdapter, type MemoryScope, type MemoryUpdate, type MemoryDelete, type MemoryInsert } from '../adapter';
 
 /** Reads through to the parent and stages only changed keys. */
 class StagedMap<K, V> extends Map<K, V> {
@@ -100,17 +100,17 @@ export class MemoryStorageAdapter implements StorageAdapter {
     return result;
   }
 
-  async insertMemories(inputs: Partial<Memory>[]): Promise<Memory[]> {
+  async insertMemories(inputs: MemoryInsert[]): Promise<Memory[]> {
     if (!inputs.length) return [];
     const now = Date.now();
     const saved = inputs.map((input) => {
-      requireScope(input.tenantId, input.containerTags ?? []);
+      requireScope(input.tenantId, input.containerTags);
       const memory: Memory = {
         id: input.id ?? `memory-${now}-${++this.sequence}`,
         tenantId: input.tenantId,
         revision: 1,
         deletedAt: null,
-        containerTags: [...(input.containerTags ?? [])],
+        containerTags: [...input.containerTags],
         type: input.type ?? 'conversational',
         content: input.content ?? '',
         embedding: input.embedding ? [...input.embedding] : null,

@@ -68,6 +68,43 @@ describe("langfn http routes", () => {
     expect(body.error.details.issues[0].message).toContain("prompt");
   });
 
+  it("rejects oversized JSON bodies before parsing with a canonical 413 response", async () => {
+    const router = createLangFnRouter(new LangFn({ model: new MockChatModel({ responses: ["hello"] }) }), {
+      maxBodyBytes: 16
+    });
+
+    const response = await router.handle(
+      new Request("http://localhost/complete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt: "this body is too large" })
+      })
+    );
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error: { code: "PAYLOAD_TOO_LARGE" }
+    });
+  });
+
+  it("applies a safe request-body limit by default", async () => {
+    const router = createLangFnRouter(new LangFn({ model: new MockChatModel({ responses: ["hello"] }) }));
+    const response = await router.handle(
+      new Request("http://localhost/complete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt: "x".repeat(1024 * 1024) })
+      })
+    );
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error: { code: "PAYLOAD_TOO_LARGE" }
+    });
+  });
+
   it("uses authenticated identity despite spoofed tenant headers into metadata and rate limit keys", async () => {
     const observed: Record<string, unknown> = {};
     const router = createLangFnRouter(

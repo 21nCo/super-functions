@@ -36,9 +36,12 @@ export interface LangFnHttpOptions<TSession extends AuthSession = AuthSession> {
   rateLimit?: {
     provider?: RateLimitProvider;
   };
+  /** Maximum JSON request body size. Defaults to 1 MiB. */
+  maxBodyBytes?: number;
 }
 
 const HEALTH_METADATA = { status: "ok", name: "langfn", version: "0.1.0" } as const;
+const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
 
 export function createLangFnRoutes<TSession extends AuthSession = AuthSession>(
   lang: LangFn,
@@ -82,7 +85,7 @@ export function createLangFnRoutes<TSession extends AuthSession = AuthSession>(
       middleware: secure("/complete"),
       meta: { auth: { mode: "hybrid" } },
       handler: async (request: Request, context: LangFnRouteContext & RouteContext) => {
-        const body = await parseJsonBody(request, parseCompleteBody);
+        const body = await parseJsonBody(context, parseCompleteBody);
         if (!body.ok) {
           return Response.json(body.body, { status: body.status, headers: { "content-type": "application/json" } });
         }
@@ -112,7 +115,7 @@ export function createLangFnRoutes<TSession extends AuthSession = AuthSession>(
       middleware: secure("/chat"),
       meta: { auth: { mode: "hybrid" } },
       handler: async (request: Request, context: LangFnRouteContext & RouteContext) => {
-        const body = await parseJsonBody(request, parseChatBody);
+        const body = await parseJsonBody(context, parseChatBody);
         if (!body.ok) {
           return Response.json(body.body, { status: body.status, headers: { "content-type": "application/json" } });
         }
@@ -147,7 +150,7 @@ export function createLangFnRoutes<TSession extends AuthSession = AuthSession>(
       middleware: secure("/stream"),
       meta: { auth: { mode: "hybrid" } },
       handler: async (request: Request, context: LangFnRouteContext & RouteContext) => {
-        const body = await parseJsonBody(request, parseStreamBody);
+        const body = await parseJsonBody(context, parseStreamBody);
         if (!body.ok) {
           return Response.json(body.body, { status: body.status, headers: { "content-type": "application/json" } });
         }
@@ -214,8 +217,8 @@ export function createLangFnRoutes<TSession extends AuthSession = AuthSession>(
       path: "/embed",
       middleware: secure("/embed"),
       meta: { auth: { mode: "hybrid" } },
-      handler: async (request: Request) => {
-        const body = await parseJsonBody(request, parseEmbedBody);
+      handler: async (_request: Request, context: LangFnRouteContext & RouteContext) => {
+        const body = await parseJsonBody(context, parseEmbedBody);
         if (!body.ok) {
           return Response.json(body.body, { status: body.status, headers: { "content-type": "application/json" } });
         }
@@ -256,7 +259,7 @@ export function createLangFnRoutes<TSession extends AuthSession = AuthSession>(
       middleware: secure("/feedback"),
       meta: { auth: { mode: "hybrid" } },
       handler: async (request: Request, context: LangFnRouteContext & RouteContext) => {
-        const body = await parseJsonBody(request, parseFeedbackBody);
+        const body = await parseJsonBody(context, parseFeedbackBody);
         if (!body.ok) {
           return Response.json(body.body, { status: body.status, headers: { "content-type": "application/json" } });
         }
@@ -285,7 +288,8 @@ export function createLangFnRouter<TSession extends AuthSession = AuthSession>(
   options: LangFnHttpOptions<TSession> = {}
 ): Router<LangFnRouteContext> {
   return createRouter({
-    routes: createLangFnRoutes(lang, options)
+    routes: createLangFnRoutes(lang, options),
+    maxBodyBytes: options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES
   });
 }
 
