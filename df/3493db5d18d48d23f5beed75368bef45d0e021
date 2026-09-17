@@ -1,0 +1,53 @@
+langfn/typescript/src/http/validation.ts
+  s_0ec42cbf5a9107::t_aac8a7dfdb564b 3,98,102,105-111
+memoryfn/typescript/tests/lifecycle.test.ts
+  s_0ec42cbf5a9107::t_fa00071d15621f 7
+langfn/typescript/src/rag/db-vector-store.ts
+  s_0ec42cbf5a9107::t_aac8a7dfdb564b 55,79-83,124-127
+secfn/server/src/__tests__/server.test.ts
+  s_0ec42cbf5a9107::t_fa00071d15621f 33-52
+secfn/server/src/envelopes.ts
+  s_0ec42cbf5a9107::t_aac8a7dfdb564b 31,39-50
+  s_0ec42cbf5a9107::t_7f50f623fb3fc4 51-52
+langfn/typescript/src/http/routes.ts
+  s_0ec42cbf5a9107::t_aac8a7dfdb564b 39-40,44,88,118,153,220-221,262,291-292
+langfn/typescript/tests/memory-rag.test.ts
+  s_0ec42cbf5a9107::t_fa00071d15621f 1,131-171
+memoryfn/typescript/tests/memory-storage.test.ts
+  s_0ec42cbf5a9107::t_fa00071d15621f 127-128,135
+langfn/typescript/tests/streaming-observability.test.ts
+  s_0ec42cbf5a9107::t_fa00071d15621f 10,56-70
+memoryfn/typescript/src/storage/adapter.ts
+  s_0ec42cbf5a9107::t_aac8a7dfdb564b 4,17,32
+langfn/typescript/src/models/openai.ts
+  s_0ec42cbf5a9107::t_aac8a7dfdb564b 280-283
+langfn/typescript/tests/http-routes.test.ts
+  s_0ec42cbf5a9107::t_fa00071d15621f 71-90
+  s_0ec42cbf5a9107::t_5b6e3b449a2c9c 91-107
+memoryfn/typescript/src/core/pipeline.ts
+  s_0ec42cbf5a9107::t_a26b4e923a02f1 30-31,46-47,53,60
+memoryfn/typescript/src/storage/memory/adapter.ts
+  s_0ec42cbf5a9107::t_aac8a7dfdb564b 2,103,107,113
+langfn/typescript/src/observability/tracer.ts
+  s_0ec42cbf5a9107::t_aac8a7dfdb564b 128-132
+langfn/typescript/tests/provider-client.test.ts
+  s_0ec42cbf5a9107::t_fa00071d15621f 130-146
+memoryfn/typescript/src/storage/pg/adapter.ts
+  s_0ec42cbf5a9107::t_aac8a7dfdb564b 1,22,25,32-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "df3493db5d18d48d23f5beed75368bef45d0e021",
+  "prompts": {},
+  "sessions": {
+    "s_0ec42cbf5a9107": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0aa3d-c6e5-7963-9f4b-4f57675b7e35",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
