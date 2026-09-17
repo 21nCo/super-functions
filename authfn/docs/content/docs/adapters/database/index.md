@@ -5,7 +5,7 @@ description: Wire authfn to your database — Drizzle, raw Postgres, SQLite, in-
 
 # Database adapters
 
-authfn writes through `@superfunctions/db`'s `Adapter` contract. You pick an adapter and pass it to `createAuthFn({ database: ... })`.
+authfn writes through `@superfunctions/db`'s `Adapter` contract. You pick an adapter and pass it to `app.createServer({ database })`.
 
 ```ts
 interface Adapter {
@@ -41,4 +41,4 @@ The CLI reads `auth.getSchema()` and writes adapter-specific migration files. Se
 
 ## Namespacing
 
-Every read and write goes through `namespace` — the prefix you choose with `createAuthFn({ namespace: 'authfn' })`. Tables become `authfn_users`, `authfn_sessions`, `authfn_password_credentials`, etc. Run two authfn deployments in the same database by giving them different namespaces.
+Every read and write goes through `namespace` — the prefix you choose with `authfn({ namespace: 'authfn' })`. Tables become `authfn_users`, `authfn_sessions`, `authfn_password_credentials`, etc. Run two authfn deployments in the same database by giving them different namespaces.

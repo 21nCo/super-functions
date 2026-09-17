@@ -85,11 +85,11 @@ interface AuthFnHookContext {
 ### Block disposable emails
 
 ```ts
-import { AuthFnValidationError } from '@authfn/core';
+import { AuthFnValidationError } from 'authfn';
 import { isDisposable } from './disposable.js';
 
-createAuthFn({
-  // ...
+authApp.createServer({
+  database,
   hooks: {
     beforeUserCreate(_ctx, input) {
       if (isDisposable(input.primaryEmail)) {
@@ -150,7 +150,7 @@ hooks: {
 ### Abort sign-in for deactivated accounts
 
 ```ts
-import { AuthFnPluginAbortedError } from '@authfn/core';
+import { AuthFnPluginAbortedError } from 'authfn';
 
 hooks: {
   async beforeSessionIssue(_ctx, input) {
@@ -181,16 +181,15 @@ If any `before*` returns a modified input, every subsequent `before*` and the ha
 By default, throws from any hook fail the request. To downgrade specific `after*` hooks to "observe", use `hookFailurePolicy`:
 
 ```ts
-createAuthFn({
-  // ...
+authApp.createServer({
+  database,
   hooks: {
     afterUserCreate: pushToCrm,
   },
-  hookFailurePolicy: {
-    afterUserCreate: 'observe',
-  },
 });
 ```
+
+Kernel-level hooks fail the request when they throw. To observe rather than fail, register the hook on a plugin with `hookFailurePolicy: { afterUserCreate: 'observe' }`.
 
 Plugin-authored `afterUserCreate` hooks set their own `hookFailurePolicy.afterUserCreate = 'observe'`. See [Plugins → Authoring](../plugins/authoring).
 

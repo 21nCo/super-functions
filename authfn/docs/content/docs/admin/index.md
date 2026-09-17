@@ -14,17 +14,28 @@ npm install @authfn/admin
 ## Setup
 
 ```ts
-import { createAuthFn, authFnPasswordPlugin } from '@authfn/core';
+import { authfn, authFnPlugins } from 'authfn';
+import type { AuthFnRuntimeConfig } from 'authfn';
+import { authFnPasswordPlugin } from '@authfn/password';
 import { createAuthFnAdmin } from '@authfn/admin';
 
-const auth = createAuthFn({
+const plugins = authFnPlugins(authFnPasswordPlugin());
+const authApp = authfn({
+  namespace: 'authfn',
+  plugins,
+});
+const auth = authApp.createServer({ database });
+
+// Admin consumes AuthFnRuntimeConfig (database + plugins + namespace).
+// AuthFnServer does not expose `.config`.
+const authFnConfig: AuthFnRuntimeConfig = {
   database,
   namespace: 'authfn',
-  plugins: [authFnPasswordPlugin()],
-});
+  plugins,
+};
 
 const admin = createAuthFnAdmin({
-  authFnConfig: auth.config,                // exposed for admin's internal use
+  authFnConfig,
   authorize: async (ctx, input) => {
     const provided = ctx.request.headers.get('x-admin-token');
     if (provided !== process.env.ADMIN_TOKEN) {
@@ -82,14 +93,14 @@ authorize: async (ctx, input) => {
 
 ## Static-token authorizer
 
-For internal tools or scripts, the bundled `staticAdminKeyAuthorizer` accepts a fixed token from a header:
+For internal tools or scripts, the bundled `createStaticAdminKeyAuthorizer` accepts a fixed token from a header:
 
 ```ts
-import { staticAdminKeyAuthorizer } from '@authfn/admin';
+import { createStaticAdminKeyAuthorizer } from '@authfn/admin';
 
 createAuthFnAdmin({
-  authFnConfig: auth.config,
-  authorize: staticAdminKeyAuthorizer({
+  authFnConfig,
+  authorize: createStaticAdminKeyAuthorizer({
     token: process.env.ADMIN_TOKEN!,
     headerName: 'x-admin-token',
     actorId: 'admin-cli',

@@ -5,7 +5,7 @@ description: How authfn decides per-request issuer, base URL, OAuth credentials,
 
 # Runtime resolver
 
-The runtime resolver is authfn's per-request configuration hook. Before any plugin runs, the kernel calls `runtime.resolve(request)` to compute the **runtime resolution** — a snapshot of the configuration that's relevant for *this specific request*.
+The runtime resolver is authfn's per-request configuration hook. Before any plugin runs, the kernel calls `environment.resolve(request)` to compute the **environment** — a snapshot of the configuration that's relevant for *this specific request*.
 
 The resolution carries:
 
@@ -19,7 +19,7 @@ The resolution is per-request, not per-server. Two requests against the same ker
 
 ## Default behavior
 
-If you don't configure `runtime`, authfn defaults to:
+If you don't configure `environment`, authfn defaults to:
 
 ```ts
 {
@@ -42,9 +42,9 @@ You need a custom resolver when:
 ## Configuring a resolver
 
 ```ts
-import type { AuthFnRuntimeResolver } from '@authfn/core';
+import type { AuthFnEnvironmentResolver } from 'authfn';
 
-const runtime: AuthFnRuntimeResolver = {
+const environment: AuthFnEnvironmentResolver = {
   async resolve(request) {
     const url = new URL(request.url);
     const host = url.hostname;
@@ -73,7 +73,7 @@ const runtime: AuthFnRuntimeResolver = {
   },
 };
 
-createAuthFn({ runtime, plugins: [/* … */] });
+authApp.createServer({ database, environment, pluginRuntime: { /* … */ } });
 ```
 
 The resolver runs on every request — it should be fast (constant-time). Cache anything expensive outside the resolver.
@@ -82,35 +82,37 @@ The resolver runs on every request — it should be fast (constant-time). Cache 
 
 When `authFnMultiRegionPlugin` is enabled, the kernel automatically overlays a region-specific resolution on top of yours. The order is:
 
-1. Your `config.runtime.resolve(request)` runs first (or the default behavior if absent).
+1. Your `environment.resolve(request)` runs first (or the default behavior if absent).
 2. The multi-region plugin computes a region for this request based on host matching, configured regions, or a fallback to `defaultRegionId`.
 3. The two are merged — the multi-region overlay wins for `regionId`, `cookie.domain`, and any `oauth` keys it supplies. Everything else falls through.
 
-You can think of `config.runtime` as your *base* policy and the multi-region plugin as the *region-aware* layer on top.
+You can think of `createServer({ environment })` as your *base* policy and the multi-region plugin as the *region-aware* layer on top.
 
 ## What plugins see
 
-Every route handler receives the resolution as `runtime`:
+Every route handler can resolve the environment through `resolveEnvironment`:
 
 ```ts
+import { resolveEnvironment } from "authfn/core/environment";
+
 routes(ctx) {
   return [{
-    method: 'POST',
-    path: '/sign-in/password',
+    method: "POST",
+    path: "/sign-in/password",
     async handler(request) {
-      const runtime = await resolveRuntime(ctx.config, request);
-      // runtime.baseUrl, runtime.cookie.domain, runtime.oauth.google?.clientId, …
+      const environment = await resolveEnvironment(ctx.config, request);
+      // environment.baseUrl, environment.cookie?.domain, environment.oauth, …
     },
   }];
 }
 ```
 
-Hooks also receive it as `ctx.runtime`:
+Hooks receive it as `ctx.environment`:
 
 ```ts
 hooks: {
   beforeUserCreate(ctx, input) {
-    if (ctx.runtime?.regionId === 'sandbox') {
+    if (ctx.environment?.regionId === 'sandbox') {
       input.metadata = { ...input.metadata, sandbox: true };
     }
     return input;
@@ -122,19 +124,19 @@ hooks: {
 
 authfn does *not* trust forwarded headers automatically. If your reverse proxy strips them, the default resolver sees the internal URL. Two clean approaches:
 
-- **Resolver-based.** Read your forwarded headers in `runtime.resolve(request)` and rewrite `baseUrl` / `issuer` before returning.
+- **Resolver-based.** Read your forwarded headers in `environment.resolve(request)` and rewrite `baseUrl` / `issuer` before returning.
 - **Adapter-based.** Many of the `@superfunctions/http-*` adapters (e.g. `@superfunctions/http-next`) construct the inbound `Request` from the framework's parsed URL, which already accounts for forwarding. Picking the adapter that does this means you don't need a resolver.
 
 Either is correct. The runtime resolver is the more flexible mechanism if you ever want to extend further (per-tenant OAuth, etc.).
 
 ## Sandbox / local development
 
-For local development behind `vite dev` or `next dev`, the default behavior usually works. If you're testing OAuth flows against a tunneled URL (`https://your-app.ngrok.dev`), you'll want to either set `runtime.baseUrl` to the tunnel URL or trust the appropriate forwarded headers in your resolver.
+For local development behind `vite dev` or `next dev`, the default behavior usually works. If you're testing OAuth flows against a tunneled URL (`https://your-app.ngrok.dev`), you'll want to either set `environment.resolve` to return the tunnel URL as `baseUrl` / `issuer` or trust the appropriate forwarded headers in your resolver.
 
 ## Custom OAuth client IDs per resolver
 
 ```ts
-runtime: {
+environment: {
   resolve(request) {
     const url = new URL(request.url);
     const tenantId = url.hostname.split('.')[0];
@@ -156,7 +158,7 @@ runtime: {
 
 ## Related
 
-- [Cookies](./cookies) — what `runtime.cookie` overrides.
+- [Cookies](./cookies) — what the environment's `cookie` overlay overrides.
 - [Regions](./regions) — multi-region overlay.
-- [Plugins → Social OAuth](../plugins/social-oauth) — `runtime.oauth` shape.
+- [Plugins → Social OAuth](../plugins/social-oauth) — environment `oauth` shape.
 - [Frameworks](../frameworks) — adapter-specific notes on inbound URL construction.

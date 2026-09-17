@@ -47,7 +47,7 @@ Type the `App.Locals`:
 
 ```ts
 // src/app.d.ts
-import type { AuthFnSession } from '@authfn/core';
+import type { AuthFnSession } from 'authfn';
 declare global {
   namespace App {
     interface Locals {
@@ -69,13 +69,13 @@ For a form action that *does* run on cookie-authenticated users, redirect them t
 
 ## Region-aware base URL
 
-For multi-region deployments, configure your `runtime.resolve` to derive the base URL from `event.url`:
+For multi-region deployments, configure `createServer({ environment })` to derive the base URL from `event.url`:
 
 ```ts
 // src/lib/server/auth.ts
-createAuthFn({
-  // ...
-  runtime: {
+authApp.createServer({
+  database,
+  environment: {
     resolve(request) {
       const url = new URL(request.url);
       return { issuer: url.origin, baseUrl: url.origin, regionId: regionForHost(url.hostname) };

@@ -48,7 +48,7 @@ import { drizzle } from 'drizzle-orm/bun-sqlite';
 import { Database } from 'bun:sqlite';
 
 const db = drizzle(new Database('authfn.db'));
-const auth = createAuthFn({ database: drizzleAdapter(db), /* ... */ });
+const auth = authApp.createServer({ database: drizzleAdapter(db), /* ... */ });
 ```
 
 ## Edge runtimes

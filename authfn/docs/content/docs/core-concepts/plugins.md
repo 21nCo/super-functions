@@ -48,26 +48,28 @@ Plugins are *passive descriptors*. The kernel composes them; nothing in a plugin
 ```mermaid
 sequenceDiagram
   participant App
-  participant Kernel as createAuthFn()
+  participant Declare as authfn()
+  participant Server as createServer()
   participant P as Plugin
 
-  App->>Kernel: createAuthFn(config)
+  App->>Declare: authfn({ plugins })
+  App->>Server: app.createServer({ database, pluginRuntime })
   loop for each plugin
-    Kernel->>P: validateConfig(config)
-    Kernel->>P: schema(config)
-    Kernel->>P: routes(ctx)
-    Kernel->>Kernel: register hooks
+    Server->>P: validateConfig(runtimeConfig)
+    Server->>P: schema(config)
+    Server->>P: routes(ctx)
+    Server->>Server: register hooks
   end
-  Kernel-->>App: AuthFnInstance
+  Server-->>App: AuthFnServer
 
-  App->>Kernel: HTTP request
-  Kernel->>Kernel: route lookup
-  Kernel->>P: route handler
-  P->>Kernel: issueSession / events
-  Kernel-->>App: response
+  App->>Server: HTTP request
+  Server->>Server: route lookup
+  Server->>P: route handler
+  P->>Server: issueSession / events
+  Server-->>App: response
 ```
 
-The kernel runs `validateConfig` first across all plugins, then `schema`, then `routes`. If any `validateConfig` throws, the entire instance refuses to construct.
+The kernel runs `validateConfig` first across all plugins, then `schema`, then `routes`. If any `validateConfig` throws, the entire **server** refuses to construct.
 
 ## Ordering
 
@@ -86,29 +88,29 @@ This means your enabled-plugin set is your deployment's surface area. Test envir
 
 ## Configuration
 
-Each plugin takes a config object specific to its concern:
+Each plugin takes a config object specific to its concern. Schema and policy stay on the factory; secrets and delivery go to `createServer({ pluginRuntime })`:
 
 ```ts
 authFnPasswordPlugin({
-  minimumPasswordLength: 12,
-  compromiseChecker: hibpChecker,
+  requireEmailVerifiedForSignIn: true,
+  compromisedPasswordChecker: hibpChecker,
 });
 
-authFnEmailOtpPlugin({
-  delivery: { send: yourSendFn },
-  challengeTtlSeconds: 600,
-});
-
-authFnSocialOAuthPlugin({
-  providers: { google, apple, github },
-  handoffMode: 'session-token',
-  defaultReturnTo: '/post-auth',
-});
-
-authFnTwoFactorPlugin({
-  totpStep: 30,
-  totpSkew: 1,
-  recoveryCodeCount: 10,
+authApp.createServer({
+  database,
+  pluginRuntime: {
+    emailOtp: {
+      delivery: { send: yourSendFn },
+      challengeTtlSeconds: 600,
+    },
+    socialOAuth: {
+      providers: { google, apple, github },
+    },
+    twoFactor: {
+      recoveryCodeCount: 10,
+      encryptionKeyResolver,
+    },
+  },
 });
 ```
 
@@ -129,7 +131,7 @@ Disabling a plugin removes its tables from `getSchema()`. Existing tables on a d
 A custom plugin is just an object that satisfies `AuthFnPlugin`. The simplest possible plugin:
 
 ```ts
-import type { AuthFnPlugin } from '@authfn/core';
+import type { AuthFnPlugin } from 'authfn';
 
 export function pingPlugin(): AuthFnPlugin {
   return {

@@ -8,38 +8,56 @@ description: Google, Apple, and GitHub OAuth — plus a resolver hook for custom
 `authFnSocialOAuthPlugin` adds OAuth-based sign-in for the providers you configure. The bundled providers are **Google**, **Apple**, and **GitHub**; you can also add a custom OAuth 2.0 / OpenID provider through a resolver. The plugin handles state generation, token exchange, identity resolution, and account linking.
 
 ```ts
-import { authFnSocialOAuthPlugin } from '@authfn/core';
+import { authfn, authFnPlugins } from 'authfn';
+import { authFnSocialOAuthPlugin } from '@authfn/social-oauth';
 
-authFnSocialOAuthPlugin({
-  providers: {
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      allowlistedReturnTo: ['https://app.example.com/post-auth'],
-    },
-    apple: {
-      clientId: process.env.APPLE_CLIENT_ID!,
-      clientSecret: process.env.APPLE_CLIENT_SECRET!,
-      nativeClientIds: ['com.example.app'],
-    },
-    github: {
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+const authApp = authfn({
+  plugins: authFnPlugins(
+    authFnSocialOAuthPlugin({
+      defaultHandoffMode: 'session-token',
+    }),
+  ),
+});
+
+authApp.createServer({
+  database,
+  pluginRuntime: {
+    socialOAuth: {
+      providers: {
+        google: {
+          clientId: process.env.GOOGLE_CLIENT_ID!,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+          allowlistedReturnTo: ['https://app.example.com/post-auth'],
+        },
+        apple: {
+          clientId: process.env.APPLE_CLIENT_ID!,
+          clientSecret: process.env.APPLE_CLIENT_SECRET!,
+          nativeClientIds: ['com.example.app'],
+        },
+        github: {
+          clientId: process.env.GITHUB_CLIENT_ID!,
+          clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+        },
+      },
     },
   },
-  defaultHandoffMode: 'session-token',
 });
 ```
+
+`defaultHandoffMode` is a factory option. Provider secrets, fetchers, and clocks are `pluginRuntime.socialOAuth`.
 
 ## Configuration
 
 ```ts
 interface SocialOAuthPluginConfig {
-  providers?: Partial<Record<'google' | 'apple' | 'github', AuthFnSocialProviderConfig>>;
+  defaultHandoffMode?: 'none' | 'session-token';
+}
+
+interface SocialOAuthPluginRuntimeConfig {
+  providers: Partial<Record<'google' | 'apple' | 'github', AuthFnSocialProviderConfig>>;
   fetcher?: OAuthFetchLike;
   tokenHttpClient?: OAuthTokenHttpClient;
   now?: () => Date;
-  defaultHandoffMode?: 'none' | 'session-token';
 }
 
 interface AuthFnSocialProviderConfig {
@@ -55,12 +73,12 @@ interface AuthFnSocialProviderConfig {
 }
 ```
 
-| Option | Default | Notes |
-| --- | --- | --- |
-| `providers` | `{}` | Map of provider id → config. |
-| `fetcher` | global `fetch` | Inject a custom fetcher (proxy, instrumentation). |
-| `tokenHttpClient` | default | Override the token endpoint client. |
-| `defaultHandoffMode` | `'none'` | `'session-token'` lets the callback embed a one-time handoff for native apps. |
+| Option | Stage | Default | Notes |
+| --- | --- | --- | --- |
+| `defaultHandoffMode` | factory | `'none'` | `'session-token'` lets the callback embed a one-time handoff for native apps. |
+| `providers` | `pluginRuntime.socialOAuth` | required | Map of provider id → config. |
+| `fetcher` | `pluginRuntime.socialOAuth` | global `fetch` | Inject a custom fetcher (proxy, instrumentation). |
+| `tokenHttpClient` | `pluginRuntime.socialOAuth` | default | Override the token endpoint client. |
 
 ## Per-provider deep dives
 

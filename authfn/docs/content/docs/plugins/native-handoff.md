@@ -12,10 +12,15 @@ description: Bridge a web sign-in into a native app session — for iOS / macOS 
 - Your CLI opens a system browser to authenticate, then exchanges a code on a local socket.
 
 ```ts
-import { authFnNativeHandoffPlugin } from '@authfn/core';
+import { authfn, authFnPlugins } from 'authfn';
+import { authFnNativeHandoffPlugin } from '@authfn/native-handoff';
 
-authFnNativeHandoffPlugin({
-  codeTtlSeconds: 300,   // 5 minutes
+const authApp = authfn({
+  plugins: authFnPlugins(
+    authFnNativeHandoffPlugin({
+      codeTtlSeconds: 300,   // 5 minutes
+    }),
+  ),
 });
 ```
 

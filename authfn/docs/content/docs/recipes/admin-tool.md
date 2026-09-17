@@ -19,9 +19,10 @@ Give your support team a UI to look up and delete users, gated behind your corpo
 
 ```ts
 import { createAuthFnAdmin } from '@authfn/admin';
+import type { AuthFnRuntimeConfig } from 'authfn';
 
 const admin = createAuthFnAdmin({
-  authFnConfig: auth.config,
+  authFnConfig, // AuthFnRuntimeConfig: database + plugins + namespace
   authorize: async (ctx, input) => {
     const user = await yourCorporateAuth.authenticate(ctx.request);
     if (!user) return false;

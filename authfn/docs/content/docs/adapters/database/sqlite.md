@@ -24,7 +24,7 @@ import Database from 'better-sqlite3';
 
 const db = drizzle(new Database('authfn.db'));
 
-createAuthFn({ database: drizzleAdapter(db), /* ... */ });
+authApp.createServer({ database: drizzleAdapter(db), /* ... */ });
 ```
 
 ## Direct SQLite adapter
@@ -37,7 +37,7 @@ import Database from 'better-sqlite3';
 
 const db = new Database('authfn.db');
 
-createAuthFn({ database: sqliteAdapter(db), /* ... */ });
+authApp.createServer({ database: sqliteAdapter(db), /* ... */ });
 ```
 
 When in doubt, the `drizzleAdapter` route works everywhere.

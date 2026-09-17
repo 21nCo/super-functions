@@ -129,8 +129,8 @@ Tracking tables for consent records and (rare) provider revocation failures. Use
 | --- | --- | --- |
 | `id` | text PK |  |
 | `userId` | text FK |  |
-| `secretEncrypted` | text | TOTP secret, encrypted under `encryptionKeyRef`. |
-| `encryptionKeyRef` | text | Identifier of the key used; resolved by `encryptionKeyResolver`. |
+| `secretEncrypted` | text | TOTP secret, encrypted at rest with `pluginRuntime.twoFactor.encryptionKeyResolver`. |
+| `lastUsedCounter` | number | Last accepted TOTP window; used for replay protection. |
 | `confirmedAt` | timestamp | Set after successful `/2fa/confirm`. |
 | `createdAt` / `updatedAt` | timestamp |  |
 
@@ -139,9 +139,10 @@ Tracking tables for consent records and (rare) provider revocation failures. Use
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | text PK |  |
-| `userId` | text FK |  |
+| `enrollmentId` | text FK | Parent enrollment. |
 | `codeHash` | text |  |
-| `consumedAt` | timestamp | Set when used. |
+| `usedAt` | timestamp | Set when used. |
+| `createdAt` | timestamp |  |
 
 ### `authfn_two_factor_challenges`
 

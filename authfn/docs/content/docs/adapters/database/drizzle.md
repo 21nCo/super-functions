@@ -21,7 +21,7 @@ import { Pool } from 'pg';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool);
 
-createAuthFn({
+authApp.createServer({
   database: drizzleAdapter(db),
   // ...
 });
@@ -36,7 +36,7 @@ import Database from 'better-sqlite3';
 
 const db = drizzle(new Database('authfn.db'));
 
-createAuthFn({
+authApp.createServer({
   database: drizzleAdapter(db),
   // ...
 });
@@ -52,7 +52,7 @@ import mysql from 'mysql2/promise';
 const pool = await mysql.createPool({ uri: process.env.DATABASE_URL });
 const db = drizzle(pool);
 
-createAuthFn({ database: drizzleAdapter(db), /* ... */ });
+authApp.createServer({ database: drizzleAdapter(db), /* ... */ });
 ```
 
 ## Cloudflare D1
@@ -64,7 +64,7 @@ import { drizzle } from 'drizzle-orm/d1';
 export default {
   fetch(request: Request, env: { DB: D1Database }) {
     const db = drizzle(env.DB);
-    const auth = createAuthFn({ database: drizzleAdapter(db), /* ... */ });
+    const auth = authApp.createServer({ database: drizzleAdapter(db), /* ... */ });
     return auth.router.fetch(request);
   },
 };

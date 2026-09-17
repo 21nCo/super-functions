@@ -8,39 +8,47 @@ description: Stand up an authfn server on Node with Hono or Express, talk to it 
 ## 1. Install
 
 ```bash
-npm install @authfn/core @authfn/client @superfunctions/http-hono hono
+npm install authfn @authfn/password @authfn/email-otp @authfn/client
+npm install @superfunctions/db @superfunctions/http-hono hono
 # or for Express
-npm install @authfn/core @authfn/client @superfunctions/http-express express
+npm install authfn @authfn/password @authfn/email-otp @authfn/client
+npm install @superfunctions/db @superfunctions/http-express express
 ```
 
-## 2. Create the runtime
+## 2. Declare the app and create the server
 
 ```ts
 // auth.ts
-import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import {
-  authFnEmailOtpPlugin,
-  authFnPasswordPlugin,
-  createAuthFn,
-} from "@authfn/core";
+import { memoryAdapter } from "@superfunctions/db/testing";
+import { authfn, authFnPlugins } from "authfn";
+import { authFnPasswordPlugin } from "@authfn/password";
+import { authFnEmailOtpPlugin } from "@authfn/email-otp";
 
-export const auth = createAuthFn({
-  database: memoryAdapter({ debug: false }),
+export const authApp = authfn({
   namespace: "authfn",
   openApi: { title: "AuthFn API", version: "1.0.0" },
-  plugins: [
+  plugins: authFnPlugins(
     authFnPasswordPlugin(),
-    authFnEmailOtpPlugin({
+    authFnEmailOtpPlugin(),
+  ),
+});
+
+export const auth = authApp.createServer({
+  database: memoryAdapter({ debug: false }),
+  pluginRuntime: {
+    emailOtp: {
       delivery: {
-        async send({ email, code, purpose }) {
-          console.log(`[OTP] ${purpose} → ${email}: ${code}`);
+        async send(input) {
+          console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
           return { sent: true };
         },
       },
-    }),
-  ],
+    },
+  },
 });
 ```
+
+`authApp` is safe to import from schema tooling. `auth` is the running server: mount `auth.router` and call `auth.provider.authenticate(request)`.
 
 ## 3. Mount
 
@@ -99,7 +107,12 @@ import { Pool } from "pg";
 
 const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }));
 
-createAuthFn({ database: drizzleAdapter(db), namespace: "authfn", plugins: [/* … */] });
+const auth = authApp.createServer({
+  database: drizzleAdapter(db),
+  pluginRuntime: {
+    emailOtp: { delivery: yourDelivery },
+  },
+});
 ```
 
 Generate the migrations from the plugin set you've enabled:
@@ -107,6 +120,8 @@ Generate the migrations from the plugin set you've enabled:
 ```bash
 npx @superfunctions/cli generate
 ```
+
+`authApp.getSchema()` does not need a database connection.
 
 ## Next steps
 

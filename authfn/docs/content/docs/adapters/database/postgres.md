@@ -16,7 +16,7 @@ import * as schema from './db/generated/authfn-schema.js';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool, { schema });
 
-createAuthFn({
+authApp.createServer({
   database: drizzleAdapter({ db, dialect: 'postgres' }),
   // ...
 });

@@ -15,13 +15,18 @@ The GitHub provider uses standard OAuth 2.0. The default profile resolver fetche
 ## Configuration
 
 ```ts
-authFnSocialOAuthPlugin({
-  providers: {
-    github: {
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-      allowlistedRedirectUris: ['https://app.example.com/auth/social/callback/github'],
-      scopes: ['read:user', 'user:email'],     // default
+authApp.createServer({
+  database,
+  pluginRuntime: {
+    socialOAuth: {
+      providers: {
+        github: {
+          clientId: process.env.GITHUB_CLIENT_ID!,
+          clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+          allowlistedRedirectUris: ['https://app.example.com/auth/social/callback/github'],
+          scopes: ['read:user', 'user:email'],     // default
+        },
+      },
     },
   },
 });
@@ -39,7 +44,7 @@ GitHub's `/user` returns the user's *public* email — which is often null. Thei
 Add a `profileResolver` that fetches `/user/orgs` and rejects if the user isn't in your allowed orgs:
 
 ```ts
-import { AuthFnPluginAbortedError } from '@authfn/core';
+import { AuthFnPluginAbortedError } from 'authfn';
 
 github: {
   // …

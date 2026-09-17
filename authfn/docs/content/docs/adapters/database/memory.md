@@ -10,7 +10,7 @@ description: In-memory database — for tests and local development. Don't use i
 ```ts
 import { memoryAdapter } from '@superfunctions/db/adapters/memory';
 
-createAuthFn({
+authApp.createServer({
   database: memoryAdapter({ debug: false }),
   // ...
 });

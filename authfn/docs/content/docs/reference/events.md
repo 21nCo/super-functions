@@ -70,8 +70,8 @@ type AuthFnEvent = {
 Wire `observability.emit` once at construction:
 
 ```ts
-createAuthFn({
-  // ...
+authApp.createServer({
+  database,
   observability: {
     emit(event) {
       logger.info({ ...event });

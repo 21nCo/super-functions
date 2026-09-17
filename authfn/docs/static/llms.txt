@@ -28,7 +28,7 @@
 - [Skills](https://authfn.superfunctions.dev/docs/ai-resources/skills) — Packaged authfn patterns your assistant can apply on request — sign-in flows, OAuth, multi-region, and more.
 - [API Reference](https://authfn.superfunctions.dev/docs/api) — HTTP endpoints exposed by authfn, generated from your enabled plugins.
 - [Account linking](https://authfn.superfunctions.dev/docs/core-concepts/account-linking) — When authfn merges multiple sign-in methods into a single user, and how to control that policy.
-- [Architecture](https://authfn.superfunctions.dev/docs/core-concepts/architecture) — How the authfn kernel, plugins, hooks, runtime resolver, and database adapter fit together.
+- [Architecture](https://authfn.superfunctions.dev/docs/core-concepts/architecture) — How the authfn kernel, plugins, hooks, environment resolver, and database adapter fit together.
 - [Cookies](https://authfn.superfunctions.dev/docs/core-concepts/cookies) — Names, prefixes, domain, SameSite, Secure, path, and max-age — every knob authfn exposes for cookie-based sessions.
 - [CSRF protection](https://authfn.superfunctions.dev/docs/core-concepts/csrf) — How authfn defends against cross-site request forgery, what's protected, what's exempt, and how to extend the policy.
 - [Envelopes](https://authfn.superfunctions.dev/docs/core-concepts/envelopes) — Every authfn HTTP response wraps either a success payload or a structured error in a stable envelope shape.
@@ -98,9 +98,9 @@
 - [OpenTelemetry instrumentation](https://authfn.superfunctions.dev/docs/recipes/observability-otel) — Wire authfn's observability events into OpenTelemetry spans for full distributed tracing.
 - [Password reset](https://authfn.superfunctions.dev/docs/recipes/password-reset) — Full password-reset flow — start, verify, change. Two routes, three UI screens.
 - [Placement-bound auth context](https://authfn.superfunctions.dev/docs/recipes/placement-bound-auth-context) — Trusted in-process and private-service AuthFn context for regional application data planes.
-- [Rotating 2FA encryption keys](https://authfn.superfunctions.dev/docs/recipes/rotate-2fa-encryption) — Move every 2FA enrollment from one key to a new one, with zero user-visible downtime.
-- [Changelog](https://authfn.superfunctions.dev/docs/reference/changelog) — Release history of @authfn/* packages.
-- [Configuration](https://authfn.superfunctions.dev/docs/reference/configuration) — Every option you can pass to createAuthFn.
+- [Rotating 2FA encryption keys](https://authfn.superfunctions.dev/docs/recipes/rotate-2fa-encryption) — What the shipped two-factor plugin encrypts, and how to change keys without a private crypto API.
+- [Changelog](https://authfn.superfunctions.dev/docs/reference/changelog) — Release history of authfn and @authfn/* packages.
+- [Configuration](https://authfn.superfunctions.dev/docs/reference/configuration) — Every option you can pass to authfn() and app.createServer().
 - [Envelopes](https://authfn.superfunctions.dev/docs/reference/envelopes) — The shape of every authfn HTTP response — success and error.
 - [Error codes](https://authfn.superfunctions.dev/docs/reference/errors) — Every AuthFnErrorCode the kernel emits — HTTP status, retryability, when it fires.
 - [Observability events](https://authfn.superfunctions.dev/docs/reference/events) — Every AuthFnEventType the kernel emits — when it fires and what's in its metadata.

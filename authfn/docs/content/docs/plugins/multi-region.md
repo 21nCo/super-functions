@@ -129,7 +129,7 @@ If you don't supply a lookup store, the plugin falls back to reading `authfn_use
 For each request:
 
 1. **Match by host.** If `request.url`'s hostname matches one of `regions[*].hosts` (or `regions[*].authority`'s hostname), pick that region.
-2. **Match by `runtime.regionId`** from your `config.runtime.resolve(request)`.
+2. **Match by `environment.regionId`** from your `createServer({ environment })` resolver.
 3. **Fallback to `defaultRegionId`.**
 
 The matched region's overlays (`cookie`, `oauth`, `issuer`, `baseUrl`) are applied on top of the base runtime. See [Concepts → Runtime](../core-concepts/runtime) for how this composes with the user-supplied resolver.

@@ -14,13 +14,16 @@ A user signed up with Google (or via OTP) and now wants to set a password. Witho
 Enable account linking for the password plugin:
 
 ```ts
-createAuthFn({
-  // ...
+import { authfn, authFnPlugins } from 'authfn';
+import { authFnPasswordPlugin } from '@authfn/password';
+
+const authApp = authfn({
   accountLinking: {
     passwordForAuthenticatedUser: true,
     // or, with stricter requirements:
     // passwordForAuthenticatedUser: { requireExistingEmailVerified: true },
   },
+  plugins: authFnPlugins(authFnPasswordPlugin()),
 });
 ```
 

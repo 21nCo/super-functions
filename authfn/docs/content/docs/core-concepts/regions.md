@@ -139,7 +139,7 @@ If two regions both attempt to register the same email at the same time, the loo
 
 ## Caching
 
-Region lookups are cached when you supply a `cacheStore` to `createAuthFn`. The cache layer is shared with the rest of the kernel, so you only configure it once. Hits and misses use different TTLs:
+Region lookups are cached when you supply a shared KV store to `createServer({ stores })`. The cache layer is shared with the rest of the kernel, so you only configure it once. Hits and misses use different TTLs:
 
 - Hits: `regionHit` TTL (default 5 minutes).
 - Misses: `regionMiss` TTL (default 1 minute) — short on purpose so newly-created users don't experience stale "no region" lookups.
@@ -174,7 +174,7 @@ The plugin contributes one table:
 ## Related
 
 - [Plugins → Multi-region](../plugins/multi-region) — full plugin reference.
-- [Runtime](./runtime) — how region overlays compose with `runtime.resolve`.
+- [Runtime](./runtime) — how region overlays compose with `environment.resolve`.
 - [Cookies](./cookies) — region-scoped cookie domains.
 - [Recipes → Multi-region deployment](../recipes/multi-region-deployment) — end-to-end walkthrough.
 - [Recipes → Canonical-gateway multi-region](../recipes/canonical-gateway-multi-region) — signed cell forwarding.

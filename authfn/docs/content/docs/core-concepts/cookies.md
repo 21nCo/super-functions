@@ -38,11 +38,10 @@ interface AuthFnCookieConfig {
 }
 ```
 
-Pass it to `createAuthFn`:
+Pass it to `authfn()`:
 
 ```ts
-createAuthFn({
-  // ...
+const authApp = authfn({
   cookie: {
     prefix: 'app',                          // → __Secure-app.session, app.csrf
     domain: '.example.com',                 // share across api.example.com and app.example.com
@@ -50,6 +49,7 @@ createAuthFn({
     sameSite: 'lax',
     sessionMaxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
   },
+  plugins: authFnPlugins(/* … */),
 });
 ```
 
@@ -83,7 +83,7 @@ domain: ({ request, regionId }) => {
 },
 ```
 
-Or — preferred — use the [runtime resolver](./runtime) to set `cookie.domain` per request. Anything in `runtime.cookie` takes precedence over `config.cookie`.
+Or — preferred — use the [environment resolver](./runtime) to set `cookie.domain` per request. Anything in the resolved environment's `cookie` overlay takes precedence over `authfn({ cookie })`.
 
 ## SameSite
 

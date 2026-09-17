@@ -23,18 +23,23 @@ Sign in with Apple has a few quirks compared to other OAuth providers:
 ```ts
 import { createAppleClientSecret } from './apple-secret.js';   // your generator
 
-authFnSocialOAuthPlugin({
-  providers: {
-    apple: {
-      clientId: process.env.APPLE_SERVICE_ID!,                    // your Services Id
-      clientSecretResolver: async () => createAppleClientSecret({
-        teamId: process.env.APPLE_TEAM_ID!,
-        keyId: process.env.APPLE_KEY_ID!,
-        privateKeyPem: process.env.APPLE_PRIVATE_KEY!,
-        clientId: process.env.APPLE_SERVICE_ID!,
-      }),
-      allowlistedRedirectUris: ['https://app.example.com/auth/social/callback/apple'],
-      nativeClientIds: ['com.example.app'],                       // bundle ids for native flow
+authApp.createServer({
+  database,
+  pluginRuntime: {
+    socialOAuth: {
+      providers: {
+        apple: {
+          clientId: process.env.APPLE_SERVICE_ID!,                    // your Services Id
+          clientSecretResolver: async () => createAppleClientSecret({
+            teamId: process.env.APPLE_TEAM_ID!,
+            keyId: process.env.APPLE_KEY_ID!,
+            privateKeyPem: process.env.APPLE_PRIVATE_KEY!,
+            clientId: process.env.APPLE_SERVICE_ID!,
+          }),
+          allowlistedRedirectUris: ['https://app.example.com/auth/social/callback/apple'],
+          nativeClientIds: ['com.example.app'],                       // bundle ids for native flow
+        },
+      },
     },
   },
 });
