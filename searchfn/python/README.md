@@ -2,7 +2,7 @@
 
 Python kernel for inverted-index full-text search. It tokenizes string fields, writes terms into a table on a duck-typed db adapter, and ranks results by match count.
 
-The kernel does not import DataFn. Tests use a local `FakeDb`. Any object with async `find_many`, `create`, and `delete` works. A DataFn `Adapter` (`datafn.db.Adapter`) uses those same method names if you already have one — there is no `datafn.db.PostgresAdapter`.
+The kernel does not import DataFn. Tests use a local `FakeDb`. Any object with async `find_many`, `create`, and `delete` works. A DataFn `Adapter` (`datafn.db.Adapter`) uses those same method names if you already have one.
 
 ## Installation
 

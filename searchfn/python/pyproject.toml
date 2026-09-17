@@ -35,12 +35,12 @@ Repository = "https://github.com/21nCo/super-functions"
 Issues = "https://github.com/21nCo/super-functions/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["searchfn"]
+packages = ["src/searchfn"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 exclude = '^(build|dist|tests)/'
