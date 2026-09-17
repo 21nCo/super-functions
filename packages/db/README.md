@@ -15,30 +15,38 @@ npm install kysely              # For Kysely
 
 ## Quick Start
 
-### Using with a Library
+Memory adapter (tests and local):
 
 ```typescript
-import { AuthFn } from '@superfunctions/authFn';
 import { memoryAdapter } from '@superfunctions/db/adapters';
 
-// Create adapter
 const adapter = memoryAdapter({
   namespace: { enabled: true }
 });
 
-// Initialize library with adapter
-const authFn = AuthFn({ 
-  database: adapter,
-  namespace: 'authFn'
-});
-
-// Use the library
-await authFn.createUser({
-  email: 'user@example.com',
-  password: 'password',
-  name: 'John Doe',
+const user = await adapter.create({
+  model: 'users',
+  data: { email: 'user@example.com', name: 'John Doe' },
+  namespace: 'app',
 });
 ```
+
+Drizzle adapter (Postgres, MySQL, SQLite):
+
+```typescript
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { drizzleAdapter } from '@superfunctions/db/adapters';
+import { users } from './schema';
+
+const db = drizzle(pool, { schema: { users } });
+const adapter = drizzleAdapter({
+  db,
+  dialect: 'postgres', // 'postgres' | 'mysql' | 'sqlite'
+  upsertKeys: { users: 'email' },
+});
+```
+
+Runnable demos: [`examples/`](./examples/).
 
 ## Core Concepts
 
@@ -106,15 +114,19 @@ const adapter = memoryAdapter({
   }
 });
 
-// Library A
-const authFn = AuthFn({ database: adapter, namespace: 'authFn' });
-// Tables: authFn_users, authFn_sessions, authFn_tokens
+await adapter.create({
+  model: 'users',
+  data: { email: 'user@example.com' },
+  namespace: 'auth',
+});
+// Table: auth_users
 
-// Library B
-const fileFn = FileFn({ database: adapter, namespace: 'fileFn' });
-// Tables: fileFn_files, fileFn_folders
-
-// No conflicts!
+await adapter.create({
+  model: 'files',
+  data: { path: '/readme.md' },
+  namespace: 'files',
+});
+// Table: files_files
 ```
 
 ## Built-in Adapters
@@ -141,11 +153,10 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { users, posts } from './schema';
 import { drizzleAdapter } from '@superfunctions/db/adapters';
 
-const db = drizzle(pool);
+const db = drizzle(pool, { schema: { users, posts } });
 const adapter = drizzleAdapter({
   db,
   dialect: 'postgres', // 'postgres' | 'mysql' | 'sqlite'
-  schema: { users, posts }, // model name → drizzle table
   upsertKeys: { users: 'email' }, // conflict targets
   schemaVersionsTable, // optional
   debug: false
