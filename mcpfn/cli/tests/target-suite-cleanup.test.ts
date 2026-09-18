@@ -49,6 +49,7 @@ import { runCli } from "../src/index.js";
 
 it("persists a target-suite snapshot and retains its cleanup owner after a failed retry", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-target-cleanup-owner-"));
+  state.attempts = 0;
   try {
     await writeFile(path.join(root, "scenarios.json"), "[]\n");
     const output = path.join(root, "report.json");
@@ -84,3 +85,34 @@ it("persists a target-suite snapshot and retains its cleanup owner after a faile
     await rm(root, { recursive: true, force: true });
   }
 });
+
+it.each(["output", "persistence"] as const)(
+  "retains the target-suite cleanup owner when %s fails",
+  async failureMode => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-target-cleanup-secondary-"));
+    state.attempts = 0;
+    try {
+      await writeFile(path.join(root, "scenarios.json"), "[]\n");
+      const args = [
+        "test-target", "http://127.0.0.1:1/mcp", "scenarios.json",
+        ...(failureMode === "persistence"
+          ? ["--output", path.join(root, "missing", "report.json")]
+          : []),
+      ];
+      const failure = await runCli(args, {
+        cwd: root,
+        stdout: failureMode === "output"
+          ? async () => { throw new Error("stdout unavailable"); }
+          : () => {},
+        stderr: failureMode === "output"
+          ? async () => { throw new Error("stderr unavailable"); }
+          : () => {},
+      }).then(() => undefined, error => error);
+      expect(failure).toBe(state.failure);
+      await expect(state.failure!.retryCleanup()).resolves.toBeUndefined();
+      expect(state.attempts).toBe(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

@@ -6,7 +6,11 @@ import {
   McpFnTestClientCleanupError,
 } from "@mcpfn/testing";
 
-import { MCPFN_CLI_EXIT_TEST_FAILURE, runCli } from "./index.js";
+import {
+  MCPFN_CLI_EXIT_TEST_FAILURE,
+  McpFnInspectorCleanupError,
+  runCli,
+} from "./index.js";
 
 void runCli(process.argv.slice(2))
   .then((exitCode) => {
@@ -19,7 +23,8 @@ void runCli(process.argv.slice(2))
     if (
       error instanceof McpFnTestClientCleanupError ||
       error instanceof McpFnTargetSuiteCleanupError ||
-      error instanceof McpFnConformanceCleanupError
+      error instanceof McpFnConformanceCleanupError ||
+      error instanceof McpFnInspectorCleanupError
     ) {
       const message = error instanceof Error ? error.message : String(error);
       process.stderr.write(`${message}\n`, () => {

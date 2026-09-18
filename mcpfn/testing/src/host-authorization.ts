@@ -403,7 +403,7 @@ async function validateOAuthRejection(
     if (authorization && body?.error !== "invalid_client" && (fixture.registration.metadata.redirect_uris as string[])?.includes(fixture.authorization.redirectUri)) {
       throw new Error("Registered authorization requests require an OAuth error callback");
     }
-    if (response.status !== 400 && !(!authorization && response.status === 401 && body?.error === "invalid_client")) throw new Error("OAuth error response has invalid HTTP status");
+    if (response.status !== 400) throw new Error("OAuth error response has invalid HTTP status");
     if (response.headers.has("location") || !isJsonResponse(response) ||
         !body || typeof body.error !== "string" || !body.error) {
       throw new Error("OAuth error response must be a JSON error envelope");

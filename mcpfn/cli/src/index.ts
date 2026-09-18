@@ -58,6 +58,60 @@ interface RemoteAuthCliOptions {
   apiKeyHeader?: string;
 }
 
+const inspectorCleanupOwners = new WeakMap<
+  McpFnInspectorCleanupError,
+  { close: () => Promise<void>; pending?: Promise<void> }
+>();
+
+/** Inspector cleanup failed. Retain this error until its transport closes. */
+export class McpFnInspectorCleanupError extends Error {
+  constructor(close: () => Promise<void>, cause: unknown) {
+    super(
+      "Inspector cleanup failed; retain this error and retryCleanup()",
+      { cause },
+    );
+    this.name = "McpFnInspectorCleanupError";
+    inspectorCleanupOwners.set(this, { close });
+  }
+
+  retryCleanup(): Promise<void> {
+    const owner = inspectorCleanupOwners.get(this);
+    if (!owner) return Promise.resolve();
+    if (owner.pending) return owner.pending;
+    const pending = Promise.resolve().then(owner.close).then(
+      () => { inspectorCleanupOwners.delete(this); },
+      () => { throw this; },
+    ).finally(() => { owner.pending = undefined; });
+    owner.pending = pending;
+    return pending;
+  }
+}
+
+type CliCleanupError =
+  | McpFnTestClientCleanupError
+  | McpFnTargetSuiteCleanupError
+  | McpFnConformanceCleanupError
+  | McpFnInspectorCleanupError;
+
+function isCliCleanupError(error: unknown): error is CliCleanupError {
+  return error instanceof McpFnTestClientCleanupError ||
+    error instanceof McpFnTargetSuiteCleanupError ||
+    error instanceof McpFnConformanceCleanupError ||
+    error instanceof McpFnInspectorCleanupError;
+}
+
+async function preserveCleanupOwner(
+  owner: CliCleanupError | undefined,
+  operation: () => Promise<void>,
+): Promise<void> {
+  try {
+    await operation();
+  } catch (error) {
+    if (owner) throw owner;
+    throw error;
+  }
+}
+
 export async function runCli(
   argv = process.argv.slice(2),
   runOptions: CliRunOptions = {},
@@ -227,18 +281,20 @@ export async function runCli(
           throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Authenticated conformance failed before producing a report", { phase: "capability-operation" });
         })
         : await runOfficialConformance(conformanceOptions);
-      if (result.stdout) await stdout(result.stdout);
-      if (result.stderr) await stderr(result.stderr);
       let boundedReportIncomplete = false;
-      if (options.report) {
-        const bounded = serializeBoundedReport(result, maxBytes);
-        boundedReportIncomplete = bounded.incomplete;
-        await writeFile(
-          path.resolve(cwd, options.report),
-          bounded.serialized,
-          "utf8",
-        );
-      }
+      await preserveCleanupOwner(conformanceCleanupError, async () => {
+        if (result.stdout) await stdout(result.stdout);
+        if (result.stderr) await stderr(result.stderr);
+        if (options.report) {
+          const bounded = serializeBoundedReport(result, maxBytes);
+          boundedReportIncomplete = bounded.incomplete;
+          await writeFile(
+            path.resolve(cwd, options.report),
+            bounded.serialized,
+            "utf8",
+          );
+        }
+      });
       if (conformanceCleanupError) throw conformanceCleanupError;
       exitCode = boundedReportIncomplete ? MCPFN_CLI_EXIT_TEST_FAILURE : result.exitCode;
     });
@@ -259,6 +315,8 @@ export async function runCli(
       const inspector = McpFnInspector.create({ target });
       const finishRedaction = beginTargetCredentialRedaction(target);
       try {
+        let operationFailed = false;
+        let operationError: unknown;
         try {
           await inspector.connect();
           const serialized = `${JSON.stringify(redactTargetCredentials(target, await inspector.snapshot(), { preserveKeys: true }), null, 2)}\n`;
@@ -266,8 +324,18 @@ export async function runCli(
             await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
           }
           await stdout(serialized);
-        } finally { await inspector.close(); }
+        } catch (error) {
+          operationFailed = true;
+          operationError = error;
+        }
+        try {
+          await inspector.close();
+        } catch (error) {
+          throw new McpFnInspectorCleanupError(() => inspector.close(), error);
+        }
+        if (operationFailed) throw operationError;
       } catch (error) {
+        if (error instanceof McpFnInspectorCleanupError) throw error;
         // Parsing has finished: connection, inventory, redaction and output errors
         // are runtime failures. Even inspecting the thrown value can fail.
         let failure: McpFnClientError;
@@ -331,21 +399,23 @@ export async function runCli(
         targetCleanupError = error;
         return error.report;
       });
-      const serialized = `${JSON.stringify(report)}\n`;
-      // The suite reserves one byte for this trailing newline and enforces the cap.
-      if (options.output) {
-        await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
-      }
-      if (options.junit) {
-        await writeFile(
-          path.resolve(cwd, options.junit),
-          createMcpFnTargetSuiteJUnit(report, {
-            maxBytes: maxReportBytes === undefined ? undefined : maxReportBytes - 1,
-          }),
-          "utf8",
-        );
-      }
-      await stdout(serialized);
+      await preserveCleanupOwner(targetCleanupError, async () => {
+        const serialized = `${JSON.stringify(report)}\n`;
+        // The suite reserves one byte for this trailing newline and enforces the cap.
+        if (options.output) {
+          await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+        }
+        if (options.junit) {
+          await writeFile(
+            path.resolve(cwd, options.junit),
+            createMcpFnTargetSuiteJUnit(report, {
+              maxBytes: maxReportBytes === undefined ? undefined : maxReportBytes - 1,
+            }),
+            "utf8",
+          );
+        }
+        await stdout(serialized);
+      });
       if (targetCleanupError) throw targetCleanupError;
       if (!report.ok) exitCode = 1;
     });
@@ -377,22 +447,16 @@ export async function runCli(
     }
     await cli.runMatchedCommand();
   } catch (error) {
-    await stderr(`${error instanceof Error ? error.message : String(error)}\n`);
-    if (
-      error instanceof McpFnTestClientCleanupError ||
-      error instanceof McpFnTargetSuiteCleanupError
-    ) {
-      // A failed retry must keep the owning error reachable by programmatic
-      // callers. The executable entry point terminates after receiving it.
-      await error.retryCleanup();
-      return MCPFN_CLI_EXIT_TEST_FAILURE;
-    }
-    if (error instanceof McpFnConformanceCleanupError) {
+    if (isCliCleanupError(error)) {
+      // Diagnostics are secondary to the live cleanup owner. A failed write
+      // must not prevent the bounded retry or replace the owning error.
+      try { await stderr(`${error.message}\n`); } catch {}
       // Preserve ownership when the bounded retry still fails. The executable
       // entry point is the only layer allowed to terminate without a retry owner.
       await error.retryCleanup();
       return MCPFN_CLI_EXIT_TEST_FAILURE;
     }
+    await stderr(`${error instanceof Error ? error.message : String(error)}\n`);
     if (error instanceof McpFnAssertionError || error instanceof McpFnClientError) {
       return MCPFN_CLI_EXIT_TEST_FAILURE;
     }

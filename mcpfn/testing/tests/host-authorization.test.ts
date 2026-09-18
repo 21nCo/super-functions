@@ -169,6 +169,53 @@ it.each([[400, 'application/json', 'passed'], [400, 'Application/JSON; charset=u
   expect(results[0]?.status).toBe(outcome);
 });
 
+it.each([
+  ["token-exchange", 400, "passed"],
+  ["token-exchange", 401, "failed"],
+  ["token-refresh", 400, "passed"],
+  ["token-refresh", 401, "failed"],
+] as const)("requires HTTP 400 for public-client invalid_client during %s (%s)", async (phase, status, outcome) => {
+  const issuer = "https://login.example.com";
+  const fixture = createHostedAuthorizationFixtures({
+    issuer,
+    resource: "https://mcp.example.com/mcp",
+  }).find(item => item.token?.refreshAfterExchange)!;
+  fixture.expected = { outcome: "rejected", errorCode: "invalid_client", phase };
+  const callback = new URL(fixture.authorization.redirectUri);
+  callback.searchParams.set("code", "test-code");
+  callback.searchParams.set("state", fixture.authorization.state);
+
+  const [result] = await runHostedAuthorizationRegression({
+    issuer,
+    prepareRegistration: async () => {},
+    request: async request => {
+      if (new URL(request.url).pathname.endsWith("authorize")) {
+        return Response.redirect(callback, 302);
+      }
+      expect(request.headers.has("authorization")).toBe(false);
+      const refresh = new URLSearchParams(await request.clone().text())
+        .get("grant_type") === "refresh_token";
+      if (phase === "token-refresh" && !refresh) {
+        return tokenJson({
+          access_token: "token",
+          token_type: "Bearer",
+          refresh_token: "refresh",
+        });
+      }
+      return Response.json({ error: "invalid_client" }, { status });
+    },
+  }, [fixture]);
+
+  expect(result).toMatchObject({
+    status: outcome,
+    phase,
+    responseStatus: status,
+    ...(status === 400
+      ? { errorCode: "invalid_client" }
+      : { error: "OAuth error response has invalid HTTP status" }),
+  });
+});
+
 
 it("rejects direct authorization JSON 401 invalid_client", async () => {
   const issuer = "https://login.example.com";
