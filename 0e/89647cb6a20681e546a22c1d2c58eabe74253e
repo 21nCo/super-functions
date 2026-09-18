@@ -1,0 +1,31 @@
+mcpfn/cli/src/index.ts
+  s_77d7bb3189c71a::t_cbd96159a2389d 106,112-118,426
+mcpfn/client/tests/client.test.ts
+  s_77d7bb3189c71a::t_9c3292b58f5551 695-723
+mcpfn/testing/src/remote-target.ts
+  s_77d7bb3189c71a::t_35d563fe64191e 454-456
+  s_77d7bb3189c71a::t_cbd96159a2389d 55-81,420,457
+mcpfn/testing/tests/remote-target.test.ts
+  s_77d7bb3189c71a::t_9c3292b58f5551 509-551,872-886
+  s_77d7bb3189c71a::t_9ea4956a67420e 887
+mcpfn/cli/tests/cli.test.ts
+  s_77d7bb3189c71a::t_9c3292b58f5551 386-417
+mcpfn/client/src/client.ts
+  s_77d7bb3189c71a::t_cbd96159a2389d 653,715
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0e89647cb6a20681e546a22c1d2c58eabe74253e",
+  "prompts": {},
+  "sessions": {
+    "s_77d7bb3189c71a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b3f5-d570-7a72-b668-401efd539e3b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
