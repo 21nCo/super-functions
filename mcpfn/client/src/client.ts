@@ -957,10 +957,11 @@ export class McpFnClient {
     let event: McpFnClientEvent | undefined;
     try {
       const { kind: targetKind, ...descriptor } = this.options.target.describe();
+      const at = (this.options.clock?.() ?? new Date()).toISOString();
       event = {
         formatVersion: 1,
         kind: this.preserveArtifactStructure(kind),
-        at: this.redact((this.options.clock?.() ?? new Date()).toISOString(), { preserveKeys: false }),
+        at: this.preserveArtifactTimestamp(at),
         requestId: this.redact(this.requestId(), { preserveKeys: false }),
         target: this.redact({ ...descriptor, kind: targetKind }, { preserveKeys: false }) as McpFnClientEvent["target"],
         ...(payload !== undefined
@@ -1024,7 +1025,7 @@ export class McpFnClient {
             ? {}
             : { code: this.redact(code, { preserveKeys: false }) }),
           requestId: this.redact(requestId, { preserveKeys: false }),
-          at: this.redact(at, { preserveKeys: false }),
+          at: this.preserveArtifactTimestamp(at),
           target: this.redact({ ...descriptor, kind }, { preserveKeys: false }) as McpFnDiagnosticEvent["target"],
           ...(details === undefined
             ? {}
@@ -1049,15 +1050,42 @@ export class McpFnClient {
     return undefined;
   }
 
+  private preserveArtifactTimestamp(value: string): string {
+    let canonical: string;
+    try { canonical = new Date(value).toISOString(); }
+    catch { canonical = ""; }
+    if (canonical !== value) {
+      throw new McpFnClientError(
+        "MCPFN_OPERATION_FAILED",
+        "MCP artifact timestamp is not canonical ISO",
+        { phase: "capability-operation" },
+      );
+    }
+    return this.preserveArtifactStructure(value);
+  }
+
+  private safeArtifactTimestamp(): string | undefined {
+    for (const value of [
+      new Date().toISOString(),
+      "1970-01-01T00:00:00.000Z",
+      "2000-02-29T12:34:56.789Z",
+    ]) {
+      try { return this.preserveArtifactTimestamp(value); }
+      catch {}
+    }
+    return undefined;
+  }
+
   private clientEventRedactionFailure(): McpFnClientEvent | undefined {
     this.clientEventRedactionOmissions += 1;
     const kind = this.safeArtifactStructure(CLIENT_EVENT_KINDS);
-    if (!kind) return undefined;
+    const at = this.safeArtifactTimestamp();
+    if (!kind || !at) return undefined;
     try {
       const event: McpFnClientEvent = {
         formatVersion: 1,
         kind,
-        at: this.redact(new Date().toISOString(), { preserveKeys: false }),
+        at,
         requestId: this.redact("redacted", { preserveKeys: false }),
         target: this.redact({ kind: "custom" }, { preserveKeys: false }),
         payload: this.redact({
@@ -1076,13 +1104,14 @@ export class McpFnClient {
     this.diagnosticRedactionOmissions += 1;
     const phase = this.safeArtifactStructure(DIAGNOSTIC_PHASES);
     const outcome = this.safeArtifactStructure(DIAGNOSTIC_OUTCOMES);
-    if (!phase || !outcome) return undefined;
+    const at = this.safeArtifactTimestamp();
+    if (!phase || !outcome || !at) return undefined;
     try {
       const event: McpFnDiagnosticEvent = {
         phase,
         outcome,
         code: this.redact("MCPFN_DIAGNOSTIC_REDACTION_FAILED", { preserveKeys: false }),
-        at: this.redact(new Date().toISOString(), { preserveKeys: false }),
+        at,
         requestId: this.redact("redacted", { preserveKeys: false }),
         target: this.redact({ kind: "custom" }, { preserveKeys: false }),
         details: this.redact({ omitted: true }, { preserveKeys: false }),

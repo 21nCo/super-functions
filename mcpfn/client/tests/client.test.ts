@@ -6,6 +6,100 @@ import { createMcpFnClient, customTarget } from "../src/index.js";
 import type { McpFnTransportHandle } from "../src/index.js";
 
 describe("McpFn production client", () => {
+  it("omits credential-colliding timestamps without emitting malformed artifacts", async () => {
+    const credentialTimestamp = "2001-02-03T04:05:06.007Z";
+    const events: any[] = [];
+    const diagnostics: any[] = [];
+    const client = createMcpFnClient({
+      clock: () => new Date(credentialTimestamp),
+      target: customTarget({
+        kind: "custom",
+        open: async () => { throw new Error("unused"); },
+        redact: <T>(value: T): T => JSON.parse(JSON.stringify(value)
+          .replaceAll(credentialTimestamp, "")) as T,
+      }),
+      events: event => { events.push(event); },
+      diagnostics: event => { diagnostics.push(event); },
+    });
+    const emitEvent = (client as unknown as {
+      emitEvent(kind: "logging.message", payload: unknown): Promise<void>;
+    }).emitEvent.bind(client);
+    const dispatch = (client as unknown as {
+      dispatch(event: {
+        phase: "capability-operation";
+        outcome: "failed";
+        requestId: string;
+        at: string;
+        target: { kind: string };
+      }): Promise<void>;
+    }).dispatch.bind(client);
+
+    await emitEvent("logging.message", { message: "safe" });
+    await dispatch({
+      phase: "capability-operation",
+      outcome: "failed",
+      requestId: "request",
+      at: credentialTimestamp,
+      target: { kind: "custom" },
+    });
+
+    expect(events).toHaveLength(1);
+    expect(diagnostics).toHaveLength(1);
+    for (const artifact of [...events, ...diagnostics]) {
+      expect(client.isRedactionOmission(artifact)).toBe(true);
+      expect(new Date(artifact.at).toISOString()).toBe(artifact.at);
+      expect(JSON.stringify(artifact)).not.toContain(credentialTimestamp);
+    }
+    expect(client.getRedactionOmissionCounts()).toEqual({
+      clientEvents: 1,
+      diagnostics: 1,
+    });
+  });
+
+  it("drops timestamp omissions when every valid ISO timestamp is unsafe", async () => {
+    const events: any[] = [];
+    const diagnostics: any[] = [];
+    const client = createMcpFnClient({
+      clock: () => new Date(0),
+      target: customTarget({
+        kind: "custom",
+        open: async () => { throw new Error("unused"); },
+        redact: <T>(value: T): T => JSON.parse(JSON.stringify(value)
+          .replaceAll("T", "")) as T,
+      }),
+      events: event => { events.push(event); },
+      diagnostics: event => { diagnostics.push(event); },
+    });
+    const emitEvent = (client as unknown as {
+      emitEvent(kind: "logging.message", payload: unknown): Promise<void>;
+    }).emitEvent.bind(client);
+    const dispatch = (client as unknown as {
+      dispatch(event: {
+        phase: "capability-operation";
+        outcome: "failed";
+        requestId: string;
+        at: string;
+        target: { kind: string };
+      }): Promise<void>;
+    }).dispatch.bind(client);
+
+    await emitEvent("logging.message", { message: "safe" });
+    await dispatch({
+      phase: "capability-operation",
+      outcome: "failed",
+      requestId: "request",
+      at: new Date(0).toISOString(),
+      target: { kind: "custom" },
+    });
+
+    expect(events).toEqual([]);
+    expect(diagnostics).toEqual([]);
+    expect(client.getRedactionOmissionCounts()).toEqual({
+      clientEvents: 1,
+      diagnostics: 1,
+    });
+  });
+
   it("emits marked safe omissions when credentials collide with envelope discriminators", async () => {
     const events: any[] = [];
     const diagnostics: any[] = [];
