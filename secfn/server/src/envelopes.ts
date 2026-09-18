@@ -50,9 +50,9 @@ function codeForStatus(statusCode: number): string {
   } as Record<number, string>)[statusCode] ?? (statusCode >= 500 ? "SECFN_INTERNAL" : "SECFN_HTTP_ERROR");
 }
 
-export async function readJson<T>(request: Request): Promise<T> {
+export async function readJson<T>(context: { json<TValue = unknown>(): Promise<TValue> }): Promise<T> {
   try {
-    return await request.json() as T;
+    return await context.json<T>();
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new BadRequestError("Invalid JSON", "SECFN_BAD_JSON");

@@ -63,6 +63,8 @@ export interface SecFnRateLimitConfig extends SecFnRateLimitPolicyConfig {
 export interface SecFnServerConfig<TContext extends SecFnRequestContext = SecFnRequestContext> {
   db: Adapter;
   basePath?: string;
+  /** Maximum JSON request body size in bytes. Defaults to 1 MiB. */
+  maxBodyBytes?: number;
   context?: TContext | ((request: Request) => TContext | Promise<TContext>);
   keyProvider?: KeyProvider;
   encryption?: SecFnEncryptionConfig;

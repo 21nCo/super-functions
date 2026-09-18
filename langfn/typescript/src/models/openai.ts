@@ -159,7 +159,7 @@ export class OpenAIChatModel extends ChatModel {
       }
     }
 
-    yield { type: "end", finish_reason: "stop" };
+    throw new ProviderError("OpenAI stream ended before the [DONE] sentinel", { provider: this.provider });
   }
 }
 

@@ -68,6 +68,82 @@ describe("streaming and observability", () => {
     expect(result).toBe(providerError);
   });
 
+  it("keeps generated spans best-effort around successful operations", async () => {
+    const invoked: string[] = [];
+    const startFailure = new Tracer({
+      exporter: {
+        export: async (_name, payload) => {
+          if (payload.phase === "start") throw new Error("start unavailable");
+        }
+      }
+    });
+    await expect(startFailure.trace("provider.call", {}, async () => {
+      invoked.push("start");
+      return "ok";
+    })).resolves.toBe("ok");
+
+    const finishFailure = new Tracer({
+      storage: { saveSpan: async () => { throw new Error("finish unavailable"); } } as never
+    });
+    await expect(finishFailure.trace("provider.call", {}, async () => {
+      invoked.push("finish");
+      return "ok";
+    })).resolves.toBe("ok");
+
+    const noSpanStorage = new Tracer({ storage: {} as never });
+    await expect(noSpanStorage.trace("provider.call", {}, async () => {
+      invoked.push("optional");
+      return "ok";
+    })).resolves.toBe("ok");
+    expect(invoked).toEqual(["start", "finish", "optional"]);
+  });
+
+  it("serializes falsy span failures and redacts stored span records", async () => {
+    const spans: Array<Record<string, unknown>> = [];
+    const tracer = new Tracer({
+      storage: { saveSpan: async (span: Record<string, unknown>) => { spans.push(span); } } as never,
+      redactionKeys: ["message"]
+    });
+
+    for (const error of [null, 0, false]) {
+      await tracer.trace("provider.call", {}, async () => { throw error; }).catch(() => undefined);
+    }
+
+    expect(spans).toHaveLength(3);
+    expect(spans.map((span) => span.status)).toEqual(["error", "error", "error"]);
+    expect(spans.map((span) => span.error)).toEqual([
+      { message: "***REDACTED***" },
+      { message: "***REDACTED***" },
+      { message: "***REDACTED***" }
+    ]);
+  });
+
+  it("keeps generated stream span failures from replacing provider events", async () => {
+    for (const phase of ["start", "end"]) {
+      const client = new LangFn({
+        model: new MockChatModel({
+          streams: [[
+            { type: "content", content: "ok", delta: "ok" },
+            { type: "end", finish_reason: "stop" }
+          ]]
+        }),
+        observability: {
+          enabled: true,
+          exporter: {
+            export: async (_name, payload) => {
+              if (payload.phase === phase) throw new Error(`${phase} unavailable`);
+            }
+          }
+        }
+      });
+
+      await expect(collect(client.stream("hello"))).resolves.toEqual([
+        expect.objectContaining({ type: "content", content: "ok" }),
+        expect.objectContaining({ type: "end" })
+      ]);
+    }
+  });
+
   it("normalizes the canonical stream taxonomy and enforces terminal events", async () => {
     const client = new LangFn({
       model: new MockChatModel({
@@ -305,6 +381,8 @@ describe("streaming and observability", () => {
     const traceRow = adapter.traces.at(-1) as Record<string, unknown>;
     expect(JSON.stringify(traceRow.metadata)).not.toContain("user@example.com");
     expect(JSON.stringify(traceRow.metadata)).toContain("***REDACTED***");
+    expect(String(traceRow.input)).not.toContain("user@example.com");
+    expect(String(traceRow.input)).toContain("***REDACTED***");
     expect(JSON.stringify(watchEvents)).toContain("***REDACTED***");
     expect(JSON.stringify(exporterEvents)).toContain("***REDACTED***");
     expect(JSON.stringify(otlpEvents)).toContain("***REDACTED***");

@@ -60,6 +60,14 @@ export class MCPServer {
     this.activeServers.add(server);
     try {
       await server.connect(transport);
+      const onclose = transport.onclose;
+      transport.onclose = () => {
+        try {
+          onclose?.();
+        } finally {
+          this.activeServers.delete(server);
+        }
+      };
     } catch (error) {
       this.activeServers.delete(server);
       throw error;

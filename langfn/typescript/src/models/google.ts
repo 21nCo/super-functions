@@ -412,6 +412,10 @@ export class GoogleChatModel extends ChatModel {
 }
 
 function throwAbortReason(error: unknown, signal: AbortSignal): never {
-  if (signal.aborted && signal.reason !== undefined) throw signal.reason;
+  if (
+    signal.aborted &&
+    signal.reason !== undefined &&
+    (error === signal.reason || (typeof error === "object" && error !== null && "name" in error && error.name === "AbortError"))
+  ) throw signal.reason;
   throw error;
 }

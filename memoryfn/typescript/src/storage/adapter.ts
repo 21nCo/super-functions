@@ -1,7 +1,10 @@
 import { Memory, MemoryRelationship } from '../core/types';
 
 export interface MemoryScope { tenantId: string; containerTags: string[] }
-export type MemoryInsert = MemoryScope & Partial<Omit<Memory, keyof MemoryScope>>;
+export type MemoryInsert = MemoryScope & Partial<Omit<Memory, keyof MemoryScope | 'revision' | 'deletedAt'>>;
+export type MemoryRelationshipInsert = MemoryScope
+  & Pick<MemoryRelationship, 'fromId' | 'toId'>
+  & Partial<Omit<MemoryRelationship, 'fromId' | 'toId'>>;
 export interface MemoryUpdate extends MemoryScope {
   id: string;
   expectedRevision: number;
@@ -15,7 +18,7 @@ export interface StorageAdapter {
   /** Commit all callback writes together, or leave storage unchanged on failure. */
   transaction?<T>(operation: (storage: StorageAdapter) => Promise<T>): Promise<T>;
   insertMemories(memories: MemoryInsert[]): Promise<Memory[]>;
-  insertRelationships(relationships: Partial<MemoryRelationship>[]): Promise<MemoryRelationship[]>;
+  insertRelationships(relationships: MemoryRelationshipInsert[]): Promise<MemoryRelationship[]>;
   searchVectors(params: {
     tenantId: string;
     embedding: number[];
@@ -30,7 +33,7 @@ export interface StorageAdapter {
 }
 
 export function requireScope(tenantId: string | undefined, tags: string[] | undefined): asserts tenantId is string {
-  if (!tenantId?.trim() || !Array.isArray(tags) || tags.some(tag => typeof tag !== 'string' || !tag.trim())) {
+  if (typeof tenantId !== 'string' || !tenantId.trim() || !Array.isArray(tags) || tags.some(tag => typeof tag !== 'string' || !tag.trim())) {
     throw new Error('MEMORY_SCOPE_REQUIRED');
   }
 }

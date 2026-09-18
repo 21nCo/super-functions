@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpFnRegistry, createMcpFnServer } from "@mcpfn/core";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { LangFn } from "../src/client.js";
 import { MCPProtocolError, MCPTransportError, ValidationError } from "../src/core/errors.js";
@@ -63,6 +63,18 @@ describe("mcp and evaluation parity", () => {
 
     await expect(client.callTool("add", { a: 2, b: 3 })).resolves.toBe(5);
     await client.close();
+    await server.close();
+  });
+
+  it("releases transient protocol servers when their transports close", async () => {
+    const server = new MCPServer([addTool]);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    expect((server as any).activeServers.size).toBe(1);
+
+    await clientTransport.close();
+
+    expect((server as any).activeServers.size).toBe(0);
     await server.close();
   });
 
@@ -243,6 +255,55 @@ describe("mcp and evaluation parity", () => {
     expect(comparison.testfnExported).toBe(true);
     expect(exportPayloads).toHaveLength(2);
     expect(exportPayloads[0].summary).toBeTruthy();
+  });
+
+  it("keeps evaluation accuracy distinct from graded score", async () => {
+    const evaluator = new Evaluator();
+    const evaluation = await evaluator.evaluate({
+      lang: new LangFn({ model: new MockChatModel({ responses: ["one", "two"] }) }),
+      dataset: [
+        { input: "one", expected: "one" },
+        { input: "two", expected: "two" }
+      ],
+      metrics: [createMetric("graded", (_output, _expected, item) => (
+        item.input === "one" ? { score: 0.5, passed: true } : { score: 0.9, passed: false }
+      ))]
+    });
+
+    expect(evaluation.accuracy).toBe(0.5);
+    expect(evaluation.passRate).toBe(0.5);
+    expect(evaluation.avgScore).toBeCloseTo(0.7);
+  });
+
+  it("rejects duplicate metric and model identities before evaluation", async () => {
+    const complete = vi.fn(async () => ({ content: "ok" }));
+    const lang = new LangFn({ model: new MockChatModel({ complete }) });
+    const evaluator = new Evaluator();
+    const metric = createMetric("same", () => true);
+
+    await expect(evaluator.evaluate({
+      lang,
+      dataset: [{ input: "x", expected: "x" }],
+      metrics: [metric, metric]
+    })).rejects.toBeInstanceOf(ValidationError);
+    await expect(evaluator.compare({
+      models: [{ name: "same", lang }, { name: "same", lang }],
+      dataset: [{ input: "x", expected: "x" }]
+    })).rejects.toBeInstanceOf(ValidationError);
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it("uses collision-safe comparison maps and unique TestFn run IDs", async () => {
+    const evaluator = new Evaluator();
+    const comparison = await evaluator.compare({
+      models: [{ name: "__proto__", lang: new LangFn({ model: new MockChatModel({ responses: ["ok"] }) }) }],
+      dataset: [{ input: "x", expected: "ok" }]
+    });
+    expect(Object.getPrototypeOf(comparison.perModel)).toBeNull();
+    expect(comparison.perModel["__proto__"]).toBeInstanceOf(Object);
+
+    const result = comparison.perModel["__proto__"];
+    expect(result.toTestFnRun("same").id).not.toBe(result.toTestFnRun("same").id);
   });
 
   it("fails empty datasets with VALIDATION_ERROR", async () => {

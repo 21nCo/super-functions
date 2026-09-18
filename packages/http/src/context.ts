@@ -53,12 +53,11 @@ async function readBodyBufferWithLimit(
         if (total > maxBodyBytes) {
           // Stop the producer immediately. Releasing the lock alone leaves the
           // source free to continue buffering an attacker-controlled body.
-          try {
-            await reader.cancel('PAYLOAD_TOO_LARGE');
-          } catch {
-            // Preserve the stable payload-limit error even if cancellation
-            // itself fails in a custom stream implementation.
-          }
+          // A cloned request uses a tee'd stream whose cancellation promise
+          // waits for every branch. Start cancellation without awaiting that
+          // cross-branch coordination so an unused authorization clone cannot
+          // stall the 413 response indefinitely.
+          void reader.cancel('PAYLOAD_TOO_LARGE').catch(() => undefined);
           throw new PayloadTooLargeError(
             `Request body exceeds the maximum allowed size of ${maxBodyBytes} bytes`,
             'PAYLOAD_TOO_LARGE'

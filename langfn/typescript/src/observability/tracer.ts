@@ -1,7 +1,11 @@
 import { secureRandomUUID } from "../utils/random.js";
 import { redact } from "./redaction.js";
 import { ObservabilityExporter, type ObservabilityExporterConfig } from "./exporter.js";
-import type { SpanRecord, TraceStorage } from "./storage.js";
+import type { SpanRecord } from "./storage.js";
+
+export interface SpanStorage {
+  saveSpan?(span: SpanRecord): Promise<unknown>;
+}
 
 export interface TraceSpanOptions {
   traceId?: string;
@@ -10,7 +14,7 @@ export interface TraceSpanOptions {
 }
 
 export interface TracerConfig extends ObservabilityExporterConfig {
-  storage?: TraceStorage;
+  storage?: SpanStorage;
   redactionKeys?: string[];
 }
 
@@ -55,7 +59,8 @@ class TraceSpanHandle {
     }
     this.finished = true;
 
-    const spanRecord: SpanRecord = {
+    const serializedError = status === "error" ? serializeError(error) : undefined;
+    const spanRecord = this.tracer.sanitize<SpanRecord>({
       traceId: this.traceId,
       spanId: this.spanId,
       parentSpanId: this.parentSpanId,
@@ -64,27 +69,28 @@ class TraceSpanHandle {
       status,
       startedAt: this.startedAt,
       endedAt: Date.now(),
-      error: error ? serializeError(error) : undefined
-    };
-    await this.tracer.storage?.saveSpan(spanRecord);
+      error: serializedError
+    });
+    await this.tracer.storage?.saveSpan?.(spanRecord);
     await this.tracer.emit(this.name, {
       phase: status === "ok" ? "end" : "error",
       traceId: this.traceId,
       spanId: this.spanId,
       parentSpanId: this.parentSpanId,
       metadata: this.metadata,
-      error: error ? serializeError(error) : undefined
+      error: serializedError
     });
   }
 }
 
 export class Tracer {
-  readonly storage?: TraceStorage;
+  readonly storage?: SpanStorage;
   private readonly exporter: ObservabilityExporter;
   private readonly redactionKeys: string[];
 
   constructor(config: TracerConfig = {}) {
-    this.storage = config.storage;
+    const storage = config.storage as SpanStorage | undefined;
+    this.storage = typeof storage?.saveSpan === "function" ? storage : undefined;
     this.exporter = new ObservabilityExporter(config);
     this.redactionKeys = [...(config.redactionKeys ?? [])];
   }
@@ -121,7 +127,12 @@ export class Tracer {
     fn: () => Promise<T>,
     options: Omit<TraceSpanOptions, "metadata"> = {}
   ): Promise<T> {
-    const span = await this.span(name, { ...options, metadata });
+    let span: TraceSpanHandle;
+    try {
+      span = await this.span(name, { ...options, metadata });
+    } catch {
+      return await fn();
+    }
     try {
       return await fn();
     } catch (error) {
@@ -132,7 +143,11 @@ export class Tracer {
       }
       throw error;
     } finally {
-      await span[Symbol.asyncDispose]();
+      try {
+        await span[Symbol.asyncDispose]();
+      } catch {
+        // Generated observability must not replace a successful operation.
+      }
     }
   }
 }

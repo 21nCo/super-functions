@@ -25,10 +25,10 @@ suite('Postgres lifecycle integration', () => {
   it('preserves explicit relationship IDs and zero confidence', async () => {
     const rows = await adapter.insertMemories([0, 1].map(i => ({ tenantId: 'a', containerTags: [], content: String(i) })));
     const id = '550e8400-e29b-41d4-a716-446655440000';
-    const [relation] = await adapter.insertRelationships([{ id, fromId: rows[0].id, toId: rows[1].id, confidence: 0 }]);
+    const [relation] = await adapter.insertRelationships([{ tenantId: 'a', containerTags: [], id, fromId: rows[0].id, toId: rows[1].id, confidence: 0 }]);
     expect(relation).toMatchObject({ id, confidence: 0 });
-    await expect(adapter.insertRelationships([{ id, fromId: rows[0].id, toId: rows[1].id }])).rejects.toThrow('MEMORY_RELATION_EXISTS');
-    const [generated] = await adapter.insertRelationships([{ id: '', fromId: rows[0].id, toId: rows[1].id }]);
+    await expect(adapter.insertRelationships([{ tenantId: 'a', containerTags: [], id, fromId: rows[0].id, toId: rows[1].id }])).rejects.toThrow('MEMORY_RELATION_EXISTS');
+    const [generated] = await adapter.insertRelationships([{ tenantId: 'a', containerTags: [], id: '', fromId: rows[0].id, toId: rows[1].id }]);
     expect(generated.id).toBeTruthy();
   });
   it('retrieves only the explicit tenant with all scope tags', async () => {
@@ -56,7 +56,7 @@ suite('Postgres lifecycle integration', () => {
   });
   it('forget clears sensitive data and relations, survives adapter recreation and is idempotent', async () => {
     const rows = await adapter.insertMemories([0, 1].map(i => ({ tenantId: 'a', containerTags: [], content: `secret${i}`, embedding: vector(i) })));
-    await adapter.insertRelationships([{ fromId: rows[0].id, toId: rows[1].id, type: 'extends' }]);
+    await adapter.insertRelationships([{ tenantId: 'a', containerTags: [], fromId: rows[0].id, toId: rows[1].id, type: 'extends' }]);
     const scope = { id: rows[0].id, tenantId: 'a', containerTags: [] };
     await adapter.deleteMemory(scope); await adapter.deleteMemory(scope);
     const fresh = new PostgresAdapter(drizzle(client, { schema }));
@@ -68,7 +68,7 @@ suite('Postgres lifecycle integration', () => {
   });
   it('rolls back a failed cleanup and safely retries the full forget transaction', async () => {
     const rows = await adapter.insertMemories([0, 1].map(i => ({ tenantId: 'a', containerTags: [], content: `secret${i}`, embedding: vector(i) })));
-    await adapter.insertRelationships([{ fromId: rows[0].id, toId: rows[1].id }]);
+    await adapter.insertRelationships([{ tenantId: 'a', containerTags: [], fromId: rows[0].id, toId: rows[1].id }]);
     const scope = { id: rows[0].id, tenantId: 'a', containerTags: [] };
     await client.unsafe(`CREATE OR REPLACE FUNCTION sfns4_fail_cleanup() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'simulated cleanup failure'; END $$;
       CREATE TRIGGER sfns4_cleanup_failure BEFORE DELETE ON memory_relationships FOR EACH ROW EXECUTE FUNCTION sfns4_fail_cleanup();`);
@@ -83,9 +83,9 @@ suite('Postgres lifecycle integration', () => {
   it('rejects cross-tenant and tombstoned relationship endpoints', async () => {
     const [a] = await adapter.insertMemories([{ tenantId: 'a', containerTags: [], content: 'a' }]);
     const [b] = await adapter.insertMemories([{ tenantId: 'b', containerTags: [], content: 'b' }]);
-    await expect(adapter.insertRelationships([{ fromId: a.id, toId: b.id }])).rejects.toThrow('SCOPE_INVALID');
+    await expect(adapter.insertRelationships([{ tenantId: 'a', containerTags: [], fromId: a.id, toId: b.id }])).rejects.toThrow('SCOPE_INVALID');
     await adapter.deleteMemory({ id: a.id, tenantId: 'a', containerTags: [] });
-    await expect(adapter.insertRelationships([{ fromId: a.id, toId: a.id }])).rejects.toThrow('SCOPE_INVALID');
+    await expect(adapter.insertRelationships([{ tenantId: 'a', containerTags: [], fromId: a.id, toId: a.id }])).rejects.toThrow('SCOPE_INVALID');
     expect(await client`SELECT * FROM memory_relationships`).toHaveLength(0);
   });
   it('rejects cross-tenant deletes without changing data', async () => {

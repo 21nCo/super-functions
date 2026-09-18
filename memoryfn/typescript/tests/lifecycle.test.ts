@@ -12,6 +12,29 @@ describe('memory lifecycle and scope', () => {
     for (const scope of [{ tenantId: 'b', containerTags: [] }, { tenantId: 'a', containerTags: ['shared', 'private'] }]) {
       expect(await store.searchVectors({ ...scope, embedding: [1, 0], topK: 10 })).toEqual([]);
     }
+    await expect(store.insertMemories([{
+      tenantId: 42,
+      containerTags: [],
+      content: 'invalid tenant',
+    } as never])).rejects.toThrow('MEMORY_SCOPE_REQUIRED');
+  });
+
+  it('requires explicit relationship scope and enforces it on both endpoints', async () => {
+    const store = new MemoryStorageAdapter();
+    const [from, to] = await store.insertMemories([
+      { tenantId: 'a', containerTags: ['shared'], content: 'from' },
+      { tenantId: 'a', containerTags: ['shared', 'private'], content: 'to' },
+    ]);
+
+    await expect(store.insertRelationships([{
+      tenantId: 'a', containerTags: ['private'], fromId: from.id, toId: to.id,
+    }])).rejects.toThrow('MEMORY_RELATION_SCOPE_INVALID');
+    await expect(store.insertRelationships([{
+      tenantId: 'b', containerTags: [], fromId: from.id, toId: to.id,
+    }])).rejects.toThrow('MEMORY_RELATION_SCOPE_INVALID');
+    await expect(store.insertRelationships([{
+      tenantId: 'a', containerTags: ['shared'], fromId: from.id, toId: to.id,
+    }])).resolves.toHaveLength(1);
   });
   it('allows only one concurrent revision and atomically replaces the embedding', async () => {
     const store = new MemoryStorageAdapter(); const scope = { id: 'one', tenantId: 'a', containerTags: ['private'] };

@@ -63,6 +63,7 @@ export class MemoryFn implements IMemoryFn {
             count++;
           }
           links.push(...await storage.insertRelationships([{
+            tenantId, containerTags: tags,
             fromId: memory.id, toId: existing.id, type: resolution.type, confidence: 1, reasoning: resolution.reasoning,
           }]));
         }

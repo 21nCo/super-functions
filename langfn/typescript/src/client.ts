@@ -24,7 +24,7 @@ import {
 import { CostMeter, type Budgets } from "./observability/cost-meter.js";
 import { redact } from "./observability/redaction.js";
 import { SPAN_TYPES } from "./observability/span-types.js";
-import { TraceStorage, type TraceRecord } from "./observability/storage.js";
+import { TraceStorage, type SpanRecord, type TraceRecord } from "./observability/storage.js";
 import { Tracer } from "./observability/tracer.js";
 import { normalizeStream, toSSE } from "./streaming/sse.js";
 import { ToolPolicy } from "./tools/policy.js";
@@ -58,6 +58,7 @@ export interface ObservabilityConfig {
     supportsScope?: boolean;
     save?(trace: Record<string, unknown>): Promise<void>;
     saveTrace?(trace: Record<string, unknown>): Promise<unknown>;
+    saveSpan?(span: SpanRecord): Promise<unknown>;
     saveFeedback?(feedback: Record<string, unknown>): Promise<unknown>;
     findMany(options?: TraceQuery): Promise<Record<string, unknown>[]>;
     findOne?(traceId: string, scope?: { tenantId?: string; userId?: string }): Promise<Record<string, unknown> | null>;
@@ -266,16 +267,21 @@ export class LangFn {
     let latestUsage: CompletionResponse["usage"];
     let terminalEvent: StreamEvent | undefined;
 
-    try {
-      span = tracer && this.config.observability?.enabled
-        ? await tracer.span(SPAN_TYPES.PROVIDER_STREAM, {
+    if (tracer && this.config.observability?.enabled) {
+      try {
+        span = await tracer.span(SPAN_TYPES.PROVIDER_STREAM, {
             traceId,
             metadata: {
               metadata: options.metadata ?? {},
               mode: Array.isArray(input) ? "chat" : "completion"
             }
-          })
-        : undefined;
+          });
+      } catch {
+        // Generated stream spans are best-effort.
+      }
+    }
+
+    try {
       if (typeof input === "string") {
         const controller = new AbortController();
         const stream = this.requireModel().stream({ prompt: input, metadata: options.metadata, signal: controller.signal });
@@ -387,23 +393,7 @@ export class LangFn {
         );
       }
     } finally {
-      try {
-        await span?.[Symbol.asyncDispose]();
-      } catch (error) {
-        if (!terminalEvent || terminalEvent.type === "end") {
-          const normalizedError = normalizeUnknownError(error);
-          terminalEvent = withTrace<StreamEvent>(
-            {
-              type: "error",
-              error: {
-                code: normalizedError.code,
-                message: normalizedError.message
-              }
-            },
-            traceId
-          );
-        }
-      }
+      try { await span?.[Symbol.asyncDispose](); } catch { /* Generated stream spans are best-effort. */ }
     }
     if (terminalEvent) yield terminalEvent;
   }
@@ -678,6 +668,7 @@ export class LangFn {
     const storage = this.config.observability?.traceStorage;
     if (!this.model) return;
     const response = payload.response;
+    const safeRequest = this.redactObservabilityPayload(payload.request);
     const content = "content" in response ? response.content : response.message.content;
     const traceRecord = this.redactObservabilityPayload<TraceRecord>({
       ...traceOwner(payload.request.metadata),
@@ -685,11 +676,11 @@ export class LangFn {
       kind: payload.kind,
       provider: this.model.provider,
       model: this.model.model,
-      input: JSON.stringify(payload.request),
+      input: JSON.stringify(safeRequest),
       output: content,
       usage: response.usage,
       cost: response.cost,
-      metadata: (payload.request.metadata as Record<string, unknown> | undefined) ?? {}
+      metadata: (safeRequest.metadata as Record<string, unknown> | undefined) ?? {}
     });
     const storedTraceRecord = traceRecord as TraceRecord & Record<string, unknown>;
     if (storage?.saveTrace) {
@@ -722,7 +713,7 @@ export class LangFn {
       this.tracer =
         this.config.observability.tracer ??
         new Tracer({
-          storage: this.config.observability.traceStorage as TraceStorage | undefined,
+          storage: this.config.observability.traceStorage,
           watch: this.config.observability.watchfn,
           exporter: this.config.observability.exporter,
           otlpExporter: this.config.observability.otlpExporter,

@@ -2,6 +2,7 @@ import { LangFn } from "../client.js";
 import { ValidationError } from "../core/errors.js";
 import { EvaluationDataset, type DatasetItem } from "./dataset.js";
 import { exactMatchMetric, normalizeMetricResult, type EvaluationMetric, type MetricResult } from "./metrics.js";
+import { secureRandomUUID } from "../utils/random.js";
 
 export interface EvaluationItemResult {
   id: string;
@@ -56,7 +57,7 @@ export class EvaluationResult {
   toTestFnRun(modelName = "langfn-eval"): TestFnExportPayload {
     const passed = this.results.filter((item) => item.passed).length;
     return {
-      id: `langfn-eval-${modelName}`,
+      id: `langfn-eval-${modelName}-${secureRandomUUID()}`,
       timestamp: Date.now(),
       summary: {
         total: this.results.length,
@@ -123,6 +124,7 @@ export class Evaluator {
   async evaluate(options: EvaluateOptions): Promise<EvaluationResult> {
     const dataset = EvaluationDataset.from(options.dataset);
     const metrics = options.metrics?.length ? options.metrics : [exactMatchMetric()];
+    assertUniqueNames(metrics.map((metric) => metric.name), "metric");
     const results: EvaluationItemResult[] = [];
     let totalLatency = 0;
     let totalCost = 0;
@@ -152,7 +154,7 @@ export class Evaluator {
     }
 
     const evaluation = new EvaluationResult(
-      results.reduce((total, item) => total + item.score, 0) / results.length,
+      results.filter((item) => item.passed).length / results.length,
       totalLatency / results.length,
       totalCost,
       results
@@ -191,8 +193,9 @@ export class Evaluator {
     if (!options.models.length) {
       throw new ValidationError("compare() requires at least one model");
     }
+    assertUniqueNames(options.models.map((model) => model.name), "model");
 
-    const perModel: Record<string, EvaluationResult> = {};
+    const perModel = Object.create(null) as Record<string, EvaluationResult>;
     for (const model of options.models) {
       perModel[model.name] = await this.evaluate({
         lang: model.lang,
@@ -210,5 +213,13 @@ export class Evaluator {
       bestModel: ordered[0]?.[0] ?? null,
       testfnExported: Boolean(options.exportHook)
     };
+  }
+}
+
+function assertUniqueNames(names: string[], kind: string): void {
+  const seen = new Set<string>();
+  for (const name of names) {
+    if (seen.has(name)) throw new ValidationError(`Duplicate ${kind} name: ${name}`);
+    seen.add(name);
   }
 }

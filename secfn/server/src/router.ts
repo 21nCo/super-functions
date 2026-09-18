@@ -1,4 +1,4 @@
-import { createRouter, ForbiddenError, TooManyRequestsError, UnauthorizedError, type Route } from "@superfunctions/http";
+import { createRouter, ForbiddenError, TooManyRequestsError, UnauthorizedError, type Route, type RouteContext } from "@superfunctions/http";
 import { SecFnForbiddenError, SecFnValidationError } from "@secfn/core";
 import type { SecFnRequestContext, SecFnServerConfig, SecFnAdminAction, SecretScope } from "./types.js";
 import type { VaultService } from "./vault.js";
@@ -14,10 +14,9 @@ export interface RouterServices {
   rateLimit: SecFnRateLimiter;
 }
 
-type Context<TContext> = TContext & {
-  params: Record<string, string>;
-  query: URLSearchParams;
-};
+type Context<TContext> = TContext & RouteContext;
+
+const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
 
 export function createSecFnRouter<TContext extends SecFnRequestContext>(
   config: SecFnServerConfig<TContext>,
@@ -44,7 +43,16 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
       if (!rate.allowed) throw new TooManyRequestsError("Too many requests", "SECFN_RATE_LIMITED");
       if (!config.authorize) throw new ForbiddenError("Admin authorization is not configured", "SECFN_FORBIDDEN");
       {
-        const allowed = await config.authorize(ctx, action, { params: { ...ctx.params }, query: Object.fromEntries(ctx.query), request: request.clone() });
+        const authorizationRequest = request.clone();
+        if (method === "POST" || method === "PUT" || method === "PATCH") {
+          try {
+            await ctx.text();
+          } catch (error) {
+            await authorizationRequest.body?.cancel().catch(() => undefined);
+            throw error;
+          }
+        }
+        const allowed = await config.authorize(ctx, action, { params: { ...ctx.params }, query: Object.fromEntries(ctx.query), request: authorizationRequest });
         if (!allowed) {
           await services.audit.write({
             type: "permission_denied",
@@ -73,8 +81,8 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
       const rows = await services.vault.listNamespaces({ tenantId: ctx.tenantId ?? ctx.query.get("tenantId") ?? undefined });
       return ok(ctx.namespace ? rows.filter(row => row.slug === ctx.namespace) : rows);
     }),
-    adminRoute("POST", "/admin/namespaces", "namespaces:create", async (request, ctx) => {
-      const body = await readJson<Record<string, unknown>>(request);
+    adminRoute("POST", "/admin/namespaces", "namespaces:create", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
       return ok(await services.vault.createNamespace({
         tenantId: ctx.tenantId,
         slug: requiredString(body.slug ?? body.label ?? ""),
@@ -84,8 +92,8 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
         createdBy: ctx.actorId ?? "system",
       }), { status: 201 });
     }),
-    adminRoute("PATCH", "/admin/namespaces/:id", "namespaces:update", async (request, ctx) => {
-      const body = await readJson<Record<string, unknown>>(request);
+    adminRoute("PATCH", "/admin/namespaces/:id", "namespaces:update", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
       return ok(await services.vault.updateNamespace(ctx.params.id, {
         slug: asOptionalString(body.slug),
         label: asOptionalString(body.label),
@@ -100,8 +108,8 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
         namespace: ctx.namespace ?? asQueryString(ctx.query.get("namespace")),
       }));
     }),
-    adminRoute("POST", "/admin/environments", "environments:create", async (request, ctx) => {
-      const body = await readJson<Record<string, unknown>>(request);
+    adminRoute("POST", "/admin/environments", "environments:create", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
       if (ctx.namespace && body.namespace !== undefined && body.namespace !== ctx.namespace) throw new ForbiddenError("Namespace is outside the authorized scope", "SECFN_FORBIDDEN");
       if (ctx.namespace && body.namespaceId !== undefined) {
         const namespace = await config.db.findOne<Record<string, unknown>>({ model: "secfn_namespaces", where: [
@@ -121,8 +129,8 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
         createdBy: ctx.actorId ?? "system",
       }), { status: 201 });
     }),
-    adminRoute("PATCH", "/admin/environments/:id", "environments:update", async (request, ctx) => {
-      const body = await readJson<Record<string, unknown>>(request);
+    adminRoute("PATCH", "/admin/environments/:id", "environments:update", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
       return ok(await services.vault.updateEnvironment(ctx.params.id, {
         name: asOptionalString(body.name),
         description: body.description === null ? null : asOptionalString(body.description),
@@ -140,8 +148,8 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
       const paginated = ctx.query.has("limit") || ctx.query.has("cursor") || ctx.query.has("search") || ctx.query.has("tag");
       return ok(paginated ? page : page.items);
     }),
-    adminRoute("POST", "/admin/secrets", "secrets:create", async (request, ctx) => {
-      const body = await readJson<Record<string, unknown>>(request);
+    adminRoute("POST", "/admin/secrets", "secrets:create", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
       return ok(await services.vault.createSecret({
         key: requiredString(body.key ?? ""),
         value: requiredString(body.value ?? ""),
@@ -155,8 +163,8 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
     adminRoute("GET", "/admin/secrets/:id", "secrets:read", async (_request, ctx) => {
       return ok(await services.vault.getSecret(ctx.params.id));
     }),
-    adminRoute("PATCH", "/admin/secrets/:id", "secrets:update", async (request, ctx) => {
-      const body = await readJson<Record<string, unknown>>(request);
+    adminRoute("PATCH", "/admin/secrets/:id", "secrets:update", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
       return ok(await services.vault.updateSecret(ctx.params.id, {
         key: asOptionalString(body.key),
         description: body.description === null ? null : asOptionalString(body.description),
@@ -166,8 +174,8 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
         ...(await scope(ctx)),
       }));
     }),
-    adminRoute("POST", "/admin/secrets/:id/reveal", "secrets:reveal", async (request, ctx) => {
-      const body = await readJson<{ confirm?: boolean }>(request);
+    adminRoute("POST", "/admin/secrets/:id/reveal", "secrets:reveal", async (_request, ctx) => {
+      const body = await readJson<{ confirm?: boolean }>(ctx);
       if (body.confirm !== true) {
         throw new SecFnForbiddenError("Secret reveal requires explicit confirmation");
       }
@@ -178,8 +186,8 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
         requestId: ctx.requestId,
       }));
     }),
-    adminRoute("POST", "/admin/secrets/:id/rotate", "secrets:rotate", async (request, ctx) => {
-      const body = await readJson<{ value?: string }>(request);
+    adminRoute("POST", "/admin/secrets/:id/rotate", "secrets:rotate", async (_request, ctx) => {
+      const body = await readJson<{ value?: string }>(ctx);
       return ok(await services.vault.rotateSecret(ctx.params.id, {
         value: requiredString(body.value ?? ""),
         actorId: ctx.actorId ?? "system",
@@ -196,8 +204,8 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
     adminRoute("GET", "/admin/secret-sets", "secret-sets:list", async (_request, ctx) => {
       return ok(await services.vault.listSecretSets(await scope(ctx)));
     }),
-    adminRoute("POST", "/admin/secret-sets", "secret-sets:create", async (request, ctx) => {
-      const body = await readJson<Record<string, unknown>>(request);
+    adminRoute("POST", "/admin/secret-sets", "secret-sets:create", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
       return ok(await services.vault.createSecretSet({
         name: requiredString(body.name ?? ""),
         description: asOptionalString(body.description),
@@ -212,16 +220,16 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
     adminRoute("GET", "/admin/secret-sets/:id", "secret-sets:read", async (_request, ctx) => {
       return ok(await services.vault.getSecretSet(ctx.params.id));
     }),
-    adminRoute("PATCH", "/admin/secret-sets/:id", "secret-sets:update", async (request, ctx) => {
-      const body = await readJson<Record<string, unknown>>(request);
+    adminRoute("PATCH", "/admin/secret-sets/:id", "secret-sets:update", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
       return ok(await services.vault.updateSecretSet(ctx.params.id, {
         name: asOptionalString(body.name),
         description: body.description === null ? null : asOptionalString(body.description),
         actorId: ctx.actorId ?? "system",
       }));
     }),
-    adminRoute("POST", "/admin/secret-sets/:id/reveal", "secret-sets:reveal", async (request, ctx) => {
-      const body = await readJson<{ confirm?: boolean }>(request);
+    adminRoute("POST", "/admin/secret-sets/:id/reveal", "secret-sets:reveal", async (_request, ctx) => {
+      const body = await readJson<{ confirm?: boolean }>(ctx);
       if (body.confirm !== true) {
         throw new SecFnForbiddenError("Secret set reveal requires explicit confirmation");
       }
@@ -239,16 +247,16 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
     adminRoute("GET", "/admin/secret-sets/:id/members", "secret-set-members:list", async (_request, ctx) => {
       return ok(await services.vault.listSecretSetMembers(ctx.params.id));
     }),
-    adminRoute("POST", "/admin/secret-sets/:id/members", "secret-set-members:create", async (request, ctx) => {
-      const body = await readJson<Record<string, unknown>>(request);
+    adminRoute("POST", "/admin/secret-sets/:id/members", "secret-set-members:create", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
       return ok(await services.vault.addSecretSetMember(
         ctx.params.id,
         requiredString(body.secretId ?? ""),
         asOptionalString(body.alias),
       ), { status: 201 });
     }),
-    adminRoute("PATCH", "/admin/secret-sets/:id/members/:memberId", "secret-set-members:update", async (request, ctx) => {
-      const body = await readJson<Record<string, unknown>>(request);
+    adminRoute("PATCH", "/admin/secret-sets/:id/members/:memberId", "secret-set-members:update", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
       return ok(await services.vault.updateSecretSetMember(ctx.params.memberId, {
         secretId: asOptionalString(body.secretId),
         alias: body.alias === null ? null : asOptionalString(body.alias),
@@ -258,8 +266,8 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
       await services.vault.removeSecretSetMember(ctx.params.memberId);
       return emptyOk();
     }),
-    adminRoute("POST", "/admin/service-tokens", "service-tokens:create", async (request, ctx) => {
-      const body = await readJson<Record<string, unknown>>(request);
+    adminRoute("POST", "/admin/service-tokens", "service-tokens:create", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
       return ok(await services.vault.createServiceToken({
         name: requiredString(body.name ?? ""),
         scopes: Array.isArray(body.scopes) ? body.scopes.map(String) : [],
@@ -308,6 +316,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
 
   return createRouter<TContext>({
     basePath: config.basePath ?? "/secfn",
+    maxBodyBytes: config.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES,
     routes,
     context: config.context ?? ({} as TContext),
     onError: async (error) => errorResponse(error),

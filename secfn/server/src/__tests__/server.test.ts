@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createSecFnServer } from "../index.js";
 import { MemoryAdapter } from "./memory-adapter.js";
 
-function createServer(options: { allowAdmin?: boolean; rateLimit?: boolean; namespaceScoped?: boolean; noTenant?: boolean } = {}) {
+function createServer(options: { allowAdmin?: boolean; rateLimit?: boolean; namespaceScoped?: boolean; noTenant?: boolean; maxBodyBytes?: number } = {}) {
   const db = new MemoryAdapter();
   const secfn = createSecFnServer({
     db,
@@ -16,6 +16,7 @@ function createServer(options: { allowAdmin?: boolean; rateLimit?: boolean; name
       requestId: request.headers.get("x-request-id") ?? undefined,
     }),
     authorize: async () => options.allowAdmin ?? true,
+    maxBodyBytes: options.maxBodyBytes,
     rateLimit: options.rateLimit
       ? {
         enabled: true,
@@ -30,6 +31,24 @@ function createServer(options: { allowAdmin?: boolean; rateLimit?: boolean; name
 }
 
 describe("createSecFnServer", () => {
+  it("bounds admin JSON bodies by default and supports a configured limit", async () => {
+    for (const [server, body] of [
+      [createServer().secfn, JSON.stringify({ key: "K", value: "x".repeat(1024 * 1024) })],
+      [createServer({ maxBodyBytes: 16 }).secfn, JSON.stringify({ key: "K", value: "too large" })],
+    ] as const) {
+      const response = await server.router.handle(new Request("https://app.test/secfn/admin/secrets", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      }));
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toMatchObject({
+        ok: false,
+        error: { code: "PAYLOAD_TOO_LARGE" },
+      });
+    }
+  });
+
   it("returns stable non-internal codes for router-generated 404 and 405 errors", async () => {
     const { secfn } = createServer();
     const notFound = await secfn.router.handle(new Request("https://app.test/secfn/missing"));

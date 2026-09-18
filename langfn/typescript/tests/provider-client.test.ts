@@ -11,6 +11,7 @@ import {
 } from "../src/core/errors.js";
 import { CancellationToken } from "../src/utils/cancel.js";
 import { getTransportClient } from "../src/models/transport.js";
+import { OpenAIChatModel } from "../src/models/openai.js";
 import { retryAsync } from "../src/utils/retry.js";
 
 afterEach(() => {
@@ -19,6 +20,19 @@ afterEach(() => {
 });
 
 describe("provider and client contract", () => {
+  it("rejects OpenAI streams that end before the DONE sentinel", async () => {
+    const model = new OpenAIChatModel({
+      apiKey: "fixture",
+      fetchImpl: async () => new Response('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n')
+    });
+
+    await expect(async () => {
+      for await (const _event of model.stream({ prompt: "hello" })) {
+        // Exhaust the truncated provider stream.
+      }
+    }).rejects.toMatchObject({ code: "PROVIDER_ERROR" });
+  });
+
   it("constructs the required first-party providers plus custom SPI", async () => {
     const lang = new LangFn();
     const providers = ["openai", "anthropic", "ollama", "google", "mistral"] as const;

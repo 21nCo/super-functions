@@ -1,4 +1,4 @@
-import { requireScope, type StorageAdapter, type MemoryScope, type MemoryUpdate, type MemoryDelete, type MemoryInsert } from '../adapter';
+import { requireScope, type StorageAdapter, type MemoryScope, type MemoryUpdate, type MemoryDelete, type MemoryInsert, type MemoryRelationshipInsert } from '../adapter';
 import { Memory, MemoryRelationship } from '../../core/types';
 import { memories, memoryRelationships } from './schema';
 import { and, eq, sql, isNull, or, arrayContains, inArray } from 'drizzle-orm';
@@ -47,14 +47,15 @@ export class PostgresAdapter implements StorageAdapter {
     return result.map(this.mapToDomain);
   }
 
-  async insertRelationships(relationships: Partial<MemoryRelationship>[]): Promise<MemoryRelationship[]> {
+  async insertRelationships(relationships: MemoryRelationshipInsert[]): Promise<MemoryRelationship[]> {
     if (relationships.length === 0) return [];
+    for (const relationship of relationships) requireScope(relationship.tenantId, relationship.containerTags);
 
     const now = new Date();
     const values = relationships.map(r => ({
       ...(r.id ? { id: r.id } : {}),
-      fromId: r.fromId!,
-      toId: r.toId!,
+      fromId: r.fromId,
+      toId: r.toId,
       type: r.type || 'extends',
       confidence: r.confidence ?? 1.0,
       reasoning: r.reasoning,
@@ -65,9 +66,13 @@ export class PostgresAdapter implements StorageAdapter {
       const ids = [...new Set(values.flatMap(value => [value.fromId, value.toId]))].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
       const rows = await tx.select().from(memories).where(and(inArray(memories.id, ids), isNull(memories.deletedAt))).orderBy(memories.id).for('update');
       const byId = new Map(rows.map(row => [row.id, row]));
-      for (const value of values) {
+      for (const [index, value] of values.entries()) {
         const from = byId.get(value.fromId); const to = byId.get(value.toId);
-        if (!from || !to || from.tenantId !== to.tenantId) throw new Error('MEMORY_RELATION_SCOPE_INVALID');
+        const scope = relationships[index];
+        const inScope = (memory: typeof from) => memory
+          && memory.tenantId === scope.tenantId
+          && scope.containerTags.every(tag => memory.containerTags.includes(tag));
+        if (!inScope(from) || !inScope(to)) throw new Error('MEMORY_RELATION_SCOPE_INVALID');
       }
       return tx.insert(memoryRelationships).values(values).returning();
     }).catch(error => {

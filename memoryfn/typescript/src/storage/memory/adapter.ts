@@ -1,5 +1,5 @@
 import type { Memory, MemoryRelationship } from '../../core/types';
-import { requireScope, type StorageAdapter, type MemoryScope, type MemoryUpdate, type MemoryDelete, type MemoryInsert } from '../adapter';
+import { requireScope, type StorageAdapter, type MemoryScope, type MemoryUpdate, type MemoryDelete, type MemoryInsert, type MemoryRelationshipInsert } from '../adapter';
 
 /** Reads through to the parent and stages only changed keys. */
 class StagedMap<K, V> extends Map<K, V> {
@@ -133,16 +133,18 @@ export class MemoryStorageAdapter implements StorageAdapter {
     return saved.map(cloneMemory);
   }
 
-  async insertRelationships(inputs: Partial<MemoryRelationship>[]): Promise<MemoryRelationship[]> {
+  async insertRelationships(inputs: MemoryRelationshipInsert[]): Promise<MemoryRelationship[]> {
     if (!inputs.length) return [];
     const now = Date.now();
     const saved = inputs.map((input) => {
-      if (!input.fromId || !input.toId) {
-        throw new Error('Memory relationships require fromId and toId.');
-      }
+      requireScope(input.tenantId, input.containerTags);
       const from = this.memories.get(input.fromId);
       const to = this.memories.get(input.toId);
-      if (!from || !to || from.deletedAt || to.deletedAt || from.tenantId !== to.tenantId) throw new Error("MEMORY_RELATION_SCOPE_INVALID");
+      const inScope = (memory: Memory | undefined) => memory
+        && !memory.deletedAt
+        && memory.tenantId === input.tenantId
+        && input.containerTags.every(tag => memory.containerTags.includes(tag));
+      if (!inScope(from) || !inScope(to)) throw new Error("MEMORY_RELATION_SCOPE_INVALID");
       const relationship: MemoryRelationship = {
         id: input.id ?? `relationship-${now}-${++this.sequence}`,
         fromId: input.fromId,

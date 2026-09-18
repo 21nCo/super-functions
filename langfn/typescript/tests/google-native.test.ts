@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { LangFn } from "../src/client.js";
-import { TimeoutError } from "../src/core/errors.js";
+import { ProviderAuthError, TimeoutError } from "../src/core/errors.js";
 import { GoogleChatModel } from "../src/models/google.js";
 const reply = (parts: unknown[], extra = {}) => ({
   candidates: [{ content: { parts }, finishReason: "STOP" }],
@@ -229,5 +229,22 @@ describe("Google native tool protocol", () => {
     await expect(model.chat({
       messages: [{ role: "user", content: "slow" }],
     })).rejects.toBeInstanceOf(TimeoutError);
+  });
+
+  it("does not replace a classified HTTP error when cleanup crosses the timeout", async () => {
+    const body = new ReadableStream({
+      async cancel() {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    });
+    const model = new GoogleChatModel({
+      apiKey: "key",
+      timeout: 5,
+      fetchImpl: async () => new Response(body, { status: 401 })
+    });
+
+    await expect(model.chat({
+      messages: [{ role: "user", content: "hello" }]
+    })).rejects.toBeInstanceOf(ProviderAuthError);
   });
 });
