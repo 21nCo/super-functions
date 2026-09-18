@@ -437,13 +437,14 @@ export class McpFnClient {
       }
       this.targetCleanupPending = true;
       try { await this.drainCleanup(); }
-      catch {
-        await this.emit("transport-close", "failed", requestId, "MCPFN_CREDENTIAL_CLEANUP_FAILED");
+      catch (cleanupError) {
+        const phase = cleanupFailurePhase(cleanupError);
+        await this.emit(phase, "failed", requestId, "MCPFN_CREDENTIAL_CLEANUP_FAILED");
         this._state = "closing";
         throw new McpFnClientError(
           "MCPFN_OPERATION_FAILED",
           "Retry close after target cleanup failed",
-          { phase: "transport-close", retryable: true, cause: error },
+          { phase, retryable: true, cause: error },
         );
       }
       await this.emit("transport-connect", "failed", requestId, "MCPFN_TARGET_OPEN_FAILED", { attempt, message: errorMessage(error) });
@@ -642,10 +643,15 @@ export class McpFnClient {
       if (this.connectController === pendingController) this.connectController = undefined;
       try {
         await this.cleanupAttempt(true);
-      } catch {
+      } catch (error) {
         this._state = "closing";
-        await this.emit("transport-close", "failed", requestId);
-        throw new McpFnClientError("MCPFN_OPERATION_FAILED", "MCP target cleanup failed", { phase: "transport-close", retryable: true });
+        const phase = cleanupFailurePhase(error);
+        await this.emit(phase, "failed", requestId);
+        throw new McpFnClientError(
+          "MCPFN_OPERATION_FAILED",
+          "MCP target cleanup failed",
+          { phase, retryable: true, cause: error },
+        );
       }
       // Retain an observed continuation without leaving the aborted attempt as
       // the active connection. A custom target that ignores abort may settle
@@ -703,10 +709,10 @@ export class McpFnClient {
       // eventual owner registration will request another drain without awaiting open.
       if (this.pendingTargetOpens || this._protocol || this.handle) return;
       if (this.targetCleanupPending) await this.cleanupTarget();
-    }).catch(() => {
+    }).catch((error) => {
       this._state = "closing";
       this.cleanupFailure = new McpFnClientError("MCPFN_OPERATION_FAILED", "MCP target cleanup failed; retry close", {
-        phase: "transport-close", retryable: true,
+        phase: cleanupFailurePhase(error), retryable: true, cause: error,
       });
       throw this.cleanupFailure;
     }).finally(() => { this.cleanupDrain = undefined; });
@@ -727,8 +733,8 @@ export class McpFnClient {
     if (!handle) return;
     this.retainAttempt(undefined, handle);
     try { await this.drainCleanup(); }
-    catch {
-      await this.emit("transport-close", "failed", this.requestId(), "MCPFN_CREDENTIAL_CLEANUP_FAILED");
+    catch (error) {
+      await this.emit(cleanupFailurePhase(error), "failed", this.requestId(), "MCPFN_CREDENTIAL_CLEANUP_FAILED");
       if (strict) throw this.cleanupFailure;
     }
   }
@@ -1130,6 +1136,13 @@ export function createMcpFnClient(options: McpFnClientOptions): McpFnClient {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function cleanupFailurePhase(error: unknown): "token-revocation" | "transport-close" {
+  return error && typeof error === "object" &&
+      (error as { phase?: unknown }).phase === "token-revocation"
+    ? "token-revocation"
+    : "transport-close";
 }
 
 function errorCode(error: unknown): string | undefined {

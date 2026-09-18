@@ -670,10 +670,20 @@ it.each(["revoke", "dispose"])("retains suite ownership for a failed credential 
   (phase === "revoke" ? revoke : dispose).mockRejectedValueOnce(new Error("retry-owned-secret"));
   try {
     const error = await runMcpFnTargetSuite({ target: authenticatedHttpTarget(fixture.url, {
-      credential: { acquire: () => ({ headers: { authorization: "Bearer retry-owned-secret" } }), revoke, dispose },
+      credential: { acquire: () => ({ kind: "oauth", headers: { authorization: "Bearer retry-owned-secret" } }), revoke, dispose },
     }) }).catch(error => error);
     expect(error).toBeInstanceOf(McpFnTargetSuiteCleanupError);
     expect(JSON.stringify(error.report)).not.toContain("retry-owned-secret");
+    expect(error.report.failure).toMatchObject({
+      phase: phase === "revoke" ? "token-revocation" : "transport-close",
+      layer: phase === "revoke" ? "authorization-server" : "mcpfn-preflight",
+    });
+    expect(error.report.timeline).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        phase: phase === "revoke" ? "token-revocation" : "transport-close",
+        outcome: "failed",
+      }),
+    ]));
     await Promise.all([error.retryCleanup(), error.retryCleanup()]);
     expect(revoke).toHaveBeenCalledTimes(phase === "revoke" ? 2 : 1);
     expect(dispose).toHaveBeenCalledTimes(phase === "dispose" ? 2 : 1);
@@ -742,11 +752,18 @@ it("retains credentials until transport shutdown succeeds and serializes retries
   const target = authenticatedHttpTarget("http://127.0.0.1:1/mcp", {
     credential: { acquire: () => ({ headers: { authorization: `Bearer ${secret}` } }), revoke, dispose },
   });
-  const handle = await target.open({ requestId: "shutdown", diagnostic: async () => {} } as any);
+  const diagnostics: Array<{ phase: string; outcome: string }> = [];
+  const handle = await target.open({
+    requestId: "shutdown",
+    diagnostic: async event => { diagnostics.push(event); },
+  } as any);
   const close = vi.spyOn(handle.transport, "close")
     .mockImplementationOnce(async () => { order.push("transport-failed"); throw new Error("transient shutdown"); })
     .mockImplementation(async () => { order.push("transport-closed"); });
   await expect(handle.close!()).rejects.toThrow();
+  expect(diagnostics).toEqual([
+    expect.objectContaining({ phase: "transport-close", outcome: "failed" }),
+  ]);
   expect(revoke).not.toHaveBeenCalled();
   expect(dispose).not.toHaveBeenCalled();
   expect(target.redact!(secret)).not.toContain(secret);
@@ -764,13 +781,23 @@ it.each(["revoke", "dispose"])("retries only the credential stage after %s fails
   const dispose = vi.fn();
   (stage === "revoke" ? revoke : dispose).mockRejectedValueOnce(new Error("transient"));
   const fixture = await startAuthenticatedServer("lease");
+  const diagnostics: Array<{ phase: string; outcome: string }> = [];
   const target = authenticatedHttpTarget(fixture.url, {
-    credential: { acquire: () => ({ headers: { authorization: "Bearer lease" } }), revoke, dispose },
+    credential: { acquire: () => ({ kind: "oauth", headers: { authorization: "Bearer lease" } }), revoke, dispose },
   });
   try {
-    const handle = await target.open({ requestId: "shutdown", diagnostic: async () => {} } as any);
+    const handle = await target.open({
+      requestId: "shutdown",
+      diagnostic: async event => { diagnostics.push(event); },
+    } as any);
     const close = vi.spyOn(handle.transport, "close").mockResolvedValue(undefined);
     await expect(handle.close!()).rejects.toThrow();
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        phase: stage === "revoke" ? "token-revocation" : "transport-close",
+        outcome: "failed",
+      }),
+    ]);
     await Promise.all([handle.close!(), handle.close!()]);
     expect(close).toHaveBeenCalledOnce();
     expect(revoke).toHaveBeenCalledTimes(stage === "revoke" ? 2 : 1);

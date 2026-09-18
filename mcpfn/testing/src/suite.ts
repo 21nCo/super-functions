@@ -157,8 +157,9 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
             timelineRedactionFailed = true;
             droppedTimelineEvents += 1;
           }
-          if (event.phase === "transport-close" && event.outcome === "failed") {
-            cleanupFailure = normalizeMcpFnReportFailure({
+          if (["token-revocation", "transport-close"].includes(event.phase) &&
+              event.outcome === "failed") {
+            cleanupFailure ??= normalizeMcpFnReportFailure({
               name: "CleanupError", message: "Target cleanup failed",
               code: event.code, phase: event.phase,
             });
@@ -272,7 +273,19 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
       } else if (owner) {
         retainedCleanup = () => owner.close();
       }
-      cleanupFailure = normalizeMcpFnReportFailure({ name: "CleanupError", message: "Target cleanup failed", code: "MCPFN_TARGET_CLEANUP_FAILED", phase: "transport-close" });
+      const terminalCleanupError = error instanceof McpFnTestClientCleanupError && error.cause !== undefined
+        ? error.cause
+        : error;
+      const terminalCleanupPhase = terminalCleanupError && typeof terminalCleanupError === "object" &&
+          (terminalCleanupError as { phase?: unknown }).phase === "token-revocation"
+        ? "token-revocation"
+        : "transport-close";
+      cleanupFailure = normalizeMcpFnReportFailure({
+        name: "CleanupError",
+        message: "Target cleanup failed",
+        code: "MCPFN_TARGET_CLEANUP_FAILED",
+        phase: terminalCleanupPhase,
+      });
       if (!failure) failure = cleanupFailure;
     }
     const diagnosticRedactionOmissions = client?.session

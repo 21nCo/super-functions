@@ -1,4 +1,5 @@
 import {
+  McpFnClientError,
   customTarget,
   streamableHttpTarget,
   type McpFnStreamableHttpTargetOptions,
@@ -385,8 +386,12 @@ export async function acquireRemoteCredential(
             await provider.dispose?.(acquired, cleanupContext);
             disposed = true;
           }
-        } catch {
-          throw new Error("Target credential cleanup failed");
+        } catch (error) {
+          throw new McpFnClientError(
+            "MCPFN_OPERATION_FAILED",
+            "Target credential cleanup failed",
+            { phase: cleanupPhase, retryable: true, cause: error },
+          );
         }
       })().catch(error => { releasePromise = undefined; throw error; });
       return releasePromise;
@@ -490,8 +495,9 @@ export function authenticatedHttpTarget(
             await release();
           }).catch(async (error) => {
             closePromise = undefined;
+            const phase = transportClosed ? lease.cleanupPhase() : "transport-close";
             await targetContext.diagnostic({
-              phase: "transport-close", outcome: "failed", code: "MCPFN_CREDENTIAL_CLEANUP_FAILED",
+              phase, outcome: "failed", code: "MCPFN_CREDENTIAL_CLEANUP_FAILED",
               requestId: targetContext.requestId, at: new Date().toISOString(),
               target: { kind: "authenticated-streamable-http", url: descriptorUrl.toString() },
               details: { message: "Target credential cleanup failed" },
