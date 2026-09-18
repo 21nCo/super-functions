@@ -26,12 +26,11 @@ assert.equal(typeof emitEvent, "function");
 await emitEvent.call(client, "notification", { secret: "must-not-survive" });
 
 const timeline = inspector.timeline();
-assert.equal(Reflect.get(inspector, "droppedEvents"), 1);
-assert.equal(timeline.length, 1);
-assert.deepEqual(timeline[0]?.event.payload, {
-  omitted: true,
-  reason: "diagnostic-redaction-failed",
+assert.deepEqual(client.getRedactionOmissionCounts(), {
+  clientEvents: 1,
+  diagnostics: 0,
 });
+assert.equal(timeline.length, 0);
 assert.doesNotMatch(JSON.stringify(timeline), /must-not-survive/);
 
 await inspector.close();

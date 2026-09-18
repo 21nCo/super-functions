@@ -502,8 +502,11 @@ export async function runScenarios(
   const maxObservedEvents = options.maxObservedEvents ?? 500;
   let droppedObservedEvents = 0;
   let redactionOmittedObservedEvents = 0;
+  let observedRedactionOmissionEvents = 0;
   let attributedDroppedObservedEvents = 0;
   let attributedRedactionOmittedObservedEvents = 0;
+  const initialClientEventRedactionOmissions = client.session
+    .getRedactionOmissionCounts().clientEvents;
   const pushResult = (result: McpFnScenarioResult): void => {
     const newlyDropped = droppedObservedEvents - attributedDroppedObservedEvents;
     const newlyRedactionOmitted = redactionOmittedObservedEvents -
@@ -525,6 +528,7 @@ export async function runScenarios(
   };
   const unsubscribe = client.session.onEvent((event) => {
     if (client.session.isRedactionOmission(event)) {
+      observedRedactionOmissionEvents += 1;
       droppedObservedEvents += 1;
       redactionOmittedObservedEvents += 1;
       return;
@@ -615,6 +619,13 @@ export async function runScenarios(
       }
     }
   } finally {
+    const unobservedRedactionOmissions = Math.max(
+      0,
+      client.session.getRedactionOmissionCounts().clientEvents -
+        initialClientEventRedactionOmissions - observedRedactionOmissionEvents,
+    );
+    droppedObservedEvents += unobservedRedactionOmissions;
+    redactionOmittedObservedEvents += unobservedRedactionOmissions;
     const unattributed = droppedObservedEvents - attributedDroppedObservedEvents;
     const lastResult = results.at(-1);
     if (lastResult && unattributed > 0) {

@@ -10,6 +10,7 @@ import {
 
 import {
   McpFnTestClient,
+  McpFnTestClientCleanupError,
   MCPFN_HOST_PROFILES,
   assertManifestContract,
   buildOfficialConformanceArgs,
@@ -24,6 +25,36 @@ import {
 } from "../src/index.js";
 
 describe("McpFn testing", () => {
+  it("retains post-connect cleanup ownership until a later close succeeds", async () => {
+    const server = createMcpFnServer({
+      info: { name: "post-connect-cleanup-owner", version: "1.0.0" },
+      registry: new McpFnRegistry(),
+    });
+    const client = await McpFnTestClient.connect(server);
+    const cleanupFailure = new Error("temporary close failure");
+    const closeSession = client.session.close.bind(client.session);
+    let attempts = 0;
+    const close = vi.spyOn(client.session, "close").mockImplementation(async () => {
+      attempts += 1;
+      if (attempts < 3) throw cleanupFailure;
+      await closeSession();
+    });
+    try {
+      const owner = await client.close().then(
+        () => { throw new Error("Expected cleanup failure"); },
+        error => error as McpFnTestClientCleanupError,
+      );
+      expect(owner).toBeInstanceOf(McpFnTestClientCleanupError);
+      expect(owner.cause).toBe(cleanupFailure);
+      await expect(owner.retryCleanup()).rejects.toBe(owner);
+      await expect(owner.retryCleanup()).resolves.toBeUndefined();
+      expect(attempts).toBe(3);
+    } finally {
+      close.mockRestore();
+      await closeSession().catch(() => undefined);
+    }
+  });
+
   it("counts redaction-fallback client events as omitted evidence", async () => {
     const client = McpFnTestClient.createTarget(customTarget({
       kind: "custom",
@@ -67,6 +98,39 @@ describe("McpFn testing", () => {
       droppedObservedEvents: 1,
       redactionOmittedObservedEvents: 1,
       incompleteReason: "Observed client events were omitted because credential redaction failed",
+    });
+  });
+
+  it("counts client events omitted without a schema-safe fallback", async () => {
+    const client = McpFnTestClient.createTarget(customTarget({
+      kind: "custom",
+      open: async () => { throw new Error("unused"); },
+      redact: <T>(): T => { throw new Error("all event structure is unsafe"); },
+    }));
+    const emitEvent = (client.session as unknown as {
+      emitEvent(kind: "logging.message", payload: unknown): Promise<void>;
+    }).emitEvent.bind(client.session);
+    const results = await runScenarios(client, [{
+      name: "drop unsafe event",
+      kind: "auth.assert",
+      phase: "emit-event",
+      expect: { outcome: "allowed" },
+    }], {
+      auth: async () => {
+        await emitEvent("logging.message", { secret: true });
+        return { outcome: "allowed" };
+      },
+    });
+
+    expect(results[0]).toMatchObject({
+      status: "passed",
+      droppedObservedEvents: 1,
+      redactionOmittedObservedEvents: 1,
+    });
+    expect(createMcpFnScenarioReport(results)).toMatchObject({
+      status: "incomplete",
+      droppedObservedEvents: 1,
+      redactionOmittedObservedEvents: 1,
     });
   });
 

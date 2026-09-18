@@ -6,6 +6,50 @@ import { createMcpFnClient, customTarget } from "../src/index.js";
 import type { McpFnTransportHandle } from "../src/index.js";
 
 describe("McpFn production client", () => {
+  it("emits marked safe omissions when credentials collide with envelope discriminators", async () => {
+    const events: any[] = [];
+    const diagnostics: any[] = [];
+    const client = createMcpFnClient({
+      target: customTarget({
+        kind: "custom",
+        open: async () => { throw new Error("unused"); },
+        redact: <T>(value: T): T => JSON.parse(JSON.stringify(value)
+          .replaceAll("logging.message", "")
+          .replaceAll("failed", "")) as T,
+      }),
+      events: event => { events.push(event); },
+      diagnostics: event => { diagnostics.push(event); },
+    });
+    const emitEvent = (client as unknown as {
+      emitEvent(kind: "logging.message", payload: unknown): Promise<void>;
+    }).emitEvent.bind(client);
+    const dispatch = (client as unknown as {
+      dispatch(event: {
+        phase: "capability-operation";
+        outcome: "failed";
+        requestId: string;
+        at: string;
+        target: { kind: string };
+      }): Promise<void>;
+    }).dispatch.bind(client);
+
+    await emitEvent("logging.message", { message: "safe" });
+    await dispatch({
+      phase: "capability-operation",
+      outcome: "failed",
+      requestId: "request",
+      at: new Date().toISOString(),
+      target: { kind: "custom" },
+    });
+
+    expect(events).toHaveLength(1);
+    expect(diagnostics).toHaveLength(1);
+    expect(client.isRedactionOmission(events[0])).toBe(true);
+    expect(client.isRedactionOmission(diagnostics[0])).toBe(true);
+    expect(JSON.stringify({ events, diagnostics })).not.toContain("logging.message");
+    expect(JSON.stringify({ events, diagnostics })).not.toContain("failed");
+  });
+
   it("shares the official session engine and paginates complete inventories", async () => {
     const registry = new McpFnRegistry()
       .register({

@@ -110,6 +110,8 @@ export class McpFnInspector {
   private readonly maxEvents: number;
   private readonly maxTimelineBytes: number;
   private readonly maxInventoryEntries: number;
+  private readonly initialRedactionOmissions: number;
+  private observedRedactionOmissions = 0;
   private timelineBytes = 0;
   private droppedEvents = 0;
 
@@ -123,6 +125,8 @@ export class McpFnInspector {
       limits.maxInventoryEntries ?? 500,
       "maxInventoryEntries",
     );
+    const omissions = client.getRedactionOmissionCounts();
+    this.initialRedactionOmissions = omissions.clientEvents + omissions.diagnostics;
     this.unsubscribes = [
       client.onDiagnostic((event) => this.record("diagnostic", event.phase, event.at, event)),
       client.onEvent((event) => this.record("client", event.kind, event.at, event)),
@@ -166,18 +170,28 @@ export class McpFnInspector {
     };
     const inventoryComplete = Object.values(droppedInventoryEntries)
       .every((count) => count === 0);
+    const omissions = this.client.getRedactionOmissionCounts();
+    const unobservedRedactionOmissions = Math.max(
+      0,
+      omissions.clientEvents + omissions.diagnostics -
+        this.initialRedactionOmissions - this.observedRedactionOmissions,
+    );
+    const droppedEvents = this.droppedEvents + unobservedRedactionOmissions;
     const redaction = {
       maxArrayEntries: Math.max(this.maxEvents, this.maxInventoryEntries, 1),
       preserveKeys: false,
     } as const;
     const { kind, ...descriptor } = this.client.getTargetDescriptor();
     const server = this.client.getServerVersion();
+    const snapshotKind = this.client.preserveArtifactStructure("mcpfn.inspector-snapshot");
+    const targetKind = this.client.preserveArtifactStructure(kind);
+    const clientState = this.client.preserveArtifactStructure(this.client.state);
     // Custom hooks receive payloads only; reconstruct authored discriminators.
     return {
       formatVersion: 2,
-      kind: "mcpfn.inspector-snapshot",
-      target: { ...this.client.redact(descriptor, redaction), kind },
-      clientState: this.client.state,
+      kind: snapshotKind,
+      target: { ...this.client.redact(descriptor, redaction), kind: targetKind },
+      clientState,
       server: server === undefined ? undefined : this.client.redact(server, redaction),
       capabilities: capabilities === undefined ? undefined : this.client.redact(capabilities, redaction),
       tools: this.client.redact(tools.items, redaction),
@@ -186,8 +200,8 @@ export class McpFnInspector {
       prompts: this.client.redact(prompts.items, redaction),
       // Stored events already passed through the client hook; never reapply it.
       timeline: structuredClone(this.events),
-      droppedEvents: this.droppedEvents,
-      timelineComplete: this.droppedEvents === 0,
+      droppedEvents,
+      timelineComplete: droppedEvents === 0,
       droppedInventoryEntries,
       inventoryComplete,
     };
@@ -225,6 +239,11 @@ export class McpFnInspector {
   ): McpFnExportedScenario {
     const scenario = createMcpFnScenario(name, operation, result);
     const { formatVersion, kind, sideEffect, ...payload } = scenario;
+    if (kind === undefined || sideEffect === undefined) {
+      throw new Error("Inspector scenario export requires normalized structure");
+    }
+    const safeKind = this.client.preserveArtifactStructure(kind);
+    const safeSideEffect = this.client.preserveArtifactStructure(sideEffect);
     const secretMarker = selectScenarioSecretMarker(this.client);
     let redacted: Record<string, unknown>;
     try {
@@ -235,16 +254,19 @@ export class McpFnInspector {
           preserveKeys: false,
           redactionMarker: secretMarker ?? "",
         })])),
-        formatVersion, kind, sideEffect,
+        formatVersion, kind: safeKind, sideEffect: safeSideEffect,
       };
     } catch {
       return {
         formatVersion,
-        kind,
-        sideEffect,
+        kind: safeKind,
+        sideEffect: safeSideEffect,
         name: "",
-        status: "incomplete",
-        incompleteReason: "Inspector export omitted payload because credential redaction failed",
+        status: this.client.preserveArtifactStructure("incomplete"),
+        incompleteReason: this.client.redact(
+          "Inspector export omitted payload because credential redaction failed",
+          { preserveKeys: false, redactionMarker: "" },
+        ),
       } as McpFnExportedScenario;
     }
     const replaced = redacted as unknown as McpFnExportedScenario;
@@ -256,8 +278,11 @@ export class McpFnInspector {
     const exported = incompleteReason
       ? {
         ...replaced,
-        status: "incomplete" as const,
-        incompleteReason,
+        status: this.client.preserveArtifactStructure("incomplete"),
+        incompleteReason: this.client.redact(incompleteReason, {
+          preserveKeys: false,
+          redactionMarker: "",
+        }),
       }
       : replaced;
     const variables = collectVariables(exported);
@@ -275,13 +300,22 @@ export class McpFnInspector {
     raw: McpFnDiagnosticEvent | McpFnClientEvent,
   ): void {
     if (this.client.isRedactionOmission(raw)) {
-      // The fallback is useful evidence, but the original event is missing.
+      this.observedRedactionOmissions += 1;
       this.droppedEvents += 1;
+    }
+    let safeSource: McpFnInspectorTimelineEvent["source"];
+    let safeKind: string;
+    try {
+      safeSource = this.client.preserveArtifactStructure(source);
+      safeKind = this.client.preserveArtifactStructure(kind);
+    } catch {
+      this.droppedEvents += 1;
+      return;
     }
     let event: McpFnInspectorTimelineEvent = {
       formatVersion: 1,
-      source,
-      kind,
+      source: safeSource,
+      kind: safeKind,
       at,
       event: raw,
     };
@@ -291,8 +325,8 @@ export class McpFnInspector {
     if (bytes > this.maxTimelineBytes) {
       event = {
         formatVersion: 1,
-        source,
-        kind,
+        source: safeSource,
+        kind: safeKind,
         at,
         event: { truncated: true },
       };

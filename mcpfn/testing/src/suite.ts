@@ -8,7 +8,11 @@ import type {
 import type { McpFnManifest } from "@mcpfn/core";
 
 import { assertManifestContract, McpFnAssertionError, stableJson } from "./assertions.js";
-import { McpFnTestClient, type McpFnTestClientOptions } from "./client.js";
+import {
+  McpFnTestClient,
+  McpFnTestClientCleanupError,
+  type McpFnTestClientOptions,
+} from "./client.js";
 import {
   MCPFN_REPORT_SCHEMA_VERSION,
   MCPFN_TESTING_VERSION,
@@ -111,6 +115,8 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   let timelineBytesExceeded = false;
   let timelineSerializationFailed = false;
   let timelineRedactionFailed = false;
+  let observedDiagnosticRedactionOmissions = 0;
+  let initialDiagnosticRedactionOmissions = 0;
   const timelineSizes: number[] = [];
   const maxTimelineEvents = options.maxTimelineEvents ?? 500;
   if (!Number.isInteger(maxTimelineEvents) || maxTimelineEvents < 1) {
@@ -147,6 +153,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
         diagnostics: async (event) => {
           if (client?.session.isRedactionOmission(event)) {
             // Retain the safe fallback as evidence, but count the original omission.
+            observedDiagnosticRedactionOmissions += 1;
             timelineRedactionFailed = true;
             droppedTimelineEvents += 1;
           }
@@ -194,6 +201,8 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
         },
       },
     );
+    initialDiagnosticRedactionOmissions = client.session
+      .getRedactionOmissionCounts().diagnostics;
     await client.session.connect();
     if (options.manifest) {
       manifestChecked = true;
@@ -258,9 +267,24 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
       await client?.close();
     } catch (error) {
       const owner = client;
-      if (owner) retainedCleanup = () => owner.close();
+      if (error instanceof McpFnTestClientCleanupError) {
+        retainedCleanup = () => error.retryCleanup();
+      } else if (owner) {
+        retainedCleanup = () => owner.close();
+      }
       cleanupFailure = normalizeMcpFnReportFailure({ name: "CleanupError", message: "Target cleanup failed", code: "MCPFN_TARGET_CLEANUP_FAILED", phase: "transport-close" });
       if (!failure) failure = cleanupFailure;
+    }
+    const diagnosticRedactionOmissions = client?.session
+      .getRedactionOmissionCounts().diagnostics ?? initialDiagnosticRedactionOmissions;
+    const unobservedDiagnosticOmissions = Math.max(
+      0,
+      diagnosticRedactionOmissions - initialDiagnosticRedactionOmissions -
+        observedDiagnosticRedactionOmissions,
+    );
+    if (unobservedDiagnosticOmissions > 0) {
+      timelineRedactionFailed = true;
+      droppedTimelineEvents += unobservedDiagnosticOmissions;
     }
   }
   failure ??= cleanupFailure;

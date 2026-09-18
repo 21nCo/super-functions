@@ -47,6 +47,35 @@ import type {
 import { McpFnClientError } from "./types.js";
 
 const DEFAULT_MAX_INVENTORY_PAGES = 1_000;
+const CLIENT_EVENT_KINDS: readonly McpFnClientEventKind[] = [
+  "logging.message",
+  "progress",
+  "tasks.status",
+  "resources.updated",
+  "tools.list_changed",
+  "resources.list_changed",
+  "prompts.list_changed",
+  "resources.subscribed",
+  "resources.unsubscribed",
+  "client.roots",
+  "client.sampling",
+  "client.elicitation",
+];
+const DIAGNOSTIC_PHASES: readonly McpFnDiagnosticPhase[] = [
+  "resource-discovery",
+  "authorization-server-discovery",
+  "client-registration",
+  "authorization-request",
+  "authorization-callback",
+  "token-exchange",
+  "token-refresh",
+  "token-revocation",
+  "transport-connect",
+  "mcp-initialize",
+  "capability-operation",
+  "transport-close",
+];
+const DIAGNOSTIC_OUTCOMES = ["started", "succeeded", "failed"] as const;
 
 export interface McpFnClientOptions {
   target: McpFnTarget;
@@ -91,6 +120,8 @@ export class McpFnClient {
   private permanentCloseRequested = false;
   private pendingTargetOpens = 0;
   private connectController?: AbortController;
+  private clientEventRedactionOmissions = 0;
+  private diagnosticRedactionOmissions = 0;
 
   readonly tools = {
     listAll: (options?: RequestOptions) => this.listTools(options),
@@ -241,6 +272,23 @@ export class McpFnClient {
     return redactOAuthValue(scrubbed, options) as T;
   }
 
+  /** Preserve a schema discriminator only when the active credential redactor proves it safe. */
+  preserveArtifactStructure<T extends string>(value: T): T {
+    try {
+      if (this.redact(value, {
+        preserveKeys: false,
+        redactionMarker: "",
+      }) !== value) throw new Error("unsafe structural value");
+      return value;
+    } catch {
+      throw new McpFnClientError(
+        "MCPFN_OPERATION_FAILED",
+        "MCP artifact structure conflicts with credential redaction",
+        { phase: "capability-operation" },
+      );
+    }
+  }
+
   getTargetDescriptor() {
     return this.options.target.describe();
   }
@@ -248,6 +296,13 @@ export class McpFnClient {
   /** Identify omissions produced by this client instance, across ESM/CJS consumers. */
   isRedactionOmission(event: McpFnDiagnosticEvent | McpFnClientEvent): boolean {
     return redactionOmissions.has(event);
+  }
+
+  getRedactionOmissionCounts(): { clientEvents: number; diagnostics: number } {
+    return {
+      clientEvents: this.clientEventRedactionOmissions,
+      diagnostics: this.diagnosticRedactionOmissions,
+    };
   }
 
   onDiagnostic(listener: McpFnDiagnosticSink): () => void {
@@ -899,13 +954,13 @@ export class McpFnClient {
   }
 
   private async emitEvent(kind: McpFnClientEventKind, payload?: unknown): Promise<void> {
-    let event: McpFnClientEvent;
+    let event: McpFnClientEvent | undefined;
     try {
       const { kind: targetKind, ...descriptor } = this.options.target.describe();
       event = {
         formatVersion: 1,
-        kind,
-        at: (this.options.clock?.() ?? new Date()).toISOString(),
+        kind: this.preserveArtifactStructure(kind),
+        at: this.redact((this.options.clock?.() ?? new Date()).toISOString(), { preserveKeys: false }),
         requestId: this.redact(this.requestId(), { preserveKeys: false }),
         target: this.redact({ ...descriptor, kind: targetKind }, { preserveKeys: false }) as McpFnClientEvent["target"],
         ...(payload !== undefined
@@ -914,10 +969,9 @@ export class McpFnClient {
       };
     }
     catch {
-      event = { formatVersion: 1, kind, at: new Date().toISOString(), requestId: "redacted",
-        target: { kind: "custom" }, payload: { omitted: true, reason: "diagnostic-redaction-failed" } };
-      redactionOmissions.add(event);
+      event = this.clientEventRedactionFailure();
     }
+    if (!event) return;
     await Promise.allSettled(
       [...this.eventListeners].map(async (listener) => listener(event)),
     );
@@ -934,7 +988,7 @@ export class McpFnClient {
     code?: string,
     details?: Record<string, unknown>,
   ): Promise<void> {
-    let event: McpFnDiagnosticEvent;
+    let event: McpFnDiagnosticEvent | undefined;
     try {
       event = {
         phase,
@@ -949,13 +1003,14 @@ export class McpFnClient {
     } catch {
       // Diagnostic construction can fail before dispatch redacts the value.
       // Never reject a background protocol callback with an arbitrary error.
-      event = diagnosticRedactionFailure();
+      event = this.diagnosticRedactionFailure();
     }
+    if (!event) return;
     await this.dispatch(event);
   }
 
   private async dispatch(event: McpFnDiagnosticEvent): Promise<void> {
-    let redacted: McpFnDiagnosticEvent;
+    let redacted: McpFnDiagnosticEvent | undefined;
     try {
       if (this.isRedactionOmission(event)) {
         redacted = event;
@@ -963,13 +1018,13 @@ export class McpFnClient {
         const { phase, outcome, code, requestId, at, target, details } = event;
         const { kind, ...descriptor } = target;
         redacted = {
-          phase,
-          outcome,
+          phase: this.preserveArtifactStructure(phase),
+          outcome: this.preserveArtifactStructure(outcome),
           ...(code === undefined
             ? {}
             : { code: this.redact(code, { preserveKeys: false }) }),
           requestId: this.redact(requestId, { preserveKeys: false }),
-          at,
+          at: this.redact(at, { preserveKeys: false }),
           target: this.redact({ ...descriptor, kind }, { preserveKeys: false }) as McpFnDiagnosticEvent["target"],
           ...(details === undefined
             ? {}
@@ -978,21 +1033,66 @@ export class McpFnClient {
       }
     }
     catch {
-      redacted = diagnosticRedactionFailure();
+      redacted = this.diagnosticRedactionFailure();
     }
+    if (!redacted) return;
     await Promise.allSettled(
       [...this.listeners].map(async (listener) => listener(redacted)),
     );
   }
-}
 
-function diagnosticRedactionFailure(): McpFnDiagnosticEvent {
-  const event: McpFnDiagnosticEvent = {
-    phase: "capability-operation", outcome: "failed", code: "MCPFN_DIAGNOSTIC_REDACTION_FAILED",
-    at: new Date().toISOString(), requestId: "redacted", target: { kind: "custom" }, details: { omitted: true },
-  };
-  redactionOmissions.add(event);
-  return event;
+  private safeArtifactStructure<T extends string>(values: readonly T[]): T | undefined {
+    for (const value of values) {
+      try { return this.preserveArtifactStructure(value); }
+      catch {}
+    }
+    return undefined;
+  }
+
+  private clientEventRedactionFailure(): McpFnClientEvent | undefined {
+    this.clientEventRedactionOmissions += 1;
+    const kind = this.safeArtifactStructure(CLIENT_EVENT_KINDS);
+    if (!kind) return undefined;
+    try {
+      const event: McpFnClientEvent = {
+        formatVersion: 1,
+        kind,
+        at: this.redact(new Date().toISOString(), { preserveKeys: false }),
+        requestId: this.redact("redacted", { preserveKeys: false }),
+        target: this.redact({ kind: "custom" }, { preserveKeys: false }),
+        payload: this.redact({
+          omitted: true,
+          reason: "diagnostic-redaction-failed",
+        }, { preserveKeys: false }),
+      };
+      redactionOmissions.add(event);
+      return event;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private diagnosticRedactionFailure(): McpFnDiagnosticEvent | undefined {
+    this.diagnosticRedactionOmissions += 1;
+    const phase = this.safeArtifactStructure(DIAGNOSTIC_PHASES);
+    const outcome = this.safeArtifactStructure(DIAGNOSTIC_OUTCOMES);
+    if (!phase || !outcome) return undefined;
+    try {
+      const event: McpFnDiagnosticEvent = {
+        phase,
+        outcome,
+        code: this.redact("MCPFN_DIAGNOSTIC_REDACTION_FAILED", { preserveKeys: false }),
+        at: this.redact(new Date().toISOString(), { preserveKeys: false }),
+        requestId: this.redact("redacted", { preserveKeys: false }),
+        target: this.redact({ kind: "custom" }, { preserveKeys: false }),
+        details: this.redact({ omitted: true }, { preserveKeys: false }),
+      };
+      redactionOmissions.add(event);
+      return event;
+    } catch {
+      return undefined;
+    }
+  }
 }
 
 export function createMcpFnClient(options: McpFnClientOptions): McpFnClient {

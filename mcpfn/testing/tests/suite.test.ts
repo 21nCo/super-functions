@@ -510,7 +510,7 @@ it("marks reports incomplete when post-close credential redaction is unavailable
   expect(report.failure).toBeUndefined();
   expect(report.droppedTimelineEvents).toBeGreaterThan(0);
   expect(report.incompleteReason).toContain("redaction failed");
-  expect(report.timeline.some(event => event.code === "MCPFN_DIAGNOSTIC_REDACTION_FAILED")).toBe(true);
+  expect(report.timeline.some(event => event.code === "MCPFN_DIAGNOSTIC_REDACTION_FAILED")).toBe(false);
   expect(JSON.stringify(report)).not.toContain("private-redaction-state");
 });
 

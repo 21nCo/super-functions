@@ -32,7 +32,8 @@ describe("authenticated programmatic artifacts", () => {
     expect(JSON.stringify(inspector.timeline())).not.toContain(secret);
   });
 
-  it.each(["logging.message", "connected", "MCPFN"])("preserves typed envelopes when a credential is %s", async (secret) => {
+  it("marks an event omission when its discriminator matches a credential", async () => {
+    const secret = "logging.message";
     const fixture = await startAuthenticatedServer(secret, true);
     closeCallbacks.push(fixture.close);
     const events: any[] = [];
@@ -47,13 +48,32 @@ describe("authenticated programmatic artifacts", () => {
     const result = await inspector.run(operation);
     const snapshot = await inspector.snapshot();
     expect(snapshot.clientState).toBe("connected");
-    const event = events.find(event => event.kind === "logging.message");
-    expect(event).toBeDefined();
-    expect(event.payload.data.echo).not.toBe(secret);
-    expect(snapshot.timeline.some(entry => entry.kind === "logging.message")).toBe(true);
+    expect(events.some(event => event.kind === "logging.message")).toBe(false);
+    expect(events.some(event => client.isRedactionOmission(event))).toBe(true);
+    expect(snapshot.timelineComplete).toBe(false);
+    expect(JSON.stringify(snapshot)).not.toContain(secret);
     const exported = inspector.exportScenario("reflection", operation, result);
-    if (secret === "MCPFN") expect(JSON.stringify(exported)).not.toContain("MCPFN_SECRET");
-    else expect(JSON.stringify(exported)).toContain("${MCPFN_SECRET}");
+    expect(JSON.stringify(exported)).toContain("${MCPFN_SECRET}");
+  });
+
+  it("fails closed when an authenticated credential matches clientState", async () => {
+    const secret = "connected";
+    const fixture = await startAuthenticatedServer(secret, true);
+    closeCallbacks.push(fixture.close);
+    const client = new McpFnClient({
+      target: authenticatedHttpTarget(fixture.url, {
+        credential: { headers: { authorization: `Bearer ${secret}` } },
+      }),
+    });
+    const inspector = new McpFnInspector(client);
+    closeCallbacks.push(() => client.close());
+    await inspector.connect();
+    const error = await inspector.snapshot().then(
+      () => { throw new Error("Expected structural collision"); },
+      failure => failure as Error,
+    );
+    expect(error.message).toBe("MCP artifact structure conflicts with credential redaction");
+    expect(error.message).not.toContain(secret);
   });
 
   it("keeps oversized diagnostic payloads from breaking a tool operation", async () => {
@@ -130,10 +150,11 @@ it("reconstructs diagnostic discriminators around payload redaction", async () =
     details: { phase: "transport-close", outcome: "failed" },
   });
   expect(observed[0]).toMatchObject({
-    phase: "transport-close",
-    outcome: "failed",
-    details: { phase: "[REDACTED]", outcome: "[REDACTED]" },
+    details: { omitted: true },
   });
+  expect(client.isRedactionOmission(observed[0])).toBe(true);
+  expect(JSON.stringify(observed[0])).not.toContain("transport-close");
+  expect(JSON.stringify(observed[0])).not.toContain("failed");
 });
 
 it("redacts failed-open diagnostics after releasing malformed credentials", async () => {
@@ -154,7 +175,7 @@ it("redacts failed-open diagnostics after releasing malformed credentials", asyn
   await client.close();
 });
 
-it.each(["custom", "connected", "mcpfn.inspector-snapshot"])("preserves snapshot structure around custom credential %s", async secret => {
+it.each(["custom", "connected", "mcpfn.inspector-snapshot"])("fails closed when snapshot structure matches custom credential %s", async secret => {
   const fixture = await startAuthenticatedServer("server-key", true);
   const target = authenticatedHttpTarget(fixture.url, { credential: { headers: { authorization: "Bearer server-key" } } });
   const original = target.redact!.bind(target);
@@ -167,18 +188,19 @@ it.each(["custom", "connected", "mcpfn.inspector-snapshot"])("preserves snapshot
   const inspector = new McpFnInspector(new McpFnClient({ target }));
   try {
     await inspector.connect();
-    const report = await inspector.snapshot();
-    expect(report.kind).toBe("mcpfn.inspector-snapshot");
-    expect(report.target.kind).toBe("custom");
-    expect(report.clientState).toBe("connected");
-    expect(report.target.label).toBe("[REDACTED]");
+    const error = await inspector.snapshot().then(
+      () => { throw new Error("Expected structural collision"); },
+      failure => failure as Error,
+    );
+    expect(error.message).toBe("MCP artifact structure conflicts with credential redaction");
+    expect(error.message).not.toContain(secret);
   } finally {
     try { await inspector.close(); } finally { await fixture.close(); }
   }
 });
 
 
-it("preserves live event kinds under custom exact-value redaction", async () => {
+it("replaces unsafe live event kinds with marked omissions", async () => {
   const fixture = await startAuthenticatedServer("server-key", true);
   const target = authenticatedHttpTarget(fixture.url, { credential: { headers: { authorization: "Bearer server-key" } } });
   const original = target.redact!.bind(target);
@@ -188,21 +210,21 @@ it("preserves live event kinds under custom exact-value redaction", async () => 
   try {
     await client.connect();
     await client.tools.call("identity", {});
-    expect(events.some(event => event.kind === "logging.message")).toBe(true);
+    expect(events.some(event => event.kind === "logging.message")).toBe(false);
+    expect(events.some(event => client.isRedactionOmission(event))).toBe(true);
+    expect(JSON.stringify(events)).not.toContain("logging.message");
   } finally { try { await client.close(); } finally { await fixture.close(); } }
 });
 
-it.each(["tools.call", "non-idempotent", "none"])("preserves exported scenario discriminators matching %s", secret => {
+it.each(["tools.call", "non-idempotent", "none"])("fails closed when an exported scenario discriminator matches %s", secret => {
   const client = new McpFnClient({ target: customTarget({ kind: "custom", open: async () => { throw new Error("unused"); },
     redact: <T>(value: T): T => JSON.parse(JSON.stringify(value).replaceAll(secret, "[REDACTED]")),
   }) });
   const inspector = new McpFnInspector(client);
-  const scenario = secret === "none"
+  expect(() => secret === "none"
     ? inspector.exportScenario(secret, { kind: "resources.read", uri: "test://resource" }, { contents: [] })
-    : inspector.exportScenario(secret, { kind: "tools.call", name: "echo" }, { content: [] });
-  expect(scenario.kind).toBe(secret === "none" ? "resources.read" : "tools.call");
-  expect(scenario.sideEffect).toBe(secret === "none" ? "none" : "non-idempotent");
-  expect(scenario.name).toBe("[REDACTED]");
+    : inspector.exportScenario(secret, { kind: "tools.call", name: "echo" }, { content: [] }))
+    .toThrow("MCP artifact structure conflicts with credential redaction");
 });
 
 it("declares placeholders introduced in redacted property keys", () => {
@@ -277,21 +299,18 @@ it("marks an export incomplete when credential redaction collapses payload keys"
   }
 });
 
-it("marks an export incomplete when no replayable placeholder is safe", () => {
+it("rejects an export when no structural value is safe", () => {
   const target = customTarget({
     kind: "custom",
     open: async () => { throw new Error("unused"); },
     redact: <T>(): T => "" as T,
   });
   const inspector = new McpFnInspector(new McpFnClient({ target }));
-  expect(inspector.exportScenario(
+  expect(() => inspector.exportScenario(
     "redacted key",
     { kind: "tools.call", name: "echo", arguments: { secret: "value" } },
     { content: [] },
-  )).toMatchObject({
-    status: "incomplete",
-    incompleteReason: "Inspector export could not select a replayable redaction placeholder",
-  });
+  )).toThrow("MCP artifact structure conflicts with credential redaction");
 });
 
 
