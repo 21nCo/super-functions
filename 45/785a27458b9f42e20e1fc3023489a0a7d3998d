@@ -1,0 +1,44 @@
+mcpfn/cli/src/index.ts
+  s_77d7bb3189c71a::t_9b91bb887c64e5 211,219-222,239,314,324,326-328,346,378-381,388-390
+mcpfn/client/tests/client.test.ts
+  s_77d7bb3189c71a::t_9b91bb887c64e5 753
+mcpfn/cli/tests/target-suite-cleanup.test.ts
+  s_77d7bb3189c71a::t_dc11d632a557d5 55,57-61
+  s_77d7bb3189c71a::t_0666c5ef14f13b 1-54,56,62-72
+mcpfn/cli/src/bin.ts
+  s_77d7bb3189c71a::t_9b91bb887c64e5 3-7,19-28
+mcpfn/testing/tests/host-authorization.test.ts
+  s_77d7bb3189c71a::t_355756248b6e35 197-237
+  s_77d7bb3189c71a::t_0666c5ef14f13b 13-25,115,192,245,266,280,318
+mcpfn/inspector/tests/authenticated-artifacts.test.ts
+  s_77d7bb3189c71a::t_9b91bb887c64e5 161-165
+.github/workflows/ci.yml
+  s_77d7bb3189c71a::t_9b91bb887c64e5 207
+mcpfn/testing/src/host-authorization.ts
+  s_77d7bb3189c71a::t_9b91bb887c64e5 445-448,457-460
+  s_77d7bb3189c71a::t_9030b63e1e9587 461-462
+mcpfn/inspector/src/index.ts
+  s_77d7bb3189c71a::t_9b91bb887c64e5 169-172
+mcpfn/testing/src/mock-oauth-server.ts
+  s_77d7bb3189c71a::t_9b91bb887c64e5 87
+mcpfn/auth/src/hosted-authorization.ts
+  s_77d7bb3189c71a::t_0666c5ef14f13b 1623
+mcpfn/cli/tests/conformance-cleanup.test.ts
+  s_77d7bb3189c71a::t_0666c5ef14f13b 47-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "45785a27458b9f42e20e1fc3023489a0a7d3998d",
+  "prompts": {},
+  "sessions": {
+    "s_77d7bb3189c71a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b3f5-d570-7a72-b668-401efd539e3b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
