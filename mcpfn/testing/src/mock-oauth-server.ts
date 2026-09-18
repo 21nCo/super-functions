@@ -84,7 +84,7 @@ function uniqueScopes(value: string | null | undefined): string[] {
 function json(status: number, body: unknown): Response {
   return Response.json(body, {
     status,
-    headers: { "cache-control": "no-store" },
+    headers: { "cache-control": "no-store", pragma: "no-cache" },
   });
 }
 

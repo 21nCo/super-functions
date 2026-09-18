@@ -158,7 +158,11 @@ it.each(["custom", "connected", "mcpfn.inspector-snapshot"])("preserves snapshot
   const fixture = await startAuthenticatedServer("server-key", true);
   const target = authenticatedHttpTarget(fixture.url, { credential: { headers: { authorization: "Bearer server-key" } } });
   const original = target.redact!.bind(target);
-  target.redact = <T>(value: T): T => JSON.parse(JSON.stringify(original(value)).replaceAll(secret, "[REDACTED]"));
+  target.redact = <T>(value: T, options): T => {
+    const redacted = original(value, options);
+    if (options?.preserveKeys !== false) return redacted;
+    return JSON.parse(JSON.stringify(redacted).replaceAll(secret, "[REDACTED]"));
+  };
   target.describe = () => ({ kind: "custom", label: secret });
   const inspector = new McpFnInspector(new McpFnClient({ target }));
   try {

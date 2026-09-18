@@ -442,12 +442,22 @@ function validatedRedirectCode(
 async function validatedTokenSet(response: Response): Promise<{ refresh_token?: unknown }> {
   if (response.status !== 200) throw new Error("Successful token responses must use HTTP 200");
   if (!isJsonResponse(response)) throw new Error("Token response must use a JSON media type");
+  if (!hasHeaderDirective(response.headers.get("cache-control"), "no-store") ||
+      !hasHeaderDirective(response.headers.get("pragma"), "no-cache")) {
+    throw new Error("Token responses must disable caching with Cache-Control: no-store and Pragma: no-cache");
+  }
   const value = await response.clone().json() as Record<string, unknown> | null;
   if (!value || typeof value.access_token !== "string" || !/^[A-Za-z0-9._~+/-]+=*$/.test(value.access_token) ||
       typeof value.token_type !== "string" || value.token_type.toLowerCase() !== "bearer") {
     throw new Error("Token response requires an access token and Bearer token type");
   }
   return value;
+}
+
+function hasHeaderDirective(value: string | null, expected: string): boolean {
+  return (value ?? "").split(",").some((directive) =>
+    directive.trim().split("=", 1)[0]?.toLowerCase() === expected,
+  );
 }
 
 function isRedirect(status: number): boolean {

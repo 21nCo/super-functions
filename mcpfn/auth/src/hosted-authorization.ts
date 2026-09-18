@@ -1620,6 +1620,7 @@ function json(status: number, body: unknown, headers: HeadersInit = {}): Respons
     status,
     headers: {
       "cache-control": "no-store",
+      pragma: "no-cache",
       ...Object.fromEntries(new Headers(headers)),
     },
   });

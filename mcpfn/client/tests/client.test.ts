@@ -750,7 +750,7 @@ it.each([false, true])("retains failed initialization shutdown before a connecti
   const open = vi.fn(async () => ({ transport, close: closeHandle }));
   let shutdown: ReturnType<typeof vi.spyOn>;
   const client = createMcpFnClient({
-    target: customTarget({ kind: "failed-initialization-shutdown", open }), connectRetries: 2,
+    target: customTarget({ kind: "failed-initialization-shutdown", open }),
     configure: protocol => {
       shutdown = vi.spyOn(protocol, "close").mockRejectedValue(new Error("shutdown failed"));
       throw new Error("initialization failed");

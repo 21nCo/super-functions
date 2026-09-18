@@ -208,6 +208,7 @@ export async function runCli(
         stdio: "pipe",
         ...(auth ? { sensitiveEnvironmentVariables: [auth.environmentName] } : {}),
       } as const;
+      let conformanceCleanupError: McpFnConformanceCleanupError | undefined;
       const result = auth
         ? await runAuthenticatedOfficialConformance({
           ...conformanceOptions,
@@ -215,7 +216,10 @@ export async function runCli(
         }).catch(error => {
           // Keep the library's retryable cleanup error contract, while allowing
           // the CLI to persist its bounded, redacted failed result.
-          if (error instanceof McpFnConformanceCleanupError && error.result) return error.result;
+          if (error instanceof McpFnConformanceCleanupError && error.result) {
+            conformanceCleanupError = error;
+            return error.result;
+          }
           if (error instanceof McpFnConformanceCleanupError) throw error;
           // The proxy's explicit input validators use TypeError. Operational
           // failures must not be presented as invalid CLI usage or leak secrets.
@@ -232,6 +236,7 @@ export async function runCli(
           "utf8",
         );
       }
+      if (conformanceCleanupError) throw conformanceCleanupError;
       exitCode = result.exitCode;
     });
 
@@ -306,6 +311,7 @@ export async function runCli(
           await readFile(path.resolve(cwd, options.manifest), "utf8"),
         ))
         : undefined;
+      let targetCleanupError: McpFnTargetSuiteCleanupError | undefined;
       const report = await runMcpFnTargetSuite({
         target: parseTarget(targetValue, options, cwd),
         scenarios: await loadScenarios(scenariosPath, cwd),
@@ -315,11 +321,11 @@ export async function runCli(
           .map((name) => name.trim())
           .filter(Boolean),
         maxReportBytes: (maxReportBytes ?? 1_048_576) - 1,
-      }).catch(async error => {
+      }).catch(error => {
         if (!(error instanceof McpFnTargetSuiteCleanupError)) throw error;
-        // CLI execution has no interactive retry owner. Make one bounded retry,
-        // then persist the failed snapshot even if cleanup subsequently succeeds.
-        await error.retryCleanup().catch(() => undefined);
+        // Persist the bounded snapshot before the outer library boundary retries.
+        // A failed retry must keep this owning error reachable to the caller.
+        targetCleanupError = error;
         return error.report;
       });
       const serialized = `${JSON.stringify(report)}\n`;
@@ -337,6 +343,7 @@ export async function runCli(
         );
       }
       stdout(serialized);
+      if (targetCleanupError) throw targetCleanupError;
       if (!report.ok) exitCode = 1;
     });
 
@@ -368,16 +375,19 @@ export async function runCli(
     await cli.runMatchedCommand();
   } catch (error) {
     stderr(`${error instanceof Error ? error.message : String(error)}\n`);
-    if (error instanceof McpFnTestClientCleanupError) {
+    if (
+      error instanceof McpFnTestClientCleanupError ||
+      error instanceof McpFnTargetSuiteCleanupError
+    ) {
       // A failed retry must keep the owning error reachable by programmatic
       // callers. The executable entry point terminates after receiving it.
       await error.retryCleanup();
       return MCPFN_CLI_EXIT_TEST_FAILURE;
     }
     if (error instanceof McpFnConformanceCleanupError) {
-      // The executable has no programmatic owner to retain. Attempt one final
-      // bounded cleanup, then terminate even if the provider remains unavailable.
-      await error.retryCleanup().catch(() => undefined);
+      // Preserve ownership when the bounded retry still fails. The executable
+      // entry point is the only layer allowed to terminate without a retry owner.
+      await error.retryCleanup();
       return MCPFN_CLI_EXIT_TEST_FAILURE;
     }
     if (error instanceof McpFnAssertionError || error instanceof McpFnClientError) {

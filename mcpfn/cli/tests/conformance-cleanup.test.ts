@@ -44,6 +44,43 @@ it("terminates with a test failure when cleanup exhausts before a report exists"
   }
 });
 
+it("persists the conformance report and rethrows its owner when the retry still fails", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cleanup-owner-"));
+  const previous = process.env.MCPFN_CLEANUP_TEST_KEY;
+  process.env.MCPFN_CLEANUP_TEST_KEY = "secret";
+  let attempts = 0;
+  const report = {
+    formatVersion: 1 as const,
+    kind: "mcpfn.official-conformance-report" as const,
+    suiteVersion: "0.1.16",
+    ok: false,
+    exitCode: 1,
+    stdout: "redacted output",
+    stderr: "credential cleanup failed",
+  };
+  const failure = new (await import("@mcpfn/testing")).McpFnConformanceCleanupError(
+    async () => { if (++attempts === 1) throw new Error("still unavailable"); },
+    report,
+  );
+  state.failure = failure;
+  try {
+    const output = path.join(root, "report.json");
+    await expect(runCli([
+      "conformance", "http://127.0.0.1:1/mcp",
+      "--api-key-env", "MCPFN_CLEANUP_TEST_KEY",
+      "--report", output,
+    ], { stdout: () => {}, stderr: () => {} })).rejects.toBe(failure);
+    expect(JSON.parse(await readFile(output, "utf8"))).toMatchObject(report);
+    await expect(failure.retryCleanup()).resolves.toBeUndefined();
+    expect(attempts).toBe(2);
+  } finally {
+    state.failure = undefined;
+    if (previous === undefined) delete process.env.MCPFN_CLEANUP_TEST_KEY;
+    else process.env.MCPFN_CLEANUP_TEST_KEY = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 
 it("classifies proxy operational failures as exit1 with safe output, while keeping input errors exit2", async () => {
   const previous = process.env.MCPFN_CLEANUP_TEST_KEY;

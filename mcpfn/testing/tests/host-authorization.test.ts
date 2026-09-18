@@ -10,6 +10,19 @@ import {
   runHostedAuthorizationRegression,
 } from "../src/index.js";
 
+const TOKEN_RESPONSE_HEADERS = {
+  "cache-control": "no-store",
+  pragma: "no-cache",
+};
+
+function tokenJson(body: unknown, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  for (const [name, value] of Object.entries(TOKEN_RESPONSE_HEADERS)) {
+    headers.set(name, value);
+  }
+  return Response.json(body, { ...init, headers });
+}
+
 describe("hosted role-3 regression harness", () => {
   it("keeps registration and request inputs independent across named hosts and grant errors", async () => {
     const issuer = "https://login.example.com";
@@ -99,7 +112,7 @@ describe("hosted role-3 regression harness", () => {
         }
         expect(request.redirect).toBe("manual");
         if (fault === "token-redirect") return Response.redirect("https://evil.example/token", 307);
-        return Response.json(fault === "empty-token" ? {} : { access_token: "valid-token", token_type: "Bearer", refresh_token: "valid-refresh" });
+        return tokenJson(fault === "empty-token" ? {} : { access_token: "valid-token", token_type: "Bearer", refresh_token: "valid-refresh" });
       },
     }, [fixture]);
     expect(results[0]?.status).toBe("failed");
@@ -176,9 +189,50 @@ it.each(["token-exchange", "token-refresh"])("rejects non-JSON successful %s", a
   const results = await runHostedAuthorizationRegression({ issuer, prepareRegistration: async () => {}, request: async request => {
     if (new URL(request.url).pathname.endsWith("authorize")) return Response.redirect(callback, 302);
     const refresh = new URLSearchParams(await request.clone().text()).get("grant_type") === "refresh_token";
-    return new Response(JSON.stringify({ access_token: "token", token_type: "Bearer", refresh_token: "refresh" }), { headers: { "content-type": refresh === (phase === "token-refresh") ? "text/plain" : "application/json" } });
+    return new Response(JSON.stringify({ access_token: "token", token_type: "Bearer", refresh_token: "refresh" }), { headers: { ...TOKEN_RESPONSE_HEADERS, "content-type": refresh === (phase === "token-refresh") ? "text/plain" : "application/json" } });
   } }, [fixture]);
   expect(results[0]).toMatchObject({ status: "failed", phase, responseStatus: 200 });
+});
+
+it.each([
+  ["token-exchange", "cache-control"],
+  ["token-exchange", "pragma"],
+  ["token-refresh", "cache-control"],
+  ["token-refresh", "pragma"],
+] as const)("rejects successful %s without %s", async (phase, missingHeader) => {
+  const issuer = "https://login.example.com";
+  const fixture = createHostedAuthorizationFixtures({
+    issuer,
+    resource: "https://mcp.example.com/mcp",
+  }).find(item => item.token?.refreshAfterExchange)!;
+  const callback = new URL(fixture.authorization.redirectUri);
+  callback.searchParams.set("code", "test-code");
+  callback.searchParams.set("state", fixture.authorization.state);
+
+  const [result] = await runHostedAuthorizationRegression({
+    issuer,
+    prepareRegistration: async () => {},
+    request: async request => {
+      if (new URL(request.url).pathname.endsWith("authorize")) {
+        return Response.redirect(callback, 302);
+      }
+      const refresh = new URLSearchParams(await request.clone().text())
+        .get("grant_type") === "refresh_token";
+      const isTargetPhase = refresh === (phase === "token-refresh");
+      const headers = new Headers({
+        "content-type": "application/json",
+        ...TOKEN_RESPONSE_HEADERS,
+      });
+      if (isTargetPhase) headers.delete(missingHeader);
+      return new Response(JSON.stringify({
+        access_token: "token",
+        token_type: "Bearer",
+        refresh_token: "refresh",
+      }), { headers });
+    },
+  }, [fixture]);
+
+  expect(result).toMatchObject({ status: "failed", phase, responseStatus: 200 });
 });
 
 it.each(["Bearer", "bEaReR", "MAC"])("validates hosted token type %s and reports actual final status", async tokenType => {
@@ -188,7 +242,7 @@ it.each(["Bearer", "bEaReR", "MAC"])("validates hosted token type %s and reports
       const callback = new URL(fixture.authorization.redirectUri); callback.searchParams.set("code", "code"); callback.searchParams.set("state", fixture.authorization.state);
       return Response.redirect(callback, 302);
     }
-    return Response.json({access_token: "token", token_type: tokenType, refresh_token: "refresh"}, {status: 200});
+    return tokenJson({access_token: "token", token_type: tokenType, refresh_token: "refresh"}, {status: 200});
   }}, [fixture]);
   expect(result.status).toBe(tokenType === "MAC" ? "failed" : "passed");
   if (tokenType !== "MAC") expect(result.responseStatus).toBe(200);
@@ -209,7 +263,7 @@ it.each(['token-exchange', 'token-refresh'])('rejects HTTP 201 during %s and pre
       return Response.redirect(callback, 302);
     }
     const refresh = new URLSearchParams(await request.text()).get('grant_type') === 'refresh_token';
-    return Response.json({ access_token: 'token', token_type: 'Bearer', refresh_token: 'refresh' }, { status: refresh === (phase === 'token-refresh') ? 201 : 200 });
+    return tokenJson({ access_token: 'token', token_type: 'Bearer', refresh_token: 'refresh' }, { status: refresh === (phase === 'token-refresh') ? 201 : 200 });
   } }, [fixture]);
   expect(result).toMatchObject({ status: 'failed', phase, responseStatus: 201 });
 });
@@ -223,7 +277,7 @@ it.each(["blank", "network", "embedded space", "invalid:character", "bad=padding
       return Response.redirect(callback, 302);
     }
     if (mode === "network") throw new Error("network failure");
-    return Response.json({ access_token: mode === "blank" ? "   " : mode, token_type: "Bearer", refresh_token: "refresh" });
+    return tokenJson({ access_token: mode === "blank" ? "   " : mode, token_type: "Bearer", refresh_token: "refresh" });
   }}, [fixture]);
   expect(result.status).toBe("failed");
   expect(result.responseStatus).toBe(mode === "network" ? undefined : 200);
@@ -261,7 +315,7 @@ it("submits an independently configured authorization code", async () => {
         return Response.redirect(callback, 302);
       }
       submittedCode = new URLSearchParams(await request.text()).get("code");
-      return Response.json({ access_token: "token", token_type: "Bearer" });
+      return tokenJson({ access_token: "token", token_type: "Bearer" });
     },
   }, [fixture]);
   expect(result.status).toBe("passed");

@@ -166,7 +166,10 @@ export class McpFnInspector {
     };
     const inventoryComplete = Object.values(droppedInventoryEntries)
       .every((count) => count === 0);
-    const redaction = { maxArrayEntries: Math.max(this.maxEvents, this.maxInventoryEntries, 1) };
+    const redaction = {
+      maxArrayEntries: Math.max(this.maxEvents, this.maxInventoryEntries, 1),
+      preserveKeys: false,
+    } as const;
     const { kind, ...descriptor } = this.client.getTargetDescriptor();
     const server = this.client.getServerVersion();
     // Custom hooks receive payloads only; reconstruct authored discriminators.
