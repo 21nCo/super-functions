@@ -103,11 +103,19 @@ function isCliCleanupError(error: unknown): error is CliCleanupError {
 async function preserveCleanupOwner(
   owner: CliCleanupError | undefined,
   operation: () => Promise<void>,
+  failureMessage?: string,
 ): Promise<void> {
   try {
     await operation();
   } catch (error) {
     if (owner) throw owner;
+    if (failureMessage) {
+      throw new McpFnClientError(
+        "MCPFN_OPERATION_FAILED",
+        failureMessage,
+        { phase: "capability-operation" },
+      );
+    }
     throw error;
   }
 }
@@ -415,7 +423,7 @@ export async function runCli(
           );
         }
         await stdout(serialized);
-      });
+      }, "Target report output failed");
       if (targetCleanupError) throw targetCleanupError;
       if (!report.ok) exitCode = 1;
     });

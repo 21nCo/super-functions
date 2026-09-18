@@ -52,6 +52,33 @@ function credentialValues(headers: HeadersInit): Set<string> {
         }
       }
     }
+    if (header.toLowerCase() === "cookie") {
+      // Cookie values are independently reflectable even though the request
+      // authenticates with the complete header. RFC 6265 cookie values cannot
+      // contain comma or semicolon, so both delimiters safely cover combined
+      // Headers entries as well as the normal Cookie serialization.
+      for (const part of raw.split(/[;,]/)) {
+        const pair = part.trim();
+        if (!pair) continue;
+        const equals = pair.indexOf("=");
+        if (equals < 1) {
+          throw new TypeError("Cookie credential headers must contain name=value pairs");
+        }
+        const value = pair.slice(equals + 1).trim();
+        if (!value) continue;
+        secrets.add(value);
+        if (value.startsWith('"') || value.endsWith('"')) {
+          if (value.length < 2 || !value.startsWith('"') || !value.endsWith('"')) {
+            throw new TypeError("Cookie credential values must use balanced quotes");
+          }
+          const unquoted = value.slice(1, -1);
+          if (unquoted.includes('"') || unquoted.includes("\\")) {
+            throw new TypeError("Cookie credential values must use RFC 6265 syntax");
+          }
+          if (unquoted) secrets.add(unquoted);
+        }
+      }
+    }
   }
   return secrets;
 }
@@ -390,7 +417,7 @@ export async function acquireRemoteCredential(
           throw new McpFnClientError(
             "MCPFN_OPERATION_FAILED",
             "Target credential cleanup failed",
-            { phase: cleanupPhase, retryable: true, cause: error },
+            { phase: cleanupPhase, retryable: true },
           );
         }
       })().catch(error => { releasePromise = undefined; throw error; });
@@ -424,7 +451,10 @@ export function authenticatedHttpTarget(
     redact: (value, redaction) => redactTargetCredentials(authenticated, value, { preserveKeys: true, ...redaction }),
     async cleanup() {
       const results = await Promise.allSettled([...pendingReleases].map(release => release()));
-      if (results.some(result => result.status === "rejected")) throw new Error("Target credential cleanup failed");
+      const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+      const failure = failures.find(({ reason }) => reason && typeof reason === "object" &&
+        (reason as { phase?: unknown }).phase === "token-revocation") ?? failures[0];
+      if (failure) throw failure.reason;
     },
     async open(targetContext): Promise<McpFnTransportHandle> {
       const context: McpFnRemoteCredentialContext = {

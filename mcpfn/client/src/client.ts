@@ -650,7 +650,7 @@ export class McpFnClient {
         throw new McpFnClientError(
           "MCPFN_OPERATION_FAILED",
           "MCP target cleanup failed",
-          { phase, retryable: true, cause: error },
+          { phase, retryable: true },
         );
       }
       // Retain an observed continuation without leaving the aborted attempt as
@@ -712,7 +712,7 @@ export class McpFnClient {
     }).catch((error) => {
       this._state = "closing";
       this.cleanupFailure = new McpFnClientError("MCPFN_OPERATION_FAILED", "MCP target cleanup failed; retry close", {
-        phase: cleanupFailurePhase(error), retryable: true, cause: error,
+        phase: cleanupFailurePhase(error), retryable: true,
       });
       throw this.cleanupFailure;
     }).finally(() => { this.cleanupDrain = undefined; });

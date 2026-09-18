@@ -383,6 +383,38 @@ describe("mcpfn CLI", () => {
     });
   });
 
+  it.each(["output", "junit", "stdout"] as const)(
+    "classifies target-suite %s failures as safe runtime exit 1",
+    async failureMode => {
+      const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-target-output-"));
+      roots.push(root);
+      await writeFile(path.join(root, "scenarios.json"), "[]\n");
+      let errors = "";
+      const args = [
+        "test-target",
+        "mcpfn-command-that-does-not-exist",
+        "scenarios.json",
+        "--stdio",
+        ...(failureMode === "output"
+          ? ["--output", path.join(root, "missing", "report.json")]
+          : failureMode === "junit"
+            ? ["--junit", path.join(root, "missing", "report.xml")]
+            : []),
+      ];
+      const exitCode = await runCli(args, {
+        cwd: root,
+        stdout: failureMode === "stdout"
+          ? async () => { throw new Error("unsafe output detail"); }
+          : () => {},
+        stderr: value => { errors += value; },
+      });
+      expect(exitCode).toBe(1);
+      expect(errors).toContain("Target report output failed");
+      expect(errors).not.toContain("ENOENT");
+      expect(errors).not.toContain("unsafe output detail");
+    },
+  );
+
   it("uses environment-backed API keys and writes bounded JSON and JUnit target artifacts", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-external-"));
     roots.push(root);

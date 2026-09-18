@@ -692,6 +692,35 @@ it("retains failed cleanup after a remote protocol close", async () => {
   await expect(client.close()).resolves.toBeUndefined();
   expect(cleanup).toHaveBeenCalledTimes(2);
 });
+
+it("does not expose raw target cleanup failures through public cause chains", async () => {
+  const secret = "provider-cleanup-secret";
+  const server = createMcpFnServer({ info: { name: "safe-cleanup", version: "1" }, registry: new McpFnRegistry() });
+  const cleanup = vi.fn()
+    .mockRejectedValueOnce(new Error(`provider rejected ${secret}`))
+    .mockResolvedValue(undefined);
+  const client = createMcpFnClient({ target: customTarget({
+    kind: "safe-cleanup",
+    cleanup,
+    open: async () => {
+      const [transport, peer] = InMemoryTransport.createLinkedPair();
+      await server.connect(peer);
+      return { transport, close: () => server.close() };
+    },
+  }) });
+  await client.connect();
+  const failure = await client.close().then(
+    () => undefined,
+    error => error as Error,
+  );
+  expect(failure).toBeInstanceOf(Error);
+  expect(failure!.message).toBe("MCP target cleanup failed");
+  expect(failure!.cause).toBeUndefined();
+  expect(String(failure)).not.toContain(secret);
+  await client.close();
+  expect(cleanup).toHaveBeenCalledTimes(2);
+});
+
 it("retains a late aborted handle whose cleanup fails", async () => {
   let resolveOpen!: (handle: McpFnTransportHandle) => void;
   const cleanup = vi.fn().mockRejectedValueOnce(new Error("retry")).mockResolvedValue(undefined);

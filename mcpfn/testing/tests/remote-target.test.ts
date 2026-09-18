@@ -506,6 +506,49 @@ it("retries disposal without repeating a successful revocation", async () => {
   expect(dispose).toHaveBeenCalledTimes(2);
 });
 
+it("preserves a safe cleanup phase without exposing provider failures", async () => {
+  const { acquireRemoteCredential } = await import("../src/remote-target.js");
+  const secret = "raw-provider-secret";
+  const lease = await acquireRemoteCredential({
+    acquire: () => ({ kind: "oauth", headers: { authorization: "Bearer safe-token" } }),
+    revoke: () => { throw new Error(`provider rejected ${secret}`); },
+  }, { url: "https://test/mcp", requestId: "test" });
+  const failure = await lease.release().catch(error => error as Error & { phase?: string });
+  expect(failure).toMatchObject({
+    message: "Target credential cleanup failed",
+    phase: "token-revocation",
+  });
+  expect(failure.cause).toBeUndefined();
+  expect(String(failure)).not.toContain(secret);
+});
+
+it("preserves token-revocation through pre-handle target cleanup retries", async () => {
+  let cleanupMaySucceed = false;
+  const secret = "pre-handle-provider-secret";
+  const revoke = vi.fn(async () => {
+    if (!cleanupMaySucceed) throw new Error(`provider rejected ${secret}`);
+  });
+  const target = authenticatedHttpTarget("http://127.0.0.1:1/mcp", {
+    credential: {
+      acquire: () => ({
+        kind: "oauth",
+        headers: { authorization: "Bearer invalid\nheader" },
+      }),
+      revoke,
+    },
+  });
+  const failure = await runMcpFnTargetSuite({ target }).catch(error => error as McpFnTargetSuiteCleanupError);
+  expect(failure).toBeInstanceOf(McpFnTargetSuiteCleanupError);
+  expect(failure.report.failure).toMatchObject({
+    phase: "token-revocation",
+    layer: "authorization-server",
+  });
+  expect(JSON.stringify(failure.report)).not.toContain(secret);
+  cleanupMaySucceed = true;
+  await failure.retryCleanup();
+  expect(revoke.mock.calls.length).toBeGreaterThanOrEqual(3);
+});
+
 it.each(['oversized', 'throwing-proxy'])("returns a safe incomplete report when error redaction encounters %s", async mode => {
   const secret = 'opaque-cause-secret';
   const fixture = await startAuthenticatedServer(secret);
@@ -824,6 +867,22 @@ it.each(["foo name", "Bearer name", "Basic name"])("keeps an opaque API key whol
 it.each(["authorization", "Authorization", "proxy-authorization"])("extracts recognized bearer credentials from %s", async header => {
   const { redactRemoteCredential } = await import("../src/remote-target.js");
   expect(redactRemoteCredential({ headers: { [header]: "bEaReR tokenvalue" } }, { reflected: "tokenvalue" }).reflected).not.toBe("tokenvalue");
+});
+
+it("extracts independently reflectable Cookie credential values", async () => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  const redacted = redactRemoteCredential(
+    { headers: { Cookie: 'session=opaque-cookie; quoted="quoted-cookie"' } },
+    { session: "opaque-cookie", quoted: "quoted-cookie" },
+  );
+  expect(JSON.stringify(redacted)).not.toContain("opaque-cookie");
+  expect(JSON.stringify(redacted)).not.toContain("quoted-cookie");
+});
+
+it.each(["missing-pair", 'session="unterminated'])("rejects ambiguous Cookie credential syntax (%s)", async cookie => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  expect(() => redactRemoteCredential({ headers: { Cookie: cookie } }, { value: "safe" }))
+    .toThrow(/Cookie credential/);
 });
 
 
