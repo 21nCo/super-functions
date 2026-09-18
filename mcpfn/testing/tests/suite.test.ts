@@ -276,7 +276,8 @@ it("transfers failed shutdown ownership and serializes safe cleanup retries", as
   const error = await runMcpFnTargetSuite({ target }).catch(error => error);
   expect(error).toBeInstanceOf(McpFnTargetSuiteCleanupError);
   expect(error.report.ok).toBe(false);
-  expect(JSON.stringify(error)).not.toContain(secret);
+  expect(error.message).not.toContain(secret);
+  expect(JSON.stringify(error.report)).not.toContain(secret);
   const first = error.retryCleanup();
   expect(error.retryCleanup()).toBe(first);
   await expect(first).rejects.toBe(error);

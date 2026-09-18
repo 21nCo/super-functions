@@ -41,8 +41,8 @@ export { loadManifestSource, loadScenarios };
 
 export interface CliRunOptions {
   cwd?: string;
-  stdout?: (text: string) => void;
-  stderr?: (text: string) => void;
+  stdout?: (text: string) => void | Promise<void>;
+  stderr?: (text: string) => void | Promise<void>;
 }
 
 declare const __MCPFN_CLI_VERSION__: string;
@@ -63,8 +63,8 @@ export async function runCli(
   runOptions: CliRunOptions = {},
 ): Promise<number> {
   const cwd = runOptions.cwd ?? process.cwd();
-  const stdout = runOptions.stdout ?? ((text: string) => process.stdout.write(text));
-  const stderr = runOptions.stderr ?? ((text: string) => process.stderr.write(text));
+  const stdout = runOptions.stdout ?? ((text: string) => writeProcessOutput(process.stdout, text));
+  const stderr = runOptions.stderr ?? ((text: string) => writeProcessOutput(process.stderr, text));
   let exitCode = 0;
   const cli = cac("mcpfn");
 
@@ -81,9 +81,9 @@ export async function runCli(
       if (options.output) {
         const outputPath = path.resolve(cwd, options.output);
         await writeFile(outputPath, serialized, "utf8");
-        stdout(`Wrote ${outputPath}\n`);
+        await stdout(`Wrote ${outputPath}\n`);
       } else {
-        stdout(serialized);
+        await stdout(serialized);
       }
     });
 
@@ -91,7 +91,7 @@ export async function runCli(
     .action(async (manifestPath: string) => {
       const parsed = JSON.parse(await readFile(path.resolve(cwd, manifestPath), "utf8"));
       const manifest = validateManifest(parsed);
-      stdout(`Valid McpFn manifest ${manifest.server.name}@${manifest.server.version} (${manifest.hash})\n`);
+      await stdout(`Valid McpFn manifest ${manifest.server.name}@${manifest.server.version} (${manifest.hash})\n`);
     });
 
   cli.command("diff <before> <after>", "Classify MCP contract changes")
@@ -106,11 +106,11 @@ export async function runCli(
         validateManifest(JSON.parse(await readFile(path.resolve(cwd, file), "utf8")));
       const result = diffManifests(await read(beforePath), await read(afterPath));
       if (options.json) {
-        stdout(`${JSON.stringify(result, null, 2)}\n`);
+        await stdout(`${JSON.stringify(result, null, 2)}\n`);
       } else {
-        stdout(`breaking=${result.summary.breaking} additive=${result.summary.additive} behavioral=${result.summary.behavioral}\n`);
+        await stdout(`breaking=${result.summary.breaking} additive=${result.summary.additive} behavioral=${result.summary.behavioral}\n`);
         for (const change of result.changes) {
-          stdout(`${change.severity.toUpperCase()} ${change.code} ${change.path}: ${change.message}\n`);
+          await stdout(`${change.severity.toUpperCase()} ${change.code} ${change.path}: ${change.message}\n`);
         }
       }
       if (!result.compatible || (options.failOnBehavioral && result.summary.behavioral > 0)) {
@@ -160,7 +160,7 @@ export async function runCli(
         if (options.output) {
           await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
         }
-        stdout(serialized);
+        await stdout(serialized);
         if (report.failed > 0 || report.status === "incomplete") exitCode = 1;
       } finally {
         await client.close();
@@ -227,17 +227,20 @@ export async function runCli(
           throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Authenticated conformance failed before producing a report", { phase: "capability-operation" });
         })
         : await runOfficialConformance(conformanceOptions);
-      if (result.stdout) stdout(result.stdout);
-      if (result.stderr) stderr(result.stderr);
+      if (result.stdout) await stdout(result.stdout);
+      if (result.stderr) await stderr(result.stderr);
+      let boundedReportIncomplete = false;
       if (options.report) {
+        const bounded = serializeBoundedReport(result, maxBytes);
+        boundedReportIncomplete = bounded.incomplete;
         await writeFile(
           path.resolve(cwd, options.report),
-          serializeBoundedReport(result, maxBytes),
+          bounded.serialized,
           "utf8",
         );
       }
       if (conformanceCleanupError) throw conformanceCleanupError;
-      exitCode = result.exitCode;
+      exitCode = boundedReportIncomplete ? MCPFN_CLI_EXIT_TEST_FAILURE : result.exitCode;
     });
 
   cli.command("inspect <target>", "Inventory an HTTP or stdio MCP target")
@@ -262,7 +265,7 @@ export async function runCli(
           if (options.output) {
             await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
           }
-          stdout(serialized);
+          await stdout(serialized);
         } finally { await inspector.close(); }
       } catch (error) {
         // Parsing has finished: connection, inventory, redaction and output errors
@@ -342,7 +345,7 @@ export async function runCli(
           "utf8",
         );
       }
-      stdout(serialized);
+      await stdout(serialized);
       if (targetCleanupError) throw targetCleanupError;
       if (!report.ok) exitCode = 1;
     });
@@ -359,7 +362,7 @@ export async function runCli(
       if (options.output) {
         await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
       }
-      stdout(serialized);
+      await stdout(serialized);
       if (!report.ok) exitCode = 1;
     });
 
@@ -369,12 +372,12 @@ export async function runCli(
     const parsed = cli.parse(["node", "mcpfn", ...argv], { run: false });
     if (!cli.matchedCommand) {
       if (parsed.options.help || parsed.options.version) return 0;
-      stderr(argv.length ? `Unknown command: ${argv[0]}\n` : "A command is required\n");
+      await stderr(argv.length ? `Unknown command: ${argv[0]}\n` : "A command is required\n");
       return 2;
     }
     await cli.runMatchedCommand();
   } catch (error) {
-    stderr(`${error instanceof Error ? error.message : String(error)}\n`);
+    await stderr(`${error instanceof Error ? error.message : String(error)}\n`);
     if (
       error instanceof McpFnTestClientCleanupError ||
       error instanceof McpFnTargetSuiteCleanupError
@@ -415,21 +418,32 @@ function parseCliReportCap(value: string | undefined): number | undefined {
   return parsed;
 }
 
-function serializeBoundedReport(value: unknown, maxBytes?: number): string {
+function serializeBoundedReport(
+  value: unknown,
+  maxBytes?: number,
+): { serialized: string; incomplete: boolean } {
   const serialize = (candidate: unknown) => `${JSON.stringify(candidate, null, 2)}\n`;
   let serialized = serialize(value);
   if (maxBytes === undefined || new TextEncoder().encode(serialized).byteLength <= maxBytes) {
-    return serialized;
+    return { serialized, incomplete: false };
   }
   if (
     value && typeof value === "object" &&
     (value as { kind?: unknown }).kind === "mcpfn.official-conformance-report"
   ) {
     const bounded = structuredClone(value) as {
+      ok?: boolean;
+      status?: "complete" | "incomplete";
+      incompleteReason?: string;
+      exitCode?: number;
       stdout?: string;
       stderr?: string;
       failure?: { message?: string; details?: unknown };
     };
+    bounded.ok = false;
+    bounded.status = "incomplete";
+    bounded.incompleteReason = "Report content exceeded --max-report-bytes and was truncated";
+    bounded.exitCode = bounded.exitCode || MCPFN_CLI_EXIT_TEST_FAILURE;
     bounded.stdout = bounded.stdout ? "[TRUNCATED]" : "";
     bounded.stderr = bounded.stderr ? "[TRUNCATED]" : "";
     if (bounded.failure) {
@@ -437,9 +451,23 @@ function serializeBoundedReport(value: unknown, maxBytes?: number): string {
       bounded.failure.details = undefined;
     }
     serialized = serialize(bounded);
-    if (new TextEncoder().encode(serialized).byteLength <= maxBytes) return serialized;
+    if (new TextEncoder().encode(serialized).byteLength <= maxBytes) {
+      return { serialized, incomplete: true };
+    }
   }
   throw new Error("Serialized report exceeds --max-report-bytes");
+}
+
+function writeProcessOutput(
+  stream: NodeJS.WriteStream,
+  text: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    stream.write(text, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
 }
 
 function readRemoteCredential(

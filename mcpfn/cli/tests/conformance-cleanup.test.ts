@@ -2,11 +2,16 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-const state = vi.hoisted(() => ({ failure: undefined as Error | undefined, realPath: false }));
+const state = vi.hoisted(() => ({
+  failure: undefined as Error | undefined,
+  result: undefined as import("@mcpfn/testing").OfficialConformanceResult | undefined,
+  realPath: false,
+}));
 vi.mock("@mcpfn/testing", async importOriginal => {
   const actual = await importOriginal<typeof import("@mcpfn/testing")>();
   return { ...actual, runAuthenticatedOfficialConformance: async (options: Parameters<typeof actual.runAuthenticatedOfficialConformance>[0]) => {
     if (state.realPath) return actual.runAuthenticatedOfficialConformance(options);
+    if (state.result) return state.result;
     if (state.failure) throw state.failure;
     throw new actual.McpFnConformanceCleanupError(async () => {}, {
       formatVersion: 1, kind: "mcpfn.official-conformance-report", suiteVersion: "0.1.16",
@@ -15,6 +20,45 @@ vi.mock("@mcpfn/testing", async importOriginal => {
   } };
 });
 import { runCli } from "../src/index.js";
+
+it("marks a size-truncated conformance report incomplete and non-passing", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-conformance-cap-"));
+  const previous = process.env.MCPFN_CLEANUP_TEST_KEY;
+  process.env.MCPFN_CLEANUP_TEST_KEY = "secret";
+  state.result = {
+    formatVersion: 1,
+    kind: "mcpfn.official-conformance-report",
+    suiteVersion: "0.1.16",
+    ok: true,
+    exitCode: 0,
+    stdout: "x".repeat(4_096),
+    stderr: "",
+  };
+  try {
+    const report = path.join(root, "report.json");
+    expect(await runCli([
+      "conformance", "http://127.0.0.1:1/mcp",
+      "--api-key-env", "MCPFN_CLEANUP_TEST_KEY",
+      "--report", report,
+      "--max-report-bytes", "1025",
+    ], { stdout: () => {}, stderr: () => {} })).toBe(1);
+    const bounded = JSON.parse(await readFile(report, "utf8"));
+    expect(bounded).toMatchObject({
+      ok: false,
+      status: "incomplete",
+      exitCode: 1,
+      incompleteReason: "Report content exceeded --max-report-bytes and was truncated",
+      stdout: "[TRUNCATED]",
+    });
+    expect(Buffer.byteLength(await readFile(report, "utf8"))).toBeLessThanOrEqual(1025);
+  } finally {
+    state.result = undefined;
+    if (previous === undefined) delete process.env.MCPFN_CLEANUP_TEST_KEY;
+    else process.env.MCPFN_CLEANUP_TEST_KEY = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 it("writes a failed conformance report after credential cleanup exhaustion", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cleanup-report-"));
   const previous = process.env.MCPFN_CLEANUP_TEST_KEY;

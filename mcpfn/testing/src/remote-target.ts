@@ -138,15 +138,22 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   });
   const secretPattern = patterns.length ? new RegExp(patterns.join("|"), "g") : undefined;
   const replacementPattern = patterns.length ? new RegExp(patterns.join("|")) : undefined;
-  const structuralMatchers = patterns.map((pattern) => ({
+  const structuralKeyMatchers = patterns.map((pattern) => ({
     pattern,
     expression: new RegExp(pattern),
   }));
-  const structuralPatterns = new Set<string>();
+  const structuralKeyPatterns = new Set<string>();
+  const preserveStructuralKey = (input: string): string => {
+    for (const { pattern, expression } of structuralKeyMatchers) {
+      if (expression.test(input)) structuralKeyPatterns.add(pattern);
+    }
+    return input;
+  };
   const preserveStructural = (input: string): string => {
-    if (!replacementPattern?.test(input)) return input;
-    for (const { pattern, expression } of structuralMatchers) {
-      if (expression.test(input)) structuralPatterns.add(pattern);
+    if (replacementPattern?.test(input)) {
+      throw new McpFnRedactionLimitError(
+        "Credential collides with a required structural artifact field",
+      );
     }
     return input;
   };
@@ -190,7 +197,7 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
       const keys = new Set<string>();
       for (const [key, entry] of Object.entries(input)) {
         const fixed = envelopeKeys[role]?.has(key) ?? false;
-        if (fixed) preserveStructural(key);
+        if (fixed) preserveStructuralKey(key);
         let childRole = "payload";
         if (fixed) {
           if (key === "results") childRole = "result";
@@ -223,7 +230,7 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   const scrubbed = scrub(value, role);
   const generic = redactOAuthValue(scrubbed, { maxStringLength: 262_144, maxDepth: 64, maxArrayEntries: 100_000, maxObjectEntries: 100_000, ...(redactionMarker !== undefined ? { redactionMarker } : {}) });
   const result = scrub(generic, role, "", true) as T;
-  const boundaryPatterns = patterns.filter((pattern) => !structuralPatterns.has(pattern));
+  const boundaryPatterns = patterns.filter((pattern) => !structuralKeyPatterns.has(pattern));
   assertPayloadSerialization(
     result,
     "payload",

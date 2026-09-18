@@ -52,9 +52,23 @@ it("persists a target-suite snapshot and retains its cleanup owner after a faile
   try {
     await writeFile(path.join(root, "scenarios.json"), "[]\n");
     const output = path.join(root, "report.json");
-    const failure = await runCli([
+    let releaseStdout!: () => void;
+    let stdoutStarted!: () => void;
+    const started = new Promise<void>((resolve) => { stdoutStarted = resolve; });
+    const run = runCli([
       "test-target", "http://127.0.0.1:1/mcp", "scenarios.json", "--output", output,
-    ], { cwd: root, stdout: () => {}, stderr: () => {} }).then(
+    ], {
+      cwd: root,
+      stdout: async () => {
+        stdoutStarted();
+        await new Promise<void>((resolve) => { releaseStdout = resolve; });
+      },
+      stderr: () => {},
+    });
+    await started;
+    expect(state.attempts).toBe(0);
+    releaseStdout();
+    const failure = await run.then(
       () => undefined,
       error => error,
     );
