@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2SZVGTC376QZ7TYGE3VR6PP",
+  "strategy": "manual-commit",
+  "branch": "sfns-4-rex-upstream",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "langfn/typescript/src/client.ts",
+    "langfn/typescript/src/evaluation/evaluator.ts",
+    "langfn/typescript/src/mcp/server.ts",
+    "langfn/typescript/src/models/google.ts",
+    "langfn/typescript/src/models/openai.ts",
+    "langfn/typescript/src/observability/tracer.ts",
+    "langfn/typescript/tests/google-native.test.ts",
+    "langfn/typescript/tests/mcp-and-eval.test.ts",
+    "langfn/typescript/tests/provider-client.test.ts",
+    "langfn/typescript/tests/streaming-observability.test.ts",
+    "memoryfn/typescript/src/core/pipeline.ts",
+    "memoryfn/typescript/src/storage/adapter.ts",
+    "memoryfn/typescript/src/storage/memory/adapter.ts",
+    "memoryfn/typescript/src/storage/pg/adapter.ts",
+    "memoryfn/typescript/tests/lifecycle.test.ts",
+    "memoryfn/typescript/tests/postgres.test.ts",
+    "packages/http/src/context.ts",
+    "secfn/server/src/__tests__/server.test.ts",
+    "secfn/server/src/envelopes.ts",
+    "secfn/server/src/router.ts",
+    "secfn/server/src/types.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1023852,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 20083968,
+    "output_tokens": 102334,
+    "api_call_count": 194
+  }
+}
