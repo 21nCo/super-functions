@@ -1,0 +1,55 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2T0DAWPJJDWJ9CTHPVZ1AVJ",
+  "session_id": "01a0b3f5-d570-7a72-b668-401efd539e3b",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-18T10:18:52.112732Z",
+  "branch": "codex/mcp-1-transport-neutral-conformance-0910",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    "mcpfn/auth/src/hosted-authorization.ts",
+    "mcpfn/cli/src/bin.ts",
+    "mcpfn/cli/src/index.ts",
+    "mcpfn/cli/tests/conformance-cleanup.test.ts",
+    "mcpfn/cli/tests/target-suite-cleanup.test.ts",
+    "mcpfn/client/tests/client.test.ts",
+    "mcpfn/inspector/src/index.ts",
+    "mcpfn/inspector/tests/authenticated-artifacts.test.ts",
+    "mcpfn/testing/src/host-authorization.ts",
+    "mcpfn/testing/src/mock-oauth-server.ts",
+    "mcpfn/testing/tests/host-authorization.test.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "bb38742290be",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 296932,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 7420160,
+    "output_tokens": 35419,
+    "api_call_count": 60
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-18T10:18:51.97507Z",
+    "agent_lines": 226,
+    "agent_removed": 23,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 226,
+    "total_lines_changed": 249,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
