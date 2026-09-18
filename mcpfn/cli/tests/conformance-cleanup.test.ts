@@ -173,6 +173,56 @@ it.each(["output", "persistence"] as const)(
   },
 );
 
+it.each(["report", "stdout", "stderr"] as const)(
+  "classifies conformance %s failures as safe runtime exit 1",
+  async failureMode => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-conformance-output-"));
+    const previous = process.env.MCPFN_CLEANUP_TEST_KEY;
+    process.env.MCPFN_CLEANUP_TEST_KEY = "secret";
+    state.result = {
+      formatVersion: 1,
+      kind: "mcpfn.official-conformance-report",
+      suiteVersion: "0.1.16",
+      ok: true,
+      exitCode: 0,
+      stdout: "captured output",
+      stderr: "captured error",
+    };
+    let errors = "";
+    let stderrCalls = 0;
+    try {
+      const args = [
+        "conformance", "http://127.0.0.1:1/mcp",
+        "--api-key-env", "MCPFN_CLEANUP_TEST_KEY",
+        ...(failureMode === "report"
+          ? ["--report", path.join(root, "missing", "report.json")]
+          : []),
+      ];
+      expect(await runCli(args, {
+        stdout: failureMode === "stdout"
+          ? async () => { throw new Error("unsafe stdout detail"); }
+          : () => {},
+        stderr: async value => {
+          stderrCalls += 1;
+          if (failureMode === "stderr" && stderrCalls === 1) {
+            throw new Error("unsafe stderr detail");
+          }
+          errors += value;
+        },
+      })).toBe(1);
+      expect(errors).toContain("Conformance report output failed");
+      expect(errors).not.toContain("ENOENT");
+      expect(errors).not.toContain("unsafe stdout detail");
+      expect(errors).not.toContain("unsafe stderr detail");
+    } finally {
+      state.result = undefined;
+      if (previous === undefined) delete process.env.MCPFN_CLEANUP_TEST_KEY;
+      else process.env.MCPFN_CLEANUP_TEST_KEY = previous;
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
 
 it("classifies proxy operational failures as exit1 with safe output, while keeping input errors exit2", async () => {
   const previous = process.env.MCPFN_CLEANUP_TEST_KEY;

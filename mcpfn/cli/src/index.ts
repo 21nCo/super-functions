@@ -302,7 +302,7 @@ export async function runCli(
             "utf8",
           );
         }
-      });
+      }, "Conformance report output failed");
       if (conformanceCleanupError) throw conformanceCleanupError;
       exitCode = boundedReportIncomplete ? MCPFN_CLI_EXIT_TEST_FAILURE : result.exitCode;
     });

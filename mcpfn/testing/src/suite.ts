@@ -240,7 +240,10 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
       // target-controlled report value while the session still owns that state.
       if (client?.session.state === "connected") {
         const { kind, ...descriptor } = options.target.describe();
-        capturedTarget = { ...redactSuiteArtifact(options.target, descriptor, { preserveKeys: false }), kind };
+        capturedTarget = {
+          ...redactSuiteArtifact(options.target, descriptor, { preserveKeys: false }),
+          kind: client.session.preserveArtifactStructure(kind),
+        };
         capturedManifestHash = options.manifest
           ? redactSuiteArtifact(options.target, options.manifest.hash, { preserveKeys: false })
           : undefined;
@@ -372,7 +375,9 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     finalized = enforceReportCap({ ...report, ok: false, status: "incomplete",
       incompleteReason: error instanceof McpFnRedactionLimitError
         ? "Credential redaction exceeded its traversal budget"
-        : "Report content omitted because safe serialization failed",
+        : projectionFailed
+          ? "Credential redaction failed; report content omitted because safe serialization failed"
+          : "Report content omitted because safe serialization failed",
       target: { kind: "custom" }, server: undefined, capabilities: undefined, manifestHash: undefined,
       failure: undefined, results: [], timeline: [],
       droppedResults: report.results.length, droppedTimelineEvents: report.droppedTimelineEvents + report.timeline.length,

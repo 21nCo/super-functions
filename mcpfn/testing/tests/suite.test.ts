@@ -262,6 +262,35 @@ it.each(["metadata", "failure", "throwing-redactor"])("applies custom target red
   }
 });
 
+it("fails a custom target report closed when its dynamic kind conflicts with redaction", async () => {
+  const secretKind = "custom-kind-owned-secret";
+  const server = createMcpFnServer({
+    info: { name: "kind-collision", version: "1.0.0" },
+    registry: new McpFnRegistry(),
+  });
+  const target = customTarget({
+    kind: secretKind,
+    redact: <T>(value: T): T => JSON.parse(
+      JSON.stringify(value).replaceAll(secretKind, "[REDACTED]"),
+    ) as T,
+    open: async () => {
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await server.connect(serverTransport);
+      return { transport: clientTransport, close: () => server.close() };
+    },
+  });
+
+  const report = await runMcpFnTargetSuite({ target });
+
+  expect(report).toMatchObject({
+    ok: false,
+    status: "incomplete",
+    target: { kind: "custom" },
+  });
+  expect(report.incompleteReason).toContain("Credential redaction");
+  expect(JSON.stringify(report)).not.toContain(secretKind);
+});
+
 
 it("transfers failed shutdown ownership and serializes safe cleanup retries", async () => {
   const secret = "private-cleanup-secret";
