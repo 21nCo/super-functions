@@ -1,0 +1,78 @@
+memoryfn/typescript/tests/lifecycle.test.ts
+  s_0ec42cbf5a9107::t_b569f042c6f128 15-37
+langfn/typescript/tests/provider-client.test.ts
+  s_0ec42cbf5a9107::t_b569f042c6f128 14,23-35
+langfn/typescript/src/observability/tracer.ts
+  s_0ec42cbf5a9107::t_434d07c7d547df 6-8,62-63,72-74,81,87,130-135,146-150
+  s_0ec42cbf5a9107::t_7a9af6be17e9fc 92-93
+  s_0ec42cbf5a9107::t_73f6d33a0e8379 4
+  s_0ec42cbf5a9107::t_273557d091e417 17
+  s_0ec42cbf5a9107::t_0853bdfcba37bd 5
+langfn/typescript/src/models/openai.ts
+  s_0ec42cbf5a9107::t_434d07c7d547df 162
+langfn/typescript/tests/streaming-observability.test.ts
+  s_0ec42cbf5a9107::t_b569f042c6f128 71-146,384-385
+langfn/typescript/src/evaluation/evaluator.ts
+  s_0ec42cbf5a9107::t_434d07c7d547df 5,60,127,157,196,198,218-223
+  s_648bd764292b7c::t_8bb87c5c652e38 224-225
+langfn/typescript/src/models/google.ts
+  s_0ec42cbf5a9107::t_434d07c7d547df 415-419
+langfn/typescript/src/mcp/server.ts
+  s_0ec42cbf5a9107::t_434d07c7d547df 63-70
+langfn/typescript/tests/google-native.test.ts
+  s_0ec42cbf5a9107::t_b569f042c6f128 3,233-248
+  s_0ec42cbf5a9107::t_29ced5b9ef477c 249
+memoryfn/typescript/src/storage/adapter.ts
+  s_0ec42cbf5a9107::t_73f6d33a0e8379 4-7,21,36
+memoryfn/typescript/src/storage/memory/adapter.ts
+  s_0ec42cbf5a9107::t_73f6d33a0e8379 2,136,140,143-147
+memoryfn/typescript/src/core/pipeline.ts
+  s_0ec42cbf5a9107::t_73f6d33a0e8379 66
+secfn/server/src/types.ts
+  s_0ec42cbf5a9107::t_73f6d33a0e8379 66-67
+secfn/server/src/envelopes.ts
+  s_0ec42cbf5a9107::t_73f6d33a0e8379 53,55
+memoryfn/typescript/src/storage/pg/adapter.ts
+  s_0ec42cbf5a9107::t_73f6d33a0e8379 1,50,52,57-58,69,71-75
+secfn/server/src/router.ts
+  s_0ec42cbf5a9107::t_7a9af6be17e9fc 84,95,111,132,151,166,177,189,207,223,231,250,258,269
+  s_0ec42cbf5a9107::t_73f6d33a0e8379 1,17-19,85,96,112,133,152,167,178,190,208,224,232,251,259,270,319
+  s_0ec42cbf5a9107::t_207d681afb1487 46-55
+packages/http/src/context.ts
+  s_0ec42cbf5a9107::t_7a510bac843c9d 56-60
+langfn/typescript/src/client.ts
+  s_0ec42cbf5a9107::t_2ab2cde19ec92f 27,61
+  s_0ec42cbf5a9107::t_434d07c7d547df 270-272,278-284,396,671,679,683,716
+secfn/server/src/__tests__/server.test.ts
+  s_0ec42cbf5a9107::t_b569f042c6f128 5,19,34-51
+langfn/typescript/tests/mcp-and-eval.test.ts
+  s_0ec42cbf5a9107::t_86fe4605cc52bd 6
+  s_0ec42cbf5a9107::t_b569f042c6f128 69-80,260-307
+  s_648bd764292b7c::t_e5b16cf4c8b160 308
+memoryfn/typescript/tests/postgres.test.ts
+  s_0ec42cbf5a9107::t_f5e309ea7859db 28,30-31,59,71,86,88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "166fccf71a357b319c6e70ac625f185274b0d1c4",
+  "prompts": {},
+  "sessions": {
+    "s_0ec42cbf5a9107": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0aa3d-c6e5-7963-9f4b-4f57675b7e35",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_648bd764292b7c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b3ef-2e87-73b1-b7ae-78ea0324bcc8",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
