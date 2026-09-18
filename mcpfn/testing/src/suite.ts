@@ -1,9 +1,15 @@
-import { McpFnRedactionLimitError, beginTargetCredentialRedaction, redactTargetCredentials } from "./remote-target.js";
+import {
+  McpFnRedactionLimitError,
+  McpFnStructuralCredentialCollisionError,
+  beginTargetCredentialRedaction,
+  redactTargetCredentials,
+} from "./remote-target.js";
 import type { Implementation, ServerCapabilities } from "@modelcontextprotocol/sdk/types.js";
-import type {
-  McpFnDiagnosticEvent,
-  McpFnTarget,
-  McpFnTargetDescriptor,
+import {
+  McpFnClientError,
+  type McpFnDiagnosticEvent,
+  type McpFnTarget,
+  type McpFnTargetDescriptor,
 } from "@mcpfn/client";
 import type { McpFnManifest } from "@mcpfn/core";
 
@@ -132,7 +138,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   let retainedCleanup: (() => Promise<void>) | undefined;
   let capturedTarget: McpFnTargetDescriptor = { kind: "custom" };
   let capturedManifestHash: string | undefined;
-  let projectionFailed = false;
+  let projectionFailure: "redaction" | "serialization" | undefined;
   let execution: {
     results: McpFnScenarioResult[];
     server?: Implementation;
@@ -239,34 +245,42 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
       // Custom hooks may depend on credentials cleared by close. Capture every
       // target-controlled report value while the session still owns that state.
       if (client?.session.state === "connected") {
-        const { kind, ...descriptor } = options.target.describe();
-        capturedTarget = {
-          ...redactSuiteArtifact(options.target, descriptor, { preserveKeys: false }),
-          kind: client.session.preserveArtifactStructure(kind),
-        };
-        capturedManifestHash = options.manifest
-          ? redactSuiteArtifact(options.target, options.manifest.hash, { preserveKeys: false })
-          : undefined;
-        execution = {
-          server: execution.server === undefined
-            ? undefined
-            : redactSuiteArtifact(options.target, execution.server, { preserveKeys: false }),
-          capabilities: execution.capabilities === undefined
-            ? undefined
-            : redactSuiteArtifact(options.target, execution.capabilities, { preserveKeys: false }),
-          results: execution.results.map(result => ({
-            ...result,
-            name: redactSuiteArtifact(options.target, result.name, { preserveKeys: false }),
-            operation: redactSuiteArtifact(options.target, result.operation, { preserveKeys: false }),
-            ...(result.tool === undefined ? {} : {
-              tool: redactSuiteArtifact(options.target, result.tool, { preserveKeys: false }),
-            }),
-          })),
-        };
+        let kind: string | undefined;
+        let descriptor: Omit<McpFnTargetDescriptor, "kind"> | undefined;
+        try {
+          ({ kind, ...descriptor } = options.target.describe());
+        } catch { projectionFailure = "serialization"; }
+        if (!projectionFailure) {
+          try {
+            capturedTarget = {
+              ...redactSuiteArtifact(options.target, descriptor!, { preserveKeys: false }),
+              kind: client.session.preserveArtifactStructure(kind!),
+            };
+            capturedManifestHash = options.manifest
+              ? redactSuiteArtifact(options.target, options.manifest.hash, { preserveKeys: false })
+              : undefined;
+            execution = {
+              server: execution.server === undefined
+                ? undefined
+                : redactSuiteArtifact(options.target, execution.server, { preserveKeys: false }),
+              capabilities: execution.capabilities === undefined
+                ? undefined
+                : redactSuiteArtifact(options.target, execution.capabilities, { preserveKeys: false }),
+              results: execution.results.map(result => ({
+                ...result,
+                name: redactSuiteArtifact(options.target, result.name, { preserveKeys: false }),
+                operation: redactSuiteArtifact(options.target, result.operation, { preserveKeys: false }),
+                ...(result.tool === undefined ? {} : {
+                  tool: redactSuiteArtifact(options.target, result.tool, { preserveKeys: false }),
+                }),
+              })),
+            };
+          } catch { projectionFailure = "redaction"; }
+        }
       } else if (execution.results.length || execution.server || execution.capabilities) {
-        projectionFailed = true;
+        projectionFailure = "serialization";
       }
-    } catch { projectionFailed = true; }
+    } catch { projectionFailure = "serialization"; }
     try {
       await client?.close();
     } catch (error) {
@@ -367,15 +381,22 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   };
   let finalized: McpFnTargetSuiteReport;
   try {
-    if (projectionFailed) throw new Error("Report payload redaction failed");
+    if (projectionFailure) throw new Error("Report payload projection failed");
     // Custom redaction already completed before cleanup. Built-in report scopes
     // remain active here for bounded final serialization.
     finalized = enforceReportCap(redactTargetCredentials(options.target, report, { preserveKeys: true }), maxReportBytes);
   } catch (error) {
+    if (error instanceof McpFnStructuralCredentialCollisionError) {
+      throw new McpFnClientError(
+        "MCPFN_OPERATION_FAILED",
+        "Target report cannot be serialized because a credential conflicts with required artifact structure",
+        { phase: "capability-operation" },
+      );
+    }
     finalized = enforceReportCap({ ...report, ok: false, status: "incomplete",
       incompleteReason: error instanceof McpFnRedactionLimitError
         ? "Credential redaction exceeded its traversal budget"
-        : projectionFailed
+        : projectionFailure === "redaction"
           ? "Credential redaction failed; report content omitted because safe serialization failed"
           : "Report content omitted because safe serialization failed",
       target: { kind: "custom" }, server: undefined, capabilities: undefined, manifestHash: undefined,

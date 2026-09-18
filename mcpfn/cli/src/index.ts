@@ -464,10 +464,11 @@ export async function runCli(
       await error.retryCleanup();
       return MCPFN_CLI_EXIT_TEST_FAILURE;
     }
-    await stderr(`${error instanceof Error ? error.message : String(error)}\n`);
     if (error instanceof McpFnAssertionError || error instanceof McpFnClientError) {
+      try { await stderr(`${error.message}\n`); } catch {}
       return MCPFN_CLI_EXIT_TEST_FAILURE;
     }
+    await stderr(`${error instanceof Error ? error.message : String(error)}\n`);
     return MCPFN_CLI_EXIT_USAGE;
   }
   return exitCode;

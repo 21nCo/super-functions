@@ -249,12 +249,13 @@ it("retains released values for a report scope and forgets them when that scope 
 
 it("preserves report collections and fixed keys while scrubbing payload keys", async () => {
   const { redactRemoteCredential } = await import("../src/remote-target.js");
-  const report = { target: { kind: "http" }, results: Array.from({ length: 501 }, (_, index) => ({ index, structuredContent: { target: "target" } })), count: 501 };
-  const result = redactRemoteCredential({ headers: { "x-api-key": "target" } }, report, { preserveKeys: true });
+  const secret = "opaque-payload-secret";
+  const report = { target: { kind: "http" }, results: Array.from({ length: 501 }, (_, index) => ({ index, structuredContent: { [secret]: secret } })), count: 501 };
+  const result = redactRemoteCredential({ headers: { "x-api-key": secret } }, report, { preserveKeys: true });
   expect(result.target).toEqual({ kind: "http" });
   expect(result.results).toHaveLength(501);
   expect(result.count).toBe(501);
-  expect(result.results[0].structuredContent).toEqual({ "******": "******" });
+  expect(result.results[0].structuredContent).toEqual({ "[REDACTED]": "[REDACTED]" });
 });
 it("rejects non-string headers and releases the acquired lease", async () => {
   const dispose = vi.fn();
@@ -635,6 +636,21 @@ it("marks the report incomplete when a credential matches the structural target 
   } finally { await fixture.close(); }
 });
 
+it("rejects safely when a credential matches a required report key", async () => {
+  const fixture = await startAuthenticatedServer("timeline");
+  try {
+    const failure = await runMcpFnTargetSuite({ target: authenticatedHttpTarget(fixture.url, {
+      credential: { headers: { authorization: "Bearer timeline" } },
+    }) }).catch(error => error);
+    expect(failure).toMatchObject({
+      name: "McpFnClientError",
+      code: "MCPFN_OPERATION_FAILED",
+      message: "Target report cannot be serialized because a credential conflicts with required artifact structure",
+    });
+    expect(JSON.stringify(failure)).not.toContain("Bearer timeline");
+  } finally { await fixture.close(); }
+});
+
 
 it.each(["x-api-key", "authorization"])("redacts URL and form encoded %s credentials across payload fields", async header => {
   const { redactRemoteCredential } = await import("../src/remote-target.js");
@@ -918,6 +934,18 @@ it("fails closed before a second credential can be hidden by a structural collis
     { status: "passed", foo: "bar" },
     { preserveKeys: true },
   )).toThrow(McpFnRedactionLimitError);
+});
+
+it("rejects credentials that collide with required report keys", async () => {
+  const {
+    McpFnStructuralCredentialCollisionError,
+    redactRemoteCredential,
+  } = await import("../src/remote-target.js");
+  expect(() => redactRemoteCredential(
+    { headers: { "x-api-key": "timeline" } },
+    { timeline: [] },
+    { preserveKeys: true },
+  )).toThrow(McpFnStructuralCredentialCollisionError);
 });
 
 it("checks generic redaction markers in the final output", async () => {

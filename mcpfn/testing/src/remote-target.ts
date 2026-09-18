@@ -87,6 +87,13 @@ export class McpFnRedactionLimitError extends Error {
   constructor(message = "Credential redaction exceeded its traversal budget") { super(message); }
 }
 
+/** No typed artifact can preserve this authored key without exposing a credential. */
+export class McpFnStructuralCredentialCollisionError extends McpFnRedactionLimitError {
+  constructor() {
+    super("Credential collides with a required structural artifact key");
+  }
+}
+
 // Only these locally authored envelope paths retain structural keys. Unknown
 // children (including inspector events and server metadata) are always payloads.
 const envelopeKeys: Record<string, Set<string>> = Object.fromEntries(Object.entries({
@@ -166,22 +173,17 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   });
   const secretPattern = patterns.length ? new RegExp(patterns.join("|"), "g") : undefined;
   const replacementPattern = patterns.length ? new RegExp(patterns.join("|")) : undefined;
-  const structuralKeyMatchers = patterns.map((pattern) => ({
-    pattern,
-    expression: new RegExp(pattern),
-  }));
-  const structuralKeyPatterns = new Set<string>();
-  const preserveStructuralKey = (input: string): string => {
-    for (const { pattern, expression } of structuralKeyMatchers) {
-      if (expression.test(input)) structuralKeyPatterns.add(pattern);
-    }
-    return input;
-  };
   const preserveStructural = (input: string): string => {
     if (replacementPattern?.test(input)) {
       throw new McpFnRedactionLimitError(
         "Credential collides with a required structural artifact field",
       );
+    }
+    return input;
+  };
+  const preserveStructuralKey = (input: string): string => {
+    if (replacementPattern?.test(input)) {
+      throw new McpFnStructuralCredentialCollisionError();
     }
     return input;
   };
@@ -258,12 +260,11 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   const scrubbed = scrub(value, role);
   const generic = redactOAuthValue(scrubbed, { maxStringLength: 262_144, maxDepth: 64, maxArrayEntries: 100_000, maxObjectEntries: 100_000, ...(redactionMarker !== undefined ? { redactionMarker } : {}) });
   const result = scrub(generic, role, "", true) as T;
-  const boundaryPatterns = patterns.filter((pattern) => !structuralKeyPatterns.has(pattern));
   assertPayloadSerialization(
     result,
     "payload",
     true,
-    boundaryPatterns.length ? new RegExp(boundaryPatterns.join("|")) : undefined,
+    replacementPattern,
   );
   return result;
 }

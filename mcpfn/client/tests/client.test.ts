@@ -144,6 +144,62 @@ describe("McpFn production client", () => {
     expect(JSON.stringify({ events, diagnostics })).not.toContain("failed");
   });
 
+  it("omits artifacts when a credential collides with the target kind value", async () => {
+    const secret = "target-owned-kind";
+    const events: any[] = [];
+    const diagnostics: any[] = [];
+    const client = createMcpFnClient({
+      target: customTarget({
+        kind: secret,
+        open: async () => { throw new Error("unused"); },
+        redact: <T>(value: T): T => JSON.parse(JSON.stringify(value).replaceAll(secret, "")) as T,
+      }),
+      events: event => { events.push(event); },
+      diagnostics: event => { diagnostics.push(event); },
+    });
+    const emitEvent = (client as any).emitEvent.bind(client);
+    const dispatch = (client as any).dispatch.bind(client);
+
+    await emitEvent("logging.message", { message: "safe" });
+    await dispatch({
+      phase: "capability-operation", outcome: "failed", requestId: "request",
+      at: new Date(0).toISOString(), target: { kind: secret },
+    });
+
+    expect(events).toHaveLength(1);
+    expect(diagnostics).toHaveLength(1);
+    expect(client.isRedactionOmission(events[0])).toBe(true);
+    expect(client.isRedactionOmission(diagnostics[0])).toBe(true);
+    expect(JSON.stringify({ events, diagnostics })).not.toContain(secret);
+    expect(client.getRedactionOmissionCounts()).toEqual({ clientEvents: 1, diagnostics: 1 });
+  });
+
+  it("drops artifacts when a credential collides with the target discriminator key", async () => {
+    const events: any[] = [];
+    const diagnostics: any[] = [];
+    const client = createMcpFnClient({
+      target: customTarget({
+        kind: "custom",
+        open: async () => { throw new Error("unused"); },
+        redact: <T>(value: T): T => JSON.parse(JSON.stringify(value).replaceAll("kind", "")) as T,
+      }),
+      events: event => { events.push(event); },
+      diagnostics: event => { diagnostics.push(event); },
+    });
+    const emitEvent = (client as any).emitEvent.bind(client);
+    const dispatch = (client as any).dispatch.bind(client);
+
+    await emitEvent("logging.message", { message: "safe" });
+    await dispatch({
+      phase: "capability-operation", outcome: "failed", requestId: "request",
+      at: new Date(0).toISOString(), target: { kind: "custom" },
+    });
+
+    expect(events).toEqual([]);
+    expect(diagnostics).toEqual([]);
+    expect(client.getRedactionOmissionCounts()).toEqual({ clientEvents: 1, diagnostics: 1 });
+  });
+
   it("shares the official session engine and paginates complete inventories", async () => {
     const registry = new McpFnRegistry()
       .register({

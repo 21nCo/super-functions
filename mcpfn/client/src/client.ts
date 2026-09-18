@@ -962,14 +962,13 @@ export class McpFnClient {
   private async emitEvent(kind: McpFnClientEventKind, payload?: unknown): Promise<void> {
     let event: McpFnClientEvent | undefined;
     try {
-      const { kind: targetKind, ...descriptor } = this.options.target.describe();
       const at = (this.options.clock?.() ?? new Date()).toISOString();
       event = {
         formatVersion: 1,
         kind: this.preserveArtifactStructure(kind),
         at: this.preserveArtifactTimestamp(at),
         requestId: this.redact(this.requestId(), { preserveKeys: false }),
-        target: this.redact({ ...descriptor, kind: targetKind }, { preserveKeys: false }) as McpFnClientEvent["target"],
+        target: this.redactTargetDescriptor(this.options.target.describe()),
         ...(payload !== undefined
           ? { payload: this.redact(payload, { preserveKeys: false }) }
           : {}),
@@ -1023,7 +1022,6 @@ export class McpFnClient {
         redacted = event;
       } else {
         const { phase, outcome, code, requestId, at, target, details } = event;
-        const { kind, ...descriptor } = target;
         redacted = {
           phase: this.preserveArtifactStructure(phase),
           outcome: this.preserveArtifactStructure(outcome),
@@ -1032,7 +1030,7 @@ export class McpFnClient {
             : { code: this.redact(code, { preserveKeys: false }) }),
           requestId: this.redact(requestId, { preserveKeys: false }),
           at: this.preserveArtifactTimestamp(at),
-          target: this.redact({ ...descriptor, kind }, { preserveKeys: false }) as McpFnDiagnosticEvent["target"],
+          target: this.redactTargetDescriptor(target),
           ...(details === undefined
             ? {}
             : { details: this.redact(details, { preserveKeys: false }) }),
@@ -1054,6 +1052,22 @@ export class McpFnClient {
       catch {}
     }
     return undefined;
+  }
+
+  private redactTargetDescriptor(target: McpFnTargetDescriptor): McpFnTargetDescriptor {
+    const { kind, ...descriptor } = target;
+    const safeKey = this.preserveArtifactStructure("kind");
+    const safeKind = this.preserveArtifactStructure(kind);
+    const safeDescriptor = this.redact(descriptor, { preserveKeys: false });
+    if (!safeDescriptor || typeof safeDescriptor !== "object" || Array.isArray(safeDescriptor) ||
+        Object.hasOwn(safeDescriptor, safeKey)) {
+      throw new McpFnClientError(
+        "MCPFN_OPERATION_FAILED",
+        "MCP target descriptor conflicts with artifact structure",
+        { phase: "capability-operation" },
+      );
+    }
+    return { ...safeDescriptor, [safeKey]: safeKind } as McpFnTargetDescriptor;
   }
 
   private preserveArtifactTimestamp(value: string): string {
@@ -1093,7 +1107,7 @@ export class McpFnClient {
         kind,
         at,
         requestId: this.redact("redacted", { preserveKeys: false }),
-        target: this.redact({ kind: "custom" }, { preserveKeys: false }),
+        target: this.redactTargetDescriptor({ kind: "custom" }),
         payload: this.redact({
           omitted: true,
           reason: "diagnostic-redaction-failed",
@@ -1119,7 +1133,7 @@ export class McpFnClient {
         code: this.redact("MCPFN_DIAGNOSTIC_REDACTION_FAILED", { preserveKeys: false }),
         at,
         requestId: this.redact("redacted", { preserveKeys: false }),
-        target: this.redact({ kind: "custom" }, { preserveKeys: false }),
+        target: this.redactTargetDescriptor({ kind: "custom" }),
         details: this.redact({ omitted: true }, { preserveKeys: false }),
       };
       redactionOmissions.add(event);

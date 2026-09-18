@@ -204,13 +204,14 @@ it.each(["report", "stdout", "stderr"] as const)(
           : () => {},
         stderr: async value => {
           stderrCalls += 1;
-          if (failureMode === "stderr" && stderrCalls === 1) {
+          if (failureMode === "stderr") {
             throw new Error("unsafe stderr detail");
           }
           errors += value;
         },
       })).toBe(1);
-      expect(errors).toContain("Conformance report output failed");
+      if (failureMode === "stderr") expect(errors).toBe("");
+      else expect(errors).toContain("Conformance report output failed");
       expect(errors).not.toContain("ENOENT");
       expect(errors).not.toContain("unsafe stdout detail");
       expect(errors).not.toContain("unsafe stderr detail");
