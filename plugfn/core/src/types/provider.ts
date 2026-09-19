@@ -19,8 +19,18 @@ export enum AuthType {
 export interface OAuth2Config {
   authorizationUrl: string;
   tokenUrl: string;
+  tokenBodyEncoding?: 'form' | 'json';
+  tokenHeaders?: Record<string, string>;
   scopes: string[];
   scopeSeparator?: string;
+  tokenAuthMethod?: 'client_secret_post' | 'client_secret_basic';
+  scopeParameter?: 'scope' | 'user_scope';
+  authorizationCodeTokenPath?: readonly string[];
+  extraAuthParams?: Record<string, string>;
+  supportsPkce?: boolean;
+  supportsRefreshToken?: boolean;
+  revocationUrl?: string;
+  revocationResponse?: "http-status" | "json-ok";
   getAuthParams?: (config: OAuth2RuntimeConfig) => Record<string, string>;
   getTokenParams?: (config: OAuth2RuntimeConfig, code: string) => Record<string, any>;
   refreshToken?: (config: OAuth2RuntimeConfig, refreshToken: string) => Promise<TokenResponse>;

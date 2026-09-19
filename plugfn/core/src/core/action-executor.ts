@@ -1,3 +1,4 @@
+import { resolveActionContract, redactActionTelemetry } from './action-manifest.js';
 import type {
   ActionOptions,
   ActionResult,
@@ -10,7 +11,7 @@ import type { RateLimitConfig } from '../types/provider.js';
 import { AuthType } from '../types/provider.js';
 import type { Logger } from '../types/action.js';
 import type { Credentials } from '../types/connection.js';
-import type { Adapter as DbAdapter, KVStoreAdapter } from '@superfunctions/db';
+import type { Adapter as DbAdapter, KVStoreAdapter, AtomicKVStoreAdapter } from '@superfunctions/db';
 import { ConnectionManager } from './connection-manager.js';
 import { ProviderRegistry } from './provider-registry.js';
 import { RetryMiddleware } from '../middleware/retry.js';
@@ -59,11 +60,13 @@ export class ActionExecutor {
       cacheKeyPrefix?: string;
       respectProviderLimits?: boolean;
       globalRateLimit?: RateLimitConfig;
+      rateLimitStore?: AtomicKVStoreAdapter;
+      rateLimitKeyPrefix?: string;
     } = {}
   ) {
     this.httpClient = new FetchHttpClient();
     this.retryMiddleware = new RetryMiddleware({}, logger);
-    this.rateLimiter = new RateLimiter();
+    this.rateLimiter = new RateLimiter({ atomicStore: _options.rateLimitStore, keyPrefix: _options.rateLimitKeyPrefix });
     this.cacheMiddleware = new CacheMiddleware(_options.cacheTtl ?? 300000, logger, {
       store: _options.cacheStore,
       keyPrefix: _options.cacheKeyPrefix,
@@ -105,6 +108,7 @@ export class ActionExecutor {
         throw new Error(`Action ${action} not found in provider ${provider}`);
       }
 
+      const contract = actionObj.contract ? resolveActionContract(actionObj) : undefined;
       // Validate parameters
       const validatedParams = actionObj.parameters.parse(options.params);
       const shouldUseCache =
@@ -124,6 +128,13 @@ export class ActionExecutor {
         throw new Error(`No connection found for provider ${provider} and user ${options.userId}`);
       }
 
+      const requireScopes = (scopes: string[] | undefined) => {
+        if (contract?.requiredScopes.some(scope => !scopes?.includes(scope))) {
+          throw new Error("ACTION_SCOPE_REQUIRED");
+        }
+      };
+      requireScopes(connection.scopes);
+
       const cacheKey = shouldUseCache
         ? typeof options.cache === 'object' && options.cache.key
           ? this.cacheMiddleware.generateCustomKey(
@@ -141,6 +152,19 @@ export class ActionExecutor {
               connection.id
             )
         : undefined;
+
+      // Get credentials
+      const credentials = await this.connectionManager.getCredentials(connection.id);
+
+      // Refresh may change granted scopes. Reapply consumer authorization against
+      // the persisted refreshed connection before any external dispatch.
+      if (connection.expiresAt && new Date() >= connection.expiresAt) {
+        const refreshed = await this.connectionManager.resolveConnectionForAction({
+          userId: options.userId, provider, connectionId: connection.id, actor: options.actor,
+        });
+        if (!refreshed) throw new Error("Connection unavailable after refresh");
+        requireScopes(refreshed.scopes);
+      }
 
       // Check cache only after resolving the concrete connection.
       if (cacheKey) {
@@ -161,9 +185,6 @@ export class ActionExecutor {
         }
       }
 
-      // Get credentials
-      const credentials = await this.connectionManager.getCredentials(connection.id);
-
       // Apply rate limiting
       const acquireRateLimit = () =>
         this.acquireRateLimits(providerObj, provider, options.userId);
@@ -172,6 +193,7 @@ export class ActionExecutor {
       const context: ActionContext = {
         userId: options.userId,
         connectionId: connection.id,
+        connectionMetadata: connection.metadata,
         provider: {
           name: providerObj.name,
           baseUrl: providerObj.baseUrl,
@@ -186,7 +208,12 @@ export class ActionExecutor {
           options.timeout,
           acquireRateLimit
         ),
-        logger: this.logger,
+        logger: {
+          debug: (_message, meta) => this.logger.debug("Action debug", redactActionTelemetry(actionObj, { meta })),
+          info: (_message, meta) => this.logger.info("Action info", redactActionTelemetry(actionObj, { meta })),
+          warn: (_message, meta) => this.logger.warn("Action warning", redactActionTelemetry(actionObj, { meta })),
+          error: (_message, meta) => this.logger.error("Action error", redactActionTelemetry(actionObj, { meta })),
+        },
         acquireRateLimit,
       };
 
@@ -202,7 +229,12 @@ export class ActionExecutor {
         return this.retryMiddleware.execute(
           executeAction,
           `${provider}.${action}`,
-          options.retry ?? (actionObj.idempotent === true ? {} : { maxAttempts: 1 })
+          contract?.retry === 'safe' || (contract?.retry === 'provider-key' &&
+            typeof validatedParams[contract.idempotencyKeyParameter!] === 'string' &&
+            validatedParams[contract.idempotencyKeyParameter!].trim().length > 0) ||
+            (!contract && actionObj.idempotent === true)
+            ? options.retry ?? {}
+            : { maxAttempts: 1 }
         );
       });
 
@@ -275,7 +307,7 @@ export class ActionExecutor {
           userId: options.userId,
           connectionId: options.connectionId,
           status: 'error',
-          error: err.message,
+          error: 'ACTION_EXECUTION_FAILED',
           durationMs: duration,
           retries,
           cached,
@@ -379,7 +411,7 @@ export class ActionExecutor {
         return this.httpClient.get(url, {
           ...config,
           timeout: config?.timeout ?? defaultTimeout,
-          headers: { ...baseHeaders, ...config?.headers },
+          headers: config?.omitAuth ? { ...config?.headers } : { ...baseHeaders, ...config?.headers },
         });
       },
       post: async (url: string, data?: any, config?: any) => {
@@ -387,7 +419,7 @@ export class ActionExecutor {
         return this.httpClient.post(url, data, {
           ...config,
           timeout: config?.timeout ?? defaultTimeout,
-          headers: { ...baseHeaders, ...config?.headers },
+          headers: config?.omitAuth ? { ...config?.headers } : { ...baseHeaders, ...config?.headers },
         });
       },
       put: async (url: string, data?: any, config?: any) => {
@@ -395,7 +427,7 @@ export class ActionExecutor {
         return this.httpClient.put(url, data, {
           ...config,
           timeout: config?.timeout ?? defaultTimeout,
-          headers: { ...baseHeaders, ...config?.headers },
+          headers: config?.omitAuth ? { ...config?.headers } : { ...baseHeaders, ...config?.headers },
         });
       },
       patch: async (url: string, data?: any, config?: any) => {
@@ -403,7 +435,7 @@ export class ActionExecutor {
         return this.httpClient.patch(url, data, {
           ...config,
           timeout: config?.timeout ?? defaultTimeout,
-          headers: { ...baseHeaders, ...config?.headers },
+          headers: config?.omitAuth ? { ...config?.headers } : { ...baseHeaders, ...config?.headers },
         });
       },
       delete: async (url: string, config?: any) => {
@@ -411,7 +443,7 @@ export class ActionExecutor {
         return this.httpClient.delete(url, {
           ...config,
           timeout: config?.timeout ?? defaultTimeout,
-          headers: { ...baseHeaders, ...config?.headers },
+          headers: config?.omitAuth ? { ...config?.headers } : { ...baseHeaders, ...config?.headers },
         });
       },
     };

@@ -62,6 +62,11 @@ jobs:
       - name: Verify CI planner
         run: node --test scripts/ci-plan.test.mjs
 
+      - name: Nested package-lock.json files are not tracked
+        run: |
+          node --test scripts/verify-package-lockfiles.test.mjs
+          node scripts/verify-package-lockfiles.mjs
+
       - name: Build CI plan
         id: plan
         run: node scripts/ci-plan.mjs
@@ -109,18 +114,18 @@ jobs:
         if: needs.plan.outputs.has_js_build == 'true'
         run: |
           if [ "${{ needs.plan.outputs.full_js }}" = "true" ]; then
-            npx turbo run build
+            ./node_modules/.bin/turbo run build
           else
-            npx turbo run build ${{ needs.plan.outputs.js_build_filters }}
+            ./node_modules/.bin/turbo run build ${{ needs.plan.outputs.js_build_filters }}
           fi
 
       - name: Typecheck
         if: needs.plan.outputs.has_js_typecheck == 'true'
         run: |
           if [ "${{ needs.plan.outputs.full_js }}" = "true" ]; then
-            npx turbo run typecheck
+            ./node_modules/.bin/turbo run typecheck
           else
-            npx turbo run typecheck ${{ needs.plan.outputs.js_typecheck_filters }}
+            ./node_modules/.bin/turbo run typecheck ${{ needs.plan.outputs.js_typecheck_filters }}
           fi
 
       # Avoid oversubscribing hosted runners with many concurrent Vitest pools.
@@ -137,9 +142,9 @@ jobs:
         if: needs.plan.outputs.has_js_lint == 'true'
         run: |
           if [ "${{ needs.plan.outputs.full_js }}" = "true" ]; then
-            npx turbo run lint
+            ./node_modules/.bin/turbo run lint
           else
-            npx turbo run lint ${{ needs.plan.outputs.js_lint_filters }}
+            ./node_modules/.bin/turbo run lint ${{ needs.plan.outputs.js_lint_filters }}
           fi
 
   python:
@@ -171,7 +176,7 @@ jobs:
           node-version: "20"
 
       - name: Upgrade pip
-        run: python -m pip install --upgrade pip build
+        run: python -m pip install --upgrade --only-binary=:all: pip build
 
       - name: Check package
         run: node scripts/ci-run-python-package.mjs "${{ matrix.package.path }}"
@@ -200,7 +205,7 @@ jobs:
         run: node scripts/ci-install-rollup-native.mjs
 
       - name: Install Chromium for McpFn auth tests
-        run: npx playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium
 
       - name: Run McpFn release gate
         run: npm run gate:mcpfn-release

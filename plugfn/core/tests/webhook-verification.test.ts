@@ -23,6 +23,34 @@ describe('Webhook verification and mapping', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
+  it('prefers a provider delivery id over a resource id in the payload', async () => {
+    const { webhookHandler } = createWebhookHarness();
+    const handler = vi.fn();
+    webhookHandler.on('gmail', 'mail.update', handler);
+
+    const first = await webhookHandler.handleWebhook(
+      'gmail',
+      'mail.update',
+      { id: 'resource_1', message: 'first' },
+      { 'x-signature': 'sig:secret', 'x-event-id': 'delivery_1' },
+      'secret'
+    );
+    await webhookHandler.handleWebhook(
+      'gmail',
+      'mail.update',
+      { id: 'resource_1', message: 'second' },
+      { 'x-signature': 'sig:secret', 'x-event-id': 'delivery_2' },
+      'secret'
+    );
+
+    expect(first).toMatchObject({
+      deliveryId: 'delivery_1',
+      idempotencyKey: 'gmail:delivery_1',
+      webhookDelivery: true,
+    });
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
+
   it('fails closed when signature secret is missing', async () => {
     const { webhookHandler } = createWebhookHarness();
 
