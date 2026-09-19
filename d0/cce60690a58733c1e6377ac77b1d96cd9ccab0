@@ -1,0 +1,24 @@
+searchfn/python/README.md
+  s_d473070cda5c3b::t_a366939209778a 3,133-135
+searchfn/python/tests/test_search.py
+  s_d473070cda5c3b::t_a366939209778a 60-79
+  s_d473070cda5c3b::t_414c5b0967786d 59
+searchfn/python/src/searchfn/indexing.py
+  s_d473070cda5c3b::t_a366939209778a 8-29,100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d0cce60690a58733c1e6377ac77b1d96cd9ccab0",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
