@@ -132,7 +132,7 @@ immutable workflow. For GitLab/Jenkins/Buildkite, run the CLI commands in
 - `spec_path` (required): Repo-relative OpenAPI path (e.g. `.apifn/openapi.yml`)
 - `collection_dir` (required): Repo-relative OpenCollection directory (e.g. `.apifn/collection`)
 - `environment` (optional, default `development`): Collection environment
-- `cli_version` (optional, default `0.0.2`): Published `@apifn/cli` version to install
+- `cli_version` (optional, default `0.0.2`): Must match the `@apifn/cli` version pinned in `.github/apifn-cli-install/package-lock.json`. The workflow installs from that lockfile.
 - `base_branch` (optional, default `main`): Branch used to fetch baseline spec
 - `fail_on_breaking` (optional, default `true`): Whether breaking diff exits non-zero
 - `post_pr_comment` (optional, default `true`): Whether to post/update PR summary comment

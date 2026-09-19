@@ -17,7 +17,7 @@ on:
         default: development
         type: string
       cli_version:
-        description: Published @apifn/cli version used by the check
+        description: Must match the @apifn/cli version pinned in .github/apifn-cli-install/package-lock.json
         required: false
         default: "0.0.2"
         type: string
@@ -62,7 +62,7 @@ on:
         default: development
         type: string
       cli_version:
-        description: Published @apifn/cli version used by the check
+        description: Must match the @apifn/cli version pinned in .github/apifn-cli-install/package-lock.json
         required: false
         default: "0.0.2"
         type: string
@@ -115,8 +115,8 @@ jobs:
         if: hashFiles('.github/apifn-cli-install/package-lock.json') == ''
         uses: actions/checkout@v4
         with:
-          repository: 21nCo/super-functions
-          ref: ${{ github.workflow_sha }}
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           sparse-checkout: .github/apifn-cli-install
           path: .apifn-cli-lock
           persist-credentials: false
