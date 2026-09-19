@@ -55,8 +55,11 @@ function compareText(left: string, right: string): number {
 }
 
 function compareSearchAllResults(left: SearchAllResult, right: SearchAllResult): number {
-  const scoreDifference = right.score - left.score;
-  if (scoreDifference !== 0) return scoreDifference;
+  if (left.score !== right.score) {
+    if (Number.isNaN(left.score)) return Number.isNaN(right.score) ? 0 : 1;
+    if (Number.isNaN(right.score)) return -1;
+    return left.score > right.score ? -1 : 1;
+  }
 
   const resourceDifference = compareText(left.resource, right.resource);
   if (resourceDifference !== 0) return resourceDifference;

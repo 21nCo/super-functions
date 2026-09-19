@@ -32,6 +32,7 @@ describe("adapter contracts scaffolding", () => {
 
     expect(config.resolve?.alias).toMatchObject({
       "@fixture": "/tmp/fixture.ts",
+      "@searchfn/adapter-contracts": expect.stringContaining("src/index.ts"),
       "@searchfn/adapter-contracts/testing": expect.stringContaining("src/testing.ts")
     });
   });
@@ -45,6 +46,10 @@ describe("adapter contracts scaffolding", () => {
       {
         find: "@searchfn/adapter-contracts/testing",
         replacement: expect.stringContaining("src/testing.ts")
+      },
+      {
+        find: "@searchfn/adapter-contracts",
+        replacement: expect.stringContaining("src/index.ts")
       },
       { find: "@fixture", replacement: "/tmp/fixture.ts" }
     ]);
