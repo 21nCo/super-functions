@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2X818DHR08QF5CMZHFN7GA9",
+  "strategy": "manual-commit",
+  "branch": "codex/pr195-postmerge-remediation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/core/src/__tests__/password.test.ts",
+    "authfn/core/src/__tests__/social-google.test.ts",
+    "authfn/core/src/__tests__/two-factor.test.ts",
+    "authfn/core/src/core/limits.ts",
+    "authfn/core/src/core/oauth-accounts.ts",
+    "authfn/core/src/core/passwords.ts",
+    "authfn/core/src/core/two-factor.ts",
+    "packages/cli/src/__tests__/generate-command.test.ts",
+    "packages/cli/src/commands/generate.ts",
+    "packages/cli/src/utils/generators.ts",
+    "packages/cli/src/utils/schema-diff.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 33887,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 5476096,
+    "output_tokens": 10290,
+    "api_call_count": 27
+  }
+}
