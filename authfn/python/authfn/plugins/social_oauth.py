@@ -882,7 +882,12 @@ class SocialOAuthService:
             },
         }
         user = await self._run_before_user_create(request, runtime, user)
-        user["id"] = assert_database_key_length(str(user["id"]), "id")
+        user_id = user.get("id")
+        if not isinstance(user_id, str) or not user_id:
+            raise PluginAbortedError(
+                "beforeUserCreate hook returned an invalid id"
+            )
+        user["id"] = assert_database_key_length(user_id, "id")
         if user.get("primaryEmail"):
             user["primaryEmail"] = assert_database_key_length(
                 _normalize_email(user["primaryEmail"]) or "", "primaryEmail"
@@ -1479,6 +1484,8 @@ def _map_oauth_error(error: Exception) -> Exception:
     details = getattr(error, "details", None)
     if code == ValidationError.code:
         return ValidationError(str(error), details)
+    if code == PluginAbortedError.code:
+        return PluginAbortedError(str(error), details)
     if code == OAuthCallbackInvalidError.code:
         return OAuthCallbackInvalidError(str(error), details)
     if code == RedirectUriDisallowedError.code:

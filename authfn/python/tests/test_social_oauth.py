@@ -28,6 +28,7 @@ from authfn import (
     OAuthCallbackInvalidError,
     OAuthProviderUnsupportedError,
     OAuthStateReplayedError,
+    PluginAbortedError,
     RateLimitedError,
     RedirectUriDisallowedError,
     ValidationError,
@@ -425,6 +426,37 @@ async def test_custom_profile_resolver_rejects_null_provider_account_id() -> Non
         await service.handle_callback("google", code="abc123", state=started["stateId"])
 
     assert db.storage["oauth_accounts"] == []
+
+
+@pytest.mark.asyncio
+async def test_before_user_create_rejects_non_string_id() -> None:
+    db = MockDatabaseAdapter()
+
+    async def replace_user_id(_context: Any, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return {**payload, "id": None}
+
+    service = SocialOAuthService(
+        AuthFnConfig(
+            database=db,
+            namespace="authfn",
+            hooks=AuthFnHooks(beforeUserCreate=replace_user_id),
+        ),
+        SocialOAuthPluginConfig(
+            fetcher=build_google_fetcher(),
+            providers={
+                "google": SocialProviderConfig(
+                    client_id="google-client-id",
+                    client_secret="google-client-secret",
+                )
+            },
+        ),
+    )
+
+    started = await service.start("google", callback_mode="json")
+    with pytest.raises(PluginAbortedError, match="invalid id"):
+        await service.handle_callback("google", code="abc123", state=started["stateId"])
+
+    assert db.storage["users"] == []
 
 
 @pytest.mark.asyncio

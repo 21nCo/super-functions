@@ -51,6 +51,35 @@ describe('authfn password plugin', () => {
     })).resolves.toBe(0);
   });
 
+  it('updates an existing password credential for a legacy oversized user ID', async () => {
+    const config = createConfig();
+    const userId = 'legacy-user-'.padEnd(300, 'x');
+    const now = new Date();
+    await config.database.create({
+      model: 'password_credentials',
+      namespace: 'authfn',
+      data: {
+        id: 'pwd_legacy',
+        userId,
+        passwordHash: 'old-hash',
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    const updated = await updatePasswordCredential(config, {
+      userId,
+      password: 'An0therSecurePassphrase!'
+    });
+
+    expect(updated.userId).toBe(userId);
+    expect(updated.passwordHash).not.toBe('old-hash');
+    await expect(config.database.count({
+      model: 'password_credentials',
+      namespace: 'authfn'
+    })).resolves.toBe(1);
+  });
+
   it('keeps the documented inline OTP delivery configuration compatible', async () => {
     const delivered: unknown[] = [];
     const auth = createTestServer({

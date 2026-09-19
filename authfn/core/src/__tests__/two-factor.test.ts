@@ -76,7 +76,12 @@ describe('two-factor persistence bounds', () => {
       model: 'two_factor_challenges',
       namespace: 'authfn'
     })).resolves.toBe(0);
+  });
 
+  it('creates a persisted challenge for a confirmed legacy oversized user ID', async () => {
+    const config = createConfig();
+    const user = await createUser(config, { primaryEmail: 'legacy-2fa@example.com' });
+    const oversizedUser = { ...user, id: 'legacy-user-'.padEnd(300, 'x') };
     const now = new Date();
     await config.database.create({
       model: 'users',
@@ -108,6 +113,15 @@ describe('two-factor persistence bounds', () => {
       config.pluginRuntime?.twoFactor
     );
     expect(challenge?.challenge.userId).toBe(oversizedUser.id);
+    await expect(config.database.count({
+      model: 'two_factor_challenges',
+      namespace: 'authfn'
+    })).resolves.toBe(1);
+    await expect(config.database.findOne({
+      model: 'two_factor_challenges',
+      namespace: 'authfn',
+      where: [{ field: 'id', operator: 'eq', value: challenge?.challenge.id }]
+    })).resolves.toMatchObject({ userId: oversizedUser.id });
   });
 });
 

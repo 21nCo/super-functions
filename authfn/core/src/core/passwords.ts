@@ -307,12 +307,14 @@ export async function updatePasswordCredential(
   input: { userId: string; password: string },
   options: PasswordPolicyOptions = {}
 ): Promise<AuthFnPasswordCredentialRecord> {
-  const userId = assertAuthFnDatabaseKeyLength(input.userId, 'userId');
+  const existing = await getPasswordCredentialByUserId(config, input.userId);
+  const userId = existing?.userId === input.userId
+    ? input.userId
+    : assertAuthFnDatabaseKeyLength(input.userId, 'userId');
   await assertValidPassword(input.password, {
     ...options,
     purpose: options.purpose ?? 'update-password'
   });
-  const existing = await getPasswordCredentialByUserId(config, userId);
   const passwordHash = await hashPassword(input.password);
 
   if (!existing) {
