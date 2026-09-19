@@ -1,0 +1,47 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2WW0GQZRH3VWJQSC1H3H3HT",
+  "session_id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-19T12:59:48.783394Z",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "botfn/bot-slack/package.json",
+    "botfn/persistence/README.md",
+    "package-lock.json"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "bb5e0172e878",
+  "checkpoint_transcript_start": 1716,
+  "transcript_lines_at_start": 1716,
+  "compact_transcript_start": 239,
+  "token_usage": {
+    "input_tokens": 4895,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 851328,
+    "output_tokens": 1387,
+    "api_call_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-19T12:59:48.090761Z",
+    "agent_lines": 17,
+    "agent_removed": 42,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 17,
+    "total_lines_changed": 59,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
