@@ -38,7 +38,7 @@ Skills are how you prevent your assistant from synthesizing an outdated or wrong
   "playbook": [
     "1. Install: `npm install authfn @authfn/two-factor @authfn/client`",
     "2. Add `authFnTwoFactorPlugin()` to `authfn({ plugins: authFnPlugins(...) })`.",
-    "3. Generate schema: `npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated --force`.",
+    "3. Generate schema: `npx @superfunctions/cli generate-schema --config ./superfunctions.config.mjs --adapter drizzle --dialect postgres --output ./db/generated --force`.",
     "4. Pass `encryptionKeyResolver` under `createServer({ pluginRuntime: { twoFactor } })`.",
     "5. UI: enroll → confirm → challenge. See recipes/adding-2fa.md."
   ]

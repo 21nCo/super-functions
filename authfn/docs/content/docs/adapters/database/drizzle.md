@@ -29,7 +29,7 @@ Then generate the schema. `--force` makes subsequent runs replace the stale
 generated file after you add or remove a plugin:
 
 ```bash
-npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated --force
+npx @superfunctions/cli generate-schema --config ./superfunctions.config.mjs --adapter drizzle --dialect postgres --output ./db/generated --force
 ```
 
 The generated file is `authfn-schema.ts` for an authfn declaration. Import it

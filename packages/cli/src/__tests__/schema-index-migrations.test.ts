@@ -31,6 +31,33 @@ const syncJobs = {
 } as unknown as TableSchema;
 
 describe("schema index migrations", () => {
+  it("uses supported Drizzle builders for SQLite scalar modes", () => {
+    const schema = generateDrizzleSchemaFile(
+      {
+        version: 1,
+        schemas: [{
+          modelName: "settings",
+          fields: {
+            id: { type: "string", required: true, fieldName: "id" },
+            enabled: { type: "boolean", required: true, fieldName: "enabled" },
+            metadata: { type: "json", required: false, fieldName: "metadata" },
+            counter: { type: "bigint", required: true, fieldName: "counter" },
+          },
+        } as unknown as TableSchema],
+      },
+      "example",
+      "example",
+      "sqlite",
+    );
+
+    expect(schema).toContain("integer('enabled', { mode: 'boolean' })");
+    expect(schema).toContain("text('metadata', { mode: 'json' })");
+    expect(schema).toContain("blob('counter', { mode: 'bigint' })");
+    expect(schema).not.toContain("boolean('enabled'");
+    expect(schema).not.toContain("json('metadata'");
+    expect(schema).not.toContain("bigint('counter'");
+  });
+
   it("scopes PostgreSQL index relations to the requested schema", async () => {
     let indexQuery = "";
     let indexParams: unknown[] = [];

@@ -128,7 +128,7 @@ The full config surface for each plugin is documented under [Plugins](../plugins
 Plugins describe their tables through `schema(config)`. The kernel composes them with the kernel's own (`authfn_users`, `authfn_sessions`) and exposes the unified set via `authApp.getSchema()`. The Superfunctions CLI imports the declaration and generates an ORM schema:
 
 ```bash
-npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated --force
+npx @superfunctions/cli generate-schema --config ./superfunctions.config.mjs --adapter drizzle --dialect postgres --output ./db/generated --force
 ```
 
 Use your ORM's migration tool to turn that schema change into a reviewed

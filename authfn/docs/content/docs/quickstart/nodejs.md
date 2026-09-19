@@ -122,7 +122,7 @@ using `libraries: ['./auth.ts']` for this quickstart. Then generate the Drizzle
 schema and migrations from the plugin set you've enabled:
 
 ```bash
-npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated --force
+npx @superfunctions/cli generate-schema --config ./superfunctions.config.mjs --adapter drizzle --dialect postgres --output ./db/generated --force
 npx drizzle-kit generate
 npx drizzle-kit migrate
 ```

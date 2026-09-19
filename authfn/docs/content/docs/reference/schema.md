@@ -211,7 +211,7 @@ declaration, asks it for the composed schema, and emits an idiomatic ORM schema.
 To regenerate after enabling or removing a plugin:
 
 ```bash
-npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated --force
+npx @superfunctions/cli generate-schema --config ./superfunctions.config.mjs --adapter drizzle --dialect postgres --output ./db/generated --force
 ```
 
 See the [Drizzle adapter guide](../adapters/database/drizzle) for the required

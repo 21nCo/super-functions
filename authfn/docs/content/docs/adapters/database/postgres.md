@@ -33,7 +33,7 @@ After adding the complete CLI and Drizzle Kit configuration from the
 migrations:
 
 ```bash
-npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated --force
+npx @superfunctions/cli generate-schema --config ./superfunctions.config.mjs --adapter drizzle --dialect postgres --output ./db/generated --force
 npx drizzle-kit generate
 npx drizzle-kit migrate
 ```
