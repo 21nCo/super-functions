@@ -1,0 +1,47 @@
+authfn/multi-region/src/index.ts
+  s_d473070cda5c3b::t_e9c60cf53624dc 267-269
+packages/cli/src/utils/schema-generators.ts
+  s_d473070cda5c3b::t_e9c60cf53624dc 112,117-123
+authfn/native-handoff/src/index.ts
+  s_d473070cda5c3b::t_e9c60cf53624dc 62-64
+authfn/api-keys/src/index.ts
+  s_d473070cda5c3b::t_e9c60cf53624dc 34-35,37
+authfn/password/src/index.ts
+  s_d473070cda5c3b::t_e9c60cf53624dc 43-44
+authfn/two-factor/src/index.ts
+  s_d473070cda5c3b::t_e9c60cf53624dc 38-39,57-59,78-79
+authfn/social-oauth/src/index.ts
+  s_d473070cda5c3b::t_e9c60cf53624dc 1533-1563,1570,1575,1578-1580
+authfn/docs/content/docs/plugins/authoring.md
+  s_d473070cda5c3b::t_7d26c2378d14e8 76,78
+authfn/core/src/schema.ts
+  s_d473070cda5c3b::t_e9c60cf53624dc 29-30,47,52,55
+authfn/docs/content/docs/adapters/database/drizzle.md
+  s_d473070cda5c3b::t_7d26c2378d14e8 135-138
+packages/cli/src/__tests__/schema-index-migrations.test.ts
+  s_d473070cda5c3b::t_a55e0dac11e914 495-501,503
+  s_d473070cda5c3b::t_e9c60cf53624dc 107,109,129-144
+  s_d473070cda5c3b::t_9ed09d33023c52 145-146
+authfn/email-otp/src/index.ts
+  s_d473070cda5c3b::t_e9c60cf53624dc 42-44
+packages/cli/src/__tests__/authfn-schema-discovery.test.ts
+  s_d473070cda5c3b::t_231ad043fb1465 187-190
+authfn/docs/static/llms-full.txt
+  s_d473070cda5c3b::t_fe2d98176ef9d2 263-266,5609,5611
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "03f0d43a10c61092b74848bf693b83b6cfeaa537",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
