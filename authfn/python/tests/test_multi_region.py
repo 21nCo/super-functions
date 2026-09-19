@@ -24,6 +24,7 @@ from superfunctions.http import HttpError, Response
 
 from authfn import (
     AuthFnConfig,
+    AuthFnRuntimeResolution,
     RegionMismatchError,
     RegionNotFoundError,
     ValidationError,
@@ -287,6 +288,30 @@ async def test_multi_region_registration_updates_local_profile_and_directory() -
     assert len(directory.register_calls) == 1
     assert directory.register_calls[0]["userId"] == "user_2"
     assert db.storage["region_profiles"][0]["regionId"] == "us-east-1"
+
+
+@pytest.mark.asyncio
+async def test_multi_region_registration_rejects_custom_runtime_region_overflow() -> None:
+    db = MockDatabaseAdapter()
+    service = MultiRegionService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        MultiRegionPluginConfig(),
+    )
+
+    with pytest.raises(ValidationError, match="regionId must contain at most 255 characters"):
+        await service.register_user(
+            user_id="user_custom_runtime",
+            primary_email="custom@example.com",
+            runtime=AuthFnRuntimeResolution.model_validate(
+                {
+                    "issuer": "https://account.example.com",
+                    "baseUrl": "https://account.example.com",
+                    "regionId": "r" * 256,
+                }
+            ),
+        )
+
+    assert db.storage["region_profiles"] == []
 
 
 @pytest.mark.asyncio

@@ -126,6 +126,7 @@ class MultiRegionService:
         authority = (region.authority if region else resolved_runtime.base_url) if resolved_runtime.base_url else None
         if not region_id or not authority:
             return None
+        region_id = assert_database_key_length(region_id, "regionId")
         now = datetime.now(timezone.utc)
         existing = await self.config.database.find_one(
             model="region_profiles",
