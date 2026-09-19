@@ -137,6 +137,26 @@ def _generate_totp(secret: str, now: datetime, digits: int = 6, period_seconds: 
 
 
 @pytest.mark.asyncio
+async def test_two_factor_rejects_oversized_user_ids_before_persistence() -> None:
+    db = MockDatabaseAdapter()
+    service = TwoFactorService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        TwoFactorPluginConfig(encryption_key_resolver=lambda _ref: TEST_2FA_KEY),
+    )
+
+    with pytest.raises(ValidationError, match="userId must contain at most 255 characters"):
+        await service.enroll(user_id="u" * 256)
+    with pytest.raises(ValidationError, match="userId must contain at most 255 characters"):
+        await service.begin_sign_in_challenge(
+            user_id="u" * 256,
+            primary_method="password",
+        )
+
+    assert db.storage["two_factor_enrollments"] == []
+    assert db.storage["two_factor_challenges"] == []
+
+
+@pytest.mark.asyncio
 async def test_two_factor_plugin_schema_and_routes() -> None:
     plugin = authfn_two_factor_plugin()
     schema = plugin.schema(AuthFnConfig(database=object()))

@@ -19,7 +19,7 @@ for path in (AUTHFN_PYTHON_ROOT, PYTHON_CORE_ROOT):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from authfn import ApiKeyRevokedError, AuthFnConfig
+from authfn import ApiKeyRevokedError, AuthFnConfig, ValidationError
 from authfn.plugins.api_keys import ApiKeyPluginConfig, ApiKeyService, authfn_api_key_plugin
 
 
@@ -145,3 +145,14 @@ async def test_create_list_authenticate_and_revoke_api_keys() -> None:
     await service.revoke_key(key_id=created["keyId"], user_id="user_1")
     with pytest.raises(ApiKeyRevokedError):
         await service.authenticate(MockRequest({"authorization": f"Bearer {created['secret']}"}))
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_rejects_oversized_user_id_before_persistence() -> None:
+    db = MockDatabaseAdapter()
+    service = ApiKeyService(AuthFnConfig(database=db, namespace="authfn"))
+
+    with pytest.raises(ValidationError, match="userId must contain at most 255 characters"):
+        await service.create_key(user_id="u" * 256, name="oversized-user")
+
+    assert db.storage["api_keys"] == []

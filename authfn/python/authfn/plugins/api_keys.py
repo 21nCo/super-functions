@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from ..limits import assert_database_key_length
 from ..types import (
     ApiKeyRevokedError,
     AuthFnConfig,
@@ -81,6 +82,8 @@ class ApiKeyService:
         resource_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         _assert_valid_name(name)
+        if user_id is not None:
+            user_id = assert_database_key_length(user_id, "userId")
 
         stored_metadata = dict(metadata or {})
         if resource_ids is not None:
