@@ -55,8 +55,10 @@ sequenceDiagram
   App->>Declare: authfn({ plugins })
   App->>Server: app.createServer({ database, pluginRuntime })
   loop for each plugin
-    Server->>P: validateConfig(runtimeConfig)
     Server->>P: schema(config)
+  end
+  loop for each plugin
+    Server->>P: validateConfig(runtimeConfig)
     Server->>P: routes(ctx)
     Server->>Server: register hooks
   end
@@ -69,7 +71,10 @@ sequenceDiagram
   Server-->>App: response
 ```
 
-The kernel runs `validateConfig` first across all plugins, then `schema`, then `routes`. If any `validateConfig` throws, the entire **server** refuses to construct.
+The kernel composes `schema(config)` before it assembles the runtime config.
+After the database is wrapped with that schema, it runs `validateConfig` across
+the plugins and then registers hooks and `routes(ctx)`. If any
+`validateConfig` throws, the entire **server** refuses to construct.
 
 ## Ordering
 

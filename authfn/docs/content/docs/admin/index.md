@@ -31,7 +31,7 @@ const auth = authApp.createServer({ database });
 const authFnConfig: AuthFnRuntimeConfig = {
   database,
   namespace: 'authfn',
-  plugins,
+  plugins: [...plugins],
 };
 
 const admin = createAuthFnAdmin({

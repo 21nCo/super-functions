@@ -80,13 +80,18 @@ The resolver runs on every request — it should be fast (constant-time). Cache 
 
 ## Composition with the multi-region plugin
 
-When `authFnMultiRegionPlugin` is enabled, the kernel automatically overlays a region-specific resolution on top of yours. The order is:
+Enabling `authFnMultiRegionPlugin()` does not wrap or merge an arbitrary custom
+environment resolver. Region-aware resolution is explicit: construct the
+server's resolver with `authFnMultiRegionEnvironment(...)` and pass it as
+`createServer({ environment })`. That resolver selects a configured region from
+the request host (or `defaultRegionId`) and returns its `regionId`, authority,
+cookie, and OAuth settings.
 
-1. Your `environment.resolve(request)` runs first (or the default behavior if absent).
-2. The multi-region plugin computes a region for this request based on host matching, configured regions, or a fallback to `defaultRegionId`.
-3. The two are merged — the multi-region overlay wins for `regionId`, `cookie.domain`, and any `oauth` keys it supplies. Everything else falls through.
-
-You can think of `createServer({ environment })` as your *base* policy and the multi-region plugin as the *region-aware* layer on top.
+If you need tenant- or proxy-specific behavior in addition to multi-region
+routing, incorporate it into the values passed to
+`authFnMultiRegionEnvironment` or put it in front of AuthFn. Do not configure a
+separate resolver expecting the plugin to overlay it automatically. See
+[Plugins → Multi-region](../plugins/multi-region) for the runnable setup.
 
 ## What plugins see
 

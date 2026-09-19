@@ -10,7 +10,7 @@ description: What the shipped two-factor plugin encrypts, and how to change keys
 TOTP secrets are stored on `authfn_two_factor_enrollments.secret_encrypted`. The two-factor plugin encrypts and decrypts that column with AES-256-GCM, using:
 
 - `pluginRuntime.twoFactor.encryptionKeyResolver(keyRef)` to load a 32-byte key
-- `pluginRuntime.twoFactor.encryptionKeyRef` (default `'default'`) as the key identifier passed to the cipher
+- `pluginRuntime.twoFactor.encryptionKeyRef` (default `'authfn-2fa'`) as the key identifier passed to the cipher
 
 Those options are **runtime** configuration, not plugin-factory options:
 
@@ -46,10 +46,15 @@ There is **no** public `encryptSecret` / `decryptSecret` export, and the enrollm
 
 Because the kernel does not expose a re-encrypt helper, the supported public path is:
 
-1. Add the new key material to your secrets store. Keep serving the **old** `encryptionKeyRef` until users have moved.
-2. Ask enrolled users to disable 2FA (`POST /auth/2fa/disable`) and enroll again (`POST /auth/2fa/enroll` + `POST /auth/2fa/confirm`). New enrollments are encrypted with whatever `encryptionKeyRef` is configured at enroll time.
-3. After no remaining enrollments depend on the old key, switch `encryptionKeyRef` (and the resolver) to the new identifier.
-4. After a grace period, retire the old key from KMS.
+1. Add the new key material to your secrets store, but keep serving the **old**
+   `encryptionKeyRef` while users disable 2FA (`POST /auth/2fa/disable`). Do not
+   let users re-enroll during this phase: those rows would still use the old key.
+2. Confirm that no active enrollment rows remain. There is no mixed-key state
+   because enrollment rows do not store their key reference.
+3. Switch `encryptionKeyRef` (and the resolver) to the new identifier.
+4. Allow users to enroll again (`POST /auth/2fa/enroll` +
+   `POST /auth/2fa/confirm`). Every replacement enrollment now uses the new key.
+5. After a grace period, retire the old key from KMS.
 
 ```ts
 authApp.createServer({

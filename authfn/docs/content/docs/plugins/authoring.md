@@ -146,7 +146,9 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
         const issued = await issueSession(ctx.config, ctx.hooks, {
           request,
           userId: row.userId,
-          methods: ["magic-link"],
+          // AuthFnAuthMethod is a closed public union. This email-delivered
+          // one-time credential uses the supported email-otp method.
+          methods: ["email-otp"],
         });
 
         return jsonSuccess(request, { session: issued.session });
@@ -226,24 +228,40 @@ Plugins can register hooks:
 }
 ```
 
-Hook ordering: kernel `before*` → plugin `before*` (in plugin order) → handler → plugin `after*` → kernel `after*`. See [Concepts → Hooks](../core-concepts/hooks).
+Hook ordering: plugin `before*` (in plugin order) → kernel `before*` → handler →
+plugin `after*` → kernel `after*`. See [Concepts → Hooks](../core-concepts/hooks).
 
 ## Observability
 
-Call `ctx.config.observability?.emit(event)` or the helper bundled plugins use:
+`emitAuthEvent` accepts the closed public `AuthFnEventType` union. It is useful
+when a custom plugin emits one of the kernel's standard events; it does not
+accept arbitrary custom event names. For plugin-specific telemetry, call an
+application-owned reporter (for example, one supplied in your plugin's runtime
+config):
 
 ```ts
-import { emitAuthEvent, eventRequestId } from "authfn/core/observability";
+type MagicLinkRuntimeConfig = {
+  onIssued?: (event: {
+    requestId?: string;
+    userId: string;
+    ttlSeconds: number;
+  }) => Promise<void> | void;
+};
 
-await emitAuthEvent(ctx.config, {
-  type: "magic_link.issued",
-  requestId: eventRequestId(request),
+const magicLinkRuntime = ctx.config.pluginRuntime?.magicLink as
+  | MagicLinkRuntimeConfig
+  | undefined;
+
+await magicLinkRuntime?.onIssued?.({
+  requestId: request.headers.get("x-request-id") ?? undefined,
   userId: session.actorId,
-  metadata: { ttlSeconds: 300 },
+  ttlSeconds: 300,
 });
 ```
 
-Typed event types are part of `AuthFnEventType`. Custom events use freeform strings; set up your sink to be tolerant of unknown types or extend the type union locally.
+Keep the reporter's event type in your plugin package. Do not cast a freeform
+string into `AuthFnEventType`; sinks consuming kernel events can rely on that
+union being exhaustive.
 
 ## OpenAPI integration
 

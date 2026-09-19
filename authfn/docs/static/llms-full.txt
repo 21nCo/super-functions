@@ -910,7 +910,7 @@ const auth = authApp.createServer({ database });
 const authFnConfig: AuthFnRuntimeConfig = {
   database,
   namespace: 'authfn',
-  plugins,
+  plugins: [...plugins],
 };
 
 const admin = createAuthFnAdmin({
@@ -2626,8 +2626,8 @@ hooks: {
 
 Hooks run in this order:
 
-1. Kernel-level `config.hooks.before*`.
-2. Plugin-level `plugin.hooks.before*`, in the order plugins were declared.
+1. Plugin-level `plugin.hooks.before*`, in the order plugins were declared.
+2. Kernel-level `config.hooks.before*`.
 3. The plugin's actual handler.
 4. Plugin-level `plugin.hooks.after*`, in the order plugins were declared.
 5. Kernel-level `config.hooks.after*`.
@@ -2647,9 +2647,13 @@ authApp.createServer({
 });
 ```
 
-Kernel-level hooks fail the request when they throw. To observe rather than fail, register the hook on a plugin with `hookFailurePolicy: { afterUserCreate: 'observe' }`.
+Kernel-level `before*` hooks fail the request when they throw. Kernel-level
+`after*` hook failures are observed and emitted as `authfn.plugin.failed` with
+`pluginName: 'config'`; they do not fail an otherwise successful request.
 
-Plugin-authored `afterUserCreate` hooks set their own `hookFailurePolicy.afterUserCreate = 'observe'`. See [Plugins → Authoring](../plugins/authoring).
+Plugin-authored `after*` hooks default to `'observe'`. Set
+`hookFailurePolicy: { afterUserCreate: 'fail' }` when that plugin must abort the
+request. See [Plugins → Authoring](../plugins/authoring).
 
 When a hook fails under the `'observe'` policy, an `authfn.plugin.failed` event is emitted with the hook name, plugin name, and a redacted error payload.
 
@@ -3134,8 +3138,10 @@ sequenceDiagram
   App->>Declare: authfn({ plugins })
   App->>Server: app.createServer({ database, pluginRuntime })
   loop for each plugin
-    Server->>P: validateConfig(runtimeConfig)
     Server->>P: schema(config)
+  end
+  loop for each plugin
+    Server->>P: validateConfig(runtimeConfig)
     Server->>P: routes(ctx)
     Server->>Server: register hooks
   end
@@ -3148,7 +3154,10 @@ sequenceDiagram
   Server-->>App: response
 ```
 
-The kernel runs `validateConfig` first across all plugins, then `schema`, then `routes`. If any `validateConfig` throws, the entire **server** refuses to construct.
+The kernel composes `schema(config)` before it assembles the runtime config.
+After the database is wrapped with that schema, it runs `validateConfig` across
+the plugins and then registers hooks and `routes(ctx)`. If any
+`validateConfig` throws, the entire **server** refuses to construct.
 
 ## Ordering
 
@@ -3673,13 +3682,18 @@ The resolver runs on every request — it should be fast (constant-time). Cache 
 
 ## Composition with the multi-region plugin
 
-When `authFnMultiRegionPlugin` is enabled, the kernel automatically overlays a region-specific resolution on top of yours. The order is:
+Enabling `authFnMultiRegionPlugin()` does not wrap or merge an arbitrary custom
+environment resolver. Region-aware resolution is explicit: construct the
+server's resolver with `authFnMultiRegionEnvironment(...)` and pass it as
+`createServer({ environment })`. That resolver selects a configured region from
+the request host (or `defaultRegionId`) and returns its `regionId`, authority,
+cookie, and OAuth settings.
 
-1. Your `environment.resolve(request)` runs first (or the default behavior if absent).
-2. The multi-region plugin computes a region for this request based on host matching, configured regions, or a fallback to `defaultRegionId`.
-3. The two are merged — the multi-region overlay wins for `regionId`, `cookie.domain`, and any `oauth` keys it supplies. Everything else falls through.
-
-You can think of `createServer({ environment })` as your *base* policy and the multi-region plugin as the *region-aware* layer on top.
+If you need tenant- or proxy-specific behavior in addition to multi-region
+routing, incorporate it into the values passed to
+`authFnMultiRegionEnvironment` or put it in front of AuthFn. Do not configure a
+separate resolver expecting the plugin to overlay it automatically. See
+[Plugins → Multi-region](../plugins/multi-region) for the runnable setup.
 
 ## What plugins see
 
@@ -5608,7 +5622,9 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
         const issued = await issueSession(ctx.config, ctx.hooks, {
           request,
           userId: row.userId,
-          methods: ["magic-link"],
+          // AuthFnAuthMethod is a closed public union. This email-delivered
+          // one-time credential uses the supported email-otp method.
+          methods: ["email-otp"],
         });
 
         return jsonSuccess(request, { session: issued.session });
@@ -5688,24 +5704,40 @@ Plugins can register hooks:
 }
 ```
 
-Hook ordering: kernel `before*` → plugin `before*` (in plugin order) → handler → plugin `after*` → kernel `after*`. See [Concepts → Hooks](../core-concepts/hooks).
+Hook ordering: plugin `before*` (in plugin order) → kernel `before*` → handler →
+plugin `after*` → kernel `after*`. See [Concepts → Hooks](../core-concepts/hooks).
 
 ## Observability
 
-Call `ctx.config.observability?.emit(event)` or the helper bundled plugins use:
+`emitAuthEvent` accepts the closed public `AuthFnEventType` union. It is useful
+when a custom plugin emits one of the kernel's standard events; it does not
+accept arbitrary custom event names. For plugin-specific telemetry, call an
+application-owned reporter (for example, one supplied in your plugin's runtime
+config):
 
 ```ts
-import { emitAuthEvent, eventRequestId } from "authfn/core/observability";
+type MagicLinkRuntimeConfig = {
+  onIssued?: (event: {
+    requestId?: string;
+    userId: string;
+    ttlSeconds: number;
+  }) => Promise<void> | void;
+};
 
-await emitAuthEvent(ctx.config, {
-  type: "magic_link.issued",
-  requestId: eventRequestId(request),
+const magicLinkRuntime = ctx.config.pluginRuntime?.magicLink as
+  | MagicLinkRuntimeConfig
+  | undefined;
+
+await magicLinkRuntime?.onIssued?.({
+  requestId: request.headers.get("x-request-id") ?? undefined,
   userId: session.actorId,
-  metadata: { ttlSeconds: 300 },
+  ttlSeconds: 300,
 });
 ```
 
-Typed event types are part of `AuthFnEventType`. Custom events use freeform strings; set up your sink to be tolerant of unknown types or extend the type union locally.
+Keep the reporter's event type in your plugin package. Do not cast a freeform
+string into `AuthFnEventType`; sinks consuming kernel events can rely on that
+union being exhaustive.
 
 ## OpenAPI integration
 
@@ -9571,7 +9603,7 @@ Events hash the opaque subject. They must not contain email, tokens, or cell des
 TOTP secrets are stored on `authfn_two_factor_enrollments.secret_encrypted`. The two-factor plugin encrypts and decrypts that column with AES-256-GCM, using:
 
 - `pluginRuntime.twoFactor.encryptionKeyResolver(keyRef)` to load a 32-byte key
-- `pluginRuntime.twoFactor.encryptionKeyRef` (default `'default'`) as the key identifier passed to the cipher
+- `pluginRuntime.twoFactor.encryptionKeyRef` (default `'authfn-2fa'`) as the key identifier passed to the cipher
 
 Those options are **runtime** configuration, not plugin-factory options:
 
@@ -9607,10 +9639,15 @@ There is **no** public `encryptSecret` / `decryptSecret` export, and the enrollm
 
 Because the kernel does not expose a re-encrypt helper, the supported public path is:
 
-1. Add the new key material to your secrets store. Keep serving the **old** `encryptionKeyRef` until users have moved.
-2. Ask enrolled users to disable 2FA (`POST /auth/2fa/disable`) and enroll again (`POST /auth/2fa/enroll` + `POST /auth/2fa/confirm`). New enrollments are encrypted with whatever `encryptionKeyRef` is configured at enroll time.
-3. After no remaining enrollments depend on the old key, switch `encryptionKeyRef` (and the resolver) to the new identifier.
-4. After a grace period, retire the old key from KMS.
+1. Add the new key material to your secrets store, but keep serving the **old**
+   `encryptionKeyRef` while users disable 2FA (`POST /auth/2fa/disable`). Do not
+   let users re-enroll during this phase: those rows would still use the old key.
+2. Confirm that no active enrollment rows remain. There is no mixed-key state
+   because enrollment rows do not store their key reference.
+3. Switch `encryptionKeyRef` (and the resolver) to the new identifier.
+4. Allow users to enroll again (`POST /auth/2fa/enroll` +
+   `POST /auth/2fa/confirm`). Every replacement enrollment now uses the new key.
+5. After a grace period, retire the old key from KMS.
 
 ```ts
 authApp.createServer({
@@ -9785,7 +9822,7 @@ Runtime dependencies keyed by plugin name. Schema and policy options stay on the
 | `password` | `otp` (password-reset delivery and challenge settings) |
 | `socialOAuth` | `providers` (required), `fetcher`, `tokenHttpClient`, `now` |
 | `twoFactor` | `issuer`, `encryptionKeyRef`, `encryptionKeyResolver`, TOTP window/digits/period |
-| `apiKeys` | `now` |
+| `apiKey` | `now` |
 | `multiRegion` | `regions`, `defaultRegionId`, `lookupStore`, `routing` |
 | `nativeHandoff` | `now` |
 

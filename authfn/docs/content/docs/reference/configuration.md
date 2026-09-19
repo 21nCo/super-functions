@@ -101,7 +101,7 @@ Runtime dependencies keyed by plugin name. Schema and policy options stay on the
 | `password` | `otp` (password-reset delivery and challenge settings) |
 | `socialOAuth` | `providers` (required), `fetcher`, `tokenHttpClient`, `now` |
 | `twoFactor` | `issuer`, `encryptionKeyRef`, `encryptionKeyResolver`, TOTP window/digits/period |
-| `apiKeys` | `now` |
+| `apiKey` | `now` |
 | `multiRegion` | `regions`, `defaultRegionId`, `lookupStore`, `routing` |
 | `nativeHandoff` | `now` |
 

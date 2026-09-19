@@ -168,8 +168,8 @@ hooks: {
 
 Hooks run in this order:
 
-1. Kernel-level `config.hooks.before*`.
-2. Plugin-level `plugin.hooks.before*`, in the order plugins were declared.
+1. Plugin-level `plugin.hooks.before*`, in the order plugins were declared.
+2. Kernel-level `config.hooks.before*`.
 3. The plugin's actual handler.
 4. Plugin-level `plugin.hooks.after*`, in the order plugins were declared.
 5. Kernel-level `config.hooks.after*`.
@@ -189,9 +189,13 @@ authApp.createServer({
 });
 ```
 
-Kernel-level hooks fail the request when they throw. To observe rather than fail, register the hook on a plugin with `hookFailurePolicy: { afterUserCreate: 'observe' }`.
+Kernel-level `before*` hooks fail the request when they throw. Kernel-level
+`after*` hook failures are observed and emitted as `authfn.plugin.failed` with
+`pluginName: 'config'`; they do not fail an otherwise successful request.
 
-Plugin-authored `afterUserCreate` hooks set their own `hookFailurePolicy.afterUserCreate = 'observe'`. See [Plugins → Authoring](../plugins/authoring).
+Plugin-authored `after*` hooks default to `'observe'`. Set
+`hookFailurePolicy: { afterUserCreate: 'fail' }` when that plugin must abort the
+request. See [Plugins → Authoring](../plugins/authoring).
 
 When a hook fails under the `'observe'` policy, an `authfn.plugin.failed` event is emitted with the hook name, plugin name, and a redacted error payload.
 
