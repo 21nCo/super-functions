@@ -1,0 +1,23 @@
+.github/workflows/apifn-api-check.yml
+  s_d473070cda5c3b::t_656d2a2f52eaec 24-33,69-78,194-212,227-234
+.github/workflows/apifn-api-check-smoke.yml
+  s_d473070cda5c3b::t_656d2a2f52eaec 13,25-26
+apifn/cli/__tests__/fixtures/passing-collection/users/list-users.yml
+  s_d473070cda5c3b::t_656d2a2f52eaec 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5460455b18d1785fdef914a0716400aaacdb87d8",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
