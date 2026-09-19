@@ -82,7 +82,10 @@ console.log(formatDiffAsText(result));
 
 ApiFn provides a reusable GitHub Actions workflow at `.github/workflows/apifn-api-check.yml` (repo root, so GitHub Actions can register and call it).
 
-The workflow checks out the **caller**, runs `npm ci`, and builds the caller's `@apifn/cli` workspace, then runs that CLI against the caller's spec and collection. It is for this repository (or another checkout that includes the `@apifn/cli` workspace). Same-repo callers:
+The workflow checks out the **caller**, installs the pinned published `@apifn/cli`
+version, then runs it against the caller's spec and collection. The caller does
+not need to be this monorepo or contain an `@apifn/cli` workspace. Same-repo
+callers:
 
 ```yaml
 permissions:
@@ -96,7 +99,21 @@ jobs:
       collection_dir: .apifn/collection
 ```
 
-The registered reusable path for this repo is `21nCo/super-functions/.github/workflows/apifn-api-check.yml@dev`. That `uses:` form is valid GitHub syntax; the called jobs still run in the caller checkout and still require `@apifn/cli`. Pin `@dev` only if you want to track this branch (`@dev` moves). For GitLab/Jenkins/Buildkite, run the CLI commands in [Non-GitHub CI](#non-github-ci).
+External repositories can use the registered workflow directly:
+
+```yaml
+jobs:
+  api-check:
+    uses: 21nCo/super-functions/.github/workflows/apifn-api-check.yml@dev
+    with:
+      spec_path: openapi.yml
+      collection_dir: .apifn/collection
+      cli_version: "0.0.2"
+```
+
+Pin a commit or release tag instead of `@dev` when the caller requires an
+immutable workflow. For GitLab/Jenkins/Buildkite, run the CLI commands in
+[Non-GitHub CI](#non-github-ci).
 
 ### What it does
 
@@ -112,6 +129,7 @@ The registered reusable path for this repo is `21nCo/super-functions/.github/wor
 - `spec_path` (required): Repo-relative OpenAPI path (e.g. `.apifn/openapi.yml`)
 - `collection_dir` (required): Repo-relative OpenCollection directory (e.g. `.apifn/collection`)
 - `environment` (optional, default `development`): Collection environment
+- `cli_version` (optional, default `0.0.2`): Published `@apifn/cli` version to install
 - `base_branch` (optional, default `main`): Branch used to fetch baseline spec
 - `fail_on_breaking` (optional, default `true`): Whether breaking diff exits non-zero
 - `post_pr_comment` (optional, default `true`): Whether to post/update PR summary comment
