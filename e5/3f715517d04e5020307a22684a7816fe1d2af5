@@ -1,0 +1,26 @@
+packages/cli/src/utils/introspection.ts
+  s_d473070cda5c3b::t_0737e9d876a02f 421-423
+packages/cli/src/utils/schema-diff.ts
+  s_d473070cda5c3b::t_0737e9d876a02f 33-36,41,47,54-56,378
+packages/cli/src/utils/generators.ts
+  s_d473070cda5c3b::t_0737e9d876a02f 74-75,95,97
+packages/cli/src/__tests__/schema-index-migrations.test.ts
+  s_d473070cda5c3b::t_0737e9d876a02f 13,54-62,66,79-97
+  s_d473070cda5c3b::t_84e60e30cabb0a 34-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e53f715517d04e5020307a22684a7816fe1d2af5",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
