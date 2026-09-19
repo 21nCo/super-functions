@@ -69,7 +69,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/21nCo/super-functions.git",
-    "directory": "plugfn"
+    "directory": "plugfn/core"
   },
   "publishConfig": {
     "access": "public"

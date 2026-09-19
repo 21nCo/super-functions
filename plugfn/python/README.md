@@ -6,7 +6,7 @@ That means:
 
 - the package imports cleanly and has a passing Python test baseline
 - the runtime now exports the declared core provider set
-- the package is not production-ready, not parity-complete, and not release-gated yet
+- the package is not production-ready and not parity-complete
 
 ## Install
 
@@ -50,10 +50,8 @@ plug.providers.register(github_provider)
 
 ## What is still incomplete
 
-- the overall PlugFn release gate is still pending
-- provider rows marked `production` in the matrix are still contingent on that same-commit release gate
+- production claims stay matrix-bounded even when `npm run gate:plugfn-release` is green
 - adjacent or vertical providers outside the core set remain experimental, vertical-only, or unsupported according to the matrix
-- repo-root release-gate coverage is still pending
 
 ## Core provider set
 
