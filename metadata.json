@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2WVQBG3WNGR2RZH5HG21EH5",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/docs/content/docs/admin/index.md",
+    "authfn/docs/content/docs/core-concepts/hooks.md",
+    "authfn/docs/content/docs/core-concepts/plugins.md",
+    "authfn/docs/content/docs/core-concepts/runtime.md",
+    "authfn/docs/content/docs/plugins/authoring.md",
+    "authfn/docs/content/docs/recipes/rotate-2fa-encryption.md",
+    "authfn/docs/content/docs/reference/configuration.md",
+    "authfn/docs/static/llms-full.txt"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 31738,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2823296,
+    "output_tokens": 5785,
+    "api_call_count": 20
+  }
+}
