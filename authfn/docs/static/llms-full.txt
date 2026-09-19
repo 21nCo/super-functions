@@ -2344,6 +2344,7 @@ interface AuthFnErrorEnvelope {
 | `AUTHFN_OTP_REPLAYED` | 409 | no | The OTP code was already used. |
 | `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE` | 503 | yes | Canonical identity placement could not be read or atomically updated. Gateway mode fails closed. |
 | `AUTHFN_PLACEMENT_MOVING` | 503 | yes | The identity is fenced during a cell move. No auth side effect may start. |
+| `AUTHFN_PLACEMENT_CONTEXT_INVALID` | 401 | no | A signed placement-bound auth context failed signature, audience, issuer, or expiry verification. |
 | `AUTHFN_PLUGIN_ABORTED` | 500 | no | A plugin's `before*` hook threw / aborted. |
 | `AUTHFN_RATE_LIMITED` | 429 | yes | The request was rate-limited (by an external limiter or by an authfn-internal counter). |
 | `AUTHFN_REDIRECT_URI_DISALLOWED` | 400 | no | `returnTo` (or OAuth `redirect_uri`) is not in `allowlistedReturnTo` / `allowlistedRedirectUris`. |
@@ -2709,7 +2710,7 @@ flowchart LR
 
 ### Operations
 
-- [Regions](./regions) — multi-region lookup, runtime overlays, wrong-authority correction.
+- [Regions](./regions) — multi-region lookup, runtime overlays, wrong-authority correction, and placement-bound downstream context.
 - [Observability](./observability) — every event that fires, request correlation, redaction.
 - [Rate limiting](./rate-limiting) — what's covered, where to add limits.
 - [Security](./security) — threat model, what authfn defends against, what it doesn't, your responsibilities.
@@ -2798,6 +2799,10 @@ interface AuthFnEvent {
 | `authfn.routing.assertion_rejected` | A cell rejected a routing assertion before execution. |
 | `authfn.routing.directory_unavailable` | Placement storage failed closed. |
 | `authfn.routing.cell_unavailable` | Cell resolution or internal dispatch failed. |
+| `authfn.placement_context.issued` | Trusted consumer code derived placement-bound auth context. |
+| `authfn.placement_context.rejected` | Context derivation failed closed. |
+| `authfn.placement_context.verified` | A private-service placement assertion verified. |
+| `authfn.placement_context.verification_failed` | Signed placement context failed signature, audience, issuer, or expiry checks. |
 | `authfn.handoff.started` | Native handoff code created. |
 | `authfn.handoff.exchanged` | Native handoff code exchanged for a session. |
 | `authfn.handoff.failed` | Native handoff exchange failed. |
@@ -3543,6 +3548,8 @@ The plugin contributes one table:
 - [Runtime](./runtime) — how region overlays compose with `runtime.resolve`.
 - [Cookies](./cookies) — region-scoped cookie domains.
 - [Recipes → Multi-region deployment](../recipes/multi-region-deployment) — end-to-end walkthrough.
+- [Recipes → Canonical-gateway multi-region](../recipes/canonical-gateway-multi-region) — signed cell forwarding.
+- [Recipes → Placement-bound auth context](../recipes/placement-bound-auth-context) — trusted downstream routing context.
 - [Examples → multi-region-routing](../examples/multi-region-routing) — runnable example.
 
 ---
@@ -3746,6 +3753,7 @@ authfn assumes:
 | **Token leakage in logs** | The observability sink runs through a redactor that strips anything keyed `token`, `secret`, `bearer`, `password`, `key`, `authorization` from event metadata. |
 | **OAuth secret leakage in errors** | OAuth error details are sanitized before being wrapped in `AuthFn*Error`. |
 | **Wrong-region credential reuse** | Multi-region plugin pre-routes by email and rejects mismatches with `AUTHFN_REGION_MISMATCH`. |
+| **Placement spoofing** | Placement-bound consumer context is derived only from a verified session and the placement directory. Client-supplied subject, region, epoch, issuer, or `x-authfn-routing-*` headers are ignored. |
 | **API key leakage in storage** | API keys are hashed at rest; only the hash is persisted. The plaintext is shown once at creation. |
 | **Password storage compromise** | Passwords are hashed with a vetted algorithm (argon2id under the hood). Hashes are never logged. |
 | **CSRF token leakage in logs** | Tokens are not logged; only their hashes are persisted. |
@@ -4611,23 +4619,23 @@ If you're behind a reverse proxy (Nginx, ELB), set `app.set('trust proxy', 1)` s
 # FastAPI
 
 ```bash
-pip install "authfn[fastapi]"
+pip install authfn superfunctions-fastapi
 ```
 
 ```python
 from fastapi import FastAPI, Request
-from superfunctions_fastapi import to_fastapi
+from superfunctions_fastapi import create_router
 from authfn import create_authfn, AuthFnConfig, authfn_password_plugin
-from authfn.adapters.memory import memory_adapter
 
+# Replace `my_database_adapter` with any Superfunctions db adapter.
 auth = create_authfn(AuthFnConfig(
-    database=memory_adapter(),
+    database=my_database_adapter,
     namespace="authfn",
     plugins=[authfn_password_plugin()],
 ))
 
 app = FastAPI()
-app.include_router(to_fastapi(auth.router), prefix="/auth")
+app.include_router(create_router(auth.get_routes()))
 
 @app.get("/me")
 async def me(request: Request):
@@ -4655,7 +4663,7 @@ async def protected(session = Depends(require_session)):
 
 ## ASGI middleware
 
-`to_fastapi` is itself an `APIRouter`. If you want to add middleware (CORS, logging) before authfn, do so on the FastAPI app — it composes naturally.
+`create_router` returns a FastAPI `APIRouter`. If you want to add middleware (CORS, logging) before authfn, do so on the FastAPI app — it composes naturally.
 
 ## Related
 
@@ -4672,23 +4680,23 @@ async def protected(session = Depends(require_session)):
 # Flask
 
 ```bash
-pip install "authfn[flask]"
+pip install authfn superfunctions-flask
 ```
 
 ```python
 from flask import Flask, request, jsonify
-from superfunctions_flask import to_flask
+from superfunctions_flask import create_blueprint
 from authfn import create_authfn, AuthFnConfig, authfn_password_plugin
-from authfn.adapters.memory import memory_adapter
 
+# Replace `my_database_adapter` with any Superfunctions db adapter.
 auth = create_authfn(AuthFnConfig(
-    database=memory_adapter(),
+    database=my_database_adapter,
     namespace="authfn",
     plugins=[authfn_password_plugin()],
 ))
 
 app = Flask(__name__)
-to_flask(app, auth.router, base_path="/auth")
+app.register_blueprint(create_blueprint(auth.get_routes()))
 
 @app.get("/me")
 async def me():
@@ -4791,7 +4799,7 @@ The kernel router (`auth.router`) is framework-agnostic. To mount it, use one of
 | Next.js (App Router) | `@superfunctions/http-next` | [Next.js](./nextjs) |
 | FastAPI | `superfunctions_fastapi` (Python) | [FastAPI](./fastapi) |
 | Flask | `superfunctions_flask` (Python) | [Flask](./flask) |
-| Starlette | `superfunctions_starlette` (Python) | [Starlette](./starlette) |
+| Starlette | use FastAPI (`superfunctions_fastapi`) | [Starlette](./starlette) |
 | Anything else | direct `Request → Response` | [Bring your own](./byo) |
 
 ## Pattern
@@ -4922,52 +4930,25 @@ works as long as your DB adapter is edge-compatible.
 <!-- page:docs:frameworks/starlette.md path:/docs/frameworks/starlette -->
 # Starlette
 
-> Mount the Python authfn kernel on Starlette / pure ASGI.
+> Starlette apps mount Python authfn through FastAPI — there is no dedicated Starlette extra.
 
 
 # Starlette
 
+There is no `authfn[starlette]` extra and no `superfunctions_starlette` adapter.
+
+Starlette apps should mount through [FastAPI](./fastapi). FastAPI is Starlette-based, and `superfunctions-fastapi` is the supported Python ASGI adapter.
+
 ```bash
-pip install "authfn[starlette]"
+pip install authfn superfunctions-fastapi
 ```
 
-```python
-from starlette.applications import Starlette
-from starlette.responses import JSONResponse
-from starlette.routing import Route
-from superfunctions_starlette import to_starlette
-from authfn import create_authfn, AuthFnConfig, authfn_password_plugin
-from authfn.adapters.memory import memory_adapter
-
-auth = create_authfn(AuthFnConfig(
-    database=memory_adapter(),
-    namespace="authfn",
-    plugins=[authfn_password_plugin()],
-))
-
-async def me(request):
-    session = await auth.provider.authenticate(request)
-    if not session:
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
-    return JSONResponse({"user": session.subject})
-
-routes = [
-    *to_starlette(auth.router, base_path="/auth"),
-    Route("/me", me, methods=["GET"]),
-]
-
-app = Starlette(routes=routes)
-```
-
-`to_starlette` returns a list of `Route` objects you splat into your routes list. Mount under any prefix — pass `base_path`.
-
-## Pure ASGI
-
-If you'd rather not depend on Starlette, the underlying router exposes `auth.router.dispatch(scope, receive, send)` directly. The Starlette adapter is a thin wrapper.
+See [Frameworks → FastAPI](./fastapi) for the mount example (`create_router(auth.get_routes())`).
 
 ## Related
 
 - [SDKs → Python](../sdk/python)
+- [Frameworks → FastAPI](./fastapi)
 
 ---
 
@@ -6119,6 +6100,8 @@ const client = createAuthFnClient({
 - [Concepts → Regions](../core-concepts/regions)
 - [Concepts → Runtime](../core-concepts/runtime)
 - [Recipes → Multi-region deployment](../recipes/multi-region-deployment)
+- [Recipes → Canonical-gateway multi-region](../recipes/canonical-gateway-multi-region)
+- [Recipes → Placement-bound auth context](../recipes/placement-bound-auth-context)
 - [Examples → multi-region-routing](../examples/multi-region-routing)
 
 ---
@@ -7473,9 +7456,8 @@ The Python `authfn` package mirrors the TypeScript kernel: same routes, same env
 
 ```bash
 pip install authfn
-# or
-pip install "authfn[fastapi]"
-pip install "authfn[flask]"
+pip install superfunctions-fastapi
+pip install superfunctions-flask
 ```
 
 ## 2. Create the runtime
@@ -7517,11 +7499,11 @@ auth = create_authfn(AuthFnConfig(
 ```python
 # main.py
 from fastapi import FastAPI, Request
-from superfunctions_fastapi import to_fastapi
+from superfunctions_fastapi import create_router
 from auth import auth
 
 app = FastAPI()
-app.include_router(to_fastapi(auth.router), prefix="/auth")
+app.include_router(create_router(auth.get_routes()))
 
 @app.get("/protected")
 async def protected(request: Request):
@@ -7536,11 +7518,11 @@ async def protected(request: Request):
 ```python
 # main.py
 from flask import Flask, request
-from superfunctions_flask import to_flask
+from superfunctions_flask import create_blueprint
 from auth import auth
 
 app = Flask(__name__)
-to_flask(app, auth.router, base_path="/auth")
+app.register_blueprint(create_blueprint(auth.get_routes()))
 
 @app.get("/protected")
 async def protected():
@@ -8200,6 +8182,8 @@ An AuthFn runtime configured for gateway mode without `routing.cell` is gateway-
 
 Python exposes the equivalent `CanonicalGateway`, `CanonicalRoutingConfig`, `InMemoryIdentityPlacementDirectory`, `InMemoryRoutingReplayStore`, `RoutingKeyring`, `create_cell_routing_middleware`, and `move_identity_placement` contracts from `authfn.plugins.gateway_routing`.
 
+After a request is authenticated at the canonical authority, trusted application code can derive placement-bound context for a downstream data plane. See [Placement-bound auth context](./placement-bound-auth-context). AuthFn still does not mint DataFn tickets or expose regional AuthFn URLs to clients.
+
 ## Route ownership matrix
 
 | Route family | Gateway action | Identity source | Cell behavior |
@@ -8751,6 +8735,8 @@ Solutions for the things you'll actually do in a real app. Each page is a small,
 ## Operations
 
 - [Multi-region deployment](./multi-region-deployment) — two regions, lookup store, runtime overlays.
+- [Canonical-gateway multi-region](./canonical-gateway-multi-region) — one public AuthFn authority with signed cell forwarding.
+- [Placement-bound auth context](./placement-bound-auth-context) — trusted downstream routing context for Nucleum/DataFn.
 - [Rotate 2FA encryption keys](./rotate-2fa-encryption) — re-encrypt enrollments under a new key.
 
 ## Integrations
@@ -9147,6 +9133,197 @@ If you've configured `compromisedPasswordChecker` on `authFnPasswordPlugin`, it 
 
 - [Plugins → Password](../plugins/password)
 - [Plugins → Email OTP](../plugins/email-otp)
+
+---
+
+<!-- page:docs:recipes/placement-bound-auth-context.md path:/docs/recipes/placement-bound-auth-context -->
+# Placement-bound auth context
+
+> Trusted in-process and private-service AuthFn context for regional application data planes.
+
+
+# Placement-bound auth context
+
+Use this contract when a canonical application gateway has already authenticated an AuthFn session and needs a **non-spoofable, placement-bound routing context** for a downstream data plane such as DataFn. AuthFn authenticates and exposes trusted context. It does not mint DataFn tickets, select DataFn URLs, or return a regional AuthFn authority to the browser.
+
+The API is **opt-in**. Public AuthFn routes, cookies, OAuth issuer behavior, and regional table ownership are unchanged. Enable it only in trusted server-side consumer code.
+
+Issuance runs against the authoritative **regional** AuthFn database. Set `regionId` (`region_id` in Python) to the region owning that database; TypeScript may infer it from `routing.cell.regionId`. A gateway-only config cannot issue context from a local stale database copy. Use AUTH-1's trusted regional dispatch or a private regional exchange, then verify its signed context at the gateway. If placement moves to another region, the old issuer fails closed; retry authentication in the new owning region. The issuer does not automatically dispatch or copy auth tables.
+
+## Trust boundary
+
+| Actor | May see | Must not do |
+| --- | --- | --- |
+| Browser / native client | Canonical AuthFn authority, cookies, OAuth | Choose a region, carry placement epoch, or learn a regional AuthFn URL |
+| Canonical AuthFn / application gateway | Verified session, placement directory, opaque subject | Treat client headers or body fields as region/epoch/subject authority |
+| Nucleum (or another consumer) | Immutable context or a short-lived audience-bound assertion | Reconstruct routing from session email, request host, or private internals |
+| Remote HMAC verifier | Dedicated placement-context keyring | Reuse gateway-routing keys, or treat verification as unprivileged |
+| Regional DataFn cell | Consumer-minted ticket derived from this context | Trust a client-supplied region or an AuthFn internal routing assertion |
+
+Derive subject, home region, and placement epoch **only after** AuthFn session validation succeeds. Strip every incoming `x-authfn-routing-*` header. Ignore client-supplied subject, region, epoch, issuer, and audience values.
+
+## TypeScript
+
+```ts
+import {
+  createAuthFnPlacementContextIssuer,
+  createAuthFnPlacementContextVerifier,
+  createInMemoryAuthFnPlacementDirectory,
+} from '@authfn/multi-region';
+
+const issuer = createAuthFnPlacementContextIssuer({
+  regionId: 'us-east-1', // region owning config.database
+  config: runtimeConfig,
+  publicAuthority: 'https://account.example.com',
+  placementDirectory,
+  identityKeyForUserId: identityKeys.fromUserId,
+  subjectSecret: await secrets.resolve('authfn-placement-subject'),
+  audiences: ['nucleum-datafn'],
+  keyring, // optional; required only for the signed private-service form
+  ttlSeconds: 60,
+});
+
+// In-process Nucleum gateway: immutable context after a valid session.
+const context = await issuer.derive(request);
+const ticket = await datafnTickets.mint({
+  subject: context.subject,
+  regionId: context.homeRegion,
+  epoch: context.placementEpoch,
+  audience: 'datafn-sync',
+  expiresAt: context.expiresAt,
+});
+
+// Same value through a consumer callback.
+await issuer.withContext(request, async (context) => {
+  return datafnTickets.mint(context);
+});
+
+// Private remote consumer: audience-bound HMAC assertion, not a browser bearer token.
+// Anyone with this keyring can also mint, so provision a dedicated keyring and treat
+// every verifier as a trusted co-issuer. Do not reuse gateway-routing keys.
+const { assertion } = await issuer.issueSigned(request);
+const remote = createAuthFnPlacementContextVerifier({
+  audiences: ['nucleum-datafn'],
+  publicAuthority: 'https://account.example.com',
+  keyring, // dedicated placement-context keys only
+});
+const verified = remote.verifySigned(assertion);
+```
+
+The context is frozen and contains:
+
+| Claim | Meaning |
+| --- | --- |
+| `subject` | HMAC-derived opaque user subject. Stable for the same AuthFn user id and subject-secret bytes. |
+| `homeRegion` | Authoritative placement region. |
+| `placementEpoch` | Placement fence. Downstream grants should copy this. |
+| `issuer` | Canonical AuthFn public authority. |
+| `sessionBinding` | HMAC of the AuthFn session or API-key id. |
+| `sessionVersion` | HMAC of the credential record `id` and `createdAt`. Stable across last-seen updates; changes when the session or API-key row is replaced. |
+| `authenticatedAt` | Stored last-authentication time (`lastAuthenticatedAt` / `lastUsedAt`, else `createdAt`). Derivation does not refresh this claim. |
+| `issuedAt` / `expiresAt` | Context lifetime. Capped by both `ttlSeconds` and session expiry. |
+| `audience` | Consumer allowlist entry such as `nucleum-datafn`. |
+| `assurance` | AuthFn methods on the session (`password`, `email-otp`, …). |
+| `scopes` | Present for user-owned API keys. |
+| `requestId` | Correlation id. |
+| `actorType` | `user` or `api-key`. |
+| `userId` | Omitted unless `includeUserId: true`. |
+
+Raw email, phone, cookie material, signing secrets, and internal cell destinations are never included.
+
+Gateway-mode servers can omit `placementDirectory`, `identityKeyForUserId`, and `publicAuthority` when those already exist on `authFnMultiRegionEnvironment({ routing })`. Direct regional-authority mode keeps working for AuthFn traffic; this issuer still requires an explicit placement directory so a client host cannot become placement authority.
+
+## Python
+
+```python
+from authfn import create_placement_context_issuer, create_placement_context_verifier
+
+issuer = create_placement_context_issuer(
+    region_id="us-east-1",  # region owning config.database
+    config=config,
+    public_authority="https://account.example.com",
+    placement_directory=directory,
+    identity_key_for_user_id=identity_keys.from_user_id,
+    subject_secret=subject_secret,
+    audiences=["nucleum-datafn"],
+    keyring=keyring,
+)
+
+context = await issuer.derive(request)
+issued = await issuer.issue_signed(request)
+remote = create_placement_context_verifier(
+    audiences=["nucleum-datafn"],
+    public_authority="https://account.example.com",
+    keyring=keyring,
+)
+verified = remote.verify_signed(issued["assertion"])
+```
+
+## Opaque subject lifecycle
+
+Provision the **same `subjectSecret` / `subject_secret` bytes in every regional issuer**
+for one canonical authority, including a newly provisioned destination region.
+For the same user id, moving placement or advancing its epoch must keep this secret
+unchanged; the subject then remains stable. Different regional secrets identify the
+same user differently and must not be used for a rolling regional deployment.
+
+Treat the subject secret as identity infrastructure, separate from assertion signing
+keys. Rotating the signing `keyring` does not change subjects. Rotating the subject
+secret changes `subject`, `sessionBinding`, and `sessionVersion` for existing records.
+There is no subject-key id, automatic aliasing, or dual-secret lookup in this API.
+Before replacing it, use a trusted migration to compute old/new subjects from the
+same internal user ids, migrate or alias downstream user-home/namespace mappings,
+and coordinate the switch across all issuers and consumers. Never create replacement
+product users solely because a newly derived subject is unknown. Retain any required
+old aliases until all old context and downstream tickets have expired, then remove
+the old mapping/key according to the consumer's migration plan. Emergency rotation
+may intentionally invalidate sessions/tickets; it still requires identity migration.
+
+Consumers should key persisted mappings by canonical issuer and opaque subject.
+Authority normalization compatibility is covered by explicit TypeScript/Python
+fixtures; it is not a claim of exhaustive parity for every Unicode hostname.
+
+## Session revocation semantics
+
+| Event | New grants | Already-issued context / signed assertion |
+| --- | --- | --- |
+| Logout, session revoke, API-key revoke | Fail closed (`AUTHFN_SESSION_REVOKED` / `AUTHFN_API_KEY_REVOKED`) | Remain verifiable until `expiresAt`. Bind DataFn tickets to `sessionVersion` and keep TTL short. |
+| Session expiry | `AUTHFN_SESSION_EXPIRED` | Same bounded expiry. |
+| Identity deleted / missing user row | `AUTHFN_UNAUTHENTICATED` | Existing grants expire; do not mint new tickets. |
+| Placement `moving` or `deleting` | `AUTHFN_PLACEMENT_MOVING` | Downstream cells should fence on epoch. Re-bootstrap through the canonical gateway. |
+| Tombstone / missing placement | `AUTHFN_REGION_NOT_FOUND` | Fail closed. |
+| Directory unavailable | `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE` | Fail closed. Do not guess a region. |
+| Placement epoch advance | Old-region issuer rejects; reauthenticate in the current owning region before issuing | Old assertions still verify until TTL; DataFn must reject a stale epoch. |
+
+There is no public AuthFn introspection route. Immediate revocation of downstream tickets is a consumer concern: short TTL, epoch fencing, or a private lookup the consumer owns.
+
+## Nucleum integration
+
+1. Keep browser/native traffic on the canonical AuthFn authority from [AUTH-1](https://linear.app/21n/issue/AUTH-1/support-canonical-gateway-routing-in-authfn-multi-region).
+2. After the gateway validates the AuthFn session, call `derive` or `issueSigned` in trusted process or service-bound code.
+3. Map `context.subject` to the product user-home / DataFn namespace. Do not use email.
+4. Select the DataFn cell from **server-owned** configuration keyed by `homeRegion` + `placementEpoch`.
+5. Mint the DataFn regional route ticket in Nucleum/DataFn. Return only that short-lived descriptor to the client.
+6. On ticket expiry, mismatch, or WebSocket close, the client returns to the canonical bootstrap path.
+
+AuthFn and DataFn placement records can drift. Nucleum should treat one product-level user-home authority as canonical and reject mismatched epochs rather than picking either copy.
+
+## Observability
+
+| Event | When |
+| --- | --- |
+| `authfn.placement_context.issued` | Context derived from a valid session and active placement. |
+| `authfn.placement_context.rejected` | Unauthenticated, revoked, expired, moving, missing, or invalid audience. `metadata.errorType` is the AuthFn error code. |
+| `authfn.placement_context.verified` | Signed assertion verified. |
+| `authfn.placement_context.verification_failed` | Bad signature, audience, issuer, expiry, or key. |
+
+Events hash the opaque subject. They must not contain email, tokens, or cell destinations.
+
+## Related
+
+- [Canonical-gateway multi-region](./canonical-gateway-multi-region)
+- [Concepts → Regions](../core-concepts/regions)
+- [Plugins → Multi-region](../plugins/multi-region)
 
 ---
 
@@ -9586,6 +9763,7 @@ The table below covers every code the kernel emits across all plugins.
 | `AUTHFN_PLACEMENT_MOVING` | 503 | yes | The identity is fenced during a cell move. No auth side effect started. |
 | `AUTHFN_ROUTING_ASSERTION_INVALID` | 401 | no | A cell rejected a missing, expired, replayed, or request-mismatched gateway assertion. |
 | `AUTHFN_ROUTING_CELL_UNAVAILABLE` | 503 | no | The selected private cell target was absent or dispatch failed. Dispatch failure may occur after side effects, so generic retries are unsafe. |
+| `AUTHFN_PLACEMENT_CONTEXT_INVALID` | 401 | no | A signed placement-bound auth context failed signature, audience, issuer, or expiry verification. |
 | `AUTHFN_DELIVERY_FAILED` | 502 | yes | OTP/email delivery provider returned an error. |
 | `AUTHFN_PLUGIN_ABORTED` | 400 | no | A `before*` hook threw `AuthFnPluginAbortedError` to reject the operation. `details.reason`. |
 | `AUTHFN_CONFLICT` | 409 | no | Duplicate primary email, duplicate OAuth identity, etc. |
@@ -9687,6 +9865,10 @@ type AuthFnEvent = {
 | `authfn.routing.assertion_rejected` | A cell rejected a missing, expired, replayed, or request-mismatched assertion. | rejected | `errorType` |
 | `authfn.routing.directory_unavailable` | Placement storage failed closed. | rejected | `errorType` |
 | `authfn.routing.cell_unavailable` | Cell resolution or internal dispatch failed. | rejected / unknown | `regionId`, `epoch`, `errorType` |
+| `authfn.placement_context.issued` | Trusted consumer code derived placement-bound auth context. | success | `epoch`, `audience`, `actorType`, hashed `subjectDigest` |
+| `authfn.placement_context.rejected` | Context derivation failed closed. | rejected | `errorType` |
+| `authfn.placement_context.verified` | A private-service assertion verified. | success | `epoch`, `audience`, hashed `subjectDigest` |
+| `authfn.placement_context.verification_failed` | Signed context failed signature, audience, issuer, or expiry checks. | rejected | `errorType`, `audience` |
 | `authfn.handoff.started` | A handoff code was issued. | success | `kind` (`native` / `web`) |
 | `authfn.handoff.exchanged` | A handoff code was exchanged for a session. | success | `kind` |
 | `authfn.handoff.failed` | Handoff exchange failed. | failure | `kind`, `errorCode` |
@@ -10403,6 +10585,25 @@ if (!session) {
 }
 ```
 
+## Placement-bound auth context
+
+Trusted gateway code can derive an immutable, privacy-preserving routing context after a valid session. This is opt-in and is not a public AuthFn route. See [Placement-bound auth context](../recipes/placement-bound-auth-context).
+
+```ts
+import { createAuthFnPlacementContextIssuer } from "authfn";
+
+const issuer = createAuthFnPlacementContextIssuer({
+  regionId: 'us-east-1', // region owning config.database
+  config,
+  placementDirectory,
+  identityKeyForUserId: (userId) => `person:${userId}`,
+  publicAuthority: "https://account.example.com",
+  subjectSecret,
+  audiences: ["nucleum-datafn"],
+});
+const context = await issuer.derive(request);
+```
+
 ## Hooks and observability
 
 Hooks and observability are runtime dependencies:
@@ -10502,10 +10703,11 @@ The `authfn` Python package is a port of the Node kernel. It exposes the same `c
 
 ```bash
 pip install authfn
-# or with framework extras
-pip install "authfn[fastapi]"
-pip install "authfn[flask]"
-pip install "authfn[starlette]"
+# database adapter used below
+pip install superfunctions-sqlalchemy
+# plus a framework adapter
+pip install superfunctions-fastapi
+pip install superfunctions-flask
 ```
 
 ## Mental model
@@ -10522,33 +10724,57 @@ If you've read [Concepts → Architecture](../core-concepts/architecture) for th
 ```python
 from authfn import (
     AuthFnConfig,
-    authfn_email_otp_plugin,
     authfn_password_plugin,
-    authfn_social_oauth_plugin,
     create_authfn,
 )
-from authfn.adapters.memory import memory_adapter
+from sqlalchemy import Column, DateTime, Index, Integer, JSON, MetaData, String, Table, create_engine
+from superfunctions_sqlalchemy import create_adapter
+
+engine = create_engine("sqlite+pysqlite:///authfn.db")
+database = create_adapter(engine)
 
 auth = create_authfn(AuthFnConfig(
-    database=memory_adapter(),
+    database=database,
     namespace="authfn",
     plugins=[
         authfn_password_plugin(),
-        authfn_email_otp_plugin({
-            "delivery": my_delivery_provider,
-        }),
-        authfn_social_oauth_plugin({
-            "providers": {
-                "google": {
-                    "client_id": GOOGLE_CLIENT_ID,
-                    "client_secret": GOOGLE_CLIENT_SECRET,
-                    "allowlisted_return_to": ["https://app.example.com/post-auth"],
-                },
-            },
-        }),
     ],
 ))
+
+# superfunctions-sqlalchemy reflects existing tables. Bootstrap this local
+# database from authfn's logical schema before serving requests.
+metadata = MetaData()
+column_types = {
+    "date": lambda: DateTime(timezone=True),
+    "json": JSON,
+    "number": Integer,
+    "session": JSON,
+    "string": String,
+}
+for table_schema in auth.get_schema()["schemas"]:
+    columns = [
+        Column(
+            field_name,
+            column_types.get(field["type"], String)(),
+            primary_key=field_name == "id",
+            nullable=not field.get("required", False),
+        )
+        for field_name, field in table_schema["fields"].items()
+    ]
+    table = Table(f"authfn_{table_schema['modelName']}", metadata, *columns)
+    for index_schema in table_schema.get("indexes", []):
+        Index(
+            index_schema["name"],
+            *(table.c[field_name] for field_name in index_schema["fields"]),
+            unique=index_schema.get("unique", False),
+        )
+
+metadata.create_all(engine)
 ```
+
+The SQLAlchemy adapter does not run migrations or translate authfn's logical
+field names to physical column names. In production, create the same logical
+tables with your migration tool before starting the application.
 
 ## Mounting
 
@@ -10556,10 +10782,10 @@ auth = create_authfn(AuthFnConfig(
 
 ```python
 from fastapi import FastAPI, Request
-from superfunctions_fastapi import to_fastapi
+from superfunctions_fastapi import create_router
 
 app = FastAPI()
-app.include_router(to_fastapi(auth.router), prefix="/auth")
+app.include_router(create_router(auth.get_routes()))
 
 @app.get("/openapi-authfn.json")
 async def openapi_authfn():
@@ -10570,10 +10796,10 @@ async def openapi_authfn():
 
 ```python
 from flask import Flask
-from superfunctions_flask import to_flask
+from superfunctions_flask import create_blueprint
 
 app = Flask(__name__)
-to_flask(app, auth.router, base_path="/auth")
+app.register_blueprint(create_blueprint(auth.get_routes()))
 
 @app.get("/openapi-authfn.json")
 def openapi_authfn():
@@ -10582,14 +10808,7 @@ def openapi_authfn():
 
 ### Starlette
 
-```python
-from starlette.applications import Starlette
-from starlette.routing import Route
-from superfunctions_starlette import to_starlette
-
-routes = [*to_starlette(auth.router, base_path="/auth")]
-app = Starlette(routes=routes)
-```
+There is no `superfunctions_starlette` adapter. Mount through FastAPI (`pip install authfn superfunctions-fastapi`) — see [Frameworks → FastAPI](../frameworks/fastapi).
 
 ## Reading the session
 
@@ -10621,13 +10840,12 @@ Hook names use Python's `snake_case`. The behavior matches the Node kernel.
 
 ## Adapters
 
-Python's `@superfunctions/db` analogue ships:
+Pass any Superfunctions `db` adapter as `AuthFnConfig.database`. There is no `authfn.adapters` package.
 
-- `memory_adapter` (testing).
-- `sqlalchemy_adapter` (Postgres / SQLite via SQLAlchemy).
-- `drizzle-style` adapter for those who keep schema in TypeScript and run migrations cross-language.
+- Tests and examples typically use a local in-memory adapter that implements the contract.
+- Production Python apps use `superfunctions_sqlalchemy.create_adapter(engine)` for Postgres / SQLite.
 
-The contract is identical to the Node adapter — see [Adapters → Database](../adapters/database).
+The contract matches the Node adapter — see [Adapters → Database](../adapters/database).
 
 ## OpenAPI parity
 
@@ -10647,11 +10865,31 @@ A common pattern is a Python data-science backend that uses a Node-served authfn
 
 If you go this route, lock the kernel versions on both sides to versions that share the same wire contract. The [changelog](../reference/changelog) documents wire-contract bumps.
 
+## Placement-bound auth context
+
+Trusted gateway code can derive an immutable routing context after a valid session. This is opt-in and is not a public AuthFn route. See [Placement-bound auth context](../recipes/placement-bound-auth-context).
+
+```python
+from authfn import create_placement_context_issuer
+
+issuer = create_placement_context_issuer(
+    region_id="us-east-1",  # region owning config.database
+    config=config,
+    public_authority="https://account.example.com",
+    placement_directory=directory,
+    identity_key_for_user_id=identity_keys.from_user_id,
+    subject_secret=subject_secret,
+    audiences=["nucleum-datafn"],
+)
+context = await issuer.derive(request)
+```
+
 ## Related
 
 - [Quickstart → Python](../quickstart/python)
 - [Frameworks → FastAPI / Flask / Starlette](../frameworks)
 - [Adapters → Database](../adapters/database)
+- [Recipes → Placement-bound auth context](../recipes/placement-bound-auth-context)
 
 ---
 
