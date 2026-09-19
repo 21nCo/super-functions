@@ -18,7 +18,7 @@ bun add authfn @authfn/password @authfn/email-otp @authfn/client @superfunctions
 ```ts
 // auth.ts
 import { memoryAdapter } from "@superfunctions/db/testing";
-import { authfn, authFnPlugins } from "authfn";
+import { authfn, authFnPlugins, type AuthFnDeliveryProvider } from "authfn";
 import { authFnPasswordPlugin } from "@authfn/password";
 import { authFnEmailOtpPlugin } from "@authfn/email-otp";
 
@@ -31,7 +31,7 @@ export const authApp = authfn({
   ),
 });
 
-const delivery = {
+const delivery: AuthFnDeliveryProvider = {
   async send(input) {
     console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
     return { sent: true };

@@ -19,7 +19,7 @@ npm install @superfunctions/db @superfunctions/http-next
 ```ts
 // app/auth/_runtime.ts
 import { memoryAdapter } from "@superfunctions/db/testing";
-import { authfn, authFnPlugins } from "authfn";
+import { authfn, authFnPlugins, type AuthFnDeliveryProvider } from "authfn";
 import { authFnPasswordPlugin } from "@authfn/password";
 import { authFnEmailOtpPlugin } from "@authfn/email-otp";
 import { authFnSocialOAuthPlugin } from "@authfn/social-oauth";
@@ -34,7 +34,7 @@ export const authApp = authfn({
   ),
 });
 
-const delivery = {
+const delivery: AuthFnDeliveryProvider = {
   async send(input) {
     console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
     return { sent: true };

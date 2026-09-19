@@ -5676,21 +5676,17 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           throw new AuthFnError("AUTHFN_OTP_EXPIRED", "expired", { status: 400 });
         }
 
-        try {
-          await ctx.config.database.update({
-            model: TABLE,
-            where: [
-              { field: "id", operator: "eq", value: row.id },
-              { field: "consumedAt", operator: "eq", value: null },
-            ],
-            data: { consumedAt: new Date() },
-            namespace: ctx.namespace,
-          });
-        } catch (error) {
-          if (error instanceof Error && error.name === "NotFoundError") {
-            throw new AuthFnConflictError("magic link already used");
-          }
-          throw error;
+        const claimed = await ctx.config.database.updateMany({
+          model: TABLE,
+          where: [
+            { field: "id", operator: "eq", value: row.id },
+            { field: "consumedAt", operator: "eq", value: null },
+          ],
+          data: { consumedAt: new Date() },
+          namespace: ctx.namespace,
+        });
+        if (claimed !== 1) {
+          throw new AuthFnConflictError("magic link already used");
         }
 
         const issued = await issueSession(ctx.config, ctx.hooks, {
@@ -7402,7 +7398,7 @@ bun add authfn @authfn/password @authfn/email-otp @authfn/client @superfunctions
 ```ts
 // auth.ts
 import { memoryAdapter } from "@superfunctions/db/testing";
-import { authfn, authFnPlugins } from "authfn";
+import { authfn, authFnPlugins, type AuthFnDeliveryProvider } from "authfn";
 import { authFnPasswordPlugin } from "@authfn/password";
 import { authFnEmailOtpPlugin } from "@authfn/email-otp";
 
@@ -7415,7 +7411,7 @@ export const authApp = authfn({
   ),
 });
 
-const delivery = {
+const delivery: AuthFnDeliveryProvider = {
   async send(input) {
     console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
     return { sent: true };
@@ -7524,7 +7520,7 @@ npm install @superfunctions/db @superfunctions/http-next
 ```ts
 // app/auth/_runtime.ts
 import { memoryAdapter } from "@superfunctions/db/testing";
-import { authfn, authFnPlugins } from "authfn";
+import { authfn, authFnPlugins, type AuthFnDeliveryProvider } from "authfn";
 import { authFnPasswordPlugin } from "@authfn/password";
 import { authFnEmailOtpPlugin } from "@authfn/email-otp";
 import { authFnSocialOAuthPlugin } from "@authfn/social-oauth";
@@ -7539,7 +7535,7 @@ export const authApp = authfn({
   ),
 });
 
-const delivery = {
+const delivery: AuthFnDeliveryProvider = {
   async send(input) {
     console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
     return { sent: true };
@@ -7666,7 +7662,7 @@ npm install @superfunctions/db @superfunctions/http-express express
 ```ts
 // auth.ts
 import { memoryAdapter } from "@superfunctions/db/testing";
-import { authfn, authFnPlugins } from "authfn";
+import { authfn, authFnPlugins, type AuthFnDeliveryProvider } from "authfn";
 import { authFnPasswordPlugin } from "@authfn/password";
 import { authFnEmailOtpPlugin } from "@authfn/email-otp";
 
@@ -7679,7 +7675,7 @@ export const authApp = authfn({
   ),
 });
 
-const delivery = {
+const delivery: AuthFnDeliveryProvider = {
   async send(input) {
     console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
     return { sent: true };
@@ -7911,7 +7907,7 @@ npm install @superfunctions/db @superfunctions/http-sveltekit
 ```ts
 // src/lib/server/auth.ts
 import { memoryAdapter } from "@superfunctions/db/testing";
-import { authfn, authFnPlugins } from "authfn";
+import { authfn, authFnPlugins, type AuthFnDeliveryProvider } from "authfn";
 import { authFnPasswordPlugin } from "@authfn/password";
 import { authFnEmailOtpPlugin } from "@authfn/email-otp";
 import { authFnSocialOAuthPlugin } from "@authfn/social-oauth";
@@ -7927,7 +7923,7 @@ export const authApp = authfn({
   ),
 });
 
-const delivery = {
+const delivery: AuthFnDeliveryProvider = {
   async send(input) {
     console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
     return { sent: true };

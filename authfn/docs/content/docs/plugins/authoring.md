@@ -157,21 +157,17 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           throw new AuthFnError("AUTHFN_OTP_EXPIRED", "expired", { status: 400 });
         }
 
-        try {
-          await ctx.config.database.update({
-            model: TABLE,
-            where: [
-              { field: "id", operator: "eq", value: row.id },
-              { field: "consumedAt", operator: "eq", value: null },
-            ],
-            data: { consumedAt: new Date() },
-            namespace: ctx.namespace,
-          });
-        } catch (error) {
-          if (error instanceof Error && error.name === "NotFoundError") {
-            throw new AuthFnConflictError("magic link already used");
-          }
-          throw error;
+        const claimed = await ctx.config.database.updateMany({
+          model: TABLE,
+          where: [
+            { field: "id", operator: "eq", value: row.id },
+            { field: "consumedAt", operator: "eq", value: null },
+          ],
+          data: { consumedAt: new Date() },
+          namespace: ctx.namespace,
+        });
+        if (claimed !== 1) {
+          throw new AuthFnConflictError("magic link already used");
         }
 
         const issued = await issueSession(ctx.config, ctx.hooks, {
