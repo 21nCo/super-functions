@@ -10,37 +10,44 @@ This walkthrough builds an end-to-end auth flow inside a SvelteKit app: a server
 ## 1. Install
 
 ```bash
-npm install @authfn/core @authfn/client @authfn/svelte @superfunctions/http-sveltekit
+npm install authfn @authfn/password @authfn/email-otp @authfn/social-oauth @authfn/client @authfn/svelte
+npm install @superfunctions/db @superfunctions/http-sveltekit
 ```
 
-## 2. Create the runtime
+## 2. Declare the app and create the server
 
 ```ts
 // src/lib/server/auth.ts
-import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import {
-  authFnEmailOtpPlugin,
-  authFnPasswordPlugin,
-  authFnSocialOAuthPlugin,
-  createAuthFn,
-} from "@authfn/core";
+import { memoryAdapter } from "@superfunctions/db/testing";
+import { authfn, authFnPlugins, type AuthFnDeliveryProvider } from "authfn";
+import { authFnPasswordPlugin } from "@authfn/password";
+import { authFnEmailOtpPlugin } from "@authfn/email-otp";
+import { authFnSocialOAuthPlugin } from "@authfn/social-oauth";
 import { env } from "$env/dynamic/private";
 
-export const auth = createAuthFn({
-  database: memoryAdapter({ debug: false }),
+export const authApp = authfn({
   namespace: "authfn",
   openApi: { title: "AuthFn API", version: "1.0.0" },
-  plugins: [
+  plugins: authFnPlugins(
     authFnPasswordPlugin(),
-    authFnEmailOtpPlugin({
-      delivery: {
-        async send({ email, code, purpose }) {
-          console.log(`[OTP] ${purpose} → ${email}: ${code}`);
-          return { sent: true };
-        },
-      },
-    }),
-    authFnSocialOAuthPlugin({
+    authFnEmailOtpPlugin(),
+    authFnSocialOAuthPlugin(),
+  ),
+});
+
+const delivery: AuthFnDeliveryProvider = {
+  async send(input) {
+    console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
+    return { sent: true };
+  },
+};
+
+export const auth = authApp.createServer({
+  database: memoryAdapter({ debug: false }),
+  pluginRuntime: {
+    password: { otp: { delivery } },
+    emailOtp: { delivery },
+    socialOAuth: {
       providers: {
         google: {
           clientId: env.GOOGLE_CLIENT_ID,
@@ -48,8 +55,8 @@ export const auth = createAuthFn({
           allowlistedReturnTo: ["/post-auth"],
         },
       },
-    }),
-  ],
+    },
+  },
 });
 ```
 

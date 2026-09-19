@@ -210,7 +210,7 @@ if (result.ok) {
 }
 ```
 
-For convenience, the `AuthFnErrorCode` literal-type is available from `@authfn/core` if you want to narrow further.
+For convenience, the `AuthFnErrorCode` literal type is available from `authfn/core/errors` if you want to narrow further.
 
 ## Errors and retries
 

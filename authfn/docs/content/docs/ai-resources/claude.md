@@ -48,7 +48,8 @@ If you want Claude to *always* know what stack you're on, add a project-level CL
 # Project
 
 This is a SvelteKit app using:
-- @authfn/core for the auth kernel (mounted at /auth)
+- `authfn` for the auth kernel (mounted at /auth)
+- `@authfn/password` and `@authfn/email-otp` for sign-in methods
 - @authfn/client + @authfn/svelte for the browser
 - Postgres + Drizzle for the database
 

@@ -239,13 +239,19 @@ function mapFieldToDrizzle(
       }
       return { type: 'text' };
     case 'number':
-      return { type: 'integer' };
+      return { type: dialect === 'mysql' ? 'int' : 'integer' };
     case 'bigint':
-      return { type: 'bigint', config: "{ mode: 'bigint' }" };
+      return dialect === 'sqlite'
+        ? { type: 'blob', config: "{ mode: 'bigint' }" }
+        : { type: 'bigint', config: "{ mode: 'bigint' }" };
     case 'boolean':
-      return { type: 'boolean' };
+      return dialect === 'sqlite'
+        ? { type: 'integer', config: "{ mode: 'boolean' }" }
+        : { type: 'boolean' };
     case 'json':
-      return { type: 'json' };
+      return dialect === 'sqlite'
+        ? { type: 'text', config: "{ mode: 'json' }" }
+        : { type: 'json' };
     default:
       return { type: 'text' };
   }

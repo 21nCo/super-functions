@@ -9,6 +9,31 @@ const users = mysqlTable('users', {
 });
 
 describe('DrizzleAdapter - MySQL upsert follow-ups', () => {
+  it('reads affected rows from the mysql2 result tuple', async () => {
+    const execute = vi.fn(async () => [{ affectedRows: 1 }, []]);
+    const mockDb = {
+      _: { fullSchema: { users } },
+      update() {
+        return {
+          set() {
+            return {
+              where() {
+                return { execute };
+              },
+            };
+          },
+        };
+      },
+    };
+    const adapter = drizzleAdapter({ db: mockDb, dialect: 'mysql' });
+
+    await expect(adapter.updateMany({
+      model: 'users',
+      where: [{ field: 'id', operator: 'eq', value: 'u1' }],
+      data: { name: 'Ada' },
+    })).resolves.toBe(1);
+  });
+
   it('throws when MySQL upsert cannot reselect the inserted row', async () => {
     const insertExecute = vi.fn(async () => ({ rowsAffected: 1 }));
     const duplicateExecute = vi.fn(async () => ({ rowsAffected: 1 }));

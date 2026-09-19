@@ -30,27 +30,30 @@ export function resolvePhysicalTableName(namespace: string, modelName: string): 
 /**
  * Map FieldSchema type to generic SQL type for comparison
  */
-function mapFieldTypeToSQLType(field: FieldSchema): string {
+function mapFieldTypeToSQLType(
+  field: FieldSchema,
+  dialect?: DatabaseTable['columns'][number]['dialect'],
+): string {
   if (field.type === 'date' || field.type === 'datetime') {
     switch (resolveDateStorageType(field)) {
       case 'timestamp':
       case 'timestamptz':
-        return 'timestamp';
+        return dialect === 'sqlite' ? 'integer' : 'timestamp';
       case 'iso-text':
         return 'text';
       case 'epoch-ms-integer':
         return 'integer';
       case 'epoch-ms-bigint':
-        return 'bigint';
+        return dialect === 'sqlite' ? 'integer' : 'bigint';
     }
   }
 
   switch (field.type) {
     case 'string': return 'text';
     case 'number': return 'integer';
-    case 'bigint': return 'bigint';
-    case 'boolean': return 'boolean';
-    case 'json': return 'json';
+    case 'bigint': return dialect === 'sqlite' ? 'blob' : 'bigint';
+    case 'boolean': return dialect === 'sqlite' ? 'integer' : 'boolean';
+    case 'json': return dialect === 'sqlite' ? 'text' : 'json';
     default: return 'text';
   }
 }
@@ -372,7 +375,7 @@ export function diffTables(
 
         // Check for type changes
         // Map FieldSchema types to SQL types for comparison
-        const expectedType = mapFieldTypeToSQLType(fieldSchema);
+        const expectedType = mapFieldTypeToSQLType(fieldSchema, curCol.dialect);
         const actualType = normalizeColumnType(curCol.dataType);
 
         if (expectedType !== actualType) {

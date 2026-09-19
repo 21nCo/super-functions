@@ -11,7 +11,7 @@ npm install @aws-sdk/client-ses
 
 ```ts
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
-import type { AuthFnDeliveryProvider } from '@authfn/core';
+import type { AuthFnDeliveryProvider } from 'authfn';
 
 const ses = new SESClient({ region: process.env.AWS_REGION });
 

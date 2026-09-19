@@ -85,11 +85,13 @@ export function quoteInternalIdentifier(
 }
 
 export function normalizeInternalResultCount(result: any): number {
+  const normalizedResult = Array.isArray(result) ? result[0] : result;
   const count =
-    result?.changes ??
-    result?.rowsAffected ??
-    result?.rowCount ??
-    result?.count ??
-    result;
+    normalizedResult?.changes ??
+    normalizedResult?.affectedRows ??
+    normalizedResult?.rowsAffected ??
+    normalizedResult?.rowCount ??
+    normalizedResult?.count ??
+    normalizedResult;
   return typeof count === 'number' ? count : Number(count ?? 0);
 }

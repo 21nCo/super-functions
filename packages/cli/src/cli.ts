@@ -88,6 +88,11 @@ program
     "Target adapter (drizzle|prisma|kysely)",
     "drizzle"
   )
+  .option(
+    "-d, --dialect <dialect>",
+    "Drizzle SQL dialect (postgres|mysql|sqlite)",
+    "postgres"
+  )
   .option("-o, --output <path>", "Output directory", "./superfunctions")
   .option("--force", "Overwrite existing files", false)
   .action(async (options) => {

@@ -26,6 +26,7 @@ export interface GenerateSchemaOptions {
   config: string;
   library?: string;
   adapter: "drizzle" | "prisma" | "kysely";
+  dialect?: "postgres" | "mysql" | "sqlite";
   output: string;
   force: boolean;
 }
@@ -33,6 +34,16 @@ export interface GenerateSchemaOptions {
 export async function generateSchemas(
   options: GenerateSchemaOptions
 ): Promise<void> {
+  const drizzleDialect = options.dialect ?? "postgres";
+  if (
+    options.adapter === "drizzle" &&
+    !["postgres", "mysql", "sqlite"].includes(drizzleDialect)
+  ) {
+    throw new Error(
+      `Unsupported Drizzle dialect: ${drizzleDialect}. Expected postgres, mysql, or sqlite.`
+    );
+  }
+
   console.log("🔨 Generating ORM schema files...\n");
 
   // Load config
@@ -45,6 +56,9 @@ export async function generateSchemas(
 
   console.log(`✅ Config loaded`);
   console.log(`   Adapter: ${options.adapter}`);
+  if (options.adapter === "drizzle") {
+    console.log(`   Dialect: ${drizzleDialect}`);
+  }
   console.log(`   Output: ${options.output}\n`);
 
   // Discover libraries
@@ -197,7 +211,8 @@ export async function generateSchemas(
           content = generateDrizzleSchemaFile(
             abstractSchema,
             init.libraryName,
-            init.config.namespace || init.libraryName
+            init.config.namespace || init.libraryName,
+            drizzleDialect
           );
           break;
         case "prisma":

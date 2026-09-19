@@ -18,29 +18,22 @@ npm install better-sqlite3
 ## Via Drizzle
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
+import * as schema from './db/generated/authfn-schema.js';
 
-const db = drizzle(new Database('authfn.db'));
+const db = drizzle(new Database('authfn.db'), { schema });
 
-createAuthFn({ database: drizzleAdapter(db), /* ... */ });
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({
+  database: drizzleAdapter({ db, dialect: 'sqlite' }),
+});
 ```
 
-## Direct SQLite adapter
-
-If a thin SQLite adapter is exposed in your build, use it directly:
-
-```ts
-import { sqliteAdapter } from '@superfunctions/db/adapters/sqlite';   // if available
-import Database from 'better-sqlite3';
-
-const db = new Database('authfn.db');
-
-createAuthFn({ database: sqliteAdapter(db), /* ... */ });
-```
-
-When in doubt, the `drizzleAdapter` route works everywhere.
+`@superfunctions/db` does not expose a direct `sqliteAdapter`; use the supported
+Drizzle path above or implement the [custom adapter](./custom) contract.
 
 ## Performance
 

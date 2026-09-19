@@ -10,6 +10,7 @@ import {
   introspectMySQL,
   introspectPostgres,
   introspectSQLite,
+  mapDatabaseTypeToFieldType,
 } from "../utils/introspection.js";
 import { generateDrizzleSchemaFile } from "../utils/schema-generators.js";
 import { hasUnsafeMySqlMetadataSyntax } from "../utils/mysql-types.js";
@@ -30,7 +31,94 @@ const syncJobs = {
   ],
 } as unknown as TableSchema;
 
+function sqliteColumn(
+  tableName: string,
+  columnName: string,
+  dataType: string,
+  isNullable: boolean,
+) {
+  return {
+    dialect: "sqlite" as const,
+    tableName,
+    columnName,
+    dataType,
+    isNullable,
+    defaultValue: null,
+    isPrimaryKey: columnName === "id",
+    isUnique: false,
+  };
+}
+
 describe("schema index migrations", () => {
+  it("uses supported Drizzle builders for SQLite scalar modes", () => {
+    const table = {
+      modelName: "settings",
+      fields: {
+        id: { type: "string", required: true, fieldName: "id" },
+        enabled: { type: "boolean", required: true, fieldName: "enabled" },
+        metadata: { type: "json", required: false, fieldName: "metadata" },
+        counter: { type: "bigint", required: true, fieldName: "counter" },
+      },
+    } as unknown as TableSchema;
+    const schema = generateDrizzleSchemaFile(
+      {
+        version: 1,
+        schemas: [table],
+      },
+      "example",
+      "example",
+      "sqlite",
+    );
+
+    expect(schema).toContain("integer('enabled', { mode: 'boolean' })");
+    expect(schema).toContain("text('metadata', { mode: 'json' })");
+    expect(schema).toContain("blob('counter', { mode: 'bigint' })");
+    expect(schema).not.toContain("boolean('enabled'");
+    expect(schema).not.toContain("json('metadata'");
+    expect(schema).not.toContain("bigint('counter'");
+
+    const plan = createMigrationPlan("example", 0, 1, [{
+      tableName: "example_settings",
+      action: "create",
+    }]);
+    expect(generateDrizzleMigration(plan, [table], "sqlite").content)
+      .toContain("counter BLOB");
+    expect(mapDatabaseTypeToFieldType("BLOB")).toBe("bigint");
+    expect(diffTables([table], [{
+      name: "example_settings",
+      columns: [
+        sqliteColumn("example_settings", "id", "TEXT", false),
+        sqliteColumn("example_settings", "enabled", "INTEGER", false),
+        sqliteColumn("example_settings", "metadata", "TEXT", true),
+        sqliteColumn("example_settings", "counter", "BLOB", false),
+      ],
+      indexes: [],
+      constraints: [],
+    }], "example")).toEqual([]);
+  });
+
+  it("uses MySQL's int builder for numeric fields", () => {
+    const schema = generateDrizzleSchemaFile(
+      {
+        version: 1,
+        schemas: [{
+          modelName: "counters",
+          fields: {
+            id: { type: "string", required: true, fieldName: "id" },
+            attempts: { type: "number", required: true, fieldName: "attempts" },
+          },
+        } as unknown as TableSchema],
+      },
+      "example",
+      "example",
+      "mysql",
+    );
+
+    expect(schema).toContain("int('attempts')");
+    expect(schema).not.toContain("integer('attempts')");
+    expect(schema).toContain("from 'drizzle-orm/mysql-core'");
+  });
+
   it("scopes PostgreSQL index relations to the requested schema", async () => {
     let indexQuery = "";
     let indexParams: unknown[] = [];

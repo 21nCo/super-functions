@@ -29,6 +29,7 @@ import { createAdapterFactory } from '../../adapter/factory.js';
 import { NotFoundError, OperationNotSupportedError } from '../../adapter/errors.js';
 import { createDrizzleInternalCrud } from './internal.js';
 import { normalizeAdapterSchema } from '../../adapter/schema-codecs.js';
+import { normalizeInternalResultCount } from '../internal-utils.js';
 
 export type DrizzleDialect = 'postgres' | 'mysql' | 'sqlite';
 
@@ -255,8 +256,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
         const q = db.update(tbl).set(data as any).where(cond);
         const result = await q.execute();
         // drizzle returns driver-dependent result; for better-sqlite3 it's { changes: N, lastInsertRowid: X }
-        const n = (result as any)?.changes ?? (result as any)?.rowsAffected ?? (result as any)?.rowCount ?? 0;
-        return typeof n === 'number' ? n : 0;
+        return normalizeInternalResultCount(result);
       },
 
       async delete({ model, where }: DeleteParams): Promise<void> {
@@ -272,8 +272,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
         const tbl = resolveTable(model);
         const cond = buildWhere(drizzleOps, tbl, where);
         const res = await db.delete(tbl).where(cond).execute();
-        const n = (res as any)?.changes ?? (res as any)?.rowsAffected ?? (res as any)?.rowCount ?? 0;
-        return typeof n === 'number' ? n : 0;
+        return normalizeInternalResultCount(res);
       },
 
       async upsert<T = any>({ model, where, create, update, select, conflictTarget }: UpsertParams): Promise<T> {

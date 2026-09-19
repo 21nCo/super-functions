@@ -8,7 +8,7 @@ description: The delivery contract is one method — drop in any mailer.
 The delivery contract is *just* `send(input) → { sent, metadata? }`. Anything that can deliver an email implements it in five lines:
 
 ```ts
-import type { AuthFnDeliveryProvider } from '@authfn/core';
+import type { AuthFnDeliveryProvider } from 'authfn';
 
 export const myDelivery: AuthFnDeliveryProvider = {
   async send({ email, code, purpose, challengeId, metadata }) {

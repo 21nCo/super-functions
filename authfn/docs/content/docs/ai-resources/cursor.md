@@ -51,7 +51,7 @@ When working with @authfn/*, fetch context from https://authfn.superfunctions.de
 Inside `.cursor/rules/authfn.mdc`, add anything specific to your stack:
 
 ```markdown
-This project uses @authfn/core with the password and email-OTP plugins.
+This project uses `authfn` with the `@authfn/password` and `@authfn/email-otp` plugins.
 The kernel is mounted in `apps/api/src/auth.ts`.
 The client lives in `packages/sdk/src/auth.ts`.
 

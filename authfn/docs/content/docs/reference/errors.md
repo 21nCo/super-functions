@@ -65,7 +65,7 @@ The table below covers every code the kernel emits across all plugins.
 
 ## Source of truth
 
-The exhaustive type lives in `authfn/core/src/core/errors.ts`. The full error class hierarchy is exported from `@authfn/core`.
+The exhaustive type lives in `authfn/core/src/core/errors.ts`. The full error class hierarchy is exported from `authfn`.
 
 ## Recommended UX
 

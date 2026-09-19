@@ -12,12 +12,12 @@ Reject sign-ups from disposable email domains, restrict sign-up to specific tena
 ## Disposable email block
 
 ```ts
-import { AuthFnValidationError } from '@authfn/core';
+import { AuthFnValidationError } from 'authfn';
 
 const disposable = new Set(['mailinator.com', 'tempmail.com', /* ... */]);
 
-createAuthFn({
-  // ...
+authApp.createServer({
+  database,
   hooks: {
     beforeUserCreate(_ctx, input) {
       const domain = String(input.primaryEmail ?? '').split('@')[1]?.toLowerCase();
@@ -79,11 +79,13 @@ hooks: {
   async afterUserCreate(_ctx, user) {
     await mailer.sendWelcome({ to: user.primaryEmail, userId: user.id });
   },
-},
-hookFailurePolicy: {
-  afterUserCreate: 'observe',     // don't fail sign-up if welcome mail fails
-},
+}
 ```
+
+Kernel-level `before*` hooks fail the request when they throw. Kernel-level
+`after*` hooks such as `afterUserCreate` are observed: a throw emits
+`authfn.plugin.failed` but does not fail sign-up, so the welcome-mail hook can
+remain a server hook.
 
 ## Related
 
