@@ -50,6 +50,32 @@ describe('authfn api key plugin', () => {
     })).resolves.toBe(0);
   });
 
+  it('creates an API key for a persisted legacy oversized user ID', async () => {
+    const config = createConfig();
+    const userId = 'legacy-user-'.padEnd(300, 'x');
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: {
+        id: userId,
+        primaryEmail: 'legacy-api@example.com',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    });
+
+    const created = await createApiKey(config, {
+      userId,
+      name: 'legacy-key'
+    });
+
+    expect(created.record.userId).toBe(userId);
+    await expect(config.database.count({
+      model: 'api_keys',
+      namespace: 'authfn'
+    })).resolves.toBe(1);
+  });
+
   it('creates, lists, authenticates, and revokes api keys with hashed secrets at rest', async () => {
     const config = createConfig();
     const auth = createTestServer(config);

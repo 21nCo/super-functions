@@ -123,6 +123,25 @@ describe('two-factor persistence bounds', () => {
       where: [{ field: 'id', operator: 'eq', value: challenge?.challenge.id }]
     })).resolves.toMatchObject({ userId: oversizedUser.id });
   });
+
+  it('creates an enrollment for a persisted legacy oversized user ID', async () => {
+    const config = createConfig();
+    const user = await createUser(config, { primaryEmail: 'legacy-enroll@example.com' });
+    const legacyUser = { ...user, id: 'legacy-user-'.padEnd(300, 'x') };
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: legacyUser
+    });
+
+    const enrollment = await createTwoFactorEnrollment(
+      config,
+      legacyUser,
+      config.pluginRuntime?.twoFactor
+    );
+
+    expect(enrollment.enrollment.userId).toBe(legacyUser.id);
+  });
 });
 
 function createTwoFactorPluginConfig(clock: ReturnType<typeof createClock>) {

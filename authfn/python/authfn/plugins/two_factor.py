@@ -148,7 +148,18 @@ class TwoFactorService:
         self.plugin_config = plugin_config or TwoFactorPluginConfig()
 
     async def enroll(self, *, user_id: str, primary_email: Optional[str] = None) -> Dict[str, Any]:
-        user_id = assert_database_key_length(user_id, "userId")
+        legacy_user = None
+        if len(user_id) > AUTHFN_DATABASE_KEY_MAX_LENGTH:
+            legacy_user = await self.config.database.find_one(
+                model="users",
+                where=[{"field": "id", "operator": "eq", "value": user_id}],
+                namespace=self.config.namespace,
+            )
+        user_id = (
+            user_id
+            if legacy_user is not None
+            else assert_database_key_length(user_id, "userId")
+        )
         existing = await self.config.database.find_one(
             model="two_factor_enrollments",
             where=[{"field": "userId", "operator": "eq", "value": user_id}],

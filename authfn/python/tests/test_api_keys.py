@@ -156,3 +156,19 @@ async def test_create_api_key_rejects_oversized_user_id_before_persistence() -> 
         await service.create_key(user_id="u" * 256, name="oversized-user")
 
     assert db.storage["api_keys"] == []
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_allows_persisted_legacy_user_id() -> None:
+    db = MockDatabaseAdapter()
+    user_id = "legacy-user-".ljust(300, "x")
+    db.storage["users"] = [{"id": user_id}]
+    service = ApiKeyService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        ApiKeyPluginConfig(now=lambda: datetime(2026, 3, 22, 0, 0, 0)),
+    )
+
+    created = await service.create_key(user_id=user_id, name="legacy-key")
+
+    assert created["record"]["userId"] == user_id
+    assert len(db.storage["api_keys"]) == 1

@@ -6,7 +6,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from '../utils/config.js';
 import { createAdapterFromConfig, getRawConnection } from '../utils/adapter-helper.js';
-import { diffTables, createMigrationPlan } from '../utils/schema-diff.js';
+import {
+  diffTables,
+  createMigrationPlan,
+  resolvePhysicalTableName,
+} from '../utils/schema-diff.js';
 import {
   generateDrizzleMigration,
   generatePrismaMigration,
@@ -25,54 +29,67 @@ import { autoDiscoverLibraryFiles, toRelativePaths } from '../utils/auto-discove
 import type { TableSchema } from '@superfunctions/db';
 
 interface LibrarySchema {
+  libraryName?: string;
   namespace: string;
   version: number;
   tables: TableSchema[];
 }
 
 const AUTHFN_V1_UNBOUNDED_MYSQL_COLUMN_LENGTHS = new Map([
-  'authfn_users.id',
-  'authfn_users.primary_email',
-  'authfn_sessions.id',
-  'authfn_sessions.user_id',
-  'authfn_sessions.token_hash',
-  'authfn_api_keys.id',
-  'authfn_api_keys.user_id',
-  'authfn_api_keys.secret_hash',
-  'authfn_otp_challenges.id',
-  'authfn_otp_challenges.purpose',
-  'authfn_otp_challenges.email',
-  'authfn_region_profiles.id',
-  'authfn_region_profiles.user_id',
-  'authfn_region_profiles.region_id',
-  'authfn_native_handoff_codes.id',
-  'authfn_native_handoff_codes.code_hash',
-  'authfn_native_handoff_codes.source_session_id',
-  'authfn_password_credentials.id',
-  'authfn_password_credentials.user_id',
-  'authfn_two_factor_enrollments.id',
-  'authfn_two_factor_enrollments.user_id',
-  'authfn_two_factor_recovery_codes.id',
-  'authfn_two_factor_recovery_codes.enrollment_id',
-  'authfn_two_factor_recovery_codes.code_hash',
-  'authfn_two_factor_challenges.id',
-  'authfn_two_factor_challenges.user_id',
-  'authfn_oauth_states.state_id',
-  'authfn_oauth_states.expires_at',
-  'authfn_oauth_tokens.token_id',
-  'authfn_oauth_tokens.connection_id',
-  'authfn_oauth_consents.consent_id',
-  'authfn_oauth_consents.provider_id',
-  'authfn_oauth_consents.subject_key',
-  'authfn_oauth_revocation_failures.failure_id',
-  'authfn_oauth_revocation_failures.provider_id',
-  'authfn_oauth_revocation_failures.subject_key',
-  'authfn_oauth_accounts.id',
-  'authfn_oauth_accounts.user_id',
-  'authfn_oauth_accounts.provider',
-  'authfn_oauth_accounts.provider_account_id',
-  'authfn_oauth_accounts.connection_id',
+  'users.id',
+  'users.primary_email',
+  'sessions.id',
+  'sessions.user_id',
+  'sessions.token_hash',
+  'api_keys.id',
+  'api_keys.user_id',
+  'api_keys.secret_hash',
+  'otp_challenges.id',
+  'otp_challenges.purpose',
+  'otp_challenges.email',
+  'region_profiles.id',
+  'region_profiles.user_id',
+  'region_profiles.region_id',
+  'native_handoff_codes.id',
+  'native_handoff_codes.code_hash',
+  'native_handoff_codes.source_session_id',
+  'password_credentials.id',
+  'password_credentials.user_id',
+  'two_factor_enrollments.id',
+  'two_factor_enrollments.user_id',
+  'two_factor_recovery_codes.id',
+  'two_factor_recovery_codes.enrollment_id',
+  'two_factor_recovery_codes.code_hash',
+  'two_factor_challenges.id',
+  'two_factor_challenges.user_id',
+  'oauth_states.state_id',
+  'oauth_states.expires_at',
+  'oauth_tokens.token_id',
+  'oauth_tokens.connection_id',
+  'oauth_consents.consent_id',
+  'oauth_consents.provider_id',
+  'oauth_consents.subject_key',
+  'oauth_revocation_failures.failure_id',
+  'oauth_revocation_failures.provider_id',
+  'oauth_revocation_failures.subject_key',
+  'oauth_accounts.id',
+  'oauth_accounts.user_id',
+  'oauth_accounts.provider',
+  'oauth_accounts.provider_account_id',
+  'oauth_accounts.connection_id',
 ].map((column) => [column, column.endsWith('.connection_id') ? 768 : 255] as const));
+
+function authFnV1UnboundedMySqlColumnLengths(namespace: string): ReadonlyMap<string, number> {
+  return new Map(Array.from(
+    AUTHFN_V1_UNBOUNDED_MYSQL_COLUMN_LENGTHS,
+    ([modelColumn, length]) => {
+      const separator = modelColumn.indexOf('.');
+      const modelName = modelColumn.slice(0, separator);
+      const columnName = modelColumn.slice(separator + 1);
+      return [`${resolvePhysicalTableName(namespace, modelName)}.${columnName}`, length] as const;
+    },
+  ));
+}
 
 export function createPendingMigration(input: {
   adapterType: 'drizzle' | 'prisma' | 'kysely';
@@ -89,12 +106,12 @@ export function createPendingMigration(input: {
 
   const preserveAuthFnV1MySqlText =
     dialect === 'mysql' &&
-    library.namespace === 'authfn' &&
+    (library.libraryName === 'authfn' || (!library.libraryName && library.namespace === 'authfn')) &&
     currentVersion > 0 &&
     library.version >= 2;
   const tableDiffs = diffTables(library.tables, currentTables, library.namespace, {
     preserveUnboundedMySqlStringColumnLengths: preserveAuthFnV1MySqlText
-      ? AUTHFN_V1_UNBOUNDED_MYSQL_COLUMN_LENGTHS
+      ? authFnV1UnboundedMySqlColumnLengths(library.namespace)
       : undefined,
   });
   const plan = createMigrationPlan(
@@ -292,7 +309,8 @@ export async function generateMigrations(
       const schema = libraryPackage.getSchema(init.config);
 
       librarySchemas.push({
-        namespace: init.libraryName,
+        libraryName: init.libraryName,
+        namespace: init.config.namespace || init.libraryName,
         version: schema.version,
         tables: schema.schemas,
       });

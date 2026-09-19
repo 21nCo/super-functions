@@ -99,7 +99,12 @@ export async function createTwoFactorEnrollment(
   user: Pick<AuthFnUserRecord, 'id' | 'primaryEmail'>,
   pluginConfig: TwoFactorPluginRuntimeConfig = {}
 ): Promise<CreatedTwoFactorEnrollment> {
-  const userId = assertAuthFnDatabaseKeyLength(user.id, 'userId');
+  const legacyUser = Array.from(user.id).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ? await findUserById(config, user.id)
+    : null;
+  const userId = legacyUser
+    ? user.id
+    : assertAuthFnDatabaseKeyLength(user.id, 'userId');
   const existing = await config.database.findOne<AuthFnTwoFactorEnrollmentRecord>({
     model: 'two_factor_enrollments',
     where: [{ field: 'userId', operator: 'eq', value: userId }],

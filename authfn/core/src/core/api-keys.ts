@@ -1,8 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import type { AuthFnApiKeyRecord, AuthFnRuntimeConfig, AuthFnSession } from '../types.js';
 import { AuthFnApiKeyRevokedError, AuthFnNotFoundError, AuthFnValidationError } from './errors.js';
-import { assertAuthFnDatabaseKeyLength } from './limits.js';
+import {
+  AUTHFN_DATABASE_KEY_MAX_LENGTH,
+  assertAuthFnDatabaseKeyLength
+} from './limits.js';
 import { hashSecret } from './sessions.js';
+import { findUserById } from './users.js';
 
 export interface CreateApiKeyInput {
   userId: string;
@@ -38,7 +42,12 @@ export async function createApiKey(
 ): Promise<CreatedApiKey> {
   assertValidApiKeyName(input.name);
   assertValidApiKeyExpiry(input.expiresAt);
-  const userId = assertAuthFnDatabaseKeyLength(input.userId, 'userId');
+  const legacyUser = Array.from(input.userId).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ? await findUserById(config, input.userId)
+    : null;
+  const userId = legacyUser
+    ? input.userId
+    : assertAuthFnDatabaseKeyLength(input.userId, 'userId');
   const now = options?.now?.() ?? new Date();
   const secret = createApiKeySecret(options?.secretPrefix);
   const record: AuthFnApiKeyRecord = {

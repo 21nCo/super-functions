@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from ..limits import assert_database_key_length
+from ..limits import AUTHFN_DATABASE_KEY_MAX_LENGTH, assert_database_key_length
 from ..types import (
     ApiKeyRevokedError,
     AuthFnConfig,
@@ -83,7 +83,18 @@ class ApiKeyService:
     ) -> Dict[str, Any]:
         _assert_valid_name(name)
         if user_id is not None:
-            user_id = assert_database_key_length(user_id, "userId")
+            legacy_user = None
+            if len(user_id) > AUTHFN_DATABASE_KEY_MAX_LENGTH:
+                legacy_user = await self.config.database.find_one(
+                    model="users",
+                    where=[{"field": "id", "operator": "eq", "value": user_id}],
+                    namespace=self.config.namespace,
+                )
+            user_id = (
+                user_id
+                if legacy_user is not None
+                else assert_database_key_length(user_id, "userId")
+            )
 
         stored_metadata = dict(metadata or {})
         if resource_ids is not None:

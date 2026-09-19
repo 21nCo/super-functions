@@ -39,24 +39,29 @@ function column(
   };
 }
 
-function currentAuthFnTables(dialect: 'postgres' | 'mysql' | 'sqlite'): DatabaseTable[] {
-  const primaryEmail = column(dialect, 'authfn_users', 'primary_email');
+function currentAuthFnTables(
+  dialect: 'postgres' | 'mysql' | 'sqlite',
+  namespace = 'authfn',
+): DatabaseTable[] {
+  const usersTable = `${namespace}_users`;
+  const sessionsTable = `${namespace}_sessions`;
+  const primaryEmail = column(dialect, usersTable, 'primary_email');
   primaryEmail.isNullable = true;
   const foreignKey = {
-    name: 'authfn_sessions_user_id_fk',
+    name: `${sessionsTable}_user_id_fk`,
     type: 'FOREIGN KEY' as const,
-    tableName: 'authfn_sessions',
+    tableName: sessionsTable,
     columns: ['user_id'],
-    referencedTable: 'authfn_users',
+    referencedTable: usersTable,
     referencedColumns: ['id'],
   };
   return [
     {
-      name: 'authfn_users',
-      columns: [column(dialect, 'authfn_users', 'id', true), primaryEmail],
+      name: usersTable,
+      columns: [column(dialect, usersTable, 'id', true), primaryEmail],
       indexes: [{
         name: 'PRIMARY',
-        tableName: 'authfn_users',
+        tableName: usersTable,
         columns: ['id'],
         isUnique: true,
       }],
@@ -64,21 +69,21 @@ function currentAuthFnTables(dialect: 'postgres' | 'mysql' | 'sqlite'): Database
         {
           name: 'PRIMARY',
           type: 'PRIMARY KEY',
-          tableName: 'authfn_users',
+          tableName: usersTable,
           columns: ['id'],
         },
         foreignKey,
       ],
     },
     {
-      name: 'authfn_sessions',
+      name: sessionsTable,
       columns: [
-        column(dialect, 'authfn_sessions', 'id', true),
-        column(dialect, 'authfn_sessions', 'user_id'),
+        column(dialect, sessionsTable, 'id', true),
+        column(dialect, sessionsTable, 'user_id'),
       ],
       indexes: [{
         name: 'PRIMARY',
-        tableName: 'authfn_sessions',
+        tableName: sessionsTable,
         columns: ['id'],
         isUnique: true,
       }],
@@ -86,7 +91,7 @@ function currentAuthFnTables(dialect: 'postgres' | 'mysql' | 'sqlite'): Database
         {
           name: 'PRIMARY',
           type: 'PRIMARY KEY',
-          tableName: 'authfn_sessions',
+          tableName: sessionsTable,
           columns: ['id'],
         },
         foreignKey,
@@ -221,5 +226,24 @@ describe('generate command migration planning', () => {
     });
     expect(kysely?.migrationFile.content).toContain('.onDuplicateKeyUpdate({');
     expect(kysely?.migrationFile.content).not.toContain('.onConflict(');
+  });
+
+  it('preserves AuthFn v1 MySQL TEXT keys in a custom namespace', () => {
+    const pending = createPendingMigration({
+      adapterType: 'drizzle',
+      dialect: 'mysql',
+      library: {
+        libraryName: 'authfn',
+        namespace: 'authfn_tenant',
+        version: 2,
+        tables: authFnTables,
+      },
+      currentVersion: 1,
+      currentTables: currentAuthFnTables('mysql', 'authfn_tenant'),
+    });
+
+    expect(pending?.tableDiffs).toEqual([]);
+    expect(pending?.migrationFile.content).toContain('From version 1 to 2');
+    expect(pending?.migrationFile.content).not.toContain('ALTER TABLE');
   });
 });
