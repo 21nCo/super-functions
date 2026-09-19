@@ -25,6 +25,7 @@
     "datafn/extfn",
     "datafn/server",
     "datafn/svelte",
+    "datafn/swift-bridge",
     "mcpfn/*",
     "reviewfn/*",
     "mailfn/*",
