@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, type UserConfig } from "vitest/config";
 
 const testingSource = fileURLToPath(new URL("./src/testing.ts", import.meta.url));
+const contractsSource = fileURLToPath(new URL("./src/index.ts", import.meta.url));
 
 /** Workspace Vitest config so adapter tests resolve the harness source without a prior dist build. */
 export function searchfnAdapterVitestConfig(overrides: UserConfig = {}): UserConfig {
@@ -9,11 +10,13 @@ export function searchfnAdapterVitestConfig(overrides: UserConfig = {}): UserCon
   const alias = Array.isArray(inheritedAliases)
     ? [
         { find: "@searchfn/adapter-contracts/testing", replacement: testingSource },
+        { find: "@searchfn/adapter-contracts", replacement: contractsSource },
         ...inheritedAliases
       ]
     : {
         ...inheritedAliases,
-        "@searchfn/adapter-contracts/testing": testingSource
+        "@searchfn/adapter-contracts/testing": testingSource,
+        "@searchfn/adapter-contracts": contractsSource
       };
 
   return defineConfig({
