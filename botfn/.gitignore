@@ -40,7 +40,7 @@ out/
 *.tsbuildinfo
 
 # Compiled JavaScript in src directories (Cloudflare Workers don't need compiled output)
-services/persistence/src/**/*.js
+persistence/src/**/*.js
 
 
 *.pem

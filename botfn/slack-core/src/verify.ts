@@ -35,11 +35,6 @@ export async function verifySlackRequest(
   const body = await req.clone().text();
   const base = `v0:${timestamp}:${body}`;
 
-  // Node.js crypto (works in Workers if using node compatibility or crypto polyfill)
-  // Or use Web Crypto API if preferred, but HMAC in Web Crypto is more verbose
-  // Here assuming standard crypto available or polyfilled
-
-  // Actually, let's use SubtleCrypto for better compatibility with Workers/Edge
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",

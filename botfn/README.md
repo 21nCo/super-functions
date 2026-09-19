@@ -1,103 +1,41 @@
-# botfn monorepo
+# BotFn
 
-[![Tests](https://github.com/21nOrg/botfn/actions/workflows/test.yml/badge.svg)](https://github.com/21nOrg/botfn/actions/workflows/test.yml)
-[![codecov](https://codecov.io/gh/21nOrg/botfn/branch/main/graph/badge.svg)](https://codecov.io/gh/21nOrg/botfn)
+BotFn is the Superfunctions workspace for Discord and Slack bots. Packages live at `botfn/<pkg>` in this repository — not a standalone Turborepo, and not a `bots/` + `packages/` tree.
 
-Turborepo-based monorepo for bot implementations with platform-agnostic architecture.
+Bots deploy to **Cloudflare Workers** only.
 
-## structure
+## Packages
 
-```
-.
-├── bots/
-│   └── discord-bot/          # Discord bot with GitHub and Linear integration
-│   └── [more bots...]        # Additional bot implementations
-├── packages/
-│   ├── discord-core/         # Discord-specific utilities and verification
-│   ├── github-integration/   # GitHub API helpers
-│   ├── linear-integration/   # Linear API helpers
-│   └── shared-types/         # Shared TypeScript types and Zod schemas
-├── AGENTS.md                 # Architecture documentation
-├── package.json              # Root workspace config
-└── turbo.json                # Turborepo pipeline config
-```
+| Path | Package | Purpose |
+| --- | --- | --- |
+| `botfn/bot-discord` | `@botfn/discord-bot` | Discord slash commands (GitHub/Linear) on Cloudflare Workers |
+| `botfn/bot-slack` | `@botfn/bot-slack` | Slack events endpoint on Cloudflare Workers |
+| `botfn/discord-core` | `@botfn/discord-core` | Discord signature verification and interaction helpers |
+| `botfn/slack-core` | `@botfn/slack-core` | Slack request verification |
+| `botfn/github-integration` | `@botfn/github-integration` | GitHub App auth and API helpers |
+| `botfn/linear-integration` | `@botfn/linear-integration` | Linear API helpers |
+| `botfn/shared-types` | `@botfn/shared-types` | Shared Zod schemas and types |
+| `botfn/persistence` | `@botfn/persistence-service` | tRPC issue/thread persistence on Postgres |
+| `botfn/admin` | `@botfn/admin` | Optional Super Console operator surface |
 
-## getting started
+See [AGENTS.md](./AGENTS.md) for layout and Cloudflare entrypoints.
 
-### install dependencies
+## Development
+
+Install from the repository root (`npm install`). BotFn is a `botfn/*` workspace of Superfunctions.
 
 ```bash
-npm install
+# Discord bot local Worker
+npm run dev --workspace @botfn/discord-bot
+
+# Slack bot local Worker
+npm run dev --workspace @botfn/bot-slack
+
+# Package tests
+npx turbo run test --filter='./botfn/*'
+
+# Package builds
+npx turbo run build --filter='./botfn/*'
 ```
 
-### develop a bot
-
-```bash
-cd bots/discord-bot
-npm run dev
-```
-
-### build all packages
-
-```bash
-npm run build
-```
-
-## testing
-
-This repository has comprehensive test coverage using Vitest:
-
-- **119 tests** across 4 packages
-- **Unit tests** for core functionality
-- **Integration tests** with MSW for API mocking  
-- **CI/CD** integration with GitHub Actions
-
-Run tests:
-```bash
-npm test                 # Run all tests
-npm run test:coverage    # With coverage report
-```
-
-See [TESTING.md](./TESTING.md) for detailed testing guidelines.
-
-## architecture
-
-See [AGENTS.md](./AGENTS.md) for detailed architecture documentation.
-
-### key principles
-
-- **Platform-agnostic core logic**: Business logic in `core.ts` is reusable across platforms
-- **Multi-platform deployment**: Deploy to Cloudflare Workers, Digital Ocean, Vercel, etc.
-- **Shared packages**: Common utilities and types in workspace packages
-- **Type-safe validation**: Zod schemas for runtime validation
-- **Monorepo tooling**: Turborepo for efficient builds and caching
-
-## technology stack
-
-- **Framework**: [Hono](https://hono.dev/)
-- **Validation**: [Zod](https://zod.dev/)
-- **Monorepo**: [Turborepo](https://turbo.build/)
-- **Runtime**: Cloudflare Workers, Node.js (adaptable)
-
-## adding a new bot
-
-1. Create bot directory: `mkdir -p bots/my-bot/src`
-2. Follow the structure in [AGENTS.md](./AGENTS.md)
-3. Create `core.ts` with business logic
-4. Create platform-specific entry points (e.g., `index.cloudflare.ts`)
-5. Add workspace dependencies to `package.json`
-
-## deployment
-
-Each bot can be deployed independently:
-
-### Cloudflare Workers
-
-```bash
-cd bots/discord-bot
-npm run deploy
-```
-
-### other platforms
-
-See [AGENTS.md](./AGENTS.md) for Digital Ocean and Vercel deployment guides.
+Discord setup and slash-command registration: [bot-discord/README.md](./bot-discord/README.md). Persistence (Postgres `DATABASE_URL`): [persistence/README.md](./persistence/README.md).
