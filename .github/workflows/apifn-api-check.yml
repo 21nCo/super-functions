@@ -21,6 +21,16 @@ on:
         required: false
         default: "0.0.2"
         type: string
+      start_mock_server:
+        description: Start apifn mock for workflow self-tests before running the collection
+        required: false
+        default: false
+        type: boolean
+      mock_port:
+        description: Port used when start_mock_server is enabled
+        required: false
+        default: 19999
+        type: number
       base_branch:
         description: Base branch for spec diff
         required: false
@@ -56,6 +66,16 @@ on:
         required: false
         default: "0.0.2"
         type: string
+      start_mock_server:
+        description: Start apifn mock for workflow self-tests before running the collection
+        required: false
+        default: false
+        type: boolean
+      mock_port:
+        description: Port used when start_mock_server is enabled
+        required: false
+        default: 19999
+        type: number
       base_branch:
         description: Base branch for spec diff
         required: false
@@ -171,6 +191,25 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
 
+      - name: Start smoke mock server
+        if: inputs.start_mock_server == true || inputs.start_mock_server == 'true'
+        shell: bash
+        env:
+          SPEC_PATH: ${{ inputs.spec_path }}
+          MOCK_PORT: ${{ inputs.mock_port }}
+        run: |
+          set -euo pipefail
+          apifn mock "$SPEC_PATH" --port "$MOCK_PORT" > apifn-mock.log 2>&1 &
+          echo "$!" > apifn-mock.pid
+          for attempt in {1..30}; do
+            if curl --fail --silent "http://127.0.0.1:${MOCK_PORT}/users" >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat apifn-mock.log
+          exit 1
+
       - name: Run collection tests
         id: test
         continue-on-error: true
@@ -184,6 +223,14 @@ jobs:
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
+
+      - name: Stop smoke mock server
+        if: always() && (inputs.start_mock_server == true || inputs.start_mock_server == 'true')
+        shell: bash
+        run: |
+          if [ -f apifn-mock.pid ]; then
+            kill "$(cat apifn-mock.pid)" || true
+          fi
 
       - name: Build markdown summary
         id: summary
@@ -245,7 +292,6 @@ jobs:
         # Fork PRs get a read-only token; skip mutation so gates still run.
         # Job summary is already written in the previous step.
         if: (inputs.post_pr_comment == true || inputs.post_pr_comment == 'true') && github.event.pull_request.number && github.event.pull_request.head.repo.full_name == github.repository
-        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |

@@ -10,7 +10,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
+  pull-requests: read
 
 jobs:
   api-check:
@@ -22,3 +22,5 @@ jobs:
       base_branch: dev
       fail_on_breaking: false
       post_pr_comment: false
+      start_mock_server: true
+      mock_port: 19999
