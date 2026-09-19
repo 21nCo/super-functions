@@ -1,0 +1,48 @@
+name: SearchFn Client Minimum Node Tests
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "searchfn/client/**"
+      - "searchfn/adapter-contracts/**"
+      - "searchfn/adapter-memory/**"
+      - "searchfn/adapter-indexeddb/**"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/ci-install-rollup-native.mjs"
+      - ".github/workflows/searchfn-client-tests.yml"
+  pull_request:
+    branches: [dev]
+    paths:
+      - "searchfn/client/**"
+      - "searchfn/adapter-contracts/**"
+      - "searchfn/adapter-memory/**"
+      - "searchfn/adapter-indexeddb/**"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/ci-install-rollup-native.mjs"
+      - ".github/workflows/searchfn-client-tests.yml"
+
+jobs:
+  test-node-18:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18.20.8"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install client workspace from the root lockfile
+        run: npm ci --workspace @searchfn/client --include-workspace-root=false
+
+      - name: Ensure Rollup native package
+        run: node scripts/ci-install-rollup-native.mjs
+
+      - name: Run client tests
+        run: npm --workspace @searchfn/client test -- --run
