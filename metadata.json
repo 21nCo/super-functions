@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2XDCPZ6R60TX8G5KQK4XP5K",
+  "strategy": "manual-commit",
+  "branch": "codex/pr195-postmerge-remediation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/core/src/__tests__/multi-region.test.ts",
+    "authfn/core/src/__tests__/password.test.ts",
+    "authfn/core/src/__tests__/social-google.test.ts",
+    "authfn/core/src/core/oauth-accounts.ts",
+    "authfn/core/src/core/passwords.ts",
+    "authfn/core/src/core/regions.ts",
+    "authfn/core/src/schema.ts",
+    "authfn/docs/content/docs/adapters/database/drizzle.md",
+    "authfn/docs/static/llms-full.txt",
+    "authfn/multi-region/src/index.ts",
+    "authfn/password/src/index.ts",
+    "authfn/python/authfn/plugins/email_otp.py",
+    "authfn/python/authfn/plugins/multi_region.py",
+    "authfn/python/authfn/plugins/social_oauth.py",
+    "authfn/python/authfn/schema.py",
+    "authfn/python/authfn/types.py",
+    "authfn/python/tests/test_multi_region.py",
+    "authfn/python/tests/test_otp.py",
+    "authfn/python/tests/test_schema.py",
+    "authfn/python/tests/test_social_oauth.py",
+    "authfn/social-oauth/src/index.ts",
+    "packages/cli/src/__tests__/generate-command.test.ts",
+    "packages/cli/src/commands/generate.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 186487,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 11797760,
+    "output_tokens": 24525,
+    "api_call_count": 85
+  }
+}
