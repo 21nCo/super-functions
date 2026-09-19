@@ -1,0 +1,21 @@
+authfn/docs/content/docs/plugins/authoring.md
+  s_d473070cda5c3b::t_e3caa035c78262 52,124
+authfn/docs/static/llms-full.txt
+  s_d473070cda5c3b::t_92e4a5751d7449 5528,5600
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "617e864e4ce9aa77d292d4c62a97071555ac9b4e",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
