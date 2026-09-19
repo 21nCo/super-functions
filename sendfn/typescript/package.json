@@ -40,6 +40,11 @@
       "types": "./dist/adapters/fcm.d.ts",
       "import": "./dist/adapters/fcm.mjs",
       "require": "./dist/adapters/fcm.js"
+    },
+    "./adapters/connected-mailbox": {
+      "types": "./dist/adapters/connected-mailbox.d.ts",
+      "import": "./dist/adapters/connected-mailbox.mjs",
+      "require": "./dist/adapters/connected-mailbox.js"
     }
   },
   "scripts": {

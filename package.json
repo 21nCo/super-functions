@@ -25,6 +25,7 @@
     "datafn/extfn",
     "datafn/server",
     "datafn/svelte",
+    "datafn/swift-bridge",
     "mcpfn/*",
     "reviewfn/*",
     "mailfn/*",
@@ -39,7 +40,12 @@
     "filefn/examples/full-demo/*",
     "filefn/examples/production/*",
     "plugfn/*",
-    "sendfn/*"
+    "sendfn/*",
+    "langfn/typescript",
+    "memoryfn/typescript",
+    "secfn/core",
+    "secfn/server",
+    "secfn/runtime"
   ],
   "scripts": {
     "build": "turbo run build",
@@ -122,7 +128,8 @@
     "gate:reviewfn-release": "node scripts/gate-reviewfn-release.mjs",
     "test:watch": "turbo run test:watch",
     "test:coverage": "turbo run test:coverage",
-    "clean": "turbo run clean && rm -rf node_modules"
+    "clean": "turbo run clean && rm -rf node_modules",
+    "gate:langfn-release": "node scripts/gate-langfn-release.mjs"
   },
   "devDependencies": {
     "fast-glob": "^3.3.3",

@@ -435,3 +435,16 @@ describe('rate-limit', () => {
     });
   });
 });
+
+it('uses only own limit overrides, including inherited property names', async () => {
+  const limiter = createRateLimiter({windowMs:60000,maxRequests:2,algorithm:'fixed-window'});
+  const keys = ['constructor','toString','__proto__'];
+  const limitsByKey = Object.create({constructor:0});
+  limitsByKey.toString = 1;
+  const first = await limiter.checkMany({keys,limitsByKey});
+  expect(first.allowed).toBe(true);
+  expect(first.remainingByKey.get('constructor')).toBe(1);
+  expect(first.remainingByKey.get('toString')).toBe(0);
+  expect(first.remainingByKey.get('__proto__')).toBe(1);
+  expect((await limiter.checkMany({keys,limitsByKey})).blockedKeys).toEqual(['toString']);
+});

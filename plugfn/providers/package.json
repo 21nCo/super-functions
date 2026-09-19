@@ -29,6 +29,30 @@
     "./clickup": {
       "types": "./dist/clickup/index.d.ts",
       "default": "./dist/clickup/index.js"
+    },
+    "./google-drive": {
+      "types": "./dist/google-drive/index.d.ts",
+      "default": "./dist/google-drive/index.js"
+    },
+    "./google-docs": {
+      "types": "./dist/google-docs/index.d.ts",
+      "default": "./dist/google-docs/index.js"
+    },
+    "./google-sheets": {
+      "types": "./dist/google-sheets/index.d.ts",
+      "default": "./dist/google-sheets/index.js"
+    },
+    "./google-calendar": {
+      "types": "./dist/google-calendar/index.d.ts",
+      "default": "./dist/google-calendar/index.js"
+    },
+    "./jira": {
+      "types": "./dist/jira/index.d.ts",
+      "default": "./dist/jira/index.js"
+    },
+    "./onedrive": {
+      "types": "./dist/onedrive/index.d.ts",
+      "default": "./dist/onedrive/index.js"
     }
   },
   "files": [

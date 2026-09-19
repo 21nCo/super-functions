@@ -212,9 +212,11 @@ export function wrapWithSchema(
       }),
     transaction: <R>(
       callback: (trx: TransactionAdapter) => Promise<R>,
+      options?: Parameters<Adapter["transaction"]>[1],
     ): Promise<R> =>
       adapter.transaction((trx) =>
         callback(wrapTransactionWithSchema(trx, schema)),
+        options,
       ),
     initialize: (): Promise<void> => adapter.initialize(),
     isHealthy: () => adapter.isHealthy(),

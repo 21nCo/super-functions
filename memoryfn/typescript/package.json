@@ -1,0 +1,87 @@
+{
+  "name": "@memoryfn/core",
+  "version": "0.0.3",
+  "description": "Self-hostable AI memory system for agents and applications",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "import": "./dist/http/index.js",
+      "require": "./dist/http/index.cjs"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "import": "./dist/mcp/index.js",
+      "require": "./dist/mcp/index.cjs"
+    },
+    "./storage/pg": {
+      "types": "./dist/storage/pg/index.d.ts",
+      "import": "./dist/storage/pg/index.js",
+      "require": "./dist/storage/pg/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "migrations",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run --config vitest.config.ts",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mcpfn/core": "0.0.4",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@superfunctions/db": "0.2.0",
+    "drizzle-orm": "^0.45.1",
+    "postgres": "^3.4.8",
+    "zod": "^3.22.4",
+    "zod-to-json-schema": "^3.22.4",
+    "openai": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@superfunctions/auth": "0.2.0",
+    "@watchfn/core": "0.0.3",
+    "secfn": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bugs": {
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "memoryfn/typescript"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependenciesMeta": {
+    "@watchfn/core": {
+      "optional": true
+    },
+    "secfn": {
+      "optional": true
+    }
+  }
+}
