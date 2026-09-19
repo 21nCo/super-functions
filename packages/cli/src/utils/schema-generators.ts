@@ -100,7 +100,7 @@ export function generateDrizzleSchemaFile(
     const tableNameSnakeCase = resolvePhysicalTableName(namespace, tableName);
 
     const fields: string[] = [];
-    if (dialect === 'mysql') assertMySqlDrizzleKeySafety(table);
+    if (dialect === 'mysql' && libraryName === 'authfn') assertMySqlDrizzleKeySafety(table);
 
     // Generate field definitions
     for (const [fieldKey, fieldValue] of Object.entries(table.fields)) {

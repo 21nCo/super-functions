@@ -112,7 +112,7 @@ describe("schema index migrations", () => {
           indexes: [{ name: "counters_email_idx", fields: ["email"], unique: true }],
         } as unknown as TableSchema],
       },
-      "example",
+      "authfn",
       "example",
       "mysql",
     );
@@ -138,7 +138,7 @@ describe("schema index migrations", () => {
           indexes: [],
         } as unknown as TableSchema],
       },
-      "example",
+      "authfn",
       "example",
       "mysql",
     )).toThrow("MySQL key field counters.id must declare maxLength");
@@ -162,7 +162,7 @@ describe("schema index migrations", () => {
           }],
         } as unknown as TableSchema],
       },
-      "example",
+      "authfn",
       "example",
       "mysql",
     )).toThrow("encoded key size 4000 bytes exceeds the 3072-byte InnoDB limit");

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getSchema } from '../../../../authfn/core/src/index.js';
+import { getSchema as getPlugFnSchema } from '../../../../plugfn/core/src/schema.js';
 import { authFnApiKeyPlugin } from '../../../../authfn/api-keys/src/index.js';
 import { authFnEmailOtpPlugin } from '../../../../authfn/email-otp/src/index.js';
 import { authFnMultiRegionPlugin } from '../../../../authfn/multi-region/src/index.js';
@@ -155,6 +156,7 @@ describe('authfn modular schema discovery', () => {
       }
     );
 
+    expect(schema.version).toBe(2);
     expect(schema.schemas.map((table) => table.modelName)).toEqual([
       'users',
       'sessions',
@@ -194,6 +196,15 @@ describe('authfn modular schema discovery', () => {
     const packageJson = JSON.parse(fs.readFileSync(authFnPackageJsonPath, 'utf-8'));
 
     expect(resolveLibraryPackageEntryPoint(packageJson)).toBe('./dist/index.js');
+  });
+
+  it('does not impose the AuthFn MySQL key contract on unmigrated libraries', () => {
+    expect(() => generateDrizzleSchemaFile(
+      getPlugFnSchema(),
+      'plugfn',
+      'plugfn',
+      'mysql'
+    )).not.toThrow();
   });
 
   it('fails with a structured invalid-config error when authfn plugins are omitted', async () => {

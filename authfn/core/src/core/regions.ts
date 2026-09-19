@@ -26,6 +26,7 @@ import {
   AuthFnRegionMismatchError,
   AuthFnValidationError
 } from './errors.js';
+import { AUTHFN_DATABASE_KEY_MAX_LENGTH } from './limits.js';
 import { emitAuthEvent, eventRequestId } from './observability.js';
 import { findUserById, findUserByPrimaryEmail } from './users.js';
 
@@ -41,6 +42,7 @@ export interface AuthFnMultiRegionEnvironmentResolver extends AuthFnEnvironmentR
 export function authFnMultiRegionEnvironment(
   config: MultiRegionPluginRuntimeConfig
 ): AuthFnMultiRegionEnvironmentResolver {
+  assertRegionIdsWithinDatabaseLimit(config);
   const observability = normalizeObservability(config.observability)?.child({ component: 'authfn.lookup' });
   const resolvedConfig: MultiRegionPluginRuntimeConfig = {
     ...config,
@@ -120,6 +122,22 @@ export function authFnMultiRegionEnvironment(
     }
   };
   return resolver;
+}
+
+function assertRegionIdsWithinDatabaseLimit(config: MultiRegionPluginRuntimeConfig): void {
+  const candidates = [
+    config.defaultRegionId,
+    config.routing?.mode === 'gateway' ? config.routing.cell?.regionId : undefined,
+    ...(config.regions ?? []).map((region) => region.regionId)
+  ];
+  for (const regionId of candidates) {
+    if (regionId && Array.from(regionId).length > AUTHFN_DATABASE_KEY_MAX_LENGTH) {
+      throw new AuthFnConfigError(
+        `AuthFn regionId must contain at most ${AUTHFN_DATABASE_KEY_MAX_LENGTH} characters`,
+        { fieldName: 'regionId', maxLength: AUTHFN_DATABASE_KEY_MAX_LENGTH }
+      );
+    }
+  }
 }
 
 export function getMultiRegionPluginConfig(

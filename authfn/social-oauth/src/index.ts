@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import type { Adapter, TableSchema } from '@superfunctions/db';
 import type { Route } from '@superfunctions/http';
@@ -60,6 +60,7 @@ import {
   toAuthFnError
 } from 'authfn/core/errors';
 import { createUser, findUserById, findUserByPrimaryEmail } from 'authfn/core/users';
+import { assertAuthFnDatabaseKeyLength } from 'authfn/core/limits';
 import { createAuthFnRouteMeta } from 'authfn/http/router';
 import { jsonSuccess, resolveRequestId } from 'authfn/http/envelopes';
 import { emitAuthEvent } from 'authfn/core/observability';
@@ -948,6 +949,7 @@ async function resolveLocalIdentityFromProfile(
   providerSettings: ResolvedProviderSettings,
   profile: AuthFnSocialProfile
 ): Promise<ResolvedSocialIdentity> {
+  assertAuthFnDatabaseKeyLength(profile.providerAccountId, 'providerAccountId');
   const existingAccount = await findOAuthAccountByProviderAccountId(config, providerId, profile.providerAccountId);
   if (existingAccount) {
     const linkedUser = await findUserById(config, existingAccount.userId);
@@ -2012,7 +2014,14 @@ function readIdTokenClaims(payload: Record<string, unknown>): {
 }
 
 function createConnectionId(providerId: AuthFnSocialProviderId, userId: string): string {
-  return `soc_${providerId}_${userId}_${createIdentifier('c').slice(2)}`;
+  const digest = createHash('sha256')
+    .update(providerId)
+    .update('\0')
+    .update(userId)
+    .update('\0')
+    .update(randomBytes(16))
+    .digest('hex');
+  return `soc_${providerId}_${digest}`;
 }
 
 function createIdentifier(prefix: string): string {

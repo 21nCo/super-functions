@@ -135,6 +135,9 @@ Keep Drizzle Kit's dialect aligned with the schema command and runtime adapter:
 For MySQL, every string field used as a primary key, unique key, foreign key,
 or index member must declare `maxLength`. Generation fails instead of silently
 narrowing an unbounded string contract.
+AuthFn applies the same 255-character ceiling at runtime to caller- or
+provider-controlled keys, including custom user IDs, normalized email keys,
+provider account IDs, and region IDs.
 
 For PostgreSQL, MySQL, and local SQLite, generate and apply the migration with
 Drizzle Kit:
@@ -155,7 +158,8 @@ Kit output directory:
       "binding": "DB",
       "database_name": "authfn",
       "database_id": "replace-me",
-      "migrations_dir": "./drizzle"
+      "migrations_dir": "./drizzle",
+      "migrations_pattern": "drizzle/*/migration.sql"
     }
   ]
 }

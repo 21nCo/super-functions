@@ -20,6 +20,7 @@ import {
   AuthFnPluginAbortedError,
   AuthFnValidationError
 } from './errors.js';
+import { assertAuthFnDatabaseKeyLength } from './limits.js';
 import { emitOtpEvent, deliverChallenge } from './delivery.js';
 import { emitAuthEvent, eventRequestId } from './observability.js';
 import { hashSecret } from './sessions.js';
@@ -86,7 +87,7 @@ export async function sendOtpChallenge(
   runtimeOptions: OtpRuntimeOptions,
   input: SendOtpInput
 ): Promise<SendOtpResult> {
-  const email = normalizeEmail(input.email);
+  const email = assertAuthFnDatabaseKeyLength(normalizeEmail(input.email), 'email');
   const now = resolveNow(runtimeOptions);
   const hookContext = await buildChallengeHookContext(config, input.request);
   const challengeInput = await runBeforeChallengeSendHook(hooks, hookContext, {
@@ -102,7 +103,10 @@ export async function sendOtpChallenge(
     data: {
       id: createChallengeId(),
       purpose: readPurpose(challengeInput.purpose, input.purpose),
-      email: normalizeEmail(readString(challengeInput.email) ?? email),
+      email: assertAuthFnDatabaseKeyLength(
+        normalizeEmail(readString(challengeInput.email) ?? email),
+        'email'
+      ),
       codeHash: hashSecret(challengeCode),
       attemptCount: 0,
       deliveryMetadata: readRecord(challengeInput.metadata),

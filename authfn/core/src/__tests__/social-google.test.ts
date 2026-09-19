@@ -11,7 +11,7 @@ function createIdToken(claims: Record<string, unknown>): string {
   return `${header}.${payload}.signature`;
 }
 
-function createFetcher() {
+function createFetcher(providerAccountId = 'google-user-01') {
   return async (url: string) => {
     if (url === 'https://oauth2.googleapis.com/token') {
       return createResponse({
@@ -22,7 +22,7 @@ function createFetcher() {
           token_type: 'Bearer',
           scope: 'openid email profile',
           id_token: createIdToken({
-            sub: 'google-user-01',
+            sub: providerAccountId,
             email: 'ada@example.com',
             email_verified: true,
             name: 'Ada Lovelace'
@@ -109,6 +109,7 @@ describe('authfn google social oauth', () => {
       namespace: 'authfn'
     });
     expect(linkedAccount?.email).toBe('ada@example.com');
+    expect(linkedAccount?.connectionId).toMatch(/^soc_google_[a-f0-9]{64}$/);
 
     const replay = await auth.router.handle(
       new Request(
@@ -136,6 +137,44 @@ describe('authfn google social oauth', () => {
     );
     expect(invalidReturnTo.status).toBe(400);
     expect((await invalidReturnTo.json()).error.code).toBe('AUTHFN_REDIRECT_URI_DISALLOWED');
+  });
+
+  it('rejects provider account identifiers that exceed the database key limit', async () => {
+    const auth = createTestServer(createConfig({
+      pluginRuntime: {
+        socialOAuth: {
+          fetcher: createFetcher('g'.repeat(256)),
+          providers: {
+            google: {
+              clientId: 'google-client-id',
+              clientSecret: 'google-client-secret',
+              allowlistedReturnTo: ['https://app.example.com/post-auth']
+            }
+          }
+        }
+      }
+    }));
+
+    const start = await auth.router.handle(new Request(
+      'https://account.example.com/auth/social/start',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'google',
+          returnTo: 'https://app.example.com/post-auth'
+        })
+      }
+    ));
+    const startBody = await start.json();
+    const callback = await auth.router.handle(new Request(
+      `https://account.example.com/auth/social/callback/google?code=abc123&state=${encodeURIComponent(startBody.data.stateId)}`,
+      { method: 'GET' }
+    ));
+
+    expect(callback.status).toBe(303);
+    const redirect = new URL(callback.headers.get('location')!);
+    expect(redirect.searchParams.get('auth_error_code')).toBe('AUTHFN_VALIDATION_ERROR');
   });
 
   it('allows afterOAuthCallback hooks to transform an allowlisted redirect target', async () => {

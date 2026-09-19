@@ -58,7 +58,7 @@
   },
   "superfunctions": {
     "initFunction": "authfn",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "libraryNames": [
       "authfn"
     ]

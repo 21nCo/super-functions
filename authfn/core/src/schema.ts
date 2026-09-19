@@ -2,7 +2,7 @@ import type { TableSchema } from '@superfunctions/db';
 import { AuthFnConfigError, AuthFnConflictError } from './types.js';
 import type { AuthFnConfig, AuthFnSchemaDefinition } from './types.js';
 
-export const AUTHFN_SCHEMA_VERSION = 1;
+export const AUTHFN_SCHEMA_VERSION = 2;
 
 export function getSchema(config: AuthFnConfig): AuthFnSchemaDefinition {
   if (!Array.isArray(config.plugins)) {

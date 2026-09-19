@@ -18,6 +18,7 @@ import {
   AuthFnSessionRevokedError,
   AuthFnUnauthenticatedError
 } from './errors.js';
+import { assertAuthFnDatabaseKeyLength } from './limits.js';
 import { authenticateApiKey as authenticateApiKeyRecord } from './api-keys.js';
 import {
   readCookieValues,
@@ -87,7 +88,7 @@ export async function issueSession(
   const csrfToken = createOpaqueToken('csrf');
   const record: AuthFnSessionRecord = {
     id: createOpaqueToken('sess'),
-    userId: readString(payload.userId, 'userId'),
+    userId: assertAuthFnDatabaseKeyLength(readString(payload.userId, 'userId'), 'userId'),
     tokenHash: hashSecret(sessionToken),
     csrfHash: hashSecret(csrfToken),
     methods: readMethods(payload.methods),
