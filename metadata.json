@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2XC79P2F63W4FWWXABCAM4G",
+  "strategy": "manual-commit",
+  "branch": "codex/pr195-postmerge-remediation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/api-keys/src/index.ts",
+    "authfn/core/src/__tests__/api-keys.test.ts",
+    "authfn/core/src/__tests__/two-factor.test.ts",
+    "authfn/core/src/core/api-keys.ts",
+    "authfn/core/src/core/limits.ts",
+    "authfn/core/src/core/two-factor.ts",
+    "authfn/core/src/index.ts",
+    "authfn/python/authfn/__init__.py",
+    "authfn/python/authfn/limits.py",
+    "authfn/python/authfn/plugins/api_keys.py",
+    "authfn/python/authfn/plugins/two_factor.py",
+    "authfn/python/tests/test_api_keys.py",
+    "authfn/python/tests/test_schema.py",
+    "authfn/two-factor/src/index.ts",
+    "packages/cli/src/__tests__/generate-command.test.ts",
+    "packages/cli/src/commands/generate.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 122300,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 5051264,
+    "output_tokens": 14865,
+    "api_call_count": 50
+  }
+}
