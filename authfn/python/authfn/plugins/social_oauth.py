@@ -797,7 +797,9 @@ class SocialOAuthService:
         runtime: AuthFnRuntimeResolution,
     ) -> Dict[str, Any]:
         profile = await self._resolve_profile(provider, token_set, settings)
-        assert_database_key_length(str(profile["providerAccountId"]), "providerAccountId")
+        profile["providerAccountId"] = assert_database_key_length(
+            str(profile["providerAccountId"]), "providerAccountId"
+        )
         existing_account = await self.config.database.find_one(
             model="oauth_accounts",
             where=[

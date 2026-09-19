@@ -108,6 +108,7 @@ class MultiRegionService:
         request: Optional[Any] = None,
         runtime: Optional[AuthFnRuntimeResolution] = None,
     ) -> Optional[Dict[str, Any]]:
+        user_id = assert_database_key_length(user_id, "userId")
         resolved_runtime = runtime or self.resolve_runtime(request or _default_request())
         routing = self.plugin_config.routing
         region = None

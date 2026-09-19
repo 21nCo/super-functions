@@ -365,6 +365,38 @@ async def test_google_start_callback_replay_and_redirect_hook() -> None:
 
 
 @pytest.mark.asyncio
+async def test_custom_profile_resolver_normalizes_numeric_provider_account_id() -> None:
+    db = MockDatabaseAdapter()
+    service = SocialOAuthService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        SocialOAuthPluginConfig(
+            fetcher=build_google_fetcher(),
+            providers={
+                "google": SocialProviderConfig(
+                    client_id="google-client-id",
+                    client_secret="google-client-secret",
+                    profile_resolver=lambda _input: {
+                        "providerAccountId": 4242,
+                        "email": None,
+                        "emailVerified": False,
+                        "name": "Numeric Account",
+                        "profile": {"id": 4242},
+                    },
+                )
+            },
+        ),
+    )
+
+    for _ in range(2):
+        started = await service.start("google", callback_mode="json")
+        await service.handle_callback("google", code="abc123", state=started["stateId"])
+
+    assert len(db.storage["users"]) == 1
+    assert len(db.storage["oauth_accounts"]) == 1
+    assert db.storage["oauth_accounts"][0]["providerAccountId"] == "4242"
+
+
+@pytest.mark.asyncio
 async def test_disallowed_redirect_and_unsupported_provider_raise_canonical_errors() -> None:
     service = SocialOAuthService(
         AuthFnConfig(database=MockDatabaseAdapter(), namespace="authfn"),

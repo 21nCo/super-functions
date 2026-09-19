@@ -123,6 +123,8 @@ class EmailOtpService:
         request: Any = None,
         runtime: Any = None,
     ) -> Dict[str, Any]:
+        if not isinstance(purpose, str):
+            raise ValidationError("OTP purpose must be a string")
         resolved_runtime = runtime or (resolve_runtime(self.config, request) if request is not None else None)
         payload = {
             "purpose": purpose,
@@ -130,6 +132,9 @@ class EmailOtpService:
             "metadata": metadata or {},
         }
         payload = await self._run_before_send(payload, request=request, runtime=resolved_runtime)
+        resolved_purpose = payload.get("purpose")
+        if not isinstance(resolved_purpose, str):
+            raise ValidationError("OTP purpose must be a string")
 
         code = self.plugin_config.code_generator()
         if not isinstance(code, str) or len(code) != 6 or not code.isdigit():
@@ -138,7 +143,7 @@ class EmailOtpService:
         now = self.plugin_config.now()
         challenge = {
             "id": _create_id("otp"),
-            "purpose": assert_database_key_length(str(payload["purpose"]), "purpose"),
+            "purpose": assert_database_key_length(resolved_purpose, "purpose"),
             "email": assert_database_key_length(
                 _normalize_email(payload["email"]), "email"
             ),

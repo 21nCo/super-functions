@@ -19,7 +19,14 @@ for path in (AUTHFN_PYTHON_ROOT, PYTHON_CORE_ROOT):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from authfn import AuthFnConfig, AuthFnHooks, OtpExpiredError, OtpInvalidError, OtpReplayedError
+from authfn import (
+    AuthFnConfig,
+    AuthFnHooks,
+    OtpExpiredError,
+    OtpInvalidError,
+    OtpReplayedError,
+    ValidationError,
+)
 from authfn.plugins.email_otp import EmailOtpPluginConfig, EmailOtpService, authfn_email_otp_plugin
 
 
@@ -297,3 +304,30 @@ async def test_before_and_after_send_hooks() -> None:
     sent = await service.send_challenge("verify-email", "ada@example.com")
     assert sent["challenge"]["email"] == "transformed@example.com"
     assert sent["challenge"]["deliveryMetadata"] == {"source": "hook", "channel": "email"}
+
+
+@pytest.mark.asyncio
+async def test_before_send_hook_cannot_replace_purpose_with_non_string() -> None:
+    db = MockDatabaseAdapter()
+
+    async def before_send(_ctx: Any, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return {**payload, "purpose": 42}
+
+    service = EmailOtpService(
+        AuthFnConfig(
+            database=db,
+            namespace="authfn",
+            hooks=AuthFnHooks(beforeChallengeSend=before_send),
+        )
+    )
+
+    with pytest.raises(ValidationError, match="OTP purpose must be a string"):
+        await service.send_challenge("verify-email", "ada@example.com")
+
+    assert db.storage["otp_challenges"] == []
+
+    without_hook = EmailOtpService(AuthFnConfig(database=db, namespace="authfn"))
+    with pytest.raises(ValidationError, match="OTP purpose must be a string"):
+        await without_hook.send_challenge(42, "ada@example.com")  # type: ignore[arg-type]
+
+    assert db.storage["otp_challenges"] == []

@@ -86,6 +86,15 @@ def test_schema_composition_is_deterministic() -> None:
     assert tables["oauth_tokens"]["fields"]["connection_id"]["maxLength"] == 512
     assert tables["oauth_accounts"]["fields"]["connectionId"]["maxLength"] == 512
 
+    # These are payload columns, not indexed database keys. Keep them as unbounded
+    # text so existing tenant/user/subject identifiers are not narrowed by migration.
+    for table_name, field_name in (
+        ("oauth_states", "subject_key"),
+        ("oauth_tokens", "tenant_id"),
+        ("oauth_tokens", "user_id"),
+    ):
+        assert "maxLength" not in tables[table_name]["fields"][field_name]
+
 
 def test_schema_conflict_on_duplicate_table_name() -> None:
     duplicate_plugin = AuthFnPlugin(

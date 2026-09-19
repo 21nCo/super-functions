@@ -315,6 +315,30 @@ async def test_multi_region_registration_rejects_custom_runtime_region_overflow(
 
 
 @pytest.mark.asyncio
+async def test_multi_region_registration_rejects_user_id_overflow() -> None:
+    db = MockDatabaseAdapter()
+    service = MultiRegionService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        MultiRegionPluginConfig(),
+    )
+
+    with pytest.raises(ValidationError, match="userId must contain at most 255 characters"):
+        await service.register_user(
+            user_id="u" * 256,
+            primary_email="custom@example.com",
+            runtime=AuthFnRuntimeResolution.model_validate(
+                {
+                    "issuer": "https://account.example.com",
+                    "baseUrl": "https://account.example.com",
+                    "regionId": "us-east-1",
+                }
+            ),
+        )
+
+    assert db.storage["region_profiles"] == []
+
+
+@pytest.mark.asyncio
 async def test_gateway_registration_bypasses_legacy_directory() -> None:
     db = MockDatabaseAdapter()
     directory = Directory()
