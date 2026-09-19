@@ -35,17 +35,18 @@ export const authApp = authfn({
   ),
 });
 
+const delivery = {
+  async send(input) {
+    console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
+    return { sent: true };
+  },
+};
+
 export const auth = authApp.createServer({
   database: memoryAdapter({ debug: false }),
   pluginRuntime: {
-    emailOtp: {
-      delivery: {
-        async send(input) {
-          console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
-          return { sent: true };
-        },
-      },
-    },
+    password: { otp: { delivery } },
+    emailOtp: { delivery },
     socialOAuth: {
       providers: {
         google: {

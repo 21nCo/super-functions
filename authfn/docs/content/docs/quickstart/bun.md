@@ -31,17 +31,18 @@ export const authApp = authfn({
   ),
 });
 
+const delivery = {
+  async send(input) {
+    console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
+    return { sent: true };
+  },
+};
+
 export const auth = authApp.createServer({
   database: memoryAdapter({ debug: false }),
   pluginRuntime: {
-    emailOtp: {
-      delivery: {
-        async send(input) {
-          console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
-          return { sent: true };
-        },
-      },
-    },
+    password: { otp: { delivery } },
+    emailOtp: { delivery },
   },
 });
 ```
@@ -62,12 +63,8 @@ Bun.serve({
     }
 
     if (url.pathname.startsWith("/auth")) {
-      // Strip the /auth prefix; authfn's router does not include the basePath.
-      const stripped = new Request(
-        new URL(url.pathname.slice("/auth".length) + url.search, url),
-        request,
-      );
-      return auth.router.fetch(stripped);
+      // The authfn router already includes its /auth basePath.
+      return auth.router.fetch(request);
     }
 
     return new Response("not found", { status: 404 });

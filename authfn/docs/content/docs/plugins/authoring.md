@@ -42,6 +42,7 @@ This plugin lets the current user mint a one-time URL they can share to "sign in
 import { randomBytes, createHash } from "node:crypto";
 import type { AuthFnPlugin, AuthFnPluginRuntimeContext } from "authfn";
 import {
+  AuthFnConflictError,
   AuthFnError,
   AuthFnNotFoundError,
   AuthFnUnauthenticatedError,
@@ -156,12 +157,22 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           throw new AuthFnError("AUTHFN_OTP_EXPIRED", "expired", { status: 400 });
         }
 
-        await ctx.config.database.update({
-          model: TABLE,
-          where: [{ field: "id", operator: "eq", value: row.id }],
-          data: { consumedAt: new Date() },
-          namespace: ctx.namespace,
-        });
+        try {
+          await ctx.config.database.update({
+            model: TABLE,
+            where: [
+              { field: "id", operator: "eq", value: row.id },
+              { field: "consumedAt", operator: "eq", value: null },
+            ],
+            data: { consumedAt: new Date() },
+            namespace: ctx.namespace,
+          });
+        } catch (error) {
+          if (error instanceof Error && error.name === "NotFoundError") {
+            throw new AuthFnConflictError("magic link already used");
+          }
+          throw error;
+        }
 
         const issued = await issueSession(ctx.config, ctx.hooks, {
           request,
