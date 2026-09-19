@@ -112,7 +112,7 @@ jobs:
           SPEC_PATH: ${{ inputs.spec_path }}
         run: |
           set +e
-          npx --yes --ignore-scripts apifn validate "$SPEC_PATH" --format json > validate-report.json
+          npx --no-install apifn validate "$SPEC_PATH" --format json > validate-report.json
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
@@ -131,7 +131,7 @@ jobs:
           if [ "$FAIL_ON_BREAKING" != "true" ]; then
             DIFF_ARGS="--no-fail-on-breaking"
           fi
-          npx --yes --ignore-scripts apifn diff .apifn-base-openapi.yml "$SPEC_PATH" --format json $DIFF_ARGS > diff-report.json
+          npx --no-install apifn diff .apifn-base-openapi.yml "$SPEC_PATH" --format json $DIFF_ARGS > diff-report.json
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
@@ -145,7 +145,7 @@ jobs:
           COLLECTION_ENVIRONMENT: ${{ inputs.environment }}
         run: |
           set +e
-          npx --yes --ignore-scripts apifn test "$COLLECTION_DIR" --env "$COLLECTION_ENVIRONMENT" --reporter json > test-report.json
+          npx --no-install apifn test "$COLLECTION_DIR" --env "$COLLECTION_ENVIRONMENT" --reporter json > test-report.json
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
@@ -207,7 +207,10 @@ jobs:
         # workflow_call sets github.event_name to "workflow_call", not "pull_request".
         # The caller payload is reused, so gate on PR number instead of event name.
         # workflow_dispatch inputs are strings, so accept boolean true or "true".
-        if: (inputs.post_pr_comment == true || inputs.post_pr_comment == 'true') && github.event.pull_request.number
+        # Fork PRs get a read-only token; skip mutation so gates still run.
+        # Job summary is already written in the previous step.
+        if: (inputs.post_pr_comment == true || inputs.post_pr_comment == 'true') && github.event.pull_request.number && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
