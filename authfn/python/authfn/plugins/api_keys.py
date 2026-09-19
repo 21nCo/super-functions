@@ -87,6 +87,9 @@ class ApiKeyService:
     ) -> Dict[str, Any]:
         _assert_valid_name(name)
         if user_id is not None:
+            assert_database_key_length(
+                user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+            )
             legacy_user = None
             if len(user_id) > AUTHFN_DATABASE_KEY_MAX_LENGTH:
                 legacy_user = await self.config.database.find_one(

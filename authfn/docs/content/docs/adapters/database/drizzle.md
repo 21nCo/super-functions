@@ -173,13 +173,14 @@ export default {
 npx @superfunctions/cli generate-migration authfn --config ./superfunctions.config.mjs
 ```
 
-Review and apply the generated `migration.sql` with your normal SQL deployment
-tool. It preserves compatible v1 `TEXT` columns and advances AuthFn's recorded
-schema version. Do not run a second Drizzle Kit schema diff for this v1-to-v2
-MySQL step.
+Review and apply the generated SQL file (named
+`<timestamp>_authfn_v<version>.sql`) with your normal SQL deployment tool. It
+preserves compatible v1 `TEXT` columns and advances AuthFn's recorded schema
+version. Do not run a second Drizzle Kit schema diff for this v1-to-v2 MySQL
+step.
 
-For new installations, PostgreSQL, and local SQLite, generate and apply the
-migration with Drizzle Kit:
+For new MySQL installations, PostgreSQL, and local SQLite, generate and apply
+the migration with Drizzle Kit:
 
 ```bash
 npx drizzle-kit generate

@@ -152,6 +152,9 @@ class TwoFactorService:
         self.plugin_config = plugin_config or TwoFactorPluginConfig()
 
     async def enroll(self, *, user_id: str, primary_email: Optional[str] = None) -> Dict[str, Any]:
+        assert_database_key_length(
+            user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        )
         legacy_user = None
         if len(user_id) > AUTHFN_DATABASE_KEY_MAX_LENGTH:
             legacy_user = await self.config.database.find_one(
@@ -249,6 +252,9 @@ class TwoFactorService:
         return {"enabled": True}
 
     async def begin_sign_in_challenge(self, *, user_id: str, primary_method: str) -> Optional[Dict[str, Any]]:
+        assert_database_key_length(
+            user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        )
         legacy_user = None
         if len(user_id) > AUTHFN_DATABASE_KEY_MAX_LENGTH:
             legacy_user = await self.config.database.find_one(

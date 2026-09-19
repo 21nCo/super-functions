@@ -962,6 +962,9 @@ class SocialOAuthService:
         email: Optional[str],
         profile: Optional[Dict[str, Any]],
     ) -> None:
+        assert_database_key_length(
+            user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        )
         existing = await self.config.database.find_one(
             model="oauth_accounts",
             where=[
@@ -978,7 +981,9 @@ class SocialOAuthService:
                 namespace=self.config.namespace,
             )
         if existing is not None and existing.get("userId") == user_id:
-            stored_user_id = user_id
+            stored_user_id = assert_database_key_length(
+                user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+            )
         elif legacy_user is not None:
             stored_user_id = assert_database_key_length(
                 user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH

@@ -43,7 +43,13 @@ export async function createApiKey(
 ): Promise<CreatedApiKey> {
   assertValidApiKeyName(input.name);
   assertValidApiKeyExpiry(input.expiresAt);
-  const legacyUser = Array.from(input.userId).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
+  const userIdLength = Array.from(input.userId).length;
+  assertAuthFnDatabaseKeyLength(
+    input.userId,
+    'userId',
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+  );
+  const legacyUser = userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
     ? await findUserById(config, input.userId)
     : null;
   const userId = legacyUser

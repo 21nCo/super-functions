@@ -444,6 +444,9 @@ async def test_callback_preserves_existing_legacy_provider_account_id() -> None:
 
     assert completed["userId"] == "user_legacy_provider"
     assert len(db.storage["oauth_accounts"]) == 1
+    assert db.storage["oauth_accounts"][0]["providerAccountId"] == provider_account_id
+    assert db.storage["oauth_accounts"][0]["connectionId"] == "legacy-provider-connection"
+    assert db.storage["oauth_accounts"][0]["userId"] == "user_legacy_provider"
 
 
 @pytest.mark.asyncio

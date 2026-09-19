@@ -85,6 +85,12 @@ export async function upsertOAuthAccount(
   config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   input: UpsertOAuthAccountInput
 ): Promise<AuthFnOAuthAccountRecord> {
+  const userIdLength = Array.from(input.userId).length;
+  assertAuthFnDatabaseKeyLength(
+    input.userId,
+    'userId',
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+  );
   const provider = assertAuthFnDatabaseKeyLength(input.provider, 'provider') as AuthFnSocialProviderId;
   const existing = await findOAuthAccountByProviderAccountId(
     config,
@@ -94,8 +100,7 @@ export async function upsertOAuthAccount(
   const providerAccountId = existing?.providerAccountId === input.providerAccountId
     ? input.providerAccountId
     : assertAuthFnDatabaseKeyLength(input.providerAccountId, 'providerAccountId');
-  const legacyUser = !existing &&
-    Array.from(input.userId).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
+  const legacyUser = !existing && userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
     ? await findUserById(config, input.userId)
     : null;
   const userId = existing?.userId === input.userId

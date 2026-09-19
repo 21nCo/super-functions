@@ -380,7 +380,13 @@ export async function registerUserRegion(
     request?: Request;
   }
 ): Promise<AuthFnRegionProfileRecord | null> {
-  const legacyUser = Array.from(input.user.id).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
+  const userIdLength = Array.from(input.user.id).length;
+  assertAuthFnDatabaseKeyLength(
+    input.user.id,
+    'userId',
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+  );
+  const legacyUser = userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
     ? await findUserById(config, input.user.id)
     : null;
   const userId = legacyUser

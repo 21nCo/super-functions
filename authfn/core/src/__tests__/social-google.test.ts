@@ -207,10 +207,20 @@ describe('social OAuth persistence bounds', () => {
     ));
 
     expect(callback.status).toBe(200);
-    await expect(config.database.count({
+    const preserved = await config.database.findOne({
       model: 'oauth_accounts',
-      namespace: 'authfn'
-    })).resolves.toBe(1);
+      namespace: 'authfn',
+      where: [
+        { field: 'provider', operator: 'eq', value: 'google' },
+        { field: 'providerAccountId', operator: 'eq', value: providerAccountId }
+      ]
+    });
+    expect(preserved).toMatchObject({
+      id: 'oauth_legacy_provider',
+      userId: user.id,
+      providerAccountId,
+      connectionId: 'legacy-provider-connection'
+    });
   });
 });
 

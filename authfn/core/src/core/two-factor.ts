@@ -100,7 +100,13 @@ export async function createTwoFactorEnrollment(
   user: Pick<AuthFnUserRecord, 'id' | 'primaryEmail'>,
   pluginConfig: TwoFactorPluginRuntimeConfig = {}
 ): Promise<CreatedTwoFactorEnrollment> {
-  const legacyUser = Array.from(user.id).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
+  const userIdLength = Array.from(user.id).length;
+  assertAuthFnDatabaseKeyLength(
+    user.id,
+    'userId',
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+  );
+  const legacyUser = userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
     ? await findUserById(config, user.id)
     : null;
   const userId = legacyUser
@@ -213,7 +219,13 @@ export async function createTwoFactorChallenge(
   primaryMethod: Exclude<AuthFnAuthMethod, 'two-factor' | 'api-key'>,
   pluginConfig: TwoFactorPluginRuntimeConfig = {}
 ): Promise<CreatedTwoFactorChallenge | null> {
-  const legacyUser = Array.from(user.id).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
+  const userIdLength = Array.from(user.id).length;
+  assertAuthFnDatabaseKeyLength(
+    user.id,
+    'userId',
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+  );
+  const legacyUser = userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
     ? await findUserById(config, user.id)
     : null;
   const userId = legacyUser

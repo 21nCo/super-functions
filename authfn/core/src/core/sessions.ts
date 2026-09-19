@@ -20,6 +20,7 @@ import {
 } from './errors.js';
 import {
   AUTHFN_DATABASE_KEY_MAX_LENGTH,
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
   assertAuthFnDatabaseKeyLength
 } from './limits.js';
 import { authenticateApiKey as authenticateApiKeyRecord } from './api-keys.js';
@@ -90,6 +91,11 @@ export async function issueSession(
   const sessionToken = createOpaqueToken('st');
   const csrfToken = createOpaqueToken('csrf');
   const sessionUserId = readString(payload.userId, 'userId');
+  assertAuthFnDatabaseKeyLength(
+    sessionUserId,
+    'userId',
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+  );
   const legacyUser = sessionUserId === input.userId &&
     Array.from(sessionUserId).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
     ? await findUserById(config, sessionUserId)

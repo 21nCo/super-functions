@@ -13,7 +13,11 @@ from superfunctions.http import HttpMethod, Response, Route, RouteContext, SetCo
 
 from .config import get_plugin_config, resolve_runtime
 from .errors import to_authfn_error
-from .limits import AUTHFN_DATABASE_KEY_MAX_LENGTH, assert_database_key_length
+from .limits import (
+    AUTHFN_DATABASE_KEY_MAX_LENGTH,
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+    assert_database_key_length,
+)
 from .observability import (
     emit_auth_event,
     event_request_id,
@@ -394,6 +398,9 @@ async def issue_session(
         raise PluginAbortedError(
             "beforeSessionIssue hook returned an invalid userId"
         )
+    assert_database_key_length(
+        payload_user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+    )
     # Existing v1 users may have IDs longer than the v2 bound. Preserve their
     # ability to sign in while still bounding identities replaced by hooks or
     # unpersisted caller input.

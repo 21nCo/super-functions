@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
 import { authFnApiKeyPlugin } from '@authfn/api-keys';
@@ -88,6 +88,7 @@ describe('authfn api key plugin', () => {
         updatedAt: new Date()
       }
     });
+    const findOne = vi.spyOn(config.database, 'findOne');
 
     await expect(createApiKey(config, {
       userId,
@@ -96,6 +97,7 @@ describe('authfn api key plugin', () => {
       code: 'AUTHFN_VALIDATION_ERROR',
       details: { fieldName: 'userId', maxLength: 767 }
     });
+    expect(findOne).not.toHaveBeenCalled();
   });
 
   it('creates, lists, authenticates, and revokes api keys with hashed secrets at rest', async () => {

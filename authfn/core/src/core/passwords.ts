@@ -278,7 +278,13 @@ export async function createPasswordCredential(
   config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   input: { userId: string; passwordHash: string }
 ): Promise<AuthFnPasswordCredentialRecord> {
-  const legacyUser = Array.from(input.userId).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
+  const userIdLength = Array.from(input.userId).length;
+  assertAuthFnDatabaseKeyLength(
+    input.userId,
+    'userId',
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+  );
+  const legacyUser = userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
     ? await findUserById(config, input.userId)
     : null;
   const userId = legacyUser
@@ -320,9 +326,14 @@ export async function updatePasswordCredential(
   input: { userId: string; password: string },
   options: PasswordPolicyOptions = {}
 ): Promise<AuthFnPasswordCredentialRecord> {
+  const userIdLength = Array.from(input.userId).length;
+  assertAuthFnDatabaseKeyLength(
+    input.userId,
+    'userId',
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+  );
   const existing = await getPasswordCredentialByUserId(config, input.userId);
-  const legacyUser = !existing &&
-    Array.from(input.userId).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
+  const legacyUser = !existing && userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
     ? await findUserById(config, input.userId)
     : null;
   const userId = existing?.userId === input.userId

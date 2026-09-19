@@ -6,6 +6,7 @@ import os
 import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -179,6 +180,7 @@ async def test_create_api_key_rejects_legacy_user_id_wider_than_reference_column
     db = MockDatabaseAdapter()
     user_id = "legacy-user-".ljust(768, "x")
     db.storage["users"] = [{"id": user_id}]
+    db.find_one = AsyncMock(side_effect=AssertionError("oversized ID reached the database"))
     service = ApiKeyService(AuthFnConfig(database=db, namespace="authfn"))
 
     with pytest.raises(ValidationError) as exc_info:
@@ -190,3 +192,4 @@ async def test_create_api_key_rejects_legacy_user_id_wider_than_reference_column
         "actualLength": 768,
     }
     assert db.storage["api_keys"] == []
+    db.find_one.assert_not_awaited()
