@@ -1,0 +1,47 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2WW4N6DKNRRCQMSG7WS070Y",
+  "session_id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-19T13:02:05.293594Z",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/apifn-api-check-smoke.yml",
+    ".github/workflows/apifn-api-check.yml",
+    "apifn/cli/__tests__/fixtures/passing-collection/users/list-users.yml"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "bb5e0172e878",
+  "checkpoint_transcript_start": 1751,
+  "transcript_lines_at_start": 1751,
+  "compact_transcript_start": 244,
+  "token_usage": {
+    "input_tokens": 16647,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1820032,
+    "output_tokens": 3086,
+    "api_call_count": 10
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-19T13:02:03.966681Z",
+    "agent_lines": 381,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 381,
+    "total_lines_changed": 381,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
