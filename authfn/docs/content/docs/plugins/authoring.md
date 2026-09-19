@@ -114,6 +114,15 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           namespace: ctx.namespace,
         });
 
+        const magicLinkRuntime = ctx.config.pluginRuntime?.magicLink as
+          | MagicLinkRuntimeConfig
+          | undefined;
+        await magicLinkRuntime?.onIssued?.({
+          requestId: request.headers.get("x-request-id") ?? undefined,
+          userId: session.actorId,
+          ttlSeconds: 300,
+        });
+
         return jsonSuccess(request, { code, expiresAt });
       },
     },
@@ -253,8 +262,8 @@ plugin `after*` → kernel `after*`. See [Concepts → Hooks](../core-concepts/h
 `emitAuthEvent` accepts the closed public `AuthFnEventType` union. It is useful
 when a custom plugin emits one of the kernel's standard events; it does not
 accept arbitrary custom event names. For plugin-specific telemetry, call an
-application-owned reporter (for example, one supplied in your plugin's runtime
-config):
+application-owned reporter supplied in your plugin's runtime config, as the
+`/magic/issue` route above does:
 
 ```ts
 const magicLinkRuntime = ctx.config.pluginRuntime?.magicLink as

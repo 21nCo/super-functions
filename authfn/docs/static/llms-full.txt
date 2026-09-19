@@ -137,7 +137,13 @@ If your adapter is generally useful, consider sending it upstream. The bundled a
 
 ```bash
 npm install drizzle-orm @superfunctions/db
+npx @superfunctions/cli generate-schema --adapter drizzle --output ./src/db/generated
 ```
+
+The generated file is `authfn-schema.ts` for an authfn declaration. Import it
+and pass it to every `drizzle()` constructor below; `drizzleAdapter` resolves
+tables from Drizzle's schema registry and cannot operate without it. Configure
+the target database dialect in `superfunctions.config.js` before generating.
 
 ## Postgres
 
@@ -146,9 +152,10 @@ import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
+import * as schema from './db/generated/authfn-schema.js';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const db = drizzle(pool);
+const db = drizzle(pool, { schema });
 
 const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
 const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'postgres' }) });
@@ -161,8 +168,9 @@ import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
+import * as schema from './db/generated/authfn-schema.js';
 
-const db = drizzle(new Database('authfn.db'));
+const db = drizzle(new Database('authfn.db'), { schema });
 
 const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
 const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'sqlite' }) });
@@ -175,9 +183,10 @@ import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/mysql2';
 import mysql from 'mysql2/promise';
+import * as schema from './db/generated/authfn-schema.js';
 
 const pool = await mysql.createPool({ uri: process.env.DATABASE_URL });
-const db = drizzle(pool);
+const db = drizzle(pool, { schema });
 
 const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
 const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'mysql' }) });
@@ -189,10 +198,11 @@ const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'mys
 import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/d1';
+import * as schema from './db/generated/authfn-schema.js';
 
 export default {
   fetch(request: Request, env: { DB: D1Database }) {
-    const db = drizzle(env.DB);
+    const db = drizzle(env.DB, { schema });
     const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
     const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'sqlite' }) });
     return auth.router.fetch(request);
@@ -202,15 +212,10 @@ export default {
 
 For workers, hoist the `auth` instance outside the handler if you want it to persist across invocations within the same isolate (the kernel itself is stateless; only the adapter holds connections).
 
-## Generating Drizzle schema
+## Applying migrations
 
-The Superfunctions CLI generates Drizzle TypeScript schema from your enabled plugin set:
-
-```bash
-npx @superfunctions/cli generate --output ./src/db/schema.ts
-```
-
-Run Drizzle's migration tool against that schema to produce migration files:
+After generating the Drizzle TypeScript schema from your enabled plugin set,
+run Drizzle's migration tool against that schema:
 
 ```bash
 npx drizzle-kit generate
@@ -467,8 +472,9 @@ import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
+import * as schema from './db/generated/authfn-schema.js';
 
-const db = drizzle(new Database('authfn.db'));
+const db = drizzle(new Database('authfn.db'), { schema });
 
 const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
 const auth = authApp.createServer({
@@ -476,22 +482,8 @@ const auth = authApp.createServer({
 });
 ```
 
-## Direct SQLite adapter
-
-If a thin SQLite adapter is exposed in your build, use it directly:
-
-```ts
-import { authfn, authFnPlugins } from 'authfn';
-import { sqliteAdapter } from '@superfunctions/db/adapters/sqlite';   // if available
-import Database from 'better-sqlite3';
-
-const db = new Database('authfn.db');
-
-const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
-const auth = authApp.createServer({ database: sqliteAdapter(db) });
-```
-
-When in doubt, the `drizzleAdapter` route works everywhere.
+`@superfunctions/db` does not expose a direct `sqliteAdapter`; use the supported
+Drizzle path above or implement the [custom adapter](./custom) contract.
 
 ## Performance
 
@@ -4499,13 +4491,18 @@ function stripPrefix(request: Request, prefix: string): Request {
 
 `bun:sqlite` gives you a file-backed database with zero config — combined with authfn this is the smallest possible self-hosted auth deployment:
 
+Generate the Drizzle schema for your enabled authfn plugins and apply its
+migrations before starting the server (see the [Drizzle adapter](../adapters/database/drizzle)).
+Pass that same schema to Drizzle so the adapter can resolve authfn's tables.
+
 ```ts
 import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/bun-sqlite';
 import { Database } from 'bun:sqlite';
+import * as schema from './db/generated/authfn-schema.js';
 
-const db = drizzle(new Database('authfn.db'));
+const db = drizzle(new Database('authfn.db'), { schema });
 const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
 const auth = authApp.createServer({
   database: drizzleAdapter({ db, dialect: 'sqlite' }),
@@ -5592,6 +5589,15 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           namespace: ctx.namespace,
         });
 
+        const magicLinkRuntime = ctx.config.pluginRuntime?.magicLink as
+          | MagicLinkRuntimeConfig
+          | undefined;
+        await magicLinkRuntime?.onIssued?.({
+          requestId: request.headers.get("x-request-id") ?? undefined,
+          userId: session.actorId,
+          ttlSeconds: 300,
+        });
+
         return jsonSuccess(request, { code, expiresAt });
       },
     },
@@ -5731,8 +5737,8 @@ plugin `after*` → kernel `after*`. See [Concepts → Hooks](../core-concepts/h
 `emitAuthEvent` accepts the closed public `AuthFnEventType` union. It is useful
 when a custom plugin emits one of the kernel's standard events; it does not
 accept arbitrary custom event names. For plugin-specific telemetry, call an
-application-owned reporter (for example, one supplied in your plugin's runtime
-config):
+application-owned reporter supplied in your plugin's runtime config, as the
+`/magic/issue` route above does:
 
 ```ts
 const magicLinkRuntime = ctx.config.pluginRuntime?.magicLink as
@@ -6913,7 +6919,7 @@ The Google provider uses standard OAuth 2.0 + OIDC. authfn fetches the user prof
 
 ## Configuration
 
-Start with the [full two-stage Social OAuth skeleton](./index); the fragment
+Start with the [full two-stage Social OAuth skeleton](/docs/plugins/social-oauth/); the fragment
 below assumes that page's `authApp` declaration and `database` adapter.
 
 ```ts
@@ -7694,20 +7700,22 @@ Swap `memoryAdapter` for the Drizzle adapter once you're ready for a real databa
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import * as schema from "./db/generated/authfn-schema.js";
 
-const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }));
+const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }), { schema });
 
 const auth = authApp.createServer({
-  database: drizzleAdapter(db),
+  database: drizzleAdapter({ db, dialect: "postgres" }),
   pluginRuntime: {
     emailOtp: { delivery: yourDelivery },
   },
 });
 ```
 
-Generate the migrations from the plugin set you've enabled:
+Generate the Drizzle schema and migrations from the plugin set you've enabled:
 
 ```bash
+npx @superfunctions/cli generate-schema --adapter drizzle --output ./src/db/generated
 npx @superfunctions/cli generate
 ```
 

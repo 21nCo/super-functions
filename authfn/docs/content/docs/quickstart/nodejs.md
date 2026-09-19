@@ -104,20 +104,22 @@ Swap `memoryAdapter` for the Drizzle adapter once you're ready for a real databa
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import * as schema from "./db/generated/authfn-schema.js";
 
-const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }));
+const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }), { schema });
 
 const auth = authApp.createServer({
-  database: drizzleAdapter(db),
+  database: drizzleAdapter({ db, dialect: "postgres" }),
   pluginRuntime: {
     emailOtp: { delivery: yourDelivery },
   },
 });
 ```
 
-Generate the migrations from the plugin set you've enabled:
+Generate the Drizzle schema and migrations from the plugin set you've enabled:
 
 ```bash
+npx @superfunctions/cli generate-schema --adapter drizzle --output ./src/db/generated
 npx @superfunctions/cli generate
 ```
 
