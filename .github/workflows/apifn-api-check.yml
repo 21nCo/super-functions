@@ -16,6 +16,21 @@ on:
         required: false
         default: development
         type: string
+      cli_version:
+        description: Must match the @apifn/cli version pinned by this workflow revision; the default matches
+        required: false
+        default: "0.0.2"
+        type: string
+      start_mock_server:
+        description: Start apifn mock for workflow self-tests before running the collection
+        required: false
+        default: false
+        type: boolean
+      mock_port:
+        description: Port used when start_mock_server is enabled
+        required: false
+        default: 19999
+        type: number
       base_branch:
         description: Base branch for spec diff
         required: false
@@ -46,6 +61,21 @@ on:
         required: false
         default: development
         type: string
+      cli_version:
+        description: Must match the @apifn/cli version pinned by this workflow revision; the default matches
+        required: false
+        default: "0.0.2"
+        type: string
+      start_mock_server:
+        description: Start apifn mock for workflow self-tests before running the collection
+        required: false
+        default: false
+        type: boolean
+      mock_port:
+        description: Port used when start_mock_server is enabled
+        required: false
+        default: 19999
+        type: number
       base_branch:
         description: Base branch for spec diff
         required: false
@@ -62,6 +92,9 @@ on:
         default: true
         type: boolean
 
+# Callers must grant at least these scopes. A reusable workflow cannot
+# elevate GITHUB_TOKEN; a caller with pull-requests: read causes
+# startup_failure before any job runs.
 permissions:
   contents: read
   pull-requests: write
@@ -80,13 +113,38 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Fetch CLI lockfile for external callers
+        if: hashFiles('.github/apifn-cli-install/package-lock.json') == ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          sparse-checkout: .github/apifn-cli-install
+          path: .apifn-cli-lock
+          persist-credentials: false
 
-      - name: Build CLI package
-        run: npm -w @apifn/cli run build
+      - name: Install ApiFn CLI
+        shell: bash
+        env:
+          APIFN_CLI_VERSION: ${{ inputs.cli_version }}
+        run: |
+          set -euo pipefail
+          if [ -f .github/apifn-cli-install/package-lock.json ]; then
+            LOCK_DIR=".github/apifn-cli-install"
+          else
+            LOCK_DIR=".apifn-cli-lock/.github/apifn-cli-install"
+          fi
+          npm ci --ignore-scripts --prefix "$LOCK_DIR"
+          BIN_DIR="$PWD/$LOCK_DIR/node_modules/.bin"
+          echo "$BIN_DIR" >> "$GITHUB_PATH"
+          INSTALLED="$(node -p "require('$PWD/$LOCK_DIR/node_modules/@apifn/cli/package.json').version")"
+          echo "Installed @apifn/cli@$INSTALLED from lockfile"
+          if [ "$INSTALLED" != "$APIFN_CLI_VERSION" ]; then
+            echo "::error::cli_version input is $APIFN_CLI_VERSION; lockfile installed $INSTALLED"
+            exit 1
+          fi
+          "$BIN_DIR/apifn" --version
 
       - name: Resolve base spec from base branch
         id: base_spec
@@ -112,7 +170,7 @@ jobs:
           SPEC_PATH: ${{ inputs.spec_path }}
         run: |
           set +e
-          npx --yes apifn validate "$SPEC_PATH" --format json > validate-report.json
+          apifn validate "$SPEC_PATH" --format json > validate-report.json
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
@@ -131,10 +189,31 @@ jobs:
           if [ "$FAIL_ON_BREAKING" != "true" ]; then
             DIFF_ARGS="--no-fail-on-breaking"
           fi
-          npx --yes apifn diff .apifn-base-openapi.yml "$SPEC_PATH" --format json $DIFF_ARGS > diff-report.json
+          apifn diff .apifn-base-openapi.yml "$SPEC_PATH" --format json $DIFF_ARGS > diff-report.json
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
+
+      - name: Start smoke mock server
+        if: inputs.start_mock_server == true || inputs.start_mock_server == 'true'
+        shell: bash
+        env:
+          SPEC_PATH: ${{ inputs.spec_path }}
+          MOCK_PORT: ${{ inputs.mock_port }}
+        run: |
+          set -euo pipefail
+          apifn mock "$SPEC_PATH" --port "$MOCK_PORT" > apifn-mock.log 2>&1 &
+          echo "$!" > apifn-mock.pid
+          for attempt in {1..30}; do
+            # Any HTTP response means the mock accepted a connection. Do not
+            # require GET /users — caller specs may not define that route.
+            if curl --silent --output /dev/null --max-time 1 "http://127.0.0.1:${MOCK_PORT}/"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat apifn-mock.log
+          exit 1
 
       - name: Run collection tests
         id: test
@@ -145,10 +224,18 @@ jobs:
           COLLECTION_ENVIRONMENT: ${{ inputs.environment }}
         run: |
           set +e
-          npx --yes apifn test "$COLLECTION_DIR" --env "$COLLECTION_ENVIRONMENT" --reporter json > test-report.json
+          apifn test "$COLLECTION_DIR" --env "$COLLECTION_ENVIRONMENT" --reporter json > test-report.json
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
+
+      - name: Stop smoke mock server
+        if: always() && (inputs.start_mock_server == true || inputs.start_mock_server == 'true')
+        shell: bash
+        run: |
+          if [ -f apifn-mock.pid ]; then
+            kill "$(cat apifn-mock.pid)" || true
+          fi
 
       - name: Build markdown summary
         id: summary
@@ -204,14 +291,23 @@ jobs:
           JS
 
       - name: Post/Update PR comment
-        if: github.event_name == 'pull_request' && inputs.post_pr_comment == true
+        # workflow_call sets github.event_name to "workflow_call", not "pull_request".
+        # The caller payload is reused, so gate on PR number instead of event name.
+        # workflow_dispatch inputs are strings, so accept boolean true or "true".
+        # Fork PRs get a read-only token; skip mutation so gates still run.
+        # Job summary is already written in the previous step.
+        if: (inputs.post_pr_comment == true || inputs.post_pr_comment == 'true') && github.event.pull_request.number && github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('node:fs');
             const body = fs.readFileSync('ci-summary.md', 'utf8');
             const { owner, repo } = context.repo;
-            const issue_number = context.payload.pull_request.number;
+            const issue_number = context.payload.pull_request?.number;
+            if (!issue_number) {
+              core.info('No pull request number in event payload; skipping comment.');
+              return;
+            }
             const marker = '<!-- apifn-ci-report -->';
 
             const comments = await github.paginate(github.rest.issues.listComments, {

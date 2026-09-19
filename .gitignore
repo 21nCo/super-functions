@@ -93,6 +93,7 @@ venv
 # Sub-package lock files (keep root only)
 **/package-lock.json
 !/package-lock.json
+!.github/apifn-cli-install/package-lock.json
 .vercel
 
 .next/
