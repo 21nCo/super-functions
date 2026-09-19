@@ -3,7 +3,12 @@ import type {
   ApiKeyPluginConfig,
   ApiKeyPluginRuntimeConfig
 } from 'authfn/plugin-types';
-import type { AuthFnPlugin, AuthFnPluginRuntimeContext, AuthFnSchemaDefinition } from 'authfn';
+import {
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+  type AuthFnPlugin,
+  type AuthFnPluginRuntimeContext,
+  type AuthFnSchemaDefinition
+} from 'authfn';
 import { createApiKey, listApiKeysForUser, revokeApiKeyById } from 'authfn/core/api-keys';
 import { assertValidCsrf, requireCookieSession } from 'authfn/core/sessions';
 import { createAuthFnRouteMeta } from 'authfn/http/router';
@@ -32,7 +37,12 @@ function createApiKeySchema(): AuthFnSchemaDefinition['schemas'] {
       modelName: 'api_keys',
       fields: {
         id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
-        userId: { type: 'string', required: false, fieldName: 'user_id', maxLength: 255 },
+        userId: {
+          type: 'string',
+          required: false,
+          fieldName: 'user_id',
+          maxLength: AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        },
         name: { type: 'string', required: false, fieldName: 'name' },
         secretHash: { type: 'string', required: true, fieldName: 'secret_hash', maxLength: 255 },
         scopes: { type: 'json', required: false, fieldName: 'scopes' },

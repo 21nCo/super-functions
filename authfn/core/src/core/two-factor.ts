@@ -29,6 +29,7 @@ import { findUserById } from './users.js';
 import { readPluginRuntimeConfig } from './plugin-runtime.js';
 import {
   AUTHFN_DATABASE_KEY_MAX_LENGTH,
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
   assertAuthFnDatabaseKeyLength
 } from './limits.js';
 
@@ -103,7 +104,11 @@ export async function createTwoFactorEnrollment(
     ? await findUserById(config, user.id)
     : null;
   const userId = legacyUser
-    ? user.id
+    ? assertAuthFnDatabaseKeyLength(
+        user.id,
+        'userId',
+        AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+      )
     : assertAuthFnDatabaseKeyLength(user.id, 'userId');
   const existing = await config.database.findOne<AuthFnTwoFactorEnrollmentRecord>({
     model: 'two_factor_enrollments',
@@ -212,7 +217,11 @@ export async function createTwoFactorChallenge(
     ? await findUserById(config, user.id)
     : null;
   const userId = legacyUser
-    ? user.id
+    ? assertAuthFnDatabaseKeyLength(
+        user.id,
+        'userId',
+        AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+      )
     : assertAuthFnDatabaseKeyLength(user.id, 'userId');
   const enrollment = await requireConfirmedEnrollment(config, userId);
   if (!enrollment) {

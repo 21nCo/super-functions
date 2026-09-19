@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from ..limits import AUTHFN_DATABASE_KEY_MAX_LENGTH, assert_database_key_length
+from ..limits import (
+    AUTHFN_DATABASE_KEY_MAX_LENGTH,
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+    assert_database_key_length,
+)
 from ..types import (
     ApiKeyRevokedError,
     AuthFnConfig,
@@ -91,7 +95,9 @@ class ApiKeyService:
                     namespace=self.config.namespace,
                 )
             user_id = (
-                user_id
+                assert_database_key_length(
+                    user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+                )
                 if legacy_user is not None
                 else assert_database_key_length(user_id, "userId")
             )
@@ -228,7 +234,7 @@ def authfn_api_key_plugin(config: Optional[ApiKeyPluginConfig] = None) -> AuthFn
                         "type": "string",
                         "required": False,
                         "fieldName": "user_id",
-                        "maxLength": 255,
+                        "maxLength": AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
                     },
                     "name": {"type": "string", "required": False, "fieldName": "name"},
                     "secretHash": {

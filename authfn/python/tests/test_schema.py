@@ -73,16 +73,18 @@ def test_schema_composition_is_deterministic() -> None:
         "oauth_states": ["state_id", "expires_at"],
         "oauth_tokens": ["token_id"],
         "oauth_accounts": ["id", "userId", "provider", "providerAccountId"],
-        "api_keys": ["id", "userId", "secretHash"],
-        "two_factor_enrollments": ["id", "userId"],
+        "api_keys": ["id", "secretHash"],
+        "two_factor_enrollments": ["id"],
         "two_factor_recovery_codes": ["id", "enrollmentId", "codeHash"],
-        "two_factor_challenges": ["id", "userId"],
+        "two_factor_challenges": ["id"],
         "region_profiles": ["id", "userId", "regionId"],
     }
     tables = {table["modelName"]: table for table in first["schemas"]}
     for table_name, fields in bounded_keys.items():
         for field_name in fields:
             assert tables[table_name]["fields"][field_name]["maxLength"] == 255
+    for table_name in ("api_keys", "two_factor_enrollments", "two_factor_challenges"):
+        assert tables[table_name]["fields"]["userId"]["maxLength"] == 767
     assert tables["oauth_tokens"]["fields"]["connection_id"]["maxLength"] == 768
     assert "maxLength" not in tables["oauth_accounts"]["fields"]["connectionId"]
 

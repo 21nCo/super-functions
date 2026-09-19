@@ -13,7 +13,11 @@ from urllib.parse import quote
 
 from cryptography.fernet import Fernet
 
-from ..limits import AUTHFN_DATABASE_KEY_MAX_LENGTH, assert_database_key_length
+from ..limits import (
+    AUTHFN_DATABASE_KEY_MAX_LENGTH,
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+    assert_database_key_length,
+)
 from ..types import (
     AuthFnConfig,
     AuthFnPlugin,
@@ -156,7 +160,9 @@ class TwoFactorService:
                 namespace=self.config.namespace,
             )
         user_id = (
-            user_id
+            assert_database_key_length(
+                user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+            )
             if legacy_user is not None
             else assert_database_key_length(user_id, "userId")
         )
@@ -251,7 +257,9 @@ class TwoFactorService:
                 namespace=self.config.namespace,
             )
         user_id = (
-            user_id
+            assert_database_key_length(
+                user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+            )
             if legacy_user is not None
             else assert_database_key_length(user_id, "userId")
         )
@@ -431,7 +439,7 @@ def authfn_two_factor_plugin(config: Optional[TwoFactorPluginConfig] = None) -> 
                         "type": "string",
                         "required": True,
                         "fieldName": "user_id",
-                        "maxLength": 255,
+                        "maxLength": AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
                     },
                     "secretEncrypted": {
                         "type": "string",
@@ -486,7 +494,7 @@ def authfn_two_factor_plugin(config: Optional[TwoFactorPluginConfig] = None) -> 
                         "type": "string",
                         "required": True,
                         "fieldName": "user_id",
-                        "maxLength": 255,
+                        "maxLength": AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
                     },
                     "primaryMethod": {"type": "string", "required": True, "fieldName": "primary_method"},
                     "expiresAt": {"type": "date", "required": True, "fieldName": "expires_at"},

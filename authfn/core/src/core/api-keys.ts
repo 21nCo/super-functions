@@ -3,6 +3,7 @@ import type { AuthFnApiKeyRecord, AuthFnRuntimeConfig, AuthFnSession } from '../
 import { AuthFnApiKeyRevokedError, AuthFnNotFoundError, AuthFnValidationError } from './errors.js';
 import {
   AUTHFN_DATABASE_KEY_MAX_LENGTH,
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
   assertAuthFnDatabaseKeyLength
 } from './limits.js';
 import { hashSecret } from './sessions.js';
@@ -46,7 +47,11 @@ export async function createApiKey(
     ? await findUserById(config, input.userId)
     : null;
   const userId = legacyUser
-    ? input.userId
+    ? assertAuthFnDatabaseKeyLength(
+        input.userId,
+        'userId',
+        AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+      )
     : assertAuthFnDatabaseKeyLength(input.userId, 'userId');
   const now = options?.now?.() ?? new Date();
   const secret = createApiKeySecret(options?.secretPrefix);

@@ -76,6 +76,28 @@ describe('authfn api key plugin', () => {
     })).resolves.toBe(1);
   });
 
+  it('rejects persisted legacy user IDs wider than the compatible reference column', async () => {
+    const config = createConfig();
+    const userId = 'legacy-user-'.padEnd(768, 'x');
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: {
+        id: userId,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    });
+
+    await expect(createApiKey(config, {
+      userId,
+      name: 'too-wide-legacy-key'
+    })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'userId', maxLength: 767 }
+    });
+  });
+
   it('creates, lists, authenticates, and revokes api keys with hashed secrets at rest', async () => {
     const config = createConfig();
     const auth = createTestServer(config);

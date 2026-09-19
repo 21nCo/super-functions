@@ -1,6 +1,11 @@
 import type { Route } from '@superfunctions/http';
 import type { TwoFactorPluginConfig, TwoFactorPluginRuntimeConfig } from 'authfn/plugin-types';
-import type { AuthFnPlugin, AuthFnPluginRuntimeContext, AuthFnSchemaDefinition } from 'authfn';
+import {
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+  type AuthFnPlugin,
+  type AuthFnPluginRuntimeContext,
+  type AuthFnSchemaDefinition
+} from 'authfn';
 import {
   appendTwoFactorMethodToSession,
   confirmTwoFactorEnrollment,
@@ -36,7 +41,12 @@ function createTwoFactorSchema(): AuthFnSchemaDefinition['schemas'] {
       modelName: 'two_factor_enrollments',
       fields: {
         id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
-        userId: { type: 'string', required: true, fieldName: 'user_id', maxLength: 255 },
+        userId: {
+          type: 'string',
+          required: true,
+          fieldName: 'user_id',
+          maxLength: AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        },
         secretEncrypted: { type: 'string', required: true, fieldName: 'secret_encrypted' },
         lastUsedCounter: { type: 'number', required: false, fieldName: 'last_used_counter' },
         confirmedAt: { type: 'date', required: false, fieldName: 'confirmed_at' },
@@ -76,7 +86,12 @@ function createTwoFactorSchema(): AuthFnSchemaDefinition['schemas'] {
       modelName: 'two_factor_challenges',
       fields: {
         id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
-        userId: { type: 'string', required: true, fieldName: 'user_id', maxLength: 255 },
+        userId: {
+          type: 'string',
+          required: true,
+          fieldName: 'user_id',
+          maxLength: AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        },
         primaryMethod: { type: 'string', required: true, fieldName: 'primary_method' },
         expiresAt: { type: 'date', required: true, fieldName: 'expires_at' },
         consumedAt: { type: 'date', required: false, fieldName: 'consumed_at' },

@@ -141,6 +141,15 @@ describe('two-factor persistence bounds', () => {
     );
 
     expect(enrollment.enrollment.userId).toBe(legacyUser.id);
+    await expect(config.database.count({
+      model: 'two_factor_enrollments',
+      namespace: 'authfn'
+    })).resolves.toBe(1);
+    await expect(config.database.findOne({
+      model: 'two_factor_enrollments',
+      namespace: 'authfn',
+      where: [{ field: 'id', operator: 'eq', value: enrollment.enrollment.id }]
+    })).resolves.toMatchObject({ userId: legacyUser.id });
   });
 });
 

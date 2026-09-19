@@ -35,6 +35,13 @@ interface LibrarySchema {
   tables: TableSchema[];
 }
 
+const AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH = 767;
+const AUTHFN_LEGACY_USER_REFERENCE_COLUMNS = new Set([
+  'api_keys.user_id',
+  'two_factor_enrollments.user_id',
+  'two_factor_challenges.user_id',
+]);
+
 const AUTHFN_V1_UNBOUNDED_MYSQL_COLUMN_LENGTHS = new Map([
   'users.id',
   'users.primary_email',
@@ -77,7 +84,14 @@ const AUTHFN_V1_UNBOUNDED_MYSQL_COLUMN_LENGTHS = new Map([
   'oauth_accounts.provider',
   'oauth_accounts.provider_account_id',
   'oauth_accounts.connection_id',
-].map((column) => [column, column.endsWith('.connection_id') ? 768 : 255] as const));
+].map((column) => [
+  column,
+  column.endsWith('.connection_id')
+    ? 768
+    : AUTHFN_LEGACY_USER_REFERENCE_COLUMNS.has(column)
+      ? AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+      : 255,
+] as const));
 
 function authFnV1UnboundedMySqlColumnLengths(namespace: string): ReadonlyMap<string, number> {
   return new Map(Array.from(

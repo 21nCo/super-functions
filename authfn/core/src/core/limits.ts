@@ -1,6 +1,9 @@
 import { AuthFnValidationError } from './errors.js';
 
 export const AUTHFN_DATABASE_KEY_MAX_LENGTH = 255;
+// Keeps a user reference plus a TIMESTAMP within MySQL's 3072-byte utf8mb4
+// composite-index limit (767 * 4 + 4).
+export const AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH = 767;
 
 export function assertAuthFnDatabaseKeyLength(
   value: string,

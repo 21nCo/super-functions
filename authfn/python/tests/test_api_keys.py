@@ -172,3 +172,20 @@ async def test_create_api_key_allows_persisted_legacy_user_id() -> None:
 
     assert created["record"]["userId"] == user_id
     assert len(db.storage["api_keys"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_rejects_legacy_user_id_wider_than_reference_column() -> None:
+    db = MockDatabaseAdapter()
+    user_id = "legacy-user-".ljust(768, "x")
+    db.storage["users"] = [{"id": user_id}]
+    service = ApiKeyService(AuthFnConfig(database=db, namespace="authfn"))
+
+    with pytest.raises(ValidationError) as exc_info:
+        await service.create_key(user_id=user_id, name="too-wide-legacy-key")
+
+    assert exc_info.value.details == {
+        "fieldName": "userId",
+        "maxLength": 767,
+        "actualLength": 768,
+    }

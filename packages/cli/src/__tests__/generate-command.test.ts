@@ -20,6 +20,25 @@ const authFnTables = [
   },
 ] as unknown as TableSchema[];
 
+const authFnApiKeyTable = {
+  modelName: 'api_keys',
+  fields: {
+    id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+    userId: { type: 'string', required: false, fieldName: 'user_id', maxLength: 767 },
+    secretHash: { type: 'string', required: true, fieldName: 'secret_hash', maxLength: 255 },
+    createdAt: {
+      type: 'date',
+      required: true,
+      fieldName: 'created_at',
+      dateStorageType: 'timestamptz',
+    },
+  },
+  indexes: [{
+    name: 'idx_authfn_api_keys_user_id_created_at',
+    fields: ['userId', 'createdAt'],
+  }],
+} as unknown as TableSchema;
+
 function column(
   dialect: 'postgres' | 'mysql' | 'sqlite',
   tableName: string,
@@ -245,5 +264,29 @@ describe('generate command migration planning', () => {
     expect(pending?.tableDiffs).toEqual([]);
     expect(pending?.migrationFile.content).toContain('From version 1 to 2');
     expect(pending?.migrationFile.content).not.toContain('ALTER TABLE');
+  });
+
+  it('creates newly enabled AuthFn plugin references wide enough for legacy users', () => {
+    const pending = createPendingMigration({
+      adapterType: 'drizzle',
+      dialect: 'mysql',
+      library: {
+        libraryName: 'authfn',
+        namespace: 'authfn',
+        version: 2,
+        tables: [...authFnTables, authFnApiKeyTable],
+      },
+      currentVersion: 1,
+      currentTables: currentAuthFnTables('mysql'),
+    });
+
+    expect(pending?.tableDiffs).toContainEqual(expect.objectContaining({
+      tableName: 'authfn_api_keys',
+      action: 'create',
+    }));
+    expect(pending?.migrationFile.content).toContain('user_id VARCHAR(767)');
+    expect(pending?.migrationFile.content).toContain(
+      'idx_authfn_api_keys_user_id_created_at',
+    );
   });
 });
