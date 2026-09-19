@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2XEX0YY4H63FKV80D3P0J5G",
+  "strategy": "manual-commit",
+  "branch": "codex/pr195-postmerge-remediation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/core/src/__tests__/api-keys.test.ts",
+    "authfn/core/src/__tests__/social-google.test.ts",
+    "authfn/core/src/core/api-keys.ts",
+    "authfn/core/src/core/oauth-accounts.ts",
+    "authfn/core/src/core/passwords.ts",
+    "authfn/core/src/core/regions.ts",
+    "authfn/core/src/core/sessions.ts",
+    "authfn/core/src/core/two-factor.ts",
+    "authfn/docs/content/docs/adapters/database/drizzle.md",
+    "authfn/docs/static/llms-full.txt",
+    "authfn/python/authfn/http.py",
+    "authfn/python/authfn/plugins/api_keys.py",
+    "authfn/python/authfn/plugins/multi_region.py",
+    "authfn/python/authfn/plugins/social_oauth.py",
+    "authfn/python/authfn/plugins/two_factor.py",
+    "authfn/python/tests/test_api_keys.py",
+    "authfn/python/tests/test_social_oauth.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 68992,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 565504,
+    "output_tokens": 6518,
+    "api_call_count": 12
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2XEX0YY4H63FKV80D3P0J5G",
+  "session_id": "01a0baeb-adb7-7871-b382-5a2ca62b3af5",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-19T18:29:49.676925Z",
+  "branch": "codex/pr195-postmerge-remediation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/core/src/__tests__/api-keys.test.ts",
+    "authfn/core/src/__tests__/social-google.test.ts",
+    "authfn/core/src/core/api-keys.ts",
+    "authfn/core/src/core/oauth-accounts.ts",
+    "authfn/core/src/core/passwords.ts",
+    "authfn/core/src/core/regions.ts",
+    "authfn/core/src/core/sessions.ts",
+    "authfn/core/src/core/two-factor.ts",
+    "authfn/docs/content/docs/adapters/database/drizzle.md",
+    "authfn/docs/static/llms-full.txt",
+    "authfn/python/authfn/http.py",
+    "authfn/python/authfn/plugins/api_keys.py",
+    "authfn/python/authfn/plugins/multi_region.py",
+    "authfn/python/authfn/plugins/social_oauth.py",
+    "authfn/python/authfn/plugins/two_factor.py",
+    "authfn/python/tests/test_api_keys.py",
+    "authfn/python/tests/test_social_oauth.py"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "9abd9a94f908",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 68992,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 565504,
+    "output_tokens": 6518,
+    "api_call_count": 12
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-19T18:29:49.624442Z",
+    "agent_lines": 2701,
+    "agent_removed": 916,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2701,
+    "total_lines_changed": 3617,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
