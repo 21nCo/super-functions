@@ -12,8 +12,7 @@
   },
   "dependencies": {
     "hono": "^4.0.0",
-    "@botfn/slack-core": "^0.0.1",
-    "@botfn/shared-types": "^0.0.1"
+    "@botfn/slack-core": "^0.0.1"
   },
   "devDependencies": {
     "wrangler": "^3.0.0",

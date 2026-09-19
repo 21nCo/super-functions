@@ -1,48 +1,44 @@
 # Persistence Service
 
-tRPC-based persistence service for bot data using Hono and Cloudflare D1.
+tRPC-based persistence service for bot data using Hono, PostgreSQL, and Drizzle.
 
 ## Features
 
 - **Type-safe API** with tRPC
 - **Runtime validation** with Zod
-- **Cloudflare D1** database
+- **PostgreSQL + Drizzle** database access
 - **Issue tracking** with GitHub/Linear integration
 - **Discord thread management** with many-to-many relationships
 
 ## Setup
 
-### 1. Create D1 Database
+### 1. Install dependencies
 
-```bash
-wrangler d1 create botfn-db
-```
-
-Copy the `database_id` from the output and update it in `wrangler.toml`.
-
-### 2. Initialize Database Schema
-
-For production:
-```bash
-npm run db:init
-```
-
-For local development:
-```bash
-npm run db:init-local
-```
-
-### 3. Install Dependencies
-
-From the monorepo root:
 ```bash
 npm install
+```
+
+### 2. Provision PostgreSQL
+
+Create a PostgreSQL database and apply the DDL in [SETUP.md](./SETUP.md), which
+is kept in sync with `src/schema.ts`.
+
+For local development, create `botfn/persistence/.dev.vars`:
+
+```dotenv
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE
+```
+
+### 3. Configure the production secret
+
+```bash
+npx wrangler secret put DATABASE_URL --config botfn/persistence/wrangler.toml
 ```
 
 ## Development
 
 ```bash
-npm run dev
+npm --workspace @botfn/persistence-service run dev
 ```
 
 The service will be available at `http://localhost:8787`.
@@ -50,7 +46,7 @@ The service will be available at `http://localhost:8787`.
 ## Deployment
 
 ```bash
-npm run deploy
+npm --workspace @botfn/persistence-service run deploy
 ```
 
 ## API Endpoints
@@ -107,3 +103,6 @@ The service uses two main tables:
 
 - **issues** - Stores issue metadata (GitHub/Linear IDs, status, notification state)
 - **discord_threads** - Many-to-many relationship between issues and Discord threads
+
+See `src/schema.ts` for the Drizzle schema and [SETUP.md](./SETUP.md) for the
+corresponding PostgreSQL DDL.
