@@ -528,7 +528,7 @@ async def test_github_links_verified_user_json_mode_and_sanitizes_failures() -> 
     await db.create(
         model="users",
         data={
-            "id": "user_1",
+            "id": "legacy-user-".ljust(300, "x"),
             "primaryEmail": "ada@example.com",
             "emailVerifiedAt": clock.now(),
             "createdAt": clock.now(),
@@ -566,7 +566,7 @@ async def test_github_links_verified_user_json_mode_and_sanitizes_failures() -> 
         namespace="authfn",
     )
     assert linked is not None
-    assert linked["userId"] == "user_1"
+    assert linked["userId"] == "legacy-user-".ljust(300, "x")
 
     failing = SocialOAuthService(
         AuthFnConfig(database=MockDatabaseAdapter(), namespace="authfn"),

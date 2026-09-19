@@ -127,6 +127,36 @@ describe('social OAuth persistence bounds', () => {
 
     expect(account.userId).toBe(legacyUserId);
   });
+
+  it('creates a new OAuth account for a persisted legacy user ID', async () => {
+    const config = createConfig();
+    const legacyUserId = 'legacy-user-'.padEnd(300, 'x');
+    const now = new Date();
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: {
+        id: legacyUserId,
+        primaryEmail: 'legacy-oauth@example.com',
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    const account = await upsertOAuthAccount(config, {
+      userId: legacyUserId,
+      provider: 'google',
+      providerAccountId: 'new-provider-account',
+      connectionId: 'soc_google_legacy_new'
+    });
+
+    expect(account.userId).toBe(legacyUserId);
+    await expect(config.database.findOne({
+      model: 'oauth_accounts',
+      namespace: 'authfn',
+      where: [{ field: 'id', operator: 'eq', value: account.id }]
+    })).resolves.toMatchObject({ userId: legacyUserId });
+  });
 });
 
 describe('authfn google social oauth', () => {

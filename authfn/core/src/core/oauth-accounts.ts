@@ -1,7 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import type { AuthFnRuntimeConfig, AuthFnSocialProfile, AuthFnSocialProviderId } from '../types.js';
 import { AuthFnNotFoundError } from './errors.js';
-import { assertAuthFnDatabaseKeyLength } from './limits.js';
+import {
+  AUTHFN_DATABASE_KEY_MAX_LENGTH,
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+  assertAuthFnDatabaseKeyLength
+} from './limits.js';
+import { findUserById } from './users.js';
 
 export interface AuthFnOAuthAccountRecord {
   id: string;
@@ -90,9 +95,19 @@ export async function upsertOAuthAccount(
     provider,
     providerAccountId
   );
+  const legacyUser = !existing &&
+    Array.from(input.userId).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ? await findUserById(config, input.userId)
+    : null;
   const userId = existing?.userId === input.userId
     ? input.userId
-    : assertAuthFnDatabaseKeyLength(input.userId, 'userId');
+    : legacyUser
+      ? assertAuthFnDatabaseKeyLength(
+          input.userId,
+          'userId',
+          AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        )
+      : assertAuthFnDatabaseKeyLength(input.userId, 'userId');
   const connectionId = existing?.connectionId === input.connectionId
     ? input.connectionId
     : assertAuthFnDatabaseKeyLength(input.connectionId, 'connectionId', 768);

@@ -7,7 +7,11 @@ import type {
   AuthFnHookContext,
   AuthFnSchemaDefinition
 } from 'authfn';
-import { AuthFnConfigError, AuthFnValidationError } from 'authfn';
+import {
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+  AuthFnConfigError,
+  AuthFnValidationError
+} from 'authfn';
 import { resolveCookiePolicy } from 'authfn/core/cookies';
 import {
   buildLookupResult,
@@ -265,7 +269,12 @@ function createMultiRegionSchema(): AuthFnSchemaDefinition['schemas'] {
       modelName: 'region_profiles',
       fields: {
         id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
-        userId: { type: 'string', required: true, fieldName: 'user_id', maxLength: 255 },
+        userId: {
+          type: 'string',
+          required: true,
+          fieldName: 'user_id',
+          maxLength: AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        },
         regionId: { type: 'string', required: true, fieldName: 'region_id', maxLength: 255 },
         authority: { type: 'string', required: true, fieldName: 'authority' },
         domain: { type: 'string', required: false, fieldName: 'domain' },

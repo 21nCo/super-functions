@@ -37,9 +37,14 @@ interface LibrarySchema {
 
 const AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH = 767;
 const AUTHFN_LEGACY_USER_REFERENCE_COLUMNS = new Set([
+  'users.id',
+  'sessions.user_id',
+  'password_credentials.user_id',
   'api_keys.user_id',
   'two_factor_enrollments.user_id',
   'two_factor_challenges.user_id',
+  'oauth_accounts.user_id',
+  'region_profiles.user_id',
 ]);
 
 const AUTHFN_V1_UNBOUNDED_MYSQL_COLUMN_LENGTHS = new Map([

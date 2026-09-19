@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
+from .limits import AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
 from .types import AuthFnConfig, AuthFnPlugin, AuthFnSchemaConflictError, TableSchema
 
 SchemaDefinition = Dict[str, Any]
@@ -37,7 +38,7 @@ def _core_tables() -> List[TableSchema]:
                     "type": "string",
                     "required": True,
                     "fieldName": "id",
-                    "maxLength": 255,
+                    "maxLength": AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
                 },
                 "primaryEmail": {
                     "type": "string",
@@ -79,7 +80,7 @@ def _core_tables() -> List[TableSchema]:
                     "type": "string",
                     "required": True,
                     "fieldName": "user_id",
-                    "maxLength": 255,
+                    "maxLength": AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
                 },
                 "tokenHash": {
                     "type": "string",

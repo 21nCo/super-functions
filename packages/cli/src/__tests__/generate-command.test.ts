@@ -7,7 +7,7 @@ const authFnTables = [
   {
     modelName: 'users',
     fields: {
-      id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+      id: { type: 'string', required: true, fieldName: 'id', maxLength: 767 },
       primaryEmail: { type: 'string', required: false, fieldName: 'primary_email', maxLength: 255 },
     },
   },
@@ -15,7 +15,7 @@ const authFnTables = [
     modelName: 'sessions',
     fields: {
       id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
-      userId: { type: 'string', required: true, fieldName: 'user_id', maxLength: 255 },
+      userId: { type: 'string', required: true, fieldName: 'user_id', maxLength: 767 },
     },
   },
 ] as unknown as TableSchema[];

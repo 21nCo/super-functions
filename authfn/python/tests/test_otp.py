@@ -270,6 +270,41 @@ async def test_reset_password_requires_reset_purpose_and_updates_hash() -> None:
 
 
 @pytest.mark.asyncio
+async def test_reset_password_creates_credential_for_persisted_legacy_user() -> None:
+    db = MockDatabaseAdapter()
+    delivery = DeliveryRecorder()
+    clock = FixedClock(datetime(2026, 3, 22, 0, 0, 0))
+    user_id = "legacy-user-".ljust(300, "x")
+    await db.create(
+        model="users",
+        data={
+            "id": user_id,
+            "primaryEmail": "legacy@example.com",
+            "createdAt": clock.now(),
+            "updatedAt": clock.now(),
+        },
+        namespace="authfn",
+    )
+    service = EmailOtpService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        EmailOtpPluginConfig(
+            delivery=delivery,
+            code_generator=lambda: "418205",
+            now=clock.now,
+        ),
+    )
+
+    await service.send_challenge("reset-password", "legacy@example.com")
+    await service.complete_reset_password(
+        "legacy@example.com",
+        "418205",
+        "An0therSecurePassphrase!",
+    )
+
+    assert db.storage["password_credentials"][0]["userId"] == user_id
+
+
+@pytest.mark.asyncio
 async def test_before_and_after_send_hooks() -> None:
     db = MockDatabaseAdapter()
     delivery = DeliveryRecorder()

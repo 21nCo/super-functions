@@ -66,25 +66,35 @@ def test_schema_composition_is_deterministic() -> None:
     assert first == second
 
     bounded_keys = {
-        "users": ["id", "primaryEmail"],
-        "sessions": ["id", "userId", "tokenHash"],
-        "password_credentials": ["id", "userId"],
+        "users": ["primaryEmail"],
+        "sessions": ["id", "tokenHash"],
+        "password_credentials": ["id"],
         "otp_challenges": ["id", "purpose", "email"],
         "oauth_states": ["state_id", "expires_at"],
         "oauth_tokens": ["token_id"],
-        "oauth_accounts": ["id", "userId", "provider", "providerAccountId"],
+        "oauth_accounts": ["id", "provider", "providerAccountId"],
         "api_keys": ["id", "secretHash"],
         "two_factor_enrollments": ["id"],
         "two_factor_recovery_codes": ["id", "enrollmentId", "codeHash"],
         "two_factor_challenges": ["id"],
-        "region_profiles": ["id", "userId", "regionId"],
+        "region_profiles": ["id", "regionId"],
     }
     tables = {table["modelName"]: table for table in first["schemas"]}
     for table_name, fields in bounded_keys.items():
         for field_name in fields:
             assert tables[table_name]["fields"][field_name]["maxLength"] == 255
-    for table_name in ("api_keys", "two_factor_enrollments", "two_factor_challenges"):
-        assert tables[table_name]["fields"]["userId"]["maxLength"] == 767
+    for table_name in (
+        "users",
+        "sessions",
+        "password_credentials",
+        "oauth_accounts",
+        "api_keys",
+        "two_factor_enrollments",
+        "two_factor_challenges",
+        "region_profiles",
+    ):
+        field_name = "id" if table_name == "users" else "userId"
+        assert tables[table_name]["fields"][field_name]["maxLength"] == 767
     assert tables["oauth_tokens"]["fields"]["connection_id"]["maxLength"] == 768
     assert "maxLength" not in tables["oauth_accounts"]["fields"]["connectionId"]
 

@@ -139,8 +139,47 @@ AuthFn applies the same 255-character ceiling at runtime to caller- or
 provider-controlled keys, including custom user IDs, normalized email keys,
 provider account IDs, and region IDs.
 
-For PostgreSQL, MySQL, and local SQLite, generate and apply the migration with
-Drizzle Kit:
+The generated schema reserves up to 767 characters for user primary and
+foreign keys. This is a compatibility allowance for persisted AuthFn v1 users;
+new user IDs remain limited to 255 characters. The 767-character bound keeps a
+user reference plus a timestamp within MySQL's 3072-byte `utf8mb4` composite
+index limit.
+
+### Upgrading an existing AuthFn v1 MySQL schema
+
+Do not use `drizzle-kit generate` to diff an existing AuthFn v1 MySQL schema
+against the v2 generated schema. V1 used unbounded `TEXT` for key columns, and
+that direct diff can emit unsafe narrowing operations. Route this upgrade
+through the Superfunctions compatibility planner instead. Give the CLI access
+to the existing database and use the same directory as your reviewed SQL
+migrations:
+
+```js
+// superfunctions.config.mjs
+export default {
+  adapter: {
+    type: 'drizzle',
+    drizzle: {
+      dialect: 'mysql',
+      connectionString: process.env.DATABASE_URL,
+    },
+  },
+  libraries: ['./src/auth.ts'],
+  migrationsDir: './migrations',
+};
+```
+
+```bash
+npx @superfunctions/cli generate-migration authfn --config ./superfunctions.config.mjs
+```
+
+Review and apply the generated `migration.sql` with your normal SQL deployment
+tool. It preserves compatible v1 `TEXT` columns and advances AuthFn's recorded
+schema version. Do not run a second Drizzle Kit schema diff for this v1-to-v2
+MySQL step.
+
+For new installations, PostgreSQL, and local SQLite, generate and apply the
+migration with Drizzle Kit:
 
 ```bash
 npx drizzle-kit generate

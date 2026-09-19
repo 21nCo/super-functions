@@ -25,14 +25,15 @@ import type {
   AuthFnSocialProfile,
   AuthFnSocialProviderId
 } from './types.js';
-import type {
-  AuthFnRuntimeConfig,
-  AuthFnHookContext,
-  AuthFnHooks,
-  AuthFnPlugin,
-  AuthFnPluginRuntimeContext,
-  AuthFnSchemaDefinition,
-  AuthFnUserRecord
+import {
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+  type AuthFnRuntimeConfig,
+  type AuthFnHookContext,
+  type AuthFnHooks,
+  type AuthFnPlugin,
+  type AuthFnPluginRuntimeContext,
+  type AuthFnSchemaDefinition,
+  type AuthFnUserRecord
 } from 'authfn';
 import { assertValidCsrf, issueSession, requireCookieSession } from 'authfn/core/sessions';
 import { issueSessionCookies } from 'authfn/core/cookies';
@@ -1581,7 +1582,7 @@ function createOAuthAccountsSchema(): TableSchema {
         type: 'string',
         required: true,
         fieldName: 'user_id',
-        maxLength: 255,
+        maxLength: AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
         references: { model: 'users', field: 'id', onDelete: 'cascade' }
       },
       provider: { type: 'string', required: true, fieldName: 'provider', maxLength: 255 },

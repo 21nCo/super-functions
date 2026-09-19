@@ -28,6 +28,7 @@ import {
 } from './errors.js';
 import {
   AUTHFN_DATABASE_KEY_MAX_LENGTH,
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
   assertAuthFnDatabaseKeyLength
 } from './limits.js';
 import { emitAuthEvent, eventRequestId } from './observability.js';
@@ -379,7 +380,16 @@ export async function registerUserRegion(
     request?: Request;
   }
 ): Promise<AuthFnRegionProfileRecord | null> {
-  const userId = assertAuthFnDatabaseKeyLength(input.user.id, 'userId');
+  const legacyUser = Array.from(input.user.id).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ? await findUserById(config, input.user.id)
+    : null;
+  const userId = legacyUser
+    ? assertAuthFnDatabaseKeyLength(
+        input.user.id,
+        'userId',
+        AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+      )
+    : assertAuthFnDatabaseKeyLength(input.user.id, 'userId');
   const gatewayCellRegionId = pluginConfig.routing?.mode === 'gateway'
     ? pluginConfig.routing.cell?.regionId
     : undefined;

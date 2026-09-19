@@ -1,4 +1,5 @@
 import type { TableSchema } from '@superfunctions/db';
+import { AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH } from './core/limits.js';
 import { AuthFnConfigError, AuthFnConflictError } from './types.js';
 import type { AuthFnConfig, AuthFnSchemaDefinition } from './types.js';
 
@@ -26,7 +27,12 @@ export function createCoreTables(): TableSchema[] {
     {
       modelName: 'users',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+        id: {
+          type: 'string',
+          required: true,
+          fieldName: 'id',
+          maxLength: AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        },
         primaryEmail: { type: 'string', required: false, fieldName: 'primary_email', maxLength: 255 },
         emailVerifiedAt: { type: 'date', required: false, fieldName: 'email_verified_at' },
         metadata: { type: 'json', required: false, fieldName: 'metadata' },
@@ -49,7 +55,7 @@ export function createCoreTables(): TableSchema[] {
           type: 'string',
           required: true,
           fieldName: 'user_id',
-          maxLength: 255,
+          maxLength: AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
           references: { model: 'users', field: 'id', onDelete: 'cascade' }
         },
         tokenHash: { type: 'string', required: true, fieldName: 'token_hash', maxLength: 255 },

@@ -43,7 +43,11 @@ from superfunctions.oauth import (
 
 from ..config import get_plugin, get_plugin_config, resolve_runtime
 from ..errors import to_authfn_error
-from ..limits import assert_database_key_length
+from ..limits import (
+    AUTHFN_DATABASE_KEY_MAX_LENGTH,
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+    assert_database_key_length,
+)
 from ..observability import emit_auth_event, event_request_id
 from ..types import (
     AuthFnConfig,
@@ -964,9 +968,24 @@ class SocialOAuthService:
             ],
             namespace=self.config.namespace,
         )
+        legacy_user = None
+        if existing is None and len(user_id) > AUTHFN_DATABASE_KEY_MAX_LENGTH:
+            legacy_user = await self.config.database.find_one(
+                model="users",
+                where=[{"field": "id", "operator": "eq", "value": user_id}],
+                namespace=self.config.namespace,
+            )
+        if existing is not None and existing.get("userId") == user_id:
+            stored_user_id = user_id
+        elif legacy_user is not None:
+            stored_user_id = assert_database_key_length(
+                user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+            )
+        else:
+            stored_user_id = assert_database_key_length(user_id, "userId")
         now = self.plugin_config.now()
         payload = {
-            "userId": user_id,
+            "userId": stored_user_id,
             "provider": provider,
             "providerAccountId": provider_account_id,
             "connectionId": connection_id,
@@ -1252,7 +1271,7 @@ def _social_schema() -> List[Dict[str, Any]]:
                     "type": "string",
                     "required": True,
                     "fieldName": "user_id",
-                    "maxLength": 255,
+                    "maxLength": AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
                 },
                 "provider": {
                     "type": "string",

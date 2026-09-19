@@ -648,7 +648,7 @@ def authfn_password_plugin() -> AuthFnPlugin:
                         "type": "string",
                         "required": True,
                         "fieldName": "user_id",
-                        "maxLength": 255,
+                        "maxLength": 767,
                     },
                     "passwordHash": {
                         "type": "string",
