@@ -71,8 +71,8 @@ def test_schema_composition_is_deterministic() -> None:
         "password_credentials": ["id", "userId"],
         "otp_challenges": ["id", "purpose", "email"],
         "oauth_states": ["state_id", "expires_at"],
-        "oauth_tokens": ["token_id", "connection_id"],
-        "oauth_accounts": ["id", "userId", "provider", "providerAccountId", "connectionId"],
+        "oauth_tokens": ["token_id"],
+        "oauth_accounts": ["id", "userId", "provider", "providerAccountId"],
         "api_keys": ["id", "userId", "secretHash"],
         "two_factor_enrollments": ["id", "userId"],
         "two_factor_recovery_codes": ["id", "enrollmentId", "codeHash"],
@@ -83,6 +83,8 @@ def test_schema_composition_is_deterministic() -> None:
     for table_name, fields in bounded_keys.items():
         for field_name in fields:
             assert tables[table_name]["fields"][field_name]["maxLength"] == 255
+    assert tables["oauth_tokens"]["fields"]["connection_id"]["maxLength"] == 512
+    assert tables["oauth_accounts"]["fields"]["connectionId"]["maxLength"] == 512
 
 
 def test_schema_conflict_on_duplicate_table_name() -> None:

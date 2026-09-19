@@ -190,6 +190,8 @@ describe('authfn modular schema discovery', () => {
     const mysqlSchema = generateDrizzleSchemaFile(schema, 'authfn', 'authfn_pw_demo', 'mysql');
     expect(mysqlSchema).toContain("id: varchar('id', { length: 255 })");
     expect(mysqlSchema).toContain("providerAccountId: varchar('provider_account_id', { length: 255 })");
+    expect(mysqlSchema).toContain("connectionId: varchar('connection_id', { length: 512 })");
+    expect(mysqlSchema).toContain("connection_id: varchar('connection_id', { length: 512 })");
   });
 
   it('resolves the published authfn default export entry point for CLI imports', () => {

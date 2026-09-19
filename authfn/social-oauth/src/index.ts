@@ -1552,7 +1552,9 @@ function createOAuthSharedSchemas(): TableSchema[] {
             required: !field.nullable,
             unique: field.primaryKey || field.unique,
             fieldName: field.name,
-            ...(field.type === 'text' && keyFields.has(field.name) ? { maxLength: 255 } : {})
+            ...(field.type === 'text' && keyFields.has(field.name)
+              ? { maxLength: field.name === 'connection_id' ? 512 : 255 }
+              : {})
           }
         ])
       ),
@@ -1579,7 +1581,7 @@ function createOAuthAccountsSchema(): TableSchema {
       },
       provider: { type: 'string', required: true, fieldName: 'provider', maxLength: 255 },
       providerAccountId: { type: 'string', required: true, fieldName: 'provider_account_id', maxLength: 255 },
-      connectionId: { type: 'string', required: true, fieldName: 'connection_id', maxLength: 255 },
+      connectionId: { type: 'string', required: true, fieldName: 'connection_id', maxLength: 512 },
       email: { type: 'string', required: false, fieldName: 'email' },
       profile: { type: 'json', required: false, fieldName: 'profile' },
       createdAt: { type: 'date', required: true, fieldName: 'created_at' },
