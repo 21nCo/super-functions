@@ -1,0 +1,60 @@
+authfn/python/authfn/http.py
+  s_d473070cda5c3b::t_e7b31b5beb6bac 16-20,401-403
+authfn/core/src/__tests__/social-google.test.ts
+  s_d473070cda5c3b::t_402c12c9af9727 210,212-223
+authfn/python/tests/test_api_keys.py
+  s_baf2c675cbc477::t_d6b93d40b0321f 9,183,195
+authfn/core/src/core/api-keys.ts
+  s_d473070cda5c3b::t_92f6cd155c18d2 46-52
+authfn/python/authfn/plugins/multi_region.py
+  s_d473070cda5c3b::t_e7b31b5beb6bac 115-117
+authfn/docs/content/docs/adapters/database/drizzle.md
+  s_d473070cda5c3b::t_bd1825735df2ec 176-183
+authfn/core/src/core/regions.ts
+  s_d473070cda5c3b::t_92f6cd155c18d2 383-389
+authfn/core/src/__tests__/api-keys.test.ts
+  s_baf2c675cbc477::t_d6b93d40b0321f 1,91,100
+authfn/core/src/core/passwords.ts
+  s_d473070cda5c3b::t_92f6cd155c18d2 281-287,329-334,336
+authfn/core/src/core/two-factor.ts
+  s_d473070cda5c3b::t_92f6cd155c18d2 103-109,222-228
+authfn/python/authfn/plugins/api_keys.py
+  s_d473070cda5c3b::t_e7b31b5beb6bac 90-92
+authfn/python/authfn/plugins/social_oauth.py
+  s_d473070cda5c3b::t_08c2609da633ce 965-967,984-986
+authfn/python/tests/test_social_oauth.py
+  s_d473070cda5c3b::t_402c12c9af9727 447-449
+authfn/core/src/core/sessions.ts
+  s_d473070cda5c3b::t_eb83a51605413c 23
+  s_d473070cda5c3b::t_92f6cd155c18d2 94-98
+authfn/core/src/core/oauth-accounts.ts
+  s_d473070cda5c3b::t_92f6cd155c18d2 88-93,103
+authfn/python/authfn/plugins/two_factor.py
+  s_d473070cda5c3b::t_e7b31b5beb6bac 155-157,255-257
+authfn/docs/static/llms-full.txt
+  s_d473070cda5c3b::t_bc3ce35369a188 304-311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "476ca3af62ca9f76f64afff132f67c0d3190bf8e",
+  "prompts": {},
+  "sessions": {
+    "s_baf2c675cbc477": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0baeb-adb7-7871-b382-5a2ca62b3af5",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
