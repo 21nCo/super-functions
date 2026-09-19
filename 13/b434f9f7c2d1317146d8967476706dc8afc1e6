@@ -1,0 +1,36 @@
+authfn/docs/content/docs/admin/index.md
+  s_d473070cda5c3b::t_086c927c67d03f 34
+authfn/docs/content/docs/core-concepts/hooks.md
+  s_d473070cda5c3b::t_086c927c67d03f 171-172,192-194,196-198
+authfn/docs/content/docs/core-concepts/runtime.md
+  s_d473070cda5c3b::t_086c927c67d03f 83-94
+authfn/docs/content/docs/plugins/authoring.md
+  s_d473070cda5c3b::t_4ee991877c28eb 255
+  s_d473070cda5c3b::t_2977659368d369 149-151,231-232,236-240,256,258,262-264
+  s_d473070cda5c3b::t_d52defdd1df6d5 243-254
+authfn/docs/content/docs/recipes/rotate-2fa-encryption.md
+  s_d473070cda5c3b::t_d66e615664ce17 13,49-57
+authfn/docs/content/docs/reference/configuration.md
+  s_d473070cda5c3b::t_d66e615664ce17 104
+authfn/docs/content/docs/core-concepts/plugins.md
+  s_d473070cda5c3b::t_086c927c67d03f 61,74-77
+  s_d473070cda5c3b::t_2fba4d087e7492 59-60
+authfn/docs/static/llms-full.txt
+  s_d473070cda5c3b::t_34e723cc83187b 913,2629-2630,2650-2652,2654-2656,3142-3144,3157-3160,3685-3690,3692-3696,5625-5627,5707-5708,5712-5716,5719-5729,5731-5732,5734,5738-5740,9606,9642-9650,9825
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "13b434f9f7c2d1317146d8967476706dc8afc1e6",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
