@@ -10727,7 +10727,7 @@ from authfn import (
     authfn_password_plugin,
     create_authfn,
 )
-from sqlalchemy import create_engine
+from sqlalchemy import Column, DateTime, JSON, MetaData, String, Table, create_engine
 from superfunctions_sqlalchemy import create_adapter
 
 engine = create_engine("sqlite+pysqlite:///authfn.db")
@@ -10740,7 +10740,33 @@ auth = create_authfn(AuthFnConfig(
         authfn_password_plugin(),
     ],
 ))
+
+# superfunctions-sqlalchemy reflects existing tables. Bootstrap this local
+# database from authfn's logical schema before serving requests.
+metadata = MetaData()
+column_types = {
+    "date": lambda: DateTime(timezone=True),
+    "json": JSON,
+    "string": String,
+}
+for table_schema in auth.get_schema()["schemas"]:
+    columns = [
+        Column(
+            field_name,
+            column_types[field["type"]](),
+            primary_key=field_name == "id",
+            nullable=not field.get("required", False),
+        )
+        for field_name, field in table_schema["fields"].items()
+    ]
+    Table(f"authfn_{table_schema['modelName']}", metadata, *columns)
+
+metadata.create_all(engine)
 ```
+
+The SQLAlchemy adapter does not run migrations or translate authfn's logical
+field names to physical column names. In production, create the same logical
+tables with your migration tool before starting the application.
 
 ## Mounting
 
