@@ -286,12 +286,17 @@ Kit output directory:
       "binding": "DB",
       "database_name": "authfn",
       "database_id": "replace-me",
-      "migrations_dir": "./drizzle",
-      "migrations_pattern": "drizzle/*/migration.sql"
+      "migrations_dir": "./drizzle"
     }
   ]
 }
 ```
+
+The repository-pinned Drizzle Kit 0.31.x release writes migration SQL files
+directly under `./drizzle`, which is the layout Wrangler scans by default. If
+you upgrade to a Drizzle version that emits `./drizzle/<timestamp>/migration.sql`,
+also set `"migrations_pattern": "drizzle/*/migration.sql"` as documented for
+Wrangler's nested migration layouts.
 
 Then generate the SQL and apply it locally or remotely with Wrangler instead
 of `drizzle-kit migrate`:
