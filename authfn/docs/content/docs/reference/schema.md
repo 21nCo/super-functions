@@ -211,7 +211,10 @@ declaration, asks it for the composed schema, and emits an idiomatic ORM schema.
 To regenerate after enabling or removing a plugin:
 
 ```bash
-npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated
+npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated --force
 ```
+
+See the [Drizzle adapter guide](../adapters/database/drizzle) for the required
+CLI and migration-tool configuration.
 
 For the live SQL types, see the generated files in `authfn/examples/*/server/src/db/generated/authfn-schema.ts`.

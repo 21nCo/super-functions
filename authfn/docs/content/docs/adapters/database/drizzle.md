@@ -9,7 +9,27 @@ description: Use Drizzle ORM with Postgres, MySQL, SQLite, or Cloudflare D1.
 
 ```bash
 npm install drizzle-orm @superfunctions/db
-npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated
+npm install --save-dev @superfunctions/cli drizzle-kit
+```
+
+Point the Superfunctions CLI at the module that exports your `authApp`:
+
+```js
+// superfunctions.config.mjs
+export default {
+  adapter: {
+    type: 'drizzle',
+    drizzle: { dialect: 'postgres' },
+  },
+  libraries: ['./src/auth.ts'],
+};
+```
+
+Then generate the schema. `--force` makes subsequent runs replace the stale
+generated file after you add or remove a plugin:
+
+```bash
+npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated --force
 ```
 
 The generated file is `authfn-schema.ts` for an authfn declaration. Import it
@@ -88,7 +108,21 @@ For workers, hoist the `auth` instance outside the handler if you want it to per
 ## Applying migrations
 
 After generating the Drizzle TypeScript schema from your enabled plugin set,
-run Drizzle's migration tool against that schema:
+configure Drizzle Kit to read the same file:
+
+```ts
+// drizzle.config.ts
+import { defineConfig } from 'drizzle-kit';
+
+export default defineConfig({
+  schema: './db/generated/authfn-schema.ts',
+  out: './drizzle',
+  dialect: 'postgresql',
+  dbCredentials: { url: process.env.DATABASE_URL! },
+});
+```
+
+Then generate and apply the migration:
 
 ```bash
 npx drizzle-kit generate
@@ -97,7 +131,10 @@ npx drizzle-kit migrate
 
 ## Schema visibility
 
-The generated schema includes only the tables for plugins you have enabled. Disable a plugin → run `generate-schema` again → drizzle-kit will produce a migration that drops those tables (review carefully before running in production).
+The generated schema includes only the tables for plugins you have enabled.
+After disabling a plugin, rerun the `generate-schema` command above with
+`--force`; then Drizzle Kit can produce a migration that drops those tables.
+Review drop migrations carefully before running them in production.
 
 ## Transactions
 

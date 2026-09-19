@@ -128,12 +128,13 @@ The full config surface for each plugin is documented under [Plugins](../plugins
 Plugins describe their tables through `schema(config)`. The kernel composes them with the kernel's own (`authfn_users`, `authfn_sessions`) and exposes the unified set via `authApp.getSchema()`. The Superfunctions CLI imports the declaration and generates an ORM schema:
 
 ```bash
-npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated
+npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated --force
 ```
 
 Use your ORM's migration tool to turn that schema change into a reviewed
-migration. Disabling a plugin removes its tables from `getSchema()`. Existing
-tables are not auto-dropped by authfn.
+migration. The [Drizzle adapter guide](../adapters/database/drizzle) shows the
+required config files. Disabling a plugin removes its tables from `getSchema()`.
+Existing tables are not auto-dropped by authfn.
 
 ## Authoring a custom plugin
 

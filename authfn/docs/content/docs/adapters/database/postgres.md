@@ -28,10 +28,12 @@ If you need a raw `pg` adapter, implement the [custom adapter](./custom) contrac
 
 ## Migrations
 
-Generate the Drizzle schema, then create and apply migrations with Drizzle Kit:
+After adding the complete CLI and Drizzle Kit configuration from the
+[Drizzle adapter guide](./drizzle), generate the schema, then create and apply
+migrations:
 
 ```bash
-npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated
+npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated --force
 npx drizzle-kit generate
 npx drizzle-kit migrate
 ```

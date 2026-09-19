@@ -117,10 +117,12 @@ const auth = authApp.createServer({
 });
 ```
 
-Generate the Drizzle schema and migrations from the plugin set you've enabled:
+Add the two config files from the [Drizzle adapter guide](../adapters/database/drizzle),
+using `libraries: ['./auth.ts']` for this quickstart. Then generate the Drizzle
+schema and migrations from the plugin set you've enabled:
 
 ```bash
-npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated
+npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated --force
 npx drizzle-kit generate
 npx drizzle-kit migrate
 ```
