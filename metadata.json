@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2WZPRJH6TKPX4ZPSPKWZQBQ",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/docs/content/docs/adapters/database/drizzle.md",
+    "authfn/docs/content/docs/adapters/database/postgres.md",
+    "authfn/docs/content/docs/ai-resources/codex.md",
+    "authfn/docs/content/docs/ai-resources/skills.md",
+    "authfn/docs/content/docs/core-concepts/plugins.md",
+    "authfn/docs/content/docs/plugins/authoring.md",
+    "authfn/docs/content/docs/quickstart/nodejs.md",
+    "authfn/docs/content/docs/reference/schema.md",
+    "authfn/docs/static/llms-full.txt",
+    "packages/cli/src/__tests__/schema-index-migrations.test.ts",
+    "packages/cli/src/utils/schema-generators.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 24317,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3443584,
+    "output_tokens": 6864,
+    "api_call_count": 28
+  }
+}
