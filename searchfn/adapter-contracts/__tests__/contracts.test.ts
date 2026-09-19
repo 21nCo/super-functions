@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { SEARCH_ADAPTER_DISPOSED, SearchAdapterError } from "../src/index";
-import { CONFORMANCE_ASSERTIONS, runConformanceSuite } from "../src/testing";
+import {
+  compareSearchAllResults,
+  CONFORMANCE_ASSERTIONS,
+  runConformanceSuite,
+} from "../src/testing";
 import { searchfnAdapterVitestConfig } from "../adapter-vitest.config";
 
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
@@ -18,6 +22,26 @@ describe("adapter contracts scaffolding", () => {
   it("exports the shared conformance harness", () => {
     expect(typeof runConformanceSuite).toBe("function");
     expect(CONFORMANCE_ASSERTIONS.length).toBeGreaterThan(0);
+  });
+
+  it("uses resource and id tie-breakers for invalid and infinite scores", () => {
+    const results = [
+      { resource: "notes", id: "b", score: Number.NaN },
+      { resource: "items", id: "b", score: Number.NaN },
+      { resource: "items", id: "a", score: Number.NaN },
+      { resource: "notes", id: "b", score: Number.POSITIVE_INFINITY },
+      { resource: "items", id: "b", score: Number.POSITIVE_INFINITY },
+      { resource: "items", id: "a", score: Number.POSITIVE_INFINITY },
+    ];
+
+    expect([...results].sort(compareSearchAllResults)).toEqual([
+      { resource: "items", id: "a", score: Number.POSITIVE_INFINITY },
+      { resource: "items", id: "b", score: Number.POSITIVE_INFINITY },
+      { resource: "notes", id: "b", score: Number.POSITIVE_INFINITY },
+      { resource: "items", id: "a", score: Number.NaN },
+      { resource: "items", id: "b", score: Number.NaN },
+      { resource: "notes", id: "b", score: Number.NaN },
+    ]);
   });
 
   it("advertises the testing subpath as ESM-only", () => {

@@ -54,10 +54,13 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : 1;
 }
 
-function compareSearchAllResults(left: SearchAllResult, right: SearchAllResult): number {
-  if (left.score !== right.score) {
-    if (Number.isNaN(left.score)) return Number.isNaN(right.score) ? 0 : 1;
-    if (Number.isNaN(right.score)) return -1;
+export function compareSearchAllResults(left: SearchAllResult, right: SearchAllResult): number {
+  const leftScoreIsNaN = Number.isNaN(left.score);
+  const rightScoreIsNaN = Number.isNaN(right.score);
+
+  if (leftScoreIsNaN || rightScoreIsNaN) {
+    if (leftScoreIsNaN !== rightScoreIsNaN) return leftScoreIsNaN ? 1 : -1;
+  } else if (left.score !== right.score) {
     return left.score > right.score ? -1 : 1;
   }
 
