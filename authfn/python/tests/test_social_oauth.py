@@ -30,6 +30,7 @@ from authfn import (
     OAuthStateReplayedError,
     RateLimitedError,
     RedirectUriDisallowedError,
+    ValidationError,
 )
 from authfn.plugins.multi_region import (
     MultiRegionPluginConfig,
@@ -394,6 +395,36 @@ async def test_custom_profile_resolver_normalizes_numeric_provider_account_id() 
     assert len(db.storage["users"]) == 1
     assert len(db.storage["oauth_accounts"]) == 1
     assert db.storage["oauth_accounts"][0]["providerAccountId"] == "4242"
+
+
+@pytest.mark.asyncio
+async def test_custom_profile_resolver_rejects_null_provider_account_id() -> None:
+    db = MockDatabaseAdapter()
+    service = SocialOAuthService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        SocialOAuthPluginConfig(
+            fetcher=build_google_fetcher(),
+            providers={
+                "google": SocialProviderConfig(
+                    client_id="google-client-id",
+                    client_secret="google-client-secret",
+                    profile_resolver=lambda _input: {
+                        "providerAccountId": None,
+                        "email": None,
+                        "emailVerified": False,
+                        "name": "Missing Account",
+                        "profile": {},
+                    },
+                )
+            },
+        ),
+    )
+
+    started = await service.start("google", callback_mode="json")
+    with pytest.raises(ValidationError, match="providerAccountId is required"):
+        await service.handle_callback("google", code="abc123", state=started["stateId"])
+
+    assert db.storage["oauth_accounts"] == []
 
 
 @pytest.mark.asyncio

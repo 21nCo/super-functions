@@ -42,6 +42,10 @@ describe('authfn sessions', () => {
     });
 
     const user = await createUser(config, { primaryEmail: 'ada@example.com' });
+    await expect(issueSession(config, {}, {
+      userId: 'missing-'.padEnd(300, 'x'),
+      methods: ['password']
+    })).rejects.toMatchObject({ code: 'AUTHFN_VALIDATION_ERROR' });
     await expect(issueSession(config, {
       beforeSessionIssue: async (_context, input) => ({
         ...input,
@@ -51,6 +55,31 @@ describe('authfn sessions', () => {
       userId: user.id,
       methods: ['password']
     })).rejects.toMatchObject({ code: 'AUTHFN_VALIDATION_ERROR' });
+  });
+
+  it('continues issuing sessions for legacy users with oversized IDs', async () => {
+    const config = createConfig();
+    const legacyUserId = 'legacy-user-'.padEnd(300, 'x');
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: {
+        id: legacyUserId,
+        primaryEmail: 'legacy@example.com',
+        emailVerifiedAt: null,
+        metadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    });
+
+    const issued = await issueSession(config, {}, {
+      userId: legacyUserId,
+      primaryEmail: 'legacy@example.com',
+      methods: ['password']
+    });
+
+    expect(issued.session.actorId).toBe(legacyUserId);
   });
 
   it('authenticates cookie sessions and invalidates them immediately after revocation', async () => {

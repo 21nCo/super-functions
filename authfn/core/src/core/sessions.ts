@@ -18,7 +18,10 @@ import {
   AuthFnSessionRevokedError,
   AuthFnUnauthenticatedError
 } from './errors.js';
-import { assertAuthFnDatabaseKeyLength } from './limits.js';
+import {
+  AUTHFN_DATABASE_KEY_MAX_LENGTH,
+  assertAuthFnDatabaseKeyLength
+} from './limits.js';
 import { authenticateApiKey as authenticateApiKeyRecord } from './api-keys.js';
 import {
   readCookieValues,
@@ -86,9 +89,19 @@ export async function issueSession(
   const now = nextIssuedAt();
   const sessionToken = createOpaqueToken('st');
   const csrfToken = createOpaqueToken('csrf');
+  const sessionUserId = readString(payload.userId, 'userId');
+  const legacyUser = sessionUserId === input.userId &&
+    Array.from(sessionUserId).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ? await findUserById(config, sessionUserId)
+    : null;
   const record: AuthFnSessionRecord = {
     id: createOpaqueToken('sess'),
-    userId: assertAuthFnDatabaseKeyLength(readString(payload.userId, 'userId'), 'userId'),
+    // Existing v1 users may have IDs longer than the v2 bound. Their MySQL
+    // columns remain TEXT during the compatibility migration, so allow the
+    // original persisted ID while still bounding hook replacements.
+    userId: legacyUser
+      ? sessionUserId
+      : assertAuthFnDatabaseKeyLength(sessionUserId, 'userId'),
     tokenHash: hashSecret(sessionToken),
     csrfHash: hashSecret(csrfToken),
     methods: readMethods(payload.methods),
@@ -106,7 +119,7 @@ export async function issueSession(
     namespace: namespace(config)
   });
 
-  const user = await findUserById(config, record.userId);
+  const user = legacyUser ?? await findUserById(config, record.userId);
   const session = buildUserSession(record, user ?? {
     id: record.userId,
     primaryEmail: readOptionalString(payload.primaryEmail),

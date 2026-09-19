@@ -15,7 +15,14 @@ for path in (AUTHFN_PYTHON_ROOT, PYTHON_CORE_ROOT):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from authfn import AuthFnConfig, authfn_password_plugin, create_authfn
+from authfn import (
+    AuthFnConfig,
+    AuthFnHooks,
+    PluginAbortedError,
+    authfn_password_plugin,
+    create_authfn,
+)
+from authfn.http import issue_session
 
 from .support import InMemoryDatabaseAdapter, TestRequest, build_context
 
@@ -36,6 +43,45 @@ def _csrf_value(response) -> str:
         if cookie.name.endswith(".csrf"):
             return cookie.value
     raise AssertionError("csrf cookie not found")
+
+
+@pytest.mark.asyncio
+async def test_session_hook_rejects_non_string_user_id() -> None:
+    db = InMemoryDatabaseAdapter()
+
+    async def replace_user_id(_context, payload):
+        return {**payload, "userId": None}
+
+    config = AuthFnConfig(
+        database=db,
+        namespace="authfn",
+        hooks=AuthFnHooks(beforeSessionIssue=replace_user_id),
+    )
+    with pytest.raises(PluginAbortedError, match="invalid userId"):
+        await issue_session(
+            config,
+            TestRequest("POST", "https://account.example.com/auth/session"),
+            user={"id": "user-01", "primaryEmail": None},
+            methods=["password"],
+        )
+
+    assert db.storage.get("sessions", []) == []
+
+
+@pytest.mark.asyncio
+async def test_legacy_oversized_user_id_can_issue_session() -> None:
+    db = InMemoryDatabaseAdapter()
+    config = AuthFnConfig(database=db, namespace="authfn")
+    legacy_user_id = "legacy-user-".ljust(300, "x")
+
+    issued = await issue_session(
+        config,
+        TestRequest("POST", "https://account.example.com/auth/session"),
+        user={"id": legacy_user_id, "primaryEmail": "legacy@example.com"},
+        methods=["password"],
+    )
+
+    assert issued["session"].actor_id == legacy_user_id
 
 
 @pytest.mark.asyncio

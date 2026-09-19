@@ -389,11 +389,23 @@ async def issue_session(
         "metadata": {},
     }
     payload = await _run_before_session_issue_hook(config, request, runtime, payload)
+    payload_user_id = payload.get("userId")
+    if not isinstance(payload_user_id, str) or not payload_user_id:
+        raise PluginAbortedError(
+            "beforeSessionIssue hook returned an invalid userId"
+        )
+    # Existing v1 users may have IDs longer than the v2 bound. Preserve their
+    # ability to sign in while still bounding identities replaced by hooks.
+    session_user_id = (
+        payload_user_id
+        if payload_user_id == user.get("id")
+        else assert_database_key_length(payload_user_id, "userId")
+    )
     session_token = _create_opaque_token("st")
     csrf_token = _create_opaque_token("csrf")
     record = {
         "id": _create_opaque_token("sess"),
-        "userId": assert_database_key_length(str(payload["userId"]), "userId"),
+        "userId": session_user_id,
         "tokenHash": _hash_secret(session_token),
         "csrfHash": _hash_secret(csrf_token),
         "methods": list(payload["methods"]),

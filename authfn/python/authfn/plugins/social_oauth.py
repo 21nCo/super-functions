@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -799,7 +800,10 @@ class SocialOAuthService:
     ) -> Dict[str, Any]:
         profile = await self._resolve_profile(provider, token_set, settings)
         profile["providerAccountId"] = assert_database_key_length(
-            str(profile["providerAccountId"]), "providerAccountId"
+            _read_identifier_string(
+                profile.get("providerAccountId"), "providerAccountId"
+            ),
+            "providerAccountId",
         )
         existing_account = await self.config.database.find_one(
             model="oauth_accounts",
@@ -1516,6 +1520,16 @@ def _parse_json_object(value: Any) -> Optional[Dict[str, Any]]:
         parsed = json.loads(value)
         return dict(parsed) if isinstance(parsed, dict) else None
     return None
+
+
+def _read_identifier_string(value: Any, field_name: str) -> str:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, float) and math.isfinite(value):
+        return str(value)
+    raise ValidationError(f"{field_name} is required", {"field": field_name})
 
 
 def _parse_json_array(value: Any) -> Optional[List[Any]]:
