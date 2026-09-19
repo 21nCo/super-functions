@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2XG8CA57EZS0S2MXPDPPJPK",
+  "strategy": "manual-commit",
+  "branch": "codex/authfn-stable-release-20260920",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/adapters/lookup-cloudflare-do/package.json",
+    "authfn/adapters/lookup-dynamodb/package.json",
+    "authfn/admin/package.json",
+    "authfn/api-keys/package.json",
+    "authfn/client/package.json",
+    "authfn/core/package.json",
+    "authfn/email-otp/package.json",
+    "authfn/multi-region/package.json",
+    "authfn/native-handoff/package.json",
+    "authfn/password/package.json",
+    "authfn/schema-plugin/package.json",
+    "authfn/social-oauth/package.json",
+    "authfn/svelte/package.json",
+    "authfn/two-factor/package.json",
+    "package-lock.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 93152,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 9063168,
+    "output_tokens": 30580,
+    "api_call_count": 59
+  }
+}

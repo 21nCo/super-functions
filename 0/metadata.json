@@ -1,0 +1,63 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2XG8CA57EZS0S2MXPDPPJPK",
+  "session_id": "01a0baeb-adb7-7871-b382-5a2ca62b3af5",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-19T18:53:30.412444Z",
+  "branch": "codex/authfn-stable-release-20260920",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/adapters/lookup-cloudflare-do/package.json",
+    "authfn/adapters/lookup-dynamodb/package.json",
+    "authfn/admin/package.json",
+    "authfn/api-keys/package.json",
+    "authfn/client/package.json",
+    "authfn/core/package.json",
+    "authfn/email-otp/package.json",
+    "authfn/multi-region/package.json",
+    "authfn/native-handoff/package.json",
+    "authfn/password/package.json",
+    "authfn/schema-plugin/package.json",
+    "authfn/social-oauth/package.json",
+    "authfn/svelte/package.json",
+    "authfn/two-factor/package.json",
+    "package-lock.json"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "5b4e58107294",
+  "checkpoint_transcript_start": 293,
+  "transcript_lines_at_start": 293,
+  "compact_transcript_start": 34,
+  "token_usage": {
+    "input_tokens": 93152,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 9063168,
+    "output_tokens": 30580,
+    "api_call_count": 59
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-19T18:53:30.305841Z",
+    "agent_lines": 2263,
+    "agent_removed": 569,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2263,
+    "total_lines_changed": 2832,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
