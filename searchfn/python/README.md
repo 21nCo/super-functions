@@ -1,6 +1,6 @@
 # searchfn
 
-Python kernel for inverted-index full-text search. It tokenizes string fields, writes terms into a table on a duck-typed db adapter, and ranks results by match count.
+Python kernel for inverted-index full-text search. It tokenizes string fields, writes terms into a table on a duck-typed db adapter, and ranks results by matching index-row count.
 
 The kernel does not import DataFn. Tests use a local `FakeDb`. Any object with async `find_many`, `create`, and `delete` works. A DataFn `Adapter` (`datafn.db.Adapter`) uses those same method names if you already have one.
 
@@ -130,7 +130,9 @@ SearchFn keeps a simple inverted index (default table `_searchfn_index`):
 
 1. Tokenization splits text, lowercases it, and strips punctuation.
 2. Index rows map `term` → `recordId`.
-3. Results are ranked by how many query tokens match a record.
+3. Results are ranked by matching index rows. Repeated occurrences and matches
+   across multiple fields each contribute to the score; `matches` lists the
+   distinct query terms that matched.
 
 ## License
 

@@ -5,6 +5,28 @@ from typing import Any
 from .utils import DEFAULT_PREFIX, get_schema_models, tokenize
 
 
+def _string_field_names(fields: Any) -> list[str]:
+    if isinstance(fields, dict):
+        return [
+            str(name)
+            for name, field in fields.items()
+            if isinstance(name, str)
+            and isinstance(field, dict)
+            and field.get("type") == "string"
+        ]
+
+    if isinstance(fields, list):
+        return [
+            str(field["name"])
+            for field in fields
+            if isinstance(field, dict)
+            and isinstance(field.get("name"), str)
+            and field.get("type") == "string"
+        ]
+
+    return []
+
+
 def _is_duplicate_error(error: Exception) -> bool:
     message = str(error).lower()
     return (
@@ -75,14 +97,7 @@ async def index_data(
         if not isinstance(model_def, dict):
             continue
 
-        fields = model_def.get("fields", {})
-        if not isinstance(fields, dict):
-            continue
-
-        string_fields = [
-            name for name, field in fields.items()
-            if isinstance(field, dict) and field.get("type") == "string"
-        ]
+        string_fields = _string_field_names(model_def.get("fields", {}))
         if not string_fields:
             continue
 

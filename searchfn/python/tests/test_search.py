@@ -57,6 +57,27 @@ async def test_index_data_creates_index_rows_for_string_fields() -> None:
 
 
 @pytest.mark.asyncio
+async def test_index_data_accepts_datafn_resource_field_lists() -> None:
+    schema = {
+        "resources": [
+            {
+                "name": "article",
+                "fields": [
+                    {"name": "title", "type": "string"},
+                    {"name": "views", "type": "number"},
+                ],
+            }
+        ]
+    }
+    db = FakeDb()
+
+    result = await index_data(schema, db)
+
+    assert result == {"totalIndexed": 2, "totalTerms": 5}
+    assert len(db.records["_searchfn_index"]) == 5
+
+
+@pytest.mark.asyncio
 async def test_search_index_ranks_results_by_match_count() -> None:
     db = FakeDb()
     db.records["_searchfn_index"] = [
