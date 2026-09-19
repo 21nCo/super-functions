@@ -108,7 +108,8 @@ For workers, hoist the `auth` instance outside the handler if you want it to per
 ## Applying migrations
 
 After generating the Drizzle TypeScript schema from your enabled plugin set,
-configure Drizzle Kit to read the same file:
+configure Drizzle Kit to read the same file. This complete example is for
+PostgreSQL:
 
 ```ts
 // drizzle.config.ts
@@ -122,11 +123,100 @@ export default defineConfig({
 });
 ```
 
-Then generate and apply the migration:
+Keep Drizzle Kit's dialect aligned with the schema command and runtime adapter:
+
+| Target | CLI `--dialect` | Drizzle Kit `dialect` | Credentials / apply step |
+| --- | --- | --- | --- |
+| PostgreSQL | `postgres` | `postgresql` | `dbCredentials: { url: DATABASE_URL }`; `drizzle-kit migrate` |
+| MySQL | `mysql` | `mysql` | `dbCredentials: { url: DATABASE_URL }`; `drizzle-kit migrate` |
+| local SQLite | `sqlite` | `sqlite` | `dbCredentials: { url: './authfn.db' }`; `drizzle-kit migrate` |
+| Cloudflare D1 | `sqlite` | `sqlite` | Generate SQL with Drizzle Kit, then apply it with Wrangler's D1 migration command. |
+
+For MySQL, every string field used as a primary key, unique key, foreign key,
+or index member must declare `maxLength`. Generation fails instead of silently
+narrowing an unbounded string contract.
+AuthFn applies the same 255-character ceiling at runtime to caller- or
+provider-controlled keys, including custom user IDs, normalized email keys,
+provider account IDs, and region IDs.
+
+The generated schema reserves up to 767 characters for user primary and
+foreign keys. This is a compatibility allowance for persisted AuthFn v1 users;
+new user IDs remain limited to 255 characters. The 767-character bound keeps a
+user reference plus a timestamp within MySQL's 3072-byte `utf8mb4` composite
+index limit.
+
+### Upgrading an existing AuthFn v1 MySQL schema
+
+Do not use `drizzle-kit generate` to diff an existing AuthFn v1 MySQL schema
+against the v2 generated schema. V1 used unbounded `TEXT` for key columns, and
+that direct diff can emit unsafe narrowing operations. Route this upgrade
+through the Superfunctions compatibility planner instead. Give the CLI access
+to the existing database and use the same directory as your reviewed SQL
+migrations:
+
+```js
+// superfunctions.config.mjs
+export default {
+  adapter: {
+    type: 'drizzle',
+    drizzle: {
+      dialect: 'mysql',
+      connectionString: process.env.DATABASE_URL,
+    },
+  },
+  libraries: ['./src/auth.ts'],
+  migrationsDir: './migrations',
+};
+```
+
+```bash
+npx @superfunctions/cli generate-migration authfn --config ./superfunctions.config.mjs
+```
+
+Review and apply the generated SQL file (named
+`<timestamp>_authfn_v<version>.sql`) with your normal SQL deployment tool. It
+preserves compatible v1 `TEXT` columns and advances AuthFn's recorded schema
+version. Do not run a second Drizzle Kit schema diff for this v1-to-v2 MySQL
+step.
+
+For new MySQL installations, PostgreSQL, and local SQLite, generate and apply
+the migration with Drizzle Kit:
 
 ```bash
 npx drizzle-kit generate
 npx drizzle-kit migrate
+```
+
+For D1, point the binding's Wrangler migration directory at the same Drizzle
+Kit output directory:
+
+```jsonc
+// wrangler.jsonc
+{
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "authfn",
+      "database_id": "replace-me",
+      "migrations_dir": "./drizzle"
+    }
+  ]
+}
+```
+
+The repository-pinned Drizzle Kit 0.31.x release writes migration SQL files
+directly under `./drizzle`, which is the layout Wrangler scans by default. If
+you upgrade to a Drizzle version that emits `./drizzle/<timestamp>/migration.sql`,
+also set `"migrations_pattern": "drizzle/*/migration.sql"` as documented for
+Wrangler's nested migration layouts.
+
+Then generate the SQL and apply it locally or remotely with Wrangler instead
+of `drizzle-kit migrate`:
+
+```bash
+npx drizzle-kit generate
+npx wrangler d1 migrations apply authfn --local
+npx wrangler d1 migrations apply authfn --remote
 ```
 
 ## Schema visibility

@@ -201,7 +201,8 @@ export function diffSchemas(
 export function diffTables(
   required: TableSchema[],
   current: DatabaseTable[],
-  namespace: string
+  namespace: string,
+  options: { preserveUnboundedMySqlStringColumnLengths?: ReadonlyMap<string, number> } = {},
 ): TableDiff[] {
   const diffs: TableDiff[] = [];
   const currentMap = new Map(current.map((t) => [t.name, t]));
@@ -387,7 +388,13 @@ export function diffTables(
           // width; otherwise an oversized schema can bypass every generator.
           const desiredLength = mysqlVarcharLength(fieldSchema);
           const actualLength = databaseStringLength(curCol);
-          if (actualLength !== desiredLength) {
+          const legacyTargetLength =
+            options.preserveUnboundedMySqlStringColumnLengths?.get(`${dbName}.${colName}`);
+          const preserveLegacyText =
+            legacyTargetLength === desiredLength &&
+            isUnboundedMySqlTextType(curCol.dataType) &&
+            desiredLength !== null;
+          if (actualLength !== desiredLength && !preserveLegacyText) {
             changes.push(
               `maxLength changed from ${actualLength ?? 'unbounded'} to ${desiredLength ?? 'unbounded'}`,
             );

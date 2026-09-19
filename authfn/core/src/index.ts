@@ -83,6 +83,11 @@ export {
   AuthFnValidationError
 } from './types.js';
 export {
+  AUTHFN_DATABASE_KEY_MAX_LENGTH,
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+  assertAuthFnDatabaseKeyLength
+} from './core/limits.js';
+export {
   AUTHFN_SCHEMA_VERSION,
   createCoreTables,
   getSchema

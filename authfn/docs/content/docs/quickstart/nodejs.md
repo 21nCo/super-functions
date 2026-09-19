@@ -18,9 +18,8 @@ npm install @superfunctions/db @superfunctions/http-express express
 ## 2. Declare the app and create the server
 
 ```ts
-// auth.ts
-import { memoryAdapter } from "@superfunctions/db/testing";
-import { authfn, authFnPlugins, type AuthFnDeliveryProvider } from "authfn";
+// auth.app.ts — side-effect-free and safe for schema tooling to import
+import { authfn, authFnPlugins } from "authfn";
 import { authFnPasswordPlugin } from "@authfn/password";
 import { authFnEmailOtpPlugin } from "@authfn/email-otp";
 
@@ -32,6 +31,13 @@ export const authApp = authfn({
     authFnEmailOtpPlugin(),
   ),
 });
+```
+
+```ts
+// auth.ts — runtime dependencies and server
+import { memoryAdapter } from "@superfunctions/db/testing";
+import type { AuthFnDeliveryProvider } from "authfn";
+import { authApp } from "./auth.app.js";
 
 const delivery: AuthFnDeliveryProvider = {
   async send(input) {
@@ -105,6 +111,7 @@ Swap `memoryAdapter` for the Drizzle adapter once you're ready for a real databa
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { authApp } from "./auth.app.js";
 import * as schema from "./db/generated/authfn-schema.js";
 
 const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }), { schema });
@@ -112,13 +119,15 @@ const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }), { s
 const auth = authApp.createServer({
   database: drizzleAdapter({ db, dialect: "postgres" }),
   pluginRuntime: {
-    emailOtp: { delivery: yourDelivery },
+    password: { otp: { delivery } },
+    emailOtp: { delivery },
   },
 });
 ```
 
 Add the two config files from the [Drizzle adapter guide](../adapters/database/drizzle),
-using `libraries: ['./auth.ts']` for this quickstart. Then generate the Drizzle
+using `libraries: ['./auth.app.ts']` for this quickstart. Keeping the declaration
+separate lets the CLI import it before the generated schema exists. Then generate the Drizzle
 schema and migrations from the plugin set you've enabled:
 
 ```bash

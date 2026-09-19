@@ -236,7 +236,8 @@ For workers, hoist the `auth` instance outside the handler if you want it to per
 ## Applying migrations
 
 After generating the Drizzle TypeScript schema from your enabled plugin set,
-configure Drizzle Kit to read the same file:
+configure Drizzle Kit to read the same file. This complete example is for
+PostgreSQL:
 
 ```ts
 // drizzle.config.ts
@@ -250,11 +251,100 @@ export default defineConfig({
 });
 ```
 
-Then generate and apply the migration:
+Keep Drizzle Kit's dialect aligned with the schema command and runtime adapter:
+
+| Target | CLI `--dialect` | Drizzle Kit `dialect` | Credentials / apply step |
+| --- | --- | --- | --- |
+| PostgreSQL | `postgres` | `postgresql` | `dbCredentials: { url: DATABASE_URL }`; `drizzle-kit migrate` |
+| MySQL | `mysql` | `mysql` | `dbCredentials: { url: DATABASE_URL }`; `drizzle-kit migrate` |
+| local SQLite | `sqlite` | `sqlite` | `dbCredentials: { url: './authfn.db' }`; `drizzle-kit migrate` |
+| Cloudflare D1 | `sqlite` | `sqlite` | Generate SQL with Drizzle Kit, then apply it with Wrangler's D1 migration command. |
+
+For MySQL, every string field used as a primary key, unique key, foreign key,
+or index member must declare `maxLength`. Generation fails instead of silently
+narrowing an unbounded string contract.
+AuthFn applies the same 255-character ceiling at runtime to caller- or
+provider-controlled keys, including custom user IDs, normalized email keys,
+provider account IDs, and region IDs.
+
+The generated schema reserves up to 767 characters for user primary and
+foreign keys. This is a compatibility allowance for persisted AuthFn v1 users;
+new user IDs remain limited to 255 characters. The 767-character bound keeps a
+user reference plus a timestamp within MySQL's 3072-byte `utf8mb4` composite
+index limit.
+
+### Upgrading an existing AuthFn v1 MySQL schema
+
+Do not use `drizzle-kit generate` to diff an existing AuthFn v1 MySQL schema
+against the v2 generated schema. V1 used unbounded `TEXT` for key columns, and
+that direct diff can emit unsafe narrowing operations. Route this upgrade
+through the Superfunctions compatibility planner instead. Give the CLI access
+to the existing database and use the same directory as your reviewed SQL
+migrations:
+
+```js
+// superfunctions.config.mjs
+export default {
+  adapter: {
+    type: 'drizzle',
+    drizzle: {
+      dialect: 'mysql',
+      connectionString: process.env.DATABASE_URL,
+    },
+  },
+  libraries: ['./src/auth.ts'],
+  migrationsDir: './migrations',
+};
+```
+
+```bash
+npx @superfunctions/cli generate-migration authfn --config ./superfunctions.config.mjs
+```
+
+Review and apply the generated SQL file (named
+`<timestamp>_authfn_v<version>.sql`) with your normal SQL deployment tool. It
+preserves compatible v1 `TEXT` columns and advances AuthFn's recorded schema
+version. Do not run a second Drizzle Kit schema diff for this v1-to-v2 MySQL
+step.
+
+For new MySQL installations, PostgreSQL, and local SQLite, generate and apply
+the migration with Drizzle Kit:
 
 ```bash
 npx drizzle-kit generate
 npx drizzle-kit migrate
+```
+
+For D1, point the binding's Wrangler migration directory at the same Drizzle
+Kit output directory:
+
+```jsonc
+// wrangler.jsonc
+{
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "authfn",
+      "database_id": "replace-me",
+      "migrations_dir": "./drizzle"
+    }
+  ]
+}
+```
+
+The repository-pinned Drizzle Kit 0.31.x release writes migration SQL files
+directly under `./drizzle`, which is the layout Wrangler scans by default. If
+you upgrade to a Drizzle version that emits `./drizzle/<timestamp>/migration.sql`,
+also set `"migrations_pattern": "drizzle/*/migration.sql"` as documented for
+Wrangler's nested migration layouts.
+
+Then generate the SQL and apply it locally or remotely with Wrangler instead
+of `drizzle-kit migrate`:
+
+```bash
+npx drizzle-kit generate
+npx wrangler d1 migrations apply authfn --local
+npx wrangler d1 migrations apply authfn --remote
 ```
 
 ## Schema visibility
@@ -5559,15 +5649,20 @@ This plugin lets the current user mint a one-time URL they can share to "sign in
 
 ```ts
 import { randomBytes, createHash } from "node:crypto";
-import type { AuthFnPlugin, AuthFnPluginRuntimeContext } from "authfn";
 import {
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
   AuthFnConflictError,
   AuthFnError,
   AuthFnNotFoundError,
-  AuthFnUnauthenticatedError,
   AuthFnValidationError,
+  type AuthFnPlugin,
+  type AuthFnPluginRuntimeContext,
 } from "authfn";
-import { authenticateRequest, issueSession } from "authfn/core/sessions";
+import {
+  assertValidCsrf,
+  issueSession,
+  requireCookieSession,
+} from "authfn/core/sessions";
 import { createAuthFnRouteMeta, readOptionalJson } from "authfn/http/router";
 import { jsonSuccess, resolveRequestId } from "authfn/http/envelopes";
 
@@ -5589,9 +5684,14 @@ export function magicLinkPlugin(): AuthFnPlugin<"magicLink", MagicLinkRuntimeCon
       {
         modelName: TABLE,
         fields: {
-          id: { type: "string", required: true, fieldName: "id" },
-          userId: { type: "string", required: true, fieldName: "user_id" },
-          codeHash: { type: "string", required: true, fieldName: "code_hash" },
+          id: { type: "string", required: true, fieldName: "id", maxLength: 255 },
+          userId: {
+            type: "string",
+            required: true,
+            fieldName: "user_id",
+            maxLength: AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+          },
+          codeHash: { type: "string", required: true, fieldName: "code_hash", maxLength: 255 },
           expiresAt: { type: "date", required: true, fieldName: "expires_at" },
           consumedAt: { type: "date", required: false, fieldName: "consumed_at" },
           createdAt: { type: "date", required: true, fieldName: "created_at" },
@@ -5613,11 +5713,11 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
       meta: createAuthFnRouteMeta(
         "issueMagicLink",
         "Issue a one-time magic-link code",
-        { mode: "cookie-session" },
+        { mode: "cookie-session", csrf: true },
       ),
       handler: async (request: Request) => {
-        const session = await authenticateRequest(ctx.config, request);
-        if (!session) throw new AuthFnUnauthenticatedError();
+        const state = await requireCookieSession(ctx.config, request);
+        assertValidCsrf(request, state);
 
         const code = randomBytes(16).toString("base64url");
         const codeHash = createHash("sha256").update(code).digest("hex");
@@ -5629,7 +5729,7 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           model: TABLE,
           data: {
             id: randomBytes(8).toString("hex"),
-            userId: session.actorId,
+            userId: state.session.actorId,
             codeHash,
             expiresAt,
             createdAt: new Date(),
@@ -5642,7 +5742,7 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           | undefined;
         await magicLinkRuntime?.onIssued?.({
           requestId: resolveRequestId(request),
-          userId: session.actorId,
+          userId: state.session.actorId,
           ttlSeconds: MAGIC_LINK_TTL_SECONDS,
         });
 
@@ -5685,6 +5785,8 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           data: { consumedAt: new Date() },
           namespace: ctx.namespace,
         });
+        // Adapter equality with null is translated to SQL IS NULL. The
+        // affected-row count makes this an atomic single-use claim.
         if (claimed !== 1) {
           throw new AuthFnConflictError("magic link already used");
         }
@@ -5727,7 +5829,7 @@ The plugin:
 
 - declares one table (`magic_links`);
 - exposes two routes (`/magic/issue`, `/magic/redeem`);
-- authenticates `/magic/issue` (uses kernel `authenticateRequest`);
+- authenticates `/magic/issue` with a cookie session and validates CSRF;
 - hashes the code at rest;
 - enforces single-use and expiry;
 - issues a session through the kernel's session manager so all `*SessionIssue` hooks still fire and observability events still emit.
@@ -7660,9 +7762,8 @@ npm install @superfunctions/db @superfunctions/http-express express
 ## 2. Declare the app and create the server
 
 ```ts
-// auth.ts
-import { memoryAdapter } from "@superfunctions/db/testing";
-import { authfn, authFnPlugins, type AuthFnDeliveryProvider } from "authfn";
+// auth.app.ts — side-effect-free and safe for schema tooling to import
+import { authfn, authFnPlugins } from "authfn";
 import { authFnPasswordPlugin } from "@authfn/password";
 import { authFnEmailOtpPlugin } from "@authfn/email-otp";
 
@@ -7674,6 +7775,13 @@ export const authApp = authfn({
     authFnEmailOtpPlugin(),
   ),
 });
+```
+
+```ts
+// auth.ts — runtime dependencies and server
+import { memoryAdapter } from "@superfunctions/db/testing";
+import type { AuthFnDeliveryProvider } from "authfn";
+import { authApp } from "./auth.app.js";
 
 const delivery: AuthFnDeliveryProvider = {
   async send(input) {
@@ -7747,6 +7855,7 @@ Swap `memoryAdapter` for the Drizzle adapter once you're ready for a real databa
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { authApp } from "./auth.app.js";
 import * as schema from "./db/generated/authfn-schema.js";
 
 const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }), { schema });
@@ -7754,13 +7863,15 @@ const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }), { s
 const auth = authApp.createServer({
   database: drizzleAdapter({ db, dialect: "postgres" }),
   pluginRuntime: {
-    emailOtp: { delivery: yourDelivery },
+    password: { otp: { delivery } },
+    emailOtp: { delivery },
   },
 });
 ```
 
 Add the two config files from the [Drizzle adapter guide](../adapters/database/drizzle),
-using `libraries: ['./auth.ts']` for this quickstart. Then generate the Drizzle
+using `libraries: ['./auth.app.ts']` for this quickstart. Keeping the declaration
+separate lets the CLI import it before the generated schema exists. Then generate the Drizzle
 schema and migrations from the plugin set you've enabled:
 
 ```bash

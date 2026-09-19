@@ -104,19 +104,68 @@ describe("schema index migrations", () => {
         schemas: [{
           modelName: "counters",
           fields: {
-            id: { type: "string", required: true, fieldName: "id" },
+            id: { type: "string", required: true, fieldName: "id", maxLength: 255 },
             attempts: { type: "number", required: true, fieldName: "attempts" },
+            email: { type: "string", required: true, fieldName: "email", maxLength: 255 },
+            description: { type: "string", required: false, fieldName: "description" },
           },
+          indexes: [{ name: "counters_email_idx", fields: ["email"], unique: true }],
         } as unknown as TableSchema],
       },
-      "example",
+      "authfn",
       "example",
       "mysql",
     );
 
     expect(schema).toContain("int('attempts')");
     expect(schema).not.toContain("integer('attempts')");
+    expect(schema).toContain("id: varchar('id', { length: 255 })");
+    expect(schema).toContain("email: varchar('email', { length: 255 })");
+    expect(schema).toContain("description: text('description')");
     expect(schema).toContain("from 'drizzle-orm/mysql-core'");
+    expect(schema).toContain("generate-schema --dialect mysql");
+  });
+
+  it("rejects unbounded MySQL string keys instead of narrowing their contract", () => {
+    expect(() => generateDrizzleSchemaFile(
+      {
+        version: 1,
+        schemas: [{
+          modelName: "counters",
+          fields: {
+            id: { type: "string", required: true, fieldName: "id" },
+          },
+          indexes: [],
+        } as unknown as TableSchema],
+      },
+      "authfn",
+      "example",
+      "mysql",
+    )).toThrow("MySQL key field counters.id must declare maxLength");
+  });
+
+  it("rejects composite MySQL string indexes beyond the InnoDB key budget", () => {
+    expect(() => generateDrizzleSchemaFile(
+      {
+        version: 1,
+        schemas: [{
+          modelName: "accounts",
+          fields: {
+            id: { type: "string", required: true, fieldName: "id", maxLength: 64 },
+            provider: { type: "string", required: true, fieldName: "provider", maxLength: 500 },
+            providerAccountId: { type: "string", required: true, fieldName: "provider_account_id", maxLength: 500 },
+          },
+          indexes: [{
+            name: "accounts_provider_account_idx",
+            fields: ["provider", "providerAccountId"],
+            unique: true,
+          }],
+        } as unknown as TableSchema],
+      },
+      "authfn",
+      "example",
+      "mysql",
+    )).toThrow("encoded key size 4000 bytes exceeds the 3072-byte InnoDB limit");
   });
 
   it("scopes PostgreSQL index relations to the requested schema", async () => {
@@ -467,8 +516,15 @@ describe("schema index migrations", () => {
     expect(kysely).toContain(
       "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token);",
     );
+    const mysqlSchema = {
+      ...syncJobs,
+      fields: {
+        ...syncJobs.fields,
+        id: { ...syncJobs.fields.id, maxLength: 255 },
+      },
+    };
     const drizzleSchema = generateDrizzleSchemaFile(
-      { version: 6, schemas: [syncJobs] },
+      { version: 6, schemas: [mysqlSchema] },
       "plugfn",
       "plugfn",
       "mysql",
@@ -601,7 +657,16 @@ describe("schema index migrations", () => {
         .toThrow("expected an integer between 1 and 16383");
     }
     expect(() => generateDrizzleSchemaFile(
-      { version: 1, schemas: [invalid] },
+      {
+        version: 1,
+        schemas: [{
+          ...invalid,
+          fields: {
+            ...invalid.fields,
+            id: { ...invalid.fields.id, maxLength: 255 },
+          },
+        }],
+      },
       "plugfn",
       "plugfn",
       "mysql",

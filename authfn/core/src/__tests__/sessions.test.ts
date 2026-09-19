@@ -35,6 +35,53 @@ function regionLookupStoreKey(identifier: string): string {
 }
 
 describe('authfn sessions', () => {
+  it('rejects oversized database keys from callers and session hooks', async () => {
+    const config = createConfig();
+    await expect(createUser(config, { id: 'u'.repeat(256) })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR'
+    });
+
+    const user = await createUser(config, { primaryEmail: 'ada@example.com' });
+    await expect(issueSession(config, {}, {
+      userId: 'missing-'.padEnd(300, 'x'),
+      methods: ['password']
+    })).rejects.toMatchObject({ code: 'AUTHFN_VALIDATION_ERROR' });
+    await expect(issueSession(config, {
+      beforeSessionIssue: async (_context, input) => ({
+        ...input,
+        userId: 'u'.repeat(256)
+      })
+    }, {
+      userId: user.id,
+      methods: ['password']
+    })).rejects.toMatchObject({ code: 'AUTHFN_VALIDATION_ERROR' });
+  });
+
+  it('continues issuing sessions for legacy users with oversized IDs', async () => {
+    const config = createConfig();
+    const legacyUserId = 'legacy-user-'.padEnd(300, 'x');
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: {
+        id: legacyUserId,
+        primaryEmail: 'legacy@example.com',
+        emailVerifiedAt: null,
+        metadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    });
+
+    const issued = await issueSession(config, {}, {
+      userId: legacyUserId,
+      primaryEmail: 'legacy@example.com',
+      methods: ['password']
+    });
+
+    expect(issued.session.actorId).toBe(legacyUserId);
+  });
+
   it('authenticates cookie sessions and invalidates them immediately after revocation', async () => {
     const config = createConfig();
     const auth = createTestServer(config);

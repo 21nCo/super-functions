@@ -87,6 +87,7 @@ export function quoteInternalIdentifier(
 export function normalizeInternalResultCount(result: any): number {
   const normalizedResult = Array.isArray(result) ? result[0] : result;
   const count =
+    result?.count ??
     normalizedResult?.changes ??
     normalizedResult?.affectedRows ??
     normalizedResult?.rowsAffected ??
