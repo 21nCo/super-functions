@@ -1,0 +1,30 @@
+authfn/python/authfn/plugins/social_oauth.py
+  s_d473070cda5c3b::t_64dbd76fa3a248 1487-1488
+  s_d473070cda5c3b::t_467e52538ca4b9 885-890
+authfn/core/src/__tests__/two-factor.test.ts
+  s_d473070cda5c3b::t_467e52538ca4b9 79,81-84,116-124
+authfn/core/src/core/passwords.ts
+  s_d473070cda5c3b::t_467e52538ca4b9 310-313
+authfn/core/src/__tests__/password.test.ts
+  s_d473070cda5c3b::t_467e52538ca4b9 54-82
+authfn/python/tests/test_social_oauth.py
+  s_d473070cda5c3b::t_467e52538ca4b9 432-461
+  s_d473070cda5c3b::t_8296324295c888 31
+  s_d473070cda5c3b::t_4ff2313e55025f 431
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b62c1440b0660dff319ae9b91d01fd2cf1774f68",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
