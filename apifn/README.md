@@ -84,8 +84,9 @@ ApiFn provides a reusable GitHub Actions workflow at `.github/workflows/apifn-ap
 
 The workflow checks out the **caller**, installs the pinned published `@apifn/cli`
 version, then runs it against the caller's spec and collection. The caller does
-not need to be this monorepo or contain an `@apifn/cli` workspace. Same-repo
-callers:
+not need to be this monorepo or contain an `@apifn/cli` workspace. Grant
+`pull-requests: write` on the calling job even when `post_pr_comment` is false;
+the reusable workflow cannot elevate the caller token. Same-repo callers:
 
 ```yaml
 permissions:

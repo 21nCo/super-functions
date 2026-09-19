@@ -92,6 +92,9 @@ on:
         default: true
         type: boolean
 
+# Callers must grant at least these scopes. A reusable workflow cannot
+# elevate GITHUB_TOKEN; a caller with pull-requests: read causes
+# startup_failure before any job runs.
 permissions:
   contents: read
   pull-requests: write
