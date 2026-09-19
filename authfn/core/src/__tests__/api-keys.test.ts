@@ -6,6 +6,7 @@ import type { AuthFnRuntimeConfig } from '../index.js';
 import { issueSessionCookies } from '../core/cookies.js';
 import { issueSession } from '../core/sessions.js';
 import { createUser } from '../core/users.js';
+import { createApiKey } from '../core/api-keys.js';
 
 function createConfig(): AuthFnRuntimeConfig {
   return {
@@ -29,6 +30,26 @@ function cookieHeaderFromSetCookies(setCookies: string[]): string {
 }
 
 describe('authfn api key plugin', () => {
+  it('rejects oversized user IDs in the exported persistence helper', async () => {
+    const config = createConfig();
+
+    await expect(createApiKey(config, {
+      userId: 'u'.repeat(256),
+      name: 'direct-helper'
+    })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: {
+        fieldName: 'userId',
+        maxLength: 255
+      }
+    });
+
+    await expect(config.database.count({
+      model: 'api_keys',
+      namespace: 'authfn'
+    })).resolves.toBe(0);
+  });
+
   it('creates, lists, authenticates, and revokes api keys with hashed secrets at rest', async () => {
     const config = createConfig();
     const auth = createTestServer(config);

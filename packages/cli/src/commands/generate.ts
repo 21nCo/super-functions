@@ -295,24 +295,25 @@ export async function generateMigrations(
       const tableDiffs = diffTables(lib.tables, currentTables, lib.namespace);
 
       if (tableDiffs.length === 0) {
-        console.log(`   ℹ️  No schema changes detected\n`);
-        continue;
+        console.log(`   ℹ️  No physical schema changes detected; generating version-only migration`);
       }
 
-      console.log(`   Found ${tableDiffs.length} change(s):`);
-      for (const diff of tableDiffs) {
-        if (diff.action === 'create') {
-          console.log(`      - CREATE table ${diff.tableName}`);
-        } else if (diff.action === 'alter') {
-          console.log(`      - ALTER table ${diff.tableName}`);
-          if (diff.missingColumns && diff.missingColumns.length > 0) {
-            console.log(`        + Add columns: ${diff.missingColumns.join(', ')}`);
+      if (tableDiffs.length > 0) {
+        console.log(`   Found ${tableDiffs.length} change(s):`);
+        for (const diff of tableDiffs) {
+          if (diff.action === 'create') {
+            console.log(`      - CREATE table ${diff.tableName}`);
+          } else if (diff.action === 'alter') {
+            console.log(`      - ALTER table ${diff.tableName}`);
+            if (diff.missingColumns && diff.missingColumns.length > 0) {
+              console.log(`        + Add columns: ${diff.missingColumns.join(', ')}`);
+            }
+            if (diff.extraColumns && diff.extraColumns.length > 0) {
+              console.log(`        - Extra columns: ${diff.extraColumns.join(', ')}`);
+            }
+          } else if (diff.action === 'drop') {
+            console.log(`      - DROP table ${diff.tableName}`);
           }
-          if (diff.extraColumns && diff.extraColumns.length > 0) {
-            console.log(`        - Extra columns: ${diff.extraColumns.join(', ')}`);
-          }
-        } else if (diff.action === 'drop') {
-          console.log(`      - DROP table ${diff.tableName}`);
         }
       }
 

@@ -83,8 +83,8 @@ def test_schema_composition_is_deterministic() -> None:
     for table_name, fields in bounded_keys.items():
         for field_name in fields:
             assert tables[table_name]["fields"][field_name]["maxLength"] == 255
-    assert tables["oauth_tokens"]["fields"]["connection_id"]["maxLength"] == 512
-    assert tables["oauth_accounts"]["fields"]["connectionId"]["maxLength"] == 512
+    assert tables["oauth_tokens"]["fields"]["connection_id"]["maxLength"] == 768
+    assert tables["oauth_accounts"]["fields"]["connectionId"]["maxLength"] == 768
 
     # These are payload columns, not indexed database keys. Keep them as unbounded
     # text so existing tenant/user/subject identifiers are not narrowed by migration.

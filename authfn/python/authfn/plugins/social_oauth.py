@@ -62,6 +62,7 @@ from ..types import (
 
 SOCIAL_PROVIDER_IDS = ("google", "apple", "github")
 DEFAULT_STATE_TTL_SECONDS = 600
+OAUTH_CONNECTION_ID_MAX_LENGTH = 768
 
 
 def _utcnow() -> datetime:
@@ -1203,7 +1204,7 @@ def _social_schema() -> List[Dict[str, Any]]:
                     "type": "string",
                     "required": True,
                     "fieldName": "connection_id",
-                    "maxLength": 512,
+                    "maxLength": OAUTH_CONNECTION_ID_MAX_LENGTH,
                 },
                 "encrypted_payload": {
                     "type": "string",
@@ -1260,7 +1261,7 @@ def _social_schema() -> List[Dict[str, Any]]:
                     "type": "string",
                     "required": True,
                     "fieldName": "connection_id",
-                    "maxLength": 512,
+                    "maxLength": OAUTH_CONNECTION_ID_MAX_LENGTH,
                 },
                 "email": {"type": "string", "required": False, "fieldName": "email"},
                 "profile": {"type": "json", "required": False, "fieldName": "profile"},
