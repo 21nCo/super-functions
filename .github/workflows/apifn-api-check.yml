@@ -91,14 +91,35 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Fetch CLI lockfile for external callers
+        if: hashFiles('.github/apifn-cli-install/package-lock.json') == ''
+        uses: actions/checkout@v4
+        with:
+          repository: 21nCo/super-functions
+          sparse-checkout: .github/apifn-cli-install
+          path: .apifn-cli-lock
+          persist-credentials: false
+
       - name: Install ApiFn CLI
         shell: bash
         env:
           APIFN_CLI_VERSION: ${{ inputs.cli_version }}
         run: |
           set -euo pipefail
-          npm install --global --ignore-scripts "@apifn/cli@${APIFN_CLI_VERSION}"
-          apifn --version
+          if [ -f .github/apifn-cli-install/package-lock.json ]; then
+            LOCK_DIR=".github/apifn-cli-install"
+          else
+            LOCK_DIR=".apifn-cli-lock/.github/apifn-cli-install"
+          fi
+          npm ci --ignore-scripts --prefix "$LOCK_DIR"
+          BIN_DIR="$PWD/$LOCK_DIR/node_modules/.bin"
+          echo "$BIN_DIR" >> "$GITHUB_PATH"
+          INSTALLED="$(node -p "require('$PWD/$LOCK_DIR/node_modules/@apifn/cli/package.json').version")"
+          echo "Installed @apifn/cli@$INSTALLED from lockfile"
+          if [ "$INSTALLED" != "$APIFN_CLI_VERSION" ]; then
+            echo "::warning::cli_version input is $APIFN_CLI_VERSION; lockfile installed $INSTALLED"
+          fi
+          "$BIN_DIR/apifn" --version
 
       - name: Resolve base spec from base branch
         id: base_spec
