@@ -49,7 +49,7 @@ import {
 } from "authfn";
 import { authenticateRequest, issueSession } from "authfn/core/sessions";
 import { createAuthFnRouteMeta, readOptionalJson } from "authfn/http/router";
-import { jsonSuccess } from "authfn/http/envelopes";
+import { jsonSuccess, resolveRequestId } from "authfn/http/envelopes";
 
 const TABLE = "magic_links";
 const MAGIC_LINK_TTL_SECONDS = 5 * 60;
@@ -121,7 +121,7 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           | MagicLinkRuntimeConfig
           | undefined;
         await magicLinkRuntime?.onIssued?.({
-          requestId: request.headers.get("x-request-id") ?? undefined,
+          requestId: resolveRequestId(request),
           userId: session.actorId,
           ttlSeconds: MAGIC_LINK_TTL_SECONDS,
         });
