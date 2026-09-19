@@ -1,6 +1,6 @@
 {
   "name": "@authfn/api-keys",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "API key plugin for AuthFn",
   "type": "module",
   "main": "./dist/index.js",
@@ -21,7 +21,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "authfn": "0.2.0",
+    "authfn": "0.3.0",
     "@superfunctions/http": "0.2.0"
   },
   "devDependencies": {
