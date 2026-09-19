@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2WZ76RTE145QF3KT2J272A8",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/docs/content/docs/adapters/database/drizzle.md",
+    "authfn/docs/content/docs/adapters/database/index.md",
+    "authfn/docs/content/docs/adapters/database/postgres.md",
+    "authfn/docs/content/docs/ai-resources/codex.md",
+    "authfn/docs/content/docs/ai-resources/skills.md",
+    "authfn/docs/content/docs/core-concepts/plugins.md",
+    "authfn/docs/content/docs/plugins/authoring.md",
+    "authfn/docs/content/docs/quickstart/nodejs.md",
+    "authfn/docs/content/docs/reference/schema.md",
+    "authfn/docs/static/llms-full.txt",
+    "packages/cli/src/__tests__/load-config-module.test.ts",
+    "packages/cli/src/utils/load-config-module.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 35533,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4263424,
+    "output_tokens": 10437,
+    "api_call_count": 43
+  }
+}
