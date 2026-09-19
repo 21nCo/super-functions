@@ -1,0 +1,25 @@
+authfn/python/authfn/plugins/social_oauth.py
+  s_d473070cda5c3b::t_97737d5392259d 1204,1261
+packages/cli/src/__tests__/authfn-schema-discovery.test.ts
+  s_d473070cda5c3b::t_97737d5392259d 193-194
+authfn/python/tests/test_schema.py
+  s_d473070cda5c3b::t_97737d5392259d 74-75,86-87
+authfn/social-oauth/src/index.ts
+  s_d473070cda5c3b::t_97737d5392259d 1555-1557,1584
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8025c4be5186c3bc9c0aaf53ad089c76b6db6a4f",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
