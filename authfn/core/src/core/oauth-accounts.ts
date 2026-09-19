@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { AuthFnRuntimeConfig, AuthFnSocialProfile, AuthFnSocialProviderId } from '../types.js';
 import { AuthFnNotFoundError } from './errors.js';
+import { assertAuthFnDatabaseKeyLength } from './limits.js';
 
 export interface AuthFnOAuthAccountRecord {
   id: string;
@@ -79,11 +80,20 @@ export async function upsertOAuthAccount(
   config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   input: UpsertOAuthAccountInput
 ): Promise<AuthFnOAuthAccountRecord> {
+  const userId = assertAuthFnDatabaseKeyLength(input.userId, 'userId');
+  const provider = assertAuthFnDatabaseKeyLength(input.provider, 'provider') as AuthFnSocialProviderId;
+  const providerAccountId = assertAuthFnDatabaseKeyLength(
+    input.providerAccountId,
+    'providerAccountId'
+  );
   const existing = await findOAuthAccountByProviderAccountId(
     config,
-    input.provider,
-    input.providerAccountId
+    provider,
+    providerAccountId
   );
+  const connectionId = existing?.connectionId === input.connectionId
+    ? input.connectionId
+    : assertAuthFnDatabaseKeyLength(input.connectionId, 'connectionId', 768);
   const timestamp = new Date();
 
   if (existing) {
@@ -91,8 +101,8 @@ export async function upsertOAuthAccount(
       model: 'oauth_accounts',
       where: [{ field: 'id', operator: 'eq', value: existing.id }],
       data: {
-        userId: input.userId,
-        connectionId: input.connectionId,
+        userId,
+        connectionId,
         email: input.email,
         profile: input.profile,
         updatedAt: timestamp
@@ -103,10 +113,10 @@ export async function upsertOAuthAccount(
 
   const record: AuthFnOAuthAccountRecord = {
     id: createIdentifier('oauth'),
-    userId: input.userId,
-    provider: input.provider,
-    providerAccountId: input.providerAccountId,
-    connectionId: input.connectionId,
+    userId,
+    provider,
+    providerAccountId,
+    connectionId,
     email: input.email,
     profile: input.profile,
     createdAt: timestamp,

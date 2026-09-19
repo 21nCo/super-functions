@@ -30,6 +30,7 @@ import {
   getMultiRegionPluginConfig,
   unregisterRegionLookupForIdentifier
 } from './regions.js';
+import { assertAuthFnDatabaseKeyLength } from './limits.js';
 
 const PASSWORD_HASH_ALGO = 'scrypt';
 const PASSWORD_HASH_N = 16384;
@@ -273,10 +274,11 @@ export async function createPasswordCredential(
   config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   input: { userId: string; passwordHash: string }
 ): Promise<AuthFnPasswordCredentialRecord> {
+  const userId = assertAuthFnDatabaseKeyLength(input.userId, 'userId');
   const now = new Date();
   const record: AuthFnPasswordCredentialRecord = {
     id: createIdentifier('pwd'),
-    userId: input.userId,
+    userId,
     passwordHash: input.passwordHash,
     createdAt: now,
     updatedAt: now
@@ -305,16 +307,17 @@ export async function updatePasswordCredential(
   input: { userId: string; password: string },
   options: PasswordPolicyOptions = {}
 ): Promise<AuthFnPasswordCredentialRecord> {
+  const userId = assertAuthFnDatabaseKeyLength(input.userId, 'userId');
   await assertValidPassword(input.password, {
     ...options,
     purpose: options.purpose ?? 'update-password'
   });
-  const existing = await getPasswordCredentialByUserId(config, input.userId);
+  const existing = await getPasswordCredentialByUserId(config, userId);
   const passwordHash = await hashPassword(input.password);
 
   if (!existing) {
     return createPasswordCredential(config, {
-      userId: input.userId,
+      userId,
       passwordHash
     });
   }
@@ -322,7 +325,7 @@ export async function updatePasswordCredential(
   const updatedAt = new Date();
   return config.database.update<AuthFnPasswordCredentialRecord>({
     model: 'password_credentials',
-    where: [{ field: 'userId', operator: 'eq', value: input.userId }],
+    where: [{ field: 'userId', operator: 'eq', value: userId }],
     data: {
       passwordHash,
       updatedAt

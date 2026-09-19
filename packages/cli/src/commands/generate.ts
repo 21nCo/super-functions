@@ -46,7 +46,7 @@ export function createPendingMigration(input: {
   const preserveAuthFnV1MySqlText =
     dialect === 'mysql' &&
     library.namespace === 'authfn' &&
-    currentVersion === 1 &&
+    currentVersion > 0 &&
     library.version >= 2;
   const tableDiffs = diffTables(library.tables, currentTables, library.namespace, {
     preserveUnboundedMySqlStrings: preserveAuthFnV1MySqlText,

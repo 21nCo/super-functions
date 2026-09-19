@@ -30,7 +30,7 @@ function column(
     tableName,
     columnName,
     dataType: 'text',
-    maxLength: null,
+    maxLength: dialect === 'mysql' ? 65_535 : null,
     isNullable: false,
     defaultValue: null,
     isPrimaryKey: primary,
@@ -126,5 +126,26 @@ describe('generate command migration planning', () => {
     expect(pending?.migrationFile.content).toContain('From version 1 to 2');
     expect(pending?.migrationFile.content).not.toContain('ALTER TABLE');
     expect(pending?.migrationFile.content).not.toContain('DROP INDEX');
+
+    const sequential = createPendingMigration({
+      adapterType: 'drizzle',
+      dialect: 'mysql',
+      library: { namespace: 'authfn', version: 3, tables: authFnTables },
+      currentVersion: 2,
+      currentTables: currentAuthFnTables('mysql'),
+    });
+    expect(sequential?.tableDiffs).toEqual([]);
+    expect(sequential?.migrationFile.content).toContain('From version 2 to 3');
+    expect(sequential?.migrationFile.content).not.toContain('ALTER TABLE');
+
+    const kysely = createPendingMigration({
+      adapterType: 'kysely',
+      dialect: 'mysql',
+      library: { namespace: 'authfn', version: 2, tables: authFnTables },
+      currentVersion: 1,
+      currentTables: currentAuthFnTables('mysql'),
+    });
+    expect(kysely?.migrationFile.content).toContain('.onDuplicateKeyUpdate({');
+    expect(kysely?.migrationFile.content).not.toContain('.onConflict(');
   });
 });

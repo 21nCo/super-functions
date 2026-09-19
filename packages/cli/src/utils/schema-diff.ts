@@ -390,7 +390,7 @@ export function diffTables(
           const actualLength = databaseStringLength(curCol);
           const preserveLegacyText =
             options.preserveUnboundedMySqlStrings === true &&
-            actualLength === null &&
+            isUnboundedMySqlTextType(curCol.dataType) &&
             desiredLength !== null;
           if (actualLength !== desiredLength && !preserveLegacyText) {
             changes.push(

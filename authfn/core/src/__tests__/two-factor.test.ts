@@ -10,6 +10,7 @@ import { issueSessionCookies } from '../core/cookies.js';
 import { issueSession } from '../core/sessions.js';
 import {
   confirmTwoFactorEnrollment,
+  createTwoFactorChallenge,
   createTwoFactorEnrollment,
   verifyTwoFactorCode
 } from '../core/two-factor.js';
@@ -43,6 +44,40 @@ function createConfig(clock = createClock()): AuthFnRuntimeConfig {
     }
   };
 }
+
+describe('two-factor persistence bounds', () => {
+  it('rejects oversized user IDs in direct enrollment and challenge helpers', async () => {
+    const config = createConfig();
+    const user = await createUser(config, { primaryEmail: 'bounds@example.com' });
+    const oversizedUser = { ...user, id: 'u'.repeat(256) };
+
+    await expect(createTwoFactorEnrollment(
+      config,
+      oversizedUser,
+      config.pluginRuntime?.twoFactor
+    )).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'userId', maxLength: 255 }
+    });
+    await expect(createTwoFactorChallenge(
+      config,
+      oversizedUser,
+      'password',
+      config.pluginRuntime?.twoFactor
+    )).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'userId', maxLength: 255 }
+    });
+    await expect(config.database.count({
+      model: 'two_factor_enrollments',
+      namespace: 'authfn'
+    })).resolves.toBe(0);
+    await expect(config.database.count({
+      model: 'two_factor_challenges',
+      namespace: 'authfn'
+    })).resolves.toBe(0);
+  });
+});
 
 function createTwoFactorPluginConfig(clock: ReturnType<typeof createClock>) {
   return {

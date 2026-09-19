@@ -6,6 +6,7 @@ import type { AuthFnEvent, AuthFnRuntimeConfig } from '../index.js';
 import { issueSession } from '../core/sessions.js';
 import { createUser } from '../core/users.js';
 import {
+  createPasswordCredential,
   getPasswordCredentialByUserId,
   signInWithPassword,
   updatePasswordCredential
@@ -26,6 +27,30 @@ function cookieHeaderFromSetCookies(setCookies: string[]): string {
 }
 
 describe('authfn password plugin', () => {
+  it('rejects oversized user IDs in direct credential helpers', async () => {
+    const config = createConfig();
+    const userId = 'u'.repeat(256);
+
+    await expect(createPasswordCredential(config, {
+      userId,
+      passwordHash: 'already-hashed'
+    })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'userId', maxLength: 255 }
+    });
+    await expect(updatePasswordCredential(config, {
+      userId,
+      password: 'CorrectHorseBatteryStaple!'
+    })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'userId', maxLength: 255 }
+    });
+    await expect(config.database.count({
+      model: 'password_credentials',
+      namespace: 'authfn'
+    })).resolves.toBe(0);
+  });
+
   it('keeps the documented inline OTP delivery configuration compatible', async () => {
     const delivered: unknown[] = [];
     const auth = createTestServer({

@@ -4,6 +4,7 @@ import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
 import { authFnSocialOAuthPlugin } from '@authfn/social-oauth';
 import type { AuthFnEvent, AuthFnRuntimeConfig } from '../index.js';
 import { createUser, markUserEmailVerified } from '../core/users.js';
+import { upsertOAuthAccount } from '../core/oauth-accounts.js';
 
 function createIdToken(claims: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
@@ -61,6 +62,35 @@ function createConfig(overrides: Partial<AuthFnRuntimeConfig> = {}): AuthFnRunti
     ...overrides
   };
 }
+
+describe('social OAuth persistence bounds', () => {
+  it('rejects oversized provider account IDs in the direct upsert helper', async () => {
+    const config = createConfig();
+
+    await expect(upsertOAuthAccount(config, {
+      userId: 'user_1',
+      provider: 'google',
+      providerAccountId: 'p'.repeat(256),
+      connectionId: 'soc_google_fixed'
+    })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'providerAccountId', maxLength: 255 }
+    });
+    await expect(upsertOAuthAccount(config, {
+      userId: 'user_1',
+      provider: 'google',
+      providerAccountId: 'provider-account',
+      connectionId: 'c'.repeat(769)
+    })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'connectionId', maxLength: 768 }
+    });
+    await expect(config.database.count({
+      model: 'oauth_accounts',
+      namespace: 'authfn'
+    })).resolves.toBe(0);
+  });
+});
 
 describe('authfn google social oauth', () => {
   it('completes start/callback redirect flow and rejects replayed state and disallowed returns', async () => {
