@@ -33,17 +33,18 @@ export const authApp = authfn({
   ),
 });
 
+const delivery = {
+  async send(input) {
+    console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
+    return { sent: true };
+  },
+};
+
 export const auth = authApp.createServer({
   database: memoryAdapter({ debug: false }),
   pluginRuntime: {
-    emailOtp: {
-      delivery: {
-        async send(input) {
-          console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
-          return { sent: true };
-        },
-      },
-    },
+    password: { otp: { delivery } },
+    emailOtp: { delivery },
   },
 });
 ```
@@ -119,8 +120,8 @@ const auth = authApp.createServer({
 Generate the Drizzle schema and migrations from the plugin set you've enabled:
 
 ```bash
-npx @superfunctions/cli generate-schema --adapter drizzle --output ./src/db/generated
-npx @superfunctions/cli generate
+npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated
+npx @superfunctions/cli generate-migration
 ```
 
 `authApp.getSchema()` does not need a database connection.

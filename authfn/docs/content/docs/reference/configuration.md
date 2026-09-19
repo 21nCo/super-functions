@@ -31,6 +31,7 @@ const auth = authApp.createServer({
   environment: { resolve(request) { /* ... */ } },
   hooks: { /* ... */ },
   pluginRuntime: {
+    password: { otp: { delivery } }, // required to use password reset
     emailOtp: { delivery },     // required when email-OTP is enabled
   },
   observability: {
@@ -105,7 +106,10 @@ Runtime dependencies keyed by plugin name. Schema and policy options stay on the
 | `multiRegion` | Configure `regions`, `defaultRegionId`, `lookupStore`, and `routing` with `authFnMultiRegionEnvironment(...)`, then pass it as `environment`. |
 | `nativeHandoff` | `now` |
 
-`emailOtp` and `socialOAuth` declare required runtime config. Creating a server without those entries fails type-checking (and fails at runtime if you bypass the types).
+`emailOtp` and `socialOAuth` declare required runtime config, so omitting those
+entries fails type-checking. If an untyped caller bypasses that check, the
+affected route rejects the request when it reads the missing runtime config.
+Plugins can implement `validateConfig` when they need creation-time validation.
 
 ### `stores`
 

@@ -34,7 +34,7 @@ The contract is closer to a typed query builder than to an ORM — `model`, `whe
 Whatever adapter you pick, your enabled plugin set determines the schema you need. Generate migrations with the Superfunctions CLI:
 
 ```bash
-npx @superfunctions/cli generate
+npx @superfunctions/cli generate-migration
 ```
 
 The CLI reads `auth.getSchema()` and writes adapter-specific migration files. See [the CLI docs](https://github.com/21nCo/super-functions/tree/dev/clifn) for full options.

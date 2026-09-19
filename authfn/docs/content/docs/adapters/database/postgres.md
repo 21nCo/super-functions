@@ -31,7 +31,7 @@ If you need a raw `pg` adapter, implement the [custom adapter](./custom) contrac
 Generate raw SQL migrations with the CLI:
 
 ```bash
-npx @superfunctions/cli generate --dialect postgres --output ./migrations
+npx @superfunctions/cli generate-migration
 ```
 
 Apply them with your favorite migration tool: `node-pg-migrate`, `dbmate`, `flyway`, or in-house. The output is plain SQL — bring it into whatever tooling you already use.

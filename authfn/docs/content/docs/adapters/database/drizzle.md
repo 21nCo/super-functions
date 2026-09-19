@@ -9,13 +9,14 @@ description: Use Drizzle ORM with Postgres, MySQL, SQLite, or Cloudflare D1.
 
 ```bash
 npm install drizzle-orm @superfunctions/db
-npx @superfunctions/cli generate-schema --adapter drizzle --output ./src/db/generated
+npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated
 ```
 
 The generated file is `authfn-schema.ts` for an authfn declaration. Import it
 and pass it to every `drizzle()` constructor below; `drizzleAdapter` resolves
-tables from Drizzle's schema registry and cannot operate without it. Configure
-the target database dialect in `superfunctions.config.js` before generating.
+tables from Drizzle's schema registry and cannot operate without it. Set
+`--dialect` to the database you use: `postgres`, `mysql`, or `sqlite`. Cloudflare
+D1 uses the `sqlite` dialect.
 
 ## Postgres
 

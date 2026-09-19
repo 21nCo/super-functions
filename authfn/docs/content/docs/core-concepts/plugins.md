@@ -128,7 +128,7 @@ The full config surface for each plugin is documented under [Plugins](../plugins
 Plugins describe their tables through `schema(config)`. The kernel composes them with the kernel's own (`authfn_users`, `authfn_sessions`) and exposes the unified set via `auth.getSchema()`. The Superfunctions CLI reads `auth.getSchema()` to generate migrations:
 
 ```bash
-npx @superfunctions/cli generate
+npx @superfunctions/cli generate-migration
 ```
 
 Disabling a plugin removes its tables from `getSchema()`. Existing tables on a database are not auto-dropped — you'll want a manual migration if you remove a plugin.

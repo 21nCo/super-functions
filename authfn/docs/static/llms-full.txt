@@ -137,13 +137,14 @@ If your adapter is generally useful, consider sending it upstream. The bundled a
 
 ```bash
 npm install drizzle-orm @superfunctions/db
-npx @superfunctions/cli generate-schema --adapter drizzle --output ./src/db/generated
+npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated
 ```
 
 The generated file is `authfn-schema.ts` for an authfn declaration. Import it
 and pass it to every `drizzle()` constructor below; `drizzleAdapter` resolves
-tables from Drizzle's schema registry and cannot operate without it. Configure
-the target database dialect in `superfunctions.config.js` before generating.
+tables from Drizzle's schema registry and cannot operate without it. Set
+`--dialect` to the database you use: `postgres`, `mysql`, or `sqlite`. Cloudflare
+D1 uses the `sqlite` dialect.
 
 ## Postgres
 
@@ -281,7 +282,7 @@ The contract is closer to a typed query builder than to an ORM — `model`, `whe
 Whatever adapter you pick, your enabled plugin set determines the schema you need. Generate migrations with the Superfunctions CLI:
 
 ```bash
-npx @superfunctions/cli generate
+npx @superfunctions/cli generate-migration
 ```
 
 The CLI reads `auth.getSchema()` and writes adapter-specific migration files. See [the CLI docs](https://github.com/21nCo/super-functions/tree/dev/clifn) for full options.
@@ -387,7 +388,7 @@ If you need a raw `pg` adapter, implement the [custom adapter](./custom) contrac
 Generate raw SQL migrations with the CLI:
 
 ```bash
-npx @superfunctions/cli generate --dialect postgres --output ./migrations
+npx @superfunctions/cli generate-migration
 ```
 
 Apply them with your favorite migration tool: `node-pg-migrate`, `dbmate`, `flyway`, or in-house. The output is plain SQL — bring it into whatever tooling you already use.
@@ -3216,7 +3217,7 @@ The full config surface for each plugin is documented under [Plugins](../plugins
 Plugins describe their tables through `schema(config)`. The kernel composes them with the kernel's own (`authfn_users`, `authfn_sessions`) and exposes the unified set via `auth.getSchema()`. The Superfunctions CLI reads `auth.getSchema()` to generate migrations:
 
 ```bash
-npx @superfunctions/cli generate
+npx @superfunctions/cli generate-migration
 ```
 
 Disabling a plugin removes its tables from `getSchema()`. Existing tables on a database are not auto-dropped — you'll want a manual migration if you remove a plugin.
@@ -5527,6 +5528,7 @@ import { createAuthFnRouteMeta, readOptionalJson } from "authfn/http/router";
 import { jsonSuccess } from "authfn/http/envelopes";
 
 const TABLE = "magic_links";
+const MAGIC_LINK_TTL_SECONDS = 5 * 60;
 
 export type MagicLinkRuntimeConfig = {
   onIssued?: (event: {
@@ -5575,7 +5577,9 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
 
         const code = randomBytes(16).toString("base64url");
         const codeHash = createHash("sha256").update(code).digest("hex");
-        const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+        const expiresAt = new Date(
+          Date.now() + MAGIC_LINK_TTL_SECONDS * 1000,
+        );
 
         await ctx.config.database.create({
           model: TABLE,
@@ -5595,7 +5599,7 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
         await magicLinkRuntime?.onIssued?.({
           requestId: request.headers.get("x-request-id") ?? undefined,
           userId: session.actorId,
-          ttlSeconds: 300,
+          ttlSeconds: MAGIC_LINK_TTL_SECONDS,
         });
 
         return jsonSuccess(request, { code, expiresAt });
@@ -5699,7 +5703,7 @@ If your plugin needs secrets or delivery providers, declare a runtime config typ
 The kernel composes your `schema(config)` with everything else. Your tables are real database tables — they need migrations like any other. After enabling your plugin, run:
 
 ```bash
-npx @superfunctions/cli generate
+npx @superfunctions/cli generate-migration
 ```
 
 …and ship the migrations alongside your code. `authApp.getSchema()` works without `createServer()`.
@@ -5738,19 +5742,7 @@ plugin `after*` → kernel `after*`. See [Concepts → Hooks](../core-concepts/h
 when a custom plugin emits one of the kernel's standard events; it does not
 accept arbitrary custom event names. For plugin-specific telemetry, call an
 application-owned reporter supplied in your plugin's runtime config, as the
-`/magic/issue` route above does:
-
-```ts
-const magicLinkRuntime = ctx.config.pluginRuntime?.magicLink as
-  | MagicLinkRuntimeConfig
-  | undefined;
-
-await magicLinkRuntime?.onIssued?.({
-  requestId: request.headers.get("x-request-id") ?? undefined,
-  userId: session.actorId,
-  ttlSeconds: 300,
-});
-```
+`/magic/issue` route above does.
 
 Keep the reporter's event type in your plugin package. Do not cast a freeform
 string into `AuthFnEventType`; sinks consuming kernel events can rely on that
@@ -6050,6 +6042,9 @@ const authApp = authfn({
 const auth = authApp.createServer({
   database,
   pluginRuntime: {
+    password: {
+      otp: { delivery: yourDelivery },
+    },
     emailOtp: {
       delivery: yourDelivery,
     },
@@ -7629,17 +7624,18 @@ export const authApp = authfn({
   ),
 });
 
+const delivery = {
+  async send(input) {
+    console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
+    return { sent: true };
+  },
+};
+
 export const auth = authApp.createServer({
   database: memoryAdapter({ debug: false }),
   pluginRuntime: {
-    emailOtp: {
-      delivery: {
-        async send(input) {
-          console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
-          return { sent: true };
-        },
-      },
-    },
+    password: { otp: { delivery } },
+    emailOtp: { delivery },
   },
 });
 ```
@@ -7715,8 +7711,8 @@ const auth = authApp.createServer({
 Generate the Drizzle schema and migrations from the plugin set you've enabled:
 
 ```bash
-npx @superfunctions/cli generate-schema --adapter drizzle --output ./src/db/generated
-npx @superfunctions/cli generate
+npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated
+npx @superfunctions/cli generate-migration
 ```
 
 `authApp.getSchema()` does not need a database connection.
@@ -9796,6 +9792,7 @@ const auth = authApp.createServer({
   environment: { resolve(request) { /* ... */ } },
   hooks: { /* ... */ },
   pluginRuntime: {
+    password: { otp: { delivery } }, // required to use password reset
     emailOtp: { delivery },     // required when email-OTP is enabled
   },
   observability: {
@@ -9870,7 +9867,10 @@ Runtime dependencies keyed by plugin name. Schema and policy options stay on the
 | `multiRegion` | Configure `regions`, `defaultRegionId`, `lookupStore`, and `routing` with `authFnMultiRegionEnvironment(...)`, then pass it as `environment`. |
 | `nativeHandoff` | `now` |
 
-`emailOtp` and `socialOAuth` declare required runtime config. Creating a server without those entries fails type-checking (and fails at runtime if you bypass the types).
+`emailOtp` and `socialOAuth` declare required runtime config, so omitting those
+entries fails type-checking. If an untyped caller bypasses that check, the
+affected route rejects the request when it reads the missing runtime config.
+Plugins can implement `validateConfig` when they need creation-time validation.
 
 ### `stores`
 

@@ -40,6 +40,9 @@ const authApp = authfn({
 const auth = authApp.createServer({
   database,
   pluginRuntime: {
+    password: {
+      otp: { delivery: yourDelivery },
+    },
     emailOtp: {
       delivery: yourDelivery,
     },

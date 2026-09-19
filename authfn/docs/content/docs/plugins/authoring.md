@@ -52,6 +52,7 @@ import { createAuthFnRouteMeta, readOptionalJson } from "authfn/http/router";
 import { jsonSuccess } from "authfn/http/envelopes";
 
 const TABLE = "magic_links";
+const MAGIC_LINK_TTL_SECONDS = 5 * 60;
 
 export type MagicLinkRuntimeConfig = {
   onIssued?: (event: {
@@ -100,7 +101,9 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
 
         const code = randomBytes(16).toString("base64url");
         const codeHash = createHash("sha256").update(code).digest("hex");
-        const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+        const expiresAt = new Date(
+          Date.now() + MAGIC_LINK_TTL_SECONDS * 1000,
+        );
 
         await ctx.config.database.create({
           model: TABLE,
@@ -120,7 +123,7 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
         await magicLinkRuntime?.onIssued?.({
           requestId: request.headers.get("x-request-id") ?? undefined,
           userId: session.actorId,
-          ttlSeconds: 300,
+          ttlSeconds: MAGIC_LINK_TTL_SECONDS,
         });
 
         return jsonSuccess(request, { code, expiresAt });
@@ -224,7 +227,7 @@ If your plugin needs secrets or delivery providers, declare a runtime config typ
 The kernel composes your `schema(config)` with everything else. Your tables are real database tables — they need migrations like any other. After enabling your plugin, run:
 
 ```bash
-npx @superfunctions/cli generate
+npx @superfunctions/cli generate-migration
 ```
 
 …and ship the migrations alongside your code. `authApp.getSchema()` works without `createServer()`.
@@ -263,19 +266,7 @@ plugin `after*` → kernel `after*`. See [Concepts → Hooks](../core-concepts/h
 when a custom plugin emits one of the kernel's standard events; it does not
 accept arbitrary custom event names. For plugin-specific telemetry, call an
 application-owned reporter supplied in your plugin's runtime config, as the
-`/magic/issue` route above does:
-
-```ts
-const magicLinkRuntime = ctx.config.pluginRuntime?.magicLink as
-  | MagicLinkRuntimeConfig
-  | undefined;
-
-await magicLinkRuntime?.onIssued?.({
-  requestId: request.headers.get("x-request-id") ?? undefined,
-  userId: session.actorId,
-  ttlSeconds: 300,
-});
-```
+`/magic/issue` route above does.
 
 Keep the reporter's event type in your plugin package. Do not cast a freeform
 string into `AuthFnEventType`; sinks consuming kernel events can rely on that
