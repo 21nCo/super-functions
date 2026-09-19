@@ -28,7 +28,7 @@
 - [Skills](https://authfn.superfunctions.dev/docs/ai-resources/skills) — Packaged authfn patterns your assistant can apply on request — sign-in flows, OAuth, multi-region, and more.
 - [API Reference](https://authfn.superfunctions.dev/docs/api) — HTTP endpoints exposed by authfn, generated from your enabled plugins.
 - [Account linking](https://authfn.superfunctions.dev/docs/core-concepts/account-linking) — When authfn merges multiple sign-in methods into a single user, and how to control that policy.
-- [Architecture](https://authfn.superfunctions.dev/docs/core-concepts/architecture) — How the authfn kernel, plugins, hooks, environment resolver, and database adapter fit together.
+- [Architecture](https://authfn.superfunctions.dev/docs/core-concepts/architecture) — How the authfn kernel, plugins, hooks, runtime resolver, and database adapter fit together.
 - [Cookies](https://authfn.superfunctions.dev/docs/core-concepts/cookies) — Names, prefixes, domain, SameSite, Secure, path, and max-age — every knob authfn exposes for cookie-based sessions.
 - [CSRF protection](https://authfn.superfunctions.dev/docs/core-concepts/csrf) — How authfn defends against cross-site request forgery, what's protected, what's exempt, and how to extend the policy.
 - [Envelopes](https://authfn.superfunctions.dev/docs/core-concepts/envelopes) — Every authfn HTTP response wraps either a success payload or a structured error in a stable envelope shape.

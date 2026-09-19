@@ -53,7 +53,15 @@ import { jsonSuccess } from "authfn/http/envelopes";
 
 const TABLE = "magic_links";
 
-export function magicLinkPlugin(): AuthFnPlugin<"magicLink"> {
+export type MagicLinkRuntimeConfig = {
+  onIssued?: (event: {
+    requestId?: string;
+    userId: string;
+    ttlSeconds: number;
+  }) => Promise<void> | void;
+};
+
+export function magicLinkPlugin(): AuthFnPlugin<"magicLink", MagicLinkRuntimeConfig> {
   return {
     name: "magicLink",
     schema: () => [
@@ -166,6 +174,15 @@ import { authfn, authFnPlugins } from "authfn";
 const authApp = authfn({
   plugins: authFnPlugins(magicLinkPlugin()),
 });
+
+const auth = authApp.createServer({
+  database,
+  pluginRuntime: {
+    magicLink: {
+      onIssued: (event) => magicLinkTelemetry.record(event),
+    },
+  },
+});
 ```
 
 The plugin:
@@ -240,14 +257,6 @@ application-owned reporter (for example, one supplied in your plugin's runtime
 config):
 
 ```ts
-type MagicLinkRuntimeConfig = {
-  onIssued?: (event: {
-    requestId?: string;
-    userId: string;
-    ttlSeconds: number;
-  }) => Promise<void> | void;
-};
-
 const magicLinkRuntime = ctx.config.pluginRuntime?.magicLink as
   | MagicLinkRuntimeConfig
   | undefined;

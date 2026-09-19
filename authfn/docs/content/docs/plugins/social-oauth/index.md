@@ -58,6 +58,7 @@ interface SocialOAuthPluginRuntimeConfig {
   fetcher?: OAuthFetchLike;
   tokenHttpClient?: OAuthTokenHttpClient;
   now?: () => Date;
+  diagnostics?: false | SocialOAuthDiagnosticsConfig;
 }
 
 interface AuthFnSocialProviderConfig {
@@ -79,6 +80,8 @@ interface AuthFnSocialProviderConfig {
 | `providers` | `pluginRuntime.socialOAuth` | required | Map of provider id → config. |
 | `fetcher` | `pluginRuntime.socialOAuth` | global `fetch` | Inject a custom fetcher (proxy, instrumentation). |
 | `tokenHttpClient` | `pluginRuntime.socialOAuth` | default | Override the token endpoint client. |
+| `now` | `pluginRuntime.socialOAuth` | system clock | Override the clock (tests). |
+| `diagnostics` | `pluginRuntime.socialOAuth` | `false` | Configure diagnostic event reporting, or disable it explicitly. |
 
 ## Per-provider deep dives
 

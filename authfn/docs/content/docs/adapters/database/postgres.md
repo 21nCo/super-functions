@@ -8,6 +8,7 @@ description: Use Postgres with authfn through the supported Drizzle adapter path
 For Postgres, use the supported Drizzle adapter path:
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
@@ -16,7 +17,8 @@ import * as schema from './db/generated/authfn-schema.js';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool, { schema });
 
-authApp.createServer({
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({
   database: drizzleAdapter({ db, dialect: 'postgres' }),
   // ...
 });

@@ -13,7 +13,8 @@ authApp.createServer({
   rateLimit: {
     enabled: true,
     mode: 'local', // 'strict' | 'best-effort' | 'local'
-    resolveClientIp: (request) => /* trusted IP */,
+    // Safe only when Cloudflare removes client-supplied copies of this header.
+    resolveClientIp: (request) => request.headers.get('cf-connecting-ip') ?? undefined,
     policies: {
       password: { ipLimit: 10, windowSeconds: 60 },
       'otp-send': { ipLimit: 5, windowSeconds: 60 },

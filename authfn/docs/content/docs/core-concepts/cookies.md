@@ -83,7 +83,7 @@ domain: ({ request, regionId }) => {
 },
 ```
 
-Or — preferred — use the [environment resolver](./runtime) to set `cookie.domain` per request. Anything in the resolved environment's `cookie` overlay takes precedence over `authfn({ cookie })`.
+Or — preferred — use the [runtime resolver](./runtime) to set `cookie.domain` per request. Anything in the resolved environment's `cookie` overlay takes precedence over `authfn({ cookie })`.
 
 ## SameSite
 

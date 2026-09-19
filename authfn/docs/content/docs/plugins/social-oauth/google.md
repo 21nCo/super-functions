@@ -16,6 +16,9 @@ The Google provider uses standard OAuth 2.0 + OIDC. authfn fetches the user prof
 
 ## Configuration
 
+Start with the [full two-stage Social OAuth skeleton](./index); the fragment
+below assumes that page's `authApp` declaration and `database` adapter.
+
 ```ts
 authApp.createServer({
   database,

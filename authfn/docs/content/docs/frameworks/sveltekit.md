@@ -73,7 +73,11 @@ For multi-region deployments, configure `createServer({ environment })` to deriv
 
 ```ts
 // src/lib/server/auth.ts
-authApp.createServer({
+import { authfn, authFnPlugins } from 'authfn';
+import { database } from './database';
+
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+export const auth = authApp.createServer({
   database,
   environment: {
     resolve(request) {

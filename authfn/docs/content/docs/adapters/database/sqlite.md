@@ -18,13 +18,17 @@ npm install better-sqlite3
 ## Via Drizzle
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
 
 const db = drizzle(new Database('authfn.db'));
 
-authApp.createServer({ database: drizzleAdapter(db), /* ... */ });
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({
+  database: drizzleAdapter({ db, dialect: 'sqlite' }),
+});
 ```
 
 ## Direct SQLite adapter
@@ -32,12 +36,14 @@ authApp.createServer({ database: drizzleAdapter(db), /* ... */ });
 If a thin SQLite adapter is exposed in your build, use it directly:
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { sqliteAdapter } from '@superfunctions/db/adapters/sqlite';   // if available
 import Database from 'better-sqlite3';
 
 const db = new Database('authfn.db');
 
-authApp.createServer({ database: sqliteAdapter(db), /* ... */ });
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({ database: sqliteAdapter(db) });
 ```
 
 When in doubt, the `drizzleAdapter` route works everywhere.

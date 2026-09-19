@@ -141,7 +141,7 @@ If two regions both attempt to register the same email at the same time, the loo
 
 Region lookups are cached when you supply a shared KV store to `createServer({ stores })`. The cache layer is shared with the rest of the kernel, so you only configure it once. Hits and misses use different TTLs:
 
-- Hits: `regionHit` TTL (default 5 minutes).
+- Hits: 15 minutes (`AUTHFN_CACHE_TTL_SECONDS.regionHit`).
 - Misses: `regionMiss` TTL (default 1 minute) — short on purpose so newly-created users don't experience stale "no region" lookups.
 
 Use a Redis-backed store for production; the in-memory KV store is fine for local development.

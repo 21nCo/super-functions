@@ -21,7 +21,7 @@ Packages are released independently. The version of `authfn` is the canonical No
 - **Envelope shape**: stable across all versions of v0.x.
 - **Error codes**: only added — never removed or renamed in a minor.
 - **Database schema**: additive in minors. Removals or renames require a major + a generated migration script.
-- **Plugin authoring API**: still 0.x — small breaking changes are possible. Watch `authfn` plugin-contract release notes.
+- **Plugin authoring API**: still 0.x — small breaking changes are possible. Watch `authfn` package releases (including the `authfn/plugin-types` surface) for changes.
 
 ## Migration notes
 

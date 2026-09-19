@@ -81,7 +81,7 @@ The resolver runs on every request — it should be fast (constant-time). Cache 
 ## Composition with the multi-region plugin
 
 Enabling `authFnMultiRegionPlugin()` does not wrap or merge an arbitrary custom
-environment resolver. Region-aware resolution is explicit: construct the
+runtime resolver. Region-aware resolution is explicit: construct the
 server's resolver with `authFnMultiRegionEnvironment(...)` and pass it as
 `createServer({ environment })`. That resolver selects a configured region from
 the request host (or `defaultRegionId`) and returns its `regionId`, authority,

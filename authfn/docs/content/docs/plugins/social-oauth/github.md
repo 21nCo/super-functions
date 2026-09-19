@@ -14,6 +14,9 @@ The GitHub provider uses standard OAuth 2.0. The default profile resolver fetche
 
 ## Configuration
 
+Start with the [full two-stage Social OAuth skeleton](./index); the fragment
+below assumes that page's `authApp` declaration and `database` adapter.
+
 ```ts
 authApp.createServer({
   database,

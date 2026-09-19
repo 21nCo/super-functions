@@ -5,7 +5,7 @@ description: Wire authfn to your database — Drizzle, raw Postgres, SQLite, in-
 
 # Database adapters
 
-authfn writes through `@superfunctions/db`'s `Adapter` contract. You pick an adapter and pass it to `app.createServer({ database })`.
+authfn writes through `@superfunctions/db`'s `Adapter` contract. You pick an adapter and pass it to `authApp.createServer({ database })`, where `authApp` is the declaration returned by `authfn({ plugins })`.
 
 ```ts
 interface Adapter {

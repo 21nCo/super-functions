@@ -13,7 +13,8 @@ Hooks are the supported extension surface for cross-cutting concerns. They let y
 - trigger side effects (push to your audit log, send a welcome email),
 - abort flows (deny sign-in for a deactivated account).
 
-Hooks are configured at the kernel level (`config.hooks`) and at the plugin level (`plugin.hooks`). Both run; kernel hooks run first.
+Hooks are configured at the kernel level (`config.hooks`) and at the plugin
+level (`plugin.hooks`). Both run; plugin hooks run first in declaration order.
 
 ## The hook surface
 

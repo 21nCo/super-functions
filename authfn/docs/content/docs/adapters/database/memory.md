@@ -8,9 +8,11 @@ description: In-memory database — for tests and local development. Don't use i
 `memoryAdapter` is an in-memory implementation of the `@superfunctions/db` adapter contract. It exists for one purpose: **tests and local development without infrastructure**.
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { memoryAdapter } from '@superfunctions/db/adapters/memory';
 
-authApp.createServer({
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({
   database: memoryAdapter({ debug: false }),
   // ...
 });

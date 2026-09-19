@@ -14,6 +14,7 @@ npm install drizzle-orm @superfunctions/db
 ## Postgres
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
@@ -21,30 +22,28 @@ import { Pool } from 'pg';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool);
 
-authApp.createServer({
-  database: drizzleAdapter(db),
-  // ...
-});
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'postgres' }) });
 ```
 
 ## SQLite (better-sqlite3)
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
 
 const db = drizzle(new Database('authfn.db'));
 
-authApp.createServer({
-  database: drizzleAdapter(db),
-  // ...
-});
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'sqlite' }) });
 ```
 
 ## MySQL
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/mysql2';
 import mysql from 'mysql2/promise';
@@ -52,19 +51,22 @@ import mysql from 'mysql2/promise';
 const pool = await mysql.createPool({ uri: process.env.DATABASE_URL });
 const db = drizzle(pool);
 
-authApp.createServer({ database: drizzleAdapter(db), /* ... */ });
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'mysql' }) });
 ```
 
 ## Cloudflare D1
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/d1';
 
 export default {
   fetch(request: Request, env: { DB: D1Database }) {
     const db = drizzle(env.DB);
-    const auth = authApp.createServer({ database: drizzleAdapter(db), /* ... */ });
+    const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+    const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'sqlite' }) });
     return auth.router.fetch(request);
   },
 };

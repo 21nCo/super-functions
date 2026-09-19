@@ -142,6 +142,7 @@ npm install drizzle-orm @superfunctions/db
 ## Postgres
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
@@ -149,30 +150,28 @@ import { Pool } from 'pg';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool);
 
-authApp.createServer({
-  database: drizzleAdapter(db),
-  // ...
-});
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'postgres' }) });
 ```
 
 ## SQLite (better-sqlite3)
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
 
 const db = drizzle(new Database('authfn.db'));
 
-authApp.createServer({
-  database: drizzleAdapter(db),
-  // ...
-});
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'sqlite' }) });
 ```
 
 ## MySQL
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/mysql2';
 import mysql from 'mysql2/promise';
@@ -180,19 +179,22 @@ import mysql from 'mysql2/promise';
 const pool = await mysql.createPool({ uri: process.env.DATABASE_URL });
 const db = drizzle(pool);
 
-authApp.createServer({ database: drizzleAdapter(db), /* ... */ });
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'mysql' }) });
 ```
 
 ## Cloudflare D1
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/d1';
 
 export default {
   fetch(request: Request, env: { DB: D1Database }) {
     const db = drizzle(env.DB);
-    const auth = authApp.createServer({ database: drizzleAdapter(db), /* ... */ });
+    const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+    const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'sqlite' }) });
     return auth.router.fetch(request);
   },
 };
@@ -245,7 +247,7 @@ The generated schema includes only the tables for plugins you have enabled. Disa
 
 # Database adapters
 
-authfn writes through `@superfunctions/db`'s `Adapter` contract. You pick an adapter and pass it to `app.createServer({ database })`.
+authfn writes through `@superfunctions/db`'s `Adapter` contract. You pick an adapter and pass it to `authApp.createServer({ database })`, where `authApp` is the declaration returned by `authfn({ plugins })`.
 
 ```ts
 interface Adapter {
@@ -296,9 +298,11 @@ Every read and write goes through `namespace` — the prefix you choose with `au
 `memoryAdapter` is an in-memory implementation of the `@superfunctions/db` adapter contract. It exists for one purpose: **tests and local development without infrastructure**.
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { memoryAdapter } from '@superfunctions/db/adapters/memory';
 
-authApp.createServer({
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({
   database: memoryAdapter({ debug: false }),
   // ...
 });
@@ -355,6 +359,7 @@ That's it.
 For Postgres, use the supported Drizzle adapter path:
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
@@ -363,7 +368,8 @@ import * as schema from './db/generated/authfn-schema.js';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool, { schema });
 
-authApp.createServer({
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({
   database: drizzleAdapter({ db, dialect: 'postgres' }),
   // ...
 });
@@ -457,13 +463,17 @@ npm install better-sqlite3
 ## Via Drizzle
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
 
 const db = drizzle(new Database('authfn.db'));
 
-authApp.createServer({ database: drizzleAdapter(db), /* ... */ });
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({
+  database: drizzleAdapter({ db, dialect: 'sqlite' }),
+});
 ```
 
 ## Direct SQLite adapter
@@ -471,12 +481,14 @@ authApp.createServer({ database: drizzleAdapter(db), /* ... */ });
 If a thin SQLite adapter is exposed in your build, use it directly:
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { sqliteAdapter } from '@superfunctions/db/adapters/sqlite';   // if available
 import Database from 'better-sqlite3';
 
 const db = new Database('authfn.db');
 
-authApp.createServer({ database: sqliteAdapter(db), /* ... */ });
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({ database: sqliteAdapter(db) });
 ```
 
 When in doubt, the `drizzleAdapter` route works everywhere.
@@ -1800,7 +1812,7 @@ Use these to drive your "we noticed you have another account" UX or your audit l
 <!-- page:docs:core-concepts/architecture.md path:/docs/core-concepts/architecture -->
 # Architecture
 
-> How the authfn kernel, plugins, hooks, environment resolver, and database adapter fit together.
+> How the authfn kernel, plugins, hooks, runtime resolver, and database adapter fit together.
 
 
 # Architecture
@@ -2001,7 +2013,7 @@ domain: ({ request, regionId }) => {
 },
 ```
 
-Or — preferred — use the [environment resolver](./runtime) to set `cookie.domain` per request. Anything in the resolved environment's `cookie` overlay takes precedence over `authfn({ cookie })`.
+Or — preferred — use the [runtime resolver](./runtime) to set `cookie.domain` per request. Anything in the resolved environment's `cookie` overlay takes precedence over `authfn({ cookie })`.
 
 ## SameSite
 
@@ -2471,7 +2483,8 @@ Hooks are the supported extension surface for cross-cutting concerns. They let y
 - trigger side effects (push to your audit log, send a welcome email),
 - abort flows (deny sign-in for a deactivated account).
 
-Hooks are configured at the kernel level (`config.hooks`) and at the plugin level (`plugin.hooks`). Both run; kernel hooks run first.
+Hooks are configured at the kernel level (`config.hooks`) and at the plugin
+level (`plugin.hooks`). Both run; plugin hooks run first in declaration order.
 
 ## The hook surface
 
@@ -3142,8 +3155,10 @@ sequenceDiagram
   end
   loop for each plugin
     Server->>P: validateConfig(runtimeConfig)
+  end
+  Server->>Server: compose hooks
+  loop for each plugin
     Server->>P: routes(ctx)
-    Server->>Server: register hooks
   end
   Server-->>App: AuthFnServer
 
@@ -3271,7 +3286,12 @@ By default, if a plugin's hook throws, the request fails with `AUTHFN_PLUGIN_ABO
 
 ## Validation
 
-`validateConfig(config)` runs *before* schema or routes. Use it to fail fast on missing OAuth client IDs, malformed delivery providers, or impossible parameter combinations. Throw `AuthFnConfigError(message, details)`; the kernel surfaces it with `AUTHFN_CONFIG_INVALID`.
+`schema(config)` is composed first. Once the runtime config exists,
+`validateConfig(config)` runs for every plugin before hooks are composed or any
+route factory runs. Use it to fail fast on missing OAuth client IDs, malformed
+delivery providers, or impossible parameter combinations. Throw
+`AuthFnConfigError(message, details)`; the kernel surfaces it with
+`AUTHFN_CONFIG_INVALID`.
 
 ## Related
 
@@ -3298,7 +3318,8 @@ authApp.createServer({
   rateLimit: {
     enabled: true,
     mode: 'local', // 'strict' | 'best-effort' | 'local'
-    resolveClientIp: (request) => /* trusted IP */,
+    // Safe only when Cloudflare removes client-supplied copies of this header.
+    resolveClientIp: (request) => request.headers.get('cf-connecting-ip') ?? undefined,
     policies: {
       password: { ipLimit: 10, windowSeconds: 60 },
       'otp-send': { ipLimit: 5, windowSeconds: 60 },
@@ -3557,7 +3578,7 @@ If two regions both attempt to register the same email at the same time, the loo
 
 Region lookups are cached when you supply a shared KV store to `createServer({ stores })`. The cache layer is shared with the rest of the kernel, so you only configure it once. Hits and misses use different TTLs:
 
-- Hits: `regionHit` TTL (default 5 minutes).
+- Hits: 15 minutes (`AUTHFN_CACHE_TTL_SECONDS.regionHit`).
 - Misses: `regionMiss` TTL (default 1 minute) — short on purpose so newly-created users don't experience stale "no region" lookups.
 
 Use a Redis-backed store for production; the in-memory KV store is fine for local development.
@@ -3683,7 +3704,7 @@ The resolver runs on every request — it should be fast (constant-time). Cache 
 ## Composition with the multi-region plugin
 
 Enabling `authFnMultiRegionPlugin()` does not wrap or merge an arbitrary custom
-environment resolver. Region-aware resolution is explicit: construct the
+runtime resolver. Region-aware resolution is explicit: construct the
 server's resolver with `authFnMultiRegionEnvironment(...)` and pass it as
 `createServer({ environment })`. That resolver selects a configured region from
 the request host (or `defaultRegionId`) and returns its `regionId`, authority,
@@ -4113,7 +4134,7 @@ npm run test:e2e
 
 The `authfn/examples/` directory in the repo ships **five end-to-end examples**. Each isolates a single capability so the code stays readable and the Playwright suite stays deterministic. Every example uses:
 
-- **Server**: Express + `@superfunctions/http-express` + `authfn` + `@authfn/password` + Postgres via Drizzle.
+- **Server**: Express + `@superfunctions/http-express` + `authfn` + the plugin under test + Postgres via Drizzle.
 - **Client**: Svelte 5 + Vite + `@authfn/client` + `@authfn/svelte`.
 - **Schema**: generated by `@superfunctions/cli`.
 - **Tests**: Playwright, end-to-end.
@@ -4479,12 +4500,16 @@ function stripPrefix(request: Request, prefix: string): Request {
 `bun:sqlite` gives you a file-backed database with zero config — combined with authfn this is the smallest possible self-hosted auth deployment:
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/bun-sqlite';
 import { Database } from 'bun:sqlite';
 
 const db = drizzle(new Database('authfn.db'));
-const auth = authApp.createServer({ database: drizzleAdapter(db), /* ... */ });
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({
+  database: drizzleAdapter({ db, dialect: 'sqlite' }),
+});
 ```
 
 ## Edge runtimes
@@ -5107,7 +5132,11 @@ For multi-region deployments, configure `createServer({ environment })` to deriv
 
 ```ts
 // src/lib/server/auth.ts
-authApp.createServer({
+import { authfn, authFnPlugins } from 'authfn';
+import { database } from './database';
+
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+export const auth = authApp.createServer({
   database,
   environment: {
     resolve(request) {
@@ -5529,7 +5558,15 @@ import { jsonSuccess } from "authfn/http/envelopes";
 
 const TABLE = "magic_links";
 
-export function magicLinkPlugin(): AuthFnPlugin<"magicLink"> {
+export type MagicLinkRuntimeConfig = {
+  onIssued?: (event: {
+    requestId?: string;
+    userId: string;
+    ttlSeconds: number;
+  }) => Promise<void> | void;
+};
+
+export function magicLinkPlugin(): AuthFnPlugin<"magicLink", MagicLinkRuntimeConfig> {
   return {
     name: "magicLink",
     schema: () => [
@@ -5642,6 +5679,15 @@ import { authfn, authFnPlugins } from "authfn";
 const authApp = authfn({
   plugins: authFnPlugins(magicLinkPlugin()),
 });
+
+const auth = authApp.createServer({
+  database,
+  pluginRuntime: {
+    magicLink: {
+      onIssued: (event) => magicLinkTelemetry.record(event),
+    },
+  },
+});
 ```
 
 The plugin:
@@ -5716,14 +5762,6 @@ application-owned reporter (for example, one supplied in your plugin's runtime
 config):
 
 ```ts
-type MagicLinkRuntimeConfig = {
-  onIssued?: (event: {
-    requestId?: string;
-    userId: string;
-    ttlSeconds: number;
-  }) => Promise<void> | void;
-};
-
 const magicLinkRuntime = ctx.config.pluginRuntime?.magicLink as
   | MagicLinkRuntimeConfig
   | undefined;
@@ -6067,7 +6105,8 @@ const auth = authApp.createServer({
 });
 ```
 
-You'll likely also want `accountLinking.otpSignUpExistingUser: true` so OTP for an already-signed-up email is treated as sign-in.
+The `otpSignUpExistingUser` setting shown above makes OTP for an
+already-signed-up email behave as sign-in rather than returning a conflict.
 
 ## Pattern: full-stack consumer app
 
@@ -6219,10 +6258,12 @@ If you don't supply a lookup store, the plugin falls back to reading `authfn_use
 For each request:
 
 1. **Match by host.** If `request.url`'s hostname matches one of `regions[*].hosts` (or `regions[*].authority`'s hostname), pick that region.
-2. **Match by `environment.regionId`** from your `createServer({ environment })` resolver.
-3. **Fallback to `defaultRegionId`.**
+2. **Fallback to `defaultRegionId`.**
 
-The matched region's overlays (`cookie`, `oauth`, `issuer`, `baseUrl`) are applied on top of the base runtime. See [Concepts → Runtime](../core-concepts/runtime) for how this composes with the user-supplied resolver.
+`authFnMultiRegionEnvironment(...)` is itself the resolver passed to
+`createServer({ environment })`; there is no second custom-resolver selection
+pass. The selected region supplies `cookie`, `oauth`, `issuer`, and `baseUrl`.
+See [Concepts → Runtime](../core-concepts/runtime).
 
 ## Caching
 
@@ -6640,6 +6681,9 @@ Sign in with Apple has a few quirks compared to other OAuth providers:
 
 ## Configuration
 
+Start with the [full two-stage Social OAuth skeleton](./index); the fragment
+below assumes that page's `authApp` declaration and `database` adapter.
+
 ```ts
 import { createAppleClientSecret } from './apple-secret.js';   // your generator
 
@@ -6807,6 +6851,9 @@ The GitHub provider uses standard OAuth 2.0. The default profile resolver fetche
 
 ## Configuration
 
+Start with the [full two-stage Social OAuth skeleton](./index); the fragment
+below assumes that page's `authApp` declaration and `database` adapter.
+
 ```ts
 authApp.createServer({
   database,
@@ -6892,6 +6939,9 @@ The Google provider uses standard OAuth 2.0 + OIDC. authfn fetches the user prof
 4. (Multi-region) add the redirect URIs for every region authority.
 
 ## Configuration
+
+Start with the [full two-stage Social OAuth skeleton](./index); the fragment
+below assumes that page's `authApp` declaration and `database` adapter.
 
 ```ts
 authApp.createServer({
@@ -7023,6 +7073,7 @@ interface SocialOAuthPluginRuntimeConfig {
   fetcher?: OAuthFetchLike;
   tokenHttpClient?: OAuthTokenHttpClient;
   now?: () => Date;
+  diagnostics?: false | SocialOAuthDiagnosticsConfig;
 }
 
 interface AuthFnSocialProviderConfig {
@@ -7044,6 +7095,8 @@ interface AuthFnSocialProviderConfig {
 | `providers` | `pluginRuntime.socialOAuth` | required | Map of provider id → config. |
 | `fetcher` | `pluginRuntime.socialOAuth` | global `fetch` | Inject a custom fetcher (proxy, instrumentation). |
 | `tokenHttpClient` | `pluginRuntime.socialOAuth` | default | Override the token endpoint client. |
+| `now` | `pluginRuntime.socialOAuth` | system clock | Override the clock (tests). |
+| `diagnostics` | `pluginRuntime.socialOAuth` | `false` | Configure diagnostic event reporting, or disable it explicitly. |
 
 ## Per-provider deep dives
 
@@ -8289,10 +8342,18 @@ Give your support team a UI to look up and delete users, gated behind your corpo
 
 ```ts
 import { createAuthFnAdmin } from '@authfn/admin';
-import type { AuthFnRuntimeConfig } from 'authfn';
+import { authFnPlugins, type AuthFnRuntimeConfig } from 'authfn';
+import { authFnPasswordPlugin } from '@authfn/password';
+
+const plugins = authFnPlugins(authFnPasswordPlugin());
+const authFnConfig: AuthFnRuntimeConfig = {
+  database,
+  namespace: 'authfn',
+  plugins: [...plugins],
+};
 
 const admin = createAuthFnAdmin({
-  authFnConfig, // AuthFnRuntimeConfig: database + plugins + namespace
+  authFnConfig,
   authorize: async (ctx, input) => {
     const user = await yourCorporateAuth.authenticate(ctx.request);
     if (!user) return false;
@@ -8810,7 +8871,10 @@ hooks: {
 }
 ```
 
-Kernel-level hooks fail the request when they throw. To keep sign-up succeeding if welcome mail fails, register this hook on a plugin with `hookFailurePolicy: { afterUserCreate: 'observe' }`.
+Kernel-level `before*` hooks fail the request when they throw. Kernel-level
+`after*` hooks such as `afterUserCreate` are observed: a throw emits
+`authfn.plugin.failed` but does not fail sign-up, so the welcome-mail hook can
+remain a server hook.
 
 ## Related
 
@@ -9706,7 +9770,7 @@ Packages are released independently. The version of `authfn` is the canonical No
 - **Envelope shape**: stable across all versions of v0.x.
 - **Error codes**: only added — never removed or renamed in a minor.
 - **Database schema**: additive in minors. Removals or renames require a major + a generated migration script.
-- **Plugin authoring API**: still 0.x — small breaking changes are possible. Watch `authfn` plugin-contract release notes.
+- **Plugin authoring API**: still 0.x — small breaking changes are possible. Watch `authfn` package releases (including the `authfn/plugin-types` surface) for changes.
 
 ## Migration notes
 
@@ -9780,7 +9844,7 @@ Path under the origin (`/auth` by default). The kernel uses this when composing 
 
 ### `cookie`
 
-See [concepts → cookies](../core-concepts/cookies). Cookie policy can also be overlaid per request by the [environment resolver](../core-concepts/runtime).
+See [concepts → cookies](../core-concepts/cookies). Cookie policy can also be overlaid per request by the [runtime resolver](../core-concepts/runtime).
 
 ### `accountLinking`
 
@@ -9823,7 +9887,7 @@ Runtime dependencies keyed by plugin name. Schema and policy options stay on the
 | `socialOAuth` | `providers` (required), `fetcher`, `tokenHttpClient`, `now` |
 | `twoFactor` | `issuer`, `encryptionKeyRef`, `encryptionKeyResolver`, TOTP window/digits/period |
 | `apiKey` | `now` |
-| `multiRegion` | `regions`, `defaultRegionId`, `lookupStore`, `routing` |
+| `multiRegion` | Configure `regions`, `defaultRegionId`, `lookupStore`, and `routing` with `authFnMultiRegionEnvironment(...)`, then pass it as `environment`. |
 | `nativeHandoff` | `now` |
 
 `emailOtp` and `socialOAuth` declare required runtime config. Creating a server without those entries fails type-checking (and fails at runtime if you bypass the types).
@@ -9840,7 +9904,8 @@ Optional request rate limiting for AuthFn HTTP routes. See [concepts → rate li
 rateLimit: {
   enabled: true,
   mode: 'local',            // 'strict' | 'best-effort' | 'local'
-  resolveClientIp: (request) => /* trusted IP */,
+  // Safe only when Cloudflare removes client-supplied copies of this header.
+  resolveClientIp: (request) => request.headers.get('cf-connecting-ip') ?? undefined,
   policies: {
     password: { ipLimit: 10, windowSeconds: 60 },
   },

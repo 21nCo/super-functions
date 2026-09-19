@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: How the authfn kernel, plugins, hooks, environment resolver, and database adapter fit together.
+description: How the authfn kernel, plugins, hooks, runtime resolver, and database adapter fit together.
 ---
 
 # Architecture

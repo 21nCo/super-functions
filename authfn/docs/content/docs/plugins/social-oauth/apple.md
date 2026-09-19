@@ -20,6 +20,9 @@ Sign in with Apple has a few quirks compared to other OAuth providers:
 
 ## Configuration
 
+Start with the [full two-stage Social OAuth skeleton](./index); the fragment
+below assumes that page's `authApp` declaration and `database` adapter.
+
 ```ts
 import { createAppleClientSecret } from './apple-secret.js';   // your generator
 

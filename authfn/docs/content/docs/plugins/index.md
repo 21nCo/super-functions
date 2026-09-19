@@ -74,7 +74,8 @@ const auth = authApp.createServer({
 });
 ```
 
-You'll likely also want `accountLinking.otpSignUpExistingUser: true` so OTP for an already-signed-up email is treated as sign-in.
+The `otpSignUpExistingUser` setting shown above makes OTP for an
+already-signed-up email behave as sign-in rather than returning a conflict.
 
 ## Pattern: full-stack consumer app
 

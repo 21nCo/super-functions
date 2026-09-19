@@ -82,7 +82,10 @@ hooks: {
 }
 ```
 
-Kernel-level hooks fail the request when they throw. To keep sign-up succeeding if welcome mail fails, register this hook on a plugin with `hookFailurePolicy: { afterUserCreate: 'observe' }`.
+Kernel-level `before*` hooks fail the request when they throw. Kernel-level
+`after*` hooks such as `afterUserCreate` are observed: a throw emits
+`authfn.plugin.failed` but does not fail sign-up, so the welcome-mail hook can
+remain a server hook.
 
 ## Related
 

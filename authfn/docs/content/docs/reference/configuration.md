@@ -59,7 +59,7 @@ Path under the origin (`/auth` by default). The kernel uses this when composing 
 
 ### `cookie`
 
-See [concepts → cookies](../core-concepts/cookies). Cookie policy can also be overlaid per request by the [environment resolver](../core-concepts/runtime).
+See [concepts → cookies](../core-concepts/cookies). Cookie policy can also be overlaid per request by the [runtime resolver](../core-concepts/runtime).
 
 ### `accountLinking`
 
@@ -102,7 +102,7 @@ Runtime dependencies keyed by plugin name. Schema and policy options stay on the
 | `socialOAuth` | `providers` (required), `fetcher`, `tokenHttpClient`, `now` |
 | `twoFactor` | `issuer`, `encryptionKeyRef`, `encryptionKeyResolver`, TOTP window/digits/period |
 | `apiKey` | `now` |
-| `multiRegion` | `regions`, `defaultRegionId`, `lookupStore`, `routing` |
+| `multiRegion` | Configure `regions`, `defaultRegionId`, `lookupStore`, and `routing` with `authFnMultiRegionEnvironment(...)`, then pass it as `environment`. |
 | `nativeHandoff` | `now` |
 
 `emailOtp` and `socialOAuth` declare required runtime config. Creating a server without those entries fails type-checking (and fails at runtime if you bypass the types).
@@ -119,7 +119,8 @@ Optional request rate limiting for AuthFn HTTP routes. See [concepts → rate li
 rateLimit: {
   enabled: true,
   mode: 'local',            // 'strict' | 'best-effort' | 'local'
-  resolveClientIp: (request) => /* trusted IP */,
+  // Safe only when Cloudflare removes client-supplied copies of this header.
+  resolveClientIp: (request) => request.headers.get('cf-connecting-ip') ?? undefined,
   policies: {
     password: { ipLimit: 10, windowSeconds: 60 },
   },

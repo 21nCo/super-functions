@@ -59,8 +59,10 @@ sequenceDiagram
   end
   loop for each plugin
     Server->>P: validateConfig(runtimeConfig)
+  end
+  Server->>Server: compose hooks
+  loop for each plugin
     Server->>P: routes(ctx)
-    Server->>Server: register hooks
   end
   Server-->>App: AuthFnServer
 
@@ -188,7 +190,12 @@ By default, if a plugin's hook throws, the request fails with `AUTHFN_PLUGIN_ABO
 
 ## Validation
 
-`validateConfig(config)` runs *before* schema or routes. Use it to fail fast on missing OAuth client IDs, malformed delivery providers, or impossible parameter combinations. Throw `AuthFnConfigError(message, details)`; the kernel surfaces it with `AUTHFN_CONFIG_INVALID`.
+`schema(config)` is composed first. Once the runtime config exists,
+`validateConfig(config)` runs for every plugin before hooks are composed or any
+route factory runs. Use it to fail fast on missing OAuth client IDs, malformed
+delivery providers, or impossible parameter combinations. Throw
+`AuthFnConfigError(message, details)`; the kernel surfaces it with
+`AUTHFN_CONFIG_INVALID`.
 
 ## Related
 
