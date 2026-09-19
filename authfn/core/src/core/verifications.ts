@@ -87,7 +87,7 @@ export async function sendOtpChallenge(
   runtimeOptions: OtpRuntimeOptions,
   input: SendOtpInput
 ): Promise<SendOtpResult> {
-  const email = assertAuthFnDatabaseKeyLength(normalizeEmail(input.email), 'email');
+  const email = normalizeEmail(input.email);
   const now = resolveNow(runtimeOptions);
   const hookContext = await buildChallengeHookContext(config, input.request);
   const challengeInput = await runBeforeChallengeSendHook(hooks, hookContext, {

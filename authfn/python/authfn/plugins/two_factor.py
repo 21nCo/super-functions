@@ -396,8 +396,18 @@ def authfn_two_factor_plugin(config: Optional[TwoFactorPluginConfig] = None) -> 
             {
                 "modelName": "two_factor_enrollments",
                 "fields": {
-                    "id": {"type": "string", "required": True, "fieldName": "id"},
-                    "userId": {"type": "string", "required": True, "fieldName": "user_id"},
+                    "id": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "id",
+                        "maxLength": 255,
+                    },
+                    "userId": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "user_id",
+                        "maxLength": 255,
+                    },
                     "secretEncrypted": {
                         "type": "string",
                         "required": True,
@@ -412,9 +422,24 @@ def authfn_two_factor_plugin(config: Optional[TwoFactorPluginConfig] = None) -> 
             {
                 "modelName": "two_factor_recovery_codes",
                 "fields": {
-                    "id": {"type": "string", "required": True, "fieldName": "id"},
-                    "enrollmentId": {"type": "string", "required": True, "fieldName": "enrollment_id"},
-                    "codeHash": {"type": "string", "required": True, "fieldName": "code_hash"},
+                    "id": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "id",
+                        "maxLength": 255,
+                    },
+                    "enrollmentId": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "enrollment_id",
+                        "maxLength": 255,
+                    },
+                    "codeHash": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "code_hash",
+                        "maxLength": 255,
+                    },
                     "usedAt": {"type": "date", "required": False, "fieldName": "used_at"},
                     "createdAt": {"type": "date", "required": True, "fieldName": "created_at"},
                 },
@@ -426,8 +451,18 @@ def authfn_two_factor_plugin(config: Optional[TwoFactorPluginConfig] = None) -> 
             {
                 "modelName": "two_factor_challenges",
                 "fields": {
-                    "id": {"type": "string", "required": True, "fieldName": "id"},
-                    "userId": {"type": "string", "required": True, "fieldName": "user_id"},
+                    "id": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "id",
+                        "maxLength": 255,
+                    },
+                    "userId": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "user_id",
+                        "maxLength": 255,
+                    },
                     "primaryMethod": {"type": "string", "required": True, "fieldName": "primary_method"},
                     "expiresAt": {"type": "date", "required": True, "fieldName": "expires_at"},
                     "consumedAt": {"type": "date", "required": False, "fieldName": "consumed_at"},

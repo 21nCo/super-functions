@@ -13,6 +13,7 @@ from superfunctions.http import HttpMethod, Response, Route, RouteContext, SetCo
 
 from .config import get_plugin_config, resolve_runtime
 from .errors import to_authfn_error
+from .limits import assert_database_key_length
 from .observability import (
     emit_auth_event,
     event_request_id,
@@ -392,7 +393,7 @@ async def issue_session(
     csrf_token = _create_opaque_token("csrf")
     record = {
         "id": _create_opaque_token("sess"),
-        "userId": payload["userId"],
+        "userId": assert_database_key_length(str(payload["userId"]), "userId"),
         "tokenHash": _hash_secret(session_token),
         "csrfHash": _hash_secret(csrf_token),
         "methods": list(payload["methods"]),
@@ -1184,7 +1185,9 @@ async def _sign_up_with_password(
     runtime = resolve_runtime(config, request)
     payload = {"primaryEmail": normalized_email, "metadata": profile or {}}
     payload = await _run_before_user_create_hook(config, request, runtime, payload)
-    resolved_email = _normalize_email(payload.get("primaryEmail"))
+    resolved_email = assert_database_key_length(
+        _normalize_email(payload.get("primaryEmail")), "primaryEmail"
+    )
     metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else profile or {}
     existing = await config.database.find_one(
         model="users",

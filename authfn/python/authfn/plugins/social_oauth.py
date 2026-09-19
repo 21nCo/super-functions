@@ -42,6 +42,7 @@ from superfunctions.oauth import (
 
 from ..config import get_plugin, get_plugin_config, resolve_runtime
 from ..errors import to_authfn_error
+from ..limits import assert_database_key_length
 from ..observability import emit_auth_event, event_request_id
 from ..types import (
     AuthFnConfig,
@@ -640,8 +641,8 @@ class SocialOAuthService:
                 request=request,
                 runtime=resolved_runtime,
             )
-            connection_id = identity.get("connectionId") or _create_identifier(
-                f"soc_{provider_id}_{identity['user']['id']}"
+            connection_id = identity.get("connectionId") or _create_connection_id(
+                provider_id, identity["user"]["id"]
             )
             return OAuthFlowResolvedIdentity.model_validate(
                 {
@@ -796,6 +797,7 @@ class SocialOAuthService:
         runtime: AuthFnRuntimeResolution,
     ) -> Dict[str, Any]:
         profile = await self._resolve_profile(provider, token_set, settings)
+        assert_database_key_length(str(profile["providerAccountId"]), "providerAccountId")
         existing_account = await self.config.database.find_one(
             model="oauth_accounts",
             where=[
@@ -873,6 +875,11 @@ class SocialOAuthService:
             },
         }
         user = await self._run_before_user_create(request, runtime, user)
+        user["id"] = assert_database_key_length(str(user["id"]), "id")
+        if user.get("primaryEmail"):
+            user["primaryEmail"] = assert_database_key_length(
+                _normalize_email(user["primaryEmail"]) or "", "primaryEmail"
+            )
         await self.config.database.create(
             model="users",
             data=user,
@@ -1125,7 +1132,12 @@ def _social_schema() -> List[Dict[str, Any]]:
         {
             "modelName": "oauth_states",
             "fields": {
-                "state_id": {"type": "string", "required": True, "fieldName": "state_id"},
+                "state_id": {
+                    "type": "string",
+                    "required": True,
+                    "fieldName": "state_id",
+                    "maxLength": 255,
+                },
                 "provider_id": {"type": "string", "required": True, "fieldName": "provider_id"},
                 "subject_kind": {
                     "type": "string",
@@ -1163,6 +1175,7 @@ def _social_schema() -> List[Dict[str, Any]]:
                     "type": "string",
                     "required": True,
                     "fieldName": "expires_at",
+                    "maxLength": 255,
                 },
                 "consumed_at": {
                     "type": "string",
@@ -1175,7 +1188,12 @@ def _social_schema() -> List[Dict[str, Any]]:
         {
             "modelName": "oauth_tokens",
             "fields": {
-                "token_id": {"type": "string", "required": True, "fieldName": "token_id"},
+                "token_id": {
+                    "type": "string",
+                    "required": True,
+                    "fieldName": "token_id",
+                    "maxLength": 255,
+                },
                 "tenant_id": {"type": "string", "required": True, "fieldName": "tenant_id"},
                 "user_id": {"type": "string", "required": True, "fieldName": "user_id"},
                 "provider_id": {"type": "string", "required": True, "fieldName": "provider_id"},
@@ -1183,6 +1201,7 @@ def _social_schema() -> List[Dict[str, Any]]:
                     "type": "string",
                     "required": True,
                     "fieldName": "connection_id",
+                    "maxLength": 255,
                 },
                 "encrypted_payload": {
                     "type": "string",
@@ -1211,18 +1230,35 @@ def _social_schema() -> List[Dict[str, Any]]:
         {
             "modelName": "oauth_accounts",
             "fields": {
-                "id": {"type": "string", "required": True, "fieldName": "id"},
-                "userId": {"type": "string", "required": True, "fieldName": "user_id"},
-                "provider": {"type": "string", "required": True, "fieldName": "provider"},
+                "id": {
+                    "type": "string",
+                    "required": True,
+                    "fieldName": "id",
+                    "maxLength": 255,
+                },
+                "userId": {
+                    "type": "string",
+                    "required": True,
+                    "fieldName": "user_id",
+                    "maxLength": 255,
+                },
+                "provider": {
+                    "type": "string",
+                    "required": True,
+                    "fieldName": "provider",
+                    "maxLength": 255,
+                },
                 "providerAccountId": {
                     "type": "string",
                     "required": True,
                     "fieldName": "provider_account_id",
+                    "maxLength": 255,
                 },
                 "connectionId": {
                     "type": "string",
                     "required": True,
                     "fieldName": "connection_id",
+                    "maxLength": 255,
                 },
                 "email": {"type": "string", "required": False, "fieldName": "email"},
                 "profile": {"type": "json", "required": False, "fieldName": "profile"},
@@ -1370,6 +1406,17 @@ def _normalize_email(email: Optional[str]) -> Optional[str]:
 
 def _create_identifier(prefix: str) -> str:
     return f"{prefix}_{secrets.token_hex(8)}"
+
+
+def _create_connection_id(provider_id: str, user_id: str) -> str:
+    digest = hashlib.sha256(
+        provider_id.encode("utf-8")
+        + b"\0"
+        + user_id.encode("utf-8")
+        + b"\0"
+        + secrets.token_bytes(16)
+    ).hexdigest()
+    return f"soc_{provider_id}_{digest}"
 
 
 def _infer_callback_mode(return_to: Optional[str]) -> str:

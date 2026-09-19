@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, Optional
 
 from ..config import resolve_runtime
+from ..limits import assert_database_key_length
 from ..observability import emit_auth_event, event_request_id
 from ..types import (
     AuthFnConfig,
@@ -137,8 +138,10 @@ class EmailOtpService:
         now = self.plugin_config.now()
         challenge = {
             "id": _create_id("otp"),
-            "purpose": payload["purpose"],
-            "email": _normalize_email(payload["email"]),
+            "purpose": assert_database_key_length(str(payload["purpose"]), "purpose"),
+            "email": assert_database_key_length(
+                _normalize_email(payload["email"]), "email"
+            ),
             "codeHash": _hash_code(code),
             "attemptCount": 0,
             "deliveryMetadata": dict(payload.get("metadata", {})),
@@ -474,9 +477,24 @@ def authfn_email_otp_plugin(config: Optional[EmailOtpPluginConfig] = None) -> Au
             {
                 "modelName": "otp_challenges",
                 "fields": {
-                    "id": {"type": "string", "required": True, "fieldName": "id"},
-                    "purpose": {"type": "string", "required": True, "fieldName": "purpose"},
-                    "email": {"type": "string", "required": True, "fieldName": "email"},
+                    "id": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "id",
+                        "maxLength": 255,
+                    },
+                    "purpose": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "purpose",
+                        "maxLength": 255,
+                    },
+                    "email": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "email",
+                        "maxLength": 255,
+                    },
                     "codeHash": {"type": "string", "required": True, "fieldName": "code_hash"},
                     "attemptCount": {
                         "type": "number",

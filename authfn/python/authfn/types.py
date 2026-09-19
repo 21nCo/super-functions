@@ -19,6 +19,7 @@ class AuthFnFieldSchema(TypedDict, total=False):
     required: bool
     unique: bool
     fieldName: str
+    maxLength: int
 
 
 class AuthFnIndexSchema(TypedDict, total=False):
@@ -637,8 +638,18 @@ def authfn_password_plugin() -> AuthFnPlugin:
             {
                 "modelName": "password_credentials",
                 "fields": {
-                    "id": {"type": "string", "required": True, "fieldName": "id"},
-                    "userId": {"type": "string", "required": True, "fieldName": "user_id"},
+                    "id": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "id",
+                        "maxLength": 255,
+                    },
+                    "userId": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "user_id",
+                        "maxLength": 255,
+                    },
                     "passwordHash": {
                         "type": "string",
                         "required": True,

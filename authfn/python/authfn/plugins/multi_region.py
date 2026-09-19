@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
+from ..limits import assert_database_key_length
 from ..types import (
     AuthFnConfig,
     AuthFnPlugin,
@@ -43,6 +44,14 @@ class MultiRegionService:
     def __init__(self, config: AuthFnConfig, plugin_config: Optional[MultiRegionPluginConfig] = None):
         self.config = config
         self.plugin_config = plugin_config or MultiRegionPluginConfig()
+        region_ids = [
+            self.plugin_config.default_region_id,
+            *(region.region_id for region in self.plugin_config.regions),
+            self.plugin_config.routing.cell_region_id if self.plugin_config.routing else None,
+        ]
+        for region_id in region_ids:
+            if region_id:
+                assert_database_key_length(region_id, "regionId")
 
     def resolve_runtime(self, request: Any) -> AuthFnRuntimeResolution:
         base_runtime = self._base_runtime(request)
@@ -299,9 +308,24 @@ def authfn_multi_region_plugin(config: Optional[MultiRegionPluginConfig] = None)
             {
                 "modelName": "region_profiles",
                 "fields": {
-                    "id": {"type": "string", "required": True, "fieldName": "id"},
-                    "userId": {"type": "string", "required": True, "fieldName": "user_id"},
-                    "regionId": {"type": "string", "required": True, "fieldName": "region_id"},
+                    "id": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "id",
+                        "maxLength": 255,
+                    },
+                    "userId": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "user_id",
+                        "maxLength": 255,
+                    },
+                    "regionId": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "region_id",
+                        "maxLength": 255,
+                    },
                     "authority": {"type": "string", "required": True, "fieldName": "authority"},
                     "domain": {"type": "string", "required": False, "fieldName": "domain"},
                     "createdAt": {"type": "date", "required": True, "fieldName": "created_at"},

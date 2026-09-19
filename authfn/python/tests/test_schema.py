@@ -48,6 +48,7 @@ def test_schema_composition_is_deterministic() -> None:
     first = get_schema(_config())
     second = get_schema(_config())
 
+    assert first["version"] == 2
     assert [table["modelName"] for table in first["schemas"]] == [
         "users",
         "sessions",
@@ -63,6 +64,25 @@ def test_schema_composition_is_deterministic() -> None:
         "region_profiles",
     ]
     assert first == second
+
+    bounded_keys = {
+        "users": ["id", "primaryEmail"],
+        "sessions": ["id", "userId", "tokenHash"],
+        "password_credentials": ["id", "userId"],
+        "otp_challenges": ["id", "purpose", "email"],
+        "oauth_states": ["state_id", "expires_at"],
+        "oauth_tokens": ["token_id", "connection_id"],
+        "oauth_accounts": ["id", "userId", "provider", "providerAccountId", "connectionId"],
+        "api_keys": ["id", "userId", "secretHash"],
+        "two_factor_enrollments": ["id", "userId"],
+        "two_factor_recovery_codes": ["id", "enrollmentId", "codeHash"],
+        "two_factor_challenges": ["id", "userId"],
+        "region_profiles": ["id", "userId", "regionId"],
+    }
+    tables = {table["modelName"]: table for table in first["schemas"]}
+    for table_name, fields in bounded_keys.items():
+        for field_name in fields:
+            assert tables[table_name]["fields"][field_name]["maxLength"] == 255
 
 
 def test_schema_conflict_on_duplicate_table_name() -> None:

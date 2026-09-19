@@ -204,13 +204,24 @@ def authfn_api_key_plugin(config: Optional[ApiKeyPluginConfig] = None) -> AuthFn
             {
                 "modelName": "api_keys",
                 "fields": {
-                    "id": {"type": "string", "required": True, "fieldName": "id"},
-                    "userId": {"type": "string", "required": False, "fieldName": "user_id"},
+                    "id": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "id",
+                        "maxLength": 255,
+                    },
+                    "userId": {
+                        "type": "string",
+                        "required": False,
+                        "fieldName": "user_id",
+                        "maxLength": 255,
+                    },
                     "name": {"type": "string", "required": False, "fieldName": "name"},
                     "secretHash": {
                         "type": "string",
                         "required": True,
                         "fieldName": "secret_hash",
+                        "maxLength": 255,
                     },
                     "scopes": {"type": "json", "required": False, "fieldName": "scopes"},
                     "metadata": {"type": "json", "required": False, "fieldName": "metadata"},

@@ -8,7 +8,7 @@ from .types import AuthFnConfig, AuthFnPlugin, AuthFnSchemaConflictError, TableS
 
 SchemaDefinition = Dict[str, Any]
 
-AUTHFN_SCHEMA_VERSION = 1
+AUTHFN_SCHEMA_VERSION = 2
 
 
 def get_schema(config: Optional[AuthFnConfig | Dict[str, Any]] = None) -> SchemaDefinition:
@@ -33,11 +33,17 @@ def _core_tables() -> List[TableSchema]:
         {
             "modelName": "users",
             "fields": {
-                "id": {"type": "string", "required": True, "fieldName": "id"},
+                "id": {
+                    "type": "string",
+                    "required": True,
+                    "fieldName": "id",
+                    "maxLength": 255,
+                },
                 "primaryEmail": {
                     "type": "string",
                     "required": False,
                     "fieldName": "primary_email",
+                    "maxLength": 255,
                 },
                 "emailVerifiedAt": {
                     "type": "date",
@@ -63,12 +69,23 @@ def _core_tables() -> List[TableSchema]:
         {
             "modelName": "sessions",
             "fields": {
-                "id": {"type": "string", "required": True, "fieldName": "id"},
-                "userId": {"type": "string", "required": True, "fieldName": "user_id"},
+                "id": {
+                    "type": "string",
+                    "required": True,
+                    "fieldName": "id",
+                    "maxLength": 255,
+                },
+                "userId": {
+                    "type": "string",
+                    "required": True,
+                    "fieldName": "user_id",
+                    "maxLength": 255,
+                },
                 "tokenHash": {
                     "type": "string",
                     "required": True,
                     "fieldName": "token_hash",
+                    "maxLength": 255,
                 },
                 "csrfHash": {
                     "type": "string",

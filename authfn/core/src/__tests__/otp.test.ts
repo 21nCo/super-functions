@@ -654,7 +654,7 @@ describe('authfn otp plugin', () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           purpose: 'verify-email',
-          email: 'ada@example.com'
+          email: `${'a'.repeat(256)}@example.com`
         })
       })
     );
