@@ -6,6 +6,8 @@ import type { TableSchema, FieldSchema } from '@superfunctions/db';
 import { resolvePhysicalTableName } from './schema-diff.js';
 import { mysqlVarcharLength } from './mysql-types.js';
 
+const DEFAULT_MYSQL_INDEXED_VARCHAR_LENGTH = 255;
+
 interface AbstractSchema {
   version: number;
   schemas: TableSchema[];
@@ -97,12 +99,26 @@ export function generateDrizzleSchemaFile(
     const tableNameSnakeCase = resolvePhysicalTableName(namespace, tableName);
 
     const fields: string[] = [];
+    const mysqlKeyFields = new Set<string>(['id']);
+    for (const [fieldKey, field] of Object.entries(table.fields)) {
+      if (field.unique || field.references) mysqlKeyFields.add(fieldKey);
+    }
+    for (const schemaIndex of table.indexes ?? []) {
+      for (const field of schemaIndex.fields) mysqlKeyFields.add(field);
+    }
 
     // Generate field definitions
     for (const [fieldKey, fieldValue] of Object.entries(table.fields)) {
       const field = fieldValue as FieldSchema;
       const fieldName = field.fieldName || fieldKey;
-      const drizzleField = mapFieldToDrizzle(field, dialect);
+      const generatedField =
+        dialect === 'mysql' &&
+        field.type === 'string' &&
+        field.maxLength === undefined &&
+        mysqlKeyFields.has(fieldKey)
+          ? { ...field, maxLength: DEFAULT_MYSQL_INDEXED_VARCHAR_LENGTH }
+          : field;
+      const drizzleField = mapFieldToDrizzle(generatedField, dialect);
       drizzleImports.add(drizzleField.type);
 
       let fieldDef = `  ${fieldKey}: ${drizzleField.type}('${fieldName}'${drizzleField.config ? `, ${drizzleField.config}` : ''})`;
@@ -166,7 +182,7 @@ ${fields.join('\n')}
  * 
  * DO NOT EDIT MANUALLY
  * 
- * To regenerate: npx superfunctions generate-schema
+ * To regenerate: npx superfunctions generate-schema --dialect ${dialect}
  */
 `;
 

@@ -108,7 +108,8 @@ For workers, hoist the `auth` instance outside the handler if you want it to per
 ## Applying migrations
 
 After generating the Drizzle TypeScript schema from your enabled plugin set,
-configure Drizzle Kit to read the same file:
+configure Drizzle Kit to read the same file. This complete example is for
+PostgreSQL:
 
 ```ts
 // drizzle.config.ts
@@ -121,6 +122,15 @@ export default defineConfig({
   dbCredentials: { url: process.env.DATABASE_URL! },
 });
 ```
+
+Keep Drizzle Kit's dialect aligned with the schema command and runtime adapter:
+
+| Target | CLI `--dialect` | Drizzle Kit `dialect` | Credentials / apply step |
+| --- | --- | --- | --- |
+| PostgreSQL | `postgres` | `postgresql` | `dbCredentials: { url: DATABASE_URL }`; `drizzle-kit migrate` |
+| MySQL | `mysql` | `mysql` | `dbCredentials: { url: DATABASE_URL }`; `drizzle-kit migrate` |
+| local SQLite | `sqlite` | `sqlite` | `dbCredentials: { url: './authfn.db' }`; `drizzle-kit migrate` |
+| Cloudflare D1 | `sqlite` | `sqlite` | Generate SQL with Drizzle Kit, then apply it with Wrangler's D1 migration command. |
 
 Then generate and apply the migration:
 

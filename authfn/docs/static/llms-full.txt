@@ -236,7 +236,8 @@ For workers, hoist the `auth` instance outside the handler if you want it to per
 ## Applying migrations
 
 After generating the Drizzle TypeScript schema from your enabled plugin set,
-configure Drizzle Kit to read the same file:
+configure Drizzle Kit to read the same file. This complete example is for
+PostgreSQL:
 
 ```ts
 // drizzle.config.ts
@@ -249,6 +250,15 @@ export default defineConfig({
   dbCredentials: { url: process.env.DATABASE_URL! },
 });
 ```
+
+Keep Drizzle Kit's dialect aligned with the schema command and runtime adapter:
+
+| Target | CLI `--dialect` | Drizzle Kit `dialect` | Credentials / apply step |
+| --- | --- | --- | --- |
+| PostgreSQL | `postgres` | `postgresql` | `dbCredentials: { url: DATABASE_URL }`; `drizzle-kit migrate` |
+| MySQL | `mysql` | `mysql` | `dbCredentials: { url: DATABASE_URL }`; `drizzle-kit migrate` |
+| local SQLite | `sqlite` | `sqlite` | `dbCredentials: { url: './authfn.db' }`; `drizzle-kit migrate` |
+| Cloudflare D1 | `sqlite` | `sqlite` | Generate SQL with Drizzle Kit, then apply it with Wrangler's D1 migration command. |
 
 Then generate and apply the migration:
 
@@ -5564,10 +5574,13 @@ import {
   AuthFnConflictError,
   AuthFnError,
   AuthFnNotFoundError,
-  AuthFnUnauthenticatedError,
   AuthFnValidationError,
 } from "authfn";
-import { authenticateRequest, issueSession } from "authfn/core/sessions";
+import {
+  assertValidCsrf,
+  issueSession,
+  requireCookieSession,
+} from "authfn/core/sessions";
 import { createAuthFnRouteMeta, readOptionalJson } from "authfn/http/router";
 import { jsonSuccess, resolveRequestId } from "authfn/http/envelopes";
 
@@ -5613,11 +5626,11 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
       meta: createAuthFnRouteMeta(
         "issueMagicLink",
         "Issue a one-time magic-link code",
-        { mode: "cookie-session" },
+        { mode: "cookie-session", csrf: true },
       ),
       handler: async (request: Request) => {
-        const session = await authenticateRequest(ctx.config, request);
-        if (!session) throw new AuthFnUnauthenticatedError();
+        const state = await requireCookieSession(ctx.config, request);
+        assertValidCsrf(request, state);
 
         const code = randomBytes(16).toString("base64url");
         const codeHash = createHash("sha256").update(code).digest("hex");
@@ -5629,7 +5642,7 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           model: TABLE,
           data: {
             id: randomBytes(8).toString("hex"),
-            userId: session.actorId,
+            userId: state.session.actorId,
             codeHash,
             expiresAt,
             createdAt: new Date(),
@@ -5642,7 +5655,7 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           | undefined;
         await magicLinkRuntime?.onIssued?.({
           requestId: resolveRequestId(request),
-          userId: session.actorId,
+          userId: state.session.actorId,
           ttlSeconds: MAGIC_LINK_TTL_SECONDS,
         });
 
@@ -5685,6 +5698,8 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           data: { consumedAt: new Date() },
           namespace: ctx.namespace,
         });
+        // Adapter equality with null is translated to SQL IS NULL. The
+        // affected-row count makes this an atomic single-use claim.
         if (claimed !== 1) {
           throw new AuthFnConflictError("magic link already used");
         }
@@ -5727,7 +5742,7 @@ The plugin:
 
 - declares one table (`magic_links`);
 - exposes two routes (`/magic/issue`, `/magic/redeem`);
-- authenticates `/magic/issue` (uses kernel `authenticateRequest`);
+- authenticates `/magic/issue` with a cookie session and validates CSRF;
 - hashes the code at rest;
 - enforces single-use and expiry;
 - issues a session through the kernel's session manager so all `*SessionIssue` hooks still fire and observability events still emit.
@@ -7660,9 +7675,8 @@ npm install @superfunctions/db @superfunctions/http-express express
 ## 2. Declare the app and create the server
 
 ```ts
-// auth.ts
-import { memoryAdapter } from "@superfunctions/db/testing";
-import { authfn, authFnPlugins, type AuthFnDeliveryProvider } from "authfn";
+// auth.app.ts — side-effect-free and safe for schema tooling to import
+import { authfn, authFnPlugins } from "authfn";
 import { authFnPasswordPlugin } from "@authfn/password";
 import { authFnEmailOtpPlugin } from "@authfn/email-otp";
 
@@ -7674,6 +7688,13 @@ export const authApp = authfn({
     authFnEmailOtpPlugin(),
   ),
 });
+```
+
+```ts
+// auth.ts — runtime dependencies and server
+import { memoryAdapter } from "@superfunctions/db/testing";
+import type { AuthFnDeliveryProvider } from "authfn";
+import { authApp } from "./auth.app.js";
 
 const delivery: AuthFnDeliveryProvider = {
   async send(input) {
@@ -7754,13 +7775,15 @@ const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }), { s
 const auth = authApp.createServer({
   database: drizzleAdapter({ db, dialect: "postgres" }),
   pluginRuntime: {
-    emailOtp: { delivery: yourDelivery },
+    password: { otp: { delivery } },
+    emailOtp: { delivery },
   },
 });
 ```
 
 Add the two config files from the [Drizzle adapter guide](../adapters/database/drizzle),
-using `libraries: ['./auth.ts']` for this quickstart. Then generate the Drizzle
+using `libraries: ['./auth.app.ts']` for this quickstart. Keeping the declaration
+separate lets the CLI import it before the generated schema exists. Then generate the Drizzle
 schema and migrations from the plugin set you've enabled:
 
 ```bash

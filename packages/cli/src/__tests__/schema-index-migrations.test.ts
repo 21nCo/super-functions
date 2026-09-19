@@ -106,7 +106,10 @@ describe("schema index migrations", () => {
           fields: {
             id: { type: "string", required: true, fieldName: "id" },
             attempts: { type: "number", required: true, fieldName: "attempts" },
+            email: { type: "string", required: true, fieldName: "email" },
+            description: { type: "string", required: false, fieldName: "description" },
           },
+          indexes: [{ name: "counters_email_idx", fields: ["email"], unique: true }],
         } as unknown as TableSchema],
       },
       "example",
@@ -116,7 +119,11 @@ describe("schema index migrations", () => {
 
     expect(schema).toContain("int('attempts')");
     expect(schema).not.toContain("integer('attempts')");
+    expect(schema).toContain("id: varchar('id', { length: 255 })");
+    expect(schema).toContain("email: varchar('email', { length: 255 })");
+    expect(schema).toContain("description: text('description')");
     expect(schema).toContain("from 'drizzle-orm/mysql-core'");
+    expect(schema).toContain("generate-schema --dialect mysql");
   });
 
   it("scopes PostgreSQL index relations to the requested schema", async () => {

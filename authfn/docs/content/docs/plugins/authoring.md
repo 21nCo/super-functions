@@ -45,10 +45,13 @@ import {
   AuthFnConflictError,
   AuthFnError,
   AuthFnNotFoundError,
-  AuthFnUnauthenticatedError,
   AuthFnValidationError,
 } from "authfn";
-import { authenticateRequest, issueSession } from "authfn/core/sessions";
+import {
+  assertValidCsrf,
+  issueSession,
+  requireCookieSession,
+} from "authfn/core/sessions";
 import { createAuthFnRouteMeta, readOptionalJson } from "authfn/http/router";
 import { jsonSuccess, resolveRequestId } from "authfn/http/envelopes";
 
@@ -94,11 +97,11 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
       meta: createAuthFnRouteMeta(
         "issueMagicLink",
         "Issue a one-time magic-link code",
-        { mode: "cookie-session" },
+        { mode: "cookie-session", csrf: true },
       ),
       handler: async (request: Request) => {
-        const session = await authenticateRequest(ctx.config, request);
-        if (!session) throw new AuthFnUnauthenticatedError();
+        const state = await requireCookieSession(ctx.config, request);
+        assertValidCsrf(request, state);
 
         const code = randomBytes(16).toString("base64url");
         const codeHash = createHash("sha256").update(code).digest("hex");
@@ -110,7 +113,7 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           model: TABLE,
           data: {
             id: randomBytes(8).toString("hex"),
-            userId: session.actorId,
+            userId: state.session.actorId,
             codeHash,
             expiresAt,
             createdAt: new Date(),
@@ -123,7 +126,7 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           | undefined;
         await magicLinkRuntime?.onIssued?.({
           requestId: resolveRequestId(request),
-          userId: session.actorId,
+          userId: state.session.actorId,
           ttlSeconds: MAGIC_LINK_TTL_SECONDS,
         });
 
@@ -166,6 +169,8 @@ function createRoutes(ctx: AuthFnPluginRuntimeContext) {
           data: { consumedAt: new Date() },
           namespace: ctx.namespace,
         });
+        // Adapter equality with null is translated to SQL IS NULL. The
+        // affected-row count makes this an atomic single-use claim.
         if (claimed !== 1) {
           throw new AuthFnConflictError("magic link already used");
         }
@@ -208,7 +213,7 @@ The plugin:
 
 - declares one table (`magic_links`);
 - exposes two routes (`/magic/issue`, `/magic/redeem`);
-- authenticates `/magic/issue` (uses kernel `authenticateRequest`);
+- authenticates `/magic/issue` with a cookie session and validates CSRF;
 - hashes the code at rest;
 - enforces single-use and expiry;
 - issues a session through the kernel's session manager so all `*SessionIssue` hooks still fire and observability events still emit.
