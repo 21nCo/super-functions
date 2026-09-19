@@ -27,6 +27,7 @@ This command is the only supported global readiness check for PlugFn. It emits a
 11. provider-specific gates:
    - `npm run gate:plugfn-provider-github`
    - `npm run gate:plugfn-provider-linear`
+   - `npm run gate:plugfn-provider-clickup`
    - `npm run gate:plugfn-provider-gmail`
    - `npm run gate:plugfn-provider-notion`
 12. `npm --prefix plugfn/cli run build`
@@ -58,6 +59,7 @@ These commands are the reproducible verification surface documented by Phase 08:
 npm run gate:plugfn-release
 npm run gate:plugfn-provider-github
 npm run gate:plugfn-provider-linear
+npm run gate:plugfn-provider-clickup
 npm run gate:plugfn-provider-gmail
 npm run gate:plugfn-provider-notion
 npm test --workspace plugfn
