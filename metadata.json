@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2X4D4MNXDVQ23TRWD27KQ31",
+  "strategy": "manual-commit",
+  "branch": "codex/pr195-postmerge-remediation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/core/package.json",
+    "authfn/core/src/__tests__/sessions.test.ts",
+    "authfn/core/src/__tests__/social-google.test.ts",
+    "authfn/core/src/core/limits.ts",
+    "authfn/core/src/core/regions.ts",
+    "authfn/core/src/core/sessions.ts",
+    "authfn/core/src/core/users.ts",
+    "authfn/core/src/core/verifications.ts",
+    "authfn/core/src/index.ts",
+    "authfn/core/src/schema.ts",
+    "authfn/docs/content/docs/adapters/database/drizzle.md",
+    "authfn/docs/static/llms-full.txt",
+    "authfn/multi-region/src/__tests__/index.test.ts",
+    "authfn/social-oauth/src/index.ts",
+    "packages/cli/src/__tests__/authfn-schema-discovery.test.ts",
+    "packages/cli/src/__tests__/schema-index-migrations.test.ts",
+    "packages/cli/src/utils/schema-generators.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 113425,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 11003136,
+    "output_tokens": 16935,
+    "api_call_count": 66
+  }
+}

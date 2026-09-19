@@ -1,0 +1,62 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2X4D4MNXDVQ23TRWD27KQ31",
+  "session_id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-19T15:26:25.996623Z",
+  "branch": "codex/pr195-postmerge-remediation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/core/package.json",
+    "authfn/core/src/__tests__/sessions.test.ts",
+    "authfn/core/src/__tests__/social-google.test.ts",
+    "authfn/core/src/core/limits.ts",
+    "authfn/core/src/core/regions.ts",
+    "authfn/core/src/core/sessions.ts",
+    "authfn/core/src/core/users.ts",
+    "authfn/core/src/core/verifications.ts",
+    "authfn/core/src/index.ts",
+    "authfn/core/src/schema.ts",
+    "authfn/docs/content/docs/adapters/database/drizzle.md",
+    "authfn/docs/static/llms-full.txt",
+    "authfn/multi-region/src/__tests__/index.test.ts",
+    "authfn/social-oauth/src/index.ts",
+    "packages/cli/src/__tests__/authfn-schema-discovery.test.ts",
+    "packages/cli/src/__tests__/schema-index-migrations.test.ts",
+    "packages/cli/src/utils/schema-generators.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "bb5e0172e878",
+  "checkpoint_transcript_start": 5694,
+  "transcript_lines_at_start": 5694,
+  "compact_transcript_start": 814,
+  "token_usage": {
+    "input_tokens": 113425,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 11003136,
+    "output_tokens": 16935,
+    "api_call_count": 66
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-19T15:26:25.35797Z",
+    "agent_lines": 2048,
+    "agent_removed": 909,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2048,
+    "total_lines_changed": 2957,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
