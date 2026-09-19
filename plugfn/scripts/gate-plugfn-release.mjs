@@ -103,6 +103,11 @@ const steps = [
     args: ['plugfn/scripts/gate-plugfn-provider.mjs', 'linear'],
   },
   {
+    name: 'providerGateClickup',
+    command: 'node',
+    args: ['plugfn/scripts/gate-plugfn-provider.mjs', 'clickup'],
+  },
+  {
     name: 'providerGateGmail',
     command: 'node',
     args: ['plugfn/scripts/gate-plugfn-provider.mjs', 'gmail'],
