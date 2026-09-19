@@ -189,3 +189,4 @@ async def test_create_api_key_rejects_legacy_user_id_wider_than_reference_column
         "maxLength": 767,
         "actualLength": 768,
     }
+    assert db.storage["api_keys"] == []
