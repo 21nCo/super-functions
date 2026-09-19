@@ -246,6 +246,32 @@ it("fails closed when a credential matches an exported scenario key", () => {
   )).toThrow("MCP artifact structure conflicts with credential redaction");
 });
 
+it.each(["status", "incompleteReason", "variables"])(
+  "does not reject an export when optional key %s is not emitted",
+  secret => {
+    const client = new McpFnClient({
+      target: customTarget({
+        kind: "custom",
+        open: async () => { throw new Error("unused"); },
+        redact: <T>(value: T): T => JSON.parse(
+          JSON.stringify(value).replaceAll(secret, "[REDACTED]"),
+        ) as T,
+      }),
+    });
+    const inspector = new McpFnInspector(client);
+
+    const scenario = inspector.exportScenario(
+      "reflection",
+      { kind: "tools.call", name: "echo" },
+      { content: [] },
+    );
+
+    expect(scenario.status).toBeUndefined();
+    expect(scenario.incompleteReason).toBeUndefined();
+    expect(scenario.variables).toBeUndefined();
+  },
+);
+
 it("declares placeholders introduced in redacted property keys", () => {
   const secret = "opaque-property-key";
   const target = customTarget({

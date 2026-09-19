@@ -83,7 +83,7 @@ function retryTargetSuiteCleanup(error: Error): Promise<void> {
   if (owner.pending) return owner.pending;
   const pending = Promise.resolve().then(owner.close).then(
     () => { suiteCleanupOwners.delete(error); },
-    () => Promise.reject(error),
+    () => { throw error; },
   ).finally(() => { owner.pending = undefined; });
   owner.pending = pending;
   return pending;
@@ -309,14 +309,18 @@ function initialTargetDescriptor(target: McpFnTarget): McpFnTargetDescriptor {
     : { kind: "custom" };
 }
 
+function safeInitialTargetDescriptor(target: McpFnTarget): McpFnTargetDescriptor {
+  try { return initialTargetDescriptor(target); }
+  catch { return { kind: "custom" }; }
+}
+
 function projectSuiteArtifacts(
   options: RunMcpFnTargetSuiteOptions,
   client: McpFnTestClient | undefined,
   execution: SuiteExecution,
 ): SuiteProjection {
   const fallback: SuiteProjection = {
-    target: initialTargetDescriptor(options.target),
-    execution,
+    target: safeInitialTargetDescriptor(options.target), execution,
   };
   try {
     if (client?.session.state !== "connected") {
@@ -362,6 +366,115 @@ function projectSuiteArtifacts(
   }
 }
 
+const suiteStructureKeys = [
+  "formatVersion", "kind", "status", "runtime", "ok", "target", "server",
+  "capabilities", "manifestChecked", "manifestHash", "total", "passed", "failed",
+  "incomplete", "droppedResults", "droppedObservedEvents",
+  "redactionOmittedObservedEvents", "incompleteReason", "failure", "timeline",
+  "droppedTimelineEvents", "results", "node", "scenarioFormatVersion",
+  "reportSchemaVersion", "packages", "testing", "name", "message", "layer", "code",
+  "phase", "details", "outcome", "requestId", "at", "sideEffect", "durationMs",
+  "error", "operation", "tool",
+] as const;
+
+const suiteStructureValues = [
+  "mcpfn.target-suite-report", "complete", "incomplete", "passed", "failed",
+  "started", "succeeded", "none", "idempotent", "non-idempotent",
+  "mcpfn-preflight", "authorization-server", "resource-server", "mcp-initialization",
+  "scenario", "upstream-conformance", "resource-discovery",
+  "authorization-server-discovery", "client-registration", "authorization-request",
+  "authorization-callback", "token-exchange", "token-refresh", "token-revocation",
+  "transport-connect", "mcp-initialize", "capability-operation", "transport-close",
+  "authenticated-streamable-http", "streamable-http", "stdio", "in-memory", "custom",
+] as const;
+
+interface SuiteStructureGuard {
+  assert(value: string): void;
+}
+
+function captureSuiteStructureGuard(
+  target: McpFnTarget,
+  projection: SuiteProjection,
+  diagnostics: SuiteDiagnosticCollector,
+): SuiteStructureGuard {
+  const candidates = new Set<string>([
+    ...suiteStructureKeys,
+    ...suiteStructureValues,
+    process.version,
+    MCPFN_REPORT_SCHEMA_VERSION,
+    MCPFN_TESTING_VERSION,
+    projection.target.kind,
+  ]);
+  for (const result of projection.execution.results) {
+    candidates.add(result.status);
+    if (result.sideEffect) candidates.add(result.sideEffect);
+  }
+  for (const event of diagnostics.timeline) {
+    candidates.add(event.phase);
+    candidates.add(event.outcome);
+    if (event.target?.kind) candidates.add(event.target.kind);
+  }
+  const safe = new Set<string>();
+  for (const candidate of candidates) {
+    try {
+      if (redactSuiteArtifact(target, candidate, { preserveKeys: false }) === candidate) {
+        safe.add(candidate);
+      }
+    } catch {
+      // If the live custom scrubber cannot classify a string, fail closed only
+      // when the final report actually needs that unproven structure.
+    }
+  }
+  return {
+    assert(value: string): void {
+      if (!safe.has(value)) throw new McpFnStructuralCredentialCollisionError();
+    },
+  };
+}
+
+function assertStructureKeys(value: object, guard: SuiteStructureGuard): void {
+  for (const key of Object.keys(value)) guard.assert(key);
+}
+
+function assertTargetStructure(
+  target: McpFnTargetDescriptor,
+  guard: SuiteStructureGuard,
+): void {
+  guard.assert("kind");
+  guard.assert(target.kind);
+}
+
+function assertSuiteReportStructure(
+  report: McpFnTargetSuiteReport,
+  guard: SuiteStructureGuard,
+): void {
+  assertStructureKeys(report, guard);
+  guard.assert(report.kind);
+  guard.assert(report.status);
+  assertStructureKeys(report.runtime, guard);
+  guard.assert(report.runtime.node);
+  guard.assert(report.runtime.reportSchemaVersion);
+  assertStructureKeys(report.runtime.packages, guard);
+  guard.assert(report.runtime.packages.testing);
+  assertTargetStructure(report.target, guard);
+  if (report.failure) {
+    assertStructureKeys(report.failure, guard);
+    guard.assert(report.failure.layer);
+    if (report.failure.phase) guard.assert(report.failure.phase);
+  }
+  for (const event of report.timeline) {
+    assertStructureKeys(event, guard);
+    guard.assert(event.phase);
+    guard.assert(event.outcome);
+    if (event.target) assertTargetStructure(event.target, guard);
+  }
+  for (const result of report.results) {
+    assertStructureKeys(result, guard);
+    guard.assert(result.status);
+    if (result.sideEffect) guard.assert(result.sideEffect);
+  }
+}
+
 async function closeSuiteClient(client: McpFnTestClient | undefined): Promise<{
   cleanupFailure?: McpFnReportFailure;
   retainedCleanup?: () => Promise<void>;
@@ -395,20 +508,17 @@ async function closeSuiteClient(client: McpFnTestClient | undefined): Promise<{
   }
 }
 
-async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpFnTargetSuiteReport> {
-  const maxTimelineEvents = options.maxTimelineEvents ?? 500;
-  if (!Number.isInteger(maxTimelineEvents) || maxTimelineEvents < 1) {
-    throw new Error("maxTimelineEvents must be a positive integer");
-  }
-  const maxReportBytes = options.maxReportBytes ?? 1_048_576;
-  validateReportCap(maxReportBytes);
-  const consumerDiagnostic = options.client?.diagnostics;
-  const diagnostics = new SuiteDiagnosticCollector(
-    maxTimelineEvents,
-    maxReportBytes,
-    options.target,
-    consumerDiagnostic,
-  );
+interface SuiteConnection {
+  client?: McpFnTestClient;
+  manifestChecked: boolean;
+  failure?: McpFnReportFailure;
+  execution: SuiteExecution;
+}
+
+async function connectSuite(
+  options: RunMcpFnTargetSuiteOptions,
+  diagnostics: SuiteDiagnosticCollector,
+): Promise<SuiteConnection> {
   let client: McpFnTestClient | undefined;
   let manifestChecked = false;
   let failure: McpFnReportFailure | undefined;
@@ -428,16 +538,68 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   } catch (error) {
     failure = safeTargetFailure(options.target, error);
   }
-  // Custom hooks may depend on credentials cleared by close. Capture every
-  // target-controlled report value while the session still owns that state.
-  const projection = projectSuiteArtifacts(options, client, execution);
-  execution = projection.execution;
-  const { cleanupFailure: closeFailure, retainedCleanup } = await closeSuiteClient(client);
-  diagnostics.captureUnobserved(client);
-  let cleanupFailure = closeFailure;
-  cleanupFailure ??= diagnostics.cleanupFailure;
-  failure ??= cleanupFailure;
-  const results = execution.results;
+  return { client, manifestChecked, failure, execution };
+}
+
+async function projectAndCloseSuite(
+  options: RunMcpFnTargetSuiteOptions,
+  diagnostics: SuiteDiagnosticCollector,
+  connection: SuiteConnection,
+): Promise<{
+  projection: SuiteProjection;
+  structureGuard: SuiteStructureGuard;
+  closeResult: Awaited<ReturnType<typeof closeSuiteClient>>;
+}> {
+  let projection: SuiteProjection = {
+    target: { kind: "custom" },
+    execution: connection.execution,
+    failure: "serialization",
+  };
+  let structureGuard: SuiteStructureGuard = {
+    assert: () => { throw new McpFnStructuralCredentialCollisionError(); },
+  };
+  let closeResult: Awaited<ReturnType<typeof closeSuiteClient>> = {};
+  try {
+    projection = projectSuiteArtifacts(options, connection.client, connection.execution);
+    structureGuard = captureSuiteStructureGuard(options.target, projection, diagnostics);
+  } finally {
+    closeResult = await closeSuiteClient(connection.client);
+  }
+  return { projection, structureGuard, closeResult };
+}
+
+function suiteIncompleteReasons(
+  failure: McpFnReportFailure | undefined,
+  cleanupFailure: McpFnReportFailure | undefined,
+  diagnostics: SuiteDiagnosticCollector,
+  redactionOmittedObservedEvents: number,
+  overflowedObservedEvents: number,
+): string | undefined {
+  const reasons = [
+    ...(failure ? [`${failure.layer}: ${failure.message}`] : []),
+    ...(cleanupFailure ? [`Cleanup: ${cleanupFailure.message}`] : []),
+    ...(diagnostics.serializationFailed ? ["Diagnostic timeline contained non-JSON data"] : []),
+    ...(diagnostics.redactionFailed ? ["Diagnostic timeline redaction failed; original events omitted"] : []),
+    ...(diagnostics.countExceeded ? ["Diagnostic timeline exceeded maxTimelineEvents"] : []),
+    ...(diagnostics.bytesExceeded ? ["Diagnostic timeline exceeded maxReportBytes"] : []),
+    ...(redactionOmittedObservedEvents > 0
+      ? ["Observed client events were omitted because credential redaction failed"]
+      : []),
+    ...(overflowedObservedEvents > 0
+      ? ["Observed client events exceeded maxObservedEvents"]
+      : []),
+  ];
+  return reasons.length ? reasons.join("; ") : undefined;
+}
+
+function buildSuiteReport(
+  projection: SuiteProjection,
+  manifestChecked: boolean,
+  failure: McpFnReportFailure | undefined,
+  cleanupFailure: McpFnReportFailure | undefined,
+  diagnostics: SuiteDiagnosticCollector,
+): McpFnTargetSuiteReport {
+  const results = projection.execution.results;
   const failed = results.filter((result) => result.status === "failed").length;
   const incomplete = results.filter((result) => result.status === "incomplete").length;
   const droppedObservedEvents = results.reduce(
@@ -450,9 +612,15 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   );
   const overflowedObservedEvents = droppedObservedEvents - redactionOmittedObservedEvents;
   const artifactIncomplete = Boolean(failure) || incomplete > 0 ||
-    diagnostics.dropped > 0 ||
-    droppedObservedEvents > 0;
-  const report: McpFnTargetSuiteReport = {
+    diagnostics.dropped > 0 || droppedObservedEvents > 0;
+  const incompleteReason = suiteIncompleteReasons(
+    failure,
+    cleanupFailure,
+    diagnostics,
+    redactionOmittedObservedEvents,
+    overflowedObservedEvents,
+  );
+  return {
     formatVersion: 1,
     kind: "mcpfn.target-suite-report",
     status: artifactIncomplete ? "incomplete" : "complete",
@@ -464,8 +632,8 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     },
     ok: failed === 0 && !artifactIncomplete,
     target: projection.target,
-    server: execution.server,
-    capabilities: execution.capabilities,
+    server: projection.execution.server,
+    capabilities: projection.execution.capabilities,
     manifestChecked,
     ...(projection.manifestHash === undefined ? {} : { manifestHash: projection.manifestHash }),
     total: results.length,
@@ -475,56 +643,130 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     droppedResults: 0,
     droppedObservedEvents,
     ...(redactionOmittedObservedEvents > 0 ? { redactionOmittedObservedEvents } : {}),
-    ...(failure || diagnostics.dropped > 0 || droppedObservedEvents > 0
-      ? {
-        incompleteReason: [
-          ...(failure ? [`${failure.layer}: ${failure.message}`] : []),
-          ...(cleanupFailure ? [`Cleanup: ${cleanupFailure.message}`] : []),
-          ...(diagnostics.serializationFailed ? ["Diagnostic timeline contained non-JSON data"] : []),
-          ...(diagnostics.redactionFailed ? ["Diagnostic timeline redaction failed; original events omitted"] : []),
-          ...(diagnostics.countExceeded ? ["Diagnostic timeline exceeded maxTimelineEvents"] : []),
-          ...(diagnostics.bytesExceeded ? ["Diagnostic timeline exceeded maxReportBytes"] : []),
-          ...(redactionOmittedObservedEvents > 0
-            ? ["Observed client events were omitted because credential redaction failed"]
-            : []),
-          ...(overflowedObservedEvents > 0
-            ? ["Observed client events exceeded maxObservedEvents"]
-            : []),
-        ].join("; "),
-      }
-      : {}),
+    ...(incompleteReason ? { incompleteReason } : {}),
     ...(failure ? { failure } : {}),
     timeline: diagnostics.timeline,
     droppedTimelineEvents: diagnostics.dropped,
     results,
   };
+}
+
+function structuralReportFailure(retainedCleanup: (() => Promise<void>) | undefined): never {
+  const failure = new McpFnClientError(
+    "MCPFN_OPERATION_FAILED",
+    "Target report cannot be serialized because a credential conflicts with required artifact structure",
+    { phase: "capability-operation" },
+  );
+  if (retainedCleanup) {
+    throw new McpFnTargetSuiteArtifactCleanupError(retainedCleanup, failure);
+  }
+  throw failure;
+}
+
+function boundedSuiteReport(
+  report: McpFnTargetSuiteReport,
+  guard: SuiteStructureGuard,
+  maxReportBytes: number,
+): McpFnTargetSuiteReport {
+  const bounded = enforceReportCap(report, maxReportBytes);
+  assertSuiteReportStructure(bounded, guard);
+  return bounded;
+}
+
+function finalizeSuiteReport(
+  options: RunMcpFnTargetSuiteOptions,
+  projection: SuiteProjection,
+  report: McpFnTargetSuiteReport,
+  guard: SuiteStructureGuard,
+  maxReportBytes: number,
+  retainedCleanup: (() => Promise<void>) | undefined,
+): McpFnTargetSuiteReport {
   let finalized: McpFnTargetSuiteReport;
   try {
     if (projection.failure) throw new Error("Report payload projection failed");
+    assertSuiteReportStructure(report, guard);
     // Custom redaction already completed before cleanup. Built-in report scopes
     // remain active here for bounded final serialization.
-    finalized = enforceReportCap(redactTargetCredentials(options.target, report, { preserveKeys: true }), maxReportBytes);
+    finalized = boundedSuiteReport(
+      redactTargetCredentials(options.target, report, { preserveKeys: true }),
+      guard,
+      maxReportBytes,
+    );
   } catch (error) {
     if (error instanceof McpFnStructuralCredentialCollisionError) {
-      const failure = new McpFnClientError(
-        "MCPFN_OPERATION_FAILED",
-        "Target report cannot be serialized because a credential conflicts with required artifact structure",
-        { phase: "capability-operation" },
-      );
-      if (retainedCleanup) {
-        throw new McpFnTargetSuiteArtifactCleanupError(retainedCleanup, failure);
-      }
-      throw failure;
+      return structuralReportFailure(retainedCleanup);
     }
-    finalized = enforceReportCap({ ...report, ok: false, status: "incomplete",
+    const fallback = {
+      ...report,
+      ok: false,
+      status: "incomplete" as const,
       incompleteReason: reportProjectionFailureReason(error, projection.failure),
-      target: { kind: "custom" }, server: undefined, capabilities: undefined, manifestHash: undefined,
-      failure: undefined, results: [], timeline: [],
-      droppedResults: report.results.length, droppedTimelineEvents: report.droppedTimelineEvents + report.timeline.length,
-    }, maxReportBytes);
+      target: { kind: "custom" as const },
+      server: undefined,
+      capabilities: undefined,
+      manifestHash: undefined,
+      failure: undefined,
+      results: [],
+      timeline: [],
+      droppedResults: report.results.length,
+      droppedTimelineEvents: report.droppedTimelineEvents + report.timeline.length,
+    };
+    try {
+      finalized = boundedSuiteReport(fallback, guard, maxReportBytes);
+    } catch (fallbackError) {
+      if (fallbackError instanceof McpFnStructuralCredentialCollisionError) {
+        return structuralReportFailure(retainedCleanup);
+      }
+      throw fallbackError;
+    }
   }
   if (retainedCleanup) throw new McpFnTargetSuiteCleanupError(finalized, retainedCleanup);
   return finalized;
+}
+
+async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpFnTargetSuiteReport> {
+  const maxTimelineEvents = options.maxTimelineEvents ?? 500;
+  if (!Number.isInteger(maxTimelineEvents) || maxTimelineEvents < 1) {
+    throw new Error("maxTimelineEvents must be a positive integer");
+  }
+  const maxReportBytes = options.maxReportBytes ?? 1_048_576;
+  validateReportCap(maxReportBytes);
+  const consumerDiagnostic = options.client?.diagnostics;
+  const diagnostics = new SuiteDiagnosticCollector(
+    maxTimelineEvents,
+    maxReportBytes,
+    options.target,
+    consumerDiagnostic,
+  );
+  const connection = await connectSuite(options, diagnostics);
+  // Custom hooks may depend on credentials cleared by close. Capture payload
+  // projection and structural safety while the session still owns that state,
+  // but never let either operation bypass the sole cleanup boundary.
+  const { projection, structureGuard, closeResult } = await projectAndCloseSuite(
+    options,
+    diagnostics,
+    connection,
+  );
+  const { cleanupFailure: closeFailure, retainedCleanup } = closeResult;
+  diagnostics.captureUnobserved(connection.client);
+  let cleanupFailure = closeFailure;
+  cleanupFailure ??= diagnostics.cleanupFailure;
+  const failure = connection.failure ?? cleanupFailure;
+  const report = buildSuiteReport(
+    projection,
+    connection.manifestChecked,
+    failure,
+    cleanupFailure,
+    diagnostics,
+  );
+  return finalizeSuiteReport(
+    options,
+    projection,
+    report,
+    structureGuard,
+    maxReportBytes,
+    retainedCleanup,
+  );
 }
 
 function enforceReportCap(

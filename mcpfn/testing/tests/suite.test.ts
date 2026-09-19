@@ -220,7 +220,7 @@ it("does not repeat successful custom cleanup after an open failure", async () =
 });
 
 
-it.each(["metadata", "failure", "throwing-redactor"])("applies custom target redaction to finalized suite %s", async mode => {
+it.each(["metadata", "failure"])("applies custom target redaction to finalized suite %s", async mode => {
   const secret = "custom-owned-secret";
   const server = createMcpFnServer({
     info: { name: secret, version: "1.0.0" },
@@ -233,7 +233,6 @@ it.each(["metadata", "failure", "throwing-redactor"])("applies custom target red
     kind: "custom",
     descriptor: { label: secret },
     redact: <T>(value: T): T => {
-      if (mode === "throwing-redactor") throw new Error(secret);
       const plain = value instanceof Error ? { name: value.name, message: value.message } : value;
       return JSON.parse(JSON.stringify(plain).replaceAll(secret, "[REDACTED]")) as T;
     },
@@ -255,11 +254,18 @@ it.each(["metadata", "failure", "throwing-redactor"])("applies custom target red
   } else if (mode === "failure") {
     expect(report.ok).toBe(false);
     expect(report.failure?.message).toContain("[REDACTED]");
-  } else {
-    expect(report.status).toBe("incomplete");
-    expect(report.server).toBeUndefined();
-    expect(report.timeline).toEqual([]);
   }
+});
+
+it("rejects a typed report when the live custom redactor cannot prove structure safe", async () => {
+  const secret = "custom-owned-secret";
+  await expect(runMcpFnTargetSuite({
+    target: customTarget({
+      kind: "custom",
+      redact: <T>(): T => { throw new Error(secret); },
+      open: async () => { throw new Error("cannot open"); },
+    }),
+  })).rejects.toThrow("credential conflicts with required artifact structure");
 });
 
 it("fails a custom target report closed when its dynamic kind conflicts with redaction", async () => {
@@ -318,25 +324,20 @@ it("transfers failed shutdown ownership and serializes safe cleanup retries", as
   expect(error.report.ok).toBe(false); // Immutable historical failure evidence.
 });
 
-it.each(["complete", "passed"])("keeps suite structure when a custom secret is %s", async secret => {
+it.each(["complete", "passed"])("rejects suite structure when a custom secret is %s", async secret => {
   const server = createMcpFnServer({ info: { name: secret, version: "1" }, registry: new McpFnRegistry() });
-  const report = await runMcpFnTargetSuite({ target: customTarget({ kind: "custom", descriptor: { label: secret },
+  await expect(runMcpFnTargetSuite({ target: customTarget({ kind: "custom", descriptor: { label: secret },
     redact: <T>(value: T): T => JSON.parse(JSON.stringify(value).replaceAll(secret, "[REDACTED]")),
     open: async () => {
       const [client, remote] = InMemoryTransport.createLinkedPair();
       await server.connect(remote);
       return { transport: client, close: () => server.close() };
     },
-  }) });
-  expect(report.status).toBe("complete");
-  expect(report.kind).toBe("mcpfn.target-suite-report");
-  expect(report.passed).toBe(0);
-  expect(report.server?.name).toBe("[REDACTED]");
-  expect(report.target.label).toBe("[REDACTED]");
+  }) })).rejects.toThrow("credential conflicts with required artifact structure");
 });
 
 it("uses payload redaction for standalone suite projections", async () => {
-  const secret = "passed";
+  const secret = "scenario-secret";
   const server = createMcpFnServer({
     info: { name: secret, version: "1" },
     registry: new McpFnRegistry().register({
@@ -374,6 +375,26 @@ it("uses payload redaction for standalone suite projections", async () => {
   });
   expect(report.server?.name).toBe("[REDACTED]");
   expect(report.target.label).toBe("[REDACTED]");
+});
+
+it("rejects a pre-connect fallback whose emitted structure conflicts with custom redaction", async () => {
+  const secret = "incomplete";
+  const error = await runMcpFnTargetSuite({
+    target: customTarget({
+      kind: "custom",
+      redact: <T>(value: T): T => JSON.parse(
+        JSON.stringify(value).replaceAll(secret, "[REDACTED]"),
+      ) as T,
+      open: async () => { throw new Error("connection failed"); },
+    }),
+  }).catch(error => error);
+
+  expect(error).toMatchObject({
+    name: "McpFnClientError",
+    message: expect.stringContaining("credential conflicts with required artifact structure"),
+  });
+  expect(error.message).not.toContain(secret);
+  expect(JSON.stringify(error)).not.toContain(secret);
 });
 
 it("delivers diagnostics after exactly one custom redaction and bounds their retained bytes", async () => {
@@ -519,6 +540,36 @@ it.each(["throw", "proxy"])("fails closed for a hostile live descriptor (%s)", a
   expect(report).toMatchObject({ ok: false, status: "incomplete", target: { kind: "custom" }, results: [], timeline: [] });
   expect(report.incompleteReason).toContain("safe serialization failed");
   expect(JSON.stringify(report)).not.toContain(secret);
+});
+
+it("closes a connected target when its kind getter throws during projection fallback", async () => {
+  const server = createMcpFnServer({ info: { name: "fixture", version: "1" }, registry: new McpFnRegistry() });
+  const close = vi.fn(() => server.close());
+  let opened = false;
+  let postOpenKindReads = 0;
+  const target = customTarget({ kind: "custom", open: async () => {
+    const [client, remote] = InMemoryTransport.createLinkedPair();
+    await server.connect(remote);
+    opened = true;
+    return { transport: client, close };
+  } });
+  Object.defineProperty(target, "kind", {
+    configurable: true,
+    get: () => {
+      if (opened) {
+        postOpenKindReads += 1;
+        throw new Error("hostile-kind-getter");
+      }
+      return "custom";
+    },
+  });
+
+  const report = await runMcpFnTargetSuite({ target });
+
+  expect(close).toHaveBeenCalledOnce();
+  expect(postOpenKindReads).toBeGreaterThan(0);
+  expect(report.status).toBe("complete");
+  expect(JSON.stringify(report)).not.toContain("hostile-kind-getter");
 });
 
 

@@ -30,6 +30,34 @@ export interface McpFnJunitOptions {
   maxBytes?: number;
 }
 
+function objectRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function redactedFailureCause(error: unknown): Record<string, unknown> | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause === undefined) return undefined;
+  return objectRecord(redactOAuthValue(cause, {
+    maxDepth: 4,
+    maxArrayEntries: 20,
+    maxObjectEntries: 20,
+    maxStringLength: 1_024,
+  }));
+}
+
+function resourceDenied(
+  layer: McpFnFailureLayer,
+  record: Record<string, unknown>,
+  cause: Record<string, unknown> | undefined,
+): boolean {
+  if (layer === "authorization-server") return false;
+  return [cause?.code, cause?.status, record.code, record.status]
+    .some(value => [401, 403].includes(Number(value)));
+}
+
 export function normalizeMcpFnReportFailure(
   error: unknown,
   fallbackPhase?: McpFnDiagnosticPhase | "scenario" | "upstream-conformance",
@@ -40,39 +68,18 @@ export function normalizeMcpFnReportFailure(
     maxObjectEntries: 50,
     maxStringLength: 2_048,
   });
-  const record = redacted && typeof redacted === "object" && !Array.isArray(redacted)
-    ? redacted as Record<string, unknown>
-    : {};
+  const record = objectRecord(redacted) ?? {};
   const phase = stringField(record.phase) ?? fallbackPhase;
-  const details = record.details && typeof record.details === "object" &&
-      !Array.isArray(record.details)
-    ? record.details as Record<string, unknown>
-    : undefined;
+  const details = objectRecord(record.details);
   let message = stringField(record.message) ?? String(
     redactOAuthValue(error instanceof Error ? error.message : String(error)),
   );
-  const cause = error && typeof error === "object"
-    ? (error as { cause?: unknown }).cause
-    : undefined;
-  const redactedCause = cause === undefined
-    ? undefined
-    : redactOAuthValue(cause, {
-      maxDepth: 4,
-      maxArrayEntries: 20,
-      maxObjectEntries: 20,
-      maxStringLength: 1_024,
-    });
-  const causeRecord = redactedCause && typeof redactedCause === "object" &&
-      !Array.isArray(redactedCause)
-    ? redactedCause as Record<string, unknown>
-    : undefined;
+  const causeRecord = redactedFailureCause(error);
   const causeMessage = stringField(causeRecord?.message);
   if (causeMessage && !message.includes(causeMessage)) message = `${message}: ${causeMessage}`;
   const combinedDetails = causeRecord ? { ...details, cause: causeRecord } : details;
   const layer = failureLayer(phase);
-  const deniedByResource = layer !== "authorization-server" &&
-    [causeRecord?.code, causeRecord?.status, record.code, record.status]
-      .some(value => [401, 403].includes(Number(value)));
+  const deniedByResource = resourceDenied(layer, record, causeRecord);
   return {
     name: stringField(record.name) ?? "Error",
     message,

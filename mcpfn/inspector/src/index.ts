@@ -240,12 +240,7 @@ export class McpFnInspector {
     const scenario = createMcpFnScenario(name, operation, result);
     // Top-level scenario keys are authored schema, not payload. If a credential
     // collides with one of them, no replayable typed artifact can be emitted.
-    for (const key of [
-      ...Object.keys(scenario),
-      "status",
-      "incompleteReason",
-      "variables",
-    ]) {
+    for (const key of Object.keys(scenario)) {
       this.client.preserveArtifactStructure(key);
     }
     const { formatVersion, kind, sideEffect, ...payload } = scenario;
@@ -267,6 +262,8 @@ export class McpFnInspector {
         formatVersion, kind: safeKind, sideEffect: safeSideEffect,
       };
     } catch {
+      this.client.preserveArtifactStructure("status");
+      this.client.preserveArtifactStructure("incompleteReason");
       return {
         formatVersion,
         kind: safeKind,
@@ -286,6 +283,10 @@ export class McpFnInspector {
     } else if (exceedsRedactionBounds(scenario, redacted, SCENARIO_REDACTION_LIMITS)) {
       incompleteReason = "Inspector export exceeded redaction bounds and was truncated";
     }
+    if (incompleteReason) {
+      this.client.preserveArtifactStructure("status");
+      this.client.preserveArtifactStructure("incompleteReason");
+    }
     const exported = incompleteReason
       ? {
         ...replaced,
@@ -297,7 +298,9 @@ export class McpFnInspector {
       }
       : replaced;
     const variables = collectVariables(exported);
-    return variables.length ? { ...exported, variables } : exported;
+    if (!variables.length) return exported;
+    this.client.preserveArtifactStructure("variables");
+    return { ...exported, variables };
   }
 
   timeline(): McpFnInspectorTimelineEvent[] {
