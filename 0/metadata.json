@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2X1D1QY2VWZNJX43372MDG2",
+  "session_id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-19T14:34:02.202185Z",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/__tests__/schema-index-migrations.test.ts",
+    "packages/cli/src/utils/schema-generators.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "bb5e0172e878",
+  "checkpoint_transcript_start": 4394,
+  "transcript_lines_at_start": 4394,
+  "compact_transcript_start": 622,
+  "token_usage": {
+    "input_tokens": 11151,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4390144,
+    "output_tokens": 4131,
+    "api_call_count": 22
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-19T14:34:00.919182Z",
+    "agent_lines": 98,
+    "agent_removed": 4,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 98,
+    "total_lines_changed": 102,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
