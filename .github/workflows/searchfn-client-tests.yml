@@ -39,7 +39,10 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install client workspace from the root lockfile
-        run: npm ci --workspace @searchfn/client --include-workspace-root=false
+        run: npm ci --ignore-scripts --workspace @searchfn/client --include-workspace-root=false
+
+      - name: Build trusted esbuild native binding
+        run: npm rebuild esbuild
 
       - name: Ensure Rollup native package
         run: node scripts/ci-install-rollup-native.mjs
