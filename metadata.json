@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2WSZD704BXK6XTGQG6DN5HQ",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "plugfn/scripts/gate-plugfn-provider.mjs",
+    "plugfn/scripts/gate-plugfn-release.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 7168,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1380096,
+    "output_tokens": 2106,
+    "api_call_count": 8
+  }
+}
