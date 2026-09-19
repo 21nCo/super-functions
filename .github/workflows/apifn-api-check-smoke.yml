@@ -17,9 +17,6 @@ permissions:
 
 jobs:
   api-check:
-    permissions:
-      contents: read
-      pull-requests: write
     uses: ./.github/workflows/apifn-api-check.yml
     with:
       spec_path: apifn/cli/__tests__/fixtures/diff/before.yml

@@ -115,8 +115,9 @@ jobs:
 ```
 
 Pin a commit or release tag instead of `@dev` when the caller requires an
-immutable workflow. Omit `cli_version` to use that workflow revision's matching
-default. If you set it explicitly, read the version from the same ref in the
+immutable workflow. Omit `cli_version` to use the workflow's static default
+(`0.0.2`), which must stay equal to that revision's lockfile pin. If you set it
+explicitly, read the version from the same ref in the
 [workflow's CLI lockfile](../.github/apifn-cli-install/package-lock.json); the
 input is an assertion, not a package selector. For GitLab/Jenkins/Buildkite,
 run the CLI commands in [Non-GitHub CI](#non-github-ci).
@@ -135,7 +136,7 @@ run the CLI commands in [Non-GitHub CI](#non-github-ci).
 - `spec_path` (required): Repo-relative OpenAPI path (e.g. `.apifn/openapi.yml`)
 - `collection_dir` (required): Repo-relative OpenCollection directory (e.g. `.apifn/collection`)
 - `environment` (optional, default `development`): Collection environment
-- `cli_version` (optional, default `0.0.2`): Assertion against the `@apifn/cli` version pinned by the selected workflow revision. Omit it to use the matching default. External callers do not need the lockfile locally—the workflow sparse-checks it out from `job.workflow_repository` at `job.workflow_sha`—and can inspect the [workflow's CLI lockfile](../.github/apifn-cli-install/package-lock.json) at the same tag or commit.
+- `cli_version` (optional, default `0.0.2`): Assertion against the `@apifn/cli` version pinned by the selected workflow revision. The default is static in the workflow file and must stay equal to that revision's lockfile pin. Omit it to use the default, or set it from the same ref in the [workflow's CLI lockfile](../.github/apifn-cli-install/package-lock.json). External callers do not need the lockfile locally—the workflow sparse-checks it out from `job.workflow_repository` at `job.workflow_sha`.
 - `base_branch` (optional, default `main`): Branch used to fetch baseline spec
 - `fail_on_breaking` (optional, default `true`): Whether breaking diff exits non-zero
 - `post_pr_comment` (optional, default `true`): Whether to post/update PR summary comment
