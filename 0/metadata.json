@@ -3,7 +3,7 @@
   "checkpoint_id": "01M2WX4HRPX4P169DXDJW2XS3E",
   "session_id": "01a0b44c-c149-7270-9519-9e2888cdae23",
   "strategy": "manual-commit",
-  "created_at": "2026-09-19T13:19:25.573221Z",
+  "created_at": "2026-09-19T13:20:00.110573Z",
   "checkpoints_count": 1,
   "files_touched": [
     ".github/workflows/apifn-api-check.yml",
@@ -12,18 +12,18 @@
   "agent": "Codex",
   "model": "gpt-5.6-sol",
   "turn_id": "bb5e0172e878",
-  "checkpoint_transcript_start": 2359,
-  "transcript_lines_at_start": 2359,
-  "compact_transcript_start": 328,
+  "checkpoint_transcript_start": 2443,
+  "transcript_lines_at_start": 2443,
+  "compact_transcript_start": 340,
   "token_usage": {
-    "input_tokens": 14177,
+    "input_tokens": 3441,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 1535744,
-    "output_tokens": 3278,
-    "api_call_count": 12
+    "cache_read_tokens": 402304,
+    "output_tokens": 1143,
+    "api_call_count": 3
   },
   "initial_attribution": {
-    "calculated_at": "2026-09-19T13:19:25.08308Z",
+    "calculated_at": "2026-09-19T13:19:59.638841Z",
     "agent_lines": 394,
     "agent_removed": 1,
     "human_added": 0,
