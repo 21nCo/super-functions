@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2X33BE9018P3RE2Q2D4D4DQ",
+  "strategy": "manual-commit",
+  "branch": "codex/pr195-postmerge-remediation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/api-keys/src/index.ts",
+    "authfn/core/src/schema.ts",
+    "authfn/docs/content/docs/adapters/database/drizzle.md",
+    "authfn/docs/content/docs/plugins/authoring.md",
+    "authfn/docs/static/llms-full.txt",
+    "authfn/email-otp/src/index.ts",
+    "authfn/multi-region/src/index.ts",
+    "authfn/native-handoff/src/index.ts",
+    "authfn/password/src/index.ts",
+    "authfn/social-oauth/src/index.ts",
+    "authfn/two-factor/src/index.ts",
+    "packages/cli/src/__tests__/authfn-schema-discovery.test.ts",
+    "packages/cli/src/__tests__/schema-index-migrations.test.ts",
+    "packages/cli/src/utils/schema-generators.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 98985,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4727808,
+    "output_tokens": 12304,
+    "api_call_count": 58
+  }
+}
