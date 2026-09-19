@@ -30,6 +30,50 @@ interface LibrarySchema {
   tables: TableSchema[];
 }
 
+const AUTHFN_V1_UNBOUNDED_MYSQL_COLUMNS = new Set([
+  'authfn_users.id',
+  'authfn_users.primary_email',
+  'authfn_sessions.id',
+  'authfn_sessions.user_id',
+  'authfn_sessions.token_hash',
+  'authfn_api_keys.id',
+  'authfn_api_keys.user_id',
+  'authfn_api_keys.secret_hash',
+  'authfn_otp_challenges.id',
+  'authfn_otp_challenges.purpose',
+  'authfn_otp_challenges.email',
+  'authfn_region_profiles.id',
+  'authfn_region_profiles.user_id',
+  'authfn_region_profiles.region_id',
+  'authfn_native_handoff_codes.id',
+  'authfn_native_handoff_codes.code_hash',
+  'authfn_native_handoff_codes.source_session_id',
+  'authfn_password_credentials.id',
+  'authfn_password_credentials.user_id',
+  'authfn_two_factor_enrollments.id',
+  'authfn_two_factor_enrollments.user_id',
+  'authfn_two_factor_recovery_codes.id',
+  'authfn_two_factor_recovery_codes.enrollment_id',
+  'authfn_two_factor_recovery_codes.code_hash',
+  'authfn_two_factor_challenges.id',
+  'authfn_two_factor_challenges.user_id',
+  'authfn_oauth_states.state_id',
+  'authfn_oauth_states.expires_at',
+  'authfn_oauth_tokens.token_id',
+  'authfn_oauth_tokens.connection_id',
+  'authfn_oauth_consents.consent_id',
+  'authfn_oauth_consents.provider_id',
+  'authfn_oauth_consents.subject_key',
+  'authfn_oauth_revocation_failures.failure_id',
+  'authfn_oauth_revocation_failures.provider_id',
+  'authfn_oauth_revocation_failures.subject_key',
+  'authfn_oauth_accounts.id',
+  'authfn_oauth_accounts.user_id',
+  'authfn_oauth_accounts.provider',
+  'authfn_oauth_accounts.provider_account_id',
+  'authfn_oauth_accounts.connection_id',
+]);
+
 export function createPendingMigration(input: {
   adapterType: 'drizzle' | 'prisma' | 'kysely';
   dialect: Dialect;
@@ -49,7 +93,9 @@ export function createPendingMigration(input: {
     currentVersion > 0 &&
     library.version >= 2;
   const tableDiffs = diffTables(library.tables, currentTables, library.namespace, {
-    preserveUnboundedMySqlStrings: preserveAuthFnV1MySqlText,
+    preserveUnboundedMySqlStringColumns: preserveAuthFnV1MySqlText
+      ? AUTHFN_V1_UNBOUNDED_MYSQL_COLUMNS
+      : undefined,
   });
   const plan = createMigrationPlan(
     library.namespace,

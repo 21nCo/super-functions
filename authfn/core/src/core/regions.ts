@@ -379,6 +379,7 @@ export async function registerUserRegion(
     request?: Request;
   }
 ): Promise<AuthFnRegionProfileRecord | null> {
+  const userId = assertAuthFnDatabaseKeyLength(input.user.id, 'userId');
   const gatewayCellRegionId = pluginConfig.routing?.mode === 'gateway'
     ? pluginConfig.routing.cell?.regionId
     : undefined;
@@ -391,10 +392,10 @@ export async function registerUserRegion(
   }
 
   const now = new Date();
-  const existing = await findRegionProfileByUserId(config, input.user.id);
+  const existing = await findRegionProfileByUserId(config, userId);
   const record: AuthFnRegionProfileRecord = {
     id: existing?.id ?? createIdentifier('region'),
-    userId: input.user.id,
+    userId,
     regionId: assertAuthFnDatabaseKeyLength(currentRegion.regionId, 'regionId'),
     authority: currentRegion.authority,
     domain: currentRegion.domain ?? null,
@@ -408,7 +409,7 @@ export async function registerUserRegion(
     const cacheKey = createAuthFnCacheKey(config, 'region', identifier);
     const lookupRecord: AuthFnRegionLookupRecord = {
       identifier,
-      userId: input.user.id,
+      userId,
       regionId: record.regionId,
       authority: record.authority,
       domain: record.domain ?? undefined,
@@ -439,8 +440,8 @@ export async function registerUserRegion(
         await emitAuthEvent(config, {
           type: 'authfn.region.lookup.conflict',
           requestId: eventRequestId(input.request),
-          actorId: input.user.id,
-          userId: input.user.id,
+          actorId: userId,
+          userId,
           regionId: existing.regionId,
           outcome: 'conflict',
           metadata: {

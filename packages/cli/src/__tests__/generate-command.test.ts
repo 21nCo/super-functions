@@ -138,6 +138,48 @@ describe('generate command migration planning', () => {
     expect(sequential?.migrationFile.content).toContain('From version 2 to 3');
     expect(sequential?.migrationFile.content).not.toContain('ALTER TABLE');
 
+    const v3Tables = authFnTables.map((table) => table.modelName === 'users'
+      ? {
+          ...table,
+          fields: {
+            ...table.fields,
+            displayName: {
+              type: 'string' as const,
+              required: false,
+              fieldName: 'display_name',
+              maxLength: 100,
+            },
+          },
+        }
+      : table);
+    const v3CurrentTables = currentAuthFnTables('mysql');
+    const legacyDisplayName = column(
+      'mysql',
+      'authfn_users',
+      'display_name',
+    );
+    legacyDisplayName.isNullable = true;
+    v3CurrentTables[0].columns.push(legacyDisplayName);
+    const intentionalV3Bound = createPendingMigration({
+      adapterType: 'drizzle',
+      dialect: 'mysql',
+      library: { namespace: 'authfn', version: 3, tables: v3Tables },
+      currentVersion: 2,
+      currentTables: v3CurrentTables,
+    });
+    expect(intentionalV3Bound?.tableDiffs).toEqual([
+      expect.objectContaining({
+        tableName: 'authfn_users',
+        columnChanges: [expect.objectContaining({
+          column: 'display_name',
+          change: 'maxLength changed from 65535 to 100',
+        })],
+      }),
+    ]);
+    expect(intentionalV3Bound?.migrationFile.content).toContain(
+      'ALTER TABLE authfn_users MODIFY COLUMN display_name VARCHAR(100) NULL;',
+    );
+
     const kysely = createPendingMigration({
       adapterType: 'kysely',
       dialect: 'mysql',

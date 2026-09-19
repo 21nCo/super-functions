@@ -202,7 +202,7 @@ export function diffTables(
   required: TableSchema[],
   current: DatabaseTable[],
   namespace: string,
-  options: { preserveUnboundedMySqlStrings?: boolean } = {},
+  options: { preserveUnboundedMySqlStringColumns?: ReadonlySet<string> } = {},
 ): TableDiff[] {
   const diffs: TableDiff[] = [];
   const currentMap = new Map(current.map((t) => [t.name, t]));
@@ -389,7 +389,7 @@ export function diffTables(
           const desiredLength = mysqlVarcharLength(fieldSchema);
           const actualLength = databaseStringLength(curCol);
           const preserveLegacyText =
-            options.preserveUnboundedMySqlStrings === true &&
+            options.preserveUnboundedMySqlStringColumns?.has(`${dbName}.${colName}`) === true &&
             isUnboundedMySqlTextType(curCol.dataType) &&
             desiredLength !== null;
           if (actualLength !== desiredLength && !preserveLegacyText) {
