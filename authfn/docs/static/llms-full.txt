@@ -264,12 +264,16 @@ For MySQL, every string field used as a primary key, unique key, foreign key,
 or index member must declare `maxLength`. Generation fails instead of silently
 narrowing an unbounded string contract.
 
-Then generate and apply the migration:
+For PostgreSQL, MySQL, and local SQLite, generate and apply the migration with
+Drizzle Kit:
 
 ```bash
 npx drizzle-kit generate
 npx drizzle-kit migrate
 ```
+
+For D1, run `npx drizzle-kit generate`, then apply the generated SQL with the
+Wrangler D1 migration command for your database instead of `drizzle-kit migrate`.
 
 ## Schema visibility
 
@@ -7772,6 +7776,7 @@ Swap `memoryAdapter` for the Drizzle adapter once you're ready for a real databa
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { authApp } from "./auth.app.js";
 import * as schema from "./db/generated/authfn-schema.js";
 
 const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }), { schema });

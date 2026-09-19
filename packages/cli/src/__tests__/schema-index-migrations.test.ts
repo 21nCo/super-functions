@@ -144,6 +144,30 @@ describe("schema index migrations", () => {
     )).toThrow("MySQL key field counters.id must declare maxLength");
   });
 
+  it("rejects composite MySQL string indexes beyond the InnoDB key budget", () => {
+    expect(() => generateDrizzleSchemaFile(
+      {
+        version: 1,
+        schemas: [{
+          modelName: "accounts",
+          fields: {
+            id: { type: "string", required: true, fieldName: "id", maxLength: 64 },
+            provider: { type: "string", required: true, fieldName: "provider", maxLength: 500 },
+            providerAccountId: { type: "string", required: true, fieldName: "provider_account_id", maxLength: 500 },
+          },
+          indexes: [{
+            name: "accounts_provider_account_idx",
+            fields: ["provider", "providerAccountId"],
+            unique: true,
+          }],
+        } as unknown as TableSchema],
+      },
+      "example",
+      "example",
+      "mysql",
+    )).toThrow("encoded key size 4000 bytes exceeds the 3072-byte InnoDB limit");
+  });
+
   it("scopes PostgreSQL index relations to the requested schema", async () => {
     let indexQuery = "";
     let indexParams: unknown[] = [];
@@ -633,7 +657,16 @@ describe("schema index migrations", () => {
         .toThrow("expected an integer between 1 and 16383");
     }
     expect(() => generateDrizzleSchemaFile(
-      { version: 1, schemas: [invalid] },
+      {
+        version: 1,
+        schemas: [{
+          ...invalid,
+          fields: {
+            ...invalid.fields,
+            id: { ...invalid.fields.id, maxLength: 255 },
+          },
+        }],
+      },
       "plugfn",
       "plugfn",
       "mysql",

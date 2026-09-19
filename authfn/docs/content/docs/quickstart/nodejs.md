@@ -111,6 +111,7 @@ Swap `memoryAdapter` for the Drizzle adapter once you're ready for a real databa
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { authApp } from "./auth.app.js";
 import * as schema from "./db/generated/authfn-schema.js";
 
 const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }), { schema });

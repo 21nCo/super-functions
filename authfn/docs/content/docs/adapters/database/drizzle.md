@@ -136,12 +136,16 @@ For MySQL, every string field used as a primary key, unique key, foreign key,
 or index member must declare `maxLength`. Generation fails instead of silently
 narrowing an unbounded string contract.
 
-Then generate and apply the migration:
+For PostgreSQL, MySQL, and local SQLite, generate and apply the migration with
+Drizzle Kit:
 
 ```bash
 npx drizzle-kit generate
 npx drizzle-kit migrate
 ```
+
+For D1, run `npx drizzle-kit generate`, then apply the generated SQL with the
+Wrangler D1 migration command for your database instead of `drizzle-kit migrate`.
 
 ## Schema visibility
 

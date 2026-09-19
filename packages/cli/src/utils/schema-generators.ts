@@ -4,7 +4,10 @@
 
 import type { TableSchema, FieldSchema } from '@superfunctions/db';
 import { resolvePhysicalTableName } from './schema-diff.js';
-import { mysqlVarcharLength } from './mysql-types.js';
+import {
+  MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH,
+  mysqlVarcharLength
+} from './mysql-types.js';
 
 interface AbstractSchema {
   version: number;
@@ -97,29 +100,12 @@ export function generateDrizzleSchemaFile(
     const tableNameSnakeCase = resolvePhysicalTableName(namespace, tableName);
 
     const fields: string[] = [];
-    const mysqlKeyFields = new Set<string>(['id']);
-    for (const [fieldKey, field] of Object.entries(table.fields)) {
-      if (field.unique || field.references) mysqlKeyFields.add(fieldKey);
-    }
-    for (const schemaIndex of table.indexes ?? []) {
-      for (const field of schemaIndex.fields) mysqlKeyFields.add(field);
-    }
+    if (dialect === 'mysql') assertMySqlDrizzleKeySafety(table);
 
     // Generate field definitions
     for (const [fieldKey, fieldValue] of Object.entries(table.fields)) {
       const field = fieldValue as FieldSchema;
       const fieldName = field.fieldName || fieldKey;
-      if (
-        dialect === 'mysql' &&
-        field.type === 'string' &&
-        field.maxLength === undefined &&
-        mysqlKeyFields.has(fieldKey)
-      ) {
-        throw new CliSchemaGenerationError(
-          `MySQL key field ${tableName}.${fieldKey} must declare maxLength`,
-          { tableName, fieldName: fieldKey, reason: 'mysql-key-requires-max-length' }
-        );
-      }
       const drizzleField = mapFieldToDrizzle(field, dialect);
       drizzleImports.add(drizzleField.type);
 
@@ -199,6 +185,85 @@ function renderDrizzleIndexes(table: TableSchema): string[] {
     const columns = schemaIndex.fields.map((field) => `table.${field}`).join(', ');
     return `    ${key}: ${builder}('${schemaIndex.name}').on(${columns})`;
   });
+}
+
+function assertMySqlDrizzleKeySafety(table: TableSchema): void {
+  const keys: Array<{ name: string; fields: string[] }> = [];
+  if (table.fields.id) keys.push({ name: 'PRIMARY', fields: ['id'] });
+  for (const [fieldName, field] of Object.entries(table.fields)) {
+    if (field.unique) keys.push({ name: `${fieldName}_unique`, fields: [fieldName] });
+    if (field.references) keys.push({ name: `${fieldName}_foreign_key`, fields: [fieldName] });
+  }
+  for (const index of table.indexes ?? []) {
+    keys.push({ name: index.name, fields: index.fields });
+  }
+
+  for (const key of keys) {
+    let encodedBytes = 0;
+    for (const fieldName of key.fields) {
+      const field = table.fields[fieldName];
+      if (!field) {
+        throw new CliSchemaGenerationError(
+          `Cannot generate MySQL index ${key.name}: no schema field exists for ${fieldName}`,
+          { tableName: table.modelName, fieldName, indexName: key.name, reason: 'mysql-index-field-missing' }
+        );
+      }
+      encodedBytes += mysqlDrizzleKeyFieldBytes(field, table.modelName, key.name, fieldName);
+    }
+    if (encodedBytes > MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH * 4) {
+      throw new CliSchemaGenerationError(
+        `Cannot generate MySQL index ${key.name}: encoded key size ${encodedBytes} bytes exceeds the 3072-byte InnoDB limit`,
+        { tableName: table.modelName, indexName: key.name, encodedBytes, reason: 'mysql-index-key-too-wide' }
+      );
+    }
+  }
+}
+
+function mysqlDrizzleKeyFieldBytes(
+  field: FieldSchema,
+  tableName: string,
+  indexName: string,
+  fieldName: string
+): number {
+  if (field.type === 'string') {
+    const length = mysqlVarcharLength(field);
+    if (length === null) {
+      throw new CliSchemaGenerationError(
+        `MySQL key field ${tableName}.${fieldName} must declare maxLength`,
+        { tableName, fieldName, indexName, reason: 'mysql-key-requires-max-length' }
+      );
+    }
+    if (length > MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH) {
+      throw new CliSchemaGenerationError(
+        `Cannot generate MySQL index ${indexName} on ${fieldName}: maxLength ${length} exceeds the utf8mb4 full-column index limit ${MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH}`,
+        { fieldName, indexName, maxLength: length, reason: 'mysql-index-field-too-wide' }
+      );
+    }
+    return length * 4;
+  }
+
+  if (isDateField(field)) {
+    switch (resolveDateStorageType(field)) {
+      case 'timestamp':
+      case 'timestamptz':
+        return 4;
+      case 'epoch-ms-integer':
+        return 4;
+      case 'epoch-ms-bigint':
+        return 8;
+      case 'iso-text':
+        break;
+    }
+  } else {
+    if (field.type === 'number') return 4;
+    if (field.type === 'bigint') return 8;
+    if (field.type === 'boolean') return 1;
+  }
+
+  throw new CliSchemaGenerationError(
+    `Cannot generate MySQL index ${indexName}: encoded key size for ${fieldName} cannot be proven safe`,
+    { fieldName, indexName, reason: 'mysql-index-field-width-unknown' }
+  );
 }
 
 function uniqueObjectKey(base: string, usedKeys: Set<string>): string {
