@@ -72,14 +72,15 @@ async function toWebRequest(request: IncomingMessage): Promise<Request> {
     new URL(request.url ?? "/", `http://${request.headers.host ?? "127.0.0.1"}`),
     {
       method: request.method,
-      headers: new Headers(Object.entries(request.headers).flatMap(([name, value]) =>
-        Array.isArray(value)
-          ? value.map((entry) => [name, entry] as [string, string])
-          : value === undefined ? [] : [[name, value] as [string, string]],
-      )),
+      headers: new Headers(Object.entries(request.headers).flatMap(nodeHeaderEntries)),
       ...(body.length ? { body } : {}),
     },
   );
+}
+
+function nodeHeaderEntries([name, value]: [string, string | string[] | undefined]): Array<[string, string]> {
+  if (Array.isArray(value)) return value.map((entry) => [name, entry]);
+  return value === undefined ? [] : [[name, value]];
 }
 
 async function sendWebResponse(response: ServerResponse, web: Response): Promise<void> {

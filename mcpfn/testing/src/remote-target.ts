@@ -11,6 +11,7 @@ import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 type SecretState = { active: Map<string, number>; scopes: Set<Set<string>> };
 const targetSecrets = new WeakMap<McpFnTarget, SecretState>();
+const utf8Encoder = new TextEncoder();
 
 /** Retain released credentials only for the lifetime of a report operation. */
 export function beginTargetCredentialRedaction(target: McpFnTarget): () => void {
@@ -25,62 +26,67 @@ function credentialValues(headers: HeadersInit): Set<string> {
   const values = boundedCredentialEntries(headers);
   const secrets = new Set<string>();
   for (const [header, raw] of values) {
-    if (typeof raw !== "string" || !raw.trim()) continue;
+    if (!raw.trim()) continue;
     secrets.add(raw);
     secrets.add(raw.trim());
-    const trimmed = raw.trim();
-    const separator = trimmed.search(/\s/);
-    const scheme = separator > 0 ? trimmed.slice(0, separator).toLowerCase() : "";
-    const authorization = ["authorization", "proxy-authorization"].includes(header.toLowerCase());
-    // Authorization headers carry schemes, including supported custom ones.
-    // Other credential headers are opaque even when their values contain spaces.
-    if (authorization && separator > 0) {
-      const token = trimmed.slice(separator).trim();
-      if (token) secrets.add(token);
-      if (scheme === "basic" && /^[A-Za-z0-9+/]+={0,2}$/.test(token)) {
-        const decoded = Buffer.from(token, "base64");
-        // Round-trip validation avoids interpreting malformed tokens as credentials.
-        if (decoded.toString("base64").replace(/=+$/, "") === token.replace(/=+$/, "")) {
-          for (const encoding of ["utf8", "latin1"] as const) {
-            const pair = decoded.toString(encoding);
-            const colon = pair.indexOf(":");
-            if (colon < 0) continue;
-            for (const value of [pair, pair.slice(0, colon), pair.slice(colon + 1)]) {
-              if (value) secrets.add(value);
-            }
-          }
-        }
-      }
+    const normalizedHeader = header.toLowerCase();
+    if (["authorization", "proxy-authorization"].includes(normalizedHeader)) {
+      addAuthorizationSecrets(raw, secrets);
     }
-    if (header.toLowerCase() === "cookie") {
-      // Cookie values are independently reflectable even though the request
-      // authenticates with the complete header. RFC 6265 cookie values cannot
-      // contain comma or semicolon, so both delimiters safely cover combined
-      // Headers entries as well as the normal Cookie serialization.
-      for (const part of raw.split(/[;,]/)) {
-        const pair = part.trim();
-        if (!pair) continue;
-        const equals = pair.indexOf("=");
-        if (equals < 1) {
-          throw new TypeError("Cookie credential headers must contain name=value pairs");
-        }
-        const value = pair.slice(equals + 1).trim();
-        if (!value) continue;
-        secrets.add(value);
-        if (value.startsWith('"') || value.endsWith('"')) {
-          if (value.length < 2 || !value.startsWith('"') || !value.endsWith('"')) {
-            throw new TypeError("Cookie credential values must use balanced quotes");
-          }
-          const unquoted = value.slice(1, -1);
-          if (unquoted.includes('"') || unquoted.includes("\\")) {
-            throw new TypeError("Cookie credential values must use RFC 6265 syntax");
-          }
-          if (unquoted) secrets.add(unquoted);
-        }
-      }
-    }
+    if (normalizedHeader === "cookie") addCookieSecrets(raw, secrets);
   }
   return secrets;
+}
+
+function addAuthorizationSecrets(raw: string, secrets: Set<string>): void {
+  const trimmed = raw.trim();
+  const separator = trimmed.search(/\s/);
+  if (separator <= 0) return;
+  const scheme = trimmed.slice(0, separator).toLowerCase();
+  const token = trimmed.slice(separator).trim();
+  if (token) secrets.add(token);
+  if (scheme !== "basic" || !/^[\dA-Za-z+/]+={0,2}$/.test(token)) return;
+  const decoded = Buffer.from(token, "base64");
+  // Round-trip validation avoids interpreting malformed tokens as credentials.
+  if (decoded.toString("base64").replace(/=+$/, "") !== token.replace(/=+$/, "")) return;
+  for (const encoding of ["utf8", "latin1"] as const) {
+    const pair = decoded.toString(encoding);
+    const colon = pair.indexOf(":");
+    if (colon < 0) continue;
+    for (const value of [pair, pair.slice(0, colon), pair.slice(colon + 1)]) {
+      if (value) secrets.add(value);
+    }
+  }
+}
+
+function addCookieSecrets(raw: string, secrets: Set<string>): void {
+  // Cookie values are independently reflectable even though the request
+  // authenticates with the complete header. RFC 6265 cookie values cannot
+  // contain comma or semicolon, so both delimiters cover combined entries.
+  for (const part of raw.split(/[;,]/)) {
+    const pair = part.trim();
+    if (!pair) continue;
+    const equals = pair.indexOf("=");
+    if (equals < 1) {
+      throw new TypeError("Cookie credential headers must contain name=value pairs");
+    }
+    const value = pair.slice(equals + 1).trim();
+    if (!value) continue;
+    secrets.add(value);
+    addUnquotedCookieSecret(value, secrets);
+  }
+}
+
+function addUnquotedCookieSecret(value: string, secrets: Set<string>): void {
+  if (!value.startsWith('"') && !value.endsWith('"')) return;
+  if (value.length < 2 || !value.startsWith('"') || !value.endsWith('"')) {
+    throw new TypeError("Cookie credential values must use balanced quotes");
+  }
+  const unquoted = value.slice(1, -1);
+  if (unquoted.includes('"') || unquoted.includes("\\")) {
+    throw new TypeError("Cookie credential values must use RFC 6265 syntax");
+  }
+  if (unquoted) secrets.add(unquoted);
 }
 
 export class McpFnRedactionLimitError extends Error {
@@ -108,23 +114,33 @@ const envelopeKeys: Record<string, Set<string>> = Object.fromEntries(Object.entr
   target: "kind",
 }).map(([role, keys]) => [role, new Set(keys.split(" "))]));
 
+const structuralArtifactValues = new Map<string, Set<string>>([
+  ["root:kind", new Set(["logging.message", "progress", "tasks.status", "resources.updated", "tools.list_changed", "resources.list_changed", "prompts.list_changed", "resources.subscribed", "resources.unsubscribed", "client.roots", "client.sampling", "client.elicitation", "mcpfn.target-suite-report", "mcpfn.inspector-snapshot", "mcpfn.official-conformance-report"])],
+  ["inspectorEvent:kind", new Set(["logging.message", "progress", "tasks.status", "resources.updated", "tools.list_changed", "resources.list_changed", "prompts.list_changed", "resources.subscribed", "resources.unsubscribed", "client.roots", "client.sampling", "client.elicitation"])],
+  ["root:clientState", new Set(["idle", "connecting", "authorization-required", "connected", "closing", "closed"])],
+  ["target:kind", new Set(["authenticated-streamable-http", "streamable-http", "stdio", "in-memory", "custom"])],
+  ["root:status", new Set(["passed", "failed", "incomplete", "complete"])],
+  ["result:status", new Set(["passed", "failed", "incomplete", "complete"])],
+  ["root:outcome", new Set(["started", "succeeded", "failed"])],
+  ["diagnostic:outcome", new Set(["started", "succeeded", "failed"])],
+  ...["root", "diagnostic", "failure"].map(role => [
+    `${role}:phase`,
+    new Set(["resource-discovery", "authorization-server-discovery", "client-registration", "authorization-request", "authorization-callback", "token-exchange", "token-refresh", "token-revocation", "transport-connect", "mcp-initialize", "capability-operation", "transport-close"]),
+  ] as [string, Set<string>]),
+  ["failure:layer", new Set(["mcpfn-preflight", "authorization-server", "resource-server", "mcp-initialization", "scenario", "upstream-conformance"])],
+  ["inspectorEvent:source", new Set(["diagnostic", "client"])],
+  ["result:sideEffect", new Set(["none", "idempotent", "non-idempotent"])],
+]);
+
+const unrestrictedStructuralValueFields = new Set([
+  "packages:testing",
+  "runtime:node",
+  "runtime:reportSchemaVersion",
+  "root:suiteVersion",
+]);
+
 function specialValue(input: unknown): unknown {
-  if (input instanceof Error) {
-    // Error instances may expose attacker-controlled enumerable keys. A
-    // null-prototype accumulator keeps `__proto__` as ordinary payload data.
-    const normalized = Object.create(null) as Record<string, unknown>;
-    let enumerableFields = 0;
-    for (const key in input) {
-      if (!Object.hasOwn(input, key)) continue;
-      if (++enumerableFields > 100_000) throw new McpFnRedactionLimitError();
-      normalized[key] = (input as unknown as Record<string, unknown>)[key];
-    }
-    normalized.name = input.name;
-    normalized.message = input.message;
-    normalized.stack = input.stack;
-    if (input.cause !== undefined) normalized.cause = input.cause;
-    return normalized;
-  }
+  if (input instanceof Error) return normalizeErrorValue(input);
   if (input instanceof Date) return Number.isNaN(input.getTime()) ? "Invalid Date" : input.toISOString();
   if (input instanceof URL) return input.href;
   if (input instanceof Map) {
@@ -136,6 +152,23 @@ function specialValue(input: unknown): unknown {
     return { type: "Set", values: [...Set.prototype.values.call(input)] };
   }
   return input;
+}
+
+function normalizeErrorValue(input: Error): Record<string, unknown> {
+  // Error instances may expose attacker-controlled enumerable keys. A
+  // null-prototype accumulator keeps `__proto__` as ordinary payload data.
+  const normalized = Object.create(null) as Record<string, unknown>;
+  let enumerableFields = 0;
+  for (const key in input) {
+    if (!Object.hasOwn(input, key)) continue;
+    if (++enumerableFields > 100_000) throw new McpFnRedactionLimitError();
+    normalized[key] = (input as unknown as Record<string, unknown>)[key];
+  }
+  normalized.name = input.name;
+  normalized.message = input.message;
+  normalized.stack = input.stack;
+  if (input.cause !== undefined) normalized.cause = input.cause;
+  return normalized;
 }
 
 function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = false, redactionMarker?: string): T {
@@ -168,7 +201,7 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
     const literal = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     // Only generated percent escapes accept mixed-case hex digits.
     return encoded
-      ? literal.replace(/%[0-9A-Fa-f]{2}/g, escape => escape.replace(/[A-Fa-f]/g, hex => `[${hex.toLowerCase()}${hex.toUpperCase()}]`))
+      ? literal.replace(/%[\dA-Fa-f]{2}/g, escape => escape.replace(/[A-Fa-f]/g, hex => `[${hex.toLowerCase()}${hex.toUpperCase()}]`))
       : literal;
   });
   const secretPattern = patterns.length ? new RegExp(patterns.join("|"), "g") : undefined;
@@ -193,30 +226,29 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
     secretPattern.lastIndex = 0;
     if (markerContainsSecret) redactionMarker = "";
   }
-  const clientKinds = new Set(["logging.message", "progress", "tasks.status", "resources.updated", "tools.list_changed", "resources.list_changed", "prompts.list_changed", "resources.subscribed", "resources.unsubscribed", "client.roots", "client.sampling", "client.elicitation"]);
+  const scrubString = (input: string, role: string, field: string, finalPass: boolean): string => {
+    const structuralField = `${role}:${field}`;
+    if (unrestrictedStructuralValueFields.has(structuralField) ||
+        structuralArtifactValues.get(structuralField)?.has(input)) {
+      return preserveStructural(input);
+    }
+    // Whole-string rejection cannot compose another credential by joining pieces.
+    // Run after both redactors; never feed this result through another redactor.
+    if (finalPass) return replacementPattern?.test(input) ? "" : input;
+    if (!secretPattern) return input;
+    return input.replace(secretPattern, secret => {
+      const maskCharacter = secret.includes("*") ? "#" : "*";
+      const defaultReplacement = secret.length < 10
+        ? maskCharacter.repeat(secret.length)
+        : "[REDACTED]";
+      const replacement = redactionMarker ?? defaultReplacement;
+      // Every generated mask must be safe against the entire credential set.
+      return replacementPattern!.test(replacement) ? "" : replacement;
+    });
+  };
   const scrub = (input: unknown, role = "payload", field = "", finalPass = false): unknown => {
     input = specialValue(input);
-    if (typeof input === "string") {
-      if ((role === "root" || role === "inspectorEvent") && field === "kind" && clientKinds.has(input)) return preserveStructural(input);
-      if (role === "root" && field === "clientState" && ["idle", "connecting", "authorization-required", "connected", "closing", "closed"].includes(input)) return preserveStructural(input);
-      if (role === "target" && field === "kind" && ["authenticated-streamable-http", "streamable-http", "stdio", "in-memory", "custom"].includes(input)) return preserveStructural(input);
-      if ((role === "packages" && field === "testing") || (role === "runtime" && ["node", "reportSchemaVersion"].includes(field)) || (role === "root" && field === "suiteVersion")) return preserveStructural(input);
-      if ((role === "root" || role === "result") && field === "status" && ["passed", "failed", "incomplete", "complete"].includes(input)) return preserveStructural(input);
-      if ((role === "root" || role === "diagnostic") && field === "outcome" && ["started", "succeeded", "failed"].includes(input)) return preserveStructural(input);
-      if (role === "root" && field === "kind" && ["mcpfn.target-suite-report", "mcpfn.inspector-snapshot", "mcpfn.official-conformance-report"].includes(input)) return preserveStructural(input);
-      if ((role === "root" || role === "diagnostic" || role === "failure") && field === "phase" && ["resource-discovery", "authorization-server-discovery", "client-registration", "authorization-request", "authorization-callback", "token-exchange", "token-refresh", "token-revocation", "transport-connect", "mcp-initialize", "capability-operation", "transport-close"].includes(input)) return preserveStructural(input);
-      if (role === "failure" && field === "layer" && ["mcpfn-preflight", "authorization-server", "resource-server", "mcp-initialization", "scenario", "upstream-conformance"].includes(input)) return preserveStructural(input);
-      if (role === "inspectorEvent" && field === "source" && ["diagnostic", "client"].includes(input)) return preserveStructural(input);
-      if (role === "result" && field === "sideEffect" && ["none", "idempotent", "non-idempotent"].includes(input)) return preserveStructural(input);
-      // Whole-string rejection cannot compose another credential by joining pieces.
-      // Run after both redactors; never feed this result through another redactor.
-      if (finalPass) return replacementPattern?.test(input) ? "" : input;
-      return secretPattern ? input.replace(secretPattern, secret => {
-        const replacement = redactionMarker ?? (secret.length < 10 ? (secret.includes("*") ? "#" : "*").repeat(secret.length) : "[REDACTED]");
-        // Every generated mask must be safe against the entire credential set.
-        return replacementPattern!.test(replacement) ? "" : replacement;
-      }) : input;
-    }
+    if (typeof input === "string") return scrubString(input, role, field, finalPass);
     if (Array.isArray(input)) {
       const result = input.map(entry => scrub(entry, role, "", finalPass));
       assertPayloadSerialization(result, role, finalPass, replacementPattern);
@@ -242,12 +274,10 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
           );
         }
         keys.add(scrubbedKey);
-        entries.push([
-          scrubbedKey,
-          typeof entry === "string"
-            ? scrub(entry, fixed ? role : "payload", key, finalPass)
-            : scrub(entry, childRole, "", finalPass),
-        ]);
+        const scrubbedEntry = typeof entry === "string"
+          ? scrub(entry, fixed ? role : "payload", key, finalPass)
+          : scrub(entry, childRole, "", finalPass);
+        entries.push([scrubbedKey, scrubbedEntry]);
       }
       const result = Object.fromEntries(entries);
       assertPayloadSerialization(result, role, finalPass, replacementPattern);
@@ -256,7 +286,8 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
     return input;
   };
   const timelineEvent = value && typeof value === "object" && ["client", "diagnostic"].includes((value as { source?: string }).source ?? "");
-  const role = preserveKeys ? (timelineEvent ? "inspectorEvent" : "root") : "payload";
+  let role = "payload";
+  if (preserveKeys) role = timelineEvent ? "inspectorEvent" : "root";
   const scrubbed = scrub(value, role);
   const generic = redactOAuthValue(scrubbed, { maxStringLength: 262_144, maxDepth: 64, maxArrayEntries: 100_000, maxObjectEntries: 100_000, ...(redactionMarker !== undefined ? { redactionMarker } : {}) });
   const result = scrub(generic, role, "", true) as T;
@@ -414,7 +445,7 @@ export async function acquireRemoteCredential(
             await provider.dispose?.(acquired, cleanupContext);
             disposed = true;
           }
-        } catch (error) {
+        } catch {
           throw new McpFnClientError(
             "MCPFN_OPERATION_FAILED",
             "Target credential cleanup failed",
@@ -439,7 +470,6 @@ export function authenticatedHttpTarget(
   const descriptorUrl = new URL(targetUrl);
   descriptorUrl.search = "";
   const { credential: _credential, requestInit, ...transportOptions } = options;
-  void _credential;
 
   const state: SecretState = { active: new Map(), scopes: new Set() };
   const pendingReleases = new Set<() => Promise<void>>();
@@ -469,13 +499,11 @@ export function authenticatedHttpTarget(
         try { await lease.release(); }
         catch (error) { pendingReleases.add(release); throw error; }
         pendingReleases.delete(release);
-        {
-          for (const secret of secrets) {
-            const count = (state.active.get(secret) ?? 1) - 1;
-            if (count) state.active.set(secret, count); else state.active.delete(secret);
-          }
-          secrets.clear();
+        for (const secret of secrets) {
+          const count = (state.active.get(secret) ?? 1) - 1;
+          if (count) state.active.set(secret, count); else state.active.delete(secret);
         }
+        secrets.clear();
       };
       let handle: McpFnTransportHandle | undefined;
       try {
@@ -574,8 +602,8 @@ function boundedCredentialEntries(value: HeadersInit): Array<[string, string]> {
     if (entries.length >= MAX_CREDENTIAL_HEADERS) throw new TypeError("Credential headers exceed the header limit");
     if (typeof name !== "string" || typeof headerValue !== "string") throw new TypeError("Credential header values must be strings");
     if (name.length > MAX_CREDENTIAL_HEADER_BYTES || headerValue.length > MAX_CREDENTIAL_HEADER_VALUE_BYTES) throw new TypeError("Credential header exceeds the value-size limit");
-    if (new TextEncoder().encode(headerValue).byteLength > MAX_CREDENTIAL_HEADER_VALUE_BYTES) throw new TypeError("Credential header exceeds the value-size limit");
-    bytes += new TextEncoder().encode(`${name}: ${headerValue}\r\n`).byteLength;
+    if (utf8Encoder.encode(headerValue).byteLength > MAX_CREDENTIAL_HEADER_VALUE_BYTES) throw new TypeError("Credential header exceeds the value-size limit");
+    bytes += utf8Encoder.encode(`${name}: ${headerValue}\r\n`).byteLength;
     if (bytes > MAX_CREDENTIAL_HEADER_BYTES) throw new TypeError("Credential headers exceed the aggregate size limit");
     entries.push([name, headerValue]);
   };
@@ -584,7 +612,7 @@ function boundedCredentialEntries(value: HeadersInit): Array<[string, string]> {
     if (value.length > MAX_CREDENTIAL_HEADERS) throw new TypeError("Credential headers exceed the header limit");
     for (const entry of value) append(entry[0], entry[1]);
   } else {
-    for (const name in value) if (Object.prototype.hasOwnProperty.call(value, name)) append(name, value[name]);
+    for (const name in value) if (Object.hasOwn(value, name)) append(name, value[name]);
   }
   return entries;
 }
@@ -605,12 +633,11 @@ export function validateRemoteCredentialHeaders(value: HeadersInit): Headers {
     if (FORBIDDEN_CREDENTIAL_HEADERS.has(name)) {
       throw new TypeError(`Credential header ${name} is not allowed`);
     }
-    const valueBytes = new TextEncoder().encode(headerValue).byteLength;
+    const valueBytes = utf8Encoder.encode(headerValue).byteLength;
     if (valueBytes > MAX_CREDENTIAL_HEADER_VALUE_BYTES) {
       throw new TypeError(`Credential header ${name} exceeds the value-size limit`);
     }
-    if (new TextEncoder().encode(headerValue).byteLength > MAX_CREDENTIAL_HEADER_VALUE_BYTES) throw new TypeError("Credential header exceeds the value-size limit");
-    bytes += new TextEncoder().encode(`${name}: ${headerValue}\r\n`).byteLength;
+    bytes += utf8Encoder.encode(`${name}: ${headerValue}\r\n`).byteLength;
   }
   if (bytes > MAX_CREDENTIAL_HEADER_BYTES) {
     throw new TypeError("Credential headers exceed the aggregate size limit");

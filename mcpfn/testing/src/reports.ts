@@ -68,14 +68,15 @@ export function normalizeMcpFnReportFailure(
     : undefined;
   const causeMessage = stringField(causeRecord?.message);
   if (causeMessage && !message.includes(causeMessage)) message = `${message}: ${causeMessage}`;
-  const combinedDetails = causeRecord
-    ? { ...(details ?? {}), cause: causeRecord }
-    : details;
+  const combinedDetails = causeRecord ? { ...details, cause: causeRecord } : details;
+  const layer = failureLayer(phase);
+  const deniedByResource = layer !== "authorization-server" &&
+    [causeRecord?.code, causeRecord?.status, record.code, record.status]
+      .some(value => [401, 403].includes(Number(value)));
   return {
     name: stringField(record.name) ?? "Error",
     message,
-    layer: failureLayer(phase) !== "authorization-server" && [causeRecord?.code, causeRecord?.status, record.code, record.status].some(value => [401, 403].includes(Number(value)))
-      ? "resource-server" : failureLayer(phase),
+    layer: deniedByResource ? "resource-server" : layer,
     ...(stringField(record.code) ? { code: stringField(record.code)! } : {}),
     ...(phase ? { phase } : {}),
     ...(combinedDetails ? { details: combinedDetails } : {}),
@@ -100,12 +101,11 @@ export function createMcpFnTargetSuiteJUnit(
   const omitted = report.results.length - results.length;
   const cases = results.map((result) => {
     const duration = Math.max(0, result.durationMs ?? 0) / 1_000;
-    const failure = result.status === "passed"
-      ? ""
-      : junitFailure(
-        result.error ?? `Scenario ${result.status}`,
-        result.status === "failed" ? "scenario" : "incomplete",
-      );
+    let failure = "";
+    if (result.status !== "passed") {
+      const failureType = result.status === "failed" ? "scenario" : "incomplete";
+      failure = junitFailure(result.error ?? `Scenario ${result.status}`, failureType);
+    }
     return `    <testcase name="${xml(result.name)}" classname="mcpfn.scenario" time="${duration.toFixed(3)}">${failure}</testcase>`;
   });
   if (safe.failure) {

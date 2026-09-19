@@ -1,4 +1,7 @@
-import { McpFnTargetSuiteCleanupError } from "../src/suite.js";
+import {
+  McpFnTargetSuiteArtifactCleanupError,
+  McpFnTargetSuiteCleanupError,
+} from "../src/suite.js";
 import { startAuthenticatedServer, listen, closeServer } from "../../test-support/authenticated-server.js";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -748,6 +751,33 @@ it.each(["revoke", "dispose"])("retains suite ownership for a failed credential 
     expect(dispose).toHaveBeenCalledTimes(phase === "dispose" ? 2 : 1);
     await error.retryCleanup();
     expect(dispose).toHaveBeenCalledTimes(phase === "dispose" ? 2 : 1);
+  } finally { await fixture.close(); }
+});
+
+it("retains cleanup ownership when a credential collides with report structure", async () => {
+  const secret = "timeline";
+  const fixture = await startAuthenticatedServer(secret);
+  const revoke = vi.fn()
+    .mockRejectedValueOnce(new Error("provider cleanup failed"))
+    .mockResolvedValue(undefined);
+  try {
+    const failure = await runMcpFnTargetSuite({
+      target: authenticatedHttpTarget(fixture.url, {
+        credential: {
+          acquire: () => ({
+            kind: "oauth",
+            headers: { authorization: `Bearer ${secret}` },
+          }),
+          revoke,
+        },
+      }),
+    }).catch(error => error as McpFnTargetSuiteArtifactCleanupError);
+
+    expect(failure).toBeInstanceOf(McpFnTargetSuiteArtifactCleanupError);
+    expect(failure.message).toContain("required artifact structure");
+    expect(failure.message).not.toContain(secret);
+    await expect(failure.retryCleanup()).resolves.toBeUndefined();
+    expect(revoke).toHaveBeenCalledTimes(2);
   } finally { await fixture.close(); }
 });
 

@@ -5,7 +5,9 @@ import { expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   attempts: 0,
+  reportless: false,
   failure: undefined as import("@mcpfn/testing").McpFnTargetSuiteCleanupError | undefined,
+  artifactFailure: undefined as import("@mcpfn/testing").McpFnTargetSuiteArtifactCleanupError | undefined,
 }));
 
 vi.mock("@mcpfn/testing", async importOriginal => {
@@ -13,6 +15,13 @@ vi.mock("@mcpfn/testing", async importOriginal => {
   return {
     ...actual,
     runMcpFnTargetSuite: async () => {
+      if (state.reportless) {
+        state.artifactFailure = new actual.McpFnTargetSuiteArtifactCleanupError(
+          async () => { state.attempts += 1; },
+          new Error("unsafe report omitted"),
+        );
+        throw state.artifactFailure;
+      }
       const report: import("@mcpfn/testing").McpFnTargetSuiteReport = {
         formatVersion: 1,
         kind: "mcpfn.target-suite-report",
@@ -50,6 +59,7 @@ import { runCli } from "../src/index.js";
 it("persists a target-suite snapshot and retains its cleanup owner after a failed retry", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-target-cleanup-owner-"));
   state.attempts = 0;
+  state.reportless = false;
   try {
     await writeFile(path.join(root, "scenarios.json"), "[]\n");
     const output = path.join(root, "report.json");
@@ -91,6 +101,7 @@ it.each(["output", "persistence"] as const)(
   async failureMode => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-target-cleanup-secondary-"));
     state.attempts = 0;
+    state.reportless = false;
     try {
       await writeFile(path.join(root, "scenarios.json"), "[]\n");
       const args = [
@@ -116,3 +127,26 @@ it.each(["output", "persistence"] as const)(
     }
   },
 );
+
+it("retries cleanup without serializing a structurally unsafe report", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-target-cleanup-unsafe-report-"));
+  state.attempts = 0;
+  state.reportless = true;
+  try {
+    await writeFile(path.join(root, "scenarios.json"), "[]\n");
+    const stderr: string[] = [];
+    const exitCode = await runCli([
+      "test-target", "http://127.0.0.1:1/mcp", "scenarios.json",
+    ], {
+      cwd: root,
+      stdout: () => { throw new Error("unsafe report must not be written"); },
+      stderr: text => { stderr.push(text); },
+    });
+    expect(exitCode).toBe(1);
+    expect(state.attempts).toBe(1);
+    expect(stderr.join("")).toContain("unsafe report omitted");
+  } finally {
+    state.reportless = false;
+    await rm(root, { recursive: true, force: true });
+  }
+});

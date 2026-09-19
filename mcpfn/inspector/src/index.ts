@@ -35,7 +35,7 @@ const SCENARIO_SECRET_MARKERS = [
   SCENARIO_SECRET_MARKER,
   "${SECRET}",
   "${CREDENTIAL}",
-  ...Array.from({ length: 26 }, (_, index) => `\${${String.fromCharCode(65 + index)}}`),
+  ...Array.from({ length: 26 }, (_, index) => `\${${String.fromCodePoint(65 + index)}}`),
 ];
 
 export interface McpFnInspectorSnapshot {
@@ -238,6 +238,16 @@ export class McpFnInspector {
     result: McpFnInspectorOperationResult,
   ): McpFnExportedScenario {
     const scenario = createMcpFnScenario(name, operation, result);
+    // Top-level scenario keys are authored schema, not payload. If a credential
+    // collides with one of them, no replayable typed artifact can be emitted.
+    for (const key of [
+      ...Object.keys(scenario),
+      "status",
+      "incompleteReason",
+      "variables",
+    ]) {
+      this.client.preserveArtifactStructure(key);
+    }
     const { formatVersion, kind, sideEffect, ...payload } = scenario;
     if (kind === undefined || sideEffect === undefined) {
       throw new Error("Inspector scenario export requires normalized structure");
@@ -270,11 +280,12 @@ export class McpFnInspector {
       } as McpFnExportedScenario;
     }
     const replaced = redacted as unknown as McpFnExportedScenario;
-    const incompleteReason = secretMarker === undefined
-      ? "Inspector export could not select a replayable redaction placeholder"
-      : exceedsRedactionBounds(scenario, redacted, SCENARIO_REDACTION_LIMITS)
-        ? "Inspector export exceeded redaction bounds and was truncated"
-        : undefined;
+    let incompleteReason: string | undefined;
+    if (secretMarker === undefined) {
+      incompleteReason = "Inspector export could not select a replayable redaction placeholder";
+    } else if (exceedsRedactionBounds(scenario, redacted, SCENARIO_REDACTION_LIMITS)) {
+      incompleteReason = "Inspector export exceeded redaction bounds and was truncated";
+    }
     const exported = incompleteReason
       ? {
         ...replaced,

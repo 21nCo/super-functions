@@ -282,6 +282,46 @@ it.each([
   expect(result).toMatchObject({ status: "failed", phase, responseStatus: 200 });
 });
 
+it.each([
+  ["token-exchange", "cache-control", "no-store=false"],
+  ["token-exchange", "pragma", "no-cache=false"],
+  ["token-refresh", "cache-control", "no-store=false"],
+  ["token-refresh", "pragma", "no-cache=false"],
+] as const)("rejects parameterized cache directive during %s", async (phase, header, value) => {
+  const issuer = "https://login.example.com";
+  const fixture = createHostedAuthorizationFixtures({
+    issuer,
+    resource: "https://mcp.example.com/mcp",
+  }).find(item => item.token?.refreshAfterExchange)!;
+  const callback = new URL(fixture.authorization.redirectUri);
+  callback.searchParams.set("code", "test-code");
+  callback.searchParams.set("state", fixture.authorization.state);
+
+  const [result] = await runHostedAuthorizationRegression({
+    issuer,
+    prepareRegistration: async () => {},
+    request: async request => {
+      if (new URL(request.url).pathname.endsWith("authorize")) {
+        return Response.redirect(callback, 302);
+      }
+      const refresh = new URLSearchParams(await request.clone().text())
+        .get("grant_type") === "refresh_token";
+      const headers = new Headers({
+        "content-type": "application/json",
+        ...TOKEN_RESPONSE_HEADERS,
+      });
+      if (refresh === (phase === "token-refresh")) headers.set(header, value);
+      return new Response(JSON.stringify({
+        access_token: "token",
+        token_type: "Bearer",
+        refresh_token: "refresh",
+      }), { headers });
+    },
+  }, [fixture]);
+
+  expect(result).toMatchObject({ status: "failed", phase, responseStatus: 200 });
+});
+
 it.each(["Bearer", "bEaReR", "MAC"])("validates hosted token type %s and reports actual final status", async tokenType => {
   const fixture = createHostedAuthorizationFixtures({issuer: "https://login.example.com", resource: "https://mcp.example.com/mcp"}).find(item => item.token?.refreshAfterExchange)!;
   const [result] = await runHostedAuthorizationRegression({issuer: "https://login.example.com", prepareRegistration: () => {}, request: async request => {

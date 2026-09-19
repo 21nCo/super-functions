@@ -75,7 +75,19 @@ export interface McpFnTargetSuiteReport {
   results: McpFnScenarioResult[];
 }
 
-const suiteCleanupOwners = new WeakMap<McpFnTargetSuiteCleanupError, { close: () => Promise<void>; pending?: Promise<void> }>();
+const suiteCleanupOwners = new WeakMap<Error, { close: () => Promise<void>; pending?: Promise<void> }>();
+
+function retryTargetSuiteCleanup(error: Error): Promise<void> {
+  const owner = suiteCleanupOwners.get(error);
+  if (!owner) return Promise.resolve();
+  if (owner.pending) return owner.pending;
+  const pending = Promise.resolve().then(owner.close).then(
+    () => { suiteCleanupOwners.delete(error); },
+    () => Promise.reject(error),
+  ).finally(() => { owner.pending = undefined; });
+  owner.pending = pending;
+  return pending;
+}
 
 /** Final cleanup failed. The bounded report is a snapshot; retain this error to retry. */
 export class McpFnTargetSuiteCleanupError extends Error {
@@ -86,15 +98,20 @@ export class McpFnTargetSuiteCleanupError extends Error {
   }
 
   retryCleanup(): Promise<void> {
-    const owner = suiteCleanupOwners.get(this);
-    if (!owner) return Promise.resolve();
-    if (owner.pending) return owner.pending;
-    const pending = Promise.resolve().then(owner.close).then(
-      () => { suiteCleanupOwners.delete(this); },
-      () => { throw this; },
-    ).finally(() => { owner.pending = undefined; });
-    owner.pending = pending;
-    return pending;
+    return retryTargetSuiteCleanup(this);
+  }
+}
+
+/** Report serialization failed after cleanup ownership had already transferred. */
+export class McpFnTargetSuiteArtifactCleanupError extends Error {
+  constructor(close: () => Promise<void>, cause: Error) {
+    super(`${cause.message}; retain this error and retryCleanup()`, { cause });
+    this.name = "McpFnTargetSuiteArtifactCleanupError";
+    suiteCleanupOwners.set(this, { close });
+  }
+
+  retryCleanup(): Promise<void> {
+    return retryTargetSuiteCleanup(this);
   }
 }
 
@@ -113,17 +130,272 @@ function redactSuiteArtifact<T>(target: McpFnTarget, value: T, options: { preser
   return redactTargetCredentials(target, scrubbed, options);
 }
 
+function compareInventoryNames(left: string, right: string): number {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+}
+
+function reportProjectionFailureReason(
+  error: unknown,
+  projectionFailure: "redaction" | "serialization" | undefined,
+): string {
+  if (error instanceof McpFnRedactionLimitError) {
+    return "Credential redaction exceeded its traversal budget";
+  }
+  if (projectionFailure === "redaction") {
+    return "Credential redaction failed; report content omitted because safe serialization failed";
+  }
+  return "Report content omitted because safe serialization failed";
+}
+
+class SuiteDiagnosticCollector {
+  readonly timeline: McpFnDiagnosticEvent[] = [];
+  private readonly timelineSizes: number[] = [];
+  private timelineBytes = 0;
+  private observedRedactionOmissions = 0;
+  private initialRedactionOmissions = 0;
+  dropped = 0;
+  countExceeded = false;
+  bytesExceeded = false;
+  serializationFailed = false;
+  redactionFailed = false;
+  cleanupFailure: McpFnReportFailure | undefined;
+
+  constructor(
+    private readonly maxEvents: number,
+    private readonly maxBytes: number,
+    private readonly target: McpFnTarget,
+    private readonly consumer?: (event: McpFnDiagnosticEvent) => void | Promise<void>,
+  ) {}
+
+  captureBaseline(client: McpFnTestClient): void {
+    this.initialRedactionOmissions = client.session
+      .getRedactionOmissionCounts().diagnostics;
+  }
+
+  captureUnobserved(client: McpFnTestClient | undefined): void {
+    const total = client?.session.getRedactionOmissionCounts().diagnostics ??
+      this.initialRedactionOmissions;
+    const unobserved = Math.max(
+      0,
+      total - this.initialRedactionOmissions - this.observedRedactionOmissions,
+    );
+    if (unobserved > 0) {
+      this.redactionFailed = true;
+      this.dropped += unobserved;
+    }
+  }
+
+  async record(client: McpFnTestClient | undefined, event: McpFnDiagnosticEvent): Promise<void> {
+    if (client?.session.isRedactionOmission(event)) {
+      this.observedRedactionOmissions += 1;
+      this.redactionFailed = true;
+      this.dropped += 1;
+    }
+    if (["token-revocation", "transport-close"].includes(event.phase) &&
+        event.outcome === "failed") {
+      this.cleanupFailure ??= normalizeMcpFnReportFailure({
+        name: "CleanupError", message: "Target cleanup failed",
+        code: event.code, phase: event.phase,
+      });
+    }
+    const safeEvent = redactTargetCredentials(this.target, event, { preserveKeys: true });
+    const bytes = this.serializedBytes(safeEvent);
+    if (bytes === undefined) {
+      await this.consumer?.(safeEvent);
+      return;
+    }
+    if (bytes > this.maxBytes) {
+      this.bytesExceeded = true;
+      this.dropped += 1;
+    } else {
+      this.timeline.push(safeEvent);
+      this.timelineSizes.push(bytes);
+      this.timelineBytes += bytes;
+      this.enforceBounds();
+    }
+    await this.consumer?.(safeEvent);
+  }
+
+  private serializedBytes(event: McpFnDiagnosticEvent): number | undefined {
+    try {
+      const json = JSON.stringify(event, (_key, value: unknown) => {
+        if (value === undefined || (typeof value === "number" && !Number.isFinite(value))) {
+          throw new Error("Diagnostic contains a non-JSON value");
+        }
+        return value;
+      });
+      structuredClone(event);
+      return Buffer.byteLength(json);
+    } catch {
+      this.serializationFailed = true;
+      this.dropped += 1;
+      return undefined;
+    }
+  }
+
+  private enforceBounds(): void {
+    while (this.timeline.length > this.maxEvents || this.timelineBytes > this.maxBytes) {
+      this.countExceeded ||= this.timeline.length > this.maxEvents;
+      this.bytesExceeded ||= this.timelineBytes > this.maxBytes;
+      this.timeline.shift();
+      this.timelineBytes -= this.timelineSizes.shift()!;
+      this.dropped += 1;
+    }
+  }
+}
+
+interface SuiteExecution {
+  results: McpFnScenarioResult[];
+  server?: Implementation;
+  capabilities?: ServerCapabilities;
+}
+
+interface SuiteProjection {
+  target: McpFnTargetDescriptor;
+  manifestHash?: string;
+  execution: SuiteExecution;
+  failure?: "redaction" | "serialization";
+}
+
+async function executeConnectedSuite(
+  client: McpFnTestClient,
+  options: RunMcpFnTargetSuiteOptions,
+): Promise<{ execution: SuiteExecution; manifestChecked: boolean }> {
+  let manifestChecked = false;
+  if (options.manifest) {
+    manifestChecked = true;
+    await assertManifestContract(client, options.manifest, {
+      expectedToolNames: options.expectedToolNames,
+    });
+  } else if (options.expectedToolNames) {
+    const actual = (await client.listTools()).map((tool) => tool.name).sort(compareInventoryNames);
+    const expected = [...options.expectedToolNames].sort(compareInventoryNames);
+    if (stableJson(actual) !== stableJson(expected)) {
+      throw new McpFnAssertionError(
+        `Tool inventory mismatch: expected ${stableJson(expected)}, actual ${stableJson(actual)}`,
+      );
+    }
+  }
+  const results = await runScenarios(client, options.scenarios ?? [], options.scenarioRun);
+  return {
+    manifestChecked,
+    execution: {
+      results,
+      server: client.session.getServerVersion(),
+      capabilities: client.session.getServerCapabilities(),
+    },
+  };
+}
+
+function safeTargetFailure(target: McpFnTarget, error: unknown): McpFnReportFailure {
+  try {
+    return normalizeMcpFnReportFailure(redactSuiteArtifact(target, error, { preserveKeys: true }));
+  } catch {
+    // Arbitrary error properties/proxies can throw, including secret-bearing errors.
+    return normalizeMcpFnReportFailure({
+      name: "RedactionError",
+      code: "MCPFN_REDACTION_FAILED",
+      message: "Target failure omitted because credential redaction failed",
+    });
+  }
+}
+
+function initialTargetDescriptor(target: McpFnTarget): McpFnTargetDescriptor {
+  const kind = target.kind;
+  return ["stdio", "streamable-http", "authenticated-streamable-http", "in-memory", "custom"]
+    .includes(kind)
+    ? { kind }
+    : { kind: "custom" };
+}
+
+function projectSuiteArtifacts(
+  options: RunMcpFnTargetSuiteOptions,
+  client: McpFnTestClient | undefined,
+  execution: SuiteExecution,
+): SuiteProjection {
+  const fallback: SuiteProjection = {
+    target: initialTargetDescriptor(options.target),
+    execution,
+  };
+  try {
+    if (client?.session.state !== "connected") {
+      return execution.results.length || execution.server || execution.capabilities
+        ? { ...fallback, failure: "serialization" }
+        : fallback;
+    }
+    let described: McpFnTargetDescriptor;
+    try { described = options.target.describe(); }
+    catch { return { ...fallback, failure: "serialization" }; }
+    try {
+      const { kind, ...descriptor } = described;
+      return {
+        target: {
+          ...redactSuiteArtifact(options.target, descriptor, { preserveKeys: false }),
+          kind: client.session.preserveArtifactStructure(kind),
+        },
+        manifestHash: options.manifest
+          ? redactSuiteArtifact(options.target, options.manifest.hash, { preserveKeys: false })
+          : undefined,
+        execution: {
+          server: execution.server === undefined
+            ? undefined
+            : redactSuiteArtifact(options.target, execution.server, { preserveKeys: false }),
+          capabilities: execution.capabilities === undefined
+            ? undefined
+            : redactSuiteArtifact(options.target, execution.capabilities, { preserveKeys: false }),
+          results: execution.results.map(result => ({
+            ...result,
+            name: redactSuiteArtifact(options.target, result.name, { preserveKeys: false }),
+            operation: redactSuiteArtifact(options.target, result.operation, { preserveKeys: false }),
+            ...(result.tool === undefined ? {} : {
+              tool: redactSuiteArtifact(options.target, result.tool, { preserveKeys: false }),
+            }),
+          })),
+        },
+      };
+    } catch {
+      return { ...fallback, failure: "redaction" };
+    }
+  } catch {
+    return { ...fallback, failure: "serialization" };
+  }
+}
+
+async function closeSuiteClient(client: McpFnTestClient | undefined): Promise<{
+  cleanupFailure?: McpFnReportFailure;
+  retainedCleanup?: () => Promise<void>;
+}> {
+  try {
+    await client?.close();
+    return {};
+  } catch (error) {
+    let retainedCleanup: (() => Promise<void>) | undefined;
+    if (error instanceof McpFnTestClientCleanupError) {
+      retainedCleanup = () => error.retryCleanup();
+    } else if (client) {
+      retainedCleanup = () => client.close();
+    }
+    const terminal = error instanceof McpFnTestClientCleanupError && error.cause !== undefined
+      ? error.cause
+      : error;
+    const phase = terminal && typeof terminal === "object" &&
+        (terminal as { phase?: unknown }).phase === "token-revocation"
+      ? "token-revocation"
+      : "transport-close";
+    return {
+      retainedCleanup,
+      cleanupFailure: normalizeMcpFnReportFailure({
+        name: "CleanupError",
+        message: "Target cleanup failed",
+        code: "MCPFN_TARGET_CLEANUP_FAILED",
+        phase,
+      }),
+    };
+  }
+}
+
 async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpFnTargetSuiteReport> {
-  const timeline: McpFnDiagnosticEvent[] = [];
-  let droppedTimelineEvents = 0;
-  let timelineBytes = 0;
-  let timelineCountExceeded = false;
-  let timelineBytesExceeded = false;
-  let timelineSerializationFailed = false;
-  let timelineRedactionFailed = false;
-  let observedDiagnosticRedactionOmissions = 0;
-  let initialDiagnosticRedactionOmissions = 0;
-  const timelineSizes: number[] = [];
   const maxTimelineEvents = options.maxTimelineEvents ?? 500;
   if (!Number.isInteger(maxTimelineEvents) || maxTimelineEvents < 1) {
     throw new Error("maxTimelineEvents must be a positive integer");
@@ -131,192 +403,39 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   const maxReportBytes = options.maxReportBytes ?? 1_048_576;
   validateReportCap(maxReportBytes);
   const consumerDiagnostic = options.client?.diagnostics;
+  const diagnostics = new SuiteDiagnosticCollector(
+    maxTimelineEvents,
+    maxReportBytes,
+    options.target,
+    consumerDiagnostic,
+  );
   let client: McpFnTestClient | undefined;
   let manifestChecked = false;
   let failure: McpFnReportFailure | undefined;
-  let cleanupFailure: McpFnReportFailure | undefined;
-  let retainedCleanup: (() => Promise<void>) | undefined;
-  let capturedTarget: McpFnTargetDescriptor = { kind: "custom" };
-  let capturedManifestHash: string | undefined;
-  let projectionFailure: "redaction" | "serialization" | undefined;
-  let execution: {
-    results: McpFnScenarioResult[];
-    server?: Implementation;
-    capabilities?: ServerCapabilities;
-  } = { results: [] };
+  let execution: SuiteExecution = { results: [] };
   try {
-    // Known transport kinds are structural and safe even if acquisition fails.
-    // Defer arbitrary descriptor values until credentials are available to redact.
-    const kind = options.target.kind;
-    if (["stdio", "streamable-http", "authenticated-streamable-http", "in-memory", "custom"].includes(kind)) {
-      capturedTarget = { kind };
-    }
     client = McpFnTestClient.createTarget(
       options.target,
       options.clientInfo ?? { name: "mcpfn-suite", version: "0.0.1" },
       {
         ...options.client,
-        diagnostics: async (event) => {
-          if (client?.session.isRedactionOmission(event)) {
-            // Retain the safe fallback as evidence, but count the original omission.
-            observedDiagnosticRedactionOmissions += 1;
-            timelineRedactionFailed = true;
-            droppedTimelineEvents += 1;
-          }
-          if (["token-revocation", "transport-close"].includes(event.phase) &&
-              event.outcome === "failed") {
-            cleanupFailure ??= normalizeMcpFnReportFailure({
-              name: "CleanupError", message: "Target cleanup failed",
-              code: event.code, phase: event.phase,
-            });
-          }
-          // Production-client dispatch already applied the custom target hook.
-          const safeEvent = redactTargetCredentials(options.target, event, { preserveKeys: true });
-          let bytes: number;
-          try {
-            const json = JSON.stringify(safeEvent, (_key, value: unknown) => {
-              if (value === undefined || (typeof value === "number" && !Number.isFinite(value))) {
-                throw new Error("Diagnostic contains a non-JSON value");
-              }
-              return value;
-            });
-            bytes = Buffer.byteLength(json);
-            structuredClone(safeEvent);
-          }
-          catch {
-            timelineSerializationFailed = true;
-            droppedTimelineEvents += 1;
-            await consumerDiagnostic?.(safeEvent);
-            return;
-          }
-          if (bytes > maxReportBytes) {
-            timelineBytesExceeded = true;
-            droppedTimelineEvents += 1;
-          } else {
-            timeline.push(safeEvent);
-            timelineSizes.push(bytes);
-            timelineBytes += bytes;
-            while (timeline.length > maxTimelineEvents || timelineBytes > maxReportBytes) {
-              timelineCountExceeded ||= timeline.length > maxTimelineEvents;
-              timelineBytesExceeded ||= timelineBytes > maxReportBytes;
-              timeline.shift();
-              timelineBytes -= timelineSizes.shift()!;
-              droppedTimelineEvents += 1;
-            }
-          }
-          await consumerDiagnostic?.(safeEvent);
-        },
+        diagnostics: event => diagnostics.record(client, event),
       },
     );
-    initialDiagnosticRedactionOmissions = client.session
-      .getRedactionOmissionCounts().diagnostics;
+    diagnostics.captureBaseline(client);
     await client.session.connect();
-    if (options.manifest) {
-      manifestChecked = true;
-      await assertManifestContract(client, options.manifest, {
-        expectedToolNames: options.expectedToolNames,
-      });
-    }
-    if (!options.manifest && options.expectedToolNames) {
-      const actual = (await client.listTools()).map((tool) => tool.name).sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
-      const expected = [...options.expectedToolNames].sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
-      if (stableJson(actual) !== stableJson(expected)) {
-        throw new McpFnAssertionError(`Tool inventory mismatch: expected ${stableJson(expected)}, actual ${stableJson(actual)}`);
-      }
-    }
-    execution = {
-      results: await runScenarios(
-        client,
-        options.scenarios ?? [],
-        options.scenarioRun,
-      ),
-      server: client.session.getServerVersion(),
-      capabilities: client.session.getServerCapabilities(),
-    };
+    ({ execution, manifestChecked } = await executeConnectedSuite(client, options));
   } catch (error) {
-    try {
-      failure = normalizeMcpFnReportFailure(redactSuiteArtifact(options.target, error, { preserveKeys: true }));
-    } catch {
-      // Arbitrary error properties/proxies can throw, including secret-bearing errors.
-      failure = normalizeMcpFnReportFailure({ name: "RedactionError", code: "MCPFN_REDACTION_FAILED", message: "Target failure omitted because credential redaction failed" });
-    }
-  } finally {
-    try {
-      // Custom hooks may depend on credentials cleared by close. Capture every
-      // target-controlled report value while the session still owns that state.
-      if (client?.session.state === "connected") {
-        let kind: string | undefined;
-        let descriptor: Omit<McpFnTargetDescriptor, "kind"> | undefined;
-        try {
-          ({ kind, ...descriptor } = options.target.describe());
-        } catch { projectionFailure = "serialization"; }
-        if (!projectionFailure) {
-          try {
-            capturedTarget = {
-              ...redactSuiteArtifact(options.target, descriptor!, { preserveKeys: false }),
-              kind: client.session.preserveArtifactStructure(kind!),
-            };
-            capturedManifestHash = options.manifest
-              ? redactSuiteArtifact(options.target, options.manifest.hash, { preserveKeys: false })
-              : undefined;
-            execution = {
-              server: execution.server === undefined
-                ? undefined
-                : redactSuiteArtifact(options.target, execution.server, { preserveKeys: false }),
-              capabilities: execution.capabilities === undefined
-                ? undefined
-                : redactSuiteArtifact(options.target, execution.capabilities, { preserveKeys: false }),
-              results: execution.results.map(result => ({
-                ...result,
-                name: redactSuiteArtifact(options.target, result.name, { preserveKeys: false }),
-                operation: redactSuiteArtifact(options.target, result.operation, { preserveKeys: false }),
-                ...(result.tool === undefined ? {} : {
-                  tool: redactSuiteArtifact(options.target, result.tool, { preserveKeys: false }),
-                }),
-              })),
-            };
-          } catch { projectionFailure = "redaction"; }
-        }
-      } else if (execution.results.length || execution.server || execution.capabilities) {
-        projectionFailure = "serialization";
-      }
-    } catch { projectionFailure = "serialization"; }
-    try {
-      await client?.close();
-    } catch (error) {
-      const owner = client;
-      if (error instanceof McpFnTestClientCleanupError) {
-        retainedCleanup = () => error.retryCleanup();
-      } else if (owner) {
-        retainedCleanup = () => owner.close();
-      }
-      const terminalCleanupError = error instanceof McpFnTestClientCleanupError && error.cause !== undefined
-        ? error.cause
-        : error;
-      const terminalCleanupPhase = terminalCleanupError && typeof terminalCleanupError === "object" &&
-          (terminalCleanupError as { phase?: unknown }).phase === "token-revocation"
-        ? "token-revocation"
-        : "transport-close";
-      cleanupFailure = normalizeMcpFnReportFailure({
-        name: "CleanupError",
-        message: "Target cleanup failed",
-        code: "MCPFN_TARGET_CLEANUP_FAILED",
-        phase: terminalCleanupPhase,
-      });
-      if (!failure) failure = cleanupFailure;
-    }
-    const diagnosticRedactionOmissions = client?.session
-      .getRedactionOmissionCounts().diagnostics ?? initialDiagnosticRedactionOmissions;
-    const unobservedDiagnosticOmissions = Math.max(
-      0,
-      diagnosticRedactionOmissions - initialDiagnosticRedactionOmissions -
-        observedDiagnosticRedactionOmissions,
-    );
-    if (unobservedDiagnosticOmissions > 0) {
-      timelineRedactionFailed = true;
-      droppedTimelineEvents += unobservedDiagnosticOmissions;
-    }
+    failure = safeTargetFailure(options.target, error);
   }
+  // Custom hooks may depend on credentials cleared by close. Capture every
+  // target-controlled report value while the session still owns that state.
+  const projection = projectSuiteArtifacts(options, client, execution);
+  execution = projection.execution;
+  const { cleanupFailure: closeFailure, retainedCleanup } = await closeSuiteClient(client);
+  diagnostics.captureUnobserved(client);
+  let cleanupFailure = closeFailure;
+  cleanupFailure ??= diagnostics.cleanupFailure;
   failure ??= cleanupFailure;
   const results = execution.results;
   const failed = results.filter((result) => result.status === "failed").length;
@@ -331,7 +450,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   );
   const overflowedObservedEvents = droppedObservedEvents - redactionOmittedObservedEvents;
   const artifactIncomplete = Boolean(failure) || incomplete > 0 ||
-    droppedTimelineEvents > 0 ||
+    diagnostics.dropped > 0 ||
     droppedObservedEvents > 0;
   const report: McpFnTargetSuiteReport = {
     formatVersion: 1,
@@ -344,11 +463,11 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
       packages: { testing: MCPFN_TESTING_VERSION },
     },
     ok: failed === 0 && !artifactIncomplete,
-    target: capturedTarget,
+    target: projection.target,
     server: execution.server,
     capabilities: execution.capabilities,
     manifestChecked,
-    ...(capturedManifestHash === undefined ? {} : { manifestHash: capturedManifestHash }),
+    ...(projection.manifestHash === undefined ? {} : { manifestHash: projection.manifestHash }),
     total: results.length,
     passed: results.length - failed - incomplete,
     failed,
@@ -356,15 +475,15 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     droppedResults: 0,
     droppedObservedEvents,
     ...(redactionOmittedObservedEvents > 0 ? { redactionOmittedObservedEvents } : {}),
-    ...(failure || droppedTimelineEvents > 0 || droppedObservedEvents > 0
+    ...(failure || diagnostics.dropped > 0 || droppedObservedEvents > 0
       ? {
         incompleteReason: [
           ...(failure ? [`${failure.layer}: ${failure.message}`] : []),
           ...(cleanupFailure ? [`Cleanup: ${cleanupFailure.message}`] : []),
-          ...(timelineSerializationFailed ? ["Diagnostic timeline contained non-JSON data"] : []),
-          ...(timelineRedactionFailed ? ["Diagnostic timeline redaction failed; original events omitted"] : []),
-          ...(timelineCountExceeded ? ["Diagnostic timeline exceeded maxTimelineEvents"] : []),
-          ...(timelineBytesExceeded ? ["Diagnostic timeline exceeded maxReportBytes"] : []),
+          ...(diagnostics.serializationFailed ? ["Diagnostic timeline contained non-JSON data"] : []),
+          ...(diagnostics.redactionFailed ? ["Diagnostic timeline redaction failed; original events omitted"] : []),
+          ...(diagnostics.countExceeded ? ["Diagnostic timeline exceeded maxTimelineEvents"] : []),
+          ...(diagnostics.bytesExceeded ? ["Diagnostic timeline exceeded maxReportBytes"] : []),
           ...(redactionOmittedObservedEvents > 0
             ? ["Observed client events were omitted because credential redaction failed"]
             : []),
@@ -375,30 +494,30 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
       }
       : {}),
     ...(failure ? { failure } : {}),
-    timeline,
-    droppedTimelineEvents,
+    timeline: diagnostics.timeline,
+    droppedTimelineEvents: diagnostics.dropped,
     results,
   };
   let finalized: McpFnTargetSuiteReport;
   try {
-    if (projectionFailure) throw new Error("Report payload projection failed");
+    if (projection.failure) throw new Error("Report payload projection failed");
     // Custom redaction already completed before cleanup. Built-in report scopes
     // remain active here for bounded final serialization.
     finalized = enforceReportCap(redactTargetCredentials(options.target, report, { preserveKeys: true }), maxReportBytes);
   } catch (error) {
     if (error instanceof McpFnStructuralCredentialCollisionError) {
-      throw new McpFnClientError(
+      const failure = new McpFnClientError(
         "MCPFN_OPERATION_FAILED",
         "Target report cannot be serialized because a credential conflicts with required artifact structure",
         { phase: "capability-operation" },
       );
+      if (retainedCleanup) {
+        throw new McpFnTargetSuiteArtifactCleanupError(retainedCleanup, failure);
+      }
+      throw failure;
     }
     finalized = enforceReportCap({ ...report, ok: false, status: "incomplete",
-      incompleteReason: error instanceof McpFnRedactionLimitError
-        ? "Credential redaction exceeded its traversal budget"
-        : projectionFailure === "redaction"
-          ? "Credential redaction failed; report content omitted because safe serialization failed"
-          : "Report content omitted because safe serialization failed",
+      incompleteReason: reportProjectionFailureReason(error, projection.failure),
       target: { kind: "custom" }, server: undefined, capabilities: undefined, manifestHash: undefined,
       failure: undefined, results: [], timeline: [],
       droppedResults: report.results.length, droppedTimelineEvents: report.droppedTimelineEvents + report.timeline.length,

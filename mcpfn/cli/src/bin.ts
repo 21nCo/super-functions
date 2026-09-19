@@ -2,6 +2,7 @@
 
 import {
   McpFnConformanceCleanupError,
+  McpFnTargetSuiteArtifactCleanupError,
   McpFnTargetSuiteCleanupError,
   McpFnTestClientCleanupError,
 } from "@mcpfn/testing";
@@ -22,6 +23,7 @@ void runCli(process.argv.slice(2))
     // waiting on the event loop after the bounded retry fails.
     if (
       error instanceof McpFnTestClientCleanupError ||
+      error instanceof McpFnTargetSuiteArtifactCleanupError ||
       error instanceof McpFnTargetSuiteCleanupError ||
       error instanceof McpFnConformanceCleanupError ||
       error instanceof McpFnInspectorCleanupError

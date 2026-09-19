@@ -316,18 +316,19 @@ async function runConformance(
     const finish = (code: number | null) => {
       if (settled) return;
       settled = true;
-      let exitCode = code ?? 1;
       let safeStdout = "";
       let safeStderr = "";
+      let outputFailure = false;
       try {
         if (outputExceeded) throw new Error("capture limit");
         safeStdout = redactOutput(stdout);
         safeStderr = redactOutput(stderr);
       } catch {
-        exitCode = 1;
+        outputFailure = true;
         safeStdout = "";
         safeStderr = outputExceeded ? "Conformance output exceeded its capture limit" : "Conformance output omitted because credential redaction exceeded its bounds";
       }
+      const exitCode = outputFailure ? 1 : (code ?? 1);
       const failure = exitCode === 0
         ? undefined
         : normalizeMcpFnReportFailure(

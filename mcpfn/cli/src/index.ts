@@ -20,6 +20,7 @@ import {
   McpFnTestClientCleanupError,
   McpFnAssertionError,
   McpFnConformanceCleanupError,
+  McpFnTargetSuiteArtifactCleanupError,
   McpFnTargetSuiteCleanupError,
   assertManifestContract,
   authenticatedHttpTarget,
@@ -89,12 +90,14 @@ export class McpFnInspectorCleanupError extends Error {
 
 type CliCleanupError =
   | McpFnTestClientCleanupError
+  | McpFnTargetSuiteArtifactCleanupError
   | McpFnTargetSuiteCleanupError
   | McpFnConformanceCleanupError
   | McpFnInspectorCleanupError;
 
 function isCliCleanupError(error: unknown): error is CliCleanupError {
   return error instanceof McpFnTestClientCleanupError ||
+    error instanceof McpFnTargetSuiteArtifactCleanupError ||
     error instanceof McpFnTargetSuiteCleanupError ||
     error instanceof McpFnConformanceCleanupError ||
     error instanceof McpFnInspectorCleanupError;
@@ -118,6 +121,27 @@ async function preserveCleanupOwner(
     }
     throw error;
   }
+}
+
+async function handleCliFailure(
+  error: unknown,
+  stderr: (text: string) => void | Promise<void>,
+): Promise<number> {
+  if (isCliCleanupError(error)) {
+    // Diagnostics are secondary to the live cleanup owner. A failed write
+    // must not prevent the bounded retry or replace the owning error.
+    try { await stderr(`${error.message}\n`); } catch {}
+    // Preserve ownership when the bounded retry still fails. The executable
+    // entry point is the only layer allowed to terminate without a retry owner.
+    await error.retryCleanup();
+    return MCPFN_CLI_EXIT_TEST_FAILURE;
+  }
+  if (error instanceof McpFnAssertionError || error instanceof McpFnClientError) {
+    try { await stderr(`${error.message}\n`); } catch {}
+    return MCPFN_CLI_EXIT_TEST_FAILURE;
+  }
+  await stderr(`${error instanceof Error ? error.message : String(error)}\n`);
+  return MCPFN_CLI_EXIT_USAGE;
 }
 
 export async function runCli(
@@ -455,21 +479,7 @@ export async function runCli(
     }
     await cli.runMatchedCommand();
   } catch (error) {
-    if (isCliCleanupError(error)) {
-      // Diagnostics are secondary to the live cleanup owner. A failed write
-      // must not prevent the bounded retry or replace the owning error.
-      try { await stderr(`${error.message}\n`); } catch {}
-      // Preserve ownership when the bounded retry still fails. The executable
-      // entry point is the only layer allowed to terminate without a retry owner.
-      await error.retryCleanup();
-      return MCPFN_CLI_EXIT_TEST_FAILURE;
-    }
-    if (error instanceof McpFnAssertionError || error instanceof McpFnClientError) {
-      try { await stderr(`${error.message}\n`); } catch {}
-      return MCPFN_CLI_EXIT_TEST_FAILURE;
-    }
-    await stderr(`${error instanceof Error ? error.message : String(error)}\n`);
-    return MCPFN_CLI_EXIT_USAGE;
+    return handleCliFailure(error, stderr);
   }
   return exitCode;
 }
@@ -554,7 +564,7 @@ function readRemoteCredential(
   }
   const environmentName = options.bearerTokenEnv ?? options.apiKeyEnv;
   if (!environmentName) return undefined;
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(environmentName)) {
+  if (!/^[A-Za-z_]\w*$/.test(environmentName)) {
     throw new Error("Credential environment variable names must be portable identifiers");
   }
   const value = process.env[environmentName];
@@ -564,7 +574,7 @@ function readRemoteCredential(
   if (options.bearerTokenEnv) {
     try { new Headers({ authorization: `Bearer ${value}` }); }
     catch { throw new Error("Bearer token must be a valid HTTP header value"); }
-    if (!/^[A-Za-z0-9._~+/-]+=*$/.test(value)) throw new Error("Bearer token must follow the RFC 6750 token grammar");
+    if (!/^[\dA-Za-z._~+/-]+=*$/.test(value)) throw new Error("Bearer token must follow the RFC 6750 token grammar");
     return {
       environmentName,
       credential: {

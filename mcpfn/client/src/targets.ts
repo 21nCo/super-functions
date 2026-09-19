@@ -35,7 +35,7 @@ export function customTarget(options: {
   descriptor?: Record<string, unknown>;
   open(context: McpFnTargetContext): Promise<McpFnTransportHandle> | McpFnTransportHandle;
   cleanup?(): Promise<void>;
-  redact?: McpFnTarget["redact"];
+  redact?: NonNullable<McpFnTarget["redact"]>;
 }): McpFnTarget {
   const descriptor = Object.freeze({ kind: options.kind, ...options.descriptor });
   return {

@@ -222,18 +222,7 @@ async function runHostedCase(
   try {
     await target.prepareRegistration(structuredClone(fixture.registration));
     phase = "authorization-request";
-    const authorization = new URL("authorize", ensureTrailingSlash(target.issuer));
-    authorization.searchParams.set("response_type", "code");
-    authorization.searchParams.set("client_id", fixture.authorization.clientId);
-    authorization.searchParams.set("redirect_uri", fixture.authorization.redirectUri);
-    authorization.searchParams.set(
-      "code_challenge",
-      derivePkceS256Challenge(fixture.authorization.codeVerifier),
-    );
-    authorization.searchParams.set("code_challenge_method", "S256");
-    authorization.searchParams.set("state", fixture.authorization.state);
-    authorization.searchParams.set("resource", fixture.authorization.resource);
-    authorization.searchParams.set("scope", fixture.authorization.scopes.join(" "));
+    const authorization = hostedAuthorizationUrl(target.issuer, fixture);
     responseStatus = undefined;
     const authorizationResponse = await target.request(new Request(authorization, {
       redirect: "manual",
@@ -241,90 +230,142 @@ async function runHostedCase(
     responseStatus = authorizationResponse.status;
     const authorizationError = await oauthError(authorizationResponse);
     if (authorizationError) {
-      await validateOAuthRejection(authorizationResponse, fixture, target.issuer, true);
+      await validateOAuthRejection(authorizationResponse, fixture, target.issuer, "authorization");
       return assessHostedCase(fixture, phase, authorizationResponse.status, authorizationError);
     }
     if (!isRedirect(authorizationResponse.status)) {
       throw new Error(`Authorization request did not redirect (HTTP ${authorizationResponse.status})`);
     }
     const code = validatedRedirectCode(authorizationResponse, fixture, target.issuer);
-    if (fixture.token) {
-      phase = fixture.token.grantType === "refresh_token"
-        ? "token-refresh"
-        : "token-exchange";
-      const tokenBody = new URLSearchParams({
-        grant_type: fixture.token.grantType,
-        client_id: fixture.authorization.clientId,
-      });
-      if (fixture.token.grantType === "authorization_code") {
-        tokenBody.set("code", fixture.token.code ?? code);
-        tokenBody.set("redirect_uri", fixture.authorization.redirectUri);
-        tokenBody.set("code_verifier", fixture.authorization.codeVerifier);
-        tokenBody.set("resource", fixture.authorization.resource);
-      } else if (fixture.token.refreshToken) {
-        tokenBody.set("refresh_token", fixture.token.refreshToken);
-        tokenBody.set("resource", fixture.authorization.resource);
-      }
-      responseStatus = undefined;
-      const tokenResponse = await target.request(new Request(
-        new URL("token", ensureTrailingSlash(target.issuer)),
-        {
-          method: "POST",
-          redirect: "manual",
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          body: tokenBody,
-        },
-      ));
-      responseStatus = tokenResponse.status;
-      const tokenError = await oauthError(tokenResponse);
-      if (tokenError) {
-        await validateOAuthRejection(tokenResponse, fixture, target.issuer);
-        return assessHostedCase(fixture, phase, tokenResponse.status, tokenError);
-      }
-      if (!tokenResponse.ok) throw new Error(`Token request returned HTTP ${tokenResponse.status}`);
-      const tokenSet = await validatedTokenSet(tokenResponse);
-      responseStatus = tokenResponse.status;
-      if (fixture.token.refreshAfterExchange) {
-        if (typeof tokenSet.refresh_token !== "string" || !tokenSet.refresh_token) {
-          throw new Error("Authorization-code response did not include a refresh token");
-        }
-        phase = "token-refresh";
-        responseStatus = undefined;
-        const refreshResponse = await target.request(new Request(
-          new URL("token", ensureTrailingSlash(target.issuer)),
-          {
-            method: "POST",
-            redirect: "manual",
-            headers: { "content-type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({
-              grant_type: "refresh_token",
-              client_id: fixture.authorization.clientId,
-              refresh_token: tokenSet.refresh_token,
-              resource: fixture.authorization.resource,
-            }),
-          },
-        ));
-        responseStatus = refreshResponse.status;
-        const refreshError = await oauthError(refreshResponse);
-        if (refreshError) {
-          await validateOAuthRejection(refreshResponse, fixture, target.issuer);
-          return assessHostedCase(fixture, phase, refreshResponse.status, refreshError);
-        }
-        if (!refreshResponse.ok) {
-          throw new Error(`Refresh request returned HTTP ${refreshResponse.status}`);
-        }
-        await validatedTokenSet(refreshResponse);
-        responseStatus = refreshResponse.status;
-      }
-    }
+    if (fixture.token) return runHostedTokenCase(target, fixture, fixture.token, code);
     return assessHostedCase(fixture, phase, responseStatus);
   } catch (error) {
-    const redacted = redactOAuthValue(error);
-    const safe = redacted && typeof redacted === "object" ? redacted as Record<string, unknown> : {};
-    const code = typeof safe.code === "string" ? safe.code : undefined;
-    const message = typeof safe.message === "string" ? safe.message : String(redacted);
-    return assessHostedCase(fixture, phase, responseStatus, code, message || "Hosted adapter failed");
+    return assessHostedFailure(fixture, phase, responseStatus, error);
   }
+}
+
+async function runHostedTokenCase(
+  target: McpFnHostedAuthorizationTargetAdapter,
+  fixture: McpFnHostedAuthorizationCase,
+  token: NonNullable<McpFnHostedAuthorizationCase["token"]>,
+  code: string,
+): Promise<McpFnHostedAuthorizationCaseResult> {
+  let phase: McpFnHostedAuthorizationCaseResult["phase"] = token.grantType === "refresh_token"
+    ? "token-refresh"
+    : "token-exchange";
+  let responseStatus: number | undefined;
+  try {
+    const tokenResponse = await target.request(hostedTokenRequest(
+      target.issuer,
+      tokenRequestBody(fixture, token, code),
+    ));
+    responseStatus = tokenResponse.status;
+    const tokenError = await oauthError(tokenResponse);
+    if (tokenError) {
+      await validateOAuthRejection(tokenResponse, fixture, target.issuer, "token");
+      return assessHostedCase(fixture, phase, responseStatus, tokenError);
+    }
+    if (!tokenResponse.ok) throw new Error(`Token request returned HTTP ${tokenResponse.status}`);
+    const tokenSet = await validatedTokenSet(tokenResponse);
+    if (!token.refreshAfterExchange) {
+      return assessHostedCase(fixture, phase, responseStatus);
+    }
+    if (typeof tokenSet.refresh_token !== "string" || !tokenSet.refresh_token) {
+      throw new Error("Authorization-code response did not include a refresh token");
+    }
+    phase = "token-refresh";
+    responseStatus = undefined;
+    const refreshBody = new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: fixture.authorization.clientId,
+      refresh_token: tokenSet.refresh_token,
+      resource: fixture.authorization.resource,
+    });
+    const refreshResponse = await target.request(hostedTokenRequest(target.issuer, refreshBody));
+    responseStatus = refreshResponse.status;
+    const refreshError = await oauthError(refreshResponse);
+    if (refreshError) {
+      await validateOAuthRejection(refreshResponse, fixture, target.issuer, "token");
+      return assessHostedCase(fixture, phase, responseStatus, refreshError);
+    }
+    if (!refreshResponse.ok) {
+      throw new Error(`Refresh request returned HTTP ${refreshResponse.status}`);
+    }
+    await validatedTokenSet(refreshResponse);
+    return assessHostedCase(fixture, phase, responseStatus);
+  } catch (error) {
+    return assessHostedFailure(fixture, phase, responseStatus, error);
+  }
+}
+
+function tokenRequestBody(
+  fixture: McpFnHostedAuthorizationCase,
+  token: NonNullable<McpFnHostedAuthorizationCase["token"]>,
+  code: string,
+): URLSearchParams {
+  const body = new URLSearchParams({
+    grant_type: token.grantType,
+    client_id: fixture.authorization.clientId,
+  });
+  if (token.grantType === "authorization_code") {
+    body.set("code", token.code ?? code);
+    body.set("redirect_uri", fixture.authorization.redirectUri);
+    body.set("code_verifier", fixture.authorization.codeVerifier);
+    body.set("resource", fixture.authorization.resource);
+  } else if (token.refreshToken) {
+    body.set("refresh_token", token.refreshToken);
+    body.set("resource", fixture.authorization.resource);
+  }
+  return body;
+}
+
+function hostedTokenRequest(issuer: string, body: URLSearchParams): Request {
+  return new Request(new URL("token", ensureTrailingSlash(issuer)), {
+    method: "POST",
+    redirect: "manual",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body,
+  });
+}
+
+function assessHostedFailure(
+  fixture: McpFnHostedAuthorizationCase,
+  phase: McpFnHostedAuthorizationCaseResult["phase"],
+  responseStatus: number | undefined,
+  error: unknown,
+): McpFnHostedAuthorizationCaseResult {
+  const redacted = redactOAuthValue(error);
+  const safe = redacted && typeof redacted === "object"
+    ? redacted as Record<string, unknown>
+    : {};
+  const code = typeof safe.code === "string" ? safe.code : undefined;
+  const message = typeof safe.message === "string" ? safe.message : String(redacted);
+  return assessHostedCase(
+    fixture,
+    phase,
+    responseStatus,
+    code,
+    message || "Hosted adapter failed",
+  );
+}
+
+function hostedAuthorizationUrl(
+  issuer: string,
+  fixture: McpFnHostedAuthorizationCase,
+): URL {
+  const authorization = new URL("authorize", ensureTrailingSlash(issuer));
+  authorization.searchParams.set("response_type", "code");
+  authorization.searchParams.set("client_id", fixture.authorization.clientId);
+  authorization.searchParams.set("redirect_uri", fixture.authorization.redirectUri);
+  authorization.searchParams.set(
+    "code_challenge",
+    derivePkceS256Challenge(fixture.authorization.codeVerifier),
+  );
+  authorization.searchParams.set("code_challenge_method", "S256");
+  authorization.searchParams.set("state", fixture.authorization.state);
+  authorization.searchParams.set("resource", fixture.authorization.resource);
+  authorization.searchParams.set("scope", fixture.authorization.scopes.join(" "));
+  return authorization;
 }
 
 function assessHostedCase(
@@ -339,6 +380,9 @@ function assessHostedCase(
   const passed = !error && observedOutcome === expected.outcome &&
     (expected.errorCode === undefined || expected.errorCode === errorCode) &&
     (expected.phase === undefined || expected.phase === phase);
+  const expectedCode = expected.errorCode ? `:${expected.errorCode}` : "";
+  const observedCode = errorCode ? `:${errorCode}` : "";
+  const mismatch = `Expected ${expected.outcome}${expectedCode}, received ${observedOutcome}${observedCode}`;
   return {
     formatVersion: 1,
     id: fixture.id,
@@ -349,8 +393,7 @@ function assessHostedCase(
     ...(responseStatus === undefined ? {} : { responseStatus }),
     ...(errorCode ? { errorCode } : {}),
     ...(!passed || error ? {
-      error: error ??
-        `Expected ${expected.outcome}${expected.errorCode ? `:${expected.errorCode}` : ""}, received ${observedOutcome}${errorCode ? `:${errorCode}` : ""}`,
+      error: error ?? mismatch,
     } : {}),
   };
 }
@@ -377,38 +420,52 @@ async function validateOAuthRejection(
   response: Response,
   fixture: McpFnHostedAuthorizationCase,
   issuer: string,
-  authorization = false,
+  context: "authorization" | "token",
 ): Promise<void> {
-  if (authorization && isRedirect(response.status)) {
-    const callback = new URL(response.headers.get("location") ?? "");
-    // Redirects must target the registered URI, never a rejected requested URI.
-    const registered = fixture.registration.metadata.redirect_uris as string[];
-    if (!registered?.includes(fixture.authorization.redirectUri)) throw new Error("Rejected redirect URI must not receive a callback");
-    const errors = callback.searchParams.getAll("error");
-    if (errors.length !== 1 || !errors[0] || callback.searchParams.has("code")) throw new Error("Invalid OAuth error callback");
-    if (errors[0] === "invalid_client") throw new Error("Invalid-client authorization failures must not redirect");
-    callback.searchParams.delete("error");
-    callback.searchParams.delete("error_description");
-    callback.searchParams.delete("error_uri");
-    callback.searchParams.set("code", "error-envelope-validation");
-    validatedRedirectCode(
-      new Response(null, { status: response.status, headers: { location: callback.toString() } }),
-      fixture,
-      issuer,
-    );
-  } else {
-    const body = await response.clone().json().catch(() => undefined);
-    // An unrecognized/incompatible client must not receive a redirect. Other
-    // authorization errors for the registered callback must use that callback.
-    if (authorization && body?.error !== "invalid_client" && (fixture.registration.metadata.redirect_uris as string[])?.includes(fixture.authorization.redirectUri)) {
-      throw new Error("Registered authorization requests require an OAuth error callback");
-    }
-    if (response.status !== 400) throw new Error("OAuth error response has invalid HTTP status");
-    if (response.headers.has("location") || !isJsonResponse(response) ||
-        !body || typeof body.error !== "string" || !body.error) {
-      throw new Error("OAuth error response must be a JSON error envelope");
-    }
+  if (context === "authorization" && isRedirect(response.status)) {
+    validateAuthorizationErrorRedirect(response, fixture, issuer);
+    return;
   }
+  const body = await response.clone().json().catch(() => undefined);
+  const registered = (fixture.registration.metadata.redirect_uris as string[])
+    ?.includes(fixture.authorization.redirectUri);
+  if (context === "authorization" && body?.error !== "invalid_client" && registered) {
+    throw new Error("Registered authorization requests require an OAuth error callback");
+  }
+  if (response.status !== 400) throw new Error("OAuth error response has invalid HTTP status");
+  if (response.headers.has("location") || !isJsonResponse(response) ||
+      !body || typeof body.error !== "string" || !body.error) {
+    throw new Error("OAuth error response must be a JSON error envelope");
+  }
+}
+
+function validateAuthorizationErrorRedirect(
+  response: Response,
+  fixture: McpFnHostedAuthorizationCase,
+  issuer: string,
+): void {
+  const callback = new URL(response.headers.get("location") ?? "");
+  // Redirects must target the registered URI, never a rejected requested URI.
+  const registered = fixture.registration.metadata.redirect_uris as string[];
+  if (!registered?.includes(fixture.authorization.redirectUri)) {
+    throw new Error("Rejected redirect URI must not receive a callback");
+  }
+  const errors = callback.searchParams.getAll("error");
+  if (errors.length !== 1 || !errors[0] || callback.searchParams.has("code")) {
+    throw new Error("Invalid OAuth error callback");
+  }
+  if (errors[0] === "invalid_client") {
+    throw new Error("Invalid-client authorization failures must not redirect");
+  }
+  callback.searchParams.delete("error");
+  callback.searchParams.delete("error_description");
+  callback.searchParams.delete("error_uri");
+  callback.searchParams.set("code", "error-envelope-validation");
+  validatedRedirectCode(
+    new Response(null, { status: response.status, headers: { location: callback.toString() } }),
+    fixture,
+    issuer,
+  );
 }
 
 function validatedRedirectCode(
@@ -447,7 +504,7 @@ async function validatedTokenSet(response: Response): Promise<{ refresh_token?: 
     throw new Error("Token responses must disable caching with Cache-Control: no-store and Pragma: no-cache");
   }
   const value = await response.clone().json() as Record<string, unknown> | null;
-  if (!value || typeof value.access_token !== "string" || !/^[A-Za-z0-9._~+/-]+=*$/.test(value.access_token) ||
+  if (!value || typeof value.access_token !== "string" || !/^[\dA-Za-z._~+/-]+=*$/.test(value.access_token) ||
       typeof value.token_type !== "string" || value.token_type.toLowerCase() !== "bearer") {
     throw new Error("Token response requires an access token and Bearer token type");
   }
@@ -456,7 +513,7 @@ async function validatedTokenSet(response: Response): Promise<{ refresh_token?: 
 
 function hasHeaderDirective(value: string | null, expected: string): boolean {
   return (value ?? "").split(",").some((directive) =>
-    directive.trim().split("=", 1)[0]?.toLowerCase() === expected,
+    directive.trim().toLowerCase() === expected,
   );
 }
 

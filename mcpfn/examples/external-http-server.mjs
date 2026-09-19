@@ -128,13 +128,14 @@ async function toWebRequest(incoming, url) {
   const body = Buffer.concat(chunks);
   return new Request(url, {
     method: incoming.method,
-    headers: new Headers(Object.entries(incoming.headers).flatMap(([name, value]) =>
-      Array.isArray(value)
-        ? value.map((entry) => [name, entry])
-        : value === undefined ? [] : [[name, value]],
-    )),
+    headers: new Headers(Object.entries(incoming.headers).flatMap(nodeHeaderEntries)),
     ...(body.length ? { body } : {}),
   });
+}
+
+function nodeHeaderEntries([name, value]) {
+  if (Array.isArray(value)) return value.map((entry) => [name, entry]);
+  return value === undefined ? [] : [[name, value]];
 }
 
 async function sendWebResponse(outgoing, response) {
