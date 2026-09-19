@@ -272,8 +272,31 @@ npx drizzle-kit generate
 npx drizzle-kit migrate
 ```
 
-For D1, run `npx drizzle-kit generate`, then apply the generated SQL with the
-Wrangler D1 migration command for your database instead of `drizzle-kit migrate`.
+For D1, point the binding's Wrangler migration directory at the same Drizzle
+Kit output directory:
+
+```jsonc
+// wrangler.jsonc
+{
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "authfn",
+      "database_id": "replace-me",
+      "migrations_dir": "./drizzle"
+    }
+  ]
+}
+```
+
+Then generate the SQL and apply it locally or remotely with Wrangler instead
+of `drizzle-kit migrate`:
+
+```bash
+npx drizzle-kit generate
+npx wrangler d1 migrations apply authfn --local
+npx wrangler d1 migrations apply authfn --remote
+```
 
 ## Schema visibility
 
