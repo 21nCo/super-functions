@@ -12,10 +12,8 @@ permissions:
 
 jobs:
   api-check:
-    # Registered reusable path (still runs in the caller checkout, which must
-    # include the @apifn/cli workspace):
-    # uses: 21nCo/super-functions/.github/workflows/apifn-api-check.yml@dev
-    uses: ./.github/workflows/apifn-api-check.yml
+    # Same-repo callers can use: uses: ./.github/workflows/apifn-api-check.yml
+    uses: 21nCo/super-functions/.github/workflows/apifn-api-check.yml@dev
     with:
       spec_path: .apifn/openapi.yml
       collection_dir: .apifn/collection
@@ -23,3 +21,4 @@ jobs:
       base_branch: main
       fail_on_breaking: true
       post_pr_comment: true
+      cli_version: "0.0.2"

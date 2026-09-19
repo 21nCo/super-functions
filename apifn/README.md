@@ -102,6 +102,9 @@ jobs:
 External repositories can use the registered workflow directly:
 
 ```yaml
+permissions:
+  contents: read
+  pull-requests: write
 jobs:
   api-check:
     uses: 21nCo/super-functions/.github/workflows/apifn-api-check.yml@dev

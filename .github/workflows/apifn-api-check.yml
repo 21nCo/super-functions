@@ -96,6 +96,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 21nCo/super-functions
+          ref: ${{ github.workflow_sha }}
           sparse-checkout: .github/apifn-cli-install
           path: .apifn-cli-lock
           persist-credentials: false
@@ -117,7 +118,8 @@ jobs:
           INSTALLED="$(node -p "require('$PWD/$LOCK_DIR/node_modules/@apifn/cli/package.json').version")"
           echo "Installed @apifn/cli@$INSTALLED from lockfile"
           if [ "$INSTALLED" != "$APIFN_CLI_VERSION" ]; then
-            echo "::warning::cli_version input is $APIFN_CLI_VERSION; lockfile installed $INSTALLED"
+            echo "::error::cli_version input is $APIFN_CLI_VERSION; lockfile installed $INSTALLED"
+            exit 1
           fi
           "$BIN_DIR/apifn" --version
 
