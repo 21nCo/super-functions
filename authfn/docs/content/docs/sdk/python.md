@@ -9,6 +9,8 @@ The `authfn` Python package is a port of the Node kernel. It exposes the same `c
 
 ```bash
 pip install authfn
+# database adapter used below
+pip install superfunctions-sqlalchemy
 # plus a framework adapter
 pip install superfunctions-fastapi
 pip install superfunctions-flask
@@ -28,31 +30,20 @@ If you've read [Concepts → Architecture](../core-concepts/architecture) for th
 ```python
 from authfn import (
     AuthFnConfig,
-    authfn_email_otp_plugin,
     authfn_password_plugin,
-    authfn_social_oauth_plugin,
     create_authfn,
 )
+from sqlalchemy import create_engine
+from superfunctions_sqlalchemy import create_adapter
 
-# Replace `my_database_adapter` with any Superfunctions db adapter
-# (e.g. superfunctions_sqlalchemy.create_adapter(engine)).
+engine = create_engine("sqlite+pysqlite:///authfn.db")
+database = create_adapter(engine)
+
 auth = create_authfn(AuthFnConfig(
-    database=my_database_adapter,
+    database=database,
     namespace="authfn",
     plugins=[
         authfn_password_plugin(),
-        authfn_email_otp_plugin({
-            "delivery": my_delivery_provider,
-        }),
-        authfn_social_oauth_plugin({
-            "providers": {
-                "google": {
-                    "client_id": GOOGLE_CLIENT_ID,
-                    "client_secret": GOOGLE_CLIENT_SECRET,
-                    "allowlisted_return_to": ["https://app.example.com/post-auth"],
-                },
-            },
-        }),
     ],
 ))
 ```
