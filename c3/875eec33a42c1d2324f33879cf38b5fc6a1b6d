@@ -1,0 +1,629 @@
+datafn/server/src/execution/sync/pull.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 676,965-969
+authfn/python/authfn/http.py
+  s_0ec42cbf5a9107::t_c740008a144b3c 200-205,248-253,432-456,1712
+reviewfn/testing/tsconfig.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-4
+datafn/docs/content/docs/documentation/security/request-authz.mdx
+  s_0ec42cbf5a9107::t_c740008a144b3c 16,20-21,36,61,64-67,70-78,80-83,87-89,158,170
+reviewfn/cli/src/index.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-2
+langfn/typescript/tests/provider-stream-budgets.test.ts
+  s_0ec42cbf5a9107::t_0d34019fe9ca80 135
+  s_0ec42cbf5a9107::t_2e01ec7861ed66 1,107-114
+  s_0ec42cbf5a9107::t_1fd0de4ba0f4f9 115
+authfn/docs/content/docs/core-concepts/security.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 33
+reviewfn/core/src/identity.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-14
+packages/db/src/adapter/factory.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 82
+uifn/registry/src/preset/project.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-533
+reviewfn/core/test/core.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-217
+packages/db/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 3
+reviewfn/testing/test/artifact-contract.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-19
+reviewfn/testing/vitest.config.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-2
+langfn/typescript/src/observability/storage.ts
+  s_0ec42cbf5a9107::t_5f70351c657cd8 5,101-116
+authfn/docs/content/docs/core-concepts/regions.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 180-181
+datafn/client/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 3,23
+reviewfn/core/src/defaults.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-37
+uifn/react/src/utils/slot.test.tsx
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-21
+datafn/server/__tests__/ws.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 9-25
+reviewfn/core/src/prompt.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-31
+reviewfn/evaluation/linear-live-receipt.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-111
+reviewfn/harness-codex/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-51
+uifn/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 23,28
+  s_0ec42cbf5a9107::t_d05497e0fc8d5c 29
+reviewfn/core/src/canonical.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-52
+datafn/docs/content/docs/reference/changelog.mdx
+  s_0ec42cbf5a9107::t_c740008a144b3c 14
+reviewfn/docs/github-action.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-22
+reviewfn/testing/src/evaluation.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-101
+datafn/server/src/__tests__/resource-selectors-preflight.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-128
+langfn/typescript/src/models/openai.ts
+  s_0ec42cbf5a9107::t_4e5cf6cb7534fa 229
+datafn/server/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 3,55-57,61,64,68-69
+reviewfn/context-composio/LICENSE
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-21
+reviewfn/github/LICENSE
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-21
+scripts/generate-uifn-fixture.mjs
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-7
+datafn/server/src/ws.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 28-29,100,291-296,341-347,359-374,376-378,510,512-516,519,530,550-551
+datafn/server/__tests__/public-links-plugin.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 363-365
+authfn/docs/content/docs/recipes/placement-bound-auth-context.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-187
+datafn/server/__tests__/sync.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 2180-2198
+datafn/server/src/__tests__/regional-tickets-e2e.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-416
+release-packages.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 154-160
+authfn/python/authfn/__init__.py
+  s_0ec42cbf5a9107::t_c740008a144b3c 32-38,83,139-143,189
+uifn/package-graph.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 22,31
+authfn/core/src/core/sessions.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 176-177,217-218,239-246
+  s_0ec42cbf5a9107::t_49e144e9877d5b 247
+authfn/docs/content/docs/recipes/meta.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 13
+uifn/create/src/main.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-57
+uifn/registry/src/preset/compiler.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-388
+reviewfn/github/src/git.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-133
+reviewfn/github/vitest.config.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-2
+reviewfn/testing/src/index.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-3
+authfn/docs/content/docs/plugins/multi-region.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 187-188
+uifn/registry/src/__tests__/preset.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-152
+langfn/typescript/src/memory/summary.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 13,20-21,32-35,45,59-68
+datafn/server/__tests__/rest.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 8,252-302
+reviewfn/cli/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-32
+reviewfn/core/src/redaction.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-23
+reviewfn/cli/src/config.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-43
+langfn/typescript/src/agents/multi_agent.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 27-29
+langfn/typescript/src/observability/redaction.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 10-15
+langfn/typescript/src/client.ts
+  s_0ec42cbf5a9107::t_8126b122656b33 43-44,335-342,433-434,587-588,831,834,840
+secfn/server/src/access.ts
+  s_0ec42cbf5a9107::t_efcf86527816eb 34-45,64-66,85,113-120,124-129
+  s_0ec42cbf5a9107::t_cf3083ce9dda95 130
+reviewfn/context-composio/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-3
+reviewfn/cli/test/cli.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-82
+reviewfn/cli/src/execution.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-96
+reviewfn/core/src/repository-context.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-127
+langfn/typescript/src/http/auth.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 30-33,42-45
+scripts/gate-reviewfn-release.mjs
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-81
+reviewfn/testing/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-25
+packages/db/src/adapter/schema-codecs.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 71,374
+reviewfn/docs/report-schema.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-15
+authfn/python/tests/test_placement_context.py
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-1109
+datafn/server/src/regional-tickets.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-219
+uifn/registry/src/preset/errors.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-30
+secfn/server/src/__tests__/access.test.ts
+  s_0ec42cbf5a9107::t_2e01ec7861ed66 51-58,60-62
+  s_0ec42cbf5a9107::t_9734bde0ec08ae 59
+uifn/create/src/styles.css
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-88
+authfn/python/authfn/plugins/__init__.py
+  s_0ec42cbf5a9107::t_c740008a144b3c 21-27,60-64,116-120,122-131
+langfn/typescript/tests/prompt-and-structured.test.ts
+  s_0ec42cbf5a9107::t_2e01ec7861ed66 84-87
+reviewfn/github/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-3
+reviewfn/core/src/errors.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-21
+.github/workflows/ci.yml
+  s_0ec42cbf5a9107::t_c740008a144b3c 126,131,133
+  s_0ec42cbf5a9107::t_4e5cf6cb7534fa 174
+reviewfn/github/src/api.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-43
+uifn/registry/src/__tests__/preset-open.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-28
+authfn/core/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 168-171
+packages/http/src/path-matcher.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 42,54
+reviewfn/testing/test/evaluation.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-49
+datafn/docs/content/docs/documentation/security/resource-selectors.mdx
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-134
+uifn/registry/src/preset/pairwise.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-85
+reviewfn/context-composio/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-25
+langfn/typescript/src/storage/cache.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 89-90,97,120-121
+reviewfn/evaluation/data6-pr153-metrics.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-19
+scripts/sfns4/hosted-hyperdrive-worker.mjs
+  s_0ec42cbf5a9107::t_1b36a22e733ffa 54
+authfn/python/CHANGELOG.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 11
+reviewfn/github/test/github.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-158
+datafn/cli/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 3,30-31
+langfn/typescript/src/agents/plan_execute.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 27-29,38-40,90-92
+uifn/react/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 28-32
+langfn/typescript/tests/streaming-observability.test.ts
+  s_0ec42cbf5a9107::t_439961a139570e 28-35
+packages/db/src/adapters/drizzle/drizzle.test.ts
+  s_0ec42cbf5a9107::t_5f70351c657cd8 703-704,707
+reviewfn/core/src/coordinator.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-203
+scripts/sfns4/HOSTED.md
+  s_0ec42cbf5a9107::t_ae34e2a9602d45 18
+uifn/create/src/main.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-238
+datafn/core/src/joins.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 83-105
+reviewfn/core/src/policy.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-114
+uifn/create/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-11
+authfn/python/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 106-109
+authfn/docs/content/docs/reference/errors.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 39
+authfn/docs/content/docs/sdk/core.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 100-118
+reviewfn/core/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-3
+reviewfn/github/src/lease.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-28
+reviewfn/harness-codex/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-3
+authfn/python/pyproject.toml
+  s_0ec42cbf5a9107::t_c740008a144b3c 29
+reviewfn/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-47
+packages/http/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 3
+authfn/docs/static/llms.txt
+  s_0ec42cbf5a9107::t_c740008a144b3c 100
+secfn/server/src/envelopes.ts
+  s_0ec42cbf5a9107::t_efcf86527816eb 15,26-35,80
+datafn/server/src/regional-tickets.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-301
+reviewfn/examples/markdown-only/.reviewfn/config.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-12
+uifn/registry/src/cli.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 11,62,64,96-107
+datafn/client/src/client.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 188-190,192,194,217-218,585,604-606,612-613,735-738,1109,1111,1185,1222,1708-1709,1985
+authfn/core/src/core/placement-context.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-858
+datafn/core/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 3
+reviewfn/core/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-50
+uifn/registry/src/preset/fixture-source.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-2
+memoryfn/typescript/src/http/router.ts
+  s_0ec42cbf5a9107::t_868e4c56dc0d5a 8-11,33
+reviewfn/ADR-0001-FIRST-RELEASE.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-15
+reviewfn/cli/src/main.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-176
+langfn/typescript/src/structured/output.ts
+  s_0ec42cbf5a9107::t_8126b122656b33 7-8,12-13,30-33,35,37-39,43,50-51,60,62-73,76,79,85
+langfn/typescript/src/tools/base.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 66
+uifn/create/tsconfig.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-69
+secfn/server/src/router.ts
+  s_0ec42cbf5a9107::t_5f70351c657cd8 46,48-56
+  s_0ec42cbf5a9107::t_efcf86527816eb 325
+langfn/typescript/tests/round2-regressions.test.ts
+  s_0ec42cbf5a9107::t_439961a139570e 71-77
+scripts/sfns4/run-hosted-hyperdrive.mjs
+  s_0ec42cbf5a9107::t_ae34e2a9602d45 5-10,17
+datafn/docs/content/docs/reference/core/meta.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 3
+reviewfn/testing/LICENSE
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-21
+langfn/typescript/src/orchestration/parallel.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 10-13,25
+authfn/python/authfn/plugins/placement_context.py
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-1148
+reviewfn/github/test/action.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-52
+authfn/python/authfn/types.py
+  s_0ec42cbf5a9107::t_c740008a144b3c 600-613,745
+datafn/server/src/server.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 14,49,260,418-419,1147-1148,1154,1297-1322,1350-1351,1371,1393,1487,1705-1707,1913,1915,1921-1925,1947-1951,1959
+authfn/docs/content/docs/recipes/index.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 25-26
+uifn/create/vite.config.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-3
+authfn/core/src/core/errors.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 33,196-202
+  s_0ec42cbf5a9107::t_836c7ec178623a 203-205
+datafn/docs/content/docs/reference/index.mdx
+  s_0ec42cbf5a9107::t_c740008a144b3c 24
+langfn/typescript/src/rag/db-vector-store.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 62-64
+reviewfn/core/src/artifacts.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-194
+plugfn/core/src/core/workflow-engine.ts
+  s_0ec42cbf5a9107::t_6d5352ca71c894 64,154-161,343,685-686
+  s_0ec42cbf5a9107::t_8956c2cc8f6245 687-688
+reviewfn/testing/test/coordinator.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-127
+datafn/docs/content/docs/reference/core/errors.mdx
+  s_0ec42cbf5a9107::t_c740008a144b3c 24,54
+scripts/reviewfn-consumer-smoke.mjs
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-62
+langfn/typescript/src/utils/concurrency.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 6-7
+datafn/core/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 21,430-445,687-695
+reviewfn/testing/src/fakes.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-46
+uifn/registry/src/preset/schema.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-113
+reviewfn/context-composio/src/index.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1
+memoryfn/typescript/tests/openai-provider.test.ts
+  s_0ec42cbf5a9107::t_2e01ec7861ed66 3-6,11,16,42-63
+  s_0ec42cbf5a9107::t_79e6235d5df3ce 64
+packages/http/src/context.ts
+  s_0ec42cbf5a9107::t_5f70351c657cd8 8-38,54,86-88
+authfn/docs/content/docs/recipes/canonical-gateway-multi-region.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 100-101
+reviewfn/cli/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-3
+langfn/typescript/src/core/errors.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 15-18
+datafn/core/src/index.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 112-132,289-290
+uifn/registry/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 16-20,24-27,34-36,45-46
+plugfn/core/src/core/execution-coordinator.ts
+  s_0ec42cbf5a9107::t_6d5352ca71c894 22-26,54-55,58,60
+reviewfn/harness-codex/tsconfig.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-4
+datafn/docs/content/docs/reference/errors.mdx
+  s_0ec42cbf5a9107::t_c740008a144b3c 36,38,47
+datafn/docs/content/docs/documentation/multi-region-gateway.mdx
+  s_0ec42cbf5a9107::t_c740008a144b3c 12-13,103
+  s_0ec42cbf5a9107::t_da14eef0a3888a 104
+package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 29,127
+reviewfn/context-composio/vitest.config.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-2
+reviewfn/cli/LICENSE
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-21
+reviewfn/context-composio/test/adapter.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-250
+datafn/docs/content/docs/documentation/security/meta.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 8
+reviewfn/core/src/validator.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-172
+datafn/core/src/regional-route.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-39
+reviewfn/github/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-25
+.pi/extensions/entire/index.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-147
+.github/workflows/reviewfn-release.yml
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-44
+secfn/core/src/scanner/utils.ts
+  s_0ec42cbf5a9107::t_efcf86527816eb 5,7,12
+packages/http/src/router.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 66,86
+reviewfn/github/action.yml
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-60
+reviewfn/harness-codex/docker/Dockerfile
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-6
+langfn/typescript/src/utils/retry.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 23-25
+.gitignore
+  s_0ec42cbf5a9107::t_c740008a144b3c 115-116
+datafn/server/src/index.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-21,196
+reviewfn/core/src/git-environment.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-6
+secfn/runtime/src/index.test.ts
+  s_0ec42cbf5a9107::t_2e01ec7861ed66 21-37
+plugfn/core/tests/execution-coordinator.test.ts
+  s_0ec42cbf5a9107::t_2e01ec7861ed66 22-34
+packages/http/src/types.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 131-133
+reviewfn/context-composio/src/adapter.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-300
+uifn/registry/src/preset/codec.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-154
+uifn/react/tsup.config.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 73
+secfn/core/src/scanner/scanner.ts
+  s_0ec42cbf5a9107::t_efcf86527816eb 105
+reviewfn/core/src/index.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-18
+reviewfn/evaluation/data6-pr153-baseline.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-32
+uifn/registry/src/transaction.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 50,56,58
+uifn/create/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-33
+datafn/core/__tests__/resource-selectors.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-512
+uifn/registry/src/index.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 20
+uifn/create/src/editor.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-63
+uifn/react/src/fixture.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-25
+uifn/registry/src/preset/random.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-38
+memoryfn/typescript/src/index.ts
+  s_0ec42cbf5a9107::t_868e4c56dc0d5a 56-57,66-67
+  s_0ec42cbf5a9107::t_a600fbdd02b79d 20-24
+scripts/sfns4/worker-canary.mjs
+  s_0ec42cbf5a9107::t_ae34e2a9602d45 6-8
+reviewfn/cli/vitest.config.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-2
+authfn/docs/content/docs/sdk/python.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 157-175,181
+uifn/registry/src/preset/cli.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-119
+uifn/registry/src/preset/fixtures.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-7
+datafn/docs/content/docs/reference/core/resource-selectors.mdx
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-60
+reviewfn/core/src/render.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-42
+.factory/settings.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-85
+.opencode/plugins/entire.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-269
+datafn/core/src/errors.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 17
+uifn/react/src/utils/slot.tsx
+  s_0ec42cbf5a9107::t_c740008a144b3c 103-110,137
+langfn/typescript/src/observability/tracer.ts
+  s_0ec42cbf5a9107::t_8126b122656b33 19,75,82-86,94,101-104,117-127
+reviewfn/github/src/publisher.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-111
+reviewfn/examples/markdown-only/.reviewfn/policy.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-10
+authfn/python/authfn/errors.py
+  s_0ec42cbf5a9107::t_c740008a144b3c 28,93
+reviewfn/core/test/adversarial.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-363
+datafn/core/src/protocol.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-697
+datafn/docs/content/docs/documentation/direct-regional-sync.mdx
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-175
+datafn/docs/content/docs/documentation/meta.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 10
+reviewfn/docs/evaluation.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-15
+uifn/registry/src/__tests__/preset-cli.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-560
+memoryfn/typescript/src/providers/embed/openai.ts
+  s_0ec42cbf5a9107::t_868e4c56dc0d5a 8,10,14-17,30-44
+memoryfn/typescript/src/extraction/facts.ts
+  s_0ec42cbf5a9107::t_868e4c56dc0d5a 18,21-22,30
+plugfn/core/src/types/trigger.ts
+  s_0ec42cbf5a9107::t_6d5352ca71c894 60-64
+plugfn/core/src/webhooks/webhook-handler.ts
+  s_0ec42cbf5a9107::t_6d5352ca71c894 60-61,65-67,82-83,91-92
+  s_0ec42cbf5a9107::t_55399a16e6b227 405,412-417
+  s_0ec42cbf5a9107::t_5e97ab053c88e9 418
+reviewfn/core/src/schema.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-47
+datafn/client/src/sync/__tests__/engine.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1141-1150
+reviewfn/examples/markdown-only/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-3
+uifn/registry/src/preset/index.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-26
+reviewfn/github/test/large-diff.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-27
+reviewfn/testing/src/fixtures.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-59
+plugfn/core/tests/webhook-verification.test.ts
+  s_0ec42cbf5a9107::t_55399a16e6b227 26-53
+uifn/registry/docs/PRESET.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-72
+langfn/typescript/src/models/base.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 72
+mailfn/sendfn/package.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 20
+datafn/server/src/multi-region-routing.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-2,117-118,145-149,342,350-351,357-376,416,473,486,490,493-496
+reviewfn/github/tsconfig.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-4
+reviewfn/context-composio/tsconfig.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-4
+langfn/typescript/src/mcp/server.ts
+  s_0ec42cbf5a9107::t_8126b122656b33 2,79,82-96
+uifn/create/vitest.config.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-15
+uifn/react/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 25-26
+langfn/typescript/src/agents/tool_agent.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 2,22-24,69
+reviewfn/core/tsconfig.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-4
+authfn/core/src/index.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 68,91-104
+uifn/create/src/preview.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-122
+datafn/docs/content/docs/documentation/security/index.mdx
+  s_0ec42cbf5a9107::t_c740008a144b3c 16-17,29,36
+  s_0ec42cbf5a9107::t_a6136f858d602b 37
+reviewfn/harness-codex/LICENSE
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-21
+reviewfn/cli/tsconfig.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-4
+reviewfn/evaluation/data6-pr153.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-60
+datafn/client/__tests__/sync.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 18,24,28,951,978-979,987,992-994,1017-1018
+  s_0ec42cbf5a9107::t_e859fce59d5be2 1019
+uifn/registry/src/preset/fixture-tree.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-42
+README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 34
+uifn/registry/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 78-82,85-86,97,113-127
+datafn/client/src/transport/regional-route.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-142
+reviewfn/core/vitest.config.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-2
+langfn/typescript/tests/round3-regressions.test.ts
+  s_0ec42cbf5a9107::t_439961a139570e 19-25
+authfn/docs/content/docs/reference/events.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 57-60
+reviewfn/core/src/types.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-329
+uifn/create/aliases.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-15
+reviewfn/github/src/index.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-3
+langfn/typescript/src/memory/buffer.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 10-11
+packages/db/src/adapters/drizzle/index.ts
+  s_0ec42cbf5a9107::t_5f70351c657cd8 369-374
+authfn/core/src/__tests__/placement-context.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-875
+authfn/core/src/types.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 36,250-253
+datafn/server/src/events.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1,12
+authfn/docs/content/docs/core-concepts/index.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 60
+reviewfn/harness-codex/vitest.config.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-2
+datafn/client/src/sync/engine.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-2,365,378-381,442-444,458-461,464-466,489-490,500-505,537-540,543-576,582-585,588,596-599,629-630,633-638,640-645,659,683,750,1238-1242,1274-1277,1383,1898-1900,1904
+reviewfn/core/src/executable.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-41
+reviewfn/testing/README.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-3
+reviewfn/core/src/safe-files.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-50
+reviewfn/core/LICENSE
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-21
+authfn/multi-region/src/index.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 59-72
+uifn/react/src/fixture.test.tsx
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-17
+uifn/react/src/internal/compound.tsx
+  s_0ec42cbf5a9107::t_c740008a144b3c 31-33,472,488,527,722,724,756-770
+authfn/docs/content/docs/core-concepts/errors.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 53
+uifn/registry/src/preset/url.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-26
+uifn/create/index.html
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-13
+reviewfn/docs/security.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-28
+reviewfn/evaluation/data6-pr153-live.json
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-605
+datafn/client/src/transport/http.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-2,17,30-32,41,99-100,103-111,114-117,119-121,127-139,142,148
+uifn/registry/src/plan.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 59-60,181
+reviewfn/docs/configuration.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-23
+datafn/client/__tests__/ws-reconnect.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 19,22,25,27-28,34,39,43-45,55,199-311
+  s_0ec42cbf5a9107::t_e95c09557567aa 312
+datafn/client/src/index.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 129-132
+uifn/react/src/portal.tsx
+  s_0ec42cbf5a9107::t_c740008a144b3c 21-22,25-33,38,41
+scripts/gate-mcpfn-release.mjs
+  s_0ec42cbf5a9107::t_c740008a144b3c 425-426
+reviewfn/harness-codex/test/adapter.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-139
+reviewfn/harness-codex/src/index.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1
+langfn/typescript/src/agents/react.ts
+  s_0ec42cbf5a9107::t_95a22ccd0bf8f1 2,23-25,70
+secfn/runtime/src/index.ts
+  s_0ec42cbf5a9107::t_efcf86527816eb 64,67,69,97
+datafn/docs/content/docs/documentation/security/production-checklist.mdx
+  s_0ec42cbf5a9107::t_c740008a144b3c 12-14,90
+datafn/server/src/routes/rest.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 18
+memoryfn/typescript/tests/pipeline.test.ts
+  s_0ec42cbf5a9107::t_868e4c56dc0d5a 7
+datafn/client/src/transport/regional-route.test.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-182
+reviewfn/harness-codex/src/adapter.ts
+  s_0ec42cbf5a9107::t_c740008a144b3c 1-216
+authfn/docs/content/docs/core-concepts/observability.md
+  s_0ec42cbf5a9107::t_c740008a144b3c 82-85
+package-lock.json
+  s_0ec42cbf5a9107::t_030c5460082c92 34,323-332,503-530,557-584,639-675,721-729,760-768,803-839,942-970,1017-1025,3064-3072,3097-3133,3157-3165,3189-3216,3247-3283,3333-3341,3392-3420,5468-5476,6488-6511,6538-6565,6590,6593-6594,6796,6799,6810-6818,7014,8010-8029,8042,8045-8047,8051,8054,8058-8059,8095-8103,9286-9322,11362-11398,12689,12702-12730,14672-14723,18000-18008,19180-19207,29868-29891,31960-31963,52829-52866,52914,53051,53081-53090,53115-53124,53151-53160,53185-53194,53216-53224,53251-53260,53441-53449,53473-53500,53985-54021,54748-54932,55445-55453,57146-57174,57211-57212,57215,57221-57258,57919-57947,61294-61312,62349-62351
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c3875eec33a42c1d2324f33879cf38b5fc6a1b6d",
+  "prompts": {},
+  "sessions": {
+    "s_0ec42cbf5a9107": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0aa3d-c6e5-7963-9f4b-4f57675b7e35",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
