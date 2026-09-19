@@ -8,6 +8,7 @@ const authFnTables = [
     modelName: 'users',
     fields: {
       id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+      primaryEmail: { type: 'string', required: false, fieldName: 'primary_email', maxLength: 255 },
     },
   },
   {
@@ -39,6 +40,8 @@ function column(
 }
 
 function currentAuthFnTables(dialect: 'postgres' | 'mysql' | 'sqlite'): DatabaseTable[] {
+  const primaryEmail = column(dialect, 'authfn_users', 'primary_email');
+  primaryEmail.isNullable = true;
   const foreignKey = {
     name: 'authfn_sessions_user_id_fk',
     type: 'FOREIGN KEY' as const,
@@ -50,7 +53,7 @@ function currentAuthFnTables(dialect: 'postgres' | 'mysql' | 'sqlite'): Database
   return [
     {
       name: 'authfn_users',
-      columns: [column(dialect, 'authfn_users', 'id', true)],
+      columns: [column(dialect, 'authfn_users', 'id', true), primaryEmail],
       indexes: [{
         name: 'PRIMARY',
         tableName: 'authfn_users',
@@ -178,6 +181,35 @@ describe('generate command migration planning', () => {
     ]);
     expect(intentionalV3Bound?.migrationFile.content).toContain(
       'ALTER TABLE authfn_users MODIFY COLUMN display_name VARCHAR(100) NULL;',
+    );
+
+    const v3ChangedLegacyBound = authFnTables.map((table) => table.modelName === 'users'
+      ? {
+          ...table,
+          fields: {
+            ...table.fields,
+            primaryEmail: { ...table.fields.primaryEmail, maxLength: 128 },
+          },
+        }
+      : table);
+    const intentionalLegacyV3Bound = createPendingMigration({
+      adapterType: 'drizzle',
+      dialect: 'mysql',
+      library: { namespace: 'authfn', version: 3, tables: v3ChangedLegacyBound },
+      currentVersion: 2,
+      currentTables: currentAuthFnTables('mysql'),
+    });
+    expect(intentionalLegacyV3Bound?.tableDiffs).toEqual([
+      expect.objectContaining({
+        tableName: 'authfn_users',
+        columnChanges: [expect.objectContaining({
+          column: 'primary_email',
+          change: 'maxLength changed from 65535 to 128',
+        })],
+      }),
+    ]);
+    expect(intentionalLegacyV3Bound?.migrationFile.content).toContain(
+      'ALTER TABLE authfn_users MODIFY COLUMN primary_email VARCHAR(128) NULL;',
     );
 
     const kysely = createPendingMigration({

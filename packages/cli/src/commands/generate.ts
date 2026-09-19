@@ -30,7 +30,7 @@ interface LibrarySchema {
   tables: TableSchema[];
 }
 
-const AUTHFN_V1_UNBOUNDED_MYSQL_COLUMNS = new Set([
+const AUTHFN_V1_UNBOUNDED_MYSQL_COLUMN_LENGTHS = new Map([
   'authfn_users.id',
   'authfn_users.primary_email',
   'authfn_sessions.id',
@@ -72,7 +72,7 @@ const AUTHFN_V1_UNBOUNDED_MYSQL_COLUMNS = new Set([
   'authfn_oauth_accounts.provider',
   'authfn_oauth_accounts.provider_account_id',
   'authfn_oauth_accounts.connection_id',
-]);
+].map((column) => [column, column.endsWith('.connection_id') ? 768 : 255] as const));
 
 export function createPendingMigration(input: {
   adapterType: 'drizzle' | 'prisma' | 'kysely';
@@ -93,8 +93,8 @@ export function createPendingMigration(input: {
     currentVersion > 0 &&
     library.version >= 2;
   const tableDiffs = diffTables(library.tables, currentTables, library.namespace, {
-    preserveUnboundedMySqlStringColumns: preserveAuthFnV1MySqlText
-      ? AUTHFN_V1_UNBOUNDED_MYSQL_COLUMNS
+    preserveUnboundedMySqlStringColumnLengths: preserveAuthFnV1MySqlText
+      ? AUTHFN_V1_UNBOUNDED_MYSQL_COLUMN_LENGTHS
       : undefined,
   });
   const plan = createMigrationPlan(
