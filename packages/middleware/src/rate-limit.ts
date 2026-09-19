@@ -33,12 +33,15 @@ export interface CheckLimitInput {
 
 export interface CheckManyLimitsInput {
   keys: string[];
+  /** Override the shared limit for each unprefixed key. */
+  limitsByKey?: Record<string, number>;
   windowSeconds?: number;
   limit?: number;
 }
 
 export interface RateLimitManyResult {
   allowed: boolean;
+  blockedKeys?: string[];
   remainingByKey: Map<string, number>;
   resetAtByKey: Map<string, string>;
   resetAt: string;
@@ -430,6 +433,7 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
       const effectiveWindowMs =
         (input.windowSeconds !== undefined ? input.windowSeconds * 1000 : undefined) ?? windowMs;
       const effectiveLimit = input.limit ?? maxRequests;
+      const limits = uniqueKeys.map((key) => input.limitsByKey && Object.prototype.hasOwnProperty.call(input.limitsByKey, key) ? input.limitsByKey[key] ?? effectiveLimit : effectiveLimit);
       const namespacedKeys = uniqueKeys.map((key) => `${keyPrefix}${key}`);
 
       if (uniqueKeys.length === 0) {
@@ -445,14 +449,15 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
       return withKeyLocks(namespacedKeys, async () => {
         const currentTime = now();
         const preflight = await Promise.all(
-          namespacedKeys.map((key) =>
-            evaluateConfiguredKey(key, currentTime, effectiveWindowMs, effectiveLimit, false)
+          namespacedKeys.map((key, index) =>
+            evaluateConfiguredKey(key, currentTime, effectiveWindowMs, limits[index], false)
           )
         );
         const blocked = preflight.filter((result) => !result.allowed);
         if (blocked.length > 0) {
           return {
             allowed: false,
+            blockedKeys: uniqueKeys.filter((_key, index) => !preflight[index].allowed),
             remainingByKey: new Map(
               uniqueKeys.map((key, index) => [key, preflight[index].remaining])
             ),
@@ -476,7 +481,7 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
             key,
             currentTime,
             effectiveWindowMs,
-            effectiveLimit,
+            limits[index],
             true,
           );
           committed.push(result);
@@ -485,6 +490,7 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
             const blockedActual = actual.filter((entry) => !entry.allowed);
             return {
               allowed: false,
+              blockedKeys: uniqueKeys.filter((_key, index) => !actual[index].allowed),
               remainingByKey: new Map(
                 uniqueKeys.map((entry, entryIndex) => [entry, actual[entryIndex].remaining])
               ),

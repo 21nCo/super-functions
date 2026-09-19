@@ -208,20 +208,3 @@ __all__ = [
     "authfn_multi_region_plugin",
     "get_schema",
 ]
-
-
-def __getattr__(name: str) -> object:
-    if name in {"SocialOAuthPluginConfig", "SocialOAuthService", "SocialProviderConfig"}:
-        from .plugins.social_oauth import (
-            SocialOAuthPluginConfig,
-            SocialOAuthService,
-            SocialProviderConfig,
-        )
-
-        values = {
-            "SocialOAuthPluginConfig": SocialOAuthPluginConfig,
-            "SocialOAuthService": SocialOAuthService,
-            "SocialProviderConfig": SocialProviderConfig,
-        }
-        return values[name]
-    raise AttributeError(name)

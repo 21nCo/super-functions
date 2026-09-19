@@ -717,7 +717,8 @@ describe('wrapWithRowLevelNamespace', () => {
 
       const adapterWithTransaction: Adapter = {
         ...baseAdapter,
-        async transaction(callback) {
+        async transaction(callback, options) {
+          expect(options).toEqual({ isolationLevel: "repeatable_read" });
           const trx = {
             ...baseAdapter,
             commit,
@@ -745,7 +746,7 @@ describe('wrapWithRowLevelNamespace', () => {
         expect(created).toEqual({ id: 'tx-1', title: 'Inside transaction' });
 
         await trx.commit();
-      });
+      }, { isolationLevel: "repeatable_read" });
 
       expect(seenTrx).toBeDefined();
       expect('close' in (seenTrx ?? {})).toBe(false);

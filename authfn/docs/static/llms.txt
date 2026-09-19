@@ -57,7 +57,7 @@
 - [Hono](https://authfn.superfunctions.dev/docs/frameworks/hono) — Mount authfn on Hono with @superfunctions/http-hono.
 - [Frameworks](https://authfn.superfunctions.dev/docs/frameworks) — Adapters that mount the authfn router on the HTTP framework you already use.
 - [Next.js (App Router)](https://authfn.superfunctions.dev/docs/frameworks/nextjs) — Mount authfn as a Route Handler and read sessions from RSC, Server Actions, and middleware.
-- [Starlette](https://authfn.superfunctions.dev/docs/frameworks/starlette) — Mount the Python authfn kernel on Starlette / pure ASGI.
+- [Starlette](https://authfn.superfunctions.dev/docs/frameworks/starlette) — Starlette apps mount Python authfn through FastAPI — there is no dedicated Starlette extra.
 - [SvelteKit](https://authfn.superfunctions.dev/docs/frameworks/sveltekit) — Mount authfn as a SvelteKit endpoint and read sessions from server load functions, hooks, and form actions.
 - [Getting Started](https://authfn.superfunctions.dev/docs/getting-started) — Declare an authfn app, create its server runtime, mount it on Hono, and sign in from the typed client.
 - [Welcome to authfn](https://authfn.superfunctions.dev/docs) — Self-hosted, framework-agnostic authentication for TypeScript and Python. Sessions, OTP, passwords, social OAuth, API keys, 2FA, multi-region — opt in to what you need.

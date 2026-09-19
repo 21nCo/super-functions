@@ -28,7 +28,7 @@ const authApp = authfn({
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `codeTtlSeconds` | `300` | Lifetime of a handoff code before it expires. |
+| `codeTtlSeconds` | `60` | Lifetime of a handoff code before it expires; the example explicitly overrides this to 300 seconds. |
 | `now` | `() => new Date()` | Clock injection. |
 
 ## Routes
