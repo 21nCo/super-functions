@@ -700,9 +700,11 @@ describe('DrizzleAdapter - Postgres/MySQL Dialect Support', () => {
 
 it('rejects per-call isolation when the dialect does not implement it', async () => {
   const callback = vi.fn();
-  const adapter = drizzleAdapter({db:{},dialect:'mysql'});
+  const transaction = vi.fn();
+  const adapter = drizzleAdapter({ db: { transaction }, dialect: 'mysql' });
   await expect(adapter.transaction(callback,{isolationLevel:'repeatable_read'})).rejects.toThrow('unsupported');
   expect(callback).not.toHaveBeenCalled();
+  expect(transaction).not.toHaveBeenCalled();
 });
 
 it('advertises and maps every PostgreSQL isolation level exposed by the shared contract', async () => {

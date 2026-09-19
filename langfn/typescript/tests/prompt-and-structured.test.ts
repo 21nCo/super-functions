@@ -81,6 +81,10 @@ describe("prompt and structured contract", () => {
       label: "bug",
       severity: 2
     });
+    expect(structured.parse('discard {not json} use {"label":"fix","severity":1}')).toEqual({
+      label: "fix",
+      severity: 1
+    });
 
     expect(() => structured.parse("no object here")).toThrowError(SchemaValidationError);
     expect(() => structured.parse('{"label":"bug","severity":"high"}')).toThrowError(

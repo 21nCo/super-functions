@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { LangFn } from "../src/client.js";
 import { CostMeter } from "../src/observability/cost-meter.js";
 import { OpenAIChatModel } from "../src/models/openai.js";
@@ -104,6 +104,15 @@ it("custom completion fallback preserves usage", async () => {
   for await (const e of model.stream({ prompt: "x" })) events.push(e);
   expect(events.map((e) => e.type)).toEqual(["content", "token_usage", "end"]);
 });
+it("does not degrade chat requests to a completion-only custom handler", async () => {
+  const complete = vi.fn(() => ({ content: "flattened" }));
+  const model = new CustomChatModel({ complete });
+  await expect(model.chat({
+    messages: [{ role: "user", content: "preserve this conversation" }],
+    tools: [{ name: "lookup", description: "lookup", parameters: {} }],
+  })).rejects.toThrow("requires a chat handler");
+  expect(complete).not.toHaveBeenCalled();
+});
 it.each([
   [
     "missing pricing",
@@ -123,6 +132,7 @@ it.each([
   async (_name, usage, costMeter, code) => {
     const model = new CustomChatModel({
       complete: () => ({ content: "x", usage }),
+      chat: () => ({ message: { role: "assistant", content: "x" }, usage }),
     });
     const client = new LangFn({
       model,

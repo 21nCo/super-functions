@@ -3,8 +3,8 @@ export async function mapWithConcurrency<T, TResult>(
   concurrency: number,
   mapper: (value: T, index: number) => Promise<TResult>
 ): Promise<Array<TResult | Error>> {
-  if (concurrency < 1) {
-    throw new Error("concurrency must be >= 1");
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
+    throw new Error("concurrency must be a positive safe integer");
   }
 
   const results: Array<TResult | Error> = new Array(values.length);

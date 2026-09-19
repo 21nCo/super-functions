@@ -75,7 +75,14 @@ uifn update button --cwd . --dry-run --json
 uifn doctor --cwd . --json
 uifn remove button --cwd . --dry-run --json
 uifn validate --json
+uifn preset encode --style atlas --base-color mauve --json
+uifn preset decode <code> --json
+uifn preset resolve --cwd . --json
+uifn init --preset <code> --dry-run --json
+uifn apply --preset <code> --only theme,font --dry-run --json
 ```
+
+Versioned presets are documented in `docs/PRESET.md`. `init` and `apply` reuse the same transaction, dirty-conflict, and rollback machinery as `add`. The first approved mutation matrix is `react-vite` with `package` or `source` install.
 
 `add` validates the complete plan before writing. It rejects unsupported frameworks, dependency conflicts, dirty tracked files, traversal, symlink escapes, checksum failures, invalid signatures, dependency cycles, and license/provenance failures. Successful writes are staged on the consumer filesystem and committed atomically; an interruption restores the original bytes.
 
@@ -87,6 +94,7 @@ Source installs write:
 
 - `components/uifn/<framework>/...` — generated source owned by the consumer.
 - `.uifn/registry.lock` — schema v2 lock entries with framework, version, dependencies, per-file source/output/installed hashes, canonical/generator versions, and provenance.
+- `.uifn/preset.json` — normalized `UIFnPresetV1` code plus managed-file hashes used by `uifn apply` and `uifn preset resolve`.
 - `.uifn/selected-components.json` — the selected source-mode component index.
 - dependency additions in `package.json`, only when they are not already compatible.
 
@@ -102,3 +110,18 @@ npm run build
 ```
 
 The repository-wide delivery gate also creates independent package/source consumers for React, Svelte, and Solid and verifies type checking, production build, SSR, hydration, browser semantics, accessibility, and semantic-trace equivalence.
+
+### Preset applies and npm lockfiles
+
+When full `uifn apply` changes dependencies in a project with `package-lock.json`,
+the result includes `requiredActions` if the lockfile's root dependencies differ
+from the planned manifest. Dry-run reports the same requirement without writing.
+After applying, run `npm install --package-lock-only --ignore-scripts --lockfile-version=3` in the
+project directory, review the updated lockfile, then use `npm ci`. UIFn does not
+run npm or modify the lockfile inside its file transaction. The required action
+continues to be reported on repeat applies until the lockfile is refreshed.
+
+Use npm 7 or newer for this refresh. Lockfile versions 2 and 3 are supported;
+version 1 requires the explicit format upgrade above. The check compares root
+declarations and the versions of their direct package records. It does not
+validate the entire transitive dependency tree or replace npm's own validation.

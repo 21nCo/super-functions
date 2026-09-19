@@ -12,6 +12,7 @@ import {
   SecFnNotFoundError,
   SecFnUnauthorizedError,
   SecFnValidationError,
+  type SecFnLogger,
 } from "@secfn/core";
 
 export function ok(data: unknown, init?: ResponseInit): Response {
@@ -22,7 +23,16 @@ export function emptyOk(init?: ResponseInit): Response {
   return Response.json({ ok: true, data: null }, init);
 }
 
-export function errorResponse(error: unknown): Response {
+export function errorResponse(error: unknown, logger?: SecFnLogger): Response {
+  if (!(error instanceof RouterError) && !(error instanceof SecFnUnauthorizedError)
+      && !(error instanceof SecFnForbiddenError) && !(error instanceof SecFnNotFoundError)
+      && !(error instanceof SecFnValidationError)) {
+    try {
+      logger?.error("secfn request failed", { error });
+    } catch {
+      // Host logging must not alter the HTTP response.
+    }
+  }
   const routerError = toRouterError(error);
   return Response.json(
     {
@@ -67,6 +77,6 @@ function toRouterError(error: unknown): RouterError {
   if (error instanceof SecFnForbiddenError) return new ForbiddenError(error.message, error.code);
   if (error instanceof SecFnNotFoundError) return new NotFoundError(error.message, error.code);
   if (error instanceof SecFnValidationError) return new BadRequestError(error.message, error.code);
-  if (error instanceof SecFnError) return new BadRequestError(error.message, error.code);
+  if (error instanceof SecFnError) return new InternalServerError("Internal Server Error", "SECFN_INTERNAL");
   return new InternalServerError("Internal Server Error", "SECFN_INTERNAL");
 }

@@ -69,16 +69,7 @@ export class CustomChatModel extends ChatModel {
     if (!this.completeHandler) {
       throw new Error("CustomChatModel requires a chat or complete handler");
     }
-    const completion = await this.completeHandler({
-      prompt: request.messages[request.messages.length - 1]?.content ?? "",
-      signal: request.signal,
-      metadata: request.metadata
-    });
-    return {
-      message: { role: "assistant", content: completion.content },
-      usage: completion.usage,
-      raw: completion.raw
-    };
+    throw new Error("CustomChatModel requires a chat handler to preserve conversation and tool options");
   }
 
   async *stream(request: CompletionRequest): AsyncIterable<StreamEvent> {

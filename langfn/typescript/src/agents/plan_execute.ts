@@ -24,6 +24,9 @@ export class PlanExecuteAgent {
       throw new ValidationError("Planner returned an empty plan");
     }
     const maxPlanSteps = this.options.max_plan_steps ?? 10;
+    if (!Number.isSafeInteger(maxPlanSteps) || maxPlanSteps < 1) {
+      throw new ValidationError("max_plan_steps must be a positive safe integer");
+    }
     if (plan.length > maxPlanSteps) {
       throw new AgentMaxIterationsError("Plan exceeds configured limit", {
         metadata: { max_plan_steps: maxPlanSteps, plan_length: plan.length }
@@ -32,6 +35,9 @@ export class PlanExecuteAgent {
 
     const stepResults: string[] = [];
     const maxExecutionSteps = this.options.max_execution_steps ?? plan.length;
+    if (!Number.isSafeInteger(maxExecutionSteps) || maxExecutionSteps < 1) {
+      throw new ValidationError("max_execution_steps must be a positive safe integer");
+    }
     for (let stepIndex = 0; stepIndex < plan.length; stepIndex += 1) {
       if (stepIndex >= maxExecutionSteps) {
         throw new AgentMaxIterationsError("Execution exceeded configured limit", {
@@ -81,7 +87,9 @@ export class PlanExecuteAgent {
       if (!this.options.lang) {
         throw new ValidationError("PlanExecuteAgent requires an executor or LangFn instance");
       }
-      const response = await this.options.lang.complete(`Goal: ${context.goal}\nStep ${context.stepIndex + 1}: ${step}`);
+      const response = await this.options.lang.complete(
+        `Goal: ${context.goal}\nPrevious results:\n${context.previousResults.join("\n")}\nStep ${context.stepIndex + 1}: ${step}`
+      );
       return response.content;
     } catch (error) {
       if (error instanceof Error && "code" in error) {

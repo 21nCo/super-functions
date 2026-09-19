@@ -4,14 +4,13 @@ export interface SchemaLike<T> {
   parse(data: unknown): T;
 }
 
-function extractFirstJsonObject(text: string): string | null {
-  const start = text.indexOf("{");
-  if (start < 0) return null;
-
+function extractJsonObjects(text: string): string[] {
+  const candidates: string[] = [];
   let depth = 0;
   let inString = false;
   let escaped = false;
-  for (let index = start; index < text.length; index += 1) {
+  let start = -1;
+  for (let index = 0; index < text.length; index += 1) {
     const char = text[index];
     if (inString) {
       if (escaped) {
@@ -28,24 +27,28 @@ function extractFirstJsonObject(text: string): string | null {
       inString = true;
       continue;
     }
-    if (char === "{") depth += 1;
+    if (char === "{") {
+      if (depth === 0) start = index;
+      depth += 1;
+    }
     if (char === "}") {
+      if (depth === 0) continue;
       depth -= 1;
-      if (depth === 0) {
-        return text.slice(start, index + 1);
+      if (depth === 0 && start >= 0) {
+        candidates.push(text.slice(start, index + 1));
+        start = -1;
       }
     }
   }
-
-  return null;
+  return candidates;
 }
 
 export class StructuredOutput<T> {
   constructor(private readonly schema: SchemaLike<T>) {}
 
   parse(text: string): T {
-    const candidate = extractFirstJsonObject(text);
-    if (!candidate) {
+    const candidates = extractJsonObjects(text);
+    if (!candidates.length) {
       throw new SchemaValidationError("No JSON object found in output", {
         metadata: {
           text,
@@ -54,23 +57,32 @@ export class StructuredOutput<T> {
       });
     }
 
+    let candidate: string | undefined;
     let parsed: unknown;
-    try {
-      parsed = JSON.parse(candidate);
-    } catch (error) {
-      const candidateError = error as Error & { lineNumber?: number; columnNumber?: number };
+    let parseError: unknown;
+    for (const next of candidates) {
+      try {
+        parsed = JSON.parse(next);
+        candidate = next;
+        break;
+      } catch (error) {
+        parseError = error;
+      }
+    }
+    if (candidate === undefined) {
+      const candidateError = parseError as Error & { lineNumber?: number; columnNumber?: number };
       throw new SchemaValidationError("Invalid JSON in model output", {
         metadata: {
-          text: candidate,
+          text,
           errors: [
             {
-              message: candidateError.message,
+              message: candidateError?.message ?? "Invalid JSON",
               line: candidateError.lineNumber,
               column: candidateError.columnNumber
             }
           ]
         },
-        cause: error
+        cause: parseError
       });
     }
 

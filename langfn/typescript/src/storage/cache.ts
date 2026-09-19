@@ -86,14 +86,15 @@ export class ResponseCache {
     const where = this.whereForKey(key);
     const record = await this.db.findOne<any>({
       model: this.tableName,
-      where
+      where,
+      namespace: this.namespace,
     });
 
     if (!record) return null;
 
     const expiresAt = Number(record.expiresAt ?? record.expires_at ?? 0);
     if (expiresAt < this.now()) {
-      await this.db.delete({ model: this.tableName, where });
+      await this.db.delete({ model: this.tableName, where, namespace: this.namespace });
       return null;
     }
 
@@ -116,7 +117,8 @@ export class ResponseCache {
       model: this.tableName,
       where: this.whereForKey(key),
       create: data,
-      update: data
+      update: data,
+      namespace: this.namespace,
     });
   }
 

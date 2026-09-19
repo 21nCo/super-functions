@@ -31,7 +31,18 @@ export interface AccessCheckInput {
 export class AccessService {
   private readonly cache = new Map<string, { allowed: boolean; expiresAt: number }>();
 
-  constructor(private readonly db: Adapter, private readonly cacheTtlMs = 300_000) {}
+  constructor(
+    private readonly db: Adapter,
+    private readonly cacheTtlMs = 300_000,
+    private readonly cacheMaxEntries = 10_000,
+  ) {
+    if (!Number.isSafeInteger(cacheTtlMs) || cacheTtlMs < 0) {
+      throw new RangeError("cacheTtlMs must be a non-negative safe integer");
+    }
+    if (!Number.isSafeInteger(cacheMaxEntries) || cacheMaxEntries < 1) {
+      throw new RangeError("cacheMaxEntries must be a positive safe integer");
+    }
+  }
 
   async createRole(input: CreateRoleInput): Promise<RoleRecord> {
     const role: RoleRecord = {
@@ -50,6 +61,9 @@ export class AccessService {
   }
 
   async assignRole(input: AssignRoleInput): Promise<RoleBindingRecord> {
+    if (input.namespace && !input.tenantId) {
+      throw new Error("Namespace-scoped role bindings require tenantId");
+    }
     const binding: RoleBindingRecord = {
       id: generateId("binding"),
       principalId: input.principalId,
@@ -68,6 +82,7 @@ export class AccessService {
 
   async check(input: AccessCheckInput): Promise<boolean> {
     const cacheKey = JSON.stringify(input);
+    this.evictExpiredCacheEntries();
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.allowed;
 
@@ -95,8 +110,22 @@ export class AccessService {
     const allowed = Array.from(permissions).some((permission) =>
       matchesPermission(permission, input.action),
     );
-    this.cache.set(cacheKey, { allowed, expiresAt: cacheExpiresAt });
+    if (this.cacheTtlMs > 0) {
+      while (this.cache.size >= this.cacheMaxEntries) {
+        const oldest = this.cache.keys().next().value;
+        if (oldest === undefined) break;
+        this.cache.delete(oldest);
+      }
+      this.cache.set(cacheKey, { allowed, expiresAt: cacheExpiresAt });
+    }
     return allowed;
+  }
+
+  private evictExpiredCacheEntries(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.cache) {
+      if (entry.expiresAt <= now) this.cache.delete(key);
+    }
   }
 
   async getUserPermissions(principalId: string, scope: Omit<AccessCheckInput, "principalId" | "action"> = {}): Promise<string[]> {

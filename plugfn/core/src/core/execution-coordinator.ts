@@ -19,7 +19,11 @@ export class ExecutionCoordinator {
     this.now = options.now ?? Date.now;
   }
 
-  async run<T>(key: string, work: () => Promise<T>): Promise<T> {
+  async run<T>(
+    key: string,
+    work: () => Promise<T>,
+    options: { classifyFailure?: (error: unknown) => 'known' | 'uncertain' } = {},
+  ): Promise<T> {
     const storageKey = this.key(key);
     const previous = await this.store.get(storageKey);
     const claim: Claim | null = previous ? JSON.parse(previous) : null;
@@ -47,11 +51,13 @@ export class ExecutionCoordinator {
       if (!released.updated) throw new Error('EXECUTION_OWNERSHIP_LOST');
       return result;
     } catch (error) {
-      await this.store.compareAndSet!({
+      const state = options.classifyFailure?.(error) === 'known' ? 'idle' : 'uncertain';
+      const transitioned = await this.store.compareAndSet!({
         key: storageKey,
         expected: serialized,
-        value: JSON.stringify({ ...owned, state: 'uncertain' }),
+        value: JSON.stringify({ ...owned, state }),
       });
+      if (!transitioned.updated) throw new Error('EXECUTION_OWNERSHIP_LOST', { cause: error });
       throw error;
     }
   }

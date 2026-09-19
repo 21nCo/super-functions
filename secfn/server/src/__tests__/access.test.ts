@@ -48,6 +48,18 @@ describe("AccessService", () => {
       tenantId: "tenant-a",
     })).resolves.toBe(false);
   });
+
+  it("rejects namespace bindings without a tenant and bounds the permission cache", async () => {
+    const access = new AccessService(new MemoryAdapter(), 60_000, 2);
+    const role = await access.createRole({ name: "reader", permissions: ["secret:read"] });
+    await expect(access.assignRole({ principalId: "u", roleId: role.id, namespace: "workspace" }))
+      .rejects.toThrow("tenantId");
+
+    for (const principalId of ["a", "b", "c"]) {
+      await access.check({ principalId, action: "secret:read" });
+    }
+    expect((access as unknown as { cache: Map<string, unknown> }).cache.size).toBeLessThanOrEqual(2);
+  });
 });
 
 it("expires cached access at the binding boundary", async () => {

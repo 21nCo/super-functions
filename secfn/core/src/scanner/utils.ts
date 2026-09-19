@@ -2,13 +2,14 @@ import { createHash } from "node:crypto";
 
 export function calculateEntropy(value: string): number {
   if (!value) return 0;
+  const symbols = [...value];
   const counts = new Map<string, number>();
-  for (const char of value) {
+  for (const char of symbols) {
     counts.set(char, (counts.get(char) ?? 0) + 1);
   }
   let entropy = 0;
   for (const count of counts.values()) {
-    const probability = count / value.length;
+    const probability = count / symbols.length;
     entropy -= probability * Math.log2(probability);
   }
   return entropy;

@@ -18,6 +18,23 @@ describe("secfn runtime", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("returns isolated copies of cached secret sets", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ ok: true, data: { secrets: { API_KEY: "original" } } }),
+    );
+    const runtime = createSecFnRuntime({
+      endpoint: "https://secfn.example/secfn",
+      apiKey: "token",
+      fetch: fetchMock as unknown as typeof fetch,
+      cache: { ttlMs: 1000 },
+    });
+
+    const first = await runtime.getSet("app");
+    first.API_KEY = "mutated";
+    await expect(runtime.getSet("app")).resolves.toEqual({ API_KEY: "original" });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("sends tenant and namespace runtime scope headers", async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({ ok: true, data: { key: "API_KEY", value: "one", version: 1 } }),

@@ -2,6 +2,7 @@ import { Adapter, WhereClause } from "@superfunctions/db";
 
 import { TraceNotFoundError, ValidationError } from "../core/errors.js";
 import { Cost, TokenUsage, TraceScope } from "../core/types.js";
+import { secureSha256Hex } from "../utils/random.js";
 
 export interface TraceRecord extends TraceScope {
   traceId: string;
@@ -90,20 +91,6 @@ export class TraceStorage {
       throw new TraceNotFoundError(undefined, { metadata: { traceId: feedback.traceId } });
     }
 
-    if (feedback.clientKey) {
-      const existing = await this.db.findOne<FeedbackRecord>({
-        model: this.feedbackTableName,
-        where: [
-          { field: "traceId", operator: "eq", value: feedback.traceId },
-          { field: "clientKey", operator: "eq", value: feedback.clientKey },
-          ...scopeWhere(scope)
-        ]
-      });
-      if (existing) {
-        return existing;
-      }
-    }
-
     const record = {
       ...feedback,
       scope,
@@ -111,6 +98,22 @@ export class TraceStorage {
       userId: trace.userId,
       createdAt: feedback.createdAt ?? Date.now()
     };
+    if (feedback.clientKey) {
+      const id = `feedback_${await secureSha256Hex(JSON.stringify([
+        feedback.traceId,
+        feedback.clientKey,
+        trace.tenantId ?? null,
+        trace.userId ?? null,
+      ]))}`;
+      return await this.db.upsert<FeedbackRecord>({
+        model: this.feedbackTableName,
+        where: [{ field: "id", operator: "eq", value: id }],
+        conflictTarget: "id",
+        create: { ...record, id },
+        update: {},
+      });
+    }
+
     await this.db.create({
       model: this.feedbackTableName,
       data: record

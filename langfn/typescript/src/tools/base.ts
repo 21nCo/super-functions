@@ -63,7 +63,7 @@ export class Tool<TArgs = unknown, TResult = unknown> {
 
     try {
       const result = await this.executeHandler(parsed, context);
-      return context.policy.sanitize(result) as TResult;
+      return context.policy.redact(context.policy.sanitize(result)) as TResult;
     } catch (error) {
       if (error instanceof LangFnError) {
         throw error;

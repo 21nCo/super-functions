@@ -20,6 +20,9 @@ export async function retryAsync<T>(
   const baseDelayMs = config.baseDelayMs ?? 250;
   const maxDelayMs = config.maxDelayMs ?? 5_000;
   const retryOnCodes = config.retryOnCodes ?? ["PROVIDER_RATE_LIMIT", "PROVIDER_TIMEOUT"];
+  if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1) {
+    throw new RangeError("maxAttempts must be a positive safe integer");
+  }
 
   for (let attempt = 1; ; attempt += 1) {
     if (config.signal?.aborted) throw new AbortError();

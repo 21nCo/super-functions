@@ -5,7 +5,10 @@ import type { IMemoryFn } from '../core/config';
 import { requireScope, type MemoryScope } from '../storage/adapter';
 
 /** The host authenticates on every request; caller JSON cannot choose its tenant. */
-export function createMemoryRouter(memory: IMemoryFn, options: { authorize(request: Request): Promise<MemoryScope | null> }) {
+export function createMemoryRouter(memory: IMemoryFn, options: {
+  authorize(request: Request): Promise<MemoryScope | null>;
+  maxBodyBytes?: number;
+}) {
   const tags = z.array(z.string().min(1)).default([]);
   const add = z.object({ content: z.string().min(1), containerTags: tags, metadata: z.record(z.unknown()).optional() }).strict();
   const search = z.object({ q: z.string().min(1), containerTags: tags, filters: z.record(z.unknown()).optional(), limit: z.number().int().min(1).max(100).optional(), threshold: z.number().min(-1).max(1).optional() }).strict();
@@ -27,5 +30,5 @@ export function createMemoryRouter(memory: IMemoryFn, options: { authorize(reque
       return Response.json(await memory.search({ ...input.data, tenantId: scope.tenantId, containerTags: [...scope.containerTags, ...input.data.containerTags] }));
     } },
   ];
-  return createRouter({ routes });
+  return createRouter({ routes, maxBodyBytes: options.maxBodyBytes ?? 1024 * 1024 });
 }

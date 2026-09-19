@@ -68,7 +68,13 @@ describe("second review regressions", () => {
     const tables: Record<string, any[]> = { langfn_traces: ["a", "b"].map(tenantId => ({ traceId: "same", tenantId, userId: "u" })) };
     const db = {
       async create({ model, data }: any) { (tables[model] ??= []).push(data); },
-      async findOne({ model, where }: any) { return tables[model]?.find(row => where.every((c: any) => row[c.field] === c.value)) ?? null; }
+      async findOne({ model, where }: any) { return tables[model]?.find(row => where.every((c: any) => row[c.field] === c.value)) ?? null; },
+      async upsert({ model, where, create }: any) {
+        const existing = await this.findOne({ model, where });
+        if (existing) return existing;
+        (tables[model] ??= []).push(create);
+        return create;
+      }
     };
     const storage = new TraceStorage(db as any);
     for (const tenantId of ["a", "b"]) {

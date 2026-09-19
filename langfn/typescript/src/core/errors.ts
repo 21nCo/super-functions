@@ -12,7 +12,10 @@ export class LangFnError extends Error {
       cause?: unknown;
     }
   ) {
-    super(message, options.cause ? { cause: options.cause } : undefined);
+    super(
+      message,
+      Object.prototype.hasOwnProperty.call(options, "cause") ? { cause: options.cause } : undefined
+    );
     this.name = this.constructor.name;
     this.code = options.code;
     this.provider = options.provider;

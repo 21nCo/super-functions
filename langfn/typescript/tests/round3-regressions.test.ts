@@ -16,7 +16,13 @@ function traces() {
   const db = {
     async create({ model, data }: any) { (tables[model] ??= []).push(data); return data; },
     async findMany({ model, where = [] }: any) { return (tables[model] ?? []).filter(row => where.every((c: any) => row[c.field] === c.value)); },
-    async findOne(args: any) { return (await this.findMany(args))[0] ?? null; }
+    async findOne(args: any) { return (await this.findMany(args))[0] ?? null; },
+    async upsert({ model, where, create }: any) {
+      const existing = await this.findOne({ model, where });
+      if (existing) return existing;
+      (tables[model] ??= []).push(create);
+      return create;
+    }
   };
   return { tables, storage: new TraceStorage(db as any) };
 }

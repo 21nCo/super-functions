@@ -15,7 +15,7 @@ Deploy that ES module through the Cloudflare API with `main_module: worker.mjs`,
 Invoke with a private mode-0600 token file:
 
 ```sh
-node scripts/sfns4/run-hosted-hyperdrive.mjs "$SFNS4_WORKER_URL/run" "$SFNS4_TOKEN_FILE" .conduct/SFNS-4/hosted-hyperdrive.json
+SFNS4_WORKER_ORIGIN="$SFNS4_WORKER_URL" node scripts/sfns4/run-hosted-hyperdrive.mjs "$SFNS4_WORKER_URL/run" "$SFNS4_TOKEN_FILE" .conduct/SFNS-4/hosted-hyperdrive.json
 ```
 
 The runner checks unauthenticated denial, two sequential invocations and two concurrent invocations. Each invocation uses the actual MemoryFn Postgres adapter and the shared Drizzle adapter, applies migrations, checks transaction rollback, explicit tenant/all-tag filtering, competing revisions, stale-vector exclusion, rollback after induced relationship cleanup failure, idempotent forgetting, scrubbed tombstones, relation deletion, stale update rejection, injected client ownership and deletion after a new connection.

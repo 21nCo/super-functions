@@ -24,6 +24,9 @@ export class MultiAgentCoordinator {
     const outputs: string[] = [];
     let currentTask = task;
     const maxIterations = this.options.max_iterations ?? 5;
+    if (!Number.isSafeInteger(maxIterations) || maxIterations < 1) {
+      throw new ValidationError("max_iterations must be a positive safe integer");
+    }
 
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
       let decision: string;

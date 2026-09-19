@@ -59,6 +59,9 @@ export class DbVectorStore extends VectorStore {
   async addDocuments(documents: Document[]): Promise<void> {
     const texts = documents.map((document) => document.content);
     const vectors = await this.embeddings.embedDocuments(texts);
+    if (vectors.length !== documents.length) {
+      throw new Error(`Embedding cardinality mismatch: expected ${documents.length}, received ${vectors.length}`);
+    }
     const records: DocumentRecord[] = documents.map((document, index) => ({
       id: `doc_${secureRandomUUID()}`,
       content: document.content,

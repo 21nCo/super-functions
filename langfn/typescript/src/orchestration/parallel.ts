@@ -7,7 +7,10 @@ export async function runParallelOrdered<TInput, TOutput>(
   input: TInput,
   options: ParallelOptions = {}
 ): Promise<TOutput[]> {
-  const concurrency = Math.max(1, options.concurrency ?? steps.length ?? 1);
+  const concurrency = options.concurrency ?? Math.max(steps.length, 1);
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
+    throw new RangeError("concurrency must be a positive safe integer");
+  }
   const results = new Array<TOutput>(steps.length);
   let nextIndex = 0;
 
@@ -19,8 +22,7 @@ export async function runParallelOrdered<TInput, TOutput>(
         return;
       }
       const step = steps[currentIndex]!;
-      results[currentIndex] =
-        step.length === 0 ? await (step as () => Promise<TOutput> | TOutput)() : await (step as (input: TInput) => Promise<TOutput> | TOutput)(input);
+      results[currentIndex] = await (step as (input: TInput) => Promise<TOutput> | TOutput)(input);
     }
   };
 

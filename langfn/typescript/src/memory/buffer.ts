@@ -7,8 +7,8 @@ export class BufferMemory {
 
   constructor(options: { maxMessages?: number } = {}) {
     this.maxMessages = options.maxMessages ?? 10;
-    if (this.maxMessages < 0) {
-      throw new ValidationError("BufferMemory maxMessages must be non-negative", {
+    if (!Number.isSafeInteger(this.maxMessages) || this.maxMessages < 0) {
+      throw new ValidationError("BufferMemory maxMessages must be a non-negative safe integer", {
         metadata: { maxMessages: this.maxMessages }
       });
     }

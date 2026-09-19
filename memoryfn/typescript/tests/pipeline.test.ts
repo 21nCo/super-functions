@@ -4,7 +4,7 @@ import { memoryfn, AddMemoryInput } from '../src';
 describe('MemoryFn Pipeline', () => {
   it('rejects incompatible Postgres dimensions before opening a client', () => {
     expect(() => memoryfn({ storage: { kind: 'pg', url: 'postgres://unused' }, embedder: { provider: 'openai', apiKey: 'test', dims: 768 } }))
-      .toThrow('MEMORY_PG_EMBEDDING_DIMENSION_MUST_BE_1536');
+      .toThrow('MEMORY_EMBEDDING_DIMENSION_MISMATCH');
   });
   it('should initialize successfully', () => {
     const memory = memoryfn({

@@ -25,6 +25,14 @@ class InMemoryAdapter {
     ) ?? null;
   }
 
+  async upsert(params: {
+    model: string;
+    where: Array<{ field: string; value: unknown }>;
+    create: Record<string, unknown>;
+  }) {
+    return (await this.findOne(params)) ?? this.create({ model: params.model, data: params.create });
+  }
+
   async findMany(params: {
     model: string;
     where?: Array<{ field: string; value: unknown }>;

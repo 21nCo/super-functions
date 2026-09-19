@@ -43,14 +43,17 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
       if (!rate.allowed) throw new TooManyRequestsError("Too many requests", "SECFN_RATE_LIMITED");
       if (!config.authorize) throw new ForbiddenError("Admin authorization is not configured", "SECFN_FORBIDDEN");
       {
-        const authorizationRequest = request.clone();
+        let authorizationRequest: Request;
         if (method === "POST" || method === "PUT" || method === "PATCH") {
-          try {
-            await ctx.text();
-          } catch (error) {
-            await authorizationRequest.body?.cancel().catch(() => undefined);
-            throw error;
-          }
+          const body = await ctx.text();
+          authorizationRequest = new Request(request.url, {
+            method: request.method,
+            headers: request.headers,
+            body,
+            signal: request.signal,
+          });
+        } else {
+          authorizationRequest = request.clone();
         }
         const allowed = await config.authorize(ctx, action, { params: { ...ctx.params }, query: Object.fromEntries(ctx.query), request: authorizationRequest });
         if (!allowed) {
@@ -319,7 +322,7 @@ export function createSecFnRouter<TContext extends SecFnRequestContext>(
     maxBodyBytes: config.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES,
     routes,
     context: config.context ?? ({} as TContext),
-    onError: async (error) => errorResponse(error),
+    onError: async (error) => errorResponse(error, config.logger),
   });
 }
 

@@ -3,9 +3,9 @@ import { Miniflare } from "miniflare";
 const result = await build({
   stdin: {
     contents: `
-    import { RateLimiter } from './plugfn/core/dist/middleware/rate-limiter.js';
-    import { ExecutionCoordinator } from './plugfn/core/dist/core/execution-coordinator.js';
-    import { cloudflareDurableObjectAtomicKVStore, SuperfunctionsStoresDurableObject } from '@superfunctions/db/adapters/cloudflare-do';
+    import { RateLimiter } from './plugfn/core/src/middleware/rate-limiter.ts';
+    import { ExecutionCoordinator } from './plugfn/core/src/core/execution-coordinator.ts';
+    import { cloudflareDurableObjectAtomicKVStore, SuperfunctionsStoresDurableObject } from './packages/db/src/adapters/cloudflare-do/index.ts';
     export { SuperfunctionsStoresDurableObject };
     export default { async fetch(request, env) {
       const store = cloudflareDurableObjectAtomicKVStore(env.STORES);

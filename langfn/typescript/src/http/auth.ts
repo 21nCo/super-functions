@@ -27,7 +27,10 @@ export function createLangFnAuthMiddleware<TSession extends AuthSession = AuthSe
   const middleware = options.provider
     ? createAuthMiddleware(options.provider, { contextKey })
     : createBearerAuthMiddleware({
-        validateToken: options.validateBearerToken!,
+        validateToken: (token, request) =>
+          /^[A-Za-z0-9._~+\/-]+={0,}$/.test(token)
+            ? options.validateBearerToken!(token, request)
+            : null,
         contextKey,
         headerName: options.headerName
       });
@@ -36,7 +39,10 @@ export function createLangFnAuthMiddleware<TSession extends AuthSession = AuthSe
     try {
       return await middleware(request, context, next);
     } catch (error) {
-      if (error instanceof AuthenticationError || (typeof error === "object" && error !== null && "code" in error)) {
+      if (
+        error instanceof AuthenticationError
+        || (typeof error === "object" && error !== null && "statusCode" in error && error.statusCode === 401)
+      ) {
         return Response.json(createErrorEnvelope("AUTH_REQUIRED", "Authentication required"), {
           status: 401,
           headers: { "content-type": "application/json" }

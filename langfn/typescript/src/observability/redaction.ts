@@ -7,6 +7,12 @@ const DEFAULT_REDACTION_KEYS = [
   "refreshToken",
   "refresh_token",
   "token",
+  "password",
+  "clientSecret",
+  "client_secret",
+  "secret",
+  "privateKey",
+  "private_key",
   "email",
   "ssn"
 ];

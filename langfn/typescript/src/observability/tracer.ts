@@ -16,6 +16,7 @@ export interface TraceSpanOptions {
 export interface TracerConfig extends ObservabilityExporterConfig {
   storage?: SpanStorage;
   redactionKeys?: string[];
+  exporterTimeoutMs?: number;
 }
 
 class TraceSpanHandle {
@@ -71,15 +72,18 @@ class TraceSpanHandle {
       endedAt: Date.now(),
       error: serializedError
     });
-    await this.tracer.storage?.saveSpan?.(spanRecord);
-    await this.tracer.emit(this.name, {
+    const terminalPayload = {
       phase: status === "ok" ? "end" : "error",
       traceId: this.traceId,
       spanId: this.spanId,
       parentSpanId: this.parentSpanId,
       metadata: this.metadata,
       error: serializedError
-    });
+    };
+    await Promise.allSettled([
+      this.tracer.storage?.saveSpan?.(spanRecord) ?? Promise.resolve(),
+      this.tracer.emit(this.name, terminalPayload),
+    ]);
   }
 }
 
@@ -87,12 +91,17 @@ export class Tracer {
   readonly storage?: SpanStorage;
   private readonly exporter: ObservabilityExporter;
   private readonly redactionKeys: string[];
+  private readonly exporterTimeoutMs: number;
 
   constructor(config: TracerConfig = {}) {
     const storage = config.storage as SpanStorage | undefined;
     this.storage = typeof storage?.saveSpan === "function" ? storage : undefined;
     this.exporter = new ObservabilityExporter(config);
     this.redactionKeys = [...(config.redactionKeys ?? [])];
+    this.exporterTimeoutMs = config.exporterTimeoutMs ?? 1_000;
+    if (!Number.isSafeInteger(this.exporterTimeoutMs) || this.exporterTimeoutMs < 1) {
+      throw new RangeError("exporterTimeoutMs must be a positive safe integer");
+    }
   }
 
   createTraceId(): string {
@@ -105,7 +114,17 @@ export class Tracer {
 
   async emit(name: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
     const safePayload = this.sanitize(payload) as Record<string, unknown>;
-    await this.exporter.emit(name, safePayload);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.exporter.emit(name, safePayload),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("Observability exporter timed out")), this.exporterTimeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
     return safePayload;
   }
 

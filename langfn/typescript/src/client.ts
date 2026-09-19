@@ -40,6 +40,8 @@ import {
   OpenAIChatModel
 } from "./models/index.js";
 import { RetrievalChain } from "./rag/base.js";
+import { PromptRegistry } from "./prompts/registry.js";
+import type { Adapter } from "@superfunctions/db";
 import type { StructuredOutput } from "./structured/output.js";
 import { CancellationToken } from "./utils/cancel.js";
 import { mapWithConcurrency } from "./utils/concurrency.js";
@@ -330,6 +332,14 @@ export class LangFn {
               content: response.message.content,
               delta: response.message.content
             };
+            for (const call of response.tool_calls ?? response.toolCalls ?? []) {
+              yield {
+                type: "tool_call",
+                id: call.id,
+                toolName: call.name,
+                args: call.arguments,
+              };
+            }
             if (response.usage) {
               yield {
                 type: "token_usage",
@@ -420,8 +430,8 @@ export class LangFn {
   ): Promise<BatchResult[]> {
     const concurrency = options.concurrency ?? 5;
     const partialResults = options.partialResults ?? true;
-    if (concurrency < 1) {
-      throw new ValidationError("completeBatch() requires concurrency >= 1");
+    if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
+      throw new ValidationError("completeBatch() requires concurrency to be a positive safe integer");
     }
 
     const normalized = requests.map((request) =>
@@ -574,8 +584,8 @@ export class LangFn {
     return new PlanExecuteAgent({ lang: this, ...options });
   }
 
-  createPromptRegistry(config: unknown): unknown {
-    return config;
+  createPromptRegistry(config: Adapter | { adapter: Adapter }): PromptRegistry {
+    return new PromptRegistry("adapter" in config ? config.adapter : config);
   }
 
   createRagChain(config: {
@@ -818,14 +828,16 @@ async function* iterateWithTimeoutAndCancel(
   controller = new AbortController()
 ): AsyncIterable<StreamEvent> {
   const iterator = stream[Symbol.asyncIterator]();
+  const deadline = timeout === undefined ? undefined : Date.now() + Math.max(0, timeout);
   try {
     while (true) {
+      const remaining = deadline === undefined ? undefined : Math.max(0, deadline - Date.now());
       const result = await callWithTimeoutAndCancel(async signal => {
         const abort = () => controller.abort(signal.reason);
         signal.addEventListener("abort", abort, { once: true });
         try { return await iterator.next(); }
         finally { signal.removeEventListener("abort", abort); }
-      }, timeout, cancelSignal);
+      }, remaining, cancelSignal);
       if (result.done) return;
       yield result.value;
     }

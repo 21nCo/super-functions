@@ -2,14 +2,19 @@ import { readFileSync, writeFileSync } from 'node:fs';
 const [url, tokenFile, output] = process.argv.slice(2);
 if (!url || !tokenFile || !output) throw new Error('Usage: node scripts/sfns4/run-hosted-hyperdrive.mjs https://<owned-worker>/run <private-token-file> <evidence-json>');
 const endpoint = new URL(url);
-if (endpoint.protocol !== 'https:' || !endpoint.hostname.startsWith('sfns-4-')) throw new Error('Use the owned HTTPS canary Worker');
+const configuredOrigin = process.env.SFNS4_WORKER_ORIGIN;
+if (!configuredOrigin) throw new Error('SFNS4_WORKER_ORIGIN is required from the trusted deployment output');
+const trustedOrigin = new URL(configuredOrigin);
+if (endpoint.protocol !== 'https:' || endpoint.origin !== trustedOrigin.origin || endpoint.pathname !== '/run') {
+  throw new Error('Canary endpoint must exactly match the trusted deployed Worker origin and /run path');
+}
 const token = readFileSync(tokenFile,'utf8').trim();
 const negative = await fetch(endpoint,{method:'POST',signal:AbortSignal.timeout(30000)});
 if (negative.status !== 403) throw new Error(`Unauthenticated endpoint returned ${negative.status}`);
 async function run() {
   const response=await fetch(endpoint,{method:'POST',headers:{authorization:`Bearer ${token}`},signal:AbortSignal.timeout(180000)});
   const body=await response.json();
-  return {status:response.status,...body};
+  return {...body,status:response.status};
 }
 const first=await run();
 const runs=[first];

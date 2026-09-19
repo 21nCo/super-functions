@@ -17,9 +17,11 @@ export function memoryfn(config: MemoryFnConfig): MemoryFn {
   let embedder: Embedder | undefined;
   let llm: LLMProvider | undefined;
 
-  if ((config.storage.kind === 'pg' || config.storage.adapter?.embeddingDimensions === 1536) &&
-      config.embedder && (config.embedder.dims ?? 1536) !== 1536) {
-    throw new Error('MEMORY_PG_EMBEDDING_DIMENSION_MUST_BE_1536');
+  const expectedStorageDimensions = config.storage.adapter?.embeddingDimensions
+    ?? (config.storage.kind === 'pg' ? 1536 : undefined);
+  if (config.embedder && expectedStorageDimensions !== undefined &&
+      (config.embedder.dims ?? expectedStorageDimensions) !== expectedStorageDimensions) {
+    throw new Error(`MEMORY_EMBEDDING_DIMENSION_MISMATCH: expected ${expectedStorageDimensions}`);
   }
 
   if (config.embedder && config.embedder.provider !== 'openai') {
@@ -51,6 +53,8 @@ export function memoryfn(config: MemoryFnConfig): MemoryFn {
       throw new Error(`Storage kind ${config.storage.kind} not yet supported`);
   }
 
+  const storageDimensions = storage.embeddingDimensions;
+
   // Init Embedder
   if (config.embedder?.provider === 'openai') {
       if (!config.embedder.apiKey) {
@@ -59,7 +63,8 @@ export function memoryfn(config: MemoryFnConfig): MemoryFn {
       embedder = new OpenAIEmbedder({
           apiKey: config.embedder.apiKey,
           model: config.embedder.model,
-          dims: config.embedder.dims ?? (storage.embeddingDimensions)
+          dims: config.embedder.dims ?? storageDimensions,
+          batchSize: config.embedder.batchSize,
       });
   }
 

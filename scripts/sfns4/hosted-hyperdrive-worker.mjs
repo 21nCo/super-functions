@@ -51,7 +51,7 @@ app.post('/run', async c => {
     assert((await adapter.searchVectors({...scope,embedding:vector(0),threshold:0.9,topK:10})).length===0,'old-vector-denied');
     checks.push('revision-single-winner','old-vector-denied');
     stage='rollback';
-    await adapter.insertRelationships([{fromId:rows[0].id,toId:rows[1].id}]);
+    await adapter.insertRelationships([{tenantId:tenant,containerTags:['shared'],fromId:rows[0].id,toId:rows[1].id}]);
     // The trigger only targets this run's endpoint, so other runs are unaffected.
     const suffix=crypto.randomUUID().replaceAll('-','');
     const fn=`sfns4_fail_${suffix}`;

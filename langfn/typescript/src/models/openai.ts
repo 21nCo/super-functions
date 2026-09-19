@@ -226,7 +226,7 @@ function stableToolCalls(calls: ToolCall[]): string {
     if (!value || typeof value !== "object") return value;
     return Object.fromEntries(
       Object.keys(value as Record<string, unknown>)
-        .sort()
+        .sort((left, right) => left.localeCompare(right))
         .map((key) => [key, sortKeys((value as Record<string, unknown>)[key])]),
     );
   };

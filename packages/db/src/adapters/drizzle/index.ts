@@ -366,6 +366,12 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
         if (dialect === 'sqlite') {
           throw new OperationNotSupportedError('transaction', 'DrizzleAdapter (SQLite async transactions)');
         }
+        if (dialect === 'mysql' && options?.isolationLevel) {
+          throw new OperationNotSupportedError(
+            'transaction isolation',
+            'DrizzleAdapter (MySQL configurable isolation)'
+          );
+        }
 
         return await db.transaction(async (trx: any) => {
           const child = drizzleAdapter({ ...config, db: trx });

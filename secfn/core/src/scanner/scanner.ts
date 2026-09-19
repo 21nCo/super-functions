@@ -102,6 +102,7 @@ export class SecurityScanner {
     if (!Number.isSafeInteger(maxBuffer) || maxBuffer < 1) throw new RangeError("maxCommitBytes must be a positive safe integer");
     const commits = String(options.commits ?? 100);
     const branch = options.branch ?? "HEAD";
+    if (branch.startsWith("-")) throw new RangeError("branch must not begin with '-'");
     const { stdout } = await execFileAsync("git", ["log", branch, `-n${commits}`, "--format=%H"]);
     const findings: SecurityFinding[] = [];
     for (const hash of stdout.split("\n").filter(Boolean)) {

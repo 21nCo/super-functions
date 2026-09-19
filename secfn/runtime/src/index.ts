@@ -61,12 +61,12 @@ export function createSecFnRuntime(config: SecFnRuntimeConfig): SecFnRuntime {
 
   async function cached<T>(key: string, load: () => Promise<T>, bypass = false): Promise<T> {
     const hit = cache.get(key) as CacheEntry<T> | undefined;
-    if (!bypass && hit && hit.expiresAt > Date.now()) return hit.value;
+    if (!bypass && hit && hit.expiresAt > Date.now()) return structuredClone(hit.value);
     const value = await load();
     if (ttlMs > 0) {
-      cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+      cache.set(key, { value: structuredClone(value), expiresAt: Date.now() + ttlMs });
     }
-    return value;
+    return structuredClone(value);
   }
 
   const runtime: SecFnRuntime = {
@@ -94,7 +94,7 @@ export function createSecFnRuntime(config: SecFnRuntimeConfig): SecFnRuntime {
         ),
         options.bypassCache,
       );
-      return data.secrets;
+      return { ...data.secrets };
     },
 
     async preload(keysOrSetNames) {

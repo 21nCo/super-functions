@@ -1,5 +1,5 @@
 import { LangFn } from "../client.js";
-import { AgentMaxIterationsError, ToolExecutionError } from "../core/errors.js";
+import { AgentMaxIterationsError, ToolExecutionError, ValidationError } from "../core/errors.js";
 import { Tool } from "../tools/base.js";
 import { Message } from "../core/types.js";
 
@@ -19,6 +19,9 @@ export class ToolAgent {
 
   async run(prompt: string, options: { system?: string } = {}): Promise<ToolAgentResult> {
     const max_iterations = this.options.max_iterations ?? 5;
+    if (!Number.isSafeInteger(max_iterations) || max_iterations < 1) {
+      throw new ValidationError("max_iterations must be a positive safe integer");
+    }
     const messages: Array<Message & Record<string, unknown>> = [];
     if (options.system) {
       messages.push({ role: "system", content: options.system });
@@ -63,7 +66,7 @@ export class ToolAgent {
         messages.push({
           role: "tool",
           tool_call_id: call.id,
-          content: JSON.stringify(result)
+          content: typeof result === "string" ? result : JSON.stringify(result) ?? "null"
         });
       }
     }

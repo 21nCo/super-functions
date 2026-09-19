@@ -61,6 +61,7 @@ export class WorkflowEngineError extends Error {
 export class WorkflowEngine {
   private readonly triggerBindings = new Map<string, WorkflowTriggerBinding>();
   private readonly executionLocks = new Map<string, Promise<void>>();
+  private readonly persistedFailures = new WeakSet<Error>();
 
   constructor(
     private workflowStorage: WorkflowStorage,
@@ -150,7 +151,14 @@ export class WorkflowEngine {
     if (this.coordinator) {
       const key = this.resolveIdempotencyKey(triggerPayload);
       if (!key) throw new Error("WORKFLOW_IDEMPOTENCY_KEY_REQUIRED");
-      return this.coordinator.run(JSON.stringify([workflowId, key]), () => this.executeLocal(workflowId, triggerPayload));
+      return this.coordinator.run(
+        JSON.stringify([workflowId, key]),
+        () => this.executeLocal(workflowId, triggerPayload),
+        {
+          classifyFailure: (error) =>
+            error instanceof Error && this.persistedFailures.has(error) ? 'known' : 'uncertain',
+        },
+      );
     }
     return this.executeLocal(workflowId, triggerPayload);
   }
@@ -332,6 +340,7 @@ export class WorkflowEngine {
           durationMs: Date.now() - startedAtMs,
         });
 
+        this.persistedFailures.add(failure.error);
         throw failure.error;
       }
     } finally {
@@ -671,6 +680,10 @@ export class WorkflowEngine {
     const explicit = triggerPayload.idempotencyKey;
     if (typeof explicit === 'string' && explicit.length > 0) {
       return explicit;
+    }
+
+    if (triggerPayload.webhookDelivery === true) {
+      return undefined;
     }
 
     const payloadId = triggerPayload.id;

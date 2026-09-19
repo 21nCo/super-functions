@@ -5,6 +5,37 @@
 import type { RouteContext } from './types.js';
 import { PayloadTooLargeError } from './errors.js';
 
+const BODY_CANCEL_DEADLINE_MS = 50;
+
+async function cancelBodyWithDeadline(body: ReadableStream<Uint8Array> | null): Promise<void> {
+  if (!body || body.locked) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      body.cancel('PAYLOAD_TOO_LARGE').catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, BODY_CANCEL_DEADLINE_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+async function cancelReaderWithDeadline(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      reader.cancel('PAYLOAD_TOO_LARGE').catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, BODY_CANCEL_DEADLINE_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /**
  * Read a request body fully while enforcing a maximum byte length.
  *
@@ -20,6 +51,7 @@ async function readBodyBufferWithLimit(
   if (contentLength !== null) {
     const declared = Number(contentLength);
     if (Number.isFinite(declared) && declared > maxBodyBytes) {
+      await cancelBodyWithDeadline(request.body);
       throw new PayloadTooLargeError(
         `Request body exceeds the maximum allowed size of ${maxBodyBytes} bytes`,
         'PAYLOAD_TOO_LARGE'
@@ -51,13 +83,9 @@ async function readBodyBufferWithLimit(
       if (value) {
         total += value.byteLength;
         if (total > maxBodyBytes) {
-          // Stop the producer immediately. Releasing the lock alone leaves the
-          // source free to continue buffering an attacker-controlled body.
-          // A cloned request uses a tee'd stream whose cancellation promise
-          // waits for every branch. Start cancellation without awaiting that
-          // cross-branch coordination so an unused authorization clone cannot
-          // stall the 413 response indefinitely.
-          void reader.cancel('PAYLOAD_TOO_LARGE').catch(() => undefined);
+          // Await ordinary producer cancellation, but cap the wait because a
+          // tee'd stream coordinates cancellation with every branch.
+          await cancelReaderWithDeadline(reader);
           throw new PayloadTooLargeError(
             `Request body exceeds the maximum allowed size of ${maxBodyBytes} bytes`,
             'PAYLOAD_TOO_LARGE'

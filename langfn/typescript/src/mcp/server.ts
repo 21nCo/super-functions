@@ -1,4 +1,5 @@
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   McpFnRegistry,
   createMcpFnServer,
@@ -75,9 +76,24 @@ export class MCPServer {
   }
 
   async serveStdio(): Promise<void> {
+    const transport = new StdioServerTransport();
     const server = this.createServer();
     this.activeServers.add(server);
-    await server.serveStdio();
+    try {
+      await server.connect(transport);
+      const onclose = transport.onclose;
+      transport.onclose = () => {
+        try {
+          onclose?.();
+        } finally {
+          this.activeServers.delete(server);
+        }
+      };
+    } catch (error) {
+      this.activeServers.delete(server);
+      await server.close().catch(() => undefined);
+      throw error;
+    }
   }
 
   async createWebStandardHandler(): Promise<(request: Request) => Promise<Response>> {

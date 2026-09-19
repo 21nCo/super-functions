@@ -10,14 +10,15 @@ export class SummaryMemory {
   readonly maxMessages: number;
   private readonly summarizer?: Summarizer;
   private readonly summaryPrompt: string;
+  private mutationTail: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly lang?: LangFn,
     options: { maxMessages?: number; summaryPrompt?: string; summarizer?: Summarizer } = {}
   ) {
     this.maxMessages = options.maxMessages ?? 10;
-    if (this.maxMessages < 0) {
-      throw new ValidationError("SummaryMemory maxMessages must be non-negative", {
+    if (!Number.isSafeInteger(this.maxMessages) || this.maxMessages < 0) {
+      throw new ValidationError("SummaryMemory maxMessages must be a non-negative safe integer", {
         metadata: { maxMessages: this.maxMessages }
       });
     }
@@ -28,8 +29,10 @@ export class SummaryMemory {
   }
 
   async add(message: Message): Promise<void> {
-    this.messages.push({ ...message });
-    await this.compactIfNeeded();
+    await this.enqueueMutation(async () => {
+      this.messages.push({ ...message });
+      await this.compactIfNeeded();
+    });
   }
 
   async extend(messages: Message[]): Promise<void> {
@@ -39,6 +42,7 @@ export class SummaryMemory {
   }
 
   async get(): Promise<Message[]> {
+    await this.mutationTail;
     const history: Message[] = [];
     if (this.summary) {
       history.push({ role: "system", content: `Previous conversation summary: ${this.summary}` });
@@ -52,8 +56,16 @@ export class SummaryMemory {
   }
 
   async clear(): Promise<void> {
-    this.messages = [];
-    this.summary = undefined;
+    await this.enqueueMutation(async () => {
+      this.messages = [];
+      this.summary = undefined;
+    });
+  }
+
+  private async enqueueMutation(mutation: () => Promise<void>): Promise<void> {
+    const next = this.mutationTail.then(mutation, mutation);
+    this.mutationTail = next.catch(() => undefined);
+    await next;
   }
 
   private async compactIfNeeded(): Promise<void> {
