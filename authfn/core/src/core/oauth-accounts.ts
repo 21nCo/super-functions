@@ -86,15 +86,14 @@ export async function upsertOAuthAccount(
   input: UpsertOAuthAccountInput
 ): Promise<AuthFnOAuthAccountRecord> {
   const provider = assertAuthFnDatabaseKeyLength(input.provider, 'provider') as AuthFnSocialProviderId;
-  const providerAccountId = assertAuthFnDatabaseKeyLength(
-    input.providerAccountId,
-    'providerAccountId'
-  );
   const existing = await findOAuthAccountByProviderAccountId(
     config,
     provider,
-    providerAccountId
+    input.providerAccountId
   );
+  const providerAccountId = existing?.providerAccountId === input.providerAccountId
+    ? input.providerAccountId
+    : assertAuthFnDatabaseKeyLength(input.providerAccountId, 'providerAccountId');
   const legacyUser = !existing &&
     Array.from(input.userId).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
     ? await findUserById(config, input.userId)

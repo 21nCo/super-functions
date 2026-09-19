@@ -803,11 +803,8 @@ class SocialOAuthService:
         runtime: AuthFnRuntimeResolution,
     ) -> Dict[str, Any]:
         profile = await self._resolve_profile(provider, token_set, settings)
-        profile["providerAccountId"] = assert_database_key_length(
-            _read_identifier_string(
-                profile.get("providerAccountId"), "providerAccountId"
-            ),
-            "providerAccountId",
+        provider_account_id = _read_identifier_string(
+            profile.get("providerAccountId"), "providerAccountId"
         )
         existing_account = await self.config.database.find_one(
             model="oauth_accounts",
@@ -816,12 +813,13 @@ class SocialOAuthService:
                 {
                     "field": "providerAccountId",
                     "operator": "eq",
-                    "value": profile["providerAccountId"],
+                    "value": provider_account_id,
                 },
             ],
             namespace=self.config.namespace,
         )
         if existing_account is not None:
+            profile["providerAccountId"] = provider_account_id
             user = await self.config.database.find_one(
                 model="users",
                 where=[{"field": "id", "operator": "eq", "value": existing_account["userId"]}],
@@ -836,6 +834,10 @@ class SocialOAuthService:
                 "connectionId": existing_account.get("connectionId"),
                 "profile": profile,
             }
+
+        profile["providerAccountId"] = assert_database_key_length(
+            provider_account_id, "providerAccountId"
+        )
 
         email = _normalize_email(profile.get("email"))
         if email:

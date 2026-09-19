@@ -108,6 +108,32 @@ describe('authfn password plugin', () => {
     })).resolves.toMatchObject({ userId });
   });
 
+  it('updates a password for a persisted legacy user without a credential', async () => {
+    const config = createConfig();
+    const userId = 'legacy-user-'.padEnd(300, 'x');
+    const now = new Date();
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: {
+        id: userId,
+        primaryEmail: 'legacy-password-update@example.com',
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    const credential = await updatePasswordCredential(config, {
+      userId,
+      password: 'An0therSecurePassphrase!'
+    });
+
+    expect(credential.userId).toBe(userId);
+    await expect(getPasswordCredentialByUserId(config, userId)).resolves.toMatchObject({
+      userId
+    });
+  });
+
   it('keeps the documented inline OTP delivery configuration compatible', async () => {
     const delivered: unknown[] = [];
     const auth = createTestServer({

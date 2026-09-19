@@ -157,6 +157,61 @@ describe('social OAuth persistence bounds', () => {
       where: [{ field: 'id', operator: 'eq', value: account.id }]
     })).resolves.toMatchObject({ userId: legacyUserId });
   });
+
+  it('preserves an existing legacy provider account ID through callback lookup', async () => {
+    const providerAccountId = 'legacy-provider-'.padEnd(300, 'x');
+    const config = createConfig({
+      pluginRuntime: {
+        socialOAuth: {
+          fetcher: createFetcher(providerAccountId),
+          providers: {
+            google: {
+              clientId: 'google-client-id',
+              clientSecret: 'google-client-secret'
+            }
+          }
+        }
+      }
+    });
+    const user = await createUser(config, { primaryEmail: 'legacy-provider@example.com' });
+    const now = new Date();
+    await config.database.create({
+      model: 'oauth_accounts',
+      namespace: 'authfn',
+      data: {
+        id: 'oauth_legacy_provider',
+        userId: user.id,
+        provider: 'google',
+        providerAccountId,
+        connectionId: 'legacy-provider-connection',
+        email: user.primaryEmail,
+        profile: null,
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+    const auth = createTestServer(config);
+    const start = await auth.router.handle(new Request(
+      'https://account.example.com/auth/social/start',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: 'google', callbackMode: 'json' })
+      }
+    ));
+    const startBody = await start.json();
+
+    const callback = await auth.router.handle(new Request(
+      `https://account.example.com/auth/social/callback/google?code=abc123&state=${encodeURIComponent(startBody.data.stateId)}`,
+      { method: 'GET' }
+    ));
+
+    expect(callback.status).toBe(200);
+    await expect(config.database.count({
+      model: 'oauth_accounts',
+      namespace: 'authfn'
+    })).resolves.toBe(1);
+  });
 });
 
 describe('authfn google social oauth', () => {

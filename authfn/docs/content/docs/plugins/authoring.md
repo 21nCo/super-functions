@@ -40,12 +40,14 @@ This plugin lets the current user mint a one-time URL they can share to "sign in
 
 ```ts
 import { randomBytes, createHash } from "node:crypto";
-import type { AuthFnPlugin, AuthFnPluginRuntimeContext } from "authfn";
 import {
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
   AuthFnConflictError,
   AuthFnError,
   AuthFnNotFoundError,
   AuthFnValidationError,
+  type AuthFnPlugin,
+  type AuthFnPluginRuntimeContext,
 } from "authfn";
 import {
   assertValidCsrf,
@@ -74,7 +76,12 @@ export function magicLinkPlugin(): AuthFnPlugin<"magicLink", MagicLinkRuntimeCon
         modelName: TABLE,
         fields: {
           id: { type: "string", required: true, fieldName: "id", maxLength: 255 },
-          userId: { type: "string", required: true, fieldName: "user_id", maxLength: 255 },
+          userId: {
+            type: "string",
+            required: true,
+            fieldName: "user_id",
+            maxLength: AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+          },
           codeHash: { type: "string", required: true, fieldName: "code_hash", maxLength: 255 },
           expiresAt: { type: "date", required: true, fieldName: "expires_at" },
           consumedAt: { type: "date", required: false, fieldName: "consumed_at" },

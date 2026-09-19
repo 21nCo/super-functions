@@ -321,9 +321,19 @@ export async function updatePasswordCredential(
   options: PasswordPolicyOptions = {}
 ): Promise<AuthFnPasswordCredentialRecord> {
   const existing = await getPasswordCredentialByUserId(config, input.userId);
+  const legacyUser = !existing &&
+    Array.from(input.userId).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ? await findUserById(config, input.userId)
+    : null;
   const userId = existing?.userId === input.userId
     ? input.userId
-    : assertAuthFnDatabaseKeyLength(input.userId, 'userId');
+    : legacyUser
+      ? assertAuthFnDatabaseKeyLength(
+          input.userId,
+          'userId',
+          AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        )
+      : assertAuthFnDatabaseKeyLength(input.userId, 'userId');
   await assertValidPassword(input.password, {
     ...options,
     purpose: options.purpose ?? 'update-password'

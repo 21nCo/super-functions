@@ -950,7 +950,6 @@ async function resolveLocalIdentityFromProfile(
   providerSettings: ResolvedProviderSettings,
   profile: AuthFnSocialProfile
 ): Promise<ResolvedSocialIdentity> {
-  assertAuthFnDatabaseKeyLength(profile.providerAccountId, 'providerAccountId');
   const existingAccount = await findOAuthAccountByProviderAccountId(config, providerId, profile.providerAccountId);
   if (existingAccount) {
     const linkedUser = await findUserById(config, existingAccount.userId);
@@ -968,6 +967,7 @@ async function resolveLocalIdentityFromProfile(
       existingAccountId: existingAccount.id
     };
   }
+  assertAuthFnDatabaseKeyLength(profile.providerAccountId, 'providerAccountId');
 
   const normalizedEmail = normalizeEmail(profile.email);
   if (normalizedEmail) {
