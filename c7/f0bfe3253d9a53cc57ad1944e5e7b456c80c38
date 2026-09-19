@@ -1,0 +1,48 @@
+authfn/python/authfn/plugins/multi_region.py
+  s_d473070cda5c3b::t_b606bc99526176 311-328
+  s_d473070cda5c3b::t_ad9eb6502231cf 11,47-54
+authfn/python/authfn/plugins/social_oauth.py
+  s_d473070cda5c3b::t_c68ef79c77e684 1135-1140,1178,1191-1196,1204,1233-1250,1255,1261
+  s_d473070cda5c3b::t_ad9eb6502231cf 45,644-645,800,878-882,1411-1419
+  s_d473070cda5c3b::t_42900bb063a487 1420-1421
+authfn/core/src/__tests__/otp.test.ts
+  s_d473070cda5c3b::t_cb577ad84607aa 657
+authfn/python/authfn/types.py
+  s_d473070cda5c3b::t_8277ea4c013c32 22,641-652
+authfn/python/authfn/plugins/email_otp.py
+  s_d473070cda5c3b::t_b606bc99526176 480-497
+  s_d473070cda5c3b::t_ff7d1dd7fcfba8 13,141-144
+authfn/core/src/core/verifications.ts
+  s_d473070cda5c3b::t_8277ea4c013c32 90
+authfn/python/authfn/plugins/two_factor.py
+  s_d473070cda5c3b::t_c68ef79c77e684 399-410,425-442,454-465
+authfn/python/authfn/plugins/api_keys.py
+  s_d473070cda5c3b::t_b606bc99526176 207-218,224
+authfn/python/tests/test_schema.py
+  s_d473070cda5c3b::t_1420a0a3df9f4c 51,68-85
+  s_d473070cda5c3b::t_c868943c727ab4 86
+authfn/python/authfn/limits.py
+  s_d473070cda5c3b::t_ff7d1dd7fcfba8 1-20
+authfn/python/authfn/schema.py
+  s_d473070cda5c3b::t_8277ea4c013c32 11,36-41,46,72-83,88
+authfn/python/authfn/http.py
+  s_d473070cda5c3b::t_ff7d1dd7fcfba8 16,396,1188-1190
+authfn/python/authfn/__init__.py
+  s_d473070cda5c3b::t_c811bae9314742 10,113-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c7f0bfe3253d9a53cc57ad1944e5e7b456c80c38",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
