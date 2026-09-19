@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2X6XR2S66JJ448X00ZEZ0SS",
+  "strategy": "manual-commit",
+  "branch": "codex/pr195-postmerge-remediation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/core/src/__tests__/api-keys.test.ts",
+    "authfn/core/src/core/api-keys.ts",
+    "authfn/python/authfn/plugins/social_oauth.py",
+    "authfn/python/tests/test_schema.py",
+    "authfn/social-oauth/src/index.ts",
+    "packages/cli/src/__tests__/authfn-schema-discovery.test.ts",
+    "packages/cli/src/__tests__/schema-index-migrations.test.ts",
+    "packages/cli/src/commands/generate.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 343009,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 22898816,
+    "output_tokens": 52179,
+    "api_call_count": 173
+  }
+}
