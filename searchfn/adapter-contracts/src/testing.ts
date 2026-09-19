@@ -5,7 +5,12 @@
  * To use: call `runConformanceSuite(adapterFactory)` inside a `describe` block.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import type { InitializeResourceConfig, SearchAdapter, SearchDocument } from "./index";
+import type {
+  InitializeResourceConfig,
+  SearchAdapter,
+  SearchAllResult,
+  SearchDocument,
+} from "./index";
 import { SEARCH_ADAPTER_DISPOSED } from "./index";
 
 export interface ConformanceAdapterFactory {
@@ -42,6 +47,21 @@ async function index(
   resource = "items"
 ): Promise<void> {
   await adapter.index({ resource, documents });
+}
+
+function compareText(left: string, right: string): number {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+}
+
+function compareSearchAllResults(left: SearchAllResult, right: SearchAllResult): number {
+  const scoreDifference = right.score - left.score;
+  if (scoreDifference !== 0) return scoreDifference;
+
+  const resourceDifference = compareText(left.resource, right.resource);
+  if (resourceDifference !== 0) return resourceDifference;
+
+  return compareText(String(left.id), String(right.id));
 }
 
 /**
@@ -196,17 +216,7 @@ export function runConformanceSuite(factory: ConformanceAdapterFactory): void {
       const results = await adapter.searchAll({ query: "common", limit: 10 });
       expect(results.length).toBeGreaterThanOrEqual(1);
 
-      for (let i = 1; i < results.length; i++) {
-        const prev = results[i - 1];
-        const curr = results[i];
-        const valid =
-          prev.score > curr.score ||
-          (prev.score === curr.score && prev.resource < curr.resource) ||
-          (prev.score === curr.score &&
-            prev.resource === curr.resource &&
-            String(prev.id) <= String(curr.id));
-        expect(valid).toBe(true);
-      }
+      expect(results).toEqual([...results].sort(compareSearchAllResults));
     });
   });
 
