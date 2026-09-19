@@ -5,13 +5,22 @@ const testingSource = fileURLToPath(new URL("./src/testing.ts", import.meta.url)
 
 /** Workspace Vitest config so adapter tests resolve the harness source without a prior dist build. */
 export function searchfnAdapterVitestConfig(overrides: UserConfig = {}): UserConfig {
+  const inheritedAliases = overrides.resolve?.alias;
+  const alias = Array.isArray(inheritedAliases)
+    ? [
+        { find: "@searchfn/adapter-contracts/testing", replacement: testingSource },
+        ...inheritedAliases
+      ]
+    : {
+        ...inheritedAliases,
+        "@searchfn/adapter-contracts/testing": testingSource
+      };
+
   return defineConfig({
     ...overrides,
     resolve: {
       ...overrides.resolve,
-      alias: {
-        "@searchfn/adapter-contracts/testing": testingSource
-      }
+      alias
     },
     test: {
       globals: true,

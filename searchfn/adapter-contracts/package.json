@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsup",
-    "build:watch": "tsup --watch",
+    "build:watch": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsup --watch",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "test:watch": "vitest watch",
