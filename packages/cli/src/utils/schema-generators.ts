@@ -239,7 +239,7 @@ function mapFieldToDrizzle(
       }
       return { type: 'text' };
     case 'number':
-      return { type: 'integer' };
+      return { type: dialect === 'mysql' ? 'int' : 'integer' };
     case 'bigint':
       return dialect === 'sqlite'
         ? { type: 'blob', config: "{ mode: 'bigint' }" }

@@ -97,6 +97,28 @@ describe("schema index migrations", () => {
     }], "example")).toEqual([]);
   });
 
+  it("uses MySQL's int builder for numeric fields", () => {
+    const schema = generateDrizzleSchemaFile(
+      {
+        version: 1,
+        schemas: [{
+          modelName: "counters",
+          fields: {
+            id: { type: "string", required: true, fieldName: "id" },
+            attempts: { type: "number", required: true, fieldName: "attempts" },
+          },
+        } as unknown as TableSchema],
+      },
+      "example",
+      "example",
+      "mysql",
+    );
+
+    expect(schema).toContain("int('attempts')");
+    expect(schema).not.toContain("integer('attempts')");
+    expect(schema).toContain("from 'drizzle-orm/mysql-core'");
+  });
+
   it("scopes PostgreSQL index relations to the requested schema", async () => {
     let indexQuery = "";
     let indexParams: unknown[] = [];
