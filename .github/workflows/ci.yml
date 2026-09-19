@@ -62,6 +62,11 @@ jobs:
       - name: Verify CI planner
         run: node --test scripts/ci-plan.test.mjs
 
+      - name: Nested package-lock.json files are not tracked
+        run: |
+          node --test scripts/verify-package-lockfiles.test.mjs
+          node scripts/verify-package-lockfiles.mjs
+
       - name: Build CI plan
         id: plan
         run: node scripts/ci-plan.mjs
