@@ -7,11 +7,14 @@ Shared database adapter system for Superfunctions libraries. Provides a unified 
 ```bash
 npm install @superfunctions/db
 
-# Plus your ORM of choice (optional peer dependencies)
-npm install drizzle-orm         # For Drizzle
-npm install pg                  # PostgreSQL driver used by the examples below
-npm install @prisma/client      # For Prisma
-npm install kysely              # For Kysely
+# Install the integration you use. drizzle-orm is a required peer;
+# @prisma/client and kysely are optional peers.
+npm install drizzle-orm
+npm install @prisma/client
+npm install kysely
+
+# The PostgreSQL Drizzle examples also import the pg driver directly.
+npm install pg
 ```
 
 ## Quick Start
