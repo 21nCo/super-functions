@@ -74,7 +74,7 @@ export function magicLinkPlugin(): AuthFnPlugin<"magicLink", MagicLinkRuntimeCon
         modelName: TABLE,
         fields: {
           id: { type: "string", required: true, fieldName: "id", maxLength: 255 },
-          userId: { type: "string", required: true, fieldName: "user_id" },
+          userId: { type: "string", required: true, fieldName: "user_id", maxLength: 255 },
           codeHash: { type: "string", required: true, fieldName: "code_hash", maxLength: 255 },
           expiresAt: { type: "date", required: true, fieldName: "expires_at" },
           consumedAt: { type: "date", required: false, fieldName: "consumed_at" },

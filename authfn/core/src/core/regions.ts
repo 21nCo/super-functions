@@ -26,7 +26,10 @@ import {
   AuthFnRegionMismatchError,
   AuthFnValidationError
 } from './errors.js';
-import { AUTHFN_DATABASE_KEY_MAX_LENGTH } from './limits.js';
+import {
+  AUTHFN_DATABASE_KEY_MAX_LENGTH,
+  assertAuthFnDatabaseKeyLength
+} from './limits.js';
 import { emitAuthEvent, eventRequestId } from './observability.js';
 import { findUserById, findUserByPrimaryEmail } from './users.js';
 
@@ -392,7 +395,7 @@ export async function registerUserRegion(
   const record: AuthFnRegionProfileRecord = {
     id: existing?.id ?? createIdentifier('region'),
     userId: input.user.id,
-    regionId: currentRegion.regionId,
+    regionId: assertAuthFnDatabaseKeyLength(currentRegion.regionId, 'regionId'),
     authority: currentRegion.authority,
     domain: currentRegion.domain ?? null,
     createdAt: existing?.createdAt ?? now,

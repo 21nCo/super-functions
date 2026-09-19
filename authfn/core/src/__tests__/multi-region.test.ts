@@ -49,6 +49,21 @@ function identifierFromLookupKey(key: string): string {
 }
 
 describe('authfn multi-region plugin', () => {
+  it('rejects oversized region identifiers returned by custom environment resolvers', async () => {
+    await expect(registerUserRegion(
+      { database: memoryAdapter({ debug: false }), namespace: 'authfn' },
+      { regions: [] },
+      {
+        user: { id: 'user_1', primaryEmail: 'ada@example.com' },
+        environment: {
+          issuer: 'https://account.example.com',
+          baseUrl: 'https://account.example.com',
+          regionId: 'r'.repeat(256)
+        }
+      }
+    )).rejects.toMatchObject({ code: 'AUTHFN_VALIDATION_ERROR' });
+  });
+
   it('projects new gateway users to the configured cell despite a canonical host match', async () => {
     let createdProfile: Record<string, unknown> | undefined;
     const database = {
