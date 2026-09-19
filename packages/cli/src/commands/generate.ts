@@ -17,11 +17,54 @@ import {
   introspectPostgres,
   introspectMySQL,
   introspectSQLite,
+  type DatabaseTable,
 } from '../utils/introspection.js';
 import { parseLibraryInitializations } from '../utils/parse-library-init.js';
 import { getSuperfunctionsRegistry, discoverSuperfunctionsPackages } from '../utils/discover-packages.js';
 import { autoDiscoverLibraryFiles, toRelativePaths } from '../utils/auto-discover.js';
 import type { TableSchema } from '@superfunctions/db';
+
+interface LibrarySchema {
+  namespace: string;
+  version: number;
+  tables: TableSchema[];
+}
+
+export function createPendingMigration(input: {
+  adapterType: 'drizzle' | 'prisma' | 'kysely';
+  dialect: Dialect;
+  library: LibrarySchema;
+  currentVersion: number;
+  currentTables: DatabaseTable[];
+}): {
+  tableDiffs: ReturnType<typeof diffTables>;
+  migrationFile: { filename: string; content: string };
+} | null {
+  const { adapterType, dialect, library, currentVersion, currentTables } = input;
+  if (currentVersion >= library.version) return null;
+
+  const preserveAuthFnV1MySqlText =
+    dialect === 'mysql' &&
+    library.namespace === 'authfn' &&
+    currentVersion === 1 &&
+    library.version >= 2;
+  const tableDiffs = diffTables(library.tables, currentTables, library.namespace, {
+    preserveUnboundedMySqlStrings: preserveAuthFnV1MySqlText,
+  });
+  const plan = createMigrationPlan(
+    library.namespace,
+    currentVersion,
+    library.version,
+    tableDiffs,
+  );
+  const migrationFile = adapterType === 'drizzle'
+    ? generateDrizzleMigration(plan, library.tables, dialect)
+    : adapterType === 'prisma'
+      ? generatePrismaMigration(plan, library.tables, dialect)
+      : generateKyselyMigration(plan, library.tables, dialect);
+
+  return { tableDiffs, migrationFile };
+}
 
 /**
  * Extract database name from connection string
@@ -183,11 +226,7 @@ export async function generateMigrations(
   console.log('');
 
   // Load library configs and generate schemas
-  const librarySchemas: Array<{
-    namespace: string;
-    version: number;
-    tables: TableSchema[];
-  }> = [];
+  const librarySchemas: LibrarySchema[] = [];
 
   for (const init of libraryInitsToProcess) {
     try {
@@ -286,13 +325,24 @@ export async function generateMigrations(
       console.log(`   Current version: ${currentVersion === 0 ? 'not installed' : `v${currentVersion}`}`);
       console.log(`   Target version: v${lib.version}`);
 
-      if (currentVersion >= lib.version) {
+      if (adapterType !== 'drizzle' && adapterType !== 'prisma' && adapterType !== 'kysely') {
+        console.log(`   ⚠️  Unsupported adapter type: ${adapterType}`);
+        continue;
+      }
+
+      const pending = createPendingMigration({
+        adapterType,
+        dialect: connection.dialect as Dialect,
+        library: lib,
+        currentVersion,
+        currentTables,
+      });
+      if (pending === null) {
         console.log(`   ✅ Already up-to-date\n`);
         continue;
       }
 
-      // Compare schemas
-      const tableDiffs = diffTables(lib.tables, currentTables, lib.namespace);
+      const { tableDiffs, migrationFile } = pending;
 
       if (tableDiffs.length === 0) {
         console.log(`   ℹ️  No physical schema changes detected; generating version-only migration`);
@@ -315,23 +365,6 @@ export async function generateMigrations(
             console.log(`      - DROP table ${diff.tableName}`);
           }
         }
-      }
-
-      // Create migration plan
-      const plan = createMigrationPlan(lib.namespace, currentVersion, lib.version, tableDiffs);
-
-      // Generate migration file based on adapter type
-      let migrationFile: { filename: string; content: string };
-
-      if (adapterType === 'drizzle') {
-        migrationFile = generateDrizzleMigration(plan, lib.tables, connection.dialect as Dialect);
-      } else if (adapterType === 'prisma') {
-        migrationFile = generatePrismaMigration(plan, lib.tables, connection.dialect as Dialect);
-      } else if (adapterType === 'kysely') {
-        migrationFile = generateKyselyMigration(plan, lib.tables, connection.dialect as Dialect);
-      } else {
-        console.log(`   ⚠️  Unsupported adapter type: ${adapterType}`);
-        continue;
       }
 
       generatedFiles.push({

@@ -1261,7 +1261,6 @@ def _social_schema() -> List[Dict[str, Any]]:
                     "type": "string",
                     "required": True,
                     "fieldName": "connection_id",
-                    "maxLength": OAUTH_CONNECTION_ID_MAX_LENGTH,
                 },
                 "email": {"type": "string", "required": False, "fieldName": "email"},
                 "profile": {"type": "json", "required": False, "fieldName": "profile"},

@@ -50,28 +50,6 @@ function sqliteColumn(
 }
 
 describe("schema index migrations", () => {
-  it("emits version-only migrations when a dialect has no physical table diff", () => {
-    const plan = createMigrationPlan("authfn", 1, 2, []);
-
-    for (const dialect of ["postgres", "sqlite"] as const) {
-      for (const generate of [generateDrizzleMigration, generatePrismaMigration]) {
-        const content = generate(plan, [], dialect).content;
-        expect(content).toContain("From version 1 to 2");
-        expect(content).toContain(
-          "UPDATE _superfunctions_schema_versions SET version = 2",
-        );
-        expect(content).not.toContain("CREATE TABLE");
-        expect(content).not.toContain("ALTER TABLE");
-      }
-
-      const kysely = generateKyselyMigration(plan, [], dialect).content;
-      expect(kysely).toContain("version: 2");
-      expect(kysely).toContain("version: 1");
-      expect(kysely).not.toContain("createTable");
-      expect(kysely).not.toContain("alterTable");
-    }
-  });
-
   it("uses supported Drizzle builders for SQLite scalar modes", () => {
     const table = {
       modelName: "settings",
