@@ -1,0 +1,51 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2WXN70AG2GD109G8ET6VRHJ",
+  "session_id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-19T13:28:31.276135Z",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/docs/content/docs/adapters/database/drizzle.md",
+    "authfn/docs/content/docs/adapters/database/sqlite.md",
+    "authfn/docs/content/docs/frameworks/bun.md",
+    "authfn/docs/content/docs/plugins/authoring.md",
+    "authfn/docs/content/docs/plugins/social-oauth/google.md",
+    "authfn/docs/content/docs/quickstart/nodejs.md",
+    "authfn/docs/static/llms-full.txt"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "bb5e0172e878",
+  "checkpoint_transcript_start": 2505,
+  "transcript_lines_at_start": 2505,
+  "compact_transcript_start": 349,
+  "token_usage": {
+    "input_tokens": 70945,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 6483200,
+    "output_tokens": 10857,
+    "api_call_count": 37
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-19T13:28:30.767457Z",
+    "agent_lines": 1585,
+    "agent_removed": 949,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1585,
+    "total_lines_changed": 2534,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
