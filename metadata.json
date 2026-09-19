@@ -1,0 +1,52 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2WWH35VC0R7TWSCEXTS38NC",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/docs/content/docs/adapters/database/drizzle.md",
+    "authfn/docs/content/docs/adapters/database/index.md",
+    "authfn/docs/content/docs/adapters/database/memory.md",
+    "authfn/docs/content/docs/adapters/database/postgres.md",
+    "authfn/docs/content/docs/adapters/database/sqlite.md",
+    "authfn/docs/content/docs/core-concepts/architecture.md",
+    "authfn/docs/content/docs/core-concepts/cookies.md",
+    "authfn/docs/content/docs/core-concepts/hooks.md",
+    "authfn/docs/content/docs/core-concepts/plugins.md",
+    "authfn/docs/content/docs/core-concepts/rate-limiting.md",
+    "authfn/docs/content/docs/core-concepts/regions.md",
+    "authfn/docs/content/docs/core-concepts/runtime.md",
+    "authfn/docs/content/docs/examples/index.md",
+    "authfn/docs/content/docs/frameworks/bun.md",
+    "authfn/docs/content/docs/frameworks/sveltekit.md",
+    "authfn/docs/content/docs/plugins/authoring.md",
+    "authfn/docs/content/docs/plugins/index.md",
+    "authfn/docs/content/docs/plugins/multi-region.md",
+    "authfn/docs/content/docs/plugins/social-oauth/apple.md",
+    "authfn/docs/content/docs/plugins/social-oauth/github.md",
+    "authfn/docs/content/docs/plugins/social-oauth/google.md",
+    "authfn/docs/content/docs/plugins/social-oauth/index.md",
+    "authfn/docs/content/docs/recipes/admin-tool.md",
+    "authfn/docs/content/docs/recipes/custom-validation.md",
+    "authfn/docs/content/docs/reference/changelog.md",
+    "authfn/docs/content/docs/reference/configuration.md",
+    "authfn/docs/static/llms-full.txt",
+    "authfn/docs/static/llms.txt"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 46021,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 5574400,
+    "output_tokens": 8490,
+    "api_call_count": 25
+  }
+}
