@@ -9,6 +9,7 @@ npm install @superfunctions/db
 
 # Plus your ORM of choice (optional peer dependencies)
 npm install drizzle-orm         # For Drizzle
+npm install pg                  # PostgreSQL driver used by the examples below
 npm install @prisma/client      # For Prisma
 npm install kysely              # For Kysely
 ```
@@ -20,14 +21,11 @@ Memory adapter (tests and local):
 ```typescript
 import { memoryAdapter } from '@superfunctions/db/adapters';
 
-const adapter = memoryAdapter({
-  namespace: { enabled: true }
-});
+const adapter = memoryAdapter();
 
 const user = await adapter.create({
   model: 'users',
   data: { email: 'user@example.com', name: 'John Doe' },
-  namespace: 'app',
 });
 ```
 
@@ -36,8 +34,10 @@ Drizzle adapter (Postgres, MySQL, SQLite):
 ```typescript
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { drizzleAdapter } from '@superfunctions/db/adapters';
+import { Pool } from 'pg';
 import { users } from './schema';
 
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool, { schema: { users } });
 const adapter = drizzleAdapter({
   db,
@@ -104,14 +104,16 @@ if (adapter.capabilities.operations.batch) {
 
 ### Namespace Isolation
 
-Prevent table name conflicts when multiple libraries use the same database:
+Scope records by the `namespace` supplied on each operation:
 
 ```typescript
-const adapter = memoryAdapter({
-  namespace: { 
-    enabled: true,
-    separator: '_'
-  }
+import { wrapWithRowLevelNamespace } from '@superfunctions/db';
+import { memoryAdapter } from '@superfunctions/db/adapters';
+
+const adapter = wrapWithRowLevelNamespace(memoryAdapter(), {
+  enabled: true,
+  columnName: '__ns',
+  mandatory: true,
 });
 
 await adapter.create({
@@ -119,14 +121,14 @@ await adapter.create({
   data: { email: 'user@example.com' },
   namespace: 'auth',
 });
-// Table: auth_users
+// Stored with __ns = 'auth'; other namespaces cannot read this row.
 
 await adapter.create({
   model: 'files',
   data: { path: '/readme.md' },
   namespace: 'files',
 });
-// Table: files_files
+// Stored with __ns = 'files'.
 ```
 
 ## Built-in Adapters
@@ -152,13 +154,14 @@ For Drizzle ORM (PostgreSQL, MySQL, SQLite):
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { users, posts } from './schema';
 import { drizzleAdapter } from '@superfunctions/db/adapters';
+import { Pool } from 'pg';
 
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool, { schema: { users, posts } });
 const adapter = drizzleAdapter({
   db,
   dialect: 'postgres', // 'postgres' | 'mysql' | 'sqlite'
   upsertKeys: { users: 'email' }, // conflict targets
-  schemaVersionsTable, // optional
   debug: false
 });
 ```
