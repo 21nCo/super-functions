@@ -31,10 +31,10 @@ function createApiKeySchema(): AuthFnSchemaDefinition['schemas'] {
     {
       modelName: 'api_keys',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id' },
-        userId: { type: 'string', required: false, fieldName: 'user_id' },
+        id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+        userId: { type: 'string', required: false, fieldName: 'user_id', maxLength: 255 },
         name: { type: 'string', required: false, fieldName: 'name' },
-        secretHash: { type: 'string', required: true, fieldName: 'secret_hash' },
+        secretHash: { type: 'string', required: true, fieldName: 'secret_hash', maxLength: 255 },
         scopes: { type: 'json', required: false, fieldName: 'scopes' },
         metadata: { type: 'json', required: false, fieldName: 'metadata' },
         expiresAt: { type: 'date', required: false, fieldName: 'expires_at' },

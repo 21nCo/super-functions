@@ -104,9 +104,9 @@ describe("schema index migrations", () => {
         schemas: [{
           modelName: "counters",
           fields: {
-            id: { type: "string", required: true, fieldName: "id" },
+            id: { type: "string", required: true, fieldName: "id", maxLength: 255 },
             attempts: { type: "number", required: true, fieldName: "attempts" },
-            email: { type: "string", required: true, fieldName: "email" },
+            email: { type: "string", required: true, fieldName: "email", maxLength: 255 },
             description: { type: "string", required: false, fieldName: "description" },
           },
           indexes: [{ name: "counters_email_idx", fields: ["email"], unique: true }],
@@ -124,6 +124,24 @@ describe("schema index migrations", () => {
     expect(schema).toContain("description: text('description')");
     expect(schema).toContain("from 'drizzle-orm/mysql-core'");
     expect(schema).toContain("generate-schema --dialect mysql");
+  });
+
+  it("rejects unbounded MySQL string keys instead of narrowing their contract", () => {
+    expect(() => generateDrizzleSchemaFile(
+      {
+        version: 1,
+        schemas: [{
+          modelName: "counters",
+          fields: {
+            id: { type: "string", required: true, fieldName: "id" },
+          },
+          indexes: [],
+        } as unknown as TableSchema],
+      },
+      "example",
+      "example",
+      "mysql",
+    )).toThrow("MySQL key field counters.id must declare maxLength");
   });
 
   it("scopes PostgreSQL index relations to the requested schema", async () => {
@@ -474,8 +492,15 @@ describe("schema index migrations", () => {
     expect(kysely).toContain(
       "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token);",
     );
+    const mysqlSchema = {
+      ...syncJobs,
+      fields: {
+        ...syncJobs.fields,
+        id: { ...syncJobs.fields.id, maxLength: 255 },
+      },
+    };
     const drizzleSchema = generateDrizzleSchemaFile(
-      { version: 6, schemas: [syncJobs] },
+      { version: 6, schemas: [mysqlSchema] },
       "plugfn",
       "plugfn",
       "mysql",

@@ -35,8 +35,8 @@ function createTwoFactorSchema(): AuthFnSchemaDefinition['schemas'] {
     {
       modelName: 'two_factor_enrollments',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id' },
-        userId: { type: 'string', required: true, fieldName: 'user_id' },
+        id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+        userId: { type: 'string', required: true, fieldName: 'user_id', maxLength: 255 },
         secretEncrypted: { type: 'string', required: true, fieldName: 'secret_encrypted' },
         lastUsedCounter: { type: 'number', required: false, fieldName: 'last_used_counter' },
         confirmedAt: { type: 'date', required: false, fieldName: 'confirmed_at' },
@@ -54,9 +54,9 @@ function createTwoFactorSchema(): AuthFnSchemaDefinition['schemas'] {
     {
       modelName: 'two_factor_recovery_codes',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id' },
-        enrollmentId: { type: 'string', required: true, fieldName: 'enrollment_id' },
-        codeHash: { type: 'string', required: true, fieldName: 'code_hash' },
+        id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+        enrollmentId: { type: 'string', required: true, fieldName: 'enrollment_id', maxLength: 255 },
+        codeHash: { type: 'string', required: true, fieldName: 'code_hash', maxLength: 255 },
         usedAt: { type: 'date', required: false, fieldName: 'used_at' },
         createdAt: { type: 'date', required: true, fieldName: 'created_at' }
       },
@@ -75,8 +75,8 @@ function createTwoFactorSchema(): AuthFnSchemaDefinition['schemas'] {
     {
       modelName: 'two_factor_challenges',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id' },
-        userId: { type: 'string', required: true, fieldName: 'user_id' },
+        id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+        userId: { type: 'string', required: true, fieldName: 'user_id', maxLength: 255 },
         primaryMethod: { type: 'string', required: true, fieldName: 'primary_method' },
         expiresAt: { type: 'date', required: true, fieldName: 'expires_at' },
         consumedAt: { type: 'date', required: false, fieldName: 'consumed_at' },

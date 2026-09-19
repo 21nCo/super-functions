@@ -184,6 +184,10 @@ describe('authfn modular schema discovery', () => {
     expect(drizzleSchema).toContain("uniqueIndex('idx_authfn_users_primary_email').on(table.primaryEmail)");
     expect(drizzleSchema).toContain("uniqueIndex('idx_authfn_sessions_token_hash').on(table.tokenHash)");
     expect(drizzleSchema).toContain("index('idx_authfn_sessions_user_id_created_at').on(table.userId, table.createdAt)");
+
+    const mysqlSchema = generateDrizzleSchemaFile(schema, 'authfn', 'authfn_pw_demo', 'mysql');
+    expect(mysqlSchema).toContain("id: varchar('id', { length: 255 })");
+    expect(mysqlSchema).toContain("providerAccountId: varchar('provider_account_id', { length: 255 })");
   });
 
   it('resolves the published authfn default export entry point for CLI imports', () => {

@@ -40,8 +40,8 @@ function createPasswordSchema(): AuthFnSchemaDefinition['schemas'] {
     {
       modelName: 'password_credentials',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id' },
-        userId: { type: 'string', required: true, fieldName: 'user_id' },
+        id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+        userId: { type: 'string', required: true, fieldName: 'user_id', maxLength: 255 },
         passwordHash: { type: 'string', required: true, fieldName: 'password_hash' },
         createdAt: { type: 'date', required: true, fieldName: 'created_at' },
         updatedAt: { type: 'date', required: true, fieldName: 'updated_at' }

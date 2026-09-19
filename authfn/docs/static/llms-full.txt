@@ -260,6 +260,10 @@ Keep Drizzle Kit's dialect aligned with the schema command and runtime adapter:
 | local SQLite | `sqlite` | `sqlite` | `dbCredentials: { url: './authfn.db' }`; `drizzle-kit migrate` |
 | Cloudflare D1 | `sqlite` | `sqlite` | Generate SQL with Drizzle Kit, then apply it with Wrangler's D1 migration command. |
 
+For MySQL, every string field used as a primary key, unique key, foreign key,
+or index member must declare `maxLength`. Generation fails instead of silently
+narrowing an unbounded string contract.
+
 Then generate and apply the migration:
 
 ```bash
@@ -5602,9 +5606,9 @@ export function magicLinkPlugin(): AuthFnPlugin<"magicLink", MagicLinkRuntimeCon
       {
         modelName: TABLE,
         fields: {
-          id: { type: "string", required: true, fieldName: "id" },
+          id: { type: "string", required: true, fieldName: "id", maxLength: 255 },
           userId: { type: "string", required: true, fieldName: "user_id" },
-          codeHash: { type: "string", required: true, fieldName: "code_hash" },
+          codeHash: { type: "string", required: true, fieldName: "code_hash", maxLength: 255 },
           expiresAt: { type: "date", required: true, fieldName: "expires_at" },
           consumedAt: { type: "date", required: false, fieldName: "consumed_at" },
           createdAt: { type: "date", required: true, fieldName: "created_at" },

@@ -264,9 +264,9 @@ function createMultiRegionSchema(): AuthFnSchemaDefinition['schemas'] {
     {
       modelName: 'region_profiles',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id' },
-        userId: { type: 'string', required: true, fieldName: 'user_id' },
-        regionId: { type: 'string', required: true, fieldName: 'region_id' },
+        id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+        userId: { type: 'string', required: true, fieldName: 'user_id', maxLength: 255 },
+        regionId: { type: 'string', required: true, fieldName: 'region_id', maxLength: 255 },
         authority: { type: 'string', required: true, fieldName: 'authority' },
         domain: { type: 'string', required: false, fieldName: 'domain' },
         createdAt: { type: 'date', required: true, fieldName: 'created_at' },

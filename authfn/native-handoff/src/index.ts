@@ -59,9 +59,9 @@ function createNativeHandoffSchema(): AuthFnSchemaDefinition['schemas'] {
     {
       modelName: 'native_handoff_codes',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id' },
-        codeHash: { type: 'string', required: true, fieldName: 'code_hash' },
-        sourceSessionId: { type: 'string', required: true, fieldName: 'source_session_id' },
+        id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+        codeHash: { type: 'string', required: true, fieldName: 'code_hash', maxLength: 255 },
+        sourceSessionId: { type: 'string', required: true, fieldName: 'source_session_id', maxLength: 255 },
         target: { type: 'string', required: true, fieldName: 'target' },
         regionId: { type: 'string', required: true, fieldName: 'region_id' },
         userId: { type: 'string', required: true, fieldName: 'user_id' },

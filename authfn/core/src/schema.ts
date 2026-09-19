@@ -26,8 +26,8 @@ export function createCoreTables(): TableSchema[] {
     {
       modelName: 'users',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id' },
-        primaryEmail: { type: 'string', required: false, fieldName: 'primary_email' },
+        id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+        primaryEmail: { type: 'string', required: false, fieldName: 'primary_email', maxLength: 255 },
         emailVerifiedAt: { type: 'date', required: false, fieldName: 'email_verified_at' },
         metadata: { type: 'json', required: false, fieldName: 'metadata' },
         createdAt: { type: 'date', required: true, fieldName: 'created_at' },
@@ -44,14 +44,15 @@ export function createCoreTables(): TableSchema[] {
     {
       modelName: 'sessions',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id' },
+        id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
         userId: {
           type: 'string',
           required: true,
           fieldName: 'user_id',
+          maxLength: 255,
           references: { model: 'users', field: 'id', onDelete: 'cascade' }
         },
-        tokenHash: { type: 'string', required: true, fieldName: 'token_hash' },
+        tokenHash: { type: 'string', required: true, fieldName: 'token_hash', maxLength: 255 },
         csrfHash: { type: 'string', required: false, fieldName: 'csrf_hash' },
         methods: { type: 'json', required: true, fieldName: 'methods' },
         metadata: { type: 'json', required: false, fieldName: 'metadata' },

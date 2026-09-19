@@ -1530,41 +1530,54 @@ async function resolveGitHubProfile(
 }
 
 function createOAuthSharedSchemas(): TableSchema[] {
-  return getOAuthStorageTableDefinitions().map((table) => ({
-    modelName: table.name,
-    fields: Object.fromEntries(
-      table.fields.map((field) => [
-        field.name,
-        {
-          type: mapOAuthFieldType(field.type),
-          required: !field.nullable,
-          unique: field.primaryKey || field.unique,
-          fieldName: field.name
-        }
-      ])
-    ),
-    indexes: table.indexes?.map((index) => ({
-      name: index.name,
-      fields: [...index.fields],
-      unique: index.unique
-    }))
-  }));
+  return getOAuthStorageTableDefinitions().map((table) => {
+    const keyFields = new Set(
+      table.fields
+        .filter((field) => field.primaryKey || field.unique)
+        .map((field) => field.name)
+    );
+    for (const index of table.indexes ?? []) {
+      for (const field of index.fields) keyFields.add(field);
+    }
+
+    return {
+      modelName: table.name,
+      fields: Object.fromEntries(
+        table.fields.map((field) => [
+          field.name,
+          {
+            type: mapOAuthFieldType(field.type),
+            required: !field.nullable,
+            unique: field.primaryKey || field.unique,
+            fieldName: field.name,
+            ...(field.type === 'text' && keyFields.has(field.name) ? { maxLength: 255 } : {})
+          }
+        ])
+      ),
+      indexes: table.indexes?.map((index) => ({
+        name: index.name,
+        fields: [...index.fields],
+        unique: index.unique
+      }))
+    };
+  });
 }
 
 function createOAuthAccountsSchema(): TableSchema {
   return {
     modelName: 'oauth_accounts',
     fields: {
-      id: { type: 'string', required: true, fieldName: 'id' },
+      id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
       userId: {
         type: 'string',
         required: true,
         fieldName: 'user_id',
+        maxLength: 255,
         references: { model: 'users', field: 'id', onDelete: 'cascade' }
       },
-      provider: { type: 'string', required: true, fieldName: 'provider' },
-      providerAccountId: { type: 'string', required: true, fieldName: 'provider_account_id' },
-      connectionId: { type: 'string', required: true, fieldName: 'connection_id' },
+      provider: { type: 'string', required: true, fieldName: 'provider', maxLength: 255 },
+      providerAccountId: { type: 'string', required: true, fieldName: 'provider_account_id', maxLength: 255 },
+      connectionId: { type: 'string', required: true, fieldName: 'connection_id', maxLength: 255 },
       email: { type: 'string', required: false, fieldName: 'email' },
       profile: { type: 'json', required: false, fieldName: 'profile' },
       createdAt: { type: 'date', required: true, fieldName: 'created_at' },

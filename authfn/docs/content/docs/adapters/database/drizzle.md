@@ -132,6 +132,10 @@ Keep Drizzle Kit's dialect aligned with the schema command and runtime adapter:
 | local SQLite | `sqlite` | `sqlite` | `dbCredentials: { url: './authfn.db' }`; `drizzle-kit migrate` |
 | Cloudflare D1 | `sqlite` | `sqlite` | Generate SQL with Drizzle Kit, then apply it with Wrangler's D1 migration command. |
 
+For MySQL, every string field used as a primary key, unique key, foreign key,
+or index member must declare `maxLength`. Generation fails instead of silently
+narrowing an unbounded string contract.
+
 Then generate and apply the migration:
 
 ```bash
