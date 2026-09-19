@@ -1,0 +1,35 @@
+authfn/python/authfn/plugins/email_otp.py
+  s_d473070cda5c3b::t_ec7111710f26df 126-127
+  s_d473070cda5c3b::t_804d0ea88326fb 135-137,146
+authfn/python/tests/test_schema.py
+  s_d473070cda5c3b::t_804d0ea88326fb 89-97
+authfn/python/authfn/plugins/social_oauth.py
+  s_d473070cda5c3b::t_804d0ea88326fb 800-802
+authfn/python/tests/test_social_oauth.py
+  s_d473070cda5c3b::t_ba3c64c867ccde 368-398
+  s_d473070cda5c3b::t_5dd34bb3229921 367
+authfn/python/tests/test_otp.py
+  s_d473070cda5c3b::t_ec7111710f26df 328-333
+  s_d473070cda5c3b::t_27d20f6b0e9bd6 22-29,307-327
+authfn/python/tests/test_multi_region.py
+  s_d473070cda5c3b::t_ba3c64c867ccde 318-338
+  s_d473070cda5c3b::t_3d060aa503cc03 315-317
+authfn/python/authfn/plugins/multi_region.py
+  s_d473070cda5c3b::t_804d0ea88326fb 111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ecf8da61036fa54fc8b1a5ecc80631a76f46d790",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
