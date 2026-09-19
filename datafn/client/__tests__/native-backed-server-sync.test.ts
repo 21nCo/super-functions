@@ -10,7 +10,7 @@ import {
   createNativeBackedStorageAdapter,
   createNativeSyncController,
   createWKWebViewBridgeBus,
-} from "../../swift-bridge/src/index.js";
+} from "@datafn/swift-bridge";
 
 type BridgeRequest = {
   protocol: string;

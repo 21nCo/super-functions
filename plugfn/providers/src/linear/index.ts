@@ -1,3 +1,5 @@
+import { applySelectedResources } from '../shared/selected-resources.js';
+import { declareContracts } from '../shared/selected-contracts.js';
 import { z } from 'zod';
 import type { Provider } from 'plugfn';
 import { AuthType } from 'plugfn';
@@ -100,6 +102,7 @@ export const linearProvider: Provider = {
       parameters: z.object({
         teamId: z.string().describe('Team ID'),
         first: z.number().int().min(1).max(250).optional().default(250).describe('Issues per page'),
+        after: z.string().optional(),
         maxPages: z.number().int().min(1).max(100).optional().default(100).describe('Maximum pages to fetch'),
       }),
 
@@ -182,7 +185,7 @@ export const linearProvider: Provider = {
           }
         `;
         const nodes: any[] = [];
-        let after: string | null = null;
+        let after: string | null = params.after ?? null;
         let pageInfo = { hasNextPage: false, endCursor: null as string | null };
         for (let page = 0; page < (params.maxPages ?? 100); page += 1) {
           const response = await context.http.post(context.provider.baseUrl, {
@@ -212,6 +215,7 @@ export const linearProvider: Provider = {
 
       parameters: z.object({
         first: z.number().int().min(1).max(250).optional().default(250).describe('Relations per page'),
+        after: z.string().optional(),
         maxPages: z.number().int().min(1).max(100).optional().default(100).describe('Maximum pages to fetch'),
       }),
 
@@ -244,7 +248,7 @@ export const linearProvider: Provider = {
           }
         `;
         const nodes: any[] = [];
-        let after: string | null = null;
+        let after: string | null = params.after ?? null;
         let pageInfo = { hasNextPage: false, endCursor: null as string | null };
         for (let page = 0; page < (params.maxPages ?? 100); page += 1) {
           const response = await context.http.post(context.provider.baseUrl, {
@@ -429,6 +433,7 @@ export const linearProvider: Provider = {
 
       parameters: z.object({
         first: z.number().int().min(1).max(250).optional().default(250),
+        after: z.string().optional(),
         maxPages: z.number().int().min(1).max(100).optional().default(100),
         includeArchived: z.boolean().optional().default(true),
       }),
@@ -468,7 +473,7 @@ export const linearProvider: Provider = {
           }
         `;
         const nodes: any[] = [];
-        let after: string | null = null;
+        let after: string | null = params.after ?? null;
         let pageInfo = { hasNextPage: false, endCursor: null as string | null };
         for (let page = 0; page < (params.maxPages ?? 100); page += 1) {
           const response = await context.http.post(context.provider.baseUrl, { query, variables: { first: params.first ?? 250, after, includeArchived: params.includeArchived ?? true } });
@@ -494,10 +499,12 @@ export const linearProvider: Provider = {
       parameters: z.object({
         teamId: z.string().optional().describe('Optional team ID'),
         query: z.string().describe('Search query'),
-        first: z.number().optional().default(20).describe('Number of issues to return'),
+        first: z.number().int().min(1).max(250).optional().default(20).describe('Number of issues to return'),
+        after: z.string().optional(),
       }),
 
       returns: z.object({
+        pageInfo: z.object({ hasNextPage: z.boolean(), endCursor: z.string().nullable() }),
         nodes: z.array(
           z.object({
             id: z.string(),
@@ -515,8 +522,9 @@ export const linearProvider: Provider = {
 
       execute: async (params: any, context: ActionContext) => {
         const query = `
-          query IssueSearch($query: String!, $first: Int!, $teamId: String) {
-            issueSearch(query: $query, first: $first, teamId: $teamId) {
+          query IssueSearch($query: String!, $first: Int!, $teamId: String, $after: String) {
+            issueSearch(query: $query, first: $first, teamId: $teamId, after: $after) {
+              pageInfo { hasNextPage endCursor }
               nodes {
                 id
                 identifier
@@ -536,6 +544,7 @@ export const linearProvider: Provider = {
             teamId: params.teamId,
             query: params.query,
             first: params.first ?? 20,
+            after: params.after,
           },
         });
 
@@ -546,7 +555,7 @@ export const linearProvider: Provider = {
     'initiatives.list': {
       name: 'initiatives.list', displayName: 'List Initiatives', description: 'List workspace initiatives with project relationships',
       idempotent: true,
-      parameters: z.object({ first: z.number().int().min(1).max(250).optional().default(250), maxPages: z.number().int().min(1).max(100).optional().default(100), includeArchived: z.boolean().optional().default(true) }),
+      parameters: z.object({ first: z.number().int().min(1).max(250).optional().default(250), maxPages: z.number().int().min(1).max(100).optional().default(100), after: z.string().optional(), includeArchived: z.boolean().optional().default(true) }),
       returns: z.object({ nodes: z.array(z.object({ id: z.string(), name: z.string(), description: z.string().nullable().optional(), content: z.string().nullable().optional(), status: z.string(), health: z.string().nullable().optional(), targetDate: z.string().nullable().optional(), startedAt: z.string().nullable().optional(), completedAt: z.string().nullable().optional(), url: z.string(), owner: z.object({ id: z.string(), email: z.string().optional() }).nullable().optional(), projects: z.object({ nodes: z.array(z.object({ id: z.string() })) }).optional() }).passthrough()), pageInfo: z.object({ hasNextPage: z.boolean(), endCursor: z.string().nullable() }) }),
       execute: async (params: any, context: ActionContext) => paginateLinearConnection(context, 'initiatives', `query Initiatives($first:Int!,$after:String,$includeArchived:Boolean!){initiatives(first:$first,after:$after,includeArchived:$includeArchived){nodes{id name description content status health targetDate startedAt completedAt url owner{id email} projects{nodes{id}}} pageInfo{hasNextPage endCursor}}}`, params),
     },
@@ -554,7 +563,7 @@ export const linearProvider: Provider = {
     'documents.list': {
       name: 'documents.list', displayName: 'List Documents', description: 'List workspace documents and their parent relationships',
       idempotent: true,
-      parameters: z.object({ first: z.number().int().min(1).max(250).optional().default(250), maxPages: z.number().int().min(1).max(100).optional().default(100), includeArchived: z.boolean().optional().default(true) }),
+      parameters: z.object({ first: z.number().int().min(1).max(250).optional().default(250), maxPages: z.number().int().min(1).max(100).optional().default(100), after: z.string().optional(), includeArchived: z.boolean().optional().default(true) }),
       returns: z.object({ nodes: z.array(z.object({ id: z.string(), title: z.string(), content: z.string().nullable().optional(), url: z.string(), trashed: z.boolean().optional(), project: z.object({ id: z.string() }).nullable().optional(), initiative: z.object({ id: z.string() }).nullable().optional(), creator: z.object({ id: z.string(), email: z.string().optional() }).nullable().optional() }).passthrough()), pageInfo: z.object({ hasNextPage: z.boolean(), endCursor: z.string().nullable() }) }),
       execute: async (params: any, context: ActionContext) => paginateLinearConnection(context, 'documents', `query Documents($first:Int!,$after:String,$includeArchived:Boolean!){documents(first:$first,after:$after,includeArchived:$includeArchived){nodes{id title content url trashed project{id} initiative{id} creator{id email}} pageInfo{hasNextPage endCursor}}}`, params),
     },
@@ -562,7 +571,7 @@ export const linearProvider: Provider = {
     'customers.list': {
       name: 'customers.list', displayName: 'List Customers', description: 'List workspace customers and their product needs',
       idempotent: true,
-      parameters: z.object({ first: z.number().int().min(1).max(250).optional().default(250), maxPages: z.number().int().min(1).max(100).optional().default(100), includeArchived: z.boolean().optional().default(true) }),
+      parameters: z.object({ first: z.number().int().min(1).max(250).optional().default(250), maxPages: z.number().int().min(1).max(100).optional().default(100), after: z.string().optional(), includeArchived: z.boolean().optional().default(true) }),
       returns: z.object({ nodes: z.array(z.object({ id: z.string(), name: z.string(), domains: z.array(z.string()), revenue: z.number().nullable().optional(), logoUrl: z.string().nullable().optional(), url: z.string(), tier: z.object({ id: z.string(), name: z.string().optional() }).nullable().optional(), owner: z.object({ id: z.string(), email: z.string().optional() }).nullable().optional(), needs: z.object({ nodes: z.array(z.object({ id: z.string(), body: z.string().nullable().optional(), content: z.string().nullable().optional(), url: z.string().nullable().optional(), priority: z.number().optional(), issue: z.object({ id: z.string() }).nullable().optional(), project: z.object({ id: z.string() }).nullable().optional() }).passthrough()) }).optional() }).passthrough()), pageInfo: z.object({ hasNextPage: z.boolean(), endCursor: z.string().nullable() }) }),
       execute: async (params: any, context: ActionContext) => paginateLinearConnection(context, 'customers', `query Customers($first:Int!,$after:String,$includeArchived:Boolean!){customers(first:$first,after:$after,includeArchived:$includeArchived){nodes{id name domains revenue logoUrl url tier{id name} owner{id email} needs{nodes{id body content url priority issue{id} project{id}}}} pageInfo{hasNextPage endCursor}}}`, params),
     },
@@ -570,7 +579,7 @@ export const linearProvider: Provider = {
     'attachments.list': {
       name: 'attachments.list', displayName: 'List Attachments', description: 'List external issue attachments with source metadata',
       idempotent: true,
-      parameters: z.object({ first: z.number().int().min(1).max(250).optional().default(250), maxPages: z.number().int().min(1).max(100).optional().default(100), includeArchived: z.boolean().optional().default(true) }),
+      parameters: z.object({ first: z.number().int().min(1).max(250).optional().default(250), maxPages: z.number().int().min(1).max(100).optional().default(100), after: z.string().optional(), includeArchived: z.boolean().optional().default(true) }),
       returns: z.object({ nodes: z.array(z.object({ id: z.string(), title: z.string(), subtitle: z.string().nullable().optional(), url: z.string(), sourceType: z.string().optional(), metadata: z.unknown().optional(), issue: z.object({ id: z.string() }).nullable().optional() }).passthrough()), pageInfo: z.object({ hasNextPage: z.boolean(), endCursor: z.string().nullable() }) }),
       execute: async (params: any, context: ActionContext) => paginateLinearConnection(context, 'attachments', `query Attachments($first:Int!,$after:String,$includeArchived:Boolean!){attachments(first:$first,after:$after,includeArchived:$includeArchived){nodes{id title subtitle url sourceType metadata issue{id}} pageInfo{hasNextPage endCursor}}}`, params),
     },
@@ -583,10 +592,12 @@ export const linearProvider: Provider = {
       idempotent: true,
 
       parameters: z.object({
-        first: z.number().optional().describe('Number of teams to return'),
+        first: z.number().int().min(1).max(250).optional().describe('Number of teams to return'),
+        after: z.string().optional(),
       }),
 
       returns: z.object({
+        pageInfo: z.object({ hasNextPage: z.boolean(), endCursor: z.string().nullable() }),
         nodes: z.array(
           z.object({
             id: z.string(),
@@ -598,8 +609,9 @@ export const linearProvider: Provider = {
 
       execute: async (params: any, context: ActionContext) => {
         const query = `
-          query Teams($first: Int) {
-            teams(first: $first) {
+          query Teams($first: Int, $after: String) {
+            teams(first: $first, after: $after) {
+              pageInfo { hasNextPage endCursor }
               nodes {
                 id
                 name
@@ -613,6 +625,7 @@ export const linearProvider: Provider = {
           query,
           variables: {
             first: params.first || 50,
+            after: params.after,
           },
         });
 
@@ -741,7 +754,7 @@ function verifyLinearSignature(
 
 async function paginateLinearConnection(context: ActionContext, field: string, query: string, params: any) {
   const nodes: any[] = [];
-  let after: string | null = null;
+  let after: string | null = params.after ?? null;
   let pageInfo = { hasNextPage: false, endCursor: null as string | null };
   for (let page = 0; page < (params.maxPages ?? 100); page += 1) {
     const response = await context.http.post(context.provider.baseUrl, { query, variables: { first: params.first ?? 250, after, includeArchived: params.includeArchived ?? true } });
@@ -755,3 +768,66 @@ async function paginateLinearConnection(context: ActionContext, field: string, q
   }
   return { nodes, pageInfo };
 }
+
+linearProvider.actions['documents.get'] = {
+  name: 'documents.get', displayName: 'Get document', description: 'Read full authorized Linear document content', idempotent: true,
+  parameters: z.object({ id: z.string().min(1) }).strict(),
+  returns: z.object({ id: z.string(), title: z.string(), content: z.string().nullable() }).passthrough(),
+  async execute(params: { id: string }, context: ActionContext) {
+    const response = await context.http.post('https://api.linear.app/graphql', { query: 'query Document($id: String!) { document(id: $id) { id title content url } }', variables: { id: params.id } });
+    if (response.data.errors?.length || !response.data.data?.document) throw new Error('LINEAR_DOCUMENT_UNAVAILABLE');
+    return response.data.data.document;
+  },
+};
+
+declareContracts(linearProvider, {
+  "reads": [
+    "teams.list",
+    "issues.search",
+    "issues.list",
+    "issues.get",
+    "comments.list",
+    "documents.list",
+    "documents.get"
+  ],
+  "writes": [
+    "issues.create",
+    "issues.update",
+    "comments.create"
+  ],
+  "readScopes": [
+    "read"
+  ],
+  "writeScopes": [
+    "write"
+  ],
+  "pagination": {
+    "teams.list": {
+      "kind": "cursor",
+      "cursorParameter": "after",
+      "maxPageSize": 250
+    },
+    "issues.search": {
+      "kind": "cursor",
+      "cursorParameter": "after",
+      "maxPageSize": 250
+    },
+    "issues.list": {
+      "kind": "cursor",
+      "cursorParameter": "after",
+      "maxPageSize": 250
+    },
+    "comments.list": {
+      "kind": "cursor",
+      "cursorParameter": "after",
+      "maxPageSize": 250
+    },
+    "documents.list": {
+      "kind": "cursor",
+      "cursorParameter": "after",
+      "maxPageSize": 250
+    }
+  }
+});
+
+applySelectedResources(linearProvider);

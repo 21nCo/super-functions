@@ -13,7 +13,6 @@ PERSISTENCE_SERVICE_URL = "https://persistence.bot.21n.org"
 # wrangler secret put GITHUB_INSTALLATION_ID
 # wrangler secret put GITHUB_PRIVATE_KEY
 # wrangler secret put LINEAR_API_KEY
-# wrangler secret put LINEAR_TEAM_ID
 [observability]
 [observability.logs]
 enabled = true

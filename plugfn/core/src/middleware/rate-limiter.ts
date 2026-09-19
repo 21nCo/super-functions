@@ -1,7 +1,11 @@
+import type { AtomicKVStoreAdapter } from '@superfunctions/db';
 import { createRateLimiter } from '@superfunctions/middleware';
 import type { RateLimitConfig } from '../types/provider.js';
 
-interface RateLimiterDependencies {
+export interface RateLimiterDependencies {
+  /** Must provide linearizable compareAndSet; eventual-consistency KV is unsuitable. */
+  atomicStore?: AtomicKVStoreAdapter;
+  keyPrefix?: string;
   now?: () => number;
   setTimeoutFn?: (callback: () => void, delayMs: number) => NodeJS.Timeout;
   clearTimeoutFn?: (timeoutId: NodeJS.Timeout) => void;
@@ -23,13 +27,16 @@ type SharedRateLimiter = ReturnType<typeof createRateLimiter>;
 export class RateLimiter {
   private readonly limiters = new Map<string, SharedRateLimiter>();
   private readonly snapshots = new Map<string, RateLimiterSnapshot>();
-  private readonly pendingTimeouts = new Set<NodeJS.Timeout>();
+  private readonly pendingTimeouts = new Map<NodeJS.Timeout, (error: Error) => void>();
   private readonly now: () => number;
   private readonly setTimeoutFn: (callback: () => void, delayMs: number) => NodeJS.Timeout;
   private readonly clearTimeoutFn: (timeoutId: NodeJS.Timeout) => void;
   private destroyed = false;
 
-  constructor(dependencies: RateLimiterDependencies = {}) {
+  constructor(private readonly dependencies: RateLimiterDependencies = {}) {
+    if (dependencies.atomicStore && typeof dependencies.atomicStore.compareAndSet !== "function") {
+      throw new Error("RATE_LIMIT_ATOMIC_CAS_REQUIRED");
+    }
     this.now = dependencies.now ?? (() => Date.now());
     this.setTimeoutFn = dependencies.setTimeoutFn ?? ((callback, delayMs) => setTimeout(callback, delayMs));
     this.clearTimeoutFn = dependencies.clearTimeoutFn ?? ((timeoutId) => clearTimeout(timeoutId));
@@ -115,8 +122,9 @@ export class RateLimiter {
 
   destroy(): void {
     this.destroyed = true;
-    for (const timeoutId of this.pendingTimeouts) {
+    for (const [timeoutId, reject] of this.pendingTimeouts) {
       this.clearTimeoutFn(timeoutId);
+      reject(new Error('Rate limiter destroyed'));
     }
     this.pendingTimeouts.clear();
     this.limiters.clear();
@@ -134,7 +142,8 @@ export class RateLimiter {
       algorithm: 'token-bucket',
       maxRequests: config.requests,
       windowMs: config.window,
-      keyPrefix: `plugfn:ratelimit:${id}:`,
+      keyPrefix: `${this.dependencies.keyPrefix ?? "plugfn:ratelimit:"}${id}:`,
+      atomicStore: this.dependencies.atomicStore,
       now: this.now,
     });
     this.limiters.set(id, limiter);
@@ -150,12 +159,13 @@ export class RateLimiter {
   }
 
   private sleep(delayMs: number): Promise<void> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+      if (this.destroyed) { reject(new Error('Rate limiter destroyed')); return; }
       const timeout = this.setTimeoutFn(() => {
         this.pendingTimeouts.delete(timeout);
         resolve();
       }, delayMs);
-      this.pendingTimeouts.add(timeout);
+      this.pendingTimeouts.set(timeout, reject);
     });
   }
 }

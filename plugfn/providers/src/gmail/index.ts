@@ -1,3 +1,5 @@
+import { applySelectedResources } from '../shared/selected-resources.js';
+import { gmailActions } from './actions.js';
 import { z } from 'zod';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import {
@@ -148,9 +150,12 @@ export const gmailProvider: Provider = {
       tokenUrl: 'https://oauth2.googleapis.com/token',
       scopes: resolveGmailScopes(),
       scopeSeparator: ' ',
+      revocationUrl: 'https://oauth2.googleapis.com/revoke',
+      extraAuthParams: { access_type: 'offline', include_granted_scopes: 'true' },
     },
   },
   actions: {
+    ...gmailActions,
     'mail.sync': {
       name: 'mail.sync',
       displayName: 'Sync Mail',
@@ -571,3 +576,5 @@ function parseGmailPubSubVerificationConfig(value: string): {
     return undefined;
   }
 }
+
+applySelectedResources(gmailProvider);

@@ -9,7 +9,6 @@ const RELEASE_GATE_COMMAND = 'npm run gate:plugfn-release';
 const docsInventory = [
   'plugfn/README.md',
   'plugfn/SPEC.md',
-  'plugfn/.conduct/STATUS.md',
   'plugfn/docs/getting-started.md',
   'plugfn/docs/provider-readiness-matrix.md',
   'plugfn/docs/client-sdk-boundary.md',
@@ -104,6 +103,11 @@ const steps = [
     args: ['plugfn/scripts/gate-plugfn-provider.mjs', 'linear'],
   },
   {
+    name: 'providerGateClickup',
+    command: 'node',
+    args: ['plugfn/scripts/gate-plugfn-provider.mjs', 'clickup'],
+  },
+  {
     name: 'providerGateGmail',
     command: 'node',
     args: ['plugfn/scripts/gate-plugfn-provider.mjs', 'gmail'],
@@ -177,12 +181,10 @@ function verifyDocsInventory() {
     }
   }
 
-  const statusContent = contents.get('plugfn/.conduct/STATUS.md') ?? '';
   const releaseGuideContent = contents.get('plugfn/docs/operations/release-gates.md') ?? '';
   const matrixContent = contents.get('plugfn/docs/provider-readiness-matrix.md') ?? '';
 
-  const releaseCommandPresent =
-    statusContent.includes(RELEASE_GATE_COMMAND) && releaseGuideContent.includes(RELEASE_GATE_COMMAND);
+  const releaseCommandPresent = releaseGuideContent.includes(RELEASE_GATE_COMMAND);
   const portableReleaseCommands = !/^\s*cd\s+[/~]/m.test(releaseGuideContent);
   const coreProvidersPresent = requiredCoreProviders.every((provider) => matrixContent.includes(provider));
 

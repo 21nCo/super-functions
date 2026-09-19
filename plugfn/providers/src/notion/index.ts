@@ -1,3 +1,6 @@
+import { applySelectedResources } from '../shared/selected-resources.js';
+import { declareContracts } from '../shared/selected-contracts.js';
+import { restAction, jsonObject, remoteId, segment } from '../shared/rest-action.js';
 import { z } from 'zod';
 import type { ActionContext } from 'plugfn';
 import type { Provider } from 'plugfn';
@@ -30,9 +33,11 @@ export const notionProvider: Provider = {
       tokenUrl: 'https://api.notion.com/v1/oauth/token',
       scopes: [],
       scopeSeparator: ' ',
-      getAuthParams: () => ({
-        owner: 'user',
-      }),
+      extraAuthParams: { owner: 'user' },
+      tokenBodyEncoding: 'json',
+      tokenAuthMethod: 'client_secret_basic',
+      tokenHeaders: { 'Notion-Version': '2025-09-03' },
+      supportsPkce: false,
     },
   },
 
@@ -231,3 +236,50 @@ export const notionProvider: Provider = {
     },
   },
 };
+
+notionProvider.actions['search'] = { ...notionProvider.actions['search.query'], name: 'search' };
+notionProvider.actions['dataSources.list'] = restAction({ name: 'dataSources.list', method: 'GET',
+  parameters: z.object({ databaseId: remoteId }).strict(), path: p => `https://api.notion.com/v1/databases/${segment(p.databaseId)}`,
+  headers: { 'Notion-Version': '2025-09-03' }, returns: z.object({ data_sources: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()) }).passthrough(), scopes: [],
+});
+notionProvider.actions['dataSources.query'] = restAction({ name: 'dataSources.query', method: 'POST', read: true,
+  parameters: z.object({ dataSourceId: remoteId, filter: jsonObject.optional(), sorts: z.array(jsonObject).optional(), start_cursor: remoteId.optional(), page_size: z.number().int().min(1).max(100).optional() }).strict(),
+  path: p => `https://api.notion.com/v1/data_sources/${segment(p.dataSourceId)}/query`, body: ({ dataSourceId: _, ...body }) => body,
+  headers: { 'Notion-Version': '2025-09-03' }, returns: z.object({ results: z.array(jsonObject), has_more: z.boolean(), next_cursor: z.string().nullable() }).passthrough(), scopes: [], pagination: { kind: 'cursor', cursorParameter: 'start_cursor', maxPageSize: 100 },
+});
+
+for (const name of ['pages.get', 'pages.create', 'pages.update']) {
+  notionProvider.actions[name].returns = z.object({ id: z.string() }).passthrough();
+}
+for (const name of ['search', 'search.query', 'blocks.children.list', 'blocks.children.append']) {
+  notionProvider.actions[name].returns = z.object({ results: z.array(jsonObject), has_more: z.boolean(), next_cursor: z.string().nullable() }).passthrough();
+}
+
+declareContracts(notionProvider, {
+  "reads": [
+    "search",
+    "pages.get",
+    "blocks.children.list"
+  ],
+  "writes": [
+    "pages.create",
+    "pages.update",
+    "blocks.children.append"
+  ],
+  "readScopes": [],
+  "writeScopes": [],
+  "pagination": {
+    "search": {
+      "kind": "cursor",
+      "cursorParameter": "startCursor",
+      "maxPageSize": 100
+    },
+    "blocks.children.list": {
+      "kind": "cursor",
+      "cursorParameter": "startCursor",
+      "maxPageSize": 100
+    }
+  }
+});
+
+applySelectedResources(notionProvider);
