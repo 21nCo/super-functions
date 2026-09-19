@@ -31,13 +31,18 @@ The contract is closer to a typed query builder than to an ORM — `model`, `whe
 
 ## Migrations
 
-Whatever adapter you pick, your enabled plugin set determines the schema you need. Generate migrations with the Superfunctions CLI:
+Whatever adapter you pick, your enabled plugin set determines the schema you
+need. Generate the ORM schema with the Superfunctions CLI, then use your ORM's
+migration tool. For Drizzle on Postgres:
 
 ```bash
-npx @superfunctions/cli generate-migration
+npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated
+npx drizzle-kit generate
+npx drizzle-kit migrate
 ```
 
-The CLI reads `auth.getSchema()` and writes adapter-specific migration files. See [the CLI docs](https://github.com/21nCo/super-functions/tree/dev/clifn) for full options.
+The CLI imports the declared app, reads `authApp.getSchema()`, and writes the
+adapter-specific schema file. See [the CLI docs](https://github.com/21nCo/super-functions/tree/dev/clifn) for full options.
 
 ## Namespacing
 

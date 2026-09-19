@@ -227,10 +227,12 @@ If your plugin needs secrets or delivery providers, declare a runtime config typ
 The kernel composes your `schema(config)` with everything else. Your tables are real database tables — they need migrations like any other. After enabling your plugin, run:
 
 ```bash
-npx @superfunctions/cli generate-migration
+npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated
 ```
 
-…and ship the migrations alongside your code. `authApp.getSchema()` works without `createServer()`.
+Then use your ORM's migration tool (for example, `drizzle-kit generate`) and
+ship the migration alongside your code. `authApp.getSchema()` works without
+`createServer()`.
 
 ## Routes
 

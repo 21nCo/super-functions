@@ -97,7 +97,7 @@ npx drizzle-kit migrate
 
 ## Schema visibility
 
-The generated schema includes only the tables for plugins you have enabled. Disable a plugin → run `generate` again → drizzle-kit will produce a migration that drops those tables (review carefully before running in production).
+The generated schema includes only the tables for plugins you have enabled. Disable a plugin → run `generate-schema` again → drizzle-kit will produce a migration that drops those tables (review carefully before running in production).
 
 ## Transactions
 

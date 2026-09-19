@@ -28,13 +28,16 @@ If you need a raw `pg` adapter, implement the [custom adapter](./custom) contrac
 
 ## Migrations
 
-Generate raw SQL migrations with the CLI:
+Generate the Drizzle schema, then create and apply migrations with Drizzle Kit:
 
 ```bash
-npx @superfunctions/cli generate-migration
+npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated
+npx drizzle-kit generate
+npx drizzle-kit migrate
 ```
 
-Apply them with your favorite migration tool: `node-pg-migrate`, `dbmate`, `flyway`, or in-house. The output is plain SQL — bring it into whatever tooling you already use.
+Review the generated SQL before applying it. If you use another migration
+runner, point it at that reviewed SQL instead.
 
 ## Schema sketch
 

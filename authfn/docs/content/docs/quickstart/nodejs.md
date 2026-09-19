@@ -121,7 +121,8 @@ Generate the Drizzle schema and migrations from the plugin set you've enabled:
 
 ```bash
 npx @superfunctions/cli generate-schema --adapter drizzle --dialect postgres --output ./db/generated
-npx @superfunctions/cli generate-migration
+npx drizzle-kit generate
+npx drizzle-kit migrate
 ```
 
 `authApp.getSchema()` does not need a database connection.
