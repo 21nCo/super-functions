@@ -80,7 +80,6 @@ export async function upsertOAuthAccount(
   config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   input: UpsertOAuthAccountInput
 ): Promise<AuthFnOAuthAccountRecord> {
-  const userId = assertAuthFnDatabaseKeyLength(input.userId, 'userId');
   const provider = assertAuthFnDatabaseKeyLength(input.provider, 'provider') as AuthFnSocialProviderId;
   const providerAccountId = assertAuthFnDatabaseKeyLength(
     input.providerAccountId,
@@ -91,6 +90,9 @@ export async function upsertOAuthAccount(
     provider,
     providerAccountId
   );
+  const userId = existing?.userId === input.userId
+    ? input.userId
+    : assertAuthFnDatabaseKeyLength(input.userId, 'userId');
   const connectionId = existing?.connectionId === input.connectionId
     ? input.connectionId
     : assertAuthFnDatabaseKeyLength(input.connectionId, 'connectionId', 768);

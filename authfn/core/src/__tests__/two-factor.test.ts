@@ -76,6 +76,38 @@ describe('two-factor persistence bounds', () => {
       model: 'two_factor_challenges',
       namespace: 'authfn'
     })).resolves.toBe(0);
+
+    const now = new Date();
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: {
+        ...oversizedUser,
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+    await config.database.create({
+      model: 'two_factor_enrollments',
+      namespace: 'authfn',
+      data: {
+        id: 'tfa_legacy',
+        userId: oversizedUser.id,
+        secretEncrypted: 'legacy-secret',
+        lastUsedCounter: null,
+        confirmedAt: now,
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    const challenge = await createTwoFactorChallenge(
+      config,
+      oversizedUser,
+      'password',
+      config.pluginRuntime?.twoFactor
+    );
+    expect(challenge?.challenge.userId).toBe(oversizedUser.id);
   });
 });
 

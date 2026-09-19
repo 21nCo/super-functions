@@ -85,10 +85,47 @@ describe('social OAuth persistence bounds', () => {
       code: 'AUTHFN_VALIDATION_ERROR',
       details: { fieldName: 'connectionId', maxLength: 768 }
     });
+    await expect(upsertOAuthAccount(config, {
+      userId: 'u'.repeat(256),
+      provider: 'google',
+      providerAccountId: 'provider-account',
+      connectionId: 'soc_google_fixed'
+    })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'userId', maxLength: 255 }
+    });
     await expect(config.database.count({
       model: 'oauth_accounts',
       namespace: 'authfn'
     })).resolves.toBe(0);
+  });
+
+  it('preserves an unchanged legacy user ID on an existing OAuth account', async () => {
+    const config = createConfig();
+    const legacyUserId = 'legacy-user-'.padEnd(300, 'x');
+    const now = new Date();
+    await config.database.create({
+      model: 'oauth_accounts',
+      namespace: 'authfn',
+      data: {
+        id: 'oauth_legacy',
+        userId: legacyUserId,
+        provider: 'google',
+        providerAccountId: 'legacy-provider-account',
+        connectionId: 'legacy-connection',
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    const account = await upsertOAuthAccount(config, {
+      userId: legacyUserId,
+      provider: 'google',
+      providerAccountId: 'legacy-provider-account',
+      connectionId: 'legacy-connection'
+    });
+
+    expect(account.userId).toBe(legacyUserId);
   });
 });
 

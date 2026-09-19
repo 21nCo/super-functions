@@ -27,7 +27,10 @@ import {
 import { hashSecret } from './sessions.js';
 import { findUserById } from './users.js';
 import { readPluginRuntimeConfig } from './plugin-runtime.js';
-import { assertAuthFnDatabaseKeyLength } from './limits.js';
+import {
+  AUTHFN_DATABASE_KEY_MAX_LENGTH,
+  assertAuthFnDatabaseKeyLength
+} from './limits.js';
 
 const DEFAULT_ISSUER = 'authfn';
 const DEFAULT_DIGITS = 6;
@@ -200,7 +203,12 @@ export async function createTwoFactorChallenge(
   primaryMethod: Exclude<AuthFnAuthMethod, 'two-factor' | 'api-key'>,
   pluginConfig: TwoFactorPluginRuntimeConfig = {}
 ): Promise<CreatedTwoFactorChallenge | null> {
-  const userId = assertAuthFnDatabaseKeyLength(user.id, 'userId');
+  const legacyUser = Array.from(user.id).length > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ? await findUserById(config, user.id)
+    : null;
+  const userId = legacyUser
+    ? user.id
+    : assertAuthFnDatabaseKeyLength(user.id, 'userId');
   const enrollment = await requireConfirmedEnrollment(config, userId);
   if (!enrollment) {
     return null;

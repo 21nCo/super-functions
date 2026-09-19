@@ -19,6 +19,7 @@ from authfn import (
     AuthFnConfig,
     AuthFnHooks,
     PluginAbortedError,
+    ValidationError,
     authfn_password_plugin,
     create_authfn,
 )
@@ -73,6 +74,11 @@ async def test_legacy_oversized_user_id_can_issue_session() -> None:
     db = InMemoryDatabaseAdapter()
     config = AuthFnConfig(database=db, namespace="authfn")
     legacy_user_id = "legacy-user-".ljust(300, "x")
+    await db.create(
+        model="users",
+        data={"id": legacy_user_id, "primaryEmail": "legacy@example.com"},
+        namespace="authfn",
+    )
 
     issued = await issue_session(
         config,
@@ -82,6 +88,14 @@ async def test_legacy_oversized_user_id_can_issue_session() -> None:
     )
 
     assert issued["session"].actor_id == legacy_user_id
+
+    with pytest.raises(ValidationError, match="userId must contain at most 255 characters"):
+        await issue_session(
+            config,
+            TestRequest("POST", "https://account.example.com/auth/session"),
+            user={"id": "missing-legacy-user".ljust(300, "x"), "primaryEmail": None},
+            methods=["password"],
+        )
 
 
 @pytest.mark.asyncio

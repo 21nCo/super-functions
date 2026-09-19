@@ -13,7 +13,7 @@ from superfunctions.http import HttpMethod, Response, Route, RouteContext, SetCo
 
 from .config import get_plugin_config, resolve_runtime
 from .errors import to_authfn_error
-from .limits import assert_database_key_length
+from .limits import AUTHFN_DATABASE_KEY_MAX_LENGTH, assert_database_key_length
 from .observability import (
     emit_auth_event,
     event_request_id,
@@ -395,10 +395,21 @@ async def issue_session(
             "beforeSessionIssue hook returned an invalid userId"
         )
     # Existing v1 users may have IDs longer than the v2 bound. Preserve their
-    # ability to sign in while still bounding identities replaced by hooks.
+    # ability to sign in while still bounding identities replaced by hooks or
+    # unpersisted caller input.
+    legacy_user = None
+    if (
+        payload_user_id == user.get("id")
+        and len(payload_user_id) > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ):
+        legacy_user = await config.database.find_one(
+            model="users",
+            where=[{"field": "id", "operator": "eq", "value": payload_user_id}],
+            namespace=config.namespace,
+        )
     session_user_id = (
         payload_user_id
-        if payload_user_id == user.get("id")
+        if legacy_user is not None
         else assert_database_key_length(payload_user_id, "userId")
     )
     session_token = _create_opaque_token("st")

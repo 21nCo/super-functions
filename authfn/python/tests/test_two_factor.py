@@ -157,6 +157,36 @@ async def test_two_factor_rejects_oversized_user_ids_before_persistence() -> Non
 
 
 @pytest.mark.asyncio
+async def test_two_factor_challenge_allows_persisted_legacy_user_id() -> None:
+    db = MockDatabaseAdapter()
+    now = datetime(2026, 3, 22)
+    legacy_user_id = "legacy-user-".ljust(300, "x")
+    db.storage["users"] = [{"id": legacy_user_id}]
+    db.storage["two_factor_enrollments"] = [
+        {
+            "id": "tfa_legacy",
+            "userId": legacy_user_id,
+            "secretEncrypted": "legacy-secret",
+            "confirmedAt": now,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+    ]
+    service = TwoFactorService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        TwoFactorPluginConfig(now=lambda: now),
+    )
+
+    challenge = await service.begin_sign_in_challenge(
+        user_id=legacy_user_id,
+        primary_method="password",
+    )
+
+    assert challenge is not None
+    assert challenge["userId"] == legacy_user_id
+
+
+@pytest.mark.asyncio
 async def test_two_factor_plugin_schema_and_routes() -> None:
     plugin = authfn_two_factor_plugin()
     schema = plugin.schema(AuthFnConfig(database=object()))
