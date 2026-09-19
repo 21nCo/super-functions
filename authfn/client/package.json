@@ -1,6 +1,6 @@
 {
   "name": "@authfn/client",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Typed browser client for authfn",
   "type": "module",
   "main": "./dist/index.js",
@@ -25,16 +25,16 @@
     "access": "public"
   },
   "dependencies": {
-    "authfn": "0.2.0",
+    "authfn": "0.3.0",
     "@superfunctions/http": "0.2.0"
   },
   "devDependencies": {
-    "@authfn/api-keys": "0.1.1",
-    "@authfn/email-otp": "0.1.1",
-    "@authfn/multi-region": "0.1.1",
-    "@authfn/password": "0.1.1",
-    "@authfn/social-oauth": "0.1.1",
-    "@authfn/two-factor": "0.1.1",
+    "@authfn/api-keys": "0.1.2",
+    "@authfn/email-otp": "0.1.2",
+    "@authfn/multi-region": "0.1.2",
+    "@authfn/password": "0.1.2",
+    "@authfn/social-oauth": "0.1.2",
+    "@authfn/two-factor": "0.1.2",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0",
     "vitest": "^3.2.4"

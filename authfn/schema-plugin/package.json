@@ -1,6 +1,6 @@
 {
   "name": "@authfn/schema-plugin",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Schema-only plugin helper for AuthFn",
   "type": "module",
   "main": "./dist/index.js",
@@ -21,7 +21,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "authfn": "0.2.0",
+    "authfn": "0.3.0",
     "@superfunctions/db": "0.2.0"
   },
   "devDependencies": {
