@@ -1,0 +1,55 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2XBKTRAA0BA40KGQ2E544Z5",
+  "session_id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-19T17:32:25.879925Z",
+  "branch": "codex/pr195-postmerge-remediation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/core/src/__tests__/api-keys.test.ts",
+    "authfn/core/src/__tests__/two-factor.test.ts",
+    "authfn/core/src/core/api-keys.ts",
+    "authfn/core/src/core/two-factor.ts",
+    "authfn/python/authfn/plugins/api_keys.py",
+    "authfn/python/authfn/plugins/two_factor.py",
+    "authfn/python/tests/test_api_keys.py",
+    "authfn/python/tests/test_two_factor.py",
+    "packages/cli/src/__tests__/generate-command.test.ts",
+    "packages/cli/src/commands/generate.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "bb5e0172e878",
+  "checkpoint_transcript_start": 9077,
+  "transcript_lines_at_start": 9077,
+  "compact_transcript_start": 1277,
+  "token_usage": {
+    "input_tokens": 78651,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 7061504,
+    "output_tokens": 12236,
+    "api_call_count": 44
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-19T17:32:24.92326Z",
+    "agent_lines": 756,
+    "agent_removed": 58,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 756,
+    "total_lines_changed": 814,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
