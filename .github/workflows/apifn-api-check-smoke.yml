@@ -1,0 +1,24 @@
+name: ApiFn Reusable Workflow Smoke
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - ".github/workflows/apifn-api-check.yml"
+      - ".github/workflows/apifn-api-check-smoke.yml"
+      - "apifn/cli/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  api-check:
+    uses: ./.github/workflows/apifn-api-check.yml
+    with:
+      spec_path: apifn/cli/__tests__/fixtures/diff/before.yml
+      collection_dir: apifn/cli/__tests__/fixtures/passing-collection
+      environment: development
+      base_branch: dev
+      fail_on_breaking: false
+      post_pr_comment: false
