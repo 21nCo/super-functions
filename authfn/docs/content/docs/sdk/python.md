@@ -33,7 +33,7 @@ from authfn import (
     authfn_password_plugin,
     create_authfn,
 )
-from sqlalchemy import Column, DateTime, JSON, MetaData, String, Table, create_engine
+from sqlalchemy import Column, DateTime, Index, Integer, JSON, MetaData, String, Table, create_engine
 from superfunctions_sqlalchemy import create_adapter
 
 engine = create_engine("sqlite+pysqlite:///authfn.db")
@@ -53,19 +53,27 @@ metadata = MetaData()
 column_types = {
     "date": lambda: DateTime(timezone=True),
     "json": JSON,
+    "number": Integer,
+    "session": JSON,
     "string": String,
 }
 for table_schema in auth.get_schema()["schemas"]:
     columns = [
         Column(
             field_name,
-            column_types[field["type"]](),
+            column_types.get(field["type"], String)(),
             primary_key=field_name == "id",
             nullable=not field.get("required", False),
         )
         for field_name, field in table_schema["fields"].items()
     ]
-    Table(f"authfn_{table_schema['modelName']}", metadata, *columns)
+    table = Table(f"authfn_{table_schema['modelName']}", metadata, *columns)
+    for index_schema in table_schema.get("indexes", []):
+        Index(
+            index_schema["name"],
+            *(table.c[field_name] for field_name in index_schema["fields"]),
+            unique=index_schema.get("unique", False),
+        )
 
 metadata.create_all(engine)
 ```
