@@ -17,7 +17,7 @@ on:
         default: development
         type: string
       cli_version:
-        description: Must match the @apifn/cli version pinned in .github/apifn-cli-install/package-lock.json
+        description: Must match the @apifn/cli version pinned by this workflow revision; the default matches
         required: false
         default: "0.0.2"
         type: string
@@ -62,7 +62,7 @@ on:
         default: development
         type: string
       cli_version:
-        description: Must match the @apifn/cli version pinned in .github/apifn-cli-install/package-lock.json
+        description: Must match the @apifn/cli version pinned by this workflow revision; the default matches
         required: false
         default: "0.0.2"
         type: string
