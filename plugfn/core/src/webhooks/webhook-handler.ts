@@ -57,9 +57,14 @@ export class WebhookHandler {
   ): Promise<WebhookEvent> {
     const prepared = await this.verifyWebhook(provider, event, payload, headers, secret, options);
     const { triggerKey, trigger, transformedPayload, normalizedHeaders, signature, verified } = prepared;
+    const eventId = getEventId(transformedPayload, normalizedHeaders);
+    const idempotencyKey = eventId ? `${provider}:${eventId}` : undefined;
 
     const webhookEvent: WebhookEvent = {
       id: this.generateEventId(),
+      deliveryId: eventId,
+      idempotencyKey,
+      webhookDelivery: true,
       provider,
       event: triggerKey,
       payload: transformedPayload,
@@ -74,9 +79,8 @@ export class WebhookHandler {
       return webhookEvent;
     }
 
-    const eventId = getEventId(transformedPayload, normalizedHeaders);
-    const idempotencyKey = eventId ? `${provider}:${eventId}` : null;
-    if (idempotencyKey && this.processedEventIds.has(idempotencyKey)) {
+    const processedEventKey = idempotencyKey ?? null;
+    if (processedEventKey && this.processedEventIds.has(processedEventKey)) {
       this.logger.info(`Webhook duplicate ignored: ${provider}.${triggerKey}`, { eventId });
       return webhookEvent;
     }
@@ -84,8 +88,8 @@ export class WebhookHandler {
     const triggerEvent = await trigger.handler(transformedPayload);
     await this.emit(provider, triggerKey, { ...triggerEvent, ...webhookEvent });
 
-    if (idempotencyKey) {
-      this.rememberProcessedEvent(idempotencyKey);
+    if (processedEventKey) {
+      this.rememberProcessedEvent(processedEventKey);
     }
 
     this.logger.info(`Webhook handled: ${provider}.${triggerKey}`, { verified, eventId });
@@ -398,18 +402,19 @@ function parseWebhookPayload(rawBody?: Uint8Array): any {
 }
 
 function getEventId(payload: any, headers: Record<string, string>): string | undefined {
-  const payloadId = payload && typeof payload === 'object' ? payload.id : undefined;
-  if (typeof payloadId === 'string' && payloadId.length > 0) {
-    return payloadId;
-  }
-
-  const headerCandidates = ['x-event-id', 'x-request-id', 'x-github-delivery', 'stripe-event-id'];
-  for (const header of headerCandidates) {
+  for (const header of ['x-event-id', 'x-github-delivery', 'stripe-event-id']) {
     const value = headers[header];
     if (value) {
       return value;
     }
   }
+
+  const payloadId = payload && typeof payload === 'object' ? payload.id : undefined;
+  if (typeof payloadId === 'string' && payloadId.length > 0) {
+    return payloadId;
+  }
+
+  if (headers['x-request-id']) return headers['x-request-id'];
 
   return undefined;
 }

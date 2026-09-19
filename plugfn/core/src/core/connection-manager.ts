@@ -295,7 +295,7 @@ export class ConnectionManager {
       name: options.connectionName,
       status: ConnectionStatus.Active,
       credentials: toEncryptedCredentials(pendingTokenEntry.record),
-      scopes: statePreview.requestedScopes,
+      scopes: credentials.scope === undefined ? statePreview.requestedScopes : credentials.scope.split(/[ ,]+/).filter(Boolean),
       expiresAt: credentials.expiresAt,
       connectedAt: new Date(),
     });
@@ -367,7 +367,8 @@ export class ConnectionManager {
       const actorAllowed = options.actor
         ? options.actor.userId === options.userId &&
           (await this.canActorAccessConnection(connection, options.actor, 'action'))
-        : connectionBelongsToUser(connection, options.userId);
+        : connectionBelongsToUser(connection, options.userId) &&
+          (!this.authorizeConnection || await this.canActorAccessConnection(connection, { userId: options.userId }, 'action'));
       if (!actorAllowed) {
         throw new ConnectionResolutionError(
           'TENANT_ACCESS_DENIED',
@@ -396,12 +397,12 @@ export class ConnectionManager {
       );
     }
 
-    const eligibleConnections = options.actor
+    const eligibleConnections = options.actor || this.authorizeConnection
       ? (
           await Promise.all(
             activeConnections.map(async (connection) => ({
               connection,
-              allowed: await this.canActorAccessConnection(connection, options.actor!, 'action'),
+              allowed: await this.canActorAccessConnection(connection, options.actor ?? { userId: options.userId }, 'action'),
             }))
           )
         )
@@ -615,6 +616,7 @@ export class ConnectionManager {
     const updated = await this.connectionStorage.update(connection.id, {
       credentials: toEncryptedCredentials(tokenRecordEntry.record),
       expiresAt: mergedCredentials.expiresAt,
+      scopes: mergedCredentials.scope === undefined ? connection.scopes : mergedCredentials.scope.split(/[ ,]+/).filter(Boolean),
       status: ConnectionStatus.Active,
     });
 
@@ -1126,13 +1128,19 @@ function buildOAuthProviderDescriptor(providerId: string, provider: Provider): O
     id: providerId,
     authorizationUrl: oauthConfig.authorizationUrl,
     tokenUrl: oauthConfig.tokenUrl,
+    tokenBodyEncoding: oauthConfig.tokenBodyEncoding,
+    tokenHeaders: oauthConfig.tokenHeaders,
     revocationUrl:
       typeof rawOAuthConfig.revocationUrl === 'string'
         ? (rawOAuthConfig.revocationUrl as string)
         : undefined,
     defaultScopes: [...oauthConfig.scopes],
-    supportsPkce: true,
-    supportsRefreshToken: true,
+    supportsPkce: oauthConfig.supportsPkce ?? true,
+    supportsRefreshToken: oauthConfig.supportsRefreshToken ?? true,
+    revocationResponse: oauthConfig.revocationResponse,
+    scopeParameter: oauthConfig.scopeParameter,
+    authorizationCodeTokenPath: oauthConfig.authorizationCodeTokenPath,
+    extraAuthParams: oauthConfig.extraAuthParams,
     scopeSeparator: oauthConfig.scopeSeparator === ',' ? ',' : ' ',
     tokenAuthMethod,
   };
