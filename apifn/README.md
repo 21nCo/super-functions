@@ -82,18 +82,21 @@ console.log(formatDiffAsText(result));
 
 ApiFn provides a reusable GitHub Actions workflow at `.github/workflows/apifn-api-check.yml` (repo root, so GitHub Actions can register and call it).
 
-Call it from another repository:
+The workflow checks out the **caller**, runs `npm ci`, and builds the caller's `@apifn/cli` workspace, then runs that CLI against the caller's spec and collection. It is for this repository (or another checkout that includes the `@apifn/cli` workspace). Same-repo callers:
 
 ```yaml
+permissions:
+  contents: read
+  pull-requests: write
 jobs:
   api-check:
-    uses: 21nCo/super-functions/.github/workflows/apifn-api-check.yml@dev
+    uses: ./.github/workflows/apifn-api-check.yml
     with:
       spec_path: .apifn/openapi.yml
       collection_dir: .apifn/collection
 ```
 
-Same-repo callers can use `uses: ./.github/workflows/apifn-api-check.yml` instead.
+The registered reusable path for this repo is `21nCo/super-functions/.github/workflows/apifn-api-check.yml@dev`. That `uses:` form is valid GitHub syntax; the called jobs still run in the caller checkout and still require `@apifn/cli`. Pin `@dev` only if you want to track this branch (`@dev` moves). For GitLab/Jenkins/Buildkite, run the CLI commands in [Non-GitHub CI](#non-github-ci).
 
 ### What it does
 
