@@ -70,8 +70,9 @@ function fieldTypeToSQL(field: FieldSchema, dialect: Dialect): string {
         case 'string':
           return 'TEXT';
         case 'number':
-        case 'bigint':
           return 'INTEGER';
+        case 'bigint':
+          return 'BLOB';
         case 'boolean':
           return 'INTEGER'; // SQLite uses INTEGER for boolean
         case 'json':
@@ -91,9 +92,9 @@ function dateFieldToSQL(field: FieldSchema, dialect: Dialect): string {
     case 'iso-text':
       return 'TEXT';
     case 'epoch-ms-integer':
-      return 'BIGINT';
+      return dialect === 'sqlite' ? 'INTEGER' : 'BIGINT';
     case 'epoch-ms-bigint':
-      return 'BIGINT';
+      return dialect === 'sqlite' ? 'INTEGER' : 'BIGINT';
   }
 }
 
