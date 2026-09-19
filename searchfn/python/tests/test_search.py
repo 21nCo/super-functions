@@ -36,39 +36,35 @@ class FakeDb:
         ]
 
 
-@pytest.mark.asyncio
-async def test_index_data_creates_index_rows_for_string_fields() -> None:
-    schema = {
-        "models": {
-            "article": {
-                "fields": {
-                    "title": {"type": "string"},
-                    "views": {"type": "number"},
+@pytest.mark.parametrize(
+    "schema",
+    [
+        {
+            "models": {
+                "article": {
+                    "fields": {
+                        "title": {"type": "string"},
+                        "views": {"type": "number"},
+                    }
                 }
             }
-        }
-    }
-    db = FakeDb()
-
-    result = await index_data(schema, db)
-
-    assert result == {"totalIndexed": 2, "totalTerms": 5}
-    assert len(db.records["_searchfn_index"]) == 5
-
-
+        },
+        {
+            "resources": [
+                {
+                    "name": "article",
+                    "fields": [
+                        {"name": "title", "type": "string"},
+                        {"name": "views", "type": "number"},
+                    ],
+                }
+            ]
+        },
+    ],
+    ids=["model-field-map", "datafn-resource-field-list"],
+)
 @pytest.mark.asyncio
-async def test_index_data_accepts_datafn_resource_field_lists() -> None:
-    schema = {
-        "resources": [
-            {
-                "name": "article",
-                "fields": [
-                    {"name": "title", "type": "string"},
-                    {"name": "views", "type": "number"},
-                ],
-            }
-        ]
-    }
+async def test_index_data_creates_index_rows_for_string_fields(schema: dict[str, Any]) -> None:
     db = FakeDb()
 
     result = await index_data(schema, db)
