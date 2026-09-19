@@ -2,9 +2,10 @@ name: SearchFn Client Minimum Node Tests
 
 on:
   push:
-    branches: [main, dev]
+    branches: [dev, next, main]
     paths:
       - "searchfn/client/**"
+      - "searchfn/core/**"
       - "searchfn/adapter-contracts/**"
       - "searchfn/adapter-memory/**"
       - "searchfn/adapter-indexeddb/**"
@@ -13,9 +14,10 @@ on:
       - "scripts/ci-install-rollup-native.mjs"
       - ".github/workflows/searchfn-client-tests.yml"
   pull_request:
-    branches: [dev]
+    branches: [dev, next, main]
     paths:
       - "searchfn/client/**"
+      - "searchfn/core/**"
       - "searchfn/adapter-contracts/**"
       - "searchfn/adapter-memory/**"
       - "searchfn/adapter-indexeddb/**"
