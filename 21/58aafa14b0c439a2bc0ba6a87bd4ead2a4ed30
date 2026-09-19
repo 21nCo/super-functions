@@ -1,0 +1,41 @@
+packages/cli/src/__tests__/generate-command.test.ts
+  s_d473070cda5c3b::t_3c22c4619c6944 42-48,51,53,55,60-61,64,72,79,81-82,86,94,230-247
+  s_d473070cda5c3b::t_3bbe581e448212 248
+authfn/core/src/__tests__/two-factor.test.ts
+  s_d473070cda5c3b::t_3c22c4619c6944 126-144
+packages/cli/src/commands/generate.ts
+  s_d473070cda5c3b::t_b208d15e5ed2ab 10-13,32,39-79,82-93,109,114,312-313
+  s_d473070cda5c3b::t_7a7ac2f0ad57c1 9
+authfn/core/src/core/two-factor.ts
+  s_d473070cda5c3b::t_b208d15e5ed2ab 102-107
+authfn/python/authfn/plugins/api_keys.py
+  s_d473070cda5c3b::t_b208d15e5ed2ab 11,86-97
+authfn/python/authfn/plugins/two_factor.py
+  s_d473070cda5c3b::t_b208d15e5ed2ab 151-162
+authfn/python/tests/test_two_factor.py
+  s_d473070cda5c3b::t_3c22c4619c6944 190-198,200,202-203
+  s_d473070cda5c3b::t_d55ebdeefeb2c4 199,201
+  s_d473070cda5c3b::t_3a5531ad0df790 189
+authfn/core/src/__tests__/api-keys.test.ts
+  s_d473070cda5c3b::t_3c22c4619c6944 53-78
+authfn/core/src/core/api-keys.ts
+  s_d473070cda5c3b::t_b208d15e5ed2ab 4-7,9,45-50
+authfn/python/tests/test_api_keys.py
+  s_d473070cda5c3b::t_3c22c4619c6944 159-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2158aafa14b0c439a2bc0ba6a87bd4ead2a4ed30",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
