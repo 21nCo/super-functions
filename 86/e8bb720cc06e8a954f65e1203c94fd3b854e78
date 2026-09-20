@@ -1,0 +1,29 @@
+datafn/server/src/__tests__/regional-tickets-e2e.test.ts
+  s_5a409e26f114fe::t_146cf5bc39c6cd 145-150
+datafn/server/src/regional-tickets.test.ts
+  s_5a409e26f114fe::t_43118aab9aeb46 45,53-80
+  s_5a409e26f114fe::t_45123ad75596bb 81
+datafn/server/src/regional-tickets.ts
+  s_5a409e26f114fe::t_5e81ef75312f77 161-166
+  s_5a409e26f114fe::t_f6772cc6195e4e 311-314,323-327
+  s_5a409e26f114fe::t_b9150e37d0c43a 134-139
+datafn/server/src/multi-region-routing.ts
+  s_5a409e26f114fe::t_da9321ceec5537 159-162
+  s_5a409e26f114fe::t_b0f9fe95a481b2 181
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "86e8bb720cc06e8a954f65e1203c94fd3b854e78",
+  "prompts": {},
+  "sessions": {
+    "s_5a409e26f114fe": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "6918c516-f470-429d-9273-5e5239db7534",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
