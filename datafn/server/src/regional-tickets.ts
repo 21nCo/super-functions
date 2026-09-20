@@ -1,4 +1,4 @@
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHmac, createPrivateKey, createPublicKey, randomUUID, sign, timingSafeEqual, verify, type KeyObject } from "node:crypto";
 import {
   DATAFN_ROUTE_MAX_TTL_MS, DATAFN_ROUTE_TICKET_HEADER,
   DATAFN_ROUTE_WS_PROTOCOL, DATAFN_ROUTE_WS_TICKET_PREFIX,
@@ -122,6 +122,71 @@ export function createDatafnHmacRouteTickets(input: {
   };
 }
 
+const routeKeyId = (value: string) => /^[A-Za-z0-9_-]{1,128}$/.test(value);
+const routeSigningInput = (content: string) => Buffer.from(`datafn-regional-route-v1:${content}`);
+
+/** Gateway-only Ed25519 signer. Keep the private key out of regional deployments. */
+export function createDatafnEd25519RouteTicketSigner(input: {
+  activeKeyId: string;
+  privateKey: string | KeyObject;
+}): DatafnRouteTicketSigner {
+  if (!routeKeyId(input.activeKeyId)) throw new Error("DATAFN_ROUTE_KEY_INVALID");
+  let key: KeyObject;
+  try {
+    key = typeof input.privateKey === "string" ? createPrivateKey(input.privateKey) : input.privateKey;
+  } catch {
+    throw new Error("DATAFN_ROUTE_KEY_INVALID");
+  }
+  if (key.type !== "private" || key.asymmetricKeyType !== "ed25519") throw new Error("DATAFN_ROUTE_KEY_INVALID");
+  return {
+    sign(claims) {
+      assertClaims(claims);
+      const header = Buffer.from(JSON.stringify({ typ: "datafn-route-v1", alg: "EdDSA", kid: input.activeKeyId })).toString("base64url");
+      const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
+      const content = `${header}.${payload}`;
+      return `${content}.${sign(null, routeSigningInput(content), key).toString("base64url")}`;
+    },
+  };
+}
+
+/** Region-only Ed25519 verifier. A public key cannot mint route tickets. */
+export function createDatafnEd25519RouteTicketVerifier(input: {
+  publicKeys: Record<string, string | KeyObject>;
+}): DatafnRouteTicketVerifier {
+  const keys = new Map(Object.entries(input.publicKeys).map(([id, value]) => {
+    if (!routeKeyId(id)) throw new Error("DATAFN_ROUTE_KEY_INVALID");
+    if (typeof value === "string" && !value.startsWith("-----BEGIN PUBLIC KEY-----")) {
+      throw new Error("DATAFN_ROUTE_KEY_INVALID");
+    }
+    let key: KeyObject;
+    try {
+      key = typeof value === "string" ? createPublicKey(value) : value;
+    } catch {
+      throw new Error("DATAFN_ROUTE_KEY_INVALID");
+    }
+    if (key.type !== "public" || key.asymmetricKeyType !== "ed25519") throw new Error("DATAFN_ROUTE_KEY_INVALID");
+    return [id, key] as const;
+  }));
+  if (keys.size === 0) throw new Error("DATAFN_ROUTE_KEY_INVALID");
+  return {
+    verify(ticket) {
+      try {
+        if (typeof ticket !== "string" || ticket.length > 16_384 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(ticket)) throw new Error();
+        const [header, payload, signature] = ticket.split(".") as [string, string, string];
+        const protectedHeader = JSON.parse(Buffer.from(header, "base64url").toString());
+        const key = keys.get(protectedHeader.kid);
+        if (!key || protectedHeader.typ !== "datafn-route-v1" || protectedHeader.alg !== "EdDSA") throw new Error();
+        if (!verify(null, routeSigningInput(`${header}.${payload}`), key, Buffer.from(signature, "base64url"))) throw new Error();
+        const claims = JSON.parse(Buffer.from(payload, "base64url").toString());
+        assertClaims(claims);
+        return claims;
+      } catch {
+        throw routeTicketError("DATAFN_ROUTE_TICKET_INVALID");
+      }
+    },
+  };
+}
+
 export interface DatafnRegionalEndpoint {
   httpUrl: string;
   wsUrl?: string;
@@ -196,8 +261,8 @@ export interface DatafnRegionalTicketRuntime {
   verifier: DatafnRouteTicketVerifier;
   issuer: string;
   audience: string;
-  /** Validates application credentials separately from the route grant. Also used on WS handshakes. */
-  authenticate(request: Request): Promise<DatafnRouteIdentity> | DatafnRouteIdentity;
+  /** Optional second credential. Omit when a verified ticket is the sole regional bearer credential. */
+  authenticate?(request: Request): Promise<DatafnRouteIdentity> | DatafnRouteIdentity;
   /** Checks ticket/session revocation on each HTTP request and WS admission. False rejects. */
   isActive?(claims: DatafnRouteTicketClaims): Promise<boolean> | boolean;
   /** Optional provider-neutral limiter before plugin authorization/execution. */
@@ -218,15 +283,19 @@ export function readDatafnRouteTicket(request: Request, websocket = false): stri
   return header ?? tickets[0]?.slice(DATAFN_ROUTE_WS_TICKET_PREFIX.length);
 }
 
-export async function validateDatafnRouteTicket(input: {
-  request: Request; namespace: string; regionId: string; scope: DatafnRouteScope;
-  runtime: DatafnRegionalTicketRuntime;
+/** Verify a ticket before using its subject/namespace to build application context.
+ * Route scope, placement epoch, revocation, and rate limits are checked again at admission.
+ */
+export async function verifyDatafnRegionalTicketIdentity(input: {
+  request: Request; regionId: string; runtime: DatafnRegionalTicketRuntime;
+  websocket?: boolean;
 }): Promise<DatafnRouteTicketClaims> {
-  const { runtime } = input;
+  const { request, regionId, runtime } = input;
   try {
-    const origin = input.request.headers.get("origin");
+    const origin = request.headers.get("origin");
     if (origin && !runtime.allowedOrigins?.includes(origin)) throw routeTicketError("DATAFN_ROUTE_FORBIDDEN");
-    const token = readDatafnRouteTicket(input.request, input.scope === "websocket");
+    if (!runtime.authenticate && request.headers.has("cookie")) throw routeTicketError("DATAFN_ROUTE_FORBIDDEN");
+    const token = readDatafnRouteTicket(request, input.websocket);
     if (!token) throw routeTicketError("DATAFN_ROUTE_TICKET_INVALID");
     const claims = await runtime.verifier.verify(token);
     assertClaims(claims);
@@ -236,20 +305,45 @@ export async function validateDatafnRouteTicket(input: {
     if (claims.expiresAt <= now) throw routeTicketError("DATAFN_ROUTE_TICKET_EXPIRED");
     if (claims.issuedAt > now + skew || claims.notBefore > now + skew ||
       claims.issuer !== runtime.issuer || claims.audience !== runtime.audience ||
-      claims.regionId !== input.regionId || claims.namespace !== input.namespace ||
-      !claims.scopes.includes(input.scope)) throw routeTicketError("DATAFN_ROUTE_TICKET_INVALID");
-    const identity = await runtime.authenticate(input.request);
-    if (!identity || identity.subject !== claims.subject || identity.namespace !== claims.namespace ||
-      identity.sessionBinding !== claims.sessionBinding ||
-      (identity.expiresAt !== undefined && (!Number.isFinite(identity.expiresAt) || identity.expiresAt <= (runtime.now ?? Date.now)()))) {
-      throw routeTicketError("DATAFN_ROUTE_FORBIDDEN");
+      claims.regionId !== regionId) throw routeTicketError("DATAFN_ROUTE_TICKET_INVALID");
+    return claims;
+  } catch (error) {
+    // Ticket-only callers invoke this directly, so rejection telemetry must fire here too.
+    const safe = error instanceof DatafnRoutingError ? error : routeTicketError("DATAFN_ROUTE_TICKET_INVALID");
+    emit(runtime, { type: "rejected", code: safe.code });
+    throw safe;
+  }
+}
+
+export async function validateDatafnRouteTicket(input: {
+  request: Request; namespace: string; regionId: string; scope: DatafnRouteScope;
+  runtime: DatafnRegionalTicketRuntime;
+}): Promise<DatafnRouteTicketClaims> {
+  const { runtime } = input;
+  // Identity verification emits its own rejection telemetry; keep it outside the block below to avoid a double emit.
+  const claims = await verifyDatafnRegionalTicketIdentity({
+    request: input.request, regionId: input.regionId, runtime,
+    websocket: input.scope === "websocket",
+  });
+  try {
+    if (claims.namespace !== input.namespace || !claims.scopes.includes(input.scope)) {
+      throw routeTicketError("DATAFN_ROUTE_TICKET_INVALID");
     }
-    // A shortened live session needs a fresh bounded grant, not terminal auth denial.
-    if (identity.expiresAt !== undefined && claims.expiresAt > identity.expiresAt) throw routeTicketError("DATAFN_ROUTE_TICKET_EXPIRED");
+    let identity: DatafnRouteIdentity | undefined;
+    if (runtime.authenticate) {
+      identity = await runtime.authenticate(input.request);
+      if (!identity || identity.subject !== claims.subject || identity.namespace !== claims.namespace ||
+        identity.sessionBinding !== claims.sessionBinding ||
+        (identity.expiresAt !== undefined && (!Number.isFinite(identity.expiresAt) || identity.expiresAt <= (runtime.now ?? Date.now)()))) {
+        throw routeTicketError("DATAFN_ROUTE_FORBIDDEN");
+      }
+      // A shortened live session needs a fresh bounded grant, not terminal auth denial.
+      if (identity.expiresAt !== undefined && claims.expiresAt > identity.expiresAt) throw routeTicketError("DATAFN_ROUTE_TICKET_EXPIRED");
+    }
     if (runtime.isActive && !await runtime.isActive(claims)) throw routeTicketError("DATAFN_ROUTE_TICKET_REVOKED");
     if (runtime.allowRequest && !await runtime.allowRequest(claims)) throw routeTicketError("DATAFN_ROUTE_RATE_LIMITED");
     const admittedAt = (runtime.now ?? Date.now)();
-    if (identity.expiresAt !== undefined && identity.expiresAt <= admittedAt) throw routeTicketError("DATAFN_ROUTE_FORBIDDEN");
+    if (identity?.expiresAt !== undefined && identity.expiresAt <= admittedAt) throw routeTicketError("DATAFN_ROUTE_FORBIDDEN");
     if (claims.expiresAt <= admittedAt) throw routeTicketError("DATAFN_ROUTE_TICKET_EXPIRED");
     emit(runtime, { type: "accepted" });
     return claims;
@@ -275,6 +369,7 @@ export function withDatafnRegionalCors(
   return async request => {
     const origin = request.headers.get("origin");
     if (origin && !origins.has(origin)) return routeTicketError("DATAFN_ROUTE_FORBIDDEN").toResponse();
+    if (request.headers.has("cookie")) return routeTicketError("DATAFN_ROUTE_FORBIDDEN").toResponse();
     if (request.method === "OPTIONS") {
       const method = request.headers.get("access-control-request-method");
       const headers = (request.headers.get("access-control-request-headers") ?? "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
