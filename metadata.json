@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2Z2GFN6N9BMATXT494D29QX",
+  "strategy": "manual-commit",
+  "branch": "droid/datafn-stable-release-20260920",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "datafn/swift-bridge/__tests__/nativeStorage.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 92165,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2428288,
+    "output_tokens": 15598,
+    "api_call_count": 34
+  }
+}
