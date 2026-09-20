@@ -1,0 +1,33 @@
+datafn/server/src/__tests__/regional-tickets-e2e.test.ts
+  s_c97ce47fb19027::t_7593d9310b8f33 2,11-13,54,57,60,62-64,76-85,87,89,104,122-123,130-136,141-145
+  s_c97ce47fb19027::t_a658e8749bf7e7 137-140
+  s_c97ce47fb19027::t_e9b4cc39e1879f 101-103
+  s_c97ce47fb19027::t_c55a91f4c62840 59,61,118
+datafn/server/src/regional-tickets.ts
+  s_c97ce47fb19027::t_fa53b8f5862809 1,125-152,156-179,254-255,319,321-327
+  s_c97ce47fb19027::t_af1d35a74da7cd 318,320,332,358
+  s_c97ce47fb19027::t_35d34b3585d82c 276-281,283,285,287-288,298-317
+  s_c97ce47fb19027::t_28b5be433418ea 153-155
+datafn/docs/content/docs/documentation/direct-regional-sync.mdx
+  s_c97ce47fb19027::t_27e40409946acb 18,22-23,25,30,53,55,59-71,77,81-90,97,112,123,135,137,139,144,148,150
+  s_c97ce47fb19027::t_58bcd86e68958b 160
+datafn/server/src/regional-tickets.test.ts
+  s_c97ce47fb19027::t_84cbf833490f98 2,5-7,31-47,51-78
+  s_c97ce47fb19027::t_585183fbd44d7c 48-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bb430b1589b5aad621f3c84d13dd4fc8b6ced6b3",
+  "prompts": {},
+  "sessions": {
+    "s_c97ce47fb19027": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0bd2d-fcd8-75d3-8666-348633042463",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
