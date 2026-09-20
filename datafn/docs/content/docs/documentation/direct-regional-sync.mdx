@@ -15,19 +15,19 @@ The application owns authentication and namespace authorization. `authenticate` 
 
 ```ts
 import {
-  createDatafnHmacRouteTickets,
+  createDatafnEd25519RouteTicketSigner,
   createDatafnRouteBootstrap,
 } from '@datafn/server';
 
-// Load at least 32 random bytes per key from your server-side secret manager.
-const tickets = createDatafnHmacRouteTickets({
+// Load this private key only in the canonical gateway deployment.
+const signer = createDatafnEd25519RouteTicketSigner({
   activeKeyId: keyRing.activeKeyId,
-  keys: keyRing.keys,
+  privateKey: keyRing.privateKeyPem,
 });
 
 const bootstrap = createDatafnRouteBootstrap({
   directory: placementDirectory,
-  signer: tickets,
+  signer,
   issuer: 'https://app.example.com',
   ttlMs: 60_000,
   authenticate: authenticateApplicationSession,
@@ -50,36 +50,51 @@ Bootstrap rejects missing, moving, recovering, and tombstoned placements. It ign
 
 ```ts
 import {
+  createDatafnEd25519RouteTicketVerifier,
   datafnMultiRegionPlugin,
+  verifyDatafnRegionalTicketIdentity,
   withDatafnRegionalCors,
 } from '@datafn/server';
+
+// Regions receive only public keys. Include previous public keys during rotation.
+const verifier = createDatafnEd25519RouteTicketVerifier({
+  publicKeys: keyRing.publicKeys,
+});
+const ticketRuntime = {
+  verifier,
+  issuer: 'https://app.example.com',
+  audience: 'production:datafn:eu',
+  allowedOrigins: ['https://app.example.com'],
+  isActive: claims => sessionRevocations.isActive(claims),
+  allowRequest: claims => regionalLimiter.allow(claims.subject, claims.ticketId),
+};
 
 const regional = datafnMultiRegionPlugin({
   regionId: 'eu',
   directory: permissionDirectory,
   placement: {
     directory: placementDirectory,
-    routeTickets: {
-      verifier: tickets,
-      issuer: 'https://app.example.com',
-      audience: 'production:datafn:eu',
-      allowedOrigins: ['https://app.example.com'],
-      authenticate: authenticateApplicationSession,
-      // Optional per-request/admission revocation and rate-limit adapters:
-      isActive: claims => sessionRevocations.isActive(claims),
-      allowRequest: claims => regionalLimiter.allow(claims.subject, claims.ticketId),
-    },
+    routeTickets: ticketRuntime,
   },
 });
 
-// Supply regional in createDatafnServer({ plugins: [regional], ... }).
+// Build application context from verified ticket claims, then apply your
+// application-owned subject mapping and permission checks. The server's
+// authorize hook must still decide whether the requested data is allowed.
+const context = async request => {
+  const claims = await verifyDatafnRegionalTicketIdentity({
+    request, regionId: 'eu', runtime: ticketRuntime,
+  });
+  return resolveApplicationPrincipal(claims.subject, claims.namespace);
+};
+// Supply regional and context in createDatafnServer({ plugins: [regional], context, ... }).
 const handleRegionalHttp = withDatafnRegionalCors(
   request => server.router.handle(request),
   { origins: ['https://app.example.com'] },
 );
 ```
 
-The server context/namespace provider must derive the same namespace from independently authenticated application context. The ticket is not application authentication. Regional validation checks signature, protected key ID/type/algorithm, issuer, audience, subject, namespace, session binding, region, epoch, scope, and times before plugin authorization or data execution. Placement is read linearly on every admission; there is no stale placement cache in this mode. Unknown/unavailable placement fails closed, even when a ticket is cryptographically valid.
+In ticket-only mode, the verified ticket supplies regional identity. The gateway must issue it only after authenticating and authorizing the user. The regional context provider may use `verifyDatafnRegionalTicketIdentity` before reading the subject or namespace; route admission then checks scope, current placement epoch, revocation, and rate limits before execution. A copied ticket is a bearer credential until expiry or revocation. `sessionBinding` is useful as a revocation lookup key but is not proof of browser possession when no second credential exists. The optional `authenticate` callback retains the older two-credential mode. Placement is read linearly on every admission; there is no stale placement cache in this mode. Unknown/unavailable placement fails closed, even when a ticket is cryptographically valid.
 
 Enabling `routeTickets` requires a ticket on external regional data routes. To accept canonical internal forwarding on the same cell, also configure the existing `assertionVerifier` and `replayStore`. Valid internal assertions retain their request/body/nonce checks. A request containing both credential types, or spoofed auxiliary internal routing headers, is rejected. Trusted in-process execution still performs placement validation without requiring a public ticket. The status endpoint remains a health endpoint and does not execute regional data operations.
 
@@ -94,7 +109,7 @@ import {
 
 const routeProvider = createDatafnHttpRouteProvider({
   bootstrapUrl: 'https://app.example.com/api/datafn-route',
-  headers: () => ({ Authorization: `Bearer ${applicationAccessToken()}` }),
+  credentials: 'include', // The canonical origin alone receives the login cookie.
 });
 
 const client = createDatafnClient({
@@ -105,12 +120,7 @@ const client = createDatafnClient({
     routeProvider,
     offlinability: true,
     ws: true,
-    http: {
-      headers: () => ({ Authorization: `Bearer ${applicationAccessToken()}` }),
-    },
-    // Optional application-specific WS authentication, independent of the route grant.
-    // Your upgrade adapter must authenticate this protocol and negotiate only datafn-sync-v1.
-    wsProtocols: () => applicationAuthSubprotocols(),
+    http: { credentials: 'omit' },
   },
 });
 await client.sync.start();
@@ -122,22 +132,22 @@ Each client owns one memory-only cache shared by HTTP and WebSocket sync. Concur
 
 ## WebSocket adapter contract
 
-The browser offers `datafn-sync-v1`, `datafn-ticket.<opaque-ticket>`, and any configured application authentication protocols. A server adapter must:
+The browser offers `datafn-sync-v1` and `datafn-ticket.<opaque-ticket>` in ticket-only mode. A server adapter must:
 
-1. Validate application authentication separately, including the origin policy.
+1. Verify the ticket and origin policy before deriving application context. For ticket-only mode, call `verifyDatafnRegionalTicketIdentity` with `websocket: true`.
 2. Call and await `server.websocketHandler.addRoutedClient(socket, authContext, handshakeRequest)` before registering application listeners or accepting data-plane work. Supply the original request with its subprotocol header and a socket that supports `close`.
-3. Negotiate only `datafn-sync-v1`; never reflect ticket/auth protocols in the selected protocol, logs, or errors.
+3. Negotiate only `datafn-sync-v1`; never reflect the ticket protocol in the selected protocol, logs, or errors.
 4. Forward messages/pongs/disconnection to the existing `websocketHandler` methods.
 
 Non-browser adapters can send the ticket in `x-datafn-route-ticket` instead of a subprotocol, but must not send both. Query-string tickets are never read. See the executable two-region fixture in `datafn/server/src/__tests__/regional-tickets-e2e.test.ts` for an adapter using Node HTTP and `ws`.
 
-Admission returns retryable ticket expiry when a grant outlives the independently authenticated session deadline, allowing canonical bootstrap to issue a shortened grant before any execution, so sockets cannot remain authorized beyond that session. Sockets pin their region, epoch, and ticket deadline. Expiry closes the socket with `4511`; migration closes it with `4510`. The client goes back through canonical bootstrap before using a stale/expired route. HTTP renewal also replaces a socket's pinned grant via reconnect. Every socket open triggers a pull from the saved checkpoints to recover writes missed during the connection gap; if an older pull is running, recovery queues behind it and reads the updated checkpoints. Temporary admission throttling uses close code `4503` and retries with capped exponential backoff, even when the upgrade opened before admission rejected it. Transient transport closes and temporary throttling reuse a still-valid shared route, so HTTP and reconnects remain available during gateway outages until expiry. An HTTP-only descriptor skips WebSocket startup without a reconnect loop; HTTP sync remains available, and descriptor renewal can enable WebSocket support later. WebSocket authentication protocols are resolved only when a socket endpoint is available. Terminal authentication/revocation rejection uses `4403` (or adapter authentication code `4401`) and stops automatic reconnect; after reauthentication create a new client/context. `revokeRouteTicket(ticketId)` closes matching admitted sockets immediately in one process. Broadcast that command to every cell process holding the ticket for cluster-wide immediate revocation.
+In two-credential mode, admission returns retryable ticket expiry when a grant outlives the independently authenticated session deadline. In ticket-only mode, the gateway bounds each grant by the authenticated session deadline when it issues the ticket; regions can reject a revoked session earlier through `isActive`. Sockets pin their region, epoch, and ticket deadline. Expiry closes the socket with `4511`; migration closes it with `4510`. The client goes back through canonical bootstrap before using a stale/expired route. HTTP renewal also replaces a socket's pinned grant via reconnect. Every socket open triggers a pull from the saved checkpoints to recover writes missed during the connection gap; if an older pull is running, recovery queues behind it and reads the updated checkpoints. Temporary admission throttling uses close code `4503` and retries with capped exponential backoff, even when the upgrade opened before admission rejected it. Transient transport closes and temporary throttling reuse a still-valid shared route, so HTTP and reconnects remain available during gateway outages until expiry. An HTTP-only descriptor skips WebSocket startup without a reconnect loop; HTTP sync remains available, and descriptor renewal can enable WebSocket support later. WebSocket authentication protocols are resolved only when a socket endpoint is available. Terminal authentication/revocation rejection uses `4403` (or adapter authentication code `4401`) and stops automatic reconnect; after reauthentication create a new client/context. `revokeRouteTicket(ticketId)` closes matching admitted sockets immediately in one process. Broadcast that command to every cell process holding the ticket for cluster-wide immediate revocation.
 
 ## Security profile and operations
 
-Version 1 deliberately chooses a reusable short-lived bearer grant for HTTP and WS admission, with separate operation scopes, not per-request signatures or a one-shot connection nonce. TLS, independent application authentication, subject/namespace/session binding, and short expiry bound its reuse. Ticket theft together with application credentials permits replay until expiry/revocation. There is no proof-of-possession claim in this profile. Do not reuse DATA-1's nonce store: legitimate concurrent HTTP requests and socket reconnects reuse this grant. Existing mutation IDs provide application idempotency, not ticket replay prevention.
+Version 1 deliberately chooses a reusable short-lived bearer grant for HTTP and WS admission, with separate operation scopes, not per-request signatures or a one-shot connection nonce. TLS, subject/namespace binding, and short expiry bound its reuse. In ticket-only mode, ticket theft permits replay until expiry or revocation. There is no proof-of-possession claim in this profile. Do not reuse DATA-1's nonce store: legitimate concurrent HTTP requests and socket reconnects reuse this grant. Existing mutation IDs provide application idempotency, not ticket replay prevention.
 
-The bundled signer uses HS256 with a domain-separated signing input, protected `typ`, algorithm and `kid`, a unique ticket ID, and keys of at least 32 bytes. The signer/verifier interfaces permit deployment-owned cryptographic providers. All custom verifiers must authenticate their claims; the regional runtime still enforces claim shape, bindings, maximum lifetime, and timing. Keep signing keys server-side and grant verification access only to trusted cells; symmetric verifiers can also mint tickets.
+The Ed25519 signer and verifier use a domain-separated signing input with protected `typ`, algorithm and `kid`. Keep the private key at the canonical gateway and distribute only public verification keys to cells. The older HS256 helper remains available for deployments that deliberately share a secret; every holder of that secret can mint tickets. All custom verifiers must authenticate their claims; the regional runtime still enforces claim shape, bindings, maximum lifetime, and timing.
 
 | Concern | Policy |
 | --- | --- |
@@ -147,7 +157,7 @@ The bundled signer uses HS256 with a domain-separated signing input, protected `
 | Key rotation | Construct a verifier with the new active key and bounded previous keys, then retire old keys after their grants expire. Removing a key rejects later admissions immediately; close existing sockets with the revocation/fencing API for emergency invalidation. |
 | Audience | Unique per environment and regional endpoint; never share production and test audiences/keys. |
 | Browser security | Exact origin allowlists; a regional Origin header is denied unless explicitly allowed. The HTTP client uses `credentials: omit`, a ticket header, and refuses redirects. No regional cookies or credentialed CORS. |
-| CSRF | Regional calls require explicit route and application credentials. Canonical cookie-based bootstrap implementations must add their existing CSRF and Origin protections; the helper's POST-only policy is not a CSRF token check. |
+| CSRF | Regional calls require an explicit ticket header or WS subprotocol, and the CORS wrapper rejects cookies. Canonical cookie-based bootstrap implementations must add their existing CSRF and Origin protections; the helper's POST-only policy is not a CSRF token check. |
 | Preflight | The CORS wrapper allows GET, POST, PATCH, and DELETE and answers valid OPTIONS without querying placement or invoking the data handler. It returns no placement details and never uses wildcard origins. |
 | Exposure | Configure TLS, ingress/body/connection limits, rate limiting and DDoS controls on every public cell. `allowRequest` integrates a deployment-owned limiter before execution. |
 | Privacy | Redact `x-datafn-route-ticket`, Authorization and Sec-WebSocket-Protocol in all proxies and logs. Grant callbacks emit only event type and error code. Hash subjects before adding application telemetry; never log tokens or raw namespaces. |
