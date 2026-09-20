@@ -156,6 +156,10 @@ export class DatafnRoutingError extends Error {
     | "DATAFN_ROUTING_RETRY_EXHAUSTED"
     | "DATAFN_PAYLOAD_TOO_LARGE";
   readonly status: number;
+  /** HTTP-shaped metadata so framework routers map an uncaught routing error to its status
+   * (e.g. a ticket-only context provider rejection) instead of a generic 500. */
+  readonly isHttpError = true;
+  readonly statusCode: number;
   readonly retryable: boolean;
   readonly executionStarted: boolean;
   readonly placement?: DatafnNamespacePlacement;
@@ -174,6 +178,7 @@ export class DatafnRoutingError extends Error {
     this.name = "DatafnRoutingError";
     this.code = input.code;
     this.status = input.status;
+    this.statusCode = input.status;
     this.retryable = input.retryable;
     this.executionStarted = input.executionStarted ?? false;
     this.placement = input.placement;

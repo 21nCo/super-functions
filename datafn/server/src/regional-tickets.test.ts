@@ -42,12 +42,41 @@ describe("regional route grants", () => {
     const next = createDatafnEd25519RouteTicketSigner({ activeKeyId: "second", privateKey: second.privateKey }).sign(claims()) as string;
     expect(rotated.verify(next)).toEqual(claims());
     expect(() => region.verify(next)).toThrow("DATAFN_ROUTE_TICKET_INVALID");
-    expect(() => createDatafnEd25519RouteTicketVerifier({ publicKeys: { second: second.publicKey } }).verify(ticket)).toThrow();
+    expect(() => createDatafnEd25519RouteTicketVerifier({ publicKeys: { second: second.publicKey } }).verify(ticket)).toThrow("DATAFN_ROUTE_TICKET_INVALID");
     expect(() => createDatafnEd25519RouteTicketSigner({ activeKeyId: "bad", privateKey: first.publicKey })).toThrow("DATAFN_ROUTE_KEY_INVALID");
     expect(() => createDatafnEd25519RouteTicketVerifier({ publicKeys: { bad: first.privateKey } })).toThrow("DATAFN_ROUTE_KEY_INVALID");
     expect(() => createDatafnEd25519RouteTicketVerifier({ publicKeys: {
       bad: first.privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
     } })).toThrow("DATAFN_ROUTE_KEY_INVALID");
+  });
+
+  it("rethrows DATAFN_ROUTE_KEY_INVALID for malformed PEM key material", () => {
+    const wellFormedPublic = "-----BEGIN PUBLIC KEY-----\nnot-real-base64!!!\n-----END PUBLIC KEY-----";
+    expect(() => createDatafnEd25519RouteTicketSigner({ activeKeyId: "a", privateKey: "-----BEGIN PRIVATE KEY-----\ngarbage\n-----END PRIVATE KEY-----" }))
+      .toThrow("DATAFN_ROUTE_KEY_INVALID");
+    expect(() => createDatafnEd25519RouteTicketSigner({ activeKeyId: "a", privateKey: "not a pem at all" }))
+      .toThrow("DATAFN_ROUTE_KEY_INVALID");
+    expect(() => createDatafnEd25519RouteTicketVerifier({ publicKeys: { a: wellFormedPublic } }))
+      .toThrow("DATAFN_ROUTE_KEY_INVALID");
+  });
+
+  it("emits a single rejected telemetry event when ticket-only identity verification fails", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const ticket = createDatafnEd25519RouteTicketSigner({ activeKeyId: "a", privateKey }).sign(claims()) as string;
+    const onEvent = vi.fn();
+    const ticketOnly = { verifier: createDatafnEd25519RouteTicketVerifier({ publicKeys: { a: publicKey } }),
+      issuer: "canonical", audience: "prod-eu", now: () => now, allowedOrigins: ["https://app.example"], onEvent };
+    const forbidden = new Request("https://eu.example/datafn/query", {
+      headers: { [DATAFN_ROUTE_TICKET_HEADER]: ticket, origin: "https://evil.example" } });
+    await expect(verifyDatafnRegionalTicketIdentity({ request: forbidden, regionId: "eu", runtime: ticketOnly }))
+      .rejects.toMatchObject({ code: "DATAFN_ROUTE_FORBIDDEN" });
+    expect(onEvent).toHaveBeenCalledWith({ type: "rejected", code: "DATAFN_ROUTE_FORBIDDEN" });
+    expect(onEvent.mock.calls.filter(([event]) => event.type === "rejected")).toHaveLength(1);
+
+    onEvent.mockClear();
+    await expect(validateDatafnRouteTicket({ request: forbidden, namespace: "tenant", regionId: "eu", scope: "query", runtime: ticketOnly }))
+      .rejects.toMatchObject({ code: "DATAFN_ROUTE_FORBIDDEN" });
+    expect(onEvent.mock.calls.filter(([event]) => event.type === "rejected")).toHaveLength(1);
   });
 
   it("rejects Ed25519 tampering, wrong issuer, and algorithm confusion", async () => {

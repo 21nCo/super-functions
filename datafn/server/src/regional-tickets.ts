@@ -131,7 +131,12 @@ export function createDatafnEd25519RouteTicketSigner(input: {
   privateKey: string | KeyObject;
 }): DatafnRouteTicketSigner {
   if (!routeKeyId(input.activeKeyId)) throw new Error("DATAFN_ROUTE_KEY_INVALID");
-  const key = typeof input.privateKey === "string" ? createPrivateKey(input.privateKey) : input.privateKey;
+  let key: KeyObject;
+  try {
+    key = typeof input.privateKey === "string" ? createPrivateKey(input.privateKey) : input.privateKey;
+  } catch {
+    throw new Error("DATAFN_ROUTE_KEY_INVALID");
+  }
   if (key.type !== "private" || key.asymmetricKeyType !== "ed25519") throw new Error("DATAFN_ROUTE_KEY_INVALID");
   return {
     sign(claims) {
@@ -153,7 +158,12 @@ export function createDatafnEd25519RouteTicketVerifier(input: {
     if (typeof value === "string" && !value.startsWith("-----BEGIN PUBLIC KEY-----")) {
       throw new Error("DATAFN_ROUTE_KEY_INVALID");
     }
-    const key = typeof value === "string" ? createPublicKey(value) : value;
+    let key: KeyObject;
+    try {
+      key = typeof value === "string" ? createPublicKey(value) : value;
+    } catch {
+      throw new Error("DATAFN_ROUTE_KEY_INVALID");
+    }
     if (key.type !== "public" || key.asymmetricKeyType !== "ed25519") throw new Error("DATAFN_ROUTE_KEY_INVALID");
     return [id, key] as const;
   }));
@@ -298,7 +308,10 @@ export async function verifyDatafnRegionalTicketIdentity(input: {
       claims.regionId !== regionId) throw routeTicketError("DATAFN_ROUTE_TICKET_INVALID");
     return claims;
   } catch (error) {
-    throw error instanceof DatafnRoutingError ? error : routeTicketError("DATAFN_ROUTE_TICKET_INVALID");
+    // Ticket-only callers invoke this directly, so rejection telemetry must fire here too.
+    const safe = error instanceof DatafnRoutingError ? error : routeTicketError("DATAFN_ROUTE_TICKET_INVALID");
+    emit(runtime, { type: "rejected", code: safe.code });
+    throw safe;
   }
 }
 
@@ -307,11 +320,12 @@ export async function validateDatafnRouteTicket(input: {
   runtime: DatafnRegionalTicketRuntime;
 }): Promise<DatafnRouteTicketClaims> {
   const { runtime } = input;
+  // Identity verification emits its own rejection telemetry; keep it outside the block below to avoid a double emit.
+  const claims = await verifyDatafnRegionalTicketIdentity({
+    request: input.request, regionId: input.regionId, runtime,
+    websocket: input.scope === "websocket",
+  });
   try {
-    const claims = await verifyDatafnRegionalTicketIdentity({
-      request: input.request, regionId: input.regionId, runtime,
-      websocket: input.scope === "websocket",
-    });
     if (claims.namespace !== input.namespace || !claims.scopes.includes(input.scope)) {
       throw routeTicketError("DATAFN_ROUTE_TICKET_INVALID");
     }

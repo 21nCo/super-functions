@@ -142,6 +142,12 @@ describe("direct regional two-region network conformance", () => {
       headers: { "x-datafn-route-ticket": route.ticket, cookie: "session=opaque", "content-type": "application/json" },
       body: JSON.stringify({ resource: "note", version: 1 }) });
     expect(withCookie.status).toBe(403);
+    f.eu.authorize.mockClear();
+    const forged = await fetch(`${route.httpUrl}/query`, { method: "POST",
+      headers: { "x-datafn-route-ticket": `${route.ticket}forged`, "content-type": "application/json" },
+      body: JSON.stringify({ resource: "note", version: 1 }) });
+    expect(forged.status).toBe(401);
+    expect(f.eu.authorize).not.toHaveBeenCalled();
   });
   it.each(["query", "mutate", "transact", "search"] as const)("allows trusted executor %s while retaining placement fencing", async operation => {
     const f = await fixture();
