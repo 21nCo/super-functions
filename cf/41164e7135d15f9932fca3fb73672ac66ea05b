@@ -1,0 +1,33 @@
+datafn/swift-bridge/__tests__/nativeStorage.test.ts
+  s_18a12b4eebb0ef::t_bd221dc69ac936 190
+datafn/swift-bridge/package.json
+  s_2d7e2ca871fc9c::t_0e21c160edca66 3
+datafn/server/package.json
+  s_2d7e2ca871fc9c::t_0e21c160edca66 3
+package-lock.json
+  s_18a12b4eebb0ef::t_3e9dc3de67c8a9 8139,8421
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cf41164e7135d15f9932fca3fb73672ac66ea05b",
+  "prompts": {},
+  "sessions": {
+    "s_18a12b4eebb0ef": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0be21-cf18-7ac1-930b-82c0bb79969d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_2d7e2ca871fc9c": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "bddb36ce-5171-4f5d-bb18-af70095919e1",
+        "model": "kimi-k3"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
