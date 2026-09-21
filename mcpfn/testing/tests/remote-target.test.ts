@@ -379,6 +379,45 @@ it("scrubs token components of custom authorization schemes", async () => {
   expect(redactRemoteCredential({headers: {authorization: "Token opaque-123"}}, {echo: "opaque-123"})).toEqual({echo: "[REDACTED]"});
 });
 
+it("scrubs independently reflected structured authorization parameters", async () => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  const credential = {
+    headers: {
+      authorization: 'Digest username="fixture-user", response="opaque\\"digest", nonce=opaque-nonce',
+    },
+  };
+  expect(redactRemoteCredential(credential, {
+    username: "fixture-user",
+    response: 'opaque"digest',
+    rawResponse: 'opaque\\"digest',
+    quotedResponse: '"opaque\\"digest"',
+    nonce: "opaque-nonce",
+  })).toEqual({
+    username: "[REDACTED]",
+    response: "[REDACTED]",
+    rawResponse: "[REDACTED]",
+    quotedResponse: "[REDACTED]",
+    nonce: "[REDACTED]",
+  });
+});
+
+it.each([
+  'Digest username="unterminated',
+  "Signature keyId=client,missing",
+  "Signature keyId=client,",
+])("rejects malformed structured authorization credentials and releases their lease", async authorization => {
+  const { redactRemoteCredential } = await import("../src/remote-target.js");
+  expect(() => redactRemoteCredential({ headers: { authorization } }, "report"))
+    .toThrow(/Authorization credential/);
+  const revoke = vi.fn();
+  const target = authenticatedHttpTarget("http://127.0.0.1:1/mcp", { credential: {
+    acquire: () => ({ headers: { authorization } }), revoke,
+  } });
+  await expect(target.open({ requestId: "invalid", diagnostic: async () => {} }))
+    .rejects.toThrow(/Authenticated target could not be opened/);
+  expect(revoke).toHaveBeenCalledOnce();
+});
+
 
 it("retains successful-open leases until revocation succeeds", async () => {
   const revoke = vi.fn().mockRejectedValueOnce(new Error('temporary')).mockResolvedValue(undefined);

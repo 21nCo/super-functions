@@ -396,6 +396,7 @@ function captureSuiteStructureGuard(
   target: McpFnTarget,
   projection: SuiteProjection,
   diagnostics: SuiteDiagnosticCollector,
+  failure: McpFnReportFailure | undefined,
 ): SuiteStructureGuard {
   const candidates = new Set<string>([
     ...suiteStructureKeys,
@@ -405,6 +406,7 @@ function captureSuiteStructureGuard(
     MCPFN_TESTING_VERSION,
     projection.target.kind,
   ]);
+  if (failure?.phase) candidates.add(failure.phase);
   for (const result of projection.execution.results) {
     candidates.add(result.status);
     if (result.sideEffect) candidates.add(result.sideEffect);
@@ -550,18 +552,17 @@ async function projectAndCloseSuite(
   structureGuard: SuiteStructureGuard;
   closeResult: Awaited<ReturnType<typeof closeSuiteClient>>;
 }> {
-  let projection: SuiteProjection = {
-    target: { kind: "custom" },
-    execution: connection.execution,
-    failure: "serialization",
-  };
-  let structureGuard: SuiteStructureGuard = {
-    assert: () => { throw new McpFnStructuralCredentialCollisionError(); },
-  };
+  let projection: SuiteProjection;
+  let structureGuard: SuiteStructureGuard;
   let closeResult: Awaited<ReturnType<typeof closeSuiteClient>> = {};
   try {
     projection = projectSuiteArtifacts(options, connection.client, connection.execution);
-    structureGuard = captureSuiteStructureGuard(options.target, projection, diagnostics);
+    structureGuard = captureSuiteStructureGuard(
+      options.target,
+      projection,
+      diagnostics,
+      connection.failure,
+    );
   } finally {
     closeResult = await closeSuiteClient(connection.client);
   }

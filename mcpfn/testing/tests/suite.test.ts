@@ -219,6 +219,21 @@ it("does not repeat successful custom cleanup after an open failure", async () =
   expect(report.incompleteReason).not.toContain("Target cleanup failed");
 });
 
+it("proves a target-supplied failure phase safe before emitting it", async () => {
+  const report = await runMcpFnTargetSuite({ target: customTarget({
+    kind: "failed-open",
+    redact: <T>(value: T): T => value instanceof Error
+      ? { name: value.name, message: value.message, phase: "vendor-phase" } as T
+      : value,
+    open: async () => { throw new Error("cannot open"); },
+  }) });
+  expect(report).toMatchObject({
+    ok: false,
+    status: "incomplete",
+    failure: { phase: "vendor-phase" },
+  });
+});
+
 
 it.each(["metadata", "failure"])("applies custom target redaction to finalized suite %s", async mode => {
   const secret = "custom-owned-secret";

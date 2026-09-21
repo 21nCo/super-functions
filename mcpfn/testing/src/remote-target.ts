@@ -45,7 +45,11 @@ function addAuthorizationSecrets(raw: string, secrets: Set<string>): void {
   const scheme = trimmed.slice(0, separator).toLowerCase();
   const token = trimmed.slice(separator).trim();
   if (token) secrets.add(token);
-  if (scheme !== "basic" || !/^[\dA-Za-z+/]+={0,2}$/.test(token)) return;
+  if (scheme !== "basic") {
+    if (scheme !== "bearer") addAuthorizationParameterSecrets(token, secrets);
+    return;
+  }
+  if (!/^[\dA-Za-z+/]+={0,2}$/.test(token)) return;
   const decoded = Buffer.from(token, "base64");
   // Round-trip validation avoids interpreting malformed tokens as credentials.
   if (stripBase64Padding(decoded.toString("base64")) !== stripBase64Padding(token)) return;
@@ -55,6 +59,91 @@ function addAuthorizationSecrets(raw: string, secrets: Set<string>): void {
     if (colon < 0) continue;
     for (const value of [pair, pair.slice(0, colon), pair.slice(colon + 1)]) {
       if (value) secrets.add(value);
+    }
+  }
+}
+
+const authorizationParameterName = /^[!#$%&'*+.^_`|~\dA-Za-z-]+$/;
+
+interface ParsedAuthorizationValue {
+  cursor: number;
+  components: string[];
+}
+
+function skipAuthorizationWhitespace(token: string, cursor: number): number {
+  while (token[cursor] === " " || token[cursor] === "\t") cursor += 1;
+  return cursor;
+}
+
+function parseQuotedAuthorizationValue(token: string, start: number): ParsedAuthorizationValue {
+  let cursor = start + 1;
+  let decoded = "";
+  while (cursor < token.length && token[cursor] !== '"') {
+    if (token[cursor] === "\\") {
+      cursor += 1;
+      if (cursor >= token.length) {
+        throw new TypeError("Authorization credential parameters must use balanced quotes");
+      }
+    }
+    decoded += token[cursor];
+    cursor += 1;
+  }
+  if (token[cursor] !== '"') {
+    throw new TypeError("Authorization credential parameters must use balanced quotes");
+  }
+  cursor += 1;
+  const rawValue = token.slice(start, cursor);
+  return {
+    cursor,
+    components: [rawValue, rawValue.slice(1, -1), decoded].filter(Boolean),
+  };
+}
+
+function parseUnquotedAuthorizationValue(token: string, start: number): ParsedAuthorizationValue {
+  let cursor = start;
+  while (cursor < token.length && token[cursor] !== ",") cursor += 1;
+  const value = token.slice(start, cursor).trim();
+  if (!value || /\s/.test(value) || value.includes('"')) {
+    throw new TypeError("Authorization credential parameters must contain valid values");
+  }
+  return { cursor, components: [value] };
+}
+
+function parseAuthorizationParameter(token: string, start: number): ParsedAuthorizationValue {
+  let cursor = skipAuthorizationWhitespace(token, start);
+  const nameStart = cursor;
+  while (cursor < token.length && token[cursor] !== "=" &&
+    token[cursor] !== " " && token[cursor] !== "\t" && token[cursor] !== ",") cursor += 1;
+  const name = token.slice(nameStart, cursor);
+  cursor = skipAuthorizationWhitespace(token, cursor);
+  if (!authorizationParameterName.test(name) || token[cursor] !== "=") {
+    throw new TypeError("Authorization credential parameters must use name=value syntax");
+  }
+  cursor = skipAuthorizationWhitespace(token, cursor + 1);
+  if (cursor >= token.length) {
+    throw new TypeError("Authorization credential parameters must contain values");
+  }
+  const parsed = token[cursor] === '"'
+    ? parseQuotedAuthorizationValue(token, cursor)
+    : parseUnquotedAuthorizationValue(token, cursor);
+  return { ...parsed, cursor: skipAuthorizationWhitespace(token, parsed.cursor) };
+}
+
+function addAuthorizationParameterSecrets(token: string, secrets: Set<string>): void {
+  const firstEquals = token.indexOf("=");
+  if (firstEquals < 1 || !authorizationParameterName.test(token.slice(0, firstEquals).trim())) return;
+  let cursor = 0;
+  while (cursor < token.length) {
+    const parsed = parseAuthorizationParameter(token, cursor);
+    for (const component of parsed.components) secrets.add(component);
+    cursor = parsed.cursor;
+    if (cursor === token.length) return;
+    if (token[cursor] !== ",") {
+      throw new TypeError("Authorization credential parameters must be comma separated");
+    }
+    cursor = skipAuthorizationWhitespace(token, cursor + 1);
+    if (cursor === token.length) {
+      throw new TypeError("Authorization credential parameters must not end with a comma");
     }
   }
 }
@@ -302,8 +391,9 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
         );
       }
       keys.add(scrubbedKey);
+      const entryRole = fixed ? role : "payload";
       const scrubbedEntry = typeof entry === "string"
-        ? scrub(entry, fixed ? role : "payload", key, finalPass)
+        ? scrub(entry, entryRole, key, finalPass)
         : scrub(entry, childRole, "", finalPass);
       entries.push([scrubbedKey, scrubbedEntry]);
     }
