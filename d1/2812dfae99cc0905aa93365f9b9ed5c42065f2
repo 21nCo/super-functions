@@ -1,0 +1,28 @@
+mcpfn/testing/src/suite.ts
+  s_77d7bb3189c71a::t_61728574623f42 399,409,555-556,560-565
+mcpfn/testing/tests/remote-target.test.ts
+  s_77d7bb3189c71a::t_a6dd9ba48cb5a0 392,398,409-411
+  s_77d7bb3189c71a::t_61728574623f42 382-391,393-397,399-408,412-420
+mcpfn/testing/src/remote-target.ts
+  s_77d7bb3189c71a::t_61728574623f42 48-52,66-67,83,85-87,141-143,146-150,394,396
+  s_77d7bb3189c71a::t_b1044db6876783 68-82,84,88-140,144-145
+mcpfn/testing/tests/suite.test.ts
+  s_77d7bb3189c71a::t_61728574623f42 222-223,229-236
+  s_77d7bb3189c71a::t_bb826b3749e875 224-228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d12812dfae99cc0905aa93365f9b9ed5c42065f2",
+  "prompts": {},
+  "sessions": {
+    "s_77d7bb3189c71a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b3f5-d570-7a72-b668-401efd539e3b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
