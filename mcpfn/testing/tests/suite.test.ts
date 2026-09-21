@@ -234,6 +234,20 @@ it("proves a target-supplied failure phase safe before emitting it", async () =>
   });
 });
 
+it("rejects a target-supplied failure phase that its redactor cannot prove safe", async () => {
+  const phase = "vendor-phase";
+  await expect(runMcpFnTargetSuite({ target: customTarget({
+    kind: "failed-open",
+    redact: <T>(value: T): T => {
+      if (value instanceof Error) {
+        return { name: value.name, message: value.message, phase } as T;
+      }
+      return (value === phase ? "[REDACTED]" : value) as T;
+    },
+    open: async () => { throw new Error("cannot open"); },
+  }) })).rejects.toThrow("credential conflicts with required artifact structure");
+});
+
 
 it.each(["metadata", "failure"])("applies custom target redaction to finalized suite %s", async mode => {
   const secret = "custom-owned-secret";

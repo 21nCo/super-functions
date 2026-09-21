@@ -8,30 +8,40 @@ const apiKey = process.env.MCPFN_EXTERNAL_API_KEY;
 if (!apiKey) throw new Error("MCPFN_EXTERNAL_API_KEY is required");
 
 const sessions = new Map();
-const httpServer = createServer(async (incoming, outgoing) => {
-  const url = new URL(
-    incoming.url ?? "/",
-    `http://${incoming.headers.host ?? "127.0.0.1"}`,
-  );
-  if (url.pathname !== "/mcp") {
-    outgoing.writeHead(404).end("Not found");
-    return;
-  }
-  if (!matchesSecret(incoming.headers["x-api-key"], apiKey)) {
-    // Reject before reading any request body.
-    outgoing.writeHead(401, {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "www-authenticate": 'ApiKey realm="mcpfn-external-fixture"',
-    }).end(JSON.stringify({ error: "invalid_credential" }));
-    return;
-  }
-  const declaredLength = Number(incoming.headers["content-length"] ?? "0");
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
-    outgoing.writeHead(413).end("Request body too large");
-    return;
-  }
+const httpServer = createServer((incoming, outgoing) => {
+  void handleHttpRequest(incoming, outgoing).catch(() => outgoing.destroy());
+});
+
+async function handleHttpRequest(incoming, outgoing) {
   try {
+    let url;
+    try {
+      url = new URL(
+        incoming.url ?? "/",
+        `http://${incoming.headers.host ?? "127.0.0.1"}`,
+      );
+    } catch {
+      outgoing.writeHead(400).end("Bad Request");
+      return;
+    }
+    if (url.pathname !== "/mcp") {
+      outgoing.writeHead(404).end("Not found");
+      return;
+    }
+    if (!matchesSecret(incoming.headers["x-api-key"], apiKey)) {
+      // Reject before reading any request body.
+      outgoing.writeHead(401, {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "www-authenticate": 'ApiKey realm="mcpfn-external-fixture"',
+      }).end(JSON.stringify({ error: "invalid_credential" }));
+      return;
+    }
+    const declaredLength = Number(incoming.headers["content-length"] ?? "0");
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
+      outgoing.writeHead(413).end("Request body too large");
+      return;
+    }
     const request = await toWebRequest(incoming, url);
     const handled = await handleMcpRequest(request);
     try {
@@ -48,7 +58,7 @@ const httpServer = createServer(async (incoming, outgoing) => {
       outgoing.writeHead(500).end("Internal Server Error");
     }
   }
-});
+}
 
 await new Promise((resolve, reject) => {
   httpServer.once("error", reject);

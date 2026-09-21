@@ -46,7 +46,9 @@ function addAuthorizationSecrets(raw: string, secrets: Set<string>): void {
   const token = trimmed.slice(separator).trim();
   if (token) secrets.add(token);
   if (scheme !== "basic") {
-    if (scheme !== "bearer") addAuthorizationParameterSecrets(token, secrets);
+    if (scheme !== "bearer" && !authorizationToken68.test(token)) {
+      addAuthorizationParameterSecrets(token, secrets);
+    }
     return;
   }
   if (!/^[\dA-Za-z+/]+={0,2}$/.test(token)) return;
@@ -63,6 +65,7 @@ function addAuthorizationSecrets(raw: string, secrets: Set<string>): void {
   }
 }
 
+const authorizationToken68 = /^[\dA-Za-z._~+\/-]+=*$/;
 const authorizationParameterName = /^[!#$%&'*+.^_`|~\dA-Za-z-]+$/;
 
 interface ParsedAuthorizationValue {

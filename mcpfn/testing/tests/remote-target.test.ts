@@ -379,6 +379,17 @@ it("scrubs token components of custom authorization schemes", async () => {
   expect(redactRemoteCredential({headers: {authorization: "Token opaque-123"}}, {echo: "opaque-123"})).toEqual({echo: "[REDACTED]"});
 });
 
+it.each(["opaque-token==", "opaque._~+/-=="])(
+  "preserves and scrubs padded custom-scheme token68 credentials: %s",
+  async token => {
+    const { redactRemoteCredential } = await import("../src/remote-target.js");
+    expect(redactRemoteCredential(
+      { headers: { authorization: `Token ${token}` } },
+      { echo: token },
+    )).toEqual({ echo: "[REDACTED]" });
+  },
+);
+
 it("scrubs independently reflected structured authorization parameters", async () => {
   const { redactRemoteCredential } = await import("../src/remote-target.js");
   const credential = {
