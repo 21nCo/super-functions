@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M32GD5197WF8GFCK9J6YY8VT",
+  "session_id": "01a0be21-cf18-7ac1-930b-82c0bb79969d",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-21T17:32:19.472651Z",
+  "branch": "aravink/mcp-4-make-mcpfn-cloudflare-worker-bundles-resilient-to-mixed-zod",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "datafn/cli/package.json"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "aa4a904de451",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 143703,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 8667904,
+    "output_tokens": 27299,
+    "api_call_count": 87
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-21T17:32:19.391931Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 0,
+    "total_lines_changed": 0,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
