@@ -1,0 +1,33 @@
+retry
+
+---
+
+$use-skillplane pr-refetch-fix
+
+---
+
+What is convergence looking like?
+
+---
+
+$use-skillplane pr-refetch-fix
+
+---
+
+try again
+
+---
+
+Why is the automation disabled and what is the current state?
+
+---
+
+what are the blockers exactly?
+
+---
+
+propose remediation plan for all the blockers
+
+---
+
+proceed (use my cloudflare, railway for any disposable databases etc - can be accessible via composio CLI and aside browser)
