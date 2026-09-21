@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M32KZYKTBTHH6CQ1C2Z3EADG",
+  "strategy": "manual-commit",
+  "branch": "aravink/mcp-4-make-mcpfn-cloudflare-worker-bundles-resilient-to-mixed-zod",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "mcpfn/ADR-0001-COMPATIBILITY.md",
+    "mcpfn/MIGRATION.md",
+    "mcpfn/TESTING.md",
+    "mcpfn/auth/tsup.config.ts",
+    "mcpfn/client/tsup.config.ts",
+    "mcpfn/core/README.md",
+    "mcpfn/core/package.json",
+    "mcpfn/core/src/manifest.ts",
+    "mcpfn/core/src/registry.ts",
+    "mcpfn/core/src/validation.ts",
+    "mcpfn/core/tsup.config.ts",
+    "scripts/gate-mcpfn-release.mjs",
+    "scripts/test-mcpfn-cloudflare-worker.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}
