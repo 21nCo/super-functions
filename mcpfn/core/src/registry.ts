@@ -1,6 +1,5 @@
-import Ajv, { type ErrorObject, type ValidateFunction } from "ajv";
-import addFormats from "ajv-formats";
 import { UriTemplate } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
+import { compileSchema, type CompiledSchema, type SchemaIssue } from "./validation.js";
 import type {
   CallToolResult,
   CompleteResult,
@@ -31,13 +30,13 @@ import type {
 
 interface RegisteredTool<TContext> {
   definition: McpFnToolDefinition<TContext>;
-  validateInput: ValidateFunction;
-  validateOutput?: ValidateFunction;
+  validateInput: CompiledSchema;
+  validateOutput?: CompiledSchema;
 }
 
 interface RegisteredPrompt<TContext> {
   definition: McpFnPromptDefinition<TContext>;
-  validateArguments: ValidateFunction;
+  validateArguments: CompiledSchema;
 }
 
 interface RegisteredTemplate<TContext> {
@@ -53,7 +52,7 @@ type ResourceMatch<TContext> =
       variables: Record<string, string | string[]>;
     };
 
-function formatErrors(errors: ErrorObject[] | null | undefined): Array<{
+function formatErrors(errors: SchemaIssue[] | null | undefined): Array<{
   path: string;
   message: string;
   keyword: string;
@@ -307,9 +306,9 @@ export function assertPromptSchemaSupportsStringValues(
           : {}),
         allOf: schemas,
       };
-      let validate: ValidateFunction | undefined;
+      let validate: CompiledSchema | undefined;
       try {
-        validate = new Ajv({ strict: false, allowUnionTypes: true }).compile(candidateSchema);
+        validate = compileSchema(candidateSchema);
       } catch {
         hasStringWitness = false;
       }
@@ -373,18 +372,10 @@ export function promptArguments<TContext>(definition: McpFnPromptDefinition<TCon
 }
 
 export class McpFnRegistry<TContext = undefined> {
-  private readonly ajv: Ajv;
   private readonly tools = new Map<string, RegisteredTool<TContext>>();
   private readonly resources = new Map<string, McpFnResourceDefinition<TContext>>();
   private readonly resourceTemplates = new Map<string, RegisteredTemplate<TContext>>();
   private readonly prompts = new Map<string, RegisteredPrompt<TContext>>();
-
-  constructor() {
-    this.ajv = new Ajv({ allErrors: true, strict: false, allowUnionTypes: true });
-    // npm workspaces may install ajv-formats with its own compatible Ajv copy.
-    // The runtime contract is stable; erase only that duplicate-package type identity.
-    addFormats(this.ajv as never);
-  }
 
   register<TDefinition extends McpFnToolDefinition<TContext>>(
     definition: TDefinition,
@@ -438,12 +429,12 @@ export class McpFnRegistry<TContext = undefined> {
       );
     }
 
-    let validateInput: ValidateFunction;
-    let validateOutput: ValidateFunction | undefined;
+    let validateInput: CompiledSchema;
+    let validateOutput: CompiledSchema | undefined;
     try {
-      validateInput = this.ajv.compile(definition.inputSchema);
+      validateInput = compileSchema(definition.inputSchema);
       validateOutput = definition.outputSchema !== undefined
-        ? this.ajv.compile(definition.outputSchema)
+        ? compileSchema(definition.outputSchema)
         : undefined;
     } catch (error) {
       throw new McpFnValidationError(
@@ -597,9 +588,9 @@ export class McpFnRegistry<TContext = undefined> {
         `Prompt ${definition.name} argumentsSchema must be an object schema`,
       );
     }
-    let validateArguments: ValidateFunction;
+    let validateArguments: CompiledSchema;
     try {
-      validateArguments = this.ajv.compile(promptSchema(definition));
+      validateArguments = compileSchema(promptSchema(definition));
     } catch (error) {
       throw new McpFnValidationError(
         `Prompt ${definition.name} contains an invalid arguments JSON Schema`,

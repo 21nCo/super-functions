@@ -105,10 +105,13 @@ npm run gate:mcpfn-release
 
 The gate typechecks, tests, and builds all seven McpFn packages; runs real stdio
 and Streamable HTTP round trips, OAuth boundary tests, a real Chromium PKCE
-flow, and the official active conformance suite; runs the complete DataFn
-server suite; exercises the real CLI; checks package contents; and installs
-packed artifacts into a temporary external consumer for ESM and CommonJS
-imports. LangFn, MemoryFn, and ProbeFn are not covered by this release gate.
+flow, and the official active conformance suite; bundles and boots a Cloudflare
+Worker under `workerd` that imports `@mcpfn/core` next to a root `zod` and drives
+a real MCP client through `initialize`, `tools/list`, and `tools/call`
+(`cloudflare:worker-startup`); runs the complete DataFn server suite; exercises
+the real CLI; checks package contents; and installs packed artifacts into a
+temporary external consumer for ESM and CommonJS imports. LangFn, MemoryFn, and
+ProbeFn are not covered by this release gate.
 
 CI routes a change set made entirely of the McpFn runtime, its DataFn adapter, README, and release metadata through this dedicated Node.js 22 gate. Root package manifests, lockfiles, CI workflows, and the CI planner always run the repository's generic JavaScript job as well as the McpFn gate. This conservative boundary prevents unrelated global changes from gaining coverage merely by being included with McpFn work.
 

@@ -106,4 +106,17 @@ Task support is declared with `execution.taskSupport` and a `taskHandler`; a tas
 
 `createWebStandardHandler()` accepts the official SDK `HandleRequestOptions`, including validated `authInfo`. Use `@mcpfn/auth` to publish OAuth protected-resource metadata and produce that trusted value. In stateless mode, McpFn creates and disposes an isolated SDK server and transport for every request. Attach protocol instrumentation with `configureRequestServer`; it receives the live isolated server before transport connection and runs once per request, or once per session initialization attempt. Because configuration precedes SDK request validation, a rejected attempt can invoke the hook without retaining a session. Supply a cryptographically secure `sessionIdGenerator` when the server uses sampling, elicitation, or another server-to-client request that must be correlated across HTTP requests; session-enabled handlers retain their transport across the session.
 
+## Cloudflare Workers and edge runtimes
+
+`@mcpfn/core` is a self-contained bundle: the official MCP SDK and a single
+pinned Zod runtime are inlined into `dist`. Bundle it into a Cloudflare Worker
+next to your application's own root `zod` dependency without adding a bundler
+alias for `zod`/`zod/v4`, an import condition override, or any other
+application-local shim. Serve MCP through `createWebStandardHandler()`. Schema
+validation uses Ajv on Node and falls back to `@cfworker/json-schema` on
+runtimes that forbid runtime code generation, such as `workerd`, so no
+configuration is required. See
+[ADR-0001](https://github.com/21nCo/super-functions/blob/main/mcpfn/ADR-0001-COMPATIBILITY.md)
+for the compatibility policy.
+
 See the [architecture](https://github.com/21nCo/super-functions/blob/main/mcpfn/ARCHITECTURE.md), [testing guide](https://github.com/21nCo/super-functions/blob/main/mcpfn/TESTING.md), and runnable [calculator example](https://github.com/21nCo/super-functions/blob/main/mcpfn/examples/calculator-server.ts).

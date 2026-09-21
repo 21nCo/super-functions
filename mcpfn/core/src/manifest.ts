@@ -1,5 +1,4 @@
-import Ajv from "ajv";
-import addFormats from "ajv-formats";
+import { compileSchema } from "./validation.js";
 import { UriTemplate } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
 import { ServerCapabilitiesSchema } from "@modelcontextprotocol/sdk/types.js";
 
@@ -210,8 +209,6 @@ export function validateManifest(value: unknown): McpFnManifest {
   }
   assertMetadata("Manifest extensions", manifest.extensions);
 
-  const ajv = new Ajv({ allErrors: true, strict: false, allowUnionTypes: true });
-  addFormats(ajv as never);
   for (const tool of manifest.tools) {
     assertObject("Every manifest tool", tool);
     assertName("Every manifest tool", tool.name);
@@ -228,8 +225,8 @@ export function validateManifest(value: unknown): McpFnManifest {
       }
     }
     try {
-      ajv.compile(tool.inputSchema);
-      if (tool.outputSchema !== undefined) ajv.compile(tool.outputSchema);
+      compileSchema(tool.inputSchema);
+      if (tool.outputSchema !== undefined) compileSchema(tool.outputSchema);
     } catch (error) {
       throw new McpFnValidationError(
         `Manifest tool ${tool.name} contains an invalid JSON Schema`,
@@ -350,7 +347,7 @@ export function validateManifest(value: unknown): McpFnManifest {
           `Manifest prompt ${prompt.name} argumentsSchema must be an object schema`,
         );
       }
-      try { ajv.compile(prompt.argumentsSchema); } catch {
+      try { compileSchema(prompt.argumentsSchema); } catch {
         throw new McpFnValidationError(
           `Manifest prompt ${prompt.name} has an invalid arguments JSON Schema`,
         );

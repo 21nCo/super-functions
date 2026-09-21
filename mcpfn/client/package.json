@@ -25,7 +25,7 @@
     "@superfunctions/oauth-core": "0.1.1"
   },
   "devDependencies": {
-    "@mcpfn/core": "0.0.4",
+    "@mcpfn/core": "0.0.5",
     "@types/node": "^20.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
