@@ -272,8 +272,8 @@ export class McpFnClient {
     return redactOAuthValue(scrubbed, options) as T;
   }
 
-  /** Preserve a schema discriminator only when the active credential redactor proves it safe. */
-  preserveArtifactStructure<T extends string>(value: T): T {
+  /** Preserve an authored schema value only when the active credential redactor proves it safe. */
+  preserveArtifactStructure<T extends string | number | boolean>(value: T): T {
     try {
       if (this.redact(value, {
         preserveKeys: false,

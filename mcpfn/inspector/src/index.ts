@@ -163,10 +163,10 @@ export class McpFnInspector {
         : Promise.resolve(emptyInventory),
     ]);
     const droppedInventoryEntries = {
-      tools: tools.droppedItems,
-      resources: resources.droppedItems,
-      resourceTemplates: resourceTemplates.droppedItems,
-      prompts: prompts.droppedItems,
+      tools: this.client.preserveArtifactStructure(tools.droppedItems),
+      resources: this.client.preserveArtifactStructure(resources.droppedItems),
+      resourceTemplates: this.client.preserveArtifactStructure(resourceTemplates.droppedItems),
+      prompts: this.client.preserveArtifactStructure(prompts.droppedItems),
     };
     const inventoryComplete = Object.values(droppedInventoryEntries)
       .every((count) => count === 0);
@@ -186,9 +186,18 @@ export class McpFnInspector {
     const snapshotKind = this.client.preserveArtifactStructure("mcpfn.inspector-snapshot");
     const targetKind = this.client.preserveArtifactStructure(kind);
     const clientState = this.client.preserveArtifactStructure(this.client.state);
+    const timeline = structuredClone(this.events);
+    const snapshotKeys = [
+      "formatVersion", "kind", "target", "clientState", "server", "capabilities",
+      "tools", "resources", "resourceTemplates", "prompts", "timeline",
+      "droppedEvents", "timelineComplete", "droppedInventoryEntries", "inventoryComplete",
+      "source", "at", "event",
+    ] as const;
+    for (const key of snapshotKeys) this.client.preserveArtifactStructure(key);
+    if (timeline.length > 0) this.client.preserveArtifactStructure(1);
     // Custom hooks receive payloads only; reconstruct authored discriminators.
     return {
-      formatVersion: 2,
+      formatVersion: this.client.preserveArtifactStructure(2),
       kind: snapshotKind,
       target: { ...this.client.redact(descriptor, redaction), kind: targetKind },
       clientState,
@@ -199,11 +208,11 @@ export class McpFnInspector {
       resourceTemplates: this.client.redact(resourceTemplates.items, redaction),
       prompts: this.client.redact(prompts.items, redaction),
       // Stored events already passed through the client hook; never reapply it.
-      timeline: structuredClone(this.events),
-      droppedEvents,
-      timelineComplete: droppedEvents === 0,
+      timeline,
+      droppedEvents: this.client.preserveArtifactStructure(droppedEvents),
+      timelineComplete: this.client.preserveArtifactStructure(droppedEvents === 0),
       droppedInventoryEntries,
-      inventoryComplete,
+      inventoryComplete: this.client.preserveArtifactStructure(inventoryComplete),
     };
   }
 

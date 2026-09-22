@@ -713,9 +713,13 @@ function finalizeSuiteReport(
       droppedTimelineEvents: report.droppedTimelineEvents + report.timeline.length,
     };
     try {
-      finalized = boundedSuiteReport(fallback, guard, maxReportBytes);
+      finalized = boundedSuiteReport(
+        redactTargetCredentials(options.target, fallback, { preserveKeys: true }),
+        guard,
+        maxReportBytes,
+      );
     } catch (fallbackError) {
-      if (fallbackError instanceof McpFnStructuralCredentialCollisionError) {
+      if (fallbackError instanceof McpFnRedactionLimitError) {
         return structuralReportFailure(retainedCleanup);
       }
       throw fallbackError;

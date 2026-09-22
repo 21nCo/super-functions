@@ -4,9 +4,21 @@ import { describe, expect, it, vi } from "vitest";
 import { customTarget } from "@mcpfn/client";
 import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
 
-import { runMcpFnTargetSuite } from "../src/index.js";
+import { authenticatedHttpTarget, runMcpFnTargetSuite } from "../src/index.js";
 
 describe("McpFn target suite", () => {
+  it("fails closed when a primitive credential collides with the fallback report", async () => {
+    const secret = "false";
+    const error = await runMcpFnTargetSuite({
+      target: authenticatedHttpTarget("http://127.0.0.1:1/mcp", {
+        credential: { headers: { "x-api-key": secret } },
+      }),
+    }).catch(failure => failure as Error);
+
+    expect(error.message).toContain("credential conflicts with required artifact structure");
+    expect(error.message).not.toContain(secret);
+  });
+
   it("uses one target/session engine for external-shaped and in-memory targets", async () => {
     const server = createMcpFnServer({
       info: { name: "suite-target", version: "1.0.0" },

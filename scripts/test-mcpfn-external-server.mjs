@@ -35,8 +35,8 @@ server.stderr.on("data", (chunk) => { serverStderr += chunk; });
 
 try {
   const url = await waitForUrl(server, () => serverStderr);
-  await expectHttpStatus(url, { headers: { host: "[invalid" } }, 400);
-  await expectHttpStatus(new URL("/not-found", url), {}, 404);
+  await expectHttpStatus(url, { headers: { host: "[invalid" } }, 400, () => serverStderr);
+  await expectHttpStatus(new URL("/not-found", url), {}, 404, () => serverStderr);
   const authenticated = spawnSync(process.execPath, [
     cli,
     "test-target",
@@ -140,7 +140,7 @@ function waitForUrl(child, readStderr) {
   });
 }
 
-function expectHttpStatus(url, options, expected) {
+function expectHttpStatus(url, options, expected, readStderr) {
   return new Promise((resolve, reject) => {
     const request = httpRequest(url, options, (response) => {
       response.resume();
@@ -153,7 +153,9 @@ function expectHttpStatus(url, options, expected) {
         }
       });
     });
-    request.setTimeout(10_000, () => request.destroy(new Error("HTTP fixture probe timed out")));
+    request.setTimeout(10_000, () => request.destroy(
+      new Error(`HTTP fixture probe timed out\n${readStderr()}`),
+    ));
     request.once("error", reject);
     request.end();
   });

@@ -76,6 +76,30 @@ describe("authenticated programmatic artifacts", () => {
     expect(error.message).not.toContain(secret);
   });
 
+  it.each(["2", "true"])(
+    "fails closed when an authenticated credential matches snapshot primitive %s",
+    async secret => {
+      const fixture = await startAuthenticatedServer(secret, true);
+      closeCallbacks.push(fixture.close);
+      const client = new McpFnClient({
+        target: authenticatedHttpTarget(fixture.url, {
+          credential: { headers: { authorization: `Bearer ${secret}` } },
+        }),
+      });
+      const inspector = new McpFnInspector(client);
+      closeCallbacks.push(() => client.close());
+      await inspector.connect();
+      const error = await inspector.snapshot().then(
+        () => { throw new Error("Expected structural collision"); },
+        failure => failure as Error,
+      );
+      expect(error.message).toMatch(
+        /MCP artifact structure conflicts with credential redaction|Credential redaction could not guarantee safe serialized output/,
+      );
+      expect(error.message).not.toContain(secret);
+    },
+  );
+
   it("keeps oversized diagnostic payloads from breaking a tool operation", async () => {
     const secret = "oversized-secret";
     const fixture = await startAuthenticatedServer(secret, true, "x".repeat(300_000) + secret);

@@ -51,6 +51,10 @@ function addAuthorizationSecrets(raw: string, secrets: Set<string>): void {
     }
     return;
   }
+  addBasicAuthorizationSecrets(token, secrets);
+}
+
+function addBasicAuthorizationSecrets(token: string, secrets: Set<string>): void {
   if (!/^[\dA-Za-z+/]+={0,2}$/.test(token)) return;
   const decoded = Buffer.from(token, "base64");
   // Round-trip validation avoids interpreting malformed tokens as credentials.
@@ -65,7 +69,7 @@ function addAuthorizationSecrets(raw: string, secrets: Set<string>): void {
   }
 }
 
-const authorizationToken68 = /^[\dA-Za-z._~+\/-]+=*$/;
+const authorizationToken68 = /^[\dA-Za-z._~+\x2F-]+=*$/;
 const authorizationParameterName = /^[!#$%&'*+.^_`|~\dA-Za-z-]+$/;
 
 interface ParsedAuthorizationValue {
