@@ -138,6 +138,7 @@
     "gate:langfn-release": "node scripts/gate-langfn-release.mjs"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.25.2",
     "fast-glob": "^3.3.3",
     "@cloudflare/vitest-pool-workers": "^0.10.4",
     "@types/node": "^20.0.0",
@@ -145,11 +146,14 @@
     "@vitest/spy": "3.2.4",
     "@vitest/ui": "^3.2.4",
     "@vitest/utils": "3.2.4",
+    "esbuild": "0.21.5",
+    "miniflare": "4.20251113.0",
     "msw": "^2.11.6",
     "prettier": "^3.0.0",
     "turbo": "^2.0.0",
     "typescript": "^5.3.0",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "zod": "3.25.76"
   },
   "overrides": {
     "fast-uri": "3.1.5",

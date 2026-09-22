@@ -112,10 +112,11 @@ Task support is declared with `execution.taskSupport` and a `taskHandler`; a tas
 pinned Zod runtime are inlined into `dist`. Bundle it into a Cloudflare Worker
 next to your application's own root `zod` dependency without adding a bundler
 alias for `zod`/`zod/v4`, an import condition override, or any other
-application-local shim. Serve MCP through `createWebStandardHandler()`. Schema
-validation uses Ajv on Node and falls back to `@cfworker/json-schema` on
-runtimes that forbid runtime code generation, such as `workerd`, so no
-configuration is required. See
+application-local shim. Enable Cloudflare's `nodejs_compat` compatibility flag,
+which provides Node built-ins such as `node:crypto` used by the official MCP
+SDK, and serve MCP through `createWebStandardHandler()`. Schema validation uses
+Ajv draft-07 on Node and `@cfworker/json-schema` with the same dialect on
+Cloudflare Workers and other runtimes that forbid runtime code generation. See
 [ADR-0001](https://github.com/21nCo/super-functions/blob/main/mcpfn/ADR-0001-COMPATIBILITY.md)
 for the compatibility policy.
 

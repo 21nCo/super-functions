@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 // Representative Cloudflare Workers (workerd) startup + tool-call regression for
-// McpFn. It bundles a Worker that imports the built @mcpfn/core alongside a root
-// `zod` import (the mixed-entry-point shape that broke Skillplane), boots it
-// under workerd via Miniflare, and drives a real MCP client through it.
+// McpFn. It bundles a Worker that imports the built @mcpfn/core and @mcpfn/auth
+// alongside a root `zod` import (the mixed-entry-point shape that broke
+// Skillplane), boots it under workerd via Miniflare, and drives a real MCP
+// client through the authenticated endpoint.
 //
 // This gate would fail on the pre-fix behavior in two ways:
 //   1. The published bundle leaked a `zod/v4` entry point next to the consumer's
@@ -36,10 +37,25 @@ const nodeExternals = [
 
 const workerSource = `
 import { z } from "zod";
-import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
+import {
+  McpFnRegistry,
+  createMcpFnServer,
+  schemaEngine,
+  structuredResult,
+} from "@mcpfn/core";
+import {
+  createOAuthResourceServerHandler,
+  createProtectedResourceMetadata,
+} from "@mcpfn/auth";
 
 // A consumer that also uses root \`zod\` — the mixed-entry-point shape.
 const AddInput = z.object({ left: z.number(), right: z.number() });
+const resource = new URL("https://worker.example/mcp");
+const protectedResource = createProtectedResourceMetadata({
+  resource,
+  authorizationServers: ["https://auth.example"],
+  scopesSupported: ["tools:call"],
+});
 
 const mcp = createMcpFnServer({
   info: { name: "cloudflare-regression", version: "1.0.0" },
@@ -70,12 +86,32 @@ const handlerPromise = mcp.createWebStandardHandler({
   enableJsonResponse: true,
   sessionIdGenerator: () => crypto.randomUUID(),
 });
+const protectedHandlerPromise = handlerPromise.then((handler) =>
+  createOAuthResourceServerHandler(handler, {
+    resource,
+    authorizationServers: ["https://auth.example"],
+    requiredScopes: ["tools:call"],
+    verifier: {
+      async verifyAccessToken(token) {
+        return {
+          token,
+          clientId: "cloudflare-regression-client",
+          scopes: ["tools:call"],
+          resource,
+        };
+      },
+    },
+  }),
+);
 
 export default {
   async fetch(request) {
     const url = new URL(request.url);
+    if (url.pathname === "/diagnostics") {
+      return Response.json({ schemaEngine, protectedResource });
+    }
     if (url.pathname !== "/mcp") return new Response("Not found", { status: 404 });
-    const handler = await handlerPromise;
+    const handler = await protectedHandlerPromise;
     return handler(request);
   },
 };
@@ -140,9 +176,25 @@ async function main() {
   try {
     const url = await mf.ready; // workerd is up and the module has been evaluated.
     const endpoint = new URL("/mcp", url);
+    const diagnosticsResponse = await fetch(new URL("/diagnostics", url));
+    assert.equal(diagnosticsResponse.status, 200);
+    const diagnostics = await diagnosticsResponse.json();
+    assert.equal(
+      diagnostics.schemaEngine,
+      "cfworker",
+      `Worker selected ${diagnostics.schemaEngine} instead of the edge validator`,
+    );
+    assert.deepEqual(diagnostics.protectedResource, {
+      resource: "https://worker.example/mcp",
+      authorization_servers: ["https://auth.example"],
+      scopes_supported: ["tools:call"],
+      bearer_methods_supported: ["header"],
+    });
 
     const client = new Client({ name: "cloudflare-regression-client", version: "1.0.0" });
-    const transport = new StreamableHTTPClientTransport(endpoint);
+    const transport = new StreamableHTTPClientTransport(endpoint, {
+      requestInit: { headers: { authorization: "Bearer worker-test-token" } },
+    });
     await client.connect(transport);
 
     const { tools } = await client.listTools();
@@ -158,12 +210,25 @@ async function main() {
       `Unexpected tool result: ${JSON.stringify(result)}`,
     );
 
+    const invalid = await client.callTool({
+      name: "add",
+      arguments: { left: "2", right: 3 },
+    });
+    assert.equal(invalid.isError, true, "Worker accepted invalid tool arguments");
+    assert.match(
+      invalid.content[0]?.text ?? "",
+      /MCPFN_INVALID_ARGUMENTS/,
+      `Unexpected validation result: ${JSON.stringify(invalid)}`,
+    );
+
     await client.close();
     process.stdout.write(
       JSON.stringify({
         ok: true,
         gate: "mcpfn cloudflare worker startup",
         runtime: "workerd",
+        schemaEngine: diagnostics.schemaEngine,
+        auth: "@mcpfn/auth",
         tool: "add",
         result: 5,
       }) + "\n",

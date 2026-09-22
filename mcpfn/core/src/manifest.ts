@@ -1,4 +1,4 @@
-import { compileSchema } from "./validation.js";
+import { createSchemaCompiler } from "./validation.js";
 import { UriTemplate } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
 import { ServerCapabilitiesSchema } from "@modelcontextprotocol/sdk/types.js";
 
@@ -144,6 +144,7 @@ export function createManifest<TContext>(
 }
 
 export function validateManifest(value: unknown): McpFnManifest {
+  const schemaCompiler = createSchemaCompiler();
   assertObject("McpFn manifest", value);
   const manifest = value as Partial<McpFnManifest>;
   if (manifest.formatVersion !== 1) {
@@ -225,8 +226,8 @@ export function validateManifest(value: unknown): McpFnManifest {
       }
     }
     try {
-      compileSchema(tool.inputSchema);
-      if (tool.outputSchema !== undefined) compileSchema(tool.outputSchema);
+      schemaCompiler.compile(tool.inputSchema);
+      if (tool.outputSchema !== undefined) schemaCompiler.compile(tool.outputSchema);
     } catch (error) {
       throw new McpFnValidationError(
         `Manifest tool ${tool.name} contains an invalid JSON Schema`,
@@ -347,7 +348,7 @@ export function validateManifest(value: unknown): McpFnManifest {
           `Manifest prompt ${prompt.name} argumentsSchema must be an object schema`,
         );
       }
-      try { compileSchema(prompt.argumentsSchema); } catch {
+      try { schemaCompiler.compile(prompt.argumentsSchema); } catch {
         throw new McpFnValidationError(
           `Manifest prompt ${prompt.name} has an invalid arguments JSON Schema`,
         );

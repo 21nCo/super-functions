@@ -106,8 +106,10 @@ npm run gate:mcpfn-release
 The gate typechecks, tests, and builds all seven McpFn packages; runs real stdio
 and Streamable HTTP round trips, OAuth boundary tests, a real Chromium PKCE
 flow, and the official active conformance suite; bundles and boots a Cloudflare
-Worker under `workerd` that imports `@mcpfn/core` next to a root `zod` and drives
-a real MCP client through `initialize`, `tools/list`, and `tools/call`
+Worker under `workerd` with `nodejs_compat` that imports `@mcpfn/core` and
+`@mcpfn/auth` next to a root `zod`, proves the codegen-free schema engine was
+selected, and drives a real authenticated MCP client through `initialize`,
+`tools/list`, and valid and invalid `tools/call` requests
 (`cloudflare:worker-startup`); runs the complete DataFn server suite; exercises
 the real CLI; checks package contents; and installs packed artifacts into a
 temporary external consumer for ESM and CommonJS imports. LangFn, MemoryFn, and

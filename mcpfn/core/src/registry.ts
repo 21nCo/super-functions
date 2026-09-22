@@ -1,5 +1,10 @@
 import { UriTemplate } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
-import { compileSchema, type CompiledSchema, type SchemaIssue } from "./validation.js";
+import {
+  createSchemaCompiler,
+  type CompiledSchema,
+  type SchemaCompiler,
+  type SchemaIssue,
+} from "./validation.js";
 import type {
   CallToolResult,
   CompleteResult,
@@ -308,7 +313,7 @@ export function assertPromptSchemaSupportsStringValues(
       };
       let validate: CompiledSchema | undefined;
       try {
-        validate = compileSchema(candidateSchema);
+        validate = createSchemaCompiler().compile(candidateSchema);
       } catch {
         hasStringWitness = false;
       }
@@ -372,10 +377,15 @@ export function promptArguments<TContext>(definition: McpFnPromptDefinition<TCon
 }
 
 export class McpFnRegistry<TContext = undefined> {
+  private readonly schemaCompiler: SchemaCompiler;
   private readonly tools = new Map<string, RegisteredTool<TContext>>();
   private readonly resources = new Map<string, McpFnResourceDefinition<TContext>>();
   private readonly resourceTemplates = new Map<string, RegisteredTemplate<TContext>>();
   private readonly prompts = new Map<string, RegisteredPrompt<TContext>>();
+
+  constructor() {
+    this.schemaCompiler = createSchemaCompiler();
+  }
 
   register<TDefinition extends McpFnToolDefinition<TContext>>(
     definition: TDefinition,
@@ -432,9 +442,9 @@ export class McpFnRegistry<TContext = undefined> {
     let validateInput: CompiledSchema;
     let validateOutput: CompiledSchema | undefined;
     try {
-      validateInput = compileSchema(definition.inputSchema);
+      validateInput = this.schemaCompiler.compile(definition.inputSchema);
       validateOutput = definition.outputSchema !== undefined
-        ? compileSchema(definition.outputSchema)
+        ? this.schemaCompiler.compile(definition.outputSchema)
         : undefined;
     } catch (error) {
       throw new McpFnValidationError(
@@ -590,7 +600,7 @@ export class McpFnRegistry<TContext = undefined> {
     }
     let validateArguments: CompiledSchema;
     try {
-      validateArguments = compileSchema(promptSchema(definition));
+      validateArguments = this.schemaCompiler.compile(promptSchema(definition));
     } catch (error) {
       throw new McpFnValidationError(
         `Prompt ${definition.name} contains an invalid arguments JSON Schema`,

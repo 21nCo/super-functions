@@ -32,11 +32,15 @@ resolve the SDK's internal `zod/v4` import to a different physical Zod copy than
 the one the schemas were constructed against.
 
 Schema validation adapts to the host runtime. On Node the packages compile JSON
-Schema with Ajv. On runtimes that forbid runtime code generation (Cloudflare
-Workers reject `new Function`), the packages fall back to
-`@cfworker/json-schema`, which validates without code generation. Both engines
-normalize errors to the same shape, so protocol behavior and error envelopes are
-unchanged.
+Schema draft-07 with Ajv. Cloudflare Workers use `@cfworker/json-schema`, which
+validates the same dialect without code generation; other runtimes that reject
+`new Function` use that fallback as well. Both engines reject malformed schemas
+at registration time and normalize errors to the same shape, so protocol
+behavior and error envelopes are unchanged.
+
+Cloudflare deployments must enable the `nodejs_compat` compatibility flag.
+The self-contained bundles still use Node built-ins required by the official
+MCP SDK, including `node:crypto`; the package does not shim those platform APIs.
 
 `@mcpfn/client`, `@mcpfn/cli`, `@mcpfn/testing`, and `@mcpfn/inspector` remain
 Node-targeted. `@mcpfn/client` re-exports the stdio client transport, which
@@ -45,11 +49,13 @@ serve MCP with `@mcpfn/core` and, when they need OAuth resource-server behavior,
 `@mcpfn/auth`.
 
 A representative Cloudflare Worker startup check is part of the guarded release.
-`npm run gate:mcpfn-release` bundles a worker that imports `@mcpfn/core` next to
-a root `zod`, boots it under the `workerd` runtime, and drives a real MCP client
-through `initialize`, `tools/list`, and `tools/call`. The check also asserts,
-from the bundler's module graph, that no external `zod/v4` or SDK entry leaks
-into the worker bundle.
+`npm run gate:mcpfn-release` bundles a worker that imports `@mcpfn/core` and
+`@mcpfn/auth` next to a root `zod`, boots it under the `workerd` runtime with
+`nodejs_compat`, asserts that the edge validator was selected, and drives a
+real authenticated MCP client through `initialize`, `tools/list`, and both
+valid and invalid `tools/call` requests. The check also asserts, from the
+bundler's module graph, that no external `zod/v4` or SDK entry leaks into the
+worker bundle.
 
 ## Public format policy
 
