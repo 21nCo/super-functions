@@ -37,13 +37,63 @@ describe("schema validation engines", () => {
     ]);
   });
 
-  it("scopes schema identifiers to an owning compiler", () => {
-    const first = createSchemaCompiler("ajv");
-    const second = createSchemaCompiler("ajv");
-    const schema = { $id: "https://example.test/value", type: "string" };
+  it.each(["ajv", "cfworker"] as const)(
+    "resolves previously registered external schemas with %s",
+    (engine) => {
+      const compiler = createSchemaCompiler(engine);
+      compiler.compile({ $id: "https://example.test/value", type: "string" });
+      const validate = compiler.compile({
+        type: "object",
+        properties: { value: { $ref: "https://example.test/value" } },
+      });
 
-    expect(() => first.compile(schema)).not.toThrow();
-    expect(() => second.compile(schema)).not.toThrow();
-    expect(() => first.compile({ ...schema })).toThrow(/already exists/);
+      expect(validate({ value: "ok" })).toBe(true);
+      expect(validate({ value: 42 })).toBe(false);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "scopes schema identifiers to an owning %s compiler",
+    (engine) => {
+      const first = createSchemaCompiler(engine);
+      const second = createSchemaCompiler(engine);
+      const schema = { $id: "https://example.test/value", type: "string" };
+
+      expect(() => first.compile(schema)).not.toThrow();
+      expect(() => second.compile(schema)).not.toThrow();
+      expect(() => first.compile({ ...schema })).toThrow(/already exists|Duplicate schema URI/);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "keeps anonymous schemas independent within a %s compiler",
+    (engine) => {
+      const compiler = createSchemaCompiler(engine);
+
+      expect(() => compiler.compile({ type: "string" })).not.toThrow();
+      expect(() => compiler.compile({ type: "number" })).not.toThrow();
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "rejects unsupported explicitly declared dialects with %s",
+    (engine) => {
+      expect(() => createSchemaCompiler(engine).compile({
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        type: "string",
+      })).toThrow();
+    },
+  );
+
+  it.each([
+    ["ajv", "http://json-schema.org/draft-07/schema#"],
+    ["ajv", "http://json-schema.org/draft-07/schema"],
+    ["cfworker", "http://json-schema.org/draft-07/schema#"],
+    ["cfworker", "http://json-schema.org/draft-07/schema"],
+  ] as const)("accepts the supported %s dialect alias %s", (engine, dialect) => {
+    expect(() => createSchemaCompiler(engine).compile({
+      $schema: dialect,
+      type: "string",
+    })).not.toThrow();
   });
 });

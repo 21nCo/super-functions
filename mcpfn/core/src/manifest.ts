@@ -144,7 +144,6 @@ export function createManifest<TContext>(
 }
 
 export function validateManifest(value: unknown): McpFnManifest {
-  const schemaCompiler = createSchemaCompiler();
   assertObject("McpFn manifest", value);
   const manifest = value as Partial<McpFnManifest>;
   if (manifest.formatVersion !== 1) {
@@ -226,8 +225,12 @@ export function validateManifest(value: unknown): McpFnManifest {
       }
     }
     try {
-      schemaCompiler.compile(tool.inputSchema);
-      if (tool.outputSchema !== undefined) schemaCompiler.compile(tool.outputSchema);
+      // Manifest schemas are independent embedded documents. Compile each in
+      // its own scope so identifiers cannot collide or resolve across entries.
+      createSchemaCompiler().compile(tool.inputSchema);
+      if (tool.outputSchema !== undefined) {
+        createSchemaCompiler().compile(tool.outputSchema);
+      }
     } catch (error) {
       throw new McpFnValidationError(
         `Manifest tool ${tool.name} contains an invalid JSON Schema`,
@@ -348,7 +351,7 @@ export function validateManifest(value: unknown): McpFnManifest {
           `Manifest prompt ${prompt.name} argumentsSchema must be an object schema`,
         );
       }
-      try { schemaCompiler.compile(prompt.argumentsSchema); } catch {
+      try { createSchemaCompiler().compile(prompt.argumentsSchema); } catch {
         throw new McpFnValidationError(
           `Manifest prompt ${prompt.name} has an invalid arguments JSON Schema`,
         );

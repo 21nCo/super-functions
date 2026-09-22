@@ -92,7 +92,7 @@ function mapCfWorkerErrors(errors: CfWorkerOutputUnit[] | undefined): SchemaIssu
 function jsonPointerToKeyword(location: string | undefined): string {
   if (!location || location === "#") return "schema";
   const segment = location.split("/").at(-1);
-  return segment?.replace(/~1/g, "/").replace(/~0/g, "~") || "schema";
+  return segment?.replaceAll("~1", "/").replaceAll("~0", "~") || "schema";
 }
 
 export type SchemaEngine = "ajv" | "cfworker";
@@ -139,6 +139,7 @@ export function createSchemaCompiler(
   }
 
   const validateSchema = new CfWorkerValidator(draft7MetaSchema as never, "7", false);
+  const registeredSchemas: Array<{ schema: object; syntheticId?: string }> = [];
   return {
     engine,
     compile(schema) {
@@ -156,6 +157,18 @@ export function createSchemaCompiler(
       // Ajv's default constructor implements draft-07. Keep the fallback on
       // that same dialect so keywords such as $ref have identical semantics.
       const validator = new CfWorkerValidator(schema as never, "7", false);
+      for (const registered of registeredSchemas) {
+        validator.addSchema(registered.schema as never, registered.syntheticId);
+      }
+      registeredSchemas.push({
+        schema,
+        // @cfworker assigns the same default URI to every anonymous schema.
+        // Give prior anonymous documents private roots when adding them to a
+        // later validator, while preserving any explicit $id verbatim.
+        ...(typeof (schema as { $id?: unknown }).$id === "string"
+          ? {}
+          : { syntheticId: `https://mcpfn.invalid/schema/${registeredSchemas.length}` }),
+      });
       const compiled = ((data: unknown): boolean => {
         const result = validator.validate(data) as {
           valid: boolean;

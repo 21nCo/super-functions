@@ -57,29 +57,40 @@ const protectedResource = createProtectedResourceMetadata({
   scopesSupported: ["tools:call"],
 });
 
+const registry = new McpFnRegistry().register({
+  name: "pair-shape",
+  description: "Validate a pair of numbers.",
+  inputSchema: {
+    $id: "https://worker.example/schemas/pair",
+    type: "object",
+    additionalProperties: false,
+    required: ["left", "right"],
+    properties: { left: { type: "number" }, right: { type: "number" } },
+  },
+  handler: async ({ left, right }) => structuredResult({ left, right }),
+}).register({
+  name: "add",
+  description: "Add two numbers.",
+  inputSchema: {
+    type: "object",
+    $ref: "https://worker.example/schemas/pair",
+  },
+  outputSchema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["result"],
+    properties: { result: { type: "number" } },
+  },
+  handler: async ({ left, right }) => {
+    // Prove the consumer's root zod runs in the same isolate.
+    AddInput.parse({ left, right });
+    return structuredResult({ result: left + right });
+  },
+});
+
 const mcp = createMcpFnServer({
   info: { name: "cloudflare-regression", version: "1.0.0" },
-  registry: new McpFnRegistry().register({
-    name: "add",
-    description: "Add two numbers.",
-    inputSchema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["left", "right"],
-      properties: { left: { type: "number" }, right: { type: "number" } },
-    },
-    outputSchema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["result"],
-      properties: { result: { type: "number" } },
-    },
-    handler: async ({ left, right }) => {
-      // Prove the consumer's root zod runs in the same isolate.
-      AddInput.parse({ left, right });
-      return structuredResult({ result: left + right });
-    },
-  }),
+  registry,
 });
 
 const handlerPromise = mcp.createWebStandardHandler({
@@ -238,7 +249,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
+try {
+  await main();
+} catch (error) {
   console.error(
     JSON.stringify({
       ok: false,
@@ -246,4 +259,4 @@ main().catch((error) => {
     }),
   );
   process.exitCode = 1;
-});
+}

@@ -1,6 +1,7 @@
 // JSON Schema draft-07 meta-schema, bundled as TypeScript so both the ESM and
 // CommonJS package outputs can validate edge schemas without a runtime JSON
-// import. Source: http://json-schema.org/draft-07/schema#
+// import. Derived from http://json-schema.org/draft-07/schema#; the $schema
+// declaration is constrained below to the two draft-07 aliases Ajv supports.
 export const draft7MetaSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
   $id: "http://json-schema.org/draft-07/schema#",
@@ -31,7 +32,14 @@ export const draft7MetaSchema = {
   type: ["object", "boolean"],
   properties: {
     $id: { type: "string", format: "uri-reference" },
-    $schema: { type: "string", format: "uri" },
+    $schema: {
+      type: "string",
+      format: "uri",
+      enum: [
+        "http://json-schema.org/draft-07/schema#",
+        "http://json-schema.org/draft-07/schema",
+      ],
+    },
     $ref: { type: "string", format: "uri-reference" },
     $comment: { type: "string" },
     title: { type: "string" },

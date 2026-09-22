@@ -5,6 +5,7 @@ import {
   canonicalJson,
   createManifest,
   diffManifests,
+  sha256,
   structuredResult,
   validateManifest,
 } from "../src/index.js";
@@ -60,6 +61,28 @@ describe("McpFn manifests", () => {
         }),
     );
     expect(manifest.tools.map((tool) => tool.name)).toEqual(["a-b", "a_b"]);
+    expect(validateManifest(manifest)).toEqual(manifest);
+  });
+
+  it("isolates schema identifiers between manifest entries", () => {
+    const manifest = createManifest(
+      { name: "schema-identifiers", version: "1.0.0" },
+      registry().register({
+        name: "write",
+        description: "Write a value.",
+        inputSchema: { type: "object" },
+        handler: async () => structuredResult({ ok: true }),
+      }),
+    );
+    for (const tool of manifest.tools) {
+      tool.inputSchema = {
+        $id: "https://example.test/manifest-input",
+        type: "object",
+      };
+    }
+    const { hash: _oldHash, ...body } = manifest;
+    manifest.hash = sha256(body);
+
     expect(validateManifest(manifest)).toEqual(manifest);
   });
 
