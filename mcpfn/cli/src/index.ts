@@ -243,10 +243,12 @@ export async function runCli(
           maxBytes: outputMaxBytes - 1,
         });
         const serialized = `${JSON.stringify(report)}\n`;
-        if (options.output) {
-          await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
-        }
-        await stdout(serialized);
+        await preserveCleanupOwner(undefined, async () => {
+          if (options.output) {
+            await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+          }
+          await stdout(serialized);
+        }, "Scenario report output failed");
         if (report.failed > 0 || report.status === "incomplete") exitCode = 1;
       } finally {
         await client.close();

@@ -76,6 +76,12 @@ const DIAGNOSTIC_PHASES: readonly McpFnDiagnosticPhase[] = [
   "transport-close",
 ];
 const DIAGNOSTIC_OUTCOMES = ["started", "succeeded", "failed"] as const;
+const CLIENT_EVENT_STRUCTURE_KEYS = [
+  "formatVersion", "kind", "at", "requestId", "target",
+] as const;
+const DIAGNOSTIC_STRUCTURE_KEYS = [
+  "phase", "outcome", "requestId", "at", "target",
+] as const;
 
 export interface McpFnClientOptions {
   target: McpFnTarget;
@@ -963,8 +969,10 @@ export class McpFnClient {
     let event: McpFnClientEvent | undefined;
     try {
       const at = (this.options.clock?.() ?? new Date()).toISOString();
+      this.preserveArtifactKeys(CLIENT_EVENT_STRUCTURE_KEYS);
+      if (payload !== undefined) this.preserveArtifactStructure("payload");
       event = {
-        formatVersion: 1,
+        formatVersion: this.preserveArtifactStructure(1),
         kind: this.preserveArtifactStructure(kind),
         at: this.preserveArtifactTimestamp(at),
         requestId: this.redact(this.requestId(), { preserveKeys: false }),
@@ -1022,6 +1030,9 @@ export class McpFnClient {
         redacted = event;
       } else {
         const { phase, outcome, code, requestId, at, target, details } = event;
+        this.preserveArtifactKeys(DIAGNOSTIC_STRUCTURE_KEYS);
+        if (code !== undefined) this.preserveArtifactStructure("code");
+        if (details !== undefined) this.preserveArtifactStructure("details");
         redacted = {
           phase: this.preserveArtifactStructure(phase),
           outcome: this.preserveArtifactStructure(outcome),
@@ -1052,6 +1063,10 @@ export class McpFnClient {
       catch {}
     }
     return undefined;
+  }
+
+  private preserveArtifactKeys(keys: readonly string[]): void {
+    for (const key of keys) this.preserveArtifactStructure(key);
   }
 
   private redactTargetDescriptor(target: McpFnTargetDescriptor): McpFnTargetDescriptor {
@@ -1102,8 +1117,9 @@ export class McpFnClient {
     const at = this.safeArtifactTimestamp();
     if (!kind || !at) return undefined;
     try {
+      this.preserveArtifactKeys([...CLIENT_EVENT_STRUCTURE_KEYS, "payload"]);
       const event: McpFnClientEvent = {
-        formatVersion: 1,
+        formatVersion: this.preserveArtifactStructure(1),
         kind,
         at,
         requestId: this.redact("redacted", { preserveKeys: false }),
@@ -1127,6 +1143,11 @@ export class McpFnClient {
     const at = this.safeArtifactTimestamp();
     if (!phase || !outcome || !at) return undefined;
     try {
+      this.preserveArtifactKeys([
+        ...DIAGNOSTIC_STRUCTURE_KEYS,
+        "code",
+        "details",
+      ]);
       const event: McpFnDiagnosticEvent = {
         phase,
         outcome,

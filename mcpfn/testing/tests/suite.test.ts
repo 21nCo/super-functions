@@ -8,6 +8,18 @@ import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core"
 
 import { authenticatedHttpTarget, runMcpFnTargetSuite } from "../src/index.js";
 
+function redactThrowOn(payloadKey: string) {
+  return <T>(value: T): T => {
+    const data = value && typeof value === "object"
+      ? (value as { data?: unknown }).data
+      : undefined;
+    if (data && typeof data === "object" && payloadKey in data) {
+      throw new Error("event redaction unavailable");
+    }
+    return value;
+  };
+}
+
 describe("McpFn target suite", () => {
   it("fails closed when a primitive credential collides with the fallback report", async () => {
     const secret = "false";
@@ -151,15 +163,7 @@ describe("McpFn target suite", () => {
     const report = await runMcpFnTargetSuite({
       target: customTarget({
         kind: "fixture",
-        redact: <T>(value: T): T => {
-          const data = value && typeof value === "object"
-            ? (value as { data?: unknown }).data
-            : undefined;
-          if (data && typeof data === "object" && "privateRedactionState" in data) {
-            throw new Error("event redaction unavailable");
-          }
-          return value;
-        },
+        redact: redactThrowOn("privateRedactionState"),
         open: async () => {
           const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
           await server.connect(serverTransport);
@@ -195,15 +199,7 @@ describe("McpFn target suite", () => {
       expectedToolNames: [],
       target: customTarget({
         kind: "fixture",
-        redact: <T>(value: T): T => {
-          const data = value && typeof value === "object"
-            ? (value as { data?: unknown }).data
-            : undefined;
-          if (data && typeof data === "object" && "privateSetupState" in data) {
-            throw new Error("setup event redaction unavailable");
-          }
-          return value;
-        },
+        redact: redactThrowOn("privateSetupState"),
         open: async () => {
           const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
           await server.connect(serverTransport);

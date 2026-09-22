@@ -300,6 +300,41 @@ it("fails closed when a credential matches an exported scenario key", () => {
   )).toThrow("MCP artifact structure conflicts with credential redaction");
 });
 
+it("rejects scenario exports and timeline entries with an unsafe format version", () => {
+  const client = new McpFnClient({
+    target: customTarget({
+      kind: "custom",
+      open: async () => { throw new Error("unused"); },
+      redact: <T>(value: T): T => Object.is(value, 1) ? 2 as T : value,
+    }),
+  });
+  const inspector = new McpFnInspector(client);
+
+  expect(() => inspector.exportScenario(
+    "reflection",
+    { kind: "tools.call", name: "echo" },
+    { content: [] },
+  )).toThrow("MCP artifact structure conflicts with credential redaction");
+
+  const record = (inspector as unknown as {
+    record(
+      source: "client",
+      kind: string,
+      at: string,
+      raw: { formatVersion: 1; kind: "logging.message"; at: string; requestId: string; target: { kind: string } },
+    ): void;
+  }).record.bind(inspector);
+  const at = new Date().toISOString();
+  record("client", "logging.message", at, {
+    formatVersion: 1,
+    kind: "logging.message",
+    at,
+    requestId: "request",
+    target: { kind: "custom" },
+  });
+  expect(inspector.timeline()).toEqual([]);
+});
+
 it.each(["status", "incompleteReason", "variables"])(
   "does not reject an export when optional key %s is not emitted",
   secret => {

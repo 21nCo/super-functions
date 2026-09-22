@@ -219,6 +219,35 @@ describe("mcpfn CLI", () => {
     expect(JSON.parse(output)).toMatchObject({ status: "incomplete" });
   });
 
+  it("classifies local test stdout failures as runtime exit 1", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-test-output-"));
+    roots.push(root);
+    const coreUrl = pathToFileURL(testRequire.resolve("@mcpfn/core")).href;
+    await writeFile(
+      path.join(root, "server.mjs"),
+      `import { defineMcpFnServer, structuredResult } from ${JSON.stringify(coreUrl)};
+       export default defineMcpFnServer({
+         info: { name: "test-output", version: "1.0.0" },
+         tools: [{
+           name: "noop", description: "No operation.", inputSchema: { type: "object" },
+           handler: async () => structuredResult({ ok: true })
+         }]
+       });`,
+    );
+    await writeFile(path.join(root, "scenarios.json"), "[]\n");
+    let errors = "";
+
+    const exitCode = await runCli(["test", "server.mjs", "scenarios.json"], {
+      cwd: root,
+      stdout: async () => { throw new Error("unsafe output detail"); },
+      stderr: value => { errors += value; },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(errors).toContain("Scenario report output failed");
+    expect(errors).not.toContain("unsafe output detail");
+  });
+
   it("returns test-failure exit code 1 for a manifest contract mismatch", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-mismatch-"));
     roots.push(root);

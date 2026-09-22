@@ -257,11 +257,12 @@ export class McpFnInspector {
       this.client.preserveArtifactStructure(key);
     }
     const { formatVersion, kind, sideEffect, ...payload } = scenario;
-    if (kind === undefined || sideEffect === undefined) {
+    if (formatVersion === undefined || kind === undefined || sideEffect === undefined) {
       throw new Error("Inspector scenario export requires normalized structure");
     }
     const safeKind = this.client.preserveArtifactStructure(kind);
     const safeSideEffect = this.client.preserveArtifactStructure(sideEffect);
+    const safeFormatVersion = this.client.preserveArtifactStructure(formatVersion);
     const secretMarker = selectScenarioSecretMarker(this.client);
     let redacted: Record<string, unknown>;
     try {
@@ -272,13 +273,13 @@ export class McpFnInspector {
           preserveKeys: false,
           redactionMarker: secretMarker ?? "",
         })])),
-        formatVersion, kind: safeKind, sideEffect: safeSideEffect,
+        formatVersion: safeFormatVersion, kind: safeKind, sideEffect: safeSideEffect,
       };
     } catch {
       this.client.preserveArtifactStructure("status");
       this.client.preserveArtifactStructure("incompleteReason");
       return {
-        formatVersion,
+        formatVersion: safeFormatVersion,
         kind: safeKind,
         sideEffect: safeSideEffect,
         name: "",
@@ -332,7 +333,12 @@ export class McpFnInspector {
     }
     let safeSource: McpFnInspectorTimelineEvent["source"];
     let safeKind: string;
+    let safeFormatVersion: 1;
     try {
+      for (const key of ["formatVersion", "source", "kind", "at", "event"] as const) {
+        this.client.preserveArtifactStructure(key);
+      }
+      safeFormatVersion = this.client.preserveArtifactStructure(1);
       safeSource = this.client.preserveArtifactStructure(source);
       safeKind = this.client.preserveArtifactStructure(kind);
     } catch {
@@ -340,7 +346,7 @@ export class McpFnInspector {
       return;
     }
     let event: McpFnInspectorTimelineEvent = {
-      formatVersion: 1,
+      formatVersion: safeFormatVersion,
       source: safeSource,
       kind: safeKind,
       at,
@@ -360,7 +366,7 @@ export class McpFnInspector {
         return;
       }
       event = {
-        formatVersion: 1,
+        formatVersion: safeFormatVersion,
         source: safeSource,
         kind: safeKind,
         at,
