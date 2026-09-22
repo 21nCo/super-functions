@@ -112,6 +112,100 @@ function defaultSchemaEngine(): SchemaEngine {
   return !isCloudflareWorker() && canGenerateCode() ? "ajv" : "cfworker";
 }
 
+const syntheticCollectionBase = "https://schema-collection.mcpfn.invalid/";
+
+function explicitSchemaId(schema: object): string | undefined {
+  const id = (schema as { $id?: unknown }).$id;
+  return typeof id === "string" && id.length > 0 ? id : undefined;
+}
+
+function syntheticCollectionId(index: number | "index", attempt: number): string {
+  return `${syntheticCollectionBase}${index}-${attempt}`;
+}
+
+function isSyntheticIdCollision(error: unknown, syntheticIds: readonly string[]): boolean {
+  if (!(error instanceof Error)) return false;
+  const duplicateMessage =
+    error.message.includes("already exists") ||
+    error.message.includes("resolves to more than one schema") ||
+    error.message.startsWith("Duplicate schema URI");
+  return duplicateMessage && syntheticIds.some((id) => error.message.includes(`"${id}"`));
+}
+
+/**
+ * Validate a related collection of JSON Schema resources without changing each
+ * schema's root. Named resources are registered before Ajv compiles any entry,
+ * so forward references do not depend on canonical manifest ordering.
+ */
+export function validateSchemaCollection(
+  schemas: readonly object[],
+  engine: SchemaEngine = defaultSchemaEngine(),
+): void {
+  const schemaCopies = schemas.map((schema) => structuredClone(schema));
+  if (engine === "cfworker") {
+    const validateSchema = new CfWorkerValidator(draft7MetaSchema as never, "7", false);
+    for (const schema of schemaCopies) {
+      const schemaResult = validateSchema.validate(schema) as {
+        valid: boolean;
+        errors?: CfWorkerOutputUnit[];
+      };
+      if (!schemaResult.valid) {
+        const details = mapCfWorkerErrors(schemaResult.errors)
+          .map((issue) => `${issue.instancePath || "/"}: ${issue.message}`)
+          .join("; ");
+        throw new Error(`schema is invalid: ${details}`);
+      }
+    }
+  }
+
+  let attempt = 0;
+  while (true) {
+    const resourceIds = schemaCopies.map(
+      (schema, index) => explicitSchemaId(schema) ?? syntheticCollectionId(index, attempt),
+    );
+    const syntheticIds = resourceIds.filter(
+      (_, index) => explicitSchemaId(schemaCopies[index]!) === undefined,
+    );
+
+    try {
+      if (engine === "ajv") {
+        const ajv = createAjv();
+        for (const [index, schema] of schemaCopies.entries()) {
+          const resourceId = resourceIds[index]!;
+          ajv.addSchema(
+            explicitSchemaId(schema) ? schema as never : { ...schema, $id: resourceId } as never,
+          );
+        }
+        for (const resourceId of resourceIds) {
+          if (!ajv.getSchema(resourceId)) {
+            throw new Error(`schema is unavailable after registration: ${resourceId}`);
+          }
+        }
+        return;
+      }
+
+      const indexId = syntheticCollectionId("index", attempt);
+      const validator = new CfWorkerValidator({ $id: indexId } as never, "7", false);
+      syntheticIds.push(indexId);
+      for (const [index, schema] of schemaCopies.entries()) {
+        const copy = structuredClone(schema);
+        if (explicitSchemaId(copy)) {
+          validator.addSchema(copy as never);
+        } else {
+          validator.addSchema(copy as never, resourceIds[index]!);
+        }
+      }
+      return;
+    } catch (error) {
+      if (isSyntheticIdCollision(error, syntheticIds)) {
+        attempt += 1;
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 /**
  * Compile a JSON Schema into a runtime-appropriate validator.
  *

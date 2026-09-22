@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createSchemaCompiler } from "../src/validation.js";
+import { createSchemaCompiler, validateSchemaCollection } from "../src/validation.js";
 
 describe("schema validation engines", () => {
   it.each(["ajv", "cfworker"] as const)(
@@ -53,6 +53,42 @@ describe("schema validation engines", () => {
   );
 
   it.each(["ajv", "cfworker"] as const)(
+    "validates schema collections as independent roots with %s",
+    (engine) => {
+      const schemaId = "https://example.test/batch-value";
+      expect(() => validateSchemaCollection(
+        [
+          {
+            type: "object",
+            definitions: { value: { type: "string" } },
+            properties: { value: { $ref: "#/definitions/value" } },
+          },
+          {
+            type: "object",
+            properties: { value: { $ref: schemaId } },
+          },
+          {
+            definitions: {
+              value: { $id: schemaId, type: "string" },
+            },
+          },
+        ],
+        engine,
+      )).not.toThrow();
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "rejects duplicate identifiers in schema collections with %s",
+    (engine) => {
+      const schema = { $id: "https://example.test/duplicate", type: "string" };
+
+      expect(() => validateSchemaCollection([schema, { ...schema }], engine))
+        .toThrow(/already exists|Duplicate schema URI/);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
     "scopes schema identifiers to an owning %s compiler",
     (engine) => {
       const first = createSchemaCompiler(engine);
@@ -84,6 +120,20 @@ describe("schema validation engines", () => {
       type: "object",
     })).not.toThrow();
   });
+
+  it.each(["ajv", "cfworker"] as const)(
+    "does not reserve collection-internal identifiers with %s",
+    (engine) => {
+      expect(() => validateSchemaCollection([
+        { $id: "https://schema-collection.mcpfn.invalid/1-0", type: "string" },
+        { type: "number" },
+      ], engine)).not.toThrow();
+      expect(() => validateSchemaCollection([
+        { definitions: { value: { $id: "1-0", type: "string" } } },
+        { type: "number" },
+      ], engine)).not.toThrow();
+    },
+  );
 
   it.each(["ajv", "cfworker"] as const)(
     "rejects unsupported explicitly declared dialects with %s",

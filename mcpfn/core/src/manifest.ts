@@ -1,4 +1,4 @@
-import { createSchemaCompiler } from "./validation.js";
+import { validateSchemaCollection } from "./validation.js";
 import { UriTemplate } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
 import { ServerCapabilitiesSchema } from "@modelcontextprotocol/sdk/types.js";
 
@@ -366,9 +366,10 @@ export function validateManifest(value: unknown): McpFnManifest {
   if (manifestSchemas.length) {
     try {
       // A registry and its manifest describe one schema resource collection.
-      // Compile a single aggregate document so cross-schema references resolve
-      // regardless of canonical manifest ordering and duplicate IDs still fail.
-      createSchemaCompiler().compile({ allOf: manifestSchemas });
+      // Register its named resources together, then compile every schema as its
+      // own root so both cross-schema and local fragment references survive
+      // canonical manifest ordering while duplicate IDs still fail.
+      validateSchemaCollection(manifestSchemas);
     } catch (error) {
       throw new McpFnValidationError("Manifest contains an invalid JSON Schema", {
         cause: error instanceof Error ? error.message : String(error),
