@@ -25,6 +25,8 @@ describe("authenticated remote MCP targets", () => {
   });
 
   it("retains credentials through the final successful close diagnostic", async () => {
+    // Deliberately collide with the authored diagnostic outcome so the final
+    // lifecycle event must become a marked redaction omission.
     const secret = "succeeded";
     const fixture = await startAuthenticatedServer(secret);
     closeCallbacks.push(fixture.close);
@@ -48,6 +50,8 @@ describe("authenticated remote MCP targets", () => {
   });
 
   it("retains released credentials through a failed-open diagnostic", async () => {
+    // Deliberately collide with the authored diagnostic outcome so the
+    // failed-open event must become a marked redaction omission.
     const secret = "failed";
     const diagnostics: McpFnDiagnosticEvent[] = [];
     const client = new McpFnClient({

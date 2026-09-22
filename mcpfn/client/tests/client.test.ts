@@ -19,6 +19,89 @@ describe("McpFn production client", () => {
     expect(Object.is(client.preserveArtifactStructure(-0), -0)).toBe(true);
   });
 
+  it("isolates throwing redaction-scope acquisition from open and close ownership", async () => {
+    const server = createMcpFnServer({
+      info: { name: "scope-acquisition", version: "1" },
+      registry: new McpFnRegistry(),
+    });
+    const closeHandle = vi.fn(() => server.close());
+    const beginRedactionScope = vi.fn((): (() => void) => {
+      throw new Error("scope acquisition failed");
+    });
+    const client = createMcpFnClient({
+      target: customTarget({
+        kind: "scope-acquisition",
+        beginRedactionScope,
+        open: async () => {
+          const [transport, peer] = InMemoryTransport.createLinkedPair();
+          await server.connect(peer);
+          return { transport, close: closeHandle };
+        },
+      }),
+    });
+
+    await expect(client.connect()).resolves.toBeUndefined();
+    await expect(client.close()).resolves.toBeUndefined();
+
+    expect(beginRedactionScope).toHaveBeenCalledTimes(2);
+    expect(closeHandle).toHaveBeenCalledOnce();
+    expect(client.state).toBe("closed");
+  });
+
+  it("cleans an attached handle when the open-scope finalizer throws", async () => {
+    const [transport] = InMemoryTransport.createLinkedPair();
+    const closeHandle = vi.fn(async () => undefined);
+    const finishRedaction = vi.fn(() => { throw new Error("scope finalization failed"); });
+    const client = createMcpFnClient({
+      target: customTarget({
+        kind: "scope-finalizer-open",
+        beginRedactionScope: () => finishRedaction,
+        open: async () => ({ transport, close: closeHandle }),
+      }),
+      configure: async () => { throw new Error("configuration failed"); },
+    });
+
+    await expect(client.connect()).rejects.toMatchObject({ code: "MCPFN_CONNECT_FAILED" });
+
+    expect(finishRedaction).toHaveBeenCalledOnce();
+    expect(closeHandle).toHaveBeenCalledOnce();
+    expect(client.state).toBe("idle");
+  });
+
+  it("keeps the retry-owning cleanup failure when close-scope finalization throws", async () => {
+    const server = createMcpFnServer({
+      info: { name: "scope-finalizer-close", version: "1" },
+      registry: new McpFnRegistry(),
+    });
+    const closeHandle = vi.fn()
+      .mockRejectedValueOnce(new Error("cleanup failed"))
+      .mockImplementation(() => server.close());
+    const finishRedaction = vi.fn(() => { throw new Error("scope finalization failed"); });
+    const client = createMcpFnClient({
+      target: customTarget({
+        kind: "scope-finalizer-close",
+        beginRedactionScope: () => finishRedaction,
+        open: async () => {
+          const [transport, peer] = InMemoryTransport.createLinkedPair();
+          await server.connect(peer);
+          return { transport, close: closeHandle };
+        },
+      }),
+    });
+    await client.connect();
+
+    await expect(client.close()).rejects.toMatchObject({
+      message: "MCP target cleanup failed",
+      retryable: true,
+    });
+    expect(client.state).toBe("closing");
+    await expect(client.close()).resolves.toBeUndefined();
+
+    expect(closeHandle).toHaveBeenCalledTimes(2);
+    expect(finishRedaction).toHaveBeenCalledTimes(3);
+    expect(client.state).toBe("closed");
+  });
+
   it("omits client and diagnostic envelopes when authored structure is unsafe", async () => {
     const events: unknown[] = [];
     const diagnostics: unknown[] = [];

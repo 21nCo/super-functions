@@ -330,6 +330,26 @@ it("fails closed when a credential matches an exported scenario key", () => {
   )).toThrow("MCP artifact structure conflicts with credential redaction");
 });
 
+it("fails closed when final JSON composition reconstructs a target credential", () => {
+  const secret = '","';
+  const client = new McpFnClient({
+    target: customTarget({
+      kind: "custom",
+      open: async () => { throw new Error("unused"); },
+      redact: <T>(value: T): T => typeof value === "string"
+        ? value.replaceAll(secret, "") as T
+        : value,
+    }),
+  });
+  const inspector = new McpFnInspector(client);
+
+  expect(() => inspector.exportScenario(
+    "reflection",
+    { kind: "tools.call", name: "echo" },
+    { content: [] },
+  )).toThrow("MCP artifact structure conflicts with credential redaction");
+});
+
 it("rejects scenario exports and timeline entries with an unsafe format version", () => {
   const client = new McpFnClient({
     target: customTarget({

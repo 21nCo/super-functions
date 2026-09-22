@@ -295,6 +295,26 @@ export class McpFnClient {
     }
   }
 
+  /** Prove that final JSON composition did not reconstruct a target-owned credential. */
+  preserveTargetArtifact<T>(value: T): T {
+    try {
+      const serialized = JSON.stringify(value);
+      if (serialized === undefined) throw new Error("artifact is not serializable");
+      const redacted = this.options.target.redact?.(serialized, {
+        preserveKeys: false,
+        redactionMarker: "",
+      }) ?? serialized;
+      if (!Object.is(redacted, serialized)) throw new Error("unsafe serialized artifact");
+      return value;
+    } catch {
+      throw new McpFnClientError(
+        "MCPFN_OPERATION_FAILED",
+        "MCP artifact structure conflicts with credential redaction",
+        { phase: "capability-operation" },
+      );
+    }
+  }
+
   getTargetDescriptor() {
     return this.options.target.describe();
   }
@@ -414,7 +434,7 @@ export class McpFnClient {
     retries: number,
     signal: AbortSignal,
   ): Promise<{ error: unknown } | undefined> {
-    const finishRedaction = this.options.target.beginRedactionScope?.() ?? (() => undefined);
+    const finishRedaction = this.beginTargetRedactionScope();
     this.openingSignals.add(signal);
     this.pendingTargetOpens += 1;
     let opening = true;
@@ -639,7 +659,7 @@ export class McpFnClient {
     if (this.closePromise) return this.closePromise;
     if (this._state === "closed" && permanent && this.pendingCleanup.size === 0 && this.pendingProtocols.size === 0 && !this.cleanupDrain && !this.targetCleanupPending && this.openingSignals.size === 0) return;
     this.closePromise = (async () => {
-      const finishRedaction = this.options.target.beginRedactionScope?.() ?? (() => undefined);
+      const finishRedaction = this.beginTargetRedactionScope();
       try {
         this._state = "closing";
         const requestId = this.requestId();
@@ -1000,6 +1020,18 @@ export class McpFnClient {
 
   private requestId(): string {
     return this.options.requestId?.() ?? randomUUID();
+  }
+
+  private beginTargetRedactionScope(): () => void {
+    let finish: (() => void) | undefined;
+    try { finish = this.options.target.beginRedactionScope?.(); }
+    catch { return () => undefined; }
+    if (!finish) return () => undefined;
+    return () => {
+      // Redaction observation must never bypass lifecycle cleanup or replace
+      // the retry-owning cleanup failure.
+      try { finish(); } catch {}
+    };
   }
 
   private async emit(

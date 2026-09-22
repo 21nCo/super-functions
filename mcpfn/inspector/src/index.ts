@@ -279,7 +279,7 @@ export class McpFnInspector {
     } catch {
       this.client.preserveArtifactStructure("status");
       this.client.preserveArtifactStructure("incompleteReason");
-      return {
+      return this.client.preserveTargetArtifact({
         formatVersion: safeFormatVersion,
         kind: safeKind,
         sideEffect: safeSideEffect,
@@ -289,7 +289,7 @@ export class McpFnInspector {
           "Inspector export omitted payload because credential redaction failed",
           { preserveKeys: false, redactionMarker: "" },
         ),
-      } as McpFnExportedScenario;
+      } as McpFnExportedScenario);
     }
     const replaced = redacted as unknown as McpFnExportedScenario;
     let incompleteReason: string | undefined;
@@ -313,9 +313,9 @@ export class McpFnInspector {
       }
       : replaced;
     const variables = collectVariables(exported);
-    if (!variables.length) return exported;
+    if (!variables.length) return this.client.preserveTargetArtifact(exported);
     this.client.preserveArtifactStructure("variables");
-    return { ...exported, variables };
+    return this.client.preserveTargetArtifact({ ...exported, variables });
   }
 
   timeline(): McpFnInspectorTimelineEvent[] {

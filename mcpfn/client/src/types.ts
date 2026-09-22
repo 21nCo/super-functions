@@ -105,7 +105,8 @@ export interface McpFnTarget {
   readonly kind: string;
   describe(): McpFnTargetDescriptor;
   open(context: McpFnTargetContext): Promise<McpFnTransportHandle>;
-  /** Retain target-owned redaction material until the returned synchronous finalizer runs. */
+  /** Retain target-owned redaction material until the returned synchronous finalizer runs.
+   * Client lifecycle ownership is isolated from hook acquisition/finalization failures. */
   beginRedactionScope?(): () => void;
   /** Retry cleanup for resources retained by failed opens; live handles are separate. */
   cleanup?(): Promise<void>;
