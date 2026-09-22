@@ -106,6 +106,7 @@ export type McpFnExportedScenario = McpFnScenario;
 /** Headless inspector; graphical shells and the CLI consume this same engine. */
 export class McpFnInspector {
   private readonly events: McpFnInspectorTimelineEvent[] = [];
+  private readonly countedDrops = new WeakSet<McpFnInspectorTimelineEvent>();
   private readonly unsubscribes: Array<() => void>;
   private readonly maxEvents: number;
   private readonly maxTimelineBytes: number;
@@ -327,7 +328,13 @@ export class McpFnInspector {
     at: string,
     raw: McpFnDiagnosticEvent | McpFnClientEvent,
   ): void {
-    if (this.client.isRedactionOmission(raw)) {
+    let dropCounted = this.client.isRedactionOmission(raw);
+    const countDrop = () => {
+      if (dropCounted) return;
+      dropCounted = true;
+      this.droppedEvents += 1;
+    };
+    if (dropCounted) {
       this.observedRedactionOmissions += 1;
       this.droppedEvents += 1;
     }
@@ -342,7 +349,7 @@ export class McpFnInspector {
       safeSource = this.client.preserveArtifactStructure(source);
       safeKind = this.client.preserveArtifactStructure(kind);
     } catch {
-      this.droppedEvents += 1;
+      countDrop();
       return;
     }
     let event: McpFnInspectorTimelineEvent = {
@@ -354,9 +361,10 @@ export class McpFnInspector {
     };
     let bytes: number;
     try { event = structuredClone(event); bytes = encodedBytes(event); }
-    catch { this.droppedEvents += 1; return; }
+    catch { countDrop(); return; }
+    if (dropCounted) this.countedDrops.add(event);
     if (bytes > this.maxTimelineBytes) {
-      this.droppedEvents += 1;
+      countDrop();
       let truncatedKey: "truncated";
       let truncatedValue: true;
       try {
@@ -372,6 +380,7 @@ export class McpFnInspector {
         at,
         event: { [truncatedKey]: truncatedValue },
       };
+      this.countedDrops.add(event);
       bytes = encodedBytes(event);
       if (bytes > this.maxTimelineBytes) return;
     }
@@ -383,7 +392,7 @@ export class McpFnInspector {
     ) {
       const removed = this.events.shift();
       if (removed) this.timelineBytes -= encodedBytes(removed);
-      this.droppedEvents += 1;
+      if (!removed || !this.countedDrops.has(removed)) this.droppedEvents += 1;
     }
   }
 

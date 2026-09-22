@@ -414,6 +414,7 @@ export class McpFnClient {
     retries: number,
     signal: AbortSignal,
   ): Promise<{ error: unknown } | undefined> {
+    const finishRedaction = this.options.target.beginRedactionScope?.() ?? (() => undefined);
     this.openingSignals.add(signal);
     this.pendingTargetOpens += 1;
     let opening = true;
@@ -471,6 +472,7 @@ export class McpFnClient {
         catch { /* A failed drain remains owned until explicit close retries it. */ }
       }
       this.openingSignals.delete(signal);
+      finishRedaction();
     }
   }
 
@@ -637,35 +639,40 @@ export class McpFnClient {
     if (this.closePromise) return this.closePromise;
     if (this._state === "closed" && permanent && this.pendingCleanup.size === 0 && this.pendingProtocols.size === 0 && !this.cleanupDrain && !this.targetCleanupPending && this.openingSignals.size === 0) return;
     this.closePromise = (async () => {
-      this._state = "closing";
-      const requestId = this.requestId();
-      await this.emit("transport-close", "started", requestId);
-      const pendingConnect = this.connectPromise;
-      const pendingController = this.connectController;
-      void pendingConnect?.catch(() => undefined);
-      pendingController?.abort();
-
-      if (this.connectPromise === pendingConnect) this.connectPromise = undefined;
-      if (this.connectController === pendingController) this.connectController = undefined;
+      const finishRedaction = this.options.target.beginRedactionScope?.() ?? (() => undefined);
       try {
-        await this.cleanupAttempt(true);
-      } catch (error) {
         this._state = "closing";
-        const phase = cleanupFailurePhase(error);
-        await this.emit(phase, "failed", requestId);
-        throw new McpFnClientError(
-          "MCPFN_OPERATION_FAILED",
-          "MCP target cleanup failed",
-          { phase, retryable: true },
-        );
+        const requestId = this.requestId();
+        await this.emit("transport-close", "started", requestId);
+        const pendingConnect = this.connectPromise;
+        const pendingController = this.connectController;
+        void pendingConnect?.catch(() => undefined);
+        pendingController?.abort();
+
+        if (this.connectPromise === pendingConnect) this.connectPromise = undefined;
+        if (this.connectController === pendingController) this.connectController = undefined;
+        try {
+          await this.cleanupAttempt(true);
+        } catch (error) {
+          this._state = "closing";
+          const phase = cleanupFailurePhase(error);
+          await this.emit(phase, "failed", requestId);
+          throw new McpFnClientError(
+            "MCPFN_OPERATION_FAILED",
+            "MCP target cleanup failed",
+            { phase, retryable: true },
+          );
+        }
+        // Retain an observed continuation without leaving the aborted attempt as
+        // the active connection. A custom target that ignores abort may settle
+        // later, but its isolated handle is closed by openTargetAttempt().
+        void pendingConnect?.catch(() => undefined);
+        this._state = this.permanentCloseRequested ? "closed" : "idle";
+        await this.emit("transport-close", "succeeded", requestId);
+        if (this.permanentCloseRequested) this._state = "closed";
+      } finally {
+        finishRedaction();
       }
-      // Retain an observed continuation without leaving the aborted attempt as
-      // the active connection. A custom target that ignores abort may settle
-      // later, but its isolated handle is closed by openTargetAttempt().
-      void pendingConnect?.catch(() => undefined);
-      this._state = this.permanentCloseRequested ? "closed" : "idle";
-      await this.emit("transport-close", "succeeded", requestId);
-      if (this.permanentCloseRequested) this._state = "closed";
     })().finally(() => {
       this.closePromise = undefined;
     });

@@ -211,6 +211,36 @@ it("reconstructs diagnostic discriminators around payload redaction", async () =
   expect(JSON.stringify(observed[0])).not.toContain("failed");
 });
 
+it("counts a marked omission once when inspector structure is also unsafe", async () => {
+  const target = customTarget({
+    kind: "custom",
+    open: async () => { throw new Error("unused"); },
+    redact: <T>(value: T): T => typeof value === "string"
+      ? value
+        .replaceAll("capability-operation", "[REDACTED]")
+        .replaceAll("diagnostic", "[REDACTED]") as T
+      : value,
+  });
+  const client = new McpFnClient({ target });
+  const inspector = new McpFnInspector(client);
+  const dispatch = (client as unknown as {
+    dispatch(event: Record<string, unknown>): Promise<void>;
+  }).dispatch.bind(client);
+
+  await dispatch({
+    phase: "capability-operation",
+    outcome: "failed",
+    requestId: "request",
+    at: new Date(0).toISOString(),
+    target: { kind: "custom" },
+  });
+
+  const snapshot = await inspector.snapshot();
+  expect(snapshot.timeline).toEqual([]);
+  expect(snapshot.droppedEvents).toBe(1);
+  expect(snapshot.timelineComplete).toBe(false);
+});
+
 it("redacts failed-open diagnostics after releasing malformed credentials", async () => {
   const secret = "private-header-first\nprivate-header-second";
   const events: unknown[] = [];

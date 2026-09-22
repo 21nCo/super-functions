@@ -6,7 +6,7 @@ import { startAuthenticatedServer, listen, closeServer } from "../../test-suppor
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { customTarget } from "@mcpfn/client";
+import { McpFnClient, customTarget, type McpFnDiagnosticEvent } from "@mcpfn/client";
 
 import {
   authenticatedHttpTarget,
@@ -22,6 +22,51 @@ describe("authenticated remote MCP targets", () => {
 
   afterEach(async () => {
     await Promise.allSettled(closeCallbacks.splice(0).map((close) => close()));
+  });
+
+  it("retains credentials through the final successful close diagnostic", async () => {
+    const secret = "succeeded";
+    const fixture = await startAuthenticatedServer(secret);
+    closeCallbacks.push(fixture.close);
+    const diagnostics: McpFnDiagnosticEvent[] = [];
+    const client = new McpFnClient({
+      target: authenticatedHttpTarget(fixture.url, {
+        credential: { headers: { authorization: `Bearer ${secret}` } },
+      }),
+      diagnostics: event => { diagnostics.push(event); },
+    });
+
+    await client.connect();
+    const omissionsBeforeClose = client.getRedactionOmissionCounts().diagnostics;
+    await client.close();
+
+    expect(client.getRedactionOmissionCounts().diagnostics)
+      .toBeGreaterThan(omissionsBeforeClose);
+    expect(diagnostics.some(event => client.isRedactionOmission(event)))
+      .toBe(true);
+    expect(JSON.stringify(diagnostics)).not.toContain('"succeeded"');
+  });
+
+  it("retains released credentials through a failed-open diagnostic", async () => {
+    const secret = "failed";
+    const diagnostics: McpFnDiagnosticEvent[] = [];
+    const client = new McpFnClient({
+      target: authenticatedHttpTarget("http://127.0.0.1:1/mcp", {
+        credential: { headers: { authorization: `Bearer ${secret}` } },
+      }),
+      diagnostics: event => { diagnostics.push(event); },
+    });
+    const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+
+    try {
+      await expect(client.connect()).rejects.toThrow();
+    } finally {
+      fetch.mockRestore();
+      await client.close();
+    }
+
+    expect(client.getRedactionOmissionCounts().diagnostics).toBeGreaterThan(0);
+    expect(JSON.stringify(diagnostics)).not.toContain('"failed"');
   });
 
   it("retains failed connection cleanup ownership for caller retries", async () => {

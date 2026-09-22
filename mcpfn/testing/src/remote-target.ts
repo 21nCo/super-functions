@@ -612,6 +612,7 @@ export function authenticatedHttpTarget(
       authenticated: true,
     },
     redact: (value, redaction) => redactTargetCredentials(authenticated, value, { preserveKeys: true, ...redaction }),
+    beginRedactionScope: () => beginTargetCredentialRedaction(authenticated),
     async cleanup() {
       const results = await Promise.allSettled([...pendingReleases].map(release => release()));
       const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");

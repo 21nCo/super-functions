@@ -105,6 +105,8 @@ export interface McpFnTarget {
   readonly kind: string;
   describe(): McpFnTargetDescriptor;
   open(context: McpFnTargetContext): Promise<McpFnTransportHandle>;
+  /** Retain target-owned redaction material until the returned synchronous finalizer runs. */
+  beginRedactionScope?(): () => void;
   /** Retry cleanup for resources retained by failed opens; live handles are separate. */
   cleanup?(): Promise<void>;
   /** Scrub target-owned opaque credentials. With preserveKeys=false, treat all
