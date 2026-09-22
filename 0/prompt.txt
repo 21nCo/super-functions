@@ -1,0 +1,265 @@
+Use `$use-skillplane` to retrieve and execute the exact hosted workflow `21n/pr-refetch-fix@1.2.0`, revision 4, digest `sha256:8781c1c12fe9d5902337d6cf21bfbac49dd3a94c7eadd46bf2622db350444022`, for https://github.com/21nCo/super-functions/pull/170.
+
+This is one run of a recurring convergence workflow. Obey the hosted skill's absolute single-round boundary: fetch the complete review surfaces once, assess the exact PR head, make at most one complete fix batch, create at most one commit, push at most once, verify local/remote/PR heads once, report, and stop. Never refetch reviews after pushing, poll CI, wait for reviewers, merge the PR, resolve threads, dismiss reviews, or begin another round in this run.
+
+Execution requirements:
+
+- Work only in `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170` on branch `codex/mcp-1-transport-neutral-conformance-0910` for PR 170. Confirm the branch, full Git state, remote, PR head, and the `thyaravind` GitHub account before edits. Use `GH_CONFIG_DIR=/Users/serro/.config/gh-other` for every `gh` command and the existing `origin` remote for pushes.
+- Retrieve the pinned hosted version through Skillplane on every run and verify its semantic version, revision, and digest before acting. If it is unavailable or differs, do not mutate the repo; report the drift and disable this automation.
+- Reuse `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170/.conduct/pr-170-remediation-ledger.md` as the compact persistent handoff. Create it if absent. Never stage or commit the ledger. Record skill identity/version/digest, round number, snapshot/head SHA, stable defect-family IDs, deduplicated valid root causes, affected contracts, dispositions, first-seen and last-attempted rounds, attempted repairs, regressions, verification evidence, required-check snapshot, convergence trend, and clean-streak state.
+- Because the user requested convergence, perform the hosted workflow's broader subsystem assessment immediately on the first scheduled run before selecting a patch. State the shared invariant, producers/consumers, failure boundaries, coordinated repair, and verification criteria in the ledger. On later reset triggers, switch the ledger mode to assessment and reassess before further mutation. Do not publish another symptom patch if a complete repair cannot be established.
+- Count root causes rather than comments. Preserve older valid blockers and deferred findings. Never infer convergence from missing history, an outdated hunk, resolved thread count, test count, or one clean snapshot.
+
+Convergence and stopping rules:
+
+1. Reset the clean streak whenever the complete snapshot has an Actionable defect, a valid Not Attempted code defect, a new defect, a recurring family, a fix-induced regression, a changed PR head between assessments, or any required CI/reviewer check is pending or failing in the single allowed immediate check snapshot.
+2. A clean assessment requires: no code change or push in that round; zero Actionable root causes; zero valid Not Attempted code root causes; no unassessed review items; no recurring/deferred blocker; the PR head stayed stable; and all required CI/reviewer checks are terminal and successful in the one allowed immediate snapshot.
+3. Declare convergence only after two consecutive clean scheduled assessments at the same PR head. Then update the ledger, disable automation `4442e7f3-60f4-4125-a8e4-c818ac40fc82` with `orca automations edit 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --disabled --json`, verify with `orca automations show 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --json`, report convergence, and stop.
+4. If PR 170 is merged or closed, record the terminal state, disable and verify this automation, report that the schedule stopped, and stop without mutation.
+5. If a reset-trigger assessment cannot establish a complete coordinated repair, or an external dependency blocks further progress, record the blocker, disable and verify this automation so it cannot repeat unsafe mutations, report the blocker, and stop.
+
+End every nonterminal run with the hosted workflow's explicit result buckets and: `One review round is complete. No post-push refetch or additional review loop was performed.`
+
+---
+
+Use `$use-skillplane` to retrieve and execute the exact hosted workflow `21n/pr-refetch-fix@1.2.0`, revision 4, digest `sha256:8781c1c12fe9d5902337d6cf21bfbac49dd3a94c7eadd46bf2622db350444022`, for https://github.com/21nCo/super-functions/pull/170.
+
+This is one run of a recurring convergence workflow. Obey the hosted skill's absolute single-round boundary: fetch the complete review surfaces once, assess the exact PR head, make at most one complete fix batch, create at most one commit, push at most once, verify local/remote/PR heads once, report, and stop. Never refetch reviews after pushing, poll CI, wait for reviewers, merge the PR, resolve threads, dismiss reviews, or begin another round in this run.
+
+Execution requirements:
+
+- Work only in `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170` on branch `codex/mcp-1-transport-neutral-conformance-0910` for PR 170. Confirm the branch, full Git state, remote, PR head, and the `thyaravind` GitHub account before edits. Use `GH_CONFIG_DIR=/Users/serro/.config/gh-other` for every `gh` command and the existing `origin` remote for pushes.
+- Retrieve the pinned hosted version through Skillplane on every run and verify its semantic version, revision, and digest before acting. If it is unavailable or differs, do not mutate the repo; report the drift and disable this automation.
+- Reuse `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170/.conduct/pr-170-remediation-ledger.md` as the compact persistent handoff. Create it if absent. Never stage or commit the ledger. Record skill identity/version/digest, round number, snapshot/head SHA, stable defect-family IDs, deduplicated valid root causes, affected contracts, dispositions, first-seen and last-attempted rounds, attempted repairs, regressions, verification evidence, required-check snapshot, convergence trend, and clean-streak state.
+- Because the user requested convergence, perform the hosted workflow's broader subsystem assessment immediately on the first scheduled run before selecting a patch. State the shared invariant, producers/consumers, failure boundaries, coordinated repair, and verification criteria in the ledger. On later reset triggers, switch the ledger mode to assessment and reassess before further mutation. Do not publish another symptom patch if a complete repair cannot be established.
+- Count root causes rather than comments. Preserve older valid blockers and deferred findings. Never infer convergence from missing history, an outdated hunk, resolved thread count, test count, or one clean snapshot.
+
+Convergence and stopping rules:
+
+1. Reset the clean streak whenever the complete snapshot has an Actionable defect, a valid Not Attempted code defect, a new defect, a recurring family, a fix-induced regression, a changed PR head between assessments, or any required CI/reviewer check is pending or failing in the single allowed immediate check snapshot.
+2. A clean assessment requires: no code change or push in that round; zero Actionable root causes; zero valid Not Attempted code root causes; no unassessed review items; no recurring/deferred blocker; the PR head stayed stable; and all required CI/reviewer checks are terminal and successful in the one allowed immediate snapshot.
+3. Declare convergence only after two consecutive clean scheduled assessments at the same PR head. Then update the ledger, disable automation `4442e7f3-60f4-4125-a8e4-c818ac40fc82` with `orca automations edit 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --disabled --json`, verify with `orca automations show 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --json`, report convergence, and stop.
+4. If PR 170 is merged or closed, record the terminal state, disable and verify this automation, report that the schedule stopped, and stop without mutation.
+5. If a reset-trigger assessment cannot establish a complete coordinated repair, or an external dependency blocks further progress, record the blocker, disable and verify this automation so it cannot repeat unsafe mutations, report the blocker, and stop.
+
+End every nonterminal run with the hosted workflow's explicit result buckets and: `One review round is complete. No post-push refetch or additional review loop was performed.`
+
+---
+
+Use `$use-skillplane` to retrieve and execute the exact hosted workflow `21n/pr-refetch-fix@1.2.0`, revision 4, digest `sha256:8781c1c12fe9d5902337d6cf21bfbac49dd3a94c7eadd46bf2622db350444022`, for https://github.com/21nCo/super-functions/pull/170.
+
+This is one run of a recurring convergence workflow. Obey the hosted skill's absolute single-round boundary: fetch the complete review surfaces once, assess the exact PR head, make at most one complete fix batch, create at most one commit, push at most once, verify local/remote/PR heads once, report, and stop. Never refetch reviews after pushing, poll CI, wait for reviewers, merge the PR, resolve threads, dismiss reviews, or begin another round in this run.
+
+Execution requirements:
+
+- Work only in `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170` on branch `codex/mcp-1-transport-neutral-conformance-0910` for PR 170. Confirm the branch, full Git state, remote, PR head, and the `thyaravind` GitHub account before edits. Use `GH_CONFIG_DIR=/Users/serro/.config/gh-other` for every `gh` command and the existing `origin` remote for pushes.
+- Retrieve the pinned hosted version through Skillplane on every run and verify its semantic version, revision, and digest before acting. If it is unavailable or differs, do not mutate the repo; report the drift and disable this automation.
+- Reuse `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170/.conduct/pr-170-remediation-ledger.md` as the compact persistent handoff. Create it if absent. Never stage or commit the ledger. Record skill identity/version/digest, round number, snapshot/head SHA, stable defect-family IDs, deduplicated valid root causes, affected contracts, dispositions, first-seen and last-attempted rounds, attempted repairs, regressions, verification evidence, required-check snapshot, convergence trend, and clean-streak state.
+- Because the user requested convergence, perform the hosted workflow's broader subsystem assessment immediately on the first scheduled run before selecting a patch. State the shared invariant, producers/consumers, failure boundaries, coordinated repair, and verification criteria in the ledger. On later reset triggers, switch the ledger mode to assessment and reassess before further mutation. Do not publish another symptom patch if a complete repair cannot be established.
+- Count root causes rather than comments. Preserve older valid blockers and deferred findings. Never infer convergence from missing history, an outdated hunk, resolved thread count, test count, or one clean snapshot.
+
+Convergence and stopping rules:
+
+1. Reset the clean streak whenever the complete snapshot has an Actionable defect, a valid Not Attempted code defect, a new defect, a recurring family, a fix-induced regression, a changed PR head between assessments, or any required CI/reviewer check is pending or failing in the single allowed immediate check snapshot.
+2. A clean assessment requires: no code change or push in that round; zero Actionable root causes; zero valid Not Attempted code root causes; no unassessed review items; no recurring/deferred blocker; the PR head stayed stable; and all required CI/reviewer checks are terminal and successful in the one allowed immediate snapshot.
+3. Declare convergence only after two consecutive clean scheduled assessments at the same PR head. Then update the ledger, disable automation `4442e7f3-60f4-4125-a8e4-c818ac40fc82` with `orca automations edit 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --disabled --json`, verify with `orca automations show 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --json`, report convergence, and stop.
+4. If PR 170 is merged or closed, record the terminal state, disable and verify this automation, report that the schedule stopped, and stop without mutation.
+5. If a reset-trigger assessment cannot establish a complete coordinated repair, or an external dependency blocks further progress, record the blocker, disable and verify this automation so it cannot repeat unsafe mutations, report the blocker, and stop.
+
+End every nonterminal run with the hosted workflow's explicit result buckets and: `One review round is complete. No post-push refetch or additional review loop was performed.`
+
+---
+
+Use `$use-skillplane` to retrieve and execute the exact hosted workflow `21n/pr-refetch-fix@1.2.0`, revision 4, digest `sha256:8781c1c12fe9d5902337d6cf21bfbac49dd3a94c7eadd46bf2622db350444022`, for https://github.com/21nCo/super-functions/pull/170.
+
+This is one run of a recurring convergence workflow. Obey the hosted skill's absolute single-round boundary: fetch the complete review surfaces once, assess the exact PR head, make at most one complete fix batch, create at most one commit, push at most once, verify local/remote/PR heads once, report, and stop. Never refetch reviews after pushing, poll CI, wait for reviewers, merge the PR, resolve threads, dismiss reviews, or begin another round in this run.
+
+Execution requirements:
+
+- Work only in `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170` on branch `codex/mcp-1-transport-neutral-conformance-0910` for PR 170. Confirm the branch, full Git state, remote, PR head, and the `thyaravind` GitHub account before edits. Use `GH_CONFIG_DIR=/Users/serro/.config/gh-other` for every `gh` command and the existing `origin` remote for pushes.
+- Retrieve the pinned hosted version through Skillplane on every run and verify its semantic version, revision, and digest before acting. If it is unavailable or differs, do not mutate the repo; report the drift and disable this automation.
+- Reuse `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170/.conduct/pr-170-remediation-ledger.md` as the compact persistent handoff. Create it if absent. Never stage or commit the ledger. Record skill identity/version/digest, round number, snapshot/head SHA, stable defect-family IDs, deduplicated valid root causes, affected contracts, dispositions, first-seen and last-attempted rounds, attempted repairs, regressions, verification evidence, required-check snapshot, convergence trend, and clean-streak state.
+- Because the user requested convergence, perform the hosted workflow's broader subsystem assessment immediately on the first scheduled run before selecting a patch. State the shared invariant, producers/consumers, failure boundaries, coordinated repair, and verification criteria in the ledger. On later reset triggers, switch the ledger mode to assessment and reassess before further mutation. Do not publish another symptom patch if a complete repair cannot be established.
+- Count root causes rather than comments. Preserve older valid blockers and deferred findings. Never infer convergence from missing history, an outdated hunk, resolved thread count, test count, or one clean snapshot.
+
+Convergence and stopping rules:
+
+1. Reset the clean streak whenever the complete snapshot has an Actionable defect, a valid Not Attempted code defect, a new defect, a recurring family, a fix-induced regression, a changed PR head between assessments, or any required CI/reviewer check is pending or failing in the single allowed immediate check snapshot.
+2. A clean assessment requires: no code change or push in that round; zero Actionable root causes; zero valid Not Attempted code root causes; no unassessed review items; no recurring/deferred blocker; the PR head stayed stable; and all required CI/reviewer checks are terminal and successful in the one allowed immediate snapshot.
+3. Declare convergence only after two consecutive clean scheduled assessments at the same PR head. Then update the ledger, disable automation `4442e7f3-60f4-4125-a8e4-c818ac40fc82` with `orca automations edit 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --disabled --json`, verify with `orca automations show 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --json`, report convergence, and stop.
+4. If PR 170 is merged or closed, record the terminal state, disable and verify this automation, report that the schedule stopped, and stop without mutation.
+5. If a reset-trigger assessment cannot establish a complete coordinated repair, or an external dependency blocks further progress, record the blocker, disable and verify this automation so it cannot repeat unsafe mutations, report the blocker, and stop.
+
+End every nonterminal run with the hosted workflow's explicit result buckets and: `One review round is complete. No post-push refetch or additional review loop was performed.`
+
+---
+
+Use `$use-skillplane` to retrieve and execute the exact hosted workflow `21n/pr-refetch-fix@1.2.0`, revision 4, digest `sha256:8781c1c12fe9d5902337d6cf21bfbac49dd3a94c7eadd46bf2622db350444022`, for https://github.com/21nCo/super-functions/pull/170.
+
+This is one run of a recurring convergence workflow. Obey the hosted skill's absolute single-round boundary: fetch the complete review surfaces once, assess the exact PR head, make at most one complete fix batch, create at most one commit, push at most once, verify local/remote/PR heads once, report, and stop. Never refetch reviews after pushing, poll CI, wait for reviewers, merge the PR, resolve threads, dismiss reviews, or begin another round in this run.
+
+Execution requirements:
+
+- Work only in `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170` on branch `codex/mcp-1-transport-neutral-conformance-0910` for PR 170. Confirm the branch, full Git state, remote, PR head, and the `thyaravind` GitHub account before edits. Use `GH_CONFIG_DIR=/Users/serro/.config/gh-other` for every `gh` command and the existing `origin` remote for pushes.
+- Retrieve the pinned hosted version through Skillplane on every run and verify its semantic version, revision, and digest before acting. If it is unavailable or differs, do not mutate the repo; report the drift and disable this automation.
+- Reuse `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170/.conduct/pr-170-remediation-ledger.md` as the compact persistent handoff. Create it if absent. Never stage or commit the ledger. Record skill identity/version/digest, round number, snapshot/head SHA, stable defect-family IDs, deduplicated valid root causes, affected contracts, dispositions, first-seen and last-attempted rounds, attempted repairs, regressions, verification evidence, required-check snapshot, convergence trend, and clean-streak state.
+- Because the user requested convergence, perform the hosted workflow's broader subsystem assessment immediately on the first scheduled run before selecting a patch. State the shared invariant, producers/consumers, failure boundaries, coordinated repair, and verification criteria in the ledger. On later reset triggers, switch the ledger mode to assessment and reassess before further mutation. Do not publish another symptom patch if a complete repair cannot be established.
+- Count root causes rather than comments. Preserve older valid blockers and deferred findings. Never infer convergence from missing history, an outdated hunk, resolved thread count, test count, or one clean snapshot.
+
+Convergence and stopping rules:
+
+1. Reset the clean streak whenever the complete snapshot has an Actionable defect, a valid Not Attempted code defect, a new defect, a recurring family, a fix-induced regression, a changed PR head between assessments, or any required CI/reviewer check is pending or failing in the single allowed immediate check snapshot.
+2. A clean assessment requires: no code change or push in that round; zero Actionable root causes; zero valid Not Attempted code root causes; no unassessed review items; no recurring/deferred blocker; the PR head stayed stable; and all required CI/reviewer checks are terminal and successful in the one allowed immediate snapshot.
+3. Declare convergence only after two consecutive clean scheduled assessments at the same PR head. Then update the ledger, disable automation `4442e7f3-60f4-4125-a8e4-c818ac40fc82` with `orca automations edit 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --disabled --json`, verify with `orca automations show 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --json`, report convergence, and stop.
+4. If PR 170 is merged or closed, record the terminal state, disable and verify this automation, report that the schedule stopped, and stop without mutation.
+5. If a reset-trigger assessment cannot establish a complete coordinated repair, or an external dependency blocks further progress, record the blocker, disable and verify this automation so it cannot repeat unsafe mutations, report the blocker, and stop.
+
+End every nonterminal run with the hosted workflow's explicit result buckets and: `One review round is complete. No post-push refetch or additional review loop was performed.`
+
+---
+
+Use `$use-skillplane` to retrieve and execute the exact hosted workflow `21n/pr-refetch-fix@1.2.0`, revision 4, digest `sha256:8781c1c12fe9d5902337d6cf21bfbac49dd3a94c7eadd46bf2622db350444022`, for https://github.com/21nCo/super-functions/pull/170.
+
+This is one run of a recurring convergence workflow. Obey the hosted skill's absolute single-round boundary: fetch the complete review surfaces once, assess the exact PR head, make at most one complete fix batch, create at most one commit, push at most once, verify local/remote/PR heads once, report, and stop. Never refetch reviews after pushing, poll CI, wait for reviewers, merge the PR, resolve threads, dismiss reviews, or begin another round in this run.
+
+Execution requirements:
+
+- Work only in `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170` on branch `codex/mcp-1-transport-neutral-conformance-0910` for PR 170. Confirm the branch, full Git state, remote, PR head, and the `thyaravind` GitHub account before edits. Use `GH_CONFIG_DIR=/Users/serro/.config/gh-other` for every `gh` command and the existing `origin` remote for pushes.
+- Retrieve the pinned hosted version through Skillplane on every run and verify its semantic version, revision, and digest before acting. If it is unavailable or differs, do not mutate the repo; report the drift and disable this automation.
+- Reuse `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170/.conduct/pr-170-remediation-ledger.md` as the compact persistent handoff. Create it if absent. Never stage or commit the ledger. Record skill identity/version/digest, round number, snapshot/head SHA, stable defect-family IDs, deduplicated valid root causes, affected contracts, dispositions, first-seen and last-attempted rounds, attempted repairs, regressions, verification evidence, required-check snapshot, convergence trend, and clean-streak state.
+- Because the user requested convergence, perform the hosted workflow's broader subsystem assessment immediately on the first scheduled run before selecting a patch. State the shared invariant, producers/consumers, failure boundaries, coordinated repair, and verification criteria in the ledger. On later reset triggers, switch the ledger mode to assessment and reassess before further mutation. Do not publish another symptom patch if a complete repair cannot be established.
+- Count root causes rather than comments. Preserve older valid blockers and deferred findings. Never infer convergence from missing history, an outdated hunk, resolved thread count, test count, or one clean snapshot.
+
+Convergence and stopping rules:
+
+1. Reset the clean streak whenever the complete snapshot has an Actionable defect, a valid Not Attempted code defect, a new defect, a recurring family, a fix-induced regression, a changed PR head between assessments, or any required CI/reviewer check is pending or failing in the single allowed immediate check snapshot.
+2. A clean assessment requires: no code change or push in that round; zero Actionable root causes; zero valid Not Attempted code root causes; no unassessed review items; no recurring/deferred blocker; the PR head stayed stable; and all required CI/reviewer checks are terminal and successful in the one allowed immediate snapshot.
+3. Declare convergence only after two consecutive clean scheduled assessments at the same PR head. Then update the ledger, disable automation `4442e7f3-60f4-4125-a8e4-c818ac40fc82` with `orca automations edit 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --disabled --json`, verify with `orca automations show 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --json`, report convergence, and stop.
+4. If PR 170 is merged or closed, record the terminal state, disable and verify this automation, report that the schedule stopped, and stop without mutation.
+5. If a reset-trigger assessment cannot establish a complete coordinated repair, or an external dependency blocks further progress, record the blocker, disable and verify this automation so it cannot repeat unsafe mutations, report the blocker, and stop.
+
+End every nonterminal run with the hosted workflow's explicit result buckets and: `One review round is complete. No post-push refetch or additional review loop was performed.`
+
+---
+
+Use `$use-skillplane` to retrieve and execute the exact hosted workflow `21n/pr-refetch-fix@1.2.0`, revision 4, digest `sha256:8781c1c12fe9d5902337d6cf21bfbac49dd3a94c7eadd46bf2622db350444022`, for https://github.com/21nCo/super-functions/pull/170.
+
+This is one run of a recurring convergence workflow. Obey the hosted skill's absolute single-round boundary: fetch the complete review surfaces once, assess the exact PR head, make at most one complete fix batch, create at most one commit, push at most once, verify local/remote/PR heads once, report, and stop. Never refetch reviews after pushing, poll CI, wait for reviewers, merge the PR, resolve threads, dismiss reviews, or begin another round in this run.
+
+Execution requirements:
+
+- Work only in `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170` on branch `codex/mcp-1-transport-neutral-conformance-0910` for PR 170. Confirm the branch, full Git state, remote, PR head, and the `thyaravind` GitHub account before edits. Use `GH_CONFIG_DIR=/Users/serro/.config/gh-other` for every `gh` command and the existing `origin` remote for pushes.
+- Retrieve the pinned hosted version through Skillplane on every run and verify its semantic version, revision, and digest before acting. If it is unavailable or differs, do not mutate the repo; report the drift and disable this automation.
+- Reuse `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170/.conduct/pr-170-remediation-ledger.md` as the compact persistent handoff. Create it if absent. Never stage or commit the ledger. Record skill identity/version/digest, round number, snapshot/head SHA, stable defect-family IDs, deduplicated valid root causes, affected contracts, dispositions, first-seen and last-attempted rounds, attempted repairs, regressions, verification evidence, required-check snapshot, convergence trend, and clean-streak state.
+- Because the user requested convergence, perform the hosted workflow's broader subsystem assessment immediately on the first scheduled run before selecting a patch. State the shared invariant, producers/consumers, failure boundaries, coordinated repair, and verification criteria in the ledger. On later reset triggers, switch the ledger mode to assessment and reassess before further mutation. Do not publish another symptom patch if a complete repair cannot be established.
+- Count root causes rather than comments. Preserve older valid blockers and deferred findings. Never infer convergence from missing history, an outdated hunk, resolved thread count, test count, or one clean snapshot.
+
+Convergence and stopping rules:
+
+1. Reset the clean streak whenever the complete snapshot has an Actionable defect, a valid Not Attempted code defect, a new defect, a recurring family, a fix-induced regression, a changed PR head between assessments, or any required CI/reviewer check is pending or failing in the single allowed immediate check snapshot.
+2. A clean assessment requires: no code change or push in that round; zero Actionable root causes; zero valid Not Attempted code root causes; no unassessed review items; no recurring/deferred blocker; the PR head stayed stable; and all required CI/reviewer checks are terminal and successful in the one allowed immediate snapshot.
+3. Declare convergence only after two consecutive clean scheduled assessments at the same PR head. Then update the ledger, disable automation `4442e7f3-60f4-4125-a8e4-c818ac40fc82` with `orca automations edit 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --disabled --json`, verify with `orca automations show 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --json`, report convergence, and stop.
+4. If PR 170 is merged or closed, record the terminal state, disable and verify this automation, report that the schedule stopped, and stop without mutation.
+5. If a reset-trigger assessment cannot establish a complete coordinated repair, or an external dependency blocks further progress, record the blocker, disable and verify this automation so it cannot repeat unsafe mutations, report the blocker, and stop.
+
+End every nonterminal run with the hosted workflow's explicit result buckets and: `One review round is complete. No post-push refetch or additional review loop was performed.`
+
+---
+
+Use `$use-skillplane` to retrieve and execute the exact hosted workflow `21n/pr-refetch-fix@1.2.0`, revision 4, digest `sha256:8781c1c12fe9d5902337d6cf21bfbac49dd3a94c7eadd46bf2622db350444022`, for https://github.com/21nCo/super-functions/pull/170.
+
+This is one run of a recurring convergence workflow. Obey the hosted skill's absolute single-round boundary: fetch the complete review surfaces once, assess the exact PR head, make at most one complete fix batch, create at most one commit, push at most once, verify local/remote/PR heads once, report, and stop. Never refetch reviews after pushing, poll CI, wait for reviewers, merge the PR, resolve threads, dismiss reviews, or begin another round in this run.
+
+Execution requirements:
+
+- Work only in `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170` on branch `codex/mcp-1-transport-neutral-conformance-0910` for PR 170. Confirm the branch, full Git state, remote, PR head, and the `thyaravind` GitHub account before edits. Use `GH_CONFIG_DIR=/Users/serro/.config/gh-other` for every `gh` command and the existing `origin` remote for pushes.
+- Retrieve the pinned hosted version through Skillplane on every run and verify its semantic version, revision, and digest before acting. If it is unavailable or differs, do not mutate the repo; report the drift and disable this automation.
+- Reuse `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170/.conduct/pr-170-remediation-ledger.md` as the compact persistent handoff. Create it if absent. Never stage or commit the ledger. Record skill identity/version/digest, round number, snapshot/head SHA, stable defect-family IDs, deduplicated valid root causes, affected contracts, dispositions, first-seen and last-attempted rounds, attempted repairs, regressions, verification evidence, required-check snapshot, convergence trend, and clean-streak state.
+- Because the user requested convergence, perform the hosted workflow's broader subsystem assessment immediately on the first scheduled run before selecting a patch. State the shared invariant, producers/consumers, failure boundaries, coordinated repair, and verification criteria in the ledger. On later reset triggers, switch the ledger mode to assessment and reassess before further mutation. Do not publish another symptom patch if a complete repair cannot be established.
+- Count root causes rather than comments. Preserve older valid blockers and deferred findings. Never infer convergence from missing history, an outdated hunk, resolved thread count, test count, or one clean snapshot.
+
+Convergence and stopping rules:
+
+1. Reset the clean streak whenever the complete snapshot has an Actionable defect, a valid Not Attempted code defect, a new defect, a recurring family, a fix-induced regression, a changed PR head between assessments, or any required CI/reviewer check is pending or failing in the single allowed immediate check snapshot.
+2. A clean assessment requires: no code change or push in that round; zero Actionable root causes; zero valid Not Attempted code root causes; no unassessed review items; no recurring/deferred blocker; the PR head stayed stable; and all required CI/reviewer checks are terminal and successful in the one allowed immediate snapshot.
+3. Declare convergence only after two consecutive clean scheduled assessments at the same PR head. Then update the ledger, disable automation `4442e7f3-60f4-4125-a8e4-c818ac40fc82` with `orca automations edit 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --disabled --json`, verify with `orca automations show 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --json`, report convergence, and stop.
+4. If PR 170 is merged or closed, record the terminal state, disable and verify this automation, report that the schedule stopped, and stop without mutation.
+5. If a reset-trigger assessment cannot establish a complete coordinated repair, or an external dependency blocks further progress, record the blocker, disable and verify this automation so it cannot repeat unsafe mutations, report the blocker, and stop.
+
+End every nonterminal run with the hosted workflow's explicit result buckets and: `One review round is complete. No post-push refetch or additional review loop was performed.`
+
+---
+
+Use `$use-skillplane` to retrieve and execute the exact hosted workflow `21n/pr-refetch-fix@1.2.0`, revision 4, digest `sha256:8781c1c12fe9d5902337d6cf21bfbac49dd3a94c7eadd46bf2622db350444022`, for https://github.com/21nCo/super-functions/pull/170.
+
+This is one run of a recurring convergence workflow. Obey the hosted skill's absolute single-round boundary: fetch the complete review surfaces once, assess the exact PR head, make at most one complete fix batch, create at most one commit, push at most once, verify local/remote/PR heads once, report, and stop. Never refetch reviews after pushing, poll CI, wait for reviewers, merge the PR, resolve threads, dismiss reviews, or begin another round in this run.
+
+Execution requirements:
+
+- Work only in `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170` on branch `codex/mcp-1-transport-neutral-conformance-0910` for PR 170. Confirm the branch, full Git state, remote, PR head, and the `thyaravind` GitHub account before edits. Use `GH_CONFIG_DIR=/Users/serro/.config/gh-other` for every `gh` command and the existing `origin` remote for pushes.
+- Retrieve the pinned hosted version through Skillplane on every run and verify its semantic version, revision, and digest before acting. If it is unavailable or differs, do not mutate the repo; report the drift and disable this automation.
+- Reuse `/Users/serro/Documents/dev/n/worktrees/superfunctions/PR-170/.conduct/pr-170-remediation-ledger.md` as the compact persistent handoff. Create it if absent. Never stage or commit the ledger. Record skill identity/version/digest, round number, snapshot/head SHA, stable defect-family IDs, deduplicated valid root causes, affected contracts, dispositions, first-seen and last-attempted rounds, attempted repairs, regressions, verification evidence, required-check snapshot, convergence trend, and clean-streak state.
+- Because the user requested convergence, perform the hosted workflow's broader subsystem assessment immediately on the first scheduled run before selecting a patch. State the shared invariant, producers/consumers, failure boundaries, coordinated repair, and verification criteria in the ledger. On later reset triggers, switch the ledger mode to assessment and reassess before further mutation. Do not publish another symptom patch if a complete repair cannot be established.
+- Count root causes rather than comments. Preserve older valid blockers and deferred findings. Never infer convergence from missing history, an outdated hunk, resolved thread count, test count, or one clean snapshot.
+
+Convergence and stopping rules:
+
+1. Reset the clean streak whenever the complete snapshot has an Actionable defect, a valid Not Attempted code defect, a new defect, a recurring family, a fix-induced regression, a changed PR head between assessments, or any required CI/reviewer check is pending or failing in the single allowed immediate check snapshot.
+2. A clean assessment requires: no code change or push in that round; zero Actionable root causes; zero valid Not Attempted code root causes; no unassessed review items; no recurring/deferred blocker; the PR head stayed stable; and all required CI/reviewer checks are terminal and successful in the one allowed immediate snapshot.
+3. Declare convergence only after two consecutive clean scheduled assessments at the same PR head. Then update the ledger, disable automation `4442e7f3-60f4-4125-a8e4-c818ac40fc82` with `orca automations edit 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --disabled --json`, verify with `orca automations show 4442e7f3-60f4-4125-a8e4-c818ac40fc82 --json`, report convergence, and stop.
+4. If PR 170 is merged or closed, record the terminal state, disable and verify this automation, report that the schedule stopped, and stop without mutation.
+5. If a reset-trigger assessment cannot establish a complete coordinated repair, or an external dependency blocks further progress, record the blocker, disable and verify this automation so it cannot repeat unsafe mutations, report the blocker, and stop.
+
+End every nonterminal run with the hosted workflow's explicit result buckets and: `One review round is complete. No post-push refetch or additional review loop was performed.`
+
+---
+
+skillplane should be accessible via Composio CLI - retry
+
+---
+
+Why is the automation disabled and what is the current state?
+
+---
+
+whats the convergence state?
+
+---
+
+what does the deferred family contain?
+
+---
+
+proceed with the next recommended step
+
+---
+
+proceed with the next recommended step
+
+---
+
+what's next
+
+---
+
+proceed
+
+---
+
+$use-skillplane pr-refetch-fix
+
+---
+
+$use-skillplane pr-refetch-fix
+
+---
+
+$use-skillplane pr-refetch-fix
+
+---
+
+$use-skillplane pr-refetch-fix
+
+---
+
+$use-skillplane pr-refetch-fix
