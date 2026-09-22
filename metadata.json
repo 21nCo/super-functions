@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M33WJ0QDFKZBCVGHYZZ794MG",
+  "strategy": "manual-commit",
+  "branch": "aravink/mcp-4-make-mcpfn-cloudflare-worker-bundles-resilient-to-mixed-zod",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "langfn/typescript/package.json",
+    "mcpfn/ADR-0001-COMPATIBILITY.md",
+    "mcpfn/MIGRATION.md",
+    "mcpfn/TESTING.md",
+    "mcpfn/auth/package.json",
+    "mcpfn/client/tsup.config.ts",
+    "mcpfn/core/README.md",
+    "mcpfn/core/package.json",
+    "mcpfn/core/src/draft-07-meta-schema.ts",
+    "mcpfn/core/src/index.ts",
+    "mcpfn/core/src/manifest.ts",
+    "mcpfn/core/src/registry.ts",
+    "mcpfn/core/src/validation.ts",
+    "mcpfn/core/tests/validation.test.ts",
+    "memoryfn/typescript/package.json",
+    "package.json",
+    "packages/admin/package.json",
+    "scripts/test-mcpfn-cloudflare-worker.mjs",
+    "superconsole/package.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 395869,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 15813120,
+    "output_tokens": 58402,
+    "api_call_count": 140
+  }
+}
