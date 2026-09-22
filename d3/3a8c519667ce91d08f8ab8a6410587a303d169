@@ -1,0 +1,48 @@
+mcpfn/core/package.json
+  s_9ab4ca7dfe56d4::t_8b10511fed98e2 27,33-34
+mcpfn/core/tests/manifest-diff.test.ts
+  s_9ab4ca7dfe56d4::t_8b10511fed98e2 8,67-85
+  s_dbeaf6beea25e6::t_74b9949ccc2ce3 86-88
+mcpfn/auth/package.json
+  s_9ab4ca7dfe56d4::t_8b10511fed98e2 26,41-42
+mcpfn/core/tests/validation.test.ts
+  s_9ab4ca7dfe56d4::t_8b10511fed98e2 40-57,75-86
+  s_9ab4ca7dfe56d4::t_fa977d55b1ed83 58-74
+  s_9ab4ca7dfe56d4::t_93585c4ece5151 87-97
+mcpfn/core/src/manifest.ts
+  s_9ab4ca7dfe56d4::t_8b10511fed98e2 228-233,354
+mcpfn/core/src/validation.ts
+  s_9ab4ca7dfe56d4::t_8b10511fed98e2 95,142,160-171
+mcpfn/core/src/draft-07-meta-schema.ts
+  s_9ab4ca7dfe56d4::t_93585c4ece5151 3-4
+  s_9ab4ca7dfe56d4::t_8b10511fed98e2 35-42
+scripts/test-mcpfn-cloudflare-worker.mjs
+  s_9ab4ca7dfe56d4::t_fa977d55b1ed83 60-90,93
+  s_9ab4ca7dfe56d4::t_8b10511fed98e2 252-254,262
+package-lock.json
+  s_9ab4ca7dfe56d4::t_062f2e48cf8d45 12846,12853-12854,14179,14185-14186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d33a8c519667ce91d08f8ab8a6410587a303d169",
+  "prompts": {},
+  "sessions": {
+    "s_9ab4ca7dfe56d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c77b-792d-77b3-a4db-ea9dd7195376",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_dbeaf6beea25e6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c886-73ef-72c2-b7ee-54bc7cc84533",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
