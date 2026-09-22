@@ -100,6 +100,26 @@ describe("authenticated programmatic artifacts", () => {
     },
   );
 
+  it("drops an unsafe authored truncation marker", async () => {
+    const secret = "truncated";
+    const fixture = await startAuthenticatedServer(secret, true, "x".repeat(2_000));
+    closeCallbacks.push(fixture.close);
+    const client = new McpFnClient({
+      target: authenticatedHttpTarget(fixture.url, {
+        credential: { headers: { authorization: `Bearer ${secret}` } },
+      }),
+    });
+    const inspector = new McpFnInspector(client, { maxTimelineBytes: 512 });
+    closeCallbacks.push(() => client.close());
+    await inspector.connect();
+    await inspector.run({ kind: "tools.call", name: "identity", arguments: {} });
+
+    const snapshot = await inspector.snapshot();
+    expect(snapshot.timelineComplete).toBe(false);
+    expect(snapshot.droppedEvents).toBeGreaterThan(0);
+    expect(JSON.stringify(snapshot)).not.toContain(secret);
+  });
+
   it("keeps oversized diagnostic payloads from breaking a tool operation", async () => {
     const secret = "oversized-secret";
     const fixture = await startAuthenticatedServer(secret, true, "x".repeat(300_000) + secret);
@@ -117,6 +137,16 @@ describe("authenticated programmatic artifacts", () => {
     expect(JSON.stringify(events)).not.toContain(secret);
   });
 
+});
+
+it("does not validate timeline-only keys when no timeline entry is emitted", async () => {
+  const target = customTarget({
+    kind: "custom",
+    open: async () => { throw new Error("unused"); },
+    redact: <T>(value: T): T => value === "source" ? "" as T : value,
+  });
+  const snapshot = await new McpFnInspector(new McpFnClient({ target })).snapshot();
+  expect(snapshot.timeline).toEqual([]);
 });
 
 it("redacts client-event payloads in payload mode and records fallbacks as omissions", async () => {

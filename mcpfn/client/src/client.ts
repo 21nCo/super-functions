@@ -275,10 +275,10 @@ export class McpFnClient {
   /** Preserve an authored schema value only when the active credential redactor proves it safe. */
   preserveArtifactStructure<T extends string | number | boolean>(value: T): T {
     try {
-      if (this.redact(value, {
+      if (!Object.is(this.redact(value, {
         preserveKeys: false,
         redactionMarker: "",
-      }) !== value) throw new Error("unsafe structural value");
+      }), value)) throw new Error("unsafe structural value");
       return value;
     } catch {
       throw new McpFnClientError(

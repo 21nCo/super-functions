@@ -191,10 +191,14 @@ export class McpFnInspector {
       "formatVersion", "kind", "target", "clientState", "server", "capabilities",
       "tools", "resources", "resourceTemplates", "prompts", "timeline",
       "droppedEvents", "timelineComplete", "droppedInventoryEntries", "inventoryComplete",
-      "source", "at", "event",
     ] as const;
     for (const key of snapshotKeys) this.client.preserveArtifactStructure(key);
-    if (timeline.length > 0) this.client.preserveArtifactStructure(1);
+    if (timeline.length > 0) {
+      for (const key of ["source", "at", "event"] as const) {
+        this.client.preserveArtifactStructure(key);
+      }
+      this.client.preserveArtifactStructure(1);
+    }
     // Custom hooks receive payloads only; reconstruct authored discriminators.
     return {
       formatVersion: this.client.preserveArtifactStructure(2),
@@ -346,15 +350,23 @@ export class McpFnInspector {
     try { event = structuredClone(event); bytes = encodedBytes(event); }
     catch { this.droppedEvents += 1; return; }
     if (bytes > this.maxTimelineBytes) {
+      this.droppedEvents += 1;
+      let truncatedKey: "truncated";
+      let truncatedValue: true;
+      try {
+        truncatedKey = this.client.preserveArtifactStructure("truncated");
+        truncatedValue = this.client.preserveArtifactStructure(true);
+      } catch {
+        return;
+      }
       event = {
         formatVersion: 1,
         source: safeSource,
         kind: safeKind,
         at,
-        event: { truncated: true },
+        event: { [truncatedKey]: truncatedValue },
       };
       bytes = encodedBytes(event);
-      this.droppedEvents += 1;
       if (bytes > this.maxTimelineBytes) return;
     }
     this.events.push(event);

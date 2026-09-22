@@ -6,6 +6,19 @@ import { createMcpFnClient, customTarget } from "../src/index.js";
 import type { McpFnTransportHandle } from "../src/index.js";
 
 describe("McpFn production client", () => {
+  it("preserves unchanged special numeric structure by identity", () => {
+    const client = createMcpFnClient({
+      target: customTarget({
+        kind: "custom",
+        open: async () => { throw new Error("unused"); },
+        redact: <T>(value: T): T => value,
+      }),
+    });
+
+    expect(Object.is(client.preserveArtifactStructure(Number.NaN), Number.NaN)).toBe(true);
+    expect(Object.is(client.preserveArtifactStructure(-0), -0)).toBe(true);
+  });
+
   it("omits credential-colliding timestamps without emitting malformed artifacts", async () => {
     const credentialTimestamp = "2001-02-03T04:05:06.007Z";
     const events: any[] = [];

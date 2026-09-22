@@ -1,5 +1,7 @@
 import { McpFnTargetSuiteCleanupError } from "../src/suite.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { describe, expect, it, vi } from "vitest";
 import { customTarget } from "@mcpfn/client";
 import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
@@ -175,6 +177,49 @@ describe("McpFn target suite", () => {
       results: [{ status: "passed", redactionOmittedObservedEvents: 1 }],
     });
     expect(report.incompleteReason).not.toContain("maxObservedEvents");
+  });
+
+  it("counts redaction omissions emitted before scenarios start", async () => {
+    const server = new Server(
+      { name: "setup-omission", version: "1.0.0" },
+      { capabilities: { logging: {}, tools: {} } },
+    );
+    server.setRequestHandler(ListToolsRequestSchema, async () => {
+      await server.sendLoggingMessage({
+        level: "info",
+        data: { privateSetupState: true },
+      });
+      return { tools: [] };
+    });
+    const report = await runMcpFnTargetSuite({
+      expectedToolNames: [],
+      target: customTarget({
+        kind: "fixture",
+        redact: <T>(value: T): T => {
+          const data = value && typeof value === "object"
+            ? (value as { data?: unknown }).data
+            : undefined;
+          if (data && typeof data === "object" && "privateSetupState" in data) {
+            throw new Error("setup event redaction unavailable");
+          }
+          return value;
+        },
+        open: async () => {
+          const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+          await server.connect(serverTransport);
+          return { transport: clientTransport, close: () => server.close() };
+        },
+      }),
+    });
+
+    expect(report).toMatchObject({
+      ok: false,
+      status: "incomplete",
+      total: 0,
+      droppedObservedEvents: 1,
+      redactionOmittedObservedEvents: 1,
+      incompleteReason: "Observed client events were omitted because credential redaction failed",
+    });
   });
 });
 

@@ -512,6 +512,7 @@ async function closeSuiteClient(client: McpFnTestClient | undefined): Promise<{
 
 interface SuiteConnection {
   client?: McpFnTestClient;
+  initialClientEventRedactionOmissions: number;
   manifestChecked: boolean;
   failure?: McpFnReportFailure;
   execution: SuiteExecution;
@@ -522,6 +523,7 @@ async function connectSuite(
   diagnostics: SuiteDiagnosticCollector,
 ): Promise<SuiteConnection> {
   let client: McpFnTestClient | undefined;
+  let initialClientEventRedactionOmissions = 0;
   let manifestChecked = false;
   let failure: McpFnReportFailure | undefined;
   let execution: SuiteExecution = { results: [] };
@@ -534,13 +536,21 @@ async function connectSuite(
         diagnostics: event => diagnostics.record(client, event),
       },
     );
+    initialClientEventRedactionOmissions = client.session
+      .getRedactionOmissionCounts().clientEvents;
     diagnostics.captureBaseline(client);
     await client.session.connect();
     ({ execution, manifestChecked } = await executeConnectedSuite(client, options));
   } catch (error) {
     failure = safeTargetFailure(options.target, error);
   }
-  return { client, manifestChecked, failure, execution };
+  return {
+    client,
+    initialClientEventRedactionOmissions,
+    manifestChecked,
+    failure,
+    execution,
+  };
 }
 
 async function projectAndCloseSuite(
@@ -599,19 +609,28 @@ function buildSuiteReport(
   failure: McpFnReportFailure | undefined,
   cleanupFailure: McpFnReportFailure | undefined,
   diagnostics: SuiteDiagnosticCollector,
+  lifecycleRedactionOmissions: number,
 ): McpFnTargetSuiteReport {
   const results = projection.execution.results;
   const failed = results.filter((result) => result.status === "failed").length;
   const incomplete = results.filter((result) => result.status === "incomplete").length;
-  const droppedObservedEvents = results.reduce(
+  const scenarioDroppedObservedEvents = results.reduce(
     (total, result) => total + (result.droppedObservedEvents ?? 0),
     0,
   );
-  const redactionOmittedObservedEvents = results.reduce(
+  const scenarioRedactionOmissions = results.reduce(
     (total, result) => total + (result.redactionOmittedObservedEvents ?? 0),
     0,
   );
-  const overflowedObservedEvents = droppedObservedEvents - redactionOmittedObservedEvents;
+  const redactionOmittedObservedEvents = Math.max(
+    lifecycleRedactionOmissions,
+    scenarioRedactionOmissions,
+  );
+  const overflowedObservedEvents = Math.max(
+    0,
+    scenarioDroppedObservedEvents - scenarioRedactionOmissions,
+  );
+  const droppedObservedEvents = redactionOmittedObservedEvents + overflowedObservedEvents;
   const artifactIncomplete = Boolean(failure) || incomplete > 0 ||
     diagnostics.dropped > 0 || droppedObservedEvents > 0;
   const incompleteReason = suiteIncompleteReasons(
@@ -754,6 +773,12 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
   );
   const { cleanupFailure: closeFailure, retainedCleanup } = closeResult;
   diagnostics.captureUnobserved(connection.client);
+  const lifecycleRedactionOmissions = Math.max(
+    0,
+    (connection.client?.session.getRedactionOmissionCounts().clientEvents ??
+      connection.initialClientEventRedactionOmissions) -
+      connection.initialClientEventRedactionOmissions,
+  );
   let cleanupFailure = closeFailure;
   cleanupFailure ??= diagnostics.cleanupFailure;
   const failure = connection.failure ?? cleanupFailure;
@@ -763,6 +788,7 @@ async function runTargetSuite(options: RunMcpFnTargetSuiteOptions): Promise<McpF
     failure,
     cleanupFailure,
     diagnostics,
+    lifecycleRedactionOmissions,
   );
   return finalizeSuiteReport(
     options,
