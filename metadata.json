@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M34N56GF9HSK4Z4K499WR2EX",
+  "strategy": "manual-commit",
+  "branch": "codex/mcp-1-transport-neutral-conformance-0910",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "mcpfn/client/src/client.ts",
+    "mcpfn/client/src/targets.ts",
+    "mcpfn/client/src/types.ts",
+    "mcpfn/inspector/src/index.ts",
+    "mcpfn/inspector/tests/authenticated-artifacts.test.ts",
+    "mcpfn/testing/src/remote-target.ts",
+    "mcpfn/testing/tests/remote-target.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 4218546,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 130141568,
+    "output_tokens": 518924,
+    "api_call_count": 1022
+  }
+}

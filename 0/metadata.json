@@ -1,0 +1,57 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M34N56GF9HSK4Z4K499WR2EX",
+  "session_id": "01a0b3f5-d570-7a72-b668-401efd539e3b",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-22T13:33:58.159692Z",
+  "branch": "codex/mcp-1-transport-neutral-conformance-0910",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "mcpfn/client/src/client.ts",
+    "mcpfn/client/src/targets.ts",
+    "mcpfn/client/src/types.ts",
+    "mcpfn/inspector/src/index.ts",
+    "mcpfn/inspector/tests/authenticated-artifacts.test.ts",
+    "mcpfn/testing/src/remote-target.ts",
+    "mcpfn/testing/tests/remote-target.test.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "f9eb6282eedc",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 4218546,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 130141568,
+    "output_tokens": 518924,
+    "api_call_count": 1022
+  },
+  "session_metrics": {
+    "turn_count": 22
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-22T13:33:55.836125Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 98,
+    "human_modified": 32,
+    "human_removed": 0,
+    "total_committed": 98,
+    "total_lines_changed": 130,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 9,
+      "user_lines_removed": 0,
+      "agent_lines_added": 879,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".conduct/pr-170-remediation-ledger.md": 9
+      }
+    }
+  ]
+}
