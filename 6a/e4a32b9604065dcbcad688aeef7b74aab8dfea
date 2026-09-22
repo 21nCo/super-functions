@@ -1,0 +1,30 @@
+mcpfn/core/tests/validation.test.ts
+  s_9ab4ca7dfe56d4::t_54afdea773ba68 55-63,100-129,163-170
+  s_9ab4ca7dfe56d4::t_4b4fae16cb6614 171-172
+scripts/test-mcpfn-cloudflare-worker.mjs
+  s_9ab4ca7dfe56d4::t_f9b5e4a7958aa9 66-69,73-74
+  s_9ab4ca7dfe56d4::t_54afdea773ba68 61-65,70-72,75-77,141-146,223-227
+mcpfn/core/src/validation.ts
+  s_9ab4ca7dfe56d4::t_f3694df3c8331f 3,133-157,159-194,197,199,202,204-212,214-223,228-229,234-241,244-252,286-291,293
+  s_9ab4ca7dfe56d4::t_62ccf04da89c28 242-243
+mcpfn/core/tests/manifest-diff.test.ts
+  s_9ab4ca7dfe56d4::t_6101bfcc2ab980 108-111
+  s_9ab4ca7dfe56d4::t_54afdea773ba68 101-107,112-118
+  s_9ab4ca7dfe56d4::t_f371c8a064f298 100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6ae4a32b9604065dcbcad688aeef7b74aab8dfea",
+  "prompts": {},
+  "sessions": {
+    "s_9ab4ca7dfe56d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c77b-792d-77b3-a4db-ea9dd7195376",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
