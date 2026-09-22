@@ -58,6 +58,23 @@ const protectedResource = createProtectedResourceMetadata({
   scopesSupported: ["tools:call"],
 });
 
+let unresolvedReferenceRejected = false;
+try {
+  new McpFnRegistry().register({
+    name: "invalid-reference",
+    description: "Must fail during Worker module startup.",
+    inputSchema: {
+      type: "object",
+      properties: { value: { $ref: "https://worker.example/schemas/missing" } },
+    },
+    handler: async () => structuredResult({ ok: true }),
+  });
+} catch (error) {
+  const cause = error?.details?.cause;
+  if (!/resolve.*ref/i.test(typeof cause === "string" ? cause : "")) throw error;
+  unresolvedReferenceRejected = true;
+}
+
 const registry = new McpFnRegistry().register({
   name: "pair-shape",
   description: "Validate a pair of numbers.",
@@ -121,7 +138,12 @@ export default {
   async fetch(request) {
     const url = new URL(request.url);
     if (url.pathname === "/diagnostics") {
-      return Response.json({ schemaEngine, protectedResource, manifestHash: manifest.hash });
+      return Response.json({
+        schemaEngine,
+        protectedResource,
+        manifestHash: manifest.hash,
+        unresolvedReferenceRejected,
+      });
     }
     if (url.pathname !== "/mcp") return new Response("Not found", { status: 404 });
     const handler = await protectedHandlerPromise;
@@ -198,6 +220,11 @@ async function main() {
       `Worker selected ${diagnostics.schemaEngine} instead of the edge validator`,
     );
     assert.match(diagnostics.manifestHash, /^[a-f0-9]{64}$/);
+    assert.equal(
+      diagnostics.unresolvedReferenceRejected,
+      true,
+      "Worker accepted an unresolved schema reference during module startup",
+    );
     assert.deepEqual(diagnostics.protectedResource, {
       resource: "https://worker.example/mcp",
       authorization_servers: ["https://auth.example"],

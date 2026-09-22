@@ -98,6 +98,25 @@ describe("McpFn manifests", () => {
   );
 
   it.each(["ajv", "cfworker"] as const)(
+    "rejects unresolved schema references in manifests with %s",
+    (engine) => {
+      selectManifestEngine(engine);
+      const manifest = createManifest(
+        { name: "unresolved-reference", version: "1.0.0" },
+        registry(),
+      );
+      manifest.tools[0]!.inputSchema = {
+        type: "object",
+        properties: { value: { $ref: "#/missing" } },
+      };
+      const { hash: _oldHash, ...body } = manifest;
+      manifest.hash = sha256(body);
+
+      expect(() => validateManifest(manifest)).toThrow(/invalid JSON Schema/);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
     "round-trips cross-schema references after manifest sorting with %s",
     (engine) => {
       selectManifestEngine(engine);

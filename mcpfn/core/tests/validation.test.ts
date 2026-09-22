@@ -53,6 +53,15 @@ describe("schema validation engines", () => {
   );
 
   it.each(["ajv", "cfworker"] as const)(
+    "rejects unresolved references while compiling with %s",
+    (engine) => {
+      expect(() => createSchemaCompiler(engine).compile({
+        $ref: "https://example.test/missing",
+      })).toThrow(/resolve.*ref|can't resolve reference/i);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
     "validates schema collections as independent roots with %s",
     (engine) => {
       const schemaId = "https://example.test/batch-value";
@@ -89,6 +98,36 @@ describe("schema validation engines", () => {
   );
 
   it.each(["ajv", "cfworker"] as const)(
+    "rejects unresolved references in schema collections with %s",
+    (engine) => {
+      expect(() => validateSchemaCollection([
+        {
+          type: "object",
+          properties: { value: { $ref: "#/missing" } },
+        },
+      ], engine)).toThrow(/resolve.*ref|can't resolve reference/i);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "accepts cyclic references in schema collections with %s",
+    (engine) => {
+      expect(() => validateSchemaCollection([
+        {
+          $id: "https://example.test/left",
+          type: "object",
+          properties: { right: { $ref: "https://example.test/right" } },
+        },
+        {
+          $id: "https://example.test/right",
+          type: "object",
+          properties: { left: { $ref: "https://example.test/left" } },
+        },
+      ], engine)).not.toThrow();
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
     "scopes schema identifiers to an owning %s compiler",
     (engine) => {
       const first = createSchemaCompiler(engine);
@@ -119,6 +158,16 @@ describe("schema validation engines", () => {
       $id: "https://mcpfn.invalid/schema/0",
       type: "object",
     })).not.toThrow();
+  });
+
+  it("does not reserve collection identifiers while compiling with the fallback", () => {
+    const compiler = createSchemaCompiler("cfworker");
+
+    compiler.compile({
+      $id: "https://schema-collection.mcpfn.invalid/1-0",
+      type: "object",
+    });
+    expect(() => compiler.compile({ type: "object" })).not.toThrow();
   });
 
   it.each(["ajv", "cfworker"] as const)(

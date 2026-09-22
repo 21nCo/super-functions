@@ -1,6 +1,6 @@
 import Ajv, { type ErrorObject } from "ajv";
 import addFormats from "ajv-formats";
-import { Validator as CfWorkerValidator } from "@cfworker/json-schema";
+import { dereference, Validator as CfWorkerValidator } from "@cfworker/json-schema";
 
 import { draft7MetaSchema } from "./draft-07-meta-schema.js";
 
@@ -102,8 +102,6 @@ export interface SchemaCompiler {
   compile(schema: object): CompiledSchema;
 }
 
-let nextCompilerNamespace = 0;
-
 function defaultSchemaEngine(): SchemaEngine {
   // Miniflare/workerd may permit Function construction even though deployed
   // Workers do not. Prefer the edge-safe engine whenever the Cloudflare-only
@@ -132,78 +130,124 @@ function isSyntheticIdCollision(error: unknown, syntheticIds: readonly string[])
   return duplicateMessage && syntheticIds.some((id) => error.message.includes(`"${id}"`));
 }
 
+interface SchemaResourcePlan {
+  resources: object[];
+  resourceIds: string[];
+  syntheticIds: string[];
+}
+
+function planSchemaResources(schemas: readonly object[], attempt: number): SchemaResourcePlan {
+  const resourceIds = schemas.map(
+    (schema, index) => explicitSchemaId(schema) ?? syntheticCollectionId(index, attempt),
+  );
+  return {
+    resources: schemas.map((schema, index) => {
+      const copy = structuredClone(schema);
+      return explicitSchemaId(copy) ? copy : { ...copy, $id: resourceIds[index]! };
+    }),
+    resourceIds,
+    syntheticIds: resourceIds.filter(
+      (_, index) => explicitSchemaId(schemas[index]!) === undefined,
+    ),
+  };
+}
+
+function assertCfWorkerSchemaSyntax(
+  schema: object,
+  validateSchema: CfWorkerValidator,
+): void {
+  const result = validateSchema.validate(schema) as {
+    valid: boolean;
+    errors?: CfWorkerOutputUnit[];
+  };
+  if (result.valid) return;
+  const details = mapCfWorkerErrors(result.errors)
+    .map((issue) => `${issue.instancePath || "/"}: ${issue.message}`)
+    .join("; ");
+  throw new Error(`schema is invalid: ${details}`);
+}
+
+type CfWorkerSchemaLookup = ReturnType<typeof dereference>;
+
+interface DereferencedSchema {
+  $ref?: unknown;
+  __absolute_ref__?: unknown;
+}
+
+function buildCfWorkerLookup(resources: readonly object[]): CfWorkerSchemaLookup {
+  const lookup: CfWorkerSchemaLookup = Object.create(null);
+  for (const resource of resources) {
+    dereference(structuredClone(resource) as never, lookup);
+  }
+  return lookup;
+}
+
+function assertCfWorkerReferencesResolved(lookup: CfWorkerSchemaLookup): void {
+  for (const value of Object.values(lookup)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const schema = value as DereferencedSchema;
+    if (typeof schema.$ref !== "string") continue;
+    const reference = typeof schema.__absolute_ref__ === "string"
+      ? schema.__absolute_ref__
+      : schema.$ref;
+    if (lookup[reference] === undefined) {
+      throw new Error(`Unresolved $ref "${schema.$ref}". Absolute URI "${reference}".`);
+    }
+  }
+}
+
+function prepareCfWorkerResources(schemas: readonly object[]): object[] {
+  let attempt = 0;
+  while (true) {
+    const plan = planSchemaResources(schemas, attempt);
+    try {
+      const lookup = buildCfWorkerLookup(plan.resources);
+      assertCfWorkerReferencesResolved(lookup);
+      return plan.resources;
+    } catch (error) {
+      if (!isSyntheticIdCollision(error, plan.syntheticIds)) throw error;
+      attempt += 1;
+    }
+  }
+}
+
+function validateAjvSchemaCollection(schemas: readonly object[]): void {
+  let attempt = 0;
+  while (true) {
+    const plan = planSchemaResources(schemas, attempt);
+    try {
+      const ajv = createAjv();
+      for (const resource of plan.resources) ajv.addSchema(resource as never);
+      for (const resourceId of plan.resourceIds) {
+        if (!ajv.getSchema(resourceId)) {
+          throw new Error(`schema is unavailable after registration: ${resourceId}`);
+        }
+      }
+      return;
+    } catch (error) {
+      if (!isSyntheticIdCollision(error, plan.syntheticIds)) throw error;
+      attempt += 1;
+    }
+  }
+}
+
+function validateCfWorkerSchemaCollection(schemas: readonly object[]): void {
+  const validateSchema = new CfWorkerValidator(draft7MetaSchema as never, "7", false);
+  for (const schema of schemas) assertCfWorkerSchemaSyntax(schema, validateSchema);
+  prepareCfWorkerResources(schemas);
+}
+
 /**
  * Validate a related collection of JSON Schema resources without changing each
- * schema's root. Named resources are registered before Ajv compiles any entry,
- * so forward references do not depend on canonical manifest ordering.
+ * schema's root. All resources are indexed before references are checked, so
+ * forward references do not depend on canonical manifest ordering.
  */
 export function validateSchemaCollection(
   schemas: readonly object[],
   engine: SchemaEngine = defaultSchemaEngine(),
 ): void {
-  const schemaCopies = schemas.map((schema) => structuredClone(schema));
-  if (engine === "cfworker") {
-    const validateSchema = new CfWorkerValidator(draft7MetaSchema as never, "7", false);
-    for (const schema of schemaCopies) {
-      const schemaResult = validateSchema.validate(schema) as {
-        valid: boolean;
-        errors?: CfWorkerOutputUnit[];
-      };
-      if (!schemaResult.valid) {
-        const details = mapCfWorkerErrors(schemaResult.errors)
-          .map((issue) => `${issue.instancePath || "/"}: ${issue.message}`)
-          .join("; ");
-        throw new Error(`schema is invalid: ${details}`);
-      }
-    }
-  }
-
-  let attempt = 0;
-  while (true) {
-    const resourceIds = schemaCopies.map(
-      (schema, index) => explicitSchemaId(schema) ?? syntheticCollectionId(index, attempt),
-    );
-    const syntheticIds = resourceIds.filter(
-      (_, index) => explicitSchemaId(schemaCopies[index]!) === undefined,
-    );
-
-    try {
-      if (engine === "ajv") {
-        const ajv = createAjv();
-        for (const [index, schema] of schemaCopies.entries()) {
-          const resourceId = resourceIds[index]!;
-          ajv.addSchema(
-            explicitSchemaId(schema) ? schema as never : { ...schema, $id: resourceId } as never,
-          );
-        }
-        for (const resourceId of resourceIds) {
-          if (!ajv.getSchema(resourceId)) {
-            throw new Error(`schema is unavailable after registration: ${resourceId}`);
-          }
-        }
-        return;
-      }
-
-      const indexId = syntheticCollectionId("index", attempt);
-      const validator = new CfWorkerValidator({ $id: indexId } as never, "7", false);
-      syntheticIds.push(indexId);
-      for (const [index, schema] of schemaCopies.entries()) {
-        const copy = structuredClone(schema);
-        if (explicitSchemaId(copy)) {
-          validator.addSchema(copy as never);
-        } else {
-          validator.addSchema(copy as never, resourceIds[index]!);
-        }
-      }
-      return;
-    } catch (error) {
-      if (isSyntheticIdCollision(error, syntheticIds)) {
-        attempt += 1;
-        continue;
-      }
-      throw error;
-    }
-  }
+  if (engine === "ajv") validateAjvSchemaCollection(schemas);
+  else validateCfWorkerSchemaCollection(schemas);
 }
 
 /**
@@ -235,55 +279,18 @@ export function createSchemaCompiler(
   }
 
   const validateSchema = new CfWorkerValidator(draft7MetaSchema as never, "7", false);
-  const syntheticSchemaBase =
-    `https://compiler-${nextCompilerNamespace++}.schema.mcpfn.invalid/`;
   const registeredSchemas: object[] = [];
   return {
     engine,
     compile(schema) {
-      const schemaResult = validateSchema.validate(schema) as {
-        valid: boolean;
-        errors?: CfWorkerOutputUnit[];
-      };
-      if (!schemaResult.valid) {
-        const details = mapCfWorkerErrors(schemaResult.errors)
-          .map((issue) => `${issue.instancePath || "/"}: ${issue.message}`)
-          .join("; ");
-        throw new Error(`schema is invalid: ${details}`);
+      assertCfWorkerSchemaSyntax(schema, validateSchema);
+      const resources = prepareCfWorkerResources([...registeredSchemas, schema]);
+      const current = resources.at(-1)!;
+      const validator = new CfWorkerValidator(structuredClone(current) as never, "7", false);
+      for (const registered of resources.slice(0, -1)) {
+        validator.addSchema(structuredClone(registered) as never);
       }
-
-      // Ajv's default constructor implements draft-07. Keep the fallback on
-      // that same dialect so keywords such as $ref have identical semantics.
-      const validator = new CfWorkerValidator(schema as never, "7", false);
-      for (const [index, registered] of registeredSchemas.entries()) {
-        const explicitId = (registered as { $id?: unknown }).$id;
-        if (typeof explicitId === "string" && explicitId.length > 0) {
-          validator.addSchema(registered as never);
-          continue;
-        }
-
-        // @cfworker assigns one fixed default URI to every anonymous schema.
-        // Replay anonymous documents under this compiler's private namespace,
-        // retrying if a user schema happens to claim a candidate internal URI.
-        let attempt = 0;
-        while (true) {
-          const syntheticId = `${syntheticSchemaBase}${index}-${attempt}`;
-          try {
-            validator.addSchema(registered as never, syntheticId);
-            break;
-          } catch (error) {
-            if (
-              error instanceof Error &&
-              error.message === `Duplicate schema URI "${syntheticId}".`
-            ) {
-              attempt += 1;
-              continue;
-            }
-            throw error;
-          }
-        }
-      }
-      registeredSchemas.push(schema);
+      registeredSchemas.push(structuredClone(schema));
       const compiled = ((data: unknown): boolean => {
         const result = validator.validate(data) as {
           valid: boolean;
