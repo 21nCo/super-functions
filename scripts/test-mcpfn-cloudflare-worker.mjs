@@ -42,6 +42,7 @@ import {
   createMcpFnServer,
   schemaEngine,
   structuredResult,
+  validateManifest,
 } from "@mcpfn/core";
 import {
   createOAuthResourceServerHandler,
@@ -92,6 +93,7 @@ const mcp = createMcpFnServer({
   info: { name: "cloudflare-regression", version: "1.0.0" },
   registry,
 });
+const manifest = validateManifest(mcp.manifest());
 
 const handlerPromise = mcp.createWebStandardHandler({
   enableJsonResponse: true,
@@ -119,7 +121,7 @@ export default {
   async fetch(request) {
     const url = new URL(request.url);
     if (url.pathname === "/diagnostics") {
-      return Response.json({ schemaEngine, protectedResource });
+      return Response.json({ schemaEngine, protectedResource, manifestHash: manifest.hash });
     }
     if (url.pathname !== "/mcp") return new Response("Not found", { status: 404 });
     const handler = await protectedHandlerPromise;
@@ -195,6 +197,7 @@ async function main() {
       "cfworker",
       `Worker selected ${diagnostics.schemaEngine} instead of the edge validator`,
     );
+    assert.match(diagnostics.manifestHash, /^[a-f0-9]{64}$/);
     assert.deepEqual(diagnostics.protectedResource, {
       resource: "https://worker.example/mcp",
       authorization_servers: ["https://auth.example"],

@@ -75,6 +75,16 @@ describe("schema validation engines", () => {
     },
   );
 
+  it("does not reserve the fallback's former fixed synthetic identifier", () => {
+    const compiler = createSchemaCompiler("cfworker");
+
+    compiler.compile({ type: "object" });
+    expect(() => compiler.compile({
+      $id: "https://mcpfn.invalid/schema/0",
+      type: "object",
+    })).not.toThrow();
+  });
+
   it.each(["ajv", "cfworker"] as const)(
     "rejects unsupported explicitly declared dialects with %s",
     (engine) => {

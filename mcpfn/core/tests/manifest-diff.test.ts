@@ -64,7 +64,7 @@ describe("McpFn manifests", () => {
     expect(validateManifest(manifest)).toEqual(manifest);
   });
 
-  it("isolates schema identifiers between manifest entries", () => {
+  it("rejects duplicate schema identifiers across manifest entries", () => {
     const manifest = createManifest(
       { name: "schema-identifiers", version: "1.0.0" },
       registry().register({
@@ -83,6 +83,37 @@ describe("McpFn manifests", () => {
     const { hash: _oldHash, ...body } = manifest;
     manifest.hash = sha256(body);
 
+    expect(() => validateManifest(manifest)).toThrow(/invalid JSON Schema/);
+  });
+
+  it("round-trips cross-schema references after manifest sorting", () => {
+    const schemaId = "https://example.test/shared-input";
+    const manifest = createManifest(
+      { name: "schema-references", version: "1.0.0" },
+      new McpFnRegistry()
+        .register({
+          name: "z-base",
+          description: "Define the shared input schema.",
+          inputSchema: {
+            $id: schemaId,
+            type: "object",
+            properties: { value: { type: "string" } },
+          },
+          handler: async ({ value }) => structuredResult({ value }),
+        })
+        .register({
+          name: "a-dependent",
+          description: "Use the shared input schema.",
+          inputSchema: {
+            type: "object",
+            properties: { payload: { $ref: schemaId } },
+          },
+          outputSchema: { type: "object", $ref: schemaId },
+          handler: async ({ payload }) => structuredResult(payload),
+        }),
+    );
+
+    expect(manifest.tools.map((tool) => tool.name)).toEqual(["a-dependent", "z-base"]);
     expect(validateManifest(manifest)).toEqual(manifest);
   });
 

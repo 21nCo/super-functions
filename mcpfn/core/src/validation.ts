@@ -102,6 +102,8 @@ export interface SchemaCompiler {
   compile(schema: object): CompiledSchema;
 }
 
+let nextCompilerNamespace = 0;
+
 function defaultSchemaEngine(): SchemaEngine {
   // Miniflare/workerd may permit Function construction even though deployed
   // Workers do not. Prefer the edge-safe engine whenever the Cloudflare-only
@@ -139,7 +141,9 @@ export function createSchemaCompiler(
   }
 
   const validateSchema = new CfWorkerValidator(draft7MetaSchema as never, "7", false);
-  const registeredSchemas: Array<{ schema: object; syntheticId?: string }> = [];
+  const syntheticSchemaBase =
+    `https://compiler-${nextCompilerNamespace++}.schema.mcpfn.invalid/`;
+  const registeredSchemas: object[] = [];
   return {
     engine,
     compile(schema) {
@@ -157,18 +161,35 @@ export function createSchemaCompiler(
       // Ajv's default constructor implements draft-07. Keep the fallback on
       // that same dialect so keywords such as $ref have identical semantics.
       const validator = new CfWorkerValidator(schema as never, "7", false);
-      for (const registered of registeredSchemas) {
-        validator.addSchema(registered.schema as never, registered.syntheticId);
+      for (const [index, registered] of registeredSchemas.entries()) {
+        const explicitId = (registered as { $id?: unknown }).$id;
+        if (typeof explicitId === "string" && explicitId.length > 0) {
+          validator.addSchema(registered as never);
+          continue;
+        }
+
+        // @cfworker assigns one fixed default URI to every anonymous schema.
+        // Replay anonymous documents under this compiler's private namespace,
+        // retrying if a user schema happens to claim a candidate internal URI.
+        let attempt = 0;
+        while (true) {
+          const syntheticId = `${syntheticSchemaBase}${index}-${attempt}`;
+          try {
+            validator.addSchema(registered as never, syntheticId);
+            break;
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              error.message === `Duplicate schema URI "${syntheticId}".`
+            ) {
+              attempt += 1;
+              continue;
+            }
+            throw error;
+          }
+        }
       }
-      registeredSchemas.push({
-        schema,
-        // @cfworker assigns the same default URI to every anonymous schema.
-        // Give prior anonymous documents private roots when adding them to a
-        // later validator, while preserving any explicit $id verbatim.
-        ...(typeof (schema as { $id?: unknown }).$id === "string"
-          ? {}
-          : { syntheticId: `https://mcpfn.invalid/schema/${registeredSchemas.length}` }),
-      });
+      registeredSchemas.push(schema);
       const compiled = ((data: unknown): boolean => {
         const result = validator.validate(data) as {
           valid: boolean;
