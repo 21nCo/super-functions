@@ -1,0 +1,19 @@
+mcpfn/inspector/src/index.ts
+  s_621f2416635dac::t_5def173f837fb7 416-419
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0f3504151572defbcc84c3eab492759b60bbd56b",
+  "prompts": {},
+  "sessions": {
+    "s_621f2416635dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0cf88-d299-7c41-8dce-27bbb0f005de",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
