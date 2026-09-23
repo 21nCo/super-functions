@@ -1,0 +1,24 @@
+mcpfn/core/src/validation.ts
+  s_443991029aaf4a::t_a31e504465d031 130-134,136-147,150,154-161,241,540,558-560
+mcpfn/core/tests/validation.test.ts
+  s_443991029aaf4a::t_3c30f3ec139207 183,188-211
+  s_443991029aaf4a::t_fe949cee6948c5 161-182,184-187,212-214
+mcpfn/core/src/draft-07-meta-schema.ts
+  s_443991029aaf4a::t_a31e504465d031 76-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "903a4f83a6b3d22dc3fb58d4dd87798aa8bbaea0",
+  "prompts": {},
+  "sessions": {
+    "s_443991029aaf4a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ceba-254c-7783-b307-8c3de886ea52",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
