@@ -53,6 +53,64 @@ describe("schema validation engines", () => {
   );
 
   it.each(["ajv", "cfworker"] as const)(
+    "preserves the shared base for relative schema identifiers with %s",
+    (engine) => {
+      const valueSchema = { $id: "shared", type: "string" };
+      const referringSchema = {
+        type: "object",
+        properties: { value: { $ref: "shared" } },
+      };
+      const compiler = createSchemaCompiler(engine);
+      compiler.compile(valueSchema);
+      const validate = compiler.compile(referringSchema);
+
+      expect(validate({ value: "ok" })).toBe(true);
+      expect(validate({ value: 42 })).toBe(false);
+      expect(() => validateSchemaCollection([valueSchema, referringSchema], engine))
+        .not.toThrow();
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "does not alias relative references to absolute internal-looking identifiers with %s",
+    (engine) => {
+      const absoluteSchema = {
+        $id: "https://0.schema-resource.mcpfn.invalid/shared",
+        type: "string",
+      };
+      const referringSchema = { $ref: "shared" };
+      const compiler = createSchemaCompiler(engine);
+      compiler.compile(absoluteSchema);
+
+      expect(() => compiler.compile(referringSchema))
+        .toThrow(/resolve.*ref|can't resolve reference/i);
+      expect(() => validateSchemaCollection([absoluteSchema, referringSchema], engine))
+        .toThrow(/resolve.*ref|can't resolve reference/i);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "rejects legacy identifiers, including beside empty references, with %s",
+    (engine) => {
+      const schema = {
+        type: "object",
+        definitions: {
+          node: {
+            id: "legacy-node",
+            type: "object",
+            properties: { child: { $ref: "" } },
+          },
+        },
+      };
+
+      expect(() => createSchemaCompiler(engine).compile(schema))
+        .toThrow(/keyword "id".*\$id/);
+      expect(() => validateSchemaCollection([schema], engine))
+        .toThrow(/keyword "id".*\$id/);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
     "rejects unresolved references while compiling with %s",
     (engine) => {
       expect(() => createSchemaCompiler(engine).compile({
@@ -113,6 +171,7 @@ describe("schema validation engines", () => {
       const validate = createSchemaCompiler(engine).compile(schema);
 
       expect(validate({ child: null })).toBe(true);
+      expect(validate({ child: {} })).toBe(true);
       expect(validate({ child: 42 })).toBe(false);
       expect(() => validateSchemaCollection([schema], engine)).not.toThrow();
     },

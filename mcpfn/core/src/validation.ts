@@ -3,7 +3,6 @@ import addFormats from "ajv-formats";
 import {
   dereference,
   encodePointer,
-  initialBaseURI,
   validate as validateCfWorkerSchema,
   Validator as CfWorkerValidator,
 } from "@cfworker/json-schema";
@@ -117,6 +116,7 @@ function defaultSchemaEngine(): SchemaEngine {
 }
 
 const syntheticCollectionBase = "https://schema-collection.mcpfn.invalid/";
+const relativeSchemaHostSuffix = ".schema-resource.mcpfn.invalid";
 
 function explicitSchemaId(schema: object): string | undefined {
   const id = (schema as { $id?: unknown }).$id;
@@ -142,19 +142,86 @@ interface SchemaResourcePlan {
   syntheticIds: string[];
 }
 
+function collectAbsoluteSchemaOrigins(schema: Draft7Schema, origins: Set<string>): void {
+  if (typeof schema === "boolean") return;
+  for (const keyword of ["$id", "$ref"] as const) {
+    const value = schema[keyword];
+    if (typeof value !== "string") continue;
+    try {
+      origins.add(new URL(value).origin);
+    } catch {
+      if (value.startsWith("//")) {
+        origins.add(new URL(value, "https://relative-schema.invalid").origin);
+      }
+    }
+  }
+  forEachDraft7Subschema(schema, (subschema) => {
+    collectAbsoluteSchemaOrigins(subschema, origins);
+  });
+}
+
+function selectRelativeSchemaBase(schemas: readonly object[]): URL {
+  const occupiedOrigins = new Set<string>();
+  for (const schema of schemas) {
+    collectAbsoluteSchemaOrigins(schema as Record<string, unknown>, occupiedOrigins);
+  }
+  let index = 0;
+  while (occupiedOrigins.has(`https://${index}${relativeSchemaHostSuffix}`)) index += 1;
+  return new URL(`https://${index}${relativeSchemaHostSuffix}/`);
+}
+
+// @cfworker/json-schema requires absolute URLs while Ajv also supports a
+// relative identifier namespace. Canonicalize that namespace before assigning
+// anonymous roots their private synthetic IDs. A base on an unoccupied origin
+// keeps relative identifiers distinct from every absolute URI in the input.
+function normalizeSchemaUris(
+  schema: Draft7Schema,
+  parentOriginalBase: URL,
+  parentEffectiveBase: URL,
+): void {
+  if (typeof schema === "boolean") return;
+
+  let originalBase = parentOriginalBase;
+  let effectiveBase = parentEffectiveBase;
+  const identifier = explicitSchemaId(schema);
+  if (identifier) {
+    originalBase = new URL(identifier, parentOriginalBase);
+    effectiveBase = originalBase;
+    schema.$id = originalBase.href;
+  }
+
+  if (typeof schema.$ref === "string") {
+    const referenceBase = schema.$ref === "" || schema.$ref.startsWith("#")
+      ? effectiveBase
+      : originalBase;
+    schema.$ref = new URL(schema.$ref, referenceBase).href;
+  }
+
+  forEachDraft7Subschema(schema, (subschema) => {
+    normalizeSchemaUris(subschema, originalBase, effectiveBase);
+  });
+}
+
 function planSchemaResources(schemas: readonly object[], attempt: number): SchemaResourcePlan {
-  const resourceIds = schemas.map(
-    (schema, index) => explicitSchemaId(schema) ?? syntheticCollectionId(index, attempt),
-  );
+  const relativeSchemaBase = selectRelativeSchemaBase(schemas);
+  const syntheticIds = schemas.map((schema, index) => (
+    explicitSchemaId(schema) ? undefined : syntheticCollectionId(index, attempt)
+  ));
+  const resources = schemas.map((schema, index) => {
+    const copy = structuredClone(schema) as Record<string, unknown>;
+    const syntheticId = syntheticIds[index];
+    normalizeSchemaUris(
+      copy,
+      relativeSchemaBase,
+      syntheticId ? new URL(syntheticId) : relativeSchemaBase,
+    );
+    if (syntheticId) copy.$id = syntheticId;
+    return copy;
+  });
   return {
-    resources: schemas.map((schema, index) => {
-      const copy = structuredClone(schema);
-      return explicitSchemaId(copy) ? copy : { ...copy, $id: resourceIds[index]! };
-    }),
-    resourceIds,
-    syntheticIds: resourceIds.filter(
-      (_, index) => explicitSchemaId(schemas[index]!) === undefined,
-    ),
+    resources,
+    resourceIds: resources.map((resource) => explicitSchemaId(resource)!),
+    syntheticIds: syntheticIds.filter((id): id is string => id !== undefined),
   };
 }
 
@@ -242,26 +309,19 @@ function forEachDraft7Subschema(
   visitSchemaMap(schema.dependencies, visit);
 }
 
-function schemaBaseURI(schema: Record<string, unknown>, parentBaseURI: URL): URL {
-  const identifier = typeof schema.$id === "string"
-    ? schema.$id
-    : typeof schema.id === "string"
-      ? schema.id
-      : undefined;
-  return identifier ? new URL(identifier, parentBaseURI) : parentBaseURI;
-}
-
-function normalizeEmptyReferences(schema: Draft7Schema, parentBaseURI: URL): void {
+function assertNoLegacySchemaIds(schema: object | boolean): void {
   if (typeof schema === "boolean") return;
-  const baseURI = schemaBaseURI(schema, parentBaseURI);
-  if (schema.$ref === "") schema.$ref = new URL("", baseURI).href;
-  forEachDraft7Subschema(schema, (subschema) => normalizeEmptyReferences(subschema, baseURI));
+  const draft7Schema = schema as Record<string, unknown>;
+  if (Object.hasOwn(draft7Schema, "id")) {
+    throw new TypeError('NOT SUPPORTED: keyword "id", use "$id" for schema ID');
+  }
+  forEachDraft7Subschema(draft7Schema, assertNoLegacySchemaIds);
 }
 
 function schemaLocation(schema: DereferencedSchema): { resourceURI: URL; pointer: string } {
   const absoluteURI = schema.__absolute_uri__;
   if (typeof absoluteURI !== "string") {
-    throw new Error("Schema resource is missing its absolute URI");
+    throw new TypeError("Schema resource is missing its absolute URI");
   }
   const resourceURI = new URL(absoluteURI);
   const hash = resourceURI.hash;
@@ -303,7 +363,6 @@ function supplementDraft7Dependencies(
 function buildCfWorkerLookup(resources: readonly object[]): CfWorkerSchemaLookup {
   const lookup: CfWorkerSchemaLookup = Object.create(null);
   for (const resource of resources) {
-    normalizeEmptyReferences(resource as Record<string, unknown>, initialBaseURI);
     dereference(resource as never, lookup);
   }
   for (const resource of resources) {
@@ -381,6 +440,7 @@ export function validateSchemaCollection(
   schemas: readonly object[],
   engine: SchemaEngine = defaultSchemaEngine(),
 ): void {
+  for (const schema of schemas) assertNoLegacySchemaIds(schema);
   if (engine === "ajv") validateAjvSchemaCollection(schemas);
   else validateCfWorkerSchemaCollection(schemas);
 }
@@ -401,6 +461,7 @@ export function createSchemaCompiler(
     return {
       engine,
       compile(schema) {
+        assertNoLegacySchemaIds(schema);
         const validate = ajv.compile(schema as never);
         const compiled = ((data: unknown): boolean => {
           const valid = validate(data);
@@ -418,6 +479,7 @@ export function createSchemaCompiler(
   return {
     engine,
     compile(schema) {
+      assertNoLegacySchemaIds(schema);
       assertCfWorkerSchemaSyntax(schema, validateSchema);
       const { resources, lookup } = prepareCfWorkerResources([...registeredSchemas, schema]);
       const current = resources.at(-1)!;
