@@ -14,7 +14,7 @@ assert.equal(core.schemaEngine, "cfworker");
 const registry = new core.McpFnRegistry();
 for (const [name, id] of [
   ["opaque", "urn:example:root"],
-  ["ipvfuture", "http://[v1.fe]/schema"],
+  ["ipvfuture", "https://[v1.fe]/schema"],
 ]) {
   registry.register({
     name,
@@ -35,4 +35,18 @@ for (const [name, id] of [
     /Invalid arguments/,
   );
 }
+registry.register({
+  name: "recursive",
+  description: "Validate an anonymous dot-segment self reference",
+  inputSchema: { type: "object", properties: { child: { $ref: "." } } },
+  handler: async () => ({ content: [{ type: "text", text: "ok" }] }),
+});
+assert.deepEqual(
+  (await registry.callTool("recursive", { child: { child: {} } }, undefined, {})).content,
+  [{ type: "text", text: "ok" }],
+);
+await assert.rejects(
+  registry.callTool("recursive", { child: 42 }, undefined, {}),
+  /Invalid arguments/,
+);
 console.log(JSON.stringify({ entry, engine: core.schemaEngine, valid: true, invalidRejected: true }));

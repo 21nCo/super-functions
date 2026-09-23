@@ -244,13 +244,17 @@ function normalizeSchemaUris(
   }
 
   if (typeof schema.$ref === "string") {
-    const localReference = schema.$ref === "" || schema.$ref.startsWith("#");
-    const referenceBase = localReference
-      ? effectiveBase
-      : originalBase;
-    const resolved = resolveSchemaUri(schema.$ref, referenceBase);
+    const resolved = resolveSchemaUri(schema.$ref, originalBase);
+    const sameResource = schemaResourceUri(resolved) === schemaResourceUri(originalBase);
+    // Anonymous roots have no public base. A dot-segment reference can still
+    // resolve to that root, but an absolute reference to our private planning
+    // origin must not gain access to its synthetic ID.
+    const localReference = sameResource && (
+      !effectiveBase.startsWith(syntheticCollectionBase) ||
+      schemaResourceUri(resolveSchemaUri(schema.$ref, "")) === ""
+    );
     schema.$ref = localReference
-      ? resolved
+      ? resolveSchemaUri(resolved.slice(schemaResourceUri(resolved).length), effectiveBase)
       : workerSchemaUri(resolved);
   }
 

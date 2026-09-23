@@ -72,6 +72,31 @@ describe("schema validation engines", () => {
   );
 
   it.each(["ajv", "cfworker"] as const)(
+    "keeps dot-segment self references on anonymous roots using %s",
+    (engine) => {
+      for (const reference of [".", "./", "../"]) {
+        const schema = {
+          type: "object",
+          properties: { child: { $ref: reference } },
+        };
+        const validate = createSchemaCompiler(engine).compile(schema);
+        expect(validate({ child: { child: {} } })).toBe(true);
+        expect(validate({ child: 42 })).toBe(false);
+        expect(() => validateSchemaCollection([schema], engine)).not.toThrow();
+      }
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "does not turn a root-path reference into an anonymous self reference using %s",
+    (engine) => {
+      const schema = { type: "object", properties: { child: { $ref: "/" } } };
+      expect(() => createSchemaCompiler(engine).compile(schema)).toThrow();
+      expect(() => validateSchemaCollection([schema], engine)).toThrow();
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
     "does not alias relative references to absolute internal-looking identifiers with %s",
     (engine) => {
       const absoluteSchema = {
@@ -257,12 +282,12 @@ describe("schema validation engines", () => {
     "resolves RFC 3986 IPvFuture resources across compiler and collection using %s",
     (engine) => {
       const root = {
-        $id: "http://[v1.fe]/schema",
+        $id: "https://[v1.fe]/schema",
         type: "object",
         $defs: { child: { $id: "child", type: "string" } },
         properties: { value: { $ref: "child" } },
       };
-      const external = { type: "object", properties: { value: { $ref: "http://[v1.fe]/child" } } };
+      const external = { type: "object", properties: { value: { $ref: "https://[v1.fe]/child" } } };
       const compiler = createSchemaCompiler(engine);
       const validateRoot = compiler.compile(root);
       const validateExternal = compiler.compile(external);
@@ -277,7 +302,7 @@ describe("schema validation engines", () => {
   it.each(["ajv", "cfworker"] as const)(
     "rejects missing RFC 3986 IPvFuture resources using %s",
     (engine) => {
-      const schema = { $id: "http://[v1.fe]/schema", $ref: "missing" };
+      const schema = { $id: "https://[v1.fe]/schema", $ref: "missing" };
       expect(() => createSchemaCompiler(engine).compile(schema)).toThrow();
       expect(() => validateSchemaCollection([schema], engine)).toThrow();
     },

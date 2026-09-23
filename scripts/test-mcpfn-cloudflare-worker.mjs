@@ -121,13 +121,18 @@ const registry = new McpFnRegistry().register({
   name: "ipvfuture-uri",
   description: "Validate a relative reference beneath an IPvFuture schema ID.",
   inputSchema: {
-    $id: "http://[v1.fe]/schema",
+    $id: "https://[v1.fe]/schema",
     type: "object",
     required: ["value"],
     $defs: { child: { $id: "child", type: "string" } },
     properties: { value: { $ref: "child" } },
   },
   handler: async ({ value }) => structuredResult({ value }),
+}).register({
+  name: "recursive",
+  description: "Validate an anonymous dot-segment self reference.",
+  inputSchema: { type: "object", properties: { child: { $ref: "." } } },
+  handler: async (args) => structuredResult(args),
 });
 
 const mcp = createMcpFnServer({
@@ -299,6 +304,10 @@ async function main() {
     assert.deepEqual(ipvFuture.structuredContent, { value: "ok" });
     const ipvFutureInvalid = await client.callTool({ name: "ipvfuture-uri", arguments: { value: 42 } });
     assert.equal(ipvFutureInvalid.isError, true, "Worker accepted an invalid IPvFuture value");
+    const recursive = await client.callTool({ name: "recursive", arguments: { child: { child: {} } } });
+    assert.deepEqual(recursive.structuredContent, { child: { child: {} } });
+    const recursiveInvalid = await client.callTool({ name: "recursive", arguments: { child: 42 } });
+    assert.equal(recursiveInvalid.isError, true, "Worker accepted an invalid recursive value");
 
     await client.close();
     process.stdout.write(
@@ -312,6 +321,7 @@ async function main() {
         result: 5,
         opaqueUri: true,
         ipvFutureUri: true,
+        recursiveUri: true,
       }) + "\n",
     );
   } finally {
