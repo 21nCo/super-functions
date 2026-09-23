@@ -127,22 +127,36 @@ function syntheticCollectionId(index: number | "index", attempt: number): string
   return `${syntheticCollectionBase}${index}-${attempt}`;
 }
 
-function collectAbsoluteSchemaResourceUris(schema: Draft7Schema, uris: Set<string>): void {
+function collectUserSchemaResourceUris(
+  schema: Draft7Schema,
+  parentBase: URL,
+  uris: Set<string>,
+): void {
   if (typeof schema === "boolean") return;
-  for (const keyword of ["$id", "$ref"] as const) {
-    const value = schema[keyword];
-    if (typeof value !== "string") continue;
-    try {
-      const uri = new URL(value);
-      uri.hash = "";
-      uris.add(uri.href);
-    } catch {
-      // Relative identifiers use the separate relative-resource namespace.
-    }
+  const identifier = explicitSchemaId(schema);
+  const originalBase = identifier ? new URL(identifier, parentBase) : parentBase;
+  if (identifier) {
+    const resource = new URL(originalBase);
+    resource.hash = "";
+    uris.add(resource.href);
+  }
+  const reference = schema.$ref;
+  if (typeof reference === "string" && reference !== "" && !reference.startsWith("#")) {
+    const resource = new URL(reference, originalBase);
+    resource.hash = "";
+    uris.add(resource.href);
   }
   forEachDraft7Subschema(schema, (subschema) => {
-    collectAbsoluteSchemaResourceUris(subschema, uris);
+    collectUserSchemaResourceUris(subschema, originalBase, uris);
   });
+}
+
+function userSchemaResourceUris(schemas: readonly object[], base: URL): Set<string> {
+  const uris = new Set<string>();
+  for (const schema of schemas) {
+    collectUserSchemaResourceUris(schema as Record<string, unknown>, base, uris);
+  }
+  return uris;
 }
 
 function isSyntheticIdCollision(error: unknown, syntheticIds: readonly string[]): boolean {
@@ -224,10 +238,7 @@ function normalizeSchemaUris(
 
 function planSchemaResources(schemas: readonly object[], attempt: number): SchemaResourcePlan {
   const relativeSchemaBase = selectRelativeSchemaBase(schemas);
-  const occupiedUris = new Set<string>();
-  for (const schema of schemas) {
-    collectAbsoluteSchemaResourceUris(schema as Record<string, unknown>, occupiedUris);
-  }
+  const occupiedUris = userSchemaResourceUris(schemas, relativeSchemaBase);
   while (schemas.some((schema, index) =>
     !explicitSchemaId(schema) && occupiedUris.has(syntheticCollectionId(index, attempt))
   )) attempt += 1;
@@ -526,9 +537,8 @@ export function createSchemaCompiler(
       assertNoLegacySchemaIds(schema);
       assertCfWorkerSchemaSyntax(schema, validateSchema);
       const index = registeredSchemas.length;
-      const newUris = new Set<string>();
+      const newUris = userSchemaResourceUris([schema], state.relativeSchemaBase);
       const newOrigins = new Set<string>();
-      collectAbsoluteSchemaResourceUris(schema as Record<string, unknown>, newUris);
       collectAbsoluteSchemaOrigins(schema as Record<string, unknown>, newOrigins);
       const syntheticId = explicitSchemaId(schema)
         ? undefined : syntheticCollectionId(index, state.attempt);
@@ -545,6 +555,9 @@ export function createSchemaCompiler(
         state.relativeSchemaBase = plan.relativeSchemaBase;
         state.attempt = plan.attempt;
         state.syntheticIds = new Set(plan.syntheticIds);
+        state.occupiedUris = userSchemaResourceUris(
+          [...registeredSchemas, schema], plan.relativeSchemaBase,
+        );
       } else {
         const current = structuredClone(schema) as Record<string, unknown>;
         normalizeSchemaUris(

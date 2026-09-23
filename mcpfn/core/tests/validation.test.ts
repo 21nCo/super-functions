@@ -158,6 +158,60 @@ describe("schema validation engines", () => {
     },
   );
 
+  it.each(["ajv", "cfworker"] as const)(
+    "rejects malformed schemas inside $defs before registration using %s",
+    (engine) => {
+      const schema = {
+        type: "object",
+        $defs: { value: { type: 7 } },
+        properties: { value: { $ref: "#/$defs/value" } },
+      };
+      expect(() => createSchemaCompiler(engine).compile(schema)).toThrow();
+      expect(() => validateSchemaCollection([schema], engine)).toThrow();
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "does not expose an earlier anonymous root through a later relative reference using %s",
+    (engine) => {
+      const anonymous = { type: "string" };
+      const referring = {
+        $id: "https://schema-collection.mcpfn.invalid/",
+        $ref: "0-0",
+      };
+      const compiler = createSchemaCompiler(engine);
+      const first = compiler.compile(anonymous);
+      expect(() => compiler.compile(referring))
+        .toThrow(/resolve.*ref|can't resolve reference/i);
+      expect(() => validateSchemaCollection([anonymous, referring], engine))
+        .toThrow(/resolve.*ref|can't resolve reference/i);
+      expect(first("still valid")).toBe(true);
+      expect(first(42)).toBe(false);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "keeps an explicit public identifier distinct from an anonymous root using %s",
+    (engine) => {
+      const anonymous = { type: "number" };
+      const publicSchema = {
+        $id: "https://schema-collection.mcpfn.invalid/0-0",
+        type: "string",
+      };
+      const referring = { $ref: publicSchema.$id };
+      const compiler = createSchemaCompiler(engine);
+      const first = compiler.compile(anonymous);
+      compiler.compile(publicSchema);
+      const validate = compiler.compile(referring);
+      expect(first(42)).toBe(true);
+      expect(first("42")).toBe(false);
+      expect(validate("ok")).toBe(true);
+      expect(validate(42)).toBe(false);
+      expect(() => validateSchemaCollection([anonymous, publicSchema, referring], engine))
+        .not.toThrow();
+    },
+  );
+
   it("keeps earlier edge validators correct after a resource rebase and a rejected registration", () => {
     const compiler = createSchemaCompiler("cfworker");
     const first = compiler.compile({ type: "string", minLength: 2 });

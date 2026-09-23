@@ -73,6 +73,11 @@ export const draft7MetaSchema = {
       additionalProperties: { $ref: "#" },
       default: {},
     },
+    $defs: {
+      type: "object",
+      additionalProperties: { $ref: "#" },
+      default: {},
+    },
     properties: {
       type: "object",
       additionalProperties: { $ref: "#" },
