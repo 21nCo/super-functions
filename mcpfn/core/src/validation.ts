@@ -127,6 +127,24 @@ function syntheticCollectionId(index: number | "index", attempt: number): string
   return `${syntheticCollectionBase}${index}-${attempt}`;
 }
 
+function collectAbsoluteSchemaResourceUris(schema: Draft7Schema, uris: Set<string>): void {
+  if (typeof schema === "boolean") return;
+  for (const keyword of ["$id", "$ref"] as const) {
+    const value = schema[keyword];
+    if (typeof value !== "string") continue;
+    try {
+      const uri = new URL(value);
+      uri.hash = "";
+      uris.add(uri.href);
+    } catch {
+      // Relative identifiers use the separate relative-resource namespace.
+    }
+  }
+  forEachDraft7Subschema(schema, (subschema) => {
+    collectAbsoluteSchemaResourceUris(subschema, uris);
+  });
+}
+
 function isSyntheticIdCollision(error: unknown, syntheticIds: readonly string[]): boolean {
   if (!(error instanceof Error)) return false;
   const duplicateMessage =
@@ -140,6 +158,8 @@ interface SchemaResourcePlan {
   resources: object[];
   resourceIds: string[];
   syntheticIds: string[];
+  relativeSchemaBase: URL;
+  attempt: number;
 }
 
 function collectAbsoluteSchemaOrigins(schema: Draft7Schema, origins: Set<string>): void {
@@ -204,6 +224,13 @@ function normalizeSchemaUris(
 
 function planSchemaResources(schemas: readonly object[], attempt: number): SchemaResourcePlan {
   const relativeSchemaBase = selectRelativeSchemaBase(schemas);
+  const occupiedUris = new Set<string>();
+  for (const schema of schemas) {
+    collectAbsoluteSchemaResourceUris(schema as Record<string, unknown>, occupiedUris);
+  }
+  while (schemas.some((schema, index) =>
+    !explicitSchemaId(schema) && occupiedUris.has(syntheticCollectionId(index, attempt))
+  )) attempt += 1;
   const syntheticIds = schemas.map((schema, index) => (
     explicitSchemaId(schema) ? undefined : syntheticCollectionId(index, attempt)
   ));
@@ -222,6 +249,8 @@ function planSchemaResources(schemas: readonly object[], attempt: number): Schem
     resources,
     resourceIds: resources.map((resource) => explicitSchemaId(resource)!),
     syntheticIds: syntheticIds.filter((id): id is string => id !== undefined),
+    relativeSchemaBase,
+    attempt,
   };
 }
 
@@ -267,7 +296,7 @@ const singleSchemaKeywords = [
   "else",
 ] as const;
 const schemaArrayKeywords = ["allOf", "anyOf", "oneOf"] as const;
-const schemaMapKeywords = ["definitions", "properties", "patternProperties"] as const;
+const schemaMapKeywords = ["$defs", "definitions", "properties", "patternProperties"] as const;
 
 function isDraft7Schema(value: unknown): value is Draft7Schema {
   return typeof value === "boolean" ||
@@ -386,7 +415,7 @@ function assertCfWorkerReferencesResolved(lookup: CfWorkerSchemaLookup): void {
 }
 
 interface PreparedCfWorkerResources {
-  resources: object[];
+  plan: SchemaResourcePlan;
   lookup: CfWorkerSchemaLookup;
 }
 
@@ -397,7 +426,7 @@ function prepareCfWorkerResources(schemas: readonly object[]): PreparedCfWorkerR
     try {
       const lookup = buildCfWorkerLookup(plan.resources);
       assertCfWorkerReferencesResolved(lookup);
-      return { resources: plan.resources, lookup };
+      return { plan, lookup };
     } catch (error) {
       if (!isSyntheticIdCollision(error, plan.syntheticIds)) throw error;
       attempt += 1;
@@ -476,16 +505,68 @@ export function createSchemaCompiler(
 
   const validateSchema = new CfWorkerValidator(draft7MetaSchema as never, "7", false);
   const registeredSchemas: object[] = [];
+  const state: {
+    resources: object[];
+    lookup: CfWorkerSchemaLookup;
+    relativeSchemaBase: URL;
+    attempt: number;
+    occupiedUris: Set<string>;
+    syntheticIds: Set<string>;
+  } = {
+    resources: [],
+    lookup: Object.create(null),
+    relativeSchemaBase: selectRelativeSchemaBase([]),
+    attempt: 0,
+    occupiedUris: new Set(),
+    syntheticIds: new Set(),
+  };
   return {
     engine,
     compile(schema) {
       assertNoLegacySchemaIds(schema);
       assertCfWorkerSchemaSyntax(schema, validateSchema);
-      const { resources, lookup } = prepareCfWorkerResources([...registeredSchemas, schema]);
-      const current = resources.at(-1)!;
+      const index = registeredSchemas.length;
+      const newUris = new Set<string>();
+      const newOrigins = new Set<string>();
+      collectAbsoluteSchemaResourceUris(schema as Record<string, unknown>, newUris);
+      collectAbsoluteSchemaOrigins(schema as Record<string, unknown>, newOrigins);
+      const syntheticId = explicitSchemaId(schema)
+        ? undefined : syntheticCollectionId(index, state.attempt);
+      const mustReplan = newOrigins.has(state.relativeSchemaBase.origin) ||
+        [...newUris].some((uri) => state.syntheticIds.has(uri)) ||
+        (syntheticId !== undefined &&
+          (newUris.has(syntheticId) || state.occupiedUris.has(syntheticId)));
+      if (mustReplan) {
+        // A newly seen user URI can occupy a private namespace. Rebase the
+        // shared graph once so older validators keep the same public meaning.
+        const { plan, lookup } = prepareCfWorkerResources([...registeredSchemas, schema]);
+        state.resources = plan.resources;
+        state.lookup = lookup;
+        state.relativeSchemaBase = plan.relativeSchemaBase;
+        state.attempt = plan.attempt;
+        state.syntheticIds = new Set(plan.syntheticIds);
+      } else {
+        const current = structuredClone(schema) as Record<string, unknown>;
+        normalizeSchemaUris(
+          current,
+          state.relativeSchemaBase,
+          syntheticId ? new URL(syntheticId) : state.relativeSchemaBase,
+        );
+        if (syntheticId) current.$id = syntheticId;
+        // Each level stores only the newly registered resource. A failed
+        // registration leaves the prior graph and its validators untouched.
+        const lookup = Object.create(state.lookup) as CfWorkerSchemaLookup;
+        dereference(current as never, lookup);
+        supplementDraft7Dependencies(current, lookup);
+        assertCfWorkerReferencesResolved(lookup);
+        state.resources.push(current);
+        state.lookup = lookup;
+        if (syntheticId) state.syntheticIds.add(syntheticId);
+      }
+      for (const uri of newUris) state.occupiedUris.add(uri);
       registeredSchemas.push(structuredClone(schema));
       const compiled = ((data: unknown): boolean => {
-        const result = validateCfWorkerSchema(data, current as never, "7", lookup, false) as {
+        const result = validateCfWorkerSchema(data, state.resources[index] as never, "7", state.lookup, false) as {
           valid: boolean;
           errors?: CfWorkerOutputUnit[];
         };

@@ -90,6 +90,102 @@ describe("schema validation engines", () => {
   );
 
   it.each(["ajv", "cfworker"] as const)(
+    "does not satisfy a missing absolute reference with a synthetic root using %s",
+    (engine) => {
+      const schema = { $ref: "https://schema-collection.mcpfn.invalid/0-0" };
+      expect(() => createSchemaCompiler(engine).compile(schema))
+        .toThrow(/resolve.*ref|can't resolve reference/i);
+      expect(() => validateSchemaCollection([schema], engine))
+        .toThrow(/resolve.*ref|can't resolve reference/i);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "resolves relative references inside $defs using %s",
+    (engine) => {
+      const shared = { $id: "shared", type: "string" };
+      const referring = {
+        type: "object",
+        $defs: { value: { $ref: "shared" } },
+        properties: { value: { $ref: "#/$defs/value" } },
+      };
+      const compiler = createSchemaCompiler(engine);
+      compiler.compile(shared);
+      const validate = compiler.compile(referring);
+      expect(validate({ value: "ok" })).toBe(true);
+      expect(validate({ value: 42 })).toBe(false);
+      expect(() => validateSchemaCollection([shared, referring], engine)).not.toThrow();
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "resolves a relative identifier declared inside $defs using %s",
+    (engine) => {
+      const schema = {
+        type: "object",
+        $defs: { value: { $id: "shared", type: "string" } },
+        properties: { value: { $ref: "shared" } },
+      };
+      const validate = createSchemaCompiler(engine).compile(schema);
+      expect(validate({ value: "ok" })).toBe(true);
+      expect(validate({ value: 42 })).toBe(false);
+      expect(() => validateSchemaCollection([schema], engine)).not.toThrow();
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "does not alias a nested absolute $defs identifier to a relative reference using %s",
+    (engine) => {
+      const schema = {
+        $defs: { value: { $id: "https://0.schema-resource.mcpfn.invalid/shared", type: "string" } },
+        properties: { value: { $ref: "shared" } },
+      };
+      expect(() => createSchemaCompiler(engine).compile(schema))
+        .toThrow(/resolve.*ref|can't resolve reference/i);
+      expect(() => validateSchemaCollection([schema], engine))
+        .toThrow(/resolve.*ref|can't resolve reference/i);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "rejects legacy identifiers inside $defs using %s",
+    (engine) => {
+      const schema = { $defs: { value: { id: "legacy", type: "string" } } };
+      expect(() => createSchemaCompiler(engine).compile(schema))
+        .toThrow(/keyword "id".*\$id/);
+      expect(() => validateSchemaCollection([schema], engine))
+        .toThrow(/keyword "id".*\$id/);
+    },
+  );
+
+  it("keeps earlier edge validators correct after a resource rebase and a rejected registration", () => {
+    const compiler = createSchemaCompiler("cfworker");
+    const first = compiler.compile({ type: "string", minLength: 2 });
+    const shared = compiler.compile({ $id: "shared", type: "number" });
+    expect(() => compiler.compile({
+      $ref: "https://schema-collection.mcpfn.invalid/0-0",
+    })).toThrow(/resolve.*ref/i);
+    // This absolute identifier occupies the former relative-resource origin.
+    compiler.compile({ $id: "https://0.schema-resource.mcpfn.invalid/other", type: "null" });
+    const referring = compiler.compile({ $ref: "shared" });
+    expect(first("ok")).toBe(true);
+    expect(first("x")).toBe(false);
+    expect(shared(3)).toBe(true);
+    expect(referring(3)).toBe(true);
+    expect(referring("3")).toBe(false);
+  });
+
+  it("keeps a larger edge registry's independent validators available", () => {
+    const compiler = createSchemaCompiler("cfworker");
+    const validators = Array.from({ length: 120 }, (_, index) =>
+      compiler.compile({ type: "integer", minimum: index }));
+    for (const [index, validate] of validators.entries()) {
+      expect(validate(index)).toBe(true);
+      expect(validate(index - 1)).toBe(false);
+    }
+  });
+
+  it.each(["ajv", "cfworker"] as const)(
     "rejects legacy identifiers, including beside empty references, with %s",
     (engine) => {
       const schema = {
