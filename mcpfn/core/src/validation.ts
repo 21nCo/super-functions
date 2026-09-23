@@ -1,6 +1,12 @@
 import Ajv, { type ErrorObject } from "ajv";
 import addFormats from "ajv-formats";
-import { dereference, Validator as CfWorkerValidator } from "@cfworker/json-schema";
+import {
+  dereference,
+  encodePointer,
+  initialBaseURI,
+  validate as validateCfWorkerSchema,
+  Validator as CfWorkerValidator,
+} from "@cfworker/json-schema";
 
 import { draft7MetaSchema } from "./draft-07-meta-schema.js";
 
@@ -170,14 +176,138 @@ function assertCfWorkerSchemaSyntax(
 type CfWorkerSchemaLookup = ReturnType<typeof dereference>;
 
 interface DereferencedSchema {
+  $id?: unknown;
+  id?: unknown;
   $ref?: unknown;
+  dependencies?: unknown;
+  __absolute_uri__?: unknown;
   __absolute_ref__?: unknown;
+}
+
+type Draft7Schema = boolean | Record<string, unknown>;
+
+// @cfworker/json-schema treats `dependencies` as one schema instead of a map
+// of schemas and skips empty URI references. Walk the draft-07 schema-bearing
+// keywords explicitly so its public validator receives a complete lookup.
+const singleSchemaKeywords = [
+  "additionalItems",
+  "additionalProperties",
+  "contains",
+  "propertyNames",
+  "not",
+  "if",
+  "then",
+  "else",
+] as const;
+const schemaArrayKeywords = ["allOf", "anyOf", "oneOf"] as const;
+const schemaMapKeywords = ["definitions", "properties", "patternProperties"] as const;
+
+function isDraft7Schema(value: unknown): value is Draft7Schema {
+  return typeof value === "boolean" ||
+    (!!value && typeof value === "object" && !Array.isArray(value));
+}
+
+function visitSchema(
+  value: unknown,
+  visit: (subschema: Draft7Schema) => void,
+): void {
+  if (isDraft7Schema(value)) visit(value);
+}
+
+function visitSchemaArray(
+  value: unknown,
+  visit: (subschema: Draft7Schema) => void,
+): void {
+  if (!Array.isArray(value)) return;
+  for (const subschema of value) visitSchema(subschema, visit);
+}
+
+function visitSchemaMap(
+  value: unknown,
+  visit: (subschema: Draft7Schema) => void,
+): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  for (const subschema of Object.values(value)) visitSchema(subschema, visit);
+}
+
+function forEachDraft7Subschema(
+  schema: Record<string, unknown>,
+  visit: (subschema: Draft7Schema) => void,
+): void {
+  for (const keyword of singleSchemaKeywords) visitSchema(schema[keyword], visit);
+  visitSchema(schema.items, visit);
+  visitSchemaArray(schema.items, visit);
+  for (const keyword of schemaArrayKeywords) visitSchemaArray(schema[keyword], visit);
+  for (const keyword of schemaMapKeywords) visitSchemaMap(schema[keyword], visit);
+  visitSchemaMap(schema.dependencies, visit);
+}
+
+function schemaBaseURI(schema: Record<string, unknown>, parentBaseURI: URL): URL {
+  const identifier = typeof schema.$id === "string"
+    ? schema.$id
+    : typeof schema.id === "string"
+      ? schema.id
+      : undefined;
+  return identifier ? new URL(identifier, parentBaseURI) : parentBaseURI;
+}
+
+function normalizeEmptyReferences(schema: Draft7Schema, parentBaseURI: URL): void {
+  if (typeof schema === "boolean") return;
+  const baseURI = schemaBaseURI(schema, parentBaseURI);
+  if (schema.$ref === "") schema.$ref = new URL("", baseURI).href;
+  forEachDraft7Subschema(schema, (subschema) => normalizeEmptyReferences(subschema, baseURI));
+}
+
+function schemaLocation(schema: DereferencedSchema): { resourceURI: URL; pointer: string } {
+  const absoluteURI = schema.__absolute_uri__;
+  if (typeof absoluteURI !== "string") {
+    throw new Error("Schema resource is missing its absolute URI");
+  }
+  const resourceURI = new URL(absoluteURI);
+  const hash = resourceURI.hash;
+  const pointer = hash.startsWith("#/") ? hash.slice(1) : "";
+  resourceURI.hash = "";
+  return { resourceURI, pointer };
+}
+
+function registerDependencySchemas(
+  schema: DereferencedSchema,
+  lookup: CfWorkerSchemaLookup,
+): void {
+  const dependencies = schema.dependencies;
+  if (!dependencies || typeof dependencies !== "object" || Array.isArray(dependencies)) return;
+  const location = schemaLocation(schema);
+  for (const [name, dependency] of Object.entries(dependencies)) {
+    if (!isDraft7Schema(dependency)) continue;
+    const pointer = `${location.pointer}/dependencies/${encodePointer(name)}`;
+    const dependencyURI = `${location.resourceURI.href}#${pointer}`;
+    if (lookup[dependencyURI] === undefined) {
+      dereference(dependency as never, lookup, location.resourceURI, pointer);
+    }
+  }
+}
+
+function supplementDraft7Dependencies(
+  schema: Draft7Schema,
+  lookup: CfWorkerSchemaLookup,
+  visited = new Set<object>(),
+): void {
+  if (typeof schema === "boolean" || visited.has(schema)) return;
+  visited.add(schema);
+  registerDependencySchemas(schema, lookup);
+  forEachDraft7Subschema(schema, (subschema) => {
+    supplementDraft7Dependencies(subschema, lookup, visited);
+  });
 }
 
 function buildCfWorkerLookup(resources: readonly object[]): CfWorkerSchemaLookup {
   const lookup: CfWorkerSchemaLookup = Object.create(null);
   for (const resource of resources) {
-    dereference(structuredClone(resource) as never, lookup);
+    normalizeEmptyReferences(resource as Record<string, unknown>, initialBaseURI);
+    dereference(resource as never, lookup);
+  }
+  for (const resource of resources) {
+    supplementDraft7Dependencies(resource as Record<string, unknown>, lookup);
   }
   return lookup;
 }
@@ -196,14 +326,19 @@ function assertCfWorkerReferencesResolved(lookup: CfWorkerSchemaLookup): void {
   }
 }
 
-function prepareCfWorkerResources(schemas: readonly object[]): object[] {
+interface PreparedCfWorkerResources {
+  resources: object[];
+  lookup: CfWorkerSchemaLookup;
+}
+
+function prepareCfWorkerResources(schemas: readonly object[]): PreparedCfWorkerResources {
   let attempt = 0;
   while (true) {
     const plan = planSchemaResources(schemas, attempt);
     try {
       const lookup = buildCfWorkerLookup(plan.resources);
       assertCfWorkerReferencesResolved(lookup);
-      return plan.resources;
+      return { resources: plan.resources, lookup };
     } catch (error) {
       if (!isSyntheticIdCollision(error, plan.syntheticIds)) throw error;
       attempt += 1;
@@ -284,15 +419,11 @@ export function createSchemaCompiler(
     engine,
     compile(schema) {
       assertCfWorkerSchemaSyntax(schema, validateSchema);
-      const resources = prepareCfWorkerResources([...registeredSchemas, schema]);
+      const { resources, lookup } = prepareCfWorkerResources([...registeredSchemas, schema]);
       const current = resources.at(-1)!;
-      const validator = new CfWorkerValidator(structuredClone(current) as never, "7", false);
-      for (const registered of resources.slice(0, -1)) {
-        validator.addSchema(structuredClone(registered) as never);
-      }
       registeredSchemas.push(structuredClone(schema));
       const compiled = ((data: unknown): boolean => {
-        const result = validator.validate(data) as {
+        const result = validateCfWorkerSchema(data, current as never, "7", lookup, false) as {
           valid: boolean;
           errors?: CfWorkerOutputUnit[];
         };

@@ -58,7 +58,7 @@ const protectedResource = createProtectedResourceMetadata({
   scopesSupported: ["tools:call"],
 });
 
-let unresolvedReferenceRejected = false;
+let unresolvedReferenceRejection;
 try {
   new McpFnRegistry().register({
     name: "invalid-reference",
@@ -71,8 +71,10 @@ try {
   });
 } catch (error) {
   const cause = error?.details?.cause;
-  if (!/resolve.*ref/i.test(typeof cause === "string" ? cause : "")) throw error;
-  unresolvedReferenceRejected = true;
+  unresolvedReferenceRejection = {
+    rejected: true,
+    cause: typeof cause === "string" ? cause : String(error),
+  };
 }
 
 const registry = new McpFnRegistry().register({
@@ -142,7 +144,7 @@ export default {
         schemaEngine,
         protectedResource,
         manifestHash: manifest.hash,
-        unresolvedReferenceRejected,
+        unresolvedReferenceRejection,
       });
     }
     if (url.pathname !== "/mcp") return new Response("Not found", { status: 404 });
@@ -221,9 +223,14 @@ async function main() {
     );
     assert.match(diagnostics.manifestHash, /^[a-f0-9]{64}$/);
     assert.equal(
-      diagnostics.unresolvedReferenceRejected,
+      diagnostics.unresolvedReferenceRejection?.rejected,
       true,
       "Worker accepted an unresolved schema reference during module startup",
+    );
+    assert.match(
+      diagnostics.unresolvedReferenceRejection.cause,
+      /resolve.*ref/i,
+      "Worker rejected the invalid schema for an unexpected reason",
     );
     assert.deepEqual(diagnostics.protectedResource, {
       resource: "https://worker.example/mcp",

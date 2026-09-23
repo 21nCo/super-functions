@@ -62,6 +62,63 @@ describe("schema validation engines", () => {
   );
 
   it.each(["ajv", "cfworker"] as const)(
+    "resolves local references inside draft-07 dependencies with %s",
+    (engine) => {
+      const schema = {
+        type: "object",
+        definitions: {
+          value: {
+            type: "object",
+            required: ["value"],
+            properties: { value: { type: "string" } },
+          },
+        },
+        properties: { type: { type: "boolean" }, value: {} },
+        dependencies: { type: { $ref: "#/definitions/value" } },
+      };
+      const validate = createSchemaCompiler(engine).compile(schema);
+
+      expect(validate({ type: true, value: "ok" })).toBe(true);
+      expect(validate({ type: true, value: 42 })).toBe(false);
+      expect(() => validateSchemaCollection([schema], engine)).not.toThrow();
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "rejects unresolved references inside draft-07 dependencies with %s",
+    (engine) => {
+      const schema = {
+        type: "object",
+        properties: { type: { type: "boolean" } },
+        dependencies: { type: { $ref: "#/missing" } },
+      };
+
+      expect(() => createSchemaCompiler(engine).compile(schema))
+        .toThrow(/resolve.*ref|can't resolve reference/i);
+      expect(() => validateSchemaCollection([schema], engine))
+        .toThrow(/resolve.*ref|can't resolve reference/i);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "accepts an empty reference to the current resource with %s",
+    (engine) => {
+      const schema = {
+        $id: "https://example.test/node",
+        type: "object",
+        properties: {
+          child: { anyOf: [{ type: "null" }, { $ref: "" }] },
+        },
+      };
+      const validate = createSchemaCompiler(engine).compile(schema);
+
+      expect(validate({ child: null })).toBe(true);
+      expect(validate({ child: 42 })).toBe(false);
+      expect(() => validateSchemaCollection([schema], engine)).not.toThrow();
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
     "validates schema collections as independent roots with %s",
     (engine) => {
       const schemaId = "https://example.test/batch-value";
