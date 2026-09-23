@@ -1,5 +1,4 @@
-import Ajv from "ajv";
-import addFormats from "ajv-formats";
+import { validateSchemaCollection } from "./validation.js";
 import { UriTemplate } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
 import { ServerCapabilitiesSchema } from "@modelcontextprotocol/sdk/types.js";
 
@@ -147,6 +146,7 @@ export function createManifest<TContext>(
 export function validateManifest(value: unknown): McpFnManifest {
   assertObject("McpFn manifest", value);
   const manifest = value as Partial<McpFnManifest>;
+  const manifestSchemas: object[] = [];
   if (manifest.formatVersion !== 1) {
     throw new McpFnValidationError("Unsupported McpFn manifest formatVersion");
   }
@@ -210,8 +210,6 @@ export function validateManifest(value: unknown): McpFnManifest {
   }
   assertMetadata("Manifest extensions", manifest.extensions);
 
-  const ajv = new Ajv({ allErrors: true, strict: false, allowUnionTypes: true });
-  addFormats(ajv as never);
   for (const tool of manifest.tools) {
     assertObject("Every manifest tool", tool);
     assertName("Every manifest tool", tool.name);
@@ -227,15 +225,8 @@ export function validateManifest(value: unknown): McpFnManifest {
         throw new McpFnValidationError(`Manifest tool ${tool.name} requires an object outputSchema`);
       }
     }
-    try {
-      ajv.compile(tool.inputSchema);
-      if (tool.outputSchema !== undefined) ajv.compile(tool.outputSchema);
-    } catch (error) {
-      throw new McpFnValidationError(
-        `Manifest tool ${tool.name} contains an invalid JSON Schema`,
-        { cause: error instanceof Error ? error.message : String(error) },
-      );
-    }
+    manifestSchemas.push(tool.inputSchema);
+    if (tool.outputSchema !== undefined) manifestSchemas.push(tool.outputSchema);
     for (const [label, metadata] of [
       ["annotations", tool.annotations],
       ["execution", tool.execution],
@@ -350,11 +341,7 @@ export function validateManifest(value: unknown): McpFnManifest {
           `Manifest prompt ${prompt.name} argumentsSchema must be an object schema`,
         );
       }
-      try { ajv.compile(prompt.argumentsSchema); } catch {
-        throw new McpFnValidationError(
-          `Manifest prompt ${prompt.name} has an invalid arguments JSON Schema`,
-        );
-      }
+      manifestSchemas.push(prompt.argumentsSchema);
       assertPromptSchemaSupportsStringValues(
         prompt.argumentsSchema,
         `Manifest prompt ${prompt.name} argumentsSchema`,
@@ -375,6 +362,20 @@ export function validateManifest(value: unknown): McpFnManifest {
     }
   }
   assertSortedBy("Manifest prompt names", manifest.prompts ?? [], (prompt) => prompt.name);
+
+  if (manifestSchemas.length) {
+    try {
+      // A registry and its manifest describe one schema resource collection.
+      // Register its named resources together, then compile every schema as its
+      // own root so both cross-schema and local fragment references survive
+      // canonical manifest ordering while duplicate IDs still fail.
+      validateSchemaCollection(manifestSchemas);
+    } catch (error) {
+      throw new McpFnValidationError("Manifest contains an invalid JSON Schema", {
+        cause: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   if (typeof manifest.hash !== "string" || !/^[a-f0-9]{64}$/.test(manifest.hash)) {
     throw new McpFnValidationError("Manifest hash must be a lowercase SHA-256 digest");
