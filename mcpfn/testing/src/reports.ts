@@ -1,6 +1,7 @@
 import type { McpFnDiagnosticPhase } from "@mcpfn/client";
 import { redactOAuthValue } from "@superfunctions/oauth-core";
 
+import { preserveMcpFnTargetSuiteArtifact } from "./artifact-guards.js";
 import type { McpFnTargetSuiteReport } from "./suite.js";
 
 declare const __MCPFN_TESTING_VERSION__: string;
@@ -130,7 +131,9 @@ export function createMcpFnTargetSuiteJUnit(
   }
   const failures = cases.filter((entry) => entry.includes("<failure ")).length;
   let serialized = junitDocument(safe, cases, failures);
-  if (bytes(serialized) <= maxBytes) return serialized;
+  if (bytes(serialized) <= maxBytes) {
+    return preserveMcpFnTargetSuiteArtifact(report, serialized);
+  }
 
   const boundedCases = [
     `    <testcase name="artifact-cap" classname="mcpfn.report" time="0.000">${junitFailure("JUnit content exceeded maxBytes and was truncated", "incomplete")}</testcase>`,
@@ -139,7 +142,7 @@ export function createMcpFnTargetSuiteJUnit(
   if (bytes(serialized) > maxBytes) {
     throw new Error("The minimum McpFn JUnit report exceeds maxBytes");
   }
-  return serialized;
+  return preserveMcpFnTargetSuiteArtifact(report, serialized);
 }
 
 function junitDocument(

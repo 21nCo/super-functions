@@ -201,7 +201,7 @@ export class McpFnInspector {
       this.client.preserveArtifactStructure(1);
     }
     // Custom hooks receive payloads only; reconstruct authored discriminators.
-    return {
+    const snapshot: McpFnInspectorSnapshot = {
       formatVersion: this.client.preserveArtifactStructure(2),
       kind: snapshotKind,
       target: { ...this.client.redact(descriptor, redaction), kind: targetKind },
@@ -219,6 +219,7 @@ export class McpFnInspector {
       droppedInventoryEntries,
       inventoryComplete: this.client.preserveArtifactStructure(inventoryComplete),
     };
+    return this.client.preserveTargetArtifact(snapshot);
   }
 
   async run(operation: McpFnInspectorOperation): Promise<McpFnInspectorOperationResult> {

@@ -132,6 +132,57 @@ describe("authenticated remote MCP targets", () => {
     expect(createMcpFnTargetSuiteJUnit(report)).not.toContain(secret);
   });
 
+  it("fails closed when final JUnit composition reconstructs an opaque credential", async () => {
+    const secret = "mcpfn:authenticated-streamable-http";
+    const fixture = await startAuthenticatedServer(secret);
+    closeCallbacks.push(fixture.close);
+    const report = await runMcpFnTargetSuite({
+      target: authenticatedHttpTarget(fixture.url, {
+        credential: { headers: { "x-api-key": secret } },
+      }),
+    });
+
+    expect(() => createMcpFnTargetSuiteJUnit(report))
+      .toThrow("MCP artifact structure conflicts with credential redaction");
+  });
+
+  it("validates bounded fallback JUnit after its final composition", async () => {
+    const secret = "artifact-cap";
+    const fixture = await startAuthenticatedServer(secret);
+    closeCallbacks.push(fixture.close);
+    const report = await runMcpFnTargetSuite({
+      target: authenticatedHttpTarget(fixture.url, {
+        credential: { headers: { "x-api-key": secret } },
+      }),
+    });
+    report.results = Array.from({ length: 40 }, (_, index) => ({
+      formatVersion: 1 as const,
+      name: `case-${index}-${"x".repeat(100)}`,
+      operation: "tools.list",
+      status: "failed" as const,
+      sideEffect: "none" as const,
+      durationMs: 0,
+      error: "x".repeat(100),
+    }));
+
+    expect(() => createMcpFnTargetSuiteJUnit(report, { maxBytes: 1_024 }))
+      .toThrow("MCP artifact structure conflicts with credential redaction");
+  });
+
+  it("fails closed when target-aware proof cannot be retained for deferred JUnit", async () => {
+    const secret = "deferred-junit-secret";
+    const fixture = await startAuthenticatedServer(secret);
+    closeCallbacks.push(fixture.close);
+    const target = authenticatedHttpTarget(fixture.url, {
+      credential: { headers: { "x-api-key": secret } },
+    });
+    target.beginRedactionScope = () => { throw new Error("scope unavailable"); };
+    const report = await runMcpFnTargetSuite({ target });
+
+    expect(() => createMcpFnTargetSuiteJUnit(report))
+      .toThrow("MCP artifact structure conflicts with credential redaction");
+  });
+
   it("uses URL plus a real auth-provider adapter without server or registry types in the consumer", async () => {
     const fixture = await startAuthenticatedServer("remote-secret");
     closeCallbacks.push(fixture.close);

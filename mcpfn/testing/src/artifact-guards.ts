@@ -1,0 +1,55 @@
+import { McpFnClientError } from "@mcpfn/client";
+
+import type { McpFnTargetSuiteReport } from "./suite.js";
+
+interface McpFnTargetSuiteArtifactGuard {
+  validate(value: string): boolean;
+  release(): void;
+}
+
+const targetSuiteArtifactGuards = new WeakMap<
+  McpFnTargetSuiteReport,
+  McpFnTargetSuiteArtifactGuard
+>();
+const targetSuiteArtifactFinalizer = new FinalizationRegistry<() => void>(release => {
+  try { release(); } catch {}
+});
+
+/** Retain target-aware proof for artifacts derived after suite execution. */
+export function registerMcpFnTargetSuiteArtifactGuard(
+  report: McpFnTargetSuiteReport,
+  validate: (value: string) => boolean,
+  release: () => void,
+): void {
+  const previous = targetSuiteArtifactGuards.get(report);
+  if (previous) {
+    targetSuiteArtifactFinalizer.unregister(report);
+    previous.release();
+  }
+  let active = true;
+  const releaseOnce = () => {
+    if (!active) return;
+    active = false;
+    release();
+  };
+  targetSuiteArtifactGuards.set(report, { validate, release: releaseOnce });
+  targetSuiteArtifactFinalizer.register(report, releaseOnce, report);
+}
+
+export function preserveMcpFnTargetSuiteArtifact(
+  report: McpFnTargetSuiteReport,
+  artifact: string,
+): string {
+  const guard = targetSuiteArtifactGuards.get(report);
+  if (!guard) return artifact;
+  try {
+    if (!guard.validate(artifact)) throw new Error("unsafe serialized artifact");
+    return artifact;
+  } catch {
+    throw new McpFnClientError(
+      "MCPFN_OPERATION_FAILED",
+      "MCP artifact structure conflicts with credential redaction",
+      { phase: "capability-operation" },
+    );
+  }
+}

@@ -25,6 +25,7 @@ import {
   normalizeMcpFnReportFailure,
   type McpFnReportFailure,
 } from "./reports.js";
+import { registerMcpFnTargetSuiteArtifactGuard } from "./artifact-guards.js";
 import {
   runScenarios,
   type McpFnScenario,
@@ -119,9 +120,51 @@ export class McpFnTargetSuiteArtifactCleanupError extends Error {
 export async function runMcpFnTargetSuite(
   options: RunMcpFnTargetSuiteOptions,
 ): Promise<McpFnTargetSuiteReport> {
-  const finishRedaction = beginTargetCredentialRedaction(options.target);
-  try { return await runTargetSuite(options); }
-  finally { finishRedaction(); }
+  const artifactRedaction = beginSuiteArtifactRedaction(options.target);
+  let finishRedaction = artifactRedaction.finish;
+  const retainArtifactGuard = (report: McpFnTargetSuiteReport) => {
+    registerMcpFnTargetSuiteArtifactGuard(
+      report,
+      artifact => artifactRedaction.retained && Object.is(
+        redactSuiteArtifact(options.target, artifact, { preserveKeys: false }),
+        artifact,
+      ),
+      finishRedaction,
+    );
+    finishRedaction = () => undefined;
+  };
+  try {
+    const report = await runTargetSuite(options);
+    retainArtifactGuard(report);
+    return report;
+  } catch (error) {
+    if (error instanceof McpFnTargetSuiteCleanupError) {
+      retainArtifactGuard(error.report);
+    }
+    throw error;
+  } finally {
+    finishRedaction();
+  }
+}
+
+function beginSuiteArtifactRedaction(target: McpFnTarget): {
+  finish: () => void;
+  retained: boolean;
+} {
+  let finish: (() => void) | undefined;
+  if (target.beginRedactionScope) {
+    try { finish = target.beginRedactionScope(); }
+    catch { return { finish: () => undefined, retained: false }; }
+    if (!finish) return { finish: () => undefined, retained: false };
+  } else {
+    finish = beginTargetCredentialRedaction(target);
+  }
+  return {
+    finish: () => {
+      try { finish?.(); } catch {}
+    },
+    retained: true,
+  };
 }
 
 /** Apply the target-owned scrubber before the bounded generic artifact pass. */
