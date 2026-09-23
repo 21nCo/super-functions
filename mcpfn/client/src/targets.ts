@@ -37,6 +37,7 @@ export function customTarget(options: {
   beginRedactionScope?(): () => void;
   cleanup?(): Promise<void>;
   redact?: NonNullable<McpFnTarget["redact"]>;
+  assertArtifactSafe?: NonNullable<McpFnTarget["assertArtifactSafe"]>;
 }): McpFnTarget {
   const descriptor = Object.freeze({ kind: options.kind, ...options.descriptor });
   return {
@@ -48,6 +49,9 @@ export function customTarget(options: {
       : {}),
     ...(options.cleanup ? { cleanup: () => options.cleanup!() } : {}),
     ...(options.redact ? { redact: options.redact } : {}),
+    ...(options.assertArtifactSafe
+      ? { assertArtifactSafe: options.assertArtifactSafe }
+      : {}),
   };
 }
 

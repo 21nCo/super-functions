@@ -24,6 +24,7 @@ export function registerMcpFnTargetSuiteArtifactGuard(
   const previous = targetSuiteArtifactGuards.get(report);
   if (previous) {
     targetSuiteArtifactFinalizer.unregister(report);
+    targetSuiteArtifactGuards.delete(report);
     previous.release();
   }
   let active = true;
@@ -36,12 +37,31 @@ export function registerMcpFnTargetSuiteArtifactGuard(
   targetSuiteArtifactFinalizer.register(report, releaseOnce, report);
 }
 
+export function disposeMcpFnTargetSuiteArtifactGuard(
+  report: McpFnTargetSuiteReport,
+): void {
+  const guard = targetSuiteArtifactGuards.get(report);
+  if (!guard) return;
+  targetSuiteArtifactGuards.delete(report);
+  targetSuiteArtifactFinalizer.unregister(report);
+  guard.release();
+}
+
 export function preserveMcpFnTargetSuiteArtifact(
   report: McpFnTargetSuiteReport,
   artifact: string,
 ): string {
   const guard = targetSuiteArtifactGuards.get(report);
-  if (!guard) return artifact;
+  if (!guard) {
+    if (report.artifactValidation === "target-aware") {
+      throw new McpFnClientError(
+        "MCPFN_OPERATION_FAILED",
+        "MCP target artifact proof is unavailable",
+        { phase: "capability-operation" },
+      );
+    }
+    return artifact;
+  }
   try {
     if (!guard.validate(artifact)) throw new Error("unsafe serialized artifact");
     return artifact;

@@ -1,7 +1,10 @@
 import type { McpFnDiagnosticPhase } from "@mcpfn/client";
 import { redactOAuthValue } from "@superfunctions/oauth-core";
 
-import { preserveMcpFnTargetSuiteArtifact } from "./artifact-guards.js";
+import {
+  disposeMcpFnTargetSuiteArtifactGuard,
+  preserveMcpFnTargetSuiteArtifact,
+} from "./artifact-guards.js";
 import type { McpFnTargetSuiteReport } from "./suite.js";
 
 declare const __MCPFN_TESTING_VERSION__: string;
@@ -29,6 +32,32 @@ export interface McpFnReportFailure {
 export interface McpFnJunitOptions {
   /** Aggregate XML size cap after serialization. Defaults to 1 MiB. */
   maxBytes?: number;
+}
+
+export interface McpFnTargetSuiteJsonOptions {
+  /** JSON indentation. Defaults to compact output; maximum 10 spaces. */
+  space?: number;
+  /** Include a final newline in the validated artifact. */
+  trailingNewline?: boolean;
+}
+
+/** Serialize the exact JSON representation while target proof is retained. */
+export function serializeMcpFnTargetSuiteReport(
+  report: McpFnTargetSuiteReport,
+  options: McpFnTargetSuiteJsonOptions = {},
+): string {
+  const space = options.space ?? 0;
+  if (!Number.isInteger(space) || space < 0 || space > 10) {
+    throw new TypeError("space must be an integer from 0 through 10");
+  }
+  const serialized = JSON.stringify(report, null, space) +
+    (options.trailingNewline ? "\n" : "");
+  return preserveMcpFnTargetSuiteArtifact(report, serialized);
+}
+
+/** Release target-owned proof after every required report encoding is complete. */
+export function disposeMcpFnTargetSuiteReport(report: McpFnTargetSuiteReport): void {
+  disposeMcpFnTargetSuiteArtifactGuard(report);
 }
 
 function objectRecord(value: unknown): Record<string, unknown> | undefined {

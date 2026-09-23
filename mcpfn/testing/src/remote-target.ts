@@ -205,7 +205,7 @@ export class McpFnStructuralCredentialCollisionError extends McpFnRedactionLimit
 // Only these locally authored envelope paths retain structural keys. Unknown
 // children (including inspector events and server metadata) are always payloads.
 const envelopeKeys: Record<string, Set<string>> = Object.fromEntries(Object.entries({
-  root: "formatVersion kind status runtime ok target server capabilities manifestChecked manifestHash total passed failed incomplete droppedResults droppedObservedEvents redactionOmittedObservedEvents incompleteReason failure timeline droppedTimelineEvents results count clientState tools resources resourceTemplates prompts droppedEvents timelineComplete droppedInventoryEntries inventoryComplete suiteVersion exitCode stdout stderr phase outcome code requestId at details payload",
+  root: "formatVersion kind artifactValidation status runtime ok target server capabilities manifestChecked manifestHash total passed failed incomplete droppedResults droppedObservedEvents redactionOmittedObservedEvents incompleteReason failure timeline droppedTimelineEvents results count clientState tools resources resourceTemplates prompts droppedEvents timelineComplete droppedInventoryEntries inventoryComplete suiteVersion exitCode stdout stderr phase outcome code requestId at details payload",
   result: "formatVersion name operation tool status sideEffect durationMs error droppedObservedEvents redactionOmittedObservedEvents",
   diagnostic: "phase outcome code requestId at target details",
   inspectorEvent: "formatVersion source kind at event",
@@ -294,15 +294,45 @@ function normalizeErrorValue(input: Error): Record<string, unknown> {
   return normalized;
 }
 
-function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = false, redactionMarker?: string): T {
+interface CredentialVariant {
+  value: string;
+  encoded: boolean;
+}
+
+function credentialPatterns(values: Iterable<string>): {
+  secretPattern: RegExp | undefined;
+  replacementPattern: RegExp | undefined;
+} {
   // Preserve whether a pattern came from opaque text or a serializer. Literal
   // percent sequences in credentials must not acquire URL hex-case semantics.
-  const variants = [...values].filter(Boolean).flatMap(secret => [
+  const variants: CredentialVariant[] = [...values].filter(Boolean).flatMap(secret => [
     { value: secret, encoded: false },
     { value: JSON.stringify(secret).slice(1, -1), encoded: false },
     { value: encodeURIComponent(secret), encoded: true },
     { value: new URLSearchParams({ value: secret }).toString().slice("value=".length), encoded: true },
   ]).sort((a, b) => b.value.length - a.value.length);
+  const patterns = variants.map(({ value, encoded }) => {
+    const literal = value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+    // Only generated percent escapes accept mixed-case hex digits.
+    return encoded
+      ? literal.replace(/%[\dA-Fa-f]{2}/g, escape => escape.replace(/[A-Fa-f]/g, hex => `[${hex.toLowerCase()}${hex.toUpperCase()}]`))
+      : literal;
+  });
+  return {
+    secretPattern: patterns.length ? new RegExp(patterns.join("|"), "g") : undefined,
+    replacementPattern: patterns.length ? new RegExp(patterns.join("|")) : undefined,
+  };
+}
+
+function targetCredentialValues(target: McpFnTarget): Set<string> {
+  const state = targetSecrets.get(target);
+  return new Set([
+    ...(state?.active.keys() ?? []),
+    ...[...(state?.scopes ?? [])].flatMap(scope => [...scope]),
+  ]);
+}
+
+function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = false, redactionMarker?: string): T {
   let entries = 0, stringBytes = 0;
   const budget = (input: unknown, depth = 0): void => {
     input = specialValue(input);
@@ -320,15 +350,7 @@ function scrubCredentials<T>(value: T, values: Iterable<string>, preserveKeys = 
   // Check before either redactor allocates copies. Exceeding a budget is an
   // explicit failure, never silent truncation of a typed report collection.
   budget(value);
-  const patterns = variants.map(({ value, encoded }) => {
-    const literal = value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-    // Only generated percent escapes accept mixed-case hex digits.
-    return encoded
-      ? literal.replace(/%[\dA-Fa-f]{2}/g, escape => escape.replace(/[A-Fa-f]/g, hex => `[${hex.toLowerCase()}${hex.toUpperCase()}]`))
-      : literal;
-  });
-  const secretPattern = patterns.length ? new RegExp(patterns.join("|"), "g") : undefined;
-  const replacementPattern = patterns.length ? new RegExp(patterns.join("|")) : undefined;
+  const { secretPattern, replacementPattern } = credentialPatterns(values);
   const preserveStructural = (input: string): string => {
     if (replacementPattern?.test(input)) {
       throw new McpFnRedactionLimitError(
@@ -449,8 +471,22 @@ function assertPayloadSerialization(
 
 /** Remove known opaque credential values as well as credential-shaped fields. */
 export function redactTargetCredentials<T>(target: McpFnTarget, value: T, options: { preserveKeys?: boolean; redactionMarker?: string } = {}): T {
-  const state = targetSecrets.get(target);
-  return scrubCredentials(value, new Set([...(state?.active.keys() ?? []), ...[...(state?.scopes ?? [])].flatMap((scope) => [...scope])]), options.preserveKeys, options.redactionMarker);
+  return scrubCredentials(
+    value,
+    targetCredentialValues(target),
+    options.preserveKeys,
+    options.redactionMarker,
+  );
+}
+
+/** Assert completed bounded output without applying payload traversal limits. */
+export function assertTargetArtifactSafe(target: McpFnTarget, value: string): void {
+  const { replacementPattern } = credentialPatterns(targetCredentialValues(target));
+  if (replacementPattern?.test(value)) {
+    throw new McpFnRedactionLimitError(
+      "Credential redaction could not guarantee safe serialized output",
+    );
+  }
 }
 
 /** Redact authenticated conformance output using the acquired credential. */
@@ -612,6 +648,7 @@ export function authenticatedHttpTarget(
       authenticated: true,
     },
     redact: (value, redaction) => redactTargetCredentials(authenticated, value, { preserveKeys: true, ...redaction }),
+    assertArtifactSafe: value => assertTargetArtifactSafe(authenticated, value),
     beginRedactionScope: () => beginTargetCredentialRedaction(authenticated),
     async cleanup() {
       const results = await Promise.allSettled([...pendingReleases].map(release => release()));

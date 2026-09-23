@@ -70,7 +70,9 @@ import { writeFile } from "node:fs/promises";
 import {
   authenticatedHttpTarget,
   createMcpFnTargetSuiteJUnit,
+  disposeMcpFnTargetSuiteReport,
   runMcpFnTargetSuite,
+  serializeMcpFnTargetSuiteReport,
 } from "@mcpfn/testing";
 
 const report = await runMcpFnTargetSuite({
@@ -83,8 +85,22 @@ const report = await runMcpFnTargetSuite({
   scenarios,
 });
 
-await writeFile("mcpfn-report.xml", createMcpFnTargetSuiteJUnit(report));
+try {
+  await writeFile(
+    "mcpfn-report.json",
+    serializeMcpFnTargetSuiteReport(report, { space: 2, trailingNewline: true }),
+  );
+  await writeFile("mcpfn-report.xml", createMcpFnTargetSuiteJUnit(report));
+} finally {
+  disposeMcpFnTargetSuiteReport(report);
+}
 ```
+
+Generated target-suite reports retain target-aware proof for deferred JSON and
+JUnit composition. Use the serializers above for every required encoding, then
+dispose the report in `finally`. A finalizer is only a fallback. Copies retain a
+proof-required marker and fail closed because copied values cannot retain the
+live credential validator.
 
 Use a provider instead of a static credential for short-lived OAuth access
 tokens. Report failures identify `mcpfn-preflight`, `authorization-server`,

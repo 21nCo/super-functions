@@ -113,6 +113,9 @@ export interface McpFnTarget {
   /** Scrub target-owned opaque credentials. With preserveKeys=false, treat all
    * fields as payload data, without exemptions for diagnostic envelope fields. */
   redact?<T>(value: T, options?: { redactionMarker?: string; preserveKeys?: boolean }): T;
+  /** Reject a completed consumer artifact containing a target-owned credential.
+   * Unlike payload redaction, this operates on already bounded serialized text. */
+  assertArtifactSafe?(value: string): void;
 }
 
 export type McpFnClientState =

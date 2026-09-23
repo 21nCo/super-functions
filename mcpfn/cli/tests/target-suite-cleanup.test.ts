@@ -5,6 +5,7 @@ import { expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   attempts: 0,
+  proofless: false,
   reportless: false,
   failure: undefined as import("@mcpfn/testing").McpFnTargetSuiteCleanupError | undefined,
   artifactFailure: undefined as import("@mcpfn/testing").McpFnTargetSuiteArtifactCleanupError | undefined,
@@ -39,6 +40,7 @@ vi.mock("@mcpfn/testing", async importOriginal => {
         passed: 0,
         failed: 0,
         incomplete: 0,
+        ...(state.proofless ? { artifactValidation: "target-aware" as const } : {}),
         droppedResults: 0,
         droppedObservedEvents: 0,
         timeline: [],
@@ -92,6 +94,30 @@ it("persists a target-suite snapshot and retains its cleanup owner after a faile
     await expect(state.failure!.retryCleanup()).resolves.toBeUndefined();
     expect(state.attempts).toBe(2);
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("retains the cleanup owner when exact report proof is unavailable", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-target-cleanup-proofless-"));
+  state.attempts = 0;
+  state.proofless = true;
+  state.reportless = false;
+  try {
+    await writeFile(path.join(root, "scenarios.json"), "[]\n");
+    const failure = await runCli([
+      "test-target", "http://127.0.0.1:1/mcp", "scenarios.json",
+    ], {
+      cwd: root,
+      stdout: () => { throw new Error("unproven report must not be written"); },
+      stderr: () => {},
+    }).then(() => undefined, error => error);
+    expect(failure).toBe(state.failure);
+    expect(state.attempts).toBe(1);
+    await expect(state.failure!.retryCleanup()).resolves.toBeUndefined();
+    expect(state.attempts).toBe(2);
+  } finally {
+    state.proofless = false;
     await rm(root, { recursive: true, force: true });
   }
 });

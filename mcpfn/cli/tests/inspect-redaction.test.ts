@@ -13,6 +13,7 @@ vi.mock("@mcpfn/inspector", () => ({ McpFnInspector: { create: ({ target }: any)
   let handle: any;
   return { connect: async () => { handle = await target.open({ requestId: "inspect-test", diagnostic: async () => {} }); },
     snapshot: async () => { if (state.hostile) throw { get message() { throw new Error("opaque-inspect-value"); }, toString() { throw new Error("opaque-inspect-value"); } }; if (state.oversized) return { tools: [{ description: "x".repeat(300000) }] }; if (state.reject) throw new McpFnClientError("MCPFN_OPERATION_FAILED", "remote echoed opaque-inspect-value", {phase: "capability-operation"}); return { tools: [{ description: "opaque-inspect-value" }] }; },
+    serializeSnapshot: (snapshot: unknown) => `${JSON.stringify(snapshot, null, 2).replaceAll("opaque-inspect-value", "[REDACTED]")}\n`,
     close: async () => {
       state.closeAttempts += 1;
       if (state.closeAttempts <= state.closeFailures) throw new Error("close echoed opaque-inspect-value");
@@ -50,9 +51,22 @@ it("scrubs credentials from failed inspect stderr", async () => {
 });
 
 
-it.each(["oversized", "hostile"] as const)("classifies %s inspect failures as runtime errors without secrets", async mode => {
+it("serializes oversized inspect snapshots within the inspector artifact budget", async () => {
   vi.stubEnv("MCPFN_INSPECT_TEST_TOKEN", "opaque-inspect-value");
-  state[mode] = true;
+  state.oversized = true;
+  let stdout = "";
+  try {
+    const code = await runCli(["inspect", "http://127.0.0.1:1/mcp", "--api-key-env", "MCPFN_INSPECT_TEST_TOKEN"], {
+      stdout: text => { stdout += text; }, stderr: () => {},
+    });
+    expect(code).toBe(0);
+    expect(stdout.length).toBeGreaterThan(262_144);
+  } finally { state.oversized = false; vi.unstubAllEnvs(); }
+});
+
+it("classifies hostile inspect failures as runtime errors without secrets", async () => {
+  vi.stubEnv("MCPFN_INSPECT_TEST_TOKEN", "opaque-inspect-value");
+  state.hostile = true;
   let stderr = "";
   try {
     const code = await runCli(["inspect", "http://127.0.0.1:1/mcp", "--api-key-env", "MCPFN_INSPECT_TEST_TOKEN"], {
@@ -60,7 +74,7 @@ it.each(["oversized", "hostile"] as const)("classifies %s inspect failures as ru
     });
     expect(code).toBe(1);
     expect(stderr).not.toContain("opaque-inspect-value");
-  } finally { state[mode] = false; vi.unstubAllEnvs(); }
+  } finally { state.hostile = false; vi.unstubAllEnvs(); }
 });
 
 it("retains the inspector cleanup owner through diagnostics and a failed bounded retry", async () => {

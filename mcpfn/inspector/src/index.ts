@@ -80,6 +80,13 @@ export interface McpFnInspectorLimits {
   maxInventoryEntries?: number;
 }
 
+export interface McpFnInspectorSnapshotSerializationOptions {
+  /** JSON indentation. Defaults to compact output; maximum 10 spaces. */
+  space?: number;
+  /** Include a final newline in the validated artifact. */
+  trailingNewline?: boolean;
+}
+
 export type McpFnInspectorOperation =
   | { kind: "tools.call"; name: string; arguments?: Record<string, unknown> }
   | { kind: "tools.call:task"; name: string; arguments?: Record<string, unknown>; task?: { ttl?: number } }
@@ -220,6 +227,20 @@ export class McpFnInspector {
       inventoryComplete: this.client.preserveArtifactStructure(inventoryComplete),
     };
     return this.client.preserveTargetArtifact(snapshot);
+  }
+
+  /** Serialize the exact snapshot representation while target proof is live. */
+  serializeSnapshot(
+    snapshot: McpFnInspectorSnapshot,
+    options: McpFnInspectorSnapshotSerializationOptions = {},
+  ): string {
+    const space = options.space ?? 0;
+    if (!Number.isInteger(space) || space < 0 || space > 10) {
+      throw new TypeError("space must be an integer from 0 through 10");
+    }
+    const serialized = JSON.stringify(snapshot, null, space) +
+      (options.trailingNewline ? "\n" : "");
+    return this.client.preserveTargetArtifactText(serialized);
   }
 
   async run(operation: McpFnInspectorOperation): Promise<McpFnInspectorOperationResult> {

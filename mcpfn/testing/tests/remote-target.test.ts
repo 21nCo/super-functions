@@ -13,7 +13,9 @@ import {
   McpFnTestClientCleanupError,
   McpFnTestClient,
   createMcpFnTargetSuiteJUnit,
+  disposeMcpFnTargetSuiteReport,
   runMcpFnTargetSuite,
+  serializeMcpFnTargetSuiteReport,
   type McpFnRemoteCredentialProvider,
 } from "../src/index.js";
 
@@ -142,8 +144,12 @@ describe("authenticated remote MCP targets", () => {
       }),
     });
 
-    expect(() => createMcpFnTargetSuiteJUnit(report))
-      .toThrow("MCP artifact structure conflicts with credential redaction");
+    try {
+      expect(() => createMcpFnTargetSuiteJUnit(report))
+        .toThrow("MCP artifact structure conflicts with credential redaction");
+    } finally {
+      disposeMcpFnTargetSuiteReport(report);
+    }
   });
 
   it("validates bounded fallback JUnit after its final composition", async () => {
@@ -165,11 +171,15 @@ describe("authenticated remote MCP targets", () => {
       error: "x".repeat(100),
     }));
 
-    expect(() => createMcpFnTargetSuiteJUnit(report, { maxBytes: 1_024 }))
-      .toThrow("MCP artifact structure conflicts with credential redaction");
+    try {
+      expect(() => createMcpFnTargetSuiteJUnit(report, { maxBytes: 1_024 }))
+        .toThrow("MCP artifact structure conflicts with credential redaction");
+    } finally {
+      disposeMcpFnTargetSuiteReport(report);
+    }
   });
 
-  it("fails closed when target-aware proof cannot be retained for deferred JUnit", async () => {
+  it("fails closed when target-aware proof cannot be retained", async () => {
     const secret = "deferred-junit-secret";
     const fixture = await startAuthenticatedServer(secret);
     closeCallbacks.push(fixture.close);
@@ -177,10 +187,107 @@ describe("authenticated remote MCP targets", () => {
       credential: { headers: { "x-api-key": secret } },
     });
     target.beginRedactionScope = () => { throw new Error("scope unavailable"); };
-    const report = await runMcpFnTargetSuite({ target });
+    await expect(runMcpFnTargetSuite({ target }))
+      .rejects.toThrow("MCP artifact structure conflicts with credential redaction");
+  });
 
+  it("rejects compact suite JSON that reconstructs an opaque credential", async () => {
+    const secret = '":"';
+    const fixture = await startAuthenticatedServer(secret);
+    closeCallbacks.push(fixture.close);
+    await expect(runMcpFnTargetSuite({
+      target: authenticatedHttpTarget(fixture.url, {
+        credential: { headers: { "x-api-key": secret } },
+      }),
+    })).rejects.toThrow(/credential conflicts with required artifact structure|MCP artifact structure conflicts with credential redaction/);
+  });
+
+  it("validates authenticated artifacts above the payload scalar limit", async () => {
+    const secret = "large-artifact-secret";
+    const fixture = await startAuthenticatedServer(secret);
+    closeCallbacks.push(fixture.close);
+    const target = authenticatedHttpTarget(fixture.url, {
+      credential: { headers: { authorization: `Bearer ${secret}` } },
+    });
+    const client = new McpFnClient({ target });
+    await client.connect();
+    try {
+      const artifact = "x".repeat(300_000);
+      expect(client.preserveTargetArtifactText(artifact)).toBe(artifact);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("validates JUnit above the payload scalar limit", async () => {
+    const secret = "large-junit-secret";
+    const fixture = await startAuthenticatedServer(secret);
+    closeCallbacks.push(fixture.close);
+    const report = await runMcpFnTargetSuite({
+      target: authenticatedHttpTarget(fixture.url, {
+        credential: { headers: { "x-api-key": secret } },
+      }),
+    });
+    report.results = Array.from({ length: 900 }, (_, index) => ({
+      formatVersion: 1 as const,
+      name: `case-${index}-${"x".repeat(300)}`,
+      operation: "tools.list",
+      status: "passed" as const,
+      sideEffect: "none" as const,
+      durationMs: 0,
+    }));
+    try {
+      const xml = createMcpFnTargetSuiteJUnit(report);
+      expect(xml.length).toBeGreaterThan(262_144);
+      expect(xml).not.toContain(secret);
+    } finally {
+      disposeMcpFnTargetSuiteReport(report);
+    }
+  });
+
+  it("fails closed when a generated report copy loses target proof", async () => {
+    const secret = "copy-proof-secret";
+    const fixture = await startAuthenticatedServer(secret);
+    closeCallbacks.push(fixture.close);
+    const report = await runMcpFnTargetSuite({
+      target: authenticatedHttpTarget(fixture.url, {
+        credential: { headers: { "x-api-key": secret } },
+      }),
+    });
+    try {
+      const copied = structuredClone(report);
+      expect(() => createMcpFnTargetSuiteJUnit(copied))
+        .toThrow("MCP target artifact proof is unavailable");
+      expect(() => serializeMcpFnTargetSuiteReport(copied))
+        .toThrow("MCP target artifact proof is unavailable");
+    } finally {
+      disposeMcpFnTargetSuiteReport(report);
+    }
+  });
+
+  it("releases retained report proof explicitly and idempotently", async () => {
+    const secret = "dispose-proof-secret";
+    const fixture = await startAuthenticatedServer(secret);
+    closeCallbacks.push(fixture.close);
+    const target = authenticatedHttpTarget(fixture.url, {
+      credential: { headers: { "x-api-key": secret } },
+    });
+    const begin = target.beginRedactionScope!.bind(target);
+    const released: number[] = [];
+    target.beginRedactionScope = () => {
+      const scope = released.length;
+      released.push(0);
+      const finish = begin();
+      return () => { finish(); released[scope] += 1; };
+    };
+    const report = await runMcpFnTargetSuite({ target });
+    expect(serializeMcpFnTargetSuiteReport(report)).toContain("target-aware");
+    expect(released[0]).toBe(0);
+    disposeMcpFnTargetSuiteReport(report);
+    disposeMcpFnTargetSuiteReport(report);
+    expect(released[0]).toBe(1);
     expect(() => createMcpFnTargetSuiteJUnit(report))
-      .toThrow("MCP artifact structure conflicts with credential redaction");
+      .toThrow("MCP target artifact proof is unavailable");
   });
 
   it("uses URL plus a real auth-provider adapter without server or registry types in the consumer", async () => {

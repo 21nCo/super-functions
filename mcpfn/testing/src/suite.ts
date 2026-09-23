@@ -25,7 +25,11 @@ import {
   normalizeMcpFnReportFailure,
   type McpFnReportFailure,
 } from "./reports.js";
-import { registerMcpFnTargetSuiteArtifactGuard } from "./artifact-guards.js";
+import {
+  disposeMcpFnTargetSuiteArtifactGuard,
+  preserveMcpFnTargetSuiteArtifact,
+  registerMcpFnTargetSuiteArtifactGuard,
+} from "./artifact-guards.js";
 import {
   runScenarios,
   type McpFnScenario,
@@ -49,6 +53,8 @@ export interface RunMcpFnTargetSuiteOptions {
 export interface McpFnTargetSuiteReport {
   formatVersion: 1;
   kind: "mcpfn.target-suite-report";
+  /** Generated reports require retained target proof for derived encodings. */
+  artifactValidation?: "target-aware";
   status: "complete" | "incomplete";
   runtime: {
     node: string;
@@ -125,13 +131,30 @@ export async function runMcpFnTargetSuite(
   const retainArtifactGuard = (report: McpFnTargetSuiteReport) => {
     registerMcpFnTargetSuiteArtifactGuard(
       report,
-      artifact => artifactRedaction.retained && Object.is(
-        redactSuiteArtifact(options.target, artifact, { preserveKeys: false }),
-        artifact,
-      ),
+      artifact => {
+        if (!artifactRedaction.retained) return false;
+        if (options.target.assertArtifactSafe) {
+          options.target.assertArtifactSafe(artifact);
+          return true;
+        }
+        // Built-in unauthenticated targets do not own credential material.
+        // Custom targets that do own it must expose either the exact validator
+        // above or a redactor that can prove the completed artifact unchanged.
+        if (!options.target.redact) return true;
+        return Object.is(
+          redactSuiteArtifact(options.target, artifact, { preserveKeys: false }),
+          artifact,
+        );
+      },
       finishRedaction,
     );
     finishRedaction = () => undefined;
+    try {
+      preserveMcpFnTargetSuiteArtifact(report, JSON.stringify(report));
+    } catch (error) {
+      disposeMcpFnTargetSuiteArtifactGuard(report);
+      throw error;
+    }
   };
   try {
     const report = await runTargetSuite(options);
@@ -139,7 +162,17 @@ export async function runMcpFnTargetSuite(
     return report;
   } catch (error) {
     if (error instanceof McpFnTargetSuiteCleanupError) {
-      retainArtifactGuard(error.report);
+      try {
+        retainArtifactGuard(error.report);
+      } catch (artifactError) {
+        const cause = artifactError instanceof Error
+          ? artifactError
+          : new Error("Target report artifact proof failed");
+        throw new McpFnTargetSuiteArtifactCleanupError(
+          () => error.retryCleanup(),
+          cause,
+        );
+      }
     }
     throw error;
   } finally {
@@ -410,7 +443,7 @@ function projectSuiteArtifacts(
 }
 
 const suiteStructureKeys = [
-  "formatVersion", "kind", "status", "runtime", "ok", "target", "server",
+  "formatVersion", "kind", "artifactValidation", "status", "runtime", "ok", "target", "server",
   "capabilities", "manifestChecked", "manifestHash", "total", "passed", "failed",
   "incomplete", "droppedResults", "droppedObservedEvents",
   "redactionOmittedObservedEvents", "incompleteReason", "failure", "timeline",
@@ -421,7 +454,7 @@ const suiteStructureKeys = [
 ] as const;
 
 const suiteStructureValues = [
-  "mcpfn.target-suite-report", "complete", "incomplete", "passed", "failed",
+  "mcpfn.target-suite-report", "target-aware", "complete", "incomplete", "passed", "failed",
   "started", "succeeded", "none", "idempotent", "non-idempotent",
   "mcpfn-preflight", "authorization-server", "resource-server", "mcp-initialization",
   "scenario", "upstream-conformance", "resource-discovery",
@@ -495,6 +528,7 @@ function assertSuiteReportStructure(
 ): void {
   assertStructureKeys(report, guard);
   guard.assert(report.kind);
+  if (report.artifactValidation) guard.assert(report.artifactValidation);
   guard.assert(report.status);
   assertStructureKeys(report.runtime, guard);
   guard.assert(report.runtime.node);
@@ -686,6 +720,7 @@ function buildSuiteReport(
   return {
     formatVersion: 1,
     kind: "mcpfn.target-suite-report",
+    artifactValidation: "target-aware",
     status: artifactIncomplete ? "incomplete" : "complete",
     runtime: {
       node: process.version,

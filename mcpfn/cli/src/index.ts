@@ -28,10 +28,12 @@ import {
   beginTargetCredentialRedaction,
   redactTargetCredentials,
   createMcpFnTargetSuiteJUnit,
+  disposeMcpFnTargetSuiteReport,
   runAuthenticatedOfficialConformance,
   runOfficialConformance,
   runMcpFnTargetSuite,
   runScenarios,
+  serializeMcpFnTargetSuiteReport,
   createMcpFnScenarioReport,
   type McpFnRemoteCredential,
 } from "@mcpfn/testing";
@@ -353,7 +355,11 @@ export async function runCli(
         let operationError: unknown;
         try {
           await inspector.connect();
-          const serialized = `${JSON.stringify(redactTargetCredentials(target, await inspector.snapshot(), { preserveKeys: true }), null, 2)}\n`;
+          const snapshot = await inspector.snapshot();
+          const serialized = inspector.serializeSnapshot(snapshot, {
+            space: 2,
+            trailingNewline: true,
+          });
           if (options.output) {
             await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
           }
@@ -433,23 +439,29 @@ export async function runCli(
         targetCleanupError = error;
         return error.report;
       });
-      await preserveCleanupOwner(targetCleanupError, async () => {
-        const serialized = `${JSON.stringify(report)}\n`;
-        // The suite reserves one byte for this trailing newline and enforces the cap.
-        if (options.output) {
-          await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
-        }
-        if (options.junit) {
-          await writeFile(
-            path.resolve(cwd, options.junit),
-            createMcpFnTargetSuiteJUnit(report, {
-              maxBytes: maxReportBytes === undefined ? undefined : maxReportBytes - 1,
-            }),
-            "utf8",
-          );
-        }
-        await stdout(serialized);
-      }, "Target report output failed");
+      try {
+        await preserveCleanupOwner(targetCleanupError, async () => {
+          const serialized = serializeMcpFnTargetSuiteReport(report, {
+            trailingNewline: true,
+          });
+          // The suite reserves one byte for this trailing newline and enforces the cap.
+          if (options.output) {
+            await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+          }
+          if (options.junit) {
+            await writeFile(
+              path.resolve(cwd, options.junit),
+              createMcpFnTargetSuiteJUnit(report, {
+                maxBytes: maxReportBytes === undefined ? undefined : maxReportBytes - 1,
+              }),
+              "utf8",
+            );
+          }
+          await stdout(serialized);
+        }, "Target report output failed");
+      } finally {
+        disposeMcpFnTargetSuiteReport(report);
+      }
       if (targetCleanupError) throw targetCleanupError;
       if (!report.ok) exitCode = 1;
     });

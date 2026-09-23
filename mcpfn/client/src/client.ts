@@ -300,11 +300,29 @@ export class McpFnClient {
     try {
       const serialized = JSON.stringify(value);
       if (serialized === undefined) throw new Error("artifact is not serializable");
-      const redacted = this.options.target.redact?.(serialized, {
-        preserveKeys: false,
-        redactionMarker: "",
-      }) ?? serialized;
-      if (!Object.is(redacted, serialized)) throw new Error("unsafe serialized artifact");
+      this.preserveTargetArtifactText(serialized);
+      return value;
+    } catch {
+      throw new McpFnClientError(
+        "MCPFN_OPERATION_FAILED",
+        "MCP artifact structure conflicts with credential redaction",
+        { phase: "capability-operation" },
+      );
+    }
+  }
+
+  /** Prove the exact completed serialized representation against target credentials. */
+  preserveTargetArtifactText(value: string): string {
+    try {
+      if (this.options.target.assertArtifactSafe) {
+        this.options.target.assertArtifactSafe(value);
+      } else {
+        const redacted = this.options.target.redact?.(value, {
+          preserveKeys: false,
+          redactionMarker: "",
+        }) ?? value;
+        if (!Object.is(redacted, value)) throw new Error("unsafe serialized artifact");
+      }
       return value;
     } catch {
       throw new McpFnClientError(

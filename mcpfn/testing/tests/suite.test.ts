@@ -655,25 +655,18 @@ it("closes a connected target when its kind getter throws during projection fall
 });
 
 
-it("marks reports incomplete when post-close credential redaction is unavailable", async () => {
+it("fails closed when post-close credential artifact proof is unavailable", async () => {
   let released = false;
   const server = createMcpFnServer({ info: { name: "fixture", version: "1" }, registry: new McpFnRegistry() });
-  const report = await runMcpFnTargetSuite({ target: customTarget({ kind: "custom",
+  await expect(runMcpFnTargetSuite({ target: customTarget({ kind: "custom",
     redact: <T>(value: T): T => { if (released) throw new Error("private-redaction-state"); return value; },
     open: async () => {
       const [client, remote] = InMemoryTransport.createLinkedPair();
       await server.connect(remote);
       return { transport: client, close: async () => { await server.close(); released = true; } };
     },
-  }) });
+  }) })).rejects.toThrow("MCP artifact structure conflicts with credential redaction");
   expect(released).toBe(true);
-  expect(report.status).toBe("incomplete");
-  expect(report.ok).toBe(false);
-  expect(report.failure).toBeUndefined();
-  expect(report.droppedTimelineEvents).toBeGreaterThan(0);
-  expect(report.incompleteReason).toContain("redaction failed");
-  expect(report.timeline.some(event => event.code === "MCPFN_DIAGNOSTIC_REDACTION_FAILED")).toBe(false);
-  expect(JSON.stringify(report)).not.toContain("private-redaction-state");
 });
 
 
