@@ -253,6 +253,36 @@ describe("schema validation engines", () => {
     },
   );
 
+  it.each(["ajv", "cfworker"] as const)(
+    "resolves RFC 3986 IPvFuture resources across compiler and collection using %s",
+    (engine) => {
+      const root = {
+        $id: "http://[v1.fe]/schema",
+        type: "object",
+        $defs: { child: { $id: "child", type: "string" } },
+        properties: { value: { $ref: "child" } },
+      };
+      const external = { type: "object", properties: { value: { $ref: "http://[v1.fe]/child" } } };
+      const compiler = createSchemaCompiler(engine);
+      const validateRoot = compiler.compile(root);
+      const validateExternal = compiler.compile(external);
+      expect(validateRoot({ value: "ok" })).toBe(true);
+      expect(validateRoot({ value: 42 })).toBe(false);
+      expect(validateExternal({ value: "ok" })).toBe(true);
+      expect(validateExternal({ value: 42 })).toBe(false);
+      expect(() => validateSchemaCollection([root, external], engine)).not.toThrow();
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "rejects missing RFC 3986 IPvFuture resources using %s",
+    (engine) => {
+      const schema = { $id: "http://[v1.fe]/schema", $ref: "missing" };
+      expect(() => createSchemaCompiler(engine).compile(schema)).toThrow();
+      expect(() => validateSchemaCollection([schema], engine)).toThrow();
+    },
+  );
+
   it("keeps earlier edge validators correct after a resource rebase and a rejected registration", () => {
     const compiler = createSchemaCompiler("cfworker");
     const first = compiler.compile({ type: "string", minLength: 2 });

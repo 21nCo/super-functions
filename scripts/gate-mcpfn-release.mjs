@@ -401,6 +401,13 @@ try {
   npmStep("core:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/core"]);
   npmStep("core:test", ["run", "test", "--workspace", "@mcpfn/core"]);
   npmStep("core:build", ["run", "build", "--workspace", "@mcpfn/core"]);
+  for (const entry of ["esm", "cjs"]) {
+    run(`core:built-schema-${entry}`, process.execPath, [
+      "--disallow-code-generation-from-strings",
+      "scripts/test-mcpfn-built-schema-entries.mjs",
+      entry,
+    ]);
+  }
 
   npmStep("client:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/client"]);
   npmStep("client:test", ["run", "test", "--workspace", "@mcpfn/client"]);

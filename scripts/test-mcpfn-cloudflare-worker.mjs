@@ -117,6 +117,17 @@ const registry = new McpFnRegistry().register({
     properties: { value: { $ref: "child" } },
   },
   handler: async ({ value }) => structuredResult({ value }),
+}).register({
+  name: "ipvfuture-uri",
+  description: "Validate a relative reference beneath an IPvFuture schema ID.",
+  inputSchema: {
+    $id: "http://[v1.fe]/schema",
+    type: "object",
+    required: ["value"],
+    $defs: { child: { $id: "child", type: "string" } },
+    properties: { value: { $ref: "child" } },
+  },
+  handler: async ({ value }) => structuredResult({ value }),
 });
 
 const mcp = createMcpFnServer({
@@ -284,6 +295,10 @@ async function main() {
     assert.deepEqual(opaque.structuredContent, { value: "ok" });
     const opaqueInvalid = await client.callTool({ name: "opaque-uri", arguments: { value: 42 } });
     assert.equal(opaqueInvalid.isError, true, "Worker accepted an invalid opaque-URI value");
+    const ipvFuture = await client.callTool({ name: "ipvfuture-uri", arguments: { value: "ok" } });
+    assert.deepEqual(ipvFuture.structuredContent, { value: "ok" });
+    const ipvFutureInvalid = await client.callTool({ name: "ipvfuture-uri", arguments: { value: 42 } });
+    assert.equal(ipvFutureInvalid.isError, true, "Worker accepted an invalid IPvFuture value");
 
     await client.close();
     process.stdout.write(
@@ -296,6 +311,7 @@ async function main() {
         tool: "add",
         result: 5,
         opaqueUri: true,
+        ipvFutureUri: true,
       }) + "\n",
     );
   } finally {

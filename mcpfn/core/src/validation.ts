@@ -1,6 +1,6 @@
 import Ajv, { type ErrorObject } from "ajv";
 import addFormats from "ajv-formats";
-import * as uri from "fast-uri";
+import uri from "fast-uri";
 import {
   dereference,
   encodePointer,
@@ -118,12 +118,29 @@ function defaultSchemaEngine(): SchemaEngine {
 
 const syntheticCollectionBase = "https://schema-collection.mcpfn.invalid/";
 const relativeSchemaHostSuffix = ".schema-resource.mcpfn.invalid";
+const authoredResourceBase = "https://authored-schema.mcpfn.invalid/";
 
-// Ajv resolves JSON Schema URI references with fast-uri (RFC 3986). WHATWG
-// URL cannot resolve relative references beneath opaque IDs such as urn:.
-// Return an absolute URL so the cfworker index only sees absolute references.
-function resolveSchemaUri(reference: string, base: URL): URL {
-  return new URL(uri.resolve(base.href, reference));
+// Ajv uses RFC 3986 URI resolution. Keep that identity separate from the
+// WHATWG-only URI index used by @cfworker/json-schema.
+function resolveSchemaUri(reference: string, base: string): string {
+  return uri.resolve(base, reference);
+}
+
+function schemaResourceUri(reference: string): string {
+  const fragment = reference.indexOf("#");
+  return fragment < 0 ? reference : reference.slice(0, fragment);
+}
+
+// Encode every authored resource, including URIs that happen to parse under
+// WHATWG URL. The mapping is injective and uses a different namespace from
+// anonymous synthetic roots, so an authored ref cannot expose one of them.
+// Keep the fragment outside the encoding for cfworker's pointer lookup.
+function workerSchemaUri(reference: string): string {
+  const resource = schemaResourceUri(reference);
+  const encoded = Array.from(new TextEncoder().encode(resource), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+  return `${authoredResourceBase}${encoded}${reference.slice(resource.length)}`;
 }
 
 function explicitSchemaId(schema: object): string | undefined {
@@ -137,22 +154,16 @@ function syntheticCollectionId(index: number | "index", attempt: number): string
 
 function collectUserSchemaResourceUris(
   schema: Draft7Schema,
-  parentBase: URL,
+  parentBase: string,
   uris: Set<string>,
 ): void {
   if (typeof schema === "boolean") return;
   const identifier = explicitSchemaId(schema);
   const originalBase = identifier ? resolveSchemaUri(identifier, parentBase) : parentBase;
-  if (identifier) {
-    const resource = new URL(originalBase);
-    resource.hash = "";
-    uris.add(resource.href);
-  }
+  if (identifier) uris.add(schemaResourceUri(originalBase));
   const reference = schema.$ref;
   if (typeof reference === "string" && reference !== "" && !reference.startsWith("#")) {
-    const resource = resolveSchemaUri(reference, originalBase);
-    resource.hash = "";
-    uris.add(resource.href);
+    uris.add(schemaResourceUri(resolveSchemaUri(reference, originalBase)));
   }
   forEachDraft7Subschema(schema, (subschema) => {
     collectUserSchemaResourceUris(subschema, originalBase, uris);
@@ -162,7 +173,7 @@ function collectUserSchemaResourceUris(
 function userSchemaResourceUris(schemas: readonly object[], base: URL): Set<string> {
   const uris = new Set<string>();
   for (const schema of schemas) {
-    collectUserSchemaResourceUris(schema as Record<string, unknown>, base, uris);
+    collectUserSchemaResourceUris(schema as Record<string, unknown>, base.href, uris);
   }
   return uris;
 }
@@ -218,8 +229,8 @@ function selectRelativeSchemaBase(schemas: readonly object[]): URL {
 // keeps relative identifiers distinct from every absolute URI in the input.
 function normalizeSchemaUris(
   schema: Draft7Schema,
-  parentOriginalBase: URL,
-  parentEffectiveBase: URL,
+  parentOriginalBase: string,
+  parentEffectiveBase: string,
 ): void {
   if (typeof schema === "boolean") return;
 
@@ -228,15 +239,19 @@ function normalizeSchemaUris(
   const identifier = explicitSchemaId(schema);
   if (identifier) {
     originalBase = resolveSchemaUri(identifier, parentOriginalBase);
-    effectiveBase = originalBase;
-    schema.$id = originalBase.href;
+    effectiveBase = workerSchemaUri(originalBase);
+    schema.$id = effectiveBase;
   }
 
   if (typeof schema.$ref === "string") {
-    const referenceBase = schema.$ref === "" || schema.$ref.startsWith("#")
+    const localReference = schema.$ref === "" || schema.$ref.startsWith("#");
+    const referenceBase = localReference
       ? effectiveBase
       : originalBase;
-    schema.$ref = resolveSchemaUri(schema.$ref, referenceBase).href;
+    const resolved = resolveSchemaUri(schema.$ref, referenceBase);
+    schema.$ref = localReference
+      ? resolved
+      : workerSchemaUri(resolved);
   }
 
   forEachDraft7Subschema(schema, (subschema) => {
@@ -258,8 +273,8 @@ function planSchemaResources(schemas: readonly object[], attempt: number): Schem
     const syntheticId = syntheticIds[index];
     normalizeSchemaUris(
       copy,
-      relativeSchemaBase,
-      syntheticId ? new URL(syntheticId) : relativeSchemaBase,
+      relativeSchemaBase.href,
+      syntheticId ?? relativeSchemaBase.href,
     );
     if (syntheticId) copy.$id = syntheticId;
     return copy;
@@ -570,8 +585,8 @@ export function createSchemaCompiler(
         const current = structuredClone(schema) as Record<string, unknown>;
         normalizeSchemaUris(
           current,
-          state.relativeSchemaBase,
-          syntheticId ? new URL(syntheticId) : state.relativeSchemaBase,
+          state.relativeSchemaBase.href,
+          syntheticId ?? state.relativeSchemaBase.href,
         );
         if (syntheticId) current.$id = syntheticId;
         // Each level stores only the newly registered resource. A failed

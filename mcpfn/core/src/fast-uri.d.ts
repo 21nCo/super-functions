@@ -1,3 +1,6 @@
 declare module "fast-uri" {
-  export function resolve(baseURI: string, relativeURI: string): string;
+  const uri: {
+    resolve(baseURI: string, relativeURI: string): string;
+  };
+  export default uri;
 }
