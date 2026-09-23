@@ -133,6 +133,15 @@ const registry = new McpFnRegistry().register({
   description: "Validate an anonymous dot-segment self reference.",
   inputSchema: { type: "object", properties: { child: { $ref: "." } } },
   handler: async (args) => structuredResult(args),
+}).register({
+  name: "fragment",
+  description: "Validate a named fragment beneath an anonymous root.",
+  inputSchema: {
+    type: "object",
+    definitions: { value: { $id: "#value", type: "string" } },
+    properties: { value: { $ref: "#value" } },
+  },
+  handler: async ({ value }) => structuredResult({ value }),
 });
 
 const mcp = createMcpFnServer({
@@ -308,6 +317,10 @@ async function main() {
     assert.deepEqual(recursive.structuredContent, { child: { child: {} } });
     const recursiveInvalid = await client.callTool({ name: "recursive", arguments: { child: 42 } });
     assert.equal(recursiveInvalid.isError, true, "Worker accepted an invalid recursive value");
+    const fragment = await client.callTool({ name: "fragment", arguments: { value: "ok" } });
+    assert.deepEqual(fragment.structuredContent, { value: "ok" });
+    const fragmentInvalid = await client.callTool({ name: "fragment", arguments: { value: 42 } });
+    assert.equal(fragmentInvalid.isError, true, "Worker accepted an invalid named-fragment value");
 
     await client.close();
     process.stdout.write(
@@ -322,6 +335,7 @@ async function main() {
         opaqueUri: true,
         ipvFutureUri: true,
         recursiveUri: true,
+        namedFragmentUri: true,
       }) + "\n",
     );
   } finally {

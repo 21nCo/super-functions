@@ -49,4 +49,22 @@ await assert.rejects(
   registry.callTool("recursive", { child: 42 }, undefined, {}),
   /Invalid arguments/,
 );
+registry.register({
+  name: "fragment",
+  description: "Validate a named fragment beneath an anonymous root",
+  inputSchema: {
+    type: "object",
+    definitions: { value: { $id: "#value", type: "string" } },
+    properties: { value: { $ref: "#value" } },
+  },
+  handler: async ({ value }) => ({ content: [{ type: "text", text: value }] }),
+});
+assert.deepEqual(
+  (await registry.callTool("fragment", { value: "ok" }, undefined, {})).content,
+  [{ type: "text", text: "ok" }],
+);
+await assert.rejects(
+  registry.callTool("fragment", { value: 42 }, undefined, {}),
+  /Invalid arguments/,
+);
 console.log(JSON.stringify({ entry, engine: core.schemaEngine, valid: true, invalidRejected: true }));

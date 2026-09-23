@@ -143,6 +143,21 @@ function workerSchemaUri(reference: string): string {
   return `${authoredResourceBase}${encoded}${reference.slice(resource.length)}`;
 }
 
+function effectiveSchemaUri(reference: string, originalBase: string, effectiveBase: string): string {
+  const resolved = resolveSchemaUri(reference, originalBase);
+  const sameResource = schemaResourceUri(resolved) === schemaResourceUri(originalBase);
+  // Anonymous roots have no public base. Relative dot segments and fragments
+  // can still identify that root, while absolute private-looking references
+  // must remain outside its synthetic namespace.
+  const localReference = sameResource && (
+    !effectiveBase.startsWith(syntheticCollectionBase) ||
+    schemaResourceUri(resolveSchemaUri(reference, "")) === ""
+  );
+  return localReference
+    ? resolveSchemaUri(resolved.slice(schemaResourceUri(resolved).length), effectiveBase)
+    : workerSchemaUri(resolved);
+}
+
 function explicitSchemaId(schema: object): string | undefined {
   const id = (schema as { $id?: unknown }).$id;
   return typeof id === "string" && id.length > 0 ? id : undefined;
@@ -239,23 +254,12 @@ function normalizeSchemaUris(
   const identifier = explicitSchemaId(schema);
   if (identifier) {
     originalBase = resolveSchemaUri(identifier, parentOriginalBase);
-    effectiveBase = workerSchemaUri(originalBase);
+    effectiveBase = effectiveSchemaUri(identifier, parentOriginalBase, parentEffectiveBase);
     schema.$id = effectiveBase;
   }
 
   if (typeof schema.$ref === "string") {
-    const resolved = resolveSchemaUri(schema.$ref, originalBase);
-    const sameResource = schemaResourceUri(resolved) === schemaResourceUri(originalBase);
-    // Anonymous roots have no public base. A dot-segment reference can still
-    // resolve to that root, but an absolute reference to our private planning
-    // origin must not gain access to its synthetic ID.
-    const localReference = sameResource && (
-      !effectiveBase.startsWith(syntheticCollectionBase) ||
-      schemaResourceUri(resolveSchemaUri(schema.$ref, "")) === ""
-    );
-    schema.$ref = localReference
-      ? resolveSchemaUri(resolved.slice(schemaResourceUri(resolved).length), effectiveBase)
-      : workerSchemaUri(resolved);
+    schema.$ref = effectiveSchemaUri(schema.$ref, originalBase, effectiveBase);
   }
 
   forEachDraft7Subschema(schema, (subschema) => {

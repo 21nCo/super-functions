@@ -88,6 +88,23 @@ describe("schema validation engines", () => {
   );
 
   it.each(["ajv", "cfworker"] as const)(
+    "resolves named fragments beneath anonymous roots using %s",
+    (engine) => {
+      for (const keyword of ["definitions", "$defs"] as const) {
+        const schema = {
+          type: "object",
+          [keyword]: { value: { $id: "#value", type: "string" } },
+          properties: { value: { $ref: "#value" } },
+        };
+        const validate = createSchemaCompiler(engine).compile(schema);
+        expect(validate({ value: "ok" })).toBe(true);
+        expect(validate({ value: 42 })).toBe(false);
+        expect(() => validateSchemaCollection([schema], engine)).not.toThrow();
+      }
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
     "does not turn a root-path reference into an anonymous self reference using %s",
     (engine) => {
       const schema = { type: "object", properties: { child: { $ref: "/" } } };
@@ -281,30 +298,37 @@ describe("schema validation engines", () => {
   it.each(["ajv", "cfworker"] as const)(
     "resolves RFC 3986 IPvFuture resources across compiler and collection using %s",
     (engine) => {
-      const root = {
-        $id: "https://[v1.fe]/schema",
-        type: "object",
-        $defs: { child: { $id: "child", type: "string" } },
-        properties: { value: { $ref: "child" } },
-      };
-      const external = { type: "object", properties: { value: { $ref: "https://[v1.fe]/child" } } };
-      const compiler = createSchemaCompiler(engine);
-      const validateRoot = compiler.compile(root);
-      const validateExternal = compiler.compile(external);
-      expect(validateRoot({ value: "ok" })).toBe(true);
-      expect(validateRoot({ value: 42 })).toBe(false);
-      expect(validateExternal({ value: "ok" })).toBe(true);
-      expect(validateExternal({ value: 42 })).toBe(false);
-      expect(() => validateSchemaCollection([root, external], engine)).not.toThrow();
+      for (const scheme of ["http", "https"]) {
+        const root = {
+          $id: `${scheme}://[v1.fe]/schema`,
+          type: "object",
+          $defs: { child: { $id: "child", type: "string" } },
+          properties: { value: { $ref: "child" } },
+        };
+        const external = {
+          type: "object",
+          properties: { value: { $ref: `${scheme}://[v1.fe]/child` } },
+        };
+        const compiler = createSchemaCompiler(engine);
+        const validateRoot = compiler.compile(root);
+        const validateExternal = compiler.compile(external);
+        expect(validateRoot({ value: "ok" })).toBe(true);
+        expect(validateRoot({ value: 42 })).toBe(false);
+        expect(validateExternal({ value: "ok" })).toBe(true);
+        expect(validateExternal({ value: 42 })).toBe(false);
+        expect(() => validateSchemaCollection([root, external], engine)).not.toThrow();
+      }
     },
   );
 
   it.each(["ajv", "cfworker"] as const)(
     "rejects missing RFC 3986 IPvFuture resources using %s",
     (engine) => {
-      const schema = { $id: "https://[v1.fe]/schema", $ref: "missing" };
-      expect(() => createSchemaCompiler(engine).compile(schema)).toThrow();
-      expect(() => validateSchemaCollection([schema], engine)).toThrow();
+      for (const scheme of ["http", "https"]) {
+        const schema = { $id: `${scheme}://[v1.fe]/schema`, $ref: "missing" };
+        expect(() => createSchemaCompiler(engine).compile(schema)).toThrow();
+        expect(() => validateSchemaCollection([schema], engine)).toThrow();
+      }
     },
   );
 
