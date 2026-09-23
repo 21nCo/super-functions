@@ -413,6 +413,10 @@ export class McpFnInspector {
       this.countedDrops.add(event);
       if (bytes > this.maxTimelineBytes) return;
     }
+    this.retainTimelineEvent(event, bytes);
+  }
+
+  private retainTimelineEvent(event: McpFnInspectorTimelineEvent, bytes: number): void {
     this.events.push(event);
     this.timelineBytes += bytes;
     while (
