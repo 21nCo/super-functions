@@ -558,6 +558,7 @@ describe("mcpfn CLI", () => {
     expect(code).toBe(1);
     expect(Buffer.byteLength(output)).toBeLessThanOrEqual(1025);
     expect(JSON.parse(output).ok).toBe(false);
+    expect(output).toBe(JSON.stringify(JSON.parse(output)));
   });
 });
 

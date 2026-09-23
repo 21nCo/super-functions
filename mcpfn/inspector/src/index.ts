@@ -382,7 +382,11 @@ export class McpFnInspector {
       event: raw,
     };
     let bytes: number;
-    try { event = structuredClone(event); bytes = encodedBytes(event); }
+    try {
+      event = structuredClone(event);
+      this.client.preserveTargetArtifact(event);
+      bytes = encodedBytes(event);
+    }
     catch { countDrop(); return; }
     if (dropCounted) this.countedDrops.add(event);
     if (bytes > this.maxTimelineBytes) {
@@ -402,8 +406,11 @@ export class McpFnInspector {
         at,
         event: { [truncatedKey]: truncatedValue },
       };
+      try {
+        this.client.preserveTargetArtifact(event);
+        bytes = encodedBytes(event);
+      } catch { return; }
       this.countedDrops.add(event);
-      bytes = encodedBytes(event);
       if (bytes > this.maxTimelineBytes) return;
     }
     this.events.push(event);

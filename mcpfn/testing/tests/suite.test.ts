@@ -528,9 +528,9 @@ it("delivers diagnostics after exactly one custom redaction and bounds their ret
 });
 
 
-it.each([1n, () => undefined, Symbol("diagnostic"), undefined, NaN, Infinity])("marks unserializable diagnostic data as dropped and incomplete (%s)", async amount => {
+async function reportWithUnserializableDiagnostic(amount: unknown) {
   const server = createMcpFnServer({ info: { name: "bigint", version: "1" }, registry: new McpFnRegistry().register({ name: "echo", description: "Fixture", inputSchema: { type: "object" }, handler: async () => structuredResult({ ok: true }) }) });
-  const report = await runMcpFnTargetSuite({ scenarios: [{ name: "retained", tool: "echo" }], target: customTarget({ kind: "custom",
+  return runMcpFnTargetSuite({ scenarios: [{ name: "retained", tool: "echo" }], target: customTarget({ kind: "custom",
     open: async context => {
       await context.diagnostic({
         phase: "capability-operation", outcome: "succeeded",
@@ -542,11 +542,24 @@ it.each([1n, () => undefined, Symbol("diagnostic"), undefined, NaN, Infinity])("
       return { transport: client, close: () => server.close() };
     },
   }) });
+}
+
+it.each([() => undefined, Symbol("diagnostic"), undefined, NaN, Infinity])("marks non-JSON diagnostic data as dropped and incomplete (%s)", async amount => {
+  const report = await reportWithUnserializableDiagnostic(amount);
   expect(report.status).toBe("incomplete");
   expect(report.results).toHaveLength(1);
   expect(report.results[0].status).toBe("passed");
   expect(report.droppedTimelineEvents).toBeGreaterThan(0);
-  expect(report.incompleteReason).toMatch(/non-JSON data|redaction failed/);
+  expect(report.incompleteReason).toContain("Diagnostic timeline contained non-JSON data");
+  expect(() => JSON.stringify(report)).not.toThrow();
+});
+
+it("attributes a bigint diagnostic omission to redaction failure", async () => {
+  const report = await reportWithUnserializableDiagnostic(1n);
+  expect(report.status).toBe("incomplete");
+  expect(report.droppedTimelineEvents).toBeGreaterThan(0);
+  expect(report.incompleteReason).toContain("Diagnostic timeline redaction failed");
+  expect(report.incompleteReason).not.toContain("non-JSON data");
   expect(() => JSON.stringify(report)).not.toThrow();
 });
 

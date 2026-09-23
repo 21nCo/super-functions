@@ -420,6 +420,33 @@ it("rejects scenario exports and timeline entries with an unsafe format version"
   expect(inspector.timeline()).toEqual([]);
 });
 
+it.each([
+  { secret: '"event":{"phase"', maxTimelineBytes: 1024, oversized: false },
+  { secret: '"event":{"truncated"', maxTimelineBytes: 256, oversized: true },
+])("omits completed timeline wrappers that reconstruct $secret", async ({ secret, maxTimelineBytes, oversized }) => {
+  const client = new McpFnClient({
+    target: customTarget({
+      kind: "custom",
+      open: async () => { throw new Error("unused"); },
+      redact: <T>(value: T): T => typeof value === "string"
+        ? value.replaceAll(secret, "") as T
+        : value,
+    }),
+  });
+  const inspector = new McpFnInspector(client, { maxTimelineBytes });
+  const at = new Date().toISOString();
+  const record = (inspector as unknown as {
+    record(source: "diagnostic", kind: string, at: string, raw: Record<string, unknown>): void;
+  }).record.bind(inspector);
+  record("diagnostic", "capability-operation", at, {
+    phase: "capability-operation", outcome: "succeeded", at,
+    details: oversized ? { payload: "x".repeat(1000) } : {},
+  });
+
+  expect(inspector.timeline()).toEqual([]);
+  expect((await inspector.snapshot()).droppedEvents).toBe(1);
+});
+
 it.each(["status", "incompleteReason", "variables"])(
   "does not reject an export when optional key %s is not emitted",
   secret => {

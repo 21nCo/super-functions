@@ -441,10 +441,9 @@ export async function runCli(
       });
       try {
         await preserveCleanupOwner(targetCleanupError, async () => {
-          const serialized = serializeMcpFnTargetSuiteReport(report, {
-            trailingNewline: true,
-          });
-          // The retained report guard enforces the cap on this exact encoding.
+          // Emit the compact encoding the suite bounded. A newline could turn
+          // an otherwise valid report at the exact cap into an output failure.
+          const serialized = serializeMcpFnTargetSuiteReport(report);
           if (options.output) {
             await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
           }
