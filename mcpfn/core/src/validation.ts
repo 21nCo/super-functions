@@ -1,5 +1,6 @@
 import Ajv, { type ErrorObject } from "ajv";
 import addFormats from "ajv-formats";
+import * as uri from "fast-uri";
 import {
   dereference,
   encodePointer,
@@ -118,6 +119,13 @@ function defaultSchemaEngine(): SchemaEngine {
 const syntheticCollectionBase = "https://schema-collection.mcpfn.invalid/";
 const relativeSchemaHostSuffix = ".schema-resource.mcpfn.invalid";
 
+// Ajv resolves JSON Schema URI references with fast-uri (RFC 3986). WHATWG
+// URL cannot resolve relative references beneath opaque IDs such as urn:.
+// Return an absolute URL so the cfworker index only sees absolute references.
+function resolveSchemaUri(reference: string, base: URL): URL {
+  return new URL(uri.resolve(base.href, reference));
+}
+
 function explicitSchemaId(schema: object): string | undefined {
   const id = (schema as { $id?: unknown }).$id;
   return typeof id === "string" && id.length > 0 ? id : undefined;
@@ -134,7 +142,7 @@ function collectUserSchemaResourceUris(
 ): void {
   if (typeof schema === "boolean") return;
   const identifier = explicitSchemaId(schema);
-  const originalBase = identifier ? new URL(identifier, parentBase) : parentBase;
+  const originalBase = identifier ? resolveSchemaUri(identifier, parentBase) : parentBase;
   if (identifier) {
     const resource = new URL(originalBase);
     resource.hash = "";
@@ -142,7 +150,7 @@ function collectUserSchemaResourceUris(
   }
   const reference = schema.$ref;
   if (typeof reference === "string" && reference !== "" && !reference.startsWith("#")) {
-    const resource = new URL(reference, originalBase);
+    const resource = resolveSchemaUri(reference, originalBase);
     resource.hash = "";
     uris.add(resource.href);
   }
@@ -219,7 +227,7 @@ function normalizeSchemaUris(
   let effectiveBase = parentEffectiveBase;
   const identifier = explicitSchemaId(schema);
   if (identifier) {
-    originalBase = new URL(identifier, parentOriginalBase);
+    originalBase = resolveSchemaUri(identifier, parentOriginalBase);
     effectiveBase = originalBase;
     schema.$id = originalBase.href;
   }
@@ -228,7 +236,7 @@ function normalizeSchemaUris(
     const referenceBase = schema.$ref === "" || schema.$ref.startsWith("#")
       ? effectiveBase
       : originalBase;
-    schema.$ref = new URL(schema.$ref, referenceBase).href;
+    schema.$ref = resolveSchemaUri(schema.$ref, referenceBase).href;
   }
 
   forEachDraft7Subschema(schema, (subschema) => {

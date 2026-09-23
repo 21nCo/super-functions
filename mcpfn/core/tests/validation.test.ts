@@ -212,6 +212,47 @@ describe("schema validation engines", () => {
     },
   );
 
+  it.each(["ajv", "cfworker"] as const)(
+    "resolves nested references under an opaque URI base using %s",
+    (engine) => {
+      const schema = {
+        $id: "urn:example:root",
+        type: "object",
+        $defs: { child: { $id: "child", type: "string" } },
+        properties: { value: { $ref: "child" } },
+      };
+      const validate = createSchemaCompiler(engine).compile(schema);
+      expect(validate({ value: "ok" })).toBe(true);
+      expect(validate({ value: 42 })).toBe(false);
+      expect(() => validateSchemaCollection([schema], engine)).not.toThrow();
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "rejects unresolved references under an opaque URI base using %s",
+    (engine) => {
+      const schema = { $id: "urn:example:root", $ref: "missing" };
+      expect(() => createSchemaCompiler(engine).compile(schema)).toThrow();
+      expect(() => validateSchemaCollection([schema], engine)).toThrow();
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "keeps an empty reference within an opaque resource using %s",
+    (engine) => {
+      const schema = {
+        $id: "urn:example:root",
+        type: "object",
+        properties: { child: { anyOf: [{ type: "null" }, { $ref: "" }] } },
+      };
+      const validate = createSchemaCompiler(engine).compile(schema);
+      expect(validate({ child: null })).toBe(true);
+      expect(validate({ child: {} })).toBe(true);
+      expect(validate({ child: 42 })).toBe(false);
+      expect(() => validateSchemaCollection([schema], engine)).not.toThrow();
+    },
+  );
+
   it("keeps earlier edge validators correct after a resource rebase and a rejected registration", () => {
     const compiler = createSchemaCompiler("cfworker");
     const first = compiler.compile({ type: "string", minLength: 2 });

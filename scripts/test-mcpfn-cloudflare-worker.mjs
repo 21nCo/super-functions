@@ -106,6 +106,17 @@ const registry = new McpFnRegistry().register({
     AddInput.parse({ left, right });
     return structuredResult({ result: left + right });
   },
+}).register({
+  name: "opaque-uri",
+  description: "Validate a relative reference beneath a URN schema ID.",
+  inputSchema: {
+    $id: "urn:example:root",
+    type: "object",
+    required: ["value"],
+    $defs: { child: { $id: "child", type: "string" } },
+    properties: { value: { $ref: "child" } },
+  },
+  handler: async ({ value }) => structuredResult({ value }),
 });
 
 const mcp = createMcpFnServer({
@@ -269,6 +280,11 @@ async function main() {
       `Unexpected validation result: ${JSON.stringify(invalid)}`,
     );
 
+    const opaque = await client.callTool({ name: "opaque-uri", arguments: { value: "ok" } });
+    assert.deepEqual(opaque.structuredContent, { value: "ok" });
+    const opaqueInvalid = await client.callTool({ name: "opaque-uri", arguments: { value: 42 } });
+    assert.equal(opaqueInvalid.isError, true, "Worker accepted an invalid opaque-URI value");
+
     await client.close();
     process.stdout.write(
       JSON.stringify({
@@ -279,6 +295,7 @@ async function main() {
         auth: "@mcpfn/auth",
         tool: "add",
         result: 5,
+        opaqueUri: true,
       }) + "\n",
     );
   } finally {
