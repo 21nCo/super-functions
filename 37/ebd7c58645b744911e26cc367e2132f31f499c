@@ -1,0 +1,50 @@
+mcpfn/client/src/client.ts
+  s_77d7bb3189c71a::t_bb344f70c3b23c 314
+  s_77d7bb3189c71a::t_254cce18c5a7c9 317-322,1048,1126,1210-1212,1239-1241
+  s_77d7bb3189c71a::t_9755cc02149ab3 303,323-334
+  s_bd5cffaa435038::t_d1950610efbd27 316
+mcpfn/testing/tests/suite.test.ts
+  s_77d7bb3189c71a::t_c05ddd03efd767 9-14,263-272
+  s_77d7bb3189c71a::t_9c3b797475b73e 549
+mcpfn/cli/src/index.ts
+  s_77d7bb3189c71a::t_254cce18c5a7c9 434,447,455
+mcpfn/cli/tests/inspect-redaction.test.ts
+  s_77d7bb3189c71a::t_c05ddd03efd767 54
+mcpfn/testing/tests/remote-target.test.ts
+  s_77d7bb3189c71a::t_c05ddd03efd767 205-215,295-301
+mcpfn/client/tests/client.test.ts
+  s_77d7bb3189c71a::t_c05ddd03efd767 9-50
+mcpfn/testing/src/artifact-guards.ts
+  s_77d7bb3189c71a::t_254cce18c5a7c9 6,24,38,67-68
+  s_77d7bb3189c71a::t_b2a02164b0b6df 69
+mcpfn/testing/src/suite.ts
+  s_77d7bb3189c71a::t_254cce18c5a7c9 150
+mcpfn/testing/README.md
+  s_77d7bb3189c71a::t_215f3242a4736d 103-104
+mcpfn/inspector/src/index.ts
+  s_77d7bb3189c71a::t_9c3b797475b73e 243
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "37ebd7c58645b744911e26cc367e2132f31f499c",
+  "prompts": {},
+  "sessions": {
+    "s_77d7bb3189c71a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b3f5-d570-7a72-b668-401efd539e3b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_bd5cffaa435038": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ce25-95ac-7992-8543-95b302fb71be",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
