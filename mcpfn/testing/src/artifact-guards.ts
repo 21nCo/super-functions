@@ -3,6 +3,7 @@ import { McpFnClientError } from "@mcpfn/client";
 import type { McpFnTargetSuiteReport } from "./suite.js";
 
 interface McpFnTargetSuiteArtifactGuard {
+  maxBytes: number;
   validate(value: string): boolean;
   release(): void;
 }
@@ -20,6 +21,7 @@ export function registerMcpFnTargetSuiteArtifactGuard(
   report: McpFnTargetSuiteReport,
   validate: (value: string) => boolean,
   release: () => void,
+  maxBytes: number,
 ): void {
   const previous = targetSuiteArtifactGuards.get(report);
   if (previous) {
@@ -33,7 +35,7 @@ export function registerMcpFnTargetSuiteArtifactGuard(
     active = false;
     release();
   };
-  targetSuiteArtifactGuards.set(report, { validate, release: releaseOnce });
+  targetSuiteArtifactGuards.set(report, { maxBytes, validate, release: releaseOnce });
   targetSuiteArtifactFinalizer.register(report, releaseOnce, report);
 }
 
@@ -61,6 +63,9 @@ export function preserveMcpFnTargetSuiteArtifact(
       );
     }
     return artifact;
+  }
+  if (new TextEncoder().encode(artifact).byteLength > guard.maxBytes) {
+    throw new Error("Serialized target suite artifact exceeds maxReportBytes");
   }
   try {
     if (!guard.validate(artifact)) throw new Error("unsafe serialized artifact");

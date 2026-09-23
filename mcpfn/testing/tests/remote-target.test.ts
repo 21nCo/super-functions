@@ -202,6 +202,17 @@ describe("authenticated remote MCP targets", () => {
     })).rejects.toThrow(/credential conflicts with required artifact structure|MCP artifact structure conflicts with credential redaction/);
   });
 
+  it("rejects a credential that collides with artifact validation metadata", async () => {
+    const secret = "target-aware";
+    const fixture = await startAuthenticatedServer(secret);
+    closeCallbacks.push(fixture.close);
+    await expect(runMcpFnTargetSuite({
+      target: authenticatedHttpTarget(fixture.url, {
+        credential: { headers: { "x-api-key": secret } },
+      }),
+    })).rejects.toThrow("credential conflicts with required artifact structure");
+  });
+
   it("validates authenticated artifacts above the payload scalar limit", async () => {
     const secret = "large-artifact-secret";
     const fixture = await startAuthenticatedServer(secret);
@@ -281,10 +292,13 @@ describe("authenticated remote MCP targets", () => {
       return () => { finish(); released[scope] += 1; };
     };
     const report = await runMcpFnTargetSuite({ target });
-    expect(serializeMcpFnTargetSuiteReport(report)).toContain("target-aware");
-    expect(released[0]).toBe(0);
-    disposeMcpFnTargetSuiteReport(report);
-    disposeMcpFnTargetSuiteReport(report);
+    try {
+      expect(serializeMcpFnTargetSuiteReport(report)).toContain("target-aware");
+      expect(released[0]).toBe(0);
+    } finally {
+      disposeMcpFnTargetSuiteReport(report);
+      disposeMcpFnTargetSuiteReport(report);
+    }
     expect(released[0]).toBe(1);
     expect(() => createMcpFnTargetSuiteJUnit(report))
       .toThrow("MCP target artifact proof is unavailable");

@@ -147,6 +147,7 @@ export async function runMcpFnTargetSuite(
         );
       },
       finishRedaction,
+      options.maxReportBytes ?? 1_048_576,
     );
     finishRedaction = () => undefined;
     try {

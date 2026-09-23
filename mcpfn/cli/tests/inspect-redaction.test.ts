@@ -51,7 +51,7 @@ it("scrubs credentials from failed inspect stderr", async () => {
 });
 
 
-it("serializes oversized inspect snapshots within the inspector artifact budget", async () => {
+it("passes snapshots above the payload-redaction scalar limit to stdout", async () => {
   vi.stubEnv("MCPFN_INSPECT_TEST_TOKEN", "opaque-inspect-value");
   state.oversized = true;
   let stdout = "";

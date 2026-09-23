@@ -100,7 +100,8 @@ Generated target-suite reports retain target-aware proof for deferred JSON and
 JUnit composition. Use the serializers above for every required encoding, then
 dispose the report in `finally`. A finalizer is only a fallback. Copies retain a
 proof-required marker and fail closed because copied values cannot retain the
-live credential validator.
+live credential validator. Every exact encoding must also fit the report's
+original `maxReportBytes` cap; pretty JSON that exceeds it is rejected.
 
 Use a provider instead of a static credential for short-lived OAuth access
 tokens. Report failures identify `mcpfn-preflight`, `authorization-server`,

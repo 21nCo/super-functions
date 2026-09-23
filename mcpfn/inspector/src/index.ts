@@ -240,7 +240,7 @@ export class McpFnInspector {
     }
     const serialized = JSON.stringify(snapshot, null, space) +
       (options.trailingNewline ? "\n" : "");
-    return this.client.preserveTargetArtifactText(serialized);
+    return this.client.preserveTargetArtifactEncoding(serialized);
   }
 
   async run(operation: McpFnInspectorOperation): Promise<McpFnInspectorOperationResult> {

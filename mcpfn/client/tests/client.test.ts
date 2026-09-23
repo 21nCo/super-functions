@@ -6,6 +6,48 @@ import { createMcpFnClient, customTarget } from "../src/index.js";
 import type { McpFnTransportHandle } from "../src/index.js";
 
 describe("McpFn production client", () => {
+  it("composes generic OAuth policy with target-owned exact artifact proof", () => {
+    const client = createMcpFnClient({
+      target: customTarget({
+        kind: "custom",
+        open: async () => { throw new Error("unused"); },
+        assertArtifactSafe: () => undefined,
+      }),
+    });
+
+    expect(() => client.preserveTargetArtifactText("authorization=Bearer generic-secret"))
+      .toThrow("MCP artifact structure conflicts with credential redaction");
+  });
+
+  it("drops completed client and diagnostic envelopes that reconstruct a credential", async () => {
+    const secret = '","';
+    const events: unknown[] = [];
+    const diagnostics: unknown[] = [];
+    const client = createMcpFnClient({
+      target: customTarget({
+        kind: "custom",
+        open: async () => { throw new Error("unused"); },
+        redact: <T>(value: T): T => typeof value === "string"
+          ? value.replaceAll(secret, "") as T
+          : value,
+      }),
+      events: event => { events.push(event); },
+      diagnostics: event => { diagnostics.push(event); },
+    });
+    const emitEvent = (client as any).emitEvent.bind(client);
+    const dispatch = (client as any).dispatch.bind(client);
+
+    await emitEvent("logging.message", { message: "safe" });
+    await dispatch({
+      phase: "capability-operation", outcome: "succeeded", requestId: "request",
+      at: new Date(0).toISOString(), target: { kind: "custom" },
+    });
+
+    expect(events).toEqual([]);
+    expect(diagnostics).toEqual([]);
+    expect(client.getRedactionOmissionCounts()).toEqual({ clientEvents: 1, diagnostics: 1 });
+  });
+
   it("preserves unchanged special numeric structure by identity", () => {
     const client = createMcpFnClient({
       target: customTarget({

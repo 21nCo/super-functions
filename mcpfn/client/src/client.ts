@@ -300,7 +300,7 @@ export class McpFnClient {
     try {
       const serialized = JSON.stringify(value);
       if (serialized === undefined) throw new Error("artifact is not serializable");
-      this.preserveTargetArtifactText(serialized);
+      this.preserveTargetArtifactEncoding(serialized);
       return value;
     } catch {
       throw new McpFnClientError(
@@ -311,8 +311,27 @@ export class McpFnClient {
     }
   }
 
-  /** Prove the exact completed serialized representation against target credentials. */
+  /** Apply generic policy, then prove exact text against target credentials. */
   preserveTargetArtifactText(value: string): string {
+    try {
+      const genericallyRedacted = redactOAuthValue(value, {
+        maxStringLength: value.length,
+      });
+      if (!Object.is(genericallyRedacted, value)) {
+        throw new Error("unsafe generic OAuth artifact");
+      }
+      return this.preserveTargetArtifactEncoding(value);
+    } catch {
+      throw new McpFnClientError(
+        "MCPFN_OPERATION_FAILED",
+        "MCP artifact structure conflicts with credential redaction",
+        { phase: "capability-operation" },
+      );
+    }
+  }
+
+  /** Prove an exact encoding whose values already passed generic redaction. */
+  preserveTargetArtifactEncoding(value: string): string {
     try {
       if (this.options.target.assertArtifactSafe) {
         this.options.target.assertArtifactSafe(value);
@@ -1026,6 +1045,7 @@ export class McpFnClient {
           ? { payload: this.redact(payload, { preserveKeys: false }) }
           : {}),
       };
+      event = this.preserveTargetArtifact(event);
     }
     catch {
       event = this.clientEventRedactionFailure();
@@ -1103,6 +1123,7 @@ export class McpFnClient {
             ? {}
             : { details: this.redact(details, { preserveKeys: false }) }),
         };
+        redacted = this.preserveTargetArtifact(redacted);
       }
     }
     catch {
@@ -1186,8 +1207,9 @@ export class McpFnClient {
           reason: "diagnostic-redaction-failed",
         }, { preserveKeys: false }),
       };
-      redactionOmissions.add(event);
-      return event;
+      const safe = this.preserveTargetArtifact(event);
+      redactionOmissions.add(safe);
+      return safe;
     } catch {
       return undefined;
     }
@@ -1214,8 +1236,9 @@ export class McpFnClient {
         target: this.redactTargetDescriptor({ kind: "custom" }),
         details: this.redact({ omitted: true }, { preserveKeys: false }),
       };
-      redactionOmissions.add(event);
-      return event;
+      const safe = this.preserveTargetArtifact(event);
+      redactionOmissions.add(safe);
+      return safe;
     } catch {
       return undefined;
     }

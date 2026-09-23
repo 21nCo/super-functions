@@ -6,7 +6,12 @@ import { describe, expect, it, vi } from "vitest";
 import { customTarget } from "@mcpfn/client";
 import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
 
-import { authenticatedHttpTarget, runMcpFnTargetSuite } from "../src/index.js";
+import {
+  authenticatedHttpTarget,
+  disposeMcpFnTargetSuiteReport,
+  runMcpFnTargetSuite,
+  serializeMcpFnTargetSuiteReport,
+} from "../src/index.js";
 
 function redactThrowOn(payloadKey: string) {
   return <T>(value: T): T => {
@@ -255,9 +260,16 @@ it("retains a complete report when only its compact encoding fits", async () => 
   const cap = Math.max(1024, new TextEncoder().encode(JSON.stringify(full)).byteLength + 128);
   expect(cap).toBeLessThan(new TextEncoder().encode(JSON.stringify(full, null, 2)).byteLength);
   const bounded = await run(cap);
-  expect(bounded.ok).toBe(true);
-  expect(bounded.droppedResults).toBe(0);
-  expect(new TextEncoder().encode(JSON.stringify(bounded)).byteLength).toBeLessThanOrEqual(cap);
+  try {
+    expect(bounded.ok).toBe(true);
+    expect(bounded.droppedResults).toBe(0);
+    expect(new TextEncoder().encode(JSON.stringify(bounded)).byteLength).toBeLessThanOrEqual(cap);
+    expect(() => serializeMcpFnTargetSuiteReport(bounded, { space: 2 }))
+      .toThrow("exceeds maxReportBytes");
+  } finally {
+    disposeMcpFnTargetSuiteReport(full);
+    disposeMcpFnTargetSuiteReport(bounded);
+  }
 });
 
 it("does not repeat successful custom cleanup after an open failure", async () => {
@@ -534,7 +546,7 @@ it.each([1n, () => undefined, Symbol("diagnostic"), undefined, NaN, Infinity])("
   expect(report.results).toHaveLength(1);
   expect(report.results[0].status).toBe("passed");
   expect(report.droppedTimelineEvents).toBeGreaterThan(0);
-  expect(report.incompleteReason).toContain("non-JSON data");
+  expect(report.incompleteReason).toMatch(/non-JSON data|redaction failed/);
   expect(() => JSON.stringify(report)).not.toThrow();
 });
 

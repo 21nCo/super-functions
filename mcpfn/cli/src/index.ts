@@ -431,7 +431,7 @@ export async function runCli(
           ?.split(",")
           .map((name) => name.trim())
           .filter(Boolean),
-        maxReportBytes: (maxReportBytes ?? 1_048_576) - 1,
+        maxReportBytes: maxReportBytes ?? 1_048_576,
       }).catch(error => {
         if (!(error instanceof McpFnTargetSuiteCleanupError)) throw error;
         // Persist the bounded snapshot before the outer library boundary retries.
@@ -444,7 +444,7 @@ export async function runCli(
           const serialized = serializeMcpFnTargetSuiteReport(report, {
             trailingNewline: true,
           });
-          // The suite reserves one byte for this trailing newline and enforces the cap.
+          // The retained report guard enforces the cap on this exact encoding.
           if (options.output) {
             await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
           }
@@ -452,7 +452,7 @@ export async function runCli(
             await writeFile(
               path.resolve(cwd, options.junit),
               createMcpFnTargetSuiteJUnit(report, {
-                maxBytes: maxReportBytes === undefined ? undefined : maxReportBytes - 1,
+                maxBytes: maxReportBytes,
               }),
               "utf8",
             );
