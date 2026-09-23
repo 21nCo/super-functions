@@ -1,0 +1,69 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M377H4F44MKT5YFE2VT68F7K",
+  "session_id": "01a0b3f5-d570-7a72-b668-401efd539e3b",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-23T13:33:32.630471Z",
+  "branch": "codex/mcp-1-transport-neutral-conformance-0910",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "mcpfn/cli/src/index.ts",
+    "mcpfn/cli/tests/inspect-redaction.test.ts",
+    "mcpfn/cli/tests/target-suite-cleanup.test.ts",
+    "mcpfn/client/src/client.ts",
+    "mcpfn/client/src/targets.ts",
+    "mcpfn/client/src/types.ts",
+    "mcpfn/inspector/README.md",
+    "mcpfn/inspector/src/index.ts",
+    "mcpfn/inspector/tests/authenticated-artifacts.test.ts",
+    "mcpfn/testing/README.md",
+    "mcpfn/testing/src/artifact-guards.ts",
+    "mcpfn/testing/src/remote-target.ts",
+    "mcpfn/testing/src/reports.ts",
+    "mcpfn/testing/src/suite.ts",
+    "mcpfn/testing/tests/remote-target.test.ts",
+    "mcpfn/testing/tests/suite.test.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "6e8fcc7cb170",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 4864075,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 150478208,
+    "output_tokens": 611158,
+    "api_call_count": 1191
+  },
+  "session_metrics": {
+    "turn_count": 26
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-23T13:33:29.999426Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 354,
+    "human_modified": 69,
+    "human_removed": 0,
+    "total_committed": 354,
+    "total_lines_changed": 423,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 13,
+      "user_lines_removed": 4,
+      "agent_lines_added": 1056,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".conduct/pr-170-remediation-ledger.md": 13
+      },
+      "user_removed_per_file": {
+        ".conduct/pr-170-remediation-ledger.md": 4
+      }
+    }
+  ]
+}
