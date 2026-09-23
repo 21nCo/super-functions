@@ -1,0 +1,69 @@
+Use $use-skillplane to retrieve and execute the exact hosted workflow 21n/pr-refetch-fix@1.3.0 (skill skill:3ba0f6dd-212c-4933-9feb-cf87481a0466, version skill-version:a0cb9070-f6e5-408f-9d1e-889962922ba2, revision 5, digest sha256:6ea2fcc8c00d256b7edf6c3afd43e667ffe20f2459404ac408e7172b31d5f4a9) for https://github.com/21nCo/super-functions/pull/204.
+
+This is recurring authorization for exactly one bounded pr-refetch-fix round per activation. The hosted skill owns feedback collection, classification, complete scoped repair, verification, its one-commit/one-push limit, reporting, and the prohibition on post-push refetch or CI/reviewer polling. This does not authorize multiple rounds per activation, force-push, merge, review dismissal, thread resolution, deployment, or unrelated changes.
+
+Work only in /Users/serro/orca/workspaces/superfunctions/mcp-4-make-mcpfn-cloudflare-worker-bundles-resil on expected branch aravink/mcp-4-make-mcpfn-cloudflare-worker-bundles-resilient-to-mixed-zod. The head when configured was 0efb989819c85505c754de1aff290c6860d7e6c6; each activation must validate the live PR head and exact worktree state. Use GH_CONFIG_DIR=/Users/serro/.config/gh-other for every gh command, require active account thyaravind, and use origin for pushes.
+
+Retrieve and verify the pinned hosted dependency before repository mutation. If it is unavailable or its identity, semantic version, revision, or digest differs, make no repository mutation, record the drift, disable automation 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13, verify the disabled state with orca automations show 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13 --json, report, and stop. Upgrade only with explicit user authorization.
+
+Reuse /Users/serro/orca/workspaces/superfunctions/mcp-4-make-mcpfn-cloudflare-worker-bundles-resil/.conduct/pr-204-recurring-remediation-ledger.md as the persistent recurring handoff; create it if absent and never stage or commit it. Preserve the existing tracked PR ledger as historical input. Record the pin, round and snapshot/head, stable defect families, failed-round counts, reset mode and assessment, root causes, dispositions, repairs, regressions, verification, check snapshot, trend, and clean streak.
+
+A clean assessment has no code change or push, no actionable or valid blocked code root cause, no unassessed item, no recurring or deferred blocker, a stable PR head, and required CI/reviewer checks terminal and successful in the one immediate snapshot allowed by the hosted skill. Reset the streak whenever any condition fails. Declare convergence only after two consecutive complete clean assessments at the same head.
+
+After convergence, or if PR 204 is merged or closed, update the handoff, disable automation 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13, verify with orca automations show 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13 --json, report, and stop. If a complete repair cannot be established or an external dependency blocks safe progress, record the blocker, disable and verify the automation, report, and stop rather than repeating unsafe mutation attempts.
+
+End every nonterminal activation with the hosted workflow result buckets and: One review round is complete. No post-push refetch or additional review loop was performed.
+
+---
+
+Use $use-skillplane to retrieve and execute the exact hosted workflow 21n/pr-refetch-fix@1.3.0 (skill skill:3ba0f6dd-212c-4933-9feb-cf87481a0466, version skill-version:a0cb9070-f6e5-408f-9d1e-889962922ba2, revision 5, digest sha256:6ea2fcc8c00d256b7edf6c3afd43e667ffe20f2459404ac408e7172b31d5f4a9) for https://github.com/21nCo/super-functions/pull/204.
+
+This is recurring authorization for exactly one bounded pr-refetch-fix round per activation. The hosted skill owns feedback collection, classification, complete scoped repair, verification, its one-commit/one-push limit, reporting, and the prohibition on post-push refetch or CI/reviewer polling. This does not authorize multiple rounds per activation, force-push, merge, review dismissal, thread resolution, deployment, or unrelated changes.
+
+Work only in /Users/serro/orca/workspaces/superfunctions/mcp-4-make-mcpfn-cloudflare-worker-bundles-resil on expected branch aravink/mcp-4-make-mcpfn-cloudflare-worker-bundles-resilient-to-mixed-zod. The head when configured was 0efb989819c85505c754de1aff290c6860d7e6c6; each activation must validate the live PR head and exact worktree state. Use GH_CONFIG_DIR=/Users/serro/.config/gh-other for every gh command, require active account thyaravind, and use origin for pushes.
+
+Retrieve and verify the pinned hosted dependency before repository mutation. If it is unavailable or its identity, semantic version, revision, or digest differs, make no repository mutation, record the drift, disable automation 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13, verify the disabled state with orca automations show 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13 --json, report, and stop. Upgrade only with explicit user authorization.
+
+Reuse /Users/serro/orca/workspaces/superfunctions/mcp-4-make-mcpfn-cloudflare-worker-bundles-resil/.conduct/pr-204-recurring-remediation-ledger.md as the persistent recurring handoff; create it if absent and never stage or commit it. Preserve the existing tracked PR ledger as historical input. Record the pin, round and snapshot/head, stable defect families, failed-round counts, reset mode and assessment, root causes, dispositions, repairs, regressions, verification, check snapshot, trend, and clean streak.
+
+A clean assessment has no code change or push, no actionable or valid blocked code root cause, no unassessed item, no recurring or deferred blocker, a stable PR head, and required CI/reviewer checks terminal and successful in the one immediate snapshot allowed by the hosted skill. Reset the streak whenever any condition fails. Declare convergence only after two consecutive complete clean assessments at the same head.
+
+After convergence, or if PR 204 is merged or closed, update the handoff, disable automation 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13, verify with orca automations show 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13 --json, report, and stop. If a complete repair cannot be established or an external dependency blocks safe progress, record the blocker, disable and verify the automation, report, and stop rather than repeating unsafe mutation attempts.
+
+End every nonterminal activation with the hosted workflow result buckets and: One review round is complete. No post-push refetch or additional review loop was performed.
+
+---
+
+Use $use-skillplane to retrieve and execute the exact hosted workflow 21n/pr-refetch-fix@1.3.0 (skill skill:3ba0f6dd-212c-4933-9feb-cf87481a0466, version skill-version:a0cb9070-f6e5-408f-9d1e-889962922ba2, revision 5, digest sha256:6ea2fcc8c00d256b7edf6c3afd43e667ffe20f2459404ac408e7172b31d5f4a9) for https://github.com/21nCo/super-functions/pull/204.
+
+This is recurring authorization for exactly one bounded pr-refetch-fix round per activation. The hosted skill owns feedback collection, classification, complete scoped repair, verification, its one-commit/one-push limit, reporting, and the prohibition on post-push refetch or CI/reviewer polling. This does not authorize multiple rounds per activation, force-push, merge, review dismissal, thread resolution, deployment, or unrelated changes.
+
+Work only in /Users/serro/orca/workspaces/superfunctions/mcp-4-make-mcpfn-cloudflare-worker-bundles-resil on expected branch aravink/mcp-4-make-mcpfn-cloudflare-worker-bundles-resilient-to-mixed-zod. The head when configured was 0efb989819c85505c754de1aff290c6860d7e6c6; each activation must validate the live PR head and exact worktree state. Use GH_CONFIG_DIR=/Users/serro/.config/gh-other for every gh command, require active account thyaravind, and use origin for pushes.
+
+Retrieve and verify the pinned hosted dependency before repository mutation. If it is unavailable or its identity, semantic version, revision, or digest differs, make no repository mutation, record the drift, disable automation 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13, verify the disabled state with orca automations show 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13 --json, report, and stop. Upgrade only with explicit user authorization.
+
+Reuse /Users/serro/orca/workspaces/superfunctions/mcp-4-make-mcpfn-cloudflare-worker-bundles-resil/.conduct/pr-204-recurring-remediation-ledger.md as the persistent recurring handoff; create it if absent and never stage or commit it. Preserve the existing tracked PR ledger as historical input. Record the pin, round and snapshot/head, stable defect families, failed-round counts, reset mode and assessment, root causes, dispositions, repairs, regressions, verification, check snapshot, trend, and clean streak.
+
+A clean assessment has no code change or push, no actionable or valid blocked code root cause, no unassessed item, no recurring or deferred blocker, a stable PR head, and required CI/reviewer checks terminal and successful in the one immediate snapshot allowed by the hosted skill. Reset the streak whenever any condition fails. Declare convergence only after two consecutive complete clean assessments at the same head.
+
+After convergence, or if PR 204 is merged or closed, update the handoff, disable automation 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13, verify with orca automations show 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13 --json, report, and stop. If a complete repair cannot be established or an external dependency blocks safe progress, record the blocker, disable and verify the automation, report, and stop rather than repeating unsafe mutation attempts.
+
+End every nonterminal activation with the hosted workflow result buckets and: One review round is complete. No post-push refetch or additional review loop was performed.
+
+---
+
+Use $use-skillplane to retrieve and execute the exact hosted workflow 21n/pr-refetch-fix@1.3.0 (skill skill:3ba0f6dd-212c-4933-9feb-cf87481a0466, version skill-version:a0cb9070-f6e5-408f-9d1e-889962922ba2, revision 5, digest sha256:6ea2fcc8c00d256b7edf6c3afd43e667ffe20f2459404ac408e7172b31d5f4a9) for https://github.com/21nCo/super-functions/pull/204.
+
+This is recurring authorization for exactly one bounded pr-refetch-fix round per activation. The hosted skill owns feedback collection, classification, complete scoped repair, verification, its one-commit/one-push limit, reporting, and the prohibition on post-push refetch or CI/reviewer polling. This does not authorize multiple rounds per activation, force-push, merge, review dismissal, thread resolution, deployment, or unrelated changes.
+
+Work only in /Users/serro/orca/workspaces/superfunctions/mcp-4-make-mcpfn-cloudflare-worker-bundles-resil on expected branch aravink/mcp-4-make-mcpfn-cloudflare-worker-bundles-resilient-to-mixed-zod. The head when configured was 0efb989819c85505c754de1aff290c6860d7e6c6; each activation must validate the live PR head and exact worktree state. Use GH_CONFIG_DIR=/Users/serro/.config/gh-other for every gh command, require active account thyaravind, and use origin for pushes.
+
+Retrieve and verify the pinned hosted dependency before repository mutation. If it is unavailable or its identity, semantic version, revision, or digest differs, make no repository mutation, record the drift, disable automation 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13, verify the disabled state with orca automations show 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13 --json, report, and stop. Upgrade only with explicit user authorization.
+
+Reuse /Users/serro/orca/workspaces/superfunctions/mcp-4-make-mcpfn-cloudflare-worker-bundles-resil/.conduct/pr-204-recurring-remediation-ledger.md as the persistent recurring handoff; create it if absent and never stage or commit it. Preserve the existing tracked PR ledger as historical input. Record the pin, round and snapshot/head, stable defect families, failed-round counts, reset mode and assessment, root causes, dispositions, repairs, regressions, verification, check snapshot, trend, and clean streak.
+
+A clean assessment has no code change or push, no actionable or valid blocked code root cause, no unassessed item, no recurring or deferred blocker, a stable PR head, and required CI/reviewer checks terminal and successful in the one immediate snapshot allowed by the hosted skill. Reset the streak whenever any condition fails. Declare convergence only after two consecutive complete clean assessments at the same head.
+
+After convergence, or if PR 204 is merged or closed, update the handoff, disable automation 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13, verify with orca automations show 08f5cf1b-75b8-4813-a2dc-bd9607e2bc13 --json, report, and stop. If a complete repair cannot be established or an external dependency blocks safe progress, record the blocker, disable and verify the automation, report, and stop rather than repeating unsafe mutation attempts.
+
+End every nonterminal activation with the hosted workflow result buckets and: One review round is complete. No post-push refetch or additional review loop was performed.
