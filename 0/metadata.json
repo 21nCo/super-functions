@@ -1,0 +1,55 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M38NKQJJMVB4DKG9WVA0739F",
+  "session_id": "01a0cf88-d299-7c41-8dce-27bbb0f005de",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-24T02:58:44.420294Z",
+  "branch": "codex/mcp-1-transport-neutral-conformance-0910",
+  "checkpoints_count": 4,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    "mcpfn/cli/package.json",
+    "mcpfn/inspector/package.json",
+    "mcpfn/testing/package.json"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-sol",
+  "turn_id": "2b8c2e34d838",
+  "checkpoint_transcript_start": 548,
+  "transcript_lines_at_start": 548,
+  "compact_transcript_start": 76,
+  "token_usage": {
+    "input_tokens": 309621,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 9742336,
+    "output_tokens": 23811,
+    "api_call_count": 72
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-24T02:58:44.223115Z",
+    "agent_lines": 12,
+    "agent_removed": 8,
+    "human_added": 58132,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 58144,
+    "total_lines_changed": 74513,
+    "agent_percentage": 0.026840953927502582,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1265,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".conduct/pr-170-remediation-ledger.md": 1265
+      }
+    }
+  ]
+}
