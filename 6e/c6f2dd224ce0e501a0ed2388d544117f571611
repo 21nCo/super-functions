@@ -1,0 +1,27 @@
+mcpfn/core/src/server.ts
+  s_67633f17848900::t_6fac6d3e4d77c8 334-340
+mcpfn/core/tests/server.test.ts
+  s_67633f17848900::t_068e2f86451401 373,379
+  s_67633f17848900::t_a8eba5d96d2ac6 368-372,374-378,380-406
+.github/workflows/ci.yml
+  s_67633f17848900::t_9c8b4d324bac4a 87-90,199-205,211
+  s_67633f17848900::t_187f65cf41ef8f 176
+mcpfn/core/src/registry.ts
+  s_67633f17848900::t_f4c5ed9136e2a4 813-822,839
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6ec6f2dd224ce0e501a0ed2388d544117f571611",
+  "prompts": {},
+  "sessions": {
+    "s_67633f17848900": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0d192-353f-7dc0-a086-0a098ec5ebe5",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
