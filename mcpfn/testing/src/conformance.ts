@@ -1,4 +1,6 @@
+import { terminateConformanceRunner } from "./conformance-process.js";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
   createServer,
@@ -8,6 +10,19 @@ import {
 import { request as httpsRequest } from "node:https";
 import type { Socket } from "node:net";
 import path from "node:path";
+import { redactOAuthValue } from "@superfunctions/oauth-core";
+
+import {
+  acquireRemoteCredential,
+  redactRemoteCredential,
+  validateRemoteCredentialHeaders,
+  type McpFnRemoteCredential,
+  type McpFnRemoteCredentialProvider,
+} from "./remote-target.js";
+import {
+  normalizeMcpFnReportFailure,
+  type McpFnReportFailure,
+} from "./reports.js";
 
 export const OFFICIAL_CONFORMANCE_VERSION = "0.1.16";
 
@@ -21,12 +36,21 @@ export interface OfficialConformanceOptions {
   verbose?: boolean;
   cwd?: string;
   stdio?: "inherit" | "pipe";
+  /** Environment names removed before spawning the upstream runner. */
+  sensitiveEnvironmentVariables?: readonly string[];
 }
 
 export interface OfficialConformanceResult {
+  formatVersion: 1;
+  kind: "mcpfn.official-conformance-report";
+  ok: boolean;
+  suiteVersion: string;
   exitCode: number;
   stdout: string;
   stderr: string;
+  failure?: McpFnReportFailure;
+  /** Credential cleanup failure, separate from the upstream runner diagnosis. */
+  cleanupFailure?: McpFnReportFailure;
 }
 
 export interface AuthenticatedConformanceProxy {
@@ -43,18 +67,14 @@ export interface AuthenticatedConformanceProxyOptions {
 }
 
 export interface AuthenticatedOfficialConformanceOptions extends OfficialConformanceOptions {
-  headers: HeadersInit;
+  /** Preferred typed credential lifecycle. */
+  credential?: McpFnRemoteCredential | McpFnRemoteCredentialProvider;
+  /** Backward-compatible static header input. Prefer credential. */
+  headers?: HeadersInit;
 }
 
-/**
- * Start a loopback-only streaming proxy for runners that cannot send auth
- * headers. Authenticated requests use one fixed upstream authority and path.
- * Host-manipulation probes are forwarded without injected credentials.
- */
-export async function createAuthenticatedConformanceProxy(
-  options: AuthenticatedConformanceProxyOptions,
-): Promise<AuthenticatedConformanceProxy> {
-  const upstream = new URL(options.url);
+function validateAuthenticatedConformanceUrl(url: string): { upstream: URL; hostname: string } {
+  const upstream = new URL(url);
   if (!["http:", "https:"].includes(upstream.protocol)) {
     throw new TypeError(
       "Authenticated conformance upstream must use HTTP or HTTPS",
@@ -71,10 +91,22 @@ export async function createAuthenticatedConformanceProxy(
       "Authenticated conformance upstream must use a literal loopback address",
     );
   }
+  return { upstream, hostname };
+}
+
+/**
+ * Start a loopback-only streaming proxy for runners that cannot send auth
+ * headers. Authenticated requests use one fixed upstream authority and path.
+ * Host-manipulation probes are forwarded without injected credentials.
+ */
+export async function createAuthenticatedConformanceProxy(
+  options: AuthenticatedConformanceProxyOptions,
+): Promise<AuthenticatedConformanceProxy> {
+  const { upstream, hostname } = validateAuthenticatedConformanceUrl(options.url);
   const protocol = upstream.protocol === "https:" ? "https:" : "http:";
   const port = upstream.port === "" ? undefined : Number(upstream.port);
   const requestPath = `${upstream.pathname}${upstream.search}`;
-  const injected = new Headers(options.headers);
+  const injected = validateRemoteCredentialHeaders(options.headers);
   const activeRequests = new Set<ReturnType<typeof httpRequest>>();
   const activeSockets = new Set<Socket>();
   let proxyAuthority: string | undefined;
@@ -139,23 +171,28 @@ export async function createAuthenticatedConformanceProxy(
     `http://127.0.0.1:${address.port}`,
   );
   proxyAuthority = url.host;
+  let closePromise: Promise<void> | undefined;
   return {
     url: url.toString(),
-    close: async () => {
-      for (const request of activeRequests) request.destroy();
-      for (const socket of activeSockets) socket.destroy();
-      if (!server.listening) return;
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      });
+    close: () => {
+      closePromise ??= (async () => {
+        for (const request of activeRequests) request.destroy();
+        for (const socket of activeSockets) socket.destroy();
+        if (!server.listening) return;
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => (error ? reject(error) : resolve()));
+        });
+      })();
+      return closePromise;
     },
   };
 }
 
 function normalizeLoopbackHostname(
   hostname: string,
-): "127.0.0.1" | "::1" | undefined {
-  if (hostname === "127.0.0.1") return "127.0.0.1";
+): string | undefined {
+  const parts = hostname.split(".");
+  if (parts.length === 4 && parts[0] === "127" && parts.every(part => /^\d{1,3}$/.test(part) && Number(part) <= 255)) return hostname;
   if (hostname === "[::1]") return "::1";
   return undefined;
 }
@@ -196,8 +233,28 @@ export function buildOfficialConformanceArgs(
   return args;
 }
 
-export async function runOfficialConformance(
+export function buildOfficialConformanceEnvironment(
+  sensitiveNames: readonly string[] = [],
+  source: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const environment = { ...source };
+  const sensitive = new Set(sensitiveNames.map((name) => name.toLowerCase()));
+  for (const name of Object.keys(environment)) {
+    if (sensitive.has(name.toLowerCase())) delete environment[name];
+  }
+  environment.PATH = [path.dirname(process.execPath), environment.PATH]
+    .filter(Boolean)
+    .join(path.delimiter);
+  return environment;
+}
+
+export async function runOfficialConformance(options: OfficialConformanceOptions): Promise<OfficialConformanceResult> {
+  return runConformance(options, value => String(redactOAuthValue(value, { maxStringLength: 262_144 })));
+}
+
+async function runConformance(
   options: OfficialConformanceOptions,
+  redactOutput: (value: string) => string,
 ): Promise<OfficialConformanceResult> {
   const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
   if (nodeMajor < 22) {
@@ -207,45 +264,165 @@ export async function runOfficialConformance(
   }
   const args = buildOfficialConformanceArgs(options);
   const invocation = npxInvocation(args);
+  const childEnvironment = buildOfficialConformanceEnvironment(
+    options.sensitiveEnvironmentVariables,
+  );
 
-  return await new Promise<OfficialConformanceResult>((resolve, reject) => {
+  return await new Promise<OfficialConformanceResult>((resolve) => {
     const child = spawn(invocation.command, invocation.args, {
+      detached: process.platform !== "win32",
       cwd: options.cwd,
-      env: {
-        ...process.env,
-        PATH: [path.dirname(process.execPath), process.env.PATH]
-          .filter(Boolean)
-          .join(path.delimiter),
-      },
+      env: childEnvironment,
       stdio: options.stdio === "inherit" ? "inherit" : "pipe",
     });
     let stdout = "";
     let stderr = "";
-    child.stdout?.on("data", (chunk) => {
-      stdout += chunk.toString();
+    let capturedBytes = 0;
+    let outputExceeded = false;
+    const capture = (chunk: string, stream: "stdout" | "stderr") => {
+      if (outputExceeded) return;
+      capturedBytes += Buffer.byteLength(chunk, "utf8");
+      if (capturedBytes > 262_144) {
+        outputExceeded = true;
+        stdout = ""; stderr = "";
+        // Always settle the failed report after the bounded termination attempt,
+        // even if the wrapper never emits close (for example, a failed taskkill).
+        void terminateConformanceRunner(child).finally(() => finish(1));
+        return;
+      }
+      if (stream === "stdout") stdout += chunk.toString();
+      else stderr += chunk.toString();
+    };
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", chunk => capture(chunk, "stdout"));
+    child.stderr?.on("data", chunk => capture(chunk, "stderr"));
+    let settled = false;
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      const failure = normalizeMcpFnReportFailure(error, "upstream-conformance");
+      resolve({
+        formatVersion: 1,
+        kind: "mcpfn.official-conformance-report",
+        ok: false,
+        suiteVersion: OFFICIAL_CONFORMANCE_VERSION,
+        exitCode: 1,
+        stdout: "",
+        stderr: failure.message,
+        failure,
+      });
     });
-    child.stderr?.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.once("error", reject);
-    child.once("close", (code) => {
-      resolve({ exitCode: code ?? 1, stdout, stderr });
-    });
+    const finish = (code: number | null) => {
+      if (settled) return;
+      settled = true;
+      let safeStdout = "";
+      let safeStderr = "";
+      let outputFailure = false;
+      try {
+        if (outputExceeded) throw new Error("capture limit");
+        safeStdout = redactOutput(stdout);
+        safeStderr = redactOutput(stderr);
+      } catch {
+        outputFailure = true;
+        safeStdout = "";
+        safeStderr = outputExceeded ? "Conformance output exceeded its capture limit" : "Conformance output omitted because credential redaction exceeded its bounds";
+      }
+      const exitCode = outputFailure ? 1 : (code ?? 1);
+      const failure = exitCode === 0
+        ? undefined
+        : normalizeMcpFnReportFailure(
+          new Error(safeStderr || safeStdout || `Official conformance exited ${exitCode}`),
+          "upstream-conformance",
+        );
+      resolve({
+        formatVersion: 1,
+        kind: "mcpfn.official-conformance-report",
+        ok: exitCode === 0,
+        suiteVersion: OFFICIAL_CONFORMANCE_VERSION,
+        exitCode,
+        stdout: safeStdout,
+        stderr: safeStderr,
+        ...(failure ? { failure } : {}),
+      });
+    };
+    child.once("close", finish);
   });
 }
 
-/** Run the pinned official suite against an authenticated MCP endpoint. */
+const retainedConformanceCleanup = new WeakMap<Error, () => Promise<void>>();
+
+/** Cleanup failed after retries. Retain this error and call retryCleanup(). */
+export class McpFnConformanceCleanupError extends Error {
+  constructor(release: () => Promise<void>, readonly result?: OfficialConformanceResult) {
+    super("Authenticated conformance credential cleanup failed; retry cleanup");
+    this.name = "McpFnConformanceCleanupError";
+    retainedConformanceCleanup.set(this, release);
+  }
+  async retryCleanup(): Promise<void> {
+    const release = retainedConformanceCleanup.get(this);
+    if (!release) return;
+    try { await release(); }
+    catch { throw this; }
+    retainedConformanceCleanup.delete(this);
+  }
+}
+
+/**
+ * Run the pinned official suite against an authenticated MCP endpoint.
+ * Always captures stdio (even when inherit is requested) to redact credentials.
+ * outputDir is rejected before acquisition; only the returned redacted result is safe to persist.
+ */
 export async function runAuthenticatedOfficialConformance(
   options: AuthenticatedOfficialConformanceOptions,
 ): Promise<OfficialConformanceResult> {
-  const { headers, ...conformance } = options;
-  const proxy = await createAuthenticatedConformanceProxy({
-    url: conformance.url,
-    headers,
-  });
-  try {
-    return await runOfficialConformance({ ...conformance, url: proxy.url });
-  } finally {
-    await proxy.close();
+  if (options.outputDir !== undefined) throw new TypeError("Authenticated conformance does not support outputDir; serialize the redacted result instead");
+  const { headers, credential, ...conformance } = options;
+  if ((headers === undefined) === (credential === undefined)) {
+    throw new TypeError("Provide exactly one of credential or headers for authenticated conformance");
   }
+  validateAuthenticatedConformanceUrl(conformance.url);
+  const lease = await acquireRemoteCredential(
+    credential ?? { headers: headers! },
+    {
+      url: conformance.url,
+      requestId: randomUUID(),
+    },
+  );
+  let proxy: AuthenticatedConformanceProxy | undefined;
+  let result: OfficialConformanceResult | undefined;
+  let operationFailure: { error: Error } | undefined;
+  const safeFailure = (error: unknown): { error: Error } => {
+    let message = "Authenticated conformance operation failed";
+    try { message = redactRemoteCredential(lease.credential, error instanceof Error ? error.message : String(error)); }
+    catch { /* Keep a safe fallback if redaction exceeds its budget. */ }
+    return { error: new Error(message) };
+  };
+  try {
+    proxy = await createAuthenticatedConformanceProxy({
+      url: conformance.url,
+      headers: lease.credential.headers,
+    });
+    result = redactRemoteCredential(lease.credential, await runConformance({ ...conformance, stdio: "pipe", url: proxy.url }, value => String(redactRemoteCredential(lease.credential, value))), { preserveKeys: true });
+  } catch (error) {
+    operationFailure = safeFailure(error);
+  }
+  try { await proxy?.close(); }
+  catch (error) { operationFailure ??= safeFailure(error); }
+  let released = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { await lease.release(); released = true; break; } catch { /* Retry transient revocation failure. */ }
+  }
+  if (!released) {
+    const message = "Authenticated conformance credential cleanup failed; retry cleanup";
+    const cleanupFailure = normalizeMcpFnReportFailure(new Error(message), lease.cleanupPhase());
+    const failedResult = result ? { ...result, ok: false, exitCode: result.exitCode || 1,
+      cleanupFailure,
+      ...(result.failure ? {} : { failure: cleanupFailure }),
+    } : undefined;
+    throw new McpFnConformanceCleanupError(() => lease.release(), failedResult);
+  }
+  if (operationFailure) throw operationFailure.error;
+  if (!result) throw new Error("Conformance produced no result");
+  return result;
 }

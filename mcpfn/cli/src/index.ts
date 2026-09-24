@@ -17,12 +17,25 @@ import {
 import { McpFnInspector } from "@mcpfn/inspector";
 import {
   McpFnTestClient,
+  McpFnTestClientCleanupError,
   McpFnAssertionError,
+  McpFnConformanceCleanupError,
+  McpFnTargetSuiteArtifactCleanupError,
+  McpFnTargetSuiteCleanupError,
   assertManifestContract,
+  authenticatedHttpTarget,
+  validateRemoteCredentialHeaders,
+  beginTargetCredentialRedaction,
+  redactTargetCredentials,
+  createMcpFnTargetSuiteJUnit,
+  disposeMcpFnTargetSuiteReport,
+  runAuthenticatedOfficialConformance,
   runOfficialConformance,
   runMcpFnTargetSuite,
   runScenarios,
+  serializeMcpFnTargetSuiteReport,
   createMcpFnScenarioReport,
+  type McpFnRemoteCredential,
 } from "@mcpfn/testing";
 
 import { loadManifestSource, loadScenarios } from "./load.js";
@@ -31,8 +44,8 @@ export { loadManifestSource, loadScenarios };
 
 export interface CliRunOptions {
   cwd?: string;
-  stdout?: (text: string) => void;
-  stderr?: (text: string) => void;
+  stdout?: (text: string) => void | Promise<void>;
+  stderr?: (text: string) => void | Promise<void>;
 }
 
 declare const __MCPFN_CLI_VERSION__: string;
@@ -42,13 +55,104 @@ export const MCPFN_CLI_EXIT_TEST_FAILURE = 1;
 export const MCPFN_CLI_EXIT_USAGE = 2;
 export const MCPFN_CLI_VERSION = __MCPFN_CLI_VERSION__;
 
+interface RemoteAuthCliOptions {
+  bearerTokenEnv?: string;
+  apiKeyEnv?: string;
+  apiKeyHeader?: string;
+}
+
+const inspectorCleanupOwners = new WeakMap<
+  McpFnInspectorCleanupError,
+  { close: () => Promise<void>; pending?: Promise<void> }
+>();
+
+/** Inspector cleanup failed. Retain this error until its transport closes. */
+export class McpFnInspectorCleanupError extends Error {
+  constructor(close: () => Promise<void>, cause: unknown) {
+    super(
+      "Inspector cleanup failed; retain this error and retryCleanup()",
+      { cause },
+    );
+    this.name = "McpFnInspectorCleanupError";
+    inspectorCleanupOwners.set(this, { close });
+  }
+
+  retryCleanup(): Promise<void> {
+    const owner = inspectorCleanupOwners.get(this);
+    if (!owner) return Promise.resolve();
+    if (owner.pending) return owner.pending;
+    const pending = Promise.resolve().then(owner.close).then(
+      () => { inspectorCleanupOwners.delete(this); },
+      () => { throw this; },
+    ).finally(() => { owner.pending = undefined; });
+    owner.pending = pending;
+    return pending;
+  }
+}
+
+type CliCleanupError =
+  | McpFnTestClientCleanupError
+  | McpFnTargetSuiteArtifactCleanupError
+  | McpFnTargetSuiteCleanupError
+  | McpFnConformanceCleanupError
+  | McpFnInspectorCleanupError;
+
+function isCliCleanupError(error: unknown): error is CliCleanupError {
+  return error instanceof McpFnTestClientCleanupError ||
+    error instanceof McpFnTargetSuiteArtifactCleanupError ||
+    error instanceof McpFnTargetSuiteCleanupError ||
+    error instanceof McpFnConformanceCleanupError ||
+    error instanceof McpFnInspectorCleanupError;
+}
+
+async function preserveCleanupOwner(
+  owner: CliCleanupError | undefined,
+  operation: () => Promise<void>,
+  failureMessage?: string,
+): Promise<void> {
+  try {
+    await operation();
+  } catch (error) {
+    if (owner) throw owner;
+    if (failureMessage) {
+      throw new McpFnClientError(
+        "MCPFN_OPERATION_FAILED",
+        failureMessage,
+        { phase: "capability-operation" },
+      );
+    }
+    throw error;
+  }
+}
+
+async function handleCliFailure(
+  error: unknown,
+  stderr: (text: string) => void | Promise<void>,
+): Promise<number> {
+  if (isCliCleanupError(error)) {
+    // Diagnostics are secondary to the live cleanup owner. A failed write
+    // must not prevent the bounded retry or replace the owning error.
+    try { await stderr(`${error.message}\n`); } catch {}
+    // Preserve ownership when the bounded retry still fails. The executable
+    // entry point is the only layer allowed to terminate without a retry owner.
+    await error.retryCleanup();
+    return MCPFN_CLI_EXIT_TEST_FAILURE;
+  }
+  if (error instanceof McpFnAssertionError || error instanceof McpFnClientError) {
+    try { await stderr(`${error.message}\n`); } catch {}
+    return MCPFN_CLI_EXIT_TEST_FAILURE;
+  }
+  await stderr(`${error instanceof Error ? error.message : String(error)}\n`);
+  return MCPFN_CLI_EXIT_USAGE;
+}
+
 export async function runCli(
   argv = process.argv.slice(2),
   runOptions: CliRunOptions = {},
 ): Promise<number> {
   const cwd = runOptions.cwd ?? process.cwd();
-  const stdout = runOptions.stdout ?? ((text: string) => process.stdout.write(text));
-  const stderr = runOptions.stderr ?? ((text: string) => process.stderr.write(text));
+  const stdout = runOptions.stdout ?? ((text: string) => writeProcessOutput(process.stdout, text));
+  const stderr = runOptions.stderr ?? ((text: string) => writeProcessOutput(process.stderr, text));
   let exitCode = 0;
   const cli = cac("mcpfn");
 
@@ -65,9 +169,9 @@ export async function runCli(
       if (options.output) {
         const outputPath = path.resolve(cwd, options.output);
         await writeFile(outputPath, serialized, "utf8");
-        stdout(`Wrote ${outputPath}\n`);
+        await stdout(`Wrote ${outputPath}\n`);
       } else {
-        stdout(serialized);
+        await stdout(serialized);
       }
     });
 
@@ -75,7 +179,7 @@ export async function runCli(
     .action(async (manifestPath: string) => {
       const parsed = JSON.parse(await readFile(path.resolve(cwd, manifestPath), "utf8"));
       const manifest = validateManifest(parsed);
-      stdout(`Valid McpFn manifest ${manifest.server.name}@${manifest.server.version} (${manifest.hash})\n`);
+      await stdout(`Valid McpFn manifest ${manifest.server.name}@${manifest.server.version} (${manifest.hash})\n`);
     });
 
   cli.command("diff <before> <after>", "Classify MCP contract changes")
@@ -90,11 +194,11 @@ export async function runCli(
         validateManifest(JSON.parse(await readFile(path.resolve(cwd, file), "utf8")));
       const result = diffManifests(await read(beforePath), await read(afterPath));
       if (options.json) {
-        stdout(`${JSON.stringify(result, null, 2)}\n`);
+        await stdout(`${JSON.stringify(result, null, 2)}\n`);
       } else {
-        stdout(`breaking=${result.summary.breaking} additive=${result.summary.additive} behavioral=${result.summary.behavioral}\n`);
+        await stdout(`breaking=${result.summary.breaking} additive=${result.summary.additive} behavioral=${result.summary.behavioral}\n`);
         for (const change of result.changes) {
-          stdout(`${change.severity.toUpperCase()} ${change.code} ${change.path}: ${change.message}\n`);
+          await stdout(`${change.severity.toUpperCase()} ${change.code} ${change.path}: ${change.message}\n`);
         }
       }
       if (!result.compatible || (options.failOnBehavioral && result.summary.behavioral > 0)) {
@@ -132,21 +236,21 @@ export async function runCli(
         const outputMaxBytes = parsePositiveInteger(
           options.maxReportBytes,
           "--max-report-bytes",
-        );
-        if (outputMaxBytes !== undefined && outputMaxBytes < 1_025) {
+        ) ?? 1_048_576;
+        if (outputMaxBytes < 1_025) {
           throw new Error("--max-report-bytes must be an integer of at least 1025");
         }
         const report = createMcpFnScenarioReport(results, {
           manifestHash: loaded.manifest.hash,
-          maxBytes: outputMaxBytes === undefined ? undefined : outputMaxBytes - 1,
+          maxBytes: outputMaxBytes - 1,
         });
-        const serialized = outputMaxBytes === undefined
-          ? `${JSON.stringify(report, null, 2)}\n`
-          : `${JSON.stringify(report)}\n`;
-        if (options.output) {
-          await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
-        }
-        stdout(serialized);
+        const serialized = `${JSON.stringify(report)}\n`;
+        await preserveCleanupOwner(undefined, async () => {
+          if (options.output) {
+            await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+          }
+          await stdout(serialized);
+        }, "Scenario report output failed");
         if (report.failed > 0 || report.status === "incomplete") exitCode = 1;
       } finally {
         await client.close();
@@ -159,6 +263,11 @@ export async function runCli(
     .option("--expected-failures <path>", "Expected-failures baseline")
     .option("--output-dir <path>", "Directory for official conformance artifacts")
     .option("--spec-version <version>", "MCP specification version")
+    .option("--bearer-token-env <name>", "Read an OAuth Bearer token from an environment variable")
+    .option("--api-key-env <name>", "Read an API key from an environment variable")
+    .option("--api-key-header <name>", "API-key header name (default: x-api-key)")
+    .option("--report <path>", "Write the redacted McpFn conformance report")
+    .option("--max-report-bytes <bytes>", "Maximum aggregate McpFn report size")
     .option("--verbose", "Show official runner diagnostics")
     .action(async (url: string, options: {
       suite?: "active" | "all" | "pending";
@@ -166,9 +275,16 @@ export async function runCli(
       expectedFailures?: string;
       outputDir?: string;
       specVersion?: string;
+      report?: string;
+      maxReportBytes?: string;
       verbose?: boolean;
-    }) => {
-      const result = await runOfficialConformance({
+    } & RemoteAuthCliOptions) => {
+      const maxBytes = parseCliReportCap(options.maxReportBytes);
+      if (options.maxReportBytes !== undefined && !options.report) {
+        throw new Error("--max-report-bytes requires --report for conformance");
+      }
+      const auth = readRemoteCredential(options);
+      const conformanceOptions = {
         url,
         suite: options.suite,
         scenario: options.scenario,
@@ -180,53 +296,172 @@ export async function runCli(
         verbose: options.verbose,
         cwd,
         stdio: "pipe",
-      });
-      if (result.stdout) stdout(result.stdout);
-      if (result.stderr) stderr(result.stderr);
-      exitCode = result.exitCode;
+        ...(auth ? { sensitiveEnvironmentVariables: [auth.environmentName] } : {}),
+      } as const;
+      let conformanceCleanupError: McpFnConformanceCleanupError | undefined;
+      const result = auth
+        ? await runAuthenticatedOfficialConformance({
+          ...conformanceOptions,
+          credential: auth.credential,
+        }).catch(error => {
+          // Keep the library's retryable cleanup error contract, while allowing
+          // the CLI to persist its bounded, redacted failed result.
+          if (error instanceof McpFnConformanceCleanupError && error.result) {
+            conformanceCleanupError = error;
+            return error.result;
+          }
+          if (error instanceof McpFnConformanceCleanupError) throw error;
+          // The proxy's explicit input validators use TypeError. Operational
+          // failures must not be presented as invalid CLI usage or leak secrets.
+          if (error instanceof TypeError) throw error;
+          throw new McpFnClientError("MCPFN_OPERATION_FAILED", "Authenticated conformance failed before producing a report", { phase: "capability-operation" });
+        })
+        : await runOfficialConformance(conformanceOptions);
+      let boundedReportIncomplete = false;
+      await preserveCleanupOwner(conformanceCleanupError, async () => {
+        if (result.stdout) await stdout(result.stdout);
+        if (result.stderr) await stderr(result.stderr);
+        if (options.report) {
+          const bounded = serializeBoundedReport(result, maxBytes);
+          boundedReportIncomplete = bounded.incomplete;
+          await writeFile(
+            path.resolve(cwd, options.report),
+            bounded.serialized,
+            "utf8",
+          );
+        }
+      }, "Conformance report output failed");
+      if (conformanceCleanupError) throw conformanceCleanupError;
+      exitCode = boundedReportIncomplete ? MCPFN_CLI_EXIT_TEST_FAILURE : result.exitCode;
     });
 
   cli.command("inspect <target>", "Inventory an HTTP or stdio MCP target")
     .option("--stdio", "Treat target as an executable instead of an HTTP URL")
     .option("--args <json>", "JSON array of stdio executable arguments")
     .option("--output <path>", "Write the redacted JSON snapshot")
+    .option("--bearer-token-env <name>", "Read an OAuth Bearer token from an environment variable")
+    .option("--api-key-env <name>", "Read an API key from an environment variable")
+    .option("--api-key-header <name>", "API-key header name (default: x-api-key)")
     .action(async (targetValue: string, options: {
       stdio?: boolean;
       args?: string;
       output?: string;
-    }) => {
+    } & RemoteAuthCliOptions) => {
       const target = parseTarget(targetValue, options, cwd);
       const inspector = McpFnInspector.create({ target });
+      const finishRedaction = beginTargetCredentialRedaction(target);
       try {
-        await inspector.connect();
-        const serialized = `${JSON.stringify(await inspector.snapshot(), null, 2)}\n`;
-        if (options.output) {
-          await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+        let operationFailed = false;
+        let operationError: unknown;
+        try {
+          await inspector.connect();
+          const snapshot = await inspector.snapshot();
+          const serialized = inspector.serializeSnapshot(snapshot, {
+            space: 2,
+            trailingNewline: true,
+          });
+          if (options.output) {
+            await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+          }
+          await stdout(serialized);
+        } catch (error) {
+          operationFailed = true;
+          operationError = error;
         }
-        stdout(serialized);
-      } finally {
-        await inspector.close();
-      }
+        try {
+          await inspector.close();
+        } catch (error) {
+          throw new McpFnInspectorCleanupError(() => inspector.close(), error);
+        }
+        if (operationFailed) throw operationError;
+      } catch (error) {
+        if (error instanceof McpFnInspectorCleanupError) throw error;
+        // Parsing has finished: connection, inventory, redaction and output errors
+        // are runtime failures. Even inspecting the thrown value can fail.
+        let failure: McpFnClientError;
+        try {
+          const message = error instanceof Error ? error.message : String(error);
+          const safeMessage = redactTargetCredentials(target, message);
+          failure = error instanceof McpFnClientError
+            ? new McpFnClientError(error.code, safeMessage, { phase: error.phase, retryable: error.retryable,
+              details: redactTargetCredentials(target, error.details), cause: redactTargetCredentials(target, error) })
+            : new McpFnClientError("MCPFN_OPERATION_FAILED", safeMessage, { phase: "capability-operation" });
+        } catch {
+          failure = new McpFnClientError("MCPFN_OPERATION_FAILED", "Inspect failed; unsafe error details omitted", { phase: "capability-operation" });
+        }
+        throw failure;
+      } finally { finishRedaction(); }
     });
 
   cli.command("test-target <target> <scenarios>", "Run scenarios against an HTTP or stdio MCP target")
     .option("--stdio", "Treat target as an executable instead of an HTTP URL")
     .option("--args <json>", "JSON array of stdio executable arguments")
     .option("--output <path>", "Write the JSON report")
+    .option("--junit <path>", "Write a bounded, redacted JUnit report")
+    .option("--manifest <path>", "Validate an optional explicit manifest against live inventory")
+    .option("--max-report-bytes <bytes>", "Maximum aggregate JSON/JUnit report size")
+    .option(
+      "--visible-tools <names>",
+      "Comma-separated tool names expected for a request-filtered server",
+    )
+    .option("--bearer-token-env <name>", "Read an OAuth Bearer token from an environment variable")
+    .option("--api-key-env <name>", "Read an API key from an environment variable")
+    .option("--api-key-header <name>", "API-key header name (default: x-api-key)")
     .action(async (targetValue: string, scenariosPath: string, options: {
       stdio?: boolean;
       args?: string;
       output?: string;
-    }) => {
+      junit?: string;
+      manifest?: string;
+      maxReportBytes?: string;
+      visibleTools?: string;
+    } & RemoteAuthCliOptions) => {
+      const maxReportBytes = parseCliReportCap(options.maxReportBytes);
+      const manifest = options.manifest
+        ? validateManifest(JSON.parse(
+          await readFile(path.resolve(cwd, options.manifest), "utf8"),
+        ))
+        : undefined;
+      let targetCleanupError: McpFnTargetSuiteCleanupError | undefined;
       const report = await runMcpFnTargetSuite({
         target: parseTarget(targetValue, options, cwd),
         scenarios: await loadScenarios(scenariosPath, cwd),
+        manifest,
+        expectedToolNames: options.visibleTools
+          ?.split(",")
+          .map((name) => name.trim())
+          .filter(Boolean),
+        maxReportBytes: maxReportBytes ?? 1_048_576,
+      }).catch(error => {
+        if (!(error instanceof McpFnTargetSuiteCleanupError)) throw error;
+        // Persist the bounded snapshot before the outer library boundary retries.
+        // A failed retry must keep this owning error reachable to the caller.
+        targetCleanupError = error;
+        return error.report;
       });
-      const serialized = `${JSON.stringify(report, null, 2)}\n`;
-      if (options.output) {
-        await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+      try {
+        await preserveCleanupOwner(targetCleanupError, async () => {
+          // Emit the compact encoding the suite bounded. A newline could turn
+          // an otherwise valid report at the exact cap into an output failure.
+          const serialized = serializeMcpFnTargetSuiteReport(report);
+          if (options.output) {
+            await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+          }
+          if (options.junit) {
+            await writeFile(
+              path.resolve(cwd, options.junit),
+              createMcpFnTargetSuiteJUnit(report, {
+                maxBytes: maxReportBytes,
+              }),
+              "utf8",
+            );
+          }
+          await stdout(serialized);
+        }, "Target report output failed");
+      } finally {
+        disposeMcpFnTargetSuiteReport(report);
       }
-      stdout(serialized);
+      if (targetCleanupError) throw targetCleanupError;
       if (!report.ok) exitCode = 1;
     });
 
@@ -242,7 +477,7 @@ export async function runCli(
       if (options.output) {
         await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
       }
-      stdout(serialized);
+      await stdout(serialized);
       if (!report.ok) exitCode = 1;
     });
 
@@ -252,16 +487,12 @@ export async function runCli(
     const parsed = cli.parse(["node", "mcpfn", ...argv], { run: false });
     if (!cli.matchedCommand) {
       if (parsed.options.help || parsed.options.version) return 0;
-      stderr(argv.length ? `Unknown command: ${argv[0]}\n` : "A command is required\n");
+      await stderr(argv.length ? `Unknown command: ${argv[0]}\n` : "A command is required\n");
       return 2;
     }
     await cli.runMatchedCommand();
   } catch (error) {
-    stderr(`${error instanceof Error ? error.message : String(error)}\n`);
-    if (error instanceof McpFnAssertionError || error instanceof McpFnClientError) {
-      return MCPFN_CLI_EXIT_TEST_FAILURE;
-    }
-    return MCPFN_CLI_EXIT_USAGE;
+    return handleCliFailure(error, stderr);
   }
   return exitCode;
 }
@@ -275,14 +506,123 @@ function parsePositiveInteger(value: string | undefined, name: string): number |
   return parsed;
 }
 
+function parseCliReportCap(value: string | undefined): number | undefined {
+  const parsed = parsePositiveInteger(value, "--max-report-bytes");
+  if (parsed !== undefined && parsed < 1_025) {
+    throw new Error("--max-report-bytes must be an integer of at least 1025");
+  }
+  return parsed;
+}
+
+function serializeBoundedReport(
+  value: unknown,
+  maxBytes?: number,
+): { serialized: string; incomplete: boolean } {
+  const serialize = (candidate: unknown) => `${JSON.stringify(candidate, null, 2)}\n`;
+  let serialized = serialize(value);
+  if (maxBytes === undefined || new TextEncoder().encode(serialized).byteLength <= maxBytes) {
+    return { serialized, incomplete: false };
+  }
+  if (
+    value && typeof value === "object" &&
+    (value as { kind?: unknown }).kind === "mcpfn.official-conformance-report"
+  ) {
+    const bounded = structuredClone(value) as {
+      ok?: boolean;
+      status?: "complete" | "incomplete";
+      incompleteReason?: string;
+      exitCode?: number;
+      stdout?: string;
+      stderr?: string;
+      failure?: { message?: string; details?: unknown };
+    };
+    bounded.ok = false;
+    bounded.status = "incomplete";
+    bounded.incompleteReason = "Report content exceeded --max-report-bytes and was truncated";
+    bounded.exitCode = bounded.exitCode || MCPFN_CLI_EXIT_TEST_FAILURE;
+    bounded.stdout = bounded.stdout ? "[TRUNCATED]" : "";
+    bounded.stderr = bounded.stderr ? "[TRUNCATED]" : "";
+    if (bounded.failure) {
+      bounded.failure.message = bounded.failure.message ? Array.from(bounded.failure.message).slice(0, 64).join("") : undefined;
+      bounded.failure.details = undefined;
+    }
+    serialized = serialize(bounded);
+    if (new TextEncoder().encode(serialized).byteLength <= maxBytes) {
+      return { serialized, incomplete: true };
+    }
+  }
+  throw new Error("Serialized report exceeds --max-report-bytes");
+}
+
+function writeProcessOutput(
+  stream: NodeJS.WriteStream,
+  text: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    stream.write(text, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+function readRemoteCredential(
+  options: RemoteAuthCliOptions,
+): { credential: McpFnRemoteCredential; environmentName: string } | undefined {
+  if (options.bearerTokenEnv && options.apiKeyEnv) {
+    throw new Error("Use only one of --bearer-token-env or --api-key-env");
+  }
+  if (options.apiKeyHeader && !options.apiKeyEnv) {
+    throw new Error("--api-key-header requires --api-key-env");
+  }
+  const environmentName = options.bearerTokenEnv ?? options.apiKeyEnv;
+  if (!environmentName) return undefined;
+  if (!/^[A-Za-z_]\w*$/.test(environmentName)) {
+    throw new Error("Credential environment variable names must be portable identifiers");
+  }
+  const value = process.env[environmentName];
+  if (value === undefined || value.length === 0) {
+    throw new Error(`Credential environment variable ${environmentName} is missing or empty`);
+  }
+  if (options.bearerTokenEnv) {
+    try { new Headers({ authorization: `Bearer ${value}` }); }
+    catch { throw new Error("Bearer token must be a valid HTTP header value"); }
+    if (!/^[\dA-Za-z._~+/-]+=*$/.test(value)) throw new Error("Bearer token must follow the RFC 6750 token grammar");
+    return {
+      environmentName,
+      credential: {
+        kind: "oauth",
+        headers: { authorization: `Bearer ${value}` },
+      },
+    };
+  }
+  if (!value.trim()) throw new Error("API key must not be blank");
+  const headerName = options.apiKeyHeader ?? "x-api-key";
+  try {
+    validateRemoteCredentialHeaders({ [headerName]: value });
+  } catch {
+    throw new Error("--api-key-header must be an allowed credential header with a valid value");
+  }
+  return {
+    environmentName,
+    credential: { kind: "api-key", headers: { [headerName]: value } },
+  };
+}
+
 function parseTarget(
   targetValue: string,
-  options: { stdio?: boolean; args?: string },
+  options: { stdio?: boolean; args?: string } & RemoteAuthCliOptions,
   cwd: string,
 ): McpFnTarget {
   if (!options.stdio) {
     if (options.args) throw new Error("--args requires --stdio");
-    return streamableHttpTarget(targetValue);
+    const auth = readRemoteCredential(options);
+    return auth
+      ? authenticatedHttpTarget(targetValue, { credential: auth.credential })
+      : streamableHttpTarget(targetValue);
+  }
+  if (options.bearerTokenEnv || options.apiKeyEnv || options.apiKeyHeader) {
+    throw new Error("Credential options require an HTTP target");
   }
   let args: string[] | undefined;
   if (options.args) {

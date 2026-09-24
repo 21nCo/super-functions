@@ -21,7 +21,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mcpfn/client": "0.0.3",
+    "@mcpfn/client": "0.0.4",
     "@mcpfn/testing": "0.0.5",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@superfunctions/oauth-core": "0.1.1"
