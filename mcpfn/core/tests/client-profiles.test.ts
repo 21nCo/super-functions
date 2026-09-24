@@ -759,6 +759,55 @@ it("rejects a draft-07 reference projection whose ignored sibling appears to hid
   } finally { await client.close(); await server.close(); }
 });
 
+it("lists and calls a draft-07 reference with an ignored extension beside it", async () => {
+  const schema = {
+    $schema: "http://json-schema.org/draft-07/schema#",
+    type: "object" as const,
+    $ref: "#/definitions/input",
+    "x-doc": "Application annotation",
+    definitions: {
+      input: { type: "object", properties: { query: { $ref: "#/definitions/text", "x-doc": "Nested annotation" } }, required: ["query"] },
+      text: { type: "string" },
+    },
+  };
+  const registry = new McpFnRegistry().register({
+    name: "annotated", description: "Annotated reference", inputSchema: schema,
+    handler: async () => structuredResult({ ok: true }),
+  });
+  const server = createMcpFnServer({ info: { name: "annotated-server", version: "1" }, registry,
+    clientProfiles: { profiles: [{ id: "noop", version: "1", matches: () => true }],
+      resolveVerifiedIdentity: () => ({ subject: "trusted" }) } });
+  const client = new Client({ name: "annotated-client", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left);
+    expect((await client.listTools()).tools[0].name).toBe("annotated");
+    expect(await client.callTool({ name: "annotated", arguments: { query: "hello" } })).toMatchObject({ structuredContent: { ok: true } });
+  } finally { await client.close(); await server.close(); }
+});
+
+it("rejects a draft-07 reference with a nested format assertion sibling", async () => {
+  const schema = {
+    $schema: "http://json-schema.org/draft-07/schema#",
+    type: "object" as const,
+    properties: { query: { $ref: "#/definitions/name", format: "email" } },
+    definitions: { name: { type: "string" } },
+  };
+  const registry = new McpFnRegistry().register({
+    name: "formatted", description: "Formatted reference", inputSchema: schema,
+    handler: async () => structuredResult({ ok: true }),
+  });
+  const server = createMcpFnServer({ info: { name: "formatted-server", version: "1" }, registry,
+    clientProfiles: { profiles: [{ id: "noop", version: "1", matches: () => true }],
+      resolveVerifiedIdentity: () => ({ subject: "trusted" }) } });
+  const client = new Client({ name: "formatted-client", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left);
+    await expect(client.listTools()).rejects.toThrow(/Draft-07 \$ref assertion siblings/);
+  } finally { await client.close(); await server.close(); }
+});
+
 it("accepts a draft-07 reference projection when its target closes the owned argument", async () => {
   const canonical = {
     $schema: "http://json-schema.org/draft-07/schema#",

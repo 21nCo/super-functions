@@ -516,6 +516,19 @@ function mapSchemaKeyword(key: string, value: unknown, visit: (schema: unknown) 
 }
 
 /** Resolve only root object composition; never traverse argument values. */
+const DRAFT07_REF_UNSAFE_KEYWORDS = new Set([
+  "$async",
+  "additionalItems", "additionalProperties", "allOf", "anyOf", "const", "contains",
+  "dependencies", "dependentRequired", "dependentSchemas", "else", "enum",
+  "exclusiveMaximum", "exclusiveMinimum", "format", "formatExclusiveMaximum",
+  "formatExclusiveMinimum", "formatMaximum", "formatMinimum", "if", "items",
+  "maxContains", "maxItems", "maxLength", "maxProperties", "maximum", "minContains",
+  "minItems", "minLength", "minProperties", "minimum", "multipleOf", "not",
+  "nullable", "oneOf", "pattern", "patternProperties", "prefixItems", "properties",
+  "propertyNames", "required", "then", "type", "unevaluatedItems",
+  "unevaluatedProperties", "uniqueItems",
+]);
+
 function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { properties: Record<string, unknown>; required: Set<string>; constraints: string[]; ownershipSensitive: boolean; prohibited: Set<string> } {
   // JSON transports duplicate aliases. Give each occurrence its own identity so
   // relative references inherit the resource at that occurrence, not the first one.
@@ -563,14 +576,12 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
       }
       base = address.href.replace(/#$/, "");
     }
-    // Ajv 8 evaluates assertion siblings of draft-07 $ref, while draft-07
-    // clients ignore them. Keep root type: object for the MCP Tool shape, but
-    // reject other assertion siblings before advertising an asymmetric schema.
+    // Ajv evaluates known assertion siblings of draft-07 $ref, while draft-07
+    // clients ignore them. Unknown extensions are ignored by this registry's
+    // strict:false Ajv, so they may remain as annotations. Keep root type:
+    // object for the MCP Tool shape, but reject other evaluated siblings.
     if (typeof schemaValue.$ref === "string" && !modernDialect(resource)) {
-      const metadata = new Set(["$ref", "$schema", "$id", "$comment", "$defs", "definitions",
-        "title", "description", "default", "examples", "readOnly", "writeOnly", "deprecated",
-        "contentEncoding", "contentMediaType", "contentSchema"]);
-      if (Object.keys(schemaValue).some(key => !metadata.has(key) &&
+      if (Object.keys(schemaValue).some(key => DRAFT07_REF_UNSAFE_KEYWORDS.has(key) &&
           !(value === root && key === "type" && schemaValue.type === "object"))) {
         throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Draft-07 $ref assertion siblings are unsupported in projected catalogs");
       }

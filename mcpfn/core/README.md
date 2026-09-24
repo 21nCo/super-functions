@@ -190,7 +190,8 @@ ownership-sensitive constraints.
 Draft-07 `$ref` assertion siblings are rejected during catalog validation
 because clients can ignore them while the runtime validator evaluates them.
 The MCP-required root `type: "object"` is permitted; place other assertions on
-the referenced target.
+the referenced target. Unknown extension keywords that the registry's Ajv
+ignores may remain as annotations beside `$ref`.
 
 Structural diagnostics retain exact unknown property names and instance paths;
 consumer report sinks must apply an aggregate size cap (the testing suite defaults

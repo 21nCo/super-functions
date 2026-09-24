@@ -130,7 +130,8 @@ equivalence.
 Draft-07 `$ref` objects with assertion siblings are excluded from projection:
 draft-07 clients ignore those siblings while the runtime Ajv validator evaluates
 them. The MCP-required root `type: "object"` is the only permitted assertion
-sibling; place other constraints on the referenced target.
+sibling; place other constraints on the referenced target. Unknown extension
+keywords ignored by the registry's Ajv may remain as annotations beside `$ref`.
 
 Schema failures retain bounded structural diagnostics: instance path, schema
 path, validation keyword, rejected additional property, and missing required
