@@ -810,7 +810,16 @@ export class McpFnRegistry<TContext = undefined> {
   }
 
   listTools(): McpFnListedTool[] {
-    return this.definitions().map((definition) => ({
+    return this.definitions().map((definition) => this.listedTool(definition));
+  }
+
+  getListedTool(name: string): McpFnListedTool | undefined {
+    const definition = this.tools.get(name)?.definition;
+    return definition ? this.listedTool(definition) : undefined;
+  }
+
+  private listedTool(definition: McpFnToolDefinition<TContext>): McpFnListedTool {
+    return {
       name: definition.name,
       ...(definition.title ? { title: definition.title } : {}),
       description: definition.description,
@@ -827,7 +836,7 @@ export class McpFnRegistry<TContext = undefined> {
       ...(definition.execution ? { execution: definition.execution } : {}),
       ...(definition.icons ? { icons: definition.icons } : {}),
       ...(definition.metadata ? { _meta: definition.metadata } : {}),
-    }));
+    };
   }
 
   async listResources(

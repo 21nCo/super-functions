@@ -331,7 +331,13 @@ export class McpFnServer<TContext = undefined> {
           try {
             resolved = await this.resolveProfile(context, extra);
             currentStage = "catalog-projection";
-            const canonicalTools = this.registry.listTools();
+            let canonicalTools: McpFnListedTool[];
+            if (this.clientProfiles) {
+              canonicalTools = this.registry.listTools();
+            } else {
+              const requestedTool = this.registry.getListedTool(request.params.name);
+              canonicalTools = requestedTool ? [requestedTool] : [];
+            }
             const visibleTools = await this.filterVisibleTools(
               canonicalTools,
               context,

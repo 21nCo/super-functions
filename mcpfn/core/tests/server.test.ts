@@ -365,6 +365,45 @@ describe("McpFnServer", () => {
     expect(server.manifest().tools.map(({ name }) => name)).toEqual(["hidden", "visible"]);
   });
 
+  it("checks only the requested tool on calls without client profiles", async () => {
+    const checked: string[] = [];
+    const registry = new McpFnRegistry()
+      .register({
+        name: "available",
+        description: "Available tool.",
+        inputSchema: { type: "object" },
+        handler: async () => structuredResult({ ok: true }),
+      })
+      .register({
+        name: "unrelated",
+        description: "Unrelated tool.",
+        inputSchema: { type: "object" },
+        handler: async () => structuredResult({ ok: true }),
+      });
+    const server = createMcpFnServer({
+      info: { name: "visibility-scope", version: "1.0.0" },
+      registry,
+      toolVisibility: ({ tool }) => {
+        checked.push(tool.name);
+        if (tool.name === "unrelated") throw new Error("unrelated policy unavailable");
+        return true;
+      },
+    });
+    const client = new Client(
+      { name: "visibility-scope-client", version: "1.0.0" },
+      { capabilities: {} },
+    );
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+
+    await expect(client.callTool({ name: "available" })).resolves.toMatchObject({
+      structuredContent: { ok: true },
+    });
+    expect(checked).toEqual(["available"]);
+  });
+
   it("returns a tool error for invalid arguments without invoking the handler", async () => {
     let called = false;
     const registry = new McpFnRegistry().register({
