@@ -187,6 +187,10 @@ resource's root. Dynamic, recursive, and unresolved external references fail
 closed during catalog validation. Server-owned fields may only be hidden where
 the root object contract can be compared without conditional or whole-object
 ownership-sensitive constraints.
+Draft-07 `$ref` assertion siblings are rejected during catalog validation
+because clients can ignore them while the runtime validator evaluates them.
+The MCP-required root `type: "object"` is permitted; place other assertions on
+the referenced target.
 
 Structural diagnostics retain exact unknown property names and instance paths;
 consumer report sinks must apply an aggregate size cap (the testing suite defaults

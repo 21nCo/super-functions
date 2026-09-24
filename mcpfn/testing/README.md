@@ -114,9 +114,10 @@ argument values never appear in reports. `read-only` fixtures run by default;
 authorization.
 
 The profile fixture runner supports ordinary tool calls. After reading the
-effective catalog, it rejects a configuration containing a fixture for a
-task-required tool before executing any fixture, then closes the target. Use
-the task scenario APIs for task execution and terminal-result assertions.
+effective catalog for each profile, it rejects a configuration containing a
+fixture for a task-required tool before executing that profile's fixtures,
+then closes its target. Earlier profiles may already have run. Use the task
+scenario APIs for task execution and terminal-result assertions.
 
 `createMcpFnClientProfileSnapshot()`,
 `validateMcpFnClientProfileSnapshot()`, and

@@ -39,8 +39,9 @@ target/session for each generic or authenticated profile case, validates schema
 portability and reviewed snapshots, and executes explicit fixtures. Mutating
 fixtures require `--allow-side-effects`. The report never includes fixture
 argument values and can be bounded with `--max-report-bytes`.
-Fixtures targeting task-required tools are rejected after catalog discovery and
-before any fixture is executed; use task scenarios to test those tools.
+Fixtures targeting task-required tools are rejected after that profile's catalog
+discovery and before its fixtures execute; earlier profiles may already have run.
+Use task scenarios to test task-required tools.
 
 The conformance command delegates to the pinned official
 `@modelcontextprotocol/conformance` package. It requires Node.js 22 or newer;

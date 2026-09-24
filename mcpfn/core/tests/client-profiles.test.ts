@@ -729,6 +729,68 @@ it("rejects a draft-07 named-fragment projection that changes nested call valida
   } finally { await client.close(); await server.close(); }
 });
 
+it("rejects a draft-07 reference projection whose ignored sibling appears to hide an owned argument", async () => {
+  const canonical = {
+    $schema: "http://json-schema.org/draft-07/schema#",
+    type: "object" as const,
+    $ref: "#/definitions/input",
+    additionalProperties: false,
+    definitions: { input: { type: "object", properties: { tenantId: { type: "string" } }, required: ["tenantId"] } },
+  };
+  const visible = { ...canonical, definitions: { input: { type: "object" } } };
+  const registry = new McpFnRegistry<RequestContext>().register({
+    name: "lookup", description: "Lookup", inputSchema: canonical,
+    handler: async () => structuredResult({ ok: true }),
+  });
+  const server = createMcpFnServer({
+    info: { name: "sibling-server", version: "1" }, registry,
+    context: () => ({ subject: "trusted" }),
+    clientProfiles: { profiles: [{ id: "sibling", version: "1", matches: () => true,
+      serverOwnedArguments: { lookup: ["tenantId"] },
+      enrichArguments: ({ arguments: args }) => ({ ...args, tenantId: "trusted" }),
+      projectCatalog: () => [{ name: "lookup", inputSchema: visible }],
+    }], resolveVerifiedIdentity: () => ({ subject: "trusted" }) },
+  });
+  const client = new Client({ name: "sibling-client", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left);
+    await expect(client.listTools()).rejects.toThrow(/Draft-07 \$ref assertion siblings/);
+  } finally { await client.close(); await server.close(); }
+});
+
+it("accepts a draft-07 reference projection when its target closes the owned argument", async () => {
+  const canonical = {
+    $schema: "http://json-schema.org/draft-07/schema#",
+    type: "object" as const,
+    $ref: "#/definitions/input",
+    definitions: { input: { type: "object", additionalProperties: false,
+      properties: { tenantId: { type: "string" }, query: { type: "string" } }, required: ["tenantId"] } },
+  };
+  const visible = { ...canonical, definitions: { input: { type: "object", additionalProperties: false,
+    properties: { query: { type: "string" } }, required: [] as string[] } } };
+  const registry = new McpFnRegistry<RequestContext>().register({
+    name: "lookup", description: "Lookup", inputSchema: canonical,
+    handler: async () => structuredResult({ ok: true }),
+  });
+  const server = createMcpFnServer({
+    info: { name: "closed-reference-server", version: "1" }, registry,
+    context: () => ({ subject: "trusted" }),
+    clientProfiles: { profiles: [{ id: "closed-reference", version: "1", matches: () => true,
+      serverOwnedArguments: { lookup: ["tenantId"] },
+      enrichArguments: ({ arguments: args }) => ({ ...args, tenantId: "trusted" }),
+      projectCatalog: () => [{ name: "lookup", inputSchema: visible }],
+    }], resolveVerifiedIdentity: () => ({ subject: "trusted" }) },
+  });
+  const client = new Client({ name: "closed-reference-client", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left);
+    expect((await client.listTools()).tools[0].name).toBe("lookup");
+    expect(await client.callTool({ name: "lookup", arguments: { query: "hello" } })).toMatchObject({ structuredContent: { ok: true } });
+  } finally { await client.close(); await server.close(); }
+});
+
 it.each([
   ["identified", "#", true],
   ["identified", "#/properties/child", true],

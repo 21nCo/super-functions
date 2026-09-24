@@ -563,6 +563,18 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
       }
       base = address.href.replace(/#$/, "");
     }
+    // Ajv 8 evaluates assertion siblings of draft-07 $ref, while draft-07
+    // clients ignore them. Keep root type: object for the MCP Tool shape, but
+    // reject other assertion siblings before advertising an asymmetric schema.
+    if (typeof schemaValue.$ref === "string" && !modernDialect(resource)) {
+      const metadata = new Set(["$ref", "$schema", "$id", "$comment", "$defs", "definitions",
+        "title", "description", "default", "examples", "readOnly", "writeOnly", "deprecated",
+        "contentEncoding", "contentMediaType", "contentSchema"]);
+      if (Object.keys(schemaValue).some(key => !metadata.has(key) &&
+          !(value === root && key === "type" && schemaValue.type === "object"))) {
+        throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Draft-07 $ref assertion siblings are unsupported in projected catalogs");
+      }
+    }
     if (schemaValue.$dynamicRef !== undefined || schemaValue.$recursiveRef !== undefined) {
       throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Dynamic and recursive references are not supported in projected catalogs");
     }
