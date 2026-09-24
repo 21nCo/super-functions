@@ -404,6 +404,29 @@ describe("McpFnServer", () => {
     expect(checked).toEqual(["available"]);
   });
 
+  it("resolves verified identity before running list visibility hooks", async () => {
+    const order: string[] = [];
+    const registry = new McpFnRegistry().register({
+      name: "private", description: "Private tool.", inputSchema: { type: "object" },
+      handler: async () => structuredResult({ ok: true }),
+    });
+    const server = createMcpFnServer({
+      info: { name: "profile-visibility-order", version: "1" }, registry,
+      toolVisibility: () => { order.push("visibility"); return true; },
+      clientProfiles: { profiles: [], resolveVerifiedIdentity: () => {
+        order.push("identity");
+        throw new Error("identity rejected");
+      } },
+    });
+    const client = new Client({ name: "profile-visibility-client", version: "1" });
+    const [left, right] = InMemoryTransport.createLinkedPair();
+    await server.connect(right); await client.connect(left);
+    closeables.push(client, server);
+
+    await expect(client.listTools()).rejects.toThrow(/identity rejected/);
+    expect(order).toEqual(["identity"]);
+  });
+
   it("returns a tool error for invalid arguments without invoking the handler", async () => {
     let called = false;
     const registry = new McpFnRegistry().register({

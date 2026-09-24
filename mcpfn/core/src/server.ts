@@ -293,12 +293,12 @@ export class McpFnServer<TContext = undefined> {
             };
           }
           const context = await this.contextFactory(extra);
+          const resolved = await this.resolveProfile(context, extra);
           const visibleTools = await this.filterVisibleTools(
             tools,
             context,
             extra,
           );
-          const resolved = await this.resolveProfile(context, extra);
           const effective = await this.buildEffectiveCatalog(
             visibleTools,
             resolved,

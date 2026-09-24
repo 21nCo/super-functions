@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import Ajv2020 from "ajv/dist/2020.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -11,6 +12,7 @@ import {
   createMcpFnServer,
   structuredResult,
   type McpFnClientProfile,
+  type McpFnObjectSchema,
 } from "../src/index.js";
 
 interface RequestContext {
@@ -291,16 +293,15 @@ describe("McpFn client profiles", () => {
       ...configured.serverOwnedArguments,
       hidden: ["tenantId"],
     };
+    const order: string[] = [];
     const server = createMcpFnServer({
       info: { name: "visibility-profile", version: "1.0.0" },
       registry: visible.registry,
       context: () => ({ subject: "authenticated-client", tenantId: "trusted" }),
-      toolVisibility: ({ tool }) => tool.name !== "hidden",
+      toolVisibility: ({ tool }) => { order.push(`visibility:${tool.name}`); return tool.name !== "hidden"; },
       clientProfiles: {
         profiles: [configured],
-        resolveVerifiedIdentity: ({ context }) => ({
-          subject: context.subject!,
-        }),
+        resolveVerifiedIdentity: ({ context }) => { order.push("identity"); return { subject: context.subject! }; },
       },
     });
     const client = new Client(
@@ -316,9 +317,13 @@ describe("McpFn client profiles", () => {
     expect((await client.listTools()).tools.map(({ name }) => name)).toEqual([
       "lookup",
     ]);
+    expect(order[0]).toBe("identity");
+    expect(order.slice(1)).toEqual(expect.arrayContaining(["visibility:hidden", "visibility:lookup"]));
+    const beforeCall = order.length;
     await expect(
       client.callTool({ name: "hidden", arguments: {} }),
     ).rejects.toThrow(/not found/);
+    expect(order[beforeCall]).toBe("identity");
   });
 
   it.each([false, true])("reports invalid input even when recovery throws: %s", async (throws) => {
@@ -759,6 +764,42 @@ it("rejects a draft-07 reference projection whose ignored sibling appears to hid
   } finally { await client.close(); await server.close(); }
 });
 
+async function withNoopProfileClient(
+  name: string,
+  schema: McpFnObjectSchema,
+  check: (client: Client) => Promise<void>,
+): Promise<void> {
+  const registry = new McpFnRegistry().register({
+    name, description: "Reference contract", inputSchema: schema,
+    handler: async () => structuredResult({ ok: true }),
+  });
+  const server = createMcpFnServer({ info: { name: `${name}-server`, version: "1" }, registry,
+    clientProfiles: { profiles: [{ id: "noop", version: "1", matches: () => true }],
+      resolveVerifiedIdentity: () => ({ subject: "trusted" }) } });
+  const client = new Client({ name: `${name}-client`, version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left);
+    await check(client);
+  } finally { await client.close(); await server.close(); }
+}
+
+function ignoredRefSchema(keyword: string, value: unknown, target: Record<string, unknown>): McpFnObjectSchema {
+  return {
+    $schema: "http://json-schema.org/draft-07/schema#",
+    type: "object",
+    properties: { query: { $ref: "#/definitions/value", [keyword]: value } },
+    definitions: { value: target },
+  };
+}
+
+async function expectIgnoredRefListsAndCalls(schema: McpFnObjectSchema, query: unknown): Promise<void> {
+  await withNoopProfileClient("ignored", schema, async client => {
+    expect((await client.listTools()).tools[0].name).toBe("ignored");
+    expect(await client.callTool({ name: "ignored", arguments: { query } })).toMatchObject({ structuredContent: { ok: true } });
+  });
+}
+
 it("lists and calls a draft-07 reference with an ignored extension beside it", async () => {
   const schema = {
     $schema: "http://json-schema.org/draft-07/schema#",
@@ -770,20 +811,10 @@ it("lists and calls a draft-07 reference with an ignored extension beside it", a
       text: { type: "string" },
     },
   };
-  const registry = new McpFnRegistry().register({
-    name: "annotated", description: "Annotated reference", inputSchema: schema,
-    handler: async () => structuredResult({ ok: true }),
-  });
-  const server = createMcpFnServer({ info: { name: "annotated-server", version: "1" }, registry,
-    clientProfiles: { profiles: [{ id: "noop", version: "1", matches: () => true }],
-      resolveVerifiedIdentity: () => ({ subject: "trusted" }) } });
-  const client = new Client({ name: "annotated-client", version: "1" });
-  const [left, right] = InMemoryTransport.createLinkedPair();
-  try {
-    await server.connect(right); await client.connect(left);
+  await withNoopProfileClient("annotated", schema, async client => {
     expect((await client.listTools()).tools[0].name).toBe("annotated");
     expect(await client.callTool({ name: "annotated", arguments: { query: "hello" } })).toMatchObject({ structuredContent: { ok: true } });
-  } finally { await client.close(); await server.close(); }
+  });
 });
 
 it("rejects a draft-07 reference with a nested format assertion sibling", async () => {
@@ -793,19 +824,9 @@ it("rejects a draft-07 reference with a nested format assertion sibling", async 
     properties: { query: { $ref: "#/definitions/name", format: "email" } },
     definitions: { name: { type: "string" } },
   };
-  const registry = new McpFnRegistry().register({
-    name: "formatted", description: "Formatted reference", inputSchema: schema,
-    handler: async () => structuredResult({ ok: true }),
-  });
-  const server = createMcpFnServer({ info: { name: "formatted-server", version: "1" }, registry,
-    clientProfiles: { profiles: [{ id: "noop", version: "1", matches: () => true }],
-      resolveVerifiedIdentity: () => ({ subject: "trusted" }) } });
-  const client = new Client({ name: "formatted-client", version: "1" });
-  const [left, right] = InMemoryTransport.createLinkedPair();
-  try {
-    await server.connect(right); await client.connect(left);
+  await withNoopProfileClient("formatted", schema, async client => {
     await expect(client.listTools()).rejects.toThrow(/Draft-07 \$ref assertion siblings/);
-  } finally { await client.close(); await server.close(); }
+  });
 });
 
 it("rejects a draft-07 reference whose sibling resource ID changes relative reference scope", async () => {
@@ -819,50 +840,56 @@ it("rejects a draft-07 reference whose sibling resource ID changes relative refe
     },
     properties: { query: { $id: "https://example.test/alt/child", $ref: "target#/definitions/value" } },
   };
-  const registry = new McpFnRegistry().register({
-    name: "scoped", description: "Scoped reference", inputSchema: schema,
-    handler: async () => structuredResult({ ok: true }),
-  });
-  const server = createMcpFnServer({ info: { name: "scoped-server", version: "1" }, registry,
-    clientProfiles: { profiles: [{ id: "noop", version: "1", matches: () => true }],
-      resolveVerifiedIdentity: () => ({ subject: "trusted" }) } });
-  const client = new Client({ name: "scoped-client", version: "1" });
-  const [left, right] = InMemoryTransport.createLinkedPair();
-  try {
-    await server.connect(right); await client.connect(left);
+  await withNoopProfileClient("scoped", schema, async client => {
     await expect(client.listTools()).rejects.toThrow(/Draft-07 \$ref assertion siblings/);
-  } finally { await client.close(); await server.close(); }
+  });
 });
 
 it.each([
-  ["dependentRequired", { query: ["other"] }],
-  ["dependentSchemas", { query: { $ref: "#/missing" } }],
+  ["dependentRequired", { flag: ["missing"] }, { type: "object" }, { flag: true }],
+  ["dependentSchemas", { flag: { required: ["missing"] } }, { type: "object" }, { flag: true }],
+  ["prefixItems", [{ type: "number" }], { type: "array" }, ["text"]],
+  ["unevaluatedItems", false, { type: "array" }, ["text"]],
+  ["unevaluatedProperties", false, { type: "object" }, { extra: true }],
+] as const)("ignores a draft-07 %s sibling for an input it would reject in 2020-12", async (keyword, value, target, query) => {
+  const schema = ignoredRefSchema(keyword, value, target);
+  const modernValidator = new Ajv2020({ strict: false });
+  expect(modernValidator.validate({ ...schema, $schema: "https://json-schema.org/draft/2020-12/schema" }, { query })).toBe(false);
+  await expectIgnoredRefListsAndCalls(schema, query);
+});
+
+it.each([
   ["maxContains", 0],
   ["minContains", 2],
-  ["prefixItems", [{ $ref: "#/missing", type: "not-a-type" }]],
-  ["unevaluatedItems", false],
-  ["unevaluatedProperties", { $ref: "#/missing" }],
-] as const)("lists and calls a draft-07 reference with ignored %s sibling", async (keyword, value) => {
+] as const)("lists a draft-07 %s sibling without contains beside the reference", async (keyword, value) => {
+  // max/minContains have no independent effect without a same-object contains.
+  // That evaluated draft-07 sibling is covered by the fail-closed $ref gate.
+  const schema = ignoredRefSchema(keyword, value, { type: "array", contains: { const: "match" } });
+  await expectIgnoredRefListsAndCalls(schema, ["match"]);
+});
+
+it.each([
+  ["maxContains", 0],
+  ["minContains", 2],
+] as const)("rejects a draft-07 %s paired with an evaluated contains sibling", async (keyword, value) => {
   const schema = {
     $schema: "http://json-schema.org/draft-07/schema#",
     type: "object" as const,
-    properties: { query: { $ref: "#/definitions/text", [keyword]: value } },
-    definitions: { text: { type: "string" } },
+    properties: { query: { $ref: "#/definitions/value", contains: { const: "match" }, [keyword]: value } },
+    definitions: { value: { type: "array" } },
   };
-  const registry = new McpFnRegistry().register({
-    name: "ignored", description: "Ignored sibling", inputSchema: schema,
-    handler: async () => structuredResult({ ok: true }),
+  await withNoopProfileClient("contains-sibling", schema, async client => {
+    await expect(client.listTools()).rejects.toThrow(/Draft-07 \$ref assertion siblings/);
   });
-  const server = createMcpFnServer({ info: { name: "ignored-server", version: "1" }, registry,
-    clientProfiles: { profiles: [{ id: "noop", version: "1", matches: () => true }],
-      resolveVerifiedIdentity: () => ({ subject: "trusted" }) } });
-  const client = new Client({ name: "ignored-client", version: "1" });
-  const [left, right] = InMemoryTransport.createLinkedPair();
-  try {
-    await server.connect(right); await client.connect(left);
-    expect((await client.listTools()).tools[0].name).toBe("ignored");
-    expect(await client.callTool({ name: "ignored", arguments: { query: "hello" } })).toMatchObject({ structuredContent: { ok: true } });
-  } finally { await client.close(); await server.close(); }
+});
+
+it.each([
+  ["dependentSchemas", { flag: { $ref: "#/missing" } }],
+  ["prefixItems", [{ $ref: "#/missing", type: "not-a-type" }]],
+  ["unevaluatedProperties", { $ref: "#/missing" }],
+] as const)("does not traverse an ignored draft-07 %s container", async (keyword, value) => {
+  const schema = ignoredRefSchema(keyword, value, { type: "string" });
+  await expectIgnoredRefListsAndCalls(schema, "hello");
 });
 
 it("accepts a draft-07 reference projection when its target closes the owned argument", async () => {
