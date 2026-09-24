@@ -1,3 +1,5 @@
+import { applySelectedResources } from '../shared/selected-resources.js';
+import { outlookActions } from './actions.js';
 import { z } from 'zod';
 import { createDefaultProviderPolicyRegistry } from '@superfunctions/oauth-providers';
 import {
@@ -148,6 +150,7 @@ export const outlookProvider: Provider = {
     },
   },
   actions: {
+    ...outlookActions,
     'mail.sync': {
       name: 'mail.sync',
       displayName: 'Sync Mail',
@@ -542,3 +545,5 @@ function extractRetryAfterSeconds(data: Record<string, unknown> | undefined): nu
 
   return undefined;
 }
+
+applySelectedResources(outlookProvider);

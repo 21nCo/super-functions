@@ -42,6 +42,29 @@ account linking are separate boundaries.
 
 Set `clientRequirements` for roots, sampling, or elicitation used by handlers. Add extension declarations for MCP Apps, then check the manifest against the intended host profile in CI. This turns a host capability mismatch into a pre-release failure instead of a runtime surprise.
 
+## 8. Deploy to Cloudflare Workers or other edge runtimes
+
+`@mcpfn/core` and `@mcpfn/auth` are self-contained: the MCP SDK and a single
+pinned Zod runtime are inlined into their `dist` output. Bundle them into a
+Worker directly, even when your application also depends on a different root
+`zod` version. You do not need a bundler alias for `zod`/`zod/v4`, an import
+condition override, or any other application-local shim.
+
+Set `compatibility_flags = ["nodejs_compat"]` (or the equivalent
+`compatibility_flags` array in `wrangler.jsonc`). The official MCP SDK uses
+Node built-ins such as `node:crypto`, so a Worker without that flag will fail
+module startup even though schema validation itself is edge-safe.
+
+Serve MCP over the Web Standard handler (Streamable HTTP) and wrap it with
+`@mcpfn/auth` when the endpoint is protected. Do not import `@mcpfn/client`,
+`@mcpfn/cli`, `@mcpfn/testing`, or `@mcpfn/inspector` from an edge bundle; those
+packages depend on Node-only capabilities such as the stdio transport's
+`child_process`. Tool and prompt schema validation switches to
+`@cfworker/json-schema` automatically on runtimes that forbid runtime code
+generation, so no configuration is required. The `cloudflare:worker-startup`
+step of `npm run gate:mcpfn-release` exercises this exact deployment shape under
+the `workerd` runtime, including `@mcpfn/auth` and the `nodejs_compat` flag.
+
 ## Existing Superfunctions migrations
 
 LangFn, MemoryFn, and ProbeFn migrations are outside this release. Their existing

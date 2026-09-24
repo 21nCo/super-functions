@@ -48,26 +48,35 @@ Plugins are *passive descriptors*. The kernel composes them; nothing in a plugin
 ```mermaid
 sequenceDiagram
   participant App
-  participant Kernel as createAuthFn()
+  participant Declare as authfn()
+  participant Server as createServer()
   participant P as Plugin
 
-  App->>Kernel: createAuthFn(config)
+  App->>Declare: authfn({ plugins })
+  App->>Server: app.createServer({ database, pluginRuntime })
   loop for each plugin
-    Kernel->>P: validateConfig(config)
-    Kernel->>P: schema(config)
-    Kernel->>P: routes(ctx)
-    Kernel->>Kernel: register hooks
+    Server->>P: schema(config)
   end
-  Kernel-->>App: AuthFnInstance
+  loop for each plugin
+    Server->>P: validateConfig(runtimeConfig)
+  end
+  Server->>Server: compose hooks
+  loop for each plugin
+    Server->>P: routes(ctx)
+  end
+  Server-->>App: AuthFnServer
 
-  App->>Kernel: HTTP request
-  Kernel->>Kernel: route lookup
-  Kernel->>P: route handler
-  P->>Kernel: issueSession / events
-  Kernel-->>App: response
+  App->>Server: HTTP request
+  Server->>Server: route lookup
+  Server->>P: route handler
+  P->>Server: issueSession / events
+  Server-->>App: response
 ```
 
-The kernel runs `validateConfig` first across all plugins, then `schema`, then `routes`. If any `validateConfig` throws, the entire instance refuses to construct.
+The kernel composes `schema(config)` before it assembles the runtime config.
+After the database is wrapped with that schema, it runs `validateConfig` across
+the plugins and then registers hooks and `routes(ctx)`. If any
+`validateConfig` throws, the entire **server** refuses to construct.
 
 ## Ordering
 
@@ -86,29 +95,29 @@ This means your enabled-plugin set is your deployment's surface area. Test envir
 
 ## Configuration
 
-Each plugin takes a config object specific to its concern:
+Each plugin takes a config object specific to its concern. Schema and policy stay on the factory; secrets and delivery go to `createServer({ pluginRuntime })`:
 
 ```ts
 authFnPasswordPlugin({
-  minimumPasswordLength: 12,
-  compromiseChecker: hibpChecker,
+  requireEmailVerifiedForSignIn: true,
+  compromisedPasswordChecker: hibpChecker,
 });
 
-authFnEmailOtpPlugin({
-  delivery: { send: yourSendFn },
-  challengeTtlSeconds: 600,
-});
-
-authFnSocialOAuthPlugin({
-  providers: { google, apple, github },
-  handoffMode: 'session-token',
-  defaultReturnTo: '/post-auth',
-});
-
-authFnTwoFactorPlugin({
-  totpStep: 30,
-  totpSkew: 1,
-  recoveryCodeCount: 10,
+authApp.createServer({
+  database,
+  pluginRuntime: {
+    emailOtp: {
+      delivery: { send: yourSendFn },
+      challengeTtlSeconds: 600,
+    },
+    socialOAuth: {
+      providers: { google, apple, github },
+    },
+    twoFactor: {
+      recoveryCodeCount: 10,
+      encryptionKeyResolver,
+    },
+  },
 });
 ```
 
@@ -116,20 +125,23 @@ The full config surface for each plugin is documented under [Plugins](../plugins
 
 ## Schema
 
-Plugins describe their tables through `schema(config)`. The kernel composes them with the kernel's own (`authfn_users`, `authfn_sessions`) and exposes the unified set via `auth.getSchema()`. The Superfunctions CLI reads `auth.getSchema()` to generate migrations:
+Plugins describe their tables through `schema(config)`. The kernel composes them with the kernel's own (`authfn_users`, `authfn_sessions`) and exposes the unified set via `authApp.getSchema()`. The Superfunctions CLI imports the declaration and generates an ORM schema:
 
 ```bash
-npx @superfunctions/cli generate
+npx @superfunctions/cli generate-schema --config ./superfunctions.config.mjs --adapter drizzle --dialect postgres --output ./db/generated --force
 ```
 
-Disabling a plugin removes its tables from `getSchema()`. Existing tables on a database are not auto-dropped — you'll want a manual migration if you remove a plugin.
+Use your ORM's migration tool to turn that schema change into a reviewed
+migration. The [Drizzle adapter guide](../adapters/database/drizzle) shows the
+required config files. Disabling a plugin removes its tables from `getSchema()`.
+Existing tables are not auto-dropped by authfn.
 
 ## Authoring a custom plugin
 
 A custom plugin is just an object that satisfies `AuthFnPlugin`. The simplest possible plugin:
 
 ```ts
-import type { AuthFnPlugin } from '@authfn/core';
+import type { AuthFnPlugin } from 'authfn';
 
 export function pingPlugin(): AuthFnPlugin {
   return {
@@ -181,7 +193,12 @@ By default, if a plugin's hook throws, the request fails with `AUTHFN_PLUGIN_ABO
 
 ## Validation
 
-`validateConfig(config)` runs *before* schema or routes. Use it to fail fast on missing OAuth client IDs, malformed delivery providers, or impossible parameter combinations. Throw `AuthFnConfigError(message, details)`; the kernel surfaces it with `AUTHFN_CONFIG_INVALID`.
+`schema(config)` is composed first. Once the runtime config exists,
+`validateConfig(config)` runs for every plugin before hooks are composed or any
+route factory runs. Use it to fail fast on missing OAuth client IDs, malformed
+delivery providers, or impossible parameter combinations. Throw
+`AuthFnConfigError(message, details)`; the kernel surfaces it with
+`AUTHFN_CONFIG_INVALID`.
 
 ## Related
 

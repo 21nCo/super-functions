@@ -406,6 +406,13 @@ try {
   npmStep("core:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/core"]);
   npmStep("core:test", ["run", "test", "--workspace", "@mcpfn/core"]);
   npmStep("core:build", ["run", "build", "--workspace", "@mcpfn/core"]);
+  for (const entry of ["esm", "cjs"]) {
+    run(`core:built-schema-${entry}`, process.execPath, [
+      "--disallow-code-generation-from-strings",
+      "scripts/test-mcpfn-built-schema-entries.mjs",
+      entry,
+    ]);
+  }
 
   npmStep("client:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/client"]);
   npmStep("client:test", ["run", "test", "--workspace", "@mcpfn/client"]);
@@ -485,6 +492,9 @@ try {
     "scripts/test-mcpfn-external-server.mjs",
   ], { timeout: 60_000 });
   run("official:conformance", process.execPath, ["scripts/test-mcpfn-conformance.mjs"]);
+  run("cloudflare:worker-startup", process.execPath, [
+    "scripts/test-mcpfn-cloudflare-worker.mjs",
+  ], { timeout: 90_000 });
 
   const packageNames = ["@mcpfn/core", "@mcpfn/client", "@mcpfn/auth", "@mcpfn/testing", "@mcpfn/inspector", "@mcpfn/datafn", "@mcpfn/cli"];
   run("packages:esm-import", process.execPath, [

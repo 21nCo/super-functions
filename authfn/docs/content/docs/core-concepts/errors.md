@@ -121,7 +121,7 @@ The shapes for each `code`/`details` pair are documented per-route in the [API r
 
 ## Importing the error classes
 
-If you author your own plugins and want to throw the same error model, import from `@authfn/core`:
+If you author your own plugins and want to throw the same error model, import from `authfn`:
 
 ```ts
 import {
@@ -129,7 +129,7 @@ import {
   AuthFnConflictError,
   AuthFnUnauthenticatedError,
   AuthFnRateLimitedError,
-} from '@authfn/core';
+} from 'authfn';
 
 throw new AuthFnConflictError('email already registered', { field: 'email' });
 ```

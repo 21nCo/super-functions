@@ -16,19 +16,27 @@ The Google provider uses standard OAuth 2.0 + OIDC. authfn fetches the user prof
 
 ## Configuration
 
+Start with the [full two-stage Social OAuth skeleton](/docs/plugins/social-oauth/); the fragment
+below assumes that page's `authApp` declaration and `database` adapter.
+
 ```ts
-authFnSocialOAuthPlugin({
-  providers: {
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      allowlistedRedirectUris: [
-        'https://app.example.com/auth/social/callback/google',
-      ],
-      allowlistedReturnTo: [
-        'https://app.example.com/post-auth',
-      ],
-      scopes: ['openid', 'email', 'profile'],     // default; only override if needed
+authApp.createServer({
+  database,
+  pluginRuntime: {
+    socialOAuth: {
+      providers: {
+        google: {
+          clientId: process.env.GOOGLE_CLIENT_ID!,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+          allowlistedRedirectUris: [
+            'https://app.example.com/auth/social/callback/google',
+          ],
+          allowlistedReturnTo: [
+            'https://app.example.com/post-auth',
+          ],
+          scopes: ['openid', 'email', 'profile'],     // default; only override if needed
+        },
+      },
     },
   },
 });
@@ -39,7 +47,7 @@ authFnSocialOAuthPlugin({
 For internal apps (Workspace), use a `profileResolver` that asserts the `hd` claim:
 
 ```ts
-import { AuthFnPluginAbortedError } from '@authfn/core';
+import { AuthFnPluginAbortedError } from 'authfn';
 
 google: {
   // …

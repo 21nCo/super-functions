@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
 import { authFnApiKeyPlugin } from '@authfn/api-keys';
@@ -6,6 +6,7 @@ import type { AuthFnRuntimeConfig } from '../index.js';
 import { issueSessionCookies } from '../core/cookies.js';
 import { issueSession } from '../core/sessions.js';
 import { createUser } from '../core/users.js';
+import { createApiKey } from '../core/api-keys.js';
 
 function createConfig(): AuthFnRuntimeConfig {
   return {
@@ -29,6 +30,76 @@ function cookieHeaderFromSetCookies(setCookies: string[]): string {
 }
 
 describe('authfn api key plugin', () => {
+  it('rejects oversized user IDs in the exported persistence helper', async () => {
+    const config = createConfig();
+
+    await expect(createApiKey(config, {
+      userId: 'u'.repeat(256),
+      name: 'direct-helper'
+    })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: {
+        fieldName: 'userId',
+        maxLength: 255
+      }
+    });
+
+    await expect(config.database.count({
+      model: 'api_keys',
+      namespace: 'authfn'
+    })).resolves.toBe(0);
+  });
+
+  it('creates an API key for a persisted legacy oversized user ID', async () => {
+    const config = createConfig();
+    const userId = 'legacy-user-'.padEnd(300, 'x');
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: {
+        id: userId,
+        primaryEmail: 'legacy-api@example.com',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    });
+
+    const created = await createApiKey(config, {
+      userId,
+      name: 'legacy-key'
+    });
+
+    expect(created.record.userId).toBe(userId);
+    await expect(config.database.count({
+      model: 'api_keys',
+      namespace: 'authfn'
+    })).resolves.toBe(1);
+  });
+
+  it('rejects persisted legacy user IDs wider than the compatible reference column', async () => {
+    const config = createConfig();
+    const userId = 'legacy-user-'.padEnd(768, 'x');
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: {
+        id: userId,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    });
+    const findOne = vi.spyOn(config.database, 'findOne');
+
+    await expect(createApiKey(config, {
+      userId,
+      name: 'too-wide-legacy-key'
+    })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'userId', maxLength: 767 }
+    });
+    expect(findOne).not.toHaveBeenCalled();
+  });
+
   it('creates, lists, authenticates, and revokes api keys with hashed secrets at rest', async () => {
     const config = createConfig();
     const auth = createTestServer(config);

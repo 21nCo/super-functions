@@ -1,6 +1,6 @@
 {
   "name": "@mcpfn/datafn",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Explicit, deny-by-default DataFn resource exposure for McpFn",
   "type": "module",
   "main": "dist/index.cjs",
@@ -23,7 +23,7 @@
   "dependencies": {
     "@datafn/core": "0.1.0",
     "@datafn/server": "0.1.1",
-    "@mcpfn/core": "0.0.4"
+    "@mcpfn/core": "0.0.5"
   },
   "devDependencies": {
     "@superfunctions/db": "0.2.0",

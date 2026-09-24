@@ -257,9 +257,12 @@ function wrapAdapter(
     },
 
     // Transaction support
-    async transaction(callback) {
+    async transaction(callback, options) {
       context.log.debug('transaction');
-      return implementation.transaction(callback);
+      if (options && (!capabilities.transactions.configurableIsolation || !capabilities.transactions.isolation?.includes(options.isolationLevel))) {
+        throw new Error(`Requested transaction isolation is unsupported: ${options.isolationLevel}`);
+      }
+      return implementation.transaction(callback, options);
     },
 
     // Lifecycle

@@ -1,6 +1,6 @@
 {
   "name": "@authfn/social-oauth",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Social OAuth plugin for AuthFn",
   "type": "module",
   "main": "./dist/index.js",
@@ -25,10 +25,10 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "authfn": "0.2.0",
+    "authfn": "0.3.0",
     "@superfunctions/db": "0.2.0",
     "@superfunctions/http": "0.2.0",
-    "@superfunctions/oauth-core": "0.1.0",
+    "@superfunctions/oauth-core": "0.1.1",
     "@superfunctions/oauth-flow": "0.1.0",
     "@superfunctions/oauth-http": "0.1.0",
     "@superfunctions/oauth-providers": "0.1.0",

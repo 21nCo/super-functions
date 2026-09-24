@@ -129,7 +129,7 @@ export class DefaultOAuthService implements OAuthService {
     authorizationUrl.searchParams.set("nonce", nonce);
 
     if (scopes.length > 0) {
-      authorizationUrl.searchParams.set("scope", scopes.join(provider.scopeSeparator ?? " "));
+      authorizationUrl.searchParams.set(provider.scopeParameter ?? "scope", scopes.join(provider.scopeSeparator ?? " "));
     }
 
     if (pkce) {

@@ -1,0 +1,8 @@
+{
+  "name": "apifn-cli-install",
+  "private": true,
+  "description": "Locked install of the published ApiFn CLI for the reusable api-check workflow.",
+  "dependencies": {
+    "@apifn/cli": "0.0.2"
+  }
+}

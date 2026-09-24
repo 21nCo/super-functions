@@ -2,17 +2,16 @@
 
 ## What Was Created
 
-The persistence service is a tRPC-based API that stores relationships between GitHub/Linear issues and Discord threads using Cloudflare D1.
+The persistence service is a tRPC-based API that stores relationships between GitHub/Linear issues and Discord threads in PostgreSQL through Drizzle.
 
 ### Files Created
 
 ```
-services/persistence/
+botfn/persistence/
 ├── src/
 │   ├── core.ts                    # tRPC router with business logic
 │   ├── index.cloudflare.ts       # Cloudflare Workers entry point
 │   └── client.ts                  # tRPC client helper
-├── schema.sql                     # D1 database schema
 ├── package.json                   # Dependencies and scripts
 ├── wrangler.toml                  # Cloudflare Workers config
 ├── tsconfig.json                  # TypeScript config
@@ -51,38 +50,49 @@ From the monorepo root:
 npm install
 ```
 
-### 2. Create Cloudflare D1 Database
+### 2. Provision PostgreSQL
 
-```bash
-cd services/persistence
-wrangler d1 create botfn-db
+Create a PostgreSQL database, set `DATABASE_URL`, and apply the schema represented
+by `src/schema.ts`:
+
+```sql
+CREATE TYPE issue_status AS ENUM ('Backlog', 'InProgress', 'Live');
+
+CREATE TABLE issues (
+  id text PRIMARY KEY,
+  github_issue_id text,
+  linear_issue_id text,
+  status issue_status NOT NULL,
+  is_live_status_notified_on_discord boolean NOT NULL DEFAULT false,
+  created_at integer NOT NULL,
+  updated_at integer NOT NULL
+);
+
+CREATE TABLE discord_threads (
+  id text PRIMARY KEY,
+  issue_id text NOT NULL REFERENCES issues(id),
+  guild_id text NOT NULL,
+  channel_id text NOT NULL,
+  thread_url text NOT NULL,
+  created_at integer NOT NULL,
+  CONSTRAINT discord_threads_issue_guild_channel_unique
+    UNIQUE (issue_id, guild_id, channel_id)
+);
 ```
 
-This will output a `database_id`. Copy it and update `wrangler.toml`:
+For local development, create `botfn/persistence/.dev.vars`:
 
-```toml
-[[d1_databases]]
-binding = "DB"
-database_name = "botfn-db"
-database_id = "YOUR_D1_DATABASE_ID"  # Replace this
+```dotenv
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE
 ```
 
-### 3. Initialize Database Schema
+### 3. Configure the production secret and deploy
 
-**For production (remote database):**
-```bash
-wrangler d1 execute botfn-db --remote --file=./schema.sql
-```
-
-**For local development:**
-```bash
-wrangler d1 execute botfn-db --local --file=./schema.sql
-```
-
-### 4. Deploy to Cloudflare Workers
+From the monorepo root:
 
 ```bash
-npm run deploy
+npx wrangler secret put DATABASE_URL --config botfn/persistence/wrangler.toml
+npm --workspace @botfn/persistence-service run deploy
 ```
 
 After deployment, you'll get a URL like:
@@ -90,16 +100,16 @@ After deployment, you'll get a URL like:
 https://botfn-persistence-service.YOUR-SUBDOMAIN.workers.dev
 ```
 
-### 5. Update Discord Bot Configuration
+### 4. Update Discord Bot Configuration
 
-Update `bots/discord-bot/wrangler.toml` with your actual persistence service URL:
+Update `botfn/bot-discord/wrangler.toml` with your actual persistence service URL:
 
 ```toml
 [vars]
 PERSISTENCE_SERVICE_URL = "https://botfn-persistence-service.YOUR-SUBDOMAIN.workers.dev"
 ```
 
-### 6. Install Discord Bot Dependencies
+### 5. Install Discord Bot Dependencies
 
 From monorepo root:
 
@@ -144,15 +154,14 @@ The discord-bot now automatically persists issues when:
 
 **Start persistence service:**
 ```bash
-cd services/persistence
-npm run dev
+npm --workspace @botfn/persistence-service run dev
 ```
 
 The service will be available at `http://localhost:8787`.
 
 **Start discord-bot:**
 ```bash
-cd bots/discord-bot
+cd botfn/bot-discord
 npm run dev
 ```
 
@@ -194,9 +203,9 @@ await client.updateIssue.mutate({
 - Ensure `PERSISTENCE_SERVICE_URL` is correctly set
 - Check that persistence service is deployed and accessible
 
-**Issue: Database not found**
-- Run `npm run db:init` (production) or `npm run db:init-local` (dev)
-- Verify `database_id` in `wrangler.toml` matches D1 database
+**Issue: Database connection or missing-table errors**
+- Ensure `DATABASE_URL` is set in `.dev.vars` locally or as a Wrangler secret in production
+- Apply the PostgreSQL schema above before starting or deploying the service
 
 **Issue: Persistence failures in discord-bot**
 - Check Cloudflare Workers logs: `wrangler tail`

@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage } from "node:http";
+import { generateKeyPairSync } from "node:crypto";
 import { once } from "node:events";
 import { WebSocket, WebSocketServer } from "ws";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +8,9 @@ import { createDatafnClient, createDatafnHttpRouteProvider, DefaultHttpTransport
 import type { DatafnRouteScope } from "@datafn/core";
 import { createDatafnServer } from "../server.js";
 import { datafnMultiRegionPlugin } from "../plugins/multi-region.js";
-import { createDatafnHmacRouteTickets, createDatafnRouteBootstrap, withDatafnRegionalCors, type DatafnRegionalEndpoint } from "../regional-tickets.js";
+import { createDatafnHmacRouteTickets, createDatafnEd25519RouteTicketSigner, createDatafnEd25519RouteTicketVerifier,
+  createDatafnRouteBootstrap, verifyDatafnRegionalTicketIdentity, withDatafnRegionalCors, type DatafnRegionalEndpoint,
+  type DatafnRegionalTicketRuntime } from "../regional-tickets.js";
 import { claimDatafnNamespacePlacement, createMemoryDatafnPlacementDirectory, migrateDatafnNamespace } from "../multi-region-routing.js";
 import { INTERNAL_TABLE_SCHEMAS } from "../execution/internal-tables.js";
 
@@ -48,10 +51,17 @@ async function listen(handler: (request: Request) => Promise<Response>) {
   return { http, origin, paths };
 }
 
-async function fixture(ttlMs = 60_000, allowRequest?: () => boolean) {
+async function fixture(ttlMs = 60_000, allowRequest?: () => boolean, ticketOnly = false) {
   const directory = createMemoryDatafnPlacementDirectory();
   await claimDatafnNamespacePlacement({ directory, namespace: "tenant", regionId: "eu" });
+  const keyPair = generateKeyPairSync("ed25519");
   const signer = createDatafnHmacRouteTickets({ activeKeyId: "test", keys: { test: "x".repeat(32) } });
+  const gatewaySigner = ticketOnly
+    ? createDatafnEd25519RouteTicketSigner({ activeKeyId: "test", privateKey: keyPair.privateKey })
+    : signer;
+  const verifier = ticketOnly
+    ? createDatafnEd25519RouteTicketVerifier({ publicKeys: { test: keyPair.publicKey } })
+    : signer;
   const endpoints: Record<string, DatafnRegionalEndpoint> = {};
   let sessionExpiresAt: number | undefined;
   const auth = (request: Request): { namespace: string; subject: string; expiresAt?: number } => {
@@ -63,10 +73,20 @@ async function fixture(ttlMs = 60_000, allowRequest?: () => boolean) {
   async function cell(regionId: string) {
     const db = memoryAdapter();
     const authorize = vi.fn(() => true);
+    const routeTickets: DatafnRegionalTicketRuntime = {
+      verifier, issuer: "app", audience: regionId, allowRequest, allowedOrigins: ["https://app.example"],
+      ...(!ticketOnly ? { authenticate: auth } : {}),
+    };
+    const context = ticketOnly
+      ? async (request: Request) => {
+          const claims = await verifyDatafnRegionalTicketIdentity({ request, regionId, runtime: routeTickets });
+          return { namespace: claims.namespace, subject: claims.subject };
+        }
+      : auth;
     const server = await createDatafnServer({ schema, database: db, allowUnknownResources: true, rest: true,
-      context: auth, namespaceProvider: { getNamespace: (context: { namespace: string }) => context.namespace },
+      context, namespaceProvider: { getNamespace: (context: { namespace: string }) => context.namespace },
       plugins: [datafnMultiRegionPlugin({ regionId, directory: createMemoryIndexedDirectoryStore(),
-        placement: { directory, routeTickets: { verifier: signer, issuer: "app", audience: regionId, authenticate: auth, allowRequest, allowedOrigins: ["https://app.example"] } } })], authorize,
+        placement: { directory, routeTickets } })], authorize,
       searchProvider: { name: "test", search: async () => [], searchAll: async () => [], updateIndices: async () => {} },
     });
     cleanups.push(() => server.close());
@@ -78,8 +98,10 @@ async function fixture(ttlMs = 60_000, allowRequest?: () => boolean) {
         ws.on("error", () => {});
         const request = asRequest(req, ingress.origin);
         try {
-          const context = auth(request);
-          if (await server.websocketHandler.addRoutedClient(ws, context, request)) {
+          const wsContext = ticketOnly
+            ? await verifyDatafnRegionalTicketIdentity({ request, regionId, runtime: routeTickets, websocket: true })
+            : auth(request);
+          if (await server.websocketHandler.addRoutedClient(ws, wsContext, request)) {
             admitted.push(ws);
             ws.on("message", data => server.websocketHandler.handleMessage(ws, data.toString()));
             ws.on("close", () => server.websocketHandler.removeClient(ws));
@@ -93,17 +115,40 @@ async function fixture(ttlMs = 60_000, allowRequest?: () => boolean) {
   }
   const eu = await cell("eu"), us = await cell("us");
   let gatewayAvailable = true;
-  const bootstrap = createDatafnRouteBootstrap({ directory, signer, issuer: "app", ttlMs, authenticate: auth,
+  const bootstrap = createDatafnRouteBootstrap({ directory, signer: gatewaySigner, issuer: "app", ttlMs, authenticate: auth,
     authorize: () => allScopes, resolveEndpoint: placement => endpoints[placement.regionId] });
   const gateway = await listen(request => gatewayAvailable ? bootstrap(request) : Promise.resolve(new Response(null, { status: 503 })));
   const provider = createDatafnHttpRouteProvider({ bootstrapUrl: `${gateway.origin}/bootstrap`, headers: () => ({ authorization: "Bearer app-session" }) });
-  const transport = new DefaultHttpTransport("", { routeProvider: provider, headers: { authorization: "Bearer app-session" } });
+  const transport = new DefaultHttpTransport("", { routeProvider: provider,
+    ...(!ticketOnly ? { headers: { authorization: "Bearer app-session" } } : {}) });
   cleanups.push(() => transport.dispose());
   return { directory, eu, us, gateway, provider, transport, signer, setSessionDeadline: (value: number) => { sessionExpiresAt = value; }, setGatewayAvailable: (value: boolean) => { gatewayAvailable = value; } };
 }
 const mutation = (id: string, mutationId = id) => ({ resource: "note", version: 1, operation: "insert", id: `note:${id}`, clientId: "client:one", mutationId, record: { title: id } });
 
 describe("direct regional two-region network conformance", () => {
+  it("serves ticket-only queries with gateway-only signing and no regional session credential", async () => {
+    const f = await fixture(60_000, undefined, true);
+    expect((await f.transport.query({ resource: "note", version: 1, select: ["id"] }) as any).result.data).toEqual([]);
+    expect(f.gateway.paths).toEqual(["/bootstrap"]);
+    expect(f.eu.ingress.paths).toContain("/datafn/query");
+    expect(f.us.ingress.paths).toEqual([]);
+    const route = await f.provider.bootstrap();
+    const ws = new WebSocket(route.wsUrl!, ["datafn-sync-v1", `datafn-ticket.${route.ticket}`]);
+    cleanups.push(() => ws.terminate());
+    await once(ws, "open");
+    await vi.waitFor(() => expect(f.eu.admitted).toHaveLength(1));
+    const withCookie = await fetch(`${route.httpUrl}/query`, { method: "POST",
+      headers: { "x-datafn-route-ticket": route.ticket, cookie: "session=opaque", "content-type": "application/json" },
+      body: JSON.stringify({ resource: "note", version: 1 }) });
+    expect(withCookie.status).toBe(403);
+    f.eu.authorize.mockClear();
+    const forged = await fetch(`${route.httpUrl}/query`, { method: "POST",
+      headers: { "x-datafn-route-ticket": `${route.ticket}forged`, "content-type": "application/json" },
+      body: JSON.stringify({ resource: "note", version: 1 }) });
+    expect(forged.status).toBe(401);
+    expect(f.eu.authorize).not.toHaveBeenCalled();
+  });
   it.each(["query", "mutate", "transact", "search"] as const)("allows trusted executor %s while retaining placement fencing", async operation => {
     const f = await fixture();
     const context = { namespace: "tenant", subject: "opaque-subject" };

@@ -1445,3 +1445,30 @@ describe("DataFn cell fencing", () => {
     })).rejects.toMatchObject({ code: "DATAFN_ROUTING_ASSERTION_INVALID" });
   });
 });
+
+describe("DatafnRoutingError HTTP-shaped contract", () => {
+  // Mirrors the guard in packages/http/src/router.ts so a renamed/removed property fails here
+  // loudly instead of silently mapping uncaught routing errors (e.g. ticket-only context rejections) back to 500.
+  const routerWouldMap = (error: unknown): boolean => {
+    const shaped = error as { isHttpError?: unknown; statusCode?: unknown };
+    return shaped?.isHttpError === true &&
+      Number.isInteger(shaped?.statusCode) &&
+      (shaped.statusCode as number) >= 400 &&
+      (shaped.statusCode as number) <= 599;
+  };
+
+  it.each([
+    ["DATAFN_ROUTE_TICKET_INVALID", 401],
+    ["DATAFN_ROUTE_FORBIDDEN", 403],
+    ["DATAFN_NAMESPACE_MOVING", 409],
+    ["DATAFN_ROUTE_RATE_LIMITED", 429],
+    ["DATAFN_PLACEMENT_UNAVAILABLE", 503],
+  ] as [DatafnRoutingError["code"], number][])("exposes isHttpError and integer statusCode for %s (%d)", (code, status) => {
+    const error = new DatafnRoutingError({ code, message: code, status, retryable: false });
+    expect(error.isHttpError).toBe(true);
+    expect(error.statusCode).toBe(status);
+    expect(error.statusCode).toBe(error.status);
+    expect(Number.isInteger(error.statusCode)).toBe(true);
+    expect(routerWouldMap(error)).toBe(true);
+  });
+});

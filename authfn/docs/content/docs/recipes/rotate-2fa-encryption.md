@@ -1,65 +1,88 @@
 ---
 title: Rotating 2FA encryption keys
-description: Move every 2FA enrollment from one key to a new one, with zero user-visible downtime.
+description: What the shipped two-factor plugin encrypts, and how to change keys without a private crypto API.
 ---
 
 # Rotating 2FA encryption keys
 
-## Goal
+## What the kernel actually encrypts
 
-The TOTP secret on `authfn_two_factor_enrollments.secretEncrypted` is encrypted with a key referenced by `encryptionKeyRef`. To rotate keys, you need to **decrypt with the old key, re-encrypt with the new key, update the row** for every enrollment.
+TOTP secrets are stored on `authfn_two_factor_enrollments.secret_encrypted`. The two-factor plugin encrypts and decrypts that column with AES-256-GCM, using:
 
-## Step 1: add the new key to your secrets store
+- `pluginRuntime.twoFactor.encryptionKeyResolver(keyRef)` to load a 32-byte key
+- `pluginRuntime.twoFactor.encryptionKeyRef` (default `'authfn-2fa'`) as the key identifier passed to the cipher
 
-`encryptionKeyRef` is a string identifier; your `encryptionKeyResolver` maps it to a buffer. Add a new entry:
-
-```ts
-encryptionKeyResolver: async (keyRef) => {
-  switch (keyRef) {
-    case 'v1': return await loadFromKMS('authfn-2fa-v1');
-    case 'v2': return await loadFromKMS('authfn-2fa-v2');
-    default: throw new Error('unknown key ref');
-  }
-}
-```
-
-## Step 2: run a one-off migration script
+Those options are **runtime** configuration, not plugin-factory options:
 
 ```ts
-import { decryptSecret, encryptSecret } from '@authfn/core/internal/two-factor-crypto';   // hypothetical
+import { authfn, authFnPlugins } from "authfn";
+import { authFnTwoFactorPlugin } from "@authfn/two-factor";
 
-const enrollments = await db.query('select * from authfn_two_factor_enrollments where encryption_key_ref = $1', ['v1']);
+const authApp = authfn({
+  plugins: authFnPlugins(authFnTwoFactorPlugin()),
+});
 
-for (const e of enrollments) {
-  const plaintext = await decryptSecret(e.secret_encrypted, await keyResolver('v1'));
-  const reEncrypted = await encryptSecret(plaintext, await keyResolver('v2'));
-  await db.query(
-    'update authfn_two_factor_enrollments set secret_encrypted = $1, encryption_key_ref = $2 where id = $3',
-    [reEncrypted, 'v2', e.id]
-  );
-}
-```
-
-## Step 3: update the runtime
-
-Once every row is on `v2`:
-
-```ts
-authFnTwoFactorPlugin({
-  encryptionKeyRef: 'v2',
-  encryptionKeyResolver,
+const auth = authApp.createServer({
+  database,
+  pluginRuntime: {
+    twoFactor: {
+      encryptionKeyRef: "v1",
+      encryptionKeyResolver: async (keyRef) => {
+        switch (keyRef) {
+          case "v1":
+            return await loadFromKMS("authfn-2fa-v1");
+          default:
+            throw new Error(`unknown 2FA key ref: ${keyRef}`);
+        }
+      },
+    },
+  },
 });
 ```
 
-## Step 4: retire the old key
+There is **no** public `encryptSecret` / `decryptSecret` export, and the enrollment row does **not** store `encryptionKeyRef`. Decrypt always uses the currently configured `encryptionKeyRef`. Changing the ref (or the bytes behind it) without replacing stored ciphertext will make existing enrollments fail to decrypt.
 
-After a grace period (long enough for any in-flight backups to roll over), delete the `v1` key from KMS.
+## Supported rotation path: re-enroll
 
-## During the rollout
+Because the kernel does not expose a re-encrypt helper, the supported public path is:
 
-Set the resolver to handle both old and new key refs *simultaneously*. The kernel reads `encryptionKeyRef` from each row and decrypts with the right key. Mid-migration is safe — every row is consistent with itself.
+1. Add the new key material to your secrets store, but keep serving the **old**
+   `encryptionKeyRef` while users disable 2FA (`POST /auth/2fa/disable`). Do not
+   let users re-enroll during this phase: those rows would still use the old key.
+2. Confirm that no active enrollment rows remain. There is no mixed-key state
+   because enrollment rows do not store their key reference.
+3. Switch `encryptionKeyRef` (and the resolver) to the new identifier.
+4. Allow users to enroll again (`POST /auth/2fa/enroll` +
+   `POST /auth/2fa/confirm`). Every replacement enrollment now uses the new key.
+5. After a grace period, retire the old key from KMS.
+
+```ts
+authApp.createServer({
+  database,
+  pluginRuntime: {
+    twoFactor: {
+      encryptionKeyRef: "v2",
+      encryptionKeyResolver: async (keyRef) => {
+        switch (keyRef) {
+          case "v2":
+            return await loadFromKMS("authfn-2fa-v2");
+          default:
+            throw new Error(`unknown 2FA key ref: ${keyRef}`);
+        }
+      },
+    },
+  },
+});
+```
+
+Do not switch `encryptionKeyRef` first and then try to decrypt old rows through the plugin — the plugin will use the new ref against ciphertext produced under the old one.
+
+## What not to do
+
+Do not import unpublished kernel internals to decrypt `secret_encrypted`. There is no public re-encrypt helper; operator scripts that unwrap that column directly are outside the public API.
 
 ## Related
 
 - [Plugins → Two-factor](../plugins/two-factor)
 - [Concepts → Security](../core-concepts/security)
+- [SDKs → authfn](../sdk/core)

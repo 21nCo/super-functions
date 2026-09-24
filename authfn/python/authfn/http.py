@@ -13,6 +13,11 @@ from superfunctions.http import HttpMethod, Response, Route, RouteContext, SetCo
 
 from .config import get_plugin_config, resolve_runtime
 from .errors import to_authfn_error
+from .limits import (
+    AUTHFN_DATABASE_KEY_MAX_LENGTH,
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+    assert_database_key_length,
+)
 from .observability import (
     emit_auth_event,
     event_request_id,
@@ -388,11 +393,37 @@ async def issue_session(
         "metadata": {},
     }
     payload = await _run_before_session_issue_hook(config, request, runtime, payload)
+    payload_user_id = payload.get("userId")
+    if not isinstance(payload_user_id, str) or not payload_user_id:
+        raise PluginAbortedError(
+            "beforeSessionIssue hook returned an invalid userId"
+        )
+    assert_database_key_length(
+        payload_user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+    )
+    # Existing v1 users may have IDs longer than the v2 bound. Preserve their
+    # ability to sign in while still bounding identities replaced by hooks or
+    # unpersisted caller input.
+    legacy_user = None
+    if (
+        payload_user_id == user.get("id")
+        and len(payload_user_id) > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ):
+        legacy_user = await config.database.find_one(
+            model="users",
+            where=[{"field": "id", "operator": "eq", "value": payload_user_id}],
+            namespace=config.namespace,
+        )
+    session_user_id = (
+        payload_user_id
+        if legacy_user is not None
+        else assert_database_key_length(payload_user_id, "userId")
+    )
     session_token = _create_opaque_token("st")
     csrf_token = _create_opaque_token("csrf")
     record = {
         "id": _create_opaque_token("sess"),
-        "userId": payload["userId"],
+        "userId": session_user_id,
         "tokenHash": _hash_secret(session_token),
         "csrfHash": _hash_secret(csrf_token),
         "methods": list(payload["methods"]),
@@ -1184,7 +1215,9 @@ async def _sign_up_with_password(
     runtime = resolve_runtime(config, request)
     payload = {"primaryEmail": normalized_email, "metadata": profile or {}}
     payload = await _run_before_user_create_hook(config, request, runtime, payload)
-    resolved_email = _normalize_email(payload.get("primaryEmail"))
+    resolved_email = assert_database_key_length(
+        _normalize_email(payload.get("primaryEmail")), "primaryEmail"
+    )
     metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else profile or {}
     existing = await config.database.find_one(
         model="users",

@@ -8,3 +8,4 @@ export * from "./registry.js";
 export * from "./results.js";
 export * from "./server.js";
 export * from "./types.js";
+export { schemaEngine } from "./validation.js";

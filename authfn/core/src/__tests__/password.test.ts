@@ -6,6 +6,7 @@ import type { AuthFnEvent, AuthFnRuntimeConfig } from '../index.js';
 import { issueSession } from '../core/sessions.js';
 import { createUser } from '../core/users.js';
 import {
+  createPasswordCredential,
   getPasswordCredentialByUserId,
   signInWithPassword,
   updatePasswordCredential
@@ -26,6 +27,113 @@ function cookieHeaderFromSetCookies(setCookies: string[]): string {
 }
 
 describe('authfn password plugin', () => {
+  it('rejects oversized user IDs in direct credential helpers', async () => {
+    const config = createConfig();
+    const userId = 'u'.repeat(256);
+
+    await expect(createPasswordCredential(config, {
+      userId,
+      passwordHash: 'already-hashed'
+    })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'userId', maxLength: 255 }
+    });
+    await expect(updatePasswordCredential(config, {
+      userId,
+      password: 'CorrectHorseBatteryStaple!'
+    })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'userId', maxLength: 255 }
+    });
+    await expect(config.database.count({
+      model: 'password_credentials',
+      namespace: 'authfn'
+    })).resolves.toBe(0);
+  });
+
+  it('updates an existing password credential for a legacy oversized user ID', async () => {
+    const config = createConfig();
+    const userId = 'legacy-user-'.padEnd(300, 'x');
+    const now = new Date();
+    await config.database.create({
+      model: 'password_credentials',
+      namespace: 'authfn',
+      data: {
+        id: 'pwd_legacy',
+        userId,
+        passwordHash: 'old-hash',
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    const updated = await updatePasswordCredential(config, {
+      userId,
+      password: 'An0therSecurePassphrase!'
+    });
+
+    expect(updated.userId).toBe(userId);
+    expect(updated.passwordHash).not.toBe('old-hash');
+    await expect(config.database.count({
+      model: 'password_credentials',
+      namespace: 'authfn'
+    })).resolves.toBe(1);
+  });
+
+  it('creates a password credential for a persisted legacy oversized user ID', async () => {
+    const config = createConfig();
+    const userId = 'legacy-user-'.padEnd(300, 'x');
+    const now = new Date();
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: {
+        id: userId,
+        primaryEmail: 'legacy-password@example.com',
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    const credential = await createPasswordCredential(config, {
+      userId,
+      passwordHash: 'already-hashed'
+    });
+
+    expect(credential.userId).toBe(userId);
+    await expect(config.database.findOne({
+      model: 'password_credentials',
+      namespace: 'authfn',
+      where: [{ field: 'id', operator: 'eq', value: credential.id }]
+    })).resolves.toMatchObject({ userId });
+  });
+
+  it('updates a password for a persisted legacy user without a credential', async () => {
+    const config = createConfig();
+    const userId = 'legacy-user-'.padEnd(300, 'x');
+    const now = new Date();
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: {
+        id: userId,
+        primaryEmail: 'legacy-password-update@example.com',
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    const credential = await updatePasswordCredential(config, {
+      userId,
+      password: 'An0therSecurePassphrase!'
+    });
+
+    expect(credential.userId).toBe(userId);
+    await expect(getPasswordCredentialByUserId(config, userId)).resolves.toMatchObject({
+      userId
+    });
+  });
+
   it('keeps the documented inline OTP delivery configuration compatible', async () => {
     const delivered: unknown[] = [];
     const auth = createTestServer({

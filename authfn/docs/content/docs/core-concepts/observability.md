@@ -8,8 +8,8 @@ description: Every meaningful action in authfn emits a structured event. Wire on
 authfn emits a structured event for every meaningful action — sign-up, sign-in, OTP send, OAuth callback, region lookup, plugin failure, rate-limit. You provide one callback at construction; the kernel does the rest.
 
 ```ts
-createAuthFn({
-  // ...
+authApp.createServer({
+  database,
   observability: {
     emit(event) {
       myLogger.info(event.type, {

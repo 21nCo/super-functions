@@ -1,0 +1,121 @@
+{
+  "name": "langfn",
+  "version": "0.1.0",
+  "description": "Comprehensive AI Development SDK for LLM-based workflows",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./models": {
+      "types": "./dist/models/index.d.ts",
+      "import": "./dist/models/index.js"
+    },
+    "./prompts": {
+      "types": "./dist/prompts/index.d.ts",
+      "import": "./dist/prompts/index.js"
+    },
+    "./tools": {
+      "types": "./dist/tools/index.d.ts",
+      "import": "./dist/tools/index.js"
+    },
+    "./orchestration": {
+      "types": "./dist/orchestration/index.d.ts",
+      "import": "./dist/orchestration/index.js"
+    },
+    "./graph": {
+      "types": "./dist/graph/index.d.ts",
+      "import": "./dist/graph/index.js"
+    },
+    "./agents": {
+      "types": "./dist/agents/index.d.ts",
+      "import": "./dist/agents/index.js"
+    },
+    "./observability": {
+      "types": "./dist/observability/index.d.ts",
+      "import": "./dist/observability/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "import": "./dist/http/index.js"
+    },
+    "./structured": {
+      "types": "./dist/structured/index.d.ts",
+      "import": "./dist/structured/index.js"
+    },
+    "./rag": {
+      "types": "./dist/rag/index.d.ts",
+      "import": "./dist/rag/index.js"
+    },
+    "./memory": {
+      "types": "./dist/memory/index.d.ts",
+      "import": "./dist/memory/index.js"
+    },
+    "./evaluation": {
+      "types": "./dist/evaluation/index.d.ts",
+      "import": "./dist/evaluation/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "import": "./dist/mcp/index.js"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "npx --yes -p typescript -p tsup tsup --config tsup.config.ts --watch",
+    "build": "tsup --config tsup.config.ts && tsc --project tsconfig.json --emitDeclarationOnly",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "npx --yes -p typescript -p vitest vitest --config vitest.config.ts",
+    "lint": "eslint \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "llm",
+    "agents",
+    "orchestration",
+    "ai",
+    "superfunctions"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "langfn/typescript"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@mcpfn/core": "0.0.5",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@superfunctions/auth": "0.2.0",
+    "@superfunctions/db": "0.2.0",
+    "@superfunctions/http": "0.2.0",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.23.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@typescript-eslint/eslint-plugin": "8.47.0",
+    "@typescript-eslint/parser": "8.47.0",
+    "eslint": "9.39.1",
+    "tsup": "^8.2.4",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  }
+}

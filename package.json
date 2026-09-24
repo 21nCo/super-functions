@@ -25,6 +25,7 @@
     "datafn/extfn",
     "datafn/server",
     "datafn/svelte",
+    "datafn/swift-bridge",
     "mcpfn/*",
     "reviewfn/*",
     "mailfn/*",
@@ -39,7 +40,12 @@
     "filefn/examples/full-demo/*",
     "filefn/examples/production/*",
     "plugfn/*",
-    "sendfn/*"
+    "sendfn/*",
+    "langfn/typescript",
+    "memoryfn/typescript",
+    "secfn/core",
+    "secfn/server",
+    "secfn/runtime"
   ],
   "scripts": {
     "build": "turbo run build",
@@ -119,12 +125,20 @@
     "deploy:uifn-catalogs:production": "node scripts/deploy-uifn-catalogs.mjs production",
     "gate:mailfn-release": "node scripts/gate-mailfn-release.mjs",
     "gate:mcpfn-release": "node scripts/gate-mcpfn-release.mjs",
+    "gate:plugfn-provider-clickup": "node plugfn/scripts/gate-plugfn-provider.mjs clickup",
+    "gate:plugfn-provider-github": "node plugfn/scripts/gate-plugfn-provider.mjs github",
+    "gate:plugfn-provider-gmail": "node plugfn/scripts/gate-plugfn-provider.mjs gmail",
+    "gate:plugfn-provider-linear": "node plugfn/scripts/gate-plugfn-provider.mjs linear",
+    "gate:plugfn-provider-notion": "node plugfn/scripts/gate-plugfn-provider.mjs notion",
+    "gate:plugfn-release": "node plugfn/scripts/gate-plugfn-release.mjs",
     "gate:reviewfn-release": "node scripts/gate-reviewfn-release.mjs",
     "test:watch": "turbo run test:watch",
     "test:coverage": "turbo run test:coverage",
-    "clean": "turbo run clean && rm -rf node_modules"
+    "clean": "turbo run clean && rm -rf node_modules",
+    "gate:langfn-release": "node scripts/gate-langfn-release.mjs"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.25.2",
     "fast-glob": "^3.3.3",
     "@cloudflare/vitest-pool-workers": "^0.10.4",
     "@types/node": "^20.0.0",
@@ -132,11 +146,14 @@
     "@vitest/spy": "3.2.4",
     "@vitest/ui": "^3.2.4",
     "@vitest/utils": "3.2.4",
+    "esbuild": "0.21.5",
+    "miniflare": "4.20251113.0",
     "msw": "^2.11.6",
     "prettier": "^3.0.0",
     "turbo": "^2.0.0",
     "typescript": "^5.3.0",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "zod": "3.25.76"
   },
   "overrides": {
     "fast-uri": "3.1.5",

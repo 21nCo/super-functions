@@ -1,6 +1,6 @@
 {
   "name": "authfn",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Core authfn contracts and plugin composition primitives",
   "type": "module",
   "main": "./dist/index.js",
@@ -58,7 +58,7 @@
   },
   "superfunctions": {
     "initFunction": "authfn",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "libraryNames": [
       "authfn"
     ]
@@ -73,7 +73,7 @@
     "@superfunctions/observability": "0.0.1"
   },
   "devDependencies": {
-    "@superfunctions/oauth-core": "0.1.0",
+    "@superfunctions/oauth-core": "0.1.1",
     "@superfunctions/oauth-flow": "0.1.0",
     "@superfunctions/oauth-http": "0.1.0",
     "@superfunctions/oauth-providers": "0.1.0",

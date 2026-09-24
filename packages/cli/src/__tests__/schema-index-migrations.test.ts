@@ -10,6 +10,7 @@ import {
   introspectMySQL,
   introspectPostgres,
   introspectSQLite,
+  mapDatabaseTypeToFieldType,
 } from "../utils/introspection.js";
 import { generateDrizzleSchemaFile } from "../utils/schema-generators.js";
 import { hasUnsafeMySqlMetadataSyntax } from "../utils/mysql-types.js";
@@ -30,7 +31,143 @@ const syncJobs = {
   ],
 } as unknown as TableSchema;
 
+function sqliteColumn(
+  tableName: string,
+  columnName: string,
+  dataType: string,
+  isNullable: boolean,
+) {
+  return {
+    dialect: "sqlite" as const,
+    tableName,
+    columnName,
+    dataType,
+    isNullable,
+    defaultValue: null,
+    isPrimaryKey: columnName === "id",
+    isUnique: false,
+  };
+}
+
 describe("schema index migrations", () => {
+  it("uses supported Drizzle builders for SQLite scalar modes", () => {
+    const table = {
+      modelName: "settings",
+      fields: {
+        id: { type: "string", required: true, fieldName: "id" },
+        enabled: { type: "boolean", required: true, fieldName: "enabled" },
+        metadata: { type: "json", required: false, fieldName: "metadata" },
+        counter: { type: "bigint", required: true, fieldName: "counter" },
+      },
+    } as unknown as TableSchema;
+    const schema = generateDrizzleSchemaFile(
+      {
+        version: 1,
+        schemas: [table],
+      },
+      "example",
+      "example",
+      "sqlite",
+    );
+
+    expect(schema).toContain("integer('enabled', { mode: 'boolean' })");
+    expect(schema).toContain("text('metadata', { mode: 'json' })");
+    expect(schema).toContain("blob('counter', { mode: 'bigint' })");
+    expect(schema).not.toContain("boolean('enabled'");
+    expect(schema).not.toContain("json('metadata'");
+    expect(schema).not.toContain("bigint('counter'");
+
+    const plan = createMigrationPlan("example", 0, 1, [{
+      tableName: "example_settings",
+      action: "create",
+    }]);
+    expect(generateDrizzleMigration(plan, [table], "sqlite").content)
+      .toContain("counter BLOB");
+    expect(mapDatabaseTypeToFieldType("BLOB")).toBe("bigint");
+    expect(diffTables([table], [{
+      name: "example_settings",
+      columns: [
+        sqliteColumn("example_settings", "id", "TEXT", false),
+        sqliteColumn("example_settings", "enabled", "INTEGER", false),
+        sqliteColumn("example_settings", "metadata", "TEXT", true),
+        sqliteColumn("example_settings", "counter", "BLOB", false),
+      ],
+      indexes: [],
+      constraints: [],
+    }], "example")).toEqual([]);
+  });
+
+  it("uses MySQL's int builder for numeric fields", () => {
+    const schema = generateDrizzleSchemaFile(
+      {
+        version: 1,
+        schemas: [{
+          modelName: "counters",
+          fields: {
+            id: { type: "string", required: true, fieldName: "id", maxLength: 255 },
+            attempts: { type: "number", required: true, fieldName: "attempts" },
+            email: { type: "string", required: true, fieldName: "email", maxLength: 255 },
+            description: { type: "string", required: false, fieldName: "description" },
+          },
+          indexes: [{ name: "counters_email_idx", fields: ["email"], unique: true }],
+        } as unknown as TableSchema],
+      },
+      "authfn",
+      "example",
+      "mysql",
+    );
+
+    expect(schema).toContain("int('attempts')");
+    expect(schema).not.toContain("integer('attempts')");
+    expect(schema).toContain("id: varchar('id', { length: 255 })");
+    expect(schema).toContain("email: varchar('email', { length: 255 })");
+    expect(schema).toContain("description: text('description')");
+    expect(schema).toContain("from 'drizzle-orm/mysql-core'");
+    expect(schema).toContain("generate-schema --dialect mysql");
+  });
+
+  it("rejects unbounded MySQL string keys instead of narrowing their contract", () => {
+    expect(() => generateDrizzleSchemaFile(
+      {
+        version: 1,
+        schemas: [{
+          modelName: "counters",
+          fields: {
+            id: { type: "string", required: true, fieldName: "id" },
+          },
+          indexes: [],
+        } as unknown as TableSchema],
+      },
+      "authfn",
+      "example",
+      "mysql",
+    )).toThrow("MySQL key field counters.id must declare maxLength");
+  });
+
+  it("rejects composite MySQL string indexes beyond the InnoDB key budget", () => {
+    expect(() => generateDrizzleSchemaFile(
+      {
+        version: 1,
+        schemas: [{
+          modelName: "accounts",
+          fields: {
+            id: { type: "string", required: true, fieldName: "id", maxLength: 64 },
+            provider: { type: "string", required: true, fieldName: "provider", maxLength: 500 },
+            providerAccountId: { type: "string", required: true, fieldName: "provider_account_id", maxLength: 500 },
+          },
+          indexes: [{
+            name: "accounts_provider_account_idx",
+            fields: ["provider", "providerAccountId"],
+            unique: true,
+          }],
+        } as unknown as TableSchema],
+      },
+      "authfn",
+      "example",
+      "mysql",
+    )).toThrow("encoded key size 4000 bytes exceeds the 3072-byte InnoDB limit");
+  });
+
   it("scopes PostgreSQL index relations to the requested schema", async () => {
     let indexQuery = "";
     let indexParams: unknown[] = [];
@@ -379,8 +516,15 @@ describe("schema index migrations", () => {
     expect(kysely).toContain(
       "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token);",
     );
+    const mysqlSchema = {
+      ...syncJobs,
+      fields: {
+        ...syncJobs.fields,
+        id: { ...syncJobs.fields.id, maxLength: 255 },
+      },
+    };
     const drizzleSchema = generateDrizzleSchemaFile(
-      { version: 6, schemas: [syncJobs] },
+      { version: 6, schemas: [mysqlSchema] },
       "plugfn",
       "plugfn",
       "mysql",
@@ -513,7 +657,16 @@ describe("schema index migrations", () => {
         .toThrow("expected an integer between 1 and 16383");
     }
     expect(() => generateDrizzleSchemaFile(
-      { version: 1, schemas: [invalid] },
+      {
+        version: 1,
+        schemas: [{
+          ...invalid,
+          fields: {
+            ...invalid.fields,
+            id: { ...invalid.fields.id, maxLength: 255 },
+          },
+        }],
+      },
       "plugfn",
       "plugfn",
       "mysql",
