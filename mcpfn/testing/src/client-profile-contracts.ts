@@ -537,6 +537,7 @@ async function runProfileCase(
 ): Promise<McpFnClientProfileContractResult> {
   const profile = { id: profileCase.id, version: profileCase.version };
   let client: McpFnTestClient | undefined;
+  let configurationError: Error | undefined;
   let result: McpFnClientProfileContractResult = {
     profile,
     status: "complete",
@@ -595,6 +596,11 @@ async function runProfileCase(
     }
     if (tools) {
       const advertised = new Set(tools.map(({ name }) => name));
+      const taskRequired = new Set(tools.filter(tool => tool.execution?.taskSupport === "required").map(tool => tool.name));
+      if (profileCase.fixtures?.some(fixture => taskRequired.has(fixture.tool))) {
+        configurationError = new Error(`Client profile ${profile.id}@${profile.version} task-required fixtures are unsupported by this contract runner`);
+        throw configurationError;
+      }
       for (const fixture of profileCase.fixtures ?? []) {
         const base = {
           name: fixture.name,
@@ -609,10 +615,6 @@ async function runProfileCase(
             error:
               "Fixture references a tool absent from the effective catalog",
           });
-          continue;
-        }
-        if (tools.find(tool => tool.name === fixture.tool)?.execution?.taskSupport === "required") {
-          result.fixtures.push({ ...base, status: "incomplete", code: "task-fixture-unsupported", error: "Task-required fixtures are not supported by this contract runner" });
           continue;
         }
         if (fixture.sideEffect !== "read-only" && !allowSideEffects) {
@@ -676,6 +678,7 @@ async function runProfileCase(
       try {
         await client.close();
       } catch (error) {
+        if (configurationError) configurationError.message = `${configurationError.message}; target cleanup failed`;
         result = {
           ...result,
           ok: false,

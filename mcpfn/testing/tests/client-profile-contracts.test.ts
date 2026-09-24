@@ -441,17 +441,22 @@ it("warns for draft-2019 recursive reference keywords", () => {
   expect(issues.map(issue => issue.keyword)).toEqual(expect.arrayContaining(['$recursiveAnchor', '$recursiveRef']));
 });
 
-it("marks task-required fixtures incomplete without an ordinary call", async () => {
+it.each([false, true])("rejects task-required fixtures before execution when cleanup fails: %s", async closeFails => {
   const { McpFnTestClient } = await import('../src/client.js');
   const callTool = vi.fn();
-  const tool = { ...projectedTool(), execution: { taskSupport: 'required' as const } };
-  const spy = vi.spyOn(McpFnTestClient, 'connectTarget').mockResolvedValue({ listTools: async () => [tool], callTool, close: async () => {} } as any);
+  const close = vi.fn(async () => { if (closeFails) throw new Error('private cleanup detail'); });
+  const tool = { ...projectedTool(), name: 'task-lookup', execution: { taskSupport: 'required' as const } };
+  const spy = vi.spyOn(McpFnTestClient, 'connectTarget').mockResolvedValue({ listTools: async () => [projectedTool(), tool], callTool, close } as any);
   try {
-    const report = await runMcpFnClientProfileContracts({ profiles: [{ id: 'generic', version: '1', target: targetFor({}).target,
-      fixtures: [{ name: 'task', tool: 'lookup', arguments: { query: 'x' }, sideEffect: 'read-only' }] }] });
-    expect(report.ok).toBe(false);
-    expect(report.profiles[0].fixtures[0]).toMatchObject({ status: 'incomplete', code: 'task-fixture-unsupported' });
+    await expect(runMcpFnClientProfileContracts({ profiles: [{ id: 'generic', version: '1', target: targetFor({}).target,
+      fixtures: [
+        { name: 'ordinary', tool: 'lookup', arguments: { query: 'x' }, sideEffect: 'read-only' },
+        { name: 'task', tool: 'task-lookup', arguments: { query: 'x' }, sideEffect: 'read-only' },
+      ] }] })).rejects.toThrow(closeFails
+        ? /task-required fixtures are unsupported.*target cleanup failed/
+        : /task-required fixtures are unsupported/);
     expect(callTool).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
   } finally { spy.mockRestore(); }
 });
 

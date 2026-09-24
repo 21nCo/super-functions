@@ -180,6 +180,14 @@ identity and request context. Model-owned property schemas retain their canonica
 types and constraints. Projection may hide server-owned required fields, but does
 not replace the canonical validator.
 
+Projected input schemas may use static references within the document or an
+embedded `$id` resource. Named draft-07 `$id` fragments and modern anchors are
+aliases in their containing resource, so `#` and `#/...` still address that
+resource's root. Dynamic, recursive, and unresolved external references fail
+closed during catalog validation. Server-owned fields may only be hidden where
+the root object contract can be compared without conditional or whole-object
+ownership-sensitive constraints.
+
 Structural diagnostics retain exact unknown property names and instance paths;
 consumer report sinks must apply an aggregate size cap (the testing suite defaults
 to one MiB) rather than silently shortening property names.

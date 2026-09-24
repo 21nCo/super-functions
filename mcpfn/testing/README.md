@@ -113,6 +113,11 @@ argument values never appear in reports. `read-only` fixtures run by default;
 `idempotent` and `non-idempotent` fixtures require explicit suite or CLI
 authorization.
 
+The profile fixture runner supports ordinary tool calls. After reading the
+effective catalog, it rejects a configuration containing a fixture for a
+task-required tool before executing any fixture, then closes the target. Use
+the task scenario APIs for task execution and terminal-result assertions.
+
 `createMcpFnClientProfileSnapshot()`,
 `validateMcpFnClientProfileSnapshot()`, and
 `diffMcpFnClientProfileSnapshots()` create reviewable effective-catalog

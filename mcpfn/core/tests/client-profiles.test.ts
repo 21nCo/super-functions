@@ -696,6 +696,78 @@ it("resolves named anchors and rejects unsupported dynamic projection references
   expect(formatMcpFnSchemaIssues([{ instancePath: "", schemaPath: "", keyword: "type", params: {} }])[0].schemaPath).toBe("#");
 });
 
+it("rejects a draft-07 named-fragment projection that changes nested call validation", async () => {
+  const canonical = {
+    $schema: "http://json-schema.org/draft-07/schema#",
+    $id: "https://example.test/root",
+    type: "object" as const,
+    additionalProperties: false,
+    properties: { tenantId: { type: "string" }, child: { $ref: "#node" } },
+    required: ["tenantId"],
+    definitions: { node: { $id: "#node", type: "object", properties: { root: { $ref: "#" } } } },
+  };
+  const visible = { ...canonical, properties: { child: canonical.properties.child }, required: [] };
+  const registry = new McpFnRegistry<RequestContext>().register({
+    name: "fragment", description: "Fragment projection", inputSchema: canonical,
+    handler: async () => structuredResult({ ok: true }),
+  });
+  const server = createMcpFnServer({
+    info: { name: "fragment-server", version: "1" }, registry,
+    context: () => ({ subject: "trusted" }),
+    clientProfiles: { profiles: [{ id: "fragment", version: "1", matches: () => true,
+      serverOwnedArguments: { fragment: ["tenantId"] },
+      enrichArguments: ({ arguments: args }) => ({ ...args, tenantId: "trusted" }),
+      projectCatalog: () => [{ name: "fragment", inputSchema: visible }],
+    }], resolveVerifiedIdentity: () => ({ subject: "trusted" }) },
+  });
+  const client = new Client({ name: "fragment-client", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right);
+    await client.connect(left);
+    await expect(client.listTools()).rejects.toThrow(/canonical schema|root constraints/);
+  } finally { await client.close(); await server.close(); }
+});
+
+it.each([
+  ["identified", "#", true],
+  ["identified", "#/properties/child", true],
+  ["anonymous", "#", false],
+  ["anonymous", "#/properties/child", false],
+])("keeps draft-07 %s resource references and %s through list and call", async (_label, reference, identified) => {
+  const schema = {
+    $schema: "http://json-schema.org/draft-07/schema#", ...(identified ? { $id: "https://example.test/root" } : {}), type: "object" as const,
+    properties: { child: { $ref: "#node" } },
+    definitions: { node: { $id: "#node", type: "object", properties: { root: { $ref: reference } } } },
+  };
+  const registry = new McpFnRegistry().register({
+    name: "fragment", description: "Fragment", inputSchema: schema,
+    handler: async () => structuredResult({ ok: true }),
+  });
+  const server = createMcpFnServer({ info: { name: "fragment-server", version: "1" }, registry,
+    clientProfiles: { profiles: [{ id: "noop", version: "1", matches: () => true }],
+      resolveVerifiedIdentity: () => ({ subject: "trusted" }) } });
+  const client = new Client({ name: "fragment-client", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left);
+    expect((await client.listTools()).tools[0].name).toBe("fragment");
+    expect(await client.callTool({ name: "fragment", arguments: { child: { root: {} } } })).toMatchObject({ structuredContent: { ok: true } });
+  } finally { await client.close(); await server.close(); }
+});
+
+it.each(["2019-09", "2020-12"])("resolves %s anchors within the containing projected resource", async dialect => {
+  const { buildMcpFnEffectiveCatalog } = await import("../src/client-profiles.js");
+  const schema = {
+    $schema: `https://json-schema.org/draft/${dialect}/schema`, $id: "https://example.test/root",
+    type: "object" as const, properties: { child: { $ref: "#node" } },
+    $defs: { node: { $anchor: "node", type: "object", properties: { root: { $ref: "#" } } } },
+  };
+  await expect(buildMcpFnEffectiveCatalog({ canonicalTools: [{ name: "fragment", inputSchema: schema }],
+    resolved: { context: undefined, extra: {} as any, reportedClient: {}, verifiedIdentity: { subject: "trusted" },
+      profile: { id: "noop", version: "1", matches: () => true, projectCatalog: () => [{ name: "fragment", inputSchema: schema }] } } })).resolves.toMatchObject({ changes: [] });
+});
+
 it("bounds request-controlled property names in diagnostics", async () => {
   const { formatMcpFnSchemaIssues } = await import("../src/validation.js");
   const issues = formatMcpFnSchemaIssues([{ keyword: "additionalProperties", instancePath: "", schemaPath: "#", params: { additionalProperty: "x".repeat(10000) } }]);

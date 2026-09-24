@@ -118,6 +118,16 @@ by the profile enricher. Missing trusted context, forged fields, and asymmetric
 contracts fail before handler execution. Without a matching profile, the
 canonical catalog and arguments are unchanged.
 
+Projection supports static references to schema locations in the input document
+or its embedded `$id` resources. Draft-07 fragment-only `$id` values and modern
+`$anchor` values name locations within their containing resource; they do not
+become JSON Pointer roots. Dynamic or recursive references and unresolved
+external resources are rejected before the catalog is advertised. Ownership
+projection also rejects conditional or whole-object constraints whose behavior
+cannot be preserved by removing declared root fields. This is a bounded
+structural compatibility contract, not a claim of arbitrary JSON Schema
+equivalence.
+
 Schema failures retain bounded structural diagnostics: instance path, schema
 path, validation keyword, rejected additional property, and missing required
 property. Values are excluded. Optional lifecycle evidence likewise contains

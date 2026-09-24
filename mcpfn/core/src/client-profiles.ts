@@ -526,64 +526,68 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
   const constraints = new Set<string>();
   let ownershipSensitive = false;
   const seen = new Set<unknown>();
-  // A fragment is relative to its nearest schema resource, including nested $id roots.
-  const resources = new WeakMap<object, Record<string, unknown>>();
+  // Keep resource roots separate from named aliases. In draft-07, $id: "#node"
+  // names a subschema but does not make it the root for JSON Pointer fragments.
+  const initialBase = "https://mcpfn.invalid/schema";
+  const scopes = new WeakMap<object, { resource: Record<string, unknown>; base: string }>();
+  const resourceRoots = new Map<string, Record<string, unknown>>([[initialBase, root]]);
   const ids = new Map<string, Record<string, unknown>>();
-  const bases = new WeakMap<object, string>();
+  const resourceKey = (address: URL) => address.href.split("#", 1)[0]!;
+  const fragment = (address: URL) => {
+    try { return decodeURIComponent(address.hash.slice(1)); }
+    catch { throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Invalid schema reference encoding"); }
+  };
   const modernDialect = (schema: object) => {
-    const resource = resources.get(schema) ?? schema as Record<string, unknown>;
+    const resource = scopes.get(schema)?.resource ?? schema as Record<string, unknown>;
     const dialect = String(resource.$schema ?? root.$schema ?? "draft-07");
     return dialect.includes("2019-09") || dialect.includes("2020-12");
   };
-  const index = (value: unknown, resource: Record<string, unknown>) => {
-    if (!value || typeof value !== "object" || resources.has(value)) return;
-    const parentBase = bases.get(resource) ?? "https://mcpfn.invalid/schema";
-    if (!Array.isArray(value) && typeof (value as Record<string, unknown>).$id === "string") {
-      const address = new URL((value as Record<string, unknown>).$id as string, parentBase);
-      if (!address.hash) address.hash = "";
-      const id = address.href;
-      ids.set(id, value as Record<string, unknown>);
-      bases.set(value, id);
-      resource = value as Record<string, unknown>;
-    }
+  const index = (value: unknown, resource: Record<string, unknown>, parentBase: string) => {
+    if (!value || typeof value !== "object" || scopes.has(value)) return;
+    let base = parentBase;
     const schemaValue = value as Record<string, unknown>;
+    if (!Array.isArray(value) && typeof schemaValue.$id === "string") {
+      let address: URL;
+      try { address = new URL(schemaValue.$id, parentBase); }
+      catch { throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Invalid schema resource ID"); }
+      const name = fragment(address);
+      if (name) {
+        if (!/^[A-Za-z][-A-Za-z0-9.:_]*$/.test(name) || modernDialect(resource) ||
+            resourceKey(address) !== resourceKey(new URL(parentBase))) {
+          throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Unsupported schema resource ID fragment");
+        }
+        ids.set(`${resourceKey(address)}#${name}`, schemaValue);
+      } else {
+        resource = schemaValue;
+        resourceRoots.set(resourceKey(address), resource);
+      }
+      base = address.href.replace(/#$/, "");
+    }
     if (schemaValue.$dynamicRef !== undefined || schemaValue.$recursiveRef !== undefined) {
       throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Dynamic and recursive references are not supported in projected catalogs");
     }
-    if (typeof schemaValue.$anchor === "string") ids.set(new URL(`#${schemaValue.$anchor}`, bases.get(resource) ?? parentBase).href, schemaValue);
-    if (typeof schemaValue.$dynamicAnchor === "string" && String(resource.$schema ?? root.$schema ?? "draft-07").includes("2020-12")) ids.set(new URL(`#${schemaValue.$dynamicAnchor}`, bases.get(resource) ?? parentBase).href, schemaValue);
-    resources.set(value, resource);
+    if (typeof schemaValue.$anchor === "string") ids.set(`${resourceKey(new URL(base))}#${schemaValue.$anchor}`, schemaValue);
+    if (typeof schemaValue.$dynamicAnchor === "string" && String(resource.$schema ?? root.$schema ?? "draft-07").includes("2020-12")) ids.set(`${resourceKey(new URL(base))}#${schemaValue.$dynamicAnchor}`, schemaValue);
+    scopes.set(value, { resource, base });
     for (const [key, child] of Object.entries(value)) {
-      mapSchemaKeyword(key, child, item => { index(item, resource); return item; }, modernDialect(resource));
+      mapSchemaKeyword(key, child, item => { index(item, resource, base); return item; }, modernDialect(resource));
     }
   };
-  index(root, root);
+  index(root, root, initialBase);
   const referenceTarget = (schema: Record<string, unknown>): unknown => {
     const reference = schema.$ref as string;
-    let resource = resources.get(schema) ?? root;
-    if (reference === "") return resource;
-    let fragment = reference;
-    const referenceAddress = new URL(reference, bases.get(resource) ?? "https://mcpfn.invalid/schema");
-    let decodedFragment: string;
-    try { decodedFragment = decodeURIComponent(referenceAddress.hash.slice(1)); }
-    catch { throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Invalid schema reference encoding"); }
-    if (decodedFragment && !decodedFragment.startsWith("/")) {
-      const anchored = ids.get(referenceAddress.href);
+    let address: URL;
+    try { address = new URL(reference, scopes.get(schema)?.base ?? initialBase); }
+    catch { throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Invalid schema reference URI"); }
+    const pointer = fragment(address);
+    const key = resourceKey(address);
+    if (pointer && !pointer.startsWith("/")) {
+      const anchored = ids.get(`${key}#${pointer}`);
       if (anchored) return anchored;
       throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Unresolved named schema anchor");
     }
-    if (!reference.startsWith("#")) {
-      const address = new URL(reference, bases.get(resource) ?? "https://mcpfn.invalid/schema");
-      fragment = address.hash || "#";
-      address.hash = "";
-      const embedded = ids.get(address.href);
-      if (!embedded) throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Unresolved embedded schema reference");
-      resource = embedded;
-    }
-    let pointer: string;
-    try { pointer = decodeURIComponent(fragment.slice(1)); }
-    catch { throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Invalid schema reference encoding"); }
-    let target: unknown = resource;
+    let target: unknown = resourceRoots.get(key);
+    if (!target) throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Unresolved embedded schema reference");
     for (const part of pointer === "" ? [] : pointer.slice(1).split("/")) {
       const key = part.replaceAll("~1", "/").replaceAll("~0", "~");
       target = target && typeof target === "object" && Object.hasOwn(target, key) ? (target as Record<string, unknown>)[key] : undefined;
