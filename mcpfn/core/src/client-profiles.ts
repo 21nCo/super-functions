@@ -504,6 +504,9 @@ function taskSupport(tool: McpFnListedTool): string {
 
 /** Visit schema positions without interpreting instance data as schema syntax. */
 function mapSchemaKeyword(key: string, value: unknown, visit: (schema: unknown) => unknown, modern = false): unknown {
+  // The registry's draft-07 Ajv ignores these later-draft containers. Do not
+  // interpret their contents as active schemas (including nested $ref values).
+  if (!modern && ["dependentSchemas", "prefixItems", "unevaluatedProperties", "unevaluatedItems"].includes(key)) return value;
   if (["$defs", "definitions", "properties", "patternProperties", "dependentSchemas"].includes(key) && value && typeof value === "object" && !Array.isArray(value)) {
     return Object.fromEntries(Object.entries(value).map(([name, child]) => [name, visit(child)]));
   }
@@ -517,16 +520,15 @@ function mapSchemaKeyword(key: string, value: unknown, visit: (schema: unknown) 
 
 /** Resolve only root object composition; never traverse argument values. */
 const DRAFT07_REF_UNSAFE_KEYWORDS = new Set([
-  "$async",
+  "$async", "$id",
   "additionalItems", "additionalProperties", "allOf", "anyOf", "const", "contains",
-  "dependencies", "dependentRequired", "dependentSchemas", "else", "enum",
+  "dependencies", "else", "enum",
   "exclusiveMaximum", "exclusiveMinimum", "format", "formatExclusiveMaximum",
-  "formatExclusiveMinimum", "formatMaximum", "formatMinimum", "if", "items",
-  "maxContains", "maxItems", "maxLength", "maxProperties", "maximum", "minContains",
+  "formatExclusiveMinimum", "formatMaximum", "formatMinimum", "id", "if", "items",
+  "maxItems", "maxLength", "maxProperties", "maximum",
   "minItems", "minLength", "minProperties", "minimum", "multipleOf", "not",
-  "nullable", "oneOf", "pattern", "patternProperties", "prefixItems", "properties",
-  "propertyNames", "required", "then", "type", "unevaluatedItems",
-  "unevaluatedProperties", "uniqueItems",
+  "nullable", "oneOf", "pattern", "patternProperties", "properties",
+  "propertyNames", "required", "then", "type", "uniqueItems",
 ]);
 
 function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { properties: Record<string, unknown>; required: Set<string>; constraints: string[]; ownershipSensitive: boolean; prohibited: Set<string> } {
@@ -559,6 +561,15 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
     if (!value || typeof value !== "object" || scopes.has(value)) return;
     let base = parentBase;
     const schemaValue = value as Record<string, unknown>;
+    // A draft-07 client ignores a $id beside $ref, but Ajv applies its URI
+    // scope before resolving the reference. Reject it before indexing either
+    // schema so the published catalog cannot describe a different target.
+    if (typeof schemaValue.$ref === "string" && !modernDialect(resource)) {
+      if (Object.keys(schemaValue).some(key => DRAFT07_REF_UNSAFE_KEYWORDS.has(key) &&
+          !(value === root && key === "type" && schemaValue.type === "object"))) {
+        throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Draft-07 $ref assertion siblings are unsupported in projected catalogs");
+      }
+    }
     if (!Array.isArray(value) && typeof schemaValue.$id === "string") {
       let address: URL;
       try { address = new URL(schemaValue.$id, parentBase); }
@@ -575,16 +586,6 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
         resourceRoots.set(resourceKey(address), resource);
       }
       base = address.href.replace(/#$/, "");
-    }
-    // Ajv evaluates known assertion siblings of draft-07 $ref, while draft-07
-    // clients ignore them. Unknown extensions are ignored by this registry's
-    // strict:false Ajv, so they may remain as annotations. Keep root type:
-    // object for the MCP Tool shape, but reject other evaluated siblings.
-    if (typeof schemaValue.$ref === "string" && !modernDialect(resource)) {
-      if (Object.keys(schemaValue).some(key => DRAFT07_REF_UNSAFE_KEYWORDS.has(key) &&
-          !(value === root && key === "type" && schemaValue.type === "object"))) {
-        throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Draft-07 $ref assertion siblings are unsupported in projected catalogs");
-      }
     }
     if (schemaValue.$dynamicRef !== undefined || schemaValue.$recursiveRef !== undefined) {
       throw new McpFnClientProfileError("MCPFN_INVALID_PROJECTED_CATALOG", "Dynamic and recursive references are not supported in projected catalogs");

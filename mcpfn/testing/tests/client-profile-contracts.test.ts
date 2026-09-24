@@ -413,6 +413,10 @@ it("fails the catalog phase for duplicate tool names and produces no snapshot", 
 it("rejects contradictory aggregate snapshot hashes", () => {
   const snapshot = createMcpFnClientProfileSnapshot({ id: "test", version: "1" }, [projectedTool()]);
   expect(() => diffMcpFnClientProfileSnapshots(snapshot, { ...snapshot, catalogHash: "f".repeat(64) })).toThrow(/Inconsistent catalog hashes/);
+  expect(() => diffMcpFnClientProfileSnapshots(snapshot, {
+    ...snapshot,
+    tools: [{ ...snapshot.tools[0], hash: "f".repeat(64) }],
+  })).toThrow(/Inconsistent catalog hashes/);
 });
 it("flags dependentRequired portability", () => {
   expect(validateMcpFnSchemaPortability({ type: "object", dependentRequired: { a: ["b"] } }, "#").some(issue => issue.path.includes("dependentRequired"))).toBe(true);

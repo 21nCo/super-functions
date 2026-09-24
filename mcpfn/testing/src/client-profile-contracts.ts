@@ -288,8 +288,8 @@ export function diffMcpFnClientProfileSnapshots(
       changes.push({ kind: "modified", tool, beforeHash, afterHash });
     }
   }
-  if (changes.length === 0 && before.catalogHash !== after.catalogHash) {
-    throw new Error("Inconsistent catalog hashes for identical tool entries");
+  if ((changes.length === 0) !== (before.catalogHash === after.catalogHash)) {
+    throw new Error("Inconsistent catalog hashes for tool entries");
   }
   const summary = {
     added: changes.filter(({ kind }) => kind === "added").length,

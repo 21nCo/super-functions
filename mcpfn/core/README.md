@@ -187,11 +187,12 @@ resource's root. Dynamic, recursive, and unresolved external references fail
 closed during catalog validation. Server-owned fields may only be hidden where
 the root object contract can be compared without conditional or whole-object
 ownership-sensitive constraints.
-Draft-07 `$ref` assertion siblings are rejected during catalog validation
-because clients can ignore them while the runtime validator evaluates them.
+Draft-07 `$ref` siblings evaluated by the registry's Ajv, including `$id`
+resource scope, are rejected during catalog validation because draft-07 clients
+can ignore them while the runtime validator evaluates them.
 The MCP-required root `type: "object"` is permitted; place other assertions on
-the referenced target. Unknown extension keywords that the registry's Ajv
-ignores may remain as annotations beside `$ref`.
+the referenced target. Later-draft keywords and unknown extensions ignored by
+the registry's draft-07 Ajv may remain beside `$ref`.
 
 Structural diagnostics retain exact unknown property names and instance paths;
 consumer report sinks must apply an aggregate size cap (the testing suite defaults

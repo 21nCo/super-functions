@@ -127,11 +127,12 @@ projection also rejects conditional or whole-object constraints whose behavior
 cannot be preserved by removing declared root fields. This is a bounded
 structural compatibility contract, not a claim of arbitrary JSON Schema
 equivalence.
-Draft-07 `$ref` objects with assertion siblings are excluded from projection:
-draft-07 clients ignore those siblings while the runtime Ajv validator evaluates
-them. The MCP-required root `type: "object"` is the only permitted assertion
-sibling; place other constraints on the referenced target. Unknown extension
-keywords ignored by the registry's Ajv may remain as annotations beside `$ref`.
+Draft-07 `$ref` objects with siblings evaluated by the registry's Ajv, including
+`$id` resource scope, are excluded from projection: draft-07 clients ignore
+those siblings while the runtime validator applies them. The MCP-required root
+`type: "object"` is the only permitted assertion sibling; place other constraints
+on the referenced target. Later-draft keywords and unknown extensions ignored
+by the registry's draft-07 Ajv may remain beside `$ref`.
 
 Schema failures retain bounded structural diagnostics: instance path, schema
 path, validation keyword, rejected additional property, and missing required

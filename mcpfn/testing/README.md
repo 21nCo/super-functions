@@ -122,7 +122,9 @@ scenario APIs for task execution and terminal-result assertions.
 `createMcpFnClientProfileSnapshot()`,
 `validateMcpFnClientProfileSnapshot()`, and
 `diffMcpFnClientProfileSnapshots()` create reviewable effective-catalog
-baselines. Portability validation compiles each schema using its declared
+baselines. A diff rejects contradictory aggregate and per-tool hashes in
+either direction; it does not recompute an aggregate from the stored tool hashes.
+Portability validation compiles each schema using its declared
 draft-07, 2019-09, or 2020-12 dialect and recursively reports reviewed
 compatibility-sensitive keywords. Invalid schemas, dialects, and references
 are errors; valid compatibility reductions are warnings unless policy promotes

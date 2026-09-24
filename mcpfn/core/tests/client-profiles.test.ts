@@ -808,6 +808,63 @@ it("rejects a draft-07 reference with a nested format assertion sibling", async 
   } finally { await client.close(); await server.close(); }
 });
 
+it("rejects a draft-07 reference whose sibling resource ID changes relative reference scope", async () => {
+  const schema = {
+    $schema: "http://json-schema.org/draft-07/schema#",
+    $id: "https://example.test/root/main",
+    type: "object" as const,
+    definitions: {
+      rootTarget: { $id: "https://example.test/root/target", definitions: { value: { type: "string" } } },
+      altTarget: { $id: "https://example.test/alt/target", definitions: { value: { type: "number" } } },
+    },
+    properties: { query: { $id: "https://example.test/alt/child", $ref: "target#/definitions/value" } },
+  };
+  const registry = new McpFnRegistry().register({
+    name: "scoped", description: "Scoped reference", inputSchema: schema,
+    handler: async () => structuredResult({ ok: true }),
+  });
+  const server = createMcpFnServer({ info: { name: "scoped-server", version: "1" }, registry,
+    clientProfiles: { profiles: [{ id: "noop", version: "1", matches: () => true }],
+      resolveVerifiedIdentity: () => ({ subject: "trusted" }) } });
+  const client = new Client({ name: "scoped-client", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left);
+    await expect(client.listTools()).rejects.toThrow(/Draft-07 \$ref assertion siblings/);
+  } finally { await client.close(); await server.close(); }
+});
+
+it.each([
+  ["dependentRequired", { query: ["other"] }],
+  ["dependentSchemas", { query: { $ref: "#/missing" } }],
+  ["maxContains", 0],
+  ["minContains", 2],
+  ["prefixItems", [{ $ref: "#/missing", type: "not-a-type" }]],
+  ["unevaluatedItems", false],
+  ["unevaluatedProperties", { $ref: "#/missing" }],
+] as const)("lists and calls a draft-07 reference with ignored %s sibling", async (keyword, value) => {
+  const schema = {
+    $schema: "http://json-schema.org/draft-07/schema#",
+    type: "object" as const,
+    properties: { query: { $ref: "#/definitions/text", [keyword]: value } },
+    definitions: { text: { type: "string" } },
+  };
+  const registry = new McpFnRegistry().register({
+    name: "ignored", description: "Ignored sibling", inputSchema: schema,
+    handler: async () => structuredResult({ ok: true }),
+  });
+  const server = createMcpFnServer({ info: { name: "ignored-server", version: "1" }, registry,
+    clientProfiles: { profiles: [{ id: "noop", version: "1", matches: () => true }],
+      resolveVerifiedIdentity: () => ({ subject: "trusted" }) } });
+  const client = new Client({ name: "ignored-client", version: "1" });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(right); await client.connect(left);
+    expect((await client.listTools()).tools[0].name).toBe("ignored");
+    expect(await client.callTool({ name: "ignored", arguments: { query: "hello" } })).toMatchObject({ structuredContent: { ok: true } });
+  } finally { await client.close(); await server.close(); }
+});
+
 it("accepts a draft-07 reference projection when its target closes the owned argument", async () => {
   const canonical = {
     $schema: "http://json-schema.org/draft-07/schema#",
