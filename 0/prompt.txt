@@ -1,0 +1,7 @@
+$use-skillplane publish mcpfn packages
+
+---
+
+<send_user_message_question_reply>
+[{"answer":"Stable `latest` (Recommended)","question":"For the seven changed mcpfn packages on `origin/dev`, should I publish stable versions (npm `latest`) or use a prerelease channel? The existing manifests already contain the next stable versions.","questionItemId":"[\"request_user_input_async\",\"REDACTED\",0]"}]
+</send_user_message_question_reply>
