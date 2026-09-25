@@ -13,6 +13,11 @@ from superfunctions.http import HttpMethod, Response, Route, RouteContext, SetCo
 
 from .config import get_plugin_config, resolve_runtime
 from .errors import to_authfn_error
+from .limits import (
+    AUTHFN_DATABASE_KEY_MAX_LENGTH,
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+    assert_database_key_length,
+)
 from .observability import (
     emit_auth_event,
     event_request_id,
@@ -197,7 +202,12 @@ async def authenticate_request(config: AuthFnConfig, request: Any) -> Optional[A
     return await ApiKeyService(config, api_key_config).authenticate(request)
 
 
-async def get_cookie_session_state(config: AuthFnConfig, request: Any) -> SessionState:
+async def get_cookie_session_state(
+    config: AuthFnConfig,
+    request: Any,
+    *,
+    touch: bool = True,
+) -> SessionState:
     runtime = resolve_runtime(config, request)
     cookie_policy = resolve_cookie_policy(config, request, runtime)
     cookies = _parse_cookies(_headers_dict(request).get("cookie", ""))
@@ -238,6 +248,12 @@ async def get_cookie_session_state(config: AuthFnConfig, request: Any) -> Sessio
     )
     if user is None:
         state.failure_reason = "missing"
+        return state
+
+    if not touch:
+        state.session_record = record
+        state.user = user
+        state.session = _build_user_session(record, user, runtime.region_id)
         return state
 
     now = _utcnow()
@@ -377,11 +393,37 @@ async def issue_session(
         "metadata": {},
     }
     payload = await _run_before_session_issue_hook(config, request, runtime, payload)
+    payload_user_id = payload.get("userId")
+    if not isinstance(payload_user_id, str) or not payload_user_id:
+        raise PluginAbortedError(
+            "beforeSessionIssue hook returned an invalid userId"
+        )
+    assert_database_key_length(
+        payload_user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+    )
+    # Existing v1 users may have IDs longer than the v2 bound. Preserve their
+    # ability to sign in while still bounding identities replaced by hooks or
+    # unpersisted caller input.
+    legacy_user = None
+    if (
+        payload_user_id == user.get("id")
+        and len(payload_user_id) > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ):
+        legacy_user = await config.database.find_one(
+            model="users",
+            where=[{"field": "id", "operator": "eq", "value": payload_user_id}],
+            namespace=config.namespace,
+        )
+    session_user_id = (
+        payload_user_id
+        if legacy_user is not None
+        else assert_database_key_length(payload_user_id, "userId")
+    )
     session_token = _create_opaque_token("st")
     csrf_token = _create_opaque_token("csrf")
     record = {
         "id": _create_opaque_token("sess"),
-        "userId": payload["userId"],
+        "userId": session_user_id,
         "tokenHash": _hash_secret(session_token),
         "csrfHash": _hash_secret(csrf_token),
         "methods": list(payload["methods"]),
@@ -416,6 +458,31 @@ async def issue_session(
         "cookies": issue_session_cookies(cookie_policy, session_token, csrf_token),
         "cookiePolicy": cookie_policy,
     }
+
+
+async def revoke_session_by_id(
+    config: AuthFnConfig,
+    session_id: str,
+    *,
+    user_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    record = await config.database.find_one(
+        model="sessions",
+        where=[{"field": "id", "operator": "eq", "value": session_id}],
+        namespace=config.namespace,
+    )
+    if record is None or (user_id is not None and record.get("userId") != user_id):
+        raise NotFoundError("Session not found", {"sessionId": session_id})
+    if record.get("revokedAt") is not None:
+        return record
+    revoked_at = _utcnow()
+    await config.database.update(
+        model="sessions",
+        where=[{"field": "id", "operator": "eq", "value": record["id"]}],
+        data={"revokedAt": revoked_at, "updatedAt": revoked_at},
+        namespace=config.namespace,
+    )
+    return {**record, "revokedAt": revoked_at, "updatedAt": revoked_at}
 
 
 def _create_base_routes(config: AuthFnConfig) -> List[Route]:
@@ -1148,7 +1215,9 @@ async def _sign_up_with_password(
     runtime = resolve_runtime(config, request)
     payload = {"primaryEmail": normalized_email, "metadata": profile or {}}
     payload = await _run_before_user_create_hook(config, request, runtime, payload)
-    resolved_email = _normalize_email(payload.get("primaryEmail"))
+    resolved_email = assert_database_key_length(
+        _normalize_email(payload.get("primaryEmail")), "primaryEmail"
+    )
     metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else profile or {}
     existing = await config.database.find_one(
         model="users",
@@ -1673,6 +1742,7 @@ __all__ = [
     "get_cookie_session_state",
     "issue_session",
     "issue_session_cookies",
+    "revoke_session_by_id",
     "json_error",
     "json_success",
     "resolve_cookie_policy",

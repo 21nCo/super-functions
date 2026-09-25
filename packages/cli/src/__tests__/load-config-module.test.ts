@@ -43,6 +43,28 @@ describe('loadConfigModule', () => {
     });
   });
 
+  it('preserves native ESM dependencies with top-level await', async () => {
+    const dependencyPath = path.join(testDir, 'async-dependency.mjs');
+    const configPath = path.join(testDir, 'async-config.ts');
+    fs.writeFileSync(
+      dependencyPath,
+      `export const status = await Promise.resolve('ready');`,
+      'utf8'
+    );
+    fs.writeFileSync(
+      configPath,
+      `
+      import { status } from './async-dependency.mjs';
+      export default { status };
+      `,
+      'utf8'
+    );
+
+    const loaded = await loadConfigModule(configPath);
+
+    expect(loaded.value).toEqual({ status: 'ready' });
+  });
+
   it('loads a named config export without requiring a second TS loader', async () => {
     const configPath = path.join(testDir, 'tool.config.ts');
     fs.writeFileSync(

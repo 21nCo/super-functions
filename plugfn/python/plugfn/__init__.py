@@ -17,8 +17,8 @@ Example usage:
 """
 
 __version__ = "0.0.1"
-__author__ = "SuperFunctions"
-__license__ = "Apache-2.0"
+__author__ = "21n"
+__license__ = "MIT"
 
 from .core.plug_fn import PlugFn, PlugFnConfig
 from .types import (

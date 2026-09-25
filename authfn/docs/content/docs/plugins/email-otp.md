@@ -13,33 +13,45 @@ The email-OTP plugin generates short-lived one-time codes and hands them to a de
 - `reset-password` — used by the password plugin's reset flow.
 
 ```ts
-import { authFnEmailOtpPlugin } from '@authfn/core';
+import { authfn, authFnPlugins } from 'authfn';
+import { authFnEmailOtpPlugin } from '@authfn/email-otp';
 
-authFnEmailOtpPlugin({
-  delivery: {
-    async send({ email, code, purpose, challengeId, metadata }) {
-      await yourMailer.send({
-        to: email,
-        subject: `Your code: ${code}`,
-        body: `Code: ${code} (purpose: ${purpose})`,
-      });
-      return { sent: true, metadata: { providerId: 'mailer-1' } };
+const authApp = authfn({
+  plugins: authFnPlugins(authFnEmailOtpPlugin()),
+});
+
+authApp.createServer({
+  database,
+  pluginRuntime: {
+    emailOtp: {
+      delivery: {
+        async send({ email, code, purpose, challengeId, metadata }) {
+          await yourMailer.send({
+            to: email,
+            subject: `Your code: ${code}`,
+            body: `Code: ${code} (purpose: ${purpose})`,
+          });
+          return { sent: true, metadata: { providerId: 'mailer-1' } };
+        },
+      },
+      challengeTtlSeconds: 600,
+      maxAttempts: 5,
     },
   },
-  challengeTtlSeconds: 600,
-  maxAttempts: 5,
 });
 ```
 
+`delivery` is required runtime config. The factory itself takes only optional schema overrides.
+
 ## Configuration
 
-| Option | Default | Notes |
-| --- | --- | --- |
-| `delivery` | required | The mail provider — see below. |
-| `codeGenerator` | 6-digit numeric | Function that returns the OTP. Override for vanity codes / longer alphabets. |
-| `now` | `() => new Date()` | Clock injection (for tests). |
-| `challengeTtlSeconds` | `600` | OTP lifetime. |
-| `maxAttempts` | `5` | Verification attempts per challenge before invalidation. |
+| Option | Stage | Default | Notes |
+| --- | --- | --- | --- |
+| `delivery` | `pluginRuntime.emailOtp` | required | The mail provider — see below. |
+| `codeGenerator` | `pluginRuntime.emailOtp` | 6-digit numeric | Function that returns the OTP. Override for vanity codes / longer alphabets. |
+| `now` | `pluginRuntime.emailOtp` | `() => new Date()` | Clock injection (for tests). |
+| `challengeTtlSeconds` | `pluginRuntime.emailOtp` | `600` | OTP lifetime. |
+| `maxAttempts` | `pluginRuntime.emailOtp` | `5` | Verification attempts per challenge before invalidation. |
 
 ### Delivery provider
 
@@ -149,11 +161,16 @@ The default `codeGenerator` produces a 6-digit numeric code. For longer codes or
 ```ts
 import { randomBytes } from 'node:crypto';
 
-authFnEmailOtpPlugin({
-  delivery,
-  codeGenerator: () => {
-    const bytes = randomBytes(4);
-    return [...bytes].map((b) => 'ABCDEFGHIJKLMNPQRSTUVWXYZ23456789'[b % 32]).join('');
+authApp.createServer({
+  database,
+  pluginRuntime: {
+    emailOtp: {
+      delivery,
+      codeGenerator: () => {
+        const bytes = randomBytes(4);
+        return [...bytes].map((b) => 'ABCDEFGHIJKLMNPQRSTUVWXYZ23456789'[b % 32]).join('');
+      },
+    },
   },
 });
 ```

@@ -383,3 +383,13 @@ If `extfn/cli` needs a generic capability that is not yet exported by `clifn`, t
 - `@clifn/core/prompt`
 
 Use these public subpaths directly; do not import from internal `dist/*` paths.
+
+## Application credentials and safe retry defaults
+
+Pass an explicit path to `createCredentialStore` for each product (for example its own config directory); the legacy default remains Conduct-specific. Writes hold an exclusive sibling `.lock`, write and fsync a unique mode-0600 temporary file, then rename it atomically. Concurrent writes fail with `CLIFN_CREDENTIAL_STORE_BUSY` rather than losing updates. After a process crash, stop all writers and inspect/remove only its stale lock before retrying. Symlink credential files are rejected. Filesystem permissions are a fallback, not encryption or an OS keychain.
+
+The synchronous `CredentialStore` interface is injectable into `createApiClient`. A consumer keychain adapter should use a product-specific service name and profile account, store each complete `{backend,key}` value atomically, and expose only profile names in diagnostics. An asynchronous OS keychain can be loaded at CLI startup into a short-lived in-memory implementation; persist changes through the keychain before reporting success. Never serialize keychain values to a config file as an implicit fallback.
+
+Only GET requests retry by default. `request({ ..., retrySafe: true })` opts in when the server guarantees idempotency for that operation; it does not manufacture such a guarantee. Non-replayable request bodies are not retried. A timed-out write may already have succeeded and must be reconciled.
+
+Executable naming belongs to the consumer package. Rex's `rex-agent` package should declare both `rex` and `rex-agent` bins targeting the same entrypoint, detect an existing `rex` command and document the fallback. Do not use forced installation to overwrite another package's executable.

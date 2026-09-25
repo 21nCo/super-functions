@@ -5,9 +5,27 @@ description: What authfn does and doesn't enforce, and how to add the limits you
 
 # Rate limiting
 
-authfn does **not** ship a rate-limiter. Rate limiting belongs at the edge of your platform — a CDN, a WAF, a gateway — where it can be enforced consistently across every service, with deterministic counters, and where it can deny traffic before any application code runs.
+authfn can enforce per-route limits through `createServer({ rateLimit })`. You should still put a limiter at the edge of your platform — a CDN, a WAF, a gateway — where it can deny traffic before any application code runs.
 
-This page documents what authfn *does* expose so you can wire your limiter to the right surface.
+```ts
+authApp.createServer({
+  database,
+  rateLimit: {
+    enabled: true,
+    mode: 'local', // 'strict' | 'best-effort' | 'local'
+    // Safe only when Cloudflare removes client-supplied copies of this header.
+    resolveClientIp: (request) => request.headers.get('cf-connecting-ip') ?? undefined,
+    policies: {
+      password: { ipLimit: 10, windowSeconds: 60 },
+      'otp-send': { ipLimit: 5, windowSeconds: 60 },
+    },
+  },
+});
+```
+
+Use `strict` with an atomic store, `best-effort` with a shared cache, or `local` for process-local protection. `resolveClientIp` must read a trusted platform or proxy context — forwarding headers are ignored unless you parse them there.
+
+This page also documents the logical replay protections the kernel already enforces, and how to add extra limits with middleware or hooks.
 
 ## What authfn already enforces
 
@@ -65,10 +83,10 @@ When the limit is exceeded, return a 429 with `Retry-After`. The first-party SDK
 If your limiter needs to know about plugin-specific context (e.g. the resolved `userId` after sign-in), use a `before*` hook to enforce a per-actor limit:
 
 ```ts
-import { AuthFnRateLimitedError } from '@authfn/core';
+import { AuthFnRateLimitedError } from 'authfn';
 
-createAuthFn({
-  // ...
+authApp.createServer({
+  database,
   hooks: {
     async beforeSessionIssue(ctx, input) {
       const ok = await limiter.consume(`session:${input.userId}`, 5, 60_000);

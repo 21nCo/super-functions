@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   McpFnRegistry,
   canonicalJson,
   createManifest,
   diffManifests,
+  sha256,
   structuredResult,
   validateManifest,
 } from "../src/index.js";
@@ -25,6 +26,13 @@ function registry(required: string[] = ["value"], description = "Store a value."
     handler: async () => structuredResult({ ok: true }),
   });
 }
+
+function selectManifestEngine(engine: "ajv" | "cfworker"): void {
+  vi.unstubAllGlobals();
+  if (engine === "cfworker") vi.stubGlobal("WebSocketPair", class {});
+}
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("McpFn manifests", () => {
   it("creates deterministic, self-validating manifests", () => {
@@ -62,6 +70,108 @@ describe("McpFn manifests", () => {
     expect(manifest.tools.map((tool) => tool.name)).toEqual(["a-b", "a_b"]);
     expect(validateManifest(manifest)).toEqual(manifest);
   });
+
+  it.each(["ajv", "cfworker"] as const)(
+    "rejects duplicate schema identifiers across manifest entries with %s",
+    (engine) => {
+      selectManifestEngine(engine);
+      const manifest = createManifest(
+        { name: "schema-identifiers", version: "1.0.0" },
+        registry().register({
+          name: "write",
+          description: "Write a value.",
+          inputSchema: { type: "object" },
+          handler: async () => structuredResult({ ok: true }),
+        }),
+      );
+      for (const tool of manifest.tools) {
+        tool.inputSchema = {
+          $id: "https://example.test/manifest-input",
+          type: "object",
+        };
+      }
+      const { hash: _oldHash, ...body } = manifest;
+      manifest.hash = sha256(body);
+
+      expect(() => validateManifest(manifest)).toThrow(/invalid JSON Schema/);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "rejects unresolved schema references in manifests with %s",
+    (engine) => {
+      selectManifestEngine(engine);
+      const manifest = createManifest(
+        { name: "unresolved-reference", version: "1.0.0" },
+        registry(),
+      );
+      manifest.tools[0]!.inputSchema = {
+        type: "object",
+        properties: { value: { $ref: "#/missing" } },
+      };
+      const { hash: _oldHash, ...body } = manifest;
+      manifest.hash = sha256(body);
+
+      expect(() => validateManifest(manifest)).toThrow(/invalid JSON Schema/);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "round-trips cross-schema references after manifest sorting with %s",
+    (engine) => {
+      selectManifestEngine(engine);
+      const schemaId = "https://example.test/shared-input";
+      const manifest = createManifest(
+        { name: "schema-references", version: "1.0.0" },
+        new McpFnRegistry()
+          .register({
+            name: "z-base",
+            description: "Define the shared input schema.",
+            inputSchema: {
+              $id: schemaId,
+              type: "object",
+              properties: { value: { type: "string" } },
+            },
+            handler: async ({ value }) => structuredResult({ value }),
+          })
+          .register({
+            name: "a-dependent",
+            description: "Use the shared input schema.",
+            inputSchema: {
+              type: "object",
+              properties: { payload: { $ref: schemaId } },
+            },
+            outputSchema: { type: "object", $ref: schemaId },
+            handler: async ({ payload }) => structuredResult(payload),
+          }),
+      );
+
+      expect(manifest.tools.map((tool) => tool.name)).toEqual(["a-dependent", "z-base"]);
+      expect(validateManifest(manifest)).toEqual(manifest);
+    },
+  );
+
+  it.each(["ajv", "cfworker"] as const)(
+    "round-trips anonymous local schema references with %s",
+    (engine) => {
+      selectManifestEngine(engine);
+      const manifest = createManifest(
+        { name: "local-references", version: "1.0.0" },
+        new McpFnRegistry().register({
+          name: "local-ref",
+          description: "Use a schema-local definition.",
+          inputSchema: {
+            type: "object",
+            definitions: { value: { type: "string" } },
+            properties: { value: { $ref: "#/definitions/value" } },
+          },
+          handler: async ({ value }) => structuredResult({ value }),
+        }),
+      );
+
+      expect(validateManifest(manifest)).toEqual(manifest);
+    },
+  );
 
   it("classifies required inputs as breaking and descriptions as behavioral", () => {
     const before = createManifest(

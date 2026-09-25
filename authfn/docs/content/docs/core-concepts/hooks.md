@@ -13,7 +13,8 @@ Hooks are the supported extension surface for cross-cutting concerns. They let y
 - trigger side effects (push to your audit log, send a welcome email),
 - abort flows (deny sign-in for a deactivated account).
 
-Hooks are configured at the kernel level (`config.hooks`) and at the plugin level (`plugin.hooks`). Both run; kernel hooks run first.
+Hooks are configured at the kernel level (`config.hooks`) and at the plugin
+level (`plugin.hooks`). Both run; plugin hooks run first in declaration order.
 
 ## The hook surface
 
@@ -85,11 +86,11 @@ interface AuthFnHookContext {
 ### Block disposable emails
 
 ```ts
-import { AuthFnValidationError } from '@authfn/core';
+import { AuthFnValidationError } from 'authfn';
 import { isDisposable } from './disposable.js';
 
-createAuthFn({
-  // ...
+authApp.createServer({
+  database,
   hooks: {
     beforeUserCreate(_ctx, input) {
       if (isDisposable(input.primaryEmail)) {
@@ -150,7 +151,7 @@ hooks: {
 ### Abort sign-in for deactivated accounts
 
 ```ts
-import { AuthFnPluginAbortedError } from '@authfn/core';
+import { AuthFnPluginAbortedError } from 'authfn';
 
 hooks: {
   async beforeSessionIssue(_ctx, input) {
@@ -168,8 +169,8 @@ hooks: {
 
 Hooks run in this order:
 
-1. Kernel-level `config.hooks.before*`.
-2. Plugin-level `plugin.hooks.before*`, in the order plugins were declared.
+1. Plugin-level `plugin.hooks.before*`, in the order plugins were declared.
+2. Kernel-level `config.hooks.before*`.
 3. The plugin's actual handler.
 4. Plugin-level `plugin.hooks.after*`, in the order plugins were declared.
 5. Kernel-level `config.hooks.after*`.
@@ -181,18 +182,21 @@ If any `before*` returns a modified input, every subsequent `before*` and the ha
 By default, throws from any hook fail the request. To downgrade specific `after*` hooks to "observe", use `hookFailurePolicy`:
 
 ```ts
-createAuthFn({
-  // ...
+authApp.createServer({
+  database,
   hooks: {
     afterUserCreate: pushToCrm,
-  },
-  hookFailurePolicy: {
-    afterUserCreate: 'observe',
   },
 });
 ```
 
-Plugin-authored `afterUserCreate` hooks set their own `hookFailurePolicy.afterUserCreate = 'observe'`. See [Plugins → Authoring](../plugins/authoring).
+Kernel-level `before*` hooks fail the request when they throw. Kernel-level
+`after*` hook failures are observed and emitted as `authfn.plugin.failed` with
+`pluginName: 'config'`; they do not fail an otherwise successful request.
+
+Plugin-authored `after*` hooks default to `'observe'`. Set
+`hookFailurePolicy: { afterUserCreate: 'fail' }` when that plugin must abort the
+request. See [Plugins → Authoring](../plugins/authoring).
 
 When a hook fails under the `'observe'` policy, an `authfn.plugin.failed` event is emitted with the hook name, plugin name, and a redacted error payload.
 

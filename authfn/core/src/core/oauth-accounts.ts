@@ -1,6 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import type { AuthFnRuntimeConfig, AuthFnSocialProfile, AuthFnSocialProviderId } from '../types.js';
 import { AuthFnNotFoundError } from './errors.js';
+import {
+  AUTHFN_DATABASE_KEY_MAX_LENGTH,
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+  assertAuthFnDatabaseKeyLength
+} from './limits.js';
+import { findUserById } from './users.js';
 
 export interface AuthFnOAuthAccountRecord {
   id: string;
@@ -79,11 +85,36 @@ export async function upsertOAuthAccount(
   config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   input: UpsertOAuthAccountInput
 ): Promise<AuthFnOAuthAccountRecord> {
+  const userIdLength = Array.from(input.userId).length;
+  assertAuthFnDatabaseKeyLength(
+    input.userId,
+    'userId',
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+  );
+  const provider = assertAuthFnDatabaseKeyLength(input.provider, 'provider') as AuthFnSocialProviderId;
   const existing = await findOAuthAccountByProviderAccountId(
     config,
-    input.provider,
+    provider,
     input.providerAccountId
   );
+  const providerAccountId = existing?.providerAccountId === input.providerAccountId
+    ? input.providerAccountId
+    : assertAuthFnDatabaseKeyLength(input.providerAccountId, 'providerAccountId');
+  const legacyUser = !existing && userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ? await findUserById(config, input.userId)
+    : null;
+  const userId = existing?.userId === input.userId
+    ? input.userId
+    : legacyUser
+      ? assertAuthFnDatabaseKeyLength(
+          input.userId,
+          'userId',
+          AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        )
+      : assertAuthFnDatabaseKeyLength(input.userId, 'userId');
+  const connectionId = existing?.connectionId === input.connectionId
+    ? input.connectionId
+    : assertAuthFnDatabaseKeyLength(input.connectionId, 'connectionId', 768);
   const timestamp = new Date();
 
   if (existing) {
@@ -91,8 +122,8 @@ export async function upsertOAuthAccount(
       model: 'oauth_accounts',
       where: [{ field: 'id', operator: 'eq', value: existing.id }],
       data: {
-        userId: input.userId,
-        connectionId: input.connectionId,
+        userId,
+        connectionId,
         email: input.email,
         profile: input.profile,
         updatedAt: timestamp
@@ -103,10 +134,10 @@ export async function upsertOAuthAccount(
 
   const record: AuthFnOAuthAccountRecord = {
     id: createIdentifier('oauth'),
-    userId: input.userId,
-    provider: input.provider,
-    providerAccountId: input.providerAccountId,
-    connectionId: input.connectionId,
+    userId,
+    provider,
+    providerAccountId,
+    connectionId,
     email: input.email,
     profile: input.profile,
     createdAt: timestamp,

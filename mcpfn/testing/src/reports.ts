@@ -1,0 +1,254 @@
+import type { McpFnDiagnosticPhase } from "@mcpfn/client";
+import { redactOAuthValue } from "@superfunctions/oauth-core";
+
+import {
+  disposeMcpFnTargetSuiteArtifactGuard,
+  preserveMcpFnTargetSuiteArtifact,
+} from "./artifact-guards.js";
+import type { McpFnTargetSuiteReport } from "./suite.js";
+
+declare const __MCPFN_TESTING_VERSION__: string;
+
+export const MCPFN_TESTING_VERSION = __MCPFN_TESTING_VERSION__;
+export const MCPFN_REPORT_SCHEMA_VERSION = "1.0.0";
+
+export type McpFnFailureLayer =
+  | "mcpfn-preflight"
+  | "authorization-server"
+  | "resource-server"
+  | "mcp-initialization"
+  | "scenario"
+  | "upstream-conformance";
+
+export interface McpFnReportFailure {
+  name: string;
+  message: string;
+  layer: McpFnFailureLayer;
+  code?: string;
+  phase?: string;
+  details?: Record<string, unknown>;
+}
+
+export interface McpFnJunitOptions {
+  /** Aggregate XML size cap after serialization. Defaults to 1 MiB. */
+  maxBytes?: number;
+}
+
+export interface McpFnTargetSuiteJsonOptions {
+  /** JSON indentation. Defaults to compact output; maximum 10 spaces. */
+  space?: number;
+  /** Include a final newline in the validated artifact. */
+  trailingNewline?: boolean;
+}
+
+/** Serialize the exact JSON representation while target proof is retained. */
+export function serializeMcpFnTargetSuiteReport(
+  report: McpFnTargetSuiteReport,
+  options: McpFnTargetSuiteJsonOptions = {},
+): string {
+  const space = options.space ?? 0;
+  if (!Number.isInteger(space) || space < 0 || space > 10) {
+    throw new TypeError("space must be an integer from 0 through 10");
+  }
+  const serialized = JSON.stringify(report, null, space) +
+    (options.trailingNewline ? "\n" : "");
+  return preserveMcpFnTargetSuiteArtifact(report, serialized);
+}
+
+/** Release target-owned proof after every required report encoding is complete. */
+export function disposeMcpFnTargetSuiteReport(report: McpFnTargetSuiteReport): void {
+  disposeMcpFnTargetSuiteArtifactGuard(report);
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function redactedFailureCause(error: unknown): Record<string, unknown> | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause === undefined) return undefined;
+  return objectRecord(redactOAuthValue(cause, {
+    maxDepth: 4,
+    maxArrayEntries: 20,
+    maxObjectEntries: 20,
+    maxStringLength: 1_024,
+  }));
+}
+
+function resourceDenied(
+  layer: McpFnFailureLayer,
+  record: Record<string, unknown>,
+  cause: Record<string, unknown> | undefined,
+): boolean {
+  if (layer === "authorization-server") return false;
+  return [cause?.code, cause?.status, record.code, record.status]
+    .some(value => [401, 403].includes(Number(value)));
+}
+
+export function normalizeMcpFnReportFailure(
+  error: unknown,
+  fallbackPhase?: McpFnDiagnosticPhase | "scenario" | "upstream-conformance",
+): McpFnReportFailure {
+  const redacted = redactOAuthValue(error, {
+    maxDepth: 6,
+    maxArrayEntries: 50,
+    maxObjectEntries: 50,
+    maxStringLength: 2_048,
+  });
+  const record = objectRecord(redacted) ?? {};
+  const phase = stringField(record.phase) ?? fallbackPhase;
+  const details = objectRecord(record.details);
+  let message = stringField(record.message) ?? String(
+    redactOAuthValue(error instanceof Error ? error.message : String(error)),
+  );
+  const causeRecord = redactedFailureCause(error);
+  const causeMessage = stringField(causeRecord?.message);
+  if (causeMessage && !message.includes(causeMessage)) message = `${message}: ${causeMessage}`;
+  const combinedDetails = causeRecord ? { ...details, cause: causeRecord } : details;
+  const layer = failureLayer(phase);
+  const deniedByResource = resourceDenied(layer, record, causeRecord);
+  return {
+    name: stringField(record.name) ?? "Error",
+    message,
+    layer: deniedByResource ? "resource-server" : layer,
+    ...(stringField(record.code) ? { code: stringField(record.code)! } : {}),
+    ...(phase ? { phase } : {}),
+    ...(combinedDetails ? { details: combinedDetails } : {}),
+  };
+}
+
+/** Serialize a redacted target-suite report as bounded JUnit XML. */
+export function createMcpFnTargetSuiteJUnit(
+  report: McpFnTargetSuiteReport,
+  options: McpFnJunitOptions = {},
+): string {
+  const maxBytes = options.maxBytes ?? 1_048_576;
+  validateArtifactCap(maxBytes);
+  const safe = redactOAuthValue(report, {
+    maxDepth: 10,
+    maxArrayEntries: 1_000,
+    maxObjectEntries: 200,
+    maxStringLength: 4_096,
+  }) as unknown as McpFnTargetSuiteReport;
+  // Redaction appends a string sentinel when an array exceeds its cap.
+  const results = safe.results.filter((result) => result && typeof result === "object" && typeof result.name === "string");
+  const omitted = report.results.length - results.length;
+  const cases = results.map((result) => {
+    const duration = Math.max(0, result.durationMs ?? 0) / 1_000;
+    let failure = "";
+    if (result.status !== "passed") {
+      const failureType = result.status === "failed" ? "scenario" : "incomplete";
+      failure = junitFailure(result.error ?? `Scenario ${result.status}`, failureType);
+    }
+    return `    <testcase name="${xml(result.name)}" classname="mcpfn.scenario" time="${duration.toFixed(3)}">${failure}</testcase>`;
+  });
+  if (safe.failure) {
+    cases.unshift(
+      `    <testcase name="${xml(safe.failure.phase ?? "target")}" classname="mcpfn.${xml(safe.failure.layer)}" time="0.000">${junitFailure(safe.failure.message, safe.failure.code ?? safe.failure.layer)}</testcase>`,
+    );
+  }
+  if (safe.status === "incomplete" || omitted > 0 || (!safe.ok && !safe.failure && results.every((result) => result.status === "passed"))) {
+    cases.push(`    <testcase name="suite-incomplete" classname="mcpfn.report" time="0.000">${junitFailure(safe.incompleteReason ?? "Suite evidence is incomplete or omitted", "incomplete")}</testcase>`);
+  }
+  if (cases.length === 0) {
+    cases.push(
+      '    <testcase name="target-suite" classname="mcpfn.target" time="0.000"></testcase>',
+    );
+  }
+  const failures = cases.filter((entry) => entry.includes("<failure ")).length;
+  let serialized = junitDocument(safe, cases, failures);
+  if (bytes(serialized) <= maxBytes) {
+    return preserveMcpFnTargetSuiteArtifact(report, serialized);
+  }
+
+  const boundedCases = [
+    `    <testcase name="artifact-cap" classname="mcpfn.report" time="0.000">${junitFailure("JUnit content exceeded maxBytes and was truncated", "incomplete")}</testcase>`,
+  ];
+  serialized = junitDocument(safe, boundedCases, 1, true);
+  if (bytes(serialized) > maxBytes) {
+    throw new Error("The minimum McpFn JUnit report exceeds maxBytes");
+  }
+  return preserveMcpFnTargetSuiteArtifact(report, serialized);
+}
+
+function junitDocument(
+  report: McpFnTargetSuiteReport,
+  cases: string[],
+  failures: number,
+  truncated = false,
+): string {
+  const suiteName = String(redactOAuthValue(`mcpfn:${report.target.kind}`));
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<testsuite name="${xml(suiteName)}" tests="${cases.length}" failures="${failures}" errors="0" skipped="0">`,
+    "  <properties>",
+    `    <property name="mcpfn.report.schema" value="${xml(MCPFN_REPORT_SCHEMA_VERSION)}"/>`,
+    `    <property name="mcpfn.testing.version" value="${xml(MCPFN_TESTING_VERSION)}"/>`,
+    `    <property name="node.version" value="${xml(report.runtime.node)}"/>`,
+    `    <property name="artifact.truncated" value="${truncated}"/>`,
+    "  </properties>",
+    ...cases,
+    "</testsuite>",
+    "",
+  ].join("\n");
+}
+
+function junitFailure(message: string, type: string): string {
+  const safe = String(redactOAuthValue(message, { maxStringLength: 4_096 }));
+  return `<failure type="${xml(type)}" message="${xml(safe)}">${xml(safe)}</failure>`;
+}
+
+function failureLayer(phase: string | undefined): McpFnFailureLayer {
+  if (phase === "resource-discovery" || phase === "transport-connect") {
+    return "resource-server";
+  }
+  if (
+    phase === "authorization-server-discovery" ||
+    phase === "client-registration" ||
+    phase === "authorization-request" ||
+    phase === "authorization-callback" ||
+    phase === "token-exchange" ||
+    phase === "token-refresh" ||
+    phase === "token-revocation"
+  ) {
+    return "authorization-server";
+  }
+  if (phase === "mcp-initialize" || phase === "capability-operation") {
+    return "mcp-initialization";
+  }
+  if (phase === "scenario") return "scenario";
+  if (phase === "upstream-conformance") return "upstream-conformance";
+  return "mcpfn-preflight";
+}
+
+function stringField(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  return undefined;
+}
+
+function xml(value: string): string {
+  return stripInvalidXmlControls(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function stripInvalidXmlControls(value: string): string {
+  return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\uFFFE\uFFFF\uD800-\uDFFF]/gu, "");
+}
+
+function validateArtifactCap(maxBytes: number): void {
+  if (!Number.isInteger(maxBytes) || maxBytes < 1_024) {
+    throw new Error("maxBytes must be an integer of at least 1024");
+  }
+}
+
+function bytes(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}

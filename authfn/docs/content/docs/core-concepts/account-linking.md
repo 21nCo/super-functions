@@ -23,7 +23,16 @@ interface AuthFnAccountLinkingConfig {
 }
 ```
 
-Pass it as `config.accountLinking` to `createAuthFn`.
+Pass it as `accountLinking` on `authfn()`:
+
+```ts
+const authApp = authfn({
+  accountLinking: {
+    oauthByVerifiedEmail: true,
+  },
+  plugins: authFnPlugins(/* … */),
+});
+```
 
 ## `oauthByVerifiedEmail`
 

@@ -4,5 +4,8 @@ export * from "./client.js";
 export * from "./client-profile-contracts.js";
 export * from "./conformance.js";
 export * from "./host-profiles.js";
+export * from "./host-authorization.js";
+export * from "./remote-target.js";
+export * from "./reports.js";
 export * from "./scenarios.js";
 export * from "./suite.js";

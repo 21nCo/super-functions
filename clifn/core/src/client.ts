@@ -1,6 +1,8 @@
 import { MissingProfileError, type CredentialStore } from "./credentials.js";
 
 export interface ApiRequestOptions {
+  /** Opt in only when the server guarantees idempotency for this operation. */
+  retrySafe?: boolean;
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   query?: Record<string, string | number | boolean | undefined>;
@@ -181,7 +183,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       const message = error instanceof Error ? error.message : "invalid request url";
       throw new HttpRequestError(auth.baseUrl, message, error);
     }
-    const maxRetries = isOneShotBody(options.body) ? 0 : retries;
+    const maxRetries = isOneShotBody(options.body) || (method !== "GET" && options.retrySafe !== true) ? 0 : retries;
 
     for (let attempt = 0; ; attempt += 1) {
       const controller = new AbortController();

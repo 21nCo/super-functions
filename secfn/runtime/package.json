@@ -1,0 +1,49 @@
+{
+  "name": "@secfn/runtime",
+  "version": "0.0.1",
+  "description": "Read-only runtime client and env materialization helpers for SecFn",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "secfn",
+    "secrets",
+    "runtime",
+    "env"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "dependencies": {
+    "@secfn/core": "0.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "secfn/runtime"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import type { Adapter, TableSchema } from '@superfunctions/db';
 import type { Route } from '@superfunctions/http';
@@ -25,14 +25,15 @@ import type {
   AuthFnSocialProfile,
   AuthFnSocialProviderId
 } from './types.js';
-import type {
-  AuthFnRuntimeConfig,
-  AuthFnHookContext,
-  AuthFnHooks,
-  AuthFnPlugin,
-  AuthFnPluginRuntimeContext,
-  AuthFnSchemaDefinition,
-  AuthFnUserRecord
+import {
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+  type AuthFnRuntimeConfig,
+  type AuthFnHookContext,
+  type AuthFnHooks,
+  type AuthFnPlugin,
+  type AuthFnPluginRuntimeContext,
+  type AuthFnSchemaDefinition,
+  type AuthFnUserRecord
 } from 'authfn';
 import { assertValidCsrf, issueSession, requireCookieSession } from 'authfn/core/sessions';
 import { issueSessionCookies } from 'authfn/core/cookies';
@@ -60,6 +61,7 @@ import {
   toAuthFnError
 } from 'authfn/core/errors';
 import { createUser, findUserById, findUserByPrimaryEmail } from 'authfn/core/users';
+import { assertAuthFnDatabaseKeyLength } from 'authfn/core/limits';
 import { createAuthFnRouteMeta } from 'authfn/http/router';
 import { jsonSuccess, resolveRequestId } from 'authfn/http/envelopes';
 import { emitAuthEvent } from 'authfn/core/observability';
@@ -965,6 +967,7 @@ async function resolveLocalIdentityFromProfile(
       existingAccountId: existingAccount.id
     };
   }
+  assertAuthFnDatabaseKeyLength(profile.providerAccountId, 'providerAccountId');
 
   const normalizedEmail = normalizeEmail(profile.email);
   if (normalizedEmail) {
@@ -1529,42 +1532,67 @@ async function resolveGitHubProfile(
   };
 }
 
+// This is the largest utf8mb4 VARCHAR that remains fully indexable under
+// InnoDB's 3,072-byte key limit. It preserves every legacy connection ID that
+// could participate in the existing exact unique MySQL index.
+const OAUTH_CONNECTION_ID_MAX_LENGTH = 768;
+
 function createOAuthSharedSchemas(): TableSchema[] {
-  return getOAuthStorageTableDefinitions().map((table) => ({
-    modelName: table.name,
-    fields: Object.fromEntries(
-      table.fields.map((field) => [
-        field.name,
-        {
-          type: mapOAuthFieldType(field.type),
-          required: !field.nullable,
-          unique: field.primaryKey || field.unique,
-          fieldName: field.name
-        }
-      ])
-    ),
-    indexes: table.indexes?.map((index) => ({
-      name: index.name,
-      fields: [...index.fields],
-      unique: index.unique
-    }))
-  }));
+  return getOAuthStorageTableDefinitions().map((table) => {
+    const keyFields = new Set(
+      table.fields
+        .filter((field) => field.primaryKey || field.unique)
+        .map((field) => field.name)
+    );
+    for (const index of table.indexes ?? []) {
+      for (const field of index.fields) keyFields.add(field);
+    }
+
+    return {
+      modelName: table.name,
+      fields: Object.fromEntries(
+        table.fields.map((field) => [
+          field.name,
+          {
+            type: mapOAuthFieldType(field.type),
+            required: !field.nullable,
+            unique: field.primaryKey || field.unique,
+            fieldName: field.name,
+            ...(field.type === 'text' && keyFields.has(field.name)
+              ? { maxLength: field.name === 'connection_id' ? OAUTH_CONNECTION_ID_MAX_LENGTH : 255 }
+              : {})
+          }
+        ])
+      ),
+      indexes: table.indexes?.map((index) => ({
+        name: index.name,
+        fields: [...index.fields],
+        unique: index.unique
+      }))
+    };
+  });
 }
 
 function createOAuthAccountsSchema(): TableSchema {
   return {
     modelName: 'oauth_accounts',
     fields: {
-      id: { type: 'string', required: true, fieldName: 'id' },
+      id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
       userId: {
         type: 'string',
         required: true,
         fieldName: 'user_id',
+        maxLength: AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
         references: { model: 'users', field: 'id', onDelete: 'cascade' }
       },
-      provider: { type: 'string', required: true, fieldName: 'provider' },
-      providerAccountId: { type: 'string', required: true, fieldName: 'provider_account_id' },
-      connectionId: { type: 'string', required: true, fieldName: 'connection_id' },
+      provider: { type: 'string', required: true, fieldName: 'provider', maxLength: 255 },
+      providerAccountId: { type: 'string', required: true, fieldName: 'provider_account_id', maxLength: 255 },
+      connectionId: {
+        type: 'string',
+        required: true,
+        fieldName: 'connection_id',
+        maxLength: OAUTH_CONNECTION_ID_MAX_LENGTH
+      },
       email: { type: 'string', required: false, fieldName: 'email' },
       profile: { type: 'json', required: false, fieldName: 'profile' },
       createdAt: { type: 'date', required: true, fieldName: 'created_at' },
@@ -1999,7 +2027,14 @@ function readIdTokenClaims(payload: Record<string, unknown>): {
 }
 
 function createConnectionId(providerId: AuthFnSocialProviderId, userId: string): string {
-  return `soc_${providerId}_${userId}_${createIdentifier('c').slice(2)}`;
+  const digest = createHash('sha256')
+    .update(providerId)
+    .update('\0')
+    .update(userId)
+    .update('\0')
+    .update(randomBytes(16))
+    .digest('hex');
+  return `soc_${providerId}_${digest}`;
 }
 
 function createIdentifier(prefix: string): string {

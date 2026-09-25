@@ -12,14 +12,18 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
-    "build:watch": "tsup --watch",
+    "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsup",
+    "build:watch": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsup --watch",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "test:watch": "vitest watch",
@@ -27,6 +31,14 @@
   },
   "dependencies": {
     "@searchfn/core": "^0.3.0"
+  },
+  "peerDependencies": {
+    "vitest": "^3.2.4"
+  },
+  "peerDependenciesMeta": {
+    "vitest": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^24.9.1",

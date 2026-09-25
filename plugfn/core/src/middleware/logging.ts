@@ -65,14 +65,13 @@ export class LoggingMiddleware {
   logActionError(
     provider: string,
     action: string,
-    error: Error,
+    _error: Error,
     duration: number,
     retries: number,
     userId?: string
   ): void {
     this.logger.error(`[${provider}] ${action} failed after ${retries} retries`, {
-      error: error.message,
-      stack: error.stack,
+      error: 'ACTION_EXECUTION_FAILED',
       duration,
       retries,
       userId,
@@ -97,7 +96,7 @@ export class LoggingMiddleware {
     try {
       await this.adapter.createActionLog(logEntry as unknown as Record<string, unknown>);
     } catch (error) {
-      this.logger.error('Failed to persist action log', { error });
+      this.logger.error('Failed to persist action log');
     }
   }
 

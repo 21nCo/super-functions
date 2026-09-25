@@ -1,6 +1,9 @@
-import Ajv, { type ValidateFunction } from "ajv";
-import addFormats from "ajv-formats";
 import { UriTemplate } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
+import {
+  createSchemaCompiler,
+  type CompiledSchema,
+  type SchemaCompiler,
+} from "./validation.js";
 import type {
   CallToolResult,
   CompleteResult,
@@ -33,13 +36,13 @@ import type {
 
 interface RegisteredTool<TContext> {
   definition: McpFnToolDefinition<TContext>;
-  validateInput: ValidateFunction;
-  validateOutput?: ValidateFunction;
+  validateInput: CompiledSchema;
+  validateOutput?: CompiledSchema;
 }
 
 interface RegisteredPrompt<TContext> {
   definition: McpFnPromptDefinition<TContext>;
-  validateArguments: ValidateFunction;
+  validateArguments: CompiledSchema;
 }
 
 interface RegisteredTemplate<TContext> {
@@ -373,11 +376,9 @@ export function assertPromptSchemaSupportsStringValues(
           : {}),
         allOf: schemas,
       };
-      let validate: ValidateFunction | undefined;
+      let validate: CompiledSchema | undefined;
       try {
-        validate = new Ajv({ strict: false, allowUnionTypes: true }).compile(
-          candidateSchema,
-        );
+        validate = createSchemaCompiler().compile(candidateSchema);
       } catch {
         hasStringWitness = false;
       }
@@ -446,7 +447,7 @@ export function promptArguments<TContext>(
 }
 
 export class McpFnRegistry<TContext = undefined> {
-  private readonly ajv: Ajv;
+  private readonly schemaCompiler: SchemaCompiler;
   private readonly tools = new Map<string, RegisteredTool<TContext>>();
   private readonly resources = new Map<
     string,
@@ -459,14 +460,7 @@ export class McpFnRegistry<TContext = undefined> {
   private readonly prompts = new Map<string, RegisteredPrompt<TContext>>();
 
   constructor() {
-    this.ajv = new Ajv({
-      allErrors: true,
-      strict: false,
-      allowUnionTypes: true,
-    });
-    // npm workspaces may install ajv-formats with its own compatible Ajv copy.
-    // The runtime contract is stable; erase only that duplicate-package type identity.
-    addFormats(this.ajv as never);
+    this.schemaCompiler = createSchemaCompiler();
   }
 
   register<TDefinition extends McpFnToolDefinition<TContext>>(
@@ -522,14 +516,13 @@ export class McpFnRegistry<TContext = undefined> {
       );
     }
 
-    let validateInput: ValidateFunction;
-    let validateOutput: ValidateFunction | undefined;
+    let validateInput: CompiledSchema;
+    let validateOutput: CompiledSchema | undefined;
     try {
-      validateInput = this.ajv.compile(definition.inputSchema);
-      validateOutput =
-        definition.outputSchema !== undefined
-          ? this.ajv.compile(definition.outputSchema)
-          : undefined;
+      validateInput = this.schemaCompiler.compile(definition.inputSchema);
+      validateOutput = definition.outputSchema !== undefined
+        ? this.schemaCompiler.compile(definition.outputSchema)
+        : undefined;
     } catch (error) {
       throw new McpFnValidationError(
         `Tool ${definition.name} contains an invalid JSON Schema`,
@@ -697,9 +690,9 @@ export class McpFnRegistry<TContext = undefined> {
         `Prompt ${definition.name} argumentsSchema must be an object schema`,
       );
     }
-    let validateArguments: ValidateFunction;
+    let validateArguments: CompiledSchema;
     try {
-      validateArguments = this.ajv.compile(promptSchema(definition));
+      validateArguments = this.schemaCompiler.compile(promptSchema(definition));
     } catch (error) {
       throw new McpFnValidationError(
         `Prompt ${definition.name} contains an invalid arguments JSON Schema`,

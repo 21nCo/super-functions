@@ -7,6 +7,11 @@ __license__ = "MIT"
 from .authfn import AuthFn, AuthFnProvider, create_authfn
 from .config import get_plugin, get_plugin_config, normalize_config, resolve_runtime
 from .http import create_authfn_openapi, create_authfn_routes
+from .limits import (
+    AUTHFN_DATABASE_KEY_MAX_LENGTH,
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+    assert_database_key_length,
+)
 from .plugins.api_keys import ApiKeyPluginConfig, ApiKeyService
 from .plugins.email_otp import EmailOtpPluginConfig, EmailOtpService
 from .plugins.gateway_routing import (
@@ -28,6 +33,13 @@ from .plugins.multi_region import (
     MultiRegionPluginConfig,
     MultiRegionRegionConfig,
     MultiRegionService,
+)
+from .plugins.placement_context import (
+    PlacementBoundAuthContext,
+    PlacementContextIssuer,
+    PlacementContextVerifier,
+    create_placement_context_issuer,
+    create_placement_context_verifier,
 )
 from .plugins.social_oauth import (
     SocialOAuthPluginConfig,
@@ -73,6 +85,7 @@ from .types import (
     OtpExpiredError,
     OtpInvalidError,
     OtpReplayedError,
+    PlacementContextInvalidError,
     PlacementDirectoryUnavailableError,
     PlacementMovingError,
     PluginAbortedError,
@@ -101,6 +114,9 @@ __all__ = [
     "__author__",
     "__license__",
     "AUTHFN_SCHEMA_VERSION",
+    "AUTHFN_DATABASE_KEY_MAX_LENGTH",
+    "AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH",
+    "assert_database_key_length",
     "AuthFn",
     "AuthFnProvider",
     "create_authfn",
@@ -128,6 +144,11 @@ __all__ = [
     "classify_route",
     "create_cell_routing_middleware",
     "move_identity_placement",
+    "PlacementBoundAuthContext",
+    "PlacementContextIssuer",
+    "PlacementContextVerifier",
+    "create_placement_context_issuer",
+    "create_placement_context_verifier",
     "SocialOAuthPluginConfig",
     "SocialOAuthService",
     "SocialProviderConfig",
@@ -173,6 +194,7 @@ __all__ = [
     "PluginAbortedError",
     "RateLimitedError",
     "RedirectUriDisallowedError",
+    "PlacementContextInvalidError",
     "PlacementDirectoryUnavailableError",
     "PlacementMovingError",
     "RegionMismatchError",
@@ -194,20 +216,3 @@ __all__ = [
     "authfn_multi_region_plugin",
     "get_schema",
 ]
-
-
-def __getattr__(name: str) -> object:
-    if name in {"SocialOAuthPluginConfig", "SocialOAuthService", "SocialProviderConfig"}:
-        from .plugins.social_oauth import (
-            SocialOAuthPluginConfig,
-            SocialOAuthService,
-            SocialProviderConfig,
-        )
-
-        values = {
-            "SocialOAuthPluginConfig": SocialOAuthPluginConfig,
-            "SocialOAuthService": SocialOAuthService,
-            "SocialProviderConfig": SocialProviderConfig,
-        }
-        return values[name]
-    raise AttributeError(name)

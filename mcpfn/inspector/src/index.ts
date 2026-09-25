@@ -23,7 +23,6 @@ import {
   createMcpFnScenario,
   type McpFnScenario,
 } from "@mcpfn/testing";
-import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 const SCENARIO_REDACTION_LIMITS = {
   maxDepth: 8,
@@ -32,6 +31,12 @@ const SCENARIO_REDACTION_LIMITS = {
   maxStringLength: 2_048,
 } as const;
 const SCENARIO_SECRET_MARKER = "${MCPFN_SECRET}";
+const SCENARIO_SECRET_MARKERS = [
+  SCENARIO_SECRET_MARKER,
+  "${SECRET}",
+  "${CREDENTIAL}",
+  ...Array.from({ length: 26 }, (_, index) => `\${${String.fromCodePoint(65 + index)}}`),
+];
 
 export interface McpFnInspectorSnapshot {
   formatVersion: 2;
@@ -75,6 +80,13 @@ export interface McpFnInspectorLimits {
   maxInventoryEntries?: number;
 }
 
+export interface McpFnInspectorSnapshotSerializationOptions {
+  /** JSON indentation. Defaults to compact output; maximum 10 spaces. */
+  space?: number;
+  /** Include a final newline in the validated artifact. */
+  trailingNewline?: boolean;
+}
+
 export type McpFnInspectorOperation =
   | { kind: "tools.call"; name: string; arguments?: Record<string, unknown> }
   | { kind: "tools.call:task"; name: string; arguments?: Record<string, unknown>; task?: { ttl?: number } }
@@ -101,10 +113,13 @@ export type McpFnExportedScenario = McpFnScenario;
 /** Headless inspector; graphical shells and the CLI consume this same engine. */
 export class McpFnInspector {
   private readonly events: McpFnInspectorTimelineEvent[] = [];
+  private readonly countedDrops = new WeakSet<McpFnInspectorTimelineEvent>();
   private readonly unsubscribes: Array<() => void>;
   private readonly maxEvents: number;
   private readonly maxTimelineBytes: number;
   private readonly maxInventoryEntries: number;
+  private readonly initialRedactionOmissions: number;
+  private observedRedactionOmissions = 0;
   private timelineBytes = 0;
   private droppedEvents = 0;
 
@@ -118,6 +133,8 @@ export class McpFnInspector {
       limits.maxInventoryEntries ?? 500,
       "maxInventoryEntries",
     );
+    const omissions = client.getRedactionOmissionCounts();
+    this.initialRedactionOmissions = omissions.clientEvents + omissions.diagnostics;
     this.unsubscribes = [
       client.onDiagnostic((event) => this.record("diagnostic", event.phase, event.at, event)),
       client.onEvent((event) => this.record("client", event.kind, event.at, event)),
@@ -154,36 +171,76 @@ export class McpFnInspector {
         : Promise.resolve(emptyInventory),
     ]);
     const droppedInventoryEntries = {
-      tools: tools.droppedItems,
-      resources: resources.droppedItems,
-      resourceTemplates: resourceTemplates.droppedItems,
-      prompts: prompts.droppedItems,
+      tools: this.client.preserveArtifactStructure(tools.droppedItems),
+      resources: this.client.preserveArtifactStructure(resources.droppedItems),
+      resourceTemplates: this.client.preserveArtifactStructure(resourceTemplates.droppedItems),
+      prompts: this.client.preserveArtifactStructure(prompts.droppedItems),
     };
     const inventoryComplete = Object.values(droppedInventoryEntries)
       .every((count) => count === 0);
-    return redactOAuthValue({
-      formatVersion: 2,
-      kind: "mcpfn.inspector-snapshot",
-      target: this.client.getTargetDescriptor(),
-      clientState: this.client.state,
-      server: this.client.getServerVersion(),
-      capabilities,
-      tools: tools.items,
-      resources: resources.items,
-      resourceTemplates: resourceTemplates.items,
-      prompts: prompts.items,
-      timeline: [...this.events],
-      droppedEvents: this.droppedEvents,
-      timelineComplete: this.droppedEvents === 0,
+    const omissions = this.client.getRedactionOmissionCounts();
+    const unobservedRedactionOmissions = Math.max(
+      0,
+      omissions.clientEvents + omissions.diagnostics -
+        this.initialRedactionOmissions - this.observedRedactionOmissions,
+    );
+    const droppedEvents = this.droppedEvents + unobservedRedactionOmissions;
+    const redaction = {
+      maxArrayEntries: Math.max(this.maxEvents, this.maxInventoryEntries, 1),
+      preserveKeys: false,
+    } as const;
+    const { kind, ...descriptor } = this.client.getTargetDescriptor();
+    const server = this.client.getServerVersion();
+    const snapshotKind = this.client.preserveArtifactStructure("mcpfn.inspector-snapshot");
+    const targetKind = this.client.preserveArtifactStructure(kind);
+    const clientState = this.client.preserveArtifactStructure(this.client.state);
+    const timeline = structuredClone(this.events);
+    const snapshotKeys = [
+      "formatVersion", "kind", "target", "clientState", "server", "capabilities",
+      "tools", "resources", "resourceTemplates", "prompts", "timeline",
+      "droppedEvents", "timelineComplete", "droppedInventoryEntries", "inventoryComplete",
+    ] as const;
+    for (const key of snapshotKeys) this.client.preserveArtifactStructure(key);
+    if (timeline.length > 0) {
+      for (const key of ["source", "at", "event"] as const) {
+        this.client.preserveArtifactStructure(key);
+      }
+      this.client.preserveArtifactStructure(1);
+    }
+    // Custom hooks receive payloads only; reconstruct authored discriminators.
+    const snapshot: McpFnInspectorSnapshot = {
+      formatVersion: this.client.preserveArtifactStructure(2),
+      kind: snapshotKind,
+      target: { ...this.client.redact(descriptor, redaction), kind: targetKind },
+      clientState,
+      server: server === undefined ? undefined : this.client.redact(server, redaction),
+      capabilities: capabilities === undefined ? undefined : this.client.redact(capabilities, redaction),
+      tools: this.client.redact(tools.items, redaction),
+      resources: this.client.redact(resources.items, redaction),
+      resourceTemplates: this.client.redact(resourceTemplates.items, redaction),
+      prompts: this.client.redact(prompts.items, redaction),
+      // Stored events already passed through the client hook; never reapply it.
+      timeline,
+      droppedEvents: this.client.preserveArtifactStructure(droppedEvents),
+      timelineComplete: this.client.preserveArtifactStructure(droppedEvents === 0),
       droppedInventoryEntries,
-      inventoryComplete,
-    }, {
-      maxArrayEntries: Math.max(
-        this.maxEvents,
-        this.maxInventoryEntries,
-        1,
-      ),
-    }) as unknown as McpFnInspectorSnapshot;
+      inventoryComplete: this.client.preserveArtifactStructure(inventoryComplete),
+    };
+    return this.client.preserveTargetArtifact(snapshot);
+  }
+
+  /** Serialize the exact snapshot representation while target proof is live. */
+  serializeSnapshot(
+    snapshot: McpFnInspectorSnapshot,
+    options: McpFnInspectorSnapshotSerializationOptions = {},
+  ): string {
+    const space = options.space ?? 0;
+    if (!Number.isInteger(space) || space < 0 || space > 10) {
+      throw new TypeError("space must be an integer from 0 through 10");
+    }
+    const serialized = JSON.stringify(snapshot, null, space) +
+      (options.trailingNewline ? "\n" : "");
+    return this.client.preserveTargetArtifactEncoding(serialized);
   }
 
   async run(operation: McpFnInspectorOperation): Promise<McpFnInspectorOperationResult> {
@@ -217,20 +274,70 @@ export class McpFnInspector {
     result: McpFnInspectorOperationResult,
   ): McpFnExportedScenario {
     const scenario = createMcpFnScenario(name, operation, result);
-    const redacted = redactOAuthValue(scenario, {
-      ...SCENARIO_REDACTION_LIMITS,
-      redactionMarker: SCENARIO_SECRET_MARKER,
-    });
+    // Top-level scenario keys are authored schema, not payload. If a credential
+    // collides with one of them, no replayable typed artifact can be emitted.
+    for (const key of Object.keys(scenario)) {
+      this.client.preserveArtifactStructure(key);
+    }
+    const { formatVersion, kind, sideEffect, ...payload } = scenario;
+    if (formatVersion === undefined || kind === undefined || sideEffect === undefined) {
+      throw new Error("Inspector scenario export requires normalized structure");
+    }
+    const safeKind = this.client.preserveArtifactStructure(kind);
+    const safeSideEffect = this.client.preserveArtifactStructure(sideEffect);
+    const safeFormatVersion = this.client.preserveArtifactStructure(formatVersion);
+    const secretMarker = selectScenarioSecretMarker(this.client);
+    let redacted: Record<string, unknown>;
+    try {
+      redacted = {
+        ...Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, this.client.redact(value, {
+          ...SCENARIO_REDACTION_LIMITS,
+          // These are user payloads, even when their keys resemble an envelope.
+          preserveKeys: false,
+          redactionMarker: secretMarker ?? "",
+        })])),
+        formatVersion: safeFormatVersion, kind: safeKind, sideEffect: safeSideEffect,
+      };
+    } catch {
+      this.client.preserveArtifactStructure("status");
+      this.client.preserveArtifactStructure("incompleteReason");
+      return this.client.preserveTargetArtifact({
+        formatVersion: safeFormatVersion,
+        kind: safeKind,
+        sideEffect: safeSideEffect,
+        name: "",
+        status: this.client.preserveArtifactStructure("incomplete"),
+        incompleteReason: this.client.redact(
+          "Inspector export omitted payload because credential redaction failed",
+          { preserveKeys: false, redactionMarker: "" },
+        ),
+      } as McpFnExportedScenario);
+    }
     const replaced = redacted as unknown as McpFnExportedScenario;
-    const exported = exceedsRedactionBounds(scenario, redacted, SCENARIO_REDACTION_LIMITS)
+    let incompleteReason: string | undefined;
+    if (secretMarker === undefined) {
+      incompleteReason = "Inspector export could not select a replayable redaction placeholder";
+    } else if (exceedsRedactionBounds(scenario, redacted, SCENARIO_REDACTION_LIMITS)) {
+      incompleteReason = "Inspector export exceeded redaction bounds and was truncated";
+    }
+    if (incompleteReason) {
+      this.client.preserveArtifactStructure("status");
+      this.client.preserveArtifactStructure("incompleteReason");
+    }
+    const exported = incompleteReason
       ? {
         ...replaced,
-        status: "incomplete" as const,
-        incompleteReason: "Inspector export exceeded redaction bounds and was truncated",
+        status: this.client.preserveArtifactStructure("incomplete"),
+        incompleteReason: this.client.redact(incompleteReason, {
+          preserveKeys: false,
+          redactionMarker: "",
+        }),
       }
       : replaced;
     const variables = collectVariables(exported);
-    return variables.length ? { ...exported, variables } : exported;
+    if (!variables.length) return this.client.preserveTargetArtifact(exported);
+    this.client.preserveArtifactStructure("variables");
+    return this.client.preserveTargetArtifact({ ...exported, variables });
   }
 
   timeline(): McpFnInspectorTimelineEvent[] {
@@ -243,26 +350,73 @@ export class McpFnInspector {
     at: string,
     raw: McpFnDiagnosticEvent | McpFnClientEvent,
   ): void {
-    let event: McpFnInspectorTimelineEvent = redactOAuthValue({
-      formatVersion: 1,
-      source,
-      kind,
+    let dropCounted = this.client.isRedactionOmission(raw);
+    const countDrop = () => {
+      if (dropCounted) return;
+      dropCounted = true;
+      this.droppedEvents += 1;
+    };
+    if (dropCounted) {
+      this.observedRedactionOmissions += 1;
+      this.droppedEvents += 1;
+    }
+    let safeSource: McpFnInspectorTimelineEvent["source"];
+    let safeKind: string;
+    let safeFormatVersion: 1;
+    try {
+      for (const key of ["formatVersion", "source", "kind", "at", "event"] as const) {
+        this.client.preserveArtifactStructure(key);
+      }
+      safeFormatVersion = this.client.preserveArtifactStructure(1);
+      safeSource = this.client.preserveArtifactStructure(source);
+      safeKind = this.client.preserveArtifactStructure(kind);
+    } catch {
+      countDrop();
+      return;
+    }
+    let event: McpFnInspectorTimelineEvent = {
+      formatVersion: safeFormatVersion,
+      source: safeSource,
+      kind: safeKind,
       at,
       event: raw,
-    }) as unknown as McpFnInspectorTimelineEvent;
-    let bytes = encodedBytes(event);
-    if (bytes > this.maxTimelineBytes) {
-      event = {
-        formatVersion: 1,
-        source,
-        kind,
-        at,
-        event: { truncated: true },
-      };
+    };
+    let bytes: number;
+    try {
+      event = structuredClone(event);
+      this.client.preserveTargetArtifact(event);
       bytes = encodedBytes(event);
-      this.droppedEvents += 1;
+    }
+    catch { countDrop(); return; }
+    if (dropCounted) this.countedDrops.add(event);
+    if (bytes > this.maxTimelineBytes) {
+      countDrop();
+      let truncatedKey: "truncated";
+      let truncatedValue: true;
+      try {
+        truncatedKey = this.client.preserveArtifactStructure("truncated");
+        truncatedValue = this.client.preserveArtifactStructure(true);
+      } catch {
+        return;
+      }
+      event = {
+        formatVersion: safeFormatVersion,
+        source: safeSource,
+        kind: safeKind,
+        at,
+        event: { [truncatedKey]: truncatedValue },
+      };
+      try {
+        this.client.preserveTargetArtifact(event);
+        bytes = encodedBytes(event);
+      } catch { return; }
+      this.countedDrops.add(event);
       if (bytes > this.maxTimelineBytes) return;
     }
+    this.retainTimelineEvent(event, bytes);
+  }
+
+  private retainTimelineEvent(event: McpFnInspectorTimelineEvent, bytes: number): void {
     this.events.push(event);
     this.timelineBytes += bytes;
     while (
@@ -271,7 +425,7 @@ export class McpFnInspector {
     ) {
       const removed = this.events.shift();
       if (removed) this.timelineBytes -= encodedBytes(removed);
-      this.droppedEvents += 1;
+      if (!removed || !this.countedDrops.has(removed)) this.droppedEvents += 1;
     }
   }
 
@@ -279,6 +433,20 @@ export class McpFnInspector {
     for (const unsubscribe of this.unsubscribes) unsubscribe();
     await this.client.close();
   }
+}
+
+function selectScenarioSecretMarker(client: McpFnClient): string | undefined {
+  return SCENARIO_SECRET_MARKERS.find((marker) => {
+    try {
+      return client.redact(marker, {
+        ...SCENARIO_REDACTION_LIMITS,
+        preserveKeys: false,
+        redactionMarker: "",
+      }) === marker;
+    } catch {
+      return false;
+    }
+  });
 }
 
 function validateLimit(value: number, name: string): number {
@@ -299,7 +467,10 @@ function exceedsRedactionBounds(
   depth = 0,
   ancestors = new WeakSet<object>(),
 ): boolean {
-  if (redacted === SCENARIO_SECRET_MARKER) return false;
+  if (
+    typeof redacted === "string" &&
+    /^\$\{[A-Z][A-Z0-9_]*\}$/.test(redacted)
+  ) return false;
   if (depth > limits.maxDepth) return true;
   if (typeof value === "string") return isTruncatedString(redacted, limits.maxStringLength);
   if (!value || typeof value !== "object" || value instanceof Date) return false;
@@ -463,7 +634,10 @@ function collectVariables(value: unknown): string[] {
     } else if (Array.isArray(entry)) {
       entry.forEach(visit);
     } else if (entry && typeof entry === "object") {
-      Object.values(entry as Record<string, unknown>).forEach(visit);
+      for (const [key, value] of Object.entries(entry as Record<string, unknown>)) {
+        visit(key);
+        visit(value);
+      }
     }
   };
   visit(value);

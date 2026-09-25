@@ -274,7 +274,7 @@ See CONTRIBUTING.md for guidelines on:
 
 ### License
 
-Apache-2.0
+MIT
 
 ### Authors
 

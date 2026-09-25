@@ -1,6 +1,6 @@
 {
   "name": "@mcpfn/auth",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Web Standard OAuth protected-resource middleware and enterprise-managed authorization helpers for MCP",
   "type": "module",
   "main": "dist/index.cjs",
@@ -38,7 +38,8 @@
     "@types/node": "^20.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "zod": "3.25.76"
   },
   "engines": { "node": ">=18.18.0" },
   "license": "MIT",

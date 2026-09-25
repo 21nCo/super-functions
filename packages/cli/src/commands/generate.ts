@@ -6,7 +6,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from '../utils/config.js';
 import { createAdapterFromConfig, getRawConnection } from '../utils/adapter-helper.js';
-import { diffTables, createMigrationPlan } from '../utils/schema-diff.js';
+import {
+  diffTables,
+  createMigrationPlan,
+  resolvePhysicalTableName,
+} from '../utils/schema-diff.js';
 import {
   generateDrizzleMigration,
   generatePrismaMigration,
@@ -17,11 +21,132 @@ import {
   introspectPostgres,
   introspectMySQL,
   introspectSQLite,
+  type DatabaseTable,
 } from '../utils/introspection.js';
 import { parseLibraryInitializations } from '../utils/parse-library-init.js';
 import { getSuperfunctionsRegistry, discoverSuperfunctionsPackages } from '../utils/discover-packages.js';
 import { autoDiscoverLibraryFiles, toRelativePaths } from '../utils/auto-discover.js';
 import type { TableSchema } from '@superfunctions/db';
+
+interface LibrarySchema {
+  libraryName?: string;
+  namespace: string;
+  version: number;
+  tables: TableSchema[];
+}
+
+const AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH = 767;
+const AUTHFN_LEGACY_USER_REFERENCE_COLUMNS = new Set([
+  'users.id',
+  'sessions.user_id',
+  'password_credentials.user_id',
+  'api_keys.user_id',
+  'two_factor_enrollments.user_id',
+  'two_factor_challenges.user_id',
+  'oauth_accounts.user_id',
+  'region_profiles.user_id',
+]);
+
+const AUTHFN_V1_UNBOUNDED_MYSQL_COLUMN_LENGTHS = new Map([
+  'users.id',
+  'users.primary_email',
+  'sessions.id',
+  'sessions.user_id',
+  'sessions.token_hash',
+  'api_keys.id',
+  'api_keys.user_id',
+  'api_keys.secret_hash',
+  'otp_challenges.id',
+  'otp_challenges.purpose',
+  'otp_challenges.email',
+  'region_profiles.id',
+  'region_profiles.user_id',
+  'region_profiles.region_id',
+  'native_handoff_codes.id',
+  'native_handoff_codes.code_hash',
+  'native_handoff_codes.source_session_id',
+  'password_credentials.id',
+  'password_credentials.user_id',
+  'two_factor_enrollments.id',
+  'two_factor_enrollments.user_id',
+  'two_factor_recovery_codes.id',
+  'two_factor_recovery_codes.enrollment_id',
+  'two_factor_recovery_codes.code_hash',
+  'two_factor_challenges.id',
+  'two_factor_challenges.user_id',
+  'oauth_states.state_id',
+  'oauth_states.expires_at',
+  'oauth_tokens.token_id',
+  'oauth_tokens.connection_id',
+  'oauth_consents.consent_id',
+  'oauth_consents.provider_id',
+  'oauth_consents.subject_key',
+  'oauth_revocation_failures.failure_id',
+  'oauth_revocation_failures.provider_id',
+  'oauth_revocation_failures.subject_key',
+  'oauth_accounts.id',
+  'oauth_accounts.user_id',
+  'oauth_accounts.provider',
+  'oauth_accounts.provider_account_id',
+  'oauth_accounts.connection_id',
+].map((column) => [
+  column,
+  column.endsWith('.connection_id')
+    ? 768
+    : AUTHFN_LEGACY_USER_REFERENCE_COLUMNS.has(column)
+      ? AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+      : 255,
+] as const));
+
+function authFnV1UnboundedMySqlColumnLengths(namespace: string): ReadonlyMap<string, number> {
+  return new Map(Array.from(
+    AUTHFN_V1_UNBOUNDED_MYSQL_COLUMN_LENGTHS,
+    ([modelColumn, length]) => {
+      const separator = modelColumn.indexOf('.');
+      const modelName = modelColumn.slice(0, separator);
+      const columnName = modelColumn.slice(separator + 1);
+      return [`${resolvePhysicalTableName(namespace, modelName)}.${columnName}`, length] as const;
+    },
+  ));
+}
+
+export function createPendingMigration(input: {
+  adapterType: 'drizzle' | 'prisma' | 'kysely';
+  dialect: Dialect;
+  library: LibrarySchema;
+  currentVersion: number;
+  currentTables: DatabaseTable[];
+}): {
+  tableDiffs: ReturnType<typeof diffTables>;
+  migrationFile: { filename: string; content: string };
+} | null {
+  const { adapterType, dialect, library, currentVersion, currentTables } = input;
+  if (currentVersion >= library.version) return null;
+
+  const preserveAuthFnV1MySqlText =
+    dialect === 'mysql' &&
+    (library.libraryName === 'authfn' || (!library.libraryName && library.namespace === 'authfn')) &&
+    currentVersion > 0 &&
+    library.version >= 2;
+  const tableDiffs = diffTables(library.tables, currentTables, library.namespace, {
+    preserveUnboundedMySqlStringColumnLengths: preserveAuthFnV1MySqlText
+      ? authFnV1UnboundedMySqlColumnLengths(library.namespace)
+      : undefined,
+  });
+  const plan = createMigrationPlan(
+    library.namespace,
+    currentVersion,
+    library.version,
+    tableDiffs,
+  );
+  const migrationFile = adapterType === 'drizzle'
+    ? generateDrizzleMigration(plan, library.tables, dialect)
+    : adapterType === 'prisma'
+      ? generatePrismaMigration(plan, library.tables, dialect)
+      : generateKyselyMigration(plan, library.tables, dialect);
+
+  return { tableDiffs, migrationFile };
+}
 
 /**
  * Extract database name from connection string
@@ -183,11 +308,7 @@ export async function generateMigrations(
   console.log('');
 
   // Load library configs and generate schemas
-  const librarySchemas: Array<{
-    namespace: string;
-    version: number;
-    tables: TableSchema[];
-  }> = [];
+  const librarySchemas: LibrarySchema[] = [];
 
   for (const init of libraryInitsToProcess) {
     try {
@@ -207,7 +328,8 @@ export async function generateMigrations(
       const schema = libraryPackage.getSchema(init.config);
 
       librarySchemas.push({
-        namespace: init.libraryName,
+        libraryName: init.libraryName,
+        namespace: init.config.namespace || init.libraryName,
         version: schema.version,
         tables: schema.schemas,
       });
@@ -286,51 +408,46 @@ export async function generateMigrations(
       console.log(`   Current version: ${currentVersion === 0 ? 'not installed' : `v${currentVersion}`}`);
       console.log(`   Target version: v${lib.version}`);
 
-      if (currentVersion >= lib.version) {
+      if (adapterType !== 'drizzle' && adapterType !== 'prisma' && adapterType !== 'kysely') {
+        console.log(`   ⚠️  Unsupported adapter type: ${adapterType}`);
+        continue;
+      }
+
+      const pending = createPendingMigration({
+        adapterType,
+        dialect: connection.dialect as Dialect,
+        library: lib,
+        currentVersion,
+        currentTables,
+      });
+      if (pending === null) {
         console.log(`   ✅ Already up-to-date\n`);
         continue;
       }
 
-      // Compare schemas
-      const tableDiffs = diffTables(lib.tables, currentTables, lib.namespace);
+      const { tableDiffs, migrationFile } = pending;
 
       if (tableDiffs.length === 0) {
-        console.log(`   ℹ️  No schema changes detected\n`);
-        continue;
+        console.log(`   ℹ️  No physical schema changes detected; generating version-only migration`);
       }
 
-      console.log(`   Found ${tableDiffs.length} change(s):`);
-      for (const diff of tableDiffs) {
-        if (diff.action === 'create') {
-          console.log(`      - CREATE table ${diff.tableName}`);
-        } else if (diff.action === 'alter') {
-          console.log(`      - ALTER table ${diff.tableName}`);
-          if (diff.missingColumns && diff.missingColumns.length > 0) {
-            console.log(`        + Add columns: ${diff.missingColumns.join(', ')}`);
+      if (tableDiffs.length > 0) {
+        console.log(`   Found ${tableDiffs.length} change(s):`);
+        for (const diff of tableDiffs) {
+          if (diff.action === 'create') {
+            console.log(`      - CREATE table ${diff.tableName}`);
+          } else if (diff.action === 'alter') {
+            console.log(`      - ALTER table ${diff.tableName}`);
+            if (diff.missingColumns && diff.missingColumns.length > 0) {
+              console.log(`        + Add columns: ${diff.missingColumns.join(', ')}`);
+            }
+            if (diff.extraColumns && diff.extraColumns.length > 0) {
+              console.log(`        - Extra columns: ${diff.extraColumns.join(', ')}`);
+            }
+          } else if (diff.action === 'drop') {
+            console.log(`      - DROP table ${diff.tableName}`);
           }
-          if (diff.extraColumns && diff.extraColumns.length > 0) {
-            console.log(`        - Extra columns: ${diff.extraColumns.join(', ')}`);
-          }
-        } else if (diff.action === 'drop') {
-          console.log(`      - DROP table ${diff.tableName}`);
         }
-      }
-
-      // Create migration plan
-      const plan = createMigrationPlan(lib.namespace, currentVersion, lib.version, tableDiffs);
-
-      // Generate migration file based on adapter type
-      let migrationFile: { filename: string; content: string };
-
-      if (adapterType === 'drizzle') {
-        migrationFile = generateDrizzleMigration(plan, lib.tables, connection.dialect as Dialect);
-      } else if (adapterType === 'prisma') {
-        migrationFile = generatePrismaMigration(plan, lib.tables, connection.dialect as Dialect);
-      } else if (adapterType === 'kysely') {
-        migrationFile = generateKyselyMigration(plan, lib.tables, connection.dialect as Dialect);
-      } else {
-        console.log(`   ⚠️  Unsupported adapter type: ${adapterType}`);
-        continue;
       }
 
       generatedFiles.push({

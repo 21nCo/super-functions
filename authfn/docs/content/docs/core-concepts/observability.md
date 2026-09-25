@@ -8,8 +8,8 @@ description: Every meaningful action in authfn emits a structured event. Wire on
 authfn emits a structured event for every meaningful action — sign-up, sign-in, OTP send, OAuth callback, region lookup, plugin failure, rate-limit. You provide one callback at construction; the kernel does the rest.
 
 ```ts
-createAuthFn({
-  // ...
+authApp.createServer({
+  database,
   observability: {
     emit(event) {
       myLogger.info(event.type, {
@@ -79,6 +79,10 @@ interface AuthFnEvent {
 | `authfn.routing.assertion_rejected` | A cell rejected a routing assertion before execution. |
 | `authfn.routing.directory_unavailable` | Placement storage failed closed. |
 | `authfn.routing.cell_unavailable` | Cell resolution or internal dispatch failed. |
+| `authfn.placement_context.issued` | Trusted consumer code derived placement-bound auth context. |
+| `authfn.placement_context.rejected` | Context derivation failed closed. |
+| `authfn.placement_context.verified` | A private-service placement assertion verified. |
+| `authfn.placement_context.verification_failed` | Signed placement context failed signature, audience, issuer, or expiry checks. |
 | `authfn.handoff.started` | Native handoff code created. |
 | `authfn.handoff.exchanged` | Native handoff code exchanged for a session. |
 | `authfn.handoff.failed` | Native handoff exchange failed. |

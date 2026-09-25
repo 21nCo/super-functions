@@ -150,6 +150,16 @@
   { "slug": "mdfn-contentfn", "path": "mdfn/contentfn", "name": "@mdfn/contentfn" },
   { "slug": "mdfn-searchfn", "path": "mdfn/searchfn", "name": "@mdfn/searchfn" },
   { "slug": "mdfn-ai", "path": "mdfn/ai", "name": "@mdfn/ai" },
+  { "slug": "plugfn", "path": "plugfn/core", "name": "plugfn" },
+  { "slug": "plugfn-admin", "path": "plugfn/admin", "name": "@plugfn/admin" },
+  { "slug": "plugfn-cli", "path": "plugfn/cli", "name": "@plugfn/cli" },
+  { "slug": "plugfn-client", "path": "plugfn/client", "name": "@plugfn/client" },
   { "slug": "sendfn", "path": "sendfn/typescript", "name": "sendfn" },
-  { "slug": "sendfn-admin", "path": "sendfn/admin", "name": "@sendfn/admin" }
+  { "slug": "sendfn-admin", "path": "sendfn/admin", "name": "@sendfn/admin" },
+  {"slug": "reviewfn-core", "path": "reviewfn/core", "name": "@superfunctions/reviewfn-core"},
+  {"slug": "reviewfn-cli", "path": "reviewfn/cli", "name": "@superfunctions/reviewfn-cli"},
+  {"slug": "reviewfn-harness-codex", "path": "reviewfn/harness-codex", "name": "@superfunctions/reviewfn-harness-codex"},
+  {"slug": "reviewfn-context-composio", "path": "reviewfn/context-composio", "name": "@superfunctions/reviewfn-context-composio"},
+  {"slug": "reviewfn-github", "path": "reviewfn/github", "name": "@superfunctions/reviewfn-github"},
+  {"slug": "reviewfn-testing", "path": "reviewfn/testing", "name": "@superfunctions/reviewfn-testing"}
 ]

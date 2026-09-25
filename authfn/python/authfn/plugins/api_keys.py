@@ -8,6 +8,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from ..limits import (
+    AUTHFN_DATABASE_KEY_MAX_LENGTH,
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+    assert_database_key_length,
+)
 from ..types import (
     ApiKeyRevokedError,
     AuthFnConfig,
@@ -81,6 +86,24 @@ class ApiKeyService:
         resource_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         _assert_valid_name(name)
+        if user_id is not None:
+            assert_database_key_length(
+                user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+            )
+            legacy_user = None
+            if len(user_id) > AUTHFN_DATABASE_KEY_MAX_LENGTH:
+                legacy_user = await self.config.database.find_one(
+                    model="users",
+                    where=[{"field": "id", "operator": "eq", "value": user_id}],
+                    namespace=self.config.namespace,
+                )
+            user_id = (
+                assert_database_key_length(
+                    user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+                )
+                if legacy_user is not None
+                else assert_database_key_length(user_id, "userId")
+            )
 
         stored_metadata = dict(metadata or {})
         if resource_ids is not None:
@@ -204,13 +227,24 @@ def authfn_api_key_plugin(config: Optional[ApiKeyPluginConfig] = None) -> AuthFn
             {
                 "modelName": "api_keys",
                 "fields": {
-                    "id": {"type": "string", "required": True, "fieldName": "id"},
-                    "userId": {"type": "string", "required": False, "fieldName": "user_id"},
+                    "id": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "id",
+                        "maxLength": 255,
+                    },
+                    "userId": {
+                        "type": "string",
+                        "required": False,
+                        "fieldName": "user_id",
+                        "maxLength": AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+                    },
                     "name": {"type": "string", "required": False, "fieldName": "name"},
                     "secretHash": {
                         "type": "string",
                         "required": True,
                         "fieldName": "secret_hash",
+                        "maxLength": 255,
                     },
                     "scopes": {"type": "json", "required": False, "fieldName": "scopes"},
                     "metadata": {"type": "json", "required": False, "fieldName": "metadata"},

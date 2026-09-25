@@ -24,6 +24,7 @@ from superfunctions.http import HttpError, Response
 
 from authfn import (
     AuthFnConfig,
+    AuthFnRuntimeResolution,
     RegionMismatchError,
     RegionNotFoundError,
     ValidationError,
@@ -191,6 +192,7 @@ async def test_multi_region_plugin_schema_routes_and_service_behaviour() -> None
         )()
     )
     assert {table["modelName"] for table in schema} == {"region_profiles"}
+    assert schema[0]["fields"]["userId"]["maxLength"] == 767
     assert {(route["method"], route["path"]) for route in routes} == {
         ("POST", "/regions/lookup"),
         ("GET", "/environment"),
@@ -287,6 +289,88 @@ async def test_multi_region_registration_updates_local_profile_and_directory() -
     assert len(directory.register_calls) == 1
     assert directory.register_calls[0]["userId"] == "user_2"
     assert db.storage["region_profiles"][0]["regionId"] == "us-east-1"
+
+
+@pytest.mark.asyncio
+async def test_multi_region_registration_rejects_custom_runtime_region_overflow() -> None:
+    db = MockDatabaseAdapter()
+    service = MultiRegionService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        MultiRegionPluginConfig(),
+    )
+
+    with pytest.raises(ValidationError, match="regionId must contain at most 255 characters"):
+        await service.register_user(
+            user_id="user_custom_runtime",
+            primary_email="custom@example.com",
+            runtime=AuthFnRuntimeResolution.model_validate(
+                {
+                    "issuer": "https://account.example.com",
+                    "baseUrl": "https://account.example.com",
+                    "regionId": "r" * 256,
+                }
+            ),
+        )
+
+    assert db.storage["region_profiles"] == []
+
+
+@pytest.mark.asyncio
+async def test_multi_region_registration_rejects_user_id_overflow() -> None:
+    db = MockDatabaseAdapter()
+    service = MultiRegionService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        MultiRegionPluginConfig(),
+    )
+
+    with pytest.raises(ValidationError, match="userId must contain at most 255 characters"):
+        await service.register_user(
+            user_id="u" * 256,
+            primary_email="custom@example.com",
+            runtime=AuthFnRuntimeResolution.model_validate(
+                {
+                    "issuer": "https://account.example.com",
+                    "baseUrl": "https://account.example.com",
+                    "regionId": "us-east-1",
+                }
+            ),
+        )
+
+    assert db.storage["region_profiles"] == []
+
+
+@pytest.mark.asyncio
+async def test_multi_region_registration_accepts_persisted_legacy_user_id() -> None:
+    db = MockDatabaseAdapter()
+    legacy_user_id = "u" * 300
+    await db.create(
+        model="users",
+        data={
+            "id": legacy_user_id,
+            "primaryEmail": "legacy@example.com",
+            "createdAt": datetime.utcnow(),
+            "updatedAt": datetime.utcnow(),
+        },
+        namespace="authfn",
+    )
+    service = MultiRegionService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        MultiRegionPluginConfig(),
+    )
+
+    registered = await service.register_user(
+        user_id=legacy_user_id,
+        primary_email="legacy@example.com",
+        runtime=AuthFnRuntimeResolution.model_validate(
+            {
+                "issuer": "https://account.example.com",
+                "baseUrl": "https://account.example.com",
+                "regionId": "us-east-1",
+            }
+        ),
+    )
+
+    assert registered["userId"] == legacy_user_id
 
 
 @pytest.mark.asyncio

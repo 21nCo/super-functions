@@ -1,0 +1,114 @@
+import { digestJson } from "./canonical.js";
+import { ReviewFnError } from "./errors.js";
+import type { FindingSeverity, Requirement, ReviewFnConfig, ReviewPolicy } from "./types.js";
+
+const categories = new Set<Requirement["category"]>(["behavior", "architecture", "compatibility", "test", "migration", "documentation", "non_goal", "other"]);
+const severities = new Set<FindingSeverity>(["critical", "high", "medium", "low", "info"]);
+
+function object(value: unknown, name: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `${name} must be an object.`);
+  return value as Record<string, unknown>;
+}
+
+function rejectUnknown(value: Record<string, unknown>, allowed: readonly string[], name: string): void {
+  const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
+  if (unknown.length) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `${name} contains unknown fields: ${unknown.join(", ")}.`);
+}
+
+function nonemptyString(value: unknown, name: string): void {
+  if (typeof value !== "string" || !value.trim()) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `${name} must be a nonempty string.`);
+}
+
+function positiveInteger(value: unknown, name: string): number {
+  if (!Number.isInteger(value) || (value as number) <= 0) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `${name} must be a positive integer.`);
+  return value as number;
+}
+
+function strings(value: unknown, name: string): string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.some((entry) => typeof entry !== "string" || entry.length === 0)) {
+    throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `${name} must be an array of non-empty strings.`);
+  }
+  return value;
+}
+
+export function validateConfig(input: unknown): ReviewFnConfig {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Configuration must be an object.");
+  const value = input as Record<string, unknown>;
+  rejectUnknown(value, ["version", "retainTranscript", "profile", "harness", "inference", "context", "review", "execution", "output", "retention", "fallback"], "configuration");
+  if (value.version !== 1) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Only configuration version 1 is supported.");
+  const config = structuredClone(value) as unknown as ReviewFnConfig;
+  if (config.retainTranscript !== undefined && typeof config.retainTranscript !== "boolean") throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "retainTranscript must be boolean.");
+  if (typeof config.profile !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(config.profile)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "profile must be 1–80 letters, digits, underscores or hyphens.");
+  rejectUnknown(object(config.harness, "harness"), ["adapter", "version", "executable"], "harness");
+  for (const key of ["adapter", "version"] as const) nonemptyString(config.harness[key], `harness.${key}`);
+  if (config.harness.executable !== undefined) nonemptyString(config.harness.executable, "harness.executable");
+  rejectUnknown(object(config.inference, "inference"), ["provider", "model", "auth", "credentialEnv"], "inference");
+  for (const key of ["provider", "model", "auth"] as const) nonemptyString(config.inference[key], `inference.${key}`);
+  if (config.inference.credentialEnv !== undefined) nonemptyString(config.inference.credentialEnv, "inference.credentialEnv");
+  if (!Array.isArray(config.context) || config.context.length === 0) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "At least one context adapter is required.");
+  for (const [index, item] of config.context.entries()) {
+    rejectUnknown(object(item, `context[${index}]`), ["adapter", "account", "expectedWorkspace", "issue", "paths"], `context[${index}]`);
+    nonemptyString(item.adapter, `context[${index}].adapter`);
+    if (item.paths !== undefined) strings(item.paths, `context[${index}].paths`);
+    for (const key of ["account", "expectedWorkspace", "issue"] as const) if (item[key] !== undefined && (typeof item[key] !== "string" || !item[key]!.trim())) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `context[${index}].${key} must be a nonempty string.`);
+  }
+  if (!config.review || !Array.isArray(config.review.categories) || config.review.categories.some((entry) => !categories.has(entry))) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "review.categories contains an unsupported category.");
+  rejectUnknown(object(config.review, "review"), ["categories", "evidenceRequired"], "review");
+  if (!config.execution || typeof config.execution.adapter !== "string" || !Array.isArray(config.execution.tests)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "execution adapter and tests are required.");
+  rejectUnknown(object(config.execution, "execution"), ["adapter", "tests", "timeoutMs", "maxOutputBytes"], "execution");
+  if (config.execution.adapter !== "local-isolated") throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `Unsupported execution adapter ${config.execution.adapter}.`);
+  if (config.review.evidenceRequired !== true) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Evidence is required.");
+  for (const [index, command] of config.execution.tests.entries()) strings(command, `execution.tests[${index}]`);
+  positiveInteger(config.execution.timeoutMs, "execution.timeoutMs");
+  positiveInteger(config.execution.maxOutputBytes, "execution.maxOutputBytes");
+  if (!config.output || !Array.isArray(config.output.destinations) || !["advisory", "gate"].includes(config.output.mode)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "output destinations and mode are required.");
+  rejectUnknown(object(config.output, "output"), ["destinations", "mode"], "output");
+  if (config.output.mode !== "advisory") throw new ReviewFnError("REVIEWFN_GATE_NOT_AUTHORIZED", "ReviewFn 0.1 is advisory-only; gate mode requires a separately calibrated and authorized release.");
+  if (config.output.destinations.some((entry) => !["local", "github"].includes(entry))) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "output.destinations contains an unsupported destination.");
+  if (!config.retention) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "retention is required.");
+  rejectUnknown(object(config.retention, "retention"), ["reportDays", "transcriptDays", "testLogDays"], "retention");
+  positiveInteger(config.retention.reportDays, "retention.reportDays");
+  positiveInteger(config.retention.transcriptDays, "retention.transcriptDays");
+  positiveInteger(config.retention.testLogDays, "retention.testLogDays");
+  if (!Array.isArray(config.fallback)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "fallback must be an array.");
+  for (const [index, fallback] of config.fallback.entries()) {
+    rejectUnknown(object(fallback, `fallback[${index}]`), ["harness", "provider", "model", "auth"], `fallback[${index}]`);
+    for (const key of ["harness", "provider", "model", "auth"] as const) nonemptyString(fallback[key], `fallback[${index}].${key}`);
+  }
+  return config;
+}
+
+export function validatePolicy(input: unknown): ReviewPolicy {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Policy must be an object.");
+  rejectUnknown(input as Record<string, unknown>, ["version", "mode", "requiredCategories", "blockingSeverities", "allowRepositoryTightening", "sourceAuthority", "limits", "retention"], "policy");
+  const policy = structuredClone(input) as ReviewPolicy;
+  if (policy.version !== 1 || !["advisory", "gate"].includes(policy.mode)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Unsupported policy version or mode.");
+  if (policy.mode !== "advisory") throw new ReviewFnError("REVIEWFN_GATE_NOT_AUTHORIZED", "ReviewFn 0.1 policy is advisory-only; gate mode requires a separately calibrated and authorized release.");
+  if (!Array.isArray(policy.requiredCategories) || policy.requiredCategories.some((entry) => !categories.has(entry))) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Policy has an unsupported required category.");
+  if (!Array.isArray(policy.blockingSeverities) || policy.blockingSeverities.some((entry) => !severities.has(entry))) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Policy has an unsupported blocking severity.");
+  rejectUnknown(object(policy.sourceAuthority, "sourceAuthority"), ["acceptedTypes", "commentsMayClarify", "waiverAuthorities"], "sourceAuthority");
+  rejectUnknown(object(policy.limits, "limits"), ["contextMaxSources", "contextMaxBytes", "contextMaxDepth", "harnessTimeoutMs", "testTimeoutMs", "maxOutputBytes", "maxFindings"], "limits");
+  rejectUnknown(object(policy.retention, "retention"), ["reportDays", "transcriptDays", "testLogDays"], "retention");
+  for (const name of ["contextMaxSources", "contextMaxBytes", "contextMaxDepth", "harnessTimeoutMs", "testTimeoutMs", "maxOutputBytes", "maxFindings"] as const) positiveInteger(policy.limits[name], `limits.${name}`);
+  if (typeof policy.allowRepositoryTightening !== "boolean" || typeof policy.sourceAuthority.commentsMayClarify !== "boolean" || !Array.isArray(policy.sourceAuthority.acceptedTypes) || !policy.sourceAuthority.acceptedTypes.length || policy.sourceAuthority.acceptedTypes.some(type => !["issue", "comment", "document", "repository_markdown", "other"].includes(type)) || !Array.isArray(policy.sourceAuthority.waiverAuthorities) || policy.sourceAuthority.waiverAuthorities.some(value => typeof value !== "string" || !value)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Invalid source authority policy.");
+  for (const name of ["reportDays", "transcriptDays", "testLogDays"] as const) positiveInteger(policy.retention[name], `retention.${name}`);
+  return policy;
+}
+
+export function applyRepositoryPolicy(base: ReviewPolicy, repository: ReviewPolicy): ReviewPolicy {
+  validatePolicy(base);
+  validatePolicy(repository);
+  if (!base.allowRepositoryTightening) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Repository policy extensions are disabled by the trusted policy.");
+  for (const category of base.requiredCategories) if (!repository.requiredCategories.includes(category)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `Repository policy removed required category ${category}.`);
+  for (const severity of base.blockingSeverities) if (!repository.blockingSeverities.includes(severity)) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `Repository policy removed blocking severity ${severity}.`);
+  for (const [name, limit] of Object.entries(base.limits)) {
+    if (repository.limits[name as keyof ReviewPolicy["limits"]] > limit) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `Repository policy increased ${name}.`);
+  }
+  if (repository.sourceAuthority.acceptedTypes.some(type => !base.sourceAuthority.acceptedTypes.includes(type)) || (!base.sourceAuthority.commentsMayClarify && repository.sourceAuthority.commentsMayClarify) || repository.sourceAuthority.waiverAuthorities.some(authority => !base.sourceAuthority.waiverAuthorities.includes(authority))) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", "Repository policy expanded source authority.");
+  for (const name of ["reportDays", "transcriptDays", "testLogDays"] as const) if (repository.retention[name] > base.retention[name]) throw new ReviewFnError("REVIEWFN_CONFIG_INVALID", `Repository policy increased retention ${name}.`);
+  return structuredClone(repository);
+}
+
+export function policyDigest(policy: ReviewPolicy): string {
+  return digestJson(validatePolicy(policy));
+}

@@ -14,9 +14,12 @@ description: User-owned API keys — issued, hashed, scoped, revocable.
 - **Revocable** — `DELETE /auth/api-keys/:id` flips `revokedAt`.
 
 ```ts
-import { authFnApiKeyPlugin } from '@authfn/core';
+import { authfn, authFnPlugins } from 'authfn';
+import { authFnApiKeyPlugin } from '@authfn/api-keys';
 
-authFnApiKeyPlugin({ secretPrefix: 'sk_live_' });
+const authApp = authfn({
+  plugins: authFnPlugins(authFnApiKeyPlugin({ secretPrefix: 'sk_live_' })),
+});
 ```
 
 ## Configuration

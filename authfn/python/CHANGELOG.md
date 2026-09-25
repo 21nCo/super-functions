@@ -8,10 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Nothing yet
+- Placement-bound auth context issuer (`create_placement_context_issuer`) for trusted in-process and private-service consumers.
 
 ### Changed
-- Nothing yet
+- Package description now describes the Python kernel rather than an API-key-only library.
+
+### Removed
+- Standalone-SDK wrapper debris: `setup.py`, interactive `publish.sh` / `Makefile`, unused `black` extra, dead `authfn/adapter.py`, and bootstrap docs (`IMPLEMENTATION_SUMMARY.md`, `PACKAGE_INFO.md`, `COMPARISON.md`, `INSTALLATION.md`, `QUICKSTART.md`, `PUBLISHING.md`).
+- Dead `__getattr__` lazy-import for `SocialOAuth*` names that were already exported at module load.
 
 ### Fixed
 - Nothing yet

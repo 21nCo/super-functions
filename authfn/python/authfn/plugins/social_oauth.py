@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -42,6 +43,11 @@ from superfunctions.oauth import (
 
 from ..config import get_plugin, get_plugin_config, resolve_runtime
 from ..errors import to_authfn_error
+from ..limits import (
+    AUTHFN_DATABASE_KEY_MAX_LENGTH,
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+    assert_database_key_length,
+)
 from ..observability import emit_auth_event, event_request_id
 from ..types import (
     AuthFnConfig,
@@ -61,6 +67,7 @@ from ..types import (
 
 SOCIAL_PROVIDER_IDS = ("google", "apple", "github")
 DEFAULT_STATE_TTL_SECONDS = 600
+OAUTH_CONNECTION_ID_MAX_LENGTH = 768
 
 
 def _utcnow() -> datetime:
@@ -640,8 +647,8 @@ class SocialOAuthService:
                 request=request,
                 runtime=resolved_runtime,
             )
-            connection_id = identity.get("connectionId") or _create_identifier(
-                f"soc_{provider_id}_{identity['user']['id']}"
+            connection_id = identity.get("connectionId") or _create_connection_id(
+                provider_id, identity["user"]["id"]
             )
             return OAuthFlowResolvedIdentity.model_validate(
                 {
@@ -796,6 +803,9 @@ class SocialOAuthService:
         runtime: AuthFnRuntimeResolution,
     ) -> Dict[str, Any]:
         profile = await self._resolve_profile(provider, token_set, settings)
+        provider_account_id = _read_identifier_string(
+            profile.get("providerAccountId"), "providerAccountId"
+        )
         existing_account = await self.config.database.find_one(
             model="oauth_accounts",
             where=[
@@ -803,12 +813,13 @@ class SocialOAuthService:
                 {
                     "field": "providerAccountId",
                     "operator": "eq",
-                    "value": profile["providerAccountId"],
+                    "value": provider_account_id,
                 },
             ],
             namespace=self.config.namespace,
         )
         if existing_account is not None:
+            profile["providerAccountId"] = provider_account_id
             user = await self.config.database.find_one(
                 model="users",
                 where=[{"field": "id", "operator": "eq", "value": existing_account["userId"]}],
@@ -823,6 +834,10 @@ class SocialOAuthService:
                 "connectionId": existing_account.get("connectionId"),
                 "profile": profile,
             }
+
+        profile["providerAccountId"] = assert_database_key_length(
+            provider_account_id, "providerAccountId"
+        )
 
         email = _normalize_email(profile.get("email"))
         if email:
@@ -873,6 +888,16 @@ class SocialOAuthService:
             },
         }
         user = await self._run_before_user_create(request, runtime, user)
+        user_id = user.get("id")
+        if not isinstance(user_id, str) or not user_id:
+            raise PluginAbortedError(
+                "beforeUserCreate hook returned an invalid id"
+            )
+        user["id"] = assert_database_key_length(user_id, "id")
+        if user.get("primaryEmail"):
+            user["primaryEmail"] = assert_database_key_length(
+                _normalize_email(user["primaryEmail"]) or "", "primaryEmail"
+            )
         await self.config.database.create(
             model="users",
             data=user,
@@ -937,6 +962,9 @@ class SocialOAuthService:
         email: Optional[str],
         profile: Optional[Dict[str, Any]],
     ) -> None:
+        assert_database_key_length(
+            user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        )
         existing = await self.config.database.find_one(
             model="oauth_accounts",
             where=[
@@ -945,9 +973,26 @@ class SocialOAuthService:
             ],
             namespace=self.config.namespace,
         )
+        legacy_user = None
+        if existing is None and len(user_id) > AUTHFN_DATABASE_KEY_MAX_LENGTH:
+            legacy_user = await self.config.database.find_one(
+                model="users",
+                where=[{"field": "id", "operator": "eq", "value": user_id}],
+                namespace=self.config.namespace,
+            )
+        if existing is not None and existing.get("userId") == user_id:
+            stored_user_id = assert_database_key_length(
+                user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+            )
+        elif legacy_user is not None:
+            stored_user_id = assert_database_key_length(
+                user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+            )
+        else:
+            stored_user_id = assert_database_key_length(user_id, "userId")
         now = self.plugin_config.now()
         payload = {
-            "userId": user_id,
+            "userId": stored_user_id,
             "provider": provider,
             "providerAccountId": provider_account_id,
             "connectionId": connection_id,
@@ -1125,7 +1170,12 @@ def _social_schema() -> List[Dict[str, Any]]:
         {
             "modelName": "oauth_states",
             "fields": {
-                "state_id": {"type": "string", "required": True, "fieldName": "state_id"},
+                "state_id": {
+                    "type": "string",
+                    "required": True,
+                    "fieldName": "state_id",
+                    "maxLength": 255,
+                },
                 "provider_id": {"type": "string", "required": True, "fieldName": "provider_id"},
                 "subject_kind": {
                     "type": "string",
@@ -1163,6 +1213,7 @@ def _social_schema() -> List[Dict[str, Any]]:
                     "type": "string",
                     "required": True,
                     "fieldName": "expires_at",
+                    "maxLength": 255,
                 },
                 "consumed_at": {
                     "type": "string",
@@ -1175,7 +1226,12 @@ def _social_schema() -> List[Dict[str, Any]]:
         {
             "modelName": "oauth_tokens",
             "fields": {
-                "token_id": {"type": "string", "required": True, "fieldName": "token_id"},
+                "token_id": {
+                    "type": "string",
+                    "required": True,
+                    "fieldName": "token_id",
+                    "maxLength": 255,
+                },
                 "tenant_id": {"type": "string", "required": True, "fieldName": "tenant_id"},
                 "user_id": {"type": "string", "required": True, "fieldName": "user_id"},
                 "provider_id": {"type": "string", "required": True, "fieldName": "provider_id"},
@@ -1183,6 +1239,7 @@ def _social_schema() -> List[Dict[str, Any]]:
                     "type": "string",
                     "required": True,
                     "fieldName": "connection_id",
+                    "maxLength": OAUTH_CONNECTION_ID_MAX_LENGTH,
                 },
                 "encrypted_payload": {
                     "type": "string",
@@ -1211,13 +1268,29 @@ def _social_schema() -> List[Dict[str, Any]]:
         {
             "modelName": "oauth_accounts",
             "fields": {
-                "id": {"type": "string", "required": True, "fieldName": "id"},
-                "userId": {"type": "string", "required": True, "fieldName": "user_id"},
-                "provider": {"type": "string", "required": True, "fieldName": "provider"},
+                "id": {
+                    "type": "string",
+                    "required": True,
+                    "fieldName": "id",
+                    "maxLength": 255,
+                },
+                "userId": {
+                    "type": "string",
+                    "required": True,
+                    "fieldName": "user_id",
+                    "maxLength": AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+                },
+                "provider": {
+                    "type": "string",
+                    "required": True,
+                    "fieldName": "provider",
+                    "maxLength": 255,
+                },
                 "providerAccountId": {
                     "type": "string",
                     "required": True,
                     "fieldName": "provider_account_id",
+                    "maxLength": 255,
                 },
                 "connectionId": {
                     "type": "string",
@@ -1372,6 +1445,17 @@ def _create_identifier(prefix: str) -> str:
     return f"{prefix}_{secrets.token_hex(8)}"
 
 
+def _create_connection_id(provider_id: str, user_id: str) -> str:
+    digest = hashlib.sha256(
+        provider_id.encode("utf-8")
+        + b"\0"
+        + user_id.encode("utf-8")
+        + b"\0"
+        + secrets.token_bytes(16)
+    ).hexdigest()
+    return f"soc_{provider_id}_{digest}"
+
+
 def _infer_callback_mode(return_to: Optional[str]) -> str:
     return "redirect" if return_to else "json"
 
@@ -1426,6 +1510,8 @@ def _map_oauth_error(error: Exception) -> Exception:
     details = getattr(error, "details", None)
     if code == ValidationError.code:
         return ValidationError(str(error), details)
+    if code == PluginAbortedError.code:
+        return PluginAbortedError(str(error), details)
     if code == OAuthCallbackInvalidError.code:
         return OAuthCallbackInvalidError(str(error), details)
     if code == RedirectUriDisallowedError.code:
@@ -1467,6 +1553,16 @@ def _parse_json_object(value: Any) -> Optional[Dict[str, Any]]:
         parsed = json.loads(value)
         return dict(parsed) if isinstance(parsed, dict) else None
     return None
+
+
+def _read_identifier_string(value: Any, field_name: str) -> str:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, float) and math.isfinite(value):
+        return str(value)
+    raise ValidationError(f"{field_name} is required", {"field": field_name})
 
 
 def _parse_json_array(value: Any) -> Optional[List[Any]]:

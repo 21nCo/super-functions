@@ -84,9 +84,7 @@ async function importConfigModule(
       extensions: ['.ts', '.js', '.mjs', '.cjs', '.json'],
     });
 
-    return (await Promise.resolve(
-      loader(resolvedPath)
-    )) as Record<string, unknown>;
+    return (await loader.import(resolvedPath)) as Record<string, unknown>;
   }
 
   return (await import(pathToFileURL(resolvedPath).href)) as Record<

@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { Adapter } from '@superfunctions/db';
 import type { AuthFnRuntimeConfig, AuthFnUserRecord } from '../types.js';
 import { AuthFnConflictError } from './errors.js';
+import { assertAuthFnDatabaseKeyLength } from './limits.js';
 
 export interface CreateUserInput {
   id?: string;
@@ -16,6 +17,7 @@ export async function createUser(
 ): Promise<AuthFnUserRecord> {
   const now = new Date();
   const primaryEmail = normalizeEmail(input.primaryEmail);
+  if (primaryEmail) assertAuthFnDatabaseKeyLength(primaryEmail, 'primaryEmail');
   if (primaryEmail) {
     const existingUser = await findUserByPrimaryEmail(config, primaryEmail);
     if (existingUser) {
@@ -27,7 +29,7 @@ export async function createUser(
   }
 
   const user: AuthFnUserRecord = {
-    id: input.id ?? createIdentifier('user'),
+    id: assertAuthFnDatabaseKeyLength(input.id ?? createIdentifier('user'), 'id'),
     primaryEmail,
     emailVerifiedAt: input.emailVerifiedAt ?? null,
     metadata: input.metadata,

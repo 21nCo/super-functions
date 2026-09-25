@@ -27,7 +27,7 @@ A focused example that exercises the **password plugin** + **session lifecycle**
 | Layer | Choice |
 | --- | --- |
 | Server | Express + `@superfunctions/http-express` |
-| Auth kernel | `@authfn/core` with `authFnPasswordPlugin` |
+| Auth kernel | `authfn` with `@authfn/password` |
 | Database | Postgres + Drizzle |
 | Schema generation | `@superfunctions/cli` |
 | Client | Svelte 5 + Vite |

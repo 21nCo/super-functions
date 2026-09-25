@@ -8,35 +8,45 @@ description: Email + password sign-up, sign-in, reset via OTP, and optional Have
 The password plugin turns an `AuthFn` instance into something a user can sign up to with `{ email, password }`. It also wires the password-reset flow through the email-OTP plugin.
 
 ```ts
-import { authFnPasswordPlugin } from '@authfn/core';
+import { authfn, authFnPlugins } from 'authfn';
+import { authFnPasswordPlugin } from '@authfn/password';
 
-createAuthFn({
-  // ...
-  plugins: [authFnPasswordPlugin()],
+const authApp = authfn({
+  plugins: authFnPlugins(authFnPasswordPlugin()),
 });
 ```
 
 ## Configuration
 
+Policy options go on the plugin factory. Password-reset OTP delivery belongs in `createServer({ pluginRuntime })`.
+
 ```ts
 authFnPasswordPlugin({
   compromisedPasswordChecker: hibpChecker,
   requireEmailVerifiedForSignIn: false,
-  otp: {                                // password-reset OTP overrides
-    delivery: yourDelivery,             // optional; falls back to email-otp's delivery
-    challengeTtlSeconds: 600,
-    maxAttempts: 5,
+});
+
+authApp.createServer({
+  database,
+  pluginRuntime: {
+    password: {
+      otp: {
+        delivery: yourDelivery,
+        challengeTtlSeconds: 600,
+        maxAttempts: 5,
+      },
+    },
   },
 });
 ```
 
-| Option | Default | Notes |
-| --- | --- | --- |
-| `compromisedPasswordChecker` | `undefined` | A function that checks the password against breach data (e.g. HIBP). Called on sign-up and reset. Throws `AuthFnValidationError` if compromised. |
-| `requireEmailVerifiedForSignIn` | `false` | If `true`, sign-in fails with `AUTHFN_EMAIL_NOT_VERIFIED` until the user verifies their email. |
-| `otp.delivery` | falls back to `authFnEmailOtpPlugin`'s delivery | Per-flow OTP delivery for password resets. |
-| `otp.challengeTtlSeconds` | `600` (10 min) | TTL for password-reset OTPs. |
-| `otp.maxAttempts` | `5` | Maximum verification attempts per challenge. |
+| Option | Stage | Default | Notes |
+| --- | --- | --- | --- |
+| `compromisedPasswordChecker` | factory | `undefined` | A function that checks the password against breach data (e.g. HIBP). Called on sign-up and reset. Throws `AuthFnValidationError` if compromised. |
+| `requireEmailVerifiedForSignIn` | factory | `false` | If `true`, sign-in fails with `AUTHFN_EMAIL_NOT_VERIFIED` until the user verifies their email. |
+| `pluginRuntime.password.otp.delivery` | runtime | required for reset | Per-flow OTP delivery for password resets. |
+| `pluginRuntime.password.otp.challengeTtlSeconds` | runtime | `600` (10 min) | TTL for password-reset OTPs. |
+| `pluginRuntime.password.otp.maxAttempts` | runtime | `5` | Maximum verification attempts per challenge. |
 
 ## Routes
 
@@ -144,7 +154,7 @@ When a user is already authenticated and `accountLinking.passwordForAuthenticate
 `compromisedPasswordChecker` lets you wire HIBP, your own breach corpus, or a deny-list:
 
 ```ts
-import type { AuthFnPasswordCompromiseChecker } from '@authfn/core';
+import type { AuthFnPasswordCompromiseChecker } from 'authfn';
 
 const hibpChecker: AuthFnPasswordCompromiseChecker = async ({ password }) => {
   const sha1 = await sha1Hex(password);

@@ -42,13 +42,22 @@ function stripPrefix(request: Request, prefix: string): Request {
 
 `bun:sqlite` gives you a file-backed database with zero config — combined with authfn this is the smallest possible self-hosted auth deployment:
 
+Generate the Drizzle schema for your enabled authfn plugins and apply its
+migrations before starting the server (see the [Drizzle adapter](../adapters/database/drizzle)).
+Pass that same schema to Drizzle so the adapter can resolve authfn's tables.
+
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/bun-sqlite';
 import { Database } from 'bun:sqlite';
+import * as schema from './db/generated/authfn-schema.js';
 
-const db = drizzle(new Database('authfn.db'));
-const auth = createAuthFn({ database: drizzleAdapter(db), /* ... */ });
+const db = drizzle(new Database('authfn.db'), { schema });
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({
+  database: drizzleAdapter({ db, dialect: 'sqlite' }),
+});
 ```
 
 ## Edge runtimes

@@ -7,7 +7,6 @@ import type {
   Task,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { McpFnClientEvent, McpFnClientEventKind } from "@mcpfn/client";
-import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 import { McpFnAssertionError, assertStructuredTextParity, stableJson } from "./assertions.js";
 import type { McpFnTestClient } from "./client.js";
@@ -145,6 +144,8 @@ export interface McpFnScenarioResult {
   error?: string;
   /** Observed client events discarded while this scenario was running. */
   droppedObservedEvents?: number;
+  /** Dropped observed events whose original payload could not be safely redacted. */
+  redactionOmittedObservedEvents?: number;
 }
 
 export interface McpFnScenarioReport {
@@ -158,6 +159,7 @@ export interface McpFnScenarioReport {
   incomplete: number;
   droppedResults: number;
   droppedObservedEvents: number;
+  redactionOmittedObservedEvents?: number;
   incompleteReason?: string;
   results: McpFnScenarioResult[];
 }
@@ -499,18 +501,38 @@ export async function runScenarios(
   const observedEvents: McpFnClientEvent[] = [];
   const maxObservedEvents = options.maxObservedEvents ?? 500;
   let droppedObservedEvents = 0;
+  let redactionOmittedObservedEvents = 0;
+  let observedRedactionOmissionEvents = 0;
   let attributedDroppedObservedEvents = 0;
+  let attributedRedactionOmittedObservedEvents = 0;
+  const initialClientEventRedactionOmissions = client.session
+    .getRedactionOmissionCounts().clientEvents;
   const pushResult = (result: McpFnScenarioResult): void => {
     const newlyDropped = droppedObservedEvents - attributedDroppedObservedEvents;
+    const newlyRedactionOmitted = redactionOmittedObservedEvents -
+      attributedRedactionOmittedObservedEvents;
     results.push({
       ...result,
       ...(newlyDropped > 0
         ? { droppedObservedEvents: (result.droppedObservedEvents ?? 0) + newlyDropped }
         : {}),
+      ...(newlyRedactionOmitted > 0
+        ? {
+          redactionOmittedObservedEvents:
+            (result.redactionOmittedObservedEvents ?? 0) + newlyRedactionOmitted,
+        }
+        : {}),
     });
     attributedDroppedObservedEvents = droppedObservedEvents;
+    attributedRedactionOmittedObservedEvents = redactionOmittedObservedEvents;
   };
   const unsubscribe = client.session.onEvent((event) => {
+    if (client.session.isRedactionOmission(event)) {
+      observedRedactionOmissionEvents += 1;
+      droppedObservedEvents += 1;
+      redactionOmittedObservedEvents += 1;
+      return;
+    }
     observedEvents.push(event);
     if (observedEvents.length > maxObservedEvents) {
       observedEvents.shift();
@@ -534,7 +556,7 @@ export async function runScenarios(
           ...common,
           status: "incomplete",
           durationMs: 0,
-          error: truncateError(`Skipped after timed-out scenario: ${timedOutScenario}`, options),
+          error: truncateError(`Skipped after timed-out scenario: ${timedOutScenario}`, options, client),
         });
         continue;
       }
@@ -547,6 +569,7 @@ export async function runScenarios(
           error: truncateError(
             `Missing scenario variables: ${resolved.missing.join(", ")}`,
             options,
+            client,
           ),
         });
         continue;
@@ -556,7 +579,7 @@ export async function runScenarios(
           ...common,
           status: "incomplete",
           durationMs: 0,
-          error: truncateError(scenario.incompleteReason ?? "Scenario is incomplete", options),
+          error: truncateError(scenario.incompleteReason ?? "Scenario is incomplete", options, client),
         });
         continue;
       }
@@ -588,7 +611,7 @@ export async function runScenarios(
           ...common,
           status: "failed",
           durationMs: performance.now() - startedAt,
-          error: truncateError(error instanceof Error ? error.message : String(error), options),
+          error: truncateError(error instanceof Error ? error.message : String(error), options, client),
         });
         if (timedOut) timedOutScenario = scenario.name;
       } finally {
@@ -596,11 +619,24 @@ export async function runScenarios(
       }
     }
   } finally {
+    const unobservedRedactionOmissions = Math.max(
+      0,
+      client.session.getRedactionOmissionCounts().clientEvents -
+        initialClientEventRedactionOmissions - observedRedactionOmissionEvents,
+    );
+    droppedObservedEvents += unobservedRedactionOmissions;
+    redactionOmittedObservedEvents += unobservedRedactionOmissions;
     const unattributed = droppedObservedEvents - attributedDroppedObservedEvents;
     const lastResult = results.at(-1);
     if (lastResult && unattributed > 0) {
       lastResult.droppedObservedEvents =
         (lastResult.droppedObservedEvents ?? 0) + unattributed;
+    }
+    const unattributedRedaction = redactionOmittedObservedEvents -
+      attributedRedactionOmittedObservedEvents;
+    if (lastResult && unattributedRedaction > 0) {
+      lastResult.redactionOmittedObservedEvents =
+        (lastResult.redactionOmittedObservedEvents ?? 0) + unattributedRedaction;
     }
     unsubscribe();
   }
@@ -628,21 +664,30 @@ function resolveScenarioVariables(
   const required = new Set(scenario.variables ?? []);
   const marker = /\$\{([A-Z][A-Z0-9_]*)\}/g;
   const encodedMarker = /%24%7[Bb]([A-Z][A-Z0-9_]*)%7[Dd]/g;
+  const visitString = (value: string): string => {
+    for (const match of value.matchAll(marker)) required.add(match[1]);
+    for (const match of value.matchAll(encodedMarker)) required.add(match[1]);
+    return value
+      .replace(marker, (original, name: string) => values[name] ?? original)
+      .replace(encodedMarker, (original, name: string) =>
+        values[name] === undefined ? original : encodeURIComponent(values[name]),
+      );
+  };
   const visit = (value: unknown): unknown => {
-    if (typeof value === "string") {
-      for (const match of value.matchAll(marker)) required.add(match[1]);
-      for (const match of value.matchAll(encodedMarker)) required.add(match[1]);
-      return value
-        .replace(marker, (original, name: string) => values[name] ?? original)
-        .replace(encodedMarker, (original, name: string) =>
-          values[name] === undefined ? original : encodeURIComponent(values[name]),
-        );
-    }
+    if (typeof value === "string") return visitString(value);
     if (Array.isArray(value)) return value.map(visit);
     if (value && typeof value === "object") {
-      return Object.fromEntries(
-        Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, visit(entry)]),
-      );
+      const entries: Array<[string, unknown]> = [];
+      const keys = new Set<string>();
+      for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+        const resolvedKey = visitString(key);
+        if (keys.has(resolvedKey)) {
+          throw new Error("Scenario variable substitution creates duplicate object key");
+        }
+        keys.add(resolvedKey);
+        entries.push([resolvedKey, visit(entry)]);
+      }
+      return Object.fromEntries(entries);
     }
     return value;
   };
@@ -665,6 +710,11 @@ export function createMcpFnScenarioReport(
     (total, result) => total + (result.droppedObservedEvents ?? 0),
     0,
   );
+  const redactionOmittedObservedEvents = results.reduce(
+    (total, result) => total + (result.redactionOmittedObservedEvents ?? 0),
+    0,
+  );
+  const overflowedObservedEvents = droppedObservedEvents - redactionOmittedObservedEvents;
   const report: McpFnScenarioReport = {
     formatVersion: 1,
     kind: "mcpfn.scenario-report",
@@ -676,8 +726,18 @@ export function createMcpFnScenarioReport(
     incomplete,
     droppedResults: 0,
     droppedObservedEvents,
+    ...(redactionOmittedObservedEvents > 0 ? { redactionOmittedObservedEvents } : {}),
     ...(droppedObservedEvents > 0
-      ? { incompleteReason: "Observed client events exceeded maxObservedEvents" }
+      ? {
+        incompleteReason: [
+          ...(redactionOmittedObservedEvents > 0
+            ? ["Observed client events were omitted because credential redaction failed"]
+            : []),
+          ...(overflowedObservedEvents > 0
+            ? ["Observed client events exceeded maxObservedEvents"]
+            : []),
+        ].join("; "),
+      }
       : {}),
     results: structuredClone(results),
   };
@@ -854,8 +914,10 @@ async function executeAuthScenario(
   assertExpected(await runOptions.auth(scenario, signal), scenario.expect);
 }
 
-function truncateError(value: string, options: McpFnScenarioRunOptions): string {
-  const redacted = String(redactOAuthValue(value));
+function truncateError(value: string, options: McpFnScenarioRunOptions, client: McpFnTestClient): string {
+  let redacted = "Scenario error omitted because credential redaction failed";
+  try { redacted = String(client.session.redact(value)); }
+  catch { /* Report safely even when a diagnostic exceeds the redaction budget. */ }
   const maxBytes = options.maxErrorBytes ?? 4_096;
   const bytes = new TextEncoder().encode(redacted);
   if (bytes.byteLength <= maxBytes) return redacted;

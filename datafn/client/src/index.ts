@@ -126,3 +126,7 @@ export {
   parseQueryResultDates,
 } from "./codecs/date.js";
 export * from "./extension/index.js";
+
+export { createDatafnHttpRouteProvider, DatafnRegionalRouteCache, DatafnRegionalTransportError } from "./transport/regional-route.js";
+export type { DatafnRouteProvider, DatafnRegionalRouteDescriptor, DatafnRouteScope } from "@datafn/core";
+export { DefaultHttpTransport } from "./transport/http.js";

@@ -16,7 +16,7 @@ The kernel router (`auth.router`) is framework-agnostic. To mount it, use one of
 | Next.js (App Router) | `@superfunctions/http-next` | [Next.js](./nextjs) |
 | FastAPI | `superfunctions_fastapi` (Python) | [FastAPI](./fastapi) |
 | Flask | `superfunctions_flask` (Python) | [Flask](./flask) |
-| Starlette | `superfunctions_starlette` (Python) | [Starlette](./starlette) |
+| Starlette | use FastAPI (`superfunctions_fastapi`) | [Starlette](./starlette) |
 | Anything else | direct `Request → Response` | [Bring your own](./byo) |
 
 ## Pattern

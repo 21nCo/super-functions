@@ -6,23 +6,23 @@ description: Mount the Python authfn kernel on Flask.
 # Flask
 
 ```bash
-pip install "authfn[flask]"
+pip install authfn superfunctions-flask
 ```
 
 ```python
 from flask import Flask, request, jsonify
-from superfunctions_flask import to_flask
+from superfunctions_flask import create_blueprint
 from authfn import create_authfn, AuthFnConfig, authfn_password_plugin
-from authfn.adapters.memory import memory_adapter
 
+# Replace `my_database_adapter` with any Superfunctions db adapter.
 auth = create_authfn(AuthFnConfig(
-    database=memory_adapter(),
+    database=my_database_adapter,
     namespace="authfn",
     plugins=[authfn_password_plugin()],
 ))
 
 app = Flask(__name__)
-to_flask(app, auth.router, base_path="/auth")
+app.register_blueprint(create_blueprint(auth.get_routes()))
 
 @app.get("/me")
 async def me():

@@ -82,10 +82,10 @@ mcpfn validate-profile ./client-profile.snapshot.json
 mcpfn diff-profiles ./client-profile.snapshot.json ./candidate-profile.snapshot.json --fail-on-behavioral
 mcpfn test-profiles ./tests/mcp.profiles.ts --output ./mcpfn-profile-report.json
 mcpfn test ./src/mcp/server.ts ./tests/mcp.scenarios.ts --output ./mcpfn-report.json
-mcpfn test-target https://api.example.com/mcp ./tests/mcp.scenarios.ts
-mcpfn inspect https://api.example.com/mcp --output ./mcpfn-inspection.json
+mcpfn test-target https://api.example.com/mcp ./tests/mcp.scenarios.ts --bearer-token-env MCP_TOKEN --junit ./mcpfn-report.xml
+mcpfn inspect https://api.example.com/mcp --bearer-token-env MCP_TOKEN --output ./mcpfn-inspection.json
 mcpfn auth-diagnose https://api.example.com/mcp
-mcpfn conformance http://127.0.0.1:3000/mcp --suite active
+mcpfn conformance http://127.0.0.1:3000/mcp --suite active --bearer-token-env MCP_TOKEN --report ./mcpfn-conformance.json
 ```
 
 The manifest catches canonical tool, resource, template, prompt, task,
@@ -97,6 +97,13 @@ official conformance runner catches wire-protocol behavior. None of those
 layers substitutes for the others.
 
 The conformance subcommand pins the reviewed official runner version and requires Node.js 22 or newer. Other McpFn commands support Node.js 18.18 or newer.
+
+External targets may be third-party servers built with the official MCP SDK or
+another conforming implementation. URL-plus-credential targets reuse the
+production client session, acquire and release credentials through an explicit
+provider, refuse credential-bearing redirects, and emit bounded redacted JSON
+or JUnit evidence. No `McpFnServer` or `McpFnRegistry` is required on the server
+side.
 
 Run `npm run gate:mcpfn-release` from this repository for the complete package, example, migration, and packability gate.
 

@@ -1,6 +1,7 @@
 import { createServer, request as httpRequest } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryTaskStore } from "@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js";
+import { customTarget } from "@mcpfn/client";
 import {
   McpFnRegistry,
   createMcpFnServer,
@@ -9,18 +10,194 @@ import {
 
 import {
   McpFnTestClient,
+  McpFnTestClientCleanupError,
   MCPFN_HOST_PROFILES,
   assertManifestContract,
   buildOfficialConformanceArgs,
+  buildOfficialConformanceEnvironment,
   checkHostCompatibility,
   createAuthenticatedConformanceProxy,
   createMcpFnScenarioArtifact,
   createMcpFnScenarioReport,
+  runAuthenticatedOfficialConformance,
   runScenarios,
   validateMcpFnScenarios,
 } from "../src/index.js";
 
 describe("McpFn testing", () => {
+  it("retains post-connect cleanup ownership until a later close succeeds", async () => {
+    const server = createMcpFnServer({
+      info: { name: "post-connect-cleanup-owner", version: "1.0.0" },
+      registry: new McpFnRegistry(),
+    });
+    const client = await McpFnTestClient.connect(server);
+    const cleanupFailure = new Error("temporary close failure");
+    const closeSession = client.session.close.bind(client.session);
+    let attempts = 0;
+    const close = vi.spyOn(client.session, "close").mockImplementation(async () => {
+      attempts += 1;
+      if (attempts < 3) throw cleanupFailure;
+      await closeSession();
+    });
+    try {
+      const owner = await client.close().then(
+        () => { throw new Error("Expected cleanup failure"); },
+        error => error as McpFnTestClientCleanupError,
+      );
+      expect(owner).toBeInstanceOf(McpFnTestClientCleanupError);
+      expect(owner.cause).toBe(cleanupFailure);
+      await expect(owner.retryCleanup()).rejects.toBe(owner);
+      await expect(owner.retryCleanup()).resolves.toBeUndefined();
+      expect(attempts).toBe(3);
+    } finally {
+      close.mockRestore();
+      await closeSession().catch(() => undefined);
+    }
+  });
+
+  it("counts redaction-fallback client events as omitted evidence", async () => {
+    const client = McpFnTestClient.createTarget(customTarget({
+      kind: "custom",
+      open: async () => { throw new Error("unused"); },
+      redact: <T>(value: T): T => {
+        if (value && typeof value === "object" && "secret" in value) {
+          throw new Error("event redaction unavailable");
+        }
+        return value;
+      },
+    }));
+    const emitEvent = (client.session as unknown as {
+      emitEvent(kind: "logging.message", payload: unknown): Promise<void>;
+    }).emitEvent.bind(client.session);
+    const results = await runScenarios(client, [
+      {
+        name: "emit fallback",
+        kind: "auth.assert",
+        phase: "emit-event",
+        expect: { outcome: "allowed" },
+      },
+      {
+        name: "do not match omitted event",
+        kind: "events.expect",
+        event: "logging.message",
+      },
+    ], {
+      auth: async () => {
+        await emitEvent("logging.message", { secret: true });
+        return { outcome: "allowed" };
+      },
+    });
+    expect(results[0]).toMatchObject({
+      status: "passed",
+      droppedObservedEvents: 1,
+      redactionOmittedObservedEvents: 1,
+    });
+    expect(results[1]).toMatchObject({ status: "failed" });
+    expect(createMcpFnScenarioReport(results)).toMatchObject({
+      status: "incomplete",
+      droppedObservedEvents: 1,
+      redactionOmittedObservedEvents: 1,
+      incompleteReason: "Observed client events were omitted because credential redaction failed",
+    });
+  });
+
+  it("counts client events omitted without a schema-safe fallback", async () => {
+    const client = McpFnTestClient.createTarget(customTarget({
+      kind: "custom",
+      open: async () => { throw new Error("unused"); },
+      redact: <T>(): T => { throw new Error("all event structure is unsafe"); },
+    }));
+    const emitEvent = (client.session as unknown as {
+      emitEvent(kind: "logging.message", payload: unknown): Promise<void>;
+    }).emitEvent.bind(client.session);
+    const results = await runScenarios(client, [{
+      name: "drop unsafe event",
+      kind: "auth.assert",
+      phase: "emit-event",
+      expect: { outcome: "allowed" },
+    }], {
+      auth: async () => {
+        await emitEvent("logging.message", { secret: true });
+        return { outcome: "allowed" };
+      },
+    });
+
+    expect(results[0]).toMatchObject({
+      status: "passed",
+      droppedObservedEvents: 1,
+      redactionOmittedObservedEvents: 1,
+    });
+    expect(createMcpFnScenarioReport(results)).toMatchObject({
+      status: "incomplete",
+      droppedObservedEvents: 1,
+      redactionOmittedObservedEvents: 1,
+    });
+  });
+
+  it("substitutes declared variables in scenario property keys", async () => {
+    const resolvedKey = "resolved-key";
+    const server = createMcpFnServer({
+      info: { name: "variable-keys", version: "1.0.0" },
+      registry: new McpFnRegistry().register({
+        name: "echo-key",
+        description: "Echo a variable-keyed input.",
+        inputSchema: {
+          type: "object",
+          properties: { [resolvedKey]: { type: "string" } },
+          required: [resolvedKey],
+          additionalProperties: false,
+        },
+        handler: async input => structuredResult(input),
+      }),
+    });
+    const client = await McpFnTestClient.connect(server);
+    try {
+      await expect(runScenarios(client, [{
+        name: "resolves key",
+        tool: "echo-key",
+        variables: ["MCPFN_SECRET"],
+        arguments: { "${MCPFN_SECRET}": "value" },
+        expect: { structuredContent: { "${MCPFN_SECRET}": "value" } },
+      }], { variables: { MCPFN_SECRET: resolvedKey } })).resolves.toMatchObject([
+        { status: "passed" },
+      ]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("rejects property-key collisions before executing the affected scenario", async () => {
+    const execute = vi.fn(async (input: unknown) => structuredResult(input));
+    const server = createMcpFnServer({
+      info: { name: "variable-key-collisions", version: "1.0.0" },
+      registry: new McpFnRegistry().register({
+        name: "echo-key",
+        description: "Echo a variable-keyed input.",
+        inputSchema: { type: "object", additionalProperties: true },
+        handler: execute,
+      }),
+    });
+    const client = await McpFnTestClient.connect(server);
+    try {
+      const error = await runScenarios(client, [
+        {
+          name: "colliding key",
+          tool: "echo-key",
+          variables: ["FIELD"],
+          arguments: { "${FIELD}": 1, actual: 2 },
+        },
+      ], { variables: { FIELD: "actual" } }).then(
+        () => { throw new Error("Expected a variable-key collision"); },
+        failure => failure as Error,
+      );
+      expect(error.message).toBe("Scenario variable substitution creates duplicate object key");
+      expect(error.message).not.toContain("actual");
+      expect(execute).not.toHaveBeenCalled();
+    } finally {
+      await client.close();
+    }
+  });
+
   it("checks manifests and deterministic semantic scenarios", async () => {
     const registry = new McpFnRegistry().register({
       name: "echo",
@@ -513,6 +690,17 @@ describe("McpFn testing", () => {
     ]);
   });
 
+  it("does not inherit selected credential environment variables into conformance", () => {
+    const environment = buildOfficialConformanceEnvironment(
+      ["MCPFN_TEST_BEARER"],
+      { PATH: "/usr/bin", MCPFN_TEST_BEARER: "secret", mcpfn_test_bearer: "secret2", SAFE_VALUE: "kept" },
+    );
+    expect(environment.MCPFN_TEST_BEARER).toBeUndefined();
+    expect(environment.mcpfn_test_bearer).toBeUndefined();
+    expect(environment.SAFE_VALUE).toBe("kept");
+    expect(environment.PATH).toContain("/usr/bin");
+  });
+
   it("injects credentials through a fixed loopback conformance proxy", async () => {
     const observed: Array<{ authorization?: string; host?: string }> = [];
     const upstream = createServer((request, response) => {
@@ -580,6 +768,27 @@ describe("McpFn testing", () => {
       url: "https://mcp.example.com/mcp",
       headers: { authorization: "Bearer conformance-secret" },
     })).rejects.toThrow(/literal loopback address/);
+    await expect(createAuthenticatedConformanceProxy({
+      url: "http://127.0.0.1:1/mcp",
+      headers: {},
+    })).rejects.toThrow(/at least one credential header/);
+  });
+
+  it("rejects invalid authenticated conformance URLs before acquiring credentials", async () => {
+    const acquire = vi.fn(() => ({ headers: { authorization: "Bearer conformance-secret" } }));
+    const revoke = vi.fn();
+    const dispose = vi.fn();
+    await expect(runAuthenticatedOfficialConformance({
+      url: "https://mcp.example.com/mcp",
+      credential: {
+        acquire,
+        revoke,
+        dispose,
+      },
+    })).rejects.toThrow(/literal loopback address/);
+    expect(acquire).not.toHaveBeenCalled();
+    expect(revoke).not.toHaveBeenCalled();
+    expect(dispose).not.toHaveBeenCalled();
   });
 
   it("closes the conformance proxy while streaming requests are active", async () => {

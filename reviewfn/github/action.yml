@@ -1,0 +1,60 @@
+name: ReviewFn advisory review
+description: Credential-free review stage; publish the retained artifact in a separate trusted job
+inputs:
+  version:
+    description: Pinned @superfunctions/reviewfn-cli version
+    required: true
+  base:
+    description: Trusted base commit
+    required: true
+  head:
+    description: Exact head commit
+    required: true
+  pull-request:
+    description: Pull request number
+    required: true
+  issue:
+    description: Optional issue identifier
+    required: false
+  codex-api-base-url:
+    description: Credential-isolating Responses API proxy URL
+    required: true
+  output:
+    description: Caller-owned output directory outside the checkout
+    default: ${{ runner.temp }}/reviewfn-output
+outputs:
+  report:
+    description: Review artifact directory
+    value: ${{ inputs.output }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+    - name: Run isolated review
+      shell: bash
+      env:
+        OPENAI_BASE_URL: ${{ inputs.codex-api-base-url }}
+        REVIEWFN_VERSION: ${{ inputs.version }}
+        REVIEWFN_BASE: ${{ inputs.base }}
+        REVIEWFN_HEAD: ${{ inputs.head }}
+        REVIEWFN_PR: ${{ inputs.pull-request }}
+        REVIEWFN_ISSUE: ${{ inputs.issue }}
+        REVIEWFN_OUTPUT: ${{ inputs.output }}
+      run: |
+        set -euo pipefail
+        if ! [[ "$REVIEWFN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then exit 2; fi
+        if ! [[ "$REVIEWFN_BASE" =~ ^[a-f0-9]{40}$ && "$REVIEWFN_HEAD" =~ ^[a-f0-9]{40}$ && "$REVIEWFN_PR" =~ ^[0-9]+$ ]]; then exit 2; fi
+        test -z "${GITHUB_TOKEN:-}"
+        reviewfn_tool_dir=$(mktemp -d "${RUNNER_TEMP:?}/reviewfn-cli.XXXXXX")
+        trap 'rm -rf -- "$reviewfn_tool_dir"' EXIT
+        cd "$reviewfn_tool_dir"
+        : > "$reviewfn_tool_dir/npmrc.user"
+        : > "$reviewfn_tool_dir/npmrc.global"
+        npm install --prefix "$reviewfn_tool_dir" --ignore-scripts --no-audit --no-fund --package-lock=false \
+          --userconfig="$reviewfn_tool_dir/npmrc.user" --globalconfig="$reviewfn_tool_dir/npmrc.global" --registry=https://registry.npmjs.org \
+          --save-exact "@superfunctions/reviewfn-cli@$REVIEWFN_VERSION"
+        node "$reviewfn_tool_dir/node_modules/@superfunctions/reviewfn-cli/dist/main.js" review \
+          --root "${GITHUB_WORKSPACE:?}" --base "$REVIEWFN_BASE" --head "$REVIEWFN_HEAD" --issue "$REVIEWFN_ISSUE" \
+          --pull-request "$REVIEWFN_PR" --output "$REVIEWFN_OUTPUT" --trusted-config-from-base

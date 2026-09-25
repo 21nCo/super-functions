@@ -105,6 +105,17 @@ export interface McpFnTarget {
   readonly kind: string;
   describe(): McpFnTargetDescriptor;
   open(context: McpFnTargetContext): Promise<McpFnTransportHandle>;
+  /** Retain target-owned redaction material until the returned synchronous finalizer runs.
+   * Client lifecycle ownership is isolated from hook acquisition/finalization failures. */
+  beginRedactionScope?(): () => void;
+  /** Retry cleanup for resources retained by failed opens; live handles are separate. */
+  cleanup?(): Promise<void>;
+  /** Scrub target-owned opaque credentials. With preserveKeys=false, treat all
+   * fields as payload data, without exemptions for diagnostic envelope fields. */
+  redact?<T>(value: T, options?: { redactionMarker?: string; preserveKeys?: boolean }): T;
+  /** Reject a completed consumer artifact containing a target-owned credential.
+   * Unlike payload redaction, this operates on already bounded serialized text. */
+  assertArtifactSafe?(value: string): void;
 }
 
 export type McpFnClientState =

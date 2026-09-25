@@ -26,6 +26,11 @@ import {
   AuthFnRegionMismatchError,
   AuthFnValidationError
 } from './errors.js';
+import {
+  AUTHFN_DATABASE_KEY_MAX_LENGTH,
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+  assertAuthFnDatabaseKeyLength
+} from './limits.js';
 import { emitAuthEvent, eventRequestId } from './observability.js';
 import { findUserById, findUserByPrimaryEmail } from './users.js';
 
@@ -41,6 +46,7 @@ export interface AuthFnMultiRegionEnvironmentResolver extends AuthFnEnvironmentR
 export function authFnMultiRegionEnvironment(
   config: MultiRegionPluginRuntimeConfig
 ): AuthFnMultiRegionEnvironmentResolver {
+  assertRegionIdsWithinDatabaseLimit(config);
   const observability = normalizeObservability(config.observability)?.child({ component: 'authfn.lookup' });
   const resolvedConfig: MultiRegionPluginRuntimeConfig = {
     ...config,
@@ -120,6 +126,22 @@ export function authFnMultiRegionEnvironment(
     }
   };
   return resolver;
+}
+
+function assertRegionIdsWithinDatabaseLimit(config: MultiRegionPluginRuntimeConfig): void {
+  const candidates = [
+    config.defaultRegionId,
+    config.routing?.mode === 'gateway' ? config.routing.cell?.regionId : undefined,
+    ...(config.regions ?? []).map((region) => region.regionId)
+  ];
+  for (const regionId of candidates) {
+    if (regionId && Array.from(regionId).length > AUTHFN_DATABASE_KEY_MAX_LENGTH) {
+      throw new AuthFnConfigError(
+        `AuthFn regionId must contain at most ${AUTHFN_DATABASE_KEY_MAX_LENGTH} characters`,
+        { fieldName: 'regionId', maxLength: AUTHFN_DATABASE_KEY_MAX_LENGTH }
+      );
+    }
+  }
 }
 
 export function getMultiRegionPluginConfig(
@@ -358,6 +380,22 @@ export async function registerUserRegion(
     request?: Request;
   }
 ): Promise<AuthFnRegionProfileRecord | null> {
+  const userIdLength = Array.from(input.user.id).length;
+  assertAuthFnDatabaseKeyLength(
+    input.user.id,
+    'userId',
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+  );
+  const legacyUser = userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ? await findUserById(config, input.user.id)
+    : null;
+  const userId = legacyUser
+    ? assertAuthFnDatabaseKeyLength(
+        input.user.id,
+        'userId',
+        AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+      )
+    : assertAuthFnDatabaseKeyLength(input.user.id, 'userId');
   const gatewayCellRegionId = pluginConfig.routing?.mode === 'gateway'
     ? pluginConfig.routing.cell?.regionId
     : undefined;
@@ -370,11 +408,11 @@ export async function registerUserRegion(
   }
 
   const now = new Date();
-  const existing = await findRegionProfileByUserId(config, input.user.id);
+  const existing = await findRegionProfileByUserId(config, userId);
   const record: AuthFnRegionProfileRecord = {
     id: existing?.id ?? createIdentifier('region'),
-    userId: input.user.id,
-    regionId: currentRegion.regionId,
+    userId,
+    regionId: assertAuthFnDatabaseKeyLength(currentRegion.regionId, 'regionId'),
     authority: currentRegion.authority,
     domain: currentRegion.domain ?? null,
     createdAt: existing?.createdAt ?? now,
@@ -387,7 +425,7 @@ export async function registerUserRegion(
     const cacheKey = createAuthFnCacheKey(config, 'region', identifier);
     const lookupRecord: AuthFnRegionLookupRecord = {
       identifier,
-      userId: input.user.id,
+      userId,
       regionId: record.regionId,
       authority: record.authority,
       domain: record.domain ?? undefined,
@@ -418,8 +456,8 @@ export async function registerUserRegion(
         await emitAuthEvent(config, {
           type: 'authfn.region.lookup.conflict',
           requestId: eventRequestId(input.request),
-          actorId: input.user.id,
-          userId: input.user.id,
+          actorId: userId,
+          userId,
           regionId: existing.regionId,
           outcome: 'conflict',
           metadata: {
