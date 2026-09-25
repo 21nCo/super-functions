@@ -215,4 +215,28 @@ describe('SvelteKit Adapter', () => {
       expect(data).toEqual({ method });
     }
   });
+
+  it('resolves a request-scoped router from the complete SvelteKit event', async () => {
+    const handler = toSvelteKitHandler(async (event) => {
+      const binding = event.platform?.env?.DATABASE_NAME;
+      return createRouter({
+        routes: [
+          {
+            method: 'GET',
+            path: '/api/binding',
+            handler: () => Response.json({ binding }),
+          },
+        ],
+      });
+    });
+    const event = {
+      ...createMockEvent('http://localhost:5173/api/binding'),
+      platform: { env: { DATABASE_NAME: 'omr-test' } },
+    };
+
+    const response = await handler(event);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ binding: 'omr-test' });
+  });
 });

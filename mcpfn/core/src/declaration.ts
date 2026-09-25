@@ -43,7 +43,7 @@ function hasDefinitionAdditions<TContext>(
 }
 
 function cloneRegistry<TContext>(source: McpFnRegistry<TContext>): McpFnRegistry<TContext> {
-  const clone = new McpFnRegistry<TContext>();
+  const clone = source.cloneEmpty();
   for (const tool of source.definitions()) clone.register(tool);
   for (const resource of source.resourceDefinitions()) clone.registerResource(resource);
   for (const template of source.resourceTemplateDefinitions()) {

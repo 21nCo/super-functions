@@ -62,6 +62,45 @@ describe("McpFnServer", () => {
     });
   });
 
+  it("accepts a runtime-safe schema compiler without using Ajv compilation", async () => {
+    let compileCount = 0;
+    let handlerCalls = 0;
+    const registry = new McpFnRegistry({
+      compileSchema: () => {
+        compileCount += 1;
+        const validate = ((data: unknown) => {
+          const valid = Boolean(data && typeof data === "object" &&
+            (data as Record<string, unknown>).value === "allowed");
+          validate.errors = valid ? null : [{ keyword: "const", message: "value is not allowed" }];
+          return valid;
+        }) as import("../src/index.js").McpFnSchemaValidator;
+        return validate;
+      },
+    }).register({
+      name: "safe",
+      description: "Validate without generated code.",
+      inputSchema: { type: "object", properties: { value: { type: "string" } } },
+      handler: async () => {
+        handlerCalls += 1;
+        return structuredResult({ ok: true });
+      },
+    });
+    const server = createMcpFnServer({ info: { name: "safe", version: "1.0.0" }, registry });
+    const client = new Client({ name: "test-client", version: "1.0.0" }, { capabilities: {} });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+
+    expect(compileCount).toBe(1);
+    await expect(client.callTool({ name: "safe", arguments: { value: "denied" } }))
+      .resolves.toMatchObject({ isError: true });
+    expect(handlerCalls).toBe(0);
+    await expect(client.callTool({ name: "safe", arguments: { value: "allowed" } }))
+      .resolves.toMatchObject({ structuredContent: { ok: true } });
+    expect(handlerCalls).toBe(1);
+  });
+
   it("normalizes structured results without treating repeated references as cycles", () => {
     const shared = { value: 1 };
     const circular: Record<string, unknown> = { shared };

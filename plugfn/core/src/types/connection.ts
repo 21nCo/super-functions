@@ -129,6 +129,8 @@ export interface HandleCallbackOptions {
   provider?: string;
   redirectUri?: string;
   connectionName?: string;
+  expectedOwner?: PlugFnConnectionOwner;
+  actor?: PlugFnActor;
 }
 
 /**
@@ -137,6 +139,19 @@ export interface HandleCallbackOptions {
 export interface HandleCallbackResult {
   connection: Connection;
   returnTo?: string;
+}
+
+/**
+ * Create a connection from credentials supplied directly by the user.
+ * OAuth credentials must use the authorization-code flow instead.
+ */
+export interface ConnectOptions {
+  userId: string;
+  provider: string;
+  credentials: ApiKeyCredentials | JWTCredentials | BasicAuthCredentials;
+  connectionName?: string;
+  owner?: PlugFnConnectionOwner;
+  actor?: PlugFnActor;
 }
 
 /**

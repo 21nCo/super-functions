@@ -65,6 +65,29 @@ describe("McpFn server declarations", () => {
     ]);
   });
 
+  it("retains a supplied schema compiler when declaration definitions are added", () => {
+    let compiled = 0;
+    const registry = new McpFnRegistry({
+      compileSchema: () => {
+        compiled += 1;
+        return () => true;
+      },
+    });
+    const declaration = defineMcpFnServer({
+      info: { name: "runtime-safe", version: "1.0.0" },
+      registry,
+      tools: [{
+        name: "ping",
+        description: "Return a pong.",
+        inputSchema: { type: "object" },
+        handler: async () => structuredResult({ pong: true }),
+      }],
+    });
+    expect(compiled).toBe(1);
+    expect(declaration.registry.listTools().map(({ name }) => name)).toEqual(["ping"]);
+    expect(registry.listTools()).toEqual([]);
+  });
+
   it("keeps task-store capability flags identical in manifest and runtime", () => {
     const declaration = defineMcpFnServer({
       info: { name: "tasks", version: "1.0.0" },

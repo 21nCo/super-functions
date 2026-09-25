@@ -14,6 +14,10 @@ export interface RequestEvent {
  */
 export type RequestHandler = (event: RequestEvent) => Promise<Response> | Response;
 
+/** Resolve a router from the complete SvelteKit event for request-scoped bindings. */
+export type RouterFactory = (event: RequestEvent) => Promise<Router> | Router;
+export type RouterSource = Router | RouterFactory;
+
 /**
  * Convert a Superfunctions router to a SvelteKit RequestHandler.
  * 
@@ -21,9 +25,10 @@ export type RequestHandler = (event: RequestEvent) => Promise<Response> | Respon
  * export const GET = toSvelteKitHandler(router);
  * export const POST = toSvelteKitHandler(router);
  */
-export function toSvelteKitHandler(router: Router): RequestHandler {
+export function toSvelteKitHandler(source: RouterSource): RequestHandler {
   return async (event: RequestEvent) => {
     // SvelteKit provides a Web Standard Request in event.request
+    const router = typeof source === 'function' ? await source(event) : source;
     return router.handle(event.request);
   };
 }
@@ -34,8 +39,8 @@ export function toSvelteKitHandler(router: Router): RequestHandler {
  * Usage in `src/routes/api/+server.ts`:
  * export const { GET, POST, PUT, PATCH, DELETE } = toSvelteKitHandlers(router);
  */
-export function toSvelteKitHandlers(router: Router) {
-  const handler = toSvelteKitHandler(router);
+export function toSvelteKitHandlers(source: RouterSource) {
+  const handler = toSvelteKitHandler(source);
   
   return {
     GET: handler,

@@ -71,6 +71,18 @@ import { toSvelteKitHandlers } from '@superfunctions/http-sveltekit';
 export const { GET, POST, PUT, PATCH, DELETE } = toSvelteKitHandlers(myRouter);
 ```
 
+Both adapter functions also accept a request-scoped router factory. The factory
+receives the complete SvelteKit `RequestEvent`, including `platform` bindings:
+
+```typescript
+export const { GET, POST } = toSvelteKitHandlers((event) =>
+  createRouter({
+    context: { env: event.platform?.env },
+    routes,
+  }),
+);
+```
+
 ## Usage Examples
 
 ### With Middleware

@@ -20,6 +20,10 @@ export const githubProvider: Provider = {
     "Integration with GitHub for managing repositories, issues, and pull requests",
   iconUrl: "https://github.com/favicon.ico",
   baseUrl: "https://api.github.com",
+  headers: {
+    "User-Agent": "Superfunctions-PlugFn",
+    Accept: "application/vnd.github+json",
+  },
 
   auth: {
     type: "oauth2" as AuthType.OAuth2,
@@ -1184,9 +1188,7 @@ declareContracts(githubProvider, {
     "pulls.create",
     "pulls.review"
   ],
-  "readScopes": [
-    "repo"
-  ],
+  "readScopes": [],
   "writeScopes": [
     "repo"
   ],

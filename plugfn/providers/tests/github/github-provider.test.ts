@@ -45,6 +45,19 @@ function createContext(responseFactory: (url: string, method: string, data?: any
 }
 
 describe('github provider actions', () => {
+  it('identifies itself to the GitHub REST API', () => {
+    expect(githubProvider.headers).toMatchObject({
+      'User-Agent': 'Superfunctions-PlugFn',
+      Accept: 'application/vnd.github+json',
+    });
+  });
+
+  it('allows public read actions without the write-capable repo scope', () => {
+    expect(githubProvider.actions['repos.list'].contract?.requiredScopes).toEqual([]);
+    expect(githubProvider.actions['issues.get'].contract?.requiredScopes).toEqual([]);
+    expect(githubProvider.actions['issues.create'].contract?.requiredScopes).toEqual(['repo']);
+  });
+
   it('registers the expanded repository surface and webhook triggers', () => {
     expect(Object.keys(githubProvider.actions)).toEqual(
       expect.arrayContaining([

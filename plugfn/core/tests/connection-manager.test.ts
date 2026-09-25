@@ -103,6 +103,29 @@ describe('ConnectionManager OAuth shared integration', () => {
     });
   });
 
+  it('rejects a callback owner mismatch before exchanging the authorization code', async () => {
+    const adapter = new MemoryAdapter();
+    const tokenClient = createTokenHttpClient();
+    const env = createManagerEnvironment(adapter, tokenClient);
+    const authUrl = await env.manager.getAuthUrl({
+      userId: 'user-1',
+      provider: 'google',
+      redirectUri: REDIRECT_URI,
+      owner: { kind: 'user', userId: 'user-1', tenantId: 'workspace-1' },
+    });
+    const state = new URL(authUrl).searchParams.get('state')!;
+
+    await expect(
+      env.manager.handleCallback({
+        code: 'auth-code-1',
+        state,
+        expectedOwner: { kind: 'user', userId: 'user-1', tenantId: 'workspace-2' },
+        actor: { userId: 'user-1', tenantId: 'workspace-2' },
+      })
+    ).rejects.toMatchObject({ code: 'TENANT_ACCESS_DENIED' });
+    expect(tokenClient.exchangeToken).not.toHaveBeenCalled();
+  });
+
   it('keeps existing token material when refresh fails', async () => {
     const adapter = new MemoryAdapter();
     const tokenClient = createTokenHttpClient({
@@ -609,6 +632,66 @@ describe('ConnectionManager OAuth shared integration', () => {
 
     expect(connections.map((connection) => connection.id)).toEqual(['conn-org-1']);
   });
+
+  it('creates encrypted API-key connections for an authorized owner', async () => {
+    const adapter = new MemoryAdapter();
+    const env = createManagerEnvironment(adapter, createTokenHttpClient());
+    env.providers.set('linear', createApiKeyProvider());
+
+    const connection = await env.manager.connect({
+      userId: 'user-1',
+      provider: 'linear',
+      credentials: { type: 'api-key', apiKey: 'lin-secret' },
+      connectionName: 'Linear workspace',
+      owner: { kind: 'user', userId: 'user-1', tenantId: 'workspace-1' },
+      actor: { userId: 'user-1', tenantId: 'workspace-1' },
+    });
+
+    expect(connection).toMatchObject({
+      provider: 'linear',
+      ownerKind: 'user',
+      ownerId: 'user-1',
+      tenantId: 'workspace-1',
+      status: ConnectionStatus.Active,
+    });
+    expect(connection.credentials.encrypted).not.toContain('lin-secret');
+    await expect(env.manager.getCredentials(connection.id)).resolves.toEqual({
+      type: 'api-key',
+      apiKey: 'lin-secret',
+    });
+  });
+
+  it('rejects direct credentials for OAuth and cross-tenant owners', async () => {
+    const adapter = new MemoryAdapter();
+    const env = createManagerEnvironment(adapter, createTokenHttpClient());
+
+    await expect(
+      env.manager.connect({
+        userId: 'user-1',
+        provider: 'google',
+        credentials: { type: 'api-key', apiKey: 'secret' },
+      })
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+
+    env.providers.set('linear', createApiKeyProvider());
+    await expect(
+      env.manager.connect({
+        userId: 'user-1',
+        provider: 'linear',
+        credentials: { type: 'api-key', apiKey: '   ' },
+      })
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(
+      env.manager.connect({
+        userId: 'user-1',
+        provider: 'linear',
+        credentials: { type: 'api-key', apiKey: 'secret' },
+        owner: { kind: 'user', userId: 'user-1', tenantId: 'workspace-1' },
+        actor: { userId: 'user-1', tenantId: 'workspace-2' },
+      })
+    ).rejects.toMatchObject({ code: 'TENANT_ACCESS_DENIED' });
+    expect(await adapter.listConnections('user-1', 'linear')).toEqual([]);
+  });
 });
 
 function createManagerEnvironment(
@@ -654,6 +737,19 @@ function createManagerEnvironment(
   return {
     manager,
     oauthDependencies,
+    providers,
+  };
+}
+
+function createApiKeyProvider(): Provider {
+  return {
+    name: 'linear',
+    displayName: 'Linear',
+    version: '1.0.0',
+    description: 'Linear API-key provider',
+    baseUrl: 'https://api.linear.app',
+    auth: { type: AuthType.ApiKey, config: { headerName: 'Authorization' } },
+    actions: {},
   };
 }
 

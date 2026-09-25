@@ -2,6 +2,7 @@ import type { Adapter as DbAdapter } from '@superfunctions/db';
 import { randomBytes } from 'node:crypto';
 import type {
   Connection,
+  ConnectOptions,
   Credentials,
   DisconnectOptions,
   DisconnectResult,
@@ -259,6 +260,41 @@ export class ConnectionManager {
       throw new Error('OAuth state is invalid or expired');
     }
 
+    const pendingOwner = readConnectionOwnerFromMetadata(
+      readPlugFnOAuthStateMetadata(statePreview),
+      statePreview.userId
+    );
+    if (!pendingOwner) {
+      throw new Error('OAuth state is invalid or expired');
+    }
+    if (options.actor) {
+      if (
+        options.actor.userId !== statePreview.userId ||
+        !actorCanInstallForOwner(options.actor, pendingOwner)
+      ) {
+        throw new ConnectionResolutionError(
+          'TENANT_ACCESS_DENIED',
+          'connection owner mismatch',
+          403
+        );
+      }
+    }
+    if (options.expectedOwner) {
+      const expected = ownerFields(options.expectedOwner);
+      const pending = ownerFields(pendingOwner);
+      if (
+        expected.ownerKind !== pending.ownerKind ||
+        expected.ownerId !== pending.ownerId ||
+        !tenantMatches(expected.tenantId, pending.tenantId)
+      ) {
+        throw new ConnectionResolutionError(
+          'TENANT_ACCESS_DENIED',
+          'connection owner mismatch',
+          403
+        );
+      }
+    }
+
     const returnTo = readReturnToFromMetadata(readPlugFnOAuthStateMetadata(statePreview));
     const providerId = options.provider ?? statePreview.providerId;
     const redirectUri = options.redirectUri ?? statePreview.redirectUri;
@@ -289,9 +325,7 @@ export class ConnectionManager {
     const connection = await this.connectionStorage.create({
       userId: subjectUserId,
       provider: providerId,
-      ...ownerFields(
-        readConnectionOwnerFromMetadata(readPlugFnOAuthStateMetadata(statePreview), subjectUserId)
-      ),
+      ...ownerFields(pendingOwner),
       name: options.connectionName,
       status: ConnectionStatus.Active,
       credentials: toEncryptedCredentials(pendingTokenEntry.record),
@@ -320,6 +354,58 @@ export class ConnectionManager {
       connection: updatedConnection,
       returnTo,
     };
+  }
+
+  async connect(options: ConnectOptions): Promise<Connection> {
+    const provider = this.providers.get(options.provider);
+    if (!provider) {
+      throw new Error(`Provider ${options.provider} not found`);
+    }
+
+    const credentialTypes: Partial<Record<AuthType, Credentials['type']>> = {
+      [AuthType.ApiKey]: 'api-key',
+      [AuthType.JWT]: 'jwt',
+      [AuthType.Basic]: 'basic',
+    };
+    const expectedCredentialType = credentialTypes[provider.auth.type];
+    if (!expectedCredentialType || options.credentials.type !== expectedCredentialType) {
+      throw new ConnectionResolutionError(
+        'VALIDATION_ERROR',
+        provider.auth.type === AuthType.OAuth2
+          ? `Provider ${options.provider} requires OAuth`
+          : `Credential type does not match provider ${options.provider}`,
+        400
+      );
+    }
+    assertDirectCredentials(options.credentials);
+
+    const owner = options.owner ?? {
+      kind: 'user',
+      userId: options.userId,
+    } satisfies PlugFnConnectionOwner;
+    const actor = options.actor ?? { userId: options.userId };
+    if (actor.userId !== options.userId || !actorCanInstallForOwner(actor, owner)) {
+      throw new ConnectionResolutionError(
+        'TENANT_ACCESS_DENIED',
+        'connection owner mismatch',
+        403
+      );
+    }
+
+    const connection = await this.connectionStorage.create({
+      userId: options.userId,
+      provider: options.provider,
+      ...ownerFields(owner),
+      name: options.connectionName,
+      status: ConnectionStatus.Active,
+      credentials: this.tokenStorage.encryptCredentials(options.credentials),
+      connectedAt: new Date(),
+    });
+    this.logger.info(`Connection created: ${options.provider}`, {
+      userId: options.userId,
+      connectionId: connection.id,
+    });
+    return connection;
   }
 
   async list(options: ListConnectionsOptions): Promise<Connection[]> {
@@ -833,6 +919,31 @@ export class ConnectionManager {
       return this.authorizeConnection({ actor, connection, operation });
     }
     return connectionMatchesActor(connection, actor, operation);
+  }
+}
+
+function actorCanInstallForOwner(
+  actor: PlugFnActor,
+  owner: PlugFnConnectionOwner
+): boolean {
+  if (owner.tenantId && actor.tenantId !== owner.tenantId) return false;
+  if (owner.kind === 'user') return owner.userId === actor.userId;
+  if (owner.installedByUserId !== actor.userId) return false;
+  return actor.organizationId === owner.organizationId;
+}
+
+function assertDirectCredentials(credentials: Exclude<Credentials, OAuth2Credentials>): void {
+  const invalid =
+    (credentials.type === 'api-key' && credentials.apiKey.trim().length === 0) ||
+    (credentials.type === 'jwt' && credentials.token.trim().length === 0) ||
+    (credentials.type === 'basic' &&
+      (credentials.username.trim().length === 0 || credentials.password.length === 0));
+  if (invalid) {
+    throw new ConnectionResolutionError(
+      'VALIDATION_ERROR',
+      'credentials must not be empty',
+      400
+    );
   }
 }
 
