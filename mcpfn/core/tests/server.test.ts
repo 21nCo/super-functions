@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { ErrorCode, ListToolsRequestSchema, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -60,6 +60,26 @@ describe("McpFnServer", () => {
     ).resolves.toMatchObject({
       structuredContent: { result: 5 },
     });
+  });
+
+  it("returns handler McpErrors as tool errors while preserving routing errors", async () => {
+    const registry = new McpFnRegistry().register({
+      name: "handler_error",
+      description: "Throw a handler error.",
+      inputSchema: { type: "object", additionalProperties: false },
+      handler: async () => { throw new McpError(ErrorCode.InternalError, "handler failed"); },
+    });
+    const server = createMcpFnServer({ info: { name: "error-server", version: "1" }, registry });
+    const client = new Client({ name: "error-client", version: "1" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+    await expect(client.callTool({ name: "handler_error", arguments: {} })).resolves.toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: "MCPFN_TOOL_ERROR" } },
+    });
+    await expect(client.callTool({ name: "missing", arguments: {} })).rejects.toBeInstanceOf(McpError);
   });
 
   it("normalizes structured results without treating repeated references as cycles", () => {

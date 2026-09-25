@@ -317,6 +317,7 @@ export class McpFnServer<TContext = undefined> {
           const context = await this.contextFactory(extra);
           const isTaskRequest = Boolean(request.params.task);
           let resolved: McpFnResolvedClientProfile<TContext> | undefined;
+          let routingError: McpError | undefined;
           const completedStages = new Set<McpFnClientProfileLifecycleStage>();
           let currentStage: McpFnClientProfileLifecycleStage =
             "profile-resolution";
@@ -352,23 +353,23 @@ export class McpFnServer<TContext = undefined> {
               (tool) => tool.name === request.params.name,
             );
             if (!listedTool) {
-              throw new McpError(
+              throw (routingError = new McpError(
                 ErrorCode.MethodNotFound,
                 `Tool ${request.params.name} not found`,
-              );
+              ));
             }
             const taskSupport = this.registry.taskSupport(request.params.name);
             if (taskSupport === "required" && !isTaskRequest) {
-              throw new McpError(
+              throw (routingError = new McpError(
                 ErrorCode.MethodNotFound,
                 `Tool ${request.params.name} requires task augmentation`,
-              );
+              ));
             }
             if (taskSupport === "forbidden" && isTaskRequest) {
-              throw new McpError(
+              throw (routingError = new McpError(
                 ErrorCode.MethodNotFound,
                 `Tool ${request.params.name} does not support task augmentation`,
-              );
+              ));
             }
             currentStage = "argument-enrichment";
             await this.emitProfileEvidence({
@@ -481,7 +482,7 @@ export class McpFnServer<TContext = undefined> {
                 error instanceof McpFnError ? error.code : "MCPFN_TOOL_ERROR",
               ...(issues ? { issues } : {}),
             });
-            if (error instanceof McpError) throw error;
+            if (error === routingError) throw error;
             const lifecycleError =
               error instanceof McpFnError && (error.details === undefined || (error.details !== null && typeof error.details === "object" && !Array.isArray(error.details)))
                 ? new McpFnError(error.code, error.message, {
