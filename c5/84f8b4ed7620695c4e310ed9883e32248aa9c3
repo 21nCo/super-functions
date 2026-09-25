@@ -1,0 +1,31 @@
+mcpfn/core/src/validation.ts
+  s_8b12c11549f1ff::t_53787dbc0a7b14 103-119
+mcpfn/cli/src/index.ts
+  s_8b12c11549f1ff::t_5b0d720a79e370 21,99,107,562-574,585,595
+mcpfn/core/tests/validation.test.ts
+  s_8b12c11549f1ff::t_8fa7ec45fa6cb8 3,6-17
+mcpfn/cli/tests/cli.test.ts
+  s_8b12c11549f1ff::t_1483a4b7dc70f8 216-231
+mcpfn/testing/src/client-profile-contracts.ts
+  s_8b12c11549f1ff::t_7bbe9c4c79603c 146-167,723,725-728,730-733,773,779-785,801,819-826
+  s_8b12c11549f1ff::t_900fb61e5f3031 724,729
+mcpfn/testing/tests/client-profile-contracts.test.ts
+  s_8b12c11549f1ff::t_be481c1dc7b160 20,444-457
+  s_8b12c11549f1ff::t_4b1c1833188fc5 435,437-439
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c584f8b4ed7620695c4e310ed9883e32248aa9c3",
+  "prompts": {},
+  "sessions": {
+    "s_8b12c11549f1ff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0d7dd-a226-71f1-953a-3f8414a2a923",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
