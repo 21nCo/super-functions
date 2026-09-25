@@ -6,10 +6,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Root lock is the workspace install source of truth (.gitignore:
-// `**/package-lock.json` + `!/package-lock.json`). Nested leftovers still
-// on `dev` until #180 (botfn) and #183 (searchfn client) land.
+// `**/package-lock.json` + `!/package-lock.json`). The ApiFn reusable workflow
+// owns a separate CLI install lock. Nested leftovers remain on `dev` until
+// #180 (botfn) and #183 (searchfn client) land.
 export const ALLOWED_PACKAGE_LOCKFILES = [
   "package-lock.json",
+  ".github/apifn-cli-install/package-lock.json",
   "botfn/bot-discord/package-lock.json",
   "searchfn/client/package-lock.json",
 ];
