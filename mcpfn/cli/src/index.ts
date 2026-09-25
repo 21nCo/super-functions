@@ -18,6 +18,7 @@ import { McpFnInspector } from "@mcpfn/inspector";
 import {
   McpFnTestClient,
   McpFnTestClientCleanupError,
+  McpFnClientProfileContractCleanupError,
   McpFnAssertionError,
   McpFnConformanceCleanupError,
   McpFnTargetSuiteArtifactCleanupError,
@@ -95,6 +96,7 @@ export class McpFnInspectorCleanupError extends Error {
 
 type CliCleanupError =
   | McpFnTestClientCleanupError
+  | McpFnClientProfileContractCleanupError
   | McpFnTargetSuiteArtifactCleanupError
   | McpFnTargetSuiteCleanupError
   | McpFnConformanceCleanupError
@@ -102,6 +104,7 @@ type CliCleanupError =
 
 function isCliCleanupError(error: unknown): error is CliCleanupError {
   return error instanceof McpFnTestClientCleanupError ||
+    error instanceof McpFnClientProfileContractCleanupError ||
     error instanceof McpFnTargetSuiteArtifactCleanupError ||
     error instanceof McpFnTargetSuiteCleanupError ||
     error instanceof McpFnConformanceCleanupError ||
@@ -556,13 +559,19 @@ export async function runCli(
             "--max-report-bytes must allow at least 2048 report bytes plus a trailing newline",
           );
         }
-        const report = await runMcpFnClientProfileContracts({
-          ...configured,
-          allowSideEffects:
-            options.allowSideEffects === true,
-          maxReportBytes:
-            outputMaxBytes === undefined ? undefined : outputMaxBytes - 1,
-        });
+        let cleanupOwner: McpFnClientProfileContractCleanupError | undefined;
+        let report;
+        try {
+          report = await runMcpFnClientProfileContracts({
+            ...configured,
+            allowSideEffects: options.allowSideEffects === true,
+            maxReportBytes: outputMaxBytes === undefined ? undefined : outputMaxBytes - 1,
+          });
+        } catch (error) {
+          if (!(error instanceof McpFnClientProfileContractCleanupError)) throw error;
+          cleanupOwner = error;
+          report = error.report;
+        }
         const serialized =
           outputMaxBytes === undefined
             ? `${JSON.stringify(report, null, 2)}\n`
@@ -573,7 +582,7 @@ export async function runCli(
         ) {
           throw new Error("Client profile report exceeded the output byte cap");
         }
-        await preserveCleanupOwner(undefined, async () => {
+        await preserveCleanupOwner(cleanupOwner, async () => {
           if (options.output) {
             await writeFile(
               path.resolve(cwd, options.output),
@@ -583,6 +592,7 @@ export async function runCli(
           }
           await stdout(serialized);
         }, "Client profile report output failed");
+        if (cleanupOwner) throw cleanupOwner;
         if (!report.ok) exitCode = 1;
       },
     );

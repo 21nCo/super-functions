@@ -17,6 +17,7 @@ import {
   validateMcpFnClientProfileSnapshot,
   McpFnTestClient,
   McpFnTestClientCleanupError,
+  McpFnClientProfileContractCleanupError,
 } from "../src/index.js";
 
 interface Context {
@@ -431,17 +432,29 @@ it("does not copy opaque connection error values into reports", async () => {
 it.each(["connect", "close"] as const)("preserves the retryable cleanup owner after %s failure", async phase => {
   const retry = vi.fn(async () => {});
   const failure = new McpFnTestClientCleanupError(retry, new Error("private cleanup detail"));
+  const originalConnect = McpFnTestClient.connectTarget.bind(McpFnTestClient);
   const connect = vi.spyOn(McpFnTestClient, "connectTarget");
-  if (phase === "connect") connect.mockRejectedValue(failure);
-  else connect.mockResolvedValue({
+  connect.mockImplementation(originalConnect);
+  if (phase === "connect") connect.mockRejectedValueOnce(failure);
+  else connect.mockResolvedValueOnce({
     listTools: async () => [projectedTool()],
     close: async () => { throw failure; },
   } as McpFnTestClient);
   try {
-    await expect(runMcpFnClientProfileContracts({ profiles: [{
-      id: "cleanup", version: "1", target: targetFor({}).target,
-    }] })).rejects.toBe(failure);
-    await failure.retryCleanup();
+    let caught: unknown;
+    try {
+      await runMcpFnClientProfileContracts({ profiles: [
+        { id: "cleanup", version: "1", target: targetFor({}).target },
+        { id: "later", version: "1", target: targetFor({}).target },
+      ] });
+    } catch (error) { caught = error; }
+    expect(caught).toBeInstanceOf(McpFnClientProfileContractCleanupError);
+    const aggregate = caught as McpFnClientProfileContractCleanupError;
+    expect(aggregate.report.profiles).toMatchObject([
+      { profile: { id: "cleanup" }, ok: false, phase },
+      { profile: { id: "later" }, ok: true },
+    ]);
+    await aggregate.retryCleanup();
     expect(retry).toHaveBeenCalledOnce();
   } finally { connect.mockRestore(); }
 });

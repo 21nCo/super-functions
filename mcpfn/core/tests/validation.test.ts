@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { createSchemaCompiler, validateSchemaCollection } from "../src/validation.js";
+import { createSchemaCompiler, formatMcpFnSchemaIssues, validateSchemaCollection } from "../src/validation.js";
 
 describe("schema validation engines", () => {
+  it.each(["ajv", "cfworker"] as const)("reports structural property names with %s", engine => {
+    const required = createSchemaCompiler(engine).compile({ type: "object", required: ['missing"field'] });
+    expect(required({})).toBe(false);
+    expect(formatMcpFnSchemaIssues(required.errors)).toContainEqual(expect.objectContaining({
+      keyword: "required", missingProperty: 'missing"field',
+    }));
+    const closed = createSchemaCompiler(engine).compile({ type: "object", additionalProperties: false });
+    expect(closed({ 'extra"field': true })).toBe(false);
+    expect(formatMcpFnSchemaIssues(closed.errors)).toContainEqual(expect.objectContaining({
+      keyword: "additionalProperties", rejectedProperty: 'extra"field',
+    }));
+  });
   it.each(["ajv", "cfworker"] as const)(
     "uses draft-07 $ref sibling semantics with %s",
     (engine) => {

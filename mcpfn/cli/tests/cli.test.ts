@@ -213,6 +213,22 @@ describe("mcpfn CLI", () => {
     })).toBe(1);
     expect(errorOutput).toContain("Client profile report output failed");
     expect(errorOutput).not.toContain("private output failure");
+    const retry = vi.fn(async () => {});
+    const owner = new McpFnTestClientCleanupError(retry, new Error("private cleanup detail"));
+    const connect = vi.spyOn(McpFnTestClient, "connectTarget").mockRejectedValueOnce(owner);
+    try {
+      output = "";
+      expect(await runCli(["test-profiles", "profiles.mjs"], {
+        cwd: root,
+        stdout: value => { output += value; },
+        stderr: () => {},
+      })).toBe(1);
+      expect(JSON.parse(output)).toMatchObject({
+        ok: false,
+        profiles: [{ phase: "connect", error: "Target cleanup remains pending" }],
+      });
+      expect(retry).toHaveBeenCalledOnce();
+    } finally { connect.mockRestore(); }
   });
 
   it("loads a server by public shape across package-instance boundaries", async () => {

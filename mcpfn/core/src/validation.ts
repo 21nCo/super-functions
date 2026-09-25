@@ -100,12 +100,23 @@ function jsonPointerToInstancePath(location: string | undefined): string {
 }
 
 function mapCfWorkerErrors(errors: CfWorkerOutputUnit[] | undefined): SchemaIssue[] {
-  return (errors ?? []).map((error) => ({
-    instancePath: jsonPointerToInstancePath(error.instanceLocation),
-    message: error.error ?? "Schema validation failed",
-    keyword: error.keyword ?? jsonPointerToKeyword(error.keywordLocation),
-    schemaPath: error.keywordLocation,
-  }));
+  return (errors ?? []).map((error) => {
+    const keyword = error.keyword ?? jsonPointerToKeyword(error.keywordLocation);
+    const rejectedProperty = keyword === "additionalProperties"
+      ? /^Property "([\s\S]*)" does not match additional properties schema\.$/.exec(error.error ?? "")?.[1]
+      : undefined;
+    const missingProperty = keyword === "required"
+      ? /^Instance does not have required property "([\s\S]*)"\.$/.exec(error.error ?? "")?.[1]
+      : undefined;
+    return {
+      instancePath: jsonPointerToInstancePath(error.instanceLocation),
+      message: error.error ?? "Schema validation failed",
+      keyword,
+      schemaPath: error.keywordLocation,
+      rejectedProperty,
+      missingProperty,
+    };
+  });
 }
 
 function jsonPointerToKeyword(location: string | undefined): string {

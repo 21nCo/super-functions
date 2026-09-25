@@ -143,6 +143,28 @@ export interface McpFnClientProfileContractReport {
   incompleteReason?: string;
 }
 
+/** A complete bounded report with retry ownership for unfinished target cleanup. */
+export class McpFnClientProfileContractCleanupError extends Error {
+  constructor(
+    readonly report: McpFnClientProfileContractReport,
+    private readonly owners: readonly McpFnTestClientCleanupError[],
+  ) {
+    super("Client profile target cleanup remains pending; retain this error and retryCleanup()");
+    this.name = "McpFnClientProfileContractCleanupError";
+  }
+
+  async retryCleanup(): Promise<void> {
+    const results = await Promise.allSettled(this.owners.map(owner => owner.retryCleanup()));
+    if (results.some(result => result.status === "rejected")) throw this;
+  }
+}
+
+class ProfileCaseCleanupError extends Error {
+  constructor(readonly owner: McpFnTestClientCleanupError, readonly result: McpFnClientProfileContractResult) {
+    super("Client profile target cleanup remains pending");
+  }
+}
+
 const PORTABILITY_KEYWORDS = new Set([
   "$anchor",
   "$recursiveAnchor",
@@ -698,8 +720,17 @@ async function runProfileCase(
       }
     }
   }
-  if (cleanupOwner) throw cleanupOwner;
-  if (hasPendingFailure) throw pendingFailure;
+  if (cleanupOwner) throw new ProfileCaseCleanupError(cleanupOwner, {
+    ...result, ok: false, status: "incomplete", phase: result.phase ?? "close", error: "Target cleanup remains pending",
+  });
+  if (hasPendingFailure) {
+    if (pendingFailure instanceof McpFnTestClientCleanupError) {
+      throw new ProfileCaseCleanupError(pendingFailure, {
+        ...result, ok: false, status: "incomplete", phase: "connect", error: "Target cleanup remains pending",
+      });
+    }
+    throw pendingFailure;
+  }
   return result;
 }
 
@@ -739,14 +770,19 @@ export async function runMcpFnClientProfileContracts(
     }
   }
   const profiles: McpFnClientProfileContractResult[] = [];
+  const cleanupOwners: McpFnTestClientCleanupError[] = [];
   for (const profile of [...options.profiles].sort((left, right) => {
     const leftKey = `${left.id}@${left.version}`;
     const rightKey = `${right.id}@${right.version}`;
     return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
   })) {
-    profiles.push(
-      await runProfileCase(profile, options.allowSideEffects === true),
-    );
+    try {
+      profiles.push(await runProfileCase(profile, options.allowSideEffects === true));
+    } catch (error) {
+      if (!(error instanceof ProfileCaseCleanupError)) throw error;
+      profiles.push(error.result);
+      cleanupOwners.push(error.owner);
+    }
   }
   const report: McpFnClientProfileContractReport = {
     formatVersion: 1,
@@ -762,7 +798,7 @@ export async function runMcpFnClientProfileContracts(
     new TextEncoder().encode(JSON.stringify(report)).byteLength <=
     maxReportBytes
   )
-    return report;
+    return finishReport(report, cleanupOwners);
   report.ok = false;
   report.status = "incomplete";
   report.incompleteReason =
@@ -780,5 +816,13 @@ export async function runMcpFnClientProfileContracts(
   ) {
     throw new Error("The minimum client profile report exceeds maxReportBytes");
   }
+  return finishReport(report, cleanupOwners);
+}
+
+function finishReport(
+  report: McpFnClientProfileContractReport,
+  cleanupOwners: readonly McpFnTestClientCleanupError[],
+): McpFnClientProfileContractReport {
+  if (cleanupOwners.length) throw new McpFnClientProfileContractCleanupError(report, cleanupOwners);
   return report;
 }
