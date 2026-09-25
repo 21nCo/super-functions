@@ -89,7 +89,10 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Build trusted esbuild native binding
+        run: npm rebuild esbuild
 
       - name: Build trusted SQLite native binding
         run: npm rebuild better-sqlite3
@@ -209,7 +212,7 @@ jobs:
           node-version: "20"
 
       - name: Upgrade pip
-        run: python -m pip install --upgrade --only-binary=:all: pip build
+        run: "python -m pip install --only-binary=:all: pip==26.0.1 build==1.4.4"
 
       - name: Check package
         run: node scripts/ci-run-python-package.mjs "${{ matrix.package.path }}"
@@ -232,7 +235,13 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Build trusted esbuild native binding
+        run: npm rebuild esbuild
+
+      - name: Build trusted SQLite native binding
+        run: npm rebuild better-sqlite3
 
       - name: Ensure Rollup native package
         run: node scripts/ci-install-rollup-native.mjs

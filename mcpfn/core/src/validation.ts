@@ -9,6 +9,7 @@ import {
 } from "@cfworker/json-schema";
 
 import { draft7MetaSchema } from "./draft-07-meta-schema.js";
+import type { McpFnSchemaIssue } from "./types.js";
 
 /**
  * A single schema validation failure, normalized across validation engines so
@@ -16,8 +17,12 @@ import { draft7MetaSchema } from "./draft-07-meta-schema.js";
  */
 export interface SchemaIssue {
   instancePath: string;
-  message: string;
+  message?: string;
   keyword: string;
+  schemaPath?: string;
+  rejectedProperty?: string;
+  missingProperty?: string;
+  params?: Record<string, unknown>;
 }
 
 /**
@@ -70,6 +75,13 @@ function mapAjvErrors(errors: ErrorObject[] | null | undefined): SchemaIssue[] {
     instancePath: error.instancePath || "",
     message: error.message ?? "Schema validation failed",
     keyword: error.keyword,
+    schemaPath: error.schemaPath,
+    rejectedProperty: error.keyword === "additionalProperties"
+      ? String((error.params as Record<string, unknown>).additionalProperty ?? "")
+      : undefined,
+    missingProperty: error.keyword === "required"
+      ? String((error.params as Record<string, unknown>).missingProperty ?? "")
+      : undefined,
   }));
 }
 
@@ -88,11 +100,23 @@ function jsonPointerToInstancePath(location: string | undefined): string {
 }
 
 function mapCfWorkerErrors(errors: CfWorkerOutputUnit[] | undefined): SchemaIssue[] {
-  return (errors ?? []).map((error) => ({
-    instancePath: jsonPointerToInstancePath(error.instanceLocation),
-    message: error.error ?? "Schema validation failed",
-    keyword: error.keyword ?? jsonPointerToKeyword(error.keywordLocation),
-  }));
+  return (errors ?? []).map((error) => {
+    const keyword = error.keyword ?? jsonPointerToKeyword(error.keywordLocation);
+    const rejectedProperty = keyword === "additionalProperties"
+      ? /^Property "([\s\S]*)" does not match additional properties schema\.$/.exec(error.error ?? "")?.[1]
+      : undefined;
+    const missingProperty = keyword === "required"
+      ? /^Instance does not have required property "([\s\S]*)"\.$/.exec(error.error ?? "")?.[1]
+      : undefined;
+    return {
+      instancePath: jsonPointerToInstancePath(error.instanceLocation),
+      message: error.error ?? "Schema validation failed",
+      keyword,
+      schemaPath: error.keywordLocation,
+      rejectedProperty,
+      missingProperty,
+    };
+  });
 }
 
 function jsonPointerToKeyword(location: string | undefined): string {
@@ -625,3 +649,35 @@ export function createSchemaCompiler(
 
 /** Whether the current runtime validates schemas via Ajv (Node) or the edge fallback. */
 export const schemaEngine: SchemaEngine = defaultSchemaEngine();
+
+const MAX_STRUCTURAL_FIELD_LENGTH = 256;
+
+function boundedStructuralField(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length === 0) return undefined;
+  return value.slice(0, MAX_STRUCTURAL_FIELD_LENGTH);
+}
+
+/** Convert normalized engine failures into a bounded public diagnostic shape. */
+export function formatMcpFnSchemaIssues(
+  errors: SchemaIssue[] | null | undefined,
+): McpFnSchemaIssue[] {
+  return (errors ?? []).slice(0, 100).map((error) => {
+    const rawPath = error.instancePath || "/";
+    const instancePath = rawPath.length <= MAX_STRUCTURAL_FIELD_LENGTH ? rawPath : "/";
+    const rejectedProperty = boundedStructuralField(
+      error.rejectedProperty ?? (error.keyword === "additionalProperties" ? error.params?.additionalProperty : undefined),
+    );
+    const missingProperty = boundedStructuralField(
+      error.missingProperty ?? (error.keyword === "required" ? error.params?.missingProperty : undefined),
+    );
+    return {
+      path: instancePath,
+      instancePath,
+      schemaPath: typeof error.schemaPath === "string" && error.schemaPath.length > 0 && error.schemaPath.length <= 256 ? error.schemaPath : "#",
+      keyword: boundedStructuralField(error.keyword) ?? "validation",
+      message: boundedStructuralField(error.message) ?? "Schema validation failed",
+      ...(rejectedProperty ? { rejectedProperty } : {}),
+      ...(missingProperty ? { missingProperty } : {}),
+    };
+  });
+}

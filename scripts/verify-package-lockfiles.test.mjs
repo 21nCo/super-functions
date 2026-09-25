@@ -52,9 +52,10 @@ test("gitBinary is an absolute existing path", () => {
   assert.equal(existsSync(binary), true);
 });
 
-test("allowlist is root lock plus documented leftovers from #180/#183", () => {
+test("allowlist is root, ApiFn workflow lock, and documented leftovers", () => {
   assert.deepEqual(ALLOWED_PACKAGE_LOCKFILES, [
     "package-lock.json",
+    ".github/apifn-cli-install/package-lock.json",
     "botfn/bot-discord/package-lock.json",
     "searchfn/client/package-lock.json",
   ]);
@@ -64,6 +65,7 @@ test("packages/db nested lock is never allowed", () => {
   assert.deepEqual(
     disallowedPackageLockfiles([
       "package-lock.json",
+      ".github/apifn-cli-install/package-lock.json",
       "packages/db/package-lock.json",
       "botfn/bot-discord/package-lock.json",
       "searchfn/client/package-lock.json",
@@ -72,17 +74,20 @@ test("packages/db nested lock is never allowed", () => {
   );
 });
 
-test("script passes for root lock plus documented leftovers", () => {
+test("script passes for root, ApiFn workflow, and documented leftovers", () => {
   const { root, git } = gitRepo();
   try {
+    mkdirSync(path.join(root, ".github/apifn-cli-install"), { recursive: true });
     mkdirSync(path.join(root, "botfn/bot-discord"), { recursive: true });
     mkdirSync(path.join(root, "searchfn/client"), { recursive: true });
+    writeFileSync(path.join(root, ".github/apifn-cli-install/package-lock.json"), "{}\n");
     writeFileSync(path.join(root, "botfn/bot-discord/package-lock.json"), "{}\n");
     writeFileSync(path.join(root, "searchfn/client/package-lock.json"), "{}\n");
-    git("add", "botfn/bot-discord/package-lock.json", "searchfn/client/package-lock.json");
-    git("commit", "--quiet", "-m", "allowlisted leftovers");
+    git("add", ".github/apifn-cli-install/package-lock.json", "botfn/bot-discord/package-lock.json", "searchfn/client/package-lock.json");
+    git("commit", "--quiet", "-m", "allowlisted locks");
     run(root);
     assert.deepEqual(trackedPackageLockfiles(root), [
+      ".github/apifn-cli-install/package-lock.json",
       "botfn/bot-discord/package-lock.json",
       "package-lock.json",
       "searchfn/client/package-lock.json",

@@ -1,5 +1,6 @@
 export * from "./apps.js";
 export * from "./canonical.js";
+export * from "./client-profiles.js";
 export * from "./declaration.js";
 export * from "./diff.js";
 export * from "./errors.js";
@@ -8,4 +9,4 @@ export * from "./registry.js";
 export * from "./results.js";
 export * from "./server.js";
 export * from "./types.js";
-export { schemaEngine } from "./validation.js";
+export * from "./validation.js";

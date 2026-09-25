@@ -12,6 +12,7 @@ import {
   structuredResult,
 } from "@mcpfn/core";
 import {
+  createMcpFnClientProfileSnapshot,
   McpFnTestClient,
   McpFnTestClientCleanupError,
 } from "@mcpfn/testing";
@@ -96,6 +97,138 @@ describe("mcpfn CLI", () => {
     expect(output).toContain("Valid McpFn manifest");
     expect(await runCli(["diff", "before.json", "after.json", "--json"], { cwd: root, stdout: (value) => { output += value; } })).toBe(1);
     expect(JSON.parse(await readFile(path.join(root, "before.json"), "utf8")).formatVersion).toBe(1);
+  });
+
+  it("validates, diffs, and executes client-profile contracts", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-profiles-"));
+    roots.push(root);
+    const before = createMcpFnClientProfileSnapshot(
+      { id: "generic", version: "1" },
+      [
+        {
+          name: "echo",
+          description: "Echo.",
+          inputSchema: { type: "object" },
+        },
+      ],
+    );
+    const after = createMcpFnClientProfileSnapshot(
+      { id: "generic", version: "2" },
+      [
+        {
+          name: "echo",
+          description: "Changed echo.",
+          inputSchema: { type: "object" },
+        },
+      ],
+    );
+    await writeFile(path.join(root, "before.json"), JSON.stringify(before));
+    await writeFile(path.join(root, "after.json"), JSON.stringify(after));
+    let output = "";
+    expect(
+      await runCli(["validate-profile", "before.json"], {
+        cwd: root,
+        stdout: (value) => {
+          output += value;
+        },
+      }),
+    ).toBe(0);
+    expect(output).toContain("Valid McpFn client profile generic@1");
+    output = "";
+    expect(
+      await runCli(
+        ["diff-profiles", "before.json", "after.json", "--fail-on-behavioral"],
+        {
+          cwd: root,
+          stdout: (value) => {
+            output += value;
+          },
+        },
+      ),
+    ).toBe(1);
+    expect(output).toContain("modified=1");
+
+    const coreUrl = pathToFileURL(testRequire.resolve("@mcpfn/core")).href;
+    const clientUrl = pathToFileURL(testRequire.resolve("@mcpfn/client")).href;
+    const transportUrl = pathToFileURL(
+      testRequire.resolve("@modelcontextprotocol/sdk/inMemory.js"),
+    ).href;
+    await writeFile(
+      path.join(root, "profiles.mjs"),
+      `import { McpFnRegistry, createMcpFnServer, structuredResult } from ${JSON.stringify(coreUrl)};
+       import { customTarget } from ${JSON.stringify(clientUrl)};
+       import { InMemoryTransport } from ${JSON.stringify(transportUrl)};
+       export default {
+         profiles: [{
+           id: "generic",
+           version: "canonical",
+           target: customTarget({
+             kind: "cli-profile",
+             open: async () => {
+               const server = createMcpFnServer({
+                 info: { name: "cli-profile", version: "1.0.0" },
+                 registry: new McpFnRegistry().register({
+                   name: "echo",
+                   description: "Echo.",
+                   inputSchema: { type: "object", additionalProperties: false },
+                   handler: async () => structuredResult({ ok: true })
+                 })
+               });
+               const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+               await server.connect(serverTransport);
+               return { transport: clientTransport, close: () => server.close() };
+             }
+           }),
+           fixtures: [{
+             name: "minimal call",
+             tool: "echo",
+             sideEffect: "read-only",
+             expect: { structuredContent: { ok: true } }
+           }]
+         }]
+       };`,
+    );
+    output = "";
+    expect(
+      await runCli(
+        ["test-profiles", "profiles.mjs", "--max-report-bytes", "4096"],
+        {
+          cwd: root,
+          stdout: (value) => {
+            output += value;
+          },
+        },
+      ),
+    ).toBe(0);
+    expect(Buffer.byteLength(output, "utf8")).toBeLessThanOrEqual(4096);
+    expect(JSON.parse(output)).toMatchObject({
+      kind: "mcpfn.client-profile-contract-report",
+      ok: true,
+    });
+    let errorOutput = "";
+    expect(await runCli(["test-profiles", "profiles.mjs"], {
+      cwd: root,
+      stdout: async () => { throw new Error("private output failure"); },
+      stderr: (value) => { errorOutput += value; },
+    })).toBe(1);
+    expect(errorOutput).toContain("Client profile report output failed");
+    expect(errorOutput).not.toContain("private output failure");
+    const retry = vi.fn(async () => {});
+    const owner = new McpFnTestClientCleanupError(retry, new Error("private cleanup detail"));
+    const connect = vi.spyOn(McpFnTestClient, "connectTarget").mockRejectedValueOnce(owner);
+    try {
+      output = "";
+      expect(await runCli(["test-profiles", "profiles.mjs"], {
+        cwd: root,
+        stdout: value => { output += value; },
+        stderr: () => {},
+      })).toBe(1);
+      expect(JSON.parse(output)).toMatchObject({
+        ok: false,
+        profiles: [{ phase: "connect", error: "Target cleanup remains pending" }],
+      });
+      expect(retry).toHaveBeenCalledOnce();
+    } finally { connect.mockRestore(); }
   });
 
   it("loads a server by public shape across package-instance boundaries", async () => {
@@ -571,4 +704,16 @@ it.each(['host','content-length','connection'])("rejects forbidden API-key heade
       expect(stderr).not.toContain('opaque-private');
     }
   } finally { if(previous===undefined) delete process.env[key]; else process.env[key]=previous; }
+});
+
+it("rejects malformed client profile entries at config loading", async () => {
+  const { loadClientProfileContracts } = await import('../src/load.js');
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mcpfn-profile-config-'));
+  try {
+    for (const [index, entry] of [null, {}, { id: 'x', version: '1', target: {} }].entries()) {
+      const file = path.join(root, `bad-${index}.json`);
+      await writeFile(file, JSON.stringify({ profiles: [entry] }));
+      await expect(loadClientProfileContracts(file)).rejects.toThrow(/entries require/);
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

@@ -18,6 +18,7 @@ import { McpFnInspector } from "@mcpfn/inspector";
 import {
   McpFnTestClient,
   McpFnTestClientCleanupError,
+  McpFnClientProfileContractCleanupError,
   McpFnAssertionError,
   McpFnConformanceCleanupError,
   McpFnTargetSuiteArtifactCleanupError,
@@ -35,12 +36,15 @@ import {
   runScenarios,
   serializeMcpFnTargetSuiteReport,
   createMcpFnScenarioReport,
+  diffMcpFnClientProfileSnapshots,
+  runMcpFnClientProfileContracts,
+  validateMcpFnClientProfileSnapshot,
   type McpFnRemoteCredential,
 } from "@mcpfn/testing";
 
-import { loadManifestSource, loadScenarios } from "./load.js";
+import { loadClientProfileContracts, loadManifestSource, loadScenarios } from "./load.js";
 
-export { loadManifestSource, loadScenarios };
+export { loadClientProfileContracts, loadManifestSource, loadScenarios };
 
 export interface CliRunOptions {
   cwd?: string;
@@ -92,6 +96,7 @@ export class McpFnInspectorCleanupError extends Error {
 
 type CliCleanupError =
   | McpFnTestClientCleanupError
+  | McpFnClientProfileContractCleanupError
   | McpFnTargetSuiteArtifactCleanupError
   | McpFnTargetSuiteCleanupError
   | McpFnConformanceCleanupError
@@ -99,6 +104,7 @@ type CliCleanupError =
 
 function isCliCleanupError(error: unknown): error is CliCleanupError {
   return error instanceof McpFnTestClientCleanupError ||
+    error instanceof McpFnClientProfileContractCleanupError ||
     error instanceof McpFnTargetSuiteArtifactCleanupError ||
     error instanceof McpFnTargetSuiteCleanupError ||
     error instanceof McpFnConformanceCleanupError ||
@@ -205,6 +211,63 @@ export async function runCli(
         exitCode = 1;
       }
     });
+
+  cli
+    .command(
+      "validate-profile <snapshot>",
+      "Validate a deterministic client-profile snapshot",
+    )
+    .action(async (snapshotPath: string) => {
+      const snapshot = validateMcpFnClientProfileSnapshot(
+        JSON.parse(await readFile(path.resolve(cwd, snapshotPath), "utf8")),
+      );
+      await stdout(
+        `Valid McpFn client profile ${snapshot.profile.id}@${snapshot.profile.version} (${snapshot.catalogHash})\n`,
+      );
+    });
+
+  cli
+    .command(
+      "diff-profiles <before> <after>",
+      "Diff reviewed client-profile catalogs",
+    )
+    .option("--json", "Print machine-readable JSON")
+    .option(
+      "--fail-on-behavioral",
+      "Fail when an advertised tool contract changes",
+    )
+    .action(
+      async (
+        beforePath: string,
+        afterPath: string,
+        options: { json?: boolean; failOnBehavioral?: boolean },
+      ) => {
+        const read = async (file: string) =>
+          JSON.parse(
+            await readFile(path.resolve(cwd, file), "utf8"),
+          ) as unknown;
+        const result = diffMcpFnClientProfileSnapshots(
+          await read(beforePath),
+          await read(afterPath),
+        );
+        if (options.json) {
+          await stdout(`${JSON.stringify(result, null, 2)}\n`);
+        } else {
+          await stdout(
+            `removed=${result.summary.removed} added=${result.summary.added} modified=${result.summary.modified}\n`,
+          );
+          for (const change of result.changes) {
+            await stdout(`${change.kind.toUpperCase()} tools.${change.tool}\n`);
+          }
+        }
+        if (
+          !result.compatible ||
+          (options.failOnBehavioral && result.summary.modified > 0)
+        ) {
+          exitCode = 1;
+        }
+      },
+    );
 
   cli.command("test <server> <scenarios>", "Run protocol-level semantic regression scenarios")
     .option("--output <path>", "Write a JSON report")
@@ -464,6 +527,76 @@ export async function runCli(
       if (targetCleanupError) throw targetCleanupError;
       if (!report.ok) exitCode = 1;
     });
+
+  cli
+    .command(
+      "test-profiles <config>",
+      "Run deterministic authenticated client-profile contracts",
+    )
+    .option("--output <path>", "Write the redacted JSON report")
+    .option(
+      "--allow-side-effects",
+      "Execute explicitly declared mutating fixtures",
+    )
+    .option("--max-report-bytes <bytes>", "Maximum aggregate JSON report size")
+    .action(
+      async (
+        configPath: string,
+        options: {
+          output?: string;
+          allowSideEffects?: boolean;
+          maxReportBytes?: string;
+        },
+      ) => {
+        const configured = await loadClientProfileContracts(configPath, cwd);
+        const maxReportBytes = parsePositiveInteger(
+          options.maxReportBytes,
+          "--max-report-bytes",
+        );
+        const outputMaxBytes = maxReportBytes ?? configured.maxReportBytes ?? 1_048_576;
+        if (outputMaxBytes !== undefined && outputMaxBytes < 2_049) {
+          throw new Error(
+            "--max-report-bytes must allow at least 2048 report bytes plus a trailing newline",
+          );
+        }
+        let cleanupOwner: McpFnClientProfileContractCleanupError | undefined;
+        let report;
+        try {
+          report = await runMcpFnClientProfileContracts({
+            ...configured,
+            allowSideEffects: options.allowSideEffects === true,
+            maxReportBytes: outputMaxBytes === undefined ? undefined : outputMaxBytes - 1,
+          });
+        } catch (error) {
+          if (!(error instanceof McpFnClientProfileContractCleanupError)) throw error;
+          cleanupOwner = error;
+          report = error.report;
+        }
+        const serialized =
+          outputMaxBytes === undefined
+            ? `${JSON.stringify(report, null, 2)}\n`
+            : `${JSON.stringify(report)}\n`;
+        if (
+          outputMaxBytes !== undefined &&
+          Buffer.byteLength(serialized, "utf8") > outputMaxBytes
+        ) {
+          if (cleanupOwner) throw cleanupOwner;
+          throw new Error("Client profile report exceeded the output byte cap");
+        }
+        await preserveCleanupOwner(cleanupOwner, async () => {
+          if (options.output) {
+            await writeFile(
+              path.resolve(cwd, options.output),
+              serialized,
+              "utf8",
+            );
+          }
+          await stdout(serialized);
+        }, "Client profile report output failed");
+        if (cleanupOwner) throw cleanupOwner;
+        if (!report.ok) exitCode = 1;
+      },
+    );
 
   cli.command("auth-diagnose <url>", "Probe OAuth discovery without opening a browser")
     .option("--timeout <milliseconds>", "Per-request timeout in milliseconds")
