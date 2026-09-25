@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M3CB8P9CP4K54E2F0M0SPPVJ",
+  "strategy": "manual-commit",
+  "branch": "codex/mcpfn-publish-registry-wait-20260925",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "mcpfn/cli/tests/cli.test.ts",
+    "scripts/test-mcpfn-registry-install.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 154717,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 8542080,
+    "output_tokens": 21456,
+    "api_call_count": 95
+  }
+}
