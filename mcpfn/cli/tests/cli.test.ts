@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -578,7 +578,8 @@ describe("mcpfn CLI", () => {
   );
 
   it("uses environment-backed API keys and writes bounded JSON and JUnit target artifacts", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-external-"));
+    // Resolve the fixture's SDK import from this package's isolated install.
+    const root = await mkdtemp(path.join(fileURLToPath(new URL("../", import.meta.url)), ".mcpfn-cli-external-"));
     roots.push(root);
     const scenarios = path.join(root, "scenarios.mjs");
     const json = path.join(root, "report.json");
@@ -590,7 +591,9 @@ describe("mcpfn CLI", () => {
     const serverSource = fileURLToPath(
       new URL("../../examples/external-http-server.mjs", import.meta.url),
     );
-    const server = spawn(process.execPath, [serverSource], {
+    const serverFixture = path.join(root, "external-http-server.mjs");
+    await copyFile(serverSource, serverFixture);
+    const server = spawn(process.execPath, [serverFixture], {
       env: { ...process.env, MCPFN_EXTERNAL_API_KEY: "cli-external-secret" },
       stdio: ["ignore", "pipe", "pipe"],
     });

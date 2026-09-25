@@ -66,7 +66,9 @@ try {
 
 function installWithRetry(packages) {
   let last;
-  for (let attempt = 1; attempt <= 5; attempt += 1) {
+  // npm can acknowledge a publish several minutes before registry installs see it.
+  const maxAttempts = 20;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     last = spawnSync(
       process.platform === "win32" ? "npm.cmd" : "npm",
       [
@@ -74,6 +76,7 @@ function installWithRetry(packages) {
         "--ignore-scripts",
         "--no-audit",
         "--no-fund",
+        "--prefer-online",
         "--registry",
         registry,
         ...packages,
@@ -81,7 +84,7 @@ function installWithRetry(packages) {
       { cwd: root, encoding: "utf8", stdio: "pipe", timeout: 60_000 },
     );
     if (last.status === 0) return;
-    if (attempt < 5) spawnSync(process.execPath, ["-e", "setTimeout(()=>{}, 15000)"]);
+    if (attempt < maxAttempts) spawnSync(process.execPath, ["-e", "setTimeout(()=>{}, 15000)"]);
   }
   throw new Error(`Unable to install released package\n${last?.stdout}\n${last?.stderr}`);
 }
