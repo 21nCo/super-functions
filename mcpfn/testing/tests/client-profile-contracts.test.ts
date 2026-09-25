@@ -458,6 +458,36 @@ it.each(["connect", "close"] as const)("preserves the retryable cleanup owner af
     expect(retry).toHaveBeenCalledOnce();
   } finally { connect.mockRestore(); }
 });
+it("retains an earlier cleanup owner when a later profile has a configuration error", async () => {
+  const retry = vi.fn(async () => {});
+  const owner = new McpFnTestClientCleanupError(retry, new Error("private cleanup detail"));
+  const originalConnect = McpFnTestClient.connectTarget.bind(McpFnTestClient);
+  const connect = vi.spyOn(McpFnTestClient, "connectTarget").mockImplementation(originalConnect);
+  connect.mockRejectedValueOnce(owner).mockResolvedValueOnce({
+    listTools: async () => [{ ...projectedTool(), execution: { taskSupport: "required" } }],
+    close: async () => {},
+  } as McpFnTestClient);
+  try {
+    let caught: unknown;
+    try {
+      await runMcpFnClientProfileContracts({ profiles: [
+        { id: "a", version: "1", target: targetFor({}).target },
+        { id: "b", version: "1", target: targetFor({}).target,
+          fixtures: [{ name: "task", tool: "lookup", sideEffect: "read-only" }] },
+        { id: "c", version: "1", target: targetFor({}).target },
+      ] });
+    } catch (error) { caught = error; }
+    expect(caught).toBeInstanceOf(McpFnClientProfileContractCleanupError);
+    const aggregate = caught as McpFnClientProfileContractCleanupError;
+    expect(aggregate.report.profiles).toMatchObject([
+      { profile: { id: "a" }, ok: false, phase: "connect" },
+      { profile: { id: "b" }, ok: false, status: "incomplete" },
+      { profile: { id: "c" }, ok: true },
+    ]);
+    await aggregate.retryCleanup();
+    expect(retry).toHaveBeenCalledOnce();
+  } finally { connect.mockRestore(); }
+});
 it.each([undefined, { rejectedProperty: undefined }])("requires a defined discriminator for captured failures: %s", async validationIssue => {
   await expect(runMcpFnClientProfileContracts({ profiles: [{ id: "test", version: "1", target: targetFor({}).target,
     fixtures: [{ name: "weak", tool: "lookup", arguments: {}, sideEffect: "read-only", source: "captured-failure", expect: { isError: true, validationIssue } }],

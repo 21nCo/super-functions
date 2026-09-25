@@ -779,9 +779,18 @@ export async function runMcpFnClientProfileContracts(
     try {
       profiles.push(await runProfileCase(profile, options.allowSideEffects === true));
     } catch (error) {
-      if (!(error instanceof ProfileCaseCleanupError)) throw error;
-      profiles.push(error.result);
-      cleanupOwners.push(error.owner);
+      if (error instanceof ProfileCaseCleanupError) {
+        profiles.push(error.result);
+        cleanupOwners.push(error.owner);
+      } else {
+        if (cleanupOwners.length === 0) throw error;
+        // An earlier session still needs a retry owner. Keep the aggregate
+        // available and finish the remaining independent profile cases.
+        profiles.push({ profile: { id: profile.id, version: profile.version },
+          status: "incomplete", ok: false, phase: "fixtures", portability: [], fixtures: [],
+          error: "Profile execution failed",
+        });
+      }
     }
   }
   const report: McpFnClientProfileContractReport = {
