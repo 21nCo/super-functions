@@ -580,6 +580,7 @@ export async function runCli(
           outputMaxBytes !== undefined &&
           Buffer.byteLength(serialized, "utf8") > outputMaxBytes
         ) {
+          if (cleanupOwner) throw cleanupOwner;
           throw new Error("Client profile report exceeded the output byte cap");
         }
         await preserveCleanupOwner(cleanupOwner, async () => {

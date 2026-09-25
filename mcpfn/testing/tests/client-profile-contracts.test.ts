@@ -488,6 +488,31 @@ it("retains an earlier cleanup owner when a later profile has a configuration er
     expect(retry).toHaveBeenCalledOnce();
   } finally { connect.mockRestore(); }
 });
+it("records a profile failure when its cleanup also needs a retry", async () => {
+  const retry = vi.fn(async () => {});
+  const owner = new McpFnTestClientCleanupError(retry, new Error("private cleanup detail"));
+  const connect = vi.spyOn(McpFnTestClient, "connectTarget").mockResolvedValueOnce({
+    listTools: async () => [{ ...projectedTool(), execution: { taskSupport: "required" } }],
+    close: async () => { throw owner; },
+  } as McpFnTestClient);
+  try {
+    let caught: unknown;
+    try {
+      await runMcpFnClientProfileContracts({ profiles: [{
+        id: "cleanup", version: "1", target: targetFor({}).target,
+        fixtures: [{ name: "task", tool: "lookup", sideEffect: "read-only" }],
+      }] });
+    } catch (error) { caught = error; }
+    expect(caught).toBeInstanceOf(McpFnClientProfileContractCleanupError);
+    const aggregate = caught as McpFnClientProfileContractCleanupError;
+    expect(aggregate.report.profiles[0]).toMatchObject({
+      ok: false, status: "incomplete", phase: "fixtures",
+      error: "Profile execution failed; target cleanup remains pending",
+    });
+    await aggregate.retryCleanup();
+    expect(retry).toHaveBeenCalledOnce();
+  } finally { connect.mockRestore(); }
+});
 it.each([undefined, { rejectedProperty: undefined }])("requires a defined discriminator for captured failures: %s", async validationIssue => {
   await expect(runMcpFnClientProfileContracts({ profiles: [{ id: "test", version: "1", target: targetFor({}).target,
     fixtures: [{ name: "weak", tool: "lookup", arguments: {}, sideEffect: "read-only", source: "captured-failure", expect: { isError: true, validationIssue } }],

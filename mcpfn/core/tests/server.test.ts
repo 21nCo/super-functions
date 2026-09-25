@@ -82,6 +82,26 @@ describe("McpFnServer", () => {
     await expect(client.callTool({ name: "missing", arguments: {} })).rejects.toBeInstanceOf(McpError);
   });
 
+  it("preserves protocol errors from profile resolution", async () => {
+    const registry = new McpFnRegistry().register({
+      name: "echo", description: "Echo.", inputSchema: { type: "object" },
+      handler: async () => structuredResult({ ok: true }),
+    });
+    const server = createMcpFnServer({
+      info: { name: "profile-error-server", version: "1" }, registry,
+      clientProfiles: {
+        profiles: [],
+        resolveVerifiedIdentity: () => { throw new McpError(ErrorCode.InvalidRequest, "denied"); },
+      },
+    });
+    const client = new Client({ name: "profile-error-client", version: "1" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+    await expect(client.callTool({ name: "echo", arguments: {} })).rejects.toBeInstanceOf(McpError);
+  });
+
   it("normalizes structured results without treating repeated references as cycles", () => {
     const shared = { value: 1 };
     const circular: Record<string, unknown> = { shared };

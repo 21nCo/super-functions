@@ -721,7 +721,8 @@ async function runProfileCase(
     }
   }
   if (cleanupOwner) throw new ProfileCaseCleanupError(cleanupOwner, {
-    ...result, ok: false, status: "incomplete", phase: result.phase ?? "close", error: "Target cleanup remains pending",
+    ...result, ok: false, status: "incomplete", phase: result.phase ?? (hasPendingFailure ? "fixtures" : "close"),
+    error: hasPendingFailure ? "Profile execution failed; target cleanup remains pending" : "Target cleanup remains pending",
   });
   if (hasPendingFailure) {
     if (pendingFailure instanceof McpFnTestClientCleanupError) {

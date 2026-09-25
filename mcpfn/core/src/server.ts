@@ -482,7 +482,8 @@ export class McpFnServer<TContext = undefined> {
                 error instanceof McpFnError ? error.code : "MCPFN_TOOL_ERROR",
               ...(issues ? { issues } : {}),
             });
-            if (error === routingError) throw error;
+            if (error instanceof McpError && (error === routingError ||
+                ["profile-resolution", "catalog-projection", "argument-enrichment"].includes(currentStage))) throw error;
             const lifecycleError =
               error instanceof McpFnError && (error.details === undefined || (error.details !== null && typeof error.details === "object" && !Array.isArray(error.details)))
                 ? new McpFnError(error.code, error.message, {
