@@ -1,0 +1,1704 @@
+langfn/typescript/src/utils/random.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-22
+packages/cli/src/commands/status.ts
+  s_8b12c11549f1ff::t_c5697404056114 107,124-137
+  s_8b12c11549f1ff::t_13fe59e51abacf 138
+authfn/python/authfn/limits.py
+  s_8b12c11549f1ff::t_c5697404056114 1-25
+langfn/typescript/src/structured/output.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-119
+packages/oauth-flow/package.json
+  s_8b12c11549f1ff::t_c5697404056114 41
+plugfn/core/src/core/workflow-engine.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,64,70-71,107,151-166,312,323,343,557,685-687
+  s_8b12c11549f1ff::t_e25d93d9c6d754 688
+uifn/create/src/preview.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-122
+secfn/core/tsconfig.json
+  s_8b12c11549f1ff::t_c5697404056114 1-26
+datafn/docs/content/docs/documentation/meta.json
+  s_8b12c11549f1ff::t_c5697404056114 10
+langfn/typescript/src/orchestration/router.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-5
+searchfn/adapter-indexeddb/__tests__/conformance/indexeddb.conformance.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,3
+reviewfn/context-composio/package.json
+  s_8b12c11549f1ff::t_c5697404056114 1-25
+langfn/typescript/src/models/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-8
+mcpfn/client/tests/client.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 9-386,545,578,580-581,583-584,589,896-1251
+secfn/core/src/scanner/utils.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-49
+datafn/client/src/sync/engine.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2,365,378-381,442-444,458-461,464-466,489-490,500-505,537-540,543-576,582-585,588,596-599,629-630,633-638,640-645,659,683,750,1238-1242,1274-1277,1383,1898-1900,1904
+packages/oauth-core/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 5-6,8,24-27
+datafn/docs/content/docs/reference/core/errors.mdx
+  s_8b12c11549f1ff::t_c5697404056114 24,54
+memoryfn/typescript/src/http/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1
+authfn/core/src/core/users.ts
+  s_8b12c11549f1ff::t_c5697404056114 5,20,32
+datafn/docs/content/docs/documentation/security/production-checklist.mdx
+  s_8b12c11549f1ff::t_c5697404056114 12-14,90
+authfn/core/src/__tests__/password.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 9,30-136
+langfn/typescript/src/evaluation/evaluator.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-225
+reviewfn/docs/evaluation.md
+  s_8b12c11549f1ff::t_c5697404056114 1-15
+uifn/react/src/portal.tsx
+  s_8b12c11549f1ff::t_c5697404056114 21-22,25-33,38,41
+authfn/docs/content/docs/ai-resources/cursor.md
+  s_8b12c11549f1ff::t_c5697404056114 54
+plugfn/providers/tests/onedrive-default-grants.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-5
+reviewfn/testing/test/coordinator.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-127
+langfn/typescript/src/memory/summary.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-103
+datafn/docs/content/docs/documentation/security/meta.json
+  s_8b12c11549f1ff::t_c5697404056114 8
+langfn/typescript/src/orchestration/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-3
+langfn/typescript/src/rag/memory.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-49
+packages/cli/src/utils/introspection.ts
+  s_8b12c11549f1ff::t_c5697404056114 421-423
+packages/db/src/adapter/__tests__/row-level-namespace.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 720-721,749
+langfn/COMPATIBILITY.md
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+mcpfn/cli/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,26-30
+langfn/typescript/tests/round2-regressions.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-109
+mcpfn/testing/src/remote-target.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-816
+plugfn/core/src/core/execution-coordinator.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-98
+plugfn/scripts/gate-plugfn-provider.mjs
+  s_8b12c11549f1ff::t_c5697404056114 6,10,19
+langfn/typescript/src/graph/checkpoint.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-40
+uifn/registry/src/preset/project.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-533
+packages/cli/src/commands/generate.ts
+  s_8b12c11549f1ff::t_c5697404056114 10-13,24,31-150,311,331-332,411-423,428,431,434-448
+  s_8b12c11549f1ff::t_a2138e7dc3cebb 9
+packages/oauth-http/src/token-client.ts
+  s_8b12c11549f1ff::t_c5697404056114 120-129,148,152-157,428-431
+packages/cli/src/__tests__/generate-command.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-292
+packages/cli/src/utils/load-config-module.ts
+  s_8b12c11549f1ff::t_c5697404056114 87
+memoryfn/typescript/src/extraction/dedup.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-24
+release-packages.json
+  s_8b12c11549f1ff::t_c5697404056114 153-156,158-164
+reviewfn/github/test/github.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-158
+secfn/server/src/types.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-106
+uifn/create/index.html
+  s_8b12c11549f1ff::t_c5697404056114 1-13
+authfn/docs/content/docs/adapters/mail/sendgrid.md
+  s_8b12c11549f1ff::t_c5697404056114 14
+mcpfn/cli/tests/conformance-cleanup.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-259
+memoryfn/typescript/tsup.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-15
+mcpfn/core/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,24,27-28,34-35
+authfn/core/src/core/oauth-accounts.ts
+  s_8b12c11549f1ff::t_c5697404056114 4-9,88-94,97,100-117,125-126,137-140
+mcpfn/auth/tsup.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 12-15
+sendfn/typescript/src/edge.ts
+  s_8b12c11549f1ff::t_c5697404056114 299-300
+plugfn/providers/src/gmail/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2,153-154,158,579-580
+.codex/hooks.json
+  s_8b12c11549f1ff::t_c5697404056114 1-88
+authfn/docs/content/docs/plugins/api-keys.md
+  s_8b12c11549f1ff::t_c5697404056114 17-18,20-22
+datafn/docs/content/docs/reference/core/meta.json
+  s_8b12c11549f1ff::t_c5697404056114 3
+packages/db/src/adapters/internal-utils.ts
+  s_8b12c11549f1ff::t_c5697404056114 88,91-96
+mcpfn/testing/tests/testing.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 4,13,17,22,28-200,693-703,771-791
+plugfn/providers/src/outlook/actions.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-218
+reviewfn/docs/security.md
+  s_8b12c11549f1ff::t_c5697404056114 1-28
+secfn/core/src/scanner/rules.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-160
+uifn/registry/src/preset/cli.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-119
+langfn/typescript/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-61
+memoryfn/typescript/src/providers/types.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-9
+packages/http/README.md
+  s_8b12c11549f1ff::t_c5697404056114 263,270-272
+  s_8b12c11549f1ff::t_a48287371c0978 273
+langfn/typescript/tests/tool-agent.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-236
+mcpfn/core/src/draft-07-meta-schema.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-124
+reviewfn/cli/tsconfig.json
+  s_8b12c11549f1ff::t_c5697404056114 1-4
+scripts/sfns4/build-hosted-hyperdrive.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-10
+authfn/docs/content/docs/examples/password-sessions.md
+  s_8b12c11549f1ff::t_c5697404056114 30
+langfn/typescript/tests/performance.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-140
+secfn/runtime/tsup.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-13
+reviewfn/github/LICENSE
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+authfn/python/tests/test_placement_context.py
+  s_8b12c11549f1ff::t_c5697404056114 1-1109
+reviewfn/harness-codex/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-3
+langfn/typescript/src/core/usage.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-30
+.github/workflows/reviewfn-release.yml
+  s_8b12c11549f1ff::t_c5697404056114 1-44
+authfn/python/tests/test_sessions.py
+  s_8b12c11549f1ff::t_c5697404056114 18-26,49-98
+  s_8b12c11549f1ff::t_762d56c680370e 99-100
+secfn/core/src/scanner/scanner.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-125
+langfn/typescript/src/agents/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-4
+plugfn/providers/src/slack/actions.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-214
+langfn/typescript/src/models/openai.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-284
+packages/oauth-http/package.json
+  s_8b12c11549f1ff::t_c5697404056114 41
+packages/admin/package.json
+  s_8b12c11549f1ff::t_c5697404056114 26
+scripts/test-mcpfn-registry-install.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-206
+reviewfn/harness-codex/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1
+datafn/client/__tests__/native-backed-server-sync.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 13
+secfn/server/package.json
+  s_8b12c11549f1ff::t_c5697404056114 1-71
+langfn/typescript/src/mcp/stdio.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-163
+langfn/typescript/src/client.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-865
+langfn/typescript/src/evaluation/dataset.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-27
+langfn/typescript/src/graph/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2
+datafn/server/__tests__/sync.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 2180-2198
+langfn/typescript/src/observability/cost-meter.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-48
+authfn/core/src/core/verifications.ts
+  s_8b12c11549f1ff::t_c5697404056114 23,106-109
+langfn/typescript/src/rag/base.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-103
+mailfn/sendfn/package.json
+  s_8b12c11549f1ff::t_c5697404056114 20
+authfn/docs/content/docs/plugins/social-oauth/google.md
+  s_8b12c11549f1ff::t_c5697404056114 19-21,23-39,50
+mcpfn/auth/src/hosted-authorization.ts
+  s_8b12c11549f1ff::t_c5697404056114 1623
+langfn/typescript/src/storage/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1
+mcpfn/inspector/README.md
+  s_8b12c11549f1ff::t_c5697404056114 24-25
+langfn/typescript/src/prompts/few-shot.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-43
+authfn/python/authfn/plugins/api_keys.py
+  s_8b12c11549f1ff::t_c5697404056114 11-15,89-106,230-241,247
+authfn/docs/content/docs/core-concepts/observability.md
+  s_8b12c11549f1ff::t_c5697404056114 11-12,82-85
+langfn/typescript/tests/orchestration-graph-agent.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-202
+mcpfn/core/src/registry.ts
+  s_8b12c11549f1ff::t_c5697404056114 2-6,39-40,45,379,381,450,463,519-520,522-525,693,695
+memoryfn/typescript/src/storage/memory/adapter.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-229
+authfn/docs/content/docs/ai-resources/codex.md
+  s_8b12c11549f1ff::t_c5697404056114 22
+authfn/two-factor/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,24
+mcpfn/auth/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,41-42
+mcpfn/testing/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 7-9
+mcpfn/examples/external-scenarios.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+packages/http/src/types.ts
+  s_8b12c11549f1ff::t_c5697404056114 131-133
+plugfn/providers/src/google/discovery/calendar.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-1635
+memoryfn/typescript/tests/openai-provider.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-64
+authfn/core/src/types.ts
+  s_8b12c11549f1ff::t_c5697404056114 36,250-253
+reviewfn/core/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2
+searchfn/adapter-indexeddb/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,3-4
+searchfn/adapter-meilisearch/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1
+authfn/python/tests/test_social_oauth.py
+  s_8b12c11549f1ff::t_c5697404056114 31,34,369-512,582,620
+authfn/docs/content/docs/plugins/social-oauth/index.md
+  s_8b12c11549f1ff::t_c5697404056114 11-41,47-48,53-57,61,77-84
+mcpfn/testing/tests/conformance-windows.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-25
+reviewfn/testing/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2
+scripts/sfns4/update-google-discovery.py
+  s_8b12c11549f1ff::t_c5697404056114 1-34
+datafn/docs/content/docs/documentation/security/resource-selectors.mdx
+  s_8b12c11549f1ff::t_c5697404056114 1-134
+secfn/core/examples/basic-usage.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-34
+authfn/multi-region/src/__tests__/index.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 43-49
+plugfn/core/src/middleware/rate-limiter.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,5-8,30,36-39,125,127,145-146,162-163,168
+secfn/server/src/envelopes.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-82
+langfn/typescript/src/prompts/chat_template.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-36
+memoryfn/typescript/migrations/0002-memory-lifecycle.sql
+  s_8b12c11549f1ff::t_c5697404056114 1-3
+reviewfn/testing/src/fixtures.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-59
+secfn/server/src/__tests__/postgres-contracts.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-379
+uifn/registry/src/plan.ts
+  s_8b12c11549f1ff::t_c5697404056114 59-60,181
+authfn/password/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,24
+plugfn/docs/operations/release-gates.md
+  s_8b12c11549f1ff::t_c5697404056114 30,62
+scripts/reviewfn-consumer-smoke.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-62
+packages/cli/src/utils/generators.ts
+  s_8b12c11549f1ff::t_c5697404056114 74-75,95,97,931,937-947
+reviewfn/core/LICENSE
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+langfn/typescript/src/utils/concurrency.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-29
+authfn/docs/content/docs/frameworks/bun.md
+  s_8b12c11549f1ff::t_c5697404056114 45-48,50,54,56-60
+datafn/core/__tests__/resource-selectors.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-512
+uifn/react/src/fixture.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-25
+authfn/docs/content/docs/frameworks/fastapi.md
+  s_8b12c11549f1ff::t_c5697404056114 9,14,17,19,25,53
+authfn/multi-region/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 10-14,63-76,271-278
+.conduct/pr-204-remediation-ledger.md
+  s_8b12c11549f1ff::t_c5697404056114 1-99
+mcpfn/cli/src/bin.ts
+  s_8b12c11549f1ff::t_c5697404056114 3-14,21-36
+authfn/core/src/__tests__/api-keys.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,9,33-102
+authfn/core/src/core/regions.ts
+  s_8b12c11549f1ff::t_c5697404056114 29-33,49,131-146,383-398,411,414-415,428,459-460
+plugfn/providers/src/google-calendar/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-15
+reviewfn/github/tsconfig.json
+  s_8b12c11549f1ff::t_c5697404056114 1-4
+uifn/README.md
+  s_8b12c11549f1ff::t_c5697404056114 23,28
+  s_8b12c11549f1ff::t_831af8d42432e4 29
+authfn/docs/content/docs/plugins/social-oauth/apple.md
+  s_8b12c11549f1ff::t_c5697404056114 23-25,29-45
+plugfn/admin/LICENSE
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+plugfn/providers/tests/jira-site-selection.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-38
+authfn/docs/content/docs/sdk/core.md
+  s_8b12c11549f1ff::t_c5697404056114 100-118
+authfn/docs/content/docs/frameworks/index.md
+  s_8b12c11549f1ff::t_c5697404056114 19
+authfn/python/README.md
+  s_8b12c11549f1ff::t_c5697404056114 106-110
+langfn/typescript/src/http/routes.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-324
+mcpfn/client/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,28
+reviewfn/github/package.json
+  s_8b12c11549f1ff::t_c5697404056114 1-25
+authfn/docs/content/docs/recipes/meta.json
+  s_8b12c11549f1ff::t_c5697404056114 13
+langfn/typescript/src/tools/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-6
+mcpfn/core/tests/manifest-diff.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,8,30-36,74-174
+  s_8b12c11549f1ff::t_b006262a5e1dd1 175
+datafn/server/src/routes/rest.ts
+  s_8b12c11549f1ff::t_c5697404056114 18
+memoryfn/typescript/src/extraction/facts.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-49
+langfn/RELEASE_GATE.md
+  s_8b12c11549f1ff::t_c5697404056114 1-14
+.entire/.gitignore
+  s_8b12c11549f1ff::t_c5697404056114 1-5
+langfn/typescript/src/models/mistral.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-131
+authfn/python/authfn/schema.py
+  s_8b12c11549f1ff::t_c5697404056114 7,12,37-42,47,73-84,89
+langfn/typescript/tests/round4-continuation.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-28
+datafn/client/__tests__/ws-reconnect.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 19,22,25,27-28,34,39,43-45,55,199-311
+  s_8b12c11549f1ff::t_511643cbb335e0 312
+scripts/sfns4/HOSTED.md
+  s_8b12c11549f1ff::t_c5697404056114 1-25
+scripts/test-mcpfn-built-schema-entries.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-70
+reviewfn/core/src/artifacts.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-194
+plugfn/cli/README.md
+  s_8b12c11549f1ff::t_c5697404056114 73
+plugfn/providers/src/google-sheets/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-15
+scripts/verify-package-lockfiles.test.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-125
+authfn/core/src/core/errors.ts
+  s_8b12c11549f1ff::t_c5697404056114 33,196-202
+  s_8b12c11549f1ff::t_c85d9f2677083a 203-205
+reviewfn/testing/test/evaluation.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-49
+reviewfn/context-composio/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-3
+searchfn/adapter-contracts/tsup.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 3,6,11-27
+datafn/server/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,55-57,61,64,68-69
+langfn/typescript/src/http/rate_limit.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-77
+uifn/registry/src/preset/compiler.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-388
+mcpfn/client/src/client.ts
+  s_8b12c11549f1ff::t_c5697404056114 50-84,108-109,117-120,122-124,126-127,129-130,269-354,359-370,416,426,430,432,447,449,474-481,488-489,491,497-514,525-532,590-591,635-638,675-676,678,686,695,697,699-732,739-745,748-814,1033-1053,1063-1074,1082-1100,1104-1132,1137-1245,1256-1262,1284,1286-1289
+memoryfn/typescript/src/storage/pg/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2
+plugfn/client/package.json
+  s_8b12c11549f1ff::t_c5697404056114 15-16
+authfn/docs/content/docs/ai-resources/claude.md
+  s_8b12c11549f1ff::t_c5697404056114 51-52
+datafn/server/__tests__/rest.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 8,252-302
+plugfn/python/plugfn/__init__.py
+  s_8b12c11549f1ff::t_c5697404056114 20-21
+scripts/verify-package-lockfiles.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-64
+mcpfn/testing/src/conformance.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,3,13-25,39-40,44-47,51-53,70-73,76-77,94-105,109,174,177-186,193-195,236-255,257,267-269,271,273,275,280-314,316-349,353-375,379-400,402-423,425-427
+langfn/typescript/src/mcp/sse.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-54
+authfn/docs/content/docs/examples/index.md
+  s_8b12c11549f1ff::t_c5697404056114 10
+authfn/social-oauth/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,28-36,64,970,1535-1539,1541-1573,1580,1585,1588-1595,2030-2037
+authfn/docs/content/docs/core-concepts/hooks.md
+  s_8b12c11549f1ff::t_c5697404056114 16-17,89,92-93,154,172-173,185-186,193-199
+authfn/docs/content/docs/recipes/index.md
+  s_8b12c11549f1ff::t_c5697404056114 25-26
+plugfn/providers/tests/selected-action-wire-matrix.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-566
+reviewfn/github/test/action.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-52
+reviewfn/testing/package.json
+  s_8b12c11549f1ff::t_c5697404056114 1-25
+clifn/core/README.md
+  s_8b12c11549f1ff::t_c5697404056114 386-395
+authfn/docs/content/docs/core-concepts/errors.md
+  s_8b12c11549f1ff::t_c5697404056114 53,124,132
+plugfn/providers/src/shared/rest-action.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-89
+packages/db/src/adapter/row-level-namespace.ts
+  s_8b12c11549f1ff::t_c5697404056114 347,350
+langfn/typescript/src/core/errors.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-177
+plugfn/core/tests/action-scopes.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-39
+searchfn/python/README.md
+  s_8b12c11549f1ff::t_c5697404056114 3,5,9-10,12,15,20-61,64,66,69,71,77,80,82,88-90,93,95,97,99-101,103,105,108-110,114-117,120-121,125,127,129,131-135
+datafn/client/src/transport/regional-route.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-142
+secfn/core/src/errors.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-52
+secfn/server/migrations/0003_scan_run_tenant_index.sql
+  s_8b12c11549f1ff::t_c5697404056114 1-13
+uifn/registry/src/preset/pairwise.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-85
+langfn/typescript/src/tools/policy.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-149
+memoryfn/typescript/src/core/pipeline.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-114
+langfn/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-90
+authfn/python/tests/test_otp.py
+  s_8b12c11549f1ff::t_c5697404056114 22-29,272-306,342-368
+langfn/typescript/src/agents/multi_agent.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-73
+mcpfn/inspector/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,24-25,30
+authfn/client/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,28,32-37
+langfn/typescript/tests/round5-regressions.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-67
+langfn/typescript/tests/stream-lines.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-32
+mcpfn/testing/version.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-9
+plugfn/core/tests/retry-ratelimit.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,3,188-201
+  s_8b12c11549f1ff::t_764382c743611d 202
+reviewfn/core/src/prompt.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-31
+uifn/react/src/utils/slot.test.tsx
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+datafn/client/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,5-11
+langfn/typescript/src/rag/openai.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-51
+memoryfn/typescript/src/providers/embed/openai.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-46
+packages/cli/src/commands/generate-schema.ts
+  s_8b12c11549f1ff::t_c5697404056114 29,37-46,59-61,214-215
+langfn/typescript/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1
+reviewfn/cli/package.json
+  s_8b12c11549f1ff::t_c5697404056114 1-32
+.github/workflows/searchfn-client-tusk-vitest.yml
+  s_8b12c11549f1ff::t_c5697404056114 38,44
+memoryfn/typescript/src/storage/pg/adapter.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-202
+authfn/docs/content/docs/quickstart/nodejs.md
+  s_8b12c11549f1ff::t_c5697404056114 11-12,14-15,18,21-26,29,31-54,58-59,114-115,117,119-125,128-131,134-136,139
+  s_8b12c11549f1ff::t_c60a9aafbb8835 140
+reviewfn/core/src/render.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-42
+reviewfn/core/tsconfig.json
+  s_8b12c11549f1ff::t_c5697404056114 1-4
+authfn/python/authfn/plugins/placement_context.py
+  s_8b12c11549f1ff::t_c5697404056114 1-1148
+authfn/core/src/__tests__/placement-context.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-875
+reviewfn/cli/test/cli.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-82
+reviewfn/harness-codex/tsconfig.json
+  s_8b12c11549f1ff::t_c5697404056114 1-4
+.github/workflows/ci.yml
+  s_8b12c11549f1ff::t_c5697404056114 65-69,134,139,141,153-185,254-264
+reviewfn/github/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-3
+secfn/runtime/package.json
+  s_8b12c11549f1ff::t_c5697404056114 1-49
+searchfn/adapter-contracts/__tests__/contracts.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,4-13,21-80
+reviewfn/github/action.yml
+  s_8b12c11549f1ff::t_c5697404056114 1-60
+langfn/typescript/src/utils/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-5
+mcpfn/testing/tests/reports.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-119
+reviewfn/core/src/executable.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-41
+plugfn/providers/src/google/discovery/gmail.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-897
+reviewfn/core/src/errors.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+searchfn/adapter-contracts/adapter-vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-37
+mcpfn/cli/tests/cli.test.ts
+  s_8b12c11549f1ff::t_d7b6f34c2f4331 33,45,49-51,55-60,93-94,96,98-99,213,223-226,239,259-262,266,284-287,389,484,683
+  s_8b12c11549f1ff::t_c5697404056114 2,6-14,16-18,64-75,294,311-314,317-323,326-327,331-358,395-460,506-531,536-542,544-567,569-670,674-682
+  s_8b12c11549f1ff::t_e2b0d9cf7b5cbe 15
+  s_6126673cc0a89e::t_9d25de48651158 76,359,461
+reviewfn/testing/src/evaluation.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-101
+secfn/server/src/__tests__/access.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-88
+langfn/typescript/src/models/google.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-421
+authfn/docs/content/docs/plugins/two-factor.md
+  s_8b12c11549f1ff::t_c5697404056114 11-29,35-36,48,135
+authfn/core/src/core/two-factor.ts
+  s_8b12c11549f1ff::t_c5697404056114 30-34,103-118,121,127,137,222-238,246
+datafn/core/src/errors.ts
+  s_8b12c11549f1ff::t_c5697404056114 17
+langfn/typescript/src/http/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-4
+authfn/native-handoff/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 62-64
+datafn/docs/content/docs/reference/errors.mdx
+  s_8b12c11549f1ff::t_c5697404056114 36,38,47
+packages/oauth-testing/package.json
+  s_8b12c11549f1ff::t_c5697404056114 41
+reviewfn/evaluation/linear-live-receipt.json
+  s_8b12c11549f1ff::t_c5697404056114 1-111
+langfn/typescript/src/prompts/registry.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-160
+reviewfn/harness-codex/package.json
+  s_8b12c11549f1ff::t_c5697404056114 1-51
+uifn/create/src/editor.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-63
+secfn/core/src/__tests__/encryption.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-43
+langfn/typescript/tsconfig.json
+  s_8b12c11549f1ff::t_c5697404056114 1-17
+scripts/sfns4/worker-platform-canary.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-78
+datafn/docs/content/docs/documentation/security/index.mdx
+  s_8b12c11549f1ff::t_c5697404056114 16-17,29,36
+  s_8b12c11549f1ff::t_2117fc809af932 37
+uifn/package-graph.json
+  s_8b12c11549f1ff::t_c5697404056114 22,31
+plugfn/providers/tests/notion.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 19-21
+plugfn/core/tests/execution-coordinator.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-44
+reviewfn/context-composio/tsconfig.json
+  s_8b12c11549f1ff::t_c5697404056114 1-4
+botfn/persistence/SETUP.md
+  s_8b12c11549f1ff::t_c5697404056114 5,10,53,55-56,58-59,61-80,83,85-86,89,91,94-95,103,105,112,157,164,206-208
+sendfn/typescript/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 35-36
+authfn/docs/content/docs/adapters/mail/custom.md
+  s_8b12c11549f1ff::t_c5697404056114 11
+authfn/api-keys/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 6-11,39-45,47
+authfn/docs/static/llms-full.txt
+  s_8b12c11549f1ff::t_c5697404056114 140,143-168,172,176,179,181-182,188,192,194,196-197,203,207,210,212-213,219,222,226-228,236-254,256-298,301,304-311,318-349,352-355,383,409-413,417,432,435-436,493,502-503,513-515,518-520,523-524,602,606,608,610-613,616-617,694,840,879,931,967,1031-1033,1036-1037,1039,1041-1049,1052,1110,1113,1116-1117,1223-1224,1273,1374,1641,1714-1718,1805-1814,1943-1946,1949-1955,1965-1966,1984,1986,2001,2017-2018,2020,2023-2041,2047,2094,2097,2105,2139,2499,2570,2578,2609-2610,2682,2685-2686,2747,2765-2766,2778-2779,2786-2792,2869,2887-2888,2958-2961,3105,3108,3113,3115,3178,3270-3271,3274-3282,3284,3286,3288-3292,3295-3298,3317,3321-3322,3325-3339,3347,3350,3353-3356,3363,3415-3420,3439-3457,3459,3517,3519-3520,3705,3707,3740,3743-3744,3757,3771,3794,3796,3825,3832-3837,3839-3843,3847,3850-3851,3854-3855,3857-3858,3864,3869,3881,3888,3893,3915,3917,3955,4263,4489,4628-4631,4633,4637,4639-4643,4830,4835,4838,4840,4846,4874,4891,4896,4899,4901,4907,5010,5141,5146,5148,5150-5151,5154,5159,5213,5235,5239-5245,5491-5492,5494-5496,5621,5630-5637,5639-5640,5644,5648,5651,5653-5654,5658-5662,5664-5678,5680,5682,5687-5697,5699-5701,5711-5717,5719-5720,5722-5726,5731-5732,5740-5749,5753-5759,5761-5763,5767,5771-5777,5779,5781-5784,5788-5792,5797-5799,5802,5809-5827,5832,5841-5845,5849-5851,5858,5861-5864,5872-5873,5875,5883,5887,5891-5892,5896-5900,5902-5904,5908,5912,5916,5918,5920,5930-5933,5935,5941,5953,5973-5974,5976-5995,6001-6002,6005-6011,6121-6130,6165,6167-6177,6186-6207,6215-6234,6237-6238,6243-6256,6390,6392-6395,6447-6448,6468-6469,6471-6476,6484,6594-6595,6597-6598,6604-6605,6610-6621,6626-6632,6740,6813-6815,6819-6835,6983-6985,6987-6998,7016,7072-7074,7076-7092,7103,7155-7156,7158-7185,7191-7192,7197-7201,7205,7221-7228,7347-7348,7350-7365,7371-7372,7384,7471,7495,7498,7502-7505,7507,7510,7512-7528,7548-7549,7569,7616-7617,7620,7624-7628,7630,7633,7635-7652,7660-7661,7755-7756,7758-7759,7762,7765-7768,7770,7773,7775-7798,7802-7803,7858-7859,7861,7863-7869,7872-7875,7878-7880,7883-7884,7907-7908,7950,7954,7969,7973,8012-8013,8016,8020-8024,8027,8030,8032-8049,8057-8058,8422-8425,8431,8487-8495,8498,8652-8653,8826,8946,8950-8951,9013,9016-9020,9207-9208,9496-9497,9608-9609,9611,9614,9616,9618,9620-9630,9632-9634,9637-9679,9682,9684-9705,9707-9719,9721-9728,9731-9805,9807-9814,9817-9838,9842-9875,9877,9879,9881,9887,9894,9899,9901-9903,9907,9915,9919,9930,9935-9936,9938-9940,9942-9952,9954-9962,9964-9965,9967-9968,9970,9972,9974,9976,9978,9980,9982,9984,9986,9988,9990,9992,9994,9996,9998-10005,10007,10009,10011,10013,10015,10017-10018,10020,10022,10024,10026-10034,10036-10039,10041,10043,10045,10047,10050-10056,10058,10061,10063,10065-10067,10069-10071,10188,10190-10191,10237,10266,10339-10342,10355-10356,10388,10390,10501,10506,10630-10631,10640,10642-10643,10706-10707,10712,10715-10717,10935,11064-11082,11182-11186,11206-11210,11213,11219-11253,11261,11264,11275,11278,11287,11319,11321-11322,11324,11344-11362,11368
+plugfn/core/package.json
+  s_8b12c11549f1ff::t_c5697404056114 36,72
+uifn/react/src/fixture.test.tsx
+  s_8b12c11549f1ff::t_c5697404056114 1-17
+langfn/typescript/package.json
+  s_8b12c11549f1ff::t_c5697404056114 1-121
+reviewfn/core/src/repository-context.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-127
+uifn/registry/src/cli.ts
+  s_8b12c11549f1ff::t_c5697404056114 11,62,64,96-107
+authfn/docs/content/docs/plugins/password.md
+  s_8b12c11549f1ff::t_c5697404056114 11-12,14-15,21-22,27-38,43-49,157
+authfn/core/src/__tests__/social-google.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 7,15,26,66-226,274,304-340
+  s_8b12c11549f1ff::t_d13813a0ef4bc1 341
+plugfn/core/LICENSE
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+uifn/create/aliases.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-15
+reviewfn/cli/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2
+packages/cli/src/cli.ts
+  s_8b12c11549f1ff::t_c5697404056114 91-95
+memoryfn/typescript/tests/pipeline.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-60
+secfn/runtime/tsconfig.json
+  s_8b12c11549f1ff::t_c5697404056114 1-18
+authfn/docs/content/docs/reference/configuration.md
+  s_8b12c11549f1ff::t_c5697404056114 3,8-9,11-35,37-38,40-41,43,45,47,49,51,53,55,57,59,61,63,65,67,69,71-78,80,82,84,86,88,90-91,93,95,97,99-107,109-112,114,116,118,120,123-129,131,134,136,138-140,142-144
+datafn/server/src/server.ts
+  s_8b12c11549f1ff::t_c5697404056114 14,49,260,418-419,1147-1148,1154,1297-1322,1350-1351,1371,1393,1487,1705-1707,1913,1915,1921-1925,1947-1951,1959
+secfn/core/src/encryption.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-114
+plugfn/providers/src/clickup/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-3,25,27-29,242-275
+reviewfn/context-composio/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1
+scripts/sfns4/packed-ui.test.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-19
+reviewfn/harness-codex/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2
+searchfn/adapter-memory/__tests__/conformance/memory.conformance.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 3
+authfn/core/src/core/sessions.ts
+  s_8b12c11549f1ff::t_c5697404056114 21-25,93-102,105-110,128,196-197,237-238,259-266
+  s_8b12c11549f1ff::t_f18a4a8ae11d96 267
+authfn/docs/content/docs/core-concepts/plugins.md
+  s_8b12c11549f1ff::t_c5697404056114 51-52,55-56,58,60-67,69-73,76-79,98,102-103,106-120,128,131,134-137,144,196-201
+langfn/typescript/tests/protocol-boundaries.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-354
+mcpfn/cli/README.md
+  s_8b12c11549f1ff::t_c5697404056114 13-14,17,46-54
+  s_8b12c11549f1ff::t_d088a1139aa786 55
+mcpfn/testing/tests/host-authorization.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-478
+memoryfn/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-17
+plugfn/providers/src/gmail/actions.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-73
+plugfn/core/tests/connection-oauth.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 18-24
+authfn/core/src/core/limits.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+reviewfn/cli/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-3
+mcpfn/datafn/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,26,30
+reviewfn/core/src/identity.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-14
+datafn/server/src/ws.ts
+  s_8b12c11549f1ff::t_c5697404056114 28-29,100,291-296,341-347,359-374,376-378,510,512-516,519,530,550-551
+langfn/typescript/src/structured/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1
+authfn/adapters/lookup-dynamodb/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,31
+.gitignore
+  s_8b12c11549f1ff::t_c5697404056114 84-86,96,106-107
+uifn/registry/package.json
+  s_8b12c11549f1ff::t_c5697404056114 16-20,24-27,34-36,45-46
+authfn/docs/content/docs/adapters/mail/ses.md
+  s_8b12c11549f1ff::t_c5697404056114 14
+langfn/typescript/src/utils/token-counter.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-15
+reviewfn/harness-codex/src/adapter.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-216
+mcpfn/core/tsup.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 10-16
+scripts/generate-uifn-fixture.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-7
+langfn/typescript/tests/streaming-observability.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-415
+authfn/docs/content/docs/frameworks/sveltekit.md
+  s_8b12c11549f1ff::t_c5697404056114 50,72,76-82
+secfn/core/src/id.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-12
+sendfn/typescript/tests/connected-mailbox.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-116
+langfn/typescript/src/mcp/server.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-133
+.factory/settings.json
+  s_8b12c11549f1ff::t_c5697404056114 1-85
+scripts/test-mcpfn-external-server.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-180
+authfn/docs/content/docs/plugins/social-oauth/github.md
+  s_8b12c11549f1ff::t_c5697404056114 17-19,21-32,50
+authfn/python/authfn/plugins/__init__.py
+  s_8b12c11549f1ff::t_c5697404056114 21-27,60-64,116-120,122-131
+plugfn/providers/src/notion/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-3,36-40,239-285
+reviewfn/core/package.json
+  s_8b12c11549f1ff::t_c5697404056114 1-50
+uifn/registry/src/__tests__/preset-open.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-28
+plugfn/providers/tests/slack-default-catalog.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-13
+memoryfn/typescript/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-61
+packages/cli/package.json
+  s_8b12c11549f1ff::t_c5697404056114 40
+searchfn/python/pyproject.toml
+  s_8b12c11549f1ff::t_c5697404056114 2-3,8,11,15,22,32-37
+clifn/core/tests/credential-reliability.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-27
+datafn/docs/content/docs/documentation/multi-region-gateway.mdx
+  s_8b12c11549f1ff::t_c5697404056114 12-13,103
+  s_8b12c11549f1ff::t_154936687d7833 104
+packages/cli/src/__tests__/authfn-schema-discovery.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 6,159,189-198,207-213
+  s_8b12c11549f1ff::t_fe887097817386 214-215
+datafn/client/src/transport/http.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2,17,30-32,41,99-100,103-111,114-117,119-121,127-139,142,148
+scripts/sfns4/run-hosted-hyperdrive.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-28
+langfn/typescript/src/observability/tracer.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-188
+authfn/docs/content/docs/adapters/database/drizzle.md
+  s_8b12c11549f1ff::t_c5697404056114 12,15-40,44,48,51,53-54,60,64,66,68-69,75,79,82,84-85,91,94,98-100,108,110-170,173,176-183,190-221,224-227
+reviewfn/core/src/coordinator.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-203
+secfn/server/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-76
+apifn/examples/ci-cd/github-actions.yml
+  s_8b12c11549f1ff::t_c5697404056114 9-12,15-16,24
+.github/workflows/apifn-api-check.yml
+  s_8b12c11549f1ff::t_c5697404056114 1-353
+sendfn/typescript/tsup.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 7
+memoryfn/typescript/tests/mcp.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-100
+uifn/registry/src/__tests__/preset.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-152
+datafn/core/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3
+authfn/password/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 6-11,48-54
+datafn/core/src/regional-route.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-39
+plugfn/client/LICENSE
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+langfn/typescript/src/evaluation/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-3
+mcpfn/client/src/targets.ts
+  s_8b12c11549f1ff::t_c5697404056114 37-40,47-54
+plugfn/core/tests/webhook-verification.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 26-53
+langfn/typescript/src/evaluation/metrics.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-42
+mcpfn/cli/tests/target-suite-cleanup.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-178
+memoryfn/typescript/src/storage/pg/schema.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-57
+langfn/typescript/src/observability/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-6
+mcpfn/testing/tests/suite.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,3-4,9-26,29-40,152-713
+plugfn/core/src/core/action-executor.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,14,63-64,69,111,131-137,156-168,196,211-216,232-237,310,414,422,430,438,446
+mcpfn/core/tests/validation.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-594
+secfn/server/src/rate-limit.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-77
+uifn/registry/src/preset/schema.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-113
+authfn/docs/content/docs/adapters/database/memory.md
+  s_8b12c11549f1ff::t_c5697404056114 11,14-15
+datafn/client/src/transport/regional-route.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-182
+plugfn/core/src/types/config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,5,104-105,135
+langfn/typescript/src/models/anthropic.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-262
+plugfn/core/src/core/provider-registry.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,19-21
+authfn/docs/content/docs/adapters/mail/resend.md
+  s_8b12c11549f1ff::t_c5697404056114 14
+langfn/typescript/tests/anthropic-system.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-13
+langfn/typescript/tests/basic.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-52
+uifn/create/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-11
+reviewfn/testing/LICENSE
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+reviewfn/cli/src/execution.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-96
+authfn/core/src/__tests__/otp.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 657
+langfn/typescript/src/tools/api_call.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-137
+scripts/sfns4/SONAR.md
+  s_8b12c11549f1ff::t_c5697404056114 1-50
+scripts/test-mcpfn-mixed-entry-redaction.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-37
+langfn/typescript/src/agents/tool_agent.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-78
+authfn/python/tests/test_schema.py
+  s_8b12c11549f1ff::t_c5697404056114 51,68-108
+  s_8b12c11549f1ff::t_bf7866bdf9d28f 109
+scripts/gate-reviewfn-release.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-81
+datafn/server/__tests__/ws.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 9-25
+datafn/client/src/client.ts
+  s_8b12c11549f1ff::t_c5697404056114 188-190,192,194,217-218,585,604-606,612-613,735-738,1109,1111,1185,1222,1708-1709,1985
+mcpfn/testing/tests/hosted-role3.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-247
+plugfn/core/src/utils/request.ts
+  s_8b12c11549f1ff::t_c5697404056114 55,66-86,96-97,101,174-175
+datafn/server/src/regional-tickets.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-299
+langfn/typescript/src/tools/web_search.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-38
+packages/cli/src/utils/schema-diff.ts
+  s_8b12c11549f1ff::t_c5697404056114 33-36,41,47,54-56,204-205,379,391-397
+reviewfn/context-composio/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2
+reviewfn/core/test/core.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-217
+uifn/registry/src/preset/codec.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-154
+langfn/typescript/src/observability/storage.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-169
+clifn/core/src/client.ts
+  s_8b12c11549f1ff::t_c5697404056114 4-5,186
+memoryfn/typescript/tests/postgres.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-96
+authfn/docs/content/docs/reference/errors.md
+  s_8b12c11549f1ff::t_c5697404056114 39,68
+authfn/docs/content/docs/plugins/native-handoff.md
+  s_8b12c11549f1ff::t_c5697404056114 15-16,18-23,31
+memoryfn/typescript/tsconfig.json
+  s_8b12c11549f1ff::t_c5697404056114 1-17
+reviewfn/core/src/schema.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-47
+botfn/bot-slack/package.json
+  s_8b12c11549f1ff::t_c5697404056114 15
+mcpfn/testing/src/scenarios.ts
+  s_8b12c11549f1ff::t_c5697404056114 147-148,162,504-505,507-509,512-513,519-524,527,530-535,559,572,582,614,622-628,635-640,667-675,677,680-690,713-717,729,731-740,917-920
+plugfn/core/src/webhooks/webhook-handler.ts
+  s_8b12c11549f1ff::t_c5697404056114 60-61,65-67,82-83,91-92,405,412-417
+  s_8b12c11549f1ff::t_ab1bd07317483f 418
+mcpfn/testing/src/host-authorization.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-528
+reviewfn/docs/configuration.md
+  s_8b12c11549f1ff::t_c5697404056114 1-23
+superconsole/package.json
+  s_8b12c11549f1ff::t_c5697404056114 27
+uifn/create/src/styles.css
+  s_8b12c11549f1ff::t_c5697404056114 1-88
+uifn/registry/src/preset/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-26
+authfn/two-factor/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 4-8,43-49,67-69,88-94
+  s_8b12c11549f1ff::t_4303d245cccb3e 3
+authfn/docs/content/docs/ai-resources/mcp.md
+  s_8b12c11549f1ff::t_c5697404056114 87
+datafn/server/src/multi-region-routing.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2,117-118,145-149,159-162,181,347,355-356,362-381,421,478,491,495,498-501
+memoryfn/typescript/src/providers/llm/openai.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-44
+datafn/docs/content/docs/reference/core/resource-selectors.mdx
+  s_8b12c11549f1ff::t_c5697404056114 1-60
+plugfn/cli/package.json
+  s_8b12c11549f1ff::t_c5697404056114 40-41
+scripts/sfns4/worker-canary.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-105
+secfn/core/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-9
+uifn/react/src/utils/slot.tsx
+  s_8b12c11549f1ff::t_c5697404056114 103-110,137
+packages/oauth-core/tests/oauth-core.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 129-141
+memoryfn/typescript/src/storage/adapter.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-39
+uifn/registry/docs/PRESET.md
+  s_8b12c11549f1ff::t_c5697404056114 1-72
+secfn/runtime/src/index.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-123
+secfn/core/src/__tests__/scanner-size.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-34
+langfn/typescript/src/http/validation.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-342
+mcpfn/testing/src/reports.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-254
+plugfn/core/tests/action-manifest.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-32
+memoryfn/typescript/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-8
+authfn/python/tests/test_multi_region.py
+  s_8b12c11549f1ff::t_c5697404056114 27,195,294-373
+  s_8b12c11549f1ff::t_dbe1131995a3ab 374-375
+authfn/core/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,61,76
+langfn/typescript/src/mcp/types.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-28
+langfn/typescript/tests/review-regressions.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-79
+langfn/typescript/src/utils/cache-keys.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-104
+datafn/server/__tests__/public-links-plugin.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 363-365
+datafn/swift-bridge/__tests__/nativeStorage.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 190
+langfn/typescript/src/memory/buffer.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-41
+langfn/typescript/src/models/base.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-85
+memoryfn/typescript/package.json
+  s_8b12c11549f1ff::t_c5697404056114 1-87
+plugfn/providers/tests/selected-lifecycle.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-287
+reviewfn/cli/src/main.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-176
+reviewfn/core/src/canonical.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-52
+langfn/typescript/tests/http-routes.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-278
+reviewfn/core/src/safe-files.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-50
+reviewfn/evaluation/data6-pr153-live.json
+  s_8b12c11549f1ff::t_c5697404056114 1-605
+authfn/core/src/__tests__/multi-region.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 52-120
+searchfn/adapter-meilisearch/__tests__/conformance/meilisearch.conformance.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 3
+reviewfn/core/src/policy.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-114
+datafn/server/src/__tests__/resource-selectors-preflight.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-128
+datafn/server/src/multi-region-routing.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1448-1474
+apifn/python/pyproject.toml
+  s_8b12c11549f1ff::t_c5697404056114 1-4,27-28
+langfn/typescript/src/memory/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2
+mcpfn/ADOPTION.md
+  s_8b12c11549f1ff::t_c5697404056114 31-44
+reviewfn/harness-codex/test/adapter.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-139
+langfn/typescript/src/models/mock.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-77
+plugfn/providers/src/shared/selected-contracts.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-43
+authfn/docs/content/docs/plugins/authoring.md
+  s_8b12c11549f1ff::t_c5697404056114 12,21-28,30-31,35,39,42,44-45,49-53,55-71,73,78-88,90-92,102-108,110-111,113-117,122-123,131-140,144-150,152-154,158,162-168,170,172-175,179-183,188-190,193,200-218,223,232-236,240-242,249,252-255,263-264,266,274,278,282-283,287-291,293-295,299,303,307,309,311,321-324,326,332,344
+reviewfn/testing/src/fakes.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-46
+authfn/core/src/__tests__/two-factor.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 13,48-154
+  s_8b12c11549f1ff::t_7c364cf55b022f 155
+secfn/core/package.json
+  s_8b12c11549f1ff::t_c5697404056114 1-72
+secfn/server/src/router.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-458
+secfn/server/src/vault.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-1381
+uifn/registry/src/preset/fixtures.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-7
+searchfn/adapter-postgres/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1
+plugfn/providers/tests/path-identifiers.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-16
+README.md
+  s_8b12c11549f1ff::t_c5697404056114 34
+reviewfn/core/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-3
+searchfn/adapter-contracts/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-16
+searchfn/docs/content/docs/documentation/advanced/writing-an-adapter.mdx
+  s_8b12c11549f1ff::t_c5697404056114 185,189,191-192,197
+secfn/server/src/__tests__/rate-limit.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-52
+authfn/docs/content/docs/plugins/email-otp.md
+  s_8b12c11549f1ff::t_c5697404056114 16-38,44-45,48-54,164-173
+searchfn/adapter-contracts/src/testing.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-275
+memoryfn/typescript/src/core/types.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-114
+authfn/core/src/__tests__/sessions.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 38-84
+plugfn/core/src/core/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 6-9
+plugfn/core/src/types/provider.ts
+  s_8b12c11549f1ff::t_c5697404056114 22-23,26-33
+mcpfn/testing/src/conformance-process.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-34
+mcpfn/README.md
+  s_8b12c11549f1ff::t_c5697404056114 85-86,88,101-106
+  s_8b12c11549f1ff::t_cdf34d0eba5aee 107
+packages/cli/src/__tests__/schema-index-migrations.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 13,34-51,53-170,519-525,527,660-669
+clifn/core/src/credentials.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2,38,41,44,67-88,103-104,115
+reviewfn/core/src/types.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-329
+reviewfn/docs/report-schema.md
+  s_8b12c11549f1ff::t_c5697404056114 1-15
+searchfn/adapter-contracts/package.json
+  s_8b12c11549f1ff::t_c5697404056114 15-18,25-26,35-42
+reviewfn/cli/LICENSE
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+secfn/core/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-42
+reviewfn/harness-codex/docker/Dockerfile
+  s_8b12c11549f1ff::t_c5697404056114 1-6
+authfn/docs/content/docs/plugins/multi-region.md
+  s_8b12c11549f1ff::t_c5697404056114 132,134-137,189-190
+.github/workflows/searchfn-client-tests.yml
+  s_8b12c11549f1ff::t_c5697404056114 1,5,8-14,17,20-26,30,39,41,43-47,50,52-53
+authfn/docs/static/llms.txt
+  s_8b12c11549f1ff::t_c5697404056114 60,100-103,109
+authfn/docs/content/docs/reference/changelog.md
+  s_8b12c11549f1ff::t_c5697404056114 3,8,10-12,16,24,28
+langfn/typescript/src/utils/retry.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-55
+packages/oauth-core/src/service.ts
+  s_8b12c11549f1ff::t_c5697404056114 132
+packages/db/src/adapters/drizzle/mysql-upsert.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 4,13-42
+secfn/core/src/__tests__/scanner.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-109
+authfn/docs/content/docs/sdk/python.md
+  s_8b12c11549f1ff::t_c5697404056114 12-16,36-40,43,49-78,81-84,91,94,105,108,117,149,151-152,154,174-192,198
+.pi/extensions/entire/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-147
+datafn/core/README.md
+  s_8b12c11549f1ff::t_c5697404056114 21,430-445,687-695
+langfn/typescript/tests/package-contract.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-62
+packages/cli/src/utils/schema-generators.ts
+  s_8b12c11549f1ff::t_c5697404056114 7-10,103,173,190-268,325,327-329,331-333,335-337
+secfn/core/src/types.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-291
+uifn/create/tsconfig.json
+  s_8b12c11549f1ff::t_c5697404056114 1-69
+langfn/typescript/src/observability/span-types.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-15
+mcpfn/inspector/tests/authenticated-artifacts.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-581
+plugfn/python/docs/QUICKSTART.md
+  s_8b12c11549f1ff::t_c5697404056114 362
+langfn/typescript/src/tools/calculator.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-165
+sendfn/typescript/src/email/connected-mailbox-adapter.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-201
+reviewfn/docs/github-action.md
+  s_8b12c11549f1ff::t_c5697404056114 1-22
+uifn/registry/src/preset/errors.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-30
+searchfn/adapter-postgres/__tests__/conformance/postgres.conformance.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 10
+datafn/client/__tests__/native-backed-icloud-mode.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 13
+reviewfn/evaluation/data6-pr153.json
+  s_8b12c11549f1ff::t_c5697404056114 1-60
+authfn/docs/content/docs/recipes/placement-bound-auth-context.md
+  s_8b12c11549f1ff::t_c5697404056114 1-187
+plugfn/core/tests/basic.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 176,483-494
+langfn/typescript/src/streaming/sse.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-152
+mcpfn/testing/tests/conformance-process.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-18
+authfn/docs/content/docs/admin/index.md
+  s_8b12c11549f1ff::t_c5697404056114 17-19,22-23,25,27-35,38,96,99,102-103
+langfn/typescript/src/prompts/template.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-64
+mcpfn/testing/tests/authenticated-output.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-147
+authfn/docs/content/docs/quickstart/nextjs.md
+  s_8b12c11549f1ff::t_c5697404056114 13-14,17,21-25,27,30,32-49,57-58
+authfn/docs/content/docs/plugins/index.md
+  s_8b12c11549f1ff::t_c5697404056114 8-20,29-50,58-77,80-81,86-94,97
+authfn/docs/content/docs/frameworks/flask.md
+  s_8b12c11549f1ff::t_c5697404056114 9,14,17,19,25
+authfn/multi-region/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,24
+reviewfn/core/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-18
+mcpfn/testing/tsup.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 3-4,12
+authfn/docs/content/docs/core-concepts/account-linking.md
+  s_8b12c11549f1ff::t_c5697404056114 26-35
+reviewfn/github/test/large-diff.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-27
+scripts/gate-mcpfn-release.mjs
+  s_8b12c11549f1ff::t_c5697404056114 302-306,409-415,433-435,440-441,491-493,495-497
+secfn/runtime/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-157
+uifn/create/src/main.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-57
+authfn/docs/content/docs/core-concepts/architecture.md
+  s_8b12c11549f1ff::t_c5697404056114 8-11,14-20,30-31,49,51,66,82-83,85,88,90,92-104,106,112
+uifn/registry/src/preset/random.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-38
+plugfn/providers/src/google/discovery/drive.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-1737
+authfn/python/authfn/http.py
+  s_8b12c11549f1ff::t_c5697404056114 16-20,205-210,253-258,396-421,426,463-487,1218-1220,1745
+datafn/server/src/events.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,12
+package.json
+  s_8b12c11549f1ff::t_c5697404056114 28,30,43-48,128-134,137-138,141,149-150,155-156
+plugfn/providers/src/shared/selected-resources.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-304
+authfn/python/authfn/__init__.py
+  s_8b12c11549f1ff::t_c5697404056114 10-14,37-43,88,117-119,147-151,197
+mcpfn/testing/src/client.ts
+  s_8b12c11549f1ff::t_c5697404056114 40-68,98-99,103-104,112-120,122-123,125-129,190-195
+reviewfn/core/src/validator.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-172
+authfn/docs/content/docs/reference/index.md
+  s_8b12c11549f1ff::t_c5697404056114 15,17
+langfn/typescript/src/tools/code_exec.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-38
+langfn/typescript/src/agents/plan_execute.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-108
+authfn/api-keys/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,24
+searchfn/python/src/searchfn/indexing.py
+  s_8b12c11549f1ff::t_c5697404056114 8-29,100
+authfn/docs/content/docs/recipes/admin-tool.md
+  s_8b12c11549f1ff::t_c5697404056114 22-30,33
+langfn/typescript/tests/google-native.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-250
+plugfn/providers/src/shared/graph-pagination.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-16
+plugfn/cli/LICENSE
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+langfn/typescript/tests/canonical-cache-order.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-13
+plugfn/scripts/gate-plugfn-release.mjs
+  s_8b12c11549f1ff::t_c5697404056114 106-109,187
+  s_8b12c11549f1ff::t_28dc7870d9b317 105
+authfn/docs/content/docs/quickstart/sveltekit.md
+  s_8b12c11549f1ff::t_c5697404056114 13-14,17,21-25,28,31,33-50,58-59
+scripts/sfns4/catalog.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-62
+secfn/runtime/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-23
+plugfn/core/src/auth/oauth-flow-legacy-delegate.ts
+  s_8b12c11549f1ff::t_c5697404056114 194-195,197-201
+plugfn/providers/tests/rex-provider-contracts.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-194
+uifn/react/tsup.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 73
+memoryfn/typescript/src/mcp/server.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-218
+memoryfn/typescript/tests/memory-storage.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-138
+plugfn/admin/package.json
+  s_8b12c11549f1ff::t_c5697404056114 15-16
+reviewfn/context-composio/LICENSE
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+reviewfn/context-composio/test/adapter.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-250
+reviewfn/testing/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-3
+packages/db/README.md
+  s_8b12c11549f1ff::t_c5697404056114 10-17,22,27,29-31,33-35,37-48,52-53,110,113-114,116-120,122-127,129-134,160,162-163
+authfn/python/tests/test_two_factor.py
+  s_8b12c11549f1ff::t_c5697404056114 139-203
+memoryfn/typescript/tests/http-scope.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-17
+authfn/docs/content/docs/adapters/mail/postmark.md
+  s_8b12c11549f1ff::t_c5697404056114 14
+authfn/python/authfn/types.py
+  s_8b12c11549f1ff::t_c5697404056114 22,601-614,641-652,756
+authfn/docs/content/docs/core-concepts/regions.md
+  s_8b12c11549f1ff::t_c5697404056114 142,144,177,180-181
+reviewfn/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-47
+plugfn/core/src/core/plug-fn.ts
+  s_8b12c11549f1ff::t_c5697404056114 343-344,356-357
+scripts/test-mcpfn-cloudflare-worker.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-356
+uifn/react/README.md
+  s_8b12c11549f1ff::t_c5697404056114 25-26
+searchfn/adapter-memory/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1
+authfn/docs/content/docs/core-concepts/index.md
+  s_8b12c11549f1ff::t_c5697404056114 60
+reviewfn/testing/test/artifact-contract.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-19
+secfn/runtime/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-19
+authfn/docs/content/docs/adapters/database/sqlite.md
+  s_8b12c11549f1ff::t_c5697404056114 21,25,27,29-32,35-36
+authfn/docs/content/docs/reference/envelopes.md
+  s_8b12c11549f1ff::t_c5697404056114 113,115-116
+mcpfn/testing/src/suite.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-6,8-12,16-32,56-57,59-64,77,79,85-124,129-138,140-147,149-152,154-175,177-412,414-436,438-504,506-692,695,699-721,724,726-731,733-737,744-748,751-879,903-906
+authfn/docs/content/docs/core-concepts/rate-limiting.md
+  s_8b12c11549f1ff::t_c5697404056114 8,10-28,86,88-89
+uifn/registry/src/transaction.ts
+  s_8b12c11549f1ff::t_c5697404056114 50,56,58
+uifn/registry/src/preset/fixture-tree.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-42
+datafn/server/src/execution/sync/pull.ts
+  s_8b12c11549f1ff::t_c5697404056114 676,965-969
+memoryfn/typescript/tests/transaction.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-54
+packages/middleware/src/rate-limit.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 438-450
+authfn/docs/content/docs/ai-resources/skills.md
+  s_8b12c11549f1ff::t_c5697404056114 39-43
+langfn/typescript/src/models/stream-lines.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-37
+datafn/core/src/protocol.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-697
+authfn/core/src/core/api-keys.ts
+  s_8b12c11549f1ff::t_c5697404056114 4-8,10,46-61,66
+plugfn/providers/package.json
+  s_8b12c11549f1ff::t_c5697404056114 32-55
+authfn/python/authfn/plugins/two_factor.py
+  s_8b12c11549f1ff::t_c5697404056114 16-20,155-171,255-271,438-449,464-481,493-504
+langfn/typescript/tests/release-gate.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-268
+mcpfn/core/src/manifest.ts
+  s_8b12c11549f1ff::t_c5697404056114 1,149,228-229,344,366-378
+  s_8b12c11549f1ff::t_4f8dd67f1582b1 379
+plugfn/providers/src/google/discovery/sheets.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-7354
+plugfn/providers/tests/gmail-default-grants.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-8
+authfn/docs/content/docs/reference/schema.md
+  s_8b12c11549f1ff::t_c5697404056114 3,8,132-133,142,144-145,208-209,214,217-218
+  s_8b12c11549f1ff::t_7f9606b107e87b 219
+mcpfn/cli/tests/inspect-redaction.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-99
+reviewfn/cli/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2
+reviewfn/github/src/publisher.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-111
+reviewfn/harness-codex/LICENSE
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+langfn/typescript/src/orchestration/chain.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-65
+langfn/typescript/src/rag/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-5
+secfn/server/src/__tests__/server.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-801
+authfn/docs/content/docs/recipes/rotate-2fa-encryption.md
+  s_8b12c11549f1ff::t_c5697404056114 3,8,10,12-13,15,18-19,21-23,25-40,43,45-57,60-74,78,80,82,88
+mcpfn/inspector/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 34-39,83-89,116,121-122,136-137,174-177,181-225,227-243,277-315,317-327,330-334,338-340,353-380,383-391,393-401,403-405,407,409-413,416-419,428,438-451,470-473,637-640
+langfn/typescript/src/graph/state_graph.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-204
+mcpfn/testing/src/artifact-guards.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-80
+packages/db/src/adapter/capabilities.ts
+  s_8b12c11549f1ff::t_c5697404056114 33-34
+.github/workflows/publish-tag.yml
+  s_8b12c11549f1ff::t_c5697404056114 64-69
+memoryfn/typescript/src/http/router.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-34
+packages/http/src/path-matcher.ts
+  s_8b12c11549f1ff::t_c5697404056114 42,54
+datafn/docs/content/docs/reference/changelog.mdx
+  s_8b12c11549f1ff::t_c5697404056114 14
+langfn/typescript/src/utils/cancel.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-24
+mcpfn/core/src/validation.ts
+  s_8b12c11549f1ff::t_4f880009419103 20,25,656-661
+  s_8b12c11549f1ff::t_d7b6f34c2f4331 22-24,78-84,107,641,649,651,667
+  s_8b12c11549f1ff::t_c5697404056114 1-9,11,14-19,21,26-77,85-106,108-640
+authfn/social-oauth/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,28,31
+memoryfn/typescript/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-93
+reviewfn/github/src/lease.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-28
+authfn/docs/content/docs/sdk/client.md
+  s_8b12c11549f1ff::t_c5697404056114 213
+apifn/cli/__tests__/fixtures/passing-collection/users/list-users.yml
+  s_8b12c11549f1ff::t_c5697404056114 1-7
+datafn/server/src/__tests__/regional-tickets-e2e.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-461
+uifn/registry/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 20
+.entire/settings.json
+  s_8b12c11549f1ff::t_c5697404056114 1-13
+datafn/docs/content/docs/documentation/security/request-authz.mdx
+  s_8b12c11549f1ff::t_c5697404056114 16,20-21,36,61,64-67,70-78,80-83,87-89,158,170
+langfn/typescript/src/mcp/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-5
+uifn/create/src/main.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-238
+secfn/core/src/scanner/reporters.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-91
+secfn/core/eslint.config.js
+  s_8b12c11549f1ff::t_c5697404056114 1-27
+authfn/docs/content/docs/recipes/observability-otel.md
+  s_8b12c11549f1ff::t_c5697404056114 17-18
+mcpfn/test-support/authenticated-server.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-107
+uifn/registry/src/__tests__/preset-cli.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-560
+.opencode/plugins/entire.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-269
+plugfn/providers/src/jira/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-187
+plugfn/providers/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 14,25-30
+mcpfn/testing/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 3-4,6
+authfn/adapters/lookup-cloudflare-do/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,29
+memoryfn/typescript/src/extraction/resolver.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-42
+plugfn/providers/src/google-docs/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-11
+authfn/docs/content/docs/recipes/adding-password.md
+  s_8b12c11549f1ff::t_c5697404056114 17-20,26
+authfn/core/src/core/placement-context.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-858
+langfn/typescript/tests/trace-randomness.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-18
+langfn/typescript/tests/provider-stream-budgets.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-150
+scripts/gate-langfn-release.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-11
+authfn/docs/content/docs/adapters/database/index.md
+  s_8b12c11549f1ff::t_c5697404056114 8,34-38,42
+langfn/typescript/tests/mcp-and-eval.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-313
+secfn/server/src/__tests__/memory-adapter.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-271
+langfn/typescript/src/observability/exporter.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-27
+langfn/typescript/tests/memory-rag.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-177
+reviewfn/core/src/git-environment.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-6
+secfn/core/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-13
+mcpfn/TEST_VECTORS.md
+  s_8b12c11549f1ff::t_c5697404056114 56-61,68-71
+mcpfn/client/src/types.ts
+  s_8b12c11549f1ff::t_c5697404056114 108-118
+mcpfn/testing/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,33-35
+packages/db/src/adapter/factory.ts
+  s_8b12c11549f1ff::t_c5697404056114 82,260,262-265
+uifn/registry/src/preset/fixture-source.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2
+secfn/server/src/db.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-44
+langfn/typescript/src/observability/redaction.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-49
+datafn/client/src/sync/__tests__/engine.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1141-1150
+langfn/typescript/tests/round3-regressions.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-163
+reviewfn/github/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-3
+langfn/typescript/src/mcp/client.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-95
+authfn/python/authfn/plugins/email_otp.py
+  s_8b12c11549f1ff::t_c5697404056114 13,126-127,135-137,146-149,321-323,328,488-505
+datafn/server/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-21,196
+memoryfn/typescript/migrations/0001-initial.sql
+  s_8b12c11549f1ff::t_c5697404056114 1-28
+plugfn/core/src/types/trigger.ts
+  s_8b12c11549f1ff::t_c5697404056114 60-64
+botfn/persistence/README.md
+  s_8b12c11549f1ff::t_c5697404056114 3,9,15,18,21,23-24,26,28-29,32,35,41,49,107-108
+authfn/svelte/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,27,31
+reviewfn/ADR-0001-FIRST-RELEASE.md
+  s_8b12c11549f1ff::t_c5697404056114 1-15
+uifn/react/package.json
+  s_8b12c11549f1ff::t_c5697404056114 28-32
+langfn/typescript/src/orchestration/parallel.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-31
+reviewfn/evaluation/data6-pr153-baseline.md
+  s_8b12c11549f1ff::t_c5697404056114 1-32
+datafn/cli/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,30-31
+plugfn/core/src/core/connection-manager.ts
+  s_8b12c11549f1ff::t_c5697404056114 298,370-371,400,405,619,1131-1132,1138-1143
+authfn/core/src/schema.ts
+  s_8b12c11549f1ff::t_c5697404056114 2,6,30-36,53,58,61
+uifn/react/src/internal/compound.tsx
+  s_8b12c11549f1ff::t_c5697404056114 31-33,472,488,527,722,724,756-770
+plugfn/providers/src/github/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-3,55,100,163,229,391,414,450,494,598,618,681,702,787,821,1162-1219
+plugfn/providers/src/linear/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2,105,188,218,251,436,476,502-503,507,525-527,547,558,566,574,582,595-596,600,612-614,628,757,771-833
+plugfn/providers/src/outlook/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2,153,548-549
+reviewfn/context-composio/src/adapter.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-300
+authfn/schema-plugin/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,24
+secfn/server/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-95
+.github/workflows/apifn-api-check-smoke.yml
+  s_8b12c11549f1ff::t_c5697404056114 1-29
+authfn/python/authfn/plugins/social_oauth.py
+  s_8b12c11549f1ff::t_c5697404056114 8,46-50,70,650-651,806-808,816,822,838-841,891-900,965-967,976-992,995,1173-1178,1216,1229-1234,1242,1271-1288,1293,1448-1458,1513-1514,1558-1565
+  s_8b12c11549f1ff::t_4268221c2e9b91 1566-1567
+authfn/python/authfn/plugins/multi_region.py
+  s_8b12c11549f1ff::t_c5697404056114 11-15,51-58,115-131,150,333-350
+datafn/client/__tests__/sync.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 18,24,28,951,978-979,987,992-994,1017-1018
+  s_8b12c11549f1ff::t_da98b8106b68f3 1019
+datafn/core/src/joins.ts
+  s_8b12c11549f1ff::t_c5697404056114 83-105
+langfn/typescript/tests/prompt-and-structured.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-133
+packages/oauth-providers/package.json
+  s_8b12c11549f1ff::t_c5697404056114 41
+plugfn/providers/tests/resource-hints.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-12
+langfn/typescript/src/rag/memoryfn.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-30
+scripts/sfns4/packed-ui.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-99
+datafn/docs/content/docs/documentation/direct-regional-sync.mdx
+  s_8b12c11549f1ff::t_c5697404056114 1-185
+mcpfn/inspector/tests/inspector.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 244-353
+authfn/python/authfn/errors.py
+  s_8b12c11549f1ff::t_c5697404056114 28,93
+plugfn/core/src/types/action.ts
+  s_8b12c11549f1ff::t_c5697404056114 10-11,42-46,70-71,153-164
+mcpfn/REQUIREMENTS.md
+  s_8b12c11549f1ff::t_c5697404056114 27-36
+  s_8b12c11549f1ff::t_e3d7cdd375caa2 37
+plugfn/providers/tests/mail-slack-onedrive.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-202
+reviewfn/github/src/git.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-133
+authfn/native-handoff/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,24
+langfn/typescript/tsup.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-32
+authfn/docs/content/docs/recipes/custom-validation.md
+  s_8b12c11549f1ff::t_c5697404056114 15,19-20,82,85-88
+  s_8b12c11549f1ff::t_7714bfcd206b9b 89
+datafn/core/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 112-132,289-290
+mcpfn/testing/src/mock-oauth-server.ts
+  s_8b12c11549f1ff::t_c5697404056114 87
+mcpfn/examples/external-http-server.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-179
+packages/cli/src/__tests__/load-config-module.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 46-67
+secfn/server/tsconfig.json
+  s_8b12c11549f1ff::t_c5697404056114 1-18
+plugfn/providers/src/slack/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-3,10,31-34,202,286-300
+uifn/registry/README.md
+  s_8b12c11549f1ff::t_c5697404056114 78-82,85-86,97,113-127
+authfn/docs/content/docs/reference/events.md
+  s_8b12c11549f1ff::t_c5697404056114 57-60,73-74
+mcpfn/core/README.md
+  s_8b12c11549f1ff::t_c5697404056114 174-187
+plugfn/providers/tests/selected-catalog.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-28
+langfn/typescript/src/tools/base.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-77
+langfn/typescript/src/agents/react.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-79
+reviewfn/evaluation/data6-pr153-metrics.json
+  s_8b12c11549f1ff::t_c5697404056114 1-19
+packages/http/src/router.ts
+  s_8b12c11549f1ff::t_c5697404056114 66,86
+plugfn/providers/src/google/discovery/docs.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-4818
+plugfn/core/src/middleware/retry.ts
+  s_8b12c11549f1ff::t_c5697404056114 62,70,76,85
+plugfn/providers/src/google-drive/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-23
+scripts/sfns4/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-105
+memoryfn/typescript/src/core/config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-92
+uifn/registry/src/preset/url.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-26
+authfn/admin/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,36,41-42
+authfn/python/pyproject.toml
+  s_8b12c11549f1ff::t_c5697404056114 8,29,74,110
+.github/apifn-cli-install/package.json
+  s_8b12c11549f1ff::t_c5697404056114 1-8
+reviewfn/examples/markdown-only/.reviewfn/config.json
+  s_8b12c11549f1ff::t_c5697404056114 1-12
+authfn/core/README.md
+  s_8b12c11549f1ff::t_c5697404056114 3,5,7-9,11,13,15,19,27,45,47
+packages/db/src/adapters/drizzle/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 32,259,275,364,368-373,387,451
+plugfn/python/CONTRIBUTING.md
+  s_8b12c11549f1ff::t_c5697404056114 17-18,375,405,411
+authfn/docs/content/docs/frameworks/starlette.md
+  s_8b12c11549f1ff::t_c5697404056114 3,8,10,12-13,16,21
+langfn/typescript/src/http/auth.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-54
+langfn/typescript/src/rag/db-vector-store.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-160
+authfn/docs/content/docs/core-concepts/cookies.md
+  s_8b12c11549f1ff::t_c5697404056114 41,44,52,86
+authfn/docs/content/docs/core-concepts/security.md
+  s_8b12c11549f1ff::t_c5697404056114 33
+langfn/typescript/src/models/transport.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-113
+authfn/docs/content/docs/quickstart/python.md
+  s_8b12c11549f1ff::t_c5697404056114 14-15,57,61,76,80
+packages/db/src/adapter/types.ts
+  s_8b12c11549f1ff::t_c5697404056114 35,402
+plugfn/python/README.md
+  s_8b12c11549f1ff::t_c5697404056114 9,53
+mcpfn/ADR-0001-COMPATIBILITY.md
+  s_8b12c11549f1ff::t_c5697404056114 10-17,23-59,84-89,121-126
+plugfn/core/tests/shared-rate-store.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-32
+secfn/server/migrations/0004_secret_set_environment.sql
+  s_8b12c11549f1ff::t_c5697404056114 1-21
+authfn/core/src/core/passwords.ts
+  s_8b12c11549f1ff::t_c5697404056114 23,33-37,281-296,300,329-347,356,364
+secfn/SPEC.md
+  s_8b12c11549f1ff::t_c5697404056114 1-1388
+sendfn/typescript/package.json
+  s_8b12c11549f1ff::t_c5697404056114 43-47
+datafn/client/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 129-132
+secfn/server/src/access.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-185
+authfn/docs/content/docs/core-concepts/openapi.md
+  s_8b12c11549f1ff::t_c5697404056114 12,15,20,22,85
+secfn/server/tsup.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-13
+authfn/email-otp/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,24
+plugfn/core/src/middleware/logging.ts
+  s_8b12c11549f1ff::t_c5697404056114 68,74,99
+plugfn/python/CHANGELOG.md
+  s_8b12c11549f1ff::t_c5697404056114 277
+plugfn/providers/src/google/discovery-provider.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-281
+scripts/sfns4/packed-consumers.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-189
+reviewfn/cli/src/config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-43
+reviewfn/core/test/adversarial.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-363
+authfn/docs/content/docs/adapters/database/postgres.md
+  s_8b12c11549f1ff::t_c5697404056114 11,20-21,31-33,36-38,41-42
+mcpfn/testing/README.md
+  s_8b12c11549f1ff::t_807153a7179bcc 267
+  s_8b12c11549f1ff::t_c5697404056114 3,22,25,39,135-186,231-239,268-298
+  s_8b12c11549f1ff::t_168180e9190ba3 240
+packages/oauth-http/tests/nested-user-token.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-35
+reviewfn/core/src/defaults.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-37
+reviewfn/github/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-2
+secfn/server/src/audit.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-184
+uifn/create/vite.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-3
+uifn/create/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-15
+langfn/typescript/src/core/types.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-219
+authfn/docs/content/docs/core-concepts/runtime.md
+  s_8b12c11549f1ff::t_c5697404056114 8,22,45,47,76,83-88,90-94,98,101-102,105-106,108-109,115,120,132,139,144,166,168
+datafn/docs/content/docs/reference/index.mdx
+  s_8b12c11549f1ff::t_c5697404056114 24
+langfn/typescript/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-24
+mcpfn/cli/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 20,22-24,26-32,36,41,50-51,61-151,157-158,165-179,181,183,185,188,190-204,295-301,303-308,310,312-318,326-330,332-396,402-415,418-422,424,426-431,433-434,436-454,460-526,591-602,610,615,629-731,734,739-745
+  s_8b12c11549f1ff::t_d7b6f34c2f4331 162,206-210,221,251,253,257,269,276-293,320,324,398,456,583,588,620,750
+  s_8b12c11549f1ff::t_7f9d4550c1612e 44
+authfn/docs/content/docs/recipes/custom-oauth-provider.md
+  s_8b12c11549f1ff::t_c5697404056114 26
+memoryfn/typescript/tests/extraction-validation.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-48
+authfn/core/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 68,85-89,96-109
+mcpfn/testing/tests/remote-target.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-1264
+datafn/swift-bridge/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,21-22
+packages/db/src/adapters/drizzle/drizzle.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 700-722
+packages/http/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3
+plugfn/core/src/core/action-manifest.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-101
+searchfn/python/tests/test_search.py
+  s_8b12c11549f1ff::t_c5697404056114 39-48,51-67
+langfn/typescript/tests/provider-client.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-225
+plugfn/README.md
+  s_8b12c11549f1ff::t_c5697404056114 87
+authfn/python/tests/test_api_keys.py
+  s_8b12c11549f1ff::t_c5697404056114 9,23,149-195
+reviewfn/examples/markdown-only/.reviewfn/policy.json
+  s_8b12c11549f1ff::t_c5697404056114 1-10
+langfn/typescript/src/prompts/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-4
+packages/http/src/context.ts
+  s_8b12c11549f1ff::t_c5697404056114 8-38,54,86-88
+apifn/README.md
+  s_8b12c11549f1ff::t_c5697404056114 83-123,139
+mcpfn/MIGRATION.md
+  s_8b12c11549f1ff::t_c5697404056114 45-67,76-85
+langfn/typescript/src/storage/cache.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-132
+memoryfn/typescript/tests/lifecycle.test.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-83
+langfn/typescript/src/models/ollama.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-132
+mcpfn/ARCHITECTURE.md
+  s_8b12c11549f1ff::t_c5697404056114 68-80
+reviewfn/examples/markdown-only/README.md
+  s_8b12c11549f1ff::t_c5697404056114 1-3
+langfn/typescript/eslint.config.js
+  s_8b12c11549f1ff::t_c5697404056114 1-27
+authfn/docs/content/docs/quickstart/bun.md
+  s_8b12c11549f1ff::t_c5697404056114 13,16,20-25,28,30-46,66-67,87
+mcpfn/TESTING.md
+  s_8b12c11549f1ff::t_c5697404056114 114-122,153-165,175-183,192-197
+reviewfn/testing/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-3
+authfn/docs/content/docs/recipes/canonical-gateway-multi-region.md
+  s_8b12c11549f1ff::t_c5697404056114 100-101
+packages/db/examples/memory-adapter-example.ts
+  s_8b12c11549f1ff::t_c5697404056114 5-6
+reviewfn/core/src/redaction.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-23
+authfn/python/CHANGELOG.md
+  s_8b12c11549f1ff::t_c5697404056114 11,14-18
+datafn/client/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,23
+packages/db/package.json
+  s_8b12c11549f1ff::t_c5697404056114 3,67
+plugfn/providers/src/onedrive/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-257
+datafn/server/src/regional-tickets.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-396
+packages/db/src/adapter/schema-codecs.ts
+  s_8b12c11549f1ff::t_c5697404056114 71,215,219,374
+authfn/email-otp/src/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 42-44
+reviewfn/github/src/api.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-43
+secfn/server/vitest.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-27
+reviewfn/testing/tsconfig.json
+  s_8b12c11549f1ff::t_c5697404056114 1-4
+memoryfn/typescript/src/mcp/index.ts
+  s_8b12c11549f1ff::t_c5697404056114 1
+secfn/core/src/schema.ts
+  s_8b12c11549f1ff::t_c5697404056114 1-260
+packages/middleware/src/rate-limit.ts
+  s_8b12c11549f1ff::t_c5697404056114 36-37,44,436,452-453,460,484,493
+uifn/create/package.json
+  s_8b12c11549f1ff::t_c5697404056114 1-33
+scripts/sfns4/hosted-hyperdrive-worker.mjs
+  s_8b12c11549f1ff::t_c5697404056114 1-93
+mcpfn/client/tsup.config.ts
+  s_8b12c11549f1ff::t_c5697404056114 10-15
+.github/apifn-cli-install/package-lock.json
+  s_8b12c11549f1ff::t_51f01a902811aa 2,7,9,12-15,17-20,22-25,28-31,34,37-41,43-46,48-57,60-63,65-76,79-82,84-88,91-94,96-113,116-119,121-122,125-128,130-131,134-138,143-146,148-151,153,156-159,162,165-168,170-173,175,178-181,183,185-188,190-212,215-219,221-224,226-234,237-240,242-248,251-254,257-260,263-267,269-272,275,278-281,283-285,287,290-293,295-297,299,302-305,308,311-315,317-320,323-326,329-332,335,338,341,344-347,350,352-353,356-359,362-364,367,370-374,376-380,382-391,394,397-406,409-413,416,419-439,441,444-447,449-451,453,456-459,462-463,466-469,472-475,478,481,484-500,502-505,508-512,514,517,520-524,526,529-533,535,538,541-545,547,550,553-566,568,571,574-584,586,589-592,595-598,600-601,604-617,619-623,626-629,632-635,638-645,648-651,653-654,656-664,666,669-672,678-681,684-685,688,691-694,697-700,703-716,718-725,727-730,732-740,742-745,747,749-752,754-770,772-776,778,780-781,787-791,793-794,797,799-800,803-807,809-812,815,818,821-825,827,830,833-836,839,842-865,868,871-874,877-878,881,884,887-890,893-894,897-914,917,920-924,926,929,932-935,941-945,947-950,953-956,959,962,965-968,971-973,976,979,982-985,987-989,991-994,997-1000,1003,1006,1009-1013,1015-1018,1021,1024-1031,1033,1036,1039-1042,1045-1054
+mcpfn/core/src/fast-uri.d.ts
+  s_8b12c11549f1ff::t_eb68cb83fe41b3 1-6
+package-lock.json
+  s_8b12c11549f1ff::t_8c26320e07a49b 33,35,48-53,57,63,65,70-71,328-337,496,500,508-535,548,554,562-589,602,608,611-612,644-680,715,718,726-734,747,751,754-759,765-773,786,798,808-811,814-842,888-966,1026-1074,1096-1111,1126,1129,1137-1145,3172,3176,3184-3192,3205,3209,3217-3253,3266,3269,3277-3285,3298,3301,3309-3336,3349,3353,3358,3367-3370,3373-3401,3416,3419,3426,3442,3445,3453-3461,3512-3540,6589-6612,6639-6666,6691,6694-6695,6897,6900,6911-6919,7115,8111-8130,8143,8146-8148,8152,8155,8159-8160,8196-8204,8423-8434,9399-9435,11412-11900,12775,12788-12816,12841,12853-12854,13101-13103,13111,13187-13189,13289,13292-13296,13547-13549,13557,13633-13635,13735,13742,13985-13987,13995,14071-14073,14173,14176,14179-14180,14186-14187,14427-14429,14514-14516,14616,14621,14624,14635-14686,14689,14692-14693,14698,14941-14943,14951,15027-15029,15129,15132-15134,15391-15393,15401,15477-15479,17888-17896,18992-19796,21816-21821,22290-22293,25389-25392,25703-25705,28837-28848,29716-29739,31332-31341,31539-31540,31569-31570,31808-31811,32629-32640,36531-36533,37571-37589,38582-38590,39155,39696-39699,43452-43471,43724-43768,51305-51313,52615,52662,52674-52705,52709,52720-52735,52775,52794,52908,52938-52947,52972-52981,53008-53017,53042-53051,53073-53081,53108-53117,53218,53243,53266,53298-53306,53330-53357,53373,53714-53715,53763,53843-53846,53849-53877,54606-54790,54824-54831,55311-55319,56990-57134,57611,57659-57719,57846-57874,57876-57878,57880-57916,58027-58033,61271-61289,62326-62328
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "51a4bbdea695ddb219733f1f1295ccd86aa9cb1d",
+  "prompts": {},
+  "sessions": {
+    "s_6126673cc0a89e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c2bc-9ed5-72b0-a4bd-e7dcb1d6a6eb",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_8b12c11549f1ff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0d7dd-a226-71f1-953a-3f8414a2a923",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
