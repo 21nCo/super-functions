@@ -538,6 +538,9 @@ async function runProfileCase(
   const profile = { id: profileCase.id, version: profileCase.version };
   let client: McpFnTestClient | undefined;
   let configurationError: Error | undefined;
+  let pendingFailure: unknown;
+  let hasPendingFailure = false;
+  let cleanupOwner: McpFnTestClientCleanupError | undefined;
   let result: McpFnClientProfileContractResult = {
     profile,
     status: "complete",
@@ -674,22 +677,29 @@ async function runProfileCase(
           : {}),
       };
     }
+  } catch (error) {
+    pendingFailure = error;
+    hasPendingFailure = true;
   } finally {
     if (client) {
       try {
         await client.close();
       } catch (error) {
-        if (error instanceof McpFnTestClientCleanupError) throw error;
-        if (configurationError) configurationError.message = `${configurationError.message}; target cleanup failed`;
-        result = {
-          ...result,
-          ok: false,
-          phase: result.phase ?? "close",
-          error: result.error ? `${result.error}; target cleanup failed`.slice(0, 512) : "Target cleanup failed",
-        };
+        if (error instanceof McpFnTestClientCleanupError) cleanupOwner = error;
+        else {
+          if (configurationError) configurationError.message = `${configurationError.message}; target cleanup failed`;
+          result = {
+            ...result,
+            ok: false,
+            phase: result.phase ?? "close",
+            error: result.error ? `${result.error}; target cleanup failed`.slice(0, 512) : "Target cleanup failed",
+          };
+        }
       }
     }
   }
+  if (cleanupOwner) throw cleanupOwner;
+  if (hasPendingFailure) throw pendingFailure;
   return result;
 }
 
