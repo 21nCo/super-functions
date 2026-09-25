@@ -1,0 +1,21 @@
+scripts/verify-package-lockfiles.mjs
+  s_8b12c11549f1ff::t_dc630d243e308e 9-11,14
+scripts/verify-package-lockfiles.test.mjs
+  s_8b12c11549f1ff::t_dc630d243e308e 55,58,68,77,80,83,86-87,90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "176b1922f0898ed8eab9f80ae793a7b01bbd4848",
+  "prompts": {},
+  "sessions": {
+    "s_8b12c11549f1ff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0d7dd-a226-71f1-953a-3f8414a2a923",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
