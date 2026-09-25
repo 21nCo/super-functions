@@ -573,14 +573,16 @@ export async function runCli(
         ) {
           throw new Error("Client profile report exceeded the output byte cap");
         }
-        if (options.output) {
-          await writeFile(
-            path.resolve(cwd, options.output),
-            serialized,
-            "utf8",
-          );
-        }
-        await stdout(serialized);
+        await preserveCleanupOwner(undefined, async () => {
+          if (options.output) {
+            await writeFile(
+              path.resolve(cwd, options.output),
+              serialized,
+              "utf8",
+            );
+          }
+          await stdout(serialized);
+        }, "Client profile report output failed");
         if (!report.ok) exitCode = 1;
       },
     );

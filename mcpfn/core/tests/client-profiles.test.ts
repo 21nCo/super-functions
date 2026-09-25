@@ -11,8 +11,10 @@ import {
   type McpFnTaskRequestExtra,
   createMcpFnServer,
   structuredResult,
+  enrichMcpFnClientProfileCall,
   type McpFnClientProfile,
   type McpFnObjectSchema,
+  type McpFnRequestExtra,
 } from "../src/index.js";
 
 interface RequestContext {
@@ -166,6 +168,15 @@ describe("McpFn client profiles", () => {
     ).resolves.toMatchObject({
       structuredContent: { query: "safe", tenantId: "model-value" },
     });
+  });
+
+  it("forwards non-object generic arguments to canonical validation", async () => {
+    const argumentsValue = ["invalid"];
+    expect(await enrichMcpFnClientProfileCall({
+      resolved: { context: undefined, extra: {} as McpFnRequestExtra, reportedClient: {} },
+      tool: { name: "lookup", description: "Lookup", inputSchema: { type: "object" } },
+      arguments: argumentsValue,
+    })).toBe(argumentsValue);
   });
 
   it("fails forged and missing server-owned arguments before the handler", async () => {
@@ -760,7 +771,7 @@ it("rejects a draft-07 reference projection whose ignored sibling appears to hid
   const [left, right] = InMemoryTransport.createLinkedPair();
   try {
     await server.connect(right); await client.connect(left);
-    await expect(client.listTools()).rejects.toThrow(/Draft-07 \$ref assertion siblings/);
+    await expect(client.listTools()).rejects.toThrow(/owned|model-visible|root constraints/);
   } finally { await client.close(); await server.close(); }
 });
 
@@ -817,7 +828,7 @@ it("lists and calls a draft-07 reference with an ignored extension beside it", a
   });
 });
 
-it("rejects a draft-07 reference with a nested format assertion sibling", async () => {
+it("ignores a draft-07 reference with a nested format assertion sibling", async () => {
   const schema = {
     $schema: "http://json-schema.org/draft-07/schema#",
     type: "object" as const,
@@ -825,7 +836,8 @@ it("rejects a draft-07 reference with a nested format assertion sibling", async 
     definitions: { name: { type: "string" } },
   };
   await withNoopProfileClient("formatted", schema, async client => {
-    await expect(client.listTools()).rejects.toThrow(/Draft-07 \$ref assertion siblings/);
+    expect((await client.listTools()).tools[0].name).toBe("formatted");
+    expect(await client.callTool({ name: "formatted", arguments: { query: "plain-text" } })).toMatchObject({ structuredContent: { ok: true } });
   });
 });
 
@@ -871,16 +883,14 @@ it.each([
 it.each([
   ["maxContains", 0],
   ["minContains", 2],
-] as const)("rejects a draft-07 %s paired with an evaluated contains sibling", async (keyword, value) => {
+] as const)("ignores a draft-07 %s paired with a contains sibling beside a reference", async (keyword, value) => {
   const schema = {
     $schema: "http://json-schema.org/draft-07/schema#",
     type: "object" as const,
     properties: { query: { $ref: "#/definitions/value", contains: { const: "match" }, [keyword]: value } },
     definitions: { value: { type: "array" } },
   };
-  await withNoopProfileClient("contains-sibling", schema, async client => {
-    await expect(client.listTools()).rejects.toThrow(/Draft-07 \$ref assertion siblings/);
-  });
+  await expectIgnoredRefListsAndCalls(schema, ["match"]);
 });
 
 it.each([

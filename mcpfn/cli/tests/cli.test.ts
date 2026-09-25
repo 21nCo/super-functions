@@ -205,6 +205,14 @@ describe("mcpfn CLI", () => {
       kind: "mcpfn.client-profile-contract-report",
       ok: true,
     });
+    let errorOutput = "";
+    expect(await runCli(["test-profiles", "profiles.mjs"], {
+      cwd: root,
+      stdout: async () => { throw new Error("private output failure"); },
+      stderr: (value) => { errorOutput += value; },
+    })).toBe(1);
+    expect(errorOutput).toContain("Client profile report output failed");
+    expect(errorOutput).not.toContain("private output failure");
   });
 
   it("loads a server by public shape across package-instance boundaries", async () => {

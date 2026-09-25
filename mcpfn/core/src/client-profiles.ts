@@ -5,6 +5,7 @@ import { ToolSchema, type Tool } from "@modelcontextprotocol/sdk/types.js";
 
 import { canonicalJson, compareCodeUnits, sha256 } from "./canonical.js";
 import { McpFnClientProfileError } from "./errors.js";
+import { createSchemaCompiler, schemaEngine } from "./validation.js";
 import type {
   McpFnListedTool,
   McpFnReportedClient,
@@ -405,8 +406,17 @@ function validateDefinitionContainers(schema: unknown, ajv: Ajv | Ajv2019 | Ajv2
 function assertValidProfileSchema(schema: Record<string, unknown>): void {
   try {
     const dialect = typeof schema.$schema === "string" ? schema.$schema : "http://json-schema.org/draft-07/schema#";
+    if (schemaEngine === "cfworker") {
+      if (!dialect.includes("draft-07")) {
+        throw new Error("Modern projected schemas require a dialect-aware edge validator");
+      }
+      createSchemaCompiler("cfworker").compile(schema);
+      return;
+    }
     const Validator = dialect.includes("draft-07") ? Ajv : dialect.includes("2019-09") ? Ajv2019 : Ajv2020;
-    const ajv = new Validator({ strict: false, allowUnionTypes: true, validateFormats: false });
+    const ajv = new Validator({ strict: false, allowUnionTypes: true, validateFormats: false, logger: false,
+      ...(dialect.includes("draft-07") ? { ignoreKeywordsWithRef: true } : {}),
+    });
     validateDefinitionContainers(schema, ajv);
     ajv.compile(schema);
   }
@@ -427,10 +437,10 @@ export async function enrichMcpFnClientProfileCall<TContext>(input: {
   resolved: McpFnResolvedClientProfile<TContext>;
   tool: McpFnListedTool;
   arguments: unknown;
-}): Promise<Record<string, unknown>> {
-  const original = objectArguments(input.arguments ?? {});
+}): Promise<unknown> {
   const profile = input.resolved.profile;
-  if (!profile) return original;
+  if (!profile) return input.arguments ?? {};
+  const original = objectArguments(input.arguments ?? {});
   assertTrustedProfileIdentity(input.resolved);
   const owned = new Set(ownedArguments(profile, input.tool.name));
   for (const name of owned) {
@@ -519,17 +529,9 @@ function mapSchemaKeyword(key: string, value: unknown, visit: (schema: unknown) 
 }
 
 /** Resolve only root object composition; never traverse argument values. */
-const DRAFT07_REF_UNSAFE_KEYWORDS = new Set([
-  "$async", "$id",
-  "additionalItems", "additionalProperties", "allOf", "anyOf", "const", "contains",
-  "dependencies", "else", "enum",
-  "exclusiveMaximum", "exclusiveMinimum", "format", "formatExclusiveMaximum",
-  "formatExclusiveMinimum", "formatMaximum", "formatMinimum", "id", "if", "items",
-  "maxItems", "maxLength", "maxProperties", "maximum",
-  "minItems", "minLength", "minProperties", "minimum", "multipleOf", "not",
-  "nullable", "oneOf", "pattern", "patternProperties", "properties",
-  "propertyNames", "required", "then", "type", "uniqueItems",
-]);
+// Ajv and draft-07 clients both ignore assertion siblings of $ref. Resource IDs
+// still affect reference resolution, so keep those fail-closed.
+const DRAFT07_REF_UNSAFE_KEYWORDS = new Set(["$id", "id"]);
 
 function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { properties: Record<string, unknown>; required: Set<string>; constraints: string[]; ownershipSensitive: boolean; prohibited: Set<string> } {
   // JSON transports duplicate aliases. Give each occurrence its own identity so
@@ -638,6 +640,7 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
     const schema = value as Record<string, unknown>;
     const shape: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(schema)) {
+      if (typeof schema.$ref === "string" && !modernDialect(schema) && key !== "$ref") continue;
       if (["title", "description", "$comment", "examples", "$defs", "definitions"].includes(key)) continue;
       if (key === "properties" && child && typeof child === "object") {
         shape[key] = Object.fromEntries(Object.entries(child).filter(([name]) => !owned.has(name)).map(([name, item]) => [name, resolveProperty(item)]));
@@ -655,7 +658,8 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
     if (!value || typeof value !== "object" || Array.isArray(value) || seen.has(value)) return;
     seen.add(value);
     const schema = value as Record<string, unknown>;
-    if (schema.additionalProperties === false) {
+    const ignoredRefSiblings = typeof schema.$ref === "string" && !modernDialect(schema);
+    if (!ignoredRefSiblings && schema.additionalProperties === false) {
       for (const name of owned) {
         const properties = schema.properties as Record<string, unknown> | undefined;
         const patterns = Object.keys((schema.patternProperties ?? {}) as object);
@@ -665,10 +669,11 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
         })) prohibited.add(name);
       }
     }
-    const branchProperties = schema.properties && typeof schema.properties === "object" ? Object.keys(schema.properties).filter(name => !owned.has(name)).sort(compareCodeUnits) : [];
-    const branchRequired = Array.isArray(schema.required) ? schema.required.filter(name => typeof name === "string" && !owned.has(name)).sort(compareCodeUnits) : [];
+    const branchProperties = !ignoredRefSiblings && schema.properties && typeof schema.properties === "object" ? Object.keys(schema.properties).filter(name => !owned.has(name)).sort(compareCodeUnits) : [];
+    const branchRequired = !ignoredRefSiblings && Array.isArray(schema.required) ? schema.required.filter(name => typeof name === "string" && !owned.has(name)).sort(compareCodeUnits) : [];
     constraints.add(canonicalJson({ path, properties: branchProperties, required: branchRequired }));
     for (const [key, value] of Object.entries(schema)) {
+      if (ignoredRefSiblings && key !== "$ref") continue;
       if (["dependencies", "dependentRequired", "dependentSchemas", "if", "then", "else", "anyOf", "oneOf", "not", "const", "enum", "minProperties", "maxProperties", "unevaluatedProperties"].includes(key)) ownershipSensitive = true;
       if (!["properties", "required", "allOf", "$ref", "$defs", "definitions", "title", "description", "$comment", "examples"].includes(key)) {
         constraints.add(canonicalJson({ path, [key]: mapSchemaKeyword(key, value, resolveProperty, modernDialect(schema)) }));
@@ -677,7 +682,7 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
     if (typeof schema.$ref === "string") {
       visit(referenceTarget(schema), `${path}/$ref`);
     }
-    if (schema.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties)) {
+    if (!ignoredRefSiblings && schema.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties)) {
       for (const [name, child] of Object.entries(schema.properties)) {
         const resolved = resolveProperty(child);
         if (Object.hasOwn(properties, name) && canonicalJson(properties[name]) !== canonicalJson(resolved)) {
@@ -685,8 +690,8 @@ function rootShape(root: Record<string, unknown>, owned = new Set<string>()): { 
         } else properties[name] = resolved;
       }
     }
-    if (Array.isArray(schema.required)) for (const name of schema.required) if (typeof name === "string") required.add(name);
-    if (Array.isArray(schema.allOf)) [...schema.allOf].sort((left, right) => compareCodeUnits(branchKey(left), branchKey(right))).forEach((child, index) => visit(child, `${path}/allOf/${index}`));
+    if (!ignoredRefSiblings && Array.isArray(schema.required)) for (const name of schema.required) if (typeof name === "string") required.add(name);
+    if (!ignoredRefSiblings && Array.isArray(schema.allOf)) [...schema.allOf].sort((left, right) => compareCodeUnits(branchKey(left), branchKey(right))).forEach((child, index) => visit(child, `${path}/allOf/${index}`));
     seen.delete(value);
   };
   visit(root);

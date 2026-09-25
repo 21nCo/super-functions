@@ -14,7 +14,7 @@ import type { McpFnTarget } from "@mcpfn/client";
 import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 import { stableJson } from "./assertions.js";
-import { McpFnTestClient, type McpFnTestClientOptions } from "./client.js";
+import { McpFnTestClient, McpFnTestClientCleanupError, type McpFnTestClientOptions } from "./client.js";
 
 export type McpFnFixtureSideEffect =
   | "read-only"
@@ -556,6 +556,7 @@ async function runProfileCase(
         { ...profileCase.client, capabilities: profileCase.capabilities },
       );
     } catch (error) {
+      if (error instanceof McpFnTestClientCleanupError) throw error;
       return { ...result, phase: "connect", error: "Target connection failed" };
     }
     let tools: Tool[] | undefined;
@@ -678,6 +679,7 @@ async function runProfileCase(
       try {
         await client.close();
       } catch (error) {
+        if (error instanceof McpFnTestClientCleanupError) throw error;
         if (configurationError) configurationError.message = `${configurationError.message}; target cleanup failed`;
         result = {
           ...result,

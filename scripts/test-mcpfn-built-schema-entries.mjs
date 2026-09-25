@@ -67,4 +67,19 @@ await assert.rejects(
   registry.callTool("fragment", { value: 42 }, undefined, {}),
   /Invalid arguments/,
 );
+const projected = await core.buildMcpFnEffectiveCatalog({
+  canonicalTools: [{
+    name: "edge-profile",
+    description: "Exercise a matched profile without runtime code generation",
+    inputSchema: { type: "object", properties: { value: { type: "string" } } },
+  }],
+  resolved: {
+    context: undefined,
+    extra: {},
+    verifiedIdentity: { subject: "edge-client" },
+    reportedClient: {},
+    profile: { id: "edge-profile", version: "1", matches: () => true },
+  },
+});
+assert.equal(projected.tools[0].name, "edge-profile");
 console.log(JSON.stringify({ entry, engine: core.schemaEngine, valid: true, invalidRejected: true }));
