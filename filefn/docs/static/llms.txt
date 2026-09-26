@@ -65,7 +65,7 @@
 - [Versions](https://filefn.superfunctions.dev/docs/features/versions): Every successful filefn upload becomes a new fileVersions row — list, target, download, and roll back.
 - [Frameworks](https://filefn.superfunctions.dev/docs/frameworks): Production wiring for filefn behind every major web framework — Hono, Express, Bun, SvelteKit, Next.js, FastAPI, Flask.
 - [Bun](https://filefn.superfunctions.dev/docs/frameworks/bun): Native Bun.serve integration — fastest start-up, native multipart streaming, and zero-cold-start production deployments.
-- [Express](https://filefn.superfunctions.dev/docs/frameworks/express): Mount FileFn with the shared Express adapter and preserve upload bytes.
+- [Express](https://filefn.superfunctions.dev/docs/frameworks/express): Mount FileFn with a byte-preserving streaming bridge.
 - [FastAPI](https://filefn.superfunctions.dev/docs/frameworks/fastapi): Production-grade FastAPI integration — Starlette request bridging, async session resolvers, and reverse-proxy guidance.
 - [Flask](https://filefn.superfunctions.dev/docs/frameworks/flask): Production-grade Flask integration — WSGI request bridging, async filefn calls via run_async, and reverse-proxy guidance.
 - [Hono](https://filefn.superfunctions.dev/docs/frameworks/hono): Production-grade Hono integration for filefn — CORS, CSRF for proxy uploads, rate limiting, observability, and graceful 404 fallthrough.
@@ -90,7 +90,7 @@
 - [OPFS offline](https://filefn.superfunctions.dev/docs/recipes/opfs-offline): Reliable uploads when the network is bad — OPFS-staged content with automatic resume on reconnect.
 - [Signed share links](https://filefn.superfunctions.dev/docs/recipes/signed-share-links): Common share-link patterns — one-time, time-bound, password-protected, IP-restricted.
 - [Tenant isolation](https://filefn.superfunctions.dev/docs/recipes/tenant-isolation): Per-tenant storage paths, quotas, grants, and authorization — the production isolation pattern.
-- [Video uploads](https://filefn.superfunctions.dev/docs/recipes/video-uploads): Large-file video uploads with multi-resolution transcoding, poster frames, and queued processing.
+- [Video uploads](https://filefn.superfunctions.dev/docs/recipes/video-uploads): Large-file video uploads with 720p transcoding, poster frames, and queued processing.
 - [Virus scanning](https://filefn.superfunctions.dev/docs/recipes/virus-scanning): Plug ClamAV (or any AV provider) into the filefn processing pipeline as a custom processor.
 - [Reference](https://filefn.superfunctions.dev/docs/reference): The canonical reference for filefn — every route, every error, every event, every schema, every config knob, the changelog.
 - [Changelog](https://filefn.superfunctions.dev/docs/reference/changelog): Notable filefn releases and migration notes.

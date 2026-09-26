@@ -21,8 +21,8 @@ const storage = createGCSStorageAdapter({
 
 ## Capabilities
 
-- Proxy streaming uploads; native multipart and signed upload URLs are not advertised by this adapter.
-- `getSignedUrl` and `getSignedDownloadUrl`.
+- Proxy streaming uploads and signed upload/download URLs. Native multipart uploads are not advertised (`multipart: false`).
+- `signUploadUrl` and `signDownloadUrl`.
 - `put`, `get`, `delete`.
 - `responseHeaders` (Content-Disposition / Content-Type) on signed downloads.
 

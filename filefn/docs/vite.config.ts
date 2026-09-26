@@ -7,6 +7,7 @@ import { defineConfig } from "vite";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
+const docsfnCore = path.dirname(require.resolve("@docsfn/core"));
 const docsfnSvelteSrc = path.join(
   path.dirname(path.dirname(require.resolve("@docsfn/svelte/theme.css"))),
   "src"
@@ -19,6 +20,8 @@ export default defineConfig({
   },
   resolve: {
     alias: [
+      { find: /^@docsfn\/core$/, replacement: path.join(docsfnCore, "index.js") },
+      { find: "@docsfn/core/search-runtime", replacement: path.join(docsfnCore, "search-runtime.js") },
       { find: "@site/docs-content", replacement: path.join(docsfnSvelteSrc, "DocsContent.svelte") },
       { find: "@site/docs-layout", replacement: path.join(docsfnSvelteSrc, "DocsLayout.svelte") },
       { find: "@site/topbar", replacement: path.join(docsfnSvelteSrc, "TopBar.svelte") },

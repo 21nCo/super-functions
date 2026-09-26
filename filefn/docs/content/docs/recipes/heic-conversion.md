@@ -9,34 +9,24 @@ Goal: an upload pipeline that accepts HEIC inputs from iPhones and ends up with 
 
 ## Browser
 
-`@filefn/client` ships HEIC preprocessing on by default. iOS Safari and Chromium-based browsers can decode HEIC; the bundled preprocessor uses the runtime's image decoder when available, falls back to a polyfill otherwise.
+HEIC preprocessing is enabled by default, but conversion requires a supplied `converter` or a `globalThis.heic2any` implementation. FileFn does not bundle a decoder or infer universal browser HEIC support. Without a converter, HEIC uploads fail with `FILEFN_HEIC_CONVERSION_FAILED`.
+
+Supply a decoder that produces a JPEG `Blob` (raw decoded pixels are not a JPEG):
 
 ```ts
-const client = createFileFnClient({
-  baseUrl: "/filefn",
-  preprocessing: { heic: { enabled: true } }, // default
-});
-```
-
-## Custom decoder
-
-When the bundled implementation doesn't fit your needs (e.g. you want a specific WASM decoder for fidelity):
-
-```ts
-import heicDecode from "heic-decode";
+import { createFileFnClient } from "@filefn/client";
+import heic2any from "heic2any"; // Install separately; load this in browser-only code.
 
 const client = createFileFnClient({
   baseUrl: "/filefn",
   preprocessing: {
     heic: {
       enabled: true,
-      convert: async ({ data, fileName }) => {
-        const { data: jpegData } = await heicDecode({ buffer: new Uint8Array(data) });
-        return {
-          data: jpegData,
-          mimeType: "image/jpeg",
-          fileName: fileName.replace(/\.heic$/i, ".jpg"),
-        };
+      converter: async ({ file, targetMimeType, quality }) => {
+        const output = await heic2any({ blob: file, toType: targetMimeType, quality });
+        const jpeg = Array.isArray(output) ? output[0] : output;
+        if (!jpeg) throw new Error("HEIC conversion produced no image");
+        return jpeg;
       },
     },
   },
@@ -64,9 +54,21 @@ The preprocessor uses `CIImage` to transcode HEIC → JPEG before any bytes leav
 
 ## Server side
 
-If you'd rather keep HEIC originals and transcode on the server, opt out of preprocessing on every client and add `createImageTransformProcessor`:
+The built-in `createImageTransformProcessor` accepts PNG, JPEG, WebP, GIF, and TIFF, not HEIC. Keep client preprocessing enabled when using this processor. After conversion, a supported JPEG upload can produce a preview:
 
 ```ts
+import { createFileFn } from "@filefn/server";
+import { createImageTransformProcessor } from "@filefn/processing";
+
 const transform = createImageTransformProcessor({
   operations: [{ operation: "resize", options: { width: 2048, fit: "inside" }, suffix: "preview" }],
   outputFormat: "jpeg",
+});
+const fileFn = createFileFn({
+  database, // Your configured database adapter.
+  storage, // Your configured storage adapter.
+  processing: { enabled: true, processors: [transform] },
+});
+```
+
+To retain HEIC originals, supply a custom `Processor` that explicitly accepts `image/heic`/`image/heif`, decodes them using a HEIC-capable provider, and emits JPEG artifacts. Verify codec support in the deployed environment before disabling client preprocessing. Artifacts do not replace the stored original; original/full downloads remain HEIC.

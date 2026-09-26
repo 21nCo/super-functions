@@ -161,6 +161,8 @@ const { version, schemas } = getSchema({ namespace: "filefn" });
 console.log(version, schemas.map((table) => table.modelName));
 ```
 
+For Drizzle, generate the dialect-specific table definitions with your host schema tooling (the repository’s `@superfunctions/cli` provides `generate-schema`) and import the generated `schema` registry. Construct `drizzle(client, { schema })`, then pass that instance to `drizzleAdapter`. The registry is required at runtime even after SQL migrations have created the tables.
+
 This returns seven table descriptors, including fields and indexes. It does not provision a database. Translate/review these descriptors in your host's migration tooling and apply the migration before serving FileFn requests. The Drizzle adapter reports `schema.migrations: false`; it does not implement automatic DDL. Keep the namespace used in your migrations and `createFileFn` identical.
 
 FileFn wraps the supplied adapter with its schema internally. For a custom adapter, implement the exported `Adapter` type rather than a positional CRUD interface: methods receive objects such as `findOne({ model, where })` and `create({ model, data })`. Respect the adapter's transaction and constraint capabilities; pretending to support transactions can break consistency guarantees.
@@ -188,10 +190,11 @@ npm install @superfunctions/db drizzle-orm pg
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
+import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const db = drizzleAdapter({ db: drizzle(pool), dialect: "postgres" });
-// Pass db to createFileFn({ db, storage, ... }).
+const db = drizzleAdapter({ db: drizzle(pool, { schema }), dialect: "postgres" });
+// Pass db to createFileFn({ database: db, storage, ... }).
 ```
 
 Use dialect `postgres`, `mysql`, or `sqlite` with the corresponding Drizzle driver. The host owns the connection lifecycle; close the pool during application shutdown.
@@ -201,6 +204,8 @@ Use dialect `postgres`, `mysql`, or `sqlite` with the corresponding Drizzle driv
 Use `getSchema({ namespace })` from `@filefn/server` as the source of table/field/index descriptors. Generate and review your host migrations, then apply them before running FileFn. Constructing the adapter or FileFn does not create SQL tables. The adapter does not expose an `applySchemaToAdapter` helper or automatic migration support.
 
 See [DB adapters](./db) for the schema contract and [SQLite](./db-sqlite) for a local SQL configuration.
+
+Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
 
 
 ---
@@ -220,7 +225,7 @@ import { memoryAdapter } from "@superfunctions/db/adapters/memory";
 const db = memoryAdapter();
 ```
 
-Pass this adapter to `createFileFn({ db, storage, ... })`. State lasts only as long as the adapter instance. Recreating it or restarting the process loses file metadata, upload sessions, grants, and shares even if the storage adapter still contains bytes. Use a persistent SQL database for durable deployments. See [Drizzle](./db-drizzle).
+Pass this adapter to `createFileFn({ database: db, storage, ... })`. State lasts only as long as the adapter instance. Recreating it or restarting the process loses file metadata, upload sessions, grants, and shares even if the storage adapter still contains bytes. Use a persistent SQL database for durable deployments. See [Drizzle](./db-drizzle).
 
 
 ---
@@ -243,14 +248,17 @@ npm install @superfunctions/db drizzle-orm pg
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
+import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
-const db = drizzleAdapter({ db: drizzle(pool), dialect: "postgres" });
+const db = drizzleAdapter({ db: drizzle(pool, { schema }), dialect: "postgres" });
 ```
 
 Pass `db` to `createFileFn`. Size the pool for your database connection budget and number of application replicas; `max: 10` above is an example, not a throughput guarantee. Call `pool.end()` during shutdown.
 
-Provision the table and index definitions from `getSchema({ namespace })` through your host migration system before handling requests. Neither the adapter nor FileFn runs DDL automatically. There is no `generateSqlForSchema` export from a `@superfunctions/db-postgres` package. See [DB adapters](./db) and [schema](../reference/schema).
+Provision the table and index definitions from `getSchema({ namespace })` exported by `@filefn/server` through your host migration system before handling requests. Neither the adapter nor FileFn runs DDL automatically. There is no `generateSqlForSchema` export from a `@superfunctions/db-postgres` package. See [DB adapters](./db) and [schema](../reference/schema).
+
+Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
 
 
 ---
@@ -274,15 +282,18 @@ npm install --save-dev @types/better-sqlite3
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
+import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
 
 const sqlite = new Database("filefn.sqlite");
 sqlite.pragma("journal_mode = WAL");
-const db = drizzleAdapter({ db: drizzle(sqlite), dialect: "sqlite" });
+const db = drizzleAdapter({ db: drizzle(sqlite, { schema }), dialect: "sqlite" });
 ```
 
 Provision the FileFn tables from `getSchema({ namespace })` using the host migration system before serving traffic. Pass `db` to `createFileFn` and close `sqlite` during application shutdown. On Bun, use Bun's SQLite driver and `drizzle-orm/bun-sqlite` with the same `drizzleAdapter` entrypoint and dialect.
 
 SQLite concurrency and filesystem durability depend on deployment topology. Use a database supported by your hosting environment; a local file is not shared storage across application replicas. See [DB adapters](./db).
+
+Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
 
 
 ---
@@ -316,7 +327,7 @@ const pdf = createPdfPreviewProcessor({
 });
 ```
 
-Thumbnail configuration accepts sizes, quality, and format; it has no top-level `fit`. PDF previews render the first page, with a placeholder fallback when rasterization is unavailable; there is no `pages` selector. Outputs include `thumbnail-thumb` and `pdf-preview-preview` for the names above.
+Thumbnail configuration accepts sizes, quality, and format; it has no top-level `fit`. PDF previews render the first page, with a placeholder fallback when rasterization is unavailable; there is no `pages` selector. Outputs include `thumbnail-thumb` and `pdf-preview-page-1-preview` for the names above.
 
 ## Compression
 
@@ -560,8 +571,8 @@ const storage = createGCSStorageAdapter({
 
 ## Capabilities
 
-- Proxy streaming uploads; native multipart and signed upload URLs are not advertised by this adapter.
-- `getSignedUrl` and `getSignedDownloadUrl`.
+- Proxy streaming uploads and signed upload/download URLs. Native multipart uploads are not advertised (`multipart: false`).
+- `signUploadUrl` and `signDownloadUrl`.
 - `put`, `get`, `delete`.
 - `responseHeaders` (Content-Disposition / Content-Type) on signed downloads.
 
@@ -885,9 +896,11 @@ The capability covers files, versions, upload sessions, grants, share links, pol
 
 File deletion requires MFA confirmation and removes the file's versions, artifacts, grants, and shares. Other writes carry their own risk and confirmation metadata; the host must enforce the capability's declared policy and write audit records. Upload tokens, storage keys, share tokens, provider URLs and headers, and policy storage paths are sensitive and must not leak through list responses.
 
-For an admin download, the domain service requires a signed URL or same-origin proxy descriptor. It rejects provider request headers instead of exposing them to a browser. Review [downloads](/docs/features/downloads), [grants](/docs/features/grants), and [share links](/docs/features/share-links) for the underlying FileFn access rules.
+For an admin download, standard FileFn download services normally produce a signed URL or application proxy descriptor. It rejects provider request headers instead of exposing them to a browser. Review [downloads](/docs/features/downloads), [grants](/docs/features/grants), and [share links](/docs/features/share-links) for the underlying FileFn access rules.
 
 The [capability source](https://github.com/21nCo/super-functions/blob/dev/filefn/admin/src/index.ts) defines operation IDs and schemas. The [domain service](https://github.com/21nCo/super-functions/blob/dev/filefn/admin/src/domain-service.ts) shows how the public FileFn facade enforces ownership and creates safe responses.
+
+The admin service itself only rejects descriptors with non-empty provider headers; it does not validate a URL’s origin or signature. Hosts using custom storage/download services must ensure that every returned header-free URL is safe for the intended client and authorization scope.
 
 
 ---
@@ -4953,18 +4966,19 @@ Bun's `Bun.serve(...)` already speaks `Request` / `Response`. filefn drops in:
 ```ts
 import { createFileFn, createNucleusPolicies } from "@filefn/server";
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
+import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { createLocalStorage } from "@superfunctions/storage-local";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 import { Database } from "bun:sqlite";
 
 const sqlite = new Database("filefn.db");
 sqlite.run("PRAGMA journal_mode = WAL");
 
-const db = drizzleAdapter({ db: drizzle(sqlite), dialect: "sqlite" });
-const storage = createLocalStorage({ rootDir: "./.filefn-storage" });
+const db = drizzleAdapter({ db: drizzle(sqlite, { schema }), dialect: "sqlite" });
+const storage = createLocalStorageAdapter({ rootDir: "./.filefn-storage" });
 
 const fileFn = createFileFn({
-  db, storage,
+  database: db, storage,
   policies: createNucleusPolicies(),
 });
 
@@ -5015,6 +5029,8 @@ Bun.serve({ port: 3000, fetch: app.fetch });
 
 - [Quickstart › Bun](../quickstart/bun) — minimal version.
 
+Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
+
 
 ---
 
@@ -5023,7 +5039,7 @@ Bun.serve({ port: 3000, fetch: app.fetch });
 Source: https://filefn.superfunctions.dev/docs/frameworks/express
 
 
-Mount FileFn with the shared Express adapter and preserve upload bytes.
+Mount FileFn with a byte-preserving streaming bridge.
 
 
 # Express
@@ -5032,21 +5048,21 @@ Follow the [Express quickstart](/docs/quickstart/express) for a complete local s
 
 ```ts
 import express from "express";
-import { toExpress } from "@superfunctions/http-express";
+import { fileFnHandler } from "./filefn-express"; // Copy the bridge from the quickstart.
 import { createFileFn } from "@filefn/server";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
 import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
 const fileFn = createFileFn({
-  db: memoryAdapter(),
+  database: memoryAdapter(),
   storage: createLocalStorageAdapter({ rootDir: "./.filefn-storage" }),
 });
 const app = express();
-app.use("/filefn", express.raw({ type: "*/*", limit: "10mb" }), toExpress(fileFn.router));
+app.use("/filefn", fileFnHandler(fileFn.router));
 app.listen(3000);
 ```
 
-The raw parser preserves binary chunk bodies. Set its limit above the maximum accepted chunk size and within the deployment's memory/request budget. The adapter strips the Express mount prefix and passes a Web Request to FileFn. Configure policies and authentication before allowing uploads; the snippet above only mounts the kernel.
+Use the complete Node 20+ streaming bridge from the [quickstart](/docs/quickstart/express). It consumes the original request stream, preserves binary response bytes, and maps unmatched routes to 404. Express strips the mount prefix from `req.url` before the bridge creates the Web Request. Do not put a JSON or raw body parser before this mount. Configure policies and authentication before allowing uploads; the snippet above only mounts the kernel.
 
 Use host CSRF protection for cookie-authenticated writes and the kernel's authorization and upload-token checks. Keep unrelated JSON middleware scoped so it does not consume binary upload bodies. See [rate limiting](/docs/features/rate-limiting) and [storage adapters](/docs/adapters/storage).
 
@@ -5263,12 +5279,13 @@ import { logger } from "hono/logger";
 import { createFileFn, createNucleusPolicies } from "@filefn/server";
 import { createAuthFn } from "@authfn/server";
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
+import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
 import { drizzle } from "drizzle-orm/node-postgres";
 import { createS3Storage } from "@superfunctions/storage-s3";
 import { Pool } from "pg";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const db = drizzleAdapter({ db: drizzle(pool), dialect: "postgres" });
+const db = drizzleAdapter({ db: drizzle(pool, { schema }), dialect: "postgres" });
 const storage = createS3Storage({
   region: process.env.AWS_REGION!,
   bucket: process.env.S3_BUCKET!,
@@ -5279,7 +5296,7 @@ const storage = createS3Storage({
 const authFn = createAuthFn({ db, /* ... */ });
 
 const fileFn = createFileFn({
-  db, storage,
+  database: db, storage,
   policies: createNucleusPolicies(),
   auth: {
     resolveSession: async (req) => {
@@ -5319,7 +5336,7 @@ Use the `rateLimit` config:
 
 ```ts
 const fileFn = createFileFn({
-  db, storage,
+  database: db, storage,
   rateLimit: {
     persistence: redisPersistence,
     algorithm: "sliding-window",
@@ -5337,7 +5354,7 @@ For multi-instance deployments, plug in a shared persistence (Redis, KV).
 
 ```ts
 const fileFn = createFileFn({
-  db, storage,
+  database: db, storage,
   logger: {
     info(msg, meta) { console.log("info", msg, meta); },
     warn(msg, meta) { console.warn("warn", msg, meta); },
@@ -5361,6 +5378,8 @@ Behind a reverse proxy (Cloudflare, ALB), set `Trust-Forwarded-Headers` and ensu
 - [Quickstart › Hono](../quickstart/hono) — minimal version.
 - [Examples › Production](../examples/production) — full repo.
 
+Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
+
 
 ---
 
@@ -5381,9 +5400,11 @@ filefn works with both the App Router and Pages Router. The recommended setup is
 ```ts
 // src/lib/server/filefn.ts
 import { createFileFn, createNucleusPolicies } from "@filefn/server";
+import { memoryAdapter } from "@superfunctions/db/adapters/memory";
 import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
 export const fileFn = createFileFn({
+  database: memoryAdapter(), // Disposable local state; use persistent SQL in production.
   storage: createLocalStorageAdapter({ rootDir: "./.filefn-storage" }),
   policies: createNucleusPolicies(),
 });
@@ -5972,8 +5993,62 @@ Express ships Node's classic `IncomingMessage` / `ServerResponse` instead of a F
 ## Install
 
 ```bash
-npm install express @superfunctions/http-express
+npm install express
 npm install @filefn/server @superfunctions/storage-local @superfunctions/db
+```
+
+## Streaming bridge (Node 20+)
+
+Create `filefn-express.ts` in the same directory as your server. It accepts FileFn’s nullable router result, preserves binary responses, and streams uploads without a buffered 10 MB parser limit.
+
+```ts
+import type { RequestHandler } from "express";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
+
+type FileFnRouter = { handle(request: Request): Promise<Response | null> };
+
+export function fileFnHandler(router: FileFnRouter): RequestHandler {
+  return (req, res, next) => {
+    const controller = new AbortController();
+    const abort = () => { if (!res.writableEnded) controller.abort(); };
+    req.once("aborted", abort);
+    res.once("close", abort);
+    void (async () => {
+      const headers = new Headers();
+      for (let i = 0; i < req.rawHeaders.length; i += 2) {
+        headers.append(req.rawHeaders[i], req.rawHeaders[i + 1]);
+      }
+      // Express strips /filefn from req.url while this mounted handler runs.
+      const url = new URL(req.url, `${req.protocol}://${req.get("host")}`);
+      const init: RequestInit & { duplex?: "half" } = {
+        method: req.method, headers, signal: controller.signal,
+      };
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        init.body = Readable.toWeb(req) as ReadableStream<Uint8Array>;
+        init.duplex = "half";
+      }
+      const response = await router.handle(new Request(url, init));
+      if (!response) { res.status(404).end(); return; }
+      res.status(response.status);
+      response.headers.forEach((value, name) => {
+        if (name !== "set-cookie") res.setHeader(name, value);
+      });
+      const cookies = response.headers.getSetCookie();
+      if (cookies.length) res.setHeader("set-cookie", cookies);
+      if (req.method === "HEAD" || !response.body) {
+        await response.body?.cancel();
+        res.end();
+      } else {
+        await pipeline(Readable.fromWeb(response.body as NodeReadableStream<Uint8Array>), res);
+      }
+    })().catch(next).finally(() => {
+      req.off("aborted", abort);
+      res.off("close", abort);
+    });
+  };
+}
 ```
 
 ## Server
@@ -5983,10 +6058,10 @@ import express from "express";
 import { createFileFn } from "@filefn/server";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
 import { createLocalStorageAdapter } from "@superfunctions/storage-local";
-import { toExpress } from "@superfunctions/http-express";
+import { fileFnHandler } from "./filefn-express";
 
 const fileFn = createFileFn({
-  db: memoryAdapter({ debug: false }),
+  database: memoryAdapter({ debug: false }),
   storage: createLocalStorageAdapter({ rootDir: "./.filefn-storage" }),
   policies: [
     {
@@ -6001,13 +6076,13 @@ const fileFn = createFileFn({
 
 const app = express();
 
-// Raw parsing preserves chunk bytes; keep this limit above the configured chunk size.
-app.use("/filefn", express.raw({ type: "*/*", limit: "10mb" }), toExpress(fileFn.router));
+// Mount before body-consuming middleware: the bridge streams upload bytes.
+app.use("/filefn", fileFnHandler(fileFn.router));
 
 app.listen(3001);
 ```
 
-For large downloads, replace the buffered response handling with a streaming bridge that pipes the `Response.body` Web stream into `res` (Node 18+ supports `Readable.fromWeb(response.body)`).
+The bridge streams downloads with backpressure and preserves their bytes and headers. Unknown routes return 404. Keep JSON/raw body parsers off this mount; FileFn’s upload policy still controls accepted file size. The memory database is disposable and loses metadata on restart. Use your host’s persistent adapter, authentication, and policy configuration for production.
 
 ## When to use Express vs. Hono
 
@@ -6984,34 +7059,24 @@ Goal: an upload pipeline that accepts HEIC inputs from iPhones and ends up with 
 
 ## Browser
 
-`@filefn/client` ships HEIC preprocessing on by default. iOS Safari and Chromium-based browsers can decode HEIC; the bundled preprocessor uses the runtime's image decoder when available, falls back to a polyfill otherwise.
+HEIC preprocessing is enabled by default, but conversion requires a supplied `converter` or a `globalThis.heic2any` implementation. FileFn does not bundle a decoder or infer universal browser HEIC support. Without a converter, HEIC uploads fail with `FILEFN_HEIC_CONVERSION_FAILED`.
+
+Supply a decoder that produces a JPEG `Blob` (raw decoded pixels are not a JPEG):
 
 ```ts
-const client = createFileFnClient({
-  baseUrl: "/filefn",
-  preprocessing: { heic: { enabled: true } }, // default
-});
-```
-
-## Custom decoder
-
-When the bundled implementation doesn't fit your needs (e.g. you want a specific WASM decoder for fidelity):
-
-```ts
-import heicDecode from "heic-decode";
+import { createFileFnClient } from "@filefn/client";
+import heic2any from "heic2any"; // Install separately; load this in browser-only code.
 
 const client = createFileFnClient({
   baseUrl: "/filefn",
   preprocessing: {
     heic: {
       enabled: true,
-      convert: async ({ data, fileName }) => {
-        const { data: jpegData } = await heicDecode({ buffer: new Uint8Array(data) });
-        return {
-          data: jpegData,
-          mimeType: "image/jpeg",
-          fileName: fileName.replace(/\.heic$/i, ".jpg"),
-        };
+      converter: async ({ file, targetMimeType, quality }) => {
+        const output = await heic2any({ blob: file, toType: targetMimeType, quality });
+        const jpeg = Array.isArray(output) ? output[0] : output;
+        if (!jpeg) throw new Error("HEIC conversion produced no image");
+        return jpeg;
       },
     },
   },
@@ -7039,12 +7104,24 @@ The preprocessor uses `CIImage` to transcode HEIC → JPEG before any bytes leav
 
 ## Server side
 
-If you'd rather keep HEIC originals and transcode on the server, opt out of preprocessing on every client and add `createImageTransformProcessor`:
+The built-in `createImageTransformProcessor` accepts PNG, JPEG, WebP, GIF, and TIFF, not HEIC. Keep client preprocessing enabled when using this processor. After conversion, a supported JPEG upload can produce a preview:
 
 ```ts
+import { createFileFn } from "@filefn/server";
+import { createImageTransformProcessor } from "@filefn/processing";
+
 const transform = createImageTransformProcessor({
   operations: [{ operation: "resize", options: { width: 2048, fit: "inside" }, suffix: "preview" }],
   outputFormat: "jpeg",
+});
+const fileFn = createFileFn({
+  database, // Your configured database adapter.
+  storage, // Your configured storage adapter.
+  processing: { enabled: true, processors: [transform] },
+});
+```
+
+To retain HEIC originals, supply a custom `Processor` that explicitly accepts `image/heic`/`image/heif`, decodes them using a HEIC-capable provider, and emits JPEG artifacts. Verify codec support in the deployed environment before disabling client preprocessing. Artifacts do not replace the stored original; original/full downloads remain HEIC.
 
 
 ---
@@ -7064,7 +7141,7 @@ Goal: a single component that handles image uploads end to end:
 - HEIC inputs converted to JPEG before upload.
 - Two thumbnail sizes generated server-side.
 - One preview-quality artifact for in-app rendering.
-- EXIF metadata stripped to avoid leaking GPS coordinates.
+- JPEG-derived artifacts omit EXIF metadata; original bytes remain unchanged.
 
 ## Server policy
 
@@ -7099,7 +7176,8 @@ const thumbnails = createThumbnailProcessor({
   quality: 80,
 });
 
-const stripExif = createImageTransformProcessor({
+// Sharp’s JPEG re-encode drops EXIF by default; this does not modify the original.
+const normalise = createImageTransformProcessor({
   operations: [{ operation: "resize", options: { width: 2048, fit: "inside", withoutEnlargement: true }, suffix: "normalised" }],
   outputFormat: "jpeg",
   outputQuality: 85,
@@ -7109,14 +7187,14 @@ const fileFn = createFileFn({
   db, storage,
   processing: {
     enabled: true,
-    processors: [stripExif, thumbnails],
+    processors: [normalise, thumbnails],
   },
 });
 ```
 
 ## Client wiring
 
-HEIC preprocessing is on by default — you don't need extra code. The browser converts HEIC → JPEG before upload, so the server never sees HEIC.
+HEIC preprocessing is enabled by default, but you must supply a converter or `globalThis.heic2any`. Follow the [HEIC recipe](./heic-conversion) and handle conversion failures before uploading; the server processor only accepts supported image formats.
 
 ```ts
 const handle = client.uploadFile({
@@ -7155,11 +7233,11 @@ const { fileId } = await handle.done();
 {/if}
 ```
 
-For thumbnail-quality rendering in lists, use `intent: "thumbnail"`. For high-detail rendering on the file's detail page, use `intent: "full"` and let the kernel choose between the original and the largest available artifact.
+For thumbnail-quality rendering in lists, use `intent: "thumbnail"`. `intent: "full"` and download requests return original bytes. They do not inherit the derived artifacts’ metadata privacy properties.
 
 ## EXIF and privacy
 
-`createImageTransformProcessor` with `strip-metadata` is the simplest defence. For stronger guarantees, run a tiny processor that replaces the file's metadata with a controlled subset (e.g. keep colour profile, drop GPS).
+`createImageTransformProcessor` supports only `resize`, `crop`, and `rotate`; there is no `strip-metadata` operation. Its Sharp JPEG re-encode drops EXIF by default. Consume the `transform-normalised` or thumbnail artifacts when this property is required, and verify their metadata in your processing environment. Original/full/download access still exposes the original bytes and any embedded metadata. Remove sensitive metadata before upload if the original itself must be safe to disclose.
 
 ## See also
 
@@ -7506,7 +7584,7 @@ Now each tenant has its own bucket, and unauthenticated requests fall back to pe
 Source: https://filefn.superfunctions.dev/docs/recipes/video-uploads
 
 
-Large-file video uploads with multi-resolution transcoding, poster frames, and queued processing.
+Large-file video uploads with 720p transcoding, poster frames, and queued processing.
 
 
 # Video uploads
@@ -7515,7 +7593,7 @@ Goal:
 
 - Multi-GB uploads survive network blips.
 - Poster frame at 1s.
-- 720p and 480p transcodes for adaptive playback.
+- A 720p transcode; adaptive multi-resolution playback requires a custom processor.
 - Processing happens off the request path (queued).
 
 ## Policy

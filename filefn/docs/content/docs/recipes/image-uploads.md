@@ -10,7 +10,7 @@ Goal: a single component that handles image uploads end to end:
 - HEIC inputs converted to JPEG before upload.
 - Two thumbnail sizes generated server-side.
 - One preview-quality artifact for in-app rendering.
-- EXIF metadata stripped to avoid leaking GPS coordinates.
+- JPEG-derived artifacts omit EXIF metadata; original bytes remain unchanged.
 
 ## Server policy
 
@@ -45,7 +45,8 @@ const thumbnails = createThumbnailProcessor({
   quality: 80,
 });
 
-const stripExif = createImageTransformProcessor({
+// Sharp’s JPEG re-encode drops EXIF by default; this does not modify the original.
+const normalise = createImageTransformProcessor({
   operations: [{ operation: "resize", options: { width: 2048, fit: "inside", withoutEnlargement: true }, suffix: "normalised" }],
   outputFormat: "jpeg",
   outputQuality: 85,
@@ -55,14 +56,14 @@ const fileFn = createFileFn({
   db, storage,
   processing: {
     enabled: true,
-    processors: [stripExif, thumbnails],
+    processors: [normalise, thumbnails],
   },
 });
 ```
 
 ## Client wiring
 
-HEIC preprocessing is on by default — you don't need extra code. The browser converts HEIC → JPEG before upload, so the server never sees HEIC.
+HEIC preprocessing is enabled by default, but you must supply a converter or `globalThis.heic2any`. Follow the [HEIC recipe](./heic-conversion) and handle conversion failures before uploading; the server processor only accepts supported image formats.
 
 ```ts
 const handle = client.uploadFile({
@@ -101,11 +102,11 @@ const { fileId } = await handle.done();
 {/if}
 ```
 
-For thumbnail-quality rendering in lists, use `intent: "thumbnail"`. For high-detail rendering on the file's detail page, use `intent: "full"` and let the kernel choose between the original and the largest available artifact.
+For thumbnail-quality rendering in lists, use `intent: "thumbnail"`. `intent: "full"` and download requests return original bytes. They do not inherit the derived artifacts’ metadata privacy properties.
 
 ## EXIF and privacy
 
-`createImageTransformProcessor` with `strip-metadata` is the simplest defence. For stronger guarantees, run a tiny processor that replaces the file's metadata with a controlled subset (e.g. keep colour profile, drop GPS).
+`createImageTransformProcessor` supports only `resize`, `crop`, and `rotate`; there is no `strip-metadata` operation. Its Sharp JPEG re-encode drops EXIF by default. Consume the `transform-normalised` or thumbnail artifacts when this property is required, and verify their metadata in your processing environment. Original/full/download access still exposes the original bytes and any embedded metadata. Remove sensitive metadata before upload if the original itself must be safe to disclose.
 
 ## See also
 

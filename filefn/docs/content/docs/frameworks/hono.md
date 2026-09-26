@@ -13,12 +13,13 @@ import { logger } from "hono/logger";
 import { createFileFn, createNucleusPolicies } from "@filefn/server";
 import { createAuthFn } from "@authfn/server";
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
+import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
 import { drizzle } from "drizzle-orm/node-postgres";
 import { createS3Storage } from "@superfunctions/storage-s3";
 import { Pool } from "pg";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const db = drizzleAdapter({ db: drizzle(pool), dialect: "postgres" });
+const db = drizzleAdapter({ db: drizzle(pool, { schema }), dialect: "postgres" });
 const storage = createS3Storage({
   region: process.env.AWS_REGION!,
   bucket: process.env.S3_BUCKET!,
@@ -29,7 +30,7 @@ const storage = createS3Storage({
 const authFn = createAuthFn({ db, /* ... */ });
 
 const fileFn = createFileFn({
-  db, storage,
+  database: db, storage,
   policies: createNucleusPolicies(),
   auth: {
     resolveSession: async (req) => {
@@ -69,7 +70,7 @@ Use the `rateLimit` config:
 
 ```ts
 const fileFn = createFileFn({
-  db, storage,
+  database: db, storage,
   rateLimit: {
     persistence: redisPersistence,
     algorithm: "sliding-window",
@@ -87,7 +88,7 @@ For multi-instance deployments, plug in a shared persistence (Redis, KV).
 
 ```ts
 const fileFn = createFileFn({
-  db, storage,
+  database: db, storage,
   logger: {
     info(msg, meta) { console.log("info", msg, meta); },
     warn(msg, meta) { console.warn("warn", msg, meta); },
@@ -110,3 +111,5 @@ Behind a reverse proxy (Cloudflare, ALB), set `Trust-Forwarded-Headers` and ensu
 
 - [Quickstart › Hono](../quickstart/hono) — minimal version.
 - [Examples › Production](../examples/production) — full repo.
+
+Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.

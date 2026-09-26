@@ -24,7 +24,7 @@ const pdf = createPdfPreviewProcessor({
 });
 ```
 
-Thumbnail configuration accepts sizes, quality, and format; it has no top-level `fit`. PDF previews render the first page, with a placeholder fallback when rasterization is unavailable; there is no `pages` selector. Outputs include `thumbnail-thumb` and `pdf-preview-preview` for the names above.
+Thumbnail configuration accepts sizes, quality, and format; it has no top-level `fit`. PDF previews render the first page, with a placeholder fallback when rasterization is unavailable; there is no `pages` selector. Outputs include `thumbnail-thumb` and `pdf-preview-page-1-preview` for the names above.
 
 ## Compression
 

@@ -1,6 +1,6 @@
 ---
 title: Video uploads
-description: Large-file video uploads with multi-resolution transcoding, poster frames, and queued processing.
+description: Large-file video uploads with 720p transcoding, poster frames, and queued processing.
 ---
 
 # Video uploads
@@ -9,7 +9,7 @@ Goal:
 
 - Multi-GB uploads survive network blips.
 - Poster frame at 1s.
-- 720p and 480p transcodes for adaptive playback.
+- A 720p transcode; adaptive multi-resolution playback requires a custom processor.
 - Processing happens off the request path (queued).
 
 ## Policy
