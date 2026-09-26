@@ -1,0 +1,61 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EK7W8J46X9T7YEQ1WZJ383",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "filefn/docs/README.md",
+    "filefn/docs/content/docs/quickstart/express.md",
+    "filefn/docs/docsfn.config.ts",
+    "filefn/docs/package.json",
+    "filefn/docs/scripts/generate-llms.mjs",
+    "filefn/docs/src/app.css",
+    "filefn/docs/src/lib/components/DocsSiteSearch.svelte",
+    "filefn/docs/src/lib/server/docs-site-source.ts",
+    "filefn/docs/src/routes/+layout.server.ts",
+    "filefn/docs/src/routes/+layout.svelte",
+    "filefn/docs/src/routes/+page.server.ts",
+    "filefn/docs/src/routes/+page.svelte",
+    "filefn/docs/src/routes/blog/+page.server.ts",
+    "filefn/docs/src/routes/blog/+page.ts",
+    "filefn/docs/src/routes/blog/[slug]/+page.server.ts",
+    "filefn/docs/src/routes/blog/[slug]/+page.svelte",
+    "filefn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "filefn/docs/src/routes/docs/[...slug]/+page.svelte",
+    "filefn/docs/src/routes/docs/llms-full.txt/+server.ts",
+    "filefn/docs/src/routes/docs/llms.txt/+server.ts",
+    "filefn/docs/src/routes/docs/search.json/+server.ts",
+    "filefn/docs/src/routes/search.json/+server.ts",
+    "filefn/docs/static/llms-full.txt",
+    "filefn/docs/static/llms.txt",
+    "filefn/docs/svelte.config.js",
+    "filefn/docs/tsconfig.json",
+    "filefn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/docs-site/LandingPage.svelte",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/layout.ts",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/runtime.test.ts",
+    "scripts/docs-site/runtime.ts",
+    "scripts/docs-site/vite.ts",
+    "scripts/docs-site/vitest.config.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10546,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1897856,
+    "output_tokens": 4259,
+    "api_call_count": 10
+  }
+}
