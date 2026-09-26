@@ -2,6 +2,7 @@
   "title": "Reference",
   "pages": [
     "index",
+    "overview",
     "adapter-kit",
     "ai",
     "client",
@@ -18,7 +19,6 @@
     "facade",
     "filefn",
     "markdown",
-    "overview",
     "react",
     "registry",
     "render",

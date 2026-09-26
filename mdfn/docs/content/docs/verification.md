@@ -3,8 +3,6 @@ title: Verification
 description: Run the consumer and browser gates for an MDFN integration.
 ---
 
-# Verification
-
 The repository checks the source and package contract with:
 
 ```sh

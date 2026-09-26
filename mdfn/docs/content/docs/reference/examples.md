@@ -1,9 +1,7 @@
 ---
-title: "@mdfn/examples"
+title: MDFN framework examples
 description: Source guide for examples.
 ---
-
-# MDFN framework examples
 
 These apps mount the same Markdown authoring workflow through each supported
 framework adapter. Every example includes the complete authoring shell, a live

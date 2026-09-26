@@ -3,8 +3,6 @@ title: MDFN overview
 description: Source guide for overview.
 ---
 
-# mdfn
-
 mdfn is the Markdown-native authoring platform for Superfunctions. Markdown is
 the durable boundary; structured editor state is derived, versioned, and
 replaceable.
@@ -23,9 +21,10 @@ UIFn chrome, persistence, collaboration, and ecosystem bridges.
   diagnostics.
 - Raw HTML is disabled by default.
 - React, Svelte, Solid, and vanilla DOM share the same semantic controller.
-- Comments, suggestions, review transitions, history, and audit data live in a
+- Comments, suggestions, review transitions, history references, and audit data live in a
   validated sidecar bound to the canonical source.
-- Collaboration updates are authenticated before application and must match
+- The host authenticates collaboration updates through its transport or authorization
+  callbacks; accepted updates must match
   the document, schema, profile, protocol, and extension contract.
 - Durable server operation is transactional; the explicit ephemeral mode is
   reserved for memory-backed tests and examples.
@@ -61,5 +60,6 @@ flows.
 Runnable React, Svelte, and Solid authoring apps, together with their browser
 workflow and artifact contract, are documented in `mdfn/examples/README.md`.
 
-See `mdfn/.conduct/MDFN-01` for the normative product, content, architecture,
-extension, security, verification, and delivery contracts.
+See [Source preservation](/docs/source-preservation), [Extensions](/docs/extensions),
+[Collaboration](/docs/collaboration), and [Server and storage](/docs/server-and-storage)
+for the consumer contracts.

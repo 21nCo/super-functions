@@ -3,8 +3,6 @@ title: "@mdfn/dom"
 description: Mount and dispose a vanilla browser editor.
 ---
 
-# Vanilla DOM
-
 ```sh
 npm install @mdfn/facade @mdfn/dom
 ```
@@ -21,11 +19,10 @@ const controller = createMdfn({ markdown: "# New document\n" });
 const view = createDomEditor({ target, controller, attributes: { "aria-label": "Document editor" } });
 view.focus();
 
-function dispose() {
+export function dispose() {
   view.destroy();
   controller.destroy();
 }
-window.addEventListener("pagehide", dispose, { once: true });
 ```
 
-For an SPA, call `dispose()` when removing the owning view. `createDomEditor` is browser-only; dynamically import it after mount in an SSR host. Its options include `readOnly`, `attributes`, `onFocus`, `onBlur`, and `onFiles`. The returned editor provides `run`, `can`, link/table/Markdown commands, `focus`, `setReadOnly`, and `destroy`. Call `can(command)` before enabling toolbar actions. Persist the controller's Markdown and sidecar rather than ProseMirror internals.
+Call `dispose()` when the host removes the owning view. Do not destroy the editor on `pagehide`: a page kept in the back/forward cache can be restored without running setup again. `createDomEditor` is browser-only; dynamically import it after mount in an SSR host. Its options include `readOnly`, `attributes`, `onFocus`, `onBlur`, and `onFiles`. The returned editor provides `run`, `can`, link/table/Markdown commands, `focus`, `setReadOnly`, and `destroy`. Call `can(command)` before enabling toolbar actions. Persist the controller's Markdown and sidecar rather than ProseMirror internals.

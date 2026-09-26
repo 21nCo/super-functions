@@ -3,8 +3,6 @@ title: "@mdfn/filefn"
 description: Source guide for filefn.
 ---
 
-# `@mdfn/filefn`
-
 Storage-neutral asset contracts plus the production FileFn client bridge for
 selection, upload, resolution, document association, rendering, and cleanup.
 Every operation can be authorized by the host, references are bound to a

@@ -3,8 +3,6 @@ title: "@mdfn/components"
 description: Source guide for components.
 ---
 
-# `@mdfn/components`
-
 Framework-neutral models for complete authoring chrome: primary, selection,
 and floating toolbars; slash commands; link/table/file controls; outline;
 diagnostics; comments; suggestions; review state; and audit history. The engine

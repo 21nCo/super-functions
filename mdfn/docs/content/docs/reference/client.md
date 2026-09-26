@@ -3,8 +3,6 @@ title: "@mdfn/client"
 description: Source guide for client.
 ---
 
-# `@mdfn/client`
-
 Typed fetch client for documents, versions, sidecar state, and persisted
 collaboration updates. `getCollaborationUpdates` returns the update batch with
 its `includedUpdateIds`; pass those ids to `compactCollaborationUpdates` with

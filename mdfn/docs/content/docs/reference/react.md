@@ -3,8 +3,6 @@ title: "@mdfn/react"
 description: Mount a React editor and observe controller state.
 ---
 
-# React
-
 ```sh
 npm install @mdfn/facade @mdfn/react
 ```

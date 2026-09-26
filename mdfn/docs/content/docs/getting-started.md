@@ -3,8 +3,6 @@ title: Getting started
 description: Install MDFN, edit Markdown, observe changes, and release the controller.
 ---
 
-# Getting started
-
 ```sh
 npm install @mdfn/facade
 ```

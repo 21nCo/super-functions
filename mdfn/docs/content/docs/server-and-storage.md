@@ -3,8 +3,6 @@ title: Server and storage
 description: Mount authenticated document routes and save with optimistic concurrency.
 ---
 
-# Server and storage
-
 `@mdfn/server` provides document CRUD, immutable versions, restore, editorial workflows, and collaboration-update storage. Every operation passes through the host's principal resolver and authorization callback.
 
 ## Run a local server
@@ -49,6 +47,7 @@ Replace the demo resolver with your application's verified session identity for 
 Install `@mdfn/client @mdfn/facade`. The following is a Node client for the local server; browser applications should use their authenticated same-origin session instead of shipping the demo token:
 
 ```ts
+import { writeFile } from "node:fs/promises";
 import { createMdfn, Transaction } from "@mdfn/facade";
 import { createMdfnClient, MdfnClientError } from "@mdfn/client";
 
@@ -60,6 +59,7 @@ let remote = await client.createDocument({ title: "Example", markdown: "# Hello\
 const editor = createMdfn({ markdown: remote.markdown, sidecar: remote.sidecar });
 editor.dispatch(new Transaction().replaceSource(2, 7, "Welcome"));
 const snapshot = editor.getState();
+let canDispose = false;
 try {
   remote = await client.updateDocument(remote.id, {
     expectedVersion: remote.version,
@@ -68,16 +68,21 @@ try {
     idempotencyKey: crypto.randomUUID(),
   });
   if (editor.getState().version === snapshot.version) editor.markSaved();
+  canDispose = true;
   console.log(remote.version, remote.markdown);
 } catch (error) {
-  if (error instanceof MdfnClientError && error.status === 409) {
+  // Save the complete draft before disposing, including on network/key-reuse errors.
+  await writeFile("mdfn-unsaved-draft.json", JSON.stringify({ documentId: remote.id, expectedVersion: remote.version, markdown: snapshot.markdown, sidecar: snapshot.sidecar }), { mode: 0o600 });
+  canDispose = true;
+  if (error instanceof MdfnClientError && error.code === "MDFN_VERSION_CONFLICT") {
     const latest = await client.getDocument(remote.id);
-    console.error("Version conflict: reconcile with", latest.version);
+    console.error("Version conflict: reconcile mdfn-unsaved-draft.json with", latest.version);
+    process.exitCode = 1;
   } else {
     throw error;
   }
 } finally {
-  editor.destroy();
+  if (canDispose) editor.destroy(); // Keep the editor alive if backing up the draft fails.
 }
 ```
 

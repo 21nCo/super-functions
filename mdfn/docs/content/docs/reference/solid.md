@@ -3,8 +3,6 @@ title: "@mdfn/solid"
 description: Mount a Solid editor and observe its reactive snapshot.
 ---
 
-# Solid
-
 ```sh
 npm install @mdfn/facade @mdfn/solid
 ```

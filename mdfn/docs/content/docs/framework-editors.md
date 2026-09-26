@@ -3,8 +3,6 @@ title: Framework editors
 description: Install and mount a controller in React, Svelte, Solid, or the vanilla DOM.
 ---
 
-# Framework editors
-
 Choose the adapter for your existing application. All use the same `EditorController`; keep it stable across renders and destroy it when its owning view is permanently removed. Adapters release their DOM bindings but do not take ownership of the controller.
 
 | Application | Install | Mounting example |

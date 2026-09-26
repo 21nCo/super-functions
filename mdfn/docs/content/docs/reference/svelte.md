@@ -3,8 +3,6 @@ title: "@mdfn/svelte"
 description: Mount a Svelte editor and subscribe with a readable store.
 ---
 
-# Svelte
-
 ```sh
 npm install @mdfn/facade @mdfn/svelte
 ```
