@@ -1,0 +1,36 @@
+memoryfn/docs/content/docs/mcp.md
+  h_bdc5b81c173ee9 18-26,28-38
+memoryfn/docs/src/app.css
+  h_bdc5b81c173ee9 73-77
+memoryfn/docs/src/lib/components/DocsSiteSearch.svelte
+  h_bdc5b81c173ee9 2,5
+memoryfn/docs/src/lib/server/docs-site-source.ts
+  h_bdc5b81c173ee9 2,4-5,7-8,11-17
+memoryfn/docs/src/routes/+layout.server.ts
+  h_bdc5b81c173ee9 5-6,8-11
+memoryfn/docs/src/routes/+layout.svelte
+  h_bdc5b81c173ee9 24
+memoryfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  h_bdc5b81c173ee9 10,35-36
+memoryfn/docs/static/llms-full.txt
+  h_bdc5b81c173ee9 158-175,177-178
+memoryfn/docs/vite.config.ts
+  h_bdc5b81c173ee9 21-23
+scripts/docs-site/README.md
+  h_bdc5b81c173ee9 1-9
+scripts/docs-site/Search.svelte
+  h_bdc5b81c173ee9 1-83
+scripts/docs-site/runtime.ts
+  h_bdc5b81c173ee9 1-537
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d59e6a889f9f2c15d8b710fff5b32ac3ffea634f",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
