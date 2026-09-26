@@ -1,0 +1,73 @@
+package-lock.json
+  s_ee6f287c08acb3::t_1c564411b9a7e1 54724-54725,54734-54735,54738-54739,66591-66617
+reviewfn/docs/README.md
+  s_ee6f287c08acb3::t_78cb61a08a37b5 12-25
+reviewfn/docs/content/docs/reference/github-action.md
+  s_ee6f287c08acb3::t_b4f9ee8c781d3d 8
+reviewfn/docs/docsfn.config.ts
+  s_ee6f287c08acb3::t_55415832975225 24
+reviewfn/docs/package.json
+  s_ee6f287c08acb3::t_c94d1d699c7090 10,12-13,20-21,30,33-35
+reviewfn/docs/scripts/generate-llms.mjs
+  s_ee6f287c08acb3::t_35f791cf7260e0 2,30-31,33-34
+reviewfn/docs/src/app.css
+  s_ee6f287c08acb3::t_ac7dc6334a6a59 19,76-80
+reviewfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_ee6f287c08acb3::t_1bfde303faaf26 2
+reviewfn/docs/src/lib/server/docs-site-source.ts
+  s_ee6f287c08acb3::t_84fe3fc2a271f3 7
+reviewfn/docs/src/routes/+layout.svelte
+  s_ee6f287c08acb3::t_c0d83781c78bab 6-7,16-17,22
+reviewfn/docs/src/routes/+page.svelte
+  s_ee6f287c08acb3::t_9d0dd99dfff543 2,28
+reviewfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ee6f287c08acb3::t_af49729a8ace7c 2,15-17,27-29,93,106
+reviewfn/docs/src/routes/docs/llms-full.txt/+server.ts
+  s_ee6f287c08acb3::t_32136936482d9e 1-5
+reviewfn/docs/src/routes/docs/llms.txt/+server.ts
+  s_ee6f287c08acb3::t_429c55039fbe11 1-5
+reviewfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_afb4335d000045 6,27,41,43,57,59,99,163,192-196,198,271,287
+reviewfn/docs/static/llms.txt
+  s_ee6f287c08acb3::t_1ff15b01013c16 7-19
+reviewfn/docs/svelte.config.js
+  s_ee6f287c08acb3::t_1a68e24f4b0918 17
+reviewfn/docs/tsconfig.json
+  s_ee6f287c08acb3::t_71e03f8d5693b1 19-20,24-25,27
+reviewfn/docs/vite.config.ts
+  s_ee6f287c08acb3::t_e7c29757984246 2,10,22,24-28
+scripts/docs-site/LandingPage.svelte
+  s_ee6f287c08acb3::t_a957d9b3e8bf92 1-216
+scripts/docs-site/README.md
+  s_ee6f287c08acb3::t_6274311024e2b8 3,7,9-15
+scripts/docs-site/Search.svelte
+  s_ee6f287c08acb3::t_d912c69996cf8b 13,59
+scripts/docs-site/layout.ts
+  s_ee6f287c08acb3::t_75193b20009ac5 1-10
+scripts/docs-site/llms.mjs
+  s_ee6f287c08acb3::t_f2aee2554f0513 1-32
+scripts/docs-site/runtime.test.ts
+  s_ee6f287c08acb3::t_9eaa880da52ae1 1-76
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_1f3335362a803b 2,188,215-218,327-330,354-355,360,365,368,376,403,410,428,434,446,451,467,473,484-485
+scripts/docs-site/vite.ts
+  s_ee6f287c08acb3::t_350f8e4af3c116 1-17
+scripts/docs-site/vitest.config.ts
+  s_ee6f287c08acb3::t_911cfb7ed9fdeb 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "000bd9c65e0127c0b94286af634695739c0f7675",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
