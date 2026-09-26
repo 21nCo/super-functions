@@ -1,0 +1,22 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EK9XT8HG1MJ5DAYTMKB784",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "mcpfn/docs/README.md",
+    "mcpfn/docs/docsfn.config.ts",
+    "mcpfn/docs/static/llms-full.txt",
+    "mcpfn/docs/static/llms.txt",
+    "scripts/docs-site/llms.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
