@@ -212,7 +212,10 @@ export function createDocsSiteRuntime(
           },
           compiledCache,
         };
-    })();
+    })().catch((error) => {
+      serverStatePromise = null;
+      throw error;
+    });
 
     return serverStatePromise;
   }
@@ -348,7 +351,7 @@ function collectEntriesForCollection(
     const extension = extname(relativePath).toLowerCase();
     const fileName = basename(relativePath).toLowerCase();
 
-    if (fileName === (config.content.metaFileName ?? "meta.json")) {
+    if (fileName === (config.content.metaFileName ?? "meta.json").toLowerCase()) {
       entries.push(createControlEntry(collection, relativePath, source, modulePath));
       continue;
     }
@@ -412,7 +415,6 @@ function createMarkdownEntry(
       ...parsed.frontmatter,
     },
     bytes: byteLength(source),
-    updatedAt: "1970-01-01T00:00:00.000Z",
     meta: {
       extension: extname(relativePath).toLowerCase(),
     },
@@ -434,7 +436,6 @@ function createControlEntry(
     body: source,
     frontmatter: {},
     bytes: byteLength(source),
-    updatedAt: "1970-01-01T00:00:00.000Z",
     meta: {
       controlFile: true,
       parsed: parseJson(source),
@@ -454,7 +455,6 @@ function createApiEntry(relativePath: string, source: string, sourcePath: string
       title: deriveTitleFromPath(relativePath),
     },
     bytes: byteLength(source),
-    updatedAt: "1970-01-01T00:00:00.000Z",
     meta: {
       extension: extname(relativePath).toLowerCase(),
     },
@@ -474,7 +474,6 @@ function createAssetEntry(
     entryType: "asset",
     frontmatter: {},
     bytes: byteLength(source),
-    updatedAt: "1970-01-01T00:00:00.000Z",
   };
 }
 

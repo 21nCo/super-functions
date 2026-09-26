@@ -3,6 +3,7 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
+    canonicalUrl: "https://mailfn.com",
     title: "MailFn",
     description: "Programmable inboxes, MIME evidence, scoped access, testing, and agent workflows.",
     basePath: "/docs",
