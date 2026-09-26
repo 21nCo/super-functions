@@ -15,12 +15,27 @@ const adapter = new MemoryMCP(memory, {
   containerTags: authorizedTags,
 });
 
-try {
-  await adapter.start();
-} finally {
-  await adapter.close();
-  await memory.close();
+let closing = false;
+async function shutdown() {
+  if (closing) return;
+  closing = true;
+  try {
+    await adapter.close();
+  } finally {
+    await memory.close();
+  }
 }
+function requestShutdown() {
+  void shutdown().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, requestShutdown);
+}
+process.stdin.once("end", requestShutdown);
+await adapter.start(); // Resolves when connected; the transport keeps listening.
 ```
 
 `add_memory` accepts required `content` and optional `tags`, and returns a structured summary of created, updated, and deduplicated counts. `search_memories` accepts required `query`, optional `limit` (1–100; default 5), and optional tags. It returns only result content plus count metadata. The adapter also exposes `manifest()` and `connect(transport)` for host integration.
