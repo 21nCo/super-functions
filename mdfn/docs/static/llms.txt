@@ -1,0 +1,44 @@
+# MDFN
+
+> Markdown-native authoring with source preservation, safe rendering, and collaboration.
+
+## Documentation
+
+- [Collaboration](/docs/collaboration) — Exchange authorized Yjs updates and compact exact batches.
+- [Extensions and profiles](/docs/extensions) — Resolve syntax ownership, conflicts, and migrations.
+- [Framework editors](/docs/framework-editors) — Mount the shared controller in React, Svelte, Solid, or vanilla DOM.
+- [Getting started](/docs/getting-started) — Create a headless editor controller from Markdown.
+- [MDFN](/docs) — Markdown-native authoring with a durable source contract.
+- [Integrations](/docs/integrations) — Connect assets, search, content, and AI through explicit bridges.
+- [@mdfn/adapter-kit](/docs/reference/adapter-kit) — Source guide for adapter-kit.
+- [@mdfn/ai](/docs/reference/ai) — Source guide for ai.
+- [@mdfn/client](/docs/reference/client) — Source guide for client.
+- [@mdfn/collab](/docs/reference/collab) — Source guide for collab.
+- [@mdfn/components-react](/docs/reference/components-react) — Source guide for components-react.
+- [@mdfn/components-solid](/docs/reference/components-solid) — Source guide for components-solid.
+- [@mdfn/components-svelte](/docs/reference/components-svelte) — Source guide for components-svelte.
+- [@mdfn/components](/docs/reference/components) — Source guide for components.
+- [@mdfn/contentfn](/docs/reference/contentfn) — Source guide for contentfn.
+- [@mdfn/core](/docs/reference/core) — Source guide for core.
+- [@mdfn/dom](/docs/reference/dom) — Source guide for dom.
+- [@mdfn/examples](/docs/reference/examples) — Source guide for examples.
+- [@mdfn/extensions](/docs/reference/extensions) — Source guide for extensions.
+- [@mdfn/facade](/docs/reference/facade) — Source guide for facade.
+- [@mdfn/filefn](/docs/reference/filefn) — Source guide for filefn.
+- [Package reference](/docs/reference) — Source guides for every MDFN package.
+- [@mdfn/markdown](/docs/reference/markdown) — Source guide for markdown.
+- [MDFN overview](/docs/reference/overview) — Source guide for overview.
+- [@mdfn/react](/docs/reference/react) — Source guide for react.
+- [@mdfn/registry](/docs/reference/registry) — Source guide for registry.
+- [@mdfn/render](/docs/reference/render) — Source guide for render.
+- [@mdfn/searchfn](/docs/reference/searchfn) — Source guide for searchfn.
+- [@mdfn/server](/docs/reference/server) — Source guide for server.
+- [@mdfn/solid](/docs/reference/solid) — Source guide for solid.
+- [@mdfn/source](/docs/reference/source) — Source guide for source.
+- [@mdfn/svelte](/docs/reference/svelte) — Source guide for svelte.
+- [@mdfn/testing](/docs/reference/testing) — Source guide for testing.
+- [Rendering and security](/docs/rendering-and-security) — Apply a rendering policy to untrusted Markdown.
+- [Review and sidecar](/docs/review-and-sidecar) — Keep editorial data bound to canonical source.
+- [Server and storage](/docs/server-and-storage) — Persist canonical source, revisions, and sidecars atomically.
+- [Source preservation](/docs/source-preservation) — Keep untouched Markdown bytes and unknown constructs.
+- [Verification](/docs/verification) — Run the consumer and browser gates for an MDFN integration.

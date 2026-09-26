@@ -1,0 +1,32 @@
+{
+  "title": "Reference",
+  "pages": [
+    "index",
+    "adapter-kit",
+    "ai",
+    "client",
+    "collab",
+    "components",
+    "components-react",
+    "components-solid",
+    "components-svelte",
+    "contentfn",
+    "core",
+    "dom",
+    "examples",
+    "extensions",
+    "facade",
+    "filefn",
+    "markdown",
+    "overview",
+    "react",
+    "registry",
+    "render",
+    "searchfn",
+    "server",
+    "solid",
+    "source",
+    "svelte",
+    "testing"
+  ]
+}

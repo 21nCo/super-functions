@@ -1,0 +1,17 @@
+{
+  "title": "MDFN",
+  "pages": [
+    "index",
+    "getting-started",
+    "source-preservation",
+    "framework-editors",
+    "rendering-and-security",
+    "extensions",
+    "server-and-storage",
+    "collaboration",
+    "review-and-sidecar",
+    "integrations",
+    "verification",
+    "reference"
+  ]
+}
