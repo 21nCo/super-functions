@@ -1,0 +1,115 @@
+devfn/docs/src/routes/+page.svelte
+  s_4e0e6cec9d8f32::t_334cfedeef0a01 1-231
+devfn/docs/content/docs/reference/meta.json
+  s_4e0e6cec9d8f32::t_ad24a4947c6998 1-4
+devfn/docs/content/docs/packages.md
+  s_4e0e6cec9d8f32::t_ad24a4947c6998 1-19
+devfn/docs/content/docs/reference/cli.md
+  s_4e0e6cec9d8f32::t_eb98a0f4749374 2
+  s_4e0e6cec9d8f32::t_1b23a9ce7afa63 1,3-26
+devfn/docs/content/docs/reference/core.md
+  s_4e0e6cec9d8f32::t_eb98a0f4749374 2
+  s_4e0e6cec9d8f32::t_1b23a9ce7afa63 1,3-8
+devfn/docs/docsfn.config.ts
+  s_4e0e6cec9d8f32::t_334cfedeef0a01 1-36
+devfn/docs/content/docs/reference/configuration.md
+  s_4e0e6cec9d8f32::t_1b23a9ce7afa63 1-72
+devfn/docs/content/docs/reference/compose.md
+  s_4e0e6cec9d8f32::t_eb98a0f4749374 2
+  s_4e0e6cec9d8f32::t_1b23a9ce7afa63 1,3-8
+devfn/docs/content/docs/reference/proxy.md
+  s_4e0e6cec9d8f32::t_1b23a9ce7afa63 1,3-8
+  s_4e0e6cec9d8f32::t_eb98a0f4749374 2
+devfn/docs/content/docs/meta.json
+  s_4e0e6cec9d8f32::t_ad24a4947c6998 1-4
+devfn/docs/content/docs/getting-started.md
+  s_4e0e6cec9d8f32::t_ad24a4947c6998 1-21
+devfn/docs/README.md
+  s_4e0e6cec9d8f32::t_ad24a4947c6998 1-12
+devfn/docs/content/docs/reference/config.md
+  s_4e0e6cec9d8f32::t_eb98a0f4749374 2
+  s_4e0e6cec9d8f32::t_1b23a9ce7afa63 1,3-8
+devfn/docs/content/docs/reference/processes.md
+  s_4e0e6cec9d8f32::t_1b23a9ce7afa63 1,3-8
+  s_4e0e6cec9d8f32::t_eb98a0f4749374 2
+devfn/docs/content/docs/reference/testing.md
+  s_4e0e6cec9d8f32::t_eb98a0f4749374 2
+  s_4e0e6cec9d8f32::t_1b23a9ce7afa63 1,3-8
+devfn/docs/content/docs/lifecycle.md
+  s_4e0e6cec9d8f32::t_ad24a4947c6998 1-12
+devfn/docs/package.json
+  s_4e0e6cec9d8f32::t_334cfedeef0a01 1-34
+devfn/docs/static/llms.txt
+  s_4e0e6cec9d8f32::t_c47fcd6b4e714a 1-27
+devfn/docs/content/docs/migration.md
+  s_4e0e6cec9d8f32::t_ad24a4947c6998 1-12
+devfn/docs/content/docs/security.md
+  s_4e0e6cec9d8f32::t_ad24a4947c6998 1-12
+devfn/docs/content/docs/configuration.md
+  s_4e0e6cec9d8f32::t_ad24a4947c6998 1-14
+devfn/docs/content/docs/reference/ports.md
+  s_4e0e6cec9d8f32::t_eb98a0f4749374 2
+  s_4e0e6cec9d8f32::t_1b23a9ce7afa63 1,3-8
+devfn/docs/static/llms-full.txt
+  s_4e0e6cec9d8f32::t_c47fcd6b4e714a 1-422
+devfn/docs/content/docs/index.md
+  s_4e0e6cec9d8f32::t_ad24a4947c6998 1-12
+devfn/docs/content/docs/reference/security.md
+  s_4e0e6cec9d8f32::t_1b23a9ce7afa63 1-16
+devfn/docs/content/docs/processes-and-compose.md
+  s_4e0e6cec9d8f32::t_ad24a4947c6998 1-12
+devfn/docs/content/docs/ports-and-proxy.md
+  s_4e0e6cec9d8f32::t_ad24a4947c6998 1-12
+devfn/docs/content/docs/reference/index.md
+  s_4e0e6cec9d8f32::t_ad24a4947c6998 1-16
+devfn/docs/content/docs/reference/migration.md
+  s_4e0e6cec9d8f32::t_1b23a9ce7afa63 1-17
+devfn/docs/.gitignore
+  s_4e0e6cec9d8f32::t_af2fb911cd16d5 1-10
+devfn/docs/scripts/generate-llms.mjs
+  s_4e0e6cec9d8f32::t_c50a93a4ab18df 1-39
+devfn/docs/src/app.css
+  s_4e0e6cec9d8f32::t_86b23351c2140f 1-72
+devfn/docs/src/app.html
+  s_4e0e6cec9d8f32::t_4424dc2a13d619 1-11
+devfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_4e0e6cec9d8f32::t_18231925992dc8 1-17
+devfn/docs/src/lib/server/docs-site-source.ts
+  s_4e0e6cec9d8f32::t_150752caff88ba 1-501
+devfn/docs/src/routes/+layout.server.ts
+  s_4e0e6cec9d8f32::t_ddf0d569586193 1-8
+devfn/docs/src/routes/+layout.svelte
+  s_4e0e6cec9d8f32::t_81dc0973690864 1-88
+devfn/docs/src/routes/+page.server.ts
+  s_4e0e6cec9d8f32::t_90cf80a9c619b1 1-6
+devfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_4e0e6cec9d8f32::t_734332475d58a3 1-120
+devfn/docs/src/routes/docs/[...slug]/+page.svelte
+  s_4e0e6cec9d8f32::t_d751406d835215 1-41
+devfn/docs/src/routes/search.json/+server.ts
+  s_4e0e6cec9d8f32::t_a7fe6acf349869 1-8
+devfn/docs/svelte.config.js
+  s_4e0e6cec9d8f32::t_db31d08b1c25be 1-24
+devfn/docs/tsconfig.json
+  s_4e0e6cec9d8f32::t_0e55e5438c275e 1-33
+devfn/docs/vite.config.ts
+  s_4e0e6cec9d8f32::t_5c0b98f4706524 1-28
+package-lock.json
+  s_4e0e6cec9d8f32::t_2e27e89ad8ecd3 8549-8664,22466-22469
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b84bae1bb33e27220c1eab26184717ea1b50deba",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "thyaravind <samalaaravind02@gmail.com>"
+    }
+  }
+}

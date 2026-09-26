@@ -1,0 +1,25 @@
+memoryfn/docs/static/llms-full.txt
+  s_4e0e6cec9d8f32::t_912ebdda6c3c8c 1-444
+memoryfn/docs/static/llms.txt
+  s_4e0e6cec9d8f32::t_912ebdda6c3c8c 1-19
+package.json
+  s_4e0e6cec9d8f32::t_1592a3b8a3826d 45
+package-lock.json
+  s_4e0e6cec9d8f32::t_e180e798ec37d4 50,19214-19329,25748-25751
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f61c2ecc431a5922f83890d581824dc6f00edb06",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "thyaravind <samalaaravind02@gmail.com>"
+    }
+  }
+}

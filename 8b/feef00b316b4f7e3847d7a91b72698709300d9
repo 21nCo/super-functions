@@ -1,0 +1,93 @@
+extfn/docs/content/docs/operations-and-limits.md
+  s_4e0e6cec9d8f32::t_efa30a8d1b9c72 1-12
+extfn/docs/content/docs/reference/index.md
+  s_4e0e6cec9d8f32::t_efa30a8d1b9c72 1-15
+extfn/docs/static/llms-full.txt
+  s_4e0e6cec9d8f32::t_e2391169e85e33 1-814
+extfn/docs/static/llms.txt
+  s_4e0e6cec9d8f32::t_e2391169e85e33 1-20
+extfn/docs/content/docs/meta.json
+  s_4e0e6cec9d8f32::t_efa30a8d1b9c72 1-4
+extfn/docs/content/docs/getting-started.md
+  s_4e0e6cec9d8f32::t_efa30a8d1b9c72 1-31
+extfn/docs/README.md
+  s_4e0e6cec9d8f32::t_efa30a8d1b9c72 1-12
+extfn/docs/content/docs/content-and-background.md
+  s_4e0e6cec9d8f32::t_efa30a8d1b9c72 1-12
+extfn/docs/content/docs/reference/scan.md
+  s_4e0e6cec9d8f32::t_506a8e2c787876 1-116
+extfn/docs/content/docs/scan-and-package.md
+  s_4e0e6cec9d8f32::t_efa30a8d1b9c72 1-12
+extfn/docs/docsfn.config.ts
+  s_4e0e6cec9d8f32::t_0db8f867a77285 1-36
+extfn/docs/content/docs/reference/multi-content-and-background-handlers.md
+  s_4e0e6cec9d8f32::t_506a8e2c787876 1-152
+extfn/docs/content/docs/runtime.md
+  s_4e0e6cec9d8f32::t_efa30a8d1b9c72 1-26
+extfn/docs/content/docs/cli.md
+  s_4e0e6cec9d8f32::t_efa30a8d1b9c72 1-17
+extfn/docs/content/docs/index.md
+  s_4e0e6cec9d8f32::t_efa30a8d1b9c72 1-12
+extfn/docs/content/docs/configuration.md
+  s_4e0e6cec9d8f32::t_efa30a8d1b9c72 1-31
+extfn/docs/content/docs/reference/cli.md
+  s_4e0e6cec9d8f32::t_506a8e2c787876 1-148
+extfn/docs/content/docs/reference/meta.json
+  s_4e0e6cec9d8f32::t_efa30a8d1b9c72 1-4
+extfn/docs/src/routes/+page.svelte
+  s_4e0e6cec9d8f32::t_0db8f867a77285 1-231
+extfn/docs/content/docs/reference/consumer-host-abstraction.md
+  s_4e0e6cec9d8f32::t_506a8e2c787876 1-153
+extfn/docs/package.json
+  s_4e0e6cec9d8f32::t_0db8f867a77285 1-34
+extfn/docs/content/docs/integrations.md
+  s_4e0e6cec9d8f32::t_efa30a8d1b9c72 1-12
+extfn/docs/.gitignore
+  s_4e0e6cec9d8f32::t_2b58920b076087 1-10
+extfn/docs/scripts/generate-llms.mjs
+  s_4e0e6cec9d8f32::t_d9e5d15e0fd855 1-39
+extfn/docs/src/app.css
+  s_4e0e6cec9d8f32::t_2616801b8abf00 1-72
+extfn/docs/src/app.html
+  s_4e0e6cec9d8f32::t_e13bddbfa65887 1-11
+extfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_4e0e6cec9d8f32::t_afffaa4981f77b 1-17
+extfn/docs/src/lib/server/docs-site-source.ts
+  s_4e0e6cec9d8f32::t_75cd3dcc611bff 1-501
+extfn/docs/src/routes/+layout.server.ts
+  s_4e0e6cec9d8f32::t_73493f5508e400 1-8
+extfn/docs/src/routes/+layout.svelte
+  s_4e0e6cec9d8f32::t_c6b67b0fd247d4 1-88
+extfn/docs/src/routes/+page.server.ts
+  s_4e0e6cec9d8f32::t_25d9c80fb3e379 1-6
+extfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_4e0e6cec9d8f32::t_96254c5978b6c5 1-120
+extfn/docs/src/routes/docs/[...slug]/+page.svelte
+  s_4e0e6cec9d8f32::t_45bb00cf17720e 1-41
+extfn/docs/src/routes/search.json/+server.ts
+  s_4e0e6cec9d8f32::t_b76d02484ed5ac 1-8
+extfn/docs/svelte.config.js
+  s_4e0e6cec9d8f32::t_b09a61fa05f7d3 1-24
+extfn/docs/tsconfig.json
+  s_4e0e6cec9d8f32::t_29494e65afe7f7 1-33
+extfn/docs/vite.config.ts
+  s_4e0e6cec9d8f32::t_72b45c245d5dc1 1-28
+package-lock.json
+  s_4e0e6cec9d8f32::t_896c984ce75ed8 8779-8894,23815-23818
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8bfeef00b316b4f7e3847d7a91b72698709300d9",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "thyaravind <samalaaravind02@gmail.com>"
+    }
+  }
+}

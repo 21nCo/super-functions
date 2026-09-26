@@ -1,0 +1,41 @@
+searchfn/docs/content/docs/quickstart/starlette.mdx
+  s_4e0e6cec9d8f32::t_f85aeb77d5d272 3,6-7,14,16,18,22-25,28-31,36,38,40
+searchfn/docs/content/docs/documentation/python/indexing.mdx
+  s_4e0e6cec9d8f32::t_adc62a182cc9d7 3,6,9,11-12,15,17
+searchfn/docs/content/docs/documentation/python/index.mdx
+  s_4e0e6cec9d8f32::t_adc62a182cc9d7 4,7,9,11-13,15
+searchfn/docs/content/docs/documentation/administration.mdx
+  s_4e0e6cec9d8f32::t_bfe1629980cc51 1-20
+searchfn/docs/content/docs/documentation/python/meta.json
+  s_4e0e6cec9d8f32::t_adc62a182cc9d7 3
+searchfn/docs/content/docs/documentation/meta.json
+  s_4e0e6cec9d8f32::t_bfe1629980cc51 11
+searchfn/docs/content/docs/quickstart/flask.mdx
+  s_4e0e6cec9d8f32::t_f85aeb77d5d272 3,6-7,12,14,17,19-23,25-27,30,32,34
+searchfn/docs/content/docs/documentation/python/setup.mdx
+  s_4e0e6cec9d8f32::t_adc62a182cc9d7 3,8,12,15-16,18,20,24,27,29,31,33
+searchfn/docs/content/docs/documentation/python/search.mdx
+  s_4e0e6cec9d8f32::t_adc62a182cc9d7 3,6,9,11-12,15,17
+searchfn/docs/content/docs/reference/python.mdx
+  s_4e0e6cec9d8f32::t_adc62a182cc9d7 2-3,6,9,11-13,18,20,22
+searchfn/docs/content/docs/documentation/python/http-mount.mdx
+  s_4e0e6cec9d8f32::t_f85aeb77d5d272 2-3,6,10-12,15,17
+searchfn/docs/content/docs/quickstart/fastapi.mdx
+  s_4e0e6cec9d8f32::t_f85aeb77d5d272 3,6-7,10,13,15,18,20-21,23-29,31,34,36,38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ff280cff49c21de47a2c2fa5a023723b008294e3",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "thyaravind <samalaaravind02@gmail.com>"
+    }
+  }
+}

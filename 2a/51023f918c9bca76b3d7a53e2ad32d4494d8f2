@@ -1,0 +1,25 @@
+hostfn/docs/content/docs/documentation/index.mdx
+  s_4e0e6cec9d8f32::t_4b18e7da0b5333 17
+hostfn/docs/content/docs/index.mdx
+  s_4e0e6cec9d8f32::t_4b18e7da0b5333 8-9
+hostfn/docs/content/docs/documentation/advanced/administration.mdx
+  s_4e0e6cec9d8f32::t_b01fc5f048b993 1-29
+hostfn/docs/content/docs/documentation/advanced/meta.json
+  s_4e0e6cec9d8f32::t_4b18e7da0b5333 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2a51023f918c9bca76b3d7a53e2ad32d4494d8f2",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "thyaravind <samalaaravind02@gmail.com>"
+    }
+  }
+}

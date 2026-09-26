@@ -1,0 +1,99 @@
+langfn/docs/package.json
+  s_4e0e6cec9d8f32::t_03db27219d3e57 1-34
+langfn/docs/src/routes/+page.svelte
+  s_4e0e6cec9d8f32::t_03db27219d3e57 1-231
+langfn/docs/content/docs/workflows.md
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-12
+langfn/docs/content/docs/reference/index.md
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-13
+langfn/docs/docsfn.config.ts
+  s_4e0e6cec9d8f32::t_03db27219d3e57 1-36
+langfn/docs/content/docs/index.md
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-10
+langfn/docs/content/docs/http.md
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-12
+langfn/docs/content/docs/reference/release-gate.md
+  s_4e0e6cec9d8f32::t_73340dd3e8df37 1-19
+langfn/docs/README.md
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-12
+langfn/docs/content/docs/streaming-and-tools.md
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-12
+package.json
+  s_4e0e6cec9d8f32::t_735f759c406c8e 44
+langfn/docs/static/llms-full.txt
+  s_4e0e6cec9d8f32::t_84495172bc58bb 1-364
+langfn/docs/content/docs/reference/meta.json
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-4
+langfn/docs/static/llms.txt
+  s_4e0e6cec9d8f32::t_84495172bc58bb 1-22
+langfn/docs/content/docs/memory-and-rag.md
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-12
+langfn/docs/content/docs/reference/typescript.md
+  s_4e0e6cec9d8f32::t_73340dd3e8df37 1-66
+langfn/docs/content/docs/meta.json
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-4
+langfn/docs/content/docs/prompts-and-structured.md
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-12
+langfn/docs/content/docs/reference/package-exports.md
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-27
+langfn/docs/content/docs/getting-started.md
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-24
+langfn/docs/content/docs/mcp.md
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-10
+langfn/docs/content/docs/reference/compatibility.md
+  s_4e0e6cec9d8f32::t_73340dd3e8df37 1-26
+langfn/docs/content/docs/operations-and-limits.md
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-12
+langfn/docs/content/docs/observability-and-evaluation.md
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-12
+langfn/docs/content/docs/models-and-providers.md
+  s_4e0e6cec9d8f32::t_a40344d93d6410 1-12
+langfn/docs/.gitignore
+  s_4e0e6cec9d8f32::t_34c0a4ffc87132 1-10
+langfn/docs/scripts/generate-llms.mjs
+  s_4e0e6cec9d8f32::t_9b28b0d68f730b 1-39
+langfn/docs/src/app.css
+  s_4e0e6cec9d8f32::t_ea9359c48698bc 1-72
+langfn/docs/src/app.html
+  s_4e0e6cec9d8f32::t_ae02f5f7928fb0 1-11
+langfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_4e0e6cec9d8f32::t_a507c96f178115 1-17
+langfn/docs/src/lib/server/docs-site-source.ts
+  s_4e0e6cec9d8f32::t_4e9a2adcb44619 1-501
+langfn/docs/src/routes/+layout.server.ts
+  s_4e0e6cec9d8f32::t_3469b6b36ca396 1-8
+langfn/docs/src/routes/+layout.svelte
+  s_4e0e6cec9d8f32::t_ea0fe40f414c5e 1-88
+langfn/docs/src/routes/+page.server.ts
+  s_4e0e6cec9d8f32::t_2fab432561be44 1-6
+langfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_4e0e6cec9d8f32::t_ca617ba3454d63 1-120
+langfn/docs/src/routes/docs/[...slug]/+page.svelte
+  s_4e0e6cec9d8f32::t_65b97841b026a4 1-41
+langfn/docs/src/routes/search.json/+server.ts
+  s_4e0e6cec9d8f32::t_1a35d047c25048 1-8
+langfn/docs/svelte.config.js
+  s_4e0e6cec9d8f32::t_9bf6233abc17d6 1-24
+langfn/docs/tsconfig.json
+  s_4e0e6cec9d8f32::t_ab0324c0a6b0f3 1-33
+langfn/docs/vite.config.ts
+  s_4e0e6cec9d8f32::t_34ff67a479956a 1-28
+package-lock.json
+  s_4e0e6cec9d8f32::t_36b21ff0f255bc 49,11409-11524,25576-25579
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a7f7dcaea738af9f023d3142333fb12a468c09b0",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "thyaravind <samalaaravind02@gmail.com>"
+    }
+  }
+}

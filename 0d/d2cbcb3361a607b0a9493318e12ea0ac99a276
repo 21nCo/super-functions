@@ -1,0 +1,30 @@
+filefn/docs/content/docs/admin/index.md
+  s_4e0e6cec9d8f32::t_e14aea6cbec8f5 1-30
+filefn/docs/content/docs/admin/meta.json
+  s_4e0e6cec9d8f32::t_e14aea6cbec8f5 1-4
+filefn/docs/content/docs/index.md
+  s_4e0e6cec9d8f32::t_6c2ec1d884b705 77
+filefn/docs/static/llms-full.txt
+  s_4e0e6cec9d8f32::t_6fa311f21daaf6 87,1099-1135,3094-3098
+  s_4e0e6cec9d8f32::t_da88eb4228b158 3099
+filefn/docs/content/docs/meta.json
+  s_4e0e6cec9d8f32::t_6c2ec1d884b705 14
+filefn/docs/static/llms.txt
+  s_4e0e6cec9d8f32::t_6fa311f21daaf6 22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0dd2cbcb3361a607b0a9493318e12ea0ac99a276",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "thyaravind <samalaaravind02@gmail.com>"
+    }
+  }
+}

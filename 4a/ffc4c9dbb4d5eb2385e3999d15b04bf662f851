@@ -1,0 +1,166 @@
+mdfn/docs/content/docs/reference/examples.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-27
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+mdfn/docs/content/docs/reference/markdown.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-11
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+mdfn/docs/content/docs/reference/core.md
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-12
+mdfn/docs/content/docs/review-and-sidecar.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-10
+mdfn/docs/content/docs/reference/client.md
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-12
+mdfn/docs/content/docs/reference/collab.md
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-23
+mdfn/docs/content/docs/server-and-storage.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-12
+mdfn/docs/content/docs/collaboration.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-10
+mdfn/docs/content/docs/reference/ai.md
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-8
+mdfn/docs/src/routes/+page.svelte
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-231
+mdfn/docs/content/docs/reference/components-svelte.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-10
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+mdfn/docs/content/docs/reference/components-solid.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-10
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+mdfn/docs/docsfn.config.ts
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-36
+mdfn/docs/content/docs/meta.json
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-17
+mdfn/docs/content/docs/index.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-10
+mdfn/docs/content/docs/reference/contentfn.md
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-14
+mdfn/docs/content/docs/reference/meta.json
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-32
+mdfn/docs/content/docs/reference/filefn.md
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-18
+mdfn/docs/content/docs/integrations.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-10
+mdfn/docs/content/docs/reference/components.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-13
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+mdfn/docs/content/docs/reference/registry.md
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-8
+mdfn/docs/content/docs/reference/overview.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-65
+mdfn/docs/content/docs/reference/react.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-10
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+mdfn/docs/content/docs/reference/searchfn.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-8
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+mdfn/docs/content/docs/reference/render.md
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-10
+mdfn/docs/content/docs/reference/testing.md
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-18
+mdfn/docs/package.json
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-34
+mdfn/docs/static/llms-full.txt
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 1-695
+mdfn/docs/content/docs/extensions.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-10
+mdfn/docs/content/docs/reference/svelte.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-10
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+mdfn/docs/content/docs/framework-editors.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-12
+mdfn/docs/content/docs/reference/adapter-kit.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-10
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+mdfn/docs/content/docs/reference/facade.md
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-10
+mdfn/docs/static/llms.txt
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 1-44
+mdfn/docs/README.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-12
+mdfn/docs/content/docs/reference/source.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-11
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+mdfn/docs/content/docs/reference/components-react.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-11
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+mdfn/docs/content/docs/reference/solid.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-9
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+mdfn/docs/content/docs/getting-started.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-19
+mdfn/docs/content/docs/reference/dom.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-11
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+mdfn/docs/content/docs/source-preservation.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-12
+mdfn/docs/content/docs/reference/server.md
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-31
+mdfn/docs/content/docs/rendering-and-security.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-12
+mdfn/docs/content/docs/verification.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-17
+mdfn/docs/content/docs/reference/extensions.md
+  s_4e0e6cec9d8f32::t_46ce1a4b604a9d 2
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1,3-10
+mdfn/docs/content/docs/reference/index.md
+  s_4e0e6cec9d8f32::t_4928b2a2910e1e 1-10
+mdfn/docs/.gitignore
+  s_4e0e6cec9d8f32::t_d2152ac8df4ab4 1-10
+mdfn/docs/scripts/generate-llms.mjs
+  s_4e0e6cec9d8f32::t_ebd6107aded8f4 1-39
+mdfn/docs/src/app.css
+  s_4e0e6cec9d8f32::t_4584945daa4c1d 1-72
+mdfn/docs/src/app.html
+  s_4e0e6cec9d8f32::t_a7ba7e8d8c0f4a 1-11
+mdfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_4e0e6cec9d8f32::t_4df63fef8208fc 1-17
+mdfn/docs/src/lib/server/docs-site-source.ts
+  s_4e0e6cec9d8f32::t_da26b64fecbf61 1-501
+mdfn/docs/src/routes/+layout.server.ts
+  s_4e0e6cec9d8f32::t_9b934e13c35574 1-8
+mdfn/docs/src/routes/+layout.svelte
+  s_4e0e6cec9d8f32::t_7940c5c7d1b9a0 1-88
+mdfn/docs/src/routes/+page.server.ts
+  s_4e0e6cec9d8f32::t_6211a526b4f408 1-6
+mdfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_4e0e6cec9d8f32::t_4f0ef9d20f2c9d 1-120
+mdfn/docs/src/routes/docs/[...slug]/+page.svelte
+  s_4e0e6cec9d8f32::t_c47c7cc8fb3b55 1-41
+mdfn/docs/src/routes/search.json/+server.ts
+  s_4e0e6cec9d8f32::t_34ef84b0c10b91 1-8
+mdfn/docs/svelte.config.js
+  s_4e0e6cec9d8f32::t_211dd5049a0001 1-24
+mdfn/docs/tsconfig.json
+  s_4e0e6cec9d8f32::t_d1dc16b4a49788 1-33
+mdfn/docs/vite.config.ts
+  s_4e0e6cec9d8f32::t_38b809b808b427 1-28
+package-lock.json
+  s_4e0e6cec9d8f32::t_0cfeef1eaa62c4 66470-66589
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4affc4c9dbb4d5eb2385e3999d15b04bf662f851",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "thyaravind <samalaaravind02@gmail.com>"
+    }
+  }
+}

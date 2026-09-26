@@ -1,0 +1,116 @@
+mailfn/docs/package.json
+  s_4e0e6cec9d8f32::t_ccf1100a9cd2c2 1-34
+mailfn/docs/content/docs/reference/meta.json
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-4
+mailfn/docs/content/docs/cloudflare-runtime.md
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-20
+mailfn/docs/static/llms.txt
+  s_4e0e6cec9d8f32::t_e44847272763fc 1-31
+mailfn/docs/content/docs/cli-and-mcp.md
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-16
+mailfn/docs/README.md
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-12
+mailfn/docs/static/llms-full.txt
+  s_4e0e6cec9d8f32::t_e44847272763fc 1-698
+mailfn/docs/content/docs/reference/client.md
+  s_4e0e6cec9d8f32::t_7ce2bd8711005f 1-21
+mailfn/docs/content/docs/reference/testing.md
+  s_4e0e6cec9d8f32::t_7ce2bd8711005f 1-25
+mailfn/docs/content/docs/meta.json
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-4
+mailfn/docs/content/docs/reference/cli.md
+  s_4e0e6cec9d8f32::t_7ce2bd8711005f 1-18
+mailfn/docs/content/docs/reference/core.md
+  s_4e0e6cec9d8f32::t_7ce2bd8711005f 1-23
+mailfn/docs/content/docs/getting-started.md
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-37
+mailfn/docs/content/docs/messages-and-evidence.md
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-12
+mailfn/docs/content/docs/outbound.md
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-16
+mailfn/docs/content/docs/testing.md
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-13,15-25
+  s_4e0e6cec9d8f32::t_a2f8509fc7be6d 14
+mailfn/docs/content/docs/webhooks-and-domains.md
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-12
+mailfn/docs/content/docs/index.md
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-12
+mailfn/docs/content/docs/reference/sendfn.md
+  s_4e0e6cec9d8f32::t_7ce2bd8711005f 1-16
+mailfn/docs/docsfn.config.ts
+  s_4e0e6cec9d8f32::t_ccf1100a9cd2c2 1-36
+mailfn/docs/content/docs/reference/spec.md
+  s_4e0e6cec9d8f32::t_7ce2bd8711005f 1-103
+mailfn/docs/content/docs/reference/index.md
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-12
+mailfn/docs/src/routes/+page.svelte
+  s_4e0e6cec9d8f32::t_ccf1100a9cd2c2 1-231
+mailfn/docs/content/docs/reference/cloudflare.md
+  s_4e0e6cec9d8f32::t_7ce2bd8711005f 1-24
+mailfn/docs/content/docs/reference/operations.md
+  s_4e0e6cec9d8f32::t_7ce2bd8711005f 1-59
+mailfn/docs/content/docs/reference/threat-model.md
+  s_4e0e6cec9d8f32::t_7ce2bd8711005f 1-37
+mailfn/docs/content/docs/operations-and-limits.md
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-12
+mailfn/docs/content/docs/reference/consumers.md
+  s_4e0e6cec9d8f32::t_7ce2bd8711005f 1-13
+mailfn/docs/content/docs/reference/mcp.md
+  s_4e0e6cec9d8f32::t_7ce2bd8711005f 1-14
+mailfn/docs/content/docs/core-and-storage.md
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-26
+mailfn/docs/content/docs/credentials-and-scope.md
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-12
+mailfn/docs/content/docs/reference/facade.md
+  s_4e0e6cec9d8f32::t_7ce2bd8711005f 1-14
+mailfn/docs/content/docs/administration.md
+  s_4e0e6cec9d8f32::t_58edf64bb4842f 1-10
+mailfn/docs/.gitignore
+  s_4e0e6cec9d8f32::t_9947f28b1bad52 1-10
+mailfn/docs/scripts/generate-llms.mjs
+  s_4e0e6cec9d8f32::t_948fcd4d856665 1-39
+mailfn/docs/src/app.css
+  s_4e0e6cec9d8f32::t_f6cb2c5f9b50cb 1-72
+mailfn/docs/src/app.html
+  s_4e0e6cec9d8f32::t_cd6d05021e4adb 1-11
+mailfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_4e0e6cec9d8f32::t_1fb3406edd4d9d 1-17
+mailfn/docs/src/lib/server/docs-site-source.ts
+  s_4e0e6cec9d8f32::t_c295eceddb19e5 1-501
+mailfn/docs/src/routes/+layout.server.ts
+  s_4e0e6cec9d8f32::t_92f52894fcba4c 1-8
+mailfn/docs/src/routes/+layout.svelte
+  s_4e0e6cec9d8f32::t_3c8f4e7c600303 1-88
+mailfn/docs/src/routes/+page.server.ts
+  s_4e0e6cec9d8f32::t_ab3cda839186ef 1-6
+mailfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_4e0e6cec9d8f32::t_762e510021e7a6 1-120
+mailfn/docs/src/routes/docs/[...slug]/+page.svelte
+  s_4e0e6cec9d8f32::t_00327217a05e87 1-41
+mailfn/docs/src/routes/search.json/+server.ts
+  s_4e0e6cec9d8f32::t_3d4ca2f9f4f489 1-8
+mailfn/docs/svelte.config.js
+  s_4e0e6cec9d8f32::t_2b40a888e8e85d 1-24
+mailfn/docs/tsconfig.json
+  s_4e0e6cec9d8f32::t_728fd86ef5b0d3 1-33
+mailfn/docs/vite.config.ts
+  s_4e0e6cec9d8f32::t_9ddcf7ce24da72 1-28
+package-lock.json
+  s_4e0e6cec9d8f32::t_1247b2fd2d2eca 12749-12864,25524-25527
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "53f37172c61b1bfc579b80bfb0996dc5b275e157",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "thyaravind <samalaaravind02@gmail.com>"
+    }
+  }
+}
