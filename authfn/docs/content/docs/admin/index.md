@@ -7,6 +7,8 @@ description: "@authfn/admin — admin-only routes for listing and deleting users
 
 `@authfn/admin` is a small package that mounts admin-only HTTP routes alongside your kernel. It uses the same database, the same namespace, and the same observability sink. You bring the **authorization** — a callback that decides whether a given request is allowed to perform a given admin action.
 
+The package also exports a separate [Super Console integration](/docs/admin/super-console) for scoped user and session operations and operator authentication. The routes below describe the direct admin API; a Super Console host uses the capability adapter and its own dispatcher.
+
 ```bash
 npm install @authfn/admin
 ```
