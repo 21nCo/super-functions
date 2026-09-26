@@ -1,0 +1,103 @@
+apifn/docs/content/docs/interactive-reference.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-12
+apifn/docs/content/docs/meta.json
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-15
+apifn/docs/content/docs/mocking.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-16
+apifn/docs/content/docs/collections-and-tests.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-15
+apifn/docs/content/docs/python.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-10
+apifn/docs/content/docs/reference/core.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-260
+apifn/docs/content/docs/reference/collections.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-250
+apifn/docs/content/docs/getting-started.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-34
+apifn/docs/content/docs/openapi-from-router.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-21
+apifn/docs/content/docs/diff-and-ci.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-16
+apifn/docs/content/docs/index.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-10
+apifn/docs/content/docs/reference/meta.json
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-15
+apifn/docs/content/docs/reference/react.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-135
+apifn/docs/README.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-12
+apifn/docs/content/docs/reference/docsfn.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-126
+apifn/docs/content/docs/reference/index.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-8
+apifn/docs/content/docs/snippets.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-14
+apifn/docs/content/docs/reference/snippets.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-98
+apifn/docs/src/routes/+page.svelte
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-231
+apifn/docs/static/llms.txt
+  s_4e0e6cec9d8f32::t_092537682c202e 1-25
+apifn/docs/docsfn.config.ts
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-36
+apifn/docs/content/docs/reference/svelte.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-113
+apifn/docs/content/docs/reference/cli.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-216
+apifn/docs/content/docs/reference/mock.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-156
+apifn/docs/content/docs/reference/overview.md
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-165
+apifn/docs/package.json
+  s_4e0e6cec9d8f32::t_e8d8a236ad0bef 1-34
+apifn/docs/static/llms-full.txt
+  s_4e0e6cec9d8f32::t_092537682c202e 1-1760
+apifn/docs/.gitignore
+  s_4e0e6cec9d8f32::t_816ad8839220ba 1-10
+apifn/docs/scripts/generate-llms.mjs
+  s_4e0e6cec9d8f32::t_c875f67b13c945 1-39
+apifn/docs/src/app.css
+  s_4e0e6cec9d8f32::t_f714a5b9593e1c 1-72
+apifn/docs/src/app.html
+  s_4e0e6cec9d8f32::t_a70e1067d9a2f7 1-11
+apifn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_4e0e6cec9d8f32::t_aada8208af9690 1-17
+apifn/docs/src/lib/server/docs-site-source.ts
+  s_4e0e6cec9d8f32::t_a2b37919a52e54 1-501
+apifn/docs/src/routes/+layout.server.ts
+  s_4e0e6cec9d8f32::t_b3e52727ea40e1 1-8
+apifn/docs/src/routes/+layout.svelte
+  s_4e0e6cec9d8f32::t_fecf8589e7f3b6 1-88
+apifn/docs/src/routes/+page.server.ts
+  s_4e0e6cec9d8f32::t_14a238b2b6d9e9 1-6
+apifn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_4e0e6cec9d8f32::t_4fc3028099f5e7 1-120
+apifn/docs/src/routes/docs/[...slug]/+page.svelte
+  s_4e0e6cec9d8f32::t_b117f3d9ebf2c5 1-41
+apifn/docs/src/routes/search.json/+server.ts
+  s_4e0e6cec9d8f32::t_575f9a7f96c9d5 1-8
+apifn/docs/svelte.config.js
+  s_4e0e6cec9d8f32::t_7bd57345c78b60 1-24
+apifn/docs/tsconfig.json
+  s_4e0e6cec9d8f32::t_1ded51bcc4824e 1-33
+apifn/docs/vite.config.ts
+  s_4e0e6cec9d8f32::t_ba2566d24b41ac 1-28
+package-lock.json
+  s_4e0e6cec9d8f32::t_ad3d8d632b23dc 66470-66589
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7f6d58a01cc9292a9df822e2019062644417c15a",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "thyaravind <samalaaravind02@gmail.com>"
+    }
+  }
+}
