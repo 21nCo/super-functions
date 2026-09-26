@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EK2SMFFF0R3WW70VR3GJFP",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "botfn/docs/README.md",
+    "botfn/docs/docsfn.config.ts",
+    "botfn/docs/package.json",
+    "botfn/docs/scripts/generate-llms.mjs",
+    "botfn/docs/src/lib/server/docs-site-source.ts",
+    "botfn/docs/src/routes/+page.svelte",
+    "botfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "botfn/docs/src/routes/docs/llms-full.txt/+server.ts",
+    "botfn/docs/src/routes/docs/llms.txt/+server.ts",
+    "botfn/docs/static/llms-full.txt",
+    "botfn/docs/static/llms.txt",
+    "botfn/docs/tsconfig.json",
+    "botfn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/docs-site/LandingPage.svelte",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/runtime.test.ts",
+    "scripts/docs-site/runtime.ts",
+    "scripts/docs-site/vite.ts",
+    "scripts/docs-site/vitest.config.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2735,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 532480,
+    "output_tokens": 1122,
+    "api_call_count": 3
+  }
+}
