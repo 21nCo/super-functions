@@ -13,7 +13,7 @@ This document contains the full content of the DataFn documentation, optimized f
 --------------------------------------------------------------------------------
 ### Claude
 
-URL: https://datafn.21n.co/docs/ai-resources/claude
+URL: https://datafn.com/docs/ai-resources/claude
 Description: Wire DataFn into Claude Code and Claude Desktop with project memory, raw-markdown lookups, and MCP.
 --------------------------------------------------------------------------------
 
@@ -111,7 +111,7 @@ If Claude reaches for raw SQL or skips DFQL, your `CLAUDE.md` needs to be more e
 --------------------------------------------------------------------------------
 ### Codex / GPT-based assistants
 
-URL: https://datafn.21n.co/docs/ai-resources/codex
+URL: https://datafn.com/docs/ai-resources/codex
 Description: Wire DataFn into OpenAI Codex, GitHub Copilot, and Continue.dev.
 --------------------------------------------------------------------------------
 
@@ -196,7 +196,7 @@ If it confidently adds `clonable` to the capabilities array as if it were built 
 --------------------------------------------------------------------------------
 ### Cursor
 
-URL: https://datafn.21n.co/docs/ai-resources/cursor
+URL: https://datafn.com/docs/ai-resources/cursor
 Description: Wire DataFn into Cursor with project rules, raw-markdown lookups, and MCP.
 --------------------------------------------------------------------------------
 
@@ -310,7 +310,7 @@ You should see the assistant reach for `defineSchema` and reference `@datafn/cor
 --------------------------------------------------------------------------------
 ### llms.txt / llms-full.txt
 
-URL: https://datafn.21n.co/docs/ai-resources/llms-txt
+URL: https://datafn.com/docs/ai-resources/llms-txt
 Description: Machine-readable artifacts that turn the DataFn documentation into a prompt-friendly corpus.
 --------------------------------------------------------------------------------
 
@@ -395,7 +395,7 @@ The "Copy Markdown" button at the top of every page uses this endpoint behind th
 --------------------------------------------------------------------------------
 ### MCP Server (Experimental)
 
-URL: https://datafn.21n.co/docs/ai-resources/mcp
+URL: https://datafn.com/docs/ai-resources/mcp
 Description: Expose the DataFn documentation and schema as Model Context Protocol tools for agentic clients.
 --------------------------------------------------------------------------------
 
@@ -502,7 +502,7 @@ Planned additions: `get_schema` (return the resolved schema from a target deploy
 --------------------------------------------------------------------------------
 ### Skills
 
-URL: https://datafn.21n.co/docs/ai-resources/skills
+URL: https://datafn.com/docs/ai-resources/skills
 Description: Drop-in instruction files that teach AI coding assistants how to use DataFn correctly.
 --------------------------------------------------------------------------------
 
@@ -619,7 +619,7 @@ Codex auto-discovers `AGENTS.md` at the repo root.
 --------------------------------------------------------------------------------
 ### AI Resources
 
-URL: https://datafn.21n.co/docs/ai-resources
+URL: https://datafn.com/docs/ai-resources
 Description: LLM-ready artifacts and agent affordances for working with DataFn through Claude, Cursor, ChatGPT, and other assistants.
 --------------------------------------------------------------------------------
 
@@ -661,7 +661,7 @@ If you're self-hosting these docs the same URLs work against your own deployment
 --------------------------------------------------------------------------------
 ### CLI Overview
 
-URL: https://datafn.21n.co/docs/cli
+URL: https://datafn.com/docs/cli
 Description: Command-line tools for DataFn schema management and code generation.
 --------------------------------------------------------------------------------
 
@@ -742,7 +742,7 @@ Both formats are validated identically at load time using `validateSchema()` fro
 --------------------------------------------------------------------------------
 ### Comparison
 
-URL: https://datafn.21n.co/docs/comparison
+URL: https://datafn.com/docs/comparison
 Description: Where DataFn sits relative to Replicache, ElectricSQL, PowerSync, RxDB, WatermelonDB, InstantDB, Convex, TinyBase, and a Drizzle+TanStack Query stack.
 --------------------------------------------------------------------------------
 
@@ -880,7 +880,7 @@ Use Drizzle + TanStack Query if you don't need offline and you want the smallest
 --------------------------------------------------------------------------------
 ### DFQL Overview
 
-URL: https://datafn.21n.co/docs/dfql
+URL: https://datafn.com/docs/dfql
 Description: DataFn Query Language - a JSON-based query and mutation language.
 --------------------------------------------------------------------------------
 
@@ -978,7 +978,7 @@ const key = dfqlKey(query);
 --------------------------------------------------------------------------------
 ### Overview
 
-URL: https://datafn.21n.co/docs/documentation
+URL: https://datafn.com/docs/documentation
 Description: What DataFn is, what it ships, and how the pieces fit together.
 --------------------------------------------------------------------------------
 
@@ -1164,13 +1164,14 @@ Pre/post hooks on `query`, `mutation`, and `sync` flows let you add custom logic
 - Ready to design your data model? Start with [Schema](/docs/dfql/schema) and [Resources](/docs/dfql/schema/resources).
 - Building a UI? See [Client Setup](/docs/documentation/client/setup) and [Signals](/docs/documentation/client/signals).
 - Wiring up the backend? See [Server Setup](/docs/documentation/server/setup).
+- Building an operator console? See [Server Administration](/docs/documentation/server/administration) for the scoped DataFn capability.
 
 
 
 --------------------------------------------------------------------------------
 ### Examples
 
-URL: https://datafn.21n.co/docs/examples
+URL: https://datafn.com/docs/examples
 Description: Working reference apps that ship with DataFn — clone, run, copy what you need.
 --------------------------------------------------------------------------------
 
@@ -1211,7 +1212,7 @@ If you want recipe-shaped walkthroughs (single-page recipes that ship with a wor
 --------------------------------------------------------------------------------
 ### Getting Started
 
-URL: https://datafn.21n.co/docs/getting-started
+URL: https://datafn.com/docs/getting-started
 Description: Get up and running with DataFn in minutes.
 --------------------------------------------------------------------------------
 
@@ -1523,7 +1524,7 @@ Capabilities keep boilerplate (timestamps, soft-delete, audit trails, sharing) o
 --------------------------------------------------------------------------------
 ### DataFn
 
-URL: https://datafn.21n.co/docs
+URL: https://datafn.com/docs
 Description: Self-hosted data management platform with offline-first storage, reactive signals, and a declarative query language.
 --------------------------------------------------------------------------------
 
@@ -1625,7 +1626,7 @@ Part of [Super functions](https://github.com/21nCo/super-functions) and built wi
 --------------------------------------------------------------------------------
 ### Quickstart
 
-URL: https://datafn.21n.co/docs/quickstart
+URL: https://datafn.com/docs/quickstart
 Description: Pick your stack and ship a working DataFn integration in 10 minutes.
 --------------------------------------------------------------------------------
 
@@ -1671,7 +1672,7 @@ For client frameworks (React, Vue, Solid), wrap a `createDatafnClient(...)` in y
 --------------------------------------------------------------------------------
 ### Recipes
 
-URL: https://datafn.21n.co/docs/recipes
+URL: https://datafn.com/docs/recipes
 Description: Production-tested patterns for shipping with DataFn. Each recipe is self-contained: the schema, the server config, and the client glue.
 --------------------------------------------------------------------------------
 
@@ -1720,7 +1721,7 @@ Recipes are working patterns, not exhaustive guides. Read them when you're about
 --------------------------------------------------------------------------------
 ### API Reference
 
-URL: https://datafn.21n.co/docs/reference
+URL: https://datafn.com/docs/reference
 Description: Complete API reference for all DataFn packages.
 --------------------------------------------------------------------------------
 
@@ -1740,6 +1741,7 @@ Shared types, schema validation, filter evaluation, normalization utilities, dat
 - [KV Utilities](/docs/reference/core/kv) -- built-in key-value resource
 - [Hook Utilities](/docs/reference/core/hooks) -- plugin hook execution
 - [Error Types](/docs/reference/core/errors) -- error codes and envelopes
+- [Resource Selectors](/docs/reference/core/resource-selectors) -- structural selector extraction for gateways and authorization
 
 ### @datafn/client
 
@@ -1774,7 +1776,7 @@ Node.js server with route handlers, execution engine, middleware, and WebSocket 
 --------------------------------------------------------------------------------
 ### CI Integration
 
-URL: https://datafn.21n.co/docs/cli/ci-integration
+URL: https://datafn.com/docs/cli/ci-integration
 Description: GitHub Actions, GitLab CI, and CircleCI recipes for DataFn schema validation and migration.
 --------------------------------------------------------------------------------
 
@@ -2008,7 +2010,7 @@ The CLI's `--format markdown` output is designed for posting:
 --------------------------------------------------------------------------------
 ### Drizzle Schema Generation
 
-URL: https://datafn.21n.co/docs/cli/drizzle-codegen
+URL: https://datafn.com/docs/cli/drizzle-codegen
 Description: Generate Drizzle ORM table definitions from your schema.
 --------------------------------------------------------------------------------
 
@@ -2156,7 +2158,7 @@ All tables are exported as named constants. A `schema` object is exported that m
 --------------------------------------------------------------------------------
 ### Environment Profiles
 
-URL: https://datafn.21n.co/docs/cli/env-profiles
+URL: https://datafn.com/docs/cli/env-profiles
 Description: Manage dev, staging, and production configuration with the CLI.
 --------------------------------------------------------------------------------
 
@@ -2292,7 +2294,7 @@ The CLI merges parent → child, with child winning.
 --------------------------------------------------------------------------------
 ### Generate
 
-URL: https://datafn.21n.co/docs/cli/generate
+URL: https://datafn.com/docs/cli/generate
 Description: Generate TypeScript types and database schemas from your DataFn schema.
 --------------------------------------------------------------------------------
 
@@ -2381,7 +2383,7 @@ And a Drizzle schema file with table definitions matching your resources and dia
 --------------------------------------------------------------------------------
 ### Multi-Environment Workflows
 
-URL: https://datafn.21n.co/docs/cli/multi-env
+URL: https://datafn.com/docs/cli/multi-env
 Description: Promote schemas and migrations across dev → staging → production safely.
 --------------------------------------------------------------------------------
 
@@ -2564,7 +2566,7 @@ datafn schema-migrate apply \
 --------------------------------------------------------------------------------
 ### datafn schema-diff
 
-URL: https://datafn.21n.co/docs/cli/schema-diff
+URL: https://datafn.com/docs/cli/schema-diff
 Description: Compare two schema versions and produce a structured diff.
 --------------------------------------------------------------------------------
 
@@ -2699,7 +2701,7 @@ This posts a diff comment on every PR. Reviewers see exactly what schema surface
 --------------------------------------------------------------------------------
 ### datafn schema-migrate
 
-URL: https://datafn.21n.co/docs/cli/schema-migrate
+URL: https://datafn.com/docs/cli/schema-migrate
 Description: Generate and apply schema migration plans.
 --------------------------------------------------------------------------------
 
@@ -2889,7 +2891,7 @@ For very large stores, use `--checkpoint <path>` to persist progress; if the mig
 --------------------------------------------------------------------------------
 ### Type Generation
 
-URL: https://datafn.21n.co/docs/cli/type-codegen
+URL: https://datafn.com/docs/cli/type-codegen
 Description: Generate TypeScript interfaces from your schema.
 --------------------------------------------------------------------------------
 
@@ -3018,7 +3020,7 @@ export type TypedClient = DatafnClient & {
 --------------------------------------------------------------------------------
 ### Validate
 
-URL: https://datafn.21n.co/docs/cli/validate
+URL: https://datafn.com/docs/cli/validate
 Description: Validate your DataFn schema file.
 --------------------------------------------------------------------------------
 
@@ -3080,7 +3082,7 @@ A valid schema prints a confirmation line (for example, `✓ Schema is valid: /a
 --------------------------------------------------------------------------------
 ### Aggregations
 
-URL: https://datafn.21n.co/docs/dfql/aggregations
+URL: https://datafn.com/docs/dfql/aggregations
 Description: Compute aggregate values over record sets.
 --------------------------------------------------------------------------------
 
@@ -3288,7 +3290,7 @@ calculateAggregation("max", "amount", records);    // 200
 --------------------------------------------------------------------------------
 ### Filters
 
-URL: https://datafn.21n.co/docs/dfql/filters
+URL: https://datafn.com/docs/dfql/filters
 Description: Filter records with comparison, set, string, and logical operators.
 --------------------------------------------------------------------------------
 
@@ -3618,7 +3620,7 @@ evaluateFilter(record, filters, {
 --------------------------------------------------------------------------------
 ### Mutations
 
-URL: https://datafn.21n.co/docs/dfql/mutations
+URL: https://datafn.com/docs/dfql/mutations
 Description: DFQL write operations, including capability-aware lifecycle and sharing mutations.
 --------------------------------------------------------------------------------
 
@@ -3889,7 +3891,7 @@ You can send arrays of mutations.
 --------------------------------------------------------------------------------
 ### Pagination
 
-URL: https://datafn.21n.co/docs/dfql/pagination
+URL: https://datafn.com/docs/dfql/pagination
 Description: Paginate query results with limit/offset or cursors.
 --------------------------------------------------------------------------------
 
@@ -4014,7 +4016,7 @@ Cursor pagination requires a sort order that includes `id` as a tiebreaker to en
 --------------------------------------------------------------------------------
 ### Queries
 
-URL: https://datafn.21n.co/docs/dfql/queries
+URL: https://datafn.com/docs/dfql/queries
 Description: Retrieve data with DFQL queries.
 --------------------------------------------------------------------------------
 
@@ -4143,7 +4145,7 @@ The classification is automatic and transparent. The server always selects the m
 --------------------------------------------------------------------------------
 ### Fields
 
-URL: https://datafn.21n.co/docs/dfql/schema/fields
+URL: https://datafn.com/docs/dfql/schema/fields
 Description: Configure field types, validation constraints, and behavior.
 --------------------------------------------------------------------------------
 
@@ -4421,7 +4423,7 @@ const schema = defineSchema({
 --------------------------------------------------------------------------------
 ### Schema Definition
 
-URL: https://datafn.21n.co/docs/dfql/schema
+URL: https://datafn.com/docs/dfql/schema
 Description: Define and validate your DataFn schema, including capability-driven behavior.
 --------------------------------------------------------------------------------
 
@@ -4532,7 +4534,7 @@ isNamespaced(schema); // true by default
 --------------------------------------------------------------------------------
 ### Relations
 
-URL: https://datafn.21n.co/docs/dfql/schema/relations
+URL: https://datafn.com/docs/dfql/schema/relations
 Description: Define, query, and mutate relationships between resources.
 --------------------------------------------------------------------------------
 
@@ -5190,7 +5192,7 @@ When the database adapter supports batch operations, one-many `relate` and `unre
 --------------------------------------------------------------------------------
 ### Resources
 
-URL: https://datafn.21n.co/docs/dfql/schema/resources
+URL: https://datafn.com/docs/dfql/schema/resources
 Description: Define resources, permissions, and per-resource capabilities.
 --------------------------------------------------------------------------------
 
@@ -5377,7 +5379,7 @@ Useful for large append-only or sensitive datasets that should stay server-only.
 --------------------------------------------------------------------------------
 ### System Fields
 
-URL: https://datafn.21n.co/docs/dfql/schema/system-fields
+URL: https://datafn.com/docs/dfql/schema/system-fields
 Description: Capability-injected lifecycle fields and server ownership rules.
 --------------------------------------------------------------------------------
 
@@ -5512,7 +5514,7 @@ If you need app-controlled metadata with similar names, choose non-capability fi
 --------------------------------------------------------------------------------
 ### Search
 
-URL: https://datafn.21n.co/docs/dfql/search
+URL: https://datafn.com/docs/dfql/search
 Description: Provider-backed full-text search for DFQL and client cross-resource search.
 --------------------------------------------------------------------------------
 
@@ -5810,7 +5812,7 @@ For server-side search setup with SearchFn, see the [SearchFn DataFn integration
 --------------------------------------------------------------------------------
 ### Select and Expand
 
-URL: https://datafn.21n.co/docs/dfql/select
+URL: https://datafn.com/docs/dfql/select
 Description: Control which fields are returned and expand relations.
 --------------------------------------------------------------------------------
 
@@ -5999,7 +6001,7 @@ The `baseName` is always the first segment. The `directive` is everything after 
 --------------------------------------------------------------------------------
 ### Sorting
 
-URL: https://datafn.21n.co/docs/dfql/sorting
+URL: https://datafn.com/docs/dfql/sorting
 Description: Sort query results by one or more fields.
 --------------------------------------------------------------------------------
 
@@ -6111,7 +6113,7 @@ const sorted = sortRecords(records, terms);
 --------------------------------------------------------------------------------
 ### Temporal
 
-URL: https://datafn.21n.co/docs/dfql/temporal
+URL: https://datafn.com/docs/dfql/temporal
 Description: Timezone-aware date filtering and grouping with the temporal clause and time builders.
 --------------------------------------------------------------------------------
 
@@ -6332,7 +6334,7 @@ const client = createDatafnClient({
 --------------------------------------------------------------------------------
 ### Transactions
 
-URL: https://datafn.21n.co/docs/dfql/transactions
+URL: https://datafn.com/docs/dfql/transactions
 Description: Execute atomic sequences of queries and mutations.
 --------------------------------------------------------------------------------
 
@@ -6506,7 +6508,7 @@ If the database itself encounters an error (serialization failure, timeout, cons
 --------------------------------------------------------------------------------
 ### Change Tracking
 
-URL: https://datafn.21n.co/docs/documentation/advanced/change-tracking
+URL: https://datafn.com/docs/documentation/advanced/change-tracking
 Description: Track mutations for incremental sync.
 --------------------------------------------------------------------------------
 
@@ -6706,7 +6708,7 @@ await adapter.transaction(async (trx) => {
 --------------------------------------------------------------------------------
 ### Debouncing
 
-URL: https://datafn.21n.co/docs/documentation/advanced/debouncing
+URL: https://datafn.com/docs/documentation/advanced/debouncing
 Description: Coalesce rapid mutations for better performance.
 --------------------------------------------------------------------------------
 
@@ -6849,7 +6851,7 @@ function handlePriorityChange(todoId: string, priority: number) {
 --------------------------------------------------------------------------------
 ### Error Handling
 
-URL: https://datafn.21n.co/docs/documentation/advanced/error-handling
+URL: https://datafn.com/docs/documentation/advanced/error-handling
 Description: Structured error handling across client and server.
 --------------------------------------------------------------------------------
 
@@ -7046,7 +7048,7 @@ client.subscribe((event) => {
 --------------------------------------------------------------------------------
 ### Guards
 
-URL: https://datafn.21n.co/docs/documentation/advanced/guards
+URL: https://datafn.com/docs/documentation/advanced/guards
 Description: Optimistic concurrency control with conditional mutations.
 --------------------------------------------------------------------------------
 
@@ -7220,7 +7222,7 @@ If any guard within a transaction fails, the entire transaction is rolled back.
 --------------------------------------------------------------------------------
 ### Idempotency
 
-URL: https://datafn.21n.co/docs/documentation/advanced/idempotency
+URL: https://datafn.com/docs/documentation/advanced/idempotency
 Description: Prevent duplicate mutations with idempotency tracking.
 --------------------------------------------------------------------------------
 
@@ -7336,7 +7338,7 @@ If `changelogAppend` is called with a duplicate pair, the existing entry is retu
 --------------------------------------------------------------------------------
 ### Security
 
-URL: https://datafn.21n.co/docs/documentation/advanced/security
+URL: https://datafn.com/docs/documentation/advanced/security
 Description: Security measures built into DataFn.
 --------------------------------------------------------------------------------
 
@@ -7496,7 +7498,7 @@ When the rate limit is exceeded, the server returns a `LIMIT_EXCEEDED` error.
 --------------------------------------------------------------------------------
 ### Background Sync
 
-URL: https://datafn.21n.co/docs/documentation/apple/background
+URL: https://datafn.com/docs/documentation/apple/background
 Description: Background app refresh, silent push, and sync-on-resume for the Apple runtime.
 --------------------------------------------------------------------------------
 
@@ -7629,7 +7631,7 @@ The runtime listens for `UIApplication.willEnterForegroundNotification` and trig
 --------------------------------------------------------------------------------
 ### CloudKit Sync
 
-URL: https://datafn.21n.co/docs/documentation/apple/cloudkit
+URL: https://datafn.com/docs/documentation/apple/cloudkit
 Description: Replace the DataFn server with iCloud — same client API, Apple-managed sync.
 --------------------------------------------------------------------------------
 
@@ -7756,7 +7758,7 @@ In practice, most teams start with the DataFn server even for Apple-only apps. I
 --------------------------------------------------------------------------------
 ### CoreData Store
 
-URL: https://datafn.21n.co/docs/documentation/apple/coredata
+URL: https://datafn.com/docs/documentation/apple/coredata
 Description: Where DataFn keeps records on Apple devices, and how the schema maps to CoreData entities.
 --------------------------------------------------------------------------------
 
@@ -7880,7 +7882,7 @@ CoreData has no hard size limit, but practical performance degrades past ~1 GB. 
 --------------------------------------------------------------------------------
 ### Apple Runtime
 
-URL: https://datafn.21n.co/docs/documentation/apple
+URL: https://datafn.com/docs/documentation/apple
 Description: DataFn on iOS, macOS, watchOS, and tvOS — CoreData persistence, SwiftUI observation, and optional CloudKit sync.
 --------------------------------------------------------------------------------
 
@@ -7958,7 +7960,7 @@ Mutations from native Swift currently route through the WebView bridge in hybrid
 --------------------------------------------------------------------------------
 ### App Intents
 
-URL: https://datafn.21n.co/docs/documentation/apple/intents
+URL: https://datafn.com/docs/documentation/apple/intents
 Description: Expose DataFn records to Siri, Shortcuts, Focus filters, and Spotlight via App Intents.
 --------------------------------------------------------------------------------
 
@@ -8110,7 +8112,7 @@ When a Shortcut runs while the app is in the background, the intent's `perform()
 --------------------------------------------------------------------------------
 ### Observation
 
-URL: https://datafn.21n.co/docs/documentation/apple/observation
+URL: https://datafn.com/docs/documentation/apple/observation
 Description: DatafnRuntimeObservationSource and DatafnObservedQuery — how SwiftUI sees DataFn records.
 --------------------------------------------------------------------------------
 
@@ -8268,7 +8270,7 @@ Task.detached {
 --------------------------------------------------------------------------------
 ### Apple Runtime Setup
 
-URL: https://datafn.21n.co/docs/documentation/apple/setup
+URL: https://datafn.com/docs/documentation/apple/setup
 Description: Bootstrap DatafnAppleRuntime in an iOS or macOS app.
 --------------------------------------------------------------------------------
 
@@ -8447,7 +8449,7 @@ The most common failure is `schemaValidationFailed` — typically a mismatch bet
 --------------------------------------------------------------------------------
 ### SwiftUI Integration
 
-URL: https://datafn.21n.co/docs/documentation/apple/swiftui
+URL: https://datafn.com/docs/documentation/apple/swiftui
 Description: Drop DataFn observed queries into SwiftUI views, bind to forms, and handle navigation.
 --------------------------------------------------------------------------------
 
@@ -8629,7 +8631,7 @@ SwiftUI handles these — DataFn doesn't touch the view layer. The recommendatio
 --------------------------------------------------------------------------------
 ### WebView Bridge
 
-URL: https://datafn.21n.co/docs/documentation/apple/webview-bridge
+URL: https://datafn.com/docs/documentation/apple/webview-bridge
 Description: DatafnWKWebViewBridgeHost — let a WebView dispatch mutations into native CoreData.
 --------------------------------------------------------------------------------
 
@@ -8782,7 +8784,7 @@ On the JS side, set `window.__datafn.debug = true` to log every outgoing message
 --------------------------------------------------------------------------------
 ### Capabilities
 
-URL: https://datafn.21n.co/docs/documentation/capabilities
+URL: https://datafn.com/docs/documentation/capabilities
 Description: Opt-in resource behaviors for lifecycle fields, mutation operations, auto-filters, and sharing.
 --------------------------------------------------------------------------------
 
@@ -9009,7 +9011,7 @@ See [Relations](/docs/dfql/schema/relations) for relation capability behavior.
 --------------------------------------------------------------------------------
 ### Events
 
-URL: https://datafn.21n.co/docs/documentation/client/events
+URL: https://datafn.com/docs/documentation/client/events
 Description: Subscribe to mutation and sync events.
 --------------------------------------------------------------------------------
 
@@ -9161,7 +9163,7 @@ The event bus uses fault-tolerant dispatch. If a subscriber's handler throws an 
 --------------------------------------------------------------------------------
 ### Framework Adapters
 
-URL: https://datafn.21n.co/docs/documentation/client/frameworks
+URL: https://datafn.com/docs/documentation/client/frameworks
 Description: Connect DataFn to your UI framework with thin adapter packages.
 --------------------------------------------------------------------------------
 
@@ -9364,7 +9366,7 @@ Wraps `DatafnSignal<T>` into an RxJS Observable or Angular Signal.
 --------------------------------------------------------------------------------
 ### Key-Value Store
 
-URL: https://datafn.21n.co/docs/documentation/client/kv
+URL: https://datafn.com/docs/documentation/client/kv
 Description: A built-in key-value API with signals and debounce support.
 --------------------------------------------------------------------------------
 
@@ -9503,7 +9505,7 @@ prefsSignal.dispose();
 --------------------------------------------------------------------------------
 ### Mutations
 
-URL: https://datafn.21n.co/docs/documentation/client/mutations
+URL: https://datafn.com/docs/documentation/client/mutations
 Description: Execute core and capability-aware mutations from the DataFn client.
 --------------------------------------------------------------------------------
 
@@ -9706,7 +9708,7 @@ See [Events](/docs/documentation/client/events).
 --------------------------------------------------------------------------------
 ### Queries
 
-URL: https://datafn.21n.co/docs/documentation/client/queries
+URL: https://datafn.com/docs/documentation/client/queries
 Description: Query data from the server or local storage.
 --------------------------------------------------------------------------------
 
@@ -9882,7 +9884,7 @@ await client.table("sessions").query({
 --------------------------------------------------------------------------------
 ### Client Setup
 
-URL: https://datafn.21n.co/docs/documentation/client/setup
+URL: https://datafn.com/docs/documentation/client/setup
 Description: Create and configure a DataFn client instance.
 --------------------------------------------------------------------------------
 
@@ -10146,7 +10148,7 @@ await client.clear();
 --------------------------------------------------------------------------------
 ### Signals
 
-URL: https://datafn.21n.co/docs/documentation/client/signals
+URL: https://datafn.com/docs/documentation/client/signals
 Description: Reactive query results that auto-refresh on mutations.
 --------------------------------------------------------------------------------
 
@@ -10445,7 +10447,7 @@ See [Framework Adapters](/docs/documentation/client/frameworks) for full documen
 --------------------------------------------------------------------------------
 ### Tables
 
-URL: https://datafn.21n.co/docs/documentation/client/tables
+URL: https://datafn.com/docs/documentation/client/tables
 Description: Per-resource handles with capability-gated methods.
 --------------------------------------------------------------------------------
 
@@ -10596,7 +10598,7 @@ client.table("todos").subscribe(
 --------------------------------------------------------------------------------
 ### Transactions
 
-URL: https://datafn.21n.co/docs/documentation/client/transactions
+URL: https://datafn.com/docs/documentation/client/transactions
 Description: Execute atomic sequences of queries and mutations.
 --------------------------------------------------------------------------------
 
@@ -10733,7 +10735,7 @@ const result = await client.table("orders").transact({
 --------------------------------------------------------------------------------
 ### Database Adapters
 
-URL: https://datafn.21n.co/docs/documentation/database/adapters
+URL: https://datafn.com/docs/documentation/database/adapters
 Description: Connect DataFn to your database.
 --------------------------------------------------------------------------------
 
@@ -11019,7 +11021,7 @@ const adapter = drizzleAdapter({
 --------------------------------------------------------------------------------
 ### Drizzle Adapter
 
-URL: https://datafn.21n.co/docs/documentation/database/drizzle
+URL: https://datafn.com/docs/documentation/database/drizzle
 Description: Use Drizzle ORM as your database backend.
 --------------------------------------------------------------------------------
 
@@ -11178,7 +11180,7 @@ await adapter.transaction(async (trx) => {
 --------------------------------------------------------------------------------
 ### Database Transactions
 
-URL: https://datafn.21n.co/docs/documentation/database/transactions
+URL: https://datafn.com/docs/documentation/database/transactions
 Description: Atomic operations with database transactions.
 --------------------------------------------------------------------------------
 
@@ -11325,7 +11327,7 @@ try {
 --------------------------------------------------------------------------------
 ### Deploy to Cloudflare Workers
 
-URL: https://datafn.21n.co/docs/documentation/deploy/cloudflare-workers
+URL: https://datafn.com/docs/documentation/deploy/cloudflare-workers
 Description: Run DataFn at the edge with D1, Hyperdrive, or your own Postgres.
 --------------------------------------------------------------------------------
 
@@ -11523,7 +11525,7 @@ export default {
 --------------------------------------------------------------------------------
 ### Docker
 
-URL: https://datafn.21n.co/docs/documentation/deploy/docker
+URL: https://datafn.com/docs/documentation/deploy/docker
 Description: Run DataFn in a container. Foundation for self-hosted, on-prem, or bring-your-own platform.
 --------------------------------------------------------------------------------
 
@@ -11685,7 +11687,7 @@ docker buildx build --platform linux/amd64,linux/arm64 -t my-datafn-app:latest -
 --------------------------------------------------------------------------------
 ### Deploy to Fly.io
 
-URL: https://datafn.21n.co/docs/documentation/deploy/fly
+URL: https://datafn.com/docs/documentation/deploy/fly
 Description: Run DataFn on Fly with managed Postgres and multi-region scaling.
 --------------------------------------------------------------------------------
 
@@ -11861,7 +11863,7 @@ A single machine's WS handler only knows about its own connections. To broadcast
 --------------------------------------------------------------------------------
 ### Production & Deploy
 
-URL: https://datafn.21n.co/docs/documentation/deploy
+URL: https://datafn.com/docs/documentation/deploy
 Description: Where DataFn fits in your hosting stack and how to deploy it on the major platforms.
 --------------------------------------------------------------------------------
 
@@ -11917,7 +11919,7 @@ Before you ship, work through [Security → Production Checklist](/docs/document
 --------------------------------------------------------------------------------
 ### Kubernetes
 
-URL: https://datafn.21n.co/docs/documentation/deploy/kubernetes
+URL: https://datafn.com/docs/documentation/deploy/kubernetes
 Description: Production-shaped DataFn on Kubernetes with Helm, HPA, and graceful rollouts.
 --------------------------------------------------------------------------------
 
@@ -12158,7 +12160,7 @@ Prometheus scrapes `/metrics`; Grafana renders.
 --------------------------------------------------------------------------------
 ### Deploy to Railway
 
-URL: https://datafn.21n.co/docs/documentation/deploy/railway
+URL: https://datafn.com/docs/documentation/deploy/railway
 Description: Zero-config DataFn deploys on Railway with managed Postgres and Redis.
 --------------------------------------------------------------------------------
 
@@ -12313,7 +12315,7 @@ Railway prices by resource usage (CPU + memory + egress). A typical DataFn deplo
 --------------------------------------------------------------------------------
 ### Scaling
 
-URL: https://datafn.21n.co/docs/documentation/deploy/scaling
+URL: https://datafn.com/docs/documentation/deploy/scaling
 Description: Sequence store, WebSocket broadcasting, multi-region, and the bottleneck pattern.
 --------------------------------------------------------------------------------
 
@@ -12449,7 +12451,7 @@ A separate scaling axis: clients sync directly through CloudKit, no DataFn serve
 --------------------------------------------------------------------------------
 ### Deploy to Vercel
 
-URL: https://datafn.21n.co/docs/documentation/deploy/vercel
+URL: https://datafn.com/docs/documentation/deploy/vercel
 Description: Run DataFn on Vercel with Next.js or SvelteKit and a managed Postgres.
 --------------------------------------------------------------------------------
 
@@ -12587,9 +12589,199 @@ For all three, hosting on Fly or Railway is the answer.
 
 
 --------------------------------------------------------------------------------
+### Direct regional sync tickets
+
+URL: https://datafn.com/docs/documentation/direct-regional-sync
+Description: Canonical bootstrap, short-lived regional grants, HTTP and WebSocket renewal, and migration fencing.
+--------------------------------------------------------------------------------
+
+# Direct regional sync tickets
+
+With direct regional routing, the application authenticates the user at one canonical bootstrap endpoint. That endpoint resolves DataFn namespace placement and returns a signed ticket plus approved HTTP and WebSocket URLs. Subsequent queries, mutations and sync traffic go directly to the owning cell. Clients never construct a URL from a region ID.
+
+This feature is opt-in and provider neutral. Fixed `remote` clients, single-region servers, and [canonical gateway forwarding](./multi-region-gateway) continue to work. Direct tickets are a separate credential format from the single-request internal routing assertions; their keys and audiences should also be separate.
+
+## Bootstrap at the canonical application
+
+The application owns authentication and namespace authorization. `authenticate` must validate application credentials and derive an opaque subject and authorized namespace. Use a verified AuthFn consumer context or another authentication provider; do not take subject, namespace, region, epoch, or endpoint from request JSON or routing headers. AuthFn placement and DataFn namespace placement are separate authorities: resolve DataFn placement through the supplied directory.
+
+```ts
+import {
+  createDatafnEd25519RouteTicketSigner,
+  createDatafnRouteBootstrap,
+} from '@datafn/server';
+
+// Load this private key only in the canonical gateway deployment.
+const signer = createDatafnEd25519RouteTicketSigner({
+  activeKeyId: keyRing.activeKeyId,
+  privateKey: keyRing.privateKeyPem,
+});
+
+const bootstrap = createDatafnRouteBootstrap({
+  directory: placementDirectory,
+  signer,
+  issuer: 'https://app.example.com',
+  ttlMs: 60_000,
+  authenticate: authenticateApplicationSession,
+  authorize: identity => allowedDatafnScopes(identity),
+  // This registry is owned by the application, never the caller.
+  resolveEndpoint: placement => publicCells[placement.regionId],
+});
+
+// publicCells.eu, for example:
+// { httpUrl: 'https://eu-data.example.com/datafn',
+//   wsUrl: 'wss://eu-data.example.com/ws', audience: 'production:datafn:eu' }
+// Mount bootstrap on POST https://app.example.com/api/datafn-route.
+```
+
+`authorize` returns permitted scopes: `query`, `search`, `mutation`, `transact`, `seed`, `clone`, `pull`, `push`, `reconcile`, `custom`, or `websocket`. Custom plugin routes default to the `custom` scope. Grant only operations the application authorizes. Resource authorization still runs at execution time.
+
+Bootstrap rejects missing, moving, recovering, and tombstoned placements. It ignores client routing hints, returns `Cache-Control: no-store`, and includes only `version`, `httpUrl`, optional `wsUrl`, opaque `ticket`, `expiresAt`, and `renewAfter`. There is no diagnostic region ID or internal destination reference. If authentication supplies `expiresAt`, issuance is bounded by that deadline.
+
+## Regional cell configuration
+
+```ts
+import {
+  createDatafnEd25519RouteTicketVerifier,
+  datafnMultiRegionPlugin,
+  verifyDatafnRegionalTicketIdentity,
+  withDatafnRegionalCors,
+} from '@datafn/server';
+
+// Regions receive only public keys. Include previous public keys during rotation.
+const verifier = createDatafnEd25519RouteTicketVerifier({
+  publicKeys: keyRing.publicKeys,
+});
+const ticketRuntime = {
+  verifier,
+  issuer: 'https://app.example.com',
+  audience: 'production:datafn:eu',
+  allowedOrigins: ['https://app.example.com'],
+  isActive: claims => sessionRevocations.isActive(claims),
+  allowRequest: claims => regionalLimiter.allow(claims.subject, claims.ticketId),
+};
+
+const regional = datafnMultiRegionPlugin({
+  regionId: 'eu',
+  directory: permissionDirectory,
+  placement: {
+    directory: placementDirectory,
+    routeTickets: ticketRuntime,
+  },
+});
+
+// Build application context from verified ticket claims, then apply your
+// application-owned subject mapping and permission checks. The server's
+// authorize hook must still decide whether the requested data is allowed.
+const context = async request => {
+  const claims = await verifyDatafnRegionalTicketIdentity({
+    request, regionId: 'eu', runtime: ticketRuntime,
+  });
+  return resolveApplicationPrincipal(claims.subject, claims.namespace);
+};
+// Supply regional and context in createDatafnServer({ plugins: [regional], context, ... }).
+const handleRegionalHttp = withDatafnRegionalCors(
+  request => server.router.handle(request),
+  { origins: ['https://app.example.com'] },
+);
+```
+
+In ticket-only mode, the verified ticket supplies regional identity. The gateway must issue it only after authenticating and authorizing the user. The regional context provider may use `verifyDatafnRegionalTicketIdentity` before reading the subject or namespace; route admission then checks scope, current placement epoch, revocation, and rate limits before execution. A copied ticket is a bearer credential until expiry or revocation. `sessionBinding` is useful as a revocation lookup key but is not proof of browser possession when no second credential exists. The optional `authenticate` callback retains the older two-credential mode. Placement is read linearly on every admission; there is no stale placement cache in this mode. Unknown/unavailable placement fails closed, even when a ticket is cryptographically valid.
+
+Enabling `routeTickets` requires a ticket on external regional data routes. To accept canonical internal forwarding on the same cell, also configure the existing `assertionVerifier` and `replayStore`. Valid internal assertions retain their request/body/nonce checks. A request containing both credential types, or spoofed auxiliary internal routing headers, is rejected. Trusted in-process execution still performs placement validation without requiring a public ticket. The status endpoint remains a health endpoint and does not execute regional data operations.
+
+## Client bootstrap and renewal
+
+```ts
+import {
+  createDatafnClient,
+  createDatafnHttpRouteProvider,
+  MemoryStorageAdapter,
+} from '@datafn/client';
+
+const routeProvider = createDatafnHttpRouteProvider({
+  bootstrapUrl: 'https://app.example.com/api/datafn-route',
+  credentials: 'include', // The canonical origin alone receives the login cookie.
+});
+
+const client = createDatafnClient({
+  schema,
+  clientId: stableDeviceId,
+  storage: new MemoryStorageAdapter(['note']),
+  sync: {
+    routeProvider,
+    offlinability: true,
+    ws: true,
+    http: { credentials: 'omit' },
+  },
+});
+await client.sync.start();
+```
+
+Alternatively implement `DatafnRouteProvider` with `bootstrap()` and `renew()`, both calling the canonical authenticated application authority. Neither method receives a cached regional destination. HTTP-only clients can omit storage and `ws`; regional WebSocket sync requires a storage adapter for cursors and checkpoints. A route provider cannot be combined with a custom remote adapter or native sync ownership. `DefaultHttpTransport` is also exported for transport-only consumers; pass its `routeProvider` option and call `dispose()` during teardown.
+
+Each client owns one memory-only cache shared by HTTP and WebSocket sync. Concurrent refreshes are single-flight. Maximum-TTL validation allows up to five seconds of issuer/client clock skew; the descriptor expiry itself is never extended. Descriptors must provide a future `renewAfter`; already-due renewal timestamps are rejected. Renewal starts at 80% of lifetime by default; a failed renewal retries at bounded intervals while the old grant is valid. An independent deadline evicts the route even if renewal hangs. Reads also enforce expiry synchronously, superseding a pending renewal before starting a fresh bootstrap. Destroying the client discards the cache; switching authenticated context must recreate/destroy the client or use `switchContext` with the new provider. Nothing is stored in local storage, IndexedDB, native preferences, URLs, or sync checkpoints.
+
+## WebSocket adapter contract
+
+The browser offers `datafn-sync-v1` and `datafn-ticket.<opaque-ticket>` in ticket-only mode. A server adapter must:
+
+1. Verify the ticket and origin policy before deriving application context. For ticket-only mode, call `verifyDatafnRegionalTicketIdentity` with `websocket: true`.
+2. Call and await `server.websocketHandler.addRoutedClient(socket, authContext, handshakeRequest)` before registering application listeners or accepting data-plane work. Supply the original request with its subprotocol header and a socket that supports `close`.
+3. Negotiate only `datafn-sync-v1`; never reflect the ticket protocol in the selected protocol, logs, or errors.
+4. Forward messages/pongs/disconnection to the existing `websocketHandler` methods.
+
+Non-browser adapters can send the ticket in `x-datafn-route-ticket` instead of a subprotocol, but must not send both. Query-string tickets are never read. See the executable two-region fixture in `datafn/server/src/__tests__/regional-tickets-e2e.test.ts` for an adapter using Node HTTP and `ws`.
+
+In two-credential mode, admission returns retryable ticket expiry when a grant outlives the independently authenticated session deadline. In ticket-only mode, the gateway bounds each grant by the authenticated session deadline when it issues the ticket; regions can reject a revoked session earlier through `isActive`. Sockets pin their region, epoch, and ticket deadline. Expiry closes the socket with `4511`; migration closes it with `4510`. The client goes back through canonical bootstrap before using a stale/expired route. HTTP renewal also replaces a socket's pinned grant via reconnect. Every socket open triggers a pull from the saved checkpoints to recover writes missed during the connection gap; if an older pull is running, recovery queues behind it and reads the updated checkpoints. Temporary admission throttling uses close code `4503` and retries with capped exponential backoff, even when the upgrade opened before admission rejected it. Transient transport closes and temporary throttling reuse a still-valid shared route, so HTTP and reconnects remain available during gateway outages until expiry. An HTTP-only descriptor skips WebSocket startup without a reconnect loop; HTTP sync remains available, and descriptor renewal can enable WebSocket support later. WebSocket authentication protocols are resolved only when a socket endpoint is available. Terminal authentication/revocation rejection uses `4403` (or adapter authentication code `4401`) and stops automatic reconnect; after reauthentication create a new client/context. `revokeRouteTicket(ticketId)` closes matching admitted sockets immediately in one process. Broadcast that command to every cell process holding the ticket for cluster-wide immediate revocation.
+
+## Security profile and operations
+
+Version 1 deliberately chooses a reusable short-lived bearer grant for HTTP and WS admission, with separate operation scopes, not per-request signatures or a one-shot connection nonce. TLS, subject/namespace binding, and short expiry bound its reuse. In ticket-only mode, ticket theft permits replay until expiry or revocation. There is no proof-of-possession claim in this profile. Do not reuse DATA-1's nonce store: legitimate concurrent HTTP requests and socket reconnects reuse this grant. Existing mutation IDs provide application idempotency, not ticket replay prevention.
+
+The Ed25519 signer and verifier use a domain-separated signing input with protected `typ`, algorithm and `kid`. Keep the private key at the canonical gateway and distribute only public verification keys to cells. The older HS256 helper remains available for deployments that deliberately share a secret; every holder of that secret can mint tickets. All custom verifiers must authenticate their claims; the regional runtime still enforces claim shape, bindings, maximum lifetime, and timing.
+
+| Concern | Policy |
+| --- | --- |
+| Lifetime | Default 60 seconds, maximum 5 minutes; all timestamps are Unix milliseconds. Bootstrap requires a configured TTL of at least 1 second. |
+| Clock skew | Default 5 seconds for future issuance/not-before, configurable from 0 to 30 seconds. Expiry is strict and never extended. Monitor clock drift. |
+| Revocation | Default bounded expiry. `isActive` checks ticket/session revocation at each HTTP request and WS admission; it is not background introspection of existing sockets. Use `revokeRouteTicket` on all processes for immediate socket revocation. |
+| Key rotation | Distribute the new public key to regional verifiers, switch the gateway signer to that key ID, then retire the previous public key after its grants expire. Removing a key rejects later admissions immediately; close existing sockets with the revocation/fencing API for emergency invalidation. |
+| Audience | Unique per environment and regional endpoint; never share production and test audiences/keys. |
+| Browser security | Exact origin allowlists; a regional Origin header is denied unless explicitly allowed. The HTTP client uses `credentials: omit`, a ticket header, and refuses redirects. No regional cookies or credentialed CORS. |
+| CSRF | Regional calls require an explicit ticket header or WS subprotocol, and the CORS wrapper rejects cookies. Canonical cookie-based bootstrap implementations must add their existing CSRF and Origin protections; the helper's POST-only policy is not a CSRF token check. |
+| Preflight | The CORS wrapper allows GET, POST, PATCH, and DELETE and answers valid OPTIONS without querying placement or invoking the data handler. It returns no placement details and never uses wildcard origins. |
+| Exposure | Configure TLS, ingress/body/connection limits, rate limiting and DDoS controls on every public cell. `allowRequest` integrates a deployment-owned limiter before execution. |
+| Privacy | Redact `x-datafn-route-ticket`, Authorization and Sec-WebSocket-Protocol in all proxies and logs. Grant callbacks emit only event type and error code. Hash subjects before adding application telemetry; never log tokens or raw namespaces. |
+
+In-flight operations admitted before expiry may complete after expiry. There is no automatic cancellation or replay of an already executing mutation.
+
+## Failures, retries, and migration
+
+| Failure | Client behavior |
+| --- | --- |
+| `DATAFN_ROUTE_TICKET_EXPIRED` (401), placement mismatch/moving (409) | Invalidate the route and allow at most one canonical re-bootstrap/retry when `executionStarted: false` is explicitly present. |
+| `DATAFN_ROUTE_RATE_LIMITED` (429), WS `4503` | Retryable throttling. WS retries use the configured capped backoff; no authorization-terminal close code is used. |
+| Invalid/forged/scope mismatch, revoked ticket, denied identity | Fail without a transport replay or application-auth retry loop. |
+| Gateway outage | Existing direct routes/sockets may continue only until strict expiry. New bootstrap fails with `DATAFN_ROUTE_BOOTSTRAP_UNAVAILABLE`; there is no region fallback. |
+| Regional network failure | `DATAFN_REGIONAL_ENDPOINT_UNAVAILABLE`; never choose another cell and never automatically replay an ambiguous HTTP mutation. |
+| Directory outage | Regional admission fails closed with `DATAFN_PLACEMENT_UNAVAILABLE`. A ticket alone is not proof of current ownership. |
+| Invalid descriptor | `DATAFN_ROUTE_DESCRIPTOR_INVALID`; reject insecure URLs, URL credentials/query/fragment, unsupported versions and invalid deadlines. HTTPS/WSS is required except loopback development endpoints. |
+
+Transport retries preserve the exact mutation body and mutation IDs. Offline push retains its existing deduplication-based retry contract; terminal server failures stop that attempt. Keep mutation IDs, records, change history, sequence counters, seed state, and checkpoints together during migration. The DATA-1 migration hooks must fence source sockets/writes, drain outboxes, copy and validate that state, then advance placement. Old tickets cannot route to the target; they fail the region/epoch check and require bootstrap. If the copy cannot preserve sync continuity, fail migration validation explicitly instead of activating an empty target or silently resetting a cursor.
+
+For rollout, first mint/verify shadow grants, then enable `sync.routeProvider` for a limited cohort and compare regional acceptance/errors, bootstrap failures, renewal load, and ingress latency. Rollback client cohorts to the fixed canonical `remote` while retaining cell fencing; never roll back placement epochs. Existing direct grants can expire naturally or be revoked with key rotation plus socket closure. Production deployment and downstream product rollout remain application-owned.
+
+## Validation
+
+The repository's real HTTP/WS two-region conformance fixture verifies that the gateway receives bootstrap only, direct reads/writes and pull/push/reconcile succeed, a fenced migration preserves records/cursors/idempotency, a public client re-bootstraps on 4510, and gateway outage stops traffic at expiry. Ticket tests cover claim/algorithm/key tampering, key rotation, scope/subject/session/namespace/region mismatch, clock bounds, revocation, spoofed headers, CORS, and every built-in operation before authorization. Client tests cover concurrent refresh, hanging renewal, stale completions, invalid descriptors, bounded retries, and ambiguous mutation timeouts.
+
+
+
+--------------------------------------------------------------------------------
 ### SPV2 Migration
 
-URL: https://datafn.21n.co/docs/documentation/migrations/spv2
+URL: https://datafn.com/docs/documentation/migrations/spv2
 Description: Roll out Sharing Permissions V2 safely with backfill, dual-read, dual-write, and rollback controls.
 --------------------------------------------------------------------------------
 
@@ -12646,7 +12838,7 @@ This supports no-downtime upgrades for older clients while migration dashboards 
 --------------------------------------------------------------------------------
 ### Multi-region gateway routing
 
-URL: https://datafn.21n.co/docs/documentation/multi-region-gateway
+URL: https://datafn.com/docs/documentation/multi-region-gateway
 Description: Tenant placement, regional cell fencing, canonical ingress, safe retries, and namespace migration.
 --------------------------------------------------------------------------------
 
@@ -12655,6 +12847,8 @@ Description: Tenant placement, regional cell fencing, canonical ingress, safe re
 DataFn supports an opt-in canonical-gateway model for applications that keep each tenant namespace in one writable regional cell. Clients keep one `remote` and `wsUrl`; regional destinations remain internal deployment handles.
 
 This capability does not provide active-active writes or automatic failover to an empty region. Existing single-region configurations and permission-directory grant indexing are unchanged unless a placement runtime is configured.
+
+For high-frequency sync, [direct regional sync tickets](./direct-regional-sync) provide an opt-in canonical bootstrap followed by direct regional HTTP/WebSocket traffic, with short-lived grants and the same placement fences.
 
 ## Separate ownership from permission projections
 
@@ -12745,6 +12939,8 @@ The gateway strips caller-supplied internal headers, preserves the method, compl
 
 On an authenticated, guaranteed pre-execution `DATAFN_REGION_MISMATCH`, the gateway invalidates its cache, re-resolves placement, and retries exactly once. It does not replay ambiguous timeouts or responses produced after execution began. Existing mutation IDs and idempotency keys remain authoritative for application-level retries.
 
+Resource names used for authorization or audit must come from `extractStructuralResourceSelectors` in `@datafn/core`. That API inspects only protocol selector positions and ignores application fields named `resource` or `resources`. It does not choose a region; pair it with the placement directory above. See [Structural resource selectors](/docs/documentation/security/resource-selectors).
+
 ## Errors and availability
 
 | Code | Meaning | Default behavior |
@@ -12768,6 +12964,8 @@ When a move starts, call `fenceNamespace(namespace)` (or provide the new minimum
 
 ## Migration protocol
 
+Use `resolveNamespaceStoragePlan` from `@datafn/server` to copy, verify, fence, and drain every DataFn-owned namespace relation. Do not scan PostgreSQL catalogs or hard-code `__datafn_*` names in application code. See [Namespace storage contract](/docs/documentation/namespace-storage).
+
 `migrateDatafnNamespace` implements the minimal fenced order:
 
 1. CAS the active placement to `moving` at a newer epoch.
@@ -12789,9 +12987,142 @@ Run shadow placement checks before enforcement, enable gateway routing for test 
 
 
 --------------------------------------------------------------------------------
+### Namespace storage contract
+
+URL: https://datafn.com/docs/documentation/namespace-storage
+Description: Canonical inventory of DataFn-owned namespace tables for migration, backup, fencing, and ownership checks.
+--------------------------------------------------------------------------------
+
+# Namespace storage contract
+
+DataFn owns both application resource rows and framework-internal namespace state. Tenant moves, backups, residency checks, write fences, outbox drains, and checksums must operate on that storage as one unit.
+
+Do not discover this inventory from `information_schema` or by hard-coding `__datafn_*` table names. Ask DataFn for the installed contract.
+
+## Logical manifest
+
+`@datafn/core` publishes a versioned manifest. It names stable roles (`resource`, `sync_changes`, `permission_directory_outbox`, …), selector semantics (`resource_ns` vs `internal_namespace`), and which operations each role participates in: `copy`, `verify`, `cleanup`, `fence`, `drain`, and `backup`.
+
+```ts
+import {
+  DATAFN_NAMESPACE_STORAGE_MANIFEST,
+  DATAFN_NAMESPACE_STORAGE_MANIFEST_VERSION,
+  namespaceStorageParticipates,
+} from "@datafn/core";
+
+DATAFN_NAMESPACE_STORAGE_MANIFEST.manifestVersion;
+// "1"
+
+namespaceStorageParticipates("permission_directory_outbox", "drain");
+// true — drain this role before cutover
+
+namespaceStorageParticipates("resource", "drain");
+// false — resource tables are copied and fenced, not drained
+```
+
+The manifest version is independent of the npm package version. Mixed or unknown manifest/schema versions fail explicitly.
+
+## PostgreSQL plan
+
+`@datafn/server` resolves the logical manifest against the installed database and the DataFn schema. Resource tables use `__ns`. DataFn internal ledgers use `namespace`. Sharing tables (`permissions_global`, principal memberships/hierarchy, legacy per-resource permissions) use `__ns`.
+
+```ts
+import {
+  composeNamespaceStoragePlan,
+  drainNamespaceStorage,
+  inspectPostgresNamespaceStorage,
+  resolveNamespaceStoragePlan,
+  selectNamespaceStorageEntries,
+} from "@datafn/server";
+
+const catalog = await inspectPostgresNamespaceStorage((sql) =>
+  pool.query(sql).then((result) => result.rows),
+);
+
+const plan = resolveNamespaceStoragePlan({
+  schema,
+  catalog,
+});
+
+const copy = selectNamespaceStorageEntries(plan, "copy");
+const cleanup = selectNamespaceStorageEntries(plan, "cleanup");
+const fence = selectNamespaceStorageEntries(plan, "fence");
+const drain = selectNamespaceStorageEntries(plan, "drain");
+
+for (const entry of copy) {
+  await copyNamespaceRows({
+    relation: entry.quotedRelation,
+    namespaceColumn: entry.quotedNamespaceColumn,
+    namespace,
+  });
+}
+```
+
+`inspectPostgresNamespaceStorage` runs DataFn-owned catalog SQL. Application code supplies a query callback; it must not write its own catalog heuristics.
+
+Each plan entry includes a safely quoted relation and namespace column for copy/checksum/cleanup. Prefer `logicalRole` over physical names when branching on behavior.
+
+## Drain and fence
+
+Permission-directory outbox rows participate in **drain** and **fence**. Ordinary resource and internal rows participate in copy, verify, cleanup, fence, and backup, but not drain.
+
+```ts
+await drainNamespaceStorage({
+  adapter: regionalDatabase,
+  plan,
+  namespace,
+  runtime: multiRegionRuntime,
+});
+```
+
+Request-level write fencing during a move remains `migrateDatafnNamespace` plus `fenceNamespace` on the WebSocket manager. Use `selectNamespaceStorageEntries(plan, "fence")` for physical DML fences so a new DataFn ledger cannot be omitted.
+
+Drain mutations against the outbox must remain possible after the fence is raised so a write that committed just before cutover can settle.
+
+## Application tables
+
+Compose product-owned workspace tables with the DataFn plan. DataFn does not claim those relations.
+
+```ts
+const tenantPlan = composeNamespaceStoragePlan(plan, [
+  { relation: "skills", namespaceColumn: "workspace_id", copyOrder: 10 },
+]);
+```
+
+Collision with a DataFn-owned relation fails closed.
+
+## Compatibility
+
+- The API is additive. Existing servers keep working until they call the resolver.
+- Unknown required storage that appears in the installed schema (`__datafn_*` with `namespace`, or any relation with `__ns` that DataFn owns) blocks plan creation with `DATAFN_NAMESPACE_STORAGE_UNKNOWN`.
+- Missing selector columns and missing required resource/join tables fail with `DATAFN_NAMESPACE_STORAGE_INCOMPLETE`.
+- On-demand internal tables that have not been created yet are omitted from the executable plan (they are empty).
+- Non-PostgreSQL catalogs throw `DATAFN_NAMESPACE_STORAGE_UNSUPPORTED`.
+- Rolling upgrades must negotiate manifest version `1` or refuse the operation. Do not keep a partial plan.
+
+This is the supported integration point for migration, backup, residency, and physical-ownership tooling. See also [Multi-region gateway routing](/docs/documentation/multi-region-gateway).
+
+### Installed-schema and drain guarantees
+
+Catalog inspection reads both columns and valid, non-partial PostgreSQL indexes.
+A supplied catalog must include index metadata: namespace-only table stubs are
+rejected. Plans require operational columns, canonical generated physical column
+names, and a primary row identity on `id` or `(namespace selector, id)`.
+Expression/partial/invalid indexes cannot certify that identity. Custom physical
+mappings outside these conventions fail closed instead of producing a partial plan.
+This is structural validation, not a live tenant-migration rehearsal.
+
+Namespace draining respects unexpired pre-commit and retry leases. `pending` is
+an existence indicator (0 or 1), including rows still owned by active mutations;
+never treat `processed: 0` as proof of quiescence. Fence new writes, settle active
+writers, and retry until pending is zero before copying or cleaning up storage.
+
+
+
+--------------------------------------------------------------------------------
 ### Namespaces
 
-URL: https://datafn.21n.co/docs/documentation/namespaces
+URL: https://datafn.com/docs/documentation/namespaces
 Description: Isolate data between tenants, users, or any grouping with composable namespace strings.
 --------------------------------------------------------------------------------
 
@@ -12900,6 +13231,8 @@ The `__ns` column is managed entirely by the framework. Your application code ne
 ### Internal Operations
 
 Internal CRUD operations (system tables like change tracking and idempotency) bypass the namespace wrapper. This ensures that server-managed infrastructure data is not scoped to individual namespaces.
+
+Those tables still store a `namespace` column. Use the [namespace storage contract](/docs/documentation/namespace-storage) to copy, verify, fence, and drain them together with resource rows (`__ns`) instead of querying PostgreSQL catalogs.
 
 ## Server: `namespaceProvider`
 
@@ -13140,7 +13473,7 @@ await client.transact({
 --------------------------------------------------------------------------------
 ### Client Search Plugin
 
-URL: https://datafn.21n.co/docs/documentation/plugins/client-search
+URL: https://datafn.com/docs/documentation/plugins/client-search
 Description: Built-in plugin for client-side full-text search with provider-backed or legacy MiniSearch mode.
 --------------------------------------------------------------------------------
 
@@ -13259,7 +13592,7 @@ If the resource hydration state is not `"ready"`, the hook passes the query thro
 --------------------------------------------------------------------------------
 ### Custom Plugins
 
-URL: https://datafn.21n.co/docs/documentation/plugins/custom-plugins
+URL: https://datafn.com/docs/documentation/plugins/custom-plugins
 Description: Build your own DataFn plugins.
 --------------------------------------------------------------------------------
 
@@ -13505,7 +13838,7 @@ const client = createDatafnClient({
 --------------------------------------------------------------------------------
 ### Plugin System
 
-URL: https://datafn.21n.co/docs/documentation/plugins/overview
+URL: https://datafn.com/docs/documentation/plugins/overview
 Description: Extend DataFn with pluggable hooks.
 --------------------------------------------------------------------------------
 
@@ -13663,7 +13996,7 @@ afterSync(ctx, payload, result, ...args) {
 --------------------------------------------------------------------------------
 ### Field-Level Authorization
 
-URL: https://datafn.21n.co/docs/documentation/security/field-level-authz
+URL: https://datafn.com/docs/documentation/security/field-level-authz
 Description: Declarative per-field access control via the permissions policy on each resource.
 --------------------------------------------------------------------------------
 
@@ -13799,7 +14132,7 @@ authorize: async (ctx, action, payload) => {
 --------------------------------------------------------------------------------
 ### Security
 
-URL: https://datafn.21n.co/docs/documentation/security
+URL: https://datafn.com/docs/documentation/security
 Description: DataFn's security model: layered defenses from rate limiting through field-level authorization.
 --------------------------------------------------------------------------------
 
@@ -13810,7 +14143,8 @@ flowchart LR
     A[Request] --> B[Rate Limit]
     B --> C[Payload Limit]
     C --> D[JSON Parse]
-    D --> E[authorize]
+    D --> S[Structural Protocol Parse]
+    S --> E[authorize]
     E --> F[Schema Validation]
     F --> G[Field-Level Authz]
     G --> H[Namespace Filter]
@@ -13822,11 +14156,14 @@ flowchart LR
 | [Rate limit](/docs/documentation/security/rate-limiting) | Drop request floods before any parsing | `429` (no envelope; transport-level) |
 | [Payload limit](/docs/documentation/security/payload-limits) | Reject oversized bodies | `LIMIT_EXCEEDED` |
 | JSON parse | Reject malformed bodies before auth | `DFQL_INVALID` |
+| [Structural selectors](/docs/documentation/security/resource-selectors) | Derive protocol resource names for `authorize` and gateway routing | `DFQL_INVALID` / `DATAFN_UNSUPPORTED_PROTOCOL_VERSION` |
 | [`authorize`](/docs/documentation/security/request-authz) | Coarse-grained "is this caller allowed to do this kind of action" | `FORBIDDEN` |
 | Schema validation | Validate the DFQL against the schema | `DFQL_INVALID` / `DFQL_UNKNOWN_*` |
 | [Field-level authz](/docs/documentation/security/field-level-authz) | Per-field `permissions` policy on each resource | `FORBIDDEN` |
 | [Namespace filter](/docs/documentation/security/namespace-isolation) | Row-level isolation for multi-tenancy | (transparent — rows just don't return) |
 | Execute | Hit the database | — |
+
+The server parses structural protocol selectors before authorization and rejects unsupported versions. Schema and operation validation follows authorization. REST wrappers derive their structural resource from the URL; record fields are not selectors.
 
 ## Design principles
 
@@ -13857,7 +14194,7 @@ See [Production Checklist](/docs/documentation/security/production-checklist) fo
 --------------------------------------------------------------------------------
 ### Input Sanitization
 
-URL: https://datafn.21n.co/docs/documentation/security/input-sanitization
+URL: https://datafn.com/docs/documentation/security/input-sanitization
 Description: Prototype pollution, path traversal, and type confusion — what DataFn rejects.
 --------------------------------------------------------------------------------
 
@@ -13946,7 +14283,7 @@ There is no off-switch. Sanitization runs on every mutation. If a test needs to 
 --------------------------------------------------------------------------------
 ### Layered Security Model
 
-URL: https://datafn.21n.co/docs/documentation/security/layered-model
+URL: https://datafn.com/docs/documentation/security/layered-model
 Description: How DataFn's seven defense layers chain together — and why each layer exists.
 --------------------------------------------------------------------------------
 
@@ -14076,7 +14413,7 @@ DataFn ships the layers it's correctly positioned to ship. Everything else is yo
 --------------------------------------------------------------------------------
 ### Namespace Isolation
 
-URL: https://datafn.21n.co/docs/documentation/security/namespace-isolation
+URL: https://datafn.com/docs/documentation/security/namespace-isolation
 Description: Row-level multi-tenancy that's automatic, transparent, and impossible to bypass through DFQL.
 --------------------------------------------------------------------------------
 
@@ -14193,7 +14530,7 @@ There's no harm in shipping namespaces from day one even for single-tenant apps.
 --------------------------------------------------------------------------------
 ### Payload Limits
 
-URL: https://datafn.21n.co/docs/documentation/security/payload-limits
+URL: https://datafn.com/docs/documentation/security/payload-limits
 Description: Body size, complexity caps, and per-request resource limits.
 --------------------------------------------------------------------------------
 
@@ -14287,7 +14624,7 @@ Today, limits are server-wide. There's no `tasks.maxLimit` knob. For resource-sp
 --------------------------------------------------------------------------------
 ### Production Checklist
 
-URL: https://datafn.21n.co/docs/documentation/security/production-checklist
+URL: https://datafn.com/docs/documentation/security/production-checklist
 Description: The minimum security configuration for a production DataFn deployment.
 --------------------------------------------------------------------------------
 
@@ -14295,7 +14632,9 @@ Don't ship DataFn to production without ticking every item below. They're indepe
 
 ## Server configuration
 
-- [ ] `authorize` callback verifies authentication. Default: anonymous → `false`.
+- [ ] `authorize` requires a verified authenticated session for protected actions. Selector extraction does not authenticate callers.
+
+- [ ] Resource gating in `authorize` uses `extractStructuralResourceSelectors` rather than reading `payload.resource` or recursively searching JSON.
 - [ ] `allowUnknownResources` is `false` (the default — do not override).
 - [ ] `debug` is `false` (set explicitly or rely on `NODE_ENV=production`).
 - [ ] `limits.maxPayloadBytes` is set to a value appropriate for your records (default 5 MB is conservative).
@@ -14371,6 +14710,7 @@ Don't ship DataFn to production without ticking every item below. They're indepe
 ## See also
 
 - [Layered model](/docs/documentation/security/layered-model)
+- [Structural resource selectors](/docs/documentation/security/resource-selectors)
 - [Server Setup](/docs/documentation/server/setup)
 - [Production / Deploy](/docs/documentation/deploy)
 
@@ -14379,7 +14719,7 @@ Don't ship DataFn to production without ticking every item below. They're indepe
 --------------------------------------------------------------------------------
 ### Rate Limiting
 
-URL: https://datafn.21n.co/docs/documentation/security/rate-limiting
+URL: https://datafn.com/docs/documentation/security/rate-limiting
 Description: Per-endpoint rate limits backed by Redis or memory.
 --------------------------------------------------------------------------------
 
@@ -14524,7 +14864,7 @@ observability: {
 --------------------------------------------------------------------------------
 ### Request Authorization
 
-URL: https://datafn.21n.co/docs/documentation/security/request-authz
+URL: https://datafn.com/docs/documentation/security/request-authz
 Description: The authorize callback — coarse-grained gating per request.
 --------------------------------------------------------------------------------
 
@@ -14536,9 +14876,11 @@ Description: The authorize callback — coarse-grained gating per request.
 authorize: async (
   ctx: TContext,            // your HTTP framework's context
   action: DatafnAction,     // "status" | "query" | "mutation" | "transact" | "seed" | "clone" | "pull" | "push" | "reconcile" | "search"
-  payload: unknown,         // the parsed JSON body (null for GETs)
+  payload: unknown,         // protocol payload; REST uses { resource } from the URL
 ) => boolean | Promise<boolean>
 ```
+
+For REST routes, both authorization hooks receive `{ resource }` derived from the matched URL. The original body remains available as `ctx.parsedBody` for execution and any application-specific policy checks.
 
 Return `true` to allow, `false` to deny. Throwing has the same effect as `false`.
 
@@ -14554,7 +14896,7 @@ Return `true` to allow, `false` to deny. Throwing has the same effect as `false`
 - Row-level filtering (use [namespaces](/docs/documentation/security/namespace-isolation))
 - Capability-driven sharing rules (the `shareable` capability handles these directly)
 
-`authorize` runs before the schema is validated, which means `payload` is untrusted JSON. Don't treat field values as authoritative until DataFn has validated them.
+`authorize` runs before the schema is validated, which means `payload` is untrusted JSON. Don't treat field values as authoritative until DataFn has validated them. For protocol resource names, use [structural resource selectors](/docs/documentation/security/resource-selectors) instead of walking the payload.
 
 ## Minimum production callback
 
@@ -14579,19 +14921,35 @@ authorize: async (ctx, action) => {
 
 ## Per-resource gating
 
-The `payload` includes the target resource for `query`, `mutation`, and `transact`. Use it to deny entire resources by role:
+Do not read `payload.resource` or recursively search the body. Application records and filters may contain fields named `resource` or `resources`. Use the canonical extractor:
 
 ```typescript
+import { extractStructuralResourceSelectors } from "@datafn/server";
+// Application-owned module: export the same schema passed to createDatafnServer.
+import { schema } from "./server-schema";
+
 authorize: async (ctx, action, payload) => {
   if (!ctx.session?.userId) return false;
-  if (action === "mutation" && payload?.resource === "billing") {
-    return ctx.session.roles.includes("billing-admin");
+  if (action === "status") return true;
+
+  // Parse first so scoped search/clone/pull requests use resource permissions.
+  const extracted = extractStructuralResourceSelectors(action, payload, { schema });
+  if (!extracted.ok) return false;
+  if (action === "seed") return ctx.session.isAdmin;
+  if (extracted.result.selectors.length === 0) {
+    // Global forms need a separate policy; empty batch/no-op forms are denied here.
+    return ["search", "clone", "pull"].includes(action) && (ctx.session.isAdmin);
   }
-  return true;
+
+  return extracted.result.selectors.every((resource) =>
+    ctx.session.allowedResources.includes(resource),
+  );
 }
 ```
 
-For batch payloads (`mutation` or `transact`), `payload` may be an array; check every element if you want strict gating.
+This is a coarse preflight, not transitive authorization: relations and nested selects can access resources beyond the anchors. Execution-time permissions must still enforce access. Broad operations require their own policy, as above.
+
+See [Structural resource selectors](/docs/documentation/security/resource-selectors) for batch, transaction, search, and sync envelopes.
 
 ## Throwing for richer errors
 
@@ -14660,7 +15018,7 @@ describe("authorize", () => {
   it("denies anonymous", async () => {
     const server = await makeTestServer({ authorize: (ctx) => Boolean(ctx.session?.userId) });
     const env = await server.router.fetch(
-      new Request("http://t/datafn/query", { method: "POST", body: "{}" }),
+      new Request("http://t/datafn/query", { method: "POST", body: JSON.stringify({ resource: "tasks" }) }),
     );
     const body = await env.json();
     expect(body.ok).toBe(false);
@@ -14672,15 +15030,153 @@ describe("authorize", () => {
 ## See also
 
 - [Field-level authorization](/docs/documentation/security/field-level-authz)
+- [Structural resource selectors](/docs/documentation/security/resource-selectors)
 - [Namespace isolation](/docs/documentation/security/namespace-isolation)
 - [AuthFn integration recipe](/docs/recipes/authfn-integration)
 
 
 
 --------------------------------------------------------------------------------
+### Structural Resource Selectors
+
+URL: https://datafn.com/docs/documentation/security/resource-selectors
+Description: Canonical API for deriving protocol-level resource selectors used by gateways and authorization plugins.
+--------------------------------------------------------------------------------
+
+Gateways and authorization plugins must know which DataFn resources a request **structurally** addresses before dispatch or policy evaluation. Those selectors live on the DFQL protocol envelope. Application records and filters can independently contain fields named `resource` or `resources`.
+
+Do not recursively search request JSON. Use `extractStructuralResourceSelectors` from `@datafn/core` (also re-exported from `@datafn/server`). This is the supported security-sensitive integration point.
+
+## Why this API exists
+
+A generic recursive scan cannot distinguish protocol structure from domain data. A consumer-maintained shallow scan avoids some false positives but drifts when DataFn adds envelope shapes. Selector extraction belongs next to request parsing so both share one versioned protocol contract.
+
+Returned selectors are **inputs to product policy**. The extractor does not grant access, choose a regional cell, or evaluate permissions.
+
+## Parse, then visit
+
+Prefer the two composable layers:
+
+1. `parseDatafnRequest(action, payload)` validates selector-bearing protocol structure into a discriminated envelope. Schema and operation semantics are validated separately before execution.
+2. `collectStructuralResourceSelectors(parsed)` visits that envelope exhaustively.
+
+`extractStructuralResourceSelectors(action, payload)` runs both steps for gateway preflight.
+
+```typescript
+import {
+  extractStructuralResourceSelectors,
+  unwrapEnvelope,
+} from "@datafn/core";
+
+const selection = unwrapEnvelope(
+  extractStructuralResourceSelectors("query", payload),
+);
+// selection.protocolVersion === "1"
+// selection.selectors is a deduplicated, encounter-ordered list
+```
+
+## Envelope coverage
+
+The parser accepts every current `DatafnRequestAction` and inspects only protocol-defined selector positions:
+
+| Action | Selector positions | Selector-less? |
+| --- | --- | --- |
+| `query` | `resource` on the query or each batch entry | no — missing `resource` is `DFQL_INVALID` |
+| `mutation` | `resource` on the mutation or each batch entry | no |
+| `transact` | `steps[].resource`, `steps[].query.resource`, `steps[].mutation.resource` | empty `steps` is valid |
+| `search` | `resources[]`, keys of `filters`, keys of `temporalByResource` (filter keys never scope an omitted `resources`) | yes — omitted `resources` searches all |
+| `clone` | `tables[]`, `page.table`, all returned join endpoints when `includeJoins` is enabled (requires trusted schema) | yes — omitted `tables` clones all |
+| `pull` | keys of `cursors`, excluding `__datafn_actor_feed__` | yes — global `cursor` pull |
+| `push` | `mutations[].resource` | no — `mutations` is required |
+| `reconcile` | `resources[]`, plus both endpoints of returned joins touching those resources when `includeJoins` is enabled (requires trusted schema) | no |
+| `status`, `seed` | none | yes |
+
+Application record properties, mutation values, filter operands, and nested domain JSON are ignored even when they use the names `resource` or `resources`.
+
+```typescript
+extractStructuralResourceSelectors("query", {
+  resource: "skills",
+  filters: { metadata: { resource: "workspaces" } },
+  record: { resources: ["workspaceMemberships"] },
+});
+// => { protocolVersion: "1", selectors: ["skills"] }
+```
+
+Batched queries, mutations, and transaction steps are included:
+
+```typescript
+extractStructuralResourceSelectors("transact", {
+  steps: [
+    { query: { resource: "skills" } },
+    { mutation: { resource: "contextNotes", operation: "insert", record: { resource: "nope" } } },
+    { resource: "skillContexts" },
+  ],
+});
+// => { protocolVersion: "1", selectors: ["skills", "contextNotes", "skillContexts"] }
+```
+
+## Authorization preflight
+
+Selectors are structural anchors, **not the complete set of resources execution may access**. Relation queries, nested select tokens and mutation relations can reach other resources. Clone with joins can include join tables beyond explicit `tables`. Keep execution-time resource, relation, field and row policies enabled; this callback is only an additional coarse gate. Broad operations in this example require an administrator. Do not infer permission from an empty selector set.
+
+
+`authorize` still receives untrusted JSON. Derive selectors from the canonical API instead of reading `payload.resource` by hand:
+
+```typescript
+import { extractStructuralResourceSelectors } from "@datafn/server";
+// Application-owned module: export the same schema passed to createDatafnServer.
+import { schema } from "./server-schema";
+
+authorize: (ctx, action, payload) => {
+  if (!ctx.session?.userId) return false;
+  if (action === "status") return true;
+
+  // Parse first so scoped search/clone/pull requests use resource permissions.
+  const extracted = extractStructuralResourceSelectors(action, payload, { schema });
+  if (!extracted.ok) return false;
+  if (action === "seed") return ctx.session.role === "admin";
+  if (extracted.result.selectors.length === 0) {
+    // Global forms need a separate policy; empty batch/no-op forms are denied here.
+    return ["search", "clone", "pull"].includes(action) && (ctx.session.role === "admin");
+  }
+
+  return extracted.result.selectors.every((resource) =>
+    ctx.session.allowedResources.includes(resource),
+  );
+}
+```
+
+Empty selector sets are meaningful: `status` and `seed` have no explicit resource selector; `seed` still writes server state; `search` without `resources` addresses the full searchable set. Decide product policy on that empty set — do not invent selectors by scanning JSON.
+
+## Errors
+
+Malformed selector positions return `DFQL_INVALID` with `details.path` pointing at the bad field. Unknown actions return `DFQL_UNSUPPORTED`. An explicit `protocolVersion` other than `"1"` returns `DATAFN_UNSUPPORTED_PROTOCOL_VERSION` and fails closed before routing or authorization.
+
+Batch entries, transaction wrappers and nested query/mutation nodes also reject unsupported versions. Version-shaped fields inside application data are ignored.
+
+Current requests may omit `protocolVersion`; the parser stamps the parsed envelope with `"1"`. Do not add recursive discovery for future indirect addressing — introduce a new explicit protocol variant instead.
+
+## See also
+
+- [Request authorization](/docs/documentation/security/request-authz)
+- [Multi-region gateway](/docs/documentation/multi-region-gateway)
+- [Error types](/docs/reference/core/errors)
+
+For join-aware pull, clone and reconcile requests, pass trusted application schema metadata as the third argument:
+`extractStructuralResourceSelectors("pull", payload, { schema })` (or
+`parseDatafnRequest("pull", payload, { schema })`). Use the same `{ schema }` option for `clone` and `reconcile`; when `includeJoins` is enabled those actions fail closed with `DFQL_UNSUPPORTED` if schema is absent. Standard sync reconciliation enables joins, so its authorization callback must supply schema. The parser translates known
+many-to-many join cursor keys into their endpoint resources. Without schema
+metadata, cursor names remain selectors; unknown `join_` names are never silently
+ignored. Gateways handling relational sync must supply the same schema as the
+server and authorize every returned endpoint. The server preflight supplies its
+validated schema automatically; custom authorization callbacks should also pass their trusted schema to the helper.
+
+
+
+--------------------------------------------------------------------------------
 ### WebSocket Security
 
-URL: https://datafn.21n.co/docs/documentation/security/websocket-security
+URL: https://datafn.com/docs/documentation/security/websocket-security
 Description: How DataFn protects WebSocket connections: auth at upgrade, namespace lock, connection caps, and heartbeats.
 --------------------------------------------------------------------------------
 
@@ -14799,9 +15295,42 @@ For DataFn running inside a browser extension, the WS hop is typically: content 
 
 
 --------------------------------------------------------------------------------
+### Administration
+
+URL: https://datafn.com/docs/documentation/server/administration
+Description: Connect the scoped DataFn capability to a host-owned operator console.
+--------------------------------------------------------------------------------
+
+`@datafn/admin` exposes a Super Console capability backed by a configured `DatafnExecutor`. It uses the executor's schema and public query, mutation, and transaction methods. The host owns operator authentication, permission checks, scope mapping, audit storage, and deployment of the admin dispatcher.
+
+## Bind the executor and request context
+
+```ts
+import { createDataFnAdminAdapter, createDataFnDomainAdminService } from "@datafn/admin";
+
+const service = createDataFnDomainAdminService({
+  executor,
+  context: (adminContext) => resolveAuthorizedDataFnContext(adminContext),
+});
+const adapter = createDataFnAdminAdapter(service);
+```
+
+`resolveAuthorizedDataFnContext` is host code. It must construct the same context used by DataFn authorization and namespace providers after checking the active admin scope. Mount the adapter through the shared admin dispatcher; do not use a privileged cross-namespace executor merely because the caller can reach the console. Review [server authorization](/docs/documentation/server/authorization) and [namespace isolation](/docs/documentation/namespaces).
+
+## Current operation surface
+
+The mounted capability lists and gets schemas, resources, relations, indices, capabilities, and records. It also offers a query action plus record mutation and transaction actions. Record lists require a `filter.resource` pointing at a resource in the active schema. Record IDs encode both resource and record identity; a mutation target must match the payload's resource and ID.
+
+The package exports broader resource and action inventories, but the current domain adapter mounts only the operations above. In particular, it does not mount the inventory's seed, conflict-resolution, or sync-client actions. The capability declares a minimum project scope. Reads and writes have separate permissions, and writes require audit evidence through a configured audit sink. Every mounted mutation and transaction is idempotent: the host must configure a durable idempotency store on the dispatcher and supply an `idempotencyKey` for each write. The dispatcher rejects missing prerequisites before calling the executor.
+
+Metadata list cursors are bound to their collection and scope. Record cursors are bound to scope and resource; reuse them only with the same resource list. The [capability source](https://github.com/21nCo/super-functions/blob/dev/datafn/admin/src/index.ts) defines exact schemas and operation IDs, and the [domain service](https://github.com/21nCo/super-functions/blob/dev/datafn/admin/src/domain-service.ts) shows the executor calls.
+
+
+
+--------------------------------------------------------------------------------
 ### Authorization
 
-URL: https://datafn.21n.co/docs/documentation/server/authorization
+URL: https://datafn.com/docs/documentation/server/authorization
 Description: Control access to resources and fields.
 --------------------------------------------------------------------------------
 
@@ -15021,7 +15550,7 @@ Error codes match the TypeScript implementation: `SCHEMA_INVALID`, `DFQL_INVALID
 --------------------------------------------------------------------------------
 ### Observability
 
-URL: https://datafn.21n.co/docs/documentation/server/observability
+URL: https://datafn.com/docs/documentation/server/observability
 Description: Monitor server performance with timing events.
 --------------------------------------------------------------------------------
 
@@ -15156,7 +15685,7 @@ Timing events never include record data, filter values, or credentials. Only str
 --------------------------------------------------------------------------------
 ### Rate Limiting
 
-URL: https://datafn.21n.co/docs/documentation/server/rate-limiting
+URL: https://datafn.com/docs/documentation/server/rate-limiting
 Description: Protect your server with configurable rate limits.
 --------------------------------------------------------------------------------
 
@@ -15325,7 +15854,7 @@ The in-memory rate limiter's sweep timer is automatically stopped during gracefu
 --------------------------------------------------------------------------------
 ### REST API
 
-URL: https://datafn.21n.co/docs/documentation/server/rest-api
+URL: https://datafn.com/docs/documentation/server/rest-api
 Description: Optional RESTful endpoint wrappers.
 --------------------------------------------------------------------------------
 
@@ -15467,7 +15996,7 @@ GET /datafn/resources/tasks/..%2Fadmin
 --------------------------------------------------------------------------------
 ### Routes
 
-URL: https://datafn.21n.co/docs/documentation/server/routes
+URL: https://datafn.com/docs/documentation/server/routes
 Description: HTTP endpoints provided by the DataFn server.
 --------------------------------------------------------------------------------
 
@@ -15947,7 +16476,7 @@ This endpoint is currently TypeScript-server only.
 --------------------------------------------------------------------------------
 ### Server Setup
 
-URL: https://datafn.21n.co/docs/documentation/server/setup
+URL: https://datafn.com/docs/documentation/server/setup
 Description: Create and configure a DataFn server.
 --------------------------------------------------------------------------------
 
@@ -16209,7 +16738,7 @@ await server.close();
 --------------------------------------------------------------------------------
 ### Validation
 
-URL: https://datafn.21n.co/docs/documentation/server/validation
+URL: https://datafn.com/docs/documentation/server/validation
 Description: Request validation and schema compliance checks.
 --------------------------------------------------------------------------------
 
@@ -16358,7 +16887,7 @@ If any of these keys are detected, the request is rejected with `DFQL_INVALID`:
 --------------------------------------------------------------------------------
 ### WebSockets
 
-URL: https://datafn.21n.co/docs/documentation/server/websockets
+URL: https://datafn.com/docs/documentation/server/websockets
 Description: Real-time updates via WebSocket connections.
 --------------------------------------------------------------------------------
 
@@ -16491,7 +17020,7 @@ When `server.close()` is called:
 --------------------------------------------------------------------------------
 ### Sharing
 
-URL: https://datafn.21n.co/docs/documentation/sharing
+URL: https://datafn.com/docs/documentation/sharing
 Description: Guide to Sharing Permissions: namespace, principal, visibility, scope grants, relation inheritance, and compatibility behavior.
 --------------------------------------------------------------------------------
 
@@ -16665,7 +17194,7 @@ See [SPV2 Migration](/docs/documentation/migrations/spv2) for rollout and rollba
 --------------------------------------------------------------------------------
 ### Custom Storage
 
-URL: https://datafn.21n.co/docs/documentation/storage/custom
+URL: https://datafn.com/docs/documentation/storage/custom
 Description: Implement your own storage adapter.
 --------------------------------------------------------------------------------
 
@@ -16889,7 +17418,7 @@ const client = createDatafnClient({
 --------------------------------------------------------------------------------
 ### IndexedDB
 
-URL: https://datafn.21n.co/docs/documentation/storage/indexeddb
+URL: https://datafn.com/docs/documentation/storage/indexeddb
 Description: Persistent browser storage via IndexedDB.
 --------------------------------------------------------------------------------
 
@@ -17040,7 +17569,7 @@ await storage.clearAll();
 --------------------------------------------------------------------------------
 ### Memory Storage
 
-URL: https://datafn.21n.co/docs/documentation/storage/memory
+URL: https://datafn.com/docs/documentation/storage/memory
 Description: In-memory storage for testing and SSR.
 --------------------------------------------------------------------------------
 
@@ -17115,7 +17644,7 @@ const { ok } = await storage.healthCheck(); // { ok: true, issues: [] }
 --------------------------------------------------------------------------------
 ### Storage Overview
 
-URL: https://datafn.21n.co/docs/documentation/storage/overview
+URL: https://datafn.com/docs/documentation/storage/overview
 Description: Persistent offline storage adapters.
 --------------------------------------------------------------------------------
 
@@ -17237,7 +17766,7 @@ The factory is called with the namespace string when the client is configured wi
 --------------------------------------------------------------------------------
 ### Clone Up
 
-URL: https://datafn.21n.co/docs/documentation/sync/clone-up
+URL: https://datafn.com/docs/documentation/sync/clone-up
 Description: Upload offline changes to the remote server.
 --------------------------------------------------------------------------------
 
@@ -17362,7 +17891,7 @@ client.subscribe((event) => {
 --------------------------------------------------------------------------------
 ### Clone
 
-URL: https://datafn.21n.co/docs/documentation/sync/clone
+URL: https://datafn.com/docs/documentation/sync/clone
 Description: Full dataset retrieval for initial client setup.
 --------------------------------------------------------------------------------
 
@@ -17501,7 +18030,7 @@ client.subscribe((event) => {
 --------------------------------------------------------------------------------
 ### Conflict Resolution
 
-URL: https://datafn.21n.co/docs/documentation/sync/conflict-resolution
+URL: https://datafn.com/docs/documentation/sync/conflict-resolution
 Description: How DataFn resolves competing writes: last-writer-wins, version guards, and explicit merge policies.
 --------------------------------------------------------------------------------
 
@@ -17658,7 +18187,7 @@ This is consistent with LWW. To preserve local edits while syncing, use the offl
 --------------------------------------------------------------------------------
 ### Cross-Tab Sync
 
-URL: https://datafn.21n.co/docs/documentation/sync/cross-tab
+URL: https://datafn.com/docs/documentation/sync/cross-tab
 Description: Synchronize state between browser tabs.
 --------------------------------------------------------------------------------
 
@@ -17744,7 +18273,7 @@ await client.destroy(); // Stops sync and closes BroadcastChannel resources
 --------------------------------------------------------------------------------
 ### Hydration
 
-URL: https://datafn.21n.co/docs/documentation/sync/hydration
+URL: https://datafn.com/docs/documentation/sync/hydration
 Description: Configure startup data loading strategy.
 --------------------------------------------------------------------------------
 
@@ -17848,7 +18377,7 @@ client.subscribe((event) => {
 --------------------------------------------------------------------------------
 ### Offline-First
 
-URL: https://datafn.21n.co/docs/documentation/sync/offline-first
+URL: https://datafn.com/docs/documentation/sync/offline-first
 Description: Build applications that work without a network connection.
 --------------------------------------------------------------------------------
 
@@ -17968,7 +18497,7 @@ The interval backoff resets to the configured `pushInterval` after the first suc
 --------------------------------------------------------------------------------
 ### Ordering Guarantees
 
-URL: https://datafn.21n.co/docs/documentation/sync/ordering-guarantees
+URL: https://datafn.com/docs/documentation/sync/ordering-guarantees
 Description: What DataFn promises about the order of operations across clients.
 --------------------------------------------------------------------------------
 
@@ -18082,7 +18611,7 @@ The cross-device path is: A writes → A pushes → server applies → server br
 --------------------------------------------------------------------------------
 ### Sync Overview
 
-URL: https://datafn.21n.co/docs/documentation/sync/overview
+URL: https://datafn.com/docs/documentation/sync/overview
 Description: Understand the DataFn synchronization architecture.
 --------------------------------------------------------------------------------
 
@@ -18226,7 +18755,7 @@ The method names stay the same in native-backed mode, but the implementation is 
 --------------------------------------------------------------------------------
 ### Pull and Push
 
-URL: https://datafn.21n.co/docs/documentation/sync/pull-push
+URL: https://datafn.com/docs/documentation/sync/pull-push
 Description: Incremental synchronization between client and server.
 --------------------------------------------------------------------------------
 
@@ -18393,7 +18922,7 @@ After a successful push, the engine checks whether foreign changes exist by comp
 --------------------------------------------------------------------------------
 ### Retry and Backoff
 
-URL: https://datafn.21n.co/docs/documentation/sync/retry-and-backoff
+URL: https://datafn.com/docs/documentation/sync/retry-and-backoff
 Description: How the DataFn client retries failed sync operations, and how to tune it.
 --------------------------------------------------------------------------------
 
@@ -18535,7 +19064,7 @@ If the offline window is long enough that the server has pruned older retention 
 --------------------------------------------------------------------------------
 ### Schema Migration
 
-URL: https://datafn.21n.co/docs/documentation/sync/schema-migration
+URL: https://datafn.com/docs/documentation/sync/schema-migration
 Description: Evolving the schema while clients are connected — adding, renaming, deprecating fields.
 --------------------------------------------------------------------------------
 
@@ -18694,7 +19223,7 @@ if (status.result.schemaHash !== myHash) {
 --------------------------------------------------------------------------------
 ### Sequence Store
 
-URL: https://datafn.21n.co/docs/documentation/sync/sequence-store
+URL: https://datafn.com/docs/documentation/sync/sequence-store
 Description: Where serverSeq lives, why it matters, and how to pick the right backend.
 --------------------------------------------------------------------------------
 
@@ -18838,7 +19367,7 @@ If you accidentally deploy multiple instances with `MemorySequenceStore`, you'll
 --------------------------------------------------------------------------------
 ### Sharing Sync Lifecycle
 
-URL: https://datafn.21n.co/docs/documentation/sync/sharing-sync-lifecycle
+URL: https://datafn.com/docs/documentation/sync/sharing-sync-lifecycle
 Description: How offline clients observe grant, revoke, backfill, push, and pull behavior in Sharing Permissions V2.
 --------------------------------------------------------------------------------
 
@@ -18960,7 +19489,7 @@ If a viewer tries to push a write on an owner-only record:
 --------------------------------------------------------------------------------
 ### Troubleshooting
 
-URL: https://datafn.21n.co/docs/documentation/troubleshooting
+URL: https://datafn.com/docs/documentation/troubleshooting
 Description: The 15 failure modes you'll hit in production — and how to fix them.
 --------------------------------------------------------------------------------
 
@@ -19221,7 +19750,7 @@ When opening an issue, include:
 --------------------------------------------------------------------------------
 ### Sharing Patterns
 
-URL: https://datafn.21n.co/docs/documentation/use-cases/sharing-patterns
+URL: https://datafn.com/docs/documentation/use-cases/sharing-patterns
 Description: Canonical namespace, visibility, grant, and sync patterns for Collections, Memotron, Selftron, Pointron, Finatron, Feedtron, and Compoundum.
 --------------------------------------------------------------------------------
 
@@ -19305,7 +19834,7 @@ Cross-namespace principal receives share attempt on a resource with cross-namesp
 --------------------------------------------------------------------------------
 ### Example: Apple WebView Host
 
-URL: https://datafn.21n.co/docs/examples/apple-webview-host
+URL: https://datafn.com/docs/examples/apple-webview-host
 Description: Reference SwiftUI host that embeds a web view, owns CoreData, and demonstrates three topologies.
 --------------------------------------------------------------------------------
 
@@ -19410,7 +19939,7 @@ xcodebuild -project datafn/examples/apple-webview-host/DatafnAppleHost.xcodeproj
 --------------------------------------------------------------------------------
 ### Example: Sharing App
 
-URL: https://datafn.21n.co/docs/examples/sharing-app
+URL: https://datafn.com/docs/examples/sharing-app
 Description: Multi-actor, multi-workspace sharing semantics with deterministic E2E tests.
 --------------------------------------------------------------------------------
 
@@ -19522,7 +20051,7 @@ If you're modeling per-record sharing:
 --------------------------------------------------------------------------------
 ### Example: Todo App
 
-URL: https://datafn.21n.co/docs/examples/todo-app
+URL: https://datafn.com/docs/examples/todo-app
 Description: The dual-mode reference app — same Svelte UI, three deployment topologies.
 --------------------------------------------------------------------------------
 
@@ -19619,7 +20148,7 @@ If you're building a similar dual-mode app:
 --------------------------------------------------------------------------------
 ### Quickstart: Bun
 
-URL: https://datafn.21n.co/docs/quickstart/bun
+URL: https://datafn.com/docs/quickstart/bun
 Description: Mount DataFn directly on Bun.serve in 5 minutes.
 --------------------------------------------------------------------------------
 
@@ -19724,7 +20253,7 @@ curl http://localhost:3000/datafn/status
 --------------------------------------------------------------------------------
 ### Quickstart: Express
 
-URL: https://datafn.21n.co/docs/quickstart/express
+URL: https://datafn.com/docs/quickstart/express
 Description: Mount DataFn on Express with Postgres in 5 minutes.
 --------------------------------------------------------------------------------
 
@@ -19840,7 +20369,7 @@ curl http://localhost:3000/datafn/status
 --------------------------------------------------------------------------------
 ### Quickstart: FastAPI
 
-URL: https://datafn.21n.co/docs/quickstart/fastapi
+URL: https://datafn.com/docs/quickstart/fastapi
 Description: Mount DataFn on FastAPI with SQLAlchemy in 5 minutes.
 --------------------------------------------------------------------------------
 
@@ -19947,7 +20476,7 @@ curl -X POST http://localhost:3000/datafn/mutation \
 --------------------------------------------------------------------------------
 ### Quickstart: Flask
 
-URL: https://datafn.21n.co/docs/quickstart/flask
+URL: https://datafn.com/docs/quickstart/flask
 Description: Mount DataFn on Flask in 5 minutes.
 --------------------------------------------------------------------------------
 
@@ -20053,7 +20582,7 @@ curl -X POST http://localhost:3000/datafn/query \
 --------------------------------------------------------------------------------
 ### Quickstart: Hono
 
-URL: https://datafn.21n.co/docs/quickstart/hono
+URL: https://datafn.com/docs/quickstart/hono
 Description: Mount DataFn on Hono with SQLite in 5 minutes.
 --------------------------------------------------------------------------------
 
@@ -20190,7 +20719,7 @@ curl -X POST http://localhost:3000/datafn/query \
 --------------------------------------------------------------------------------
 ### Quickstart: Next.js
 
-URL: https://datafn.21n.co/docs/quickstart/nextjs
+URL: https://datafn.com/docs/quickstart/nextjs
 Description: Full-stack DataFn on Next.js App Router with the official adapter.
 --------------------------------------------------------------------------------
 
@@ -20351,7 +20880,7 @@ Open [http://localhost:3000](http://localhost:3000).
 --------------------------------------------------------------------------------
 ### Quickstart: Starlette
 
-URL: https://datafn.21n.co/docs/quickstart/starlette
+URL: https://datafn.com/docs/quickstart/starlette
 Description: Mount DataFn on Starlette in 5 minutes.
 --------------------------------------------------------------------------------
 
@@ -20459,7 +20988,7 @@ curl -X POST http://localhost:3000/datafn/query \
 --------------------------------------------------------------------------------
 ### Quickstart: SvelteKit
 
-URL: https://datafn.21n.co/docs/quickstart/sveltekit
+URL: https://datafn.com/docs/quickstart/sveltekit
 Description: Full-stack DataFn on SvelteKit with the official adapter.
 --------------------------------------------------------------------------------
 
@@ -20600,7 +21129,7 @@ Open [http://localhost:5173](http://localhost:5173), add a task, refresh, and wa
 --------------------------------------------------------------------------------
 ### Quickstart: Swift
 
-URL: https://datafn.21n.co/docs/quickstart/swift
+URL: https://datafn.com/docs/quickstart/swift
 Description: Launch a SwiftUI app backed by DataFn's Apple runtime in 5 minutes.
 --------------------------------------------------------------------------------
 
@@ -20734,7 +21263,7 @@ Spin up the DataFn server (see [Quickstart: Hono](/docs/quickstart/hono)), then 
 --------------------------------------------------------------------------------
 ### Recipe: Audit Logging
 
-URL: https://datafn.21n.co/docs/recipes/audit-logging
+URL: https://datafn.com/docs/recipes/audit-logging
 Description: Capability-driven audit fields plus outbound logging to your audit pipeline.
 --------------------------------------------------------------------------------
 
@@ -20881,7 +21410,7 @@ This pattern is heavy — every read produces a log entry. Use it only on truly 
 --------------------------------------------------------------------------------
 ### Recipe: AuthFn Integration
 
-URL: https://datafn.21n.co/docs/recipes/authfn-integration
+URL: https://datafn.com/docs/recipes/authfn-integration
 Description: Wire AuthFn sessions into DataFn's authorize and namespaceProvider.
 --------------------------------------------------------------------------------
 
@@ -21048,7 +21577,7 @@ For a thicker integration test, use `authfnTesting.signIn(...)` to produce a rea
 --------------------------------------------------------------------------------
 ### Recipe: Chat App
 
-URL: https://datafn.21n.co/docs/recipes/chat-app
+URL: https://datafn.com/docs/recipes/chat-app
 Description: Append-only messages, cursor pagination, WebSocket live updates.
 --------------------------------------------------------------------------------
 
@@ -21203,7 +21732,7 @@ plugins: [
 --------------------------------------------------------------------------------
 ### Recipe: Document Collaboration
 
-URL: https://datafn.21n.co/docs/recipes/document-collab
+URL: https://datafn.com/docs/recipes/document-collab
 Description: Per-document presence, conflict-free edits, and a roadmap to true CRDT collaboration.
 --------------------------------------------------------------------------------
 
@@ -21363,7 +21892,7 @@ Cursor positions are ephemeral. Don't persist them — use the WebSocket directl
 --------------------------------------------------------------------------------
 ### Recipe: Encryption at Rest
 
-URL: https://datafn.21n.co/docs/recipes/encryption-at-rest
+URL: https://datafn.com/docs/recipes/encryption-at-rest
 Description: Field-level encryption via plugins, with the server holding only ciphertext.
 --------------------------------------------------------------------------------
 
@@ -21506,7 +22035,7 @@ Encryption is the easy part. Keys are the hard part. A few principles:
 --------------------------------------------------------------------------------
 ### Recipe: FileFn Integration
 
-URL: https://datafn.21n.co/docs/recipes/filefn-integration
+URL: https://datafn.com/docs/recipes/filefn-integration
 Description: Attach files to DataFn records — uploads, lifecycle, deletion.
 --------------------------------------------------------------------------------
 
@@ -21657,7 +22186,7 @@ For full-text search across file *contents*, you need a search provider that ind
 --------------------------------------------------------------------------------
 ### Recipe: Kanban Board
 
-URL: https://datafn.21n.co/docs/recipes/kanban-board
+URL: https://datafn.com/docs/recipes/kanban-board
 Description: Ordered lists with drag-and-drop, position fields, and atomic moves via transact.
 --------------------------------------------------------------------------------
 
@@ -21808,7 +22337,7 @@ On conflict the server returns `CONFLICT`; refresh the card and retry.
 --------------------------------------------------------------------------------
 ### Recipe: Multi-tenant SaaS
 
-URL: https://datafn.21n.co/docs/recipes/multi-tenant-saas
+URL: https://datafn.com/docs/recipes/multi-tenant-saas
 Description: Namespace per tenant; deriving namespaces from auth; cross-tenant query isolation.
 --------------------------------------------------------------------------------
 
@@ -21953,7 +22482,7 @@ await fetch("/datafn/seed", {
 --------------------------------------------------------------------------------
 ### Recipe: Offline Conflict Resolution
 
-URL: https://datafn.21n.co/docs/recipes/offline-conflicts
+URL: https://datafn.com/docs/recipes/offline-conflicts
 Description: Last-writer-wins, version guards, and explicit merge policies for offline-first writes.
 --------------------------------------------------------------------------------
 
@@ -22086,7 +22615,7 @@ hooks: [
 --------------------------------------------------------------------------------
 ### Recipe: Optimistic UI
 
-URL: https://datafn.21n.co/docs/recipes/optimistic-ui
+URL: https://datafn.com/docs/recipes/optimistic-ui
 Description: Snappy mutations with deterministic rollback when the server rejects.
 --------------------------------------------------------------------------------
 
@@ -22204,7 +22733,7 @@ Capability fields (`createdAt`, `updatedAt`, `createdBy`) are filled by the serv
 --------------------------------------------------------------------------------
 ### Recipe: Presence and Live Cursors
 
-URL: https://datafn.21n.co/docs/recipes/presence-cursors
+URL: https://datafn.com/docs/recipes/presence-cursors
 Description: Ephemeral state alongside DataFn's persisted state.
 --------------------------------------------------------------------------------
 
@@ -22309,7 +22838,7 @@ plugins: [
 --------------------------------------------------------------------------------
 ### Recipe: SearchFn Integration
 
-URL: https://datafn.21n.co/docs/recipes/searchfn-integration
+URL: https://datafn.com/docs/recipes/searchfn-integration
 Description: Cross-resource search via the SearchProvider interface, backed by SearchFn.
 --------------------------------------------------------------------------------
 
@@ -22466,7 +22995,7 @@ DataFn intersects the search results with the resource-level `authorize` checks 
 --------------------------------------------------------------------------------
 ### Recipe: Sharing Flows
 
-URL: https://datafn.21n.co/docs/recipes/sharing-flows
+URL: https://datafn.com/docs/recipes/sharing-flows
 Description: Invite-by-email, link-share, share-with-role — all on top of the shareable capability.
 --------------------------------------------------------------------------------
 
@@ -22637,7 +23166,7 @@ The exact filter shape for `shares` depends on the capability's serialization �
 --------------------------------------------------------------------------------
 ### Recipe: Testing Patterns
 
-URL: https://datafn.21n.co/docs/recipes/testing
+URL: https://datafn.com/docs/recipes/testing
 Description: Deterministic sync, fixture seeding, and mock clients for unit and integration tests.
 --------------------------------------------------------------------------------
 
@@ -22818,7 +23347,7 @@ npm run validate:schema
 --------------------------------------------------------------------------------
 ### Recipe: Todo App
 
-URL: https://datafn.21n.co/docs/recipes/todo-app
+URL: https://datafn.com/docs/recipes/todo-app
 Description: The minimum viable end-to-end DataFn app: schema, server, client, optimistic UI.
 --------------------------------------------------------------------------------
 
@@ -22976,7 +23505,7 @@ export function Todos() {
 --------------------------------------------------------------------------------
 ### Recipe: List Virtualization
 
-URL: https://datafn.21n.co/docs/recipes/virtualization
+URL: https://datafn.com/docs/recipes/virtualization
 Description: Subscriptions over windowed slices for large lists.
 --------------------------------------------------------------------------------
 
@@ -23087,7 +23616,7 @@ Each signal subscribes independently. The aggregation subscription delivers a ti
 --------------------------------------------------------------------------------
 ### Changelog
 
-URL: https://datafn.21n.co/docs/reference/changelog
+URL: https://datafn.com/docs/reference/changelog
 Description: Notable changes to DataFn across releases.
 --------------------------------------------------------------------------------
 
@@ -23097,7 +23626,10 @@ DataFn follows [semver](https://semver.org/): until 1.0 minor versions may inclu
 
 ## Unreleased
 
-- (placeholder for in-development changes)
+**New**
+
+- Canonical structural resource-selector extraction: `parseDatafnRequest`, `collectStructuralResourceSelectors`, and `extractStructuralResourceSelectors` in `@datafn/core` (re-exported from `@datafn/server`). Gateways and `authorize` plugins should use this API instead of traversing request JSON. Unsupported `protocolVersion` values return `DATAFN_UNSUPPORTED_PROTOCOL_VERSION`.
+- Versioned namespace storage contract: `DATAFN_NAMESPACE_STORAGE_MANIFEST` in `@datafn/core` and `resolveNamespaceStoragePlan` / `inspectPostgresNamespaceStorage` / `drainNamespaceStorage` in `@datafn/server`. This is the supported integration point for tenant copy, checksum, cleanup, write fencing, outbox drain, backup, and physical-ownership checks.
 
 ## 0.3.0
 
@@ -23171,7 +23703,7 @@ For every minor bump:
 --------------------------------------------------------------------------------
 ### Client Configuration
 
-URL: https://datafn.21n.co/docs/reference/client/config
+URL: https://datafn.com/docs/reference/client/config
 Description: Full configuration reference for createDatafnClient.
 --------------------------------------------------------------------------------
 
@@ -23495,7 +24027,7 @@ See [Search](/docs/dfql/search#setting-up-a-search-provider) for the full setup 
 --------------------------------------------------------------------------------
 ### Event Bus
 
-URL: https://datafn.21n.co/docs/reference/client/events
+URL: https://datafn.com/docs/reference/client/events
 Description: Event bus reference.
 --------------------------------------------------------------------------------
 
@@ -23595,7 +24127,7 @@ const bus = new EventBus({
 --------------------------------------------------------------------------------
 ### Mutation Execution
 
-URL: https://datafn.21n.co/docs/reference/client/mutation
+URL: https://datafn.com/docs/reference/client/mutation
 Description: Client mutation pipeline, including capability sanitization and optimistic injection.
 --------------------------------------------------------------------------------
 
@@ -23653,7 +24185,7 @@ When remote transport fails with a recognized transport error and storage is con
 --------------------------------------------------------------------------------
 ### Query Execution
 
-URL: https://datafn.21n.co/docs/reference/client/query
+URL: https://datafn.com/docs/reference/client/query
 Description: Client query execution internals.
 --------------------------------------------------------------------------------
 
@@ -23707,7 +24239,7 @@ After fetching records, the client applies:
 --------------------------------------------------------------------------------
 ### Signal API
 
-URL: https://datafn.21n.co/docs/reference/client/signal
+URL: https://datafn.com/docs/reference/client/signal
 Description: Reactive signal system reference.
 --------------------------------------------------------------------------------
 
@@ -23857,7 +24389,7 @@ See the [Signals guide](/docs/documentation/client/signals#derived-signals) for 
 --------------------------------------------------------------------------------
 ### Storage Adapter
 
-URL: https://datafn.21n.co/docs/reference/client/storage
+URL: https://datafn.com/docs/reference/client/storage
 Description: Storage adapter interface reference.
 --------------------------------------------------------------------------------
 
@@ -23985,7 +24517,7 @@ const factory: DatafnStorageFactory = (namespace) =>
 --------------------------------------------------------------------------------
 ### @datafn/svelte
 
-URL: https://datafn.21n.co/docs/reference/client/svelte
+URL: https://datafn.com/docs/reference/client/svelte
 Description: API reference for the DataFn Svelte adapter package.
 --------------------------------------------------------------------------------
 
@@ -24168,7 +24700,7 @@ Use the direct signal form when you already have a stable signal. Use a factory 
 --------------------------------------------------------------------------------
 ### Sync Engine
 
-URL: https://datafn.21n.co/docs/reference/client/sync
+URL: https://datafn.com/docs/reference/client/sync
 Description: Sync engine internals reference.
 --------------------------------------------------------------------------------
 
@@ -24265,7 +24797,7 @@ Clone requests are paginated using `clonePageSize` (default or per-resource).
 --------------------------------------------------------------------------------
 ### Temporal API
 
-URL: https://datafn.21n.co/docs/reference/client/temporal
+URL: https://datafn.com/docs/reference/client/temporal
 Description: Manage user timezones and resolve temporal values from the client.
 --------------------------------------------------------------------------------
 
@@ -24402,7 +24934,7 @@ const { start, end, timezone } = await client.temporal.resolveRange({
 --------------------------------------------------------------------------------
 ### Transport
 
-URL: https://datafn.21n.co/docs/reference/client/transport
+URL: https://datafn.com/docs/reference/client/transport
 Description: HTTP transport and remote adapter reference.
 --------------------------------------------------------------------------------
 
@@ -24495,7 +25027,7 @@ The extension transport uses an RPC protocol with request/response correlation b
 --------------------------------------------------------------------------------
 ### Configuration Reference
 
-URL: https://datafn.21n.co/docs/reference/configuration
+URL: https://datafn.com/docs/reference/configuration
 Description: Every option accepted by createDatafnServer and createDatafnClient, end to end.
 --------------------------------------------------------------------------------
 
@@ -24666,7 +25198,7 @@ DataFn does not read environment variables directly. Pass everything through con
 --------------------------------------------------------------------------------
 ### Date Utilities
 
-URL: https://datafn.21n.co/docs/reference/core/date
+URL: https://datafn.com/docs/reference/core/date
 Description: Date conversion between formats.
 --------------------------------------------------------------------------------
 
@@ -24744,7 +25276,7 @@ Both `coerceDateFieldsToEpoch` and `parseDateFieldsToDate` intentionally mutate 
 --------------------------------------------------------------------------------
 ### Error Types
 
-URL: https://datafn.21n.co/docs/reference/core/errors
+URL: https://datafn.com/docs/reference/core/errors
 Description: Error codes and envelope types.
 --------------------------------------------------------------------------------
 
@@ -24764,6 +25296,7 @@ type DatafnErrorCode =
   | "DFQL_UNKNOWN_FIELD"
   | "DFQL_UNKNOWN_RELATION"
   | "DFQL_UNSUPPORTED"
+  | "DATAFN_UNSUPPORTED_PROTOCOL_VERSION"
   | "DFQL_ABORTED"
   | "DFQL_SHARE_SCOPE_INVALID"
   | "DFQL_PRINCIPAL_INVALID"
@@ -24773,7 +25306,12 @@ type DatafnErrorCode =
   | "NOT_FOUND"
   | "CONFLICT"
   | "INTERNAL"
-  | "TRANSPORT_ERROR";
+  | "TRANSPORT_ERROR"
+  | "DATAFN_NAMESPACE_STORAGE_UNSUPPORTED"
+  | "DATAFN_NAMESPACE_STORAGE_VERSION_MISMATCH"
+  | "DATAFN_NAMESPACE_STORAGE_INCOMPLETE"
+  | "DATAFN_NAMESPACE_STORAGE_UNKNOWN"
+  | "DATAFN_NAMESPACE_STORAGE_INVALID";
 ```
 
 | Code | Description |
@@ -24788,6 +25326,7 @@ type DatafnErrorCode =
 | `DFQL_UNKNOWN_FIELD` | Referenced field does not exist on resource. |
 | `DFQL_UNKNOWN_RELATION` | Referenced relation does not exist. |
 | `DFQL_UNSUPPORTED` | Unsupported DFQL operator or feature. |
+| `DATAFN_UNSUPPORTED_PROTOCOL_VERSION` | Request `protocolVersion` is not a supported DataFn envelope version. |
 | `DFQL_ABORTED` | Transaction aborted. |
 | `DFQL_SHARE_SCOPE_INVALID` | Share scope is invalid. Thrown when `scope` is not `"record"` or `"resource"`, when a record-scope share is missing `id`, or when a resource-scope share includes `id`. |
 | `DFQL_PRINCIPAL_INVALID` | Principal identifier is invalid. Thrown when `shareWith.principalId` is empty, when both `principalId` and `userId` are provided with conflicting values, or when neither is provided. |
@@ -24798,6 +25337,11 @@ type DatafnErrorCode =
 | `CONFLICT` | Conflict (e.g., duplicate ID). |
 | `INTERNAL` | Unexpected server error. |
 | `TRANSPORT_ERROR` | Network/transport layer error. |
+| `DATAFN_NAMESPACE_STORAGE_UNSUPPORTED` | Namespace storage plans are unavailable for this adapter/schema. |
+| `DATAFN_NAMESPACE_STORAGE_VERSION_MISMATCH` | Unsupported storage manifest or schema version. |
+| `DATAFN_NAMESPACE_STORAGE_INCOMPLETE` | Required namespace storage or selector column is missing. |
+| `DATAFN_NAMESPACE_STORAGE_UNKNOWN` | Installed DataFn namespace storage is not in the supported contract. |
+| `DATAFN_NAMESPACE_STORAGE_INVALID` | Invalid identifier or colliding application storage entry. |
 
 ## DatafnError
 
@@ -24869,7 +25413,7 @@ const schema = unwrapEnvelope(validateSchema(input));
 --------------------------------------------------------------------------------
 ### Filter Utilities
 
-URL: https://datafn.21n.co/docs/reference/core/filters
+URL: https://datafn.com/docs/reference/core/filters
 Description: Filter evaluation and operator utilities.
 --------------------------------------------------------------------------------
 
@@ -24976,7 +25520,7 @@ function likeToRegExp(pattern: string, caseInsensitive: boolean): RegExp;
 --------------------------------------------------------------------------------
 ### Hook Utilities
 
-URL: https://datafn.21n.co/docs/reference/core/hooks
+URL: https://datafn.com/docs/reference/core/hooks
 Description: Plugin hook execution utilities.
 --------------------------------------------------------------------------------
 
@@ -25078,7 +25622,7 @@ const finalMutation = result.value;
 --------------------------------------------------------------------------------
 ### KV Utilities
 
-URL: https://datafn.21n.co/docs/reference/core/kv
+URL: https://datafn.com/docs/reference/core/kv
 Description: Built-in key-value resource utilities.
 --------------------------------------------------------------------------------
 
@@ -25139,9 +25683,40 @@ The KV resource is automatically added to the schema during server creation and 
 
 
 --------------------------------------------------------------------------------
+### Namespace storage manifest
+
+URL: https://datafn.com/docs/reference/core/namespace-storage
+Description: Logical roles and operations for DataFn-owned namespace storage.
+--------------------------------------------------------------------------------
+
+```typescript
+import {
+  DATAFN_NAMESPACE_STORAGE_MANIFEST,
+  DATAFN_NAMESPACE_STORAGE_MANIFEST_VERSION,
+  DATAFN_NAMESPACE_STORAGE_SCHEMA_VERSION,
+  namespaceStorageParticipates,
+} from "@datafn/core";
+```
+
+`DATAFN_NAMESPACE_STORAGE_MANIFEST_VERSION` and `DATAFN_NAMESPACE_STORAGE_SCHEMA_VERSION` are currently `"1"`.
+
+Logical roles:
+
+- `resource`, `join`
+- `permissions_global`, `permissions_legacy`, `principal_memberships`, `principal_hierarchy`
+- `sync_meta`, `sync_changes`, `idempotency`, `seed`
+- `permission_directory_outbox`
+
+Operations: `copy`, `verify`, `cleanup`, `fence`, `drain`, `backup`.
+
+Only `permission_directory_outbox` participates in `drain`. Physical names are resolved by `@datafn/server`.
+
+
+
+--------------------------------------------------------------------------------
 ### Normalization
 
-URL: https://datafn.21n.co/docs/reference/core/normalize
+URL: https://datafn.com/docs/reference/core/normalize
 Description: DFQL normalization for caching and comparison.
 --------------------------------------------------------------------------------
 
@@ -25200,9 +25775,72 @@ This mirrors `JSON.stringify` behavior and ensures stable cache keys across envi
 
 
 --------------------------------------------------------------------------------
+### Resource Selectors
+
+URL: https://datafn.com/docs/reference/core/resource-selectors
+Description: Parse DataFn request envelopes and collect structural resource selectors.
+--------------------------------------------------------------------------------
+
+Canonical protocol helpers exported by `@datafn/core` and re-exported by `@datafn/server`. See [Structural resource selectors](/docs/documentation/security/resource-selectors) for gateway and authorization guidance.
+
+```typescript
+const DATAFN_REQUEST_PROTOCOL_VERSION = "1";
+
+type DatafnRequestAction =
+  | "status"
+  | "query"
+  | "mutation"
+  | "transact"
+  | "search"
+  | "seed"
+  | "clone"
+  | "pull"
+  | "push"
+  | "reconcile";
+
+type DatafnResourceSelector = string & {
+  readonly __brand: "DatafnResourceSelector";
+};
+
+type StructuralResourceSelection = {
+  readonly selectors: readonly DatafnResourceSelector[];
+  readonly protocolVersion: "1";
+};
+
+function parseDatafnRequest(
+  action: string,
+  payload: unknown,
+  options?: { schema?: Pick<DatafnSchema, "resources" | "relations"> },
+): DatafnEnvelope<ParsedDatafnRequest>;
+
+function collectStructuralResourceSelectors(
+  request: ParsedDatafnRequest,
+): StructuralResourceSelection;
+
+function extractStructuralResourceSelectors(
+  action: string,
+  payload: unknown,
+  options?: { schema?: Pick<DatafnSchema, "resources" | "relations"> },
+): DatafnEnvelope<StructuralResourceSelection>;
+```
+
+`parseDatafnRequest` validates protocol envelope shape and selector-field types. It does not traverse application records or filter operands. `collectStructuralResourceSelectors` is exhaustive over `ParsedDatafnRequest`.
+
+For join-aware pull, clone and reconcile requests, pass trusted application schema metadata as the third argument:
+`extractStructuralResourceSelectors("pull", payload, { schema })` (or
+`parseDatafnRequest("pull", payload, { schema })`). The same option is required for `clone` and `reconcile` when `includeJoins` is enabled; omitting it returns `DFQL_UNSUPPORTED`. Standard sync reconciliation enables joins. Import `schema` from the application-owned configuration used to create the DataFn server. The parser translates known
+many-to-many join cursor keys into their endpoint resources. Without schema
+metadata, cursor names remain selectors; unknown `join_` names are never silently
+ignored. Gateways handling relational sync must supply the same schema as the
+server and authorize every returned endpoint. The server preflight supplies its
+validated schema automatically; custom authorization callbacks should also pass their trusted schema to the helper.
+
+
+
+--------------------------------------------------------------------------------
 ### Schema Utilities
 
-URL: https://datafn.21n.co/docs/reference/core/schema
+URL: https://datafn.com/docs/reference/core/schema
 Description: Schema validation, capability resolution, and schema indexing helpers.
 --------------------------------------------------------------------------------
 
@@ -25370,7 +26008,7 @@ function normalizeRelationFkRecord(
 --------------------------------------------------------------------------------
 ### SearchProvider
 
-URL: https://datafn.21n.co/docs/reference/core/search-provider
+URL: https://datafn.com/docs/reference/core/search-provider
 Description: Interface contract for pluggable search providers in DataFn.
 --------------------------------------------------------------------------------
 
@@ -25567,7 +26205,7 @@ See [Search — Setting Up a Search Provider](/docs/dfql/search#setting-up-a-sea
 --------------------------------------------------------------------------------
 ### Temporal
 
-URL: https://datafn.21n.co/docs/reference/core/temporal
+URL: https://datafn.com/docs/reference/core/temporal
 Description: Timezone-aware temporal types, builders, and resolution helpers from @datafn/core.
 --------------------------------------------------------------------------------
 
@@ -25713,7 +26351,7 @@ Returns a `runsOn: ["client", "server"]` plugin whose `beforeQuery` hook runs `n
 --------------------------------------------------------------------------------
 ### Core Types
 
-URL: https://datafn.21n.co/docs/reference/core/types
+URL: https://datafn.com/docs/reference/core/types
 Description: Type definitions exported by @datafn/core.
 --------------------------------------------------------------------------------
 
@@ -25946,7 +26584,7 @@ type DatafnPermissionsPolicy = {
 --------------------------------------------------------------------------------
 ### Envelopes Reference
 
-URL: https://datafn.21n.co/docs/reference/envelopes
+URL: https://datafn.com/docs/reference/envelopes
 Description: Every DataFn response is a DatafnEnvelope. Here is the shape and the helpers.
 --------------------------------------------------------------------------------
 
@@ -26054,7 +26692,7 @@ if (env.ok) {
 --------------------------------------------------------------------------------
 ### Errors Reference
 
-URL: https://datafn.21n.co/docs/reference/errors
+URL: https://datafn.com/docs/reference/errors
 Description: Canonical error code matrix: what each code means, what causes it, and how to fix it.
 --------------------------------------------------------------------------------
 
@@ -26086,9 +26724,9 @@ These fire at server startup (during `validateSchema`) or when a schema is loade
 | `CAPABILITY_FIELD_COLLISION` | A field you declared has the same name as a capability-injected system field (e.g. declaring `createdAt` while `timestamps` is enabled). | Drop the conflicting field; capabilities own these names. See [System Fields](/docs/dfql/schema/system-fields). |
 | `CAPABILITY_DEPENDENCY` | A capability requires another that isn't enabled (`shareable` depends on `audit`). | Add the dependency to the schema or remove the dependent capability. |
 
-## DFQL errors
+## Request protocol and DFQL errors
 
-These fire on query, mutation, or transaction requests when the payload doesn't match the schema.
+Protocol-version errors apply to every action before authorization. DFQL errors describe malformed envelopes or schema-invalid query, mutation, and transaction payloads.
 
 | Code | Common cause | Fix |
 | --- | --- | --- |
@@ -26097,6 +26735,7 @@ These fire on query, mutation, or transaction requests when the payload doesn't 
 | `DFQL_UNKNOWN_FIELD` | A field in `select`, `filters`, `sort`, or `record` isn't on the resource. | Same as above. |
 | `DFQL_UNKNOWN_RELATION` | A relation path in `select` references an undeclared relation. | Add the relation to the schema or fix the path. |
 | `DFQL_UNSUPPORTED` | A feature (operator, capability operation) is not supported by the current server build. | Common in cross-resource search without a `SearchProvider`. Configure the missing dependency. |
+| `DATAFN_UNSUPPORTED_PROTOCOL_VERSION` | The request declared a `protocolVersion` DataFn does not support. | Omit `protocolVersion` or send `"1"`. Fail closed; do not route or authorize. |
 | `DFQL_ABORTED` | A step in `transact` aborted because a prior step failed. | Check the first non-`DFQL_ABORTED` error in `results`. |
 | `DFQL_SHARE_SCOPE_INVALID` | `share` mutation with an invalid `scope` (must be `"record"` or `"resource"`). | Pass `scope: "record"` + `id`, or `scope: "resource"` (no id). |
 | `DFQL_PRINCIPAL_INVALID` | `share` mutation with an empty `principalId`, both `principalId` and `userId`, or neither. | Pass one of them, non-empty. |
@@ -26118,6 +26757,11 @@ These fire on query, mutation, or transaction requests when the payload doesn't 
 | `INTERNAL` | Unclassified server error (database connection, plugin throwing, etc.). | Check server logs; this code is never thrown intentionally. |
 | `TRANSACTION_ROLLED_BACK` | A step in `transact` failed and the entire transaction was rolled back. | Inspect prior step error(s); the rollback itself is correct. |
 | `TRANSPORT_ERROR` | Client-side network error (timeout, connection refused, DNS). Never returned by the server. | Surface to the user; retry with backoff. |
+| `DATAFN_NAMESPACE_STORAGE_UNSUPPORTED` | Non-PostgreSQL catalog, unnamespaced schema, or a drain role without an implementation. | Use the PostgreSQL resolver, enable `namespaced: true`, or upgrade DataFn. |
+| `DATAFN_NAMESPACE_STORAGE_VERSION_MISMATCH` | Caller requested a manifest/schema version this DataFn build does not support. | Negotiate version `1` or block the tenant operation. |
+| `DATAFN_NAMESPACE_STORAGE_INCOMPLETE` | A required resource/join table or selector column is missing. | Finish schema install/migration, then retry. |
+| `DATAFN_NAMESPACE_STORAGE_UNKNOWN` | The database contains DataFn namespace storage that this build does not know about. | Upgrade DataFn before copy/backup/fence; do not ignore the table. |
+| `DATAFN_NAMESPACE_STORAGE_INVALID` | Identifier injection or an application relation colliding with DataFn storage. | Use `quotePostgresIdentifier` / `composeNamespaceStoragePlan` only with validated names. |
 
 ## Apple-only
 
@@ -26175,179 +26819,85 @@ Always switch on `code`. Never parse `message`; it's human-readable and may chan
 
 
 --------------------------------------------------------------------------------
-### Events Reference
+### Plugin Hooks Reference
 
-URL: https://datafn.21n.co/docs/reference/events
-Description: Plugin hook events fired during query, mutation, and sync execution.
+URL: https://datafn.com/docs/reference/events
+Description: Named query, mutation, search, and sync callbacks on DatafnPlugin.
 --------------------------------------------------------------------------------
 
-DataFn plugins receive structured events. The same event shape is used on client and server so the same hook can run in both places.
+Plugins implement named callbacks on `DatafnPlugin`; there is no event subscription array. `runsOn` selects the client, server, or both. Register the object with `plugins: [plugin]` when creating the client or server.
 
-## DatafnEvent
+## Hook context and arguments
 
 ```typescript
-type DatafnEvent =
-  | "beforeQuery"  | "afterQuery"
-  | "beforeMutation" | "afterMutation"
-  | "beforeTransact" | "afterTransact"
-  | "beforeSync" | "afterSync";
+import type { DatafnHookContext, DatafnPlugin } from "@datafn/core";
+
+export const auditPlugin: DatafnPlugin = {
+  name: "audit-mutations",
+  runsOn: ["server"],
+  beforeMutation(ctx, mutation) {
+    console.log("before mutation", ctx.env, mutation);
+    return mutation;
+  },
+  afterMutation(ctx, mutation, result) {
+    console.log("after mutation", ctx.env, mutation, result);
+    // This callback observes the result; its return value is ignored by the caller.
+  },
+};
 ```
 
-| Event | Fires when | Mutating? |
+`DatafnHookContext` contains `env: "client" | "server"`, `schema: DatafnSchema`, and optional host `context`. It does not contain an event name, resource filter, or payload. The operation payload is a separate argument. Treat `context` and payloads as unknown until narrowed by application code.
+
+| Callback | Arguments after `ctx` | Purpose |
 | --- | --- | --- |
-| `beforeQuery` | A `/datafn/query` (or local read) is about to execute | yes — return a modified query to alter the request |
-| `afterQuery` | A query finished | yes — return a modified result set |
-| `beforeMutation` | A `/datafn/mutation` (or local write) is about to execute | yes — return a modified mutation or `{ abort: { code, message } }` |
-| `afterMutation` | A mutation finished | no — observation only |
-| `beforeTransact` | A `/datafn/transact` is about to execute | yes — modify steps |
-| `afterTransact` | A transaction finished | no |
-| `beforeSync` | A sync push or pull is about to execute | yes — see hook semantics below |
-| `afterSync` | A sync round-trip finished | no |
+| `beforeQuery` | query | Inspect or replace the query. |
+| `afterQuery` | query, result | Inspect the result; only server-side `afterQuery` can replace the result returned to the caller. |
+| `beforeSearch` | search | Server only: inspect or replace the search request. Client search does not invoke this hook. |
+| `beforeMutation` | mutation or mutation array | Inspect or replace the mutation payload. |
+| `afterMutation` | mutation or mutation array, result | Observe the completed operation; return values do not replace the caller’s result. |
+| `beforeSync` | phase, payload | Inspect or replace the sync payload. |
+| `afterSync` | phase, payload, result | Observe a sync operation; return values do not replace the caller’s result. |
 
-## DatafnEventFilter
+Sync phases are `seed`, `clone`, `pull`, `push`, `cloneUp`, and `reconcile`. There are no `beforeTransact` or `afterTransact` members in the current plugin contract.
 
-Plugins may scope their hooks to specific resources or operations:
+## Ordering, return values, and failures
 
-```typescript
-type DatafnEventFilter = {
-  resource?: string | string[];
-  operation?: DfqlOperation | DfqlOperation[];
-};
-```
+Hooks execute in registration order for plugins whose `runsOn` includes the current environment. For before-hooks, an undefined return keeps the current payload and a defined return supplies the next hook’s input. Only server-side `afterQuery` propagates its final replacement result to the operation caller. Client `afterQuery`, `afterMutation`, and `afterSync` return the original operation result; server `afterMutation` and `afterSync` also discard the hook runner’s final value. A replacement may reach subsequent hooks but does not replace these callers’ results. Preserve the shape expected by the operation. Returning `{ abort: ... }` is not an abort protocol: it would replace the payload.
 
-`undefined` matches everything.
+Before-hooks fail closed: throwing stops the chain and fails the operation. After-hooks fail open: errors are logged and subsequent hooks continue. After-hooks cannot roll back an operation that has already executed. Keep authorization in the server's authorization policy; a client plugin is not a security boundary.
 
-## DatafnHookContext
+## Restricting a hook to a resource
 
-The argument passed to each hook:
-
-```typescript
-type DatafnHookContext = {
-  event: DatafnEvent;
-  resource?: string;
-  payload: unknown; // event-specific (DfqlQuery, DfqlMutation, …)
-  ctx?: unknown;    // server request context (e.g. ctx.user)
-  meta?: Record<string, unknown>;
-};
-```
-
-## Defining a plugin
+Inspect the payload explicitly; the plugin contract has no `filter` property. Handle arrays when processing mutations:
 
 ```typescript
 import type { DatafnPlugin } from "@datafn/core";
 
-export const myPlugin: DatafnPlugin = {
-  name: "log-mutations",
-  hooks: [
-    {
-      event: "beforeMutation",
-      filter: { resource: ["tasks", "projects"] },
-      handler: async (ctx) => {
-        console.log("mutation", ctx.payload);
-        return undefined; // pass through unchanged
-      },
-    },
-    {
-      event: "afterMutation",
-      handler: async (ctx) => {
-        // observation only; don't return a value
-        await metrics.record("mutation", { resource: ctx.resource });
-      },
-    },
-  ],
+export const observeItems: DatafnPlugin = {
+  name: "observe-items",
+  runsOn: ["client", "server"],
+  beforeMutation(_ctx, payload) {
+    for (const mutation of Array.isArray(payload) ? payload : [payload]) {
+      if (typeof mutation !== "object" || mutation === null) continue;
+      if ("resource" in mutation && mutation.resource === "items") {
+        console.log("items mutation", mutation);
+      }
+    }
+    return payload;
+  },
 };
 ```
 
-Register on the server via `plugins: [myPlugin]` in `createDatafnServer`, and on the client via `plugins: [myPlugin]` in `createDatafnClient`.
+For reliable external side effects, persist an outbox record with the application's transaction and deliver it separately. An after-hook alone does not provide durable delivery or rollback.
 
-## Return values
-
-### before* hooks
-
-A before-hook may return:
-
-- `undefined` → pass through unchanged.
-- A modified payload of the same shape → the modified value replaces the original (for example a `beforeQuery` may extend `filters`).
-- `{ abort: { code: DatafnErrorCode; message: string; details?: unknown } }` → abort execution and return that error to the caller.
-
-Multiple before-hooks are run in registration order; the first abort short-circuits the rest.
-
-### after* hooks
-
-After-hooks are observation only. Return value is ignored. Throwing aborts subsequent after-hooks but does **not** roll back the executed mutation. Use throwing only to fail-fast in development.
-
-## Common patterns
-
-### Field redaction
-
-```typescript
-{
-  event: "afterQuery",
-  filter: { resource: "users" },
-  handler: async (ctx) => {
-    const result = ctx.payload as { data: any[] };
-    return {
-      ...result,
-      data: result.data.map((row) => {
-        if (ctx.ctx?.user?.role !== "admin") delete row.email;
-        return row;
-      }),
-    };
-  },
-}
-```
-
-### Computed timestamps
-
-```typescript
-{
-  event: "beforeMutation",
-  filter: { resource: "tasks", operation: ["insert", "merge"] },
-  handler: async (ctx) => {
-    const mut = ctx.payload as DfqlMutation;
-    return {
-      ...mut,
-      record: { ...mut.record, dueDateMs: new Date(mut.record.dueDate as string).getTime() },
-    };
-  },
-}
-```
-
-### Outbound webhooks
-
-```typescript
-{
-  event: "afterMutation",
-  filter: { resource: "orders" },
-  handler: async (ctx) => {
-    await sendWebhook("https://hooks.example.com/orders", ctx.payload);
-  },
-}
-```
-
-### Hard abort
-
-```typescript
-{
-  event: "beforeMutation",
-  filter: { resource: "tasks" },
-  handler: async (ctx) => {
-    const mut = ctx.payload as DfqlMutation;
-    if (mut.operation === "delete" && !ctx.ctx?.user?.isAdmin) {
-      return { abort: { code: "FORBIDDEN", message: "Only admins can delete tasks" } };
-    }
-  },
-}
-```
-
-See [Plugins → Custom Plugins](/docs/documentation/plugins/custom-plugins) for narrative coverage.
+See [Custom plugins](/docs/documentation/plugins/custom-plugins) and the current [plugin contract](https://github.com/21nCo/super-functions/blob/dev/datafn/core/src/types.ts).
 
 
 
 --------------------------------------------------------------------------------
 ### HTTP Routes Reference
 
-URL: https://datafn.21n.co/docs/reference/routes
+URL: https://datafn.com/docs/reference/routes
 Description: Canonical reference for every route exposed by the DataFn server: method, path, request shape, response shape, and error codes.
 --------------------------------------------------------------------------------
 
@@ -26576,7 +27126,7 @@ See [WebSockets](/docs/documentation/server/websockets) for the full protocol.
 --------------------------------------------------------------------------------
 ### Server Configuration
 
-URL: https://datafn.21n.co/docs/reference/server/config
+URL: https://datafn.com/docs/reference/server/config
 Description: Full configuration reference for createDatafnServer.
 --------------------------------------------------------------------------------
 
@@ -26756,7 +27306,7 @@ interface WsManagerConfig {
 --------------------------------------------------------------------------------
 ### Execution Engine
 
-URL: https://datafn.21n.co/docs/reference/server/execution
+URL: https://datafn.com/docs/reference/server/execution
 Description: Query and mutation execution internals.
 --------------------------------------------------------------------------------
 
@@ -26874,7 +27424,7 @@ These tables are automatically created by the database adapter and are transpare
 --------------------------------------------------------------------------------
 ### Middleware
 
-URL: https://datafn.21n.co/docs/reference/server/middleware
+URL: https://datafn.com/docs/reference/server/middleware
 Description: Rate limiting and timing middleware reference.
 --------------------------------------------------------------------------------
 
@@ -26997,9 +27547,87 @@ timingEmitter?.(event);
 
 
 --------------------------------------------------------------------------------
+### Namespace storage
+
+URL: https://datafn.com/docs/reference/server/namespace-storage
+Description: Server APIs that resolve DataFn-owned namespace storage for migration and ownership tooling.
+--------------------------------------------------------------------------------
+
+See the conceptual guide: [Namespace storage contract](/docs/documentation/namespace-storage).
+
+## resolveNamespaceStoragePlan
+
+```typescript
+function resolveNamespaceStoragePlan(input: {
+  schema: DatafnSchema;
+  catalog: NamespaceStorageCatalog;
+  manifestVersion?: string;
+  schemaVersion?: string;
+}): NamespaceStoragePlan;
+```
+
+Validates the installed PostgreSQL schema against the logical manifest and returns a deterministic plan. Unknown DataFn namespace tables fail closed.
+
+## inspectPostgresNamespaceStorage
+
+```typescript
+function inspectPostgresNamespaceStorage(
+  query: PostgresNamespaceStorageQuery,
+): Promise<NamespaceStorageCatalog>;
+```
+
+Runs DataFn-owned catalog SQL through the provided query callback.
+
+## selectNamespaceStorageEntries
+
+```typescript
+function selectNamespaceStorageEntries(
+  plan: NamespaceStoragePlan,
+  operation: NamespaceStorageOperation,
+): readonly NamespaceStorageEntry[];
+```
+
+`cleanup` is returned in reverse copy order. `drain` currently contains only `permission_directory_outbox`.
+
+## drainNamespaceStorage
+
+```typescript
+function drainNamespaceStorage(input: {
+  adapter: Adapter;
+  plan: NamespaceStoragePlan;
+  namespace: string;
+  runtime: DatafnMultiRegionRuntimeConfig;
+  logger?: DatafnLogger;
+}): Promise<{ processed: number; pending: number }>;
+```
+
+Drains permission-directory outbox rows for one namespace without touching other namespaces.
+
+## composeNamespaceStoragePlan
+
+Adds application-owned relations. DataFn does not claim those tables. Collisions with DataFn relations throw `DATAFN_NAMESPACE_STORAGE_INVALID`.
+
+### Installed-schema and drain guarantees
+
+Catalog inspection reads both columns and valid, non-partial PostgreSQL indexes.
+A supplied catalog must include index metadata: namespace-only table stubs are
+rejected. Plans require operational columns, canonical generated physical column
+names, and a primary row identity on `id` or `(namespace selector, id)`.
+Expression/partial/invalid indexes cannot certify that identity. Custom physical
+mappings outside these conventions fail closed instead of producing a partial plan.
+This is structural validation, not a live tenant-migration rehearsal.
+
+Namespace draining respects unexpired pre-commit and retry leases. `pending` is
+an existence indicator (0 or 1), including rows still owned by active mutations;
+never treat `processed: 0` as proof of quiescence. Fence new writes, settle active
+writers, and retry until pending is zero before copying or cleaning up storage.
+
+
+
+--------------------------------------------------------------------------------
 ### Route Handlers
 
-URL: https://datafn.21n.co/docs/reference/server/routes
+URL: https://datafn.com/docs/reference/server/routes
 Description: Server route lifecycle and capability-aware execution notes.
 --------------------------------------------------------------------------------
 
@@ -27068,7 +27696,7 @@ Applies initial data payloads, idempotently scoped to namespace.
 --------------------------------------------------------------------------------
 ### WebSocket Manager
 
-URL: https://datafn.21n.co/docs/reference/server/websocket
+URL: https://datafn.com/docs/reference/server/websocket
 Description: WebSocket manager reference.
 --------------------------------------------------------------------------------
 
