@@ -95,8 +95,10 @@ This document is intended for large language models and agentic developer tools.
 - [Deploy to Railway](https://datafn.21n.co/docs/documentation/deploy/railway): Zero-config DataFn deploys on Railway with managed Postgres and Redis.
 - [Scaling](https://datafn.21n.co/docs/documentation/deploy/scaling): Sequence store, WebSocket broadcasting, multi-region, and the bottleneck pattern.
 - [Deploy to Vercel](https://datafn.21n.co/docs/documentation/deploy/vercel): Run DataFn on Vercel with Next.js or SvelteKit and a managed Postgres.
+- [Direct regional sync tickets](https://datafn.21n.co/docs/documentation/direct-regional-sync): Canonical bootstrap, short-lived regional grants, HTTP and WebSocket renewal, and migration fencing.
 - [SPV2 Migration](https://datafn.21n.co/docs/documentation/migrations/spv2): Roll out Sharing Permissions V2 safely with backfill, dual-read, dual-write, and rollback controls.
 - [Multi-region gateway routing](https://datafn.21n.co/docs/documentation/multi-region-gateway): Tenant placement, regional cell fencing, canonical ingress, safe retries, and namespace migration.
+- [Namespace storage contract](https://datafn.21n.co/docs/documentation/namespace-storage): Canonical inventory of DataFn-owned namespace tables for migration, backup, fencing, and ownership checks.
 - [Namespaces](https://datafn.21n.co/docs/documentation/namespaces): Isolate data between tenants, users, or any grouping with composable namespace strings.
 - [Client Search Plugin](https://datafn.21n.co/docs/documentation/plugins/client-search): Built-in plugin for client-side full-text search with provider-backed or legacy MiniSearch mode.
 - [Custom Plugins](https://datafn.21n.co/docs/documentation/plugins/custom-plugins): Build your own DataFn plugins.
@@ -110,7 +112,9 @@ This document is intended for large language models and agentic developer tools.
 - [Production Checklist](https://datafn.21n.co/docs/documentation/security/production-checklist): The minimum security configuration for a production DataFn deployment.
 - [Rate Limiting](https://datafn.21n.co/docs/documentation/security/rate-limiting): Per-endpoint rate limits backed by Redis or memory.
 - [Request Authorization](https://datafn.21n.co/docs/documentation/security/request-authz): The authorize callback — coarse-grained gating per request.
+- [Structural Resource Selectors](https://datafn.21n.co/docs/documentation/security/resource-selectors): Canonical API for deriving protocol-level resource selectors used by gateways and authorization plugins.
 - [WebSocket Security](https://datafn.21n.co/docs/documentation/security/websocket-security): How DataFn protects WebSocket connections: auth at upgrade, namespace lock, connection caps, and heartbeats.
+- [Administration](https://datafn.21n.co/docs/documentation/server/administration): Connect the scoped DataFn capability to a host-owned operator console.
 - [Authorization](https://datafn.21n.co/docs/documentation/server/authorization): Control access to resources and fields.
 - [Observability](https://datafn.21n.co/docs/documentation/server/observability): Monitor server performance with timing events.
 - [Rate Limiting](https://datafn.21n.co/docs/documentation/server/rate-limiting): Protect your server with configurable rate limits.
@@ -196,18 +200,21 @@ This document is intended for large language models and agentic developer tools.
 - [Filter Utilities](https://datafn.21n.co/docs/reference/core/filters): Filter evaluation and operator utilities.
 - [Hook Utilities](https://datafn.21n.co/docs/reference/core/hooks): Plugin hook execution utilities.
 - [KV Utilities](https://datafn.21n.co/docs/reference/core/kv): Built-in key-value resource utilities.
+- [Namespace storage manifest](https://datafn.21n.co/docs/reference/core/namespace-storage): Logical roles and operations for DataFn-owned namespace storage.
 - [Normalization](https://datafn.21n.co/docs/reference/core/normalize): DFQL normalization for caching and comparison.
+- [Resource Selectors](https://datafn.21n.co/docs/reference/core/resource-selectors): Parse DataFn request envelopes and collect structural resource selectors.
 - [Schema Utilities](https://datafn.21n.co/docs/reference/core/schema): Schema validation, capability resolution, and schema indexing helpers.
 - [SearchProvider](https://datafn.21n.co/docs/reference/core/search-provider): Interface contract for pluggable search providers in DataFn.
 - [Temporal](https://datafn.21n.co/docs/reference/core/temporal): Timezone-aware temporal types, builders, and resolution helpers from @datafn/core.
 - [Core Types](https://datafn.21n.co/docs/reference/core/types): Type definitions exported by @datafn/core.
 - [Envelopes Reference](https://datafn.21n.co/docs/reference/envelopes): Every DataFn response is a DatafnEnvelope. Here is the shape and the helpers.
 - [Errors Reference](https://datafn.21n.co/docs/reference/errors): Canonical error code matrix: what each code means, what causes it, and how to fix it.
-- [Events Reference](https://datafn.21n.co/docs/reference/events): Plugin hook events fired during query, mutation, and sync execution.
+- [Plugin Hooks Reference](https://datafn.21n.co/docs/reference/events): Named query, mutation, search, and sync callbacks on DatafnPlugin.
 - [HTTP Routes Reference](https://datafn.21n.co/docs/reference/routes): Canonical reference for every route exposed by the DataFn server: method, path, request shape, response shape, and error codes.
 - [Server Configuration](https://datafn.21n.co/docs/reference/server/config): Full configuration reference for createDatafnServer.
 - [Execution Engine](https://datafn.21n.co/docs/reference/server/execution): Query and mutation execution internals.
 - [Middleware](https://datafn.21n.co/docs/reference/server/middleware): Rate limiting and timing middleware reference.
+- [Namespace storage](https://datafn.21n.co/docs/reference/server/namespace-storage): Server APIs that resolve DataFn-owned namespace storage for migration and ownership tooling.
 - [Route Handlers](https://datafn.21n.co/docs/reference/server/routes): Server route lifecycle and capability-aware execution notes.
 - [WebSocket Manager](https://datafn.21n.co/docs/reference/server/websocket): WebSocket manager reference.
 

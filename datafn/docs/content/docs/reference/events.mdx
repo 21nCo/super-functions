@@ -1,167 +1,73 @@
 ---
-title: "Events Reference"
-description: "Plugin hook events fired during query, mutation, and sync execution."
+title: "Plugin Hooks Reference"
+description: "Named query, mutation, search, and sync callbacks on DatafnPlugin."
 audience: reference
 applies_to: both
 ---
 
-DataFn plugins receive structured events. The same event shape is used on client and server so the same hook can run in both places.
+Plugins implement named callbacks on `DatafnPlugin`; there is no event subscription array. `runsOn` selects the client, server, or both. Register the object with `plugins: [plugin]` when creating the client or server.
 
-## DatafnEvent
+## Hook context and arguments
 
 ```typescript
-type DatafnEvent =
-  | "beforeQuery"  | "afterQuery"
-  | "beforeMutation" | "afterMutation"
-  | "beforeTransact" | "afterTransact"
-  | "beforeSync" | "afterSync";
+import type { DatafnHookContext, DatafnPlugin } from "@datafn/core";
+
+export const auditPlugin: DatafnPlugin = {
+  name: "audit-mutations",
+  runsOn: ["server"],
+  beforeMutation(ctx, mutation) {
+    console.log("before mutation", ctx.env, mutation);
+    return mutation;
+  },
+  afterMutation(ctx, mutation, result) {
+    console.log("after mutation", ctx.env, mutation, result);
+    // Returning undefined preserves the existing result.
+  },
+};
 ```
 
-| Event | Fires when | Mutating? |
+`DatafnHookContext` contains `env: "client" | "server"`, `schema: DatafnSchema`, and optional host `context`. It does not contain an event name, resource filter, or payload. The operation payload is a separate argument. Treat `context` and payloads as unknown until narrowed by application code.
+
+| Callback | Arguments after `ctx` | Purpose |
 | --- | --- | --- |
-| `beforeQuery` | A `/datafn/query` (or local read) is about to execute | yes — return a modified query to alter the request |
-| `afterQuery` | A query finished | yes — return a modified result set |
-| `beforeMutation` | A `/datafn/mutation` (or local write) is about to execute | yes — return a modified mutation or `{ abort: { code, message } }` |
-| `afterMutation` | A mutation finished | no — observation only |
-| `beforeTransact` | A `/datafn/transact` is about to execute | yes — modify steps |
-| `afterTransact` | A transaction finished | no |
-| `beforeSync` | A sync push or pull is about to execute | yes — see hook semantics below |
-| `afterSync` | A sync round-trip finished | no |
+| `beforeQuery` | query | Inspect or replace the query. |
+| `afterQuery` | query, result | Inspect or replace the query result. |
+| `beforeSearch` | search | Inspect or replace the search request. |
+| `beforeMutation` | mutation or mutation array | Inspect or replace the mutation payload. |
+| `afterMutation` | mutation or mutation array, result | Observe the completed operation; the hook runner can transform its result. |
+| `beforeSync` | phase, payload | Inspect or replace the sync payload. |
+| `afterSync` | phase, payload, result | Observe a sync operation and optionally transform its result. |
 
-## DatafnEventFilter
+Sync phases are `seed`, `clone`, `pull`, `push`, `cloneUp`, and `reconcile`. There are no `beforeTransact` or `afterTransact` members in the current plugin contract.
 
-Plugins may scope their hooks to specific resources or operations:
+## Ordering, return values, and failures
 
-```typescript
-type DatafnEventFilter = {
-  resource?: string | string[];
-  operation?: DfqlOperation | DfqlOperation[];
-};
-```
+Hooks execute in registration order for plugins whose `runsOn` includes the current environment. An undefined return keeps the current value; a defined return supplies the next hook's input/result. Preserve the shape expected by the operation and its caller. Returning `{ abort: ... }` is not an abort protocol: it would replace the payload.
 
-`undefined` matches everything.
+Before-hooks fail closed: throwing stops the chain and fails the operation. After-hooks fail open: errors are logged and subsequent hooks continue. After-hooks cannot roll back an operation that has already executed. Keep authorization in the server's authorization policy; a client plugin is not a security boundary.
 
-## DatafnHookContext
+## Restricting a hook to a resource
 
-The argument passed to each hook:
-
-```typescript
-type DatafnHookContext = {
-  event: DatafnEvent;
-  resource?: string;
-  payload: unknown; // event-specific (DfqlQuery, DfqlMutation, …)
-  ctx?: unknown;    // server request context (e.g. ctx.user)
-  meta?: Record<string, unknown>;
-};
-```
-
-## Defining a plugin
+Inspect the payload explicitly; the plugin contract has no `filter` property. Handle arrays when processing mutations:
 
 ```typescript
 import type { DatafnPlugin } from "@datafn/core";
 
-export const myPlugin: DatafnPlugin = {
-  name: "log-mutations",
-  hooks: [
-    {
-      event: "beforeMutation",
-      filter: { resource: ["tasks", "projects"] },
-      handler: async (ctx) => {
-        console.log("mutation", ctx.payload);
-        return undefined; // pass through unchanged
-      },
-    },
-    {
-      event: "afterMutation",
-      handler: async (ctx) => {
-        // observation only; don't return a value
-        await metrics.record("mutation", { resource: ctx.resource });
-      },
-    },
-  ],
+export const observeItems: DatafnPlugin = {
+  name: "observe-items",
+  runsOn: ["client", "server"],
+  beforeMutation(_ctx, payload) {
+    for (const mutation of Array.isArray(payload) ? payload : [payload]) {
+      if (typeof mutation !== "object" || mutation === null) continue;
+      if ("resource" in mutation && mutation.resource === "items") {
+        console.log("items mutation", mutation);
+      }
+    }
+    return payload;
+  },
 };
 ```
 
-Register on the server via `plugins: [myPlugin]` in `createDatafnServer`, and on the client via `plugins: [myPlugin]` in `createDatafnClient`.
+For reliable external side effects, persist an outbox record with the application's transaction and deliver it separately. An after-hook alone does not provide durable delivery or rollback.
 
-## Return values
-
-### before* hooks
-
-A before-hook may return:
-
-- `undefined` → pass through unchanged.
-- A modified payload of the same shape → the modified value replaces the original (for example a `beforeQuery` may extend `filters`).
-- `{ abort: { code: DatafnErrorCode; message: string; details?: unknown } }` → abort execution and return that error to the caller.
-
-Multiple before-hooks are run in registration order; the first abort short-circuits the rest.
-
-### after* hooks
-
-After-hooks are observation only. Return value is ignored. Throwing aborts subsequent after-hooks but does **not** roll back the executed mutation. Use throwing only to fail-fast in development.
-
-## Common patterns
-
-### Field redaction
-
-```typescript
-{
-  event: "afterQuery",
-  filter: { resource: "users" },
-  handler: async (ctx) => {
-    const result = ctx.payload as { data: any[] };
-    return {
-      ...result,
-      data: result.data.map((row) => {
-        if (ctx.ctx?.user?.role !== "admin") delete row.email;
-        return row;
-      }),
-    };
-  },
-}
-```
-
-### Computed timestamps
-
-```typescript
-{
-  event: "beforeMutation",
-  filter: { resource: "tasks", operation: ["insert", "merge"] },
-  handler: async (ctx) => {
-    const mut = ctx.payload as DfqlMutation;
-    return {
-      ...mut,
-      record: { ...mut.record, dueDateMs: new Date(mut.record.dueDate as string).getTime() },
-    };
-  },
-}
-```
-
-### Outbound webhooks
-
-```typescript
-{
-  event: "afterMutation",
-  filter: { resource: "orders" },
-  handler: async (ctx) => {
-    await sendWebhook("https://hooks.example.com/orders", ctx.payload);
-  },
-}
-```
-
-### Hard abort
-
-```typescript
-{
-  event: "beforeMutation",
-  filter: { resource: "tasks" },
-  handler: async (ctx) => {
-    const mut = ctx.payload as DfqlMutation;
-    if (mut.operation === "delete" && !ctx.ctx?.user?.isAdmin) {
-      return { abort: { code: "FORBIDDEN", message: "Only admins can delete tasks" } };
-    }
-  },
-}
-```
-
-See [Plugins → Custom Plugins](/docs/documentation/plugins/custom-plugins) for narrative coverage.
+See [Custom plugins](/docs/documentation/plugins/custom-plugins) and the current [plugin contract](https://github.com/21nCo/super-functions/blob/dev/datafn/core/src/types.ts).
