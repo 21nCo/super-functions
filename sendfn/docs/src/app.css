@@ -70,3 +70,8 @@ body {
     box-sizing: border-box;
   }
 }
+
+/* The published theme hides this column on mobile; an open drawer must override it. */
+@media (max-width: 1023px) {
+  .docsfn-sidebar-col.docsfn-sidebar-col--open { display: block; }
+}

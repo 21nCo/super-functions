@@ -18,6 +18,9 @@ export default defineConfig({
   },
   resolve: {
     alias: [
+      // Resolve shared source against this site's pinned DocsFn installation.
+      { find: /^@docsfn\/core$/, replacement: fileURLToPath(import.meta.resolve("@docsfn/core")) },
+      { find: "@docsfn/core/search-runtime", replacement: fileURLToPath(import.meta.resolve("@docsfn/core/search-runtime")) },
       { find: "@searchfn/client", replacement: path.resolve(dirname, "../../searchfn/client/src/index.ts") },
       { find: "@searchfn/core", replacement: path.resolve(dirname, "../../searchfn/core/src/index.ts") },
       { find: "@searchfn/adapter-contracts", replacement: path.resolve(dirname, "../../searchfn/adapter-contracts/src/index.ts") },

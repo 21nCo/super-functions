@@ -98,9 +98,13 @@ const client = sendfn({
 If `enableApi` is true, the `client.router` instance is available to be mounted on any supported framework via Superfunctions HTTP adapters.
 
 ```typescript
-import { createExpressApp } from '@superfunctions/http-express';
+import express from 'express';
+import { toExpress } from '@superfunctions/http-express';
 
-const app = createExpressApp(client.router);
+const app = express();
+app.use(express.raw({ type: "*/*", limit: "2mb" }));
+if (!client.router) throw new Error('Set enableApi: true before mounting');
+app.use(toExpress(client.router));
 app.listen(3000);
 
 // Endpoints (Requires 'Authorization: Bearer <adminKey>'):

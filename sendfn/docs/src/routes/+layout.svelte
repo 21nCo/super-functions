@@ -4,7 +4,6 @@
   import TopBar from "@docsfn/svelte/TopBar.svelte";
   import { page } from "$app/stores";
   import type { Snippet } from "svelte";
-  import { onMount } from "svelte";
   import type { LayoutData } from "./$types";
 
   interface Props {
@@ -14,11 +13,6 @@
 
   let { data, children }: Props = $props();
 
-  /** DocsSearch uses uifn Dialog with runes that cannot SSR; mount after hydrate. */
-  let clientSearchReady = $state(false);
-  onMount(() => {
-    clientSearchReady = true;
-  });
 </script>
 
 <div
@@ -27,7 +21,7 @@
 >
   <TopBar
     items={data.source.config.navigation?.topNav}
-    searchTrigger={clientSearchReady ? DocsSiteSearch : undefined}
+    searchTrigger={DocsSiteSearch}
   />
   <div class="docsfn-site-main">
     {@render children()}
