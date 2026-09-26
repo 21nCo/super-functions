@@ -7,16 +7,18 @@
     "dev": "vite dev --port 6017",
     "build": "vite build",
     "preview": "vite preview --port 6017",
-    "test": "vitest run --passWithNoTests",
+    "test": "npm run check:llms && vitest run --config ../../scripts/docs-site/vitest.config.ts",
     "generate:llms": "node scripts/generate-llms.mjs",
-    "prebuild": "npm run generate:llms"
+    "prebuild": "npm run generate:llms",
+    "check:llms": "node scripts/generate-llms.mjs --check"
   },
   "dependencies": {
     "@21n/fonts": "^1.0.1",
     "@docsfn/core": "0.0.5",
     "@docsfn/provider-fs": "0.0.2",
     "@docsfn/svelte": "0.0.3",
-    "@docsfn/sveltekit": "0.0.2"
+    "@docsfn/sveltekit": "0.0.2",
+    "gray-matter": "^4.0.3"
   },
   "devDependencies": {
     "@docsfn/cli": "0.0.2",

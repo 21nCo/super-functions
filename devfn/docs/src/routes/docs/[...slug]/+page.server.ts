@@ -90,7 +90,7 @@ export const load: PageServerLoad = async ({ params }) => {
   }
 
   const sidebarId = surface.sidebarId ?? "default";
-  const sidebar: Sidebar | undefined = source.manifest.sidebars[sidebarId];
+  const sidebar: Sidebar | undefined = source.manifest.sidebars[sidebarId] ?? source.manifest.sidebars.docs;
 
   const compiled =
     routeEntry.kind === "page"
@@ -103,7 +103,7 @@ export const load: PageServerLoad = async ({ params }) => {
       : undefined;
 
   return {
-    routeEntry,
+    routeEntry: routeEntry.kind === "page" ? { kind: "page" as const } : routeEntry,
     surface,
     sidebar,
     compiled,

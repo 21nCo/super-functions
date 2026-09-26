@@ -3,6 +3,7 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
+    canonicalUrl: "https://devfn.com",
     title: "DevFn",
     description: "Trusted local profiles, process and Compose lifecycle, port leases, readiness, and localhost routes.",
     basePath: "/docs",
