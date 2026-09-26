@@ -1,0 +1,9 @@
+{
+  "title": "Reference",
+  "pages": [
+    "index",
+    "api",
+    "storage-lifecycle",
+    "package-overview"
+  ]
+}

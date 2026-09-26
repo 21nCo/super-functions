@@ -1,0 +1,19 @@
+# MemoryFn
+
+> Scoped memory storage, semantic retrieval, revisioned updates, and deletion for applications and agents.
+
+## Documentation
+
+- [Embeddings and extraction](/docs/embeddings-and-extraction) — Configure supported providers and understand ingestion and deduplication behavior.
+- [Getting started](/docs/getting-started) — Add, update, and forget scoped memories with the TypeScript package.
+- [HTTP adapter](/docs/http) — Mount the authorized MemoryFn router and understand its request boundary.
+- [MemoryFn documentation](/docs) — Scoped memory storage, retrieval, updates, and forgetting for application developers.
+- [MCP adapter](/docs/mcp) — Expose scoped MemoryFn tools through a trusted stdio host.
+- [Operations and current limits](/docs/operations-and-limits) — Supported configuration, migration responsibility, tests, and proof boundaries.
+- [Public API](/docs/reference/api) — MemoryFn package entry points, methods, input types, and adapters.
+- [API reference](/docs/reference) — Public TypeScript entry points and source-aligned package guidance.
+- [Package overview](/docs/reference/package-overview) — Source-aligned MemoryFn guidance from origin/dev.
+- [Storage and lifecycle source guide](/docs/reference/storage-lifecycle) — Source-aligned MemoryFn guidance from origin/dev.
+- [Scope and lifecycle](/docs/scope-and-lifecycle) — Tenant and tag constraints, optimistic revisions, updates, and tombstones.
+- [Semantic search](/docs/search) — Query scoped vector memories and enforce host authorization on results.
+- [Storage and migrations](/docs/storage) — PostgreSQL setup, connection ownership, transaction requirements, and custom adapters.
