@@ -1,0 +1,92 @@
+clifn/docs/content/docs/interaction-and-stdio.md
+  s_4e0e6cec9d8f32::t_d2c6393be04a7e 1-22
+clifn/docs/content/docs/reference/index.md
+  s_4e0e6cec9d8f32::t_d2c6393be04a7e 1-9,11-12
+  s_4e0e6cec9d8f32::t_657b1922911fb4 10
+clifn/docs/content/docs/output-and-diagnostics.md
+  s_4e0e6cec9d8f32::t_d2c6393be04a7e 1-39
+clifn/docs/content/docs/reference/exports.md
+  s_4e0e6cec9d8f32::t_d2c6393be04a7e 1-26
+clifn/docs/content/docs/index.md
+  s_4e0e6cec9d8f32::t_d2c6393be04a7e 1-22
+clifn/docs/content/docs/reference/meta.json
+  s_4e0e6cec9d8f32::t_657b1922911fb4 1-9
+clifn/docs/content/docs/reference/admin.md
+  s_4e0e6cec9d8f32::t_657b1922911fb4 1-10
+clifn/docs/content/docs/configuration.md
+  s_4e0e6cec9d8f32::t_d2c6393be04a7e 1-36
+clifn/docs/content/docs/automation.md
+  s_4e0e6cec9d8f32::t_d2c6393be04a7e 1-33
+clifn/docs/content/docs/credentials-and-client.md
+  s_4e0e6cec9d8f32::t_d2c6393be04a7e 1-30
+  s_4e0e6cec9d8f32::t_c8a0451d9c8885 31-32
+clifn/docs/content/docs/cli-builder.md
+  s_4e0e6cec9d8f32::t_d2c6393be04a7e 1-35
+  s_4e0e6cec9d8f32::t_73ce75ad7b79cf 36-38
+clifn/docs/content/docs/getting-started.md
+  s_4e0e6cec9d8f32::t_d2c6393be04a7e 1-34
+clifn/docs/.gitignore
+  s_4e0e6cec9d8f32::t_fe84a65964987a 1-10
+clifn/docs/README.md
+  s_4e0e6cec9d8f32::t_6b71ea492b194f 1-12
+clifn/docs/content/docs/meta.json
+  s_4e0e6cec9d8f32::t_9814cb2ea03970 1-14
+clifn/docs/content/docs/reference/core-readme.md
+  s_4e0e6cec9d8f32::t_3861310267ab21 1-400
+clifn/docs/docsfn.config.ts
+  s_4e0e6cec9d8f32::t_03d9886cf2c798 1-36
+clifn/docs/package.json
+  s_4e0e6cec9d8f32::t_41bb0699a15efd 1-34
+clifn/docs/scripts/generate-llms.mjs
+  s_4e0e6cec9d8f32::t_d968ba1ac2c2a7 1-39
+clifn/docs/src/app.css
+  s_4e0e6cec9d8f32::t_f85eb6f2efb7c6 1-72
+clifn/docs/src/app.html
+  s_4e0e6cec9d8f32::t_ab8aeaa21f3626 1-11
+clifn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_4e0e6cec9d8f32::t_6dca3f05edca73 1-17
+clifn/docs/src/lib/server/docs-site-source.ts
+  s_4e0e6cec9d8f32::t_e5491b3923608e 1-501
+clifn/docs/src/routes/+layout.server.ts
+  s_4e0e6cec9d8f32::t_19cd7831b043eb 1-8
+clifn/docs/src/routes/+layout.svelte
+  s_4e0e6cec9d8f32::t_10570d8ae27ef4 1-88
+clifn/docs/src/routes/+page.server.ts
+  s_4e0e6cec9d8f32::t_f030d2d841076c 1-6
+clifn/docs/src/routes/+page.svelte
+  s_4e0e6cec9d8f32::t_bbf9c896b53425 1-231
+clifn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_4e0e6cec9d8f32::t_8b1b28d448db27 1-120
+clifn/docs/src/routes/docs/[...slug]/+page.svelte
+  s_4e0e6cec9d8f32::t_1a94c365da54a0 1-41
+clifn/docs/src/routes/search.json/+server.ts
+  s_4e0e6cec9d8f32::t_ebc00372d7c5b9 1-8
+clifn/docs/static/llms-full.txt
+  s_4e0e6cec9d8f32::t_71ac804ee59169 1-761
+clifn/docs/static/llms.txt
+  s_4e0e6cec9d8f32::t_4e023bf202f257 1-18
+clifn/docs/svelte.config.js
+  s_4e0e6cec9d8f32::t_d6223b3af40e5f 1-24
+clifn/docs/tsconfig.json
+  s_4e0e6cec9d8f32::t_3363a8534e76c5 1-33
+clifn/docs/vite.config.ts
+  s_4e0e6cec9d8f32::t_ccc9bfb8d34848 1-28
+package-lock.json
+  s_4e0e6cec9d8f32::t_7d4d01995851ee 6575-6690,21975-21978
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c5b7f17db7cd64c3e032b291c7a1abaf6eccac74",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
