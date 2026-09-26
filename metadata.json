@@ -1,0 +1,18 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EKF2S76AKGZYQR7H6G96B7",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "scripts/docs-site/llms.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
