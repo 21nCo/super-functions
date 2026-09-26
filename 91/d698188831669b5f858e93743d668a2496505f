@@ -1,0 +1,25 @@
+billfn/docs/content/docs/server/meta.json
+  s_4e0e6cec9d8f32::t_d3a07dfd654669 3
+billfn/README.md
+  s_4e0e6cec9d8f32::t_d3a07dfd654669 11,38,47
+billfn/docs/content/docs/index.mdx
+  s_4e0e6cec9d8f32::t_d3a07dfd654669 15,97
+billfn/docs/content/docs/server/administration.mdx
+  s_4e0e6cec9d8f32::t_18d194e0080577 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "91d698188831669b5f858e93743d668a2496505f",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "thyaravind <samalaaravind02@gmail.com>"
+    }
+  }
+}
