@@ -1,7 +1,13 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-/** Keep LLM indexes navigable before a public documentation host is assigned. */
+/**
+ * Keep LLM indexes navigable before a public documentation host is assigned.
+ * @param {string} text
+ * @param {import("@docsfn/core").DocsManifest} manifest
+ * @param {string} product
+ * @param {string | undefined} canonicalUrl
+ */
 export function withSourceLinks(text, manifest, product, canonicalUrl) {
   if (canonicalUrl) return text;
   const sources = new Map(Object.values(manifest.pages)
@@ -16,7 +22,12 @@ export function withSourceLinks(text, manifest, product, canonicalUrl) {
   });
 }
 
-/** --check compares without modifying tracked artifacts. */
+/**
+ * --check compares without modifying tracked artifacts.
+ * @param {string} directory
+ * @param {{llmsTxt: string, llmsFullTxt: string}} artifacts
+ * @param {boolean} check
+ */
 export function writeLlmsArtifacts(directory, artifacts, check = process.argv.includes("--check")) {
   const files = { "llms.txt": artifacts.llmsTxt, "llms-full.txt": artifacts.llmsFullTxt };
   if (!check) mkdirSync(directory, { recursive: true });
