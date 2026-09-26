@@ -3,7 +3,7 @@
 > TypeScript SDK for model calls, tools, graphs, retrieval, observability, HTTP, and MCP.
 
 This file concatenates the full text of every documentation page so it can be loaded into
-an LLM-based assistant in a single shot. For a page index, see /llms.txt.
+an LLM-based assistant in a single shot. For a page index, see /docs/llms.txt.
 
 # Documentation
 

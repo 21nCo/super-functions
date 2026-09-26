@@ -19,4 +19,6 @@ npm run build --workspace @searchfn/adapter-indexeddb
 npm run build --workspace @searchfn/client
 npm exec --workspace @langfn/docs -- docsfn validate --root .
 ```
-  The site defaults to port 6018. Set `site.canonicalUrl` in `docsfn.config.ts` after the public host is assigned.
+  The site defaults to port 6018. The public documentation URL is `https://langfn.com/docs`.
+
+The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt`.

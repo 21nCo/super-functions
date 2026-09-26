@@ -3,6 +3,7 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
+    canonicalUrl: "https://langfn.com",
     title: "LangFn",
     description: "TypeScript SDK for model calls, tools, graphs, retrieval, observability, HTTP, and MCP.",
     basePath: "/docs",
