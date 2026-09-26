@@ -1,58 +1,40 @@
 ---
 title: Starlette
-description: Mount SearchFn into a Starlette app.
+description: Mount Python SearchFn handlers in a Starlette application.
 ---
 
-## 1. Install
-
-```bash
-pip install starlette uvicorn searchfn datafn
+```sh
+pip install searchfn starlette uvicorn
 ```
-
-## 2. App
 
 ```python
 from starlette.applications import Starlette
-from starlette.routing import Route
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-
+from starlette.routing import Route
 from searchfn import create_searchfn_server
-from datafn.db import PostgresAdapter
-from schema import schema
+from myapp.storage import schema, db
 
-db = PostgresAdapter(connection_string=os.environ["SEARCH_DB_URL"])
-
-search_plugin = create_searchfn_server({
-    "schema": schema,
-    "db": db,
-})
+plugin = create_searchfn_server({"schema": schema, "db": db})
 
 def wrap(handler):
     async def endpoint(request: Request):
-        body = await request.json()
-        return JSONResponse(await handler(body))
+        body = await request.body()
+        payload = await request.json() if body else {}
+        result = await handler(None, payload)
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     return endpoint
 
-routes = [Route(path, wrap(handler), methods=["POST"]) for path, handler in search_plugin["routes"].items()]
+routes = []
+for spec, handler in plugin["routes"].items():
+    method, path = spec.split(" ", 1)
+    routes.append(Route(path, endpoint=wrap(handler), methods=[method]))
 
 app = Starlette(routes=routes)
 ```
 
-## 3. Run
+Run `uvicorn myapp.app:app` (adjust to your module). Authenticate search requests and restrict the indexing route to operators.
 
-```bash
-uvicorn app:app --reload
-```
+The host must provision `<table_prefix>index` (default `_searchfn_index`) and authorize both routes. `searchfn` does not import DataFn or set up database tables. For a standalone adapter example, see the [Python source README](https://github.com/21nCo/super-functions/blob/dev/searchfn/python/README.md).
 
-## Smoke test
-
-```bash
-curl -X POST http://localhost:8000/searchfn/index -d '{"model": "products"}'
-curl -X POST http://localhost:8000/searchfn/search -d '{"query": "laptop"}'
-```
-
-## Next steps
-
-- [Python reference](/docs/reference/python)
-- [Security: authorization](/docs/documentation/security/request-authz)
+See [Python setup](/docs/documentation/python/setup) and [HTTP mount](/docs/documentation/python/http-mount).
