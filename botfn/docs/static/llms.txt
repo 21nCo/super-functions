@@ -4,15 +4,15 @@
 
 ## Documentation
 
-- [Administration capability](/docs/admin) — Integrate BotFn operator resources with Super Console.
-- [Discord bot](/docs/discord-bot) — Configure signed interactions, issue commands, and the Worker.
-- [Getting started](/docs/getting-started) — Find the BotFn package or service that fits your integration.
-- [BotFn](/docs) — Build and operate Discord and Slack bot integrations.
-- [Integration helpers](/docs/integrations) — Reuse Discord, Slack, GitHub, Linear, and schema helpers.
-- [Operations and limits](/docs/operations-and-limits) — Deployment responsibilities and current feature boundaries.
-- [Persistence service](/docs/persistence) — Store issue and Discord thread relationships through tRPC.
-- [Commands and routes](/docs/reference/commands-and-routes) — BotFn's registered commands, Worker routes, and tRPC procedures.
-- [Configuration](/docs/reference/configuration) — Runtime bindings and deployment inputs by package.
-- [Reference](/docs/reference) — BotFn package and runtime contract index.
-- [Packages](/docs/reference/packages) — Current BotFn package map and entry points.
-- [Slack receiver](/docs/slack-bot) — Verify Slack requests and understand the current event handler.
+- [Administration capability](https://botfn.com/docs/admin) — Integrate BotFn operator resources with Super Console.
+- [Discord bot](https://botfn.com/docs/discord-bot) — Configure signed interactions, issue commands, and the Worker.
+- [Getting started](https://botfn.com/docs/getting-started) — Find the BotFn package or service that fits your integration.
+- [BotFn](https://botfn.com/docs) — Build and operate Discord and Slack bot integrations.
+- [Integration helpers](https://botfn.com/docs/integrations) — Reuse Discord, Slack, GitHub, Linear, and schema helpers.
+- [Operations and limits](https://botfn.com/docs/operations-and-limits) — Deployment responsibilities and current feature boundaries.
+- [Persistence service](https://botfn.com/docs/persistence) — Store issue and Discord thread relationships through tRPC.
+- [Commands and routes](https://botfn.com/docs/reference/commands-and-routes) — BotFn's registered commands, Worker routes, and tRPC procedures.
+- [Configuration](https://botfn.com/docs/reference/configuration) — Runtime bindings and deployment inputs by package.
+- [Reference](https://botfn.com/docs/reference) — BotFn package and runtime contract index.
+- [Packages](https://botfn.com/docs/reference/packages) — Current BotFn package map and entry points.
+- [Slack receiver](https://botfn.com/docs/slack-bot) — Verify Slack requests and understand the current event handler.

@@ -3,6 +3,7 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
+    canonicalUrl: "https://botfn.com",
     title: "BotFn",
     description: "Discord and Slack bot integrations, issue linking, persistence, and operator controls.",
     basePath: "/docs",

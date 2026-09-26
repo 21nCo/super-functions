@@ -56,7 +56,7 @@
   </div>
   <label for="docs-search-query">Search terms</label>
   <input id="docs-search-query" bind:this={input} value={query} oninput={(event) => { query = event.currentTarget.value; void search(); }} type="search" autocomplete="off" placeholder="Search documentation…" />
-  <p role="status">{pending ? "Searching…" : query.trim() && !failure ? `${results.length} results` : "Enter a term to search."}</p>
+  <p role="status">{failure ? "" : pending ? "Searching…" : query.trim() ? `${results.length} results` : "Enter a term to search."}</p>
   {#if failure}<p role="alert">{failure}</p>{/if}
   <ul>
     {#each results as result (`${result.id}:${result.path}`)}

@@ -20,4 +20,6 @@ npm run build --workspace @searchfn/client
 npm exec --workspace @botfn/docs -- docsfn validate --root .
 ```
 
-The site defaults to port 6013. Set `site.canonicalUrl` in `docsfn.config.ts` after the public host is assigned.
+The site defaults to port 6013. The public documentation URL is `https://botfn.com/docs`.
+
+The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt`.
