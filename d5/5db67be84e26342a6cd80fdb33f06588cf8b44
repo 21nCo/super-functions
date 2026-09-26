@@ -1,0 +1,22 @@
+mdfn/docs/README.md
+  h_bdc5b81c173ee9 25
+mdfn/docs/docsfn.config.ts
+  h_bdc5b81c173ee9 6
+mdfn/docs/static/llms-full.txt
+  h_bdc5b81c173ee9 18,30,44-47,51,89,101,113,151,379,381,461-462,507,577,608,653,687,699,798,812,831
+mdfn/docs/static/llms.txt
+  h_bdc5b81c173ee9 7-44
+scripts/docs-site/llms.mjs
+  h_bdc5b81c173ee9 4-10,25-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d55db67be84e26342a6cd80fdb33f06588cf8b44",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
