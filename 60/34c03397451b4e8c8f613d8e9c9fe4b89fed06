@@ -1,0 +1,75 @@
+mailfn/cli/README.md
+  s_ee6f287c08acb3::t_c808f5cb8cf365 5-6,8-15,18
+mailfn/docs/README.md
+  s_ee6f287c08acb3::t_a74d68a6b5dcc2 12-25
+mailfn/docs/content/docs/cli-and-mcp.md
+  s_ee6f287c08acb3::t_dc3980b6269f8d 6,8,11-18
+mailfn/docs/content/docs/cloudflare-runtime.md
+  s_ee6f287c08acb3::t_20fcd8ebd393e1 12,19-20
+mailfn/docs/content/docs/messages-and-evidence.md
+  s_ee6f287c08acb3::t_50439a146dc945 6
+mailfn/docs/content/docs/reference/cli.md
+  s_ee6f287c08acb3::t_4585ac2edf23d1 8-9,11-18,21
+mailfn/docs/content/docs/reference/client.md
+  s_ee6f287c08acb3::t_395b3a40f363a0 19
+mailfn/docs/content/docs/reference/testing.md
+  s_ee6f287c08acb3::t_103fdfb76bdda2 12,17,24
+mailfn/docs/content/docs/testing.md
+  s_ee6f287c08acb3::t_36242d90946e7c 12,17,24
+mailfn/docs/package.json
+  s_ee6f287c08acb3::t_292b7bb8c084c1 19-20,29,32-34
+mailfn/docs/scripts/generate-llms.mjs
+  s_ee6f287c08acb3::t_92d8f632f45036 2,31-33,36,42
+mailfn/docs/src/app.css
+  s_ee6f287c08acb3::t_503ad62041026d 19,76-80
+mailfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_ee6f287c08acb3::t_d7d63d4f553301 2
+mailfn/docs/src/routes/+layout.svelte
+  s_ee6f287c08acb3::t_e33352b98ea13e 6-7,16-17,22
+mailfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ee6f287c08acb3::t_d3c9936085d5e8 2,15-17,27-29,67
+mailfn/docs/src/routes/docs/llms-full.txt/+server.ts
+  s_ee6f287c08acb3::t_ea60ccdb4624cf 1-5
+mailfn/docs/src/routes/docs/llms.txt/+server.ts
+  s_ee6f287c08acb3::t_e2e797444a9187 1-5
+mailfn/docs/svelte.config.js
+  s_ee6f287c08acb3::t_0ee7df83e69162 17
+mailfn/docs/tsconfig.json
+  s_ee6f287c08acb3::t_3201cf6dbb9511 23-24,26
+mailfn/docs/vite.config.ts
+  s_ee6f287c08acb3::t_48b8501e54988c 2,10,22,24-28
+package-lock.json
+  s_ee6f287c08acb3::t_8a2e51207837b4 12734-12735,12744-12745,12748-12749,66591-66617
+scripts/docs-site/README.md
+  s_ee6f287c08acb3::t_25d2dd935b521a 3,10-11
+scripts/docs-site/Search.svelte
+  s_ee6f287c08acb3::t_e9a228f3bed491 13,59
+scripts/docs-site/layout.ts
+  s_ee6f287c08acb3::t_14d53b1be9b62e 1-10
+scripts/docs-site/llms.mjs
+  s_ee6f287c08acb3::t_a956e33340c389 1-14
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_018361ee9e85a2 2,188,215,324-327,352,357,362,365,373,400,407,426,432,445,450,467,473,485-486
+scripts/docs-site/vite.ts
+  s_ee6f287c08acb3::t_4066bea6ac1bbb 1-17
+mailfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_fc5ab14cc4000e 6,28,30,33-40,43,59,65-67,95,109,148,160,172,176,190,208,220-221,223-230,233,256,348,350,568,573,580,635,640,647,661
+mailfn/docs/static/llms.txt
+  s_ee6f287c08acb3::t_9ec0eb5f964bb5 7-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6034c03397451b4e8c8f613d8e9c9fe4b89fed06",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
