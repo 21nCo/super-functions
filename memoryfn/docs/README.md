@@ -20,6 +20,6 @@ npm run build --workspace @searchfn/client
 npm exec --workspace @memoryfn/docs -- docsfn validate --root .
 ```
 
-The site defaults to port 6012. Set `site.canonicalUrl` in `docsfn.config.ts` after the public host is assigned.
+The site defaults to port 6012. The public documentation URL is `https://memoryfn.com/docs`.
 
-The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Until `site.canonicalUrl` is configured for an assigned public host, generated page links target the checked-in source pages on `dev`.
+The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Generated page links use the configured public host, `https://memoryfn.com/docs`.

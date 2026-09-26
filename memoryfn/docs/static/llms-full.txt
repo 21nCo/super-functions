@@ -31,7 +31,7 @@ The factory rejects unsupported provider values and missing API keys at initiali
 
 Without an LLM, `add()` stores supplied content as one memory. With an LLM, it extracts facts, embeds them, checks for vector duplicates, and may resolve updates or relationships. The deduplication threshold is 0.95. Extracted tags are descriptive metadata; they never replace caller scope.
 
-Multi-fact extraction is **not an atomic batch**. A failure may occur after some facts have been inserted. Reconcile before replaying an entire batch, or use explicit single-memory writes for confirmed user memory until the application has an ingestion job with recovery. A conflicting fact requires adapter transactions for its new row, revision changes, and relationships. See [operations and limits](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/operations-and-limits.md) for unsupported configuration fields.
+Multi-fact extraction is **not an atomic batch**. A failure may occur after some facts have been inserted. Reconcile before replaying an entire batch, or use explicit single-memory writes for confirmed user memory until the application has an ingestion job with recovery. A conflicting fact requires adapter transactions for its new row, revision changes, and relationships. See [operations and limits](/docs/operations-and-limits) for unsupported configuration fields.
 
 ---
 
@@ -70,9 +70,9 @@ try {
 
 `kind: "memory"` is process-local and intended for tests or deliberate ephemeral use. `add`, `update`, and `forget` work without an embedder, but `search` rejects with `MEMORY_EMBEDDER_REQUIRED`. A supplied tenant ID and tag array are required at runtime even where legacy TypeScript inputs still mark `tenantId` optional.
 
-Use [PostgreSQL storage](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/storage.md) for durable data and configure an [embedder](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/embeddings-and-extraction.md) for semantic search. Apply the bundled SQL migrations before using the PostgreSQL adapter. The host must authenticate callers and derive scope; request bodies and model-controlled tool arguments cannot choose a tenant.
+Use [PostgreSQL storage](/docs/storage) for durable data and configure an [embedder](/docs/embeddings-and-extraction) for semantic search. Apply the bundled SQL migrations before using the PostgreSQL adapter. The host must authenticate callers and derive scope; request bodies and model-controlled tool arguments cannot choose a tenant.
 
-The [API reference](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/reference/api.md) lists the current entry points and input shapes.
+The [API reference](/docs/reference/api) lists the current entry points and input shapes.
 
 ---
 
@@ -116,13 +116,13 @@ These pages describe the **current `origin/dev` source**. Its README calls this 
 
 ## Choose a path
 
-- [Getting started](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/getting-started.md): add, update, and forget an ephemeral memory.
-- [Scope and lifecycle](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/scope-and-lifecycle.md): tenant and tag boundaries, revisions, and forgetting.
-- [Storage](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/storage.md): PostgreSQL migrations, connection ownership, and custom adapters.
-- [Embeddings and extraction](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/embeddings-and-extraction.md): supported providers and ingestion behavior.
-- [Search](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/search.md): semantic retrieval and result limits.
-- [HTTP](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/http.md) or [MCP](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/mcp.md): expose memories through host-controlled authorization.
-- [Operations and limits](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/operations-and-limits.md): unsupported settings and proof boundaries.
+- [Getting started](/docs/getting-started): add, update, and forget an ephemeral memory.
+- [Scope and lifecycle](/docs/scope-and-lifecycle): tenant and tag boundaries, revisions, and forgetting.
+- [Storage](/docs/storage): PostgreSQL migrations, connection ownership, and custom adapters.
+- [Embeddings and extraction](/docs/embeddings-and-extraction): supported providers and ingestion behavior.
+- [Search](/docs/search): semantic retrieval and result limits.
+- [HTTP](/docs/http) or [MCP](/docs/mcp): expose memories through host-controlled authorization.
+- [Operations and limits](/docs/operations-and-limits): unsupported settings and proof boundaries.
 
 MemoryFn is a derived store. The application remains responsible for membership, sharing policy, current permissions, and authoritative deletion state. Intersect retrieved results with that authority before showing them to a caller.
 
@@ -200,7 +200,7 @@ This site describes the `origin/dev` source, an unpublished candidate. A green l
 
 The host applies `0001-initial.sql` and `0002-memory-lifecycle.sql` itself. There is no CLI schema discovery or `getSchema` contract. Use a disposable database for the real PostgreSQL test suite: `MEMORYFN_TEST_DATABASE_URL` enables integration tests that create tables and truncate memory data. A local PostgreSQL pass does not prove hosted Hyperdrive behavior.
 
-Application code owns the source-of-truth record, caller authorization, and the deletion deny path. MemoryFn owns scoped derived-store operations. Keep external replicas and indexes behind equivalent tombstone and cleanup controls. See the [storage and lifecycle source guide](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/reference/storage-lifecycle.md) for the detailed contract.
+Application code owns the source-of-truth record, caller authorization, and the deletion deny path. MemoryFn owns scoped derived-store operations. Keep external replicas and indexes behind equivalent tombstone and cleanup controls. See the [storage and lifecycle source guide](/docs/reference/storage-lifecycle) for the detailed contract.
 
 ---
 
@@ -229,7 +229,7 @@ Application code owns the source-of-truth record, caller authorization, and the 
 - `forget({ tenantId, containerTags, id, expectedRevision? })` scrubs a memory and retains its tombstone.
 - `close()` disposes only resources owned by the selected adapter.
 
-`Memory` includes ID, tenant and tags, type, content, embedding, metadata, revision, deleted timestamp, latest flag, and created/updated timestamps. The factory's public type unions retain some unsupported options; consult [operations and limits](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/operations-and-limits.md) before using them.
+`Memory` includes ID, tenant and tags, type, content, embedding, metadata, revision, deleted timestamp, latest flag, and created/updated timestamps. The factory's public type unions retain some unsupported options; consult [operations and limits](/docs/operations-and-limits) before using them.
 
 The [source factory](https://github.com/21nCo/super-functions/blob/dev/memoryfn/typescript/src/index.ts), [pipeline](https://github.com/21nCo/super-functions/blob/dev/memoryfn/typescript/src/core/pipeline.ts), and [type definitions](https://github.com/21nCo/super-functions/blob/dev/memoryfn/typescript/src/core/types.ts) define exact signatures.
 
@@ -241,9 +241,9 @@ The [source factory](https://github.com/21nCo/super-functions/blob/dev/memoryfn/
 > Public TypeScript entry points and source-aligned package guidance.
 
 
-- [Public API](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/reference/api.md) maps the current package exports and operation inputs.
-- [Storage and lifecycle guide](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/reference/storage-lifecycle.md) carries the detailed source README for the dev adoption.
-- [Package overview](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/reference/package-overview.md) carries the top-level source README.
+- [Public API](/docs/reference/api) maps the current package exports and operation inputs.
+- [Storage and lifecycle guide](/docs/reference/storage-lifecycle) carries the detailed source README for the dev adoption.
+- [Package overview](/docs/reference/package-overview) carries the top-level source README.
 
 For a published release, inspect its actual package artifact. The same-version registry release does not yet identify all `origin/dev` changes documented here.
 
@@ -367,7 +367,7 @@ const changed = await memory.update({
 
 `forget({ tenantId, containerTags, id, expectedRevision? })` scrubs content, embedding, and metadata; removes relationships; and retains an immutable-ID tombstone. The bundled PostgreSQL adapter performs scrub and relationship cleanup in one transaction. It can be retried, and an update cannot resurrect the tombstone. `expectedRevision` can protect against forgetting a newer revision.
 
-The application's authoritative record may be forgotten before this derived store is cleaned. Deny retrieval immediately using that authoritative state, retry derived-store cleanup, and apply equivalent tombstone checks to any external indexes or replicas. See the [storage guide](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/storage.md) for adapter requirements.
+The application's authoritative record may be forgotten before this derived store is cleaned. Deny retrieval immediately using that authoritative state, retry derived-store cleanup, and apply equivalent tombstone checks to any external indexes or replicas. See the [storage guide](/docs/storage) for adapter requirements.
 
 ---
 
@@ -433,6 +433,6 @@ PostgreSQL storage fixes embedding dimensions at 1536. The factory requests that
 
 The `StorageAdapter` contract includes scoped insert, search, get, compare-and-update, delete, optional close, and optional transaction. Immutable-ID tombstones and scope checks are required for equivalent behavior. A conflict resolution that changes several records requires `transaction()`; an adapter without it rejects that conflict before writing.
 
-`kind: "sqlite"` requires an explicit adapter. The factory does not create SQLite storage. `qdrant` is present in a legacy type union but has no factory implementation. Review the [source lifecycle guide](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/reference/storage-lifecycle.md) and [adapter interface](https://github.com/21nCo/super-functions/blob/dev/memoryfn/typescript/src/storage/adapter.ts) before implementing a custom store.
+`kind: "sqlite"` requires an explicit adapter. The factory does not create SQLite storage. `qdrant` is present in a legacy type union but has no factory implementation. Review the [source lifecycle guide](/docs/reference/storage-lifecycle) and [adapter interface](https://github.com/21nCo/super-functions/blob/dev/memoryfn/typescript/src/storage/adapter.ts) before implementing a custom store.
 
 ---

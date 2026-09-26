@@ -3,6 +3,7 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
+    canonicalUrl: "https://memoryfn.com",
     title: "MemoryFn",
     description: "Scoped memory storage, semantic retrieval, revisioned updates, and deletion for applications and agents.",
     basePath: "/docs",

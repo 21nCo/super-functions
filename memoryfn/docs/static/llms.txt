@@ -4,16 +4,16 @@
 
 ## Documentation
 
-- [Embeddings and extraction](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/embeddings-and-extraction.md) — Configure supported providers and understand ingestion and deduplication behavior.
-- [Getting started](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/getting-started.md) — Add, update, and forget scoped memories with the TypeScript package.
-- [HTTP adapter](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/http.md) — Mount the authorized MemoryFn router and understand its request boundary.
-- [MemoryFn documentation](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/index.md) — Scoped memory storage, retrieval, updates, and forgetting for application developers.
-- [MCP adapter](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/mcp.md) — Expose scoped MemoryFn tools through a trusted stdio host.
-- [Operations and current limits](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/operations-and-limits.md) — Supported configuration, migration responsibility, tests, and proof boundaries.
-- [Public API](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/reference/api.md) — MemoryFn package entry points, methods, input types, and adapters.
-- [API reference](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/reference/index.md) — Public TypeScript entry points and source-aligned package guidance.
-- [Package overview](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/reference/package-overview.md) — Source-aligned MemoryFn guidance from origin/dev.
-- [Storage and lifecycle source guide](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/reference/storage-lifecycle.md) — Source-aligned MemoryFn guidance from origin/dev.
-- [Scope and lifecycle](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/scope-and-lifecycle.md) — Tenant and tag constraints, optimistic revisions, updates, and tombstones.
-- [Semantic search](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/search.md) — Query scoped vector memories and enforce host authorization on results.
-- [Storage and migrations](https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/content/docs/storage.md) — PostgreSQL setup, connection ownership, transaction requirements, and custom adapters.
+- [Embeddings and extraction](https://memoryfn.com/docs/embeddings-and-extraction) — Configure supported providers and understand ingestion and deduplication behavior.
+- [Getting started](https://memoryfn.com/docs/getting-started) — Add, update, and forget scoped memories with the TypeScript package.
+- [HTTP adapter](https://memoryfn.com/docs/http) — Mount the authorized MemoryFn router and understand its request boundary.
+- [MemoryFn documentation](https://memoryfn.com/docs) — Scoped memory storage, retrieval, updates, and forgetting for application developers.
+- [MCP adapter](https://memoryfn.com/docs/mcp) — Expose scoped MemoryFn tools through a trusted stdio host.
+- [Operations and current limits](https://memoryfn.com/docs/operations-and-limits) — Supported configuration, migration responsibility, tests, and proof boundaries.
+- [Public API](https://memoryfn.com/docs/reference/api) — MemoryFn package entry points, methods, input types, and adapters.
+- [API reference](https://memoryfn.com/docs/reference) — Public TypeScript entry points and source-aligned package guidance.
+- [Package overview](https://memoryfn.com/docs/reference/package-overview) — Source-aligned MemoryFn guidance from origin/dev.
+- [Storage and lifecycle source guide](https://memoryfn.com/docs/reference/storage-lifecycle) — Source-aligned MemoryFn guidance from origin/dev.
+- [Scope and lifecycle](https://memoryfn.com/docs/scope-and-lifecycle) — Tenant and tag constraints, optimistic revisions, updates, and tombstones.
+- [Semantic search](https://memoryfn.com/docs/search) — Query scoped vector memories and enforce host authorization on results.
+- [Storage and migrations](https://memoryfn.com/docs/storage) — PostgreSQL setup, connection ownership, transaction requirements, and custom adapters.
