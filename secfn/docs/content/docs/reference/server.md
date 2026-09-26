@@ -3,8 +3,6 @@ title: Server package
 description: Control plane, runtime API, migration, and storage contract.
 ---
 
-# @secfn/server
-
 Adapter-backed SecFn server package.
 
 `@secfn/server` hosts the control plane and runtime API for secrets, service tokens, RBAC, rate limiting, scanning, and durable security audit events. It uses `@superfunctions/db` for persistence and `@superfunctions/http` for routing.
@@ -12,22 +10,42 @@ Adapter-backed SecFn server package.
 ## Example
 
 ```ts
-import { createSecFnServer } from "@secfn/server";
+import type { Adapter } from "@superfunctions/db";
+import { createSecFnServer, type SecFnAdminAction, type SecFnRequestContext } from "@secfn/server";
 
-export const secfn = createSecFnServer({
-  db,
-  basePath: "/secfn",
-  encryption: {
-    masterKey: process.env.SECFN_MASTER_KEY!,
-    keyId: "env:main",
-  },
-  authorize: async (ctx, action) => {
-    return ctx.actorId === "admin" || action === "audit-events:list";
-  },
-  namespaceProvider: (ctx) => ctx.namespace,
-  logger,
-});
+interface Principal extends SecFnRequestContext {
+  actorId: string;
+  tenantId: string;
+  allowedActions: SecFnAdminAction[];
+}
+interface Context extends SecFnRequestContext {
+  allowedActions: SecFnAdminAction[];
+}
+
+export function createSecretsServer(
+  db: Adapter,
+  authenticate: (request: Request) => Promise<Principal | null>,
+) {
+  return createSecFnServer<Context>({
+    db,
+    basePath: "/secfn",
+    encryption: { masterKey: process.env.SECFN_MASTER_KEY!, keyId: "env:main" },
+    context: async (request) => {
+      const principal = await authenticate(request);
+      return principal
+        ? { actorId: principal.actorId, tenantId: principal.tenantId,
+            namespace: principal.namespace, allowedActions: principal.allowedActions }
+        : { allowedActions: [] };
+    },
+    authorize: (ctx, action) => Boolean(
+      ctx.actorId && ctx.tenantId && ctx.allowedActions.includes(action),
+    ),
+    namespaceProvider: (ctx) => ctx.namespace,
+  });
+}
 ```
+
+The host supplies a durable database and an `authenticate` callback that verifies the request’s session and returns server-owned action grants. Unauthenticated callers get no admin grants; listing audits requires the explicit `audit-events:list` grant. This tenant-scoped example never enables global operator access.
 
 The return value contains:
 
@@ -51,7 +69,7 @@ Schema version 2 adds nullable `tenant_id` to `secfn_scan_runs`. Apply the gener
 migration before using tenant-scoped scan history. Existing unowned rows remain
 hidden from tenant lists; backfill only from a trusted ownership mapping. Persist
 new runs with `vault.recordScanRun({ tenantId, startedAt, target, status, findingCount })`;
-the scanner itself remains a pure producer of findings.
+the scanner does not persist run history, although file, directory, and Git-history methods perform host I/O.
 
 Secret rotation requires an adapter advertising transaction support. The encrypted
 version insert and version-pointer advance commit together; a failed

@@ -4,19 +4,19 @@
 
 ## Documentation
 
-- [Audit and rate limits](/docs/audit-and-rate-limits) — Configure durable security events and quota enforcement.
-- [Getting started](/docs/getting-started) — Choose the core, server, and runtime packages.
-- [SecFn](/docs) — Encrypted secrets, scoped retrieval, scanning, and security services.
-- [Schema and migrations](/docs/migrations) — Apply SecFn's schema and PostgreSQL changes in order.
-- [Operations and limits](/docs/operations-and-limits) — Key custody, adapter guarantees, and validation boundaries.
-- [Core package](/docs/reference/core) — Encryption, scanner, schema, and shared contracts.
-- [Reference](/docs/reference) — SecFn packages, routes, and source package guides.
-- [Packages](/docs/reference/packages) — Current SecFn package map and import surfaces.
-- [Routes](/docs/reference/routes) — SecFn admin and runtime route families.
-- [Runtime package](/docs/reference/runtime) — Read-only runtime client and environment materialization.
-- [Server package](/docs/reference/server) — Control plane, runtime API, migration, and storage contract.
-- [Runtime client](/docs/runtime) — Read secrets and materialize sets in trusted processes.
-- [Secret scanning](/docs/scanning) — Run the core scanner and persist run metadata through the server.
-- [Scope and permissions](/docs/scope-and-permissions) — Enforce tenant, namespace, environment, and operator boundaries.
-- [Secrets and sets](/docs/secrets-and-sets) — Create, rotate, reveal, and resolve versioned secrets safely.
-- [Server setup](/docs/server) — Configure persistence, encryption, host context, and route mounting.
+- [Audit and rate limits](https://secfn.com/docs/audit-and-rate-limits) — Configure durable security events and quota enforcement.
+- [Getting started](https://secfn.com/docs/getting-started) — Choose the core, server, and runtime packages.
+- [SecFn](https://secfn.com/docs) — Encrypted secrets, scoped retrieval, scanning, and security services.
+- [Schema and migrations](https://secfn.com/docs/migrations) — Apply SecFn's schema and PostgreSQL changes in order.
+- [Operations and limits](https://secfn.com/docs/operations-and-limits) — Key custody, adapter guarantees, and validation boundaries.
+- [Core package](https://secfn.com/docs/reference/core) — Encryption, scanner, schema, and shared contracts.
+- [Reference](https://secfn.com/docs/reference) — SecFn packages, routes, and source package guides.
+- [Packages](https://secfn.com/docs/reference/packages) — Current SecFn package map and import surfaces.
+- [Routes](https://secfn.com/docs/reference/routes) — SecFn admin and runtime route families.
+- [Runtime package](https://secfn.com/docs/reference/runtime) — Read-only runtime client and environment materialization.
+- [Server package](https://secfn.com/docs/reference/server) — Control plane, runtime API, migration, and storage contract.
+- [Runtime client](https://secfn.com/docs/runtime) — Read secrets and materialize sets in trusted processes.
+- [Secret scanning](https://secfn.com/docs/scanning) — Run the core scanner and persist run metadata through the server.
+- [Scope and permissions](https://secfn.com/docs/scope-and-permissions) — Enforce tenant, namespace, environment, and operator boundaries.
+- [Secrets and sets](https://secfn.com/docs/secrets-and-sets) — Create, rotate, reveal, and resolve versioned secrets safely.
+- [Server setup](https://secfn.com/docs/server) — Configure persistence, encryption, host context, and route mounting.

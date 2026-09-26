@@ -3,8 +3,6 @@ title: Packages
 description: Current SecFn package map and import surfaces.
 ---
 
-# Packages
-
 | Package | Role |
 | --- | --- |
 | `@secfn/core` | Pure encryption, AAD, scanner, schema, shared types, and errors. Also exports `./id`. |

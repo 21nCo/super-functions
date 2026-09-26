@@ -3,8 +3,6 @@ title: Runtime package
 description: Read-only runtime client and environment materialization.
 ---
 
-# @secfn/runtime
-
 Read-only runtime client and env materialization helpers for SecFn.
 
 Use this package from trusted server, CI, build, and local development workflows. Do not bundle private secrets into browser code.

@@ -3,8 +3,6 @@ title: Reference
 description: SecFn packages, routes, and source package guides.
 ---
 
-# Reference
-
 - [Package map](/docs/reference/packages)
 - [Admin and runtime routes](/docs/reference/routes)
 - [Core package README](/docs/reference/core)

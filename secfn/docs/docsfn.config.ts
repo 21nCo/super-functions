@@ -3,6 +3,7 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
+    canonicalUrl: "https://secfn.com",
     title: "SecFn",
     description: "Encrypted secrets, scoped runtime retrieval, scanning, and audit services.",
     basePath: "/docs",

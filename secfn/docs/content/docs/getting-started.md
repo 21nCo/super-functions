@@ -3,8 +3,6 @@ title: Getting started
 description: Choose the core, server, and runtime packages.
 ---
 
-# Getting started
-
 Install the package for the task. `@secfn/core` provides pure encryption, scanner, schema, and shared types. `@secfn/server` hosts the vault, control plane, and runtime API using `@superfunctions/db` and `@superfunctions/http`. `@secfn/runtime` is a read-only client for trusted server, CI, build, and local workflows.
 
 ```sh

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Search from "../../../../../scripts/docs-site/Search.svelte";
+  import Search from "@site/docs-search";
 </script>
 
 <Search />

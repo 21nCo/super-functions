@@ -3,8 +3,6 @@ title: Runtime client
 description: Read secrets and materialize sets in trusted processes.
 ---
 
-# Runtime client
-
 Use `@secfn/runtime` only in trusted server, CI, build, or local workflows. Do not bundle a service token or secret values into browser code. Configure the mounted server endpoint, a scoped service token, tenant and optional namespace, and an optional environment:
 
 ```ts
