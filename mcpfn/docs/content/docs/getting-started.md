@@ -42,14 +42,30 @@ const registry = new McpFnRegistry().register({
     structuredResult({ greeting: `Hello, ${String(name)}!` }),
 });
 
-export const declaration = defineMcpFnServer({
+const declaration = defineMcpFnServer({
   info: { name: "example", version: "1.0.0" },
   registry,
   transports: ["stdio", "streamable-http"],
 });
 
+export default declaration;
+```
+
+Save the declaration as `server.ts`. Put the live transport in a separate `stdio.ts` entrypoint:
+
+```ts
+import declaration from "./server.js";
+
 const server = declaration.createServer();
 await server.serveStdio();
+```
+
+Install a TypeScript runner and generate the manifest from the declaration module, then start the transport:
+
+```sh
+npm install --save-dev @mcpfn/cli tsx
+npx mcpfn manifest server.ts --output manifest.json
+npx tsx stdio.ts
 ```
 
 The declaration is safe to import from manifest and test tooling. Create a separate server instance for each live connection. A tool handler receives schema-valid arguments. A declared output schema also validates its structured result before it reaches the client.
