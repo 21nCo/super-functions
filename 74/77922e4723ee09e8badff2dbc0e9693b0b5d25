@@ -1,0 +1,27 @@
+reviewfn/docs/README.md
+  s_ee6f287c08acb3::t_ffe263abd76fed 23,25
+reviewfn/docs/docsfn.config.ts
+  s_ee6f287c08acb3::t_b03f00b8071e9e 6
+reviewfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_62de42b3a5d850 27,41,43,57,59,99,192-196,198,271,287
+reviewfn/docs/static/llms.txt
+  s_ee6f287c08acb3::t_5f36753f775c4d 7-19
+scripts/docs-site/llms.mjs
+  s_ee6f287c08acb3::t_975fd0991e331c 4-10,25-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7477922e4723ee09e8badff2dbc0e9693b0b5d25",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
