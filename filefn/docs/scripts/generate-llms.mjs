@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeLlmsArtifacts } from "../../../scripts/docs-site/llms.mjs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -76,13 +76,4 @@ for (const page of docsPages) {
 }
 const llmsFullTxt = fullSections.join("\n");
 
-mkdirSync(staticDir, { recursive: true });
-writeFileSync(resolve(staticDir, "llms.txt"), llmsTxt, "utf8");
-writeFileSync(resolve(staticDir, "llms-full.txt"), llmsFullTxt, "utf8");
-
-console.log(
-  `Wrote ${resolve(staticDir, "llms.txt")} (${Buffer.byteLength(llmsTxt, "utf8")} bytes)`
-);
-console.log(
-  `Wrote ${resolve(staticDir, "llms-full.txt")} (${Buffer.byteLength(llmsFullTxt, "utf8")} bytes)`
-);
+writeLlmsArtifacts(staticDir, { llmsTxt, llmsFullTxt });

@@ -14,9 +14,10 @@ const config = {
   preprocess: vitePreprocess({ script: true }),
   kit: {
     adapter,
+    alias: { "@site/docs-search": "../../scripts/docs-site/Search.svelte" },
     appDir: docsDeploy ? "docs/_app" : "_app",
     paths: {
-      assets: process.env.CLOUDFLARE_DOCS_ASSETS_ORIGIN ?? "",
+      assets: /** @type {"" | `http://${string}` | `https://${string}`} */ (process.env.CLOUDFLARE_DOCS_ASSETS_ORIGIN ?? ""),
     },
   },
 };

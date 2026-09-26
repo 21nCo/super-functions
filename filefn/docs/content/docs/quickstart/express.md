@@ -46,7 +46,8 @@ export function fileFnHandler(router: FileFnRouter): RequestHandler {
         init.body = Readable.toWeb(req) as ReadableStream<Uint8Array>;
         init.duplex = "half";
       }
-      const response = await router.handle(new Request(url, init));
+      const request = new Request(url, init);
+      const response = await router.handle(request);
       if (!response) { res.status(404).end(); return; }
       res.status(response.status);
       response.headers.forEach((value, name) => {
@@ -58,9 +59,9 @@ export function fileFnHandler(router: FileFnRouter): RequestHandler {
         await response.body?.cancel();
         res.end();
       } else {
-        await pipeline(Readable.fromWeb(response.body as NodeReadableStream<Uint8Array>), res);
+        await pipeline(Readable.fromWeb(response.body as NodeReadableStream<Uint8Array>), res, { signal: request.signal });
       }
-    })().catch(next).finally(() => {
+    })().catch((error) => { if (!controller.signal.aborted) next(error); }).finally(() => {
       req.off("aborted", abort);
       res.off("close", abort);
     });
