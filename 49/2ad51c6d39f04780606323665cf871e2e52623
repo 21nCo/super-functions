@@ -1,0 +1,19 @@
+hostfn/docs/content/docs/documentation/advanced/administration.mdx
+  s_ee6f287c08acb3::t_9d9d802ca07ff2 10,23,29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "492ad51c6d39f04780606323665cf871e2e52623",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
