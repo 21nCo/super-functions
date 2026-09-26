@@ -1,0 +1,27 @@
+scripts/generate-uifn-phase-17.mjs
+  s_ee6f287c08acb3::t_c1bf8e711f9461 578-611
+uifn/docs/generated/delivery.md
+  s_ee6f287c08acb3::t_ac61bd628b4b9f 7-8,10-14,19-21,23
+uifn/docs/generated/docs-coverage.json
+  s_ee6f287c08acb3::t_b1739798e840ac 11
+uifn/docs/generated/site/delivery.html
+  s_ee6f287c08acb3::t_42409461082bfd 1-5
+uifn/storybook/generated/story-inventory.json
+  s_ee6f287c08acb3::t_1ad2d588c4f7cf 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "25a777a828d68f27b4b7dfff9b64a83dbb3ed8fc",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
