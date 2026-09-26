@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EHSBQEW8V8PWN6CQTM9YT7",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "langfn/docs/content/docs/http.md",
+    "langfn/docs/static/llms-full.txt"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 7457,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 839808,
+    "output_tokens": 2015,
+    "api_call_count": 4
+  }
+}
