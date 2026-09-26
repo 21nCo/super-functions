@@ -3,8 +3,7 @@
 > Self-hosted authentication for any stack. Sessions, OTP, passwords, social OAuth, 2FA, API keys, multi-region. TypeScript, Python, and Swift SDKs.
 
 This file concatenates the full text of every documentation page so it can be loaded into
-an LLM-based assistant in a single shot. For programmatic access, prefer the MCP server
-or the structured manifest emitted alongside this file.
+an LLM-based assistant in a single shot. For a page index, see /docs/llms.txt.
 
 # Documentation
 
