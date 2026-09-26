@@ -3,6 +3,7 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
+    canonicalUrl: "https://mdfn.com",
     title: "MDFN",
     description: "Markdown-native authoring with source preservation, safe rendering, and collaboration.",
     basePath: "/docs",

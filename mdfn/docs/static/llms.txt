@@ -4,41 +4,41 @@
 
 ## Documentation
 
-- [Collaboration](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/collaboration.md) — Exchange authorized Yjs updates and compact exact batches.
-- [Extensions and profiles](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/extensions.md) — Resolve syntax ownership, conflicts, and migrations.
-- [Framework editors](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/framework-editors.md) — Install and mount a controller in React, Svelte, Solid, or the vanilla DOM.
-- [Getting started](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/getting-started.md) — Install MDFN, edit Markdown, observe changes, and release the controller.
-- [MDFN](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/index.md) — Markdown-native authoring with a durable source contract.
-- [Integrations](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/integrations.md) — Connect assets, search, content, and AI through explicit bridges.
-- [@mdfn/adapter-kit](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/adapter-kit.md) — Source guide for adapter-kit.
-- [@mdfn/ai](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/ai.md) — Source guide for ai.
-- [@mdfn/client](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/client.md) — Source guide for client.
-- [@mdfn/collab](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/collab.md) — Source guide for collab.
-- [@mdfn/components-react](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/components-react.md) — Source guide for components-react.
-- [@mdfn/components-solid](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/components-solid.md) — Source guide for components-solid.
-- [@mdfn/components-svelte](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/components-svelte.md) — Source guide for components-svelte.
-- [@mdfn/components](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/components.md) — Source guide for components.
-- [@mdfn/contentfn](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/contentfn.md) — Source guide for contentfn.
-- [@mdfn/core](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/core.md) — Source guide for core.
-- [@mdfn/dom](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/dom.md) — Mount and dispose a vanilla browser editor.
-- [MDFN framework examples](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/examples.md) — Source guide for examples.
-- [@mdfn/extensions](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/extensions.md) — Source guide for extensions.
-- [@mdfn/facade](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/facade.md) — Source guide for facade.
-- [@mdfn/filefn](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/filefn.md) — Source guide for filefn.
-- [Package reference](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/index.md) — Source guides for every MDFN package.
-- [@mdfn/markdown](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/markdown.md) — Source guide for markdown.
-- [MDFN overview](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/overview.md) — Source guide for overview.
-- [@mdfn/react](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/react.md) — Mount a React editor and observe controller state.
-- [@mdfn/registry](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/registry.md) — Source guide for registry.
-- [@mdfn/render](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/render.md) — Source guide for render.
-- [@mdfn/searchfn](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/searchfn.md) — Source guide for searchfn.
-- [@mdfn/server](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/server.md) — Source guide for server.
-- [@mdfn/solid](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/solid.md) — Mount a Solid editor and observe its reactive snapshot.
-- [@mdfn/source](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/source.md) — Source guide for source.
-- [@mdfn/svelte](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/svelte.md) — Mount a Svelte editor and subscribe with a readable store.
-- [@mdfn/testing](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/reference/testing.md) — Source guide for testing.
-- [Rendering and security](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/rendering-and-security.md) — Apply a rendering policy to untrusted Markdown.
-- [Review and sidecar](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/review-and-sidecar.md) — Keep editorial data bound to canonical source.
-- [Server and storage](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/server-and-storage.md) — Mount authenticated document routes and save with optimistic concurrency.
-- [Source preservation](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/source-preservation.md) — Keep untouched Markdown bytes and unknown constructs.
-- [Verification](https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/content/docs/verification.md) — Run the consumer and browser gates for an MDFN integration.
+- [Collaboration](https://mdfn.com/docs/collaboration) — Exchange authorized Yjs updates and compact exact batches.
+- [Extensions and profiles](https://mdfn.com/docs/extensions) — Resolve syntax ownership, conflicts, and migrations.
+- [Framework editors](https://mdfn.com/docs/framework-editors) — Install and mount a controller in React, Svelte, Solid, or the vanilla DOM.
+- [Getting started](https://mdfn.com/docs/getting-started) — Install MDFN, edit Markdown, observe changes, and release the controller.
+- [MDFN](https://mdfn.com/docs) — Markdown-native authoring with a durable source contract.
+- [Integrations](https://mdfn.com/docs/integrations) — Connect assets, search, content, and AI through explicit bridges.
+- [@mdfn/adapter-kit](https://mdfn.com/docs/reference/adapter-kit) — Source guide for adapter-kit.
+- [@mdfn/ai](https://mdfn.com/docs/reference/ai) — Source guide for ai.
+- [@mdfn/client](https://mdfn.com/docs/reference/client) — Source guide for client.
+- [@mdfn/collab](https://mdfn.com/docs/reference/collab) — Source guide for collab.
+- [@mdfn/components-react](https://mdfn.com/docs/reference/components-react) — Source guide for components-react.
+- [@mdfn/components-solid](https://mdfn.com/docs/reference/components-solid) — Source guide for components-solid.
+- [@mdfn/components-svelte](https://mdfn.com/docs/reference/components-svelte) — Source guide for components-svelte.
+- [@mdfn/components](https://mdfn.com/docs/reference/components) — Source guide for components.
+- [@mdfn/contentfn](https://mdfn.com/docs/reference/contentfn) — Source guide for contentfn.
+- [@mdfn/core](https://mdfn.com/docs/reference/core) — Source guide for core.
+- [@mdfn/dom](https://mdfn.com/docs/reference/dom) — Mount and dispose a vanilla browser editor.
+- [MDFN framework examples](https://mdfn.com/docs/reference/examples) — Source guide for examples.
+- [@mdfn/extensions](https://mdfn.com/docs/reference/extensions) — Source guide for extensions.
+- [@mdfn/facade](https://mdfn.com/docs/reference/facade) — Source guide for facade.
+- [@mdfn/filefn](https://mdfn.com/docs/reference/filefn) — Source guide for filefn.
+- [Package reference](https://mdfn.com/docs/reference) — Source guides for every MDFN package.
+- [@mdfn/markdown](https://mdfn.com/docs/reference/markdown) — Source guide for markdown.
+- [MDFN overview](https://mdfn.com/docs/reference/overview) — Source guide for overview.
+- [@mdfn/react](https://mdfn.com/docs/reference/react) — Mount a React editor and observe controller state.
+- [@mdfn/registry](https://mdfn.com/docs/reference/registry) — Source guide for registry.
+- [@mdfn/render](https://mdfn.com/docs/reference/render) — Source guide for render.
+- [@mdfn/searchfn](https://mdfn.com/docs/reference/searchfn) — Source guide for searchfn.
+- [@mdfn/server](https://mdfn.com/docs/reference/server) — Source guide for server.
+- [@mdfn/solid](https://mdfn.com/docs/reference/solid) — Mount a Solid editor and observe its reactive snapshot.
+- [@mdfn/source](https://mdfn.com/docs/reference/source) — Source guide for source.
+- [@mdfn/svelte](https://mdfn.com/docs/reference/svelte) — Mount a Svelte editor and subscribe with a readable store.
+- [@mdfn/testing](https://mdfn.com/docs/reference/testing) — Source guide for testing.
+- [Rendering and security](https://mdfn.com/docs/rendering-and-security) — Apply a rendering policy to untrusted Markdown.
+- [Review and sidecar](https://mdfn.com/docs/review-and-sidecar) — Keep editorial data bound to canonical source.
+- [Server and storage](https://mdfn.com/docs/server-and-storage) — Mount authenticated document routes and save with optimistic concurrency.
+- [Source preservation](https://mdfn.com/docs/source-preservation) — Keep untouched Markdown bytes and unknown constructs.
+- [Verification](https://mdfn.com/docs/verification) — Run the consumer and browser gates for an MDFN integration.
