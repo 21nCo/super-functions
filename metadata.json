@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EKDRASSVCFYVPQNSJN9FGC",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "plugfn/docs/README.md",
+    "plugfn/docs/docsfn.config.ts",
+    "plugfn/docs/static/llms-full.txt",
+    "plugfn/docs/static/llms.txt",
+    "scripts/docs-site/llms.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 4795,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 605696,
+    "output_tokens": 2150,
+    "api_call_count": 3
+  }
+}
