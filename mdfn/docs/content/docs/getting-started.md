@@ -1,19 +1,36 @@
 ---
 title: Getting started
-description: Create a headless editor controller from Markdown.
+description: Install MDFN, edit Markdown, observe changes, and release the controller.
 ---
 
 # Getting started
 
-The curated headless facade combines core transactions, Markdown parsing, rendering, and built-in extensions.
-
-```ts
-import { createMdfn } from "@mdfn/facade";
-
-const editor = createMdfn({ markdown: "# Hello\n\nStart writing.\n" });
-const state = editor.getState();
+```sh
+npm install @mdfn/facade
 ```
 
-Use the controller as the common model for a browser editor, source view, or server workflow. The default extension set handles the standard authoring profile; pass `markdownOptions` to choose a CommonMark-only dialect or a configured extension set. Read the [facade](/docs/reference/facade), [core](/docs/reference/core), and [Markdown](/docs/reference/markdown) package guides for boundaries and exports.
+The headless facade combines the controller, Markdown parser, rendering helpers, and built-in extensions. It does not mount a browser editor or persist documents automatically.
 
-For a complete mounted workflow, run one of the [React, Svelte, or Solid example apps](/docs/reference/examples).
+```ts
+import { createMdfn, Transaction } from "@mdfn/facade";
+
+const editor = createMdfn({ markdown: "# Hello\n\nStart writing.\n" });
+const unsubscribe = editor.subscribe(({ current }) => {
+  console.log(current.markdown, current.dirty);
+});
+editor.dispatch(new Transaction().replaceSource(2, 7, "Welcome"));
+console.log(editor.getState().markdown); // # Welcome followed by the original body
+editor.undo();
+editor.redo();
+
+// Only after the corresponding source/sidecar has been saved successfully:
+editor.markSaved();
+unsubscribe();
+editor.destroy();
+```
+
+Source offsets are JavaScript string offsets. Subscribe for changes rather than modifying state objects. `getState()` exposes Markdown, parsed document, selection, sidecar, version, and dirty state. A destroyed controller cannot be reused; create one per editor lifetime.
+
+The default extension set handles the standard authoring profile. Pass `markdownOptions: { dialect: "commonmark" }` for CommonMark-only behavior, or supply a configured extension set. Keep that configuration consistent between browser and server.
+
+Next, [mount a framework editor](/docs/framework-editors), then [persist documents](/docs/server-and-storage). Source preservation and rendering security are covered in [source preservation](/docs/source-preservation) and [rendering](/docs/rendering-and-security).

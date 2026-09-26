@@ -29,3 +29,5 @@ updates that arrive concurrently without invalidating an existing cursor. The
 default collaboration and router body limits are derived from the configured maximum
 Markdown size plus Yjs and transport-encoding overhead. Every operation is
 tenant/owner scoped and passes through the host's authorization callback.
+
+For package installation, a complete authenticated HTTP mount, a typed create/update client, version-conflict handling, and database provisioning requirements, follow [Server and storage](/docs/server-and-storage).

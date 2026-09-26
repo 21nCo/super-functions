@@ -1,12 +1,19 @@
 ---
 title: Framework editors
-description: Mount the shared controller in React, Svelte, Solid, or vanilla DOM.
+description: Install and mount a controller in React, Svelte, Solid, or the vanilla DOM.
 ---
 
 # Framework editors
 
-`@mdfn/dom` is the vanilla browser editor. `@mdfn/react`, `@mdfn/svelte`, and `@mdfn/solid` bind the same controller and command behavior to their frameworks. The `@mdfn/components-*` packages provide UIFn-based shells, toolbars, outline, diagnostics, and review controls.
+Choose the adapter for your existing application. All use the same `EditorController`; keep it stable across renders and destroy it when its owning view is permanently removed. Adapters release their DOM bindings but do not take ownership of the controller.
 
-Browser editing modules load after mount; framework packages expose server entry points for stable SSR containers. Keep the controller's Markdown and transactions as the public contract rather than persisting browser editor internals.
+| Application | Install | Mounting example |
+| --- | --- | --- |
+| React | `npm install @mdfn/facade @mdfn/react` | [React](/docs/reference/react) |
+| Svelte | `npm install @mdfn/facade @mdfn/svelte` | [Svelte](/docs/reference/svelte) |
+| Solid | `npm install @mdfn/facade @mdfn/solid` | [Solid](/docs/reference/solid) |
+| Vanilla DOM | `npm install @mdfn/facade @mdfn/dom` | [DOM](/docs/reference/dom) |
 
-Run the [example applications](/docs/reference/examples) to see a complete workflow. Package details: [DOM](/docs/reference/dom), [React](/docs/reference/react), [Svelte](/docs/reference/svelte), [Solid](/docs/reference/solid), and [framework-neutral components](/docs/reference/components).
+Framework `MdfnEditor` components support `visual`, `source`, `split`, `preview`, and `read-only` modes. `readOnly` also disables editing independently of mode. Use `ariaLabel` for an accessible name and `onLoadError` to display failed browser-module loads. These adapters mount editing surfaces; use `@mdfn/components-*` when you also want a toolbar and application shell.
+
+Browser editing modules load after mount. Keep file and credential operations in your host application; `onFiles` receives selected files but does not upload them. Saving Markdown and sidecar state is a separate operation described in [server and storage](/docs/server-and-storage).

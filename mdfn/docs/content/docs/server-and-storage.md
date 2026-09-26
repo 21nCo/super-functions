@@ -1,12 +1,90 @@
 ---
 title: Server and storage
-description: Persist canonical source, revisions, and sidecars atomically.
+description: Mount authenticated document routes and save with optimistic concurrency.
 ---
 
 # Server and storage
 
-`@mdfn/server` provides document CRUD, immutable versions, restore, editorial workflows, collaboration-update storage, authorization hooks, and a Web Standard router under `/api/mdfn` by default. Every operation is tenant or owner scoped and passes through a host authorization callback.
+`@mdfn/server` provides document CRUD, immutable versions, restore, editorial workflows, and collaboration-update storage. Every operation passes through the host's principal resolver and authorization callback.
 
-Durable mode is the default. It requires a database adapter with transactions and relational constraints; the server wraps the adapter with its schema. Create, update, restore, and editorial writes validate Markdown and the complete sidecar atomically. `Idempotency-Key` can guard writes. The explicit ephemeral mode is only for memory-backed tests and examples.
+## Run a local server
 
-Use [@mdfn/client](/docs/reference/client) for typed fetch calls. The [server guide](/docs/reference/server) describes route behavior and storage boundaries.
+This single-user example uses ephemeral storage. Install the packages, save the code as `server.ts`, set `MDFN_DEMO_TOKEN` to a local secret, and run `npx tsx server.ts`:
+
+```sh
+npm install @mdfn/server @superfunctions/db hono @hono/node-server
+npm install --save-dev tsx
+```
+
+```ts
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { memoryAdapter } from "@superfunctions/db/adapters/memory";
+import { createMdfnServer, MdfnServerError } from "@mdfn/server";
+
+const token = process.env.MDFN_DEMO_TOKEN;
+if (!token) throw new Error("Set MDFN_DEMO_TOKEN before starting");
+const { router } = createMdfnServer({
+  database: memoryAdapter(),
+  durability: "ephemeral",
+  resolvePrincipal(request) {
+    if (request.headers.get("authorization") !== `Bearer ${token}`) {
+      throw new MdfnServerError("MDFN_UNAUTHENTICATED", 401);
+    }
+    return { id: "local-author", tenantId: "local" };
+  },
+  authorize(_action, principal, document) {
+    return !document || (document.ownerId === principal.id && document.tenantId === principal.tenantId);
+  },
+});
+const app = new Hono();
+app.all("/api/mdfn/*", (c) => router.handle(c.req.raw));
+serve({ fetch: app.fetch, port: 3010 });
+```
+
+Replace the demo resolver with your application's verified session identity for production. A missing resolver denies HTTP access. Never derive authority from an unverified owner/tenant field in a request body.
+
+## Create, edit, and save
+
+Install `@mdfn/client @mdfn/facade`. The following is a Node client for the local server; browser applications should use their authenticated same-origin session instead of shipping the demo token:
+
+```ts
+import { createMdfn, Transaction } from "@mdfn/facade";
+import { createMdfnClient, MdfnClientError } from "@mdfn/client";
+
+const client = createMdfnClient({
+  baseUrl: "http://localhost:3010/api/mdfn",
+  headers: { authorization: `Bearer ${process.env.MDFN_DEMO_TOKEN}` },
+});
+let remote = await client.createDocument({ title: "Example", markdown: "# Hello\n" });
+const editor = createMdfn({ markdown: remote.markdown, sidecar: remote.sidecar });
+editor.dispatch(new Transaction().replaceSource(2, 7, "Welcome"));
+const snapshot = editor.getState();
+try {
+  remote = await client.updateDocument(remote.id, {
+    expectedVersion: remote.version,
+    markdown: snapshot.markdown,
+    sidecar: snapshot.sidecar,
+    idempotencyKey: crypto.randomUUID(),
+  });
+  if (editor.getState().version === snapshot.version) editor.markSaved();
+  console.log(remote.version, remote.markdown);
+} catch (error) {
+  if (error instanceof MdfnClientError && error.status === 409) {
+    const latest = await client.getDocument(remote.id);
+    console.error("Version conflict: reconcile with", latest.version);
+  } else {
+    throw error;
+  }
+} finally {
+  editor.destroy();
+}
+```
+
+Use the last **server** version for `expectedVersion`, not the controller's local version. A stale update returns `MDFN_VERSION_CONFLICT` (409); retain the user's edits and reconcile with the latest document instead of blindly retrying. For a network retry of the same write, reuse its idempotency key and payload. `markSaved()` is local bookkeeping and does not persist anything.
+
+## Durable deployment
+
+Durable mode is the default and requires transactions plus relational constraints. Supply a durable `@superfunctions/db` adapter, provision the descriptors from `getSchema()` with your migration system, and keep browser/server Markdown extensions aligned. The returned `schema` describes required storage; construction does not replace the host's migration process. Ephemeral mode is only for local/testing hosts and loses data on restart.
+
+Persist Markdown and the complete sidecar together. Writes validate them atomically. `listVersions` returns summaries and a continuation cursor; `getVersion` fetches full historical content, and `restoreVersion` requires the current expected version. Collaboration update storage is a separate protocol covered in [collaboration](/docs/collaboration).

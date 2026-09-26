@@ -6,8 +6,8 @@
 
 - [Collaboration](/docs/collaboration) — Exchange authorized Yjs updates and compact exact batches.
 - [Extensions and profiles](/docs/extensions) — Resolve syntax ownership, conflicts, and migrations.
-- [Framework editors](/docs/framework-editors) — Mount the shared controller in React, Svelte, Solid, or vanilla DOM.
-- [Getting started](/docs/getting-started) — Create a headless editor controller from Markdown.
+- [Framework editors](/docs/framework-editors) — Install and mount a controller in React, Svelte, Solid, or the vanilla DOM.
+- [Getting started](/docs/getting-started) — Install MDFN, edit Markdown, observe changes, and release the controller.
 - [MDFN](/docs) — Markdown-native authoring with a durable source contract.
 - [Integrations](/docs/integrations) — Connect assets, search, content, and AI through explicit bridges.
 - [@mdfn/adapter-kit](/docs/reference/adapter-kit) — Source guide for adapter-kit.
@@ -20,7 +20,7 @@
 - [@mdfn/components](/docs/reference/components) — Source guide for components.
 - [@mdfn/contentfn](/docs/reference/contentfn) — Source guide for contentfn.
 - [@mdfn/core](/docs/reference/core) — Source guide for core.
-- [@mdfn/dom](/docs/reference/dom) — Source guide for dom.
+- [@mdfn/dom](/docs/reference/dom) — Mount and dispose a vanilla browser editor.
 - [@mdfn/examples](/docs/reference/examples) — Source guide for examples.
 - [@mdfn/extensions](/docs/reference/extensions) — Source guide for extensions.
 - [@mdfn/facade](/docs/reference/facade) — Source guide for facade.
@@ -28,17 +28,17 @@
 - [Package reference](/docs/reference) — Source guides for every MDFN package.
 - [@mdfn/markdown](/docs/reference/markdown) — Source guide for markdown.
 - [MDFN overview](/docs/reference/overview) — Source guide for overview.
-- [@mdfn/react](/docs/reference/react) — Source guide for react.
+- [@mdfn/react](/docs/reference/react) — Mount a React editor and observe controller state.
 - [@mdfn/registry](/docs/reference/registry) — Source guide for registry.
 - [@mdfn/render](/docs/reference/render) — Source guide for render.
 - [@mdfn/searchfn](/docs/reference/searchfn) — Source guide for searchfn.
 - [@mdfn/server](/docs/reference/server) — Source guide for server.
-- [@mdfn/solid](/docs/reference/solid) — Source guide for solid.
+- [@mdfn/solid](/docs/reference/solid) — Mount a Solid editor and observe its reactive snapshot.
 - [@mdfn/source](/docs/reference/source) — Source guide for source.
-- [@mdfn/svelte](/docs/reference/svelte) — Source guide for svelte.
+- [@mdfn/svelte](/docs/reference/svelte) — Mount a Svelte editor and subscribe with a readable store.
 - [@mdfn/testing](/docs/reference/testing) — Source guide for testing.
 - [Rendering and security](/docs/rendering-and-security) — Apply a rendering policy to untrusted Markdown.
 - [Review and sidecar](/docs/review-and-sidecar) — Keep editorial data bound to canonical source.
-- [Server and storage](/docs/server-and-storage) — Persist canonical source, revisions, and sidecars atomically.
+- [Server and storage](/docs/server-and-storage) — Mount authenticated document routes and save with optimistic concurrency.
 - [Source preservation](/docs/source-preservation) — Keep untouched Markdown bytes and unknown constructs.
 - [Verification](/docs/verification) — Run the consumer and browser gates for an MDFN integration.
