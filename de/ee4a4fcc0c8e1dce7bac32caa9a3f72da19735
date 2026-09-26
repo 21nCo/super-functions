@@ -1,0 +1,59 @@
+mdfn/docs/content/docs/framework-editors.md
+  s_ee6f287c08acb3::t_00c41c5c5bca2a 3,8,10-15,17-19
+mdfn/docs/content/docs/getting-started.md
+  s_ee6f287c08acb3::t_744973f6713464 3,8-12,15,18-29,32-34,36
+mdfn/docs/content/docs/reference/client.md
+  s_ee6f287c08acb3::t_d39c82b959af88 13-14
+mdfn/docs/content/docs/reference/dom.md
+  s_ee6f287c08acb3::t_7fe0d4b57195b5 3,6,8-31
+mdfn/docs/content/docs/reference/react.md
+  s_ee6f287c08acb3::t_ac6337eef1ce2b 3,6,8-42
+mdfn/docs/content/docs/reference/server.md
+  s_ee6f287c08acb3::t_c45ed8659f8039 32-33
+mdfn/docs/content/docs/reference/solid.md
+  s_ee6f287c08acb3::t_7ed0745de88f2d 3,6,8-29
+mdfn/docs/content/docs/reference/svelte.md
+  s_ee6f287c08acb3::t_dd1a034f5c3c31 3,6,8-30
+mdfn/docs/content/docs/server-and-storage.md
+  s_ee6f287c08acb3::t_cccbee065b2727 3,8,10,12-90
+mdfn/docs/src/app.css
+  s_ee6f287c08acb3::t_d99c3fadcba5d3 73-77
+mdfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_ee6f287c08acb3::t_8c8db77d7e4aa5 2,5
+mdfn/docs/src/lib/server/docs-site-source.ts
+  s_ee6f287c08acb3::t_a3d302df049542 2,4-5,7-8,11-17
+mdfn/docs/src/routes/+layout.server.ts
+  s_ee6f287c08acb3::t_09ee091e9d4293 5-6,8-11
+mdfn/docs/src/routes/+layout.svelte
+  s_ee6f287c08acb3::t_bebbda93b41b58 24
+mdfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ee6f287c08acb3::t_07b3e19e145b2a 10,35-36
+mdfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_f434576d8de7c1 42,47,49-54,56-58,65,70-74,77,80-91,94-96,98,170-171,298,301-324,326,512,515-549,551,626-627,633,636-640,642-659,681,684-688,690-708,767,772-850,852,854
+mdfn/docs/static/llms.txt
+  s_ee6f287c08acb3::t_930965ecb0c261 9-10,23,31,36,38,42
+mdfn/docs/vite.config.ts
+  s_ee6f287c08acb3::t_7e838375da2f36 21-23
+scripts/docs-site/README.md
+  s_ee6f287c08acb3::t_450680f2032b32 1-9
+scripts/docs-site/Search.svelte
+  s_ee6f287c08acb3::t_5a656322355e94 1-83
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_9d4a6d577093f3 1-537
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "deee4a4fcc0c8e1dce7bac32caa9a3f72da19735",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
