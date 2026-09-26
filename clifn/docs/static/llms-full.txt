@@ -437,7 +437,7 @@ program
   .action(async (options, command) => {
     const globals = command.parent?.opts() ?? {};
 
-    return runAction(
+    process.exitCode = await runAction(
       async ({ name }, ctx) => {
         ctx.output.info(`hello ${name}`);
       },
@@ -447,6 +447,8 @@ program
       }
     );
   });
+
+await program.parseAsync(process.argv);
 ```
 
 ### `cac`
