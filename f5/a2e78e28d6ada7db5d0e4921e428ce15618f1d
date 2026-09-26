@@ -1,0 +1,14 @@
+scripts/docs-site/llms.mjs
+  h_bdc5b81c173ee9 4-10,25-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f5a2e78e28d6ada7db5d0e4921e428ce15618f1d",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
