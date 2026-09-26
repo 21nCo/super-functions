@@ -1,0 +1,165 @@
+scripts/generate-uifn-phase-17.mjs
+  s_ee6f287c08acb3::t_489c4e440bb75f 458,575,611
+uifn/docs/generated/docs-coverage.json
+  s_ee6f287c08acb3::t_0a2c19da0c875e 11,695,1495,2259,3123,3699,4311,5131,5915,6699,7351,7991,8915,9879,10707,11527,12559,13339,14163,15039,15743,16387,17315,18151,18779,19523,20359,21059,21935,22555,23399,24187,24871,25679,26603,27391,28199,29047,29839,30511,31087,31919,32731,33463,34267,35231,35751,36547,37435,38199,38935,39691,40439,41355,42107,42991,43643,44371,45071,45835,46727,47611,48115,48695,49271,50295,50963,51499,52103,52827
+uifn/docs/generated/site/delivery.html
+  s_ee6f287c08acb3::t_79dc209c953ff0 1
+uifn/docs/generated/site/index.html
+  s_ee6f287c08acb3::t_84dcd8458bc227 1
+uifn/docs/generated/site/primitives/accordion.html
+  s_ee6f287c08acb3::t_9e3a4591f24b22 1
+uifn/docs/generated/site/primitives/alert-dialog.html
+  s_ee6f287c08acb3::t_b56356a947f886 1
+uifn/docs/generated/site/primitives/angle-slider.html
+  s_ee6f287c08acb3::t_70fb74981c5ed2 1
+uifn/docs/generated/site/primitives/autocomplete.html
+  s_ee6f287c08acb3::t_3c891fe6b0c9c1 1
+uifn/docs/generated/site/primitives/avatar.html
+  s_ee6f287c08acb3::t_6ccb1c103cdc75 1
+uifn/docs/generated/site/primitives/badge.html
+  s_ee6f287c08acb3::t_bbb0995930f9d9 1
+uifn/docs/generated/site/primitives/breadcrumb.html
+  s_ee6f287c08acb3::t_3026697a42daa6 1
+uifn/docs/generated/site/primitives/button.html
+  s_ee6f287c08acb3::t_a013f0a2cdf28c 1
+uifn/docs/generated/site/primitives/card.html
+  s_ee6f287c08acb3::t_c542c563b111c0 1
+uifn/docs/generated/site/primitives/carousel.html
+  s_ee6f287c08acb3::t_7038f7f8f66147 1
+uifn/docs/generated/site/primitives/checkbox-group.html
+  s_ee6f287c08acb3::t_99c3e1bf585d97 1
+uifn/docs/generated/site/primitives/checkbox.html
+  s_ee6f287c08acb3::t_df3d246e4f5acb 1
+uifn/docs/generated/site/primitives/clipboard.html
+  s_ee6f287c08acb3::t_89c2c635fc615d 1
+uifn/docs/generated/site/primitives/collapsible.html
+  s_ee6f287c08acb3::t_1cd6ad28b513f5 1
+uifn/docs/generated/site/primitives/color-picker.html
+  s_ee6f287c08acb3::t_9db60d9053e01f 1
+uifn/docs/generated/site/primitives/combobox.html
+  s_ee6f287c08acb3::t_6ca813ffc6385a 1
+uifn/docs/generated/site/primitives/command.html
+  s_ee6f287c08acb3::t_54e04417dd4607 1
+uifn/docs/generated/site/primitives/context-menu.html
+  s_ee6f287c08acb3::t_ee57f47d5cc9af 1
+uifn/docs/generated/site/primitives/date-input.html
+  s_ee6f287c08acb3::t_7b94763de0f72d 1
+uifn/docs/generated/site/primitives/date-picker.html
+  s_ee6f287c08acb3::t_e5be1b9b195b36 1
+uifn/docs/generated/site/primitives/dialog.html
+  s_ee6f287c08acb3::t_579e1c35ef5ab2 1
+uifn/docs/generated/site/primitives/drawer.html
+  s_ee6f287c08acb3::t_b100eb630119fc 1
+uifn/docs/generated/site/primitives/editable.html
+  s_ee6f287c08acb3::t_d9725f0a58a45f 1
+uifn/docs/generated/site/primitives/field.html
+  s_ee6f287c08acb3::t_956c817ebf85f0 1
+uifn/docs/generated/site/primitives/fieldset.html
+  s_ee6f287c08acb3::t_1f351bafe1fc60 1
+uifn/docs/generated/site/primitives/file-upload.html
+  s_ee6f287c08acb3::t_c61c9be4cd71fd 1
+uifn/docs/generated/site/primitives/floating-panel.html
+  s_ee6f287c08acb3::t_ce6114cf0e19cc 1
+uifn/docs/generated/site/primitives/form.html
+  s_ee6f287c08acb3::t_7902245d6c3a19 1
+uifn/docs/generated/site/primitives/hover-card.html
+  s_ee6f287c08acb3::t_51a7415833b79b 1
+uifn/docs/generated/site/primitives/image-cropper.html
+  s_ee6f287c08acb3::t_ac483724aecaa7 1
+uifn/docs/generated/site/primitives/input-group.html
+  s_ee6f287c08acb3::t_836b663d494be9 1
+uifn/docs/generated/site/primitives/input.html
+  s_ee6f287c08acb3::t_06ab06601b938b 1
+uifn/docs/generated/site/primitives/listbox.html
+  s_ee6f287c08acb3::t_cbbc4ce5c0d891 1
+uifn/docs/generated/site/primitives/marquee.html
+  s_ee6f287c08acb3::t_8d12df7e6cf1e3 1
+uifn/docs/generated/site/primitives/menu.html
+  s_ee6f287c08acb3::t_49e00d5243cf88 1
+uifn/docs/generated/site/primitives/menubar.html
+  s_ee6f287c08acb3::t_ab5507597ce2b9 1
+uifn/docs/generated/site/primitives/meter.html
+  s_ee6f287c08acb3::t_a192f21b986123 1
+uifn/docs/generated/site/primitives/navigation-menu.html
+  s_ee6f287c08acb3::t_1d5d4ca01a31c6 1
+uifn/docs/generated/site/primitives/number-input.html
+  s_ee6f287c08acb3::t_effcf214cf041a 1
+uifn/docs/generated/site/primitives/pagination.html
+  s_ee6f287c08acb3::t_8b457699466df7 1
+uifn/docs/generated/site/primitives/password-input.html
+  s_ee6f287c08acb3::t_7d2037e0cfa652 1
+uifn/docs/generated/site/primitives/pin-input.html
+  s_ee6f287c08acb3::t_29f58b5f4d3b10 1
+uifn/docs/generated/site/primitives/popover.html
+  s_ee6f287c08acb3::t_1ef5d46838419b 1
+uifn/docs/generated/site/primitives/progress.html
+  s_ee6f287c08acb3::t_6fe3a6628a27e6 1
+uifn/docs/generated/site/primitives/qr-code.html
+  s_ee6f287c08acb3::t_81533a5041265a 1
+uifn/docs/generated/site/primitives/radio-group.html
+  s_ee6f287c08acb3::t_d74601fcd133e0 1
+uifn/docs/generated/site/primitives/rating-group.html
+  s_ee6f287c08acb3::t_58b34439a3b2f9 1
+uifn/docs/generated/site/primitives/scroll-area.html
+  s_ee6f287c08acb3::t_47dca4304bff9f 1
+uifn/docs/generated/site/primitives/segment-group.html
+  s_ee6f287c08acb3::t_949f1741b14dfe 1
+uifn/docs/generated/site/primitives/select.html
+  s_ee6f287c08acb3::t_f7da4434504dc9 1
+uifn/docs/generated/site/primitives/separator.html
+  s_ee6f287c08acb3::t_b56e0cf4dff274 1
+uifn/docs/generated/site/primitives/signature-pad.html
+  s_ee6f287c08acb3::t_816ee20b695cbb 1
+uifn/docs/generated/site/primitives/skeleton.html
+  s_ee6f287c08acb3::t_2fa7ce7c8fccc5 1
+uifn/docs/generated/site/primitives/slider.html
+  s_ee6f287c08acb3::t_12535e3c10f89a 1
+uifn/docs/generated/site/primitives/splitter.html
+  s_ee6f287c08acb3::t_c1b67547964261 1
+uifn/docs/generated/site/primitives/steps.html
+  s_ee6f287c08acb3::t_50b85e01ffe4ad 1
+uifn/docs/generated/site/primitives/switch.html
+  s_ee6f287c08acb3::t_c78e9e62846fb3 1
+uifn/docs/generated/site/primitives/table.html
+  s_ee6f287c08acb3::t_e4afe9263439b9 1
+uifn/docs/generated/site/primitives/tabs.html
+  s_ee6f287c08acb3::t_2d2094ec5d998d 1
+uifn/docs/generated/site/primitives/tags-input.html
+  s_ee6f287c08acb3::t_239183cca2e899 1
+uifn/docs/generated/site/primitives/textarea.html
+  s_ee6f287c08acb3::t_de986c8d3db0c5 1
+uifn/docs/generated/site/primitives/timer.html
+  s_ee6f287c08acb3::t_542152f0456749 1
+uifn/docs/generated/site/primitives/toast.html
+  s_ee6f287c08acb3::t_eb36c30a047ef3 1
+uifn/docs/generated/site/primitives/toggle-group.html
+  s_ee6f287c08acb3::t_34a96300fa3806 1
+uifn/docs/generated/site/primitives/toggle.html
+  s_ee6f287c08acb3::t_c1186bac62e157 1
+uifn/docs/generated/site/primitives/toolbar.html
+  s_ee6f287c08acb3::t_c00e12e8cb5d82 1
+uifn/docs/generated/site/primitives/tooltip.html
+  s_ee6f287c08acb3::t_d9e98a9a334c14 1
+uifn/docs/generated/site/primitives/tour.html
+  s_ee6f287c08acb3::t_356a2eb390b3fa 1
+uifn/docs/generated/site/primitives/tree-view.html
+  s_ee6f287c08acb3::t_fe527aa865efc0 1
+uifn/storybook/generated/story-inventory.json
+  s_ee6f287c08acb3::t_15579c328e07b3 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d649715fb76ddeec82c496bd7fd458af41b1a479",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
