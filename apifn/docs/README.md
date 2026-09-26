@@ -20,3 +20,5 @@ npm run build --workspace @searchfn/client
 npm exec --workspace @apifn/docs -- docsfn validate --root .
 ```
  The site defaults to port 6020. Set `site.canonicalUrl` once the public host is assigned.
+
+The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt`.

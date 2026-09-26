@@ -3,6 +3,7 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
+    canonicalUrl: "https://apifn.com",
     title: "ApiFn",
     description: "Generate, test, mock, diff, and document APIs from one OpenAPI contract.",
     basePath: "/docs",

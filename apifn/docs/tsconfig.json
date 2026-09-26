@@ -16,11 +16,13 @@
     "strict": true,
     "lib": [
       "ES2022",
-      "DOM"
+      "DOM",
+      "DOM.Iterable"
     ],
     "types": [
       "svelte",
-      "vite/client"
+      "vite/client",
+      "node"
     ]
   }
 }
