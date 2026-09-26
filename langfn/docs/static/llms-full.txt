@@ -1,0 +1,364 @@
+# LangFn
+
+> TypeScript SDK for model calls, tools, graphs, retrieval, observability, HTTP, and MCP.
+
+This file concatenates the full text of every documentation page so it can be loaded into
+an LLM-based assistant in a single shot. For programmatic access, prefer the MCP server
+or the structured manifest emitted alongside this file.
+
+# Documentation
+
+<!-- page:docs:getting-started.md path:/docs/getting-started -->
+# Getting started
+
+> Create a TypeScript client and run a deterministic model call.
+
+
+# Getting started
+
+The TypeScript package is named `langfn` and exports a root client plus named subpaths. The current source manifest targets `0.1.0`; build or pack this checkout when testing the unpublished dev contract.
+
+```ts
+import { langfn } from "langfn";
+import { MockChatModel } from "langfn/models";
+import { PromptTemplate } from "langfn/prompts";
+
+const client = langfn({
+  model: new MockChatModel({ responses: ["Hello Ada"] }),
+});
+
+const prompt = new PromptTemplate({ template: "Say hi to {name}" });
+const response = await client.complete(prompt.format({ name: "Ada" }));
+console.log(response.content);
+```
+
+Use `MockChatModel` for deterministic setup and tests. Choose a real provider from [models and providers](/docs/models-and-providers), supply its credentials from a trusted host, and configure total response deadlines for network calls. The [package export map](/docs/reference/package-exports) lists the subpaths available from the current manifest.
+
+---
+
+<!-- page:docs:http.md path:/docs/http -->
+# HTTP routes
+
+> Mount model and trace endpoints with trusted authentication.
+
+
+# HTTP routes
+
+`createLangFnRouter(lang, options)` uses `@superfunctions/http` and defaults to a one MiB JSON body limit. The route set includes `GET /health`, `POST /complete`, `POST /chat`, `POST /stream`, `POST /embed`, `GET /traces`, and `POST /feedback`. The host mounts the router and supplies authentication and rate-limit providers appropriate to its deployment.
+
+Trace listing and feedback require an authenticated actor. Their stored and queried scope comes from trusted session metadata, not request-supplied tenant or user values. Custom trace stores serving scoped HTTP access must advertise `supportsScope: true`, apply both tenant and user predicates before pagination, and implement scoped `findOne` for feedback ownership. Historical unowned traces do not appear in HTTP results.
+
+HTTP provider errors omit upstream response bodies and metadata. SSE client disconnects cancel model work. See the [source router](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/http/routes.ts) and [release gate](/docs/reference/release-gate) for exact input and scope rules.
+
+---
+
+<!-- page:docs:index.md path:/docs -->
+# LangFn
+
+> TypeScript SDK for model, tool, graph, retrieval, and evaluation workflows.
+
+
+# LangFn
+
+The `langfn` TypeScript package provides model calls, prompts, structured output, tools, chains, state graphs, agents, memory, RAG, observability, evaluation, HTTP routes, and MCP adapters. Start with [getting started](/docs/getting-started) and use the [provider matrix](/docs/reference/compatibility) when choosing a model.
+
+This site describes the current `origin/dev` TypeScript source, an unpublished adoption targeting package version `0.1.0`. The root LangFn README still lists Python and `@langfn/admin`, but neither package is present in this checkout. Its linked `SPEC.md` is also absent. Do not infer those surfaces from the root README or assume a same-version registry artifact includes these dev changes. Verify the actual installed artifact before adoption.
+
+---
+
+<!-- page:docs:mcp.md path:/docs/mcp -->
+# MCP integration
+
+> Expose selected LangFn tools through McpFn.
+
+
+# MCP integration
+
+`langfn/mcp` provides a server adapter that registers LangFn tools with McpFn, plus client and stdio/SSE helpers. Each registered tool uses its declared name, description, input schema, annotations, and LangFn `ToolPolicy`. Expose only tools whose effects and credentials are authorized for the connected caller.
+
+The adapter can produce a manifest and serve supported transports. Treat model and tool inputs as untrusted, apply policy before execution, and keep long-lived credentials outside tool arguments. The [MCP source](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/mcp/server.ts) defines the current registration and transport behavior.
+
+---
+
+<!-- page:docs:memory-and-rag.md path:/docs/memory-and-rag -->
+# Memory and RAG
+
+> Choose in-process memory or injected retrieval adapters.
+
+
+# Memory and RAG
+
+`langfn/memory` exports buffer and summary memory helpers. `langfn/rag` exports base retrieval contracts, OpenAI embedding support, in-memory and DB vector-store adapters, and a MemoryFn bridge. Select storage according to your durability and authorization requirements; an in-memory helper is process-local.
+
+The first-party provider matrix lists OpenAI as the embeddings adapter for this release line. The MemoryFn bridge depends on that package's own tenant and container-tag scope contract. Keep application authorization and deletion state at the host boundary, and do not treat retrieval tags as membership authority.
+
+Inspect [memory exports](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/memory/index.ts) and [RAG exports](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/rag/index.ts) before selecting an adapter. The current source does not expose a shared `getSchema` CLI discovery contract; hosts provision adapter tables explicitly.
+
+---
+
+<!-- page:docs:models-and-providers.md path:/docs/models-and-providers -->
+# Models and providers
+
+> Select first-party capabilities and preserve provider messages.
+
+
+# Models and providers
+
+The current TypeScript source includes first-party chat adapters for OpenAI, Anthropic, Ollama, Google, and Mistral, plus mock and custom model interfaces. The [compatibility matrix](/docs/reference/compatibility) distinguishes completion, chat, streaming, tools, embeddings, and evaluation. Only OpenAI ships a first-party embeddings adapter in this release line. Ollama has streaming but no first-party tool mapping.
+
+Provider `timeout` is a total response deadline, including streaming bodies, in milliseconds. Set `0` only when intentionally disabling it. Cancellation remains independent. For Google tool continuations, persist the returned assistant `message`, including `providerData`, before appending tool results; streamed chat emits a `message` event for the same purpose. `stream` is the prompt-only convenience method.
+
+The Google TypeScript adoption includes native SSE and signed tool continuation, but live Gemini qualification is a separate release gate. Python has not been migrated into this `origin/dev` worktree. Use the [source model exports](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/models/index.ts) for concrete constructors and options.
+
+---
+
+<!-- page:docs:observability-and-evaluation.md path:/docs/observability-and-evaluation -->
+# Observability and evaluation
+
+> Capture scoped traces, usage, feedback, and measured outcomes.
+
+
+# Observability and evaluation
+
+`langfn/observability` exports tracer, storage, cost meter, exporter, redaction, and span contracts. `langfn/evaluation` exports datasets, metrics, and evaluator helpers. Use them to measure configured model behavior and keep trace data scoped to the trusted tenant and actor.
+
+HTTP feedback normalizes top-level tenant/user fields or nested `scope` and rejects conflicts. Cached completions create a fresh scoped trace, so feedback can refer to each returned trace ID. For SQL-backed custom trace stores, include tenant and user columns and query predicates. A local evaluator result only describes the frozen dataset, model, prompt, context, and budget used for that run.
+
+The [release gate](/docs/reference/release-gate) details HTTP scope and trace-store requirements. See [observability exports](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/observability/index.ts) and [evaluation exports](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/evaluation/index.ts) for integration APIs.
+
+---
+
+<!-- page:docs:operations-and-limits.md path:/docs/operations-and-limits -->
+# Operations and limits
+
+> Source availability, release checks, and external proof boundaries.
+
+
+# Operations and limits
+
+The root README describes a dual-language SDK and an admin package, but the current `origin/dev` tree contains only `langfn/typescript`. The TypeScript adoption is unpublished and its Python Google adapter has not received these changes. Verify the built or packed source and separately inspect any registry artifact before relying on a feature. There is no shared `getSchema` CLI discovery contract for adapter tables.
+
+Run `npm run gate:langfn-release` from the repository root for TypeScript build, full tests, built import checks, protocol and observability smoke, and duplication checks. Live Gemini qualification remains separate. Green static docs checks do not establish a provider's live behavior, database migration, hosted HTTP security, or release readiness.
+
+Keep model credentials and tool/network privileges in a trusted host. Use scoped stores for HTTP traces and feedback, atomic checkpoint consumption for graph resume, and an egress proxy when dynamic tool hostnames are required. The [release gate reference](/docs/reference/release-gate) records precise constraints.
+
+---
+
+<!-- page:docs:prompts-and-structured.md path:/docs/prompts-and-structured -->
+# Prompts and structured output
+
+> Format prompt templates and validate model output.
+
+
+# Prompts and structured output
+
+`langfn/prompts` exports string and chat templates, a registry, and few-shot helpers. Use `PromptTemplate` for named substitutions, and keep application-owned prompt versions alongside code or a trusted registry. The getting-started example formats a template before calling `complete`.
+
+`langfn/structured` exports structured-output helpers. Model output is untrusted input: validate it against the expected schema and handle parse or schema failures as ordinary workflow errors. Do not grant privileges based only on a model's claimed result.
+
+Read [prompt exports](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/prompts/index.ts) and [structured-output source](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/structured/output.ts) for constructor and validation details.
+
+---
+
+<!-- page:docs:reference/compatibility.md path:/docs/reference/compatibility -->
+# Provider compatibility
+
+> First-party TypeScript provider capability matrix.
+
+
+# LangFn Provider Compatibility
+
+This unpublished TypeScript adoption has the following adapter capabilities. Python remains in the separately maintained next snapshot; its Google adapter has not received these changes.
+
+| Provider | completion | chat | streaming | tools | embeddings | evaluation | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| openai | yes | yes | yes | yes | yes | yes | Native streamed chat completions plus first-party embeddings. |
+| anthropic | yes | yes | yes | yes | no | yes | Native streamed messages API with tool-use support. |
+| ollama | yes | yes | yes | no | no | yes | Local model adapter; streaming is supported, tool mapping is not first-party. |
+| google | yes | yes | yes | yes | no | yes | Native REST/SSE, signed tool continuation and cancellation. Live qualification is separate. |
+| mistral | yes | yes | yes | yes | no | yes | Native SSE content and usage; cancellation closes the response. Tool-call mapping is supported on chat completions. |
+
+## Notes
+
+- Evaluation support means the provider can be exercised through `LangFn` evaluators once the model is configured.
+- `custom` and `mock` remain available for SPI and deterministic test flows, but they are not part of the first-party release matrix above.
+- Only OpenAI ships a first-party embeddings adapter in `0.1.0`.
+
+## SFNS-4 TypeScript adoption
+
+The dev adoption targets the TypeScript package. Its Google adapter now supports native SSE, tool calling and signed continuation through `chat` and `streamChat`. Python has not been migrated in this dev worktree. Live model verification is a separate release gate. Consumers persist the returned assistant `message` (or the stream `message` event), including providerData, before appending tool results. `stream` remains the prompt-only convenience method.
+
+---
+
+<!-- page:docs:reference/index.md path:/docs/reference -->
+# Reference
+
+> TypeScript package exports, provider matrix, and source release contract.
+
+
+# Reference
+
+- [Package exports](/docs/reference/package-exports)
+- [TypeScript package README](/docs/reference/typescript)
+- [Provider compatibility](/docs/reference/compatibility)
+- [Release gate](/docs/reference/release-gate)
+
+The source pages mirror the current `origin/dev` Markdown documents. The root README has references to packages and files absent from this checkout; the [operations page](/docs/operations-and-limits) explains the boundary.
+
+---
+
+<!-- page:docs:reference/package-exports.md path:/docs/reference/package-exports -->
+# Package exports
+
+> Public TypeScript subpaths in the current langfn manifest.
+
+
+# Package exports
+
+The `langfn` manifest exports the root package and these subpaths:
+
+| Subpath | Responsibility |
+| --- | --- |
+| `langfn/models` | First-party and mock model adapters. |
+| `langfn/prompts` | Prompt templates, chat templates, registry, few-shot helpers. |
+| `langfn/tools` | Tool definitions, built-ins, and policy. |
+| `langfn/orchestration` | Chains, parallel work, and routers. |
+| `langfn/graph` | State graphs and checkpoints. |
+| `langfn/agents` | ReAct, tool, plan-execute, and multi-agent patterns. |
+| `langfn/observability` | Traces, storage, cost, export, and redaction. |
+| `langfn/http` | Routes, auth, rate limiting, validation. |
+| `langfn/structured` | Structured output helpers. |
+| `langfn/rag` | Retrieval and vector-store adapters. |
+| `langfn/memory` | Buffer and summary memory. |
+| `langfn/evaluation` | Datasets, metrics, and evaluators. |
+| `langfn/mcp` | MCP server/client and transports. |
+| `langfn/utils` | Retry, cancellation, concurrency, and related utilities. |
+
+The root also exports common client, model, tool, orchestration, and HTTP contracts. The manifest does not export a Python package or an admin capability from this checkout.
+
+---
+
+<!-- page:docs:reference/release-gate.md path:/docs/reference/release-gate -->
+# Release gate
+
+> TypeScript build, test, package, and live-qualification boundaries.
+
+
+# LangFn TypeScript adoption release gate
+
+Release line: 0.1.0. Run `npm run gate:langfn-release` from repo root.
+The TypeScript adoption checks `npm --prefix langfn/typescript run build`, type checking against real shared package declarations, the complete TypeScript suite, and built package imports. Python remains in the next source repository and is outside this TypeScript consumer adoption. Live Gemini verification is separately required before release readiness.
+
+HTTP trace listing and feedback require an authenticated actor. Trace records persist `tenantId` and `userId` from trusted session metadata; SQL-backed custom trace stores must include those columns and apply both query predicates. Historical unowned traces are excluded from HTTP results. Direct trusted SDK access remains available for maintenance. HTTP provider errors omit upstream bodies and metadata.
+
+Custom stores serving scoped HTTP access must advertise `supportsScope: true`, apply tenant/user predicates before pagination, and implement `findOne(traceId, scope)` for feedback ownership checks. A store that cannot meet that contract is rejected explicitly. Feedback records also carry top-level tenant/user fields for scoped idempotency.
+
+Provider `timeout` is a total response deadline, including streaming bodies, in milliseconds. Set it to `0` to disable it or increase it for long generations; cancellation remains independent. The built-in graph checkpoint store retains at most 1000 entries (oldest evicted), atomically consumes checkpoints before resuming nodes, and uses UUIDs. Use an injected durable store for recovery across processes. Custom stores must implement atomic `take(id)` for resumption; save/load-only stores fail before node execution. After consumption, failures require application reconciliation, not replay of the old checkpoint. This is at-most-once checkpoint admission, not an exactly-once guarantee for external effects.
+
+`api_call` allows public IPv4 literals by default. Hostnames and IPv6 literals require an explicit `allowedHosts` entry, because portable fetch cannot validate and pin a resolved address in both Node and Workers. Allowlisted hosts are trusted network exceptions, including all addresses they resolve to; do not populate the allowlist from model or request input. `allowPrivateNetwork: true` is a broader explicit opt-in. Redirects are rejected, and only HTTP(S) URLs without embedded credentials are accepted. Deployments needing dynamic hostname access should use an egress proxy that validates and pins destinations.
+
+Feedback accepts top-level tenant/user fields or nested `scope`; conflicting values are rejected and both lookup and deduplication use the normalized scope. Cached completions save a fresh scoped trace, allowing feedback on every returned trace ID. HTTP SSE disconnects cancel model work; configured retry signals remain effective unless a per-call cancellation token overrides them.
+
+---
+
+<!-- page:docs:reference/typescript.md path:/docs/reference/typescript -->
+# TypeScript package
+
+> Current langfn TypeScript package guide.
+
+
+# LangFn (TypeScript)
+
+LangFn for TypeScript ships the canonical `langfn` package plus the documented subpath exports used throughout the SDK examples and tests.
+
+Current release target: `0.1.0`.
+
+## Install
+
+```bash
+npm install langfn@0.1.0
+```
+
+Python users in the same release line install:
+
+```bash
+pip install langfn==0.1.0
+```
+
+## Supported imports
+
+```typescript
+import { LangFn, langfn } from "langfn";
+import { OpenAIChatModel, MockChatModel } from "langfn/models";
+import { PromptTemplate } from "langfn/prompts";
+import { createLangFnRouter } from "langfn/http";
+import { ReActAgent } from "langfn/agents";
+```
+
+## Quick start
+
+```typescript
+import { langfn } from "langfn";
+import { MockChatModel } from "langfn/models";
+import { PromptTemplate } from "langfn/prompts";
+
+const client = langfn({
+  model: new MockChatModel({ responses: ["Hello Ada"] })
+});
+
+const prompt = new PromptTemplate({ template: "Say hi to {name}" });
+const response = await client.complete(prompt.format({ name: "Ada" }));
+
+console.log(response.content);
+```
+
+## Release checks
+
+From the repository root:
+
+```bash
+npm --prefix langfn/typescript run build
+npm --prefix langfn/typescript test
+npm run gate:langfn-release
+```
+
+## Compatibility
+
+See [Provider compatibility](/docs/reference/compatibility) for first-party provider support across completion, chat, streaming, tools, embeddings, and evaluation.
+
+CLI schema discovery is not supported: this package does not export the shared
+`getSchema` contract. Hosts must provision adapter tables explicitly.
+
+---
+
+<!-- page:docs:streaming-and-tools.md path:/docs/streaming-and-tools -->
+# Streaming and tools
+
+> Handle cancellation, tool policy, and network boundaries.
+
+
+# Streaming and tools
+
+LangFn exposes streaming model operations and a tool abstraction with JSON-schema definitions, policy checks, and execution context. Built-in tools include calculator, `api_call`, web search, and code execution. Tool authority and network access are host responsibilities; do not let untrusted model text choose privileged credentials or policy exceptions.
+
+`api_call` permits public IPv4 literals by default. Hostnames and IPv6 literals require an explicit `allowedHosts` entry because portable fetch cannot validate and pin DNS results across Node and Workers. That allowlist trusts all addresses a hostname resolves to. `allowPrivateNetwork: true` is a broader opt-in. Redirects and URLs with embedded credentials are rejected. Use an egress proxy for dynamic hostname access.
+
+Streaming HTTP responses cancel model work when clients disconnect. Configured retry signals remain active unless a per-call cancellation token overrides them. Read the [release gate contract](/docs/reference/release-gate) for these boundaries and the [tool source](https://github.com/21nCo/super-functions/tree/dev/langfn/typescript/src/tools) for concrete APIs.
+
+---
+
+<!-- page:docs:workflows.md path:/docs/workflows -->
+# Workflows and agents
+
+> Compose chains, parallel work, routers, state graphs, and agents.
+
+
+# Workflows and agents
+
+Subpath exports include chains, parallel orchestration, routers, state graphs, and ReAct, tool, plan-execute, and multi-agent patterns. Keep the model, tool policy, and application state explicit when composing them. Use the [package export map](/docs/reference/package-exports) to select the narrow import path.
+
+Graph resumption requires a checkpoint store with atomic `take(id)`; a save/load-only custom store fails before node execution. The built-in in-memory store keeps up to 1000 entries, evicts the oldest, and does not survive process restart. A consumed checkpoint cannot be replayed after a failed node; reconcile any external effect at the application layer. This is at-most-once checkpoint admission, not exactly-once execution.
+
+Inject a durable store for cross-process recovery and test its atomic consumption under concurrency. The [state graph source](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/graph/state_graph.ts) and [checkpoint interface](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/graph/checkpoint.ts) define the contract.
+
+---

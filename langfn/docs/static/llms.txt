@@ -1,0 +1,22 @@
+# LangFn
+
+> TypeScript SDK for model calls, tools, graphs, retrieval, observability, HTTP, and MCP.
+
+## Documentation
+
+- [Getting started](/docs/getting-started) — Create a TypeScript client and run a deterministic model call.
+- [HTTP routes](/docs/http) — Mount model and trace endpoints with trusted authentication.
+- [LangFn](/docs) — TypeScript SDK for model, tool, graph, retrieval, and evaluation workflows.
+- [MCP integration](/docs/mcp) — Expose selected LangFn tools through McpFn.
+- [Memory and RAG](/docs/memory-and-rag) — Choose in-process memory or injected retrieval adapters.
+- [Models and providers](/docs/models-and-providers) — Select first-party capabilities and preserve provider messages.
+- [Observability and evaluation](/docs/observability-and-evaluation) — Capture scoped traces, usage, feedback, and measured outcomes.
+- [Operations and limits](/docs/operations-and-limits) — Source availability, release checks, and external proof boundaries.
+- [Prompts and structured output](/docs/prompts-and-structured) — Format prompt templates and validate model output.
+- [Provider compatibility](/docs/reference/compatibility) — First-party TypeScript provider capability matrix.
+- [Reference](/docs/reference) — TypeScript package exports, provider matrix, and source release contract.
+- [Package exports](/docs/reference/package-exports) — Public TypeScript subpaths in the current langfn manifest.
+- [Release gate](/docs/reference/release-gate) — TypeScript build, test, package, and live-qualification boundaries.
+- [TypeScript package](/docs/reference/typescript) — Current langfn TypeScript package guide.
+- [Streaming and tools](/docs/streaming-and-tools) — Handle cancellation, tool policy, and network boundaries.
+- [Workflows and agents](/docs/workflows) — Compose chains, parallel work, routers, state graphs, and agents.
