@@ -3,8 +3,6 @@ title: Connect a client
 description: Production stdio and Streamable HTTP sessions, inventories, calls, and OAuth completion.
 ---
 
-# Connect a client
-
 Install `@mcpfn/client` and choose a target. The client uses the official MCP SDK for protocol and transport behavior.
 
 ```ts

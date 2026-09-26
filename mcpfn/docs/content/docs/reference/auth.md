@@ -3,8 +3,6 @@ title: Authorization
 description: Source-aligned McpFn authorization documentation.
 ---
 
-# `@mcpfn/auth`
-
 OAuth integration for MCP clients, resource servers, and hosted authorization
 systems. Protocol mechanics remain in the official MCP SDK.
 

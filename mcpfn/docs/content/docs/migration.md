@@ -3,8 +3,6 @@ title: Migrate or adopt incrementally
 description: Move a custom MCP server to McpFn or test it without changing its runtime.
 ---
 
-# Migrate or adopt incrementally
-
 You can adopt `@mcpfn/testing`, `@mcpfn/client`, and `@mcpfn/cli` against an existing conforming stdio or Streamable HTTP server. `mcpfn test-target` and `mcpfn conformance` do not require a McpFn registry on the server side. This is the quickest path to semantic and wire-protocol regression evidence.
 
 To migrate the runtime, preserve the existing public tool names and descriptions while replacing hand-written protocol dispatch with a `McpFnRegistry` and an SDK-backed server. Declare object input schemas, accurate annotations, output schemas where structured results matter, and trusted context at the transport boundary. Run manifest diffs and scenarios before switching traffic.

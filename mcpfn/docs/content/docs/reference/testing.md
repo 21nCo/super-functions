@@ -3,8 +3,6 @@ title: Testing API
 description: Source-aligned McpFn testing api documentation.
 ---
 
-# McpFn Testing
-
 `@mcpfn/testing` provides deterministic MCP regression testing over the official SDK's in-memory transport and against arbitrary stdio or Streamable HTTP MCP servers. It tests the protocol boundary rather than calling handlers directly; the server under test does not need to use McpFn.
 
 It includes:
@@ -41,7 +39,6 @@ by applications, the inspector, and CLI. Scenario execution is serial and
 capability calls are never retried implicitly.
 
 ```ts
-import { writeFile } from "node:fs/promises";
 import {
   McpFnTestClient,
   assertManifestContract,

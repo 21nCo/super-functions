@@ -3,8 +3,6 @@ title: McpFn documentation
 description: Consumer guide to building, connecting to, securing, and testing MCP servers.
 ---
 
-# McpFn
-
 McpFn provides a validated Model Context Protocol server runtime, a production client, OAuth integration, contract testing, inspection, and a command-line workflow. It delegates the wire protocol and transports to the official MCP SDK. You can adopt its testing and client packages against an existing MCP server without migrating that server to McpFn.
 
 ## Choose a path

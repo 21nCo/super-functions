@@ -3,8 +3,6 @@ title: DataFn adapter
 description: Source-aligned McpFn datafn adapter documentation.
 ---
 
-# McpFn DataFn Adapter
-
 `@mcpfn/datafn` turns explicitly approved DataFn operations into stable MCP tools. It is deny-by-default:
 
 - no resource is exposed unless named in `expose`;
@@ -19,7 +17,6 @@ import { createMcpFnServer } from "@mcpfn/core";
 import { createDatafnMcpRegistry } from "@mcpfn/datafn";
 
 const registry = createDatafnMcpRegistry({
-  schema,
   executor: datafnServer.executor,
   context: (mcpContext) => ({
     workspaceId: mcpContext.workspaceId,

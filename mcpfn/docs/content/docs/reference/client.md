@@ -3,8 +3,6 @@ title: Client
 description: Source-aligned McpFn client documentation.
 ---
 
-# `@mcpfn/client`
-
 Production MCP client and headless session engine for Node.js 18.18 or newer.
 It delegates protocol lifecycle and transports to the official MCP SDK, while
 adding target descriptors, idempotent connection lifecycle, complete inventory

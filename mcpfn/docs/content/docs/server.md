@@ -3,8 +3,6 @@ title: Build a server
 description: Registry, context, profiles, resources, prompts, tasks, and transports.
 ---
 
-# Build a server
-
 ## Keep the public contract explicit
 
 Register tool names, descriptions, input and output JSON Schemas, and annotations deliberately. McpFn validates arguments and structured results and produces a deterministic manifest. Storage tables and internal methods should not become public tools by default. `defineMcpFnServer()` is a side-effect-free declaration; `createMcpFnServer()` remains supported for applications that construct the runtime directly.

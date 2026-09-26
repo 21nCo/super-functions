@@ -3,8 +3,6 @@ title: Inspector
 description: Source-aligned McpFn inspector documentation.
 ---
 
-# `@mcpfn/inspector`
-
 `@mcpfn/inspector` is a headless MCP inspection engine. It connects through
 `@mcpfn/client`, inventories the negotiated server surface, records redacted
 lifecycle diagnostics, executes tools/resources/prompts, and exports sanitized

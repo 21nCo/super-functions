@@ -3,8 +3,6 @@ title: Authorization
 description: Protect Streamable HTTP, complete client OAuth, and compose hosted authorization.
 ---
 
-# Authorization
-
 McpFn has three separate authorization roles: verify bearer credentials at a protected MCP resource, act as an OAuth client, and compose an existing hosted identity system into MCP authorization endpoints. Install `@mcpfn/auth` for the roles you need.
 
 ## Protect an HTTP MCP resource

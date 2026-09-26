@@ -3,8 +3,6 @@ title: Test and evolve a server
 description: Manifests, client profiles, semantic scenarios, authentication, and protocol conformance.
 ---
 
-# Test and evolve a server
-
 Use independent checks for domain behavior, public contract changes, effective authenticated catalogs, protocol semantics, authorization, and wire conformance. A green manifest diff does not prove a handler's business behavior; a scenario does not prove a new host supports every client requirement.
 
 ## Compare the public contract

@@ -3,8 +3,6 @@ title: Deployment
 description: Run McpFn over HTTP on Node or Cloudflare Workers and keep the transport boundary secure.
 ---
 
-# Deployment
-
 Serve HTTP with `createWebStandardHandler()` and mount the resulting Web Standard handler in your application's router. The official SDK owns Streamable HTTP and protocol behavior. Wrap protected endpoints with `createOAuthResourceServerHandler()` and derive trusted context from verified request metadata. See [authorization](/docs/authorization) for the resource-server boundary.
 
 ## Stateless and sessionful HTTP

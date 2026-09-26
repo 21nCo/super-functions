@@ -3,8 +3,6 @@ title: Package reference
 description: Source-aligned package documentation and implementation architecture.
 ---
 
-# Package reference
-
 These pages incorporate the package documentation from the current `origin/dev` source. Use them for detailed API examples and edge cases after the guides.
 
 - [Core runtime](/docs/reference/core): declarations, registries, profiles, resources, tasks, apps, and error behavior.

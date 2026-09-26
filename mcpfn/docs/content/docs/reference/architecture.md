@@ -3,8 +3,6 @@ title: Architecture
 description: Source-aligned McpFn architecture documentation.
 ---
 
-# McpFn architecture
-
 McpFn separates protocol correctness from product correctness and gives every
 client-side tool one session engine.
 

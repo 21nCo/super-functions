@@ -3,8 +3,6 @@ title: Testing and CI
 description: Source-aligned McpFn testing and ci documentation.
 ---
 
-# Testing and CI
-
 A regression-free MCP project needs six independent layers.
 
 Scenario arrays remain readable for compatibility, while new portable bundles

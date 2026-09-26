@@ -3,8 +3,6 @@ title: CLI
 description: Source-aligned McpFn cli documentation.
 ---
 
-# McpFn CLI
-
 The `mcpfn` CLI provides stable CI exit behavior:
 
 ```sh

@@ -3,8 +3,6 @@ title: Getting started
 description: Install McpFn, declare a validated tool, and run a server.
 ---
 
-# Getting started
-
 ## Install
 
 ```sh

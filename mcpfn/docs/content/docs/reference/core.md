@@ -3,8 +3,6 @@ title: Core runtime
 description: Source-aligned McpFn core runtime documentation.
 ---
 
-# McpFn Core
-
 `defineMcpFnServer()` creates a side-effect-free declaration whose registry and
 manifest are shared by runtime, tests, and release tooling. Call
 `declaration.createServer()` once per transport connection. Existing
