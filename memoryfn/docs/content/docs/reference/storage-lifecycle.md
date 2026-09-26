@@ -3,8 +3,6 @@ title: Storage and lifecycle source guide
 description: Source-aligned MemoryFn guidance from origin/dev.
 ---
 
-# MemoryFn TypeScript: storage and lifecycle
-
 This dev adoption is based on next `b21477fc9a32ae425c38a2de810b5a8705fc711f` with explicit scope and lifecycle changes. It is an unpublished candidate; the same-version registry package does not contain these changes.
 
 ## PostgreSQL and ownership
@@ -32,7 +30,7 @@ Every operation requires an explicit tenant ID and tag array. All supplied tags 
 
 `update({ tenantId, containerTags, id, expectedRevision, content })` uses compare-and-update and replaces the embedding. Failed re-embedding leaves the prior revision intact. `forget({ tenantId, containerTags, id, expectedRevision? })` scrubs content, vector and metadata, removes relationships and retains an immutable-ID tombstone. Concurrent stale updates cannot resurrect a tombstone. Forget can be retried; Postgres performs scrubbing and relationship cleanup in one transaction. A failed transaction reports failure and can be retried.
 
-Rex must deny retrieval as soon as its authoritative DataFn record is forgotten, including while derived-store cleanup is pending. MemoryFn cannot infer the state of an external source of authority. Results must be intersected with current Rex permissions and authoritative deletion state. External indexes and replicas require equivalent tombstone checks and retryable cleanup; this package's Postgres vector lives in the same row as the tombstone.
+The application must deny retrieval as soon as its authoritative application record is forgotten, including while derived-store cleanup is pending. MemoryFn cannot infer the state of an external source of authority. Results must be intersected with current application permissions and authoritative deletion state. External indexes and replicas require equivalent tombstone checks and retryable cleanup; this package's Postgres vector lives in the same row as the tombstone.
 
 The HTTP router requires an `authorize(request)` callback returning trusted scope or null. Request bodies cannot choose a tenant. The MCP adapter requires a trusted scope at construction; instantiate it per authorized scope and revoke access at the host boundary.
 

@@ -3,8 +3,6 @@ title: Public API
 description: MemoryFn package entry points, methods, input types, and adapters.
 ---
 
-# Public API
-
 | Import | Main surface | Purpose |
 | --- | --- | --- |
 | `@memoryfn/core` | `memoryfn`, `MemoryFn`, `Memory`, input/result types, `StorageAdapter`, `MemoryStorageAdapter`, `PostgresAdapter` | Factory, pipeline, and storage contracts |

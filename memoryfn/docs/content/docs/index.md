@@ -3,8 +3,6 @@ title: MemoryFn documentation
 description: Scoped memory storage, retrieval, updates, and forgetting for application developers.
 ---
 
-# MemoryFn
-
 MemoryFn's TypeScript package, `@memoryfn/core`, stores tenant-scoped memories, searches them by embedding, updates them with revisions, and forgets them with tombstones. It also offers an authorized HTTP router and a scoped stdio MCP adapter.
 
 These pages describe the **current `origin/dev` source**. Its README calls this an unpublished candidate: the same numbered registry release does not contain all the changes here. Test the package from this source or a packed build before adopting these contracts in a deployed consumer.

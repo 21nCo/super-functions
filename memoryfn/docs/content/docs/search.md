@@ -3,8 +3,6 @@ title: Semantic search
 description: Query scoped vector memories and enforce host authorization on results.
 ---
 
-# Semantic search
-
 `memory.search()` embeds the query and asks the storage adapter for nearest vectors. It fails with `MEMORY_EMBEDDER_REQUIRED` when no embedder is configured; there is no lexical fallback.
 
 ```ts

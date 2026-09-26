@@ -3,8 +3,6 @@ title: Scope and lifecycle
 description: Tenant and tag constraints, optimistic revisions, updates, and tombstones.
 ---
 
-# Scope and lifecycle
-
 Every operation needs a nonempty `tenantId` and an array of nonempty `containerTags`. All supplied tags must match within that tenant; an empty array selects the explicit tenant as a whole. Tags constrain retrieval and storage operations, but they are not an application membership or sharing policy. The host must derive and enforce authorization independently.
 
 `requireScope()` runs in the pipeline and bundled adapters. Model-extracted tags are stored as descriptive `metadata.extractedTags`; they cannot expand the caller's container tags. HTTP and MCP adapters derive the tenant from trusted host scope rather than a request body or tool arguments.

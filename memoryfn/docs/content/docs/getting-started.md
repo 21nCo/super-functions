@@ -3,8 +3,6 @@ title: Getting started
 description: Add, update, and forget scoped memories with the TypeScript package.
 ---
 
-# Getting started
-
 The source package is `memoryfn/typescript`, published as `@memoryfn/core`. This dev contract is not yet represented by the same-version registry package. Build or pack the checked-out source when evaluating it; do not assume `npm install @memoryfn/core@0.0.3` reproduces these pages.
 
 ## Use an explicit ephemeral store

@@ -3,8 +3,6 @@ title: Embeddings and extraction
 description: Configure supported providers and understand ingestion and deduplication behavior.
 ---
 
-# Embeddings and extraction
-
 The `memoryfn()` factory currently supports OpenAI for `embedder.provider` and `llm.provider`. An embedder is required for semantic retrieval. The built-in embedder defaults to `text-embedding-3-small`, requests the storage dimension when known, batches inputs, and checks response count and order. The default batch size is 2048; configured values must be an integer from 1 through 2048.
 
 ```ts

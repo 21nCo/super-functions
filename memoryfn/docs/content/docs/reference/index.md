@@ -3,8 +3,6 @@ title: API reference
 description: Public TypeScript entry points and source-aligned package guidance.
 ---
 
-# API reference
-
 - [Public API](/docs/reference/api) maps the current package exports and operation inputs.
 - [Storage and lifecycle guide](/docs/reference/storage-lifecycle) carries the detailed source README for the dev adoption.
 - [Package overview](/docs/reference/package-overview) carries the top-level source README.

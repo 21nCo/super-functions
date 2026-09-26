@@ -3,8 +3,6 @@ title: Package overview
 description: Source-aligned MemoryFn guidance from origin/dev.
 ---
 
-# MemoryFn
-
 The TypeScript package `@memoryfn/core` provides scoped memory storage, embedding-based retrieval, revisioned updates and forgetting. This worktree adopts the implementation from next and hardens its storage and lifecycle for hosted consumers.
 
 ```ts

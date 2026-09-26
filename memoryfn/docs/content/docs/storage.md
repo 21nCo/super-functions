@@ -3,8 +3,6 @@ title: Storage and migrations
 description: PostgreSQL setup, connection ownership, transaction requirements, and custom adapters.
 ---
 
-# Storage and migrations
-
 `kind: "memory"` provides a process-local adapter. Durable PostgreSQL needs the SQL in `memoryfn/typescript/migrations`: apply `0001-initial.sql`, then `0002-memory-lifecycle.sql`, using a migration role in the intended application schema. The first migration creates pgvector-backed tables with `vector(1536)`; the second adds revisions, tombstones, and an active-row index. Neither migration provisions a database, grants, or Hyperdrive. Exact vector search works without an approximate index.
 
 ## Inject a caller-owned PostgreSQL adapter
