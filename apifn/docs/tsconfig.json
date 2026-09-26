@@ -22,12 +22,5 @@
       "svelte",
       "vite/client"
     ]
-  },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.js",
-    "src/**/*.svelte",
-    "vite.config.ts",
-    "svelte.config.js"
-  ]
+  }
 }

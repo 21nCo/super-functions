@@ -1,10 +1,13 @@
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const docsfnCore = path.dirname(require.resolve("@docsfn/core"));
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
   ssr: {
@@ -19,8 +22,8 @@ export default defineConfig({
   resolve: {
     alias: [
       // Resolve shared source against this site's pinned DocsFn installation.
-      { find: /^@docsfn\/core$/, replacement: fileURLToPath(import.meta.resolve("@docsfn/core")) },
-      { find: "@docsfn/core/search-runtime", replacement: fileURLToPath(import.meta.resolve("@docsfn/core/search-runtime")) },
+      { find: /^@docsfn\/core$/, replacement: path.join(docsfnCore, "index.js") },
+      { find: "@docsfn/core/search-runtime", replacement: path.join(docsfnCore, "search-runtime.js") },
       { find: "@searchfn/client", replacement: path.resolve(dirname, "../../searchfn/client/src/index.ts") },
       { find: "@searchfn/core", replacement: path.resolve(dirname, "../../searchfn/core/src/index.ts") },
       { find: "@searchfn/adapter-contracts", replacement: path.resolve(dirname, "../../searchfn/adapter-contracts/src/index.ts") },

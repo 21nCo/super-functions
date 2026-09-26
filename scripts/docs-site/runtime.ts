@@ -356,9 +356,7 @@ function collectEntriesForCollection(
     }
 
     if (
-      (collection === "docs" ||
-        collection === "pages" ||
-        collection === "blog") &&
+      ["docs", "pages", "blog"].includes(collection) &&
       [".md", ".mdx"].includes(extension)
     ) {
       entries.push(createMarkdownEntry(collection, relativePath, source));

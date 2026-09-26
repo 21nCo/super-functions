@@ -3,8 +3,6 @@ title: Core package
 description: Source guide for core.
 ---
 
-# @apifn/core
-
 Core JavaScript/TypeScript library for ApiFn — route introspection, schema conversion, OpenAPI generation, and diff. The other ApiFn npm packages build on `@apifn/core`.
 
 ## Installation
@@ -41,11 +39,13 @@ const doc = fromRouter(router, {
   },
   servers: [{ url: "https://api.example.com" }],
   // IntrospectOptions
-  include: ["/v1"],
-  exclude: ["/internal"],
+  include: ["/api/v1/"],
+  exclude: ["/api/v1/internal/"],
   basePath: "/api",
 });
 ```
+
+Filters use raw prefix matching on the final path, including `basePath`. For example, `/api/v1` also matches `/api/v10`; use deliberate, non-overlapping prefixes.
 
 ### introspectRouter
 
@@ -187,7 +187,7 @@ router.use(apifnWatchMiddleware({ baseUrl: "https://watch.example.com" }));
 
 ### authfn
 
-Mint short-lived test tokens (TTL ≤ 3600s) and inject bearer auth into collection runs.
+Mint short-lived test tokens (TTL ≤ 3600s) and wrap an HTTP client to inject bearer auth. The returned `AuthfnHttpClient` is not directly assignable to the collections runner’s `HttpClient`: its response contract omits required `size` and `duration` fields. A runner adapter must preserve or compute those response measurements and return the complete collections `HttpClientResponse`.
 
 ```typescript
 import { mintTestToken, createAuthfnCollectionMiddleware } from "@apifn/core";

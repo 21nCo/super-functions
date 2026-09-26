@@ -3,8 +3,6 @@ title: Collections package
 description: Source guide for collections.
 ---
 
-# @apifn/collections
-
 OpenCollection YAML read/write/run for ApiFn. Read and write portable API request collections, generate them from OpenAPI specs or routers, and run them as a test suite with assertions, scripting, and pluggable reporters.
 
 ## Installation
@@ -18,7 +16,7 @@ npm install @apifn/collections
 - **Read / Write** — Load and persist an OpenCollection directory (`opencollection.yml` + per-request YAML + environments)
 - **Generate** — Produce a collection from an OpenAPI document or a `@superfunctions/http` router
 - **Run** — Execute a collection with sequential or parallel scheduling, retries, timeouts, and bail-on-failure
-- **Assertions** — Chai-like `expect`/`test` runtime with JSON Schema and JSONPath support
+- **Assertions** — Chai-like `expect`/`test` runtime with JSONPath and a JSON Schema subset: `type`, `enum`, `required`, `properties`, and `items`. `.matchSchema` does not check `minimum`, `format`, `$ref`, or other unsupported keywords
 - **Scripting** — Sandboxed pre-request and test scripts (Node `vm`, no `process`/`require`/`fetch`)
 - **Reporters** — Console, JSON, JUnit XML, and silent reporters
 - **Safety** — Secret redaction in captured request/response data, path-traversal-safe writes
@@ -73,7 +71,6 @@ const collection = openAPIToCollection(openApiDoc, {
   baseUrl: "https://api.example.com",
   environmentName: "development",
   groupBy: "tag", // or "path"
-  includeExamples: true,
 });
 ```
 
@@ -192,7 +189,7 @@ Supported matchers: `.equal`, `.include`, `.matchSchema`, `.have.property`, `.ha
 
 ## Scripting
 
-Pre-request and test scripts run in a locked-down Node `vm` sandbox (`SCRIPT_TIMEOUT_MS` = `10000` ms). Available globals: `console`, `URL`, `URLSearchParams`, `crypto.randomUUID`, `btoa`, `atob`. Disabled: `process`, `require`, `module`, `fetch`, `eval`, `Function`, timers.
+Pre-request and test scripts run in a restricted Node `vm` context (not a process-isolation boundary; do not run untrusted collection scripts) (`SCRIPT_TIMEOUT_MS` = `10000` ms). Available globals: `console`, `URL`, `URLSearchParams`, `crypto.randomUUID`, `btoa`, `atob`. Disabled: `process`, `require`, `module`, `fetch`, `eval`, `Function`, timers.
 
 ```typescript
 import { executePreRequestScript, executeTestScript } from "@apifn/collections";

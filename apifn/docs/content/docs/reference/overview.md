@@ -3,8 +3,6 @@ title: ApiFn source overview
 description: Source guide for overview.
 ---
 
-# ApiFn
-
 ApiFn is a code-first, self-hosted API development toolkit. Generate OpenAPI specs from your router, diff them for breaking changes, run collection-based test suites, mock endpoints, embed interactive API docs, and gate it all in CI — without leaving your codebase.
 
 Your router is the source of truth: introspect it into OpenAPI 3.1, then drive validation, diffing, testing, mocking, snippets, and documentation from the same spec.
@@ -13,18 +11,18 @@ Your router is the source of truth: introspect it into OpenAPI 3.1, then drive v
 
 | Package | Description |
 |---------|-------------|
-| [`@apifn/core`](https://github.com/21nCo/super-functions/blob/dev/apifn/core) | Route introspection, schema conversion (Zod/TypeBox → JSON Schema), OpenAPI 3.1 generation, diff, and ecosystem integrations. The other ApiFn npm packages build on it. |
-| [`@apifn/cli`](https://github.com/21nCo/super-functions/blob/dev/apifn/cli) | The `apifn` command — generate, export, import, validate, diff, test, mock, serve, snippet. |
-| [`@apifn/collections`](https://github.com/21nCo/super-functions/blob/dev/apifn/collections) | OpenCollection YAML read/write/run: portable request collections with assertions, scripting, and reporters. |
-| [`@apifn/mock`](https://github.com/21nCo/super-functions/blob/dev/apifn/mock) | Framework-free mock server from any OpenAPI spec, with schema/example/random responses and request validation. |
-| [`@apifn/snippets`](https://github.com/21nCo/super-functions/blob/dev/apifn/snippets) | Generate request code snippets for 11 languages/clients (curl, fetch, axios, Python, Go, Java, …). |
-| [`@apifn/react`](https://github.com/21nCo/super-functions/blob/dev/apifn/react) | React components — interactive API explorer, Try-It console, schema viewer, diff, performance overlays. |
-| [`@apifn/svelte`](https://github.com/21nCo/super-functions/blob/dev/apifn/svelte) | The same UI surface for Svelte, shipped as `.svelte` source. |
-| [`@apifn/docsfn`](https://github.com/21nCo/super-functions/blob/dev/apifn/docsfn) | docsfn plugin — render an OpenAPI spec as an interactive API reference. |
+| [`@apifn/core`](https://github.com/21nCo/super-functions/tree/dev/apifn/core) | Route introspection, schema conversion (Zod/TypeBox → JSON Schema), OpenAPI 3.1 generation, diff, and ecosystem integrations. The other ApiFn npm packages build on it. |
+| [`@apifn/cli`](https://github.com/21nCo/super-functions/tree/dev/apifn/cli) | The `apifn` command — generate, export, import, validate, diff, test, mock, serve, snippet. |
+| [`@apifn/collections`](https://github.com/21nCo/super-functions/tree/dev/apifn/collections) | OpenCollection YAML read/write/run: portable request collections with assertions, scripting, and reporters. |
+| [`@apifn/mock`](https://github.com/21nCo/super-functions/tree/dev/apifn/mock) | Framework-free mock server from any OpenAPI spec, with schema/example/random responses and request validation. |
+| [`@apifn/snippets`](https://github.com/21nCo/super-functions/tree/dev/apifn/snippets) | Generate request code snippets for 11 languages/clients (curl, fetch, axios, Python, Go, Java, …). |
+| [`@apifn/react`](https://github.com/21nCo/super-functions/tree/dev/apifn/react) | React components — interactive API explorer, Try-It console, schema viewer, diff, performance overlays. |
+| [`@apifn/svelte`](https://github.com/21nCo/super-functions/tree/dev/apifn/svelte) | The same UI surface for Svelte, shipped as `.svelte` source. |
+| [`@apifn/docsfn`](https://github.com/21nCo/super-functions/tree/dev/apifn/docsfn) | docsfn plugin — render an OpenAPI spec as an interactive API reference. |
 
 ## Python SDK
 
-[`apifn`](https://github.com/21nCo/super-functions/blob/dev/apifn/python) provides Python helpers for OpenAPI generation, diffing, collections, FastAPI, and Flask. It requires Python 3.10 or newer and is versioned separately from the npm packages.
+[`apifn`](https://github.com/21nCo/super-functions/tree/dev/apifn/python) provides Python helpers for OpenAPI generation, diffing, collections, FastAPI, and Flask. It requires Python 3.10 or newer and is versioned separately from the npm packages.
 
 ## Quick Start
 
@@ -32,7 +30,7 @@ Install the CLI and scaffold a collection:
 
 ```bash
 npm install --save-dev @apifn/cli
-npx apifn init .apifn/collection
+npx @apifn/cli init .apifn/collection
 ```
 
 Generate an OpenAPI document from your `@superfunctions/http` router:
@@ -132,7 +130,7 @@ run the CLI commands in [Non-GitHub CI](#non-github-ci).
 - Validates OpenAPI specs via `apifn validate --format json`
 - Diffs current spec against base branch via `apifn diff --format json`
 - Runs collection tests via `apifn test --reporter json`
-- Emits machine-readable JSON artifacts (`validate-report.json`, `diff-report.json`, `test-report.json`)
+- Writes machine-readable JSON reports in the runner workspace (no artifact-upload step is included) (`validate-report.json`, `diff-report.json`, `test-report.json`)
 - Builds a markdown summary and posts/updates a PR comment (optional)
 - Enforces non-zero exits for validation failures, breaking changes, and test failures
 
@@ -145,6 +143,9 @@ run the CLI commands in [Non-GitHub CI](#non-github-ci).
 - `base_branch` (optional, default `main`): Branch used to fetch baseline spec
 - `fail_on_breaking` (optional, default `true`): Whether breaking diff exits non-zero
 - `post_pr_comment` (optional, default `true`): Whether to post/update PR summary comment
+
+- `start_mock_server` (optional, default `false`): Start a mock server for collection tests
+- `mock_port` (optional, default `19999`): Port for the mock server
 
 ### Example
 

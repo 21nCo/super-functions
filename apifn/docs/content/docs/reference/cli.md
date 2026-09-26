@@ -3,8 +3,6 @@ title: CLI package
 description: Source guide for cli.
 ---
 
-# @apifn/cli
-
 CLI tools for ApiFn. Generate OpenAPI specs from your router, diff them for breaking changes, validate documents, run collection test suites, mock APIs, serve an interactive explorer, and generate code snippets — all from one `apifn` command.
 
 ## Installation
@@ -57,7 +55,7 @@ apifn generate ./src/router.ts --output .apifn/openapi.yml
 
 - `--output <path>` — output path (default `<config.output>/openapi.yml`, i.e. `.apifn/openapi.yml`)
 
-`info` defaults to `{ title: "API", version: "1.0.0" }`, merged with `config.openapi.info` and `config.openapi.servers`.
+`info` defaults to `{ title: "API", version: "1.0.0" }`, merged with `config.openapi.info`. `config.openapi.servers` separately configures the document’s top-level servers.
 
 ## export
 
@@ -146,7 +144,7 @@ apifn serve .apifn/openapi.yml --port 4100 --open
 
 ## mock
 
-Start a mock server (via [`@apifn/mock`](https://github.com/21nCo/super-functions/blob/dev/apifn/mock)).
+Start a mock server (via [`@apifn/mock`](https://github.com/21nCo/super-functions/tree/dev/apifn/mock)).
 
 ```bash
 apifn mock .apifn/openapi.yml --mode examples --port 4010 --validate-requests --delay 100
@@ -159,7 +157,7 @@ apifn mock .apifn/openapi.yml --mode examples --port 4010 --validate-requests --
 
 ## snippet
 
-Generate a code snippet for one endpoint or the whole spec (via [`@apifn/snippets`](https://github.com/21nCo/super-functions/blob/dev/apifn/snippets)).
+Generate a code snippet for one endpoint or the whole spec (via [`@apifn/snippets`](https://github.com/21nCo/super-functions/tree/dev/apifn/snippets)).
 
 ```bash
 apifn snippet .apifn/openapi.yml /users --method get --target curl
@@ -182,17 +180,15 @@ import { defineConfig } from "@apifn/cli";
 
 export default defineConfig({
   router: "./src/router.ts",
-  collection: ".apifn/collection",
   output: ".apifn",
-  defaultEnvironment: "development",
   openapi: {
     info: { title: "My API", version: "1.0.0" },
     servers: [{ url: "https://api.example.com" }],
   },
-  diff: { failOnBreaking: true },
-  snippets: ["curl", "python-requests"],
 });
 ```
+
+The CLI currently accepts but does not consume `collection`, `defaultEnvironment`, `diff`, or `snippets` config fields. Pass collection paths and environment/diff/snippet options on the command line.
 
 Config files (`.ts`/`.js`/`.mjs`) are loaded at runtime via `jiti`. Unknown top-level fields are rejected.
 

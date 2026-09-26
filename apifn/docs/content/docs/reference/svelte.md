@@ -3,9 +3,7 @@ title: Svelte package
 description: Source guide for svelte.
 ---
 
-# @apifn/svelte
-
-Svelte UI components for ApiFn. The Svelte counterpart to [`@apifn/react`](https://github.com/21nCo/super-functions/blob/dev/apifn/react) — an interactive API explorer, live Try-It console, schema viewer, request history, response diffing, and performance overlays, rendered from any OpenAPI document.
+Svelte UI components for ApiFn. The Svelte counterpart to [`@apifn/react`](https://github.com/21nCo/super-functions/tree/dev/apifn/react) — an interactive API explorer, live Try-It console, schema viewer, request history, response diffing, and performance overlays, rendered from any OpenAPI document.
 
 ## Installation
 

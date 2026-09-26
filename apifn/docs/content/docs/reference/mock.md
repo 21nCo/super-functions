@@ -3,8 +3,6 @@ title: Mock package
 description: Source guide for mock.
 ---
 
-# @apifn/mock
-
 Mock server for ApiFn. Spin up a framework-free HTTP server from any OpenAPI document that returns realistic responses, optionally validating incoming requests against the spec.
 
 ## Installation
@@ -19,8 +17,8 @@ npm install @apifn/mock
 - **Three response modes** — Deterministic from schema, from examples, or randomized
 - **Request validation** — Optionally validate query/path params and JSON bodies against schemas
 - **Latency simulation** — Add a fixed response delay
-- **CORS** — Built-in CORS handling with sensible defaults or custom options
-- **Safety** — Configurable max request body size (default 10 MiB)
+- **CORS** — Built-in headers; supports string/array `origin` and `credentials`. Allowed methods and headers are fixed, and other CORS options are ignored. For a single allowed origin, use a string; arrays are emitted as a comma-separated header rather than matched against the request origin
+- **Safety** — Configurable max request body size (default 10 MiB), enforced only for POST/PUT/PATCH when `validateRequests: true`
 
 ---
 
@@ -58,8 +56,8 @@ await mock.stop();
 | `responseMode` | `"schema" \| "examples" \| "random"` | `"schema"` | How response bodies are generated |
 | `validateRequests` | `boolean` | `false` | Validate incoming params and JSON bodies |
 | `delay` | `number` | `0` | Response delay in ms (simulate latency) |
-| `maxRequestBodyBytes` | `number` | `10485760` | Max accepted request body size (10 MiB) |
-| `cors` | `boolean \| CorsOptions` | — | Enable/configure CORS |
+| `maxRequestBodyBytes` | `number` | `10485760` | Body limit (10 MiB); only POST/PUT/PATCH with request validation enabled |
+| `cors` | `boolean \| CorsOptions` | — | Enable CORS; only `origin` and `credentials` are honored |
 
 ### MockServer
 
@@ -115,7 +113,7 @@ const value = generateRandom(schema);
 
 ## Request Validation
 
-Self-contained JSON-schema validation (no external dependencies).
+The validator supports `type`, `enum`, `required`, `properties`, `items`, `minimum`, `maximum`, `minLength`, and `maxLength`. It does not resolve `$ref` or check `format`, `pattern`, composition keywords, or other JSON Schema constraints. Use a full validator when those checks are required.
 
 ### validateRequestBody
 

@@ -3,8 +3,6 @@ title: Snippets package
 description: Source guide for snippets.
 ---
 
-# @apifn/snippets
-
 Code snippet generation for ApiFn. Turn any OpenAPI operation into a ready-to-run request snippet across 11 languages and HTTP clients.
 
 ## Installation

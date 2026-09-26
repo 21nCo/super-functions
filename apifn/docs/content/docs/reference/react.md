@@ -3,8 +3,6 @@ title: React package
 description: Source guide for react.
 ---
 
-# @apifn/react
-
 React UI components for ApiFn. Render an interactive API explorer — endpoint docs, a live Try-It console, schema viewer, request history, response diffing, and performance overlays — from any OpenAPI document.
 
 ## Installation
@@ -115,7 +113,7 @@ import {
 
 ## Theming
 
-All components are styled with `--apifn-*` CSS variables and ship a `.apifn-root` scope. `ApiExplorer` (and docsfn's `ApifnApiReference`) inject the theme automatically; when using leaf components standalone, render them inside a themed `ApiExplorer` or provide the CSS variables yourself. `theme="auto"` follows `prefers-color-scheme`.
+All components use `--apifn-*` CSS variables. `ApiExplorer` (and docsfn's `ApifnApiReference`) inject the theme automatically. Standalone leaf components require the consumer to supply these CSS variables; `ApiExplorer` does not render arbitrary children. `theme="auto"` follows `prefers-color-scheme`.
 
 ---
 

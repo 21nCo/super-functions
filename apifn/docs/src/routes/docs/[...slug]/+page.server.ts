@@ -1,12 +1,10 @@
 import { error } from "@sveltejs/kit";
-import { getTopNavigation } from "@docsfn/core";
-import type { Sidebar } from "@docsfn/core";
+import { getTopNavigation, resolveMarkdownRelativeLinks, type Sidebar } from "@docsfn/core";
 import {
   resolveDocsPageSurface,
   resolveDocsRouteDataOrThrow,
   type SvelteDocsPageSurface,
 } from "@docsfn/sveltekit";
-import { resolveMarkdownRelativeLinks } from "@docsfn/core";
 import { getCompiledDocsPage, loadDocsSiteSource } from "$lib/server/docs-site-source";
 import type { PageServerLoad } from "./$types";
 
@@ -14,7 +12,9 @@ function buildCanonicalUrl(canonicalBase: string | undefined, path: string): str
   if (!canonicalBase) {
     return path;
   }
-  const origin = canonicalBase.replace(/\/+$/, "");
+  let end = canonicalBase.length;
+  while (end > 0 && canonicalBase[end - 1] === "/") end--;
+  const origin = canonicalBase.slice(0, end);
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${origin}${normalizedPath}`;
 }
@@ -24,7 +24,9 @@ function isRouteNotFoundError(input: unknown): input is { message: string } {
     typeof input === "object" &&
     input !== null &&
     "code" in input &&
-    String((input as { code: unknown }).code) === "DOCS_ROUTE_NOT_FOUND"
+    input.code === "DOCS_ROUTE_NOT_FOUND" &&
+    "message" in input &&
+    typeof input.message === "string"
   );
 }
 

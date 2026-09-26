@@ -3,8 +3,6 @@ title: DocsFn plugin
 description: Source guide for docsfn.
 ---
 
-# @apifn/docsfn
-
 docsfn plugin for ApiFn API reference. Turn an OpenAPI document into docsfn content entries and render them as an interactive API reference (React or Svelte) with embedded Try-It consoles and performance metrics.
 
 ## Installation
@@ -50,7 +48,7 @@ const entries = await provider(); // RawContentEntry[]
 | `splitByTag` | `boolean` | `true` | One entry per tag, or a single full-spec entry |
 | `baseUrl` | `string` | — | Base URL embedded in entries (for Try-It) |
 
-With `splitByTag: true`, each tag becomes a `RawContentEntry`. The tag is lowercased and each run of non-alphanumeric characters becomes `-`, so `My Tag Group` produces `${basePath}/my-tag-group`. Sidebar links use the lowercased method followed by the path with each non-alphanumeric character replaced by `-`; for example, `GET /users/{id}` links to `${slug}#get--users--id-`. With `splitByTag: false`, a single entry contains every endpoint. Path-level parameters are merged into each operation.
+With `splitByTag: true`, operations are grouped by their first tag (`tags[0]`), or `default` when untagged. Additional tags do not get entries. The tag is lowercased and each run of non-alphanumeric characters becomes `-`, so `My Tag Group` produces `${basePath}/my-tag-group`. Sidebar links use the lowercased method followed by the path with each non-alphanumeric character replaced by `-`; for example, `GET /users/{id}` links to `${slug}#get--users--id-`. With `splitByTag: false`, a single entry contains every endpoint. Path-level parameters are merged into each operation.
 
 ---
 
@@ -97,7 +95,7 @@ The Svelte renderer takes the same props (`entry`, `tryIt`, `baseUrl`, `theme`, 
 | `theme` | `"light" \| "dark" \| "auto"` | `"auto"` | Theme for embedded components |
 | `performanceMetrics` | `Record<string, …>` | — | Per-endpoint metrics keyed `"METHOD /path"` (you supply `p50Ms`/`p95Ms`/`p99Ms`/`errorRatePct`/`requestsPerMinute`) |
 
-Each endpoint renders as a collapsible card with Docs / Try It / Performance tabs, delegating to the `EndpointViewer`, `TryIt`, and `PerformanceOverlay` components from `@apifn/react` / `@apifn/svelte`.
+Each endpoint renders as a collapsible card with a Docs tab, a Try It tab when `tryIt` is enabled, and a Performance tab when matching metrics are supplied, delegating to the `EndpointViewer`, `TryIt`, and `PerformanceOverlay` components from `@apifn/react` / `@apifn/svelte`.
 
 The Try-It base URL is selected in this order: the renderer's `baseUrl` prop, the provider's `baseUrl` embedded in the entry, the first URL in `entry.spec.servers`, then `https://api.example.com` as a placeholder fallback.
 
