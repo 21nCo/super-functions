@@ -1,0 +1,61 @@
+extfn/docs/README.md
+  s_ee6f287c08acb3::t_f9a3cf6ce4c4f1 22-24
+extfn/docs/docsfn.config.ts
+  s_ee6f287c08acb3::t_e12d12d036c463 6
+extfn/docs/package.json
+  s_ee6f287c08acb3::t_b4df904081f878 10,12-13,20-21
+extfn/docs/scripts/generate-llms.mjs
+  s_ee6f287c08acb3::t_684a751bf2f7cd 2,30-33
+extfn/docs/src/lib/server/docs-site-source.ts
+  s_ee6f287c08acb3::t_22441e0277e39a 7
+extfn/docs/src/routes/+page.svelte
+  s_ee6f287c08acb3::t_06691ddb6ffbfa 2,28
+extfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ee6f287c08acb3::t_da916309707da5 93,106
+extfn/docs/src/routes/docs/llms-full.txt/+server.ts
+  s_ee6f287c08acb3::t_1faa96321ae7e5 1-5
+extfn/docs/src/routes/docs/llms.txt/+server.ts
+  s_ee6f287c08acb3::t_f5faedd5e59c1a 1-5
+extfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_694f31ea069bb4 6
+extfn/docs/static/llms.txt
+  s_ee6f287c08acb3::t_462e3428e5fbd8 7-20
+extfn/docs/tsconfig.json
+  s_ee6f287c08acb3::t_23a80328f1ae9e 19-20
+extfn/docs/vite.config.ts
+  s_ee6f287c08acb3::t_fa514cf2a230e7 2,10
+package-lock.json
+  s_ee6f287c08acb3::t_e15382bca61e79 8787-8788
+scripts/docs-site/LandingPage.svelte
+  s_ee6f287c08acb3::t_cd067a5e984b49 1-216
+scripts/docs-site/README.md
+  s_ee6f287c08acb3::t_65a31c56f5f056 7,9,11-15
+scripts/docs-site/Search.svelte
+  s_ee6f287c08acb3::t_7def37daa0d4fd 59
+scripts/docs-site/llms.mjs
+  s_ee6f287c08acb3::t_89288be7ea2367 1-43
+scripts/docs-site/runtime.test.ts
+  s_ee6f287c08acb3::t_eaf25d0f3df788 1-76
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_537dbec64762a6 2,215-218,354,484-485
+scripts/docs-site/vite.ts
+  s_ee6f287c08acb3::t_212c017b8bda06 1-17
+scripts/docs-site/vitest.config.ts
+  s_ee6f287c08acb3::t_d39e94f2857d53 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dd11b96aea70743b7838ae7e5dd5e467c1ec2f64",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
