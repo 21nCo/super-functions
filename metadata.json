@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3E0J455ZRD8CNSS8EDX0086",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/runtime.ts",
+    "secfn/docs/src/app.css",
+    "secfn/docs/src/lib/components/DocsSiteSearch.svelte",
+    "secfn/docs/src/lib/server/docs-site-source.ts",
+    "secfn/docs/src/routes/+layout.server.ts",
+    "secfn/docs/src/routes/+layout.svelte",
+    "secfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "secfn/docs/vite.config.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
