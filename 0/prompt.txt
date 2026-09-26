@@ -1,0 +1,20 @@
+I asked another agent to work as below:
+for all the super functions in origin/dev
+
+for super functions with already exsiting docs site - bring docs upto date with the latest code
+
+for super functions without a docs site already - create a docs site (use docsfn) and build comprehensive consumer (developer) facing docs
+
+After all of this is done - create PRs into origin/dev separating for each super function
+
+
+
+
+
+and it worked and created PRs
+
+thoroughly review the finess, accuracy and general code review of all the work done
+
+---
+
+incrementally address all the identified findings and push to the PRs (be system storage concious)
