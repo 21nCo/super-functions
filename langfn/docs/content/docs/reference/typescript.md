@@ -3,8 +3,6 @@ title: TypeScript package
 description: Current langfn TypeScript package guide.
 ---
 
-# LangFn (TypeScript)
-
 LangFn for TypeScript ships the canonical `langfn` package plus the documented subpath exports used throughout the SDK examples and tests.
 
 Current release target: `0.1.0`.
@@ -15,11 +13,7 @@ Current release target: `0.1.0`.
 npm install langfn@0.1.0
 ```
 
-Python users in the same release line install:
-
-```bash
-pip install langfn==0.1.0
-```
+Python is outside this TypeScript source adoption. This site does not prescribe a Python registry installation; inspect its separately maintained source and release line.
 
 ## Supported imports
 

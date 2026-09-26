@@ -3,8 +3,6 @@ title: Reference
 description: TypeScript package exports, provider matrix, and source release contract.
 ---
 
-# Reference
-
 - [Package exports](/docs/reference/package-exports)
 - [TypeScript package README](/docs/reference/typescript)
 - [Provider compatibility](/docs/reference/compatibility)

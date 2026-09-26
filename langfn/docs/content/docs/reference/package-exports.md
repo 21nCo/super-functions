@@ -3,12 +3,11 @@ title: Package exports
 description: Public TypeScript subpaths in the current langfn manifest.
 ---
 
-# Package exports
-
 The `langfn` manifest exports the root package and these subpaths:
 
 | Subpath | Responsibility |
 | --- | --- |
+| `langfn/package.json` | Package metadata. |
 | `langfn/models` | First-party and mock model adapters. |
 | `langfn/prompts` | Prompt templates, chat templates, registry, few-shot helpers. |
 | `langfn/tools` | Tool definitions, built-ins, and policy. |

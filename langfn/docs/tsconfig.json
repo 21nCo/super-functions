@@ -20,14 +20,8 @@
     ],
     "types": [
       "svelte",
-      "vite/client"
+      "vite/client",
+      "node"
     ]
-  },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.js",
-    "src/**/*.svelte",
-    "vite.config.ts",
-    "svelte.config.js"
-  ]
+  }
 }

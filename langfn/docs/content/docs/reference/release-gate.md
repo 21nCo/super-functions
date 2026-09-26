@@ -3,8 +3,6 @@ title: Release gate
 description: TypeScript build, test, package, and live-qualification boundaries.
 ---
 
-# LangFn TypeScript adoption release gate
-
 Release line: 0.1.0. Run `npm run gate:langfn-release` from repo root.
 The TypeScript adoption checks `npm --prefix langfn/typescript run build`, type checking against real shared package declarations, the complete TypeScript suite, and built package imports. Python remains in the next source repository and is outside this TypeScript consumer adoption. Live Gemini verification is separately required before release readiness.
 
@@ -16,4 +14,4 @@ Provider `timeout` is a total response deadline, including streaming bodies, in 
 
 `api_call` allows public IPv4 literals by default. Hostnames and IPv6 literals require an explicit `allowedHosts` entry, because portable fetch cannot validate and pin a resolved address in both Node and Workers. Allowlisted hosts are trusted network exceptions, including all addresses they resolve to; do not populate the allowlist from model or request input. `allowPrivateNetwork: true` is a broader explicit opt-in. Redirects are rejected, and only HTTP(S) URLs without embedded credentials are accepted. Deployments needing dynamic hostname access should use an egress proxy that validates and pins destinations.
 
-Feedback accepts top-level tenant/user fields or nested `scope`; conflicting values are rejected and both lookup and deduplication use the normalized scope. Cached completions save a fresh scoped trace, allowing feedback on every returned trace ID. HTTP SSE disconnects cancel model work; configured retry signals remain effective unless a per-call cancellation token overrides them.
+The storage-level `TraceStorage.saveFeedback` accepts top-level tenant/user fields or nested `scope`; conflicting values are rejected and both lookup and deduplication use the normalized scope. The public `LangFn.feedback()` request accepts only nested `scope`, while HTTP feedback derives scope from authenticated session metadata. Cached completions save a fresh scoped trace, allowing feedback on every returned trace ID. The built-in `/stream` SSE route cancels model work when its request signal aborts; the host adapter must propagate disconnects and stream responses. In that setup, configured retry signals remain effective unless a per-call cancellation token overrides them.

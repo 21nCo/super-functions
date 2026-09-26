@@ -3,14 +3,12 @@ title: Provider compatibility
 description: First-party TypeScript provider capability matrix.
 ---
 
-# LangFn Provider Compatibility
-
 This unpublished TypeScript adoption has the following adapter capabilities. Python remains in the separately maintained next snapshot; its Google adapter has not received these changes.
 
 | Provider | completion | chat | streaming | tools | embeddings | evaluation | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | openai | yes | yes | yes | yes | yes | yes | Native streamed chat completions plus first-party embeddings. |
-| anthropic | yes | yes | yes | yes | no | yes | Native streamed messages API with tool-use support. |
+| anthropic | yes | yes | yes | yes | no | yes | Native streamed text/usage events; tool-use mapping is available through `chat()`, not the prompt-only `stream()`. |
 | ollama | yes | yes | yes | no | no | yes | Local model adapter; streaming is supported, tool mapping is not first-party. |
 | google | yes | yes | yes | yes | no | yes | Native REST/SSE, signed tool continuation and cancellation. Live qualification is separate. |
 | mistral | yes | yes | yes | yes | no | yes | Native SSE content and usage; cancellation closes the response. Tool-call mapping is supported on chat completions. |
