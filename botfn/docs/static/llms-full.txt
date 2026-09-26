@@ -3,8 +3,7 @@
 > Discord and Slack bot integrations, issue linking, persistence, and operator controls.
 
 This file concatenates the full text of every documentation page so it can be loaded into
-an LLM-based assistant in a single shot. For programmatic access, prefer the MCP server
-or the structured manifest emitted alongside this file.
+an LLM-based assistant in a single shot. For a page index, see /llms.txt.
 
 # Documentation
 
@@ -13,8 +12,6 @@ or the structured manifest emitted alongside this file.
 
 > Integrate BotFn operator resources with Super Console.
 
-
-# Administration capability
 
 `@botfn/admin` exports an optional Super Console capability for project-owned bot identities and verified platform channel bindings. It has `bots` and `channels` resources with eight operations: list, get, upsert, and delete bots; list, get, connect, and disconnect channels. Use `createBotFnAdminClient(adminClient)` for typed calls and `createBotFnAdminAdapter(service)` to bind the capability to BotFn's operator service.
 
@@ -31,8 +28,6 @@ See the [admin source](https://github.com/21nCo/super-functions/blob/dev/botfn/a
 
 > Configure signed interactions, issue commands, and the Worker.
 
-
-# Discord bot
 
 `@botfn/discord-bot` exposes a Hono app through `src/index.cloudflare.ts`. Discord sends `POST /interactions`; the app verifies the Ed25519 signature using `DISCORD_PUBLIC_KEY` before parsing or handling the interaction. Invalid signatures return 401. PING returns a PONG response. Application commands return a deferred response while the Worker completes the operation and edits the interaction response.
 
@@ -56,8 +51,6 @@ The command handler catches persistence failures, logs them, and still reports t
 > Find the BotFn package or service that fits your integration.
 
 
-# Getting started
-
 BotFn lives under `botfn/` in the Superfunctions npm workspace. Install dependencies from the repository root, then run scripts for the package you need. The Discord and Slack bot packages each expose a Cloudflare Worker entry point. The persistence package is a separate Worker backed by PostgreSQL.
 
 ```sh
@@ -80,8 +73,6 @@ Consumers building another bot can import platform verification, API helpers, an
 > Build and operate Discord and Slack bot integrations.
 
 
-# BotFn
-
 BotFn contains a Discord issue-linking bot, a small Slack event receiver, shared platform helpers, a PostgreSQL persistence service, and an optional Super Console administration capability. These are separate packages and services, not one deployable bot.
 
 The Discord Worker verifies signed interactions, acknowledges slash commands, then calls GitHub or Linear and optionally records issue-to-thread relationships. The Slack Worker verifies signed requests and acknowledges events; it does not yet implement command or event business actions. Start with [getting started](/docs/getting-started), then read the [Discord](/docs/discord-bot), [Slack](/docs/slack-bot), and [persistence](/docs/persistence) guides.
@@ -96,9 +87,7 @@ These pages follow the current `origin/dev` package layout. The top-level BotFn 
 > Reuse Discord, Slack, GitHub, Linear, and schema helpers.
 
 
-# Integration helpers
-
-`@botfn/discord-core` exports the Discord request verifier, interaction constants, option helper, and response update helper. `verifyDiscordRequest(request, publicKey)` consumes the raw request body, checks Ed25519 signature headers, parses JSON, and validates a basic interaction shape. Pass a fresh request body to downstream handlers through its returned `body`.
+`@botfn/discord-core` exports the Discord request verifier, interaction constants, option helper, and response update helper. `verifyDiscordRequest(request, publicKey)` consumes the raw request body, checks Ed25519 signature headers, parses JSON, and validates a basic interaction shape. Pass the returned parsed, Zod-validated `body` to downstream handlers. It is not the original raw body: unknown fields outside the schema are stripped.
 
 `@botfn/slack-core` exports `verifySlackRequest(request, signingSecret)`. It checks timestamp freshness and an HMAC-SHA256 signature over `v0:timestamp:raw-body`. The exported verifier is independent of the Slack Worker route.
 
@@ -116,8 +105,6 @@ These pages follow the current `origin/dev` package layout. The top-level BotFn 
 > Deployment responsibilities and current feature boundaries.
 
 
-# Operations and limits
-
 The Discord bot and persistence service are independent Workers. Set secrets in the correct Worker, provision PostgreSQL separately, and replace any checked-in URL with the actual service endpoint. Local typechecks and docs builds do not prove Discord, Slack, GitHub, Linear, Cloudflare, or PostgreSQL deployment behavior.
 
 The Discord app verifies signatures before handling interactions. It defers commands and edits their responses after external API calls. Persistence errors are logged and suppressed, so monitor and reconcile missing records. The GitHub helper uses installation tokens; the Linear helper uses the configured API key. Check the scope and rotation of those credentials in your host environment.
@@ -134,16 +121,14 @@ The persistence tRPC route does not authenticate callers or partition by tenant.
 > Store issue and Discord thread relationships through tRPC.
 
 
-# Persistence service
-
 `@botfn/persistence-service` exposes a Hono Worker with a root health text response and tRPC procedures under `/trpc/*`. The service needs `DATABASE_URL` and a PostgreSQL schema matching `src/schema.ts`. The [source setup guide](https://github.com/21nCo/super-functions/blob/dev/botfn/persistence/SETUP.md) provides the DDL for `issues`, `discord_threads`, and the `issue_status` enum.
 
-For local development, set `DATABASE_URL` in `botfn/persistence/.dev.vars`. Set a production Worker secret for deployment. Run `npm --workspace @botfn/persistence-service run dev` or `run deploy` from the repository root. Provision and migrate the database before starting the Worker; the package does not apply schema changes on startup.
+For local development, set `DATABASE_URL` in `botfn/persistence/.dev.vars`. Set a production Worker secret for deployment. Run `npm --workspace @botfn/persistence-service run dev` or `npm --workspace @botfn/persistence-service run deploy` from the repository root. Provision and migrate the database before starting the Worker; the package does not apply schema changes on startup.
 
 ```ts
 import { createPersistenceClient } from "@botfn/persistence-service/src/client";
 
-const client = createPersistenceClient(persistenceServiceUrl);
+const client = createPersistenceClient(env.PERSISTENCE_SERVICE_URL);
 const issue = await client.createIssue.mutate({
   githubIssueId: "owner/repo#123",
   guildId: "guild-id",
@@ -164,8 +149,6 @@ The current tRPC service has no application authentication or tenant scoping in 
 > BotFn's registered commands, Worker routes, and tRPC procedures.
 
 
-# Commands and routes
-
 | Surface | Entry | Behavior |
 | --- | --- | --- |
 | Discord | `POST /interactions` | Verifies signed Discord requests, handles PING, autocomplete, and registered commands. |
@@ -181,6 +164,8 @@ Persistence mutations are `createIssue`, `updateIssue`, and `addDiscordThread`. 
 
 The optional admin capability exposes `botfn.bots.list`, `.get`, `.upsert`, `.delete` and `botfn.channels.list`, `.get`, `.connect`, `.disconnect`. These are capability operations, not routes on the Discord or persistence Worker.
 
+The `/link-*` and `/create-*` entries are Discord slash command names handled inside `POST /interactions`, not separate HTTP routes.
+
 ---
 
 <!-- page:docs:reference/configuration.md path:/docs/reference/configuration -->
@@ -188,8 +173,6 @@ The optional admin capability exposes `botfn.bots.list`, `.get`, `.upsert`, `.de
 
 > Runtime bindings and deployment inputs by package.
 
-
-# Configuration
 
 | Component | Required inputs | Notes |
 | --- | --- | --- |
@@ -209,8 +192,6 @@ Store private keys, signing secrets, and API tokens in the platform's secret mec
 > BotFn package and runtime contract index.
 
 
-# Reference
-
 - [Packages](/docs/reference/packages) maps npm names to source entry points and current roles.
 - [Commands and routes](/docs/reference/commands-and-routes) lists the Discord, Slack, persistence, and admin operation surfaces.
 - [Configuration](/docs/reference/configuration) lists the bindings and credentials used by each service.
@@ -224,8 +205,6 @@ Read the current `origin/dev` source when using a package programmatically. The 
 
 > Current BotFn package map and entry points.
 
-
-# Packages
 
 | Package | Role |
 | --- | --- |
@@ -248,8 +227,6 @@ The GitHub, Linear, Discord core, and shared-types package manifests currently p
 
 > Verify Slack requests and understand the current event handler.
 
-
-# Slack receiver
 
 `@botfn/bot-slack` is a private Cloudflare Worker package with one route: `POST /slack/events`. It requires `SLACK_SIGNING_SECRET` and verifies Slack's `v0` HMAC signature against the raw body and request timestamp. The verifier rejects missing headers and timestamps outside a five-minute window.
 

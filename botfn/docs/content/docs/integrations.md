@@ -3,9 +3,7 @@ title: Integration helpers
 description: Reuse Discord, Slack, GitHub, Linear, and schema helpers.
 ---
 
-# Integration helpers
-
-`@botfn/discord-core` exports the Discord request verifier, interaction constants, option helper, and response update helper. `verifyDiscordRequest(request, publicKey)` consumes the raw request body, checks Ed25519 signature headers, parses JSON, and validates a basic interaction shape. Pass a fresh request body to downstream handlers through its returned `body`.
+`@botfn/discord-core` exports the Discord request verifier, interaction constants, option helper, and response update helper. `verifyDiscordRequest(request, publicKey)` consumes the raw request body, checks Ed25519 signature headers, parses JSON, and validates a basic interaction shape. Pass the returned parsed, Zod-validated `body` to downstream handlers. It is not the original raw body: unknown fields outside the schema are stripped.
 
 `@botfn/slack-core` exports `verifySlackRequest(request, signingSecret)`. It checks timestamp freshness and an HMAC-SHA256 signature over `v0:timestamp:raw-body`. The exported verifier is independent of the Slack Worker route.
 

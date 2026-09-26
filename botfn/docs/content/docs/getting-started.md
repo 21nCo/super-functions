@@ -3,8 +3,6 @@ title: Getting started
 description: Find the BotFn package or service that fits your integration.
 ---
 
-# Getting started
-
 BotFn lives under `botfn/` in the Superfunctions npm workspace. Install dependencies from the repository root, then run scripts for the package you need. The Discord and Slack bot packages each expose a Cloudflare Worker entry point. The persistence package is a separate Worker backed by PostgreSQL.
 
 ```sh

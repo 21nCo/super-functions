@@ -29,11 +29,11 @@ const artifacts = buildLlmsTxtArtifacts(manifest, {
 
 mkdirSync(staticDir, { recursive: true });
 writeFileSync(resolve(staticDir, "llms.txt"), artifacts.llmsTxt, "utf8");
-writeFileSync(resolve(staticDir, "llms-full.txt"), artifacts.llmsFullTxt, "utf8");
+writeFileSync(resolve(staticDir, "llms-full.txt"), artifacts.llmsFullTxt.replace("For programmatic access, prefer the MCP server\nor the structured manifest emitted alongside this file.", "For a page index, see /llms.txt."), "utf8");
 
 console.log(
   `Wrote ${resolve(staticDir, "llms.txt")} (${Buffer.byteLength(artifacts.llmsTxt, "utf8")} bytes)`
 );
 console.log(
-  `Wrote ${resolve(staticDir, "llms-full.txt")} (${Buffer.byteLength(artifacts.llmsFullTxt, "utf8")} bytes)`
+  `Wrote ${resolve(staticDir, "llms-full.txt")} (${Buffer.byteLength(artifacts.llmsFullTxt.replace("For programmatic access, prefer the MCP server\nor the structured manifest emitted alongside this file.", "For a page index, see /llms.txt."), "utf8")} bytes)`
 );

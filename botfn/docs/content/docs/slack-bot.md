@@ -3,8 +3,6 @@ title: Slack receiver
 description: Verify Slack requests and understand the current event handler.
 ---
 
-# Slack receiver
-
 `@botfn/bot-slack` is a private Cloudflare Worker package with one route: `POST /slack/events`. It requires `SLACK_SIGNING_SECRET` and verifies Slack's `v0` HMAC signature against the raw body and request timestamp. The verifier rejects missing headers and timestamps outside a five-minute window.
 
 The route returns a URL verification challenge when requested. For an event body, it logs the event type and responds `OK`. There are no Slack commands, message replies, or persistence writes in this entry point yet. `SLACK_BOT_TOKEN` is declared in the binding type but is not used by this route.

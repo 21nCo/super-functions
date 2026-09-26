@@ -9,4 +9,15 @@ npm --workspace @botfn/docs run dev
 npm --workspace @botfn/docs run build
 ```
 
-The build regenerates `static/llms.txt` and `static/llms-full.txt`. Run `docsfn validate --root .` from `botfn/docs`. The site defaults to port 6013. Set `site.canonicalUrl` in `docsfn.config.ts` after the public host is assigned.
+The build regenerates `static/llms.txt` and `static/llms-full.txt`. For CLI validation, first build the SearchFn workspace dependencies from the repository root (the Vite site build uses source aliases and does not require these separate builds):
+
+```sh
+npm run build --workspace @searchfn/core
+npm run build --workspace @searchfn/adapter-contracts
+npm run build --workspace @searchfn/adapter-memory
+npm run build --workspace @searchfn/adapter-indexeddb
+npm run build --workspace @searchfn/client
+npm exec --workspace @botfn/docs -- docsfn validate --root .
+```
+
+The site defaults to port 6013. Set `site.canonicalUrl` in `docsfn.config.ts` after the public host is assigned.

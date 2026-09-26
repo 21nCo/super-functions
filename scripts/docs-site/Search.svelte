@@ -10,7 +10,7 @@
   let requestId = 0;
   const runtime = createDocsSearchRuntime({
     loadArtifact: async () => {
-      const response = await fetch("/search.json");
+      const response = await fetch("/docs/search.json");
       if (!response.ok) throw new Error("Could not load documentation search.");
       return response.json();
     },

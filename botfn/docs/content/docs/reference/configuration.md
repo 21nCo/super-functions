@@ -3,8 +3,6 @@ title: Configuration
 description: Runtime bindings and deployment inputs by package.
 ---
 
-# Configuration
-
 | Component | Required inputs | Notes |
 | --- | --- | --- |
 | Discord command registration | `DISCORD_TOKEN`, `DISCORD_CLIENT_ID` | Local `.env` for `register-commands.js`. |

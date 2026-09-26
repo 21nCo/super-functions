@@ -3,8 +3,6 @@ title: Discord bot
 description: Configure signed interactions, issue commands, and the Worker.
 ---
 
-# Discord bot
-
 `@botfn/discord-bot` exposes a Hono app through `src/index.cloudflare.ts`. Discord sends `POST /interactions`; the app verifies the Ed25519 signature using `DISCORD_PUBLIC_KEY` before parsing or handling the interaction. Invalid signatures return 401. PING returns a PONG response. Application commands return a deferred response while the Worker completes the operation and edits the interaction response.
 
 ## Set up

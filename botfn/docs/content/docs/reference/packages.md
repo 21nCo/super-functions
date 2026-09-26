@@ -3,8 +3,6 @@ title: Packages
 description: Current BotFn package map and entry points.
 ---
 
-# Packages
-
 | Package | Role |
 | --- | --- |
 | `@botfn/discord-bot` | Cloudflare Discord interactions Worker; `botfn/bot-discord/src/index.cloudflare.ts`. |

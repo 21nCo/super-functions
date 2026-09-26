@@ -3,8 +3,6 @@ title: Commands and routes
 description: BotFn's registered commands, Worker routes, and tRPC procedures.
 ---
 
-# Commands and routes
-
 | Surface | Entry | Behavior |
 | --- | --- | --- |
 | Discord | `POST /interactions` | Verifies signed Discord requests, handles PING, autocomplete, and registered commands. |
@@ -19,3 +17,5 @@ description: BotFn's registered commands, Worker routes, and tRPC procedures.
 Persistence mutations are `createIssue`, `updateIssue`, and `addDiscordThread`. Queries are `getIssue`, `getIssueByGithubId`, `getIssueByLinearId`, and `getUnnotifiedLiveIssues`. The tRPC route itself has no application authentication in the current source.
 
 The optional admin capability exposes `botfn.bots.list`, `.get`, `.upsert`, `.delete` and `botfn.channels.list`, `.get`, `.connect`, `.disconnect`. These are capability operations, not routes on the Discord or persistence Worker.
+
+The `/link-*` and `/create-*` entries are Discord slash command names handled inside `POST /interactions`, not separate HTTP routes.
