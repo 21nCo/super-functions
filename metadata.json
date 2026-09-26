@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3E0HME80YB25NX7YP175T9G",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "plugfn/docs/content/docs/connections-and-oauth.md",
+    "plugfn/docs/content/docs/getting-started.md",
+    "plugfn/docs/content/docs/workflows-and-sync.md",
+    "plugfn/docs/src/app.css",
+    "plugfn/docs/src/lib/components/DocsSiteSearch.svelte",
+    "plugfn/docs/src/lib/server/docs-site-source.ts",
+    "plugfn/docs/src/routes/+layout.server.ts",
+    "plugfn/docs/src/routes/+layout.svelte",
+    "plugfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "plugfn/docs/static/llms-full.txt",
+    "plugfn/docs/vite.config.ts",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/runtime.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
