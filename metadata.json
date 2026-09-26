@@ -1,0 +1,59 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EGZHZEK2J8TGWZ4PKFRGX3",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apifn/docs/README.md",
+    "apifn/docs/content/docs/collections-and-tests.md",
+    "apifn/docs/content/docs/diff-and-ci.md",
+    "apifn/docs/content/docs/getting-started.md",
+    "apifn/docs/content/docs/index.md",
+    "apifn/docs/content/docs/interactive-reference.md",
+    "apifn/docs/content/docs/mocking.md",
+    "apifn/docs/content/docs/openapi-from-router.md",
+    "apifn/docs/content/docs/python.md",
+    "apifn/docs/content/docs/reference/cli.md",
+    "apifn/docs/content/docs/reference/collections.md",
+    "apifn/docs/content/docs/reference/core.md",
+    "apifn/docs/content/docs/reference/docsfn.md",
+    "apifn/docs/content/docs/reference/index.md",
+    "apifn/docs/content/docs/reference/mock.md",
+    "apifn/docs/content/docs/reference/overview.md",
+    "apifn/docs/content/docs/reference/react.md",
+    "apifn/docs/content/docs/reference/snippets.md",
+    "apifn/docs/content/docs/reference/svelte.md",
+    "apifn/docs/content/docs/snippets.md",
+    "apifn/docs/package.json",
+    "apifn/docs/scripts/generate-llms.mjs",
+    "apifn/docs/src/app.css",
+    "apifn/docs/src/routes/+layout.svelte",
+    "apifn/docs/src/routes/+page.server.ts",
+    "apifn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "apifn/docs/src/routes/docs/search.json/+server.ts",
+    "apifn/docs/src/routes/search.json/+server.ts",
+    "apifn/docs/static/llms-full.txt",
+    "apifn/docs/tsconfig.json",
+    "apifn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/layout.ts",
+    "scripts/docs-site/runtime.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 300854,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1878272,
+    "output_tokens": 12364,
+    "api_call_count": 31
+  }
+}
