@@ -25,7 +25,7 @@ npx reviewfn preflight --base origin/main --head HEAD --issue ENG-123
 npx reviewfn review --base origin/main --head HEAD --issue ENG-123
 ```
 
-`init` creates versioned `.reviewfn/config.json` and `.reviewfn/policy.json`. Review and edit them before running inference. `preflight` checks adapter, harness, model/auth, Docker, policy, and context compatibility. `review` captures committed revisions and writes `.reviewfn/output/report.json`, `.reviewfn/output/report.md`, and content-addressed evidence under `.reviewfn/artifacts`. Ignore generated output and artifacts in the consumer repository.
+`init` creates versioned `.reviewfn/config.json` and `.reviewfn/policy.json`. Review and edit them before running inference. `preflight` checks adapter, harness, model/auth, Docker, policy, and context compatibility. `review` captures committed revisions and writes `.reviewfn/output/report.json`, `.reviewfn/output/report.md`, and content-addressed evidence under `.reviewfn/output/artifacts` (or `<output>/artifacts` when `--output` is set). Ignore generated output and artifacts in the consumer repository.
 
 The local CLI also supports `render --input report.json` and `evaluate --input evaluation.json`. `publish` is a separate command for a trusted GitHub job. The [CLI source](https://github.com/21nCo/super-functions/blob/dev/reviewfn/cli/src/main.ts) lists the current flags. Use [configuration](/docs/reference/configuration) for adapters, model authentication, test argv, and retention settings.
 
