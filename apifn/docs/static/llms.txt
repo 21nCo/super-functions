@@ -1,0 +1,25 @@
+# ApiFn
+
+> Generate, test, mock, diff, and document APIs from one OpenAPI contract.
+
+## Documentation
+
+- [Collections and tests](/docs/collections-and-tests) — Run portable request suites with assertions and reports.
+- [Diff and CI](/docs/diff-and-ci) — Gate breaking contract changes and collection failures.
+- [Getting started](/docs/getting-started) — Create an OpenAPI contract and exercise it locally.
+- [ApiFn](/docs) — Generate, test, mock, diff, and document APIs from one contract.
+- [Interactive reference](/docs/interactive-reference) — Embed an explorer in React, Svelte, or DocsFn.
+- [Mocking an API](/docs/mocking) — Serve an OpenAPI contract before a backend is ready.
+- [OpenAPI from a router](/docs/openapi-from-router) — Use @apifn/core to derive and inspect a contract.
+- [Python SDK](/docs/python) — Use the separately versioned Python helpers.
+- [CLI package](/docs/reference/cli) — Source guide for cli.
+- [Collections package](/docs/reference/collections) — Source guide for collections.
+- [Core package](/docs/reference/core) — Source guide for core.
+- [DocsFn plugin](/docs/reference/docsfn) — Source guide for docsfn.
+- [Package reference](/docs/reference) — Source package guides and public API details.
+- [Mock package](/docs/reference/mock) — Source guide for mock.
+- [ApiFn source overview](/docs/reference/overview) — Source guide for overview.
+- [React package](/docs/reference/react) — Source guide for react.
+- [Snippets package](/docs/reference/snippets) — Source guide for snippets.
+- [Svelte package](/docs/reference/svelte) — Source guide for svelte.
+- [Request snippets](/docs/snippets) — Generate client request examples from operations.

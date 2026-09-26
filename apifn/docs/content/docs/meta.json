@@ -1,0 +1,15 @@
+{
+  "title": "ApiFn",
+  "pages": [
+    "index",
+    "getting-started",
+    "openapi-from-router",
+    "collections-and-tests",
+    "mocking",
+    "diff-and-ci",
+    "interactive-reference",
+    "snippets",
+    "python",
+    "reference"
+  ]
+}

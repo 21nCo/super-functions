@@ -1,0 +1,1760 @@
+# ApiFn
+
+> Generate, test, mock, diff, and document APIs from one OpenAPI contract.
+
+This file concatenates the full text of every documentation page so it can be loaded into
+an LLM-based assistant in a single shot. For programmatic access, prefer the MCP server
+or the structured manifest emitted alongside this file.
+
+# Documentation
+
+<!-- page:docs:collections-and-tests.md path:/docs/collections-and-tests -->
+# Collections and tests
+
+> Run portable request suites with assertions and reports.
+
+
+# Collections and tests
+
+`@apifn/collections` reads and writes OpenCollection YAML, converts OpenAPI operations to collection requests, and runs them sequentially or in parallel. A collection directory contains `opencollection.yml`, request YAML files, and optional environments.
+
+```sh
+npx apifn init .apifn/collection --yes
+npx apifn test .apifn/collection --env development --reporter json
+```
+
+Store environment-specific base URLs and credentials outside reusable request definitions. The runner supports assertions, bounded retries, timeouts, and console, JSON, JUnit, or silent reports. Pre-request and test scripts run in a restricted Node VM; treat that as a convenience boundary, not a process isolation guarantee. Read the [collections reference](/docs/reference/collections) and [CLI options](/docs/reference/cli) for the request model and runner settings.
+
+---
+
+<!-- page:docs:diff-and-ci.md path:/docs/diff-and-ci -->
+# Diff and CI
+
+> Gate breaking contract changes and collection failures.
+
+
+# Diff and CI
+
+Compare the proposed OpenAPI document with an approved baseline:
+
+```sh
+npx apifn validate .apifn/openapi.yml --format json
+npx apifn diff .apifn/base-openapi.yml .apifn/openapi.yml --format json
+npx apifn test .apifn/collection --env development --reporter json
+```
+
+The reusable GitHub Actions workflow at `.github/workflows/apifn-api-check.yml` runs the published pinned CLI against the caller repository. It validates the spec, reports breaking changes, runs collections, uploads JSON artifacts, and can post a PR summary. The caller needs `contents: read` and `pull-requests: write` permissions. Pin a commit or release tag for an immutable workflow. The workflow's `cli_version` input asserts its lockfile pin; it does not select an arbitrary package version. See the [source overview](/docs/reference/overview) for a complete caller example and non-GitHub CI setup.
+
+---
+
+<!-- page:docs:getting-started.md path:/docs/getting-started -->
+# Getting started
+
+> Create an OpenAPI contract and exercise it locally.
+
+
+# Getting started
+
+Install the CLI in the application that owns the API:
+
+```sh
+npm install --save-dev @apifn/cli
+npx apifn init .apifn/collection --yes
+```
+
+Point `apifn.config.ts` at your `@superfunctions/http` router. The router is the source of truth for paths, parameters, request bodies, responses, and security.
+
+```ts
+import { defineConfig } from "@apifn/cli";
+
+export default defineConfig({
+  router: "./src/router.ts",
+  output: ".apifn",
+  openapi: { info: { title: "My API", version: "1.0.0" } },
+});
+```
+
+```sh
+npx apifn generate
+npx apifn validate .apifn/openapi.yml
+npx apifn mock .apifn/openapi.yml
+npx apifn serve .apifn/openapi.yml
+```
+
+Generation targets OpenAPI 3.1. `validate` checks the document; `mock` runs a mock HTTP server; `serve` opens an interactive explorer. Read the [CLI reference](/docs/reference/cli) for flags and defaults.
+
+---
+
+<!-- page:docs:index.md path:/docs -->
+# ApiFn
+
+> Generate, test, mock, diff, and document APIs from one contract.
+
+
+# ApiFn
+
+ApiFn is a code-first API toolkit. Generate OpenAPI 3.1 from a `@superfunctions/http` router, then use the spec to validate changes, run portable request collections, mock responses, generate snippets, and render an interactive reference.
+
+Start with [getting started](/docs/getting-started). For exact options and public APIs, use the [package reference](/docs/reference). The [source overview](/docs/reference/overview) also covers CI configuration and ecosystem integrations.
+
+---
+
+<!-- page:docs:interactive-reference.md path:/docs/interactive-reference -->
+# Interactive reference
+
+> Embed an explorer in React, Svelte, or DocsFn.
+
+
+# Interactive reference
+
+`@apifn/react` and `@apifn/svelte` render an endpoint explorer, schema views, a Try-It console, request history, response diff, and optional performance overlays. Load an OpenAPI document from a trusted source and pass the deployment base URL intentionally: Try-It sends real requests.
+
+The Svelte package ships `.svelte` source subpaths; the package root exports types. The DocsFn plugin `@apifn/docsfn` converts an OpenAPI document to DocsFn content entries and has framework-specific renderers. It is optional and separate from this site's guide content.
+
+Read the [React](/docs/reference/react), [Svelte](/docs/reference/svelte), and [DocsFn plugin](/docs/reference/docsfn) package guides for component imports and provider options.
+
+---
+
+<!-- page:docs:mocking.md path:/docs/mocking -->
+# Mocking an API
+
+> Serve an OpenAPI contract before a backend is ready.
+
+
+# Mocking an API
+
+Run the CLI against an OpenAPI document:
+
+```sh
+npx apifn mock .apifn/openapi.yml
+```
+
+`@apifn/mock` also exposes `createMockServer` for embedding a mock server in test setup. It can generate responses from schemas or examples, optionally validate incoming requests, apply latency, and configure CORS and request-body limits. Defaults and exact options are in the [mock package reference](/docs/reference/mock).
+
+Mocked responses show contract behavior. They do not prove that a deployed server implements the same contract. Run collection tests against the real server before release.
+
+---
+
+<!-- page:docs:openapi-from-router.md path:/docs/openapi-from-router -->
+# OpenAPI from a router
+
+> Use @apifn/core to derive and inspect a contract.
+
+
+# OpenAPI from a router
+
+`@apifn/core` introspects a `@superfunctions/http` router and converts Zod or TypeBox schemas to JSON Schema. `fromRouter` combines introspection and OpenAPI generation.
+
+```ts
+import { fromRouter } from "@apifn/core";
+
+const doc = fromRouter(router, {
+  info: { title: "My API", version: "1.0.0" },
+  servers: [{ url: "https://api.example.com" }],
+  include: ["/v1"],
+  exclude: ["/internal"],
+});
+```
+
+Use `introspectRouter` when you need route descriptions before generation; `generateOpenAPI` accepts those descriptions. Restrict included paths deliberately so internal routes do not enter a public contract. See the [core reference](/docs/reference/core) for schema conversion, parsing, validation, and integration hooks.
+
+---
+
+<!-- page:docs:python.md path:/docs/python -->
+# Python SDK
+
+> Use the separately versioned Python helpers.
+
+
+# Python SDK
+
+The `apifn/python` package provides Python helpers for OpenAPI generation, diffing, collections, FastAPI, and Flask. It requires Python 3.10 or newer and has its own version lifecycle, separate from the npm packages.
+
+See the [Python source package](https://github.com/21nCo/super-functions/tree/dev/apifn/python) for its current public exports, installation metadata, and examples. The TypeScript CLI and Python helpers can consume the same OpenAPI contract, but do not assume their release versions match.
+
+---
+
+<!-- page:docs:reference/cli.md path:/docs/reference/cli -->
+# CLI package
+
+> Source guide for cli.
+
+
+# @apifn/cli
+
+CLI tools for ApiFn. Generate OpenAPI specs from your router, diff them for breaking changes, validate documents, run collection test suites, mock APIs, serve an interactive explorer, and generate code snippets — all from one `apifn` command.
+
+## Installation
+
+```bash
+npm install --save-dev @apifn/cli
+# or run ad-hoc
+npx @apifn/cli --help
+```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `init [dir]` | Scaffold a new OpenCollection directory |
+| `generate [router]` | Generate an OpenAPI document from a router |
+| `export [format] [output]` | Export a generated spec as YAML or JSON |
+| `import <kind> <source>` | Import an OpenAPI document as an OpenCollection |
+| `test [collectionDir]` | Run a collection's tests |
+| `diff <before> <after>` | Compare two specs for breaking changes |
+| `validate <specPath>` | Validate an OpenAPI document |
+| `serve [specPath]` | Serve an interactive API explorer |
+| `mock <specPath>` | Start a mock server from a spec |
+| `snippet <specPath> [apiPath]` | Generate a code snippet for an endpoint |
+
+### Global options
+
+`--config <path>` (default `apifn.config.ts`) · `--verbose` · `--quiet` · `--no-color`
+
+---
+
+## init
+
+Scaffold an OpenCollection directory with a `development` environment and a sample request.
+
+```bash
+apifn init .apifn/collection --yes
+```
+
+- `--yes` — skip interactive prompts (name, base URL)
+- `--force` — allow initializing into a non-empty directory
+
+## generate
+
+Generate an OpenAPI document from a `@superfunctions/http` router. The router comes from the argument or `config.router`.
+
+```bash
+apifn generate ./src/router.ts --output .apifn/openapi.yml
+```
+
+- `--output <path>` — output path (default `<config.output>/openapi.yml`, i.e. `.apifn/openapi.yml`)
+
+`info` defaults to `{ title: "API", version: "1.0.0" }`, merged with `config.openapi.info` and `config.openapi.servers`.
+
+## export
+
+Re-serialize a generated spec.
+
+```bash
+apifn export json openapi.json --input .apifn/openapi.yml
+```
+
+- `format` — `yaml` (default) or `json`
+- `--input <path>` — input spec (default `<config.output>/openapi.yml`)
+
+## import
+
+Import an OpenAPI document (file path or `http(s)` URL) as an OpenCollection.
+
+```bash
+apifn import openapi ./openapi.yml --output .apifn/collection --group-by tag
+```
+
+- `--output <dir>` — output directory (default `.`)
+- `--base-url <url>` — base URL for the generated environment
+- `--env <name>` — environment name (default `development`)
+- `--group-by <mode>` — `tag` (default) or `path`
+- `--force` — allow writing into a non-empty directory
+
+## test
+
+Run a collection's requests and assertions.
+
+```bash
+apifn test .apifn/collection --env development --reporter json --output test-report.json
+```
+
+| Option | Description |
+|--------|-------------|
+| `--env <name>` | Environment (defaults to the first defined) |
+| `--bail` | Stop on first failure |
+| `--parallel` | Run requests concurrently |
+| `--concurrency <n>` | Max concurrent requests |
+| `--timeout <ms>` | Per-request timeout |
+| `--include <pattern>` / `--exclude <pattern>` | Filter requests (repeatable) |
+| `--retries <n>` | Retry failed requests |
+| `--delay <ms>` | Delay between sequential requests |
+| `--env-var <KEY=value>` | Override an environment variable (repeatable) |
+| `--dotenv <path>` | Load a dotenv file as overrides |
+| `--redact-header <name>` | Additional header to redact (repeatable) |
+| `--output <path>` | Write a machine-readable report |
+| `--reporter <type>` | `console` (default), `json`, `junit`, `silent` |
+
+Exit codes: `0` all passed · `1` failures/errors · `2` load/run error.
+
+## diff
+
+Compare two specs (file paths or URLs) for breaking changes.
+
+```bash
+apifn diff base-openapi.yml openapi.yml --format json
+```
+
+- `--format <type>` — `text` (default) or `json`
+- `--fail-on-breaking` — exit `1` on breaking changes (default `true`)
+
+Exit codes: `0` no breaking changes · `1` breaking detected · `2` load/parse error.
+
+## validate
+
+```bash
+apifn validate .apifn/openapi.yml --format json
+```
+
+- `--format <type>` — `text` (default) or `json`
+
+Exit codes: `0` valid · `1` validation errors · `2` load/parse error.
+
+## serve
+
+Serve a built-in interactive explorer with live reload (SSE on spec file changes).
+
+```bash
+apifn serve .apifn/openapi.yml --port 4100 --open
+```
+
+- `--port <port>` — default `4100`
+- `--open` — open the browser automatically
+
+## mock
+
+Start a mock server (via [`@apifn/mock`](https://github.com/21nCo/super-functions/blob/dev/apifn/mock)).
+
+```bash
+apifn mock .apifn/openapi.yml --mode examples --port 4010 --validate-requests --delay 100
+```
+
+- `--mode <mode>` — `schema` (default), `examples`, `random`
+- `--port <port>` — default `4010`
+- `--validate-requests` — validate incoming request bodies
+- `--delay <ms>` — add response latency
+
+## snippet
+
+Generate a code snippet for one endpoint or the whole spec (via [`@apifn/snippets`](https://github.com/21nCo/super-functions/blob/dev/apifn/snippets)).
+
+```bash
+apifn snippet .apifn/openapi.yml /users --method get --target curl
+apifn snippet .apifn/openapi.yml --all --target python-requests
+```
+
+- `--target <target>` — `curl` (default), `fetch`, `axios`, `python-requests`, … (see `@apifn/snippets`)
+- `--method <method>` — HTTP method (default `get`)
+- `--base-url <url>` — base URL override
+- `--all` — generate snippets for every endpoint
+
+---
+
+## Configuration
+
+Create an `apifn.config.ts` and type it with `defineConfig`:
+
+```typescript
+import { defineConfig } from "@apifn/cli";
+
+export default defineConfig({
+  router: "./src/router.ts",
+  collection: ".apifn/collection",
+  output: ".apifn",
+  defaultEnvironment: "development",
+  openapi: {
+    info: { title: "My API", version: "1.0.0" },
+    servers: [{ url: "https://api.example.com" }],
+  },
+  diff: { failOnBreaking: true },
+  snippets: ["curl", "python-requests"],
+});
+```
+
+Config files (`.ts`/`.js`/`.mjs`) are loaded at runtime via `jiti`. Unknown top-level fields are rejected.
+
+## Programmatic API
+
+```typescript
+import { runCli, loadConfig, defineConfig } from "@apifn/cli";
+
+const exitCode = await runCli(["validate", ".apifn/openapi.yml", "--format", "json"], {
+  cwd: process.cwd(),
+  stdout: (t) => process.stdout.write(t),
+});
+```
+
+- `runCli(argv?, { cwd?, stdout?, stderr? })` — run the CLI, returns an exit code
+- `loadConfig({ cwd?, configPath? })` — load and validate config
+- `defineConfig(config)` — typed config helper
+
+## License
+
+MIT
+
+---
+
+<!-- page:docs:reference/collections.md path:/docs/reference/collections -->
+# Collections package
+
+> Source guide for collections.
+
+
+# @apifn/collections
+
+OpenCollection YAML read/write/run for ApiFn. Read and write portable API request collections, generate them from OpenAPI specs or routers, and run them as a test suite with assertions, scripting, and pluggable reporters.
+
+## Installation
+
+```bash
+npm install @apifn/collections
+```
+
+## Features
+
+- **Read / Write** — Load and persist an OpenCollection directory (`opencollection.yml` + per-request YAML + environments)
+- **Generate** — Produce a collection from an OpenAPI document or a `@superfunctions/http` router
+- **Run** — Execute a collection with sequential or parallel scheduling, retries, timeouts, and bail-on-failure
+- **Assertions** — Chai-like `expect`/`test` runtime with JSON Schema and JSONPath support
+- **Scripting** — Sandboxed pre-request and test scripts (Node `vm`, no `process`/`require`/`fetch`)
+- **Reporters** — Console, JSON, JUnit XML, and silent reporters
+- **Safety** — Secret redaction in captured request/response data, path-traversal-safe writes
+
+---
+
+## Reading & Writing
+
+### readCollection
+
+Reads an OpenCollection directory. Expects `opencollection.yml` at the root; files under `environments/` become environments; any YAML with both `info` and `http` keys is a request. Items are assembled into a nested folder tree.
+
+```typescript
+import { readCollection } from "@apifn/collections";
+
+const collection = await readCollection("./.apifn/collection");
+// { info, environments, items, rootDir }
+```
+
+### writeCollection
+
+Persists a `Collection` back to its `rootDir` (writes `opencollection.yml`, `environments/*.yml`, and each request/folder). Paths are validated against traversal.
+
+```typescript
+import { writeCollection } from "@apifn/collections";
+
+await writeCollection(collection);
+```
+
+### validateCollection
+
+Returns `ValidationError[]` describing structural problems (missing `info.name`, malformed environments, requests missing `http.method`, etc.).
+
+```typescript
+import { validateCollection } from "@apifn/collections";
+
+const errors = validateCollection(collection);
+```
+
+---
+
+## Generating Collections
+
+### openAPIToCollection
+
+Build a collection from an OpenAPI document. Operations are grouped by tag (default) or first path segment.
+
+```typescript
+import { openAPIToCollection } from "@apifn/collections";
+
+const collection = openAPIToCollection(openApiDoc, {
+  baseUrl: "https://api.example.com",
+  environmentName: "development",
+  groupBy: "tag", // or "path"
+  includeExamples: true,
+});
+```
+
+### routerToCollection
+
+Introspect a `@superfunctions/http` router and produce a collection in one step.
+
+```typescript
+import { routerToCollection } from "@apifn/collections";
+
+const collection = routerToCollection(router, {
+  baseUrl: "https://api.example.com",
+  info: { title: "My API", version: "1.0.0" },
+});
+```
+
+Path params `{id}` become `{{id}}` template variables and URLs are prefixed with `{{baseUrl}}`.
+
+---
+
+## Running Collections
+
+### runCollection
+
+Execute a collection against an environment. Returns a `RunReport`.
+
+```typescript
+import { readCollection, runCollection, createConsoleReporter } from "@apifn/collections";
+
+const collection = await readCollection("./.apifn/collection");
+const report = await runCollection(collection, {
+  environment: "development",
+  reporter: createConsoleReporter(),
+  parallel: false,
+  bail: false,
+  retries: 1,
+  timeout: 30_000,
+});
+
+console.log(report.summary);
+// { total, passed, failed, skipped, errors, duration }
+```
+
+#### RunOptions
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `environment` | `string \| Environment` | Environment name or object (required) |
+| `include` / `exclude` | `string[]` | Glob-ish patterns matched against path/name/`"METHOD url"` |
+| `parallel` | `boolean` | Run requests concurrently (default: sequential) |
+| `concurrency` | `number` | Max concurrent requests in parallel mode (default: 4) |
+| `timeout` | `number` | Per-request timeout in ms (default: 30000) |
+| `bail` | `boolean` | Stop on first failure |
+| `retries` | `number` | Retry network errors and HTTP 5xx responses (default: 0) |
+| `delay` | `number` | Delay between sequential requests in ms |
+| `httpClient` | `HttpClient` | Custom client (default: built-in fetch-based) |
+| `cookieJar` | `CookieJar` | Shared cookie jar |
+| `reporter` | `RunReporter` | Progress/result reporter |
+| `overrides` | `Record<string, string>` | Variable overrides (highest precedence) |
+| `redactHeaders` | `string[]` | Extra headers to redact in captured data |
+
+A request passes when its status matches the expected status (default `< 400`, or `settings.expectedStatus`) and no assertion fails.
+
+**Redaction:** `authorization`, `cookie`, `set-cookie`, `x-api-key`, and `x-auth-token` headers are redacted by default (plus any `redactHeaders`), and common secret-bearing body keys (`token`, `password`, `apiKey`, `otp`, …) are recursively masked.
+
+---
+
+## Reporters
+
+| Reporter | Factory | Output |
+|----------|---------|--------|
+| Console | `createConsoleReporter({ color?, write? })` | Colored per-request badges + summary |
+| JSON | `createJsonReporter({ write?, indent? })` | Full `RunReport` as JSON |
+| JUnit | `createJUnitReporter({ write? })` | JUnit XML (`reportToJUnitXml(report)` for a string) |
+| Silent | `createSilentReporter()` | No output |
+
+```typescript
+import { runCollection, createJsonReporter } from "@apifn/collections";
+
+await runCollection(collection, {
+  environment: "development",
+  reporter: createJsonReporter({ indent: 2 }),
+});
+```
+
+---
+
+## Assertions
+
+`createAssertionRuntime()` returns a Chai-like `expect`/`test` API used inside test scripts.
+
+```typescript
+import { createAssertionRuntime } from "@apifn/collections";
+
+const { expect, test, getResults } = createAssertionRuntime();
+const response = {
+  status: 200,
+  body: { id: "usr_123", roles: ["admin"], profile: { email: "dev@example.com" } },
+  responseTime: 120,
+};
+
+test("returns the user", () => {
+  expect(response.status).to.equal(200);
+  expect(response.body).to.have.property("id");
+  expect(response.body.roles).to.include("admin");
+  expect(response.body).to.have.jsonPath("$.profile.email");
+  expect(response.responseTime).to.be.below(500);
+});
+
+const results = getResults(); // AssertionResult[]
+```
+
+Supported matchers: `.equal`, `.include`, `.matchSchema`, `.have.property`, `.have.length` / `.have.length.above`, `.have.jsonPath`, `.be.below`.
+
+---
+
+## Scripting
+
+Pre-request and test scripts run in a locked-down Node `vm` sandbox (`SCRIPT_TIMEOUT_MS` = `10000` ms). Available globals: `console`, `URL`, `URLSearchParams`, `crypto.randomUUID`, `btoa`, `atob`. Disabled: `process`, `require`, `module`, `fetch`, `eval`, `Function`, timers.
+
+```typescript
+import { executePreRequestScript, executeTestScript } from "@apifn/collections";
+```
+
+- `executePreRequestScript({ code, env, req, cookies?, timeoutMs? })` — mutate `req`, set `env` variables before sending
+- `executeTestScript({ code, env, req, res, cookies?, assertionResults, timeoutMs? })` — assert against `res` with `expect`/`test`
+
+---
+
+## Environments & Variables
+
+```typescript
+import {
+  readEnvironments,
+  selectEnvironment,
+  interpolateVariables,
+  resolveVariableContext,
+  loadDotEnvFile,
+} from "@apifn/collections";
+
+const envs = await readEnvironments("./.apifn/collection/environments");
+const env = selectEnvironment(envs, "development");
+
+const context = resolveVariableContext({
+  collection: {},
+  environment: env.variables, // collection < environment < overrides
+  overrides: loadDotEnvFile(".env"),
+});
+
+const { value, warnings } = interpolateVariables(
+  "{{baseUrl}}/users?token={{process.env.API_TOKEN}}",
+  context,
+  { processEnv: process.env },
+);
+```
+
+`{{var}}` tokens are replaced from the context; unknown context tokens are left intact and reported in `warnings`. `{{process.env.X}}` reads from the `processEnv` interpolation option (or the current process by default) and throws if the requested environment variable is not set.
+
+---
+
+## HTTP Client & Cookies
+
+```typescript
+import { createFetchHttpClient, createCookieJar } from "@apifn/collections";
+
+const jar = createCookieJar();
+const client = createFetchHttpClient({ cookieJar: jar, followRedirects: true, maxRedirects: 10 });
+```
+
+The built-in fetch client handles redirects manually, strips sensitive headers on cross-origin redirects, downgrades 303 to GET, and injects/stores cookies via the jar.
+
+## License
+
+MIT
+
+---
+
+<!-- page:docs:reference/core.md path:/docs/reference/core -->
+# Core package
+
+> Source guide for core.
+
+
+# @apifn/core
+
+Core JavaScript/TypeScript library for ApiFn — route introspection, schema conversion, OpenAPI generation, and diff. The other ApiFn npm packages build on `@apifn/core`.
+
+## Installation
+
+```bash
+npm install @apifn/core
+```
+
+## Features
+
+- **Route Introspection** — Walk a `@superfunctions/http` router and describe every route (parameters, request bodies, responses, security)
+- **Schema Conversion** — Convert Zod and TypeBox schemas to JSON Schema, with auto-detection and deduplication
+- **OpenAPI Generation** — Produce an OpenAPI 3.1 document directly from a router
+- **OpenAPI Parsing & Validation** — Parse YAML/JSON specs and validate them against the OpenAPI schema
+- **Diff** — Compare two OpenAPI documents and classify changes as breaking / non-breaking
+- **Integrations** — First-class hooks for authfn, secfn, watchfn, logfn, and testfn
+
+---
+
+## OpenAPI Generation
+
+### fromRouter
+
+Generate an OpenAPI document from a `@superfunctions/http` router in one step. `FromRouterOptions` combines `OpenAPIGenerateOptions` (info, servers, security schemes) and `IntrospectOptions` (include/exclude/basePath).
+
+```typescript
+import { fromRouter } from "@apifn/core";
+
+const doc = fromRouter(router, {
+  info: {
+    title: "My API",
+    version: "1.0.0",
+    description: "Public API surface",
+  },
+  servers: [{ url: "https://api.example.com" }],
+  // IntrospectOptions
+  include: ["/v1"],
+  exclude: ["/internal"],
+  basePath: "/api",
+});
+```
+
+### introspectRouter
+
+Describe a router's routes without generating a full document. Returns `IntrospectedRoute[]`.
+
+```typescript
+import { introspectRouter } from "@apifn/core";
+
+const routes = introspectRouter(router, { include: ["/v1"] });
+// [{ method, path, parameters, requestBody, responses, security }, ...]
+```
+
+### generateOpenAPI
+
+Build the document from already-introspected routes. `fromRouter` is `introspectRouter` + `generateOpenAPI`.
+
+```typescript
+import { introspectRouter, generateOpenAPI } from "@apifn/core";
+
+const doc = generateOpenAPI(introspectRouter(router), {
+  info: { title: "My API", version: "1.0.0" },
+});
+```
+
+---
+
+## Parsing & Validation
+
+### parseOpenAPI
+
+Parse a YAML or JSON OpenAPI string into an `OpenAPIDocument`.
+
+```typescript
+import { parseOpenAPI } from "@apifn/core";
+import { readFile } from "node:fs/promises";
+
+const doc = parseOpenAPI(await readFile("./openapi.yml", "utf8"));
+```
+
+### validateOpenAPI
+
+Validate a document. Returns validation errors (`ValidationError[]`) for a report or gate.
+
+```typescript
+import { validateOpenAPI } from "@apifn/core";
+
+const errors = await validateOpenAPI(doc);
+if (errors.length > 0) {
+  // handle invalid spec
+}
+```
+
+### upconvertFrom3_0
+
+Up-convert an OpenAPI 3.0 document to 3.1.
+
+```typescript
+import { upconvertFrom3_0 } from "@apifn/core";
+
+const doc31 = upconvertFrom3_0(doc30);
+```
+
+---
+
+## Schema Conversion
+
+ApiFn converts framework-native schemas to JSON Schema for OpenAPI output.
+
+| Function | Description |
+|----------|-------------|
+| `detectSchemaType(schema)` | Detect whether a value is a Zod, TypeBox, or plain JSON schema (`SchemaType`) |
+| `convertSchema(schema)` | Convert any supported schema to JSON Schema, auto-detecting the type |
+| `convertZodSchema(schema)` | Convert a Zod schema to JSON Schema |
+| `convertTypeBoxSchema(schema)` | Convert a TypeBox schema to JSON Schema |
+| `deduplicateSchemas(input)` | Extract shared/duplicated schemas into reusable `components` (`DeduplicateSchemasResult`) |
+
+```typescript
+import { convertSchema, detectSchemaType } from "@apifn/core";
+import { z } from "zod";
+
+detectSchemaType(z.object({ id: z.string() })); // "zod"
+const jsonSchema = convertSchema(z.object({ id: z.string() }));
+```
+
+### apiSchema
+
+Attach a schema descriptor to a route so introspection can pick up request/response shapes.
+
+```typescript
+import { apiSchema } from "@apifn/core";
+```
+
+---
+
+## Diff
+
+### diffOpenAPI
+
+Compare two OpenAPI documents. Returns a `DiffResult` with a list of `DiffEntry` changes, each classified by severity.
+
+```typescript
+import { diffOpenAPI, formatDiffAsText, formatDiffAsJson } from "@apifn/core";
+
+const result = diffOpenAPI(beforeDoc, afterDoc);
+
+console.log(formatDiffAsText(result)); // human-readable
+const report = formatDiffAsJson(result); // DiffReportJson (machine-readable)
+```
+
+- `formatDiffAsText(result)` — colored/plain text summary
+- `formatDiffAsJson(result)` — structured `DiffReportJson` for CI artifacts
+
+---
+
+## Integrations
+
+### watchfn
+
+Fetch endpoint performance metrics and stream request telemetry to a watchfn instance.
+
+```typescript
+import {
+  fetchEndpointMetrics,
+  createWatchFnClient,
+  apifnWatchMiddleware,
+} from "@apifn/core";
+
+// Fetch p50/p95/p99 + error-rate metrics; degrades gracefully to [] on failure
+const metrics = await fetchEndpointMetrics({
+  baseUrl: "https://watch.example.com",
+  timeRange: "PT1H", // ISO 8601 duration
+});
+
+const client = createWatchFnClient({ baseUrl: "https://watch.example.com" });
+
+// Middleware records per-endpoint timing to watchfn
+router.use(apifnWatchMiddleware({ baseUrl: "https://watch.example.com" }));
+```
+
+### authfn
+
+Mint short-lived test tokens (TTL ≤ 3600s) and inject bearer auth into collection runs.
+
+```typescript
+import { mintTestToken, createAuthfnCollectionMiddleware } from "@apifn/core";
+
+const { token, expiresAt } = await mintTestToken(
+  { baseUrl: "https://auth.example.com", adminKey: process.env.AUTHFN_ADMIN_KEY },
+  { ttl: 900, scopes: ["read"] },
+);
+
+const client = createAuthfnCollectionMiddleware(baseHttpClient, token);
+```
+
+### secfn
+
+Fetch (non-consuming) rate-limit information for endpoints.
+
+```typescript
+import { fetchRateLimits } from "@apifn/core";
+
+const limits = await fetchRateLimits(rateLimiter, ["GET /users"]); // RateLimitInfo[]
+```
+
+### logfn
+
+Structured reporter and CLI logger.
+
+```typescript
+import { logfnReporter, createCliLogger } from "@apifn/core";
+
+const logger = createCliLogger({ /* CliLoggerOptions */ });
+```
+
+### testfn
+
+Adapter that plugs ApiFn collection runs into testfn.
+
+```typescript
+import { ApifnTestAdapter } from "@apifn/core";
+```
+
+---
+
+## Exports
+
+```typescript
+// OpenAPI
+export { fromRouter, introspectRouter, generateOpenAPI, parseOpenAPI, validateOpenAPI, upconvertFrom3_0 }
+
+// Schema
+export { detectSchemaType, convertSchema, convertZodSchema, convertTypeBoxSchema, deduplicateSchemas, apiSchema }
+
+// Diff
+export { diffOpenAPI, formatDiffAsText, formatDiffAsJson }
+
+// Integrations
+export { fetchEndpointMetrics, createWatchFnClient, apifnWatchMiddleware }
+export { mintTestToken, createAuthfnCollectionMiddleware }
+export { fetchRateLimits }
+export { logfnReporter, createCliLogger }
+export { ApifnTestAdapter }
+
+// Types — HTTP, OpenAPI document objects, introspection descriptors,
+// diff, validation, snippets, mock, and integration types
+```
+
+The `@apifn/core/types` subpath exports the shared model types declared by the core package, including HTTP/OpenAPI, schema, diff, validation, snippet, mock, and integration data shapes. Types declared alongside runtime modules, such as `FromRouterOptions`, `SchemaType`, and `DiffReportJson`, are exported from the package root.
+
+## License
+
+MIT
+
+---
+
+<!-- page:docs:reference/docsfn.md path:/docs/reference/docsfn -->
+# DocsFn plugin
+
+> Source guide for docsfn.
+
+
+# @apifn/docsfn
+
+docsfn plugin for ApiFn API reference. Turn an OpenAPI document into docsfn content entries and render them as an interactive API reference (React or Svelte) with embedded Try-It consoles and performance metrics.
+
+## Installation
+
+```bash
+npm install @apifn/docsfn
+```
+
+`docsfn` is an **optional** peer dependency — this package defines the minimal `DocsContentProvider` / `RawContentEntry` interfaces itself, so you get correct types even without docsfn installed.
+
+## Features
+
+- **Content provider** — Convert an OpenAPI spec into docsfn `RawContentEntry[]`
+- **Tag splitting** — One page per tag (default) or a single full-spec page
+- **Sidebar generation** — Auto-built navigation with per-endpoint anchors
+- **Reference renderers** — `ApifnApiReference` for React and Svelte, wrapping the `@apifn/react` / `@apifn/svelte` components
+
+---
+
+## createApifnProvider
+
+Create a `DocsContentProvider` — a callable that returns `RawContentEntry[]` (memoized) and carries an `.entries` array.
+
+```typescript
+import { createApifnProvider } from "@apifn/docsfn";
+
+const provider = createApifnProvider({
+  specPath: "./openapi.yml", // or: spec: openApiDocument
+  basePath: "/api",
+  splitByTag: true,
+});
+
+const entries = await provider(); // RawContentEntry[]
+```
+
+### CreateApifnProviderOptions
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `spec` | `OpenAPIDocument` | — | The document (provide this or `specPath`) |
+| `specPath` | `string` | — | Path to a JSON or YAML spec |
+| `basePath` | `string` | `"/api"` | Slug prefix for generated pages |
+| `splitByTag` | `boolean` | `true` | One entry per tag, or a single full-spec entry |
+| `baseUrl` | `string` | — | Base URL embedded in entries (for Try-It) |
+
+With `splitByTag: true`, each tag becomes a `RawContentEntry`. The tag is lowercased and each run of non-alphanumeric characters becomes `-`, so `My Tag Group` produces `${basePath}/my-tag-group`. Sidebar links use the lowercased method followed by the path with each non-alphanumeric character replaced by `-`; for example, `GET /users/{id}` links to `${slug}#get--users--id-`. With `splitByTag: false`, a single entry contains every endpoint. Path-level parameters are merged into each operation.
+
+---
+
+## Rendering the reference
+
+The package root (`@apifn/docsfn`) exports the provider and types. Renderer components are available from framework-specific public subpaths:
+
+- React: `@apifn/docsfn/react`
+- Svelte: `@apifn/docsfn/svelte`
+
+Pass each `RawContentEntry` returned by the provider to the renderer used by your docsfn integration.
+
+```tsx
+import { ApifnApiReference } from "@apifn/docsfn/react";
+
+<ApifnApiReference
+  entry={entry}
+  tryIt
+  baseUrl="https://api.example.com"
+  theme="light"
+  performanceMetrics={{
+    "GET /users": { p50Ms: 12, p95Ms: 40, p99Ms: 90, errorRatePct: 0.5, requestsPerMinute: 320 },
+  }}
+/>
+```
+
+The Svelte renderer takes the same props (`entry`, `tryIt`, `baseUrl`, `theme`, `performanceMetrics`):
+
+```svelte
+<script lang="ts">
+  import ApifnApiReference from "@apifn/docsfn/svelte";
+</script>
+
+<ApifnApiReference {entry} tryIt theme="auto" />
+```
+
+### ApifnApiReferenceProps
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `entry` | `RawContentEntry` | — | A single entry from `createApifnProvider` (required) |
+| `tryIt` | `boolean` | `false` | Show an embedded Try-It console per endpoint |
+| `baseUrl` | `string` | See below | Base URL for Try-It requests |
+| `theme` | `"light" \| "dark" \| "auto"` | `"auto"` | Theme for embedded components |
+| `performanceMetrics` | `Record<string, …>` | — | Per-endpoint metrics keyed `"METHOD /path"` (you supply `p50Ms`/`p95Ms`/`p99Ms`/`errorRatePct`/`requestsPerMinute`) |
+
+Each endpoint renders as a collapsible card with Docs / Try It / Performance tabs, delegating to the `EndpointViewer`, `TryIt`, and `PerformanceOverlay` components from `@apifn/react` / `@apifn/svelte`.
+
+The Try-It base URL is selected in this order: the renderer's `baseUrl` prop, the provider's `baseUrl` embedded in the entry, the first URL in `entry.spec.servers`, then `https://api.example.com` as a placeholder fallback.
+
+---
+
+## How it plugs into docsfn
+
+`createApifnProvider(...)` yields a `DocsContentProvider` suitable for a docsfn content pipeline. Each `RawContentEntry` carries `kind: "api"`, a `sidebar` group for navigation, and the full `spec`. Register the provider and the appropriate `ApifnApiReference` renderer in your docsfn application according to its integration API.
+
+## Exports
+
+```typescript
+export { createApifnProvider }
+export type {
+  DocsContentProvider, RawContentEntry, ApiEndpoint,
+  SidebarItem, SidebarLink, SidebarGroup,
+  CreateApifnProviderOptions, ApifnApiReferenceProps,
+  OpenAPIDocument, OperationObject,
+}
+// React: import { ApifnApiReference } from "@apifn/docsfn/react"
+// Svelte: import ApifnApiReference from "@apifn/docsfn/svelte"
+```
+
+## License
+
+MIT
+
+---
+
+<!-- page:docs:reference/index.md path:/docs/reference -->
+# Package reference
+
+> Source package guides and public API details.
+
+
+# Package reference
+
+These pages mirror the source READMEs at the `dev` branch used to build this site. Start with the [overview](/docs/reference/overview), then use [core](/docs/reference/core), [CLI](/docs/reference/cli), [collections](/docs/reference/collections), [mock](/docs/reference/mock), [snippets](/docs/reference/snippets), [React](/docs/reference/react), [Svelte](/docs/reference/svelte), or the [DocsFn plugin](/docs/reference/docsfn).
+
+---
+
+<!-- page:docs:reference/mock.md path:/docs/reference/mock -->
+# Mock package
+
+> Source guide for mock.
+
+
+# @apifn/mock
+
+Mock server for ApiFn. Spin up a framework-free HTTP server from any OpenAPI document that returns realistic responses, optionally validating incoming requests against the spec.
+
+## Installation
+
+```bash
+npm install @apifn/mock
+```
+
+## Features
+
+- **Instant mock server** — Serve every operation in an OpenAPI spec with no framework
+- **Three response modes** — Deterministic from schema, from examples, or randomized
+- **Request validation** — Optionally validate query/path params and JSON bodies against schemas
+- **Latency simulation** — Add a fixed response delay
+- **CORS** — Built-in CORS handling with sensible defaults or custom options
+- **Safety** — Configurable max request body size (default 10 MiB)
+
+---
+
+## createMockServer
+
+```typescript
+import { createMockServer } from "@apifn/mock";
+import { parseOpenAPI } from "@apifn/core";
+import { readFile } from "node:fs/promises";
+
+const spec = parseOpenAPI(await readFile("./openapi.yml", "utf8"));
+
+const mock = createMockServer({
+  spec,
+  port: 4010,
+  responseMode: "schema", // "schema" | "examples" | "random"
+  validateRequests: true,
+  delay: 0,
+  cors: true,
+});
+
+await mock.start();
+console.log(`Mock server listening on http://localhost:${mock.port}`);
+
+// later
+await mock.stop();
+```
+
+### MockServerOptions
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `spec` | `OpenAPIDocument` | — | The OpenAPI document to mock (required) |
+| `port` | `number` | `4010` | Port to bind (use `0` for a random free port) |
+| `responseMode` | `"schema" \| "examples" \| "random"` | `"schema"` | How response bodies are generated |
+| `validateRequests` | `boolean` | `false` | Validate incoming params and JSON bodies |
+| `delay` | `number` | `0` | Response delay in ms (simulate latency) |
+| `maxRequestBodyBytes` | `number` | `10485760` | Max accepted request body size (10 MiB) |
+| `cors` | `boolean \| CorsOptions` | — | Enable/configure CORS |
+
+### MockServer
+
+```typescript
+interface MockServer {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  server: http.Server; // underlying Node server
+  port: number;        // the actually-bound port
+}
+```
+
+Unmatched routes return `404 { error: "Not Found", path }`. `OPTIONS` preflight requests return `204`.
+
+---
+
+## Response Generation
+
+Use the generators directly when you need a mock payload without a server.
+
+### generateResponse
+
+Pick the first 2xx response for an operation and produce a body for the given mode.
+
+```typescript
+import { generateResponse } from "@apifn/mock";
+
+const { statusCode, body } = generateResponse(operation, "schema");
+```
+
+### generateFromSchema
+
+Deterministic values from a JSON schema — strings become `"string"` (format-aware for `date-time`, `email`, `uri`, `uuid`, …), numbers `0`, booleans `true`, arrays a single generated item, objects recurse over their properties.
+
+```typescript
+import { generateFromSchema } from "@apifn/mock";
+
+generateFromSchema({ type: "object", properties: { id: { type: "string", format: "uuid" } } });
+// { id: "00000000-0000-0000-0000-000000000000" }
+```
+
+### generateRandom
+
+Like `generateFromSchema`, but produces randomized primitive values. It respects `type`, string `enum`, and a small set of formats; it does not currently enforce constraints such as `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, or array bounds.
+
+```typescript
+import { generateRandom } from "@apifn/mock";
+
+const value = generateRandom(schema);
+```
+
+---
+
+## Request Validation
+
+Self-contained JSON-schema validation (no external dependencies).
+
+### validateRequestBody
+
+```typescript
+import { validateRequestBody } from "@apifn/mock";
+
+const result = validateRequestBody(body, operation);
+// { valid: boolean, errors: ValidationError[] }  where ValidationError = { path, message }
+```
+
+Reads `operation.requestBody.content["application/json"].schema`; if the body is required but missing, returns an error.
+
+### validateParameters
+
+```typescript
+import { validateParameters } from "@apifn/mock";
+
+const result = validateParameters(queryParams, pathParams, operation);
+```
+
+Checks `operation.parameters` for missing required query/path params and basic numeric coercion.
+
+---
+
+## Exports
+
+```typescript
+export { createMockServer }
+export type { MockServer }
+export { generateFromSchema, generateRandom, generateResponse }
+export type { ResponseMode }
+export { validateRequestBody, validateParameters }
+export type { ValidationError, ValidationResult }
+```
+
+## License
+
+MIT
+
+---
+
+<!-- page:docs:reference/overview.md path:/docs/reference/overview -->
+# ApiFn source overview
+
+> Source guide for overview.
+
+
+# ApiFn
+
+ApiFn is a code-first, self-hosted API development toolkit. Generate OpenAPI specs from your router, diff them for breaking changes, run collection-based test suites, mock endpoints, embed interactive API docs, and gate it all in CI — without leaving your codebase.
+
+Your router is the source of truth: introspect it into OpenAPI 3.1, then drive validation, diffing, testing, mocking, snippets, and documentation from the same spec.
+
+## npm packages
+
+| Package | Description |
+|---------|-------------|
+| [`@apifn/core`](https://github.com/21nCo/super-functions/blob/dev/apifn/core) | Route introspection, schema conversion (Zod/TypeBox → JSON Schema), OpenAPI 3.1 generation, diff, and ecosystem integrations. The other ApiFn npm packages build on it. |
+| [`@apifn/cli`](https://github.com/21nCo/super-functions/blob/dev/apifn/cli) | The `apifn` command — generate, export, import, validate, diff, test, mock, serve, snippet. |
+| [`@apifn/collections`](https://github.com/21nCo/super-functions/blob/dev/apifn/collections) | OpenCollection YAML read/write/run: portable request collections with assertions, scripting, and reporters. |
+| [`@apifn/mock`](https://github.com/21nCo/super-functions/blob/dev/apifn/mock) | Framework-free mock server from any OpenAPI spec, with schema/example/random responses and request validation. |
+| [`@apifn/snippets`](https://github.com/21nCo/super-functions/blob/dev/apifn/snippets) | Generate request code snippets for 11 languages/clients (curl, fetch, axios, Python, Go, Java, …). |
+| [`@apifn/react`](https://github.com/21nCo/super-functions/blob/dev/apifn/react) | React components — interactive API explorer, Try-It console, schema viewer, diff, performance overlays. |
+| [`@apifn/svelte`](https://github.com/21nCo/super-functions/blob/dev/apifn/svelte) | The same UI surface for Svelte, shipped as `.svelte` source. |
+| [`@apifn/docsfn`](https://github.com/21nCo/super-functions/blob/dev/apifn/docsfn) | docsfn plugin — render an OpenAPI spec as an interactive API reference. |
+
+## Python SDK
+
+[`apifn`](https://github.com/21nCo/super-functions/blob/dev/apifn/python) provides Python helpers for OpenAPI generation, diffing, collections, FastAPI, and Flask. It requires Python 3.10 or newer and is versioned separately from the npm packages.
+
+## Quick Start
+
+Install the CLI and scaffold a collection:
+
+```bash
+npm install --save-dev @apifn/cli
+npx apifn init .apifn/collection
+```
+
+Generate an OpenAPI document from your `@superfunctions/http` router:
+
+```typescript
+// apifn.config.ts
+import { defineConfig } from "@apifn/cli";
+
+export default defineConfig({
+  router: "./src/router.ts",
+  output: ".apifn",
+  openapi: {
+    info: { title: "My API", version: "1.0.0" },
+    servers: [{ url: "https://api.example.com" }],
+  },
+});
+```
+
+```bash
+apifn generate                          # → .apifn/openapi.yml
+apifn validate .apifn/openapi.yml       # validate the document
+apifn mock .apifn/openapi.yml           # mock server on :4010
+apifn serve .apifn/openapi.yml          # interactive explorer on :4100
+apifn test .apifn/collection            # run collection tests
+```
+
+Or use the library directly:
+
+```typescript
+import { fromRouter, diffOpenAPI, formatDiffAsText } from "@apifn/core";
+
+const doc = fromRouter(router, {
+  info: { title: "My API", version: "1.0.0" },
+  servers: [{ url: "https://api.example.com" }],
+});
+
+const result = diffOpenAPI(baselineDoc, doc);
+console.log(formatDiffAsText(result));
+```
+
+## Ecosystem Integrations
+
+`@apifn/core` ships first-class hooks into the wider Superfunctions stack:
+
+- **watchfn** — per-endpoint performance metrics and request telemetry
+- **authfn** — mint short-lived test tokens and inject auth into collection runs
+- **secfn** — read rate-limit state for endpoints
+- **logfn** — structured run reporting and a CLI logger
+- **testfn** — an adapter that discovers and runs collections as test cases
+
+## CI/CD
+
+ApiFn provides a reusable GitHub Actions workflow at `.github/workflows/apifn-api-check.yml` (repo root, so GitHub Actions can register and call it).
+
+The workflow checks out the **caller**, installs the pinned published `@apifn/cli`
+version, then runs it against the caller's spec and collection. The caller does
+not need to be this monorepo or contain an `@apifn/cli` workspace. Grant
+`pull-requests: write` on the calling job even when `post_pr_comment` is false;
+the reusable workflow cannot elevate the caller token. Same-repo callers:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  api-check:
+    uses: ./.github/workflows/apifn-api-check.yml
+    with:
+      spec_path: .apifn/openapi.yml
+      collection_dir: .apifn/collection
+```
+
+External repositories can use the registered workflow directly:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  api-check:
+    uses: 21nCo/super-functions/.github/workflows/apifn-api-check.yml@dev
+    with:
+      spec_path: openapi.yml
+      collection_dir: .apifn/collection
+```
+
+Pin a commit or release tag instead of `@dev` when the caller requires an
+immutable workflow. Omit `cli_version` to use the workflow's static default
+(`0.0.2`), which must stay equal to that revision's lockfile pin. If you set it
+explicitly, read the version from the same ref in the
+[workflow's CLI lockfile](https://github.com/21nCo/super-functions/blob/dev/.github/apifn-cli-install/package-lock.json); the
+input is an assertion, not a package selector. For GitLab/Jenkins/Buildkite,
+run the CLI commands in [Non-GitHub CI](#non-github-ci).
+
+### What it does
+
+- Validates OpenAPI specs via `apifn validate --format json`
+- Diffs current spec against base branch via `apifn diff --format json`
+- Runs collection tests via `apifn test --reporter json`
+- Emits machine-readable JSON artifacts (`validate-report.json`, `diff-report.json`, `test-report.json`)
+- Builds a markdown summary and posts/updates a PR comment (optional)
+- Enforces non-zero exits for validation failures, breaking changes, and test failures
+
+### Inputs
+
+- `spec_path` (required): Repo-relative OpenAPI path (e.g. `.apifn/openapi.yml`)
+- `collection_dir` (required): Repo-relative OpenCollection directory (e.g. `.apifn/collection`)
+- `environment` (optional, default `development`): Collection environment
+- `cli_version` (optional, default `0.0.2`): Assertion against the `@apifn/cli` version pinned by the selected workflow revision. The default is static in the workflow file and must stay equal to that revision's lockfile pin. Omit it to use the default, or set it from the same ref in the [workflow's CLI lockfile](https://github.com/21nCo/super-functions/blob/dev/.github/apifn-cli-install/package-lock.json). External callers do not need the lockfile locally—the workflow sparse-checks it out from `job.workflow_repository` at `job.workflow_sha`.
+- `base_branch` (optional, default `main`): Branch used to fetch baseline spec
+- `fail_on_breaking` (optional, default `true`): Whether breaking diff exits non-zero
+- `post_pr_comment` (optional, default `true`): Whether to post/update PR summary comment
+
+### Example
+
+See [`apifn/examples/ci-cd/github-actions.yml`](https://github.com/21nCo/super-functions/blob/dev/apifn/examples/ci-cd/github-actions.yml).
+
+### Non-GitHub CI
+
+For GitLab/Jenkins/Buildkite, run the same CLI commands directly:
+
+```bash
+apifn validate .apifn/openapi.yml --format json
+apifn diff .apifn/base-openapi.yml .apifn/openapi.yml --format json
+apifn test .apifn/collection --env development --reporter json
+```
+
+## License
+
+MIT
+
+---
+
+<!-- page:docs:reference/react.md path:/docs/reference/react -->
+# React package
+
+> Source guide for react.
+
+
+# @apifn/react
+
+React UI components for ApiFn. Render an interactive API explorer — endpoint docs, a live Try-It console, schema viewer, request history, response diffing, and performance overlays — from any OpenAPI document.
+
+## Installation
+
+```bash
+npm install @apifn/react
+```
+
+`react` and `react-dom` (`^18` or `^19`) are peer dependencies.
+
+## Components
+
+| Component | Purpose |
+|-----------|---------|
+| `ApiExplorer` | Full explorer shell (sidebar + tabs) — the all-in-one entry point |
+| `EndpointViewer` | Documentation for a single operation (params, body, responses) |
+| `SchemaViewer` | Collapsible JSON-schema tree |
+| `TryIt` | Live request console with auth, params, and body |
+| `RequestHistory` | List of past requests with expandable detail |
+| `ResponseDiff` | Side-by-side diff of two responses |
+| `PerformanceOverlay` | Latency/throughput KPIs and bar charts |
+
+---
+
+## Quick Start
+
+```tsx
+import { ApiExplorer } from "@apifn/react";
+
+export function Docs({ spec }) {
+  return <ApiExplorer spec={spec} baseUrl="https://api.example.com" theme="dark" showHistory />;
+}
+```
+
+### ApiExplorer props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `spec` | `OpenAPIDocument` | — | The document to render (required) |
+| `baseUrl` | `string` | `spec.servers[0].url` | Base URL for Try-It requests |
+| `theme` | `"light" \| "dark" \| "auto"` | `"auto"` | Color theme |
+| `showHistory` | `boolean` | `true` | Show the request history tab |
+| `watchfn` | `WatchFnClient` | — | Enables the Performance tab (polled metrics) |
+| `watchfnInterval` | `number` | `10000` | Metrics polling interval in ms |
+| `rateLimits` | `Record<string, RateLimitInfo>` | — | Rate-limit badges, keyed `"METHOD /path"` |
+| `className` | `string` | — | Custom class name |
+
+The explorer renders a searchable, tag-grouped sidebar and tabs for Documentation, Try It, Performance (when `watchfn` is supplied), and History (when `showHistory`). It collapses to a hamburger menu at ≤768px.
+
+---
+
+## Individual Components
+
+```tsx
+import {
+  EndpointViewer,
+  SchemaViewer,
+  TryIt,
+  RequestHistory,
+  ResponseDiff,
+  PerformanceOverlay,
+} from "@apifn/react";
+
+// Docs for one operation
+<EndpointViewer path="/users/{id}" method="get" operation={op} />
+
+// Schema tree
+<SchemaViewer schema={userSchema} name="User" required expandDepth={3} />
+
+// Live request console
+<TryIt
+  path="/users"
+  method="post"
+  operation={op}
+  baseUrl="https://api.example.com"
+  defaultAuth={{ type: "bearer", token: "abc" }}
+  onResponse={(r) => console.log(r.statusCode)}
+/>
+
+// History (typically driven by TryIt via onResponse)
+<RequestHistory entries={entries} onClear={() => setEntries([])} onSelect={setSelected} maxEntries={500} />
+
+// Compare two responses
+<ResponseDiff left={respA} right={respB} leftLabel="v1" rightLabel="v2" />
+
+// Performance KPIs
+<PerformanceOverlay
+  metrics={{
+    endpoint: "/users", method: "get",
+    p50Ms: 12, p95Ms: 40, p99Ms: 90,
+    errorRatePct: 0.5, requestsPerMinute: 320,
+    lastUpdated: new Date().toISOString(),
+  }}
+  compact
+/>
+```
+
+### Component props at a glance
+
+- **EndpointViewer** — `path`, `method`, `operation` (all required)
+- **SchemaViewer** — `schema` (required), `name?`, `required?` (default `false`), `expandDepth?` (default `2`)
+- **TryIt** — `path`, `method`, `operation` (required), `baseUrl?`, `defaultAuth?: AuthConfig`, `onResponse?: (r: TryItResponse) => void`
+- **RequestHistory** — `entries: HistoryEntry[]` (required), `onClear?`, `onSelect?`, `maxEntries?` (default `500`)
+- **ResponseDiff** — `left`, `right` (required), `leftLabel?` (`"Before"`), `rightLabel?` (`"After"`)
+- **PerformanceOverlay** — `metrics: PerformanceMetrics` (required), `compact?` (default `false`)
+
+---
+
+## Theming
+
+All components are styled with `--apifn-*` CSS variables and ship a `.apifn-root` scope. `ApiExplorer` (and docsfn's `ApifnApiReference`) inject the theme automatically; when using leaf components standalone, render them inside a themed `ApiExplorer` or provide the CSS variables yourself. `theme="auto"` follows `prefers-color-scheme`.
+
+---
+
+## Exports
+
+```typescript
+export { ApiExplorer, EndpointViewer, SchemaViewer, TryIt, RequestHistory, ResponseDiff, PerformanceOverlay }
+export type {
+  ApiExplorerProps, EndpointViewerProps, SchemaViewerProps, TryItProps,
+  RequestHistoryProps, ResponseDiffProps, PerformanceOverlayProps,
+}
+export type { Theme, HistoryEntry, PerformanceMetrics, AuthConfig, TryItResponse }
+```
+
+## License
+
+MIT
+
+---
+
+<!-- page:docs:reference/snippets.md path:/docs/reference/snippets -->
+# Snippets package
+
+> Source guide for snippets.
+
+
+# @apifn/snippets
+
+Code snippet generation for ApiFn. Turn any OpenAPI operation into a ready-to-run request snippet across 11 languages and HTTP clients.
+
+## Installation
+
+```bash
+npm install @apifn/snippets
+```
+
+## Supported Targets
+
+| Target | Language / Client |
+|--------|-------------------|
+| `curl` | cURL |
+| `fetch` | Browser Fetch |
+| `axios` | Axios (Node/browser) |
+| `node-fetch` | node-fetch |
+| `python-requests` | Python `requests` |
+| `python-httpx` | Python `httpx` |
+| `go-http` | Go `net/http` |
+| `ruby-net-http` | Ruby `Net::HTTP` |
+| `php-curl` | PHP cURL |
+| `csharp-httpclient` | C# `HttpClient` |
+| `java-okhttp` | Java OkHttp |
+
+`SUPPORTED_TARGETS` exports this list at runtime.
+
+---
+
+## generateSnippet
+
+Generate a snippet for a single operation.
+
+```typescript
+import { generateSnippet } from "@apifn/snippets";
+
+const code = generateSnippet(operation, "/users/{id}", "get", {
+  target: "curl",
+  baseUrl: "https://api.example.com",
+  auth: { type: "bearer", token: "abc123" },
+  indent: 2,
+});
+
+console.log(code);
+```
+
+### SnippetOptions
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `target` | `SnippetTarget` | — | Language/client (required) |
+| `baseUrl` | `string` | — | Base URL (required) |
+| `auth` | `{ type: string; token?; key? }` | — | Inject auth headers (`bearer` / `apikey` / `basic`) |
+| `indent` | `number` | `2` | Indentation width in spaces |
+
+Path parameters are resolved from each parameter's `example`/`schema.example`, falling back to the `{name}` placeholder. Request bodies are synthesized from the `application/json` `example`, `schema.example`, or the schema's properties. An unknown `target` throws.
+
+---
+
+## generateAllSnippets
+
+Generate one snippet per operation across an entire spec.
+
+```typescript
+import { generateAllSnippets } from "@apifn/snippets";
+
+const { snippets } = generateAllSnippets(openApiDoc, {
+  target: "python-requests",
+  baseUrl: "https://api.example.com",
+});
+
+for (const s of snippets) {
+  console.log(`# ${s.method.toUpperCase()} ${s.path}`);
+  console.log(s.code);
+}
+```
+
+Each `OperationSnippet` is `{ path, method, operationId?, target, code }`.
+
+---
+
+## Exports
+
+```typescript
+export { generateSnippet, generateAllSnippets, SUPPORTED_TARGETS }
+export type { SnippetContext, OperationSnippet, AllSnippetsResult, SnippetTargetGenerator }
+// SnippetTarget and SnippetOptions are re-exported from @apifn/core
+```
+
+## License
+
+MIT
+
+---
+
+<!-- page:docs:reference/svelte.md path:/docs/reference/svelte -->
+# Svelte package
+
+> Source guide for svelte.
+
+
+# @apifn/svelte
+
+Svelte UI components for ApiFn. The Svelte counterpart to [`@apifn/react`](https://github.com/21nCo/super-functions/blob/dev/apifn/react) — an interactive API explorer, live Try-It console, schema viewer, request history, response diffing, and performance overlays, rendered from any OpenAPI document.
+
+## Installation
+
+```bash
+npm install @apifn/svelte
+```
+
+`svelte` (`^4` or `^5`) is a peer dependency.
+
+> Components are shipped as **`.svelte` source** and compiled by your app's Svelte toolchain. Import each component from its own subpath (e.g. `@apifn/svelte/ApiExplorer.svelte`). The package root (`@apifn/svelte`) exports TypeScript prop types only.
+
+## Components
+
+| Component | Subpath | Purpose |
+|-----------|---------|---------|
+| `ApiExplorer` | `@apifn/svelte/ApiExplorer.svelte` | Full explorer shell — the all-in-one entry point |
+| `EndpointViewer` | `@apifn/svelte/EndpointViewer.svelte` | Documentation for a single operation |
+| `SchemaViewer` | `@apifn/svelte/SchemaViewer.svelte` | Collapsible JSON-schema tree |
+| `TryIt` | `@apifn/svelte/TryIt.svelte` | Live request console |
+| `RequestHistory` | `@apifn/svelte/RequestHistory.svelte` | Past requests with expandable detail |
+| `ResponseDiff` | `@apifn/svelte/ResponseDiff.svelte` | Side-by-side response diff |
+| `PerformanceOverlay` | `@apifn/svelte/PerformanceOverlay.svelte` | Latency/throughput KPIs |
+
+---
+
+## Quick Start
+
+```svelte
+<script>
+  import ApiExplorer from "@apifn/svelte/ApiExplorer.svelte";
+  export let spec;
+</script>
+
+<ApiExplorer {spec} baseUrl="https://api.example.com" theme="auto" showHistory={true} />
+```
+
+### ApiExplorer props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `spec` | `OpenAPIDocument` | — | The document to render (required) |
+| `baseUrl` | `string` | `spec.servers[0].url` | Base URL for Try-It requests |
+| `theme` | `"light" \| "dark" \| "auto"` | `"auto"` | Color theme |
+| `showHistory` | `boolean` | `true` | Show the request history tab |
+| `watchfn` | `WatchFnClient` | — | Enables the Performance tab (polled metrics) |
+| `watchfnInterval` | `number` | `10000` | Metrics polling interval in ms |
+| `rateLimits` | `Record<string, RateLimitInfo>` | — | Rate-limit badges, keyed `"METHOD /path"` |
+
+The explorer renders a searchable, tag-grouped sidebar and Documentation / Try It / Performance / History tabs, collapsing to a hamburger overlay at ≤768px.
+
+---
+
+## Individual Components
+
+```svelte
+<script>
+  import EndpointViewer from "@apifn/svelte/EndpointViewer.svelte";
+  import TryIt from "@apifn/svelte/TryIt.svelte";
+  import SchemaViewer from "@apifn/svelte/SchemaViewer.svelte";
+  export let operation;
+  export let schema;
+</script>
+
+<EndpointViewer path="/users/{id}" method="get" {operation} />
+
+<SchemaViewer {schema} name="User" required expandDepth={3} />
+
+<TryIt
+  path="/users"
+  method="post"
+  {operation}
+  baseUrl="https://api.example.com"
+  on:response={(e) => console.log(e.detail.statusCode)}
+/>
+```
+
+### Events
+
+Unlike the React package's callback props, Svelte components dispatch events:
+
+- **TryIt** — `on:response` with a `TryItResponse` detail
+- **RequestHistory** — `on:select` (a `HistoryEntry`) and `on:clear`
+
+### Component props at a glance
+
+- **EndpointViewer** — `path`, `method`, `operation` (required)
+- **SchemaViewer** — `schema` (required), `name?`, `required?` (default `false`), `expandDepth?` (default `2`)
+- **TryIt** — `path`, `method`, `operation` (required), `baseUrl?`
+- **RequestHistory** — `entries: HistoryEntry[]`, `maxEntries?` (default `500`)
+- **ResponseDiff** — `left`, `right` (required), `leftLabel?` (`"Before"`), `rightLabel?` (`"After"`)
+- **PerformanceOverlay** — `metrics: PerformanceMetrics` (required), `compact?` (default `false`)
+
+---
+
+## Theming
+
+Components use `--apifn-*` CSS variables scoped to `.apifn-root`. `ApiExplorer` injects the theme automatically; the leaf components expect those variables to be provided by a parent (an `ApiExplorer` or docsfn's `ApifnApiReference`). `theme="auto"` follows `prefers-color-scheme`.
+
+## Types
+
+The package root exports prop interfaces for TypeScript consumers: `ApiExplorerProps`, `EndpointViewerProps`, `SchemaViewerProps`, `TryItProps`, `RequestHistoryProps`, `ResponseDiffProps`, `PerformanceOverlayProps`, plus `HistoryEntry`, `TryItResponse`, and `PerformanceMetrics`. `OpenAPIDocument`, `OperationObject`, and `SchemaObject` are re-exported from `@apifn/core`.
+
+## License
+
+MIT
+
+---
+
+<!-- page:docs:snippets.md path:/docs/snippets -->
+# Request snippets
+
+> Generate client request examples from operations.
+
+
+# Request snippets
+
+`@apifn/snippets` generates request code from an OpenAPI operation for curl, browser fetch, Axios, node-fetch, Python requests or httpx, Go, Ruby, PHP, C#, and Java.
+
+```sh
+npx apifn snippet .apifn/openapi.yml
+```
+
+The library accepts an operation, path, method, target, base URL, and optional auth values. Review generated snippets before sharing: tokens, sample bodies, and production base URLs may be embedded. See the [snippets reference](/docs/reference/snippets) for `generateSnippet`, `generateAllSnippets`, and the supported targets.
+
+---
