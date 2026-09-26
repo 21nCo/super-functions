@@ -1,0 +1,24 @@
+# McpFn
+
+> Build, secure, test, and evolve Model Context Protocol servers with stable consumer contracts.
+
+## Documentation
+
+- [Authorization](/docs/authorization) — Protect Streamable HTTP, complete client OAuth, and compose hosted authorization.
+- [Connect a client](/docs/client) — Production stdio and Streamable HTTP sessions, inventories, calls, and OAuth completion.
+- [Deployment](/docs/deployment) — Run McpFn over HTTP on Node or Cloudflare Workers and keep the transport boundary secure.
+- [Getting started](/docs/getting-started) — Install McpFn, declare a validated tool, and run a server.
+- [McpFn documentation](/docs) — Consumer guide to building, connecting to, securing, and testing MCP servers.
+- [Migrate or adopt incrementally](/docs/migration) — Move a custom MCP server to McpFn or test it without changing its runtime.
+- [Architecture](/docs/reference/architecture) — Source-aligned McpFn architecture documentation.
+- [Authorization](/docs/reference/auth) — Source-aligned McpFn authorization documentation.
+- [CLI](/docs/reference/cli) — Source-aligned McpFn cli documentation.
+- [Client](/docs/reference/client) — Source-aligned McpFn client documentation.
+- [Core runtime](/docs/reference/core) — Source-aligned McpFn core runtime documentation.
+- [DataFn adapter](/docs/reference/datafn) — Source-aligned McpFn datafn adapter documentation.
+- [Package reference](/docs/reference) — Source-aligned package documentation and implementation architecture.
+- [Inspector](/docs/reference/inspector) — Source-aligned McpFn inspector documentation.
+- [Testing and CI](/docs/reference/testing-and-ci) — Source-aligned McpFn testing and ci documentation.
+- [Testing API](/docs/reference/testing) — Source-aligned McpFn testing api documentation.
+- [Build a server](/docs/server) — Registry, context, profiles, resources, prompts, tasks, and transports.
+- [Test and evolve a server](/docs/testing) — Manifests, client profiles, semantic scenarios, authentication, and protocol conformance.

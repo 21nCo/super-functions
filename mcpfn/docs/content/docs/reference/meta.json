@@ -1,0 +1,15 @@
+{
+  "title": "Package reference",
+  "pages": [
+    "index",
+    "core",
+    "client",
+    "auth",
+    "testing",
+    "inspector",
+    "datafn",
+    "cli",
+    "architecture",
+    "testing-and-ci"
+  ]
+}
