@@ -1,0 +1,761 @@
+# CliFn
+
+> Reusable CLI building blocks for command execution, output, configuration, credentials, and safe automation.
+
+This file concatenates the full text of every documentation page so it can be loaded into
+an LLM-based assistant in a single shot. For programmatic access, prefer the MCP server
+or the structured manifest emitted alongside this file.
+
+# Documentation
+
+<!-- page:docs:automation.md path:/docs/automation -->
+# Subprocesses and scaffolding
+
+> Execute commands and create files with explicit limits and overwrite policy.
+
+
+# Subprocesses and scaffolding
+
+`@clifn/core/exec` exports `createExec()`. Call `command(file, args, options)` with a separate executable and argument array. The result includes command, exit code or signal, captured stdout and stderr, timeout state, and duration. Capture defaults to one MiB per stream, and timeout defaults to 30 seconds. Pass callbacks or `streamOutput` to observe chunks while the command runs.
+
+```ts
+import { createExec } from "@clifn/core/exec";
+
+const result = await createExec().command("git", ["status", "--short"], {
+  cwd: process.cwd(),
+  timeoutMs: 10_000,
+});
+if (result.exitCode !== 0) throw new Error(result.stderr);
+```
+
+On timeout, `ExecTimeoutError` carries code `CLIFN_EXEC_TIMEOUT` and the partial result. The child receives SIGTERM, then SIGKILL after a short grace period. `runAction()` exposes this service as `ctx.exec` with inherited working directory and environment.
+
+`@clifn/core/scaffold` exports `createScaffold()`. Its `apply()` accepts `mkdir` and `write-file` operations, a working directory, and `dryRun`. Existing file behavior is explicit: `error` (default), `skip`, or `overwrite`. It returns written and skipped paths. The service resolves real paths and rejects a target that escapes the configured root, including through an existing symlink.
+
+```ts
+import { createScaffold } from "@clifn/core/scaffold";
+
+const result = await createScaffold().apply([
+  { kind: "mkdir", path: "src" },
+  { kind: "write-file", path: "src/index.ts", content: "export {};\n" },
+], { cwd: process.cwd(), dryRun: false });
+```
+
+Use `dryRun` to display a planned change before applying it. `ScaffoldError` carries `CLIFN_SCAFFOLD_EXISTS` or `CLIFN_SCAFFOLD_INVALID_PATH`.
+
+---
+
+<!-- page:docs:cli-builder.md path:/docs/cli-builder -->
+# Build a CLI
+
+> Wire any parser to the shared action runner and preserve command ownership.
+
+
+# Build a CLI
+
+`runAction(action, options, runnerOptions)` executes a parsed action and returns a numeric exit code. Pass the parser's resolved options to it; keep command names, flags, validation, and help text in your CLI package. Parser packages remain consumer dependencies.
+
+```ts
+import { parseArgs } from "node:util";
+import { runAction } from "@clifn/core/runner";
+
+const { values, positionals } = parseArgs({
+  allowPositionals: true,
+  options: {
+    name: { type: "string" },
+    json: { type: "boolean" },
+  },
+});
+
+if (positionals[0] === "greet") {
+  process.exitCode = await runAction(
+    ({ name }, ctx) => {
+      ctx.output.info(`Hello, ${name}!`);
+      return { data: { greeting: `Hello, ${name}!` } };
+    },
+    { name: values.name ?? "world" },
+    { mode: values.json ? "json" : "text" },
+  );
+}
+```
+
+In text mode, emit user-facing messages with `ctx.output`. In JSON mode, returned `data` is serialized to stdout. `RunnerOptions` also accepts `quiet`, `verbose`, `color`, `cwd`, `env`, `stdout`, `stderr`, `nonInteractive`, and an `onDiagnostics` listener. The context's `exec` and `scaffold` services inherit its working directory; `exec` also inherits its environment.
+
+Return `exitCode` for an expected product failure you have handled. An invalid or negative returned exit code normalizes to zero, so set explicit positive codes for failure cases. Thrown failures normalize to code 1. The runner does not print collected diagnostics automatically; use `onDiagnostics` or your own output policy to present them.
+
+See the [runner source](https://github.com/21nCo/super-functions/blob/dev/clifn/core/src/runner.ts) and [package examples](/docs/reference/core-readme) for `commander` and `cac` integration.
+
+---
+
+<!-- page:docs:configuration.md path:/docs/configuration -->
+# Configuration
+
+> Load local config files, JSON project settings, and typed environment values.
+
+
+# Configuration
+
+CliFn has separate facilities for a discovered config module, a simple JSON project config store, and environment variables. Choose the one that fits the lifecycle of the consuming CLI.
+
+## Discover a config file
+
+`loadConfig()` searches `config.ts`, `config.js`, `config.mjs`, `config.cjs`, then `config.json` by default. Pass `configPath` for an explicit file, `candidates` for a custom search, `exportNames` for named module exports, and `validate` for a typed value. The result includes both `config` and the resolved `path`.
+
+```ts
+import { loadConfig } from "@clifn/core/config-loader";
+
+const loaded = await loadConfig<{ target: string }>({
+  cwd: process.cwd(),
+  validate(value) {
+    if (!value || typeof value !== "object" || !("target" in value)) {
+      throw new Error("target is required");
+    }
+    return value as { target: string };
+  },
+});
+```
+
+The loader accepts local TS, JS, MJS, CJS, and JSON files. TS uses Jiti. Module exports may be direct values, functions, or promises. Remote URLs and unsupported extensions are rejected; failures use `CLIFN_CONFIG_NOT_FOUND`, `CLIFN_CONFIG_INVALID`, or `CLIFN_CONFIG_UNSUPPORTED`. A custom candidate list is limited to 32 entries. `defineConfig()` is an identity helper for typed authoring.
+
+## Store project settings
+
+`createProjectConfig(path?)` provides a JSON store with `read`, `write`, `get`, and `set`. Supply a product-specific path; its default filename is Conduct-specific. an invalid JSON or non-object shape raises `InvalidConfigError`. It is separate from the discovered module loader.
+
+## Read environment values
+
+`@clifn/core/env` exports `readRequiredStringEnv`, `readStringEnv`, `readIntEnv`, and `readBooleanEnv`. Each accepts an injected `env` map for tests. Defaults, empty-string rules, and integer `min`/`max` are explicit. Errors have `CLIFN_ENV_MISSING`, `CLIFN_ENV_INVALID`, or `CLIFN_ENV_OUT_OF_RANGE` codes. See the [export reference](/docs/reference/exports) for option types.
+
+---
+
+<!-- page:docs:credentials-and-client.md path:/docs/credentials-and-client -->
+# Credentials and HTTP client
+
+> Persist named profiles and make authenticated requests with bounded retries.
+
+
+# Credentials and HTTP client
+
+`createCredentialStore(path?)` stores named `{ backend, key }` profiles in an INI file. Pass a product-specific path; the legacy default is Conduct-specific. The synchronous store supports `getProfile`, `setProfile`, `hasProfile`, `removeProfile`, and `listProfiles`. A missing profile raises `MissingProfileError`.
+
+Credential writes use a sibling lock, a mode-0600 temporary file, fsync, and atomic rename. Concurrent writers fail with `CLIFN_CREDENTIAL_STORE_BUSY`; symlink credential files are rejected. Filesystem permissions are a fallback, not encryption or an OS keychain. For keychain integration, inject a `CredentialStore` implementation and persist values before reporting success.
+
+## Make a request
+
+```ts
+import { createApiClient } from "@clifn/core/client";
+import { createCredentialStore } from "@clifn/core/credentials";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+const client = createApiClient({
+  credentials: createCredentialStore(join(homedir(), ".my-cli", "credentials")),
+  profile: "default",
+  projectId: "example",
+});
+
+const response = await client.get<{ items: unknown[] }>("/items", { limit: 20 });
+console.log(response.data);
+```
+
+Alternatively pass `{ baseUrl, apiKey }` directly. The client adds Bearer authorization unless the request sets its own authorization header, and adds `X-Project-ID` when configured. Paths must be relative. Responses include status, parsed data, and headers. Non-2xx responses throw `HttpFailureError`; transport failures throw `HttpRequestError`.
+
+Only GET requests retry by default, on HTTP 429 or 5xx and retryable transport failures. Use `request({ ..., retrySafe: true })` only when the server guarantees idempotency. One-shot stream bodies are not retried. A timed-out write may already have succeeded, so reconcile before repeating it. `ApiClientConfig` accepts retries, delay, timeout, default headers, and an injected fetch implementation.
+
+---
+
+<!-- page:docs:getting-started.md path:/docs/getting-started -->
+# Getting started
+
+> Install CliFn and run your first parser-independent action.
+
+
+# Getting started
+
+## Install
+
+```sh
+npm install @clifn/core
+```
+
+CliFn is a toolkit, not an executable or parser. Keep your existing command registration in `commander`, `cac`, `node:util.parseArgs`, or another parser. Import the pieces you need by public subpath.
+
+## Run an action
+
+```ts
+import { runAction } from "@clifn/core/runner";
+
+const exitCode = await runAction(
+  async ({ name }, ctx) => {
+    ctx.output.info(`hello ${name}`);
+  },
+  { name: "world" },
+  { mode: "text" },
+);
+
+process.exitCode = exitCode;
+```
+
+`runAction()` provides a normalized working directory, environment, output service, diagnostic sink, subprocess service, scaffold service, and `nonInteractive` flag. An action can return `exitCode`, `data`, and diagnostics; thrown errors become exit code 1 with a stable `CLIFN_RUNNER_FAILED` envelope. In JSON mode, returned `data` is emitted as JSON. See [CLI builder](/docs/cli-builder) for parser wiring and [output and diagnostics](/docs/output-and-diagnostics) for formatting.
+
+The [package README](/docs/reference/core-readme) contains working examples for `commander`, `cac`, and raw `parseArgs`, along with the established compatibility imports.
+
+---
+
+<!-- page:docs:index.md path:/docs -->
+# CliFn documentation
+
+> Build reliable command-line tools with parser-agnostic primitives.
+
+
+# CliFn
+
+`@clifn/core` is a Node.js toolkit for the concerns that recur across command-line applications. It supplies an action runner, text and JSON output, configuration and environment readers, credential storage, an authenticated HTTP client, prompts, JSON stdio, subprocess execution, scaffolding, and diagnostics. Your CLI owns its commands, parser, and product behavior.
+
+## Start here
+
+- [Getting started](/docs/getting-started): install the package and run an action.
+- [Build a CLI](/docs/cli-builder): connect your parser to `runAction()` and set exit status.
+- [Output and diagnostics](/docs/output-and-diagnostics): human and machine-readable results.
+- [Configuration](/docs/configuration): config modules, JSON project settings, and environment values.
+- [Credentials and HTTP](/docs/credentials-and-client): profile persistence and safe request retries.
+- [Automation](/docs/automation): subprocesses and bounded file generation.
+- [Interaction and stdio](/docs/interaction-and-stdio): prompts, terminal helpers, and JSON pipes.
+
+## Public entry points
+
+Import from documented subpaths such as `@clifn/core/runner`, `@clifn/core/output`, or `@clifn/core/credentials`. The [export reference](/docs/reference/exports) lists all thirteen public subpaths and their principal functions and types. `@clifn/core` itself also exports the shared surface. Avoid importing internal `dist/*` paths.
+
+---
+
+<!-- page:docs:interaction-and-stdio.md path:/docs/interaction-and-stdio -->
+# Prompts and JSON stdio
+
+> Interactive input, terminal feedback, and machine-readable pipes.
+
+
+# Prompts and JSON stdio
+
+`@clifn/core/prompt` exports the default `prompt` object and `createPrompt()` for an injected ask function. It supports `select`, `multiSelect`, `text`, and `confirm`. Use the runner's `nonInteractive` flag to decide whether your command should prompt or require flags; the prompt API itself does not infer that policy.
+
+```ts
+import { prompt } from "@clifn/core/prompt";
+import { ui } from "@clifn/core/ui";
+
+const target = await prompt.select("Target environment", ["local", "staging"]);
+if (await prompt.confirm(`Continue with ${target}?`)) {
+  ui.success(`selected ${target}`);
+}
+```
+
+`@clifn/core/ui` retains the established `success`, `error`, `warn`, `info`, `spinner`, and `table` terminal helpers. For new CLI output policies, prefer the configurable `createOutput()` service described in [output and diagnostics](/docs/output-and-diagnostics).
+
+`@clifn/core/stdio` exports `readJsonStdin<T>()` and `writeJsonStdout(value)`. The reader parses one JSON document from stdin and raises `InvalidJsonStdinError` on malformed input. The writer emits one serialized JSON document followed by a newline. Both accept injected streams for testing. Keep progress and human messages off stdout when a command promises machine-readable output.
+
+---
+
+<!-- page:docs:output-and-diagnostics.md path:/docs/output-and-diagnostics -->
+# Output and diagnostics
+
+> Use text or JSON output and stable, redacted diagnostic reports.
+
+
+# Output and diagnostics
+
+`createOutput()` supplies `debug`, `info`, `success`, `warn`, `error`, `json`, `table`, and `spinner`. Use `@clifn/core/output` for new CLIs; `@clifn/core/ui` remains the compatibility terminal helper path.
+
+```ts
+import { createOutput } from "@clifn/core/output";
+
+const output = createOutput({ mode: "json", quiet: false });
+output.info("loading");
+output.json({ ok: true, count: 3 });
+```
+
+In text mode, messages have stable level prefixes; errors go to stderr. In JSON mode, messages become one JSON record per line and spinners do nothing. `quiet` suppresses non-error messages and tables; `debug` requires `verbose`. `json(value)` writes a JSON line directly. Tables use explicit columns and deterministic row order supplied by the caller. Inject `stdout` and `stderr` callbacks for tests or embedding.
+
+## Diagnostics
+
+`@clifn/core/diagnostics` defines `Diagnostic` with `code`, `severity`, `message`, optional `path`, and optional `details`. Use `createDiagnostic`, `sortDiagnostics`, `redactDiagnostics`, `formatDiagnosticsText`, and `formatDiagnosticsJson` to build consistent reports.
+
+```ts
+import {
+  createDiagnostic,
+  formatDiagnosticsJson,
+  redactDiagnostics,
+} from "@clifn/core/diagnostics";
+
+const diagnostics = [createDiagnostic({
+  code: "INPUT_MISSING",
+  severity: "error",
+  message: "A target is required",
+})];
+process.stdout.write(formatDiagnosticsJson(redactDiagnostics(diagnostics)));
+```
+
+Redaction applies to diagnostic `details`; applications should still avoid putting credentials in messages or paths. Formatters sort diagnostics and add a trailing newline. Consult the [export reference](/docs/reference/exports) for types and the [source](https://github.com/21nCo/super-functions/blob/dev/clifn/core/src/diagnostics.ts) for redaction rules.
+
+---
+
+<!-- page:docs:reference/admin.md path:/docs/reference/admin -->
+# Admin capability
+
+> The current Super Console declaration for CliFn.
+
+
+# Admin capability
+
+`@clifn/admin` exports `cliFnAdminCapability`, `cliFnAdminAdapter`, and their `adminCapability` and `adminAdapter` aliases for Super Console registration. Its capability is declared **unavailable** and has no operations. CliFn currently provides local CLI process utilities; it has no durable server-side operator service or remote authorization boundary.
+
+Do not expose credential files, local command execution, or scaffolding as remote admin actions. Consumers building command-line tools should use `@clifn/core` directly. See the [admin source](https://github.com/21nCo/super-functions/blob/dev/clifn/admin/src/index.ts) for the declared schema version, installation scope, and availability reason.
+
+---
+
+<!-- page:docs:reference/core-readme.md path:/docs/reference/core-readme -->
+# Package README
+
+> Complete source-aligned CliFn package guide.
+
+
+# clifn
+
+Reusable CLI primitives for Superfunctions packages and downstream CLIs.
+
+`clifn` remains a single package at `clifn/core`, published as `@clifn/core`. It is the shared parser-agnostic CLI toolkit for generic concerns that repeat across Superfunctions CLIs, while each owning CLI keeps its product-specific command graph and behavior.
+
+Current public subpaths:
+
+- `@clifn/core/credentials`
+- `@clifn/core/config`
+- `@clifn/core/client`
+- `@clifn/core/ui`
+- `@clifn/core/stdio`
+- `@clifn/core/prompt`
+
+New additive subpaths are exported for the generic CLI-builder surface:
+
+- `@clifn/core/output`
+- `@clifn/core/runner`
+- `@clifn/core/config-loader`
+- `@clifn/core/env`
+- `@clifn/core/diagnostics`
+- `@clifn/core/exec`
+- `@clifn/core/scaffold`
+
+## Install
+
+```bash
+npm install @clifn/core
+```
+
+## Conduct CLI-style usage
+
+```ts
+import { createCredentialStore } from "@clifn/core/credentials";
+import { createProjectConfig } from "@clifn/core/config";
+import { createApiClient } from "@clifn/core/client";
+import { readJsonStdin, writeJsonStdout } from "@clifn/core/stdio";
+import { ui } from "@clifn/core/ui";
+
+const credentials = createCredentialStore();
+const config = createProjectConfig();
+const profile = String(config.get("profile") ?? "default");
+
+const api = createApiClient({
+  credentials,
+  profile,
+  projectId: String(config.get("projectId") ?? ""),
+});
+
+const input = await readJsonStdin<{ command: string }>();
+ui.info(`running command: ${input.command}`);
+const result = await api.post("/runs", input);
+writeJsonStdout(result.data);
+```
+
+## Generic CLI usage
+
+```ts
+import { prompt } from "@clifn/core/prompt";
+import { ui } from "@clifn/core/ui";
+
+const target = await prompt.select("Target environment", [
+  "local",
+  "staging",
+  "production",
+]);
+const confirmed = await prompt.confirm(`Deploy to ${target}?`);
+
+if (!confirmed) {
+  ui.warn("deployment cancelled");
+} else {
+  ui.success(`deployment started for ${target}`);
+}
+```
+
+## Shared CLI-builder quick start
+
+```ts
+import { runAction } from "@clifn/core/runner";
+
+const exitCode = await runAction(
+  async ({ name }, ctx) => {
+    ctx.output.info(`hello ${name}`);
+  },
+  { name: "world" },
+  {
+    verbose: false,
+  }
+);
+
+process.exitCode = exitCode;
+```
+
+## Parser compatibility patterns
+
+`clifn` stays parser-agnostic. The owning CLI keeps parser choice and parser dependencies, while `clifn` supplies the reusable execution and output primitives underneath.
+
+The current repository already uses all three parser styles:
+
+- `hostfn/cli`, `plugfn/cli`, and `extfn/cli` use `commander`
+- `apifn/cli` uses `cac`
+- `datafn/cli` uses raw `node:util.parseArgs`
+
+The parser canaries under `clifn/core/tests/fixtures/*` prove that `runAction()` and the shared output service work in each style without adding parser libraries to `clifn` runtime dependencies.
+
+### `commander`
+
+```ts
+import { Command } from "commander";
+import { runAction } from "@clifn/core/runner";
+
+const program = new Command();
+
+program.option("--json", "Emit machine-readable output");
+program
+  .command("greet")
+  .option("--name <name>", "Name to greet", "world")
+  .action(async (options, command) => {
+    const globals = command.parent?.opts() ?? {};
+
+    return runAction(
+      async ({ name }, ctx) => {
+        ctx.output.info(`hello ${name}`);
+      },
+      { name: options.name },
+      {
+        mode: globals.json ? "json" : "text",
+      }
+    );
+  });
+```
+
+### `cac`
+
+```ts
+import { cac } from "cac";
+import { runAction } from "@clifn/core/runner";
+
+const cli = cac("demo");
+
+cli.option("--json", "Emit machine-readable output");
+cli
+  .command("greet")
+  .option("--name <name>", "Name to greet")
+  .action((options) =>
+    runAction(
+      async ({ name }, ctx) => {
+        return {
+          data: {
+            ok: true,
+            name,
+          },
+        };
+      },
+      { name: options.name ?? "world" },
+      {
+        mode: options.json ? "json" : "text",
+      }
+    )
+  );
+```
+
+### `node:util.parseArgs`
+
+```ts
+import { parseArgs } from "node:util";
+import { runAction } from "@clifn/core/runner";
+
+const { values, positionals } = parseArgs({
+  allowPositionals: true,
+  options: {
+    name: { type: "string" },
+    json: { type: "boolean" },
+  },
+});
+
+if (positionals[0] === "greet") {
+  await runAction(
+    async ({ name }, ctx) => {
+      ctx.output.info(`hello ${name}`);
+    },
+    { name: values.name ?? "world" },
+    {
+      mode: values.json ? "json" : "text",
+    }
+  );
+}
+```
+
+Consumer ownership stays explicit:
+
+- `clifn` owns the parser-agnostic runner/output/diagnostics/config/env/exec/scaffold helpers
+- the consuming CLI owns command registration, parser wiring, and parser package installation
+- parser libraries such as `commander` and `cac` remain consumer dependencies or test-only canary dependencies, not `clifn` runtime dependencies
+
+## API Overview
+
+### Compatibility promise
+
+- Existing imports for `@clifn/core/credentials`, `@clifn/core/config`, `@clifn/core/client`, `@clifn/core/ui`, `@clifn/core/stdio`, and `@clifn/core/prompt` remain valid.
+- The new subpaths are additive and do not replace any existing import path.
+- `@clifn/core/ui` remains the compatibility-facing terminal helper path even as newer shared output primitives land in `@clifn/core/output`.
+
+### `@clifn/core/credentials`
+
+- `createCredentialStore(path?)` -> INI profile store.
+- `MissingProfileError` -> typed error when profile is not found.
+
+### `@clifn/core/config`
+
+- `createProjectConfig(path?)` -> JSON project config store.
+- `InvalidConfigError` -> typed error for invalid JSON/object shapes.
+
+### `@clifn/core/client`
+
+- `createApiClient(config)` -> authenticated HTTP client with retries.
+- `HttpFailureError` -> typed error for non-2xx responses.
+- `HttpRequestError` -> typed error for network/transport failures.
+
+### `@clifn/core/ui`
+
+- `ui.success`, `ui.error`, `ui.warn`, `ui.info`
+- `ui.spinner(message)` -> start/stop/succeed/fail
+- `ui.table(rows)` -> deterministic table output
+
+### `@clifn/core/stdio`
+
+- `readJsonStdin<T>()` -> parse one JSON document from stdin.
+- `writeJsonStdout(value)` -> serialize one JSON document + trailing newline.
+- `InvalidJsonStdinError` -> typed deterministic parse failure.
+
+### `@clifn/core/prompt`
+
+- `prompt.select`
+- `prompt.multiSelect`
+- `prompt.text`
+- `prompt.confirm`
+
+### New shared CLI-builder modules
+
+These module entrypoints are the generic surface that repository CLIs can share:
+
+- `@clifn/core/output`
+  - generic text/JSON output service contract
+  - quiet/verbose behavior
+  - deterministic table rendering
+  - spinner surface
+- `@clifn/core/runner`
+  - parser-agnostic action runner contract
+  - normalized action context with output, diagnostics, exec, scaffold, cwd, env, and non-interactive state
+- `@clifn/core/config-loader`
+  - shared config discovery and typed loading contract for TS/JS/MJS/CJS/JSON configs
+  - uses the same Jiti-informed `.ts` loading path already established in `packages/cli` and `apifn/cli`
+- `@clifn/core/env`
+  - generic environment readers for strings, integers, and booleans
+  - explicit missing, invalid, and out-of-range error codes for shared CLI callers
+- `@clifn/core/diagnostics`
+  - shared diagnostic model plus deterministic sort/redaction/formatting surface
+- `@clifn/core/exec`
+  - subprocess execution contract for buffered capture, streaming, and timeout reporting
+- `@clifn/core/scaffold`
+  - deterministic file and directory scaffolding contract with explicit overwrite policy
+
+## Adoption boundary
+
+`clifn` is the shared home for generic CLI-builder concerns that appear across existing repository CLIs such as:
+
+- `packages/cli` and `apifn/cli` for config loading patterns
+- `hostfn/cli`, `plugfn/cli`, and `apifn/cli` for output and command-runner patterns
+- `plugfn/cli` and `mcpfn/cli` for structured diagnostics and test/reporting surfaces
+
+Responsibilities that belong in `clifn`:
+
+- generic action execution
+- generic output formatting and machine-readable output
+- config discovery/loading contracts
+- generic env readers
+- generic diagnostics formatting
+- generic subprocess helpers
+- generic scaffolding helpers
+
+Responsibilities that stay in the owning CLI:
+
+- product-specific command graphs
+- business/domain validation
+- domain-specific scan rules
+- deployment or packaging rules tied to one product
+- browser-extension orchestration and manifest-aware behavior
+
+## Representative adoption notes
+
+### `packages/cli`
+
+- Repeated pattern today:
+  - config discovery and loading in `packages/cli/src/utils/load-library-config.ts`
+  - config-path fallback logic in `packages/cli/src/utils/config.ts`
+- `clifn` adoption target:
+  - `@clifn/core/config-loader` for deterministic TS/JS/MJS/CJS/JSON loading
+- Product-owned concerns that stay local:
+  - schema and library semantics specific to `@superfunctions/cli`
+
+### `apifn/cli`
+
+- Repeated pattern today:
+  - `cac` command registration in `apifn/cli/src/index.ts`
+  - config loading in `apifn/cli/src/config.ts`
+  - output helpers in `apifn/cli/src/utils/output.ts`
+- `clifn` adoption target:
+  - keep `cac`, but move generic concerns onto `@clifn/core/runner`, `@clifn/core/output`, and `@clifn/core/config-loader`
+- Product-owned concerns that stay local:
+  - OpenAPI generation, diff semantics, mock/serve behavior, and collection rules
+
+### `hostfn/cli`
+
+- Repeated pattern today:
+  - `commander` command registration and repeated async `try/catch` wrappers in `hostfn/cli/src/index.ts`
+  - logger formatting in `hostfn/cli/src/utils/logger.ts`
+- `clifn` adoption target:
+  - keep `commander`, but move shared action execution and output concerns onto `@clifn/core/runner`, `@clifn/core/output`, and `@clifn/core/exec`
+- Product-owned concerns that stay local:
+  - deployment workflows, SSH/server orchestration, runtime adapters, and host-specific validation
+
+### `plugfn/cli`
+
+- Repeated pattern today:
+  - text/json rendering in `plugfn/cli/src/commands/runtime.ts`
+  - structured diagnostics in `plugfn/cli/src/commands/test.ts`
+- `clifn` adoption target:
+  - `@clifn/core/output` for generic mode switching and transport
+  - `@clifn/core/diagnostics` for stable diagnostic formatting
+  - keep domain-specific formatters local where they encode provider/runtime semantics
+- Product-owned concerns that stay local:
+  - provider diagnostics, webhook fixtures, and integration-specific data shapes
+
+### extfn adoption contract
+
+`extfn/cli` is an explicit future adopter of the generic `clifn` surface, but only for generic CLI concerns.
+
+`extfn/cli` SHOULD use:
+
+- `@clifn/core/runner` for normalized action execution and exit handling
+- `@clifn/core/output` for text/json output, quiet/verbose behavior, and spinner usage
+- `@clifn/core/diagnostics` for stable formatting and redaction of generic diagnostics
+- `@clifn/core/config-loader` for extension config discovery and loading
+- `@clifn/core/env` for generic env parsing
+- `@clifn/core/exec` for subprocess orchestration during builds and packaging
+- `@clifn/core/scaffold` for template-free deterministic file creation
+
+`extfn/cli` MAY keep:
+
+- its preferred parser (`commander`, `cac`, or raw `parseArgs`)
+- product-specific formatter helpers that encode extension semantics
+
+`extfn/cli` MUST stay extfn-owned for:
+
+- Vite-based extension orchestration
+- browser launching behavior
+- extension packaging rules and archive layout
+- manifest-aware scan rules
+- plugin-specific contracts such as extension plugin wiring
+- target-specific extension validation
+
+If `extfn/cli` needs a generic capability that is not yet exported by `clifn`, that capability should be added to `clifn` first instead of being reimplemented as extfn-local CLI infrastructure.
+
+## Notes
+
+- Package path follows repo convention: `clifn/core` workspace, package name `@clifn/core`.
+- `clifn` is designed for public imports only; no private/internal path imports are required.
+- The generic modules prefer repository-shared mechanisms, including the existing `packages/cli` loader pattern, before introducing new runtime dependencies.
+- `@clifn/core/config-loader` rejects remote config URLs and unsupported extensions with explicit error codes.
+- `@clifn/core/env` uses explicit `CLIFN_ENV_*` error codes for missing, invalid, and out-of-range values.
+
+## Conduct v0.3 compatibility note
+
+`clifn` intentionally exposes stable subpath imports for Conduct and other CLIs:
+
+- `@clifn/core/credentials`
+- `@clifn/core/config`
+- `@clifn/core/client`
+- `@clifn/core/ui`
+- `@clifn/core/stdio`
+- `@clifn/core/prompt`
+
+Use these public subpaths directly; do not import from internal `dist/*` paths.
+
+## Application credentials and safe retry defaults
+
+Pass an explicit path to `createCredentialStore` for each product (for example its own config directory); the legacy default remains Conduct-specific. Writes hold an exclusive sibling `.lock`, write and fsync a unique mode-0600 temporary file, then rename it atomically. Concurrent writes fail with `CLIFN_CREDENTIAL_STORE_BUSY` rather than losing updates. After a process crash, stop all writers and inspect/remove only its stale lock before retrying. Symlink credential files are rejected. Filesystem permissions are a fallback, not encryption or an OS keychain.
+
+The synchronous `CredentialStore` interface is injectable into `createApiClient`. A consumer keychain adapter should use a product-specific service name and profile account, store each complete `{backend,key}` value atomically, and expose only profile names in diagnostics. An asynchronous OS keychain can be loaded at CLI startup into a short-lived in-memory implementation; persist changes through the keychain before reporting success. Never serialize keychain values to a config file as an implicit fallback.
+
+Only GET requests retry by default. `request({ ..., retrySafe: true })` opts in when the server guarantees idempotency for that operation; it does not manufacture such a guarantee. Non-replayable request bodies are not retried. A timed-out write may already have succeeded and must be reconciled.
+
+Executable naming belongs to the consumer package. Rex's `rex-agent` package should declare both `rex` and `rex-agent` bins targeting the same entrypoint, detect an existing `rex` command and document the fallback. Do not use forced installation to overwrite another package's executable.
+
+---
+
+<!-- page:docs:reference/exports.md path:/docs/reference/exports -->
+# Public exports
+
+> Map CliFn subpaths to their public functions, types, and errors.
+
+
+# Public exports
+
+`@clifn/core` provides these public subpaths. Import from a subpath or the documented package root, never from `dist/*`.
+
+| Subpath | Main exports | Detail |
+| --- | --- | --- |
+| `/runner` | `runAction`, `RunnerOptions`, `RunnerContext`, `RunnerActionResult` | Normalized action execution and exit code |
+| `/output` | `createOutput`, `OutputOptions`, `OutputService`, `OutputTable`, `Spinner` | Text and JSON output, tables, spinners |
+| `/diagnostics` | `createDiagnostic`, `sortDiagnostics`, `redactDiagnostics`, `formatDiagnosticsText`, `formatDiagnosticsJson`, `Diagnostic` | Stable report formatting and redaction |
+| `/config-loader` | `defineConfig`, `loadConfig`, `ConfigLoaderOptions`, `LoadedConfig`, `ConfigLoaderError` | Discover and load TS/JS/MJS/CJS/JSON config |
+| `/env` | `readRequiredStringEnv`, `readStringEnv`, `readIntEnv`, `readBooleanEnv`, option types | Typed environment values |
+| `/exec` | `createExec`, `ExecOptions`, `ExecResult`, `ExecTimeoutError` | Subprocesses, capture, streams, timeout |
+| `/scaffold` | `createScaffold`, `ScaffoldOperation`, `ScaffoldResult`, `ScaffoldError` | Bounded directory and file writes |
+| `/credentials` | `createCredentialStore`, `CredentialStore`, `CredentialProfile`, `MissingProfileError` | Named INI credential profiles |
+| `/config` | `createProjectConfig`, `ProjectConfigStore`, `InvalidConfigError` | JSON project settings |
+| `/client` | `createApiClient`, `ApiClient`, `ApiClientConfig`, `ApiRequestOptions`, `ApiResponse`, HTTP errors | Authenticated HTTP requests |
+| `/ui` | `ui`, `Spinner` | Compatibility terminal helpers |
+| `/stdio` | `readJsonStdin`, `writeJsonStdout`, `InvalidJsonStdinError` | One-document JSON pipes |
+| `/prompt` | `prompt`, `createPrompt`, `PromptApi`, `PromptInputError` | Interactive input |
+
+See the [package export map](https://github.com/21nCo/super-functions/blob/dev/clifn/core/package.json), [source files](https://github.com/21nCo/super-functions/tree/dev/clifn/core/src), and the task-oriented guides for behavior, defaults, and failure modes.
+
+---
+
+<!-- page:docs:reference/index.md path:/docs/reference -->
+# API reference
+
+> Public CliFn entry points, exports, and source-aligned package documentation.
+
+
+# API reference
+
+- [Public exports](/docs/reference/exports) maps every `@clifn/core/*` subpath to its principal functions, types, and errors.
+- [Package README](/docs/reference/core-readme) contains the complete source-aligned usage guide and parser examples.
+- [Admin capability](/docs/reference/admin) explains the separate Super Console package and its current availability.
+
+The precise exports for a published release are the versioned package artifact. These pages describe the source on `origin/dev` when the site was prepared.
+
+---
