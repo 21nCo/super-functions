@@ -1,0 +1,20 @@
+# ExtFn
+
+> Browser extension configuration, runtime, build, scan, and packaging for Chromium and Firefox.
+
+## Documentation
+
+- [CLI workflow](/docs/cli) — Develop, build, scan, and package extension targets.
+- [Configuration](/docs/configuration) — Choose targets, background handlers, page surfaces, and content mounts.
+- [Content and background handlers](/docs/content-and-background) — Register multiple content modules and discover background handlers.
+- [Getting started](/docs/getting-started) — Define an extension and run the canonical ExtFn workflow.
+- [ExtFn](/docs) — Code-first browser extension development for Chromium and Firefox.
+- [Integrations and Svelte](/docs/integrations) — Keep domain contracts and host adapters with their owners.
+- [Operations and limits](/docs/operations-and-limits) — Supported browser targets, manual steps, and validation boundaries.
+- [CLI reference](/docs/reference/cli) — Develop, build, scan, and package extension targets.
+- [Consumer host abstraction](/docs/reference/consumer-host-abstraction) — Move SvelteKit runtime dependencies behind consumer-owned adapters.
+- [Reference](/docs/reference) — Source-aligned ExtFn guides and examples.
+- [Content and background handlers](/docs/reference/multi-content-and-background-handlers) — Multiple content modules, message handlers, ports, and Svelte mounts.
+- [Scanner and report](/docs/reference/scan) — Strict scan rules, findings, formats, and packaging behavior.
+- [Runtime and browser access](/docs/runtime) — Use the Promise-first browser facade, messaging, events, and capabilities.
+- [Scan and package](/docs/scan-and-package) — Interpret strict findings and produce extension archives.
