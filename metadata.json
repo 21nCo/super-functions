@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3E0GVQSPXQNDKC1PQ7TZKS2",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "mcpfn/docs/content/docs/getting-started.md",
+    "mcpfn/docs/src/app.css",
+    "mcpfn/docs/src/lib/components/DocsSiteSearch.svelte",
+    "mcpfn/docs/src/lib/server/docs-site-source.ts",
+    "mcpfn/docs/src/routes/+layout.server.ts",
+    "mcpfn/docs/src/routes/+layout.svelte",
+    "mcpfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "mcpfn/docs/static/llms-full.txt",
+    "mcpfn/docs/vite.config.ts",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/runtime.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1326,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 225792,
+    "output_tokens": 136,
+    "api_call_count": 1
+  }
+}
