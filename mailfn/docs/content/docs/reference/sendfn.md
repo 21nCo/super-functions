@@ -3,8 +3,6 @@ title: "@mailfn/sendfn"
 description: Source package guide for MailFn sendfn.
 ---
 
-# `@mailfn/sendfn`
-
 Outbound composition adapter between MailFn and SendFn.
 
 ```ts

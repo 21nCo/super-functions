@@ -3,8 +3,6 @@ title: MailFn
 description: Programmable inboxes with durable MIME evidence and scoped APIs.
 ---
 
-# MailFn
-
 MailFn accepts real email, stores original MIME as evidence, parses normalized messages and attachments, and exposes inbox operations through a provider-neutral core, a Cloudflare runtime, a typed client, a CLI, an MCP server, and test helpers. It composes outbound delivery through SendFn.
 
 Begin with [getting started](/docs/getting-started). Deployment operators should read the [Cloudflare runtime](/docs/cloudflare-runtime), [security boundary](/docs/credentials-and-scope), [threat model](/docs/reference/threat-model), and [operations guide](/docs/reference/operations) before receiving live mail.

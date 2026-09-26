@@ -3,8 +3,6 @@ title: "@mailfn/mcp"
 description: Source package guide for MailFn mcp.
 ---
 
-# `@mailfn/mcp`
-
 Agent-safe MCP server for focused MailFn workflows.
 
 ```sh

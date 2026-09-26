@@ -3,8 +3,6 @@ title: "@mailfn/cloudflare"
 description: Source package guide for MailFn cloudflare.
 ---
 
-# `@mailfn/cloudflare`
-
 Cloudflare runtime adapter for MailFn: Email Worker ingress, Worker HTTP API, D1 store/migrations, R2 object storage, Queue producer/consumer, `postal-mime` parsing, signed webhooks, scheduled retention, and Cloudflare Email Routing custom-domain operations.
 
 ```ts

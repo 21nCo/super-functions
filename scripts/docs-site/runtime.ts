@@ -1,4 +1,5 @@
 import { basename, extname } from "node:path";
+import matter from "gray-matter";
 import {
   assertValidSourceEntries,
   buildManifest,
@@ -184,8 +185,7 @@ export function createDocsSiteRuntime(
 ) {
   let serverStatePromise: Promise<DocsSiteServerState> | null = null;
   async function loadDocsSiteServerState(): Promise<DocsSiteServerState> {
-    if (!serverStatePromise) {
-      serverStatePromise = (async () => {
+    serverStatePromise ??= (async () => {
         const siteRoot = ".";
         const config = docsConfig satisfies DocsConfig;
         const provider = createBundledContentProvider(config);
@@ -212,8 +212,7 @@ export function createDocsSiteRuntime(
           },
           compiledCache,
         };
-      })();
-    }
+    })();
 
     return serverStatePromise;
   }
@@ -322,6 +321,10 @@ function normalizeBundledModules(
   );
 }
 
+function isMarkdownCollection(collection: DocsCollection): collection is Extract<DocsCollection, "docs" | "pages" | "blog"> {
+  return ["docs", "pages", "blog"].includes(collection);
+}
+
 function collectEntriesForCollection(
   collection: DocsCollection,
   modules: Record<string, string>,
@@ -346,22 +349,20 @@ function collectEntriesForCollection(
     const fileName = basename(relativePath).toLowerCase();
 
     if (fileName === (config.content.metaFileName ?? "meta.json")) {
-      entries.push(createControlEntry(collection, relativePath, source));
+      entries.push(createControlEntry(collection, relativePath, source, modulePath));
       continue;
     }
 
     if (collection === "assets") {
-      entries.push(createAssetEntry(relativePath, source));
+      entries.push(createAssetEntry(relativePath, source, modulePath));
       continue;
     }
 
     if (
-      (collection === "docs" ||
-        collection === "pages" ||
-        collection === "blog") &&
+      isMarkdownCollection(collection) &&
       [".md", ".mdx"].includes(extension)
     ) {
-      entries.push(createMarkdownEntry(collection, relativePath, source));
+      entries.push(createMarkdownEntry(collection, relativePath, source, modulePath));
       continue;
     }
 
@@ -369,7 +370,7 @@ function collectEntriesForCollection(
       collection === "api" &&
       [".json", ".yaml", ".yml"].includes(extension)
     ) {
-      entries.push(createApiEntry(relativePath, source));
+      entries.push(createApiEntry(relativePath, source, modulePath));
     }
   }
 
@@ -396,13 +397,14 @@ function createMarkdownEntry(
   collection: Extract<DocsCollection, "docs" | "pages" | "blog">,
   relativePath: string,
   source: string,
+  sourcePath: string,
 ): DocsSourceEntry {
   const parsed = parseFrontmatter(source);
   return {
     id: createSourceEntryId(collection, relativePath),
     collection,
     relativePath,
-    absolutePath: `${collection}/${relativePath}`,
+    absolutePath: sourcePath,
     entryType: "content",
     body: parsed.body,
     frontmatter: {
@@ -421,12 +423,13 @@ function createControlEntry(
   collection: DocsCollection,
   relativePath: string,
   source: string,
+  sourcePath: string,
 ): DocsSourceEntry {
   return {
     id: createSourceEntryId(collection, relativePath),
     collection,
     relativePath,
-    absolutePath: `${collection}/${relativePath}`,
+    absolutePath: sourcePath,
     entryType: "control",
     body: source,
     frontmatter: {},
@@ -439,12 +442,12 @@ function createControlEntry(
   };
 }
 
-function createApiEntry(relativePath: string, source: string): DocsSourceEntry {
+function createApiEntry(relativePath: string, source: string, sourcePath: string): DocsSourceEntry {
   return {
     id: createSourceEntryId("api", relativePath),
     collection: "api",
     relativePath,
-    absolutePath: `api/${relativePath}`,
+    absolutePath: sourcePath,
     entryType: "content",
     body: source,
     frontmatter: {
@@ -461,12 +464,13 @@ function createApiEntry(relativePath: string, source: string): DocsSourceEntry {
 function createAssetEntry(
   relativePath: string,
   source: string,
+  sourcePath: string,
 ): DocsSourceEntry {
   return {
     id: createSourceEntryId("assets", relativePath),
     collection: "assets",
     relativePath,
-    absolutePath: `assets/${relativePath}`,
+    absolutePath: sourcePath,
     entryType: "asset",
     frontmatter: {},
     bytes: byteLength(source),
@@ -478,38 +482,8 @@ function parseFrontmatter(source: string): {
   body: string;
   frontmatter: Record<string, unknown>;
 } {
-  if (!source.startsWith("---\n")) {
-    return { body: source, frontmatter: {} };
-  }
-
-  const closingIndex = source.indexOf("\n---", 4);
-  if (closingIndex === -1) {
-    return { body: source, frontmatter: {} };
-  }
-
-  const rawFrontmatter = source.slice(4, closingIndex);
-  const body = source.slice(closingIndex + 4).replace(/^\r?\n/, "");
-  const frontmatter: Record<string, unknown> = {};
-
-  for (const line of rawFrontmatter.split(/\r?\n/)) {
-    const separator = line.indexOf(":");
-    if (separator === -1) continue;
-
-    const key = line.slice(0, separator).trim();
-    const value = line.slice(separator + 1).trim();
-    if (!key) continue;
-
-    frontmatter[key] = parseFrontmatterValue(value);
-  }
-
-  return { body, frontmatter };
-}
-
-function parseFrontmatterValue(value: string): unknown {
-  const unquoted = value.replace(/^['"]|['"]$/g, "");
-  if (unquoted === "true") return true;
-  if (unquoted === "false") return false;
-  return unquoted;
+  const parsed = matter(source);
+  return { body: parsed.content, frontmatter: parsed.data };
 }
 
 function parseJson(source: string): unknown {

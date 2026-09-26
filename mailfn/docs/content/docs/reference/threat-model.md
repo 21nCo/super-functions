@@ -3,8 +3,6 @@ title: "Threat model"
 description: Ingress, credentials, webhooks, retention, and deployment trust.
 ---
 
-# MailFn Threat Model
-
 ## Assets and trust boundaries
 
 The protected assets are mailbox addresses, raw MIME, normalized bodies, attachments, verification secrets, credential and webhook secrets, sender identity evidence, audit logs, usage records, and outbound authority. Trust boundaries exist at SMTP/Email Routing ingress, HTTP authentication, D1, R2, Queue jobs, webhook consumers, DNS/Cloudflare API calls, SendFn, CLI output, and MCP tool output.

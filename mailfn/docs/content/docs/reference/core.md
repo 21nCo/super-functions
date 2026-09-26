@@ -3,8 +3,6 @@ title: "@mailfn/core"
 description: Source package guide for MailFn core.
 ---
 
-# `@mailfn/core`
-
 Provider-neutral MailFn domain service and contracts. It includes projects, stable/expiring inboxes, scoped credentials, inbound durability orchestration, MIME result normalization, raw/attachment evidence, waits, OTP/link extraction, threads, labels, search, drafts, SendFn-compatible outbound contracts, webhooks, custom domains, retention, audit, usage, quotas, abuse/support/compliance controls, and deterministic memory adapters.
 
 ```ts

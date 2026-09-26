@@ -3,8 +3,6 @@ title: "Operations"
 description: Cloudflare setup, queues, reconciliation, and release gates.
 ---
 
-# MailFn Operations
-
 ## Cloudflare deployment inputs
 
 Use `@mailfn/cloudflare` and copy `wrangler.example.jsonc`. Provision one D1 database, one private R2 bucket, separate parse and webhook-delivery Queues with their own DLQs, an Email Routing Worker binding, and a scheduled retention trigger. Configure these secrets/variables:

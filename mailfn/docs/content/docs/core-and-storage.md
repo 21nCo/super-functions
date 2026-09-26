@@ -3,8 +3,6 @@ title: Core and storage
 description: Embed the provider-neutral service and supply durable adapters.
 ---
 
-# Core and storage
-
 `@mailfn/core` owns projects, inboxes, scoped credentials, inbound orchestration, normalized MIME results, raw and attachment evidence, waits, extraction, threads, labels, search, drafts, webhooks, domains, retention, audit, quotas, and operational controls. It has no Cloudflare dependency.
 
 ```ts

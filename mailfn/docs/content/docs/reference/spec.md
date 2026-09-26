@@ -3,8 +3,6 @@ title: "Specification"
 description: MailFn domain and API contract.
 ---
 
-# MailFn Technical Specification
-
 ## Status and boundaries
 
 - Package release: `0.1.0`

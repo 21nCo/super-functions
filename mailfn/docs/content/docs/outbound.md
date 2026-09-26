@@ -3,8 +3,6 @@ title: Outbound through SendFn
 description: Compose drafts, replies, and forwards with a delivery adapter.
 ---
 
-# Outbound through SendFn
-
 `@mailfn/sendfn` adapts an existing SendFn service to MailFn outbound contracts. It prefers modern `sendEmail` and supports the legacy `email` method. MailFn does not embed delivery provider implementations.
 
 ```ts

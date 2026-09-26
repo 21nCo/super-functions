@@ -3,8 +3,6 @@ title: Getting started
 description: Create a scoped inbox, wait for mail, and extract a verification value.
 ---
 
-# Getting started
-
 The `mailfn` facade exports `MailFnClient` and public core types. Point the client at a deployed MailFn `/v1` API using a token with the needed project scope. Creating an inbox returns its address and a one-time scoped credential; use that credential for subsequent inbox access.
 
 ```ts

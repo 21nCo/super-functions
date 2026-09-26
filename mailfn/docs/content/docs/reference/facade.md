@@ -3,8 +3,6 @@ title: "mailfn facade"
 description: Source package guide for MailFn facade.
 ---
 
-# `mailfn`
-
 Convenience facade for the MailFn TypeScript client and public core types.
 
 ```ts

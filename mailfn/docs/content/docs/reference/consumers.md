@@ -3,8 +3,6 @@ title: "Consumer fixtures"
 description: Typechecked integration shapes used by the release gate.
 ---
 
-# MailFn consumer contracts
-
 These compile-only fixtures keep the reusable boundary honest:
 
 - `router-cloudflare.ts` models Router's Cloudflare Worker service shape and composes MailFn with SendFn without importing MailFn internals.
