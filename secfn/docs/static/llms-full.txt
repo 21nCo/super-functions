@@ -1,0 +1,444 @@
+# SecFn
+
+> Encrypted secrets, scoped runtime retrieval, scanning, and audit services.
+
+This file concatenates the full text of every documentation page so it can be loaded into
+an LLM-based assistant in a single shot. For programmatic access, prefer the MCP server
+or the structured manifest emitted alongside this file.
+
+# Documentation
+
+<!-- page:docs:audit-and-rate-limits.md path:/docs/audit-and-rate-limits -->
+# Audit and rate limits
+
+> Configure durable security events and quota enforcement.
+
+
+# Audit and rate limits
+
+The server exposes `AuditService`, `AccessService`, and `SecFnRateLimiter`. Admin denials and runtime scope denials create security audit events. The host supplies a logger and can provide an audit sink. Audit metrics traverse stable event pages in a repeatable-read transaction and require an adapter that advertises configurable transaction isolation; unsupported adapters fail explicitly.
+
+Rate checks run before admin and runtime actions. In-memory defaults are process-local. For shared quotas across instances, configure `rateLimit.atomicStore` with linearizable compare-and-set. Legacy persistence is accepted only with `singleProcess: true`. Multi-scope checks preflight all configured limits before charging; under shared CAS contention earlier charges may conservatively remain.
+
+The DB adapter, audit sink, and host monitoring determine durability and operational visibility. Read the [server contract](/docs/reference/server) for exact transaction and rate-store guarantees, and the [source audit service](https://github.com/21nCo/super-functions/blob/dev/secfn/server/src/audit.ts) for event behavior.
+
+---
+
+<!-- page:docs:getting-started.md path:/docs/getting-started -->
+# Getting started
+
+> Choose the core, server, and runtime packages.
+
+
+# Getting started
+
+Install the package for the task. `@secfn/core` provides pure encryption, scanner, schema, and shared types. `@secfn/server` hosts the vault, control plane, and runtime API using `@superfunctions/db` and `@superfunctions/http`. `@secfn/runtime` is a read-only client for trusted server, CI, build, and local workflows.
+
+```sh
+npm install @secfn/core @secfn/server @secfn/runtime
+```
+
+Provision the database and apply the [schema migrations](/docs/migrations), supply a key provider or master key, mount the [server router](/docs/server), and implement host authentication and admin authorization. Create service tokens through authorized admin flows before configuring a [runtime client](/docs/runtime). The server does not provision a database or framework-specific mount for you.
+
+For pure encryption, use `buildSecretAad`, `encryptSecret`, and `decryptSecret` from `@secfn/core` with a `KeyProvider`. For secret scanning, use `createSecurityScanner` and a reporter from the core package. See [package reference](/docs/reference/packages) for exports and responsibility boundaries.
+
+---
+
+<!-- page:docs:index.md path:/docs -->
+# SecFn
+
+> Encrypted secrets, scoped retrieval, scanning, and security services.
+
+
+# SecFn
+
+SecFn's implemented packages provide pure encryption and scanner contracts, an adapter-backed server with admin and runtime routes, and a read-only runtime client. The server also handles RBAC, service tokens, rate limiting, and durable audit events. Start with [getting started](/docs/getting-started), then follow the [server](/docs/server), [scope](/docs/scope-and-permissions), and [runtime](/docs/runtime) guides.
+
+The older `secfn/SPEC.md` is a V0 proposal with paths and features that do not match this checkout. These pages follow `@secfn/core`, `@secfn/server`, and `@secfn/runtime` on `origin/dev`. Apply the current schema and migration requirements before using a database, and keep secret material in trusted processes.
+
+---
+
+<!-- page:docs:migrations.md path:/docs/migrations -->
+# Schema and migrations
+
+> Apply SecFn's schema and PostgreSQL changes in order.
+
+
+# Schema and migrations
+
+`getSecFnSchema()` supplies the portable `@superfunctions/db` schema. A fresh installation still needs the PostgreSQL-specific version 4 migration for the null-safe secret-set uniqueness constraint. Migrations are the operator's responsibility; server startup does not apply them.
+
+The current server guide describes four schema stages. Version 2 adds nullable `tenant_id` to scan runs. Version 3 adds `migrations/0003_scan_run_tenant_index.sql`. Version 4 adds optional immutable environment bindings with `migrations/0004_secret_set_environment.sql`, which requires PostgreSQL 15+ and `NULLS NOT DISTINCT` uniqueness. Apply them in order against the intended deployment schema. For a shared database, set `secfn.migration_schema`; otherwise the version 4 script refuses to guess when it cannot uniquely find the table.
+
+Version 4 preflights duplicate secret-set identities and aborts with an actionable unique-violation error. It does not merge or delete data. Resolve duplicate names by ID in a reviewed transaction, preserve set IDs and members, roll back failed migration transactions, and retry only after the duplicates are gone. The [server README reference](/docs/reference/server) includes the diagnostic SQL and detailed rollout notes.
+
+Verify generated schema diffs, existing row ownership, and adapter capabilities before deploying. A local schema build does not prove a hosted migration or data backfill.
+
+---
+
+<!-- page:docs:operations-and-limits.md path:/docs/operations-and-limits -->
+# Operations and limits
+
+> Key custody, adapter guarantees, and validation boundaries.
+
+
+# Operations and limits
+
+The host must provide a DB adapter with transactions for secret creation and rotation, and configurable repeatable-read isolation for audit metrics. Shared rate limiting requires a linearizable CAS store. The default in-memory limiter coordinates only one process. These capabilities are part of the deployment contract, not optional performance tuning.
+
+Keep master keys, service tokens, and returned plaintext outside untrusted clients and logs. Admin reveal is a distinct confirmed and audited action. Use tenant, namespace, environment, and actor context derived from trusted authentication. Do not treat a query parameter as a new authorization scope.
+
+The `secfn/SPEC.md` file is an older proposal; its dashboard, CLI, framework adapter, and scanning examples are not evidence of implemented packages. The current package manifests expose core, server, and runtime. Validate with focused package tests and a real DB migration before production rollout; a DocsFn build proves only the site structure.
+
+---
+
+<!-- page:docs:reference/core.md path:/docs/reference/core -->
+# Core package
+
+> Encryption, scanner, schema, and shared contracts.
+
+
+# @secfn/core
+
+Core contracts and pure utilities for SecFn V1.
+
+`@secfn/core` intentionally contains no database adapter, HTTP router, or framework integration. It provides the shared types that `@secfn/server`, `@secfn/runtime`, and `@secfn/cli` build on.
+
+## Exports
+
+- Encryption primitives using AES-256-GCM with per-record IV and salt.
+- `KeyProvider` and `createStaticKeyProvider` for default env/master-key workflows.
+- AAD helpers binding encrypted versions to tenant, namespace, secret id, and version.
+- Scanner interfaces, default secret rule pack, scanner engine, and table/JSON/SARIF reporters.
+- RBAC, audit event, secret, service token, runtime, and server config types.
+- `SecFnError` variants.
+- `getSecFnSchema()` for `@superfunctions/db` schema discovery.
+
+## Example
+
+```ts
+import {
+  buildSecretAad,
+  createStaticKeyProvider,
+  decryptSecret,
+  encryptSecret,
+  getSecFnSchema,
+} from "@secfn/core";
+
+const keyProvider = createStaticKeyProvider(process.env.SECFN_MASTER_KEY!, "env:main");
+
+const aad = buildSecretAad({
+  tenantId: "acme",
+  namespace: "web",
+  secretId: "secret_123",
+  version: 1,
+});
+
+const encrypted = await encryptSecret("plain", keyProvider, aad);
+const plain = await decryptSecret(encrypted, keyProvider, aad);
+const schema = getSecFnSchema();
+```
+
+Production storage, admin routes, runtime routes, RBAC services, rate limiting, and audit persistence live in `@secfn/server`.
+
+---
+
+<!-- page:docs:reference/index.md path:/docs/reference -->
+# Reference
+
+> SecFn packages, routes, and source package guides.
+
+
+# Reference
+
+- [Package map](/docs/reference/packages)
+- [Admin and runtime routes](/docs/reference/routes)
+- [Core package README](/docs/reference/core)
+- [Runtime package README](/docs/reference/runtime)
+- [Server package README](/docs/reference/server)
+
+The package pages mirror the source READMEs. Keep those copies aligned when a public contract changes.
+
+---
+
+<!-- page:docs:reference/packages.md path:/docs/reference/packages -->
+# Packages
+
+> Current SecFn package map and import surfaces.
+
+
+# Packages
+
+| Package | Role |
+| --- | --- |
+| `@secfn/core` | Pure encryption, AAD, scanner, schema, shared types, and errors. Also exports `./id`. |
+| `@secfn/server` | Adapter-backed vault, router, access, rate limiting, audit, and scanner. Also exports `./audit`. |
+| `@secfn/runtime` | Read-only secret and set client for trusted processes. |
+
+The server uses `@superfunctions/db` for persistence and `@superfunctions/http` for routing. It does not publish a framework-specific adapter. The repository's older V0 specification describes other planned components; inspect current package manifests and exports before importing one.
+
+---
+
+<!-- page:docs:reference/routes.md path:/docs/reference/routes -->
+# Routes
+
+> SecFn admin and runtime route families.
+
+
+# Routes
+
+The server router defaults to `/secfn` as its base path. Admin routes require host `authorize(ctx, action, details)` and pass rate checks. They cover namespace and environment management, secrets, secret versions through rotate and reveal actions, secret sets and members, service-token creation and revocation, audit-event lists, and scan-run lists. Secret and set reveal routes require `confirm: true` in the request body.
+
+Runtime routes are `GET /runtime/secrets/:key` and `POST /runtime/secret-sets/:name/resolve`, both under the base path. They require a bearer service token, trusted scope, and rate checks. `GET /runtime/health` returns plain status without the runtime token flow.
+
+Admin lists and runtime reads have different authorization paths. The host should not expose admin routes to a token intended only for runtime retrieval. For exact methods, body fields, and response envelopes, use the [source router](https://github.com/21nCo/super-functions/blob/dev/secfn/server/src/router.ts) and [server package guide](/docs/reference/server).
+
+---
+
+<!-- page:docs:reference/runtime.md path:/docs/reference/runtime -->
+# Runtime package
+
+> Read-only runtime client and environment materialization.
+
+
+# @secfn/runtime
+
+Read-only runtime client and env materialization helpers for SecFn.
+
+Use this package from trusted server, CI, build, and local development workflows. Do not bundle private secrets into browser code.
+
+```ts
+import { createSecFnRuntime } from "@secfn/runtime";
+
+const secfn = createSecFnRuntime({
+  endpoint: "https://nucleus.example.com/secfn",
+  apiKey: process.env.SECFN_RUNTIME_TOKEN!,
+  tenantId: "acme",
+  environment: "production",
+  cache: { ttlMs: 60_000 },
+});
+
+const value = await secfn.get("OPENAI_API_KEY");
+const env = await secfn.toEnv("nucleus-production");
+const dotenv = await secfn.toDotEnv("nucleus-production");
+```
+
+`toDotEnv` returns text only. It does not write plaintext to disk.
+
+---
+
+<!-- page:docs:reference/server.md path:/docs/reference/server -->
+# Server package
+
+> Control plane, runtime API, migration, and storage contract.
+
+
+# @secfn/server
+
+Adapter-backed SecFn server package.
+
+`@secfn/server` hosts the control plane and runtime API for secrets, service tokens, RBAC, rate limiting, scanning, and durable security audit events. It uses `@superfunctions/db` for persistence and `@superfunctions/http` for routing.
+
+## Example
+
+```ts
+import { createSecFnServer } from "@secfn/server";
+
+export const secfn = createSecFnServer({
+  db,
+  basePath: "/secfn",
+  encryption: {
+    masterKey: process.env.SECFN_MASTER_KEY!,
+    keyId: "env:main",
+  },
+  authorize: async (ctx, action) => {
+    return ctx.actorId === "admin" || action === "audit-events:list";
+  },
+  namespaceProvider: (ctx) => ctx.namespace,
+  logger,
+});
+```
+
+The return value contains:
+
+- `router`
+- `vault`
+- `access`
+- `rateLimit`
+- `audit`
+- `scanner`
+- `getSchema()`
+
+SecFn does not re-export Express, Hono, Fastify, Next.js, or SvelteKit adapters. Mount the returned router with the existing shared HTTP adapter packages.
+
+Runtime scope IDs and names must agree when both are supplied, including a namespace
+provided by the host context. An environment ID alone derives its parent namespace;
+an explicit conflicting namespace is rejected. Hosts supporting selection across
+namespaces should omit a fixed namespace context rather than rely on query IDs to override it.
+Secret-set creation validates every member and output name before persisting the set.
+
+Schema version 2 adds nullable `tenant_id` to `secfn_scan_runs`. Apply the generated
+migration before using tenant-scoped scan history. Existing unowned rows remain
+hidden from tenant lists; backfill only from a trusted ownership mapping. Persist
+new runs with `vault.recordScanRun({ tenantId, startedAt, target, status, findingCount })`;
+the scanner itself remains a pure producer of findings.
+
+Secret rotation requires an adapter advertising transaction support. The encrypted
+version insert and version-pointer advance commit together; a failed
+pointer update rolls back the new version. Nontransactional adapters fail before writing.
+
+Secret creation also requires transactional storage: the secret and initial encrypted
+version are inserted together, so a failed version insert leaves no unusable secret.
+Shared rate limiting must use `rateLimit.atomicStore` with linearizable compare-and-set.
+Legacy `rateLimit.persistence` is accepted only with `singleProcess: true`; it does
+not coordinate quotas across server instances. In-memory defaults are process-local.
+
+Schema version 3 adds the scan-run tenant index. PostgreSQL installations on
+version 2 should apply `migrations/0003_scan_run_tenant_index.sql` before recording
+version 3. Other adapters should apply the generated schema diff for the same index.
+
+A fixed host namespace also restricts admin collections and service-token revocation.
+Namespace creation/renaming and tenant-wide scan history require an operator context
+without a fixed namespace. Conflicting namespace queries are rejected.
+
+Namespace-scoped contexts must include `tenantId`, since namespace slugs are only
+unique within a tenant. Environment creation derives that trusted scope and rejects
+conflicting namespace names or IDs in its body.
+
+Schema version 4 adds optional immutable environment bindings to secret sets. Apply `migrations/0004_secret_set_environment.sql` after schema 3; a generated diff alone does not express its null-safe uniqueness constraint. Existing sets remain unbound. Creating a set with an explicit environment stores its ID and enforces it on creation, member additions/replacements, and runtime resolution.
+
+Audit metrics walk event pages by stable ID inside one repeatable-read transaction, including events committed before its first read and excluding later commits regardless of event timestamps. Multi-scope rate limits preflight every configured limit before charging. Shared CAS contention can still conservatively retain earlier charges; no stale-snapshot rollback is attempted.
+
+Schema 4 requires PostgreSQL 15+ and migration `0004_secret_set_environment.sql`, including on a fresh installation generated from the portable schema. The migration enforces NULLS NOT DISTINCT uniqueness for `(tenant_id, namespace_id, environment_id, name)`. Set `secfn.migration_schema` on the migration connection when multiple deployments share a database; otherwise the migration requires exactly one matching table and fails rather than guessing. Bound sets with the same name coexist across environments; runtime resolution prefers an exact binding then a legacy unbound set. Members of legacy sets still must pass runtime scope checks.
+
+Metrics require `capabilities.transactions.configurableIsolation` and `repeatable_read` support; adapters without those guarantees fail explicitly. The shared PostgreSQL Drizzle adapter implements per-call isolation. Namespace, schema and observability wrappers preserve it. Ordinary transaction calls without options retain their previous behavior.
+
+Member additions and replacements acquire the parent set row lock in a read-committed transaction before checking output names. Set deletion takes the same lock before deleting members. Both runtime resolution and administrator reveal reject duplicate output names in legacy/corrupt sets instead of overwriting values. Secret renames can change the default output name of members without aliases; assign explicit unique aliases when those names collide.
+
+### Existing duplicate set identities
+
+Schema 4 preflights duplicate identities before changing the unique index and fails with an actionable `23505` error. It never deletes or merges sets or their members. A failed migration leaves the old schema intact after rollback. Inspect duplicate groups with the following query, replacing `deployment` with the selected schema:
+
+```sql
+SELECT tenant_id, namespace_id, to_jsonb(s)->>'environment_id' AS environment_id,
+       name, array_agg(id ORDER BY id) AS set_ids
+FROM deployment.secfn_secret_sets AS s
+GROUP BY tenant_id, namespace_id, to_jsonb(s)->>'environment_id', name
+HAVING count(*) > 1;
+```
+
+Choose one name per set before rerunning the migration. A deterministic candidate is each conflicting set's unique `id`: verify that no other set in that identity scope already uses the candidate as its name, then rename only the selected conflicting rows by ID in a transaction. Keep the original IDs and member references. If a candidate collides with an existing name, choose a distinct explicit name instead. The migration verifies uniqueness again; abort and review any remaining conflicts rather than dropping data. Migration connections must roll back a failed `BEGIN…COMMIT` script before issuing cleanup or retry statements.
+
+---
+
+<!-- page:docs:runtime.md path:/docs/runtime -->
+# Runtime client
+
+> Read secrets and materialize sets in trusted processes.
+
+
+# Runtime client
+
+Use `@secfn/runtime` only in trusted server, CI, build, or local workflows. Do not bundle a service token or secret values into browser code. Configure the mounted server endpoint, a scoped service token, tenant and optional namespace, and an optional environment:
+
+```ts
+import { createSecFnRuntime } from "@secfn/runtime";
+
+const secfn = createSecFnRuntime({
+  endpoint: "https://example.com/secfn",
+  apiKey: process.env.SECFN_RUNTIME_TOKEN!,
+  tenantId: "acme",
+  environment: "production",
+  cache: { ttlMs: 60_000 },
+});
+
+const value = await secfn.get("OPENAI_API_KEY");
+const values = await secfn.getSet("service-runtime");
+```
+
+`get` reads one secret; `getSet` resolves a set; `preload` warms either form (`set:name` selects a set); `toEnv` returns a set as an object; `toDotEnv` returns formatted text without writing it; and `injectEnv` writes into the current process environment after validating variable names. A per-call `environment` overrides the configured environment. `bypassCache` forces retrieval, and `clearCache()` drops cached entries. The default cache TTL is zero; any positive TTL can temporarily retain a rotated value, so choose it deliberately.
+
+The client calls `GET /runtime/secrets/:key` and `POST /runtime/secret-sets/:name/resolve` under the configured endpoint and expects the SecFn response envelope. See [runtime package reference](/docs/reference/runtime).
+
+---
+
+<!-- page:docs:scanning.md path:/docs/scanning -->
+# Secret scanning
+
+> Run the core scanner and persist run metadata through the server.
+
+
+# Secret scanning
+
+`@secfn/core` exports the scanner engine, default rule pack, scanner interfaces, and table, JSON, and SARIF reporters. Use these pure APIs in a trusted host to scan selected source content. The server creates a scanner instance but scanning itself is a pure producer of findings; it does not automatically store run history.
+
+To retain run history, call `vault.recordScanRun({ tenantId, startedAt, target, status, findingCount })` after scanning. Tenant-scoped scan history needs the schema version 2 column and version 3 index migration. Existing unowned rows remain hidden from tenant lists until a trusted ownership backfill is performed. The admin router exposes `GET /admin/scan-runs` through host authorization.
+
+The old V0 specification mentions Git history scanning and pre-commit hooks as proposed features. Verify the current scanner exports and your host workflow before advertising those integrations. See [core package reference](/docs/reference/core) and [server package reference](/docs/reference/server).
+
+---
+
+<!-- page:docs:scope-and-permissions.md path:/docs/scope-and-permissions -->
+# Scope and permissions
+
+> Enforce tenant, namespace, environment, and operator boundaries.
+
+
+# Scope and permissions
+
+The host derives `tenantId`, namespace, actor identity, IP, and related request context from trusted authentication. A request's query or body may narrow trusted scope but cannot replace it. Namespace-scoped contexts require a tenant ID because namespace slugs are only unique within a tenant. A fixed namespace also constrains admin collections, service-token revocation, and environment creation.
+
+`authorize(ctx, action, details)` decides each admin action. The router rejects absent or denied authorization and records permission-denied audit events. A global operator context without fixed tenant or namespace is a deliberate host privilege; do not derive it from arbitrary request fields.
+
+Runtime service tokens are created through admin routes and verified against the requested secret scope. The runtime client sends the bearer token and configured tenant and namespace headers. Select environments through the client configuration or a per-call option. The server rejects conflicting namespace names or IDs and checks set members against the resolved runtime scope.
+
+Read the [server contract](/docs/reference/server) for detailed namespace, environment, and secret-set behavior. Mounting the router is not an authentication policy: the host must supply its own principal resolution and admin permission decisions.
+
+---
+
+<!-- page:docs:secrets-and-sets.md path:/docs/secrets-and-sets -->
+# Secrets and sets
+
+> Create, rotate, reveal, and resolve versioned secrets safely.
+
+
+# Secrets and sets
+
+`@secfn/core` encrypts secret versions with AES-256-GCM. Each record gets a random IV and salt; AAD binds its tenant, namespace, secret ID, and version. `@secfn/server` stores encrypted versions, current pointers, secret sets, service tokens, and audit records through the DB adapter. The host owns key provider availability and secure master-key custody.
+
+Secret creation and rotation require transactional storage. Creation inserts the secret and first encrypted version together. Rotation inserts a new version and advances the pointer together; an adapter without transaction support fails before writing. Admin reveal requires explicit confirmation and is audited. Runtime reads require a scoped service token.
+
+Secret sets map members to output names. New sets validate members and output names before persistence. Schema version 4 can bind a set to an immutable environment ID. Runtime resolution prefers an exact environment binding, then a legacy unbound set; members must still pass scope checks. Duplicate output names in corrupt or legacy sets are rejected instead of silently overwriting values. See the [server package reference](/docs/reference/server) and [migration guide](/docs/migrations).
+
+---
+
+<!-- page:docs:server.md path:/docs/server -->
+# Server setup
+
+> Configure persistence, encryption, host context, and route mounting.
+
+
+# Server setup
+
+Create the server with an adapter-backed database, encryption key source, trusted request context, and host authorization. The returned object contains `router`, `vault`, `access`, `rateLimit`, `audit`, `scanner`, and `getSchema()`.
+
+```ts
+import { createSecFnServer } from "@secfn/server";
+
+const secfn = createSecFnServer({
+  db,
+  basePath: "/secfn",
+  encryption: { masterKey: process.env.SECFN_MASTER_KEY!, keyId: "env:main" },
+  authorize: async (ctx, action) => canAdminister(ctx, action),
+  namespaceProvider: (ctx) => ctx.namespace,
+  logger,
+});
+
+// Mount secfn.router with your existing @superfunctions/http host adapter.
+```
+
+Supply either `keyProvider` or `encryption.masterKey`; server creation fails when both are absent. The host owns key custody and rotation. The default router base path is `/secfn`, and the default JSON body limit is one MiB. SecFn does not re-export Express, Hono, Fastify, Next.js, or SvelteKit adapters. Use the shared HTTP adapter for the chosen host.
+
+Every admin route passes a rate check and the host's `authorize` callback. If `authorize` is absent, admin access is denied. Runtime routes require a bearer service token and verify its scope before returning values. The health route is a plain status response. See [route reference](/docs/reference/routes) and [source router](https://github.com/21nCo/super-functions/blob/dev/secfn/server/src/router.ts).
+
+---
