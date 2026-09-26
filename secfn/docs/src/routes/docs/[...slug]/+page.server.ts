@@ -7,7 +7,7 @@ import {
   type SvelteDocsPageSurface,
 } from "@docsfn/sveltekit";
 import { resolveMarkdownRelativeLinks } from "@docsfn/core";
-import { getCompiledDocsPage } from "$lib/server/docs-site-source";
+import { getCompiledDocsPage, loadDocsSiteSource } from "$lib/server/docs-site-source";
 import type { PageServerLoad } from "./$types";
 
 function buildCanonicalUrl(canonicalBase: string | undefined, path: string): string {
@@ -32,8 +32,8 @@ function hasNestedDocsRoutes(routes: Record<string, string>, route: string): boo
   return Object.keys(routes).some((candidate) => candidate.startsWith(`${route}/`));
 }
 
-export const load: PageServerLoad = async ({ params, parent }) => {
-  const { source } = await parent();
+export const load: PageServerLoad = async ({ params }) => {
+  const source = await loadDocsSiteSource();
 
   let routeEntry;
   try {
