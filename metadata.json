@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EH0MA24GMWRK644H4XFQ68",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/docs/content/docs/adapters/database/drizzle.md",
+    "authfn/docs/content/docs/admin/super-console.md",
+    "authfn/docs/content/docs/frameworks/bun.md",
+    "authfn/docs/content/docs/frameworks/byo.md",
+    "authfn/docs/content/docs/frameworks/sveltekit.md",
+    "authfn/docs/content/docs/plugins/authoring.md",
+    "authfn/docs/content/docs/quickstart/bun.md",
+    "authfn/docs/content/docs/quickstart/nextjs.md",
+    "authfn/docs/static/llms-full.txt"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 6396,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 354560,
+    "output_tokens": 1462,
+    "api_call_count": 4
+  }
+}
