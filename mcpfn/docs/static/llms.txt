@@ -1,0 +1,24 @@
+# McpFn
+
+> Build, secure, test, and evolve Model Context Protocol servers with stable consumer contracts.
+
+## Documentation
+
+- [Authorization](https://mcpfn.com/docs/authorization) — Protect Streamable HTTP, complete client OAuth, and compose hosted authorization.
+- [Connect a client](https://mcpfn.com/docs/client) — Production stdio and Streamable HTTP sessions, inventories, calls, and OAuth completion.
+- [Deployment](https://mcpfn.com/docs/deployment) — Run McpFn over HTTP on Node or Cloudflare Workers and keep the transport boundary secure.
+- [Getting started](https://mcpfn.com/docs/getting-started) — Install McpFn, declare a validated tool, and run a server.
+- [McpFn documentation](https://mcpfn.com/docs) — Consumer guide to building, connecting to, securing, and testing MCP servers.
+- [Migrate or adopt incrementally](https://mcpfn.com/docs/migration) — Move a custom MCP server to McpFn or test it without changing its runtime.
+- [Architecture](https://mcpfn.com/docs/reference/architecture) — Source-aligned McpFn architecture documentation.
+- [Authorization](https://mcpfn.com/docs/reference/auth) — Source-aligned McpFn authorization documentation.
+- [CLI](https://mcpfn.com/docs/reference/cli) — Source-aligned McpFn cli documentation.
+- [Client](https://mcpfn.com/docs/reference/client) — Source-aligned McpFn client documentation.
+- [Core runtime](https://mcpfn.com/docs/reference/core) — Source-aligned McpFn core runtime documentation.
+- [DataFn adapter](https://mcpfn.com/docs/reference/datafn) — Source-aligned McpFn datafn adapter documentation.
+- [Package reference](https://mcpfn.com/docs/reference) — Source-aligned package documentation and implementation architecture.
+- [Inspector](https://mcpfn.com/docs/reference/inspector) — Source-aligned McpFn inspector documentation.
+- [Testing and CI](https://mcpfn.com/docs/reference/testing-and-ci) — Source-aligned McpFn testing and ci documentation.
+- [Testing API](https://mcpfn.com/docs/reference/testing) — Source-aligned McpFn testing api documentation.
+- [Build a server](https://mcpfn.com/docs/server) — Registry, context, profiles, resources, prompts, tasks, and transports.
+- [Test and evolve a server](https://mcpfn.com/docs/testing) — Manifests, client profiles, semantic scenarios, authentication, and protocol conformance.

@@ -1,0 +1,1592 @@
+# McpFn
+
+> Build, secure, test, and evolve Model Context Protocol servers with stable consumer contracts.
+
+This file concatenates the full text of every documentation page so it can be loaded into
+an LLM-based assistant in a single shot. For a page index, see /docs/llms.txt.
+
+# Documentation
+
+<!-- page:docs:authorization.md path:/docs/authorization -->
+# Authorization
+
+> Protect Streamable HTTP, complete client OAuth, and compose hosted authorization.
+
+
+McpFn has three separate authorization roles: verify bearer credentials at a protected MCP resource, act as an OAuth client, and compose an existing hosted identity system into MCP authorization endpoints. Install `@mcpfn/auth` for the roles you need.
+
+## Protect an HTTP MCP resource
+
+Wrap the Web Standard MCP handler and supply a token verifier, canonical resource identifier, authorization-server URL, and required scopes:
+
+```ts
+import { createOAuthResourceServerHandler } from "@mcpfn/auth";
+
+const mcp = await server.createWebStandardHandler({ enableJsonResponse: true });
+const fetch = createOAuthResourceServerHandler(mcp, {
+  resource: "https://api.example.com/mcp",
+  authorizationServers: ["https://login.example.com"],
+  scopesSupported: ["mcp:read"],
+  requiredScopes: ["mcp:read"],
+  verifier,
+});
+```
+
+The wrapper publishes protected-resource metadata and passes verified auth information to server context. Keep identity, tenant, scopes, and resource binding out of model-controlled arguments. The [authorization reference](/docs/reference/auth) covers the generic provider adapter and diagnostic entry points.
+
+## Complete client OAuth
+
+`createMcpFnOAuthClientProvider()` implements the official provider contract. It validates redirects before browser launch, correlates callback state, and defaults to in-memory PKCE and token storage. Pass an encrypted application-provided store when persistence is needed. Native private-use redirects follow RFC 8252's reverse-domain policy by default; compatibility schemes need an explicit allowlist. The client completes the code exchange only after both `code` and `state` are supplied.
+
+## Reuse hosted identity
+
+`createMcpAuthorizationCompatibilityHandler()` composes authorization-server metadata, registration, Client ID Metadata Documents, PKCE code validation, token exchange, refresh rotation, and revocation. The host remains responsible for login, consent, durable clients, token signing and values, and revocation state. This is separate from outbound provider account-linking flows.
+
+Run `mcpfn auth-diagnose URL` for read-only discovery checks. Add the [authentication regression suite](/docs/testing) before deploying a protected endpoint.
+
+---
+
+<!-- page:docs:client.md path:/docs/client -->
+# Connect a client
+
+> Production stdio and Streamable HTTP sessions, inventories, calls, and OAuth completion.
+
+
+Install `@mcpfn/client` and choose a target. The client uses the official MCP SDK for protocol and transport behavior.
+
+```ts
+import { createMcpFnClient, streamableHttpTarget } from "@mcpfn/client";
+
+const client = createMcpFnClient({
+  target: streamableHttpTarget("https://api.example.com/mcp"),
+});
+
+try {
+  await client.connect();
+  const tools = await client.tools.listAll();
+  const result = await client.tools.call("status", {});
+  console.log(tools, result);
+} finally {
+  await client.close();
+}
+```
+
+Use `stdioTarget()` for a locally launched server on Node.js. `listAll()` follows inventory pagination; `listBounded(limit)` continues pagination but retains only the requested number of entries and reports dropped items. The client also exposes typed resources, prompts, completions, and task methods.
+
+## Authorization and lifecycle
+
+Pass an official `OAuthClientProvider` to a Streamable HTTP target. `@mcpfn/auth` supplies one that checks registered redirects and correlates callback state. When interactive authorization is needed, `connect()` reports `MCPFN_AUTHORIZATION_REQUIRED`. Complete the browser callback with both values:
+
+```ts
+await client.completeAuthorization({ code, state });
+```
+
+McpFn reconnects after the SDK exchange. Connection retries happen only when configured, and capability calls are never replayed implicitly. Register `handlers.roots`, `handlers.sampling`, or `handlers.elicitation` to advertise client-mediated capabilities. `onEvent()` observes redacted lifecycle and capability events. The [client reference](/docs/reference/client) documents the target and event surfaces.
+
+---
+
+<!-- page:docs:deployment.md path:/docs/deployment -->
+# Deployment
+
+> Run McpFn over HTTP on Node or Cloudflare Workers and keep the transport boundary secure.
+
+
+Serve HTTP with `createWebStandardHandler()` and mount the resulting Web Standard handler in your application's router. The official SDK owns Streamable HTTP and protocol behavior. Wrap protected endpoints with `createOAuthResourceServerHandler()` and derive trusted context from verified request metadata. See [authorization](/docs/authorization) for the resource-server boundary.
+
+## Stateless and sessionful HTTP
+
+Stateless mode creates and disposes an isolated SDK server and transport for every request. For server-initiated operations that must correlate across requests, provide a cryptographically secure `sessionIdGenerator` and retain the session transport. A `configureRequestServer` hook runs before the transport connection and can attach protocol instrumentation; a rejected initialization can invoke it without retaining a session.
+
+Initialization metadata is available only to sessionful client-profile hooks. Stateless profiles must be marked `requiresReportedClient: false` and depend on verified identity and request context. Keep a separate runtime instance per connection while sharing a registry or declaration.
+
+## Cloudflare Workers
+
+`@mcpfn/core` and `@mcpfn/auth` ship self-contained SDK bundles. Enable Cloudflare's `nodejs_compat` flag because the SDK uses Node built-ins such as `node:crypto`. Serve the Web Standard handler from the Worker. Do not import the Node-oriented client, CLI, testing, or inspector packages into the edge bundle.
+
+Schema validation uses Ajv draft-07 on Node and `@cfworker/json-schema` in runtimes that forbid runtime code generation. The repository's `cloudflare:worker-startup` release-gate step boots this shape under `workerd` with a protected request. For the exact compatibility and bundling policy, see the [core reference](/docs/reference/core) and [architecture](/docs/reference/architecture).
+
+---
+
+<!-- page:docs:getting-started.md path:/docs/getting-started -->
+# Getting started
+
+> Install McpFn, declare a validated tool, and run a server.
+
+
+## Install
+
+```sh
+npm install @mcpfn/core
+```
+
+Add `@mcpfn/client` to connect from an application and `@mcpfn/cli` plus `@mcpfn/testing` for regression checks. McpFn packages require Node.js 18.18 or newer. The HTTP runtime also supports Web Standard handlers on edge runtimes; see [deployment](/docs/deployment).
+
+## Declare a tool
+
+```ts
+import {
+  McpFnRegistry,
+  defineMcpFnServer,
+  structuredResult,
+} from "@mcpfn/core";
+
+const registry = new McpFnRegistry().register({
+  name: "greet",
+  description: "Greet one person by name.",
+  inputSchema: {
+    type: "object",
+    properties: { name: { type: "string" } },
+    required: ["name"],
+    additionalProperties: false,
+  },
+  outputSchema: {
+    type: "object",
+    properties: { greeting: { type: "string" } },
+    required: ["greeting"],
+    additionalProperties: false,
+  },
+  annotations: { readOnlyHint: true, openWorldHint: false },
+  handler: async ({ name }) =>
+    structuredResult({ greeting: `Hello, ${String(name)}!` }),
+});
+
+const declaration = defineMcpFnServer({
+  info: { name: "example", version: "1.0.0" },
+  registry,
+  transports: ["stdio", "streamable-http"],
+});
+
+export default declaration;
+```
+
+Save the declaration as `server.ts`. Put the live transport in a separate `stdio.ts` entrypoint:
+
+```ts
+import declaration from "./server.js";
+
+const server = declaration.createServer();
+await server.serveStdio();
+```
+
+Install a TypeScript runner and generate the manifest from the declaration module, then start the transport:
+
+```sh
+npm install --save-dev @mcpfn/cli tsx
+npx mcpfn manifest server.ts --output manifest.json
+npx tsx stdio.ts
+```
+
+The declaration is safe to import from manifest and test tooling. Create a separate server instance for each live connection. A tool handler receives schema-valid arguments. A declared output schema also validates its structured result before it reaches the client.
+
+## Add the regression contract
+
+Commit a reviewed manifest and semantic scenarios with the application. Run the candidate through `mcpfn diff` and the scenarios through `mcpfn test` in CI. The [testing guide](/docs/testing) explains each layer and its limits.
+
+For a complete runnable example, see the [calculator server](https://github.com/21nCo/super-functions/blob/dev/mcpfn/examples/calculator-server.ts), [stdio entrypoint](https://github.com/21nCo/super-functions/blob/dev/mcpfn/examples/calculator-stdio-server.ts), [HTTP entrypoint](https://github.com/21nCo/super-functions/blob/dev/mcpfn/examples/calculator-http-server.ts), and [client](https://github.com/21nCo/super-functions/blob/dev/mcpfn/examples/calculator-client.ts).
+
+---
+
+<!-- page:docs:index.md path:/docs -->
+# McpFn documentation
+
+> Consumer guide to building, connecting to, securing, and testing MCP servers.
+
+
+McpFn provides a validated Model Context Protocol server runtime, a production client, OAuth integration, contract testing, inspection, and a command-line workflow. It delegates the wire protocol and transports to the official MCP SDK. You can adopt its testing and client packages against an existing MCP server without migrating that server to McpFn.
+
+## Choose a path
+
+- [Build a server](/docs/getting-started): declare a tool and serve it over stdio or Streamable HTTP.
+- [Connect a client](/docs/client): select a target, manage the session, and list or call capabilities.
+- [Protect HTTP](/docs/authorization): add protected-resource metadata, bearer verification, and client OAuth.
+- [Prevent regressions](/docs/testing): compare manifests and run scenarios, authentication checks, and conformance.
+- [Integrate DataFn](/docs/reference/datafn): expose only approved data operations as tools.
+
+## Packages
+
+| Package | Use it for |
+| --- | --- |
+| `@mcpfn/core` | Server declarations, runtime, registry, manifests, profiles, and MCP Apps contracts |
+| `@mcpfn/client` | Stdio and Streamable HTTP client sessions |
+| `@mcpfn/auth` | OAuth clients, protected resources, and hosted authorization composition |
+| `@mcpfn/testing` | Protocol scenarios, client-profile contracts, auth fixtures, and Playwright flows |
+| `@mcpfn/inspector` | Headless capability inspection and redacted scenario export |
+| `@mcpfn/datafn` | Explicit, bounded DataFn-to-MCP tool projection |
+| `@mcpfn/cli` | Manifest, diff, test, inspect, authorization, and conformance commands |
+
+The [package reference](/docs/reference) includes the source-aligned README for every package, architecture details, and the full CI guide. Install only the packages your application uses. Node.js 18.18 or newer supports normal McpFn commands; the pinned official conformance runner requires Node.js 22 or newer.
+
+---
+
+<!-- page:docs:migration.md path:/docs/migration -->
+# Migrate or adopt incrementally
+
+> Move a custom MCP server to McpFn or test it without changing its runtime.
+
+
+You can adopt `@mcpfn/testing`, `@mcpfn/client`, and `@mcpfn/cli` against an existing conforming stdio or Streamable HTTP server. `mcpfn test-target` and `mcpfn conformance` do not require a McpFn registry on the server side. This is the quickest path to semantic and wire-protocol regression evidence.
+
+To migrate the runtime, preserve the existing public tool names and descriptions while replacing hand-written protocol dispatch with a `McpFnRegistry` and an SDK-backed server. Declare object input schemas, accurate annotations, output schemas where structured results matter, and trusted context at the transport boundary. Run manifest diffs and scenarios before switching traffic.
+
+For protected HTTP, add a resource-server wrapper and keep the current identity and token authority. Hosted authorization composition does not move outbound provider OAuth or account-linking into McpFn. Declare host requirements for roots, sampling, elicitation, and MCP Apps before release.
+
+The [migration source guide](https://github.com/21nCo/super-functions/blob/dev/mcpfn/MIGRATION.md) gives the full sequence, including edge deployment and current Superfunctions migration boundaries. The [testing guide](/docs/testing) explains the evidence to retain at each step.
+
+---
+
+<!-- page:docs:reference/architecture.md path:/docs/reference/architecture -->
+# Architecture
+
+> Source-aligned McpFn architecture documentation.
+
+
+McpFn separates protocol correctness from product correctness and gives every
+client-side tool one session engine.
+
+```text
+MCP client
+   |
+official MCP SDK transports and protocol lifecycle
+   |
+OAuth resource-server wrapper -> validated authInfo
+   |
+McpFnServer -> trusted request context and client-mediated requests
+   |
+verified identity -> client profile -> visibility -> projected catalog
+   |                                      |
+   +------ trusted argument enrichment ---+
+   |
+McpFnRegistry -> tools/resources/prompts/tasks -> domain handlers
+   |                                      |
+explicit domain tool                 DatafnExecutor
+                                          |
+                             DataFn auth, namespace, policy,
+                             hooks, rate limits, idempotency
+
+application / CLI / test / inspector
+   |
+McpFnClient capability facades and lifecycle diagnostics
+   |
+McpFnTarget: stdio | Streamable HTTP | custom
+   |
+official MCP SDK client transports and OAuth orchestration
+```
+
+## Runtime ownership
+
+The official `@modelcontextprotocol/sdk` owns initialization, JSON-RPC dispatch, stdio framing, Streamable HTTP, capability negotiation, ping, and protocol errors. McpFn does not carry a second MCP protocol implementation.
+
+`McpFnServer` owns server identity, capability derivation, request-context
+construction, authenticated client-profile selection, effective catalog
+projection, trusted call enrichment, pagination, dispatch, error
+normalization, client-mediated roots/sampling/elicitation, notifications, and
+transport connection lifecycle. One `McpFnServer` instance connects to one
+transport. A host accepting multiple connections creates one server instance
+per connection while sharing the immutable registry.
+
+`McpFnRegistry` owns the application contract. It registers tools, exact resources, URI-template resources, prompts, completions, subscriptions, and task-capable tool handlers. Ajv validates tool and prompt inputs. URI templates are parsed once at registration. Task-capable tools require an explicit SDK `TaskStore`. MCP App links are validated across the full registry before a server or manifest is created.
+
+`McpFnServerDeclaration` is the side-effect-free application facade. It owns a
+registry, identity, transports, extensions, and client requirements; the same
+declaration creates manifests and per-connection server runtimes. Existing
+`McpFnServer` construction remains supported.
+
+## Client and session ownership
+
+`@mcpfn/client` owns target description, connection state, initialization,
+complete inventory pagination, tool/resource/prompt/task facades, explicit
+authorization callback completion, explicit reconnection, and bounded redacted
+diagnostics. It uses official SDK transports and protocol objects. It may retry
+connection establishment when configured; it never replays a caller's tool or
+other capability operation.
+
+The testing package wraps this production client for in-memory and external
+targets. The inspector records its diagnostics and invokes its facades. The CLI
+constructs its stdio or HTTP targets. This one-way dependency rule prevents
+test-only, inspector-only, or command-line protocol forks.
+
+An authenticated external target is URL plus credential provider, not a server
+implementation contract. The provider acquires bounded headers for one target
+open and may revoke and dispose them. The shared target refuses redirect
+following, omits headers from descriptors and reports, releases once across
+success or failure, and delegates all MCP lifecycle behavior to
+`@mcpfn/client`.
+
+Testing failures retain a machine-readable phase and classify the failing layer
+as McpFn preflight, authorization server, resource server, MCP initialization,
+scenario, or upstream conformance. Target-suite JSON and JUnit serializers apply redaction
+and aggregate bounds after serialization and include the testing package, report
+schema, and Node runtime versions.
+
+## Authorization ownership
+
+The official SDK owns RFC discovery, DCR, PKCE construction, token exchange,
+refresh, and transport challenge handling. `@mcpfn/auth` supplies secure state
+and integration policy:
+
+- exact redirect matching with only the RFC 8252 loopback-port exception;
+- callback-state correlation before token exchange;
+- memory-only credentials by default or application-supplied encrypted storage;
+- redacted, bounded diagnostics and read-only discovery probes;
+- protected-resource verification and conversion to trusted SDK `authInfo`;
+- hosted metadata, registration, and authorization-request compatibility while
+  login, consent, signing, token issuance, and durable identity stay with the
+  host application.
+
+Client ID Metadata Document fetching is HTTPS-only, size-bounded, and requires
+an application allow-policy before any external URL is fetched. Additional
+advertised grant types do not invalidate a client that supports the requested
+authorization-code flow.
+
+## Manifest compatibility
+
+`createManifest` emits code-unit-sorted tool, resource, template, and prompt inventories plus a SHA-256 hash over a canonically ordered JSON representation. Object-valued capabilities, client requirements, and extensions retain their supplied insertion order in the returned body; their order does not affect the hash. `diffManifests` classifies changes as:
+
+- `breaking`: removed tools/properties/support, narrowed input enums, widened output enums, tighter input constraints, relaxed output constraints, newly required inputs, required output additions, and any output property added to a previously closed schema;
+- `additive`: added tools, optional input properties, optional output properties accepted by a previously open schema, widened input enums, relaxed input constraints, and added protocol/transport support;
+- `behavioral`: titles, descriptions, or annotations that can alter model tool selection without changing JSON validity.
+
+The diff is deliberately structural. Semantic scenarios are still required for authorization decisions, version resolution, idempotency, side effects, error envelopes, and result meaning.
+
+## Authenticated client-profile compatibility
+
+Client profiles are an opt-in production runtime contract, not a host-profile
+alias or test shim. Profile selection receives only a verified identity
+resolved from trusted request context. Self-reported `initialize.clientInfo`
+and protocol capabilities are passed separately to projection and enrichment
+hooks as compatibility inputs and cannot select a trusted profile.
+
+The request lifecycle is fixed:
+
+1. construct trusted context and resolve verified identity;
+2. apply canonical `toolVisibility`;
+3. project and deterministically sort the effective catalog;
+4. require a called tool to be present in that same effective catalog;
+5. reject model-supplied server-owned fields and enrich them from trusted context;
+6. run canonical Ajv input validation, the handler, and output validation.
+
+Profile projection cannot invent or rename tools. A canonical required field
+removed from the model-visible schema must be declared server-owned and restored
+by the profile enricher. Missing trusted context, forged fields, and asymmetric
+contracts fail before handler execution. Without a matching profile, the
+canonical catalog and arguments are unchanged.
+
+Projection supports static references to schema locations in the input document
+or its embedded `$id` resources. Draft-07 fragment-only `$id` values and modern
+`$anchor` values name locations within their containing resource; they do not
+become JSON Pointer roots. Dynamic or recursive references and unresolved
+external resources are rejected before the catalog is advertised. Ownership
+projection also rejects conditional or whole-object constraints whose behavior
+cannot be preserved by removing declared root fields. This is a bounded
+structural compatibility contract, not a claim of arbitrary JSON Schema
+equivalence.
+Draft-07 `$ref` objects with siblings evaluated by the registry's Ajv, including
+`$id` resource scope, are excluded from projection: draft-07 clients ignore
+those siblings while the runtime validator applies them. The MCP-required root
+`type: "object"` is the only permitted assertion sibling; place other constraints
+on the referenced target. Later-draft keywords and unknown extensions ignored
+by the registry's draft-07 Ajv may remain beside `$ref`.
+
+Schema failures retain bounded structural diagnostics: instance path, schema
+path, validation keyword, rejected additional property, and missing required
+property. Values are excluded. Optional lifecycle evidence likewise contains
+only profile references, tool names, stage, result, codes, and structural
+issues; evidence-sink failures cannot alter request behavior.
+
+## DataFn integration
+
+`DatafnServer.executor` is an in-process boundary over the same query, mutation, transaction, and search handlers used by HTTP. It preserves authorization callbacks, namespace and actor derivation, schema permissions, plugins, rate limits, payload limits, and DataFn error envelopes.
+
+`@mcpfn/datafn` consumes that executor. It never accepts tenant, principal, namespace, or DataFn `clientId` values as tool arguments. Reads default on only after a resource is explicitly exposed; writes never default on.
+
+## Security invariants
+
+- Treat names, descriptions, annotations, schemas, and output shapes as versioned public contracts.
+- Build trusted context from the transport/authentication layer, not model-provided arguments.
+- Select client profiles only from verified identity; client names and capabilities are forgeable compatibility inputs.
+- Reject forged server-owned arguments before canonical validation and fail closed when enrichment lacks trusted context.
+- Keep `additionalProperties: false` unless unknown keys are an intentional contract.
+- Prefer explicit output schemas for stable consumers.
+- Mark destructive and read-only annotations accurately; they influence client UX but do not replace server authorization.
+- Do not expose DataFn fields that its resolved read/write capabilities reject.
+- Require OAuth resource indicators and scopes at the HTTP boundary; never infer identity from model arguments.
+- Treat MCP Apps as untrusted HTML and declare the narrowest CSP and permissions.
+- Never write authorization codes, states, verifiers, tokens, cookies, or URL
+  credentials to diagnostic, inspection, or test artifacts.
+
+---
+
+<!-- page:docs:reference/auth.md path:/docs/reference/auth -->
+# Authorization
+
+> Source-aligned McpFn authorization documentation.
+
+
+OAuth integration for MCP clients, resource servers, and hosted authorization
+systems. Protocol mechanics remain in the official MCP SDK.
+
+```ts
+import { createOAuthResourceServerHandler } from "@mcpfn/auth";
+
+const mcp = await server.createWebStandardHandler({ enableJsonResponse: true });
+const fetch = createOAuthResourceServerHandler(mcp, {
+  resource: "https://api.example.com/mcp",
+  authorizationServers: ["https://login.example.com"],
+  scopesSupported: ["mcp:read"],
+  requiredScopes: ["mcp:read"],
+  verifier,
+});
+```
+
+Enterprise-managed authorization helpers advertise the stable ID-JAG grant profile in authorization-server metadata and build the request metadata used by supporting clients.
+
+## Client provider
+
+`createMcpFnOAuthClientProvider()` implements the official
+`OAuthClientProvider`. It validates the requested redirect against registered
+metadata before opening a browser, correlates callback state, stores PKCE and
+tokens in memory unless an encrypted store is supplied, classifies token
+exchange/refresh/revocation diagnostics, and redacts credentials.
+
+```ts
+const provider = createMcpFnOAuthClientProvider({
+  redirectUrl: "http://127.0.0.1/callback",
+  clientMetadata: {
+    redirect_uris: ["http://127.0.0.1/callback"],
+    response_types: ["code"],
+    grant_types: ["authorization_code", "refresh_token"],
+  },
+  openAuthorization: (url) => browser.open(url),
+});
+```
+
+Pass it to `streamableHttpTarget`. Complete interactive authorization with
+`client.completeAuthorization({ code, state })`; a missing or mismatched state
+fails before token exchange. Dynamic loopback ports are accepted only when the
+registered URI omits the port. Other redirect URIs require exact equality.
+
+Native private-use redirects use RFC 8252's reverse-domain scheme policy by
+default, accepting values such as `com.example.app:/oauth/callback`. Hosts can
+set `redirectPolicy.privateUseSchemePolicy: "disabled"` to reject all native
+schemes, or opt into `"compatible"` for well-formed non-web schemes used by
+native clients and name those schemes explicitly, for example
+`compatiblePrivateUseSchemes: ["cursor"]` for
+`cursor://anysphere.cursor-mcp/oauth/callback`. Compatibility mode still rejects
+web, network, launcher, and dangerous schemes, non-loopback HTTP, credentials,
+fragments, wildcards, and malformed or opaque callbacks. Authorization always
+requires exact matching; dynamic-port matching remains restricted to loopback
+HTTP. Successful dynamic
+registrations expose compatibility scheme names and counts through the hosted
+authorization diagnostics hook so hosts can audit use without recording callback
+queries.
+
+The deprecated `allowPrivateUseSchemes` boolean remains accepted for 0.0.3
+callers: `false` maps to `disabled` and `true` maps to `rfc8252`. When neither
+field is provided, 0.0.4 defaults to `rfc8252`.
+
+## Hosted compatibility
+
+`createMcpAuthorizationCompatibilityHandler()` publishes authorization-server
+metadata and composes DCR, pre-registration, Client ID Metadata Documents,
+authorization-code + PKCE request validation, typed token exchange, serialized
+refresh rotation, and revocation endpoints. Metadata is derived from the token
+authority callbacks and declared client-auth methods, so unsupported grants or
+methods are never advertised. McpFn parses and validates endpoint requests;
+the host application's callbacks remain authoritative for login, consent,
+durable clients, code issuance, signing, token values, and revocation state.
+External Client ID Metadata Documents require an explicit URL allow-policy.
+McpFn disables automatic redirects, reapplies that policy at every redirect,
+streams responses through a byte cap, and applies a ten-second deadline by
+default. `maxBytes`, `timeoutMs`, and `maxRedirects` can tighten those bounds.
+
+The AuthFn adapter uses a structural provider contract. `@superfunctions/auth`
+is an optional peer: installing or importing AuthFn is not required for other
+client, resource-server, or hosted authorization features.
+
+`createMcpFnAuthProviderAdapter()` maps a generic `@superfunctions/auth`
+session into official MCP `authInfo`, keeping identity, tenant, scopes, and
+resources out of model-controlled tool arguments. Bearer credentials are
+required. A bearer-specific provider can implement
+`authenticateBearer(token, request)` directly; a standard AuthFn
+`authenticate(request)` provider is invoked with a credential-isolated request
+containing only that exact Bearer token. An AuthProvider's `authorize()` hook
+receives the normalized MCP resource URL before trusted context is created. `auth-diagnose` and
+`diagnoseMcpAuthorization()` perform read-only discovery without browser or
+credential actions.
+
+---
+
+<!-- page:docs:reference/cli.md path:/docs/reference/cli -->
+# CLI
+
+> Source-aligned McpFn cli documentation.
+
+
+The `mcpfn` CLI provides stable CI exit behavior:
+
+```sh
+mcpfn manifest ./mcp-server.ts --output mcpfn.manifest.json
+mcpfn validate mcpfn.manifest.json
+mcpfn diff main.manifest.json mcpfn.manifest.json --fail-on-behavioral
+mcpfn validate-profile client-profile.snapshot.json
+mcpfn diff-profiles client-profile.snapshot.json candidate-profile.snapshot.json --fail-on-behavioral
+mcpfn test-profiles ./mcp-profiles.ts --output mcpfn-profile-report.json
+mcpfn test ./mcp-server.ts ./mcp-scenarios.ts --output mcpfn-report.json
+mcpfn test-target https://api.example.com/mcp ./mcp-scenarios.ts --bearer-token-env MCP_TOKEN --output report.json --junit report.xml
+mcpfn inspect https://api.example.com/mcp --api-key-env MCP_API_KEY --api-key-header x-api-key --output inspection.json
+mcpfn inspect node --stdio --args '["./dist/server.js"]'
+mcpfn auth-diagnose https://api.example.com/mcp
+mcpfn conformance http://127.0.0.1:3000/mcp --suite active --bearer-token-env MCP_TOKEN --report conformance.json
+```
+
+- `0`: valid, compatible, or all scenarios passed;
+- `1`: breaking/selected behavioral change, test failure, or official conformance failure;
+- `2`: invalid configuration, source, or command usage.
+
+`inspect` and `test-target` use the production `@mcpfn/client` session engine;
+HTTP is the default and `--stdio` treats the target as an executable.
+`auth-diagnose` probes protected-resource and authorization-server discovery
+without opening a browser or exchanging credentials. Reports and inspector
+timelines are redacted, versioned, and aggregate-size bounded. Target open,
+authorization, and execution failures use exit `1`; malformed command or file
+configuration uses exit `2`. `mcpfn test --max-report-bytes` can tighten the
+default one-MiB scenario report cap.
+
+`validate-profile` validates the versioned effective-catalog snapshot shape.
+`diff-profiles` reports added, removed, and modified advertised tools; removals
+exit `1`, and `--fail-on-behavioral` also fails modified tool contracts.
+`test-profiles` loads a module that exports
+a default options object typed as `RunMcpFnClientProfileContractsOptions`, opens an independent production
+target/session for each generic or authenticated profile case, validates schema
+portability and reviewed snapshots, and executes explicit fixtures. Mutating
+fixtures require `--allow-side-effects`. The report never includes fixture
+argument values and can be bounded with `--max-report-bytes`.
+Fixtures targeting task-required tools are rejected after that profile's catalog
+discovery and before its fixtures execute; earlier profiles may already have run.
+Use task scenarios to test task-required tools.
+
+`conformance`, `inspect`, and `test-target` accept either
+`--bearer-token-env NAME` or `--api-key-env NAME`; API keys may override the
+header with `--api-key-header`. The named environment variable is read only at
+runtime, never copied into child-process arguments or artifacts, and is removed
+from the official runner's environment after the loopback proxy captures it.
+The options are mutually exclusive and empty variables are rejected as invalid
+configuration. `test-target` additionally accepts `--manifest`, `--junit`,
+`--visible-tools`, and `--max-report-bytes`; `conformance --report` writes a
+bounded redacted machine report and accepts the same report-size cap.
+
+The conformance command delegates to the pinned official
+`@modelcontextprotocol/conformance` package. It requires Node.js 22 or newer;
+the other CLI commands support Node.js 18.18 or newer. McpFn does not maintain
+a competing protocol test suite.
+
+The manifest source may be JSON, a default-exported `McpFnServer`, an async factory returning a server, or a `McpFnRegistry`. Registry sources require both `--name` and `--version`. The `test` command requires a server export because it exercises a real client/server connection.
+
+Scenario modules default-export either an array of `McpFnScenario` values or a
+version 1 `mcpfn.scenarios` artifact. See the runnable [server](https://github.com/21nCo/super-functions/blob/dev/mcpfn/examples/calculator-server.ts), [scenarios](https://github.com/21nCo/super-functions/blob/dev/mcpfn/examples/calculator-scenarios.ts), and committed [manifest](https://github.com/21nCo/super-functions/blob/dev/mcpfn/examples/calculator.manifest.json).
+
+---
+
+<!-- page:docs:reference/client.md path:/docs/reference/client -->
+# Client
+
+> Source-aligned McpFn client documentation.
+
+
+Production MCP client and headless session engine for Node.js 18.18 or newer.
+It delegates protocol lifecycle and transports to the official MCP SDK, while
+adding target descriptors, idempotent connection lifecycle, complete inventory
+pagination, typed capability facades, explicit reconnect/cancellation, and
+secret-redacted phase diagnostics.
+
+Pass `handlers.roots`, `handlers.sampling`, or `handlers.elicitation` to infer
+and advertise the corresponding client capabilities without raw SDK setup.
+`onEvent()` and the `events` option observe redacted logging, progress, task
+status, resource/list changes, subscriptions, and client-mediated requests.
+The lower-level `configure` hook remains available for extensions.
+
+```ts
+import { createMcpFnClient, streamableHttpTarget } from "@mcpfn/client";
+
+const client = createMcpFnClient({
+  target: streamableHttpTarget("https://api.example.com/mcp"),
+  diagnostics: (event) => audit.safe(event),
+});
+
+await client.connect();
+const tools = await client.tools.listAll();
+const boundedTools = await client.tools.listBounded(500);
+const result = await client.tools.call("orders_list", { limit: 20 });
+await client.close();
+```
+
+`listBounded()` variants retain at most the requested number of inventory
+entries while pagination continues, returning `droppedItems` and `complete`
+metadata without accumulating discarded pages in memory.
+
+`stdioTarget()` is Node-only. `streamableHttpTarget()` uses Web Standard
+requests through the official SDK. Authorization is supplied through an
+official `OAuthClientProvider`, including the McpFn provider from
+`@mcpfn/auth`. When an interactive flow is required, `connect()` reports
+`MCPFN_AUTHORIZATION_REQUIRED`; pass the callback code to
+`completeAuthorization({ code, state })` and the client validates callback
+correlation, completes the SDK exchange, and reconnects without replaying a
+domain operation.
+
+McpFn retries only connection establishment when explicitly configured. It
+never implicitly replays tool calls, writes, or other capability operations.
+
+---
+
+<!-- page:docs:reference/core.md path:/docs/reference/core -->
+# Core runtime
+
+> Source-aligned McpFn core runtime documentation.
+
+
+`defineMcpFnServer()` creates a side-effect-free declaration whose registry and
+manifest are shared by runtime, tests, and release tooling. Call
+`declaration.createServer()` once per transport connection. Existing
+`createMcpFnServer()` usage remains supported.
+
+Declare protocol capabilities on `defineMcpFnServer()`. Per-connection runtime
+options provide context, visibility, task storage, and transport behavior but
+cannot add capabilities, so `declaration.manifest()` and every runtime manifest
+remain byte-for-byte identical. When combining a supplied registry with inline
+definitions, the declaration clones the registry before adding them.
+
+`@mcpfn/core` is the shared MCP runtime for Superfunctions. It delegates wire protocol and transport behavior to the official Model Context Protocol SDK while providing the pieces product code needs to remain stable:
+
+- an explicit, validated tool, resource, template, and prompt registry;
+- authenticated, versioned client-profile catalog projection and trusted enrichment;
+- actionable, value-free JSON Schema diagnostics;
+- pagination, completions, subscriptions, and task-capable tools;
+- server-initiated roots, sampling, elicitation, logging, and list-change notifications;
+- MCP Apps resource and tool-link contracts;
+- consistent structured and text results;
+- deterministic, hashed manifests;
+- breaking, additive, and model-behavior compatibility classification;
+- stdio, Web Standard Streamable HTTP, and in-memory transport support through the official SDK.
+
+```ts
+import {
+  McpFnRegistry,
+  createMcpFnServer,
+  structuredResult,
+} from "@mcpfn/core";
+
+const registry = new McpFnRegistry()
+  .register({
+    name: "greet",
+    description: "Greet one person by name.",
+    inputSchema: {
+      type: "object",
+      properties: { name: { type: "string" } },
+      required: ["name"],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: "object",
+      properties: { greeting: { type: "string" } },
+      required: ["greeting"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    handler: async ({ name }) =>
+      structuredResult({ greeting: `Hello, ${String(name)}!` }),
+  });
+
+const server = createMcpFnServer({
+  info: { name: "example", version: "1.0.0" },
+  registry,
+  transports: ["stdio", "streamable-http"],
+});
+
+await server.serveStdio();
+```
+
+Tool definitions are public contracts. Do not derive tool names, descriptions, or exposed fields from storage schemas without an explicit exposure manifest.
+
+## Server context and errors
+
+Build trusted context once at the server boundary:
+
+```ts
+const server = createMcpFnServer({
+  info: { name: "example", version: "1.0.0" },
+  registry: new McpFnRegistry<{ workspaceId: string }>(),
+  context: async (extra) => ({
+    workspaceId: await authenticateRequest(extra.requestInfo),
+  }),
+});
+```
+
+For tenant- or actor-specific discovery, use `toolVisibility`. McpFn applies
+the hook to both `tools/list` and `tools/call`; a hidden call returns the same
+protocol `MethodNotFound` response as an unknown tool. The static manifest
+continues to describe the complete server contract.
+
+```ts
+const server = createMcpFnServer({
+  info: { name: "admin", version: "1.0.0" },
+  registry,
+  context: (extra) => resolvePrincipal(extra.authInfo),
+  toolVisibility: ({ tool, context }) =>
+    context.permissions.includes(String(tool._meta?.permission)),
+});
+```
+
+Do not accept workspace, tenant, actor, or credential identifiers as tool arguments. The context factory receives the official SDK request metadata and runs before every tool call.
+
+Invalid input returns `MCPFN_INVALID_ARGUMENTS`; invalid declared output returns
+`MCPFN_INVALID_OUTPUT`; other handler failures return `MCPFN_TOOL_ERROR`.
+Error objects that already expose a string `code` keep it. Schema issues retain
+`instancePath`, `schemaPath`, `keyword`, and safe keyword-specific names
+such as `rejectedProperty` and `missingProperty`; rejected values are never
+included. `handleInvalidArguments` is available for existing domain packages
+that must map schema failures into a stable legacy envelope.
+
+When a tool declares a success `outputSchema`, error details remain in its JSON text content and `structuredContent` is omitted so the official SDK does not validate an error envelope against the success schema. Tools without an output schema retain both structured and text error envelopes.
+
+One `McpFnServer` instance connects to one transport. Create a new instance per concurrent connection and share the registry.
+
+## Authenticated client profiles
+
+Use `clientProfiles` only when an authenticated client needs a projected
+catalog and server-owned required arguments. Profile matching receives a
+`McpFnVerifiedClientIdentity` produced from trusted context; reported client
+name/version and capabilities are available to hooks separately and cannot
+select the profile.
+
+```ts
+const server = createMcpFnServer({
+  info: { name: "example", version: "1.0.0" },
+  registry,
+  context: (extra) => authenticateRequest(extra.authInfo),
+  clientProfiles: {
+    resolveVerifiedIdentity: ({ context }) => ({
+      subject: context.authenticatedClientId,
+    }),
+    profiles: [{
+      id: "consumer/trusted",
+      version: "1",
+      matches: ({ subject }) => subject === "trusted-client-id",
+      serverOwnedArguments: { lookup: ["workspaceId"] },
+      projectCatalog: ({ tools }) => tools.map((tool) => {
+        if (tool.name !== "lookup") return tool;
+        const { workspaceId: _hidden, ...properties } =
+          tool.inputSchema.properties ?? {};
+        return {
+          ...tool,
+          inputSchema: {
+            ...tool.inputSchema,
+            properties,
+            required: tool.inputSchema.required?.filter(
+              (name) => name !== "workspaceId",
+            ),
+          },
+        };
+      }),
+      enrichArguments: ({ arguments: args, context }) => ({
+        ...args,
+        workspaceId: context.workspaceId,
+      }),
+    }],
+  },
+});
+```
+
+McpFn applies canonical visibility before projection, checks calls against the
+same effective catalog, rejects model-supplied server-owned fields, enriches
+from trusted context, and only then invokes canonical Ajv validation. Declared
+server-owned fields must be canonical required properties, must be absent from
+the projected schema, and must be supplied by the enricher. A profile cannot
+invent or duplicate tools or mutate model-owned arguments. No matching profile
+preserves canonical behavior.
+
+The optional `evidence` sink receives only bounded structural lifecycle
+events. It is observational: a sink failure cannot fail or change a request.
+
+## Resources, prompts, and client features
+
+Use `registerResource`, `registerResourceTemplate`, and `registerPrompt` on the same registry. Resource-template and prompt completers advertise the completions capability automatically. Resource subscription handlers advertise `resources.subscribe`. List calls use stable `mcpfn:<offset>` cursors and a configurable server page size.
+
+Task support is declared with `execution.taskSupport` and a `taskHandler`; a task-capable server must receive an official SDK `TaskStore`. `server.listRoots()`, `server.sample()`, and `server.elicit()` invoke matching client capabilities. Declare required client features in `clientRequirements` so manifests and host-profile tests can reject incompatible hosts before deployment.
+
+`createWebStandardHandler()` accepts the official SDK `HandleRequestOptions`, including validated `authInfo`. Use `@mcpfn/auth` to publish OAuth protected-resource metadata and produce that trusted value. In stateless mode, McpFn creates and disposes an isolated SDK server and transport for every request. Attach protocol instrumentation with `configureRequestServer`; it receives the live isolated server before transport connection and runs once per request, or once per session initialization attempt. Because configuration precedes SDK request validation, a rejected attempt can invoke the hook without retaining a session. Supply a cryptographically secure `sessionIdGenerator` when the server uses sampling, elicitation, or another server-to-client request that must be correlated across HTTP requests; session-enabled handlers retain their transport across the session.
+
+## Cloudflare Workers and edge runtimes
+
+`@mcpfn/core` is a self-contained bundle: the official MCP SDK and a single
+pinned Zod runtime are inlined into `dist`. Bundle it into a Cloudflare Worker
+next to your application's own root `zod` dependency without adding a bundler
+alias for `zod`/`zod/v4`, an import condition override, or any other
+application-local shim. Enable Cloudflare's `nodejs_compat` compatibility flag,
+which provides Node built-ins such as `node:crypto` used by the official MCP
+SDK, and serve MCP through `createWebStandardHandler()`. Schema validation uses
+Ajv draft-07 on Node and `@cfworker/json-schema` with the same dialect on
+Cloudflare Workers and other runtimes that forbid runtime code generation. See
+[ADR-0001](https://github.com/21nCo/super-functions/blob/dev/mcpfn/ADR-0001-COMPATIBILITY.md)
+for the compatibility policy.
+
+See the [architecture](https://github.com/21nCo/super-functions/blob/dev/mcpfn/ARCHITECTURE.md), [testing guide](https://github.com/21nCo/super-functions/blob/dev/mcpfn/TESTING.md), and runnable [calculator example](https://github.com/21nCo/super-functions/blob/dev/mcpfn/examples/calculator-server.ts).
+
+Profile hooks that consume initialization metadata require a sessionful HTTP
+handler (`sessionIdGenerator`). Stateless handlers accept only profiles explicitly
+marked `requiresReportedClient: false`; their hooks must depend solely on verified
+identity and request context. Model-owned property schemas retain their canonical
+types and constraints. Projection may hide server-owned required fields, but does
+not replace the canonical validator.
+
+Projected input schemas may use static references within the document or an
+embedded `$id` resource. Named draft-07 `$id` fragments and modern anchors are
+aliases in their containing resource, so `#` and `#/...` still address that
+resource's root. Dynamic, recursive, and unresolved external references fail
+closed during catalog validation. Server-owned fields may only be hidden where
+the root object contract can be compared without conditional or whole-object
+ownership-sensitive constraints.
+Draft-07 `$ref` siblings evaluated by the registry's Ajv, including `$id`
+resource scope, are rejected during catalog validation because draft-07 clients
+can ignore them while the runtime validator evaluates them.
+The MCP-required root `type: "object"` is permitted; place other assertions on
+the referenced target. Later-draft keywords and unknown extensions ignored by
+the registry's draft-07 Ajv may remain beside `$ref`.
+
+Structural diagnostics retain exact unknown property names and instance paths;
+consumer report sinks must apply an aggregate size cap (the testing suite defaults
+to one MiB) rather than silently shortening property names.
+
+Task profile evidence distinguishes the creation handler from result persistence.
+`handler` reports the creation callback's outcome; `task-result-storage: failed`
+reports the first observed persistence failure for that request, including delayed
+writes after creation returns. Retries do not repeat that failure event. It does
+not reverse handler success or claim a final task status. Output validation still
+runs for each attempted result before persistence.
+
+Lifecycle evidence retains only recognized framework error codes; application-defined codes become `MCPFN_TOOL_ERROR`. Protocol error responses preserve the original application code and details.
+
+---
+
+<!-- page:docs:reference/datafn.md path:/docs/reference/datafn -->
+# DataFn adapter
+
+> Source-aligned McpFn datafn adapter documentation.
+
+
+`@mcpfn/datafn` turns explicitly approved DataFn operations into stable MCP tools. It is deny-by-default:
+
+- no resource is exposed unless named in `expose`;
+- every read uses a fixed output projection;
+- filters and sort fields are allowlisted;
+- writes require explicit writable fields and a caller-supplied idempotency key;
+- principal and namespace context comes from the server, never tool arguments;
+- all calls execute through `DatafnExecutor`, preserving DataFn validation, permissions, hooks, authorization, namespace isolation, rate limits, and idempotency.
+
+```ts
+import { createMcpFnServer } from "@mcpfn/core";
+import { createDatafnMcpRegistry } from "@mcpfn/datafn";
+
+const registry = createDatafnMcpRegistry({
+  executor: datafnServer.executor,
+  context: (mcpContext) => ({
+    workspaceId: mcpContext.workspaceId,
+    actorId: mcpContext.actorId,
+  }),
+  clientId: (mcpContext) => `mcp:${mcpContext.credentialId}`,
+  expose: {
+    skills: {
+      fields: ["id", "slug", "name", "updatedAt"],
+      list: {
+        filterFields: ["slug", "name"],
+        sortFields: ["updatedAt", "id"],
+        maxLimit: 50,
+      },
+      get: true,
+    },
+  },
+});
+
+const server = createMcpFnServer({
+  info: { name: "skills-data", version: "1.0.0" },
+  registry,
+  context: async (extra) => authenticateMcpRequest(extra.requestInfo),
+  transports: ["stdio", "streamable-http"],
+});
+```
+
+This adapter is appropriate for bounded data operations. Domain workflows with additional authorization, auditing, asset grants, or version-resolution semantics should remain explicit McpFn tools.
+
+## Exposure reference
+
+- `fields` is the fixed list/get projection and must be non-empty, unique, and allowed by DataFn read policy.
+- `list` and `get` default to enabled after the resource itself is explicitly present in `expose`; pass `false` to disable either one.
+- `list.filterFields` defaults to `fields`; `sortFields` defaults to `id`; `defaultLimit` defaults to `50`; `maxLimit` defaults to `100`.
+- `create`, `update`, and `delete` default off. Create/update require a writable `fields` allowlist. All writes require `mutationId` and use the trusted `clientId` resolver.
+- Default names are `datafn_<resource>_<operation>`; `toolPrefix`, per-operation `name`, and descriptions can be overridden.
+
+Adapter construction fails before serving if a resource or field is unknown, unreadable, read-only, or not writable under the resolved DataFn capabilities.
+
+---
+
+<!-- page:docs:reference/index.md path:/docs/reference -->
+# Package reference
+
+> Source-aligned package documentation and implementation architecture.
+
+
+These pages incorporate the package documentation from the current `origin/dev` source. Use them for detailed API examples and edge cases after the guides.
+
+- [Core runtime](/docs/reference/core): declarations, registries, profiles, resources, tasks, apps, and error behavior.
+- [Client](/docs/reference/client): targets, lifecycle, inventories, events, and OAuth completion.
+- [Authorization](/docs/reference/auth): resource server, client provider, hosted authorization, and redirects.
+- [Testing API](/docs/reference/testing): test clients, profile contracts, remote suites, and auth fixtures.
+- [Inspector](/docs/reference/inspector): headless operations and sanitized scenario export.
+- [DataFn adapter](/docs/reference/datafn): allowlisted resource and field exposure.
+- [CLI](/docs/reference/cli): command usage and result behavior.
+- [Architecture](/docs/reference/architecture) and [testing and CI](/docs/reference/testing-and-ci): design boundaries and release evidence.
+
+The source of truth for a published package's exact exports is its versioned package artifact. These pages describe the code on `origin/dev` at the time this site was prepared.
+
+---
+
+<!-- page:docs:reference/inspector.md path:/docs/reference/inspector -->
+# Inspector
+
+> Source-aligned McpFn inspector documentation.
+
+
+`@mcpfn/inspector` is a headless MCP inspection engine. It connects through
+`@mcpfn/client`, inventories the negotiated server surface, records redacted
+lifecycle diagnostics, executes tools/resources/prompts, and exports sanitized
+regression scenarios. CLI and future graphical shells can share it without
+forking transport or authorization behavior.
+
+Its version 1 timeline also records logging, progress, task status, resource
+updates, list changes, and subscription events. Retention is bounded by event
+count and serialized bytes; snapshots expose dropped-event and completeness
+metadata instead of silently presenting a partial history as complete.
+Inventory surfaces are likewise bounded (500 retained entries per surface by
+default) and snapshots expose per-surface dropped counts plus
+`inventoryComplete`. Configure the bound with `maxInventoryEntries`.
+
+```ts
+import { streamableHttpTarget } from "@mcpfn/client";
+import { McpFnInspector } from "@mcpfn/inspector";
+
+const inspector = await McpFnInspector.create({
+  target: streamableHttpTarget("https://example.com/mcp"),
+}).connect();
+const snapshot = await inspector.snapshot();
+console.log(inspector.serializeSnapshot(snapshot, { space: 2 }));
+
+const operation = {
+  kind: "tools.call" as const,
+  name: "status",
+  arguments: {},
+};
+const result = await inspector.run(operation);
+const scenario = inspector.exportScenario("status remains healthy", operation, result);
+// `scenario` is a top-level @mcpfn/testing McpFnScenario accepted by
+// runScenarios(), loadScenarios(), and `mcpfn test`.
+
+await inspector.close();
+```
+
+Snapshots and exported scenarios are redacted. The inspector never persists
+OAuth credentials. Observed tool results are narrowed to the shared runner's
+stable `isError` and `structuredContent` expectations rather than serializing
+the full SDK response as an incompatible expectation object.
+
+---
+
+<!-- page:docs:reference/testing-and-ci.md path:/docs/reference/testing-and-ci -->
+# Testing and CI
+
+> Source-aligned McpFn testing and ci documentation.
+
+
+A regression-free MCP project needs six independent layers.
+
+Scenario arrays remain readable for compatibility, while new portable bundles
+use the version 1 `mcpfn.scenarios` artifact. Every scenario can declare a
+timeout, side-effect class, required variable names, or an explicit incomplete
+state. Reports and inspector timelines apply aggregate bounds and record
+truncation rather than silently dropping evidence. See `TEST_VECTORS.md` for
+the maintained compatibility matrix.
+
+| Layer | What it catches | McpFn surface |
+| --- | --- | --- |
+| Unit/domain | Handler logic, authorization, persistence, policy | Existing package tests |
+| Contract | Tools, resources, prompts, tasks, extensions, host requirements | Hashed manifest plus `mcpfn diff` |
+| Deterministic profile compatibility | Authenticated effective catalogs, schema portability, projection/enrichment symmetry, trusted fixtures, diagnostic fidelity | `runMcpFnClientProfileContracts` plus `mcpfn test-profiles` |
+| Semantic protocol | Real client/server calls and stable business envelopes | `@mcpfn/testing` scenarios |
+| Authentication | API keys, OAuth challenges, scopes, audience, expiry, revocation, PKCE, refresh, and client metadata | `@mcpfn/testing/auth` and `@mcpfn/testing/playwright` |
+| Protocol conformance | Initialization, JSON-RPC, transport, and MCP specification behavior | Official `@modelcontextprotocol/conformance` via `mcpfn conformance` |
+
+## Contract baseline
+
+Generate a candidate manifest from a module whose default export is a `McpFnServer`, an async factory returning one, a `McpFnRegistry`, or an existing manifest:
+
+```sh
+mcpfn manifest ./mcp-server.ts --output ./candidate.manifest.json
+mcpfn diff ./mcpfn.manifest.json ./candidate.manifest.json --fail-on-behavioral
+```
+
+For a registry export, pass both `--name` and `--version`. Exit code `1` means the diff found a breaking change, or a behavioral change when requested. Exit code `2` means the source or command was invalid.
+
+Review additive changes before replacing the committed baseline. A compatible diff means old inputs remain structurally accepted; it does not prove the new tool is authorized or semantically correct.
+
+## Deterministic client profiles
+
+Client-profile contracts exercise the catalog and calls through the production
+`@mcpfn/client` target/session engine. Configure at least one generic case and
+each authenticated profile that the consumer supports. Every case gets an
+independent target connection so one authentication, listing, call, or close
+failure does not abort later profiles.
+
+The suite hashes the complete effective `tools/list` response, records
+value-free per-tool hashes, validates input and output schemas using their
+declared draft-07, 2019-09, or 2020-12 dialect, and executes only explicit
+fixtures. Fixtures classified `idempotent` or `non-idempotent` remain
+incomplete unless `allowSideEffects` is explicitly enabled. Captured
+production-failure fixtures use the same call path and are never serialized
+with their argument values.
+
+```ts
+import {
+  createMcpFnClientProfileSnapshot,
+  runMcpFnClientProfileContracts,
+} from "@mcpfn/testing";
+
+const report = await runMcpFnClientProfileContracts({
+  profiles: [{
+    id: "consumer/trusted",
+    version: "1",
+    target: authenticatedTarget,
+    expectedSnapshot: reviewedSnapshot,
+    fixtures: [{
+      name: "minimal lookup",
+      tool: "lookup",
+      arguments: { query: "example" },
+      sideEffect: "read-only",
+      source: "minimal-valid",
+    }],
+  }],
+});
+```
+
+Snapshot changes are explicit review artifacts. `diffMcpFnClientProfileSnapshots`
+classifies added, removed, and modified advertised tools; removed tools are
+incompatible and modified tools can be made CI-failing with
+`mcpfn diff-profiles --fail-on-behavioral`. Portability warnings are
+policy-configurable, while invalid dialects and unresolved schemas always fail.
+
+## Semantic scenarios
+
+```ts
+import type { McpFnScenario } from "@mcpfn/testing";
+
+export default [
+  {
+    name: "resolves the published version",
+    tool: "skill_get",
+    arguments: { slug: "work-linear-issue" },
+    expect: {
+      isError: false,
+      structuredContent: {
+        skill: { slug: "work-linear-issue", version: 3 },
+      },
+      structuredTextParity: true,
+    },
+  },
+] satisfies McpFnScenario[];
+```
+
+`mcpfn test` connects the production McpFn client and server with the official
+in-memory transport. `mcpfn test-target` runs the same scenarios against stdio
+or Streamable HTTP. Both check or exercise the real capability boundary.
+`McpFnTestClient` also exposes resources, prompts, completions, subscriptions,
+and experimental task APIs; its `configure` hook installs client-side roots,
+sampling, elicitation, and notification handlers before initialization.
+
+`structuredTextParity` is appropriate only when the text block is JSON representing the same object as `structuredContent`. Human-readable text such as MemoryFn's search summary should be asserted separately.
+
+`McpFnInspector.exportScenario()` uses this same contract. Its sanitized output
+can be passed directly to `runScenarios()` or saved in a scenario module for
+`mcpfn test`; the CLI validates tool, resource, prompt, inventory, and
+initialization shapes before execution.
+
+Remote targets may be third-party servers built only with the official SDK.
+Configure the endpoint explicitly and inject a bearer token or API key through
+a named environment variable; never place a credential in the URL, scenario,
+manifest, or command line. The external fixture in this repository proves that
+an SDK-only Streamable HTTP server can initialize, list tools, execute an
+authenticated tool call, emit bounded JSON/JUnit artifacts, and fail
+unauthenticated requests without importing `@mcpfn/core` or
+`McpFnRegistry`.
+
+For tools with a declared success `outputSchema`, assert error codes by parsing the JSON text block: McpFn intentionally omits structured error content so it cannot be rejected against the success schema.
+
+## Authentication
+
+`assertAuthRegressionSuite()` runs the transport-level API-key or OAuth matrix against a caller-provided protected operation. The thin provider adapter maps credential issuance and revocation to the application's existing test support. OAuth runs can enable scope, expiry, resource binding, and revocation capabilities; resource-binding coverage rejects both missing and incorrect resource indicators, and every rejected OAuth request is checked for a protected-resource `WWW-Authenticate` challenge.
+
+The `@mcpfn/testing/playwright` subpath exports a Playwright `test` extended with `mcpfnOAuth`. Its local server supports authorization-code + PKCE, consent approval and denial, callback capture, one-time codes, refresh rotation, revocation, discovery, client metadata variants, and access-token verification. The extension-grant variants verify that an authorization server accepts a compatible authorization-code client even when its metadata advertises additional JWT-bearer, device-code, or custom grants. Actual unsupported token requests must still return `unsupported_grant_type`.
+
+Keep application-specific UI selectors, real-provider secrets, workspace authorization, and least-privilege assertions in the application repository. McpFn owns the reusable protocol and credential-lifecycle mechanics.
+
+## Proof levels
+
+| Level | What it proves | What it does not prove |
+| --- | --- | --- |
+| Workspace | Source, focused tests, profile contracts, and builds pass in this checkout. | Packed-package resolution or any live environment. |
+| Installed | Packed tarballs install and execute in a clean consumer. | Registry publication or live-provider behavior. |
+| Published | A named registry version resolves and executes. | A particular deployment or host authorization. |
+| Controlled live | A controlled endpoint completes protocol and OAuth checks. | Production deployment, production data, or end-user host acceptance. |
+| Deployed | The named production revision and configuration are running. | External host acceptance unless that host is tested separately. |
+
+Each release claim must name its highest verified level. Evidence at one level never implies a later level.
+
+## Official conformance
+
+Start a real Streamable HTTP endpoint, then run:
+
+```sh
+mcpfn conformance http://127.0.0.1:3000/mcp --suite active
+```
+
+For a protected endpoint, add `--bearer-token-env NAME` or
+`--api-key-env NAME --api-key-header HEADER`, and add `--report PATH` for a
+bounded redacted machine artifact. McpFn delegates to the pinned official
+`@modelcontextprotocol/conformance@0.1.16` package and returns its exit code.
+The runner requires Node.js 22 or newer. Use an expected-failures file only for
+reviewed, time-bounded exceptions; do not turn new failures into a silent
+baseline update.
+
+The conformance pin is intentional. Upgrade it in a dedicated change that
+records the old and new versions, runs the full release gate, and reviews every
+new failure against the MCP specification. Roll back the pin if the new runner
+cannot produce a deterministic workspace result; do not preserve a passing
+build by weakening scenarios or expanding expected failures without review.
+
+## Superfunctions release gate
+
+```sh
+npm run gate:mcpfn-release
+```
+
+The gate typechecks, tests, and builds all seven McpFn packages; runs real stdio
+and Streamable HTTP round trips, OAuth boundary tests, a real Chromium PKCE
+flow, and the official active conformance suite; bundles and boots a Cloudflare
+Worker under `workerd` with `nodejs_compat` that imports `@mcpfn/core` and
+`@mcpfn/auth` next to a root `zod`, proves the codegen-free schema engine was
+selected, and drives a real authenticated MCP client through `initialize`,
+`tools/list`, and valid and invalid `tools/call` requests
+(`cloudflare:worker-startup`); runs the complete DataFn server suite; exercises
+the real CLI; checks package contents; and installs packed artifacts into a
+temporary external consumer for ESM and CommonJS imports. LangFn, MemoryFn, and
+ProbeFn are not covered by this release gate.
+
+CI routes a change set made entirely of the McpFn runtime, its DataFn adapter, README, and release metadata through this dedicated Node.js 22 gate. Root package manifests, lockfiles, CI workflows, and the CI planner always run the repository's generic JavaScript job as well as the McpFn gate. This conservative boundary prevents unrelated global changes from gaining coverage merely by being included with McpFn work.
+
+When publishing manually, release the required `@superfunctions/oauth-*`
+versions, then `@mcpfn/core`, `@mcpfn/client`, and `@mcpfn/auth`, followed by
+`@mcpfn/testing`, `@mcpfn/inspector`, `@mcpfn/datafn`, and `@mcpfn/cli`. The
+repository's package release workflow publishes one selected package at a time;
+it does not infer dependency order.
+
+After publishing `@mcpfn/testing` or `@mcpfn/cli`, the package workflow installs
+the exact published version into a clean temporary consumer using the configured
+npm registry and runs the SDK-only external server fixture. Registry propagation
+is retried within a fixed window. This post-publication check is the published
+proof level; pull requests and the local gate remain workspace/packed proof.
+
+---
+
+<!-- page:docs:reference/testing.md path:/docs/reference/testing -->
+# Testing API
+
+> Source-aligned McpFn testing api documentation.
+
+
+`@mcpfn/testing` provides deterministic MCP regression testing over the official SDK's in-memory transport and against arbitrary stdio or Streamable HTTP MCP servers. It tests the protocol boundary rather than calling handlers directly; the server under test does not need to use McpFn.
+
+It includes:
+
+- the production McpFn client exposed as a fixture;
+- exact manifest assertions across tools, resources, templates, and prompts;
+- deterministic generic and authenticated client-profile catalogs, fixtures, and snapshots;
+- resource, prompt, completion, subscription, and task client methods;
+- reusable API-key and OAuth resource-server regression matrices;
+- an in-memory authorization-code, PKCE, refresh, and revocation server;
+- extensible Client ID Metadata fixtures that include unrelated grant types;
+- optional Playwright fixtures for real redirect and consent-page coverage;
+- generic tools-only, full-protocol, and MCP Apps host profiles;
+- named ChatGPT- and Claude-shaped OAuth metadata fixtures;
+- one suite for in-memory, custom, stdio, and Streamable HTTP targets;
+- structured/text response parity checks;
+- version 1 declarative scenarios for capabilities, tasks, events, and auth phases;
+- per-scenario timeout/cancellation, side-effect and incomplete metadata;
+- bounded, redacted scenario and target-suite reports;
+- JSON and JUnit artifacts with package/runtime provenance and failure layers;
+- orchestration of the official `@modelcontextprotocol/conformance` runner.
+
+Official conformance validates protocol behavior. McpFn scenarios validate product behavior. Production MCP servers should run both. For a protected local endpoint, use `runAuthenticatedOfficialConformance({ url, credential })`; it requires a literal loopback upstream, binds a temporary loopback-only streaming proxy, pins every request to the configured upstream path, injects bounded credential headers without printing them, and closes the proxy and attempts credential revocation/disposal after the pinned official runner exits. Credential cleanup retries up to three times. If all attempts fail, it throws `McpFnConformanceCleanupError`; retain that error and call `await error.retryCleanup()` after the provider recovers. The error contains no raw credential fields, and a successful retry releases the retained lease.
+
+Deterministic client-profile compatibility is a third, separate gate. It proves
+the effective authenticated catalog, schema portability, trusted enrichment,
+canonical validation, handler reachability, and structured error fidelity. It
+does not replace protocol conformance or product scenarios and does not emulate
+a proprietary hosted model.
+
+Use `runMcpFnTargetSuite({ target, scenarios, manifest })` when a test should
+exercise a subprocess or deployed target. It constructs the same session used
+by applications, the inspector, and CLI. Scenario execution is serial and
+capability calls are never retried implicitly.
+
+```ts
+import {
+  McpFnTestClient,
+  assertManifestContract,
+  runScenarios,
+} from "@mcpfn/testing";
+
+const server = createServer();
+const client = await McpFnTestClient.connect(server);
+try {
+  await assertManifestContract(client, server.manifest());
+  const results = await runScenarios(client, [
+    {
+      name: "returns one skill",
+      tool: "skill_get",
+      arguments: { slug: "work-linear-issue" },
+      expect: { isError: false, structuredTextParity: true },
+    },
+  ]);
+  if (results.some((result) => result.status === "failed")) {
+    throw new Error(JSON.stringify(results));
+  }
+} finally {
+  await client.close();
+}
+```
+
+## Client-profile contract suite
+
+`runMcpFnClientProfileContracts()` accepts one case per generic or configured
+profile. Each case supplies a production `McpFnTarget`, client initialization
+metadata/capabilities, an optional reviewed snapshot, and explicit fixtures.
+This supports in-memory, stdio, authenticated Streamable HTTP, and custom
+targets without a test-only server adapter.
+
+```ts
+import {
+  createMcpFnClientProfileSnapshot,
+  runMcpFnClientProfileContracts,
+} from "@mcpfn/testing";
+
+const report = await runMcpFnClientProfileContracts({
+  profiles: [{
+    id: "generic",
+    version: "canonical",
+    target: genericTarget,
+  }, {
+    id: "consumer/trusted",
+    version: "1",
+    target: authenticatedTarget,
+    clientInfo: { name: "consumer", version: "2.0.0" },
+    capabilities: { roots: { listChanged: true } },
+    expectedSnapshot: reviewedSnapshot,
+    fixtures: [{
+      name: "captured unknown property",
+      tool: "lookup",
+      arguments: capturedAndRedactedArguments,
+      sideEffect: "read-only",
+      source: "captured-failure",
+      expect: {
+        isError: true,
+        errorCode: "MCPFN_INVALID_ARGUMENTS",
+        lifecycleStage: "input-validation",
+        validationIssue: {
+          keyword: "additionalProperties",
+          rejectedProperty: "unexpectedField",
+        },
+      },
+    }],
+  }],
+});
+```
+
+Fixtures are executed through `McpFnTestClient.connectTarget()`, the same
+production session engine used by applications, inspector, and CLI. Fixture
+argument values never appear in reports. `read-only` fixtures run by default;
+`idempotent` and `non-idempotent` fixtures require explicit suite or CLI
+authorization.
+
+The profile fixture runner supports ordinary tool calls. After reading the
+effective catalog for each profile, it rejects a configuration containing a
+fixture for a task-required tool before executing that profile's fixtures,
+then closes its target. Earlier profiles may already have run. Use the task
+scenario APIs for task execution and terminal-result assertions.
+
+`createMcpFnClientProfileSnapshot()`,
+`validateMcpFnClientProfileSnapshot()`, and
+`diffMcpFnClientProfileSnapshots()` create reviewable effective-catalog
+baselines. A diff rejects contradictory aggregate and per-tool hashes in
+either direction; it does not recompute an aggregate from the stored tool hashes.
+Portability validation compiles each schema using its declared
+draft-07, 2019-09, or 2020-12 dialect and recursively reports reviewed
+compatibility-sensitive keywords. Invalid schemas, dialects, and references
+are errors; valid compatibility reductions are warnings unless policy promotes
+them to errors.
+
+## External authenticated targets
+
+`authenticatedHttpTarget()` accepts a URL plus either a static credential or an
+application-owned provider. The provider is responsible for acquiring the
+credential and may revoke and dispose it. McpFn applies the headers only to the
+fixed target, refuses redirect following, excludes credentials from target
+descriptors and reports, and releases the credential exactly once even when
+initialization fails.
+
+```ts
+import { writeFile } from "node:fs/promises";
+import {
+  authenticatedHttpTarget,
+  createMcpFnTargetSuiteJUnit,
+  disposeMcpFnTargetSuiteReport,
+  runMcpFnTargetSuite,
+  serializeMcpFnTargetSuiteReport,
+} from "@mcpfn/testing";
+
+const report = await runMcpFnTargetSuite({
+  target: authenticatedHttpTarget("https://mcp.example.com/mcp", {
+    credential: {
+      kind: "api-key",
+      headers: { "x-api-key": process.env.MCP_API_KEY! },
+    },
+  }),
+  scenarios,
+});
+
+try {
+  await writeFile(
+    "mcpfn-report.json",
+    serializeMcpFnTargetSuiteReport(report, { space: 2, trailingNewline: true }),
+  );
+  await writeFile("mcpfn-report.xml", createMcpFnTargetSuiteJUnit(report));
+} finally {
+  disposeMcpFnTargetSuiteReport(report);
+}
+```
+
+Generated target-suite reports retain target-aware proof for deferred JSON and
+JUnit composition. Use the serializers above for every required encoding, then
+dispose the report in `finally`. A finalizer is only a fallback. Copies retain a
+proof-required marker and fail closed because copied values cannot retain the
+live credential validator. Every exact encoding must also fit the report's
+original `maxReportBytes` cap; pretty JSON that exceeds it is rejected.
+
+Use a provider instead of a static credential for short-lived OAuth access
+tokens. Report failures identify `mcpfn-preflight`, `authorization-server`,
+`resource-server`, `mcp-initialization`, `scenario`, or
+`upstream-conformance` without serializing secret material.
+
+Scenarios run serially so stateful workflows and idempotency checks remain
+deterministic. Legacy arrays are readable; portable artifacts use
+`{ formatVersion: 1, kind: "mcpfn.scenarios", status, scenarios }`. A runner
+rejects an artifact whose top-level status is `incomplete`, even when its
+individual scenarios are complete, so incomplete evidence cannot produce a
+passing report. A runner
+timeout supplies an abort signal and also bounds adapters that do not cooperate
+with cancellation. `assertStructuredTextParity` requires a JSON text block; do
+not use it for intentionally human-readable text.
+
+`checkHostCompatibility(manifest, profile)` returns `compatible`, `degraded`, or `incompatible`. Unsupported optional server surfaces are degraded; missing protocol overlap or required client-mediated features are incompatible. The built-in profiles are stable capability fixtures, not claims about the current behavior of named commercial hosts. Supply a custom profile for a captured host version.
+
+## Authentication regression suite
+
+Import the transport-level testkit from `@mcpfn/testing/auth`. The application adapter owns only credential issuance and revocation; McpFn owns the common rejection and lifecycle matrix.
+
+```ts
+import {
+  apiKeyCredential,
+  assertAuthRegressionSuite,
+  createFetchAuthTarget,
+} from "@mcpfn/testing/auth";
+
+await assertAuthRegressionSuite({
+  kind: "api-key",
+  target: createFetchAuthTarget({ url: "http://127.0.0.1:8787/mcp" }),
+  invalidCredentialHeaders: { "x-api-key": "invalid" },
+  provider: {
+    capabilities: { revocation: true },
+    async issue() {
+      const key = await skillplaneTestAuth.issueApiKey();
+      return apiKeyCredential(key.value, { headerName: "x-api-key", scheme: "" });
+    },
+    async revoke(credential) {
+      await skillplaneTestAuth.revokeApiKey(credential);
+    },
+  },
+});
+```
+
+OAuth adapters can additionally enable scope, expiry, resource-binding, and revocation scenarios. Rejected OAuth requests must include a Bearer challenge with `resource_metadata`; API keys intentionally do not inherit that OAuth-specific requirement.
+
+`createOAuthClientMetadataVariants()` returns authorization-code clients with basic, JWT-bearer-extension, device-code-extension, and generic-extension metadata. The compatibility assertion requires authorization-code support while deliberately accepting unrelated grants, which catches closed-world Client ID Metadata validation regressions.
+
+`createHostedAuthorizationFixtures()` keeps registration metadata independent
+from the generated authorization request. The ChatGPT-shaped pre-registration,
+Claude-shaped Client ID Metadata Document, and dynamic-registration cases cover
+authorization code with S256 PKCE and refresh. Advertised JWT bearer, device,
+and custom grants remain compatible when authorization code is supported, while
+an actual unsupported token request must return `unsupported_grant_type`.
+Allowed fixtures exchange the code returned by the authorization server. Set
+the optional token-request `code` only to exercise an independently authored
+negative case such as an expired or unknown authorization code.
+
+## Playwright fixture
+
+Install `@playwright/test` and import the ready-to-extend fixture from `@mcpfn/testing/playwright`:
+
+```ts
+import { expect, test } from "@mcpfn/testing/playwright";
+
+test("accepts extensible OAuth client metadata", async ({ page, mcpfnOAuth }) => {
+  const result = await mcpfnOAuth.authorize(page, {
+    authorizationEndpoint: skillplane.authorizationEndpoint,
+    clientId: mcpfnOAuth.server.clientMetadataUrl("jwtBearerExtension"),
+    redirectUri: mcpfnOAuth.server.callbackUrl,
+    scopes: ["mcp:read"],
+    beforeDecision: async (currentPage) => signInIfRequired(currentPage),
+  });
+  expect(result.callback.parameters.code).toBeTruthy();
+});
+```
+
+The fixture starts a local mock server that publishes authorization-server discovery, consent UI, callback capture, client metadata variants, PKCE token exchange, refresh rotation, revocation, and an SDK-compatible access-token verifier. Extend the exported `test` with Skillplane's signed-in page or database fixtures; do not copy the OAuth machinery into the application.
+
+See [Testing and CI](https://github.com/21nCo/super-functions/blob/dev/mcpfn/TESTING.md) for the complete layered strategy.
+
+Client-profile lifecycle evidence uses `invalid-arguments-handler` when a registered invalid-argument fallback runs. This stage does not imply that the tool handler ran; normal tool execution uses `handler`. Projected schemas select their declared JSON Schema dialect, defaulting to draft 7 to match canonical registry validation. Named `$anchor` definitions are portability-sensitive for older clients.
+
+Projected catalogs support local JSON Pointer and named-anchor references. Dynamic and recursive reference forms fail closed until dialect-correct dynamic-scope comparison is supported. A recovered invalid-input call emits failed input-validation evidence followed by the invalid-argument fallback stage.
+
+When credentials come from environment variables, pass their names in `sensitiveEnvironmentVariables` to authenticated official conformance. Those names are removed case-insensitively before the upstream runner is spawned. The library cannot infer the source of arbitrary provider-returned headers.
+
+Authenticated official conformance always captures stdout and stderr, including when
+`stdio: "inherit"` is requested, so credential values can be removed before output
+is returned. `outputDir` is rejected before credentials are acquired because the
+upstream runner writes raw artifacts directly. Persist the returned redacted result
+if an authenticated run needs an artifact. Credential cleanup may be retried after
+failure; successful revoke/dispose steps are not repeated.
+
+Authenticated targets provide credential-aware redaction to client diagnostic/event listeners and inspector snapshots and exports while their credentials are active. Export raw operation results before closing the client; application-facing protocol return values retain their original contents. Recorded inspector events are scrubbed before storage.
+
+When authenticated conformance cleanup exhausts retries, `McpFnConformanceCleanupError.result` retains the original runner stdout, stderr, exit code (or 1 for an otherwise successful run), and failure. A separate `cleanupFailure` records cleanup exhaustion; the overall result is failed. The CLI persists this redacted result before exiting nonzero.
+
+
+### Retrying failed suite cleanup
+
+If final session cleanup fails, `runMcpFnTargetSuite` rejects with
+`McpFnTargetSuiteCleanupError`. Its `report` contains the bounded, redacted failed
+snapshot. Retain the error and call `await error.retryCleanup()` to retry the
+owned session cleanup. Concurrent retries share one operation; successful cleanup
+releases ownership and later retries do nothing. A failed retry rejects with the
+same safe error. Retrying does not rewrite the historical report as passing.
+The CLI makes one cleanup retry and emits the failed report with exit code 1.
+
+Direct `McpFnTestClient.connectTarget()` callers receive
+`McpFnTestClientCleanupError` when connection failure is followed by cleanup
+failure, and every connected client's public `close()` returns the same owner
+contract if final cleanup fails. Retain that error and call
+`await error.retryCleanup()`; the failed session remains owned until a retry
+succeeds. Failed-connect cleanup preserves the original connection failure as
+its `cause`; post-connect cleanup preserves the close failure.
+
+---
+
+<!-- page:docs:server.md path:/docs/server -->
+# Build a server
+
+> Registry, context, profiles, resources, prompts, tasks, and transports.
+
+
+## Keep the public contract explicit
+
+Register tool names, descriptions, input and output JSON Schemas, and annotations deliberately. McpFn validates arguments and structured results and produces a deterministic manifest. Storage tables and internal methods should not become public tools by default. `defineMcpFnServer()` is a side-effect-free declaration; `createMcpFnServer()` remains supported for applications that construct the runtime directly.
+
+Use `registerResource`, `registerResourceTemplate`, and `registerPrompt` on the registry for non-tool capabilities. Completers advertise completion support. Resource subscriptions, tasks, roots, sampling, elicitation, logging, and list-change notifications are available through the runtime. Declare required client features in `clientRequirements` so host compatibility can be checked before release.
+
+## Derive trusted context at the transport boundary
+
+The `context` factory receives SDK request metadata. Resolve the authenticated principal, tenant, scopes, and credential there. Do not accept those values from tool arguments.
+
+```ts
+const server = declaration.createServer({
+  context: (extra) => resolvePrincipal(extra.authInfo),
+  toolVisibility: ({ tool, context }) =>
+    context.permissions.includes(String(tool._meta?.permission)),
+});
+```
+
+`toolVisibility` affects both listing and calls. A hidden call returns the same protocol `MethodNotFound` result as an unknown tool; the static manifest still describes the complete server contract. See the [core reference](/docs/reference/core) for error envelopes and context details.
+
+## Match authenticated client profiles carefully
+
+`clientProfiles` can project an effective tool catalog for a verified client and inject server-owned required arguments from trusted context. Profile matching uses `McpFnVerifiedClientIdentity`, not a client-reported name or version. McpFn applies canonical visibility, checks the effective catalog, rejects client-supplied server-owned fields, enriches from the server context, then validates against the canonical schema. The [core reference](/docs/reference/core) includes the complete profile example and schema restrictions.
+
+## Serve over the right transport
+
+Use `serveStdio()` for process-launched clients. Use `createWebStandardHandler()` for Streamable HTTP and wrap protected endpoints with [OAuth resource-server handling](/docs/authorization). A server instance connects to one transport; share the declaration or registry and create an instance per connection. Sessionful HTTP needs a cryptographically secure `sessionIdGenerator` for correlated server-to-client requests such as sampling and elicitation.
+
+McpFn Apps helpers validate `ui://` resource MIME type, CSP metadata, visibility, and tool links. The consuming host owns iframe rendering. The [architecture reference](/docs/reference/architecture) explains each boundary.
+
+---
+
+<!-- page:docs:testing.md path:/docs/testing -->
+# Test and evolve a server
+
+> Manifests, client profiles, semantic scenarios, authentication, and protocol conformance.
+
+
+Use independent checks for domain behavior, public contract changes, effective authenticated catalogs, protocol semantics, authorization, and wire conformance. A green manifest diff does not prove a handler's business behavior; a scenario does not prove a new host supports every client requirement.
+
+## Compare the public contract
+
+Generate and review a candidate manifest from a server module or registry, then compare it with the committed baseline:
+
+```sh
+mcpfn manifest ./src/mcp/server.ts --output ./candidate.manifest.json
+mcpfn validate ./candidate.manifest.json
+mcpfn diff ./mcpfn.manifest.json ./candidate.manifest.json --fail-on-behavioral
+```
+
+The manifest records tools, resources, templates, prompts, tasks, extensions, client requirements, protocol version, and transports. Exit code 1 denotes a rejected compatibility diff; exit code 2 denotes an invalid source or command. Review additive changes before updating a baseline.
+
+## Run semantic scenarios
+
+`@mcpfn/testing` uses the production client over the official SDK's in-memory or real target transports. A scenario can assert tool results, resource or prompt behavior, or an inventory shape. Run local modules with `mcpfn test` or arbitrary stdio/HTTP MCP servers with `mcpfn test-target`:
+
+```sh
+mcpfn test ./src/mcp/server.ts ./tests/mcp.scenarios.ts --output ./mcpfn-report.json
+mcpfn test-target https://api.example.com/mcp ./tests/mcp.scenarios.ts \
+  --bearer-token-env MCP_TOKEN --junit ./mcpfn-report.xml
+```
+
+Keep credentials in named environment variables. Reports and inspector exports are redacted and size-bounded. Client-profile snapshots exercise effective catalogs and trusted argument enrichment through the production session; use `mcpfn validate-profile`, `diff-profiles`, and `test-profiles` when profiles are configured.
+
+## Check authorization and conformance
+
+`@mcpfn/testing/auth` covers missing, invalid, valid, insufficient-scope, expired, wrong-resource, and revoked credentials. `@mcpfn/testing/playwright` exercises a real browser authorization-code and PKCE flow, callback capture, refresh, and revocation. Applications supply their own product authorization assertions.
+
+For a running Streamable HTTP endpoint, use the pinned official runner:
+
+```sh
+mcpfn conformance http://127.0.0.1:3000/mcp --suite active
+```
+
+Conformance requires Node.js 22 or newer. The [full testing and CI reference](/docs/reference/testing-and-ci) covers profile fixtures, scenario format, proof levels, and the repository release gate.
+
+---
