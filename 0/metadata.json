@@ -1,0 +1,61 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EK8KEZYVCEY78V8WRQFE3J",
+  "session_id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-26T10:13:09.846292Z",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "langfn/docs/README.md",
+    "langfn/docs/docsfn.config.ts",
+    "langfn/docs/package.json",
+    "langfn/docs/scripts/generate-llms.mjs",
+    "langfn/docs/src/lib/server/docs-site-source.ts",
+    "langfn/docs/src/routes/+page.svelte",
+    "langfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "langfn/docs/src/routes/docs/llms-full.txt/+server.ts",
+    "langfn/docs/src/routes/docs/llms.txt/+server.ts",
+    "langfn/docs/static/llms-full.txt",
+    "langfn/docs/static/llms.txt",
+    "langfn/docs/tsconfig.json",
+    "langfn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/docs-site/LandingPage.svelte",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/runtime.test.ts",
+    "scripts/docs-site/runtime.ts",
+    "scripts/docs-site/vite.ts",
+    "scripts/docs-site/vitest.config.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-astra",
+  "turn_id": "a5c285393c97",
+  "checkpoint_transcript_start": 2568,
+  "transcript_lines_at_start": 2568,
+  "compact_transcript_start": 335,
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-26T10:13:09.473071Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 1716,
+    "human_modified": 361,
+    "human_removed": 0,
+    "total_committed": 1716,
+    "total_lines_changed": 2077,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
