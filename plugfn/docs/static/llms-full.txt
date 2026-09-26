@@ -50,6 +50,52 @@ The TypeScript router exposes provider discovery, connection list/get/status, st
 
 See the [source setup guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/getting-started.md) for route inventory and the [OAuth incident runbook](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/oauth-incident.md) for operations.
 
+## Connect from the browser
+
+After mounting the server at `/api/plugfn`, use the typed client with the host's authenticated cookie session:
+
+```ts
+import { createPlugFnClient, PlugFnClientError } from "@plugfn/client";
+
+const client = createPlugFnClient({ baseUrl: "/api/plugfn", credentials: "include" });
+const providers = await client.listProviders();
+console.log(providers.map((provider) => provider.name));
+try {
+  const { authUrl } = await client.startConnection({
+    provider: "github",
+    redirectUri: `${location.origin}/api/plugfn/callback/github`,
+    scopes: ["read:user"],
+    connectionName: "My GitHub account",
+    redirect: "none",
+  });
+  location.assign(authUrl);
+} catch (error) {
+  if (error instanceof PlugFnClientError) console.error(error.code, error.status);
+  else throw error;
+}
+```
+
+Choose scopes for the actions your application actually needs; `read:user` above is a minimal connection example and does not authorize private repository operations. The callback URI must match the provider application configuration exactly. Let PlugFn handle the callback and OAuth state; do not manually exchange tokens in the browser.
+
+## Inspect and disconnect
+
+On a subsequent page load, recreate `client` as above:
+
+```ts
+const connections = await client.listConnections({ provider: "github" });
+for (const connection of connections) {
+  console.log(connection.id, connection.name, connection.status);
+}
+const selected = connections[0];
+if (selected) {
+  console.log(await client.getConnectionStatus(selected.id));
+  // Run only in response to the user's disconnect action:
+  await client.disconnect({ provider: "github", connectionId: selected.id });
+}
+```
+
+Treat `expired`, `revoked`, and `error` status as unavailable until the connection is recovered or reauthorized. `PlugFnClientError` exposes `code`, `status`, `retryable`, and `details`. An ownership mismatch is an authorization failure, not a signal to retry under a different caller-supplied tenant. Connection summaries do not expose provider credentials.
+
 ---
 
 <!-- page:docs:getting-started.md path:/docs/getting-started -->
@@ -82,6 +128,57 @@ const router = createPlugFnRouter(plug);
 ```
 
 Supply a durable database adapter, a real authentication provider, and secrets from the deployment environment. Mount the router through a `@superfunctions/http` framework adapter under an application path such as `/api/plugfn`. The [source setup guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/getting-started.md) has Express, Fastify, and Hono examples plus the full route list.
+
+## Application-owned setup and mounting
+
+Keep construction in a server-only module. The following factory accepts the host's durable database and verified session resolver explicitly:
+
+```ts
+import express from "express";
+import type { Adapter } from "@superfunctions/db";
+import { toExpress } from "@superfunctions/http-express";
+import { plugFn, createPlugFnRouter, type PlugFnPrincipal } from "plugfn";
+import { githubProvider } from "@plugfn/providers";
+
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing ${name}`);
+  return value;
+}
+export async function createIntegrationApp(
+  database: Adapter,
+  authenticate: (request: Request) => Promise<PlugFnPrincipal | null>,
+) {
+  const plug = plugFn({
+    database,
+    auth: { authenticate },
+    baseUrl: required("APP_URL"),
+    encryptionKey: required("PLUGFN_ENCRYPTION_KEY"),
+    workflows: {
+      runtime: { actions: { recordPush: async (context) => ({ event: context.trigger.event }) } },
+    },
+    integrations: {
+      github: {
+        clientId: required("GITHUB_CLIENT_ID"),
+        clientSecret: required("GITHUB_CLIENT_SECRET"),
+      },
+    },
+  });
+  plug.providers.register(githubProvider);
+  await plug.ready;
+  const app = express();
+  // Keep original bytes for webhook signature verification.
+  app.use(express.raw({ type: "*/*", limit: "2mb" }));
+  app.use("/api/plugfn", toExpress(createPlugFnRouter(plug)));
+  return { app, plug };
+}
+```
+
+Install `express @superfunctions/http-express` as well as the packages above. Call this factory from your host bootstrap, then `app.listen(...)` or mount the returned app in your existing Express server. Provision PlugFn's `getSchema()` tables with the host migration system first. `plug.ready` rejects if persisted workflow triggers cannot be restored; do not report the service ready before it resolves.
+
+`PLUGFN_ENCRYPTION_KEY` is a 32-byte key encoded as 64 hexadecimal characters. Generate and store it once in the deployment's secret manager; changing it without migrating encrypted connection state makes stored credentials unreadable. Set `APP_URL` to the application's public URL. Register the exact callback URI, such as `https://app.example.com/api/plugfn/callback/github`, with the provider and supply that URI when starting the connection.
+
+The host resolver returns an authenticated `userId` and, where applicable, `tenantId`. Returning null denies protected routes. Browser-supplied owner fields do not replace that identity. Continue with [Connections and OAuth](/docs/connections-and-oauth) and [Actions, workflows, and sync](/docs/workflows-and-sync).
 
 ---
 
@@ -423,5 +520,72 @@ Webhook receipts and delivery attempts are administrative surfaces. Operate with
 PlugFn coordinates provider actions, workflows, sync jobs, checkpoints, events, and metrics. The TypeScript router includes workflow discovery, sync-job create/list/get/cancel, checkpoint upsert, event list, and metrics routes. Keep workflow execution server-side and authorize it against the derived principal.
 
 The release contract describes DB-backed idempotent workflow resume. Process-local delay timers are not considered production-safe; delay steps fail closed until a durable scheduler exists. Read the [release gates](/docs/reference/release-gates) and [provider throttle runbook](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/provider-throttle-incident.md).
+
+## Execute an action on the server
+
+Use the `plug` instance from [setup](/docs/getting-started). Derive the actor from the host's verified session and select a connection owned by that actor:
+
+```ts
+import type { PlugFn, PlugFnActor } from "plugfn";
+
+export async function listRepositories(plug: PlugFn, actor: PlugFnActor, connectionId: string) {
+  return plug.action("github", "repos.list", {
+    userId: actor.userId,
+    actor,
+    connectionId,
+    params: { visibility: "all", startPage: 1, maxPages: 1 },
+    cache: false,
+  });
+}
+```
+
+The result is the action's data (an array for `repos.list`), not an HTTP envelope. A missing provider/action, invalid parameters, unavailable connection, or provider failure rejects the promise. Use the provider's parameter schema and connection scopes; do not forward arbitrary browser action names or credentials into this helper. Retry only operations whose semantics are safe to repeat.
+
+## Queue and inspect a sync job
+
+Register `gmailProvider` from `@plugfn/providers` on the server, configure its OAuth application, and connect Gmail with the scopes required by `mail.sync`. The browser client can then request an authorized sync job; the server worker performs it:
+
+```ts
+import { createPlugFnClient } from "@plugfn/client";
+const client = createPlugFnClient({ baseUrl: "/api/plugfn", credentials: "include" });
+const connections = await client.listConnections({ provider: "gmail" });
+const connection = connections.find((item) => item.status === "active");
+if (!connection) throw new Error("Connect Gmail first");
+const job = await client.createSyncJob({
+  provider: "gmail", connectionId: connection.id, resource: "messages", mode: "full",
+});
+console.log(job.id, job.status);
+const current = await client.getSyncJob(job.id);
+console.log(current.fetchedCount, current.persistedCount, current.error);
+// Optional user cancellation: await client.cancelSyncJob(job.id);
+```
+
+Resource identifiers are provider-defined; confirm them in that provider's sync definition. A queued job does not run itself. In an authorized server worker, call `await plug.sync.processQueued({ limit: 10 })` on the application's schedule. Register a persistence sink before expecting fetched records to reach your application's database, and inspect `persistedCount` separately from `fetchedCount`. The browser client manages jobs and checkpoints; it does not execute arbitrary provider actions.
+
+## Persisted workflows
+
+The high-level facade exposes listing, enable/disable/delete, statistics, and trigger rehydration for stored workflows. It does not expose a `plug.workflows.create()` or browser workflow execution method. Hosts can author stored definitions through `AdapterWorkflowStorage`, register serializable action names through `workflows.runtime`, and activate them with `plug.workflows.enable(id)`.
+
+```ts
+import { AdapterWorkflowStorage, WorkflowStatus, type PlugFn, type PlugFnActor } from "plugfn";
+import type { Adapter } from "@superfunctions/db";
+
+export async function createWorkflow(database: Adapter, plug: PlugFn, actor: PlugFnActor) {
+  const storage = new AdapterWorkflowStorage(database);
+  const workflow = await storage.create({
+    userId: actor.userId, tenantId: actor.tenantId,
+    name: "Handle a push",
+    status: WorkflowStatus.Disabled,
+    definition: {
+      trigger: { provider: "github", event: "push" },
+      steps: [{ type: "action", id: "record-push", action: "recordPush" }],
+    },
+  });
+  await plug.workflows.enable(workflow.id);
+  return workflow.id;
+}
+```
+
+The setup factory registers `recordPush` to return the trigger event name; the workflow engine records that result. Replace it with your authorized application operation when needed. Keep implementations in trusted server code and references in the stored definition. The host must authorize workflow authoring; direct storage access is not an HTTP authorization boundary. Trigger activation also requires the provider's verified webhook setup. Test duplicate delivery and restart behavior before production adoption. Delay steps currently fail closed without durable scheduling.
 
 ---
