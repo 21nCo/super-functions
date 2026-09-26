@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EK3CW5AH7MTT6N6X3NTK1Z",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "clifn/docs/README.md",
+    "clifn/docs/docsfn.config.ts",
+    "clifn/docs/package.json",
+    "clifn/docs/scripts/generate-llms.mjs",
+    "clifn/docs/src/lib/server/docs-site-source.ts",
+    "clifn/docs/src/routes/+page.svelte",
+    "clifn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "clifn/docs/src/routes/docs/llms-full.txt/+server.ts",
+    "clifn/docs/src/routes/docs/llms.txt/+server.ts",
+    "clifn/docs/static/llms-full.txt",
+    "clifn/docs/static/llms.txt",
+    "clifn/docs/tsconfig.json",
+    "clifn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/docs-site/LandingPage.svelte",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/runtime.test.ts",
+    "scripts/docs-site/runtime.ts",
+    "scripts/docs-site/vite.ts",
+    "scripts/docs-site/vitest.config.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1822,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 358528,
+    "output_tokens": 490,
+    "api_call_count": 2
+  }
+}
