@@ -10,8 +10,8 @@ Express ships Node's classic `IncomingMessage` / `ServerResponse` instead of a F
 ## Install
 
 ```bash
-npm install express
-npm install @filefn/server @superfunctions/storage @superfunctions/db
+npm install express @superfunctions/http-express
+npm install @filefn/server @superfunctions/storage-local @superfunctions/db
 ```
 
 ## Server
@@ -20,8 +20,8 @@ npm install @filefn/server @superfunctions/storage @superfunctions/db
 import express from "express";
 import { createFileFn } from "@filefn/server";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import { createLocalStorageAdapter } from "@superfunctions/storage";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
+import { toExpress } from "@superfunctions/http-express";
 
 const fileFn = createFileFn({
   db: memoryAdapter({ debug: false }),
@@ -39,42 +39,8 @@ const fileFn = createFileFn({
 
 const app = express();
 
-app.use("/filefn", async (req: IncomingMessage, res: ServerResponse) => {
-  const url = `http://${req.headers.host ?? "localhost"}${req.url ?? "/"}`;
-  const headers = new Headers();
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (Array.isArray(value)) {
-      for (const v of value) headers.append(key, v);
-    } else if (typeof value === "string") {
-      headers.set(key, value);
-    }
-  }
-
-  const body =
-    req.method === "GET" || req.method === "HEAD"
-      ? undefined
-      : (req as unknown as ReadableStream<Uint8Array>);
-
-  const fetchRequest = new Request(url, {
-    method: req.method,
-    headers,
-    body,
-    duplex: "half",
-  } as any);
-
-  const response = await fileFn.router.handle(fetchRequest);
-  if (!response) {
-    res.statusCode = 404;
-    res.end();
-    return;
-  }
-
-  res.statusCode = response.status;
-  response.headers.forEach((value, key) => res.setHeader(key, value));
-
-  const buffer = Buffer.from(await response.arrayBuffer());
-  res.end(buffer);
-});
+// Raw parsing preserves chunk bytes; keep this limit above the configured chunk size.
+app.use("/filefn", express.raw({ type: "*/*", limit: "10mb" }), toExpress(fileFn.router));
 
 app.listen(3001);
 ```

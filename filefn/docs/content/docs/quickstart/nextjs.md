@@ -10,7 +10,7 @@ Next.js exposes the Web `Request` API in App Router route handlers, so filefn sl
 ## Install
 
 ```bash
-npm install @filefn/server @superfunctions/storage @superfunctions/db
+npm install @filefn/server @superfunctions/storage-local @superfunctions/db
 ```
 
 ## Kernel singleton
@@ -21,7 +21,7 @@ npm install @filefn/server @superfunctions/storage @superfunctions/db
 import "server-only";
 import { createFileFn } from "@filefn/server";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import { createLocalStorageAdapter } from "@superfunctions/storage";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
 export const fileFn = createFileFn({
   db: memoryAdapter({ debug: false }),

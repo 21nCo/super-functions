@@ -12,12 +12,13 @@ import { compress } from "hono/compress";
 import { logger } from "hono/logger";
 import { createFileFn, createNucleusPolicies } from "@filefn/server";
 import { createAuthFn } from "@authfn/server";
-import { createPostgresAdapter } from "@superfunctions/db-postgres";
-import { createS3Storage } from "@superfunctions/storage";
+import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { createS3Storage } from "@superfunctions/storage-s3";
 import { Pool } from "pg";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const db = createPostgresAdapter({ pool });
+const db = drizzleAdapter({ db: drizzle(pool), dialect: "postgres" });
 const storage = createS3Storage({
   region: process.env.AWS_REGION!,
   bucket: process.env.S3_BUCKET!,

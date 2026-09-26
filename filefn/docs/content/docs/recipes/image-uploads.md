@@ -46,12 +46,9 @@ const thumbnails = createThumbnailProcessor({
 });
 
 const stripExif = createImageTransformProcessor({
-  pipeline: [
-    { kind: "auto-orient" },                  // honour EXIF orientation
-    { kind: "strip-metadata" },               // delete EXIF / IPTC / XMP
-    { kind: "format", format: "jpeg", quality: 85 },
-  ],
-  outputName: "normalised",
+  operations: [{ operation: "resize", options: { width: 2048, fit: "inside", withoutEnlargement: true }, suffix: "normalised" }],
+  outputFormat: "jpeg",
+  outputQuality: 85,
 });
 
 const fileFn = createFileFn({

@@ -41,11 +41,9 @@ const flowFn = createFlowFnProvider({
 
 const video = createVideoProcessor({
   provider: createCommandVideoProvider({ ffmpegPath: "ffmpeg" }),
-  poster: { time: 1.0, width: 1024 },
-  transcode: [
-    { resolution: "720p", codec: "h264", bitrate: "2M" },
-    { resolution: "480p", codec: "h264", bitrate: "1M" },
-  ],
+  posterOptions: { timestamp: 1.0, width: 1024 },
+  transcode: true,
+  transcodeOptions: { resolution: "720p", codec: "h264", bitrate: "2M" },
 });
 
 const fileFn = createFileFn({

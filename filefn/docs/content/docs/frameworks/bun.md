@@ -9,14 +9,15 @@ Bun's `Bun.serve(...)` already speaks `Request` / `Response`. filefn drops in:
 
 ```ts
 import { createFileFn, createNucleusPolicies } from "@filefn/server";
-import { createSQLiteAdapter } from "@superfunctions/db-sqlite";
-import { createLocalStorage } from "@superfunctions/storage";
+import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { createLocalStorage } from "@superfunctions/storage-local";
 import { Database } from "bun:sqlite";
 
 const sqlite = new Database("filefn.db");
 sqlite.run("PRAGMA journal_mode = WAL");
 
-const db = createSQLiteAdapter({ db: sqlite });
+const db = drizzleAdapter({ db: drizzle(sqlite), dialect: "sqlite" });
 const storage = createLocalStorage({ rootDir: "./.filefn-storage" });
 
 const fileFn = createFileFn({

@@ -6,19 +6,19 @@
 
 - [Welcome to filefn](https://filefn.superfunctions.dev/docs): Self-hosted, framework-agnostic file uploads, storage, and processing for TypeScript, Python, and Swift. Resumable uploads, signed URLs, share links, OPFS offline, and a built-in processing pipeline — opt in to what you need.
 - [Adapters](https://filefn.superfunctions.dev/docs/adapters): filefn talks to the outside world through three adapter interfaces — storage, db, and processors. Each one is a small, well-defined contract you can swap.
-- [DB adapters](https://filefn.superfunctions.dev/docs/adapters/db): The Adapter contract — what every database backend must implement, and which schemas filefn touches.
-- [Drizzle DB adapter](https://filefn.superfunctions.dev/docs/adapters/db-drizzle): createDrizzleAdapter — the Drizzle-ORM-backed adapter for Postgres, SQLite, and MySQL.
-- [Memory DB adapter](https://filefn.superfunctions.dev/docs/adapters/db-memory): createMemoryAdapter — an in-process, in-RAM adapter for tests, CI, and ephemeral demos.
-- [Postgres DB adapter](https://filefn.superfunctions.dev/docs/adapters/db-postgres): createPostgresAdapter — direct pg-backed adapter for production filefn deployments.
-- [SQLite DB adapter](https://filefn.superfunctions.dev/docs/adapters/db-sqlite): createSQLiteAdapter — better-sqlite3 / bun:sqlite for single-instance filefn deployments.
-- [Processors](https://filefn.superfunctions.dev/docs/adapters/processors): The bundled processor catalog from @filefn/processing — thumbnails, PDF previews, OCR, image transforms, video, audio, compression.
+- [DB adapters](https://filefn.superfunctions.dev/docs/adapters/db): Configure the shared database adapter and provision FileFn tables.
+- [Drizzle DB adapter](https://filefn.superfunctions.dev/docs/adapters/db-drizzle): Use the shared Drizzle adapter with PostgreSQL, MySQL, or SQLite.
+- [In-memory DB adapter](https://filefn.superfunctions.dev/docs/adapters/db-memory): Disposable database state for local examples and tests.
+- [PostgreSQL adapter](https://filefn.superfunctions.dev/docs/adapters/db-postgres): Connect FileFn to PostgreSQL through Drizzle and pg.
+- [SQLite adapter](https://filefn.superfunctions.dev/docs/adapters/db-sqlite): Connect FileFn to SQLite through Drizzle.
+- [Processors](https://filefn.superfunctions.dev/docs/adapters/processors): Configure thumbnail, PDF, compression, OCR, image, video, and audio processing.
 - [Storage adapters](https://filefn.superfunctions.dev/docs/adapters/storage): The StorageAdapter contract — what every backend must implement, and how the kernel uses it.
-- [Azure Blob adapter](https://filefn.superfunctions.dev/docs/adapters/storage-azure): createAzureStorage — production-grade storage on Azure Blob with SAS URLs and block blob multipart.
-- [GCS adapter](https://filefn.superfunctions.dev/docs/adapters/storage-gcs): createGCSStorage — production-grade storage on Google Cloud Storage with signed URLs, multipart upload via XML API, and ADC support.
+- [Azure Blob adapter](https://filefn.superfunctions.dev/docs/adapters/storage-azure): createAzureStorageAdapter — production-grade storage on Azure Blob with SAS URLs and block blob multipart.
+- [GCS adapter](https://filefn.superfunctions.dev/docs/adapters/storage-gcs): createGCSStorageAdapter — production-grade storage on Google Cloud Storage with signed URLs, proxy uploads, and ADC support.
 - [Local FS adapter](https://filefn.superfunctions.dev/docs/adapters/storage-local): createLocalStorage — disk-backed storage for development, demos, and single-instance deployments.
 - [MinIO adapter](https://filefn.superfunctions.dev/docs/adapters/storage-minio): createS3Storage configured for self-hosted MinIO — S3-compatible storage on your own hardware.
 - [Cloudflare R2 adapter](https://filefn.superfunctions.dev/docs/adapters/storage-r2): createS3Storage configured for Cloudflare R2 — egress-free production storage with full S3 multipart compatibility.
-- [S3 adapter](https://filefn.superfunctions.dev/docs/adapters/storage-s3): createS3Storage — production-grade storage on AWS S3 with signed-URL multipart, optional CDN fronting, and SSE.
+- [S3 adapter](https://filefn.superfunctions.dev/docs/adapters/storage-s3): createS3Storage — production-grade storage on AWS S3 with signed URLs and multipart uploads.
 - [Administration](https://filefn.superfunctions.dev/docs/admin): Bind FileFn's scoped Super Console capability to an authorized principal.
 - [AI Resources](https://filefn.superfunctions.dev/docs/ai-resources): Use filefn from your AI coding assistant — llms.txt, MCP server, Skills, and editor configurations.
 - [Claude](https://filefn.superfunctions.dev/docs/ai-resources/claude): Wire filefn into Claude Desktop and Claude Code — MCP server, CLAUDE.md, and recommended hints.
@@ -65,7 +65,7 @@
 - [Versions](https://filefn.superfunctions.dev/docs/features/versions): Every successful filefn upload becomes a new fileVersions row — list, target, download, and roll back.
 - [Frameworks](https://filefn.superfunctions.dev/docs/frameworks): Production wiring for filefn behind every major web framework — Hono, Express, Bun, SvelteKit, Next.js, FastAPI, Flask.
 - [Bun](https://filefn.superfunctions.dev/docs/frameworks/bun): Native Bun.serve integration — fastest start-up, native multipart streaming, and zero-cold-start production deployments.
-- [Express](https://filefn.superfunctions.dev/docs/frameworks/express): Production-grade Express integration for filefn — Web Request bridging, body streaming for proxy uploads, CSRF, and rate limiting.
+- [Express](https://filefn.superfunctions.dev/docs/frameworks/express): Mount FileFn with the shared Express adapter and preserve upload bytes.
 - [FastAPI](https://filefn.superfunctions.dev/docs/frameworks/fastapi): Production-grade FastAPI integration — Starlette request bridging, async session resolvers, and reverse-proxy guidance.
 - [Flask](https://filefn.superfunctions.dev/docs/frameworks/flask): Production-grade Flask integration — WSGI request bridging, async filefn calls via run_async, and reverse-proxy guidance.
 - [Hono](https://filefn.superfunctions.dev/docs/frameworks/hono): Production-grade Hono integration for filefn — CORS, CSRF for proxy uploads, rate limiting, observability, and graceful 404 fallthrough.
@@ -82,7 +82,7 @@
 - [SvelteKit Quickstart](https://filefn.superfunctions.dev/docs/quickstart/sveltekit): Mount filefn on SvelteKit with a +server.ts catch-all under /filefn.
 - [Swift Quickstart](https://filefn.superfunctions.dev/docs/quickstart/swift): Use FileFnClient on iOS and macOS via Swift Package Manager — foreground and background uploads, HEIC preprocessing, and SwiftUI helpers.
 - [Recipes](https://filefn.superfunctions.dev/docs/recipes): Production-tested filefn patterns — opinionated, end-to-end, copy-and-adjust.
-- [CDN integration](https://filefn.superfunctions.dev/docs/recipes/cdn-integration): Serve filefn-managed bytes through CloudFront, Cloud CDN, or Cloudflare without breaking signed URLs or auth.
+- [CDN integration](https://filefn.superfunctions.dev/docs/recipes/cdn-integration): Separate storage authorization from public asset delivery.
 - [Custom processor](https://filefn.superfunctions.dev/docs/recipes/custom-processor): Author a processor end-to-end — image watermarking, sentiment scoring, transcoding to a custom format — and ship it as an artifact.
 - [Document uploads](https://filefn.superfunctions.dev/docs/recipes/document-uploads): PDF / DOCX / plain text uploads with first-page previews, OCR text extraction, and download URLs.
 - [HEIC conversion](https://filefn.superfunctions.dev/docs/recipes/heic-conversion): Handle iPhone HEIC photos correctly in browsers, native iOS, and on the server — without any of them seeing HEIC.

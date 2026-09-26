@@ -10,7 +10,7 @@ filefn runs on Bun without modification. `Bun.serve`'s `fetch` handler is a Fetc
 ## Install
 
 ```bash
-bun add @filefn/server @superfunctions/storage @superfunctions/db
+bun add @filefn/server @superfunctions/storage-local @superfunctions/db
 ```
 
 ## Server
@@ -18,7 +18,7 @@ bun add @filefn/server @superfunctions/storage @superfunctions/db
 ```ts
 import { createFileFn } from "@filefn/server";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import { createLocalStorageAdapter } from "@superfunctions/storage";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
 const fileFn = createFileFn({
   db: memoryAdapter({ debug: false }),

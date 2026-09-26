@@ -12,9 +12,10 @@ filefn works with both the App Router and Pages Router. The recommended setup is
 ```ts
 // src/lib/server/filefn.ts
 import { createFileFn, createNucleusPolicies } from "@filefn/server";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
 export const fileFn = createFileFn({
-  /* db, storage, auth, ... */
+  storage: createLocalStorageAdapter({ rootDir: "./.filefn-storage" }),
   policies: createNucleusPolicies(),
 });
 ```

@@ -68,24 +68,5 @@ If you'd rather keep HEIC originals and transcode on the server, opt out of prep
 
 ```ts
 const transform = createImageTransformProcessor({
-  pipeline: [
-    { kind: "auto-orient" },
-    { kind: "format", format: "jpeg", quality: 85 },
-  ],
-  outputName: "normalised",
-});
-
-const fileFn = createFileFn({
-  db, storage,
-  processing: {
-    enabled: true,
-    processors: [transform],
-  },
-});
-```
-
-The processor reads HEIC via `sharp` (which uses libheif under the hood). Make sure your runtime image has libheif installed.
-
-## See also
-
-- [Features › HEIC](../features/heic) — full reference.
+  operations: [{ operation: "resize", options: { width: 2048, fit: "inside" }, suffix: "preview" }],
+  outputFormat: "jpeg",

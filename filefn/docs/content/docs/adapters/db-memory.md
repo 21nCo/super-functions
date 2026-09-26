@@ -1,35 +1,13 @@
 ---
-title: Memory DB adapter
-description: createMemoryAdapter — an in-process, in-RAM adapter for tests, CI, and ephemeral demos.
+title: In-memory DB adapter
+description: Disposable database state for local examples and tests.
 ---
 
-# Memory DB adapter
+# In-memory database
 
 ```ts
-import { createMemoryAdapter } from "@superfunctions/db-memory";
-
-const db = createMemoryAdapter();
+import { memoryAdapter } from "@superfunctions/db/adapters/memory";
+const db = memoryAdapter();
 ```
 
-## What it stores
-
-Everything in RAM. No persistence between processes.
-
-## When to use it
-
-- Unit tests / integration tests.
-- CI pipelines.
-- Local demos where you don't want to spin up Postgres.
-- Documentation snippets.
-
-## When not to use it
-
-- Production. Anything restart-recoverable needs persistence.
-
-## Notes
-
-The memory adapter implements `transaction(...)` as a synchronous no-op (everything in memory is atomic anyway). It supports the full `Adapter` surface used by filefn.
-
-## See also
-
-- [Examples › Full demo](../examples/full-demo) — uses the memory adapter.
+Pass this adapter to `createFileFn({ db, storage, ... })`. State lasts only as long as the adapter instance. Recreating it or restarting the process loses file metadata, upload sessions, grants, and shares even if the storage adapter still contains bytes. Use a persistent SQL database for durable deployments. See [Drizzle](./db-drizzle).

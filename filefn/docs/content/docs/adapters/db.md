@@ -1,67 +1,29 @@
 ---
 title: DB adapters
-description: The Adapter contract — what every database backend must implement, and which schemas filefn touches.
+description: Configure the shared database adapter and provision FileFn tables.
 ---
 
 # DB adapters
 
-`@superfunctions/db` defines `Adapter` — the same one used by `authfn`, `botfn`, and the rest of the ecosystem. filefn's tables live alongside whatever else is using the same database.
-
-## Tables filefn touches
-
-| Table | Purpose |
-| --- | --- |
-| `filefn_upload_sessions` | Active multipart sessions. |
-| `filefn_upload_parts` | One row per recorded part. |
-| `filefn_files` | Logical files. |
-| `filefn_file_versions` | Concrete versions (storage key, checksum, mime, size). |
-| `filefn_file_artifacts` | Processor outputs. |
-| `filefn_file_permissions` | Per-grant capability rows. |
-| `filefn_file_shares` | Share-link rows. |
-
-Prefix is configurable via `namespace` (default `filefn`).
-
-## Migration
+FileFn accepts `Adapter` from `@superfunctions/db`. Use `memoryAdapter` for disposable local state or `drizzleAdapter` for PostgreSQL, MySQL, or SQLite.
 
 ```ts
-import { applySchemaToAdapter } from "@superfunctions/db";
-
-const { schemas } = fileFn.getSchema();
-await applySchemaToAdapter(db, schemas);
+import { memoryAdapter } from "@superfunctions/db/adapters/memory";
+const db = memoryAdapter();
 ```
 
-`applySchemaToAdapter` is idempotent — safe to run on every boot. For production, run it once via your migration tool.
+The published entrypoints are `@superfunctions/db/adapters/memory` and `@superfunctions/db/adapters/drizzle`. There are no separate `@superfunctions/db-postgres`, `db-sqlite`, or `db-drizzle` packages in this source tree.
 
-## Bundled adapters
-
-| Package | Adapter |
-| --- | --- |
-| `@superfunctions/db-memory` | `createMemoryAdapter()` |
-| `@superfunctions/db-drizzle` | `createDrizzleAdapter({ db, dialect })` |
-| `@superfunctions/db-postgres` | `createPostgresAdapter({ pool })` (via `pg`) |
-| `@superfunctions/db-sqlite` | `createSQLiteAdapter({ db })` (via `better-sqlite3`) |
-| `@superfunctions/db-mysql` | `createMySQLAdapter({ pool })` (via `mysql2`) |
-
-See the per-adapter pages for setup details.
-
-## Authoring a custom adapter
-
-The `Adapter` interface:
+## Schema and migrations
 
 ```ts
-interface Adapter {
-  findOne<T>(table: string, where: WhereInput): Promise<T | null>;
-  findMany<T>(table: string, query?: { where?: WhereInput; orderBy?: OrderBy; limit?: number; offset?: number }): Promise<T[]>;
-  create<T>(table: string, data: T): Promise<T>;
-  update<T>(table: string, data: Partial<T>, where: WhereInput): Promise<T>;
-  delete(table: string, where: WhereInput): Promise<void>;
-  count(table: string, where?: WhereInput): Promise<number>;
-  transaction?<T>(fn: (txAdapter: Adapter) => Promise<T>): Promise<T>;
-}
+import { getSchema } from "@filefn/server";
+const { version, schemas } = getSchema({ namespace: "filefn" });
+console.log(version, schemas.map((table) => table.modelName));
 ```
 
-If your DB doesn't support transactions natively, `transaction` can no-op and rely on the kernel's defensive ordering.
+This returns seven table descriptors, including fields and indexes. It does not provision a database. Translate/review these descriptors in your host's migration tooling and apply the migration before serving FileFn requests. The Drizzle adapter reports `schema.migrations: false`; it does not implement automatic DDL. Keep the namespace used in your migrations and `createFileFn` identical.
 
-## See also
+FileFn wraps the supplied adapter with its schema internally. For a custom adapter, implement the exported `Adapter` type rather than a positional CRUD interface: methods receive objects such as `findOne({ model, where })` and `create({ model, data })`. Respect the adapter's transaction and constraint capabilities; pretending to support transactions can break consistency guarantees.
 
-- [Reference › Schema](../reference/schema) — the column-by-column reference.
+See [Drizzle](./db-drizzle), [PostgreSQL](./db-postgres), [SQLite](./db-sqlite), and the [schema reference](../reference/schema).

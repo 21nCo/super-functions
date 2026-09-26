@@ -1,59 +1,28 @@
 ---
 title: Express
-description: Production-grade Express integration for filefn — Web Request bridging, body streaming for proxy uploads, CSRF, and rate limiting.
+description: Mount FileFn with the shared Express adapter and preserve upload bytes.
 ---
 
 # Express
 
-Express's `req` / `res` objects aren't `Request` / `Response`. You need to bridge them. filefn ships a helper:
+Follow the [Express quickstart](/docs/quickstart/express) for a complete local setup. After creating `fileFn` with an explicit storage adapter, mount its router:
 
 ```ts
 import express from "express";
+import { toExpress } from "@superfunctions/http-express";
 import { createFileFn } from "@filefn/server";
-import { adaptNodeHandler } from "@filefn/server/adapters/node";
+import { memoryAdapter } from "@superfunctions/db/adapters/memory";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
-const fileFn = createFileFn({ /* ... */ });
-
+const fileFn = createFileFn({
+  db: memoryAdapter(),
+  storage: createLocalStorageAdapter({ rootDir: "./.filefn-storage" }),
+});
 const app = express();
-
-app.all("/filefn/*", adaptNodeHandler(fileFn.router.handle));
-
+app.use("/filefn", express.raw({ type: "*/*", limit: "10mb" }), toExpress(fileFn.router));
 app.listen(3000);
 ```
 
-`adaptNodeHandler`:
+The raw parser preserves binary chunk bodies. Set its limit above the maximum accepted chunk size and within the deployment's memory/request budget. The adapter strips the Express mount prefix and passes a Web Request to FileFn. Configure policies and authentication before allowing uploads; the snippet above only mounts the kernel.
 
-- builds a `Request` from `req` (including the streamed body for `PUT` proxy uploads).
-- converts the returned `Response` to `res.write()` / `res.end()`.
-- preserves response headers (including `Set-Cookie`).
-- passes through `null` to a 404.
-
-## Body parsing
-
-**Don't** use `express.json()` / `express.urlencoded()` on `/filefn/*`. The kernel reads its own JSON; pre-parsed bodies break PUTs.
-
-```ts
-app.use("/api/non-filefn", express.json());
-app.all("/filefn/*", adaptNodeHandler(fileFn.router.handle));
-```
-
-## CSRF
-
-```ts
-import { csrfProtection } from "your-csrf-middleware";
-
-app.use("/filefn/*", csrfProtection({
-  exemptMethods: ["GET", "HEAD"],
-  // proxy PUT routes need a token check; either pass the CSRF token via header or require auth.required: true
-}));
-```
-
-filefn's anonymous upload tokens (`x-upload-session-token`) defend the proxy `PUT` routes against cross-tenant attacks but not against CSRF — pair them with a CSRF-token header check or with `auth.required: true` on top.
-
-## Rate limiting
-
-Either use Express middleware (`express-rate-limit`) keyed by IP / user, or use filefn's built-in `rateLimit` config — which runs *inside* the kernel and applies before storage / DB work.
-
-## See also
-
-- [Quickstart › Express](../quickstart/express) — minimal version.
+Use host CSRF protection for cookie-authenticated writes and the kernel's authorization and upload-token checks. Keep unrelated JSON middleware scoped so it does not consume binary upload bodies. See [rate limiting](/docs/features/rate-limiting) and [storage adapters](/docs/adapters/storage).

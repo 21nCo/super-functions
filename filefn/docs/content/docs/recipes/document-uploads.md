@@ -44,8 +44,9 @@ const pdfPreview = createPdfPreviewProcessor({
 });
 
 const ocr = createOCRProcessor({
-  provider: createTesseractJsOCRProvider({ languages: ["eng"] }),
-  outputs: ["text"],
+  provider: createTesseractJsOCRProvider(),
+  language: "eng",
+  outputFormat: "text",
 });
 
 const fileFn = createFileFn({

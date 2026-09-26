@@ -1,116 +1,30 @@
 ---
 title: CDN integration
-description: Serve filefn-managed bytes through CloudFront, Cloud CDN, or Cloudflare without breaking signed URLs or auth.
+description: Separate storage authorization from public asset delivery.
 ---
 
 # CDN integration
 
-Goal: bandwidth-heavy reads (downloads, thumbnails, previews) go through a CDN; auth and metadata stay with filefn.
+The S3 and R2 adapters expose storage operations and signed URLs. They do not accept `cdnPrefix` or rewrite signed storage URLs to a CDN domain. Provision and configure your CDN in the host infrastructure, and choose an authorization model appropriate to public or private assets.
 
-## Two patterns
+For private files, call FileFn's authorized download-resolution APIs. Preserve the returned URL, request headers, and expiry. Replacing the hostname of a signed URL can invalidate the signature or bypass the intended access policy. Use a host-owned adapter or delivery service if the CDN needs a different signing protocol.
 
-### Pattern A — CDN in front of the storage bucket
-
-```mermaid
-graph LR
-  C[Client] -->|GET signed URL| F[filefn]
-  F -->|signed URL with CDN host| C
-  C -->|GET| CDN[CloudFront]
-  CDN -->|cache miss| S3[S3]
-  CDN -->|hit| C
-```
-
-Signed URLs are minted by filefn with the CDN host substituted. The CDN forwards them to S3 transparently.
+## Route policies to configured storage targets
 
 ```ts
-const storage = createS3Storage({
-  region: "us-east-1",
-  bucket: "filefn-prod",
-  cdnPrefix: "https://cdn.example.com",
-  // ...
-});
-```
+import { createRoutedStorageAdapter } from "@superfunctions/storage";
+import { createS3StorageAdapter } from "@superfunctions/storage-s3";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
-CDN config:
-
-- Origin: your S3 bucket.
-- Forward query strings (signed URL parameters live there).
-- Cache key: include the relevant query parameters.
-- TTL: shorter than `signedUrlTtlSeconds` (15 min).
-
-### Pattern B — CDN in front of filefn
-
-```mermaid
-graph LR
-  C[Client] -->|GET| CDN[CloudFront]
-  CDN -->|cache miss| F[filefn]
-  F -->|stream from S3| CDN
-  CDN -->|hit / cached| C
-```
-
-Use the `/proxy/files/...` routes. The CDN caches filefn responses, not S3 responses. This works when:
-
-- you want filefn to apply Content-Disposition rewrites
-- you want CDN-level rate limiting on filefn routes
-- you want the CDN to cache responses for many users with identical access (e.g. public files)
-
-CDN config:
-
-- Origin: your filefn host.
-- Forward `Authorization` for private files (or `Vary: Authorization`).
-- Don't cache `4xx`s.
-
-For public files, mark them `public` and let the CDN cache aggressively.
-
-## Public buckets
-
-For genuinely public files (avatars, brand assets):
-
-```ts
-fileFn.definePolicy("public-avatar", {
-  contentTypes: ["image/png", "image/jpeg"],
-  maxSizeBytes: 5 * 1024 * 1024,
-  visibility: "public",
-  storageTarget: "public-cdn",
-  // ...
-});
-
-const storageRouter = createStorageRouter({
-  default: durable,
-  targets: {
-    "public-cdn": createS3Storage({
-      bucket: "public-assets",
-      cdnPrefix: "https://cdn.example.com",
-      // bucket policy: public-read
-    }),
+const storage = createRoutedStorageAdapter({
+  defaultTarget: "durable",
+  adapters: {
+    durable: createS3StorageAdapter({ bucket: process.env.S3_BUCKET!, region: process.env.AWS_REGION! }),
+    temporary: createLocalStorageAdapter({ rootDir: "./.filefn-storage" }),
   },
 });
 ```
 
-Visibility `public` skips the auth check; the bucket-level policy serves the bytes; signed URLs aren't required.
+Policies select a registered target through `storageTarget` and `artifactStorageTarget`. The router uses an explicit adapter map and `defaultTarget`; it has no arbitrary per-request `resolveTarget` callback. Validate environment variables before constructing adapters.
 
-## Per-tenant CDNs
-
-Different tenants might need different CDN domains (e.g. white-label deployments):
-
-```ts
-const storage = createStorageRouter({
-  default: durable,
-  resolveTarget: (input) => {
-    if (input.policy === "tenant-asset") {
-      return createS3Storage({
-        bucket: `${input.tenantId}-assets`,
-        cdnPrefix: `https://${input.tenantId}.cdn.example.com`,
-      });
-    }
-    return durable;
-  },
-});
-```
-
-`resolveTarget` runs per request — cache the adapter instances per tenant for efficiency.
-
-## See also
-
-- [Storage targets](../core-concepts/storage-targets) — multi-target routing.
-- [Adapters › S3](../adapters/storage-s3) — `cdnPrefix` semantics.
+Public CDN delivery is a separate host policy: publish only objects intended to be public, configure cache keys and content headers, and plan invalidation when replacing or removing content. Do not expose private storage keys or long-lived credentials to the browser. See [downloads](/docs/features/downloads) and [storage targets](/docs/core-concepts/storage-targets).

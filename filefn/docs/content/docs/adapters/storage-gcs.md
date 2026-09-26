@@ -1,19 +1,19 @@
 ---
 title: GCS adapter
-description: createGCSStorage — production-grade storage on Google Cloud Storage with signed URLs, multipart upload via XML API, and ADC support.
+description: createGCSStorageAdapter — production-grade storage on Google Cloud Storage with signed URLs, proxy uploads, and ADC support.
 ---
 
 # GCS adapter
 
 ```ts
-import { createGCSStorage } from "@superfunctions/storage";
+import { createGCSStorageAdapter } from "@superfunctions/storage-gcs";
 
-const storage = createGCSStorage({
+const storage = createGCSStorageAdapter({
   projectId: process.env.GCP_PROJECT_ID!,
   bucket: process.env.GCS_BUCKET!,
   credentials: {
-    clientEmail: process.env.GCP_CLIENT_EMAIL!,
-    privateKey: process.env.GCP_PRIVATE_KEY!,
+    client_email: process.env.GCP_CLIENT_EMAIL!,
+    private_key: process.env.GCP_PRIVATE_KEY!,
   },
   // OR use ADC (Application Default Credentials) — leave credentials undefined
 });
@@ -21,7 +21,7 @@ const storage = createGCSStorage({
 
 ## Capabilities
 
-- Multipart via the XML API (parts signed with V4).
+- Proxy streaming uploads; native multipart and signed upload URLs are not advertised by this adapter.
 - `getSignedUrl` and `getSignedDownloadUrl`.
 - `put`, `get`, `delete`.
 - `responseHeaders` (Content-Disposition / Content-Type) on signed downloads.

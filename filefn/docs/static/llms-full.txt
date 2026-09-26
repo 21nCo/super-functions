@@ -122,7 +122,7 @@ The kernel never reaches outside these contracts. If you can implement them, fil
 - [DB adapters overview](./db)
 - [Memory](./db-memory) — tests, CI, ephemeral demos.
 - [Drizzle](./db-drizzle) — Drizzle ORM with PG/SQLite/MySQL.
-- [Postgres](./db-postgres) — direct `pg` adapter.
+- [Postgres](./db-postgres) — PostgreSQL through Drizzle and `pg`.
 - [SQLite](./db-sqlite) — local file or in-memory.
 - [Processors](./processors) — bundled processor catalog.
 
@@ -139,71 +139,33 @@ The kernel never reaches outside these contracts. If you can implement them, fil
 Source: https://filefn.superfunctions.dev/docs/adapters/db
 
 
-The Adapter contract — what every database backend must implement, and which schemas filefn touches.
+Configure the shared database adapter and provision FileFn tables.
 
 
 # DB adapters
 
-`@superfunctions/db` defines `Adapter` — the same one used by `authfn`, `botfn`, and the rest of the ecosystem. filefn's tables live alongside whatever else is using the same database.
-
-## Tables filefn touches
-
-| Table | Purpose |
-| --- | --- |
-| `filefn_upload_sessions` | Active multipart sessions. |
-| `filefn_upload_parts` | One row per recorded part. |
-| `filefn_files` | Logical files. |
-| `filefn_file_versions` | Concrete versions (storage key, checksum, mime, size). |
-| `filefn_file_artifacts` | Processor outputs. |
-| `filefn_file_permissions` | Per-grant capability rows. |
-| `filefn_file_shares` | Share-link rows. |
-
-Prefix is configurable via `namespace` (default `filefn`).
-
-## Migration
+FileFn accepts `Adapter` from `@superfunctions/db`. Use `memoryAdapter` for disposable local state or `drizzleAdapter` for PostgreSQL, MySQL, or SQLite.
 
 ```ts
-import { applySchemaToAdapter } from "@superfunctions/db";
-
-const { schemas } = fileFn.getSchema();
-await applySchemaToAdapter(db, schemas);
+import { memoryAdapter } from "@superfunctions/db/adapters/memory";
+const db = memoryAdapter();
 ```
 
-`applySchemaToAdapter` is idempotent — safe to run on every boot. For production, run it once via your migration tool.
+The published entrypoints are `@superfunctions/db/adapters/memory` and `@superfunctions/db/adapters/drizzle`. There are no separate `@superfunctions/db-postgres`, `db-sqlite`, or `db-drizzle` packages in this source tree.
 
-## Bundled adapters
-
-| Package | Adapter |
-| --- | --- |
-| `@superfunctions/db-memory` | `createMemoryAdapter()` |
-| `@superfunctions/db-drizzle` | `createDrizzleAdapter({ db, dialect })` |
-| `@superfunctions/db-postgres` | `createPostgresAdapter({ pool })` (via `pg`) |
-| `@superfunctions/db-sqlite` | `createSQLiteAdapter({ db })` (via `better-sqlite3`) |
-| `@superfunctions/db-mysql` | `createMySQLAdapter({ pool })` (via `mysql2`) |
-
-See the per-adapter pages for setup details.
-
-## Authoring a custom adapter
-
-The `Adapter` interface:
+## Schema and migrations
 
 ```ts
-interface Adapter {
-  findOne<T>(table: string, where: WhereInput): Promise<T | null>;
-  findMany<T>(table: string, query?: { where?: WhereInput; orderBy?: OrderBy; limit?: number; offset?: number }): Promise<T[]>;
-  create<T>(table: string, data: T): Promise<T>;
-  update<T>(table: string, data: Partial<T>, where: WhereInput): Promise<T>;
-  delete(table: string, where: WhereInput): Promise<void>;
-  count(table: string, where?: WhereInput): Promise<number>;
-  transaction?<T>(fn: (txAdapter: Adapter) => Promise<T>): Promise<T>;
-}
+import { getSchema } from "@filefn/server";
+const { version, schemas } = getSchema({ namespace: "filefn" });
+console.log(version, schemas.map((table) => table.modelName));
 ```
 
-If your DB doesn't support transactions natively, `transaction` can no-op and rely on the kernel's defensive ordering.
+This returns seven table descriptors, including fields and indexes. It does not provision a database. Translate/review these descriptors in your host's migration tooling and apply the migration before serving FileFn requests. The Drizzle adapter reports `schema.migrations: false`; it does not implement automatic DDL. Keep the namespace used in your migrations and `createFileFn` identical.
 
-## See also
+FileFn wraps the supplied adapter with its schema internally. For a custom adapter, implement the exported `Adapter` type rather than a positional CRUD interface: methods receive objects such as `findOne({ model, where })` and `create({ model, data })`. Respect the adapter's transaction and constraint capabilities; pretending to support transactions can break consistency guarantees.
 
-- [Reference › Schema](../reference/schema) — the column-by-column reference.
+See [Drizzle](./db-drizzle), [PostgreSQL](./db-postgres), [SQLite](./db-sqlite), and the [schema reference](../reference/schema).
 
 
 ---
@@ -213,226 +175,114 @@ If your DB doesn't support transactions natively, `transaction` can no-op and re
 Source: https://filefn.superfunctions.dev/docs/adapters/db-drizzle
 
 
-createDrizzleAdapter — the Drizzle-ORM-backed adapter for Postgres, SQLite, and MySQL.
+Use the shared Drizzle adapter with PostgreSQL, MySQL, or SQLite.
 
 
 # Drizzle DB adapter
 
+```sh
+npm install @superfunctions/db drizzle-orm pg
+```
+
 ```ts
+import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { createDrizzleAdapter } from "@superfunctions/db-drizzle";
+import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
 
-const drizzleClient = drizzle(pgPool);
-const db = createDrizzleAdapter({
-  db: drizzleClient,
-  dialect: "postgres",
-});
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const db = drizzleAdapter({ db: drizzle(pool), dialect: "postgres" });
+// Pass db to createFileFn({ db, storage, ... }).
 ```
 
-## Dialects
+Use dialect `postgres`, `mysql`, or `sqlite` with the corresponding Drizzle driver. The host owns the connection lifecycle; close the pool during application shutdown.
 
-| Dialect | Underlying driver |
-| --- | --- |
-| `"postgres"` | `pg` / `node-postgres` (or `postgres-js`) |
-| `"sqlite"` | `better-sqlite3` / `bun:sqlite` |
-| `"mysql"` | `mysql2` / `planetscale-serverless` |
+## Provision tables first
 
-## Migration
+Use `getSchema({ namespace })` from `@filefn/server` as the source of table/field/index descriptors. Generate and review your host migrations, then apply them before running FileFn. Constructing the adapter or FileFn does not create SQL tables. The adapter does not expose an `applySchemaToAdapter` helper or automatic migration support.
 
-filefn ships its schemas via `getSchema()`. To apply them with Drizzle:
-
-```ts
-import { applySchemaToAdapter } from "@superfunctions/db";
-
-const { schemas } = fileFn.getSchema();
-await applySchemaToAdapter(db, schemas);
-```
-
-For Drizzle Kit-driven migrations, generate Drizzle table definitions from the same schema source — see the [authfn migration recipe](https://www.npmjs.com/package/@superfunctions/db-drizzle) for a working pattern.
-
-## When to use it
-
-- You're already on Drizzle ORM.
-- You want a single migration story across the whole superfunctions stack.
-
-## See also
-
-- [db](./db) — the adapter contract.
-- [@superfunctions/db-drizzle on npm](https://www.npmjs.com/package/@superfunctions/db-drizzle).
+See [DB adapters](./db) for the schema contract and [SQLite](./db-sqlite) for a local SQL configuration.
 
 
 ---
 
-# Memory DB adapter
+# In-memory DB adapter
 
 Source: https://filefn.superfunctions.dev/docs/adapters/db-memory
 
 
-createMemoryAdapter — an in-process, in-RAM adapter for tests, CI, and ephemeral demos.
+Disposable database state for local examples and tests.
 
 
-# Memory DB adapter
+# In-memory database
 
 ```ts
-import { createMemoryAdapter } from "@superfunctions/db-memory";
-
-const db = createMemoryAdapter();
+import { memoryAdapter } from "@superfunctions/db/adapters/memory";
+const db = memoryAdapter();
 ```
 
-## What it stores
-
-Everything in RAM. No persistence between processes.
-
-## When to use it
-
-- Unit tests / integration tests.
-- CI pipelines.
-- Local demos where you don't want to spin up Postgres.
-- Documentation snippets.
-
-## When not to use it
-
-- Production. Anything restart-recoverable needs persistence.
-
-## Notes
-
-The memory adapter implements `transaction(...)` as a synchronous no-op (everything in memory is atomic anyway). It supports the full `Adapter` surface used by filefn.
-
-## See also
-
-- [Examples › Full demo](../examples/full-demo) — uses the memory adapter.
+Pass this adapter to `createFileFn({ db, storage, ... })`. State lasts only as long as the adapter instance. Recreating it or restarting the process loses file metadata, upload sessions, grants, and shares even if the storage adapter still contains bytes. Use a persistent SQL database for durable deployments. See [Drizzle](./db-drizzle).
 
 
 ---
 
-# Postgres DB adapter
+# PostgreSQL adapter
 
 Source: https://filefn.superfunctions.dev/docs/adapters/db-postgres
 
 
-createPostgresAdapter — direct pg-backed adapter for production filefn deployments.
+Connect FileFn to PostgreSQL through Drizzle and pg.
 
 
-# Postgres DB adapter
+# PostgreSQL
+
+```sh
+npm install @superfunctions/db drizzle-orm pg
+```
 
 ```ts
 import { Pool } from "pg";
-import { createPostgresAdapter } from "@superfunctions/db-postgres";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20,
-});
-const db = createPostgresAdapter({ pool });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
+const db = drizzleAdapter({ db: drizzle(pool), dialect: "postgres" });
 ```
 
-## Pool sizing
+Pass `db` to `createFileFn`. Size the pool for your database connection budget and number of application replicas; `max: 10` above is an example, not a throughput guarantee. Call `pool.end()` during shutdown.
 
-Each filefn HTTP request can use up to 1-2 connections (typical). For 100 concurrent uploads with multipart requests:
-
-- `max: 20` is a reasonable starting point on a 2-core app server.
-- Add a connection pooler (PgBouncer in `transaction` mode) in front if you're running many app servers.
-
-## Schema
-
-Run `applySchemaToAdapter(db, schemas)` on boot, or generate migration SQL once:
-
-```ts
-import { generateSqlForSchema } from "@superfunctions/db-postgres";
-
-const sql = generateSqlForSchema(schemas, { dialect: "postgres" });
-await fs.writeFile("./migrations/001-filefn.sql", sql);
-```
-
-Run that against your DB through your normal migration pipeline.
-
-## Indexes that matter
-
-filefn ships indexes for:
-
-- `filefn_upload_sessions(uploadSessionId)` — primary key.
-- `filefn_upload_parts(uploadSessionId, partNumber)` — composite key.
-- `filefn_files(fileId)` — primary key.
-- `filefn_file_versions(fileId, createdAt)` — for version listing.
-- `filefn_file_versions(checksumSha256Base64, tenantId)` — for dedup lookups.
-- `filefn_file_shares(tokenHash)` — for share-link resolution.
-
-If you're seeing slow queries, check that your migration applied them.
-
-## When to use it
-
-- Existing Postgres infrastructure.
-- You want full control over the SQL surface.
-
-## See also
-
-- [db](./db) — the adapter contract.
-- [db-drizzle](./db-drizzle) — Drizzle-backed alternative.
+Provision the table and index definitions from `getSchema({ namespace })` through your host migration system before handling requests. Neither the adapter nor FileFn runs DDL automatically. There is no `generateSqlForSchema` export from a `@superfunctions/db-postgres` package. See [DB adapters](./db) and [schema](../reference/schema).
 
 
 ---
 
-# SQLite DB adapter
+# SQLite adapter
 
 Source: https://filefn.superfunctions.dev/docs/adapters/db-sqlite
 
 
-createSQLiteAdapter — better-sqlite3 / bun:sqlite for single-instance filefn deployments.
+Connect FileFn to SQLite through Drizzle.
 
 
-# SQLite DB adapter
+# SQLite
 
-## Node (better-sqlite3)
+```sh
+npm install @superfunctions/db drizzle-orm better-sqlite3
+npm install --save-dev @types/better-sqlite3
+```
 
 ```ts
 import Database from "better-sqlite3";
-import { createSQLiteAdapter } from "@superfunctions/db-sqlite";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
 
-const sqlite = new Database("./filefn.db");
+const sqlite = new Database("filefn.sqlite");
 sqlite.pragma("journal_mode = WAL");
-
-const db = createSQLiteAdapter({ db: sqlite });
+const db = drizzleAdapter({ db: drizzle(sqlite), dialect: "sqlite" });
 ```
 
-## Bun
+Provision the FileFn tables from `getSchema({ namespace })` using the host migration system before serving traffic. Pass `db` to `createFileFn` and close `sqlite` during application shutdown. On Bun, use Bun's SQLite driver and `drizzle-orm/bun-sqlite` with the same `drizzleAdapter` entrypoint and dialect.
 
-```ts
-import { Database } from "bun:sqlite";
-import { createSQLiteAdapter } from "@superfunctions/db-sqlite";
-
-const sqlite = new Database("./filefn.db");
-sqlite.run("PRAGMA journal_mode = WAL");
-
-const db = createSQLiteAdapter({ db: sqlite });
-```
-
-## When to use it
-
-- Local dev.
-- Single-instance self-hosted deployments.
-- Edge runtimes that support SQLite (Cloudflare D1, Turso, libSQL).
-- Test environments.
-
-## When not to use it
-
-- Multi-instance horizontal scaling. SQLite isn't the right fit unless every instance shares the same disk (which usually defeats the point of horizontal scaling).
-
-## WAL mode
-
-Always enable WAL on persistent SQLite — it dramatically improves concurrency for read-heavy workloads and avoids most "database is locked" errors.
-
-## Schema
-
-```ts
-import { applySchemaToAdapter } from "@superfunctions/db";
-
-const { schemas } = fileFn.getSchema();
-await applySchemaToAdapter(db, schemas);
-```
-
-## See also
-
-- [db](./db) — the adapter contract.
+SQLite concurrency and filesystem durability depend on deployment topology. Use a database supported by your hosting environment; a local file is not shared storage across application replicas. See [DB adapters](./db).
 
 
 ---
@@ -442,195 +292,120 @@ await applySchemaToAdapter(db, schemas);
 Source: https://filefn.superfunctions.dev/docs/adapters/processors
 
 
-The bundled processor catalog from @filefn/processing — thumbnails, PDF previews, OCR, image transforms, video, audio, compression.
+Configure thumbnail, PDF, compression, OCR, image, video, and audio processing.
 
 
 # Processors
 
-`@filefn/processing` ships eight processors. They cover the most common post-upload work and are designed to be combined.
+Import processors from `@filefn/processing` and pass the instances in `createFileFn({ db, storage, processing: { enabled: true, processors } })`. Install the runtime dependencies of the processors you enable. Image operations use `sharp`; command media providers need FFmpeg (and FFprobe for metadata).
 
-## Thumbnails
+## Thumbnails and PDF previews
 
 ```ts
-import { createThumbnailProcessor } from "@filefn/processing";
+import { createThumbnailProcessor, createPdfPreviewProcessor } from "@filefn/processing";
 
 const thumbnails = createThumbnailProcessor({
-  sizes: [
-    { name: "thumb", width: 256, height: 256 },
-    { name: "preview", width: 1024, height: 1024 },
-  ],
+  sizes: [{ name: "thumb", width: 256, height: 256 }],
   format: "jpeg",
   quality: 80,
-  fit: "cover", // "cover" | "contain" | "fill"
 });
-```
-
-Outputs one artifact per size: `thumbnail-thumb`, `thumbnail-preview`. MIME `image/jpeg` (or `image/png` / `image/webp` per `format`).
-
-Backed by `sharp` on Node, native `Image` APIs on Bun.
-
-## PDF previews
-
-```ts
-import { createPdfPreviewProcessor } from "@filefn/processing";
-
 const pdf = createPdfPreviewProcessor({
   sizes: [{ name: "preview", width: 1024, height: 1024 }],
-  pages: [1], // optional; default first page only
+  density: 144,
+  format: "png",
 });
 ```
 
-Renders specified pages as raster artifacts (`pdf-preview-preview`).
+Thumbnail configuration accepts sizes, quality, and format; it has no top-level `fit`. PDF previews render the first page, with a placeholder fallback when rasterization is unavailable; there is no `pages` selector. Outputs include `thumbnail-thumb` and `pdf-preview-preview` for the names above.
 
 ## Compression
 
 ```ts
 import { createCompressionProcessor } from "@filefn/processing";
-
-const compress = createCompressionProcessor({
-  algorithm: "gzip", // "gzip" | "deflate"
-  threshold: 1024,   // skip if compressed isn't smaller than threshold
-});
+const compression = createCompressionProcessor({ algorithm: "gzip", level: 6 });
 ```
 
-Outputs `compressed-gzip` (or `-deflate`). Useful for `text/plain`, `application/json`, `text/css`, `application/javascript`.
+Algorithms are `gzip` and `deflate`. Empty inputs and outputs saving less than roughly 5% are skipped. There is no configurable byte `threshold`. An output artifact has kind `compressed-gzip` or `compressed-deflate`.
 
 ## OCR
 
 ```ts
-import {
-  createOCRProcessor,
-  createTesseractJsOCRProvider,
-} from "@filefn/processing";
-
+import { createOCRProcessor, createTesseractJsOCRProvider } from "@filefn/processing";
 const ocr = createOCRProcessor({
-  provider: createTesseractJsOCRProvider({ languages: ["eng"] }),
-  outputs: ["text", "hocr", "json"],
+  provider: createTesseractJsOCRProvider(),
+  language: "eng",
+  outputFormat: "all",
 });
 ```
 
-Outputs:
-
-- `ocr-text` (`text/plain`).
-- `ocr-hocr` (`text/html`, optional).
-- `ocr-json` (`application/json`, optional).
-
-The bundled `createTesseractJsOCRProvider` uses `tesseract.js` (browser-shaped) under Node. Swap in a cloud OCR (Google Vision, AWS Textract) by implementing `OCRProcessorProvider`:
-
-```ts
-interface OCRProcessorProvider {
-  recognize(input: { data: Uint8Array; mimeType: string }): Promise<{
-    text: string;
-    hocr?: string;
-    json?: unknown;
-  }>;
-}
-```
+Use `text`, `hocr`, `json`, or `all` for `outputFormat`. The provider factory takes no options; language belongs to the processor. Outputs have kinds `ocr-text`, `ocr-hocr`, and `ocr-json` when requested and available. A custom provider implements the exported `OCRProcessorProvider`, whose `recognize` receives `input`, `imageData`, `language`, and `includeHOCR`, and returns text, confidence, and optional hOCR.
 
 ## Image transforms
 
 ```ts
 import { createImageTransformProcessor } from "@filefn/processing";
-
-const transform = createImageTransformProcessor({
-  pipeline: [
-    { kind: "rotate", angle: -90 },
-    { kind: "resize", width: 1024 },
-    { kind: "format", format: "webp", quality: 80 },
+const images = createImageTransformProcessor({
+  operations: [
+    { operation: "rotate", options: { angle: -90 }, suffix: "rotated" },
+    { operation: "resize", options: { width: 1024, fit: "inside" }, suffix: "preview" },
   ],
-  outputName: "normalised",
+  outputFormat: "webp",
+  outputQuality: 80,
 });
 ```
 
-Outputs `image-transform-normalised` after applying the pipeline in order. Good for normalising user uploads (e.g. always rotate to EXIF orientation, resize to max dimension, re-encode as WebP).
+Each operation transforms the original input independently; this is not a sequential pipeline. The example emits `transform-rotated` and `transform-preview`. Operations are `resize`, `crop`, and `rotate`; output format and quality apply to every artifact.
 
 ## Video
 
 ```ts
-import {
-  createVideoProcessor,
-  createCommandVideoProvider,
-} from "@filefn/processing";
-
+import { createVideoProcessor, createCommandVideoProvider } from "@filefn/processing";
 const video = createVideoProcessor({
-  provider: createCommandVideoProvider({ ffmpegPath: "ffmpeg" }),
-  poster: { time: 1.0, width: 1024 },
-  transcode: [
-    { resolution: "720p", codec: "h264", bitrate: "2M" },
-    { resolution: "480p", codec: "h264", bitrate: "1M" },
-  ],
-  metadata: true,
+  provider: createCommandVideoProvider({ ffmpegPath: "ffmpeg", ffprobePath: "ffprobe" }),
+  generatePoster: true,
+  posterOptions: { timestamp: 1, width: 1024 },
+  transcode: true,
+  transcodeOptions: { resolution: "720p", codec: "h264", bitrate: "2M" },
+  extractMetadata: true,
 });
 ```
 
-Outputs:
-
-- `video-poster` (a JPEG poster frame).
-- `video-transcoded-720p`, `video-transcoded-480p` (MP4 / H.264).
-- `video-metadata` (`application/json` with width/height/duration/codecs).
-
-`createCommandVideoProvider` shells out to `ffmpeg`. Make sure it's installed in the runtime image.
+`transcode` is a boolean, with one `transcodeOptions` object per processor. The example emits `video-poster`, `video-transcoded-720p`, and `video-metadata`. Use separate processor instances if you need multiple renditions and ensure artifact names/storage keys remain distinct.
 
 ## Audio
 
 ```ts
-import {
-  createAudioProcessor,
-  createCommandAudioProvider,
-} from "@filefn/processing";
-
+import { createAudioProcessor, createCommandAudioProvider } from "@filefn/processing";
 const audio = createAudioProcessor({
-  provider: createCommandAudioProvider({ ffmpegPath: "ffmpeg" }),
-  waveform: { width: 1024, height: 128 },
-  transcode: [{ codec: "mp3", bitrate: "128k" }],
-  metadata: true,
+  provider: createCommandAudioProvider({ ffmpegPath: "ffmpeg", ffprobePath: "ffprobe" }),
+  transcode: true,
+  transcodeOptions: { codec: "mp3", bitrate: "128k" },
+  extractMetadata: true,
+  generateWaveform: true,
 });
 ```
 
-Outputs:
+Outputs include `audio-transcoded-mp3`, `audio-metadata`, and `audio-waveform`. Waveform data is JSON samples/metadata, not a PNG image. `generateWaveform`, `extractMetadata`, and `transcode` are booleans.
 
-- `audio-waveform` (a PNG waveform).
-- `audio-transcoded-mp3`.
-- `audio-metadata`.
+## Failures and custom processors
 
-## Composing in `processing.processors`
+A processor returns `{ success, artifacts, error? }`; inspect processing results rather than treating artifact presence as guaranteed. Unsupported MIME types and unavailable runtime tools can produce failures. A custom implementation follows the exported `Processor` contract:
 
 ```ts
-const fileFn = createFileFn({
-  db, storage,
-  processing: {
-    enabled: true,
-    processors: [
-      thumbnails,
-      pdf,
-      ocr,
-      video,
-      audio,
-    ],
+import type { Processor } from "@filefn/processing";
+const copyText: Processor = {
+  name: "copy-text",
+  supportedMimeTypes: ["text/plain"],
+  async process(input, getData) {
+    return {
+      success: true,
+      artifacts: [{ kind: "text-copy", data: await getData(), mimeType: "text/plain", storageKey: `${input.storageKey}.copy.txt` }],
+    };
   },
-});
+};
 ```
 
-The kernel runs every processor whose `supportedMimeTypes` matches the upload. A failure in one doesn't block the others.
-
-## Custom processors
-
-Anything that implements:
-
-```ts
-interface Processor {
-  name: string;
-  supportedMimeTypes: string[];
-  process(input: ProcessorInput, getData: () => Promise<Uint8Array>): Promise<ProcessorResult>;
-}
-```
-
-is a valid processor. See [Recipes › Custom processor](../recipes/custom-processor) for an end-to-end walkthrough.
-
-## See also
-
-- [Features › Processing](../features/processing) — the kernel side.
-- [Render intents](../core-concepts/render-intents) — how artifact `kind`s feed render-intent resolution.
+See [Processing](../features/processing) for execution and artifact lifecycle.
 
 
 ---
@@ -678,11 +453,11 @@ The optional `getSignedUrl` / `getSignedDownloadUrl` enable signed-URL downloads
 filefn supports multiple backends keyed by `storageTarget`:
 
 ```ts
-import { createStorageRouter } from "@superfunctions/storage";
+import { createRoutedStorageAdapter } from "@superfunctions/storage";
 
-const storage = createStorageRouter({
-  default: localStorage,
-  targets: {
+const storage = createRoutedStorageAdapter({
+  defaultTarget: "temporary",
+  adapters: {
     durable: gcsStorage,
     "hot-cdn": cloudfrontFrontedS3Storage,
     temporary: localStorage,
@@ -711,18 +486,18 @@ Policies pin themselves to a target via `policy.storageTarget` and `policy.artif
 Source: https://filefn.superfunctions.dev/docs/adapters/storage-azure
 
 
-createAzureStorage — production-grade storage on Azure Blob with SAS URLs and block blob multipart.
+createAzureStorageAdapter — production-grade storage on Azure Blob with SAS URLs and block blob multipart.
 
 
 # Azure Blob adapter
 
 ```ts
-import { createAzureStorage } from "@superfunctions/storage";
+import { createAzureStorageAdapter } from "@superfunctions/storage-azure";
 
-const storage = createAzureStorage({
-  account: process.env.AZURE_STORAGE_ACCOUNT!,
+const storage = createAzureStorageAdapter({
+  accountName: process.env.AZURE_STORAGE_ACCOUNT!,
   accountKey: process.env.AZURE_STORAGE_ACCOUNT_KEY!,
-  container: process.env.AZURE_CONTAINER!,
+  containerName: process.env.AZURE_CONTAINER!,
   // optional
   endpoint: process.env.AZURE_BLOB_ENDPOINT,
 });
@@ -764,20 +539,20 @@ Front the storage account with Azure Front Door or Azure CDN. SAS-signed URLs wo
 Source: https://filefn.superfunctions.dev/docs/adapters/storage-gcs
 
 
-createGCSStorage — production-grade storage on Google Cloud Storage with signed URLs, multipart upload via XML API, and ADC support.
+createGCSStorageAdapter — production-grade storage on Google Cloud Storage with signed URLs, proxy uploads, and ADC support.
 
 
 # GCS adapter
 
 ```ts
-import { createGCSStorage } from "@superfunctions/storage";
+import { createGCSStorageAdapter } from "@superfunctions/storage-gcs";
 
-const storage = createGCSStorage({
+const storage = createGCSStorageAdapter({
   projectId: process.env.GCP_PROJECT_ID!,
   bucket: process.env.GCS_BUCKET!,
   credentials: {
-    clientEmail: process.env.GCP_CLIENT_EMAIL!,
-    privateKey: process.env.GCP_PRIVATE_KEY!,
+    client_email: process.env.GCP_CLIENT_EMAIL!,
+    private_key: process.env.GCP_PRIVATE_KEY!,
   },
   // OR use ADC (Application Default Credentials) — leave credentials undefined
 });
@@ -785,7 +560,7 @@ const storage = createGCSStorage({
 
 ## Capabilities
 
-- Multipart via the XML API (parts signed with V4).
+- Proxy streaming uploads; native multipart and signed upload URLs are not advertised by this adapter.
 - `getSignedUrl` and `getSignedDownloadUrl`.
 - `put`, `get`, `delete`.
 - `responseHeaders` (Content-Disposition / Content-Type) on signed downloads.
@@ -835,7 +610,7 @@ createLocalStorage — disk-backed storage for development, demos, and single-in
 # Local FS adapter
 
 ```ts
-import { createLocalStorage } from "@superfunctions/storage";
+import { createLocalStorage } from "@superfunctions/storage-local";
 
 const storage = createLocalStorage({
   rootDir: "./.filefn-storage",
@@ -884,7 +659,7 @@ createS3Storage configured for self-hosted MinIO — S3-compatible storage on yo
 MinIO is S3-compatible. Use the S3 adapter with `forcePathStyle: true`:
 
 ```ts
-import { createS3Storage } from "@superfunctions/storage";
+import { createS3Storage } from "@superfunctions/storage-s3";
 
 const storage = createS3Storage({
   region: "us-east-1",
@@ -956,7 +731,7 @@ createS3Storage configured for Cloudflare R2 — egress-free production storage 
 R2 is S3-compatible. Use the S3 adapter with R2's endpoint:
 
 ```ts
-import { createS3Storage } from "@superfunctions/storage";
+import { createS3Storage } from "@superfunctions/storage-s3";
 
 const storage = createS3Storage({
   region: "auto",
@@ -965,7 +740,6 @@ const storage = createS3Storage({
   secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
   endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
   forcePathStyle: true,
-  cdnPrefix: process.env.R2_PUBLIC_URL, // your r2.dev or custom domain
 });
 ```
 
@@ -977,7 +751,7 @@ const storage = createS3Storage({
 
 ## CDN
 
-R2 ships with `r2.dev` URLs (rate-limited, intended for dev) and a custom-domain feature (production). Wire the public domain through `cdnPrefix`.
+R2 ships with `r2.dev` URLs (rate-limited, intended for dev) and a custom-domain feature (production). Configure public delivery in your host infrastructure. The adapter has no `cdnPrefix` option; do not rewrite private signed URLs into public URLs.
 
 For private buckets, signed URLs work just like S3.
 
@@ -1006,24 +780,21 @@ Configure CORS on the R2 bucket from the dashboard or via the API:
 Source: https://filefn.superfunctions.dev/docs/adapters/storage-s3
 
 
-createS3Storage — production-grade storage on AWS S3 with signed-URL multipart, optional CDN fronting, and SSE.
+createS3Storage — production-grade storage on AWS S3 with signed URLs and multipart uploads.
 
 
 # S3 adapter
 
 ```ts
-import { createS3Storage } from "@superfunctions/storage";
+import { createS3Storage } from "@superfunctions/storage-s3";
 
 const storage = createS3Storage({
   region: process.env.AWS_REGION!,
   bucket: process.env.S3_BUCKET!,
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  sessionToken: process.env.AWS_SESSION_TOKEN,           // optional
   endpoint: process.env.S3_ENDPOINT,                     // optional, for non-AWS S3
   forcePathStyle: false,                                 // default; set true for MinIO
-  serverSideEncryption: "AES256",                        // optional; defaults off
-  cdnPrefix: process.env.CDN_PREFIX,                     // optional, e.g. https://cdn.example.com
 });
 ```
 
@@ -1032,26 +803,12 @@ const storage = createS3Storage({
 - Multipart with `signPart` (5-MiB minimum, server-enforced).
 - `getSignedUrl` and `getSignedDownloadUrl` (15-minute default TTL).
 - `put`, `get`, `delete`.
-- SSE (server-side encryption) headers.
 
-## CDN fronting
+## Credentials and delivery
 
-`cdnPrefix` rewrites signed URLs to your CDN. For CloudFront, configure the distribution to:
+For workload credentials, omit both static credential fields and let the AWS SDK default credential chain resolve them. Temporary credentials (including session tokens) belong in that chain; `sessionToken` is not an adapter option. If supplying static keys, provide both nonempty fields.
 
-- forward `Authorization` and any custom headers
-- cache by `Vary: Authorization`
-- short TTLs for signed URLs (under filefn's `signedUrlTtlSeconds`)
-
-For unsigned public buckets:
-
-```ts
-const storage = createS3Storage({
-  region: "us-east-1",
-  bucket: "public-assets",
-  cdnPrefix: "https://cdn.example.com",
-  // no accessKeyId / secretAccessKey when bucket policy allows public reads
-});
-```
+Configure encryption and CDN delivery in your storage/infrastructure layer. The adapter has no `serverSideEncryption` or `cdnPrefix` option and does not rewrite signed S3 URLs into CDN URLs. Use FileFn's authorized download resolution for private objects.
 
 ## IAM
 
@@ -5195,14 +4952,15 @@ Bun's `Bun.serve(...)` already speaks `Request` / `Response`. filefn drops in:
 
 ```ts
 import { createFileFn, createNucleusPolicies } from "@filefn/server";
-import { createSQLiteAdapter } from "@superfunctions/db-sqlite";
-import { createLocalStorage } from "@superfunctions/storage";
+import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { createLocalStorage } from "@superfunctions/storage-local";
 import { Database } from "bun:sqlite";
 
 const sqlite = new Database("filefn.db");
 sqlite.run("PRAGMA journal_mode = WAL");
 
-const db = createSQLiteAdapter({ db: sqlite });
+const db = drizzleAdapter({ db: drizzle(sqlite), dialect: "sqlite" });
 const storage = createLocalStorage({ rootDir: "./.filefn-storage" });
 
 const fileFn = createFileFn({
@@ -5265,63 +5023,32 @@ Bun.serve({ port: 3000, fetch: app.fetch });
 Source: https://filefn.superfunctions.dev/docs/frameworks/express
 
 
-Production-grade Express integration for filefn — Web Request bridging, body streaming for proxy uploads, CSRF, and rate limiting.
+Mount FileFn with the shared Express adapter and preserve upload bytes.
 
 
 # Express
 
-Express's `req` / `res` objects aren't `Request` / `Response`. You need to bridge them. filefn ships a helper:
+Follow the [Express quickstart](/docs/quickstart/express) for a complete local setup. After creating `fileFn` with an explicit storage adapter, mount its router:
 
 ```ts
 import express from "express";
+import { toExpress } from "@superfunctions/http-express";
 import { createFileFn } from "@filefn/server";
-import { adaptNodeHandler } from "@filefn/server/adapters/node";
+import { memoryAdapter } from "@superfunctions/db/adapters/memory";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
-const fileFn = createFileFn({ /* ... */ });
-
+const fileFn = createFileFn({
+  db: memoryAdapter(),
+  storage: createLocalStorageAdapter({ rootDir: "./.filefn-storage" }),
+});
 const app = express();
-
-app.all("/filefn/*", adaptNodeHandler(fileFn.router.handle));
-
+app.use("/filefn", express.raw({ type: "*/*", limit: "10mb" }), toExpress(fileFn.router));
 app.listen(3000);
 ```
 
-`adaptNodeHandler`:
+The raw parser preserves binary chunk bodies. Set its limit above the maximum accepted chunk size and within the deployment's memory/request budget. The adapter strips the Express mount prefix and passes a Web Request to FileFn. Configure policies and authentication before allowing uploads; the snippet above only mounts the kernel.
 
-- builds a `Request` from `req` (including the streamed body for `PUT` proxy uploads).
-- converts the returned `Response` to `res.write()` / `res.end()`.
-- preserves response headers (including `Set-Cookie`).
-- passes through `null` to a 404.
-
-## Body parsing
-
-**Don't** use `express.json()` / `express.urlencoded()` on `/filefn/*`. The kernel reads its own JSON; pre-parsed bodies break PUTs.
-
-```ts
-app.use("/api/non-filefn", express.json());
-app.all("/filefn/*", adaptNodeHandler(fileFn.router.handle));
-```
-
-## CSRF
-
-```ts
-import { csrfProtection } from "your-csrf-middleware";
-
-app.use("/filefn/*", csrfProtection({
-  exemptMethods: ["GET", "HEAD"],
-  // proxy PUT routes need a token check; either pass the CSRF token via header or require auth.required: true
-}));
-```
-
-filefn's anonymous upload tokens (`x-upload-session-token`) defend the proxy `PUT` routes against cross-tenant attacks but not against CSRF — pair them with a CSRF-token header check or with `auth.required: true` on top.
-
-## Rate limiting
-
-Either use Express middleware (`express-rate-limit`) keyed by IP / user, or use filefn's built-in `rateLimit` config — which runs *inside* the kernel and applies before storage / DB work.
-
-## See also
-
-- [Quickstart › Express](../quickstart/express) — minimal version.
+Use host CSRF protection for cookie-authenticated writes and the kernel's authorization and upload-token checks. Keep unrelated JSON middleware scoped so it does not consume binary upload bodies. See [rate limiting](/docs/features/rate-limiting) and [storage adapters](/docs/adapters/storage).
 
 
 ---
@@ -5535,12 +5262,13 @@ import { compress } from "hono/compress";
 import { logger } from "hono/logger";
 import { createFileFn, createNucleusPolicies } from "@filefn/server";
 import { createAuthFn } from "@authfn/server";
-import { createPostgresAdapter } from "@superfunctions/db-postgres";
-import { createS3Storage } from "@superfunctions/storage";
+import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { createS3Storage } from "@superfunctions/storage-s3";
 import { Pool } from "pg";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const db = createPostgresAdapter({ pool });
+const db = drizzleAdapter({ db: drizzle(pool), dialect: "postgres" });
 const storage = createS3Storage({
   region: process.env.AWS_REGION!,
   bucket: process.env.S3_BUCKET!,
@@ -5653,9 +5381,10 @@ filefn works with both the App Router and Pages Router. The recommended setup is
 ```ts
 // src/lib/server/filefn.ts
 import { createFileFn, createNucleusPolicies } from "@filefn/server";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
 export const fileFn = createFileFn({
-  /* db, storage, auth, ... */
+  storage: createLocalStorageAdapter({ rootDir: "./.filefn-storage" }),
   policies: createNucleusPolicies(),
 });
 ```
@@ -5930,7 +5659,7 @@ This walkthrough takes you from zero to a running file server with multipart upl
 ## 1. Install
 
 ```bash
-npm install @filefn/server @superfunctions/storage @superfunctions/db hono @hono/node-server
+npm install @filefn/server @superfunctions/storage-local @superfunctions/db hono @hono/node-server
 npm install @filefn/client
 ```
 
@@ -5951,7 +5680,7 @@ The in-memory adapter is fine for tests and quickstarts; data is lost on restart
 ## 3. Pick a storage adapter
 
 ```ts
-import { createLocalStorageAdapter } from "@superfunctions/storage";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
 const storage = createLocalStorageAdapter({
   rootDir: "./.filefn-storage",
@@ -6178,7 +5907,7 @@ filefn runs on Bun without modification. `Bun.serve`'s `fetch` handler is a Fetc
 ## Install
 
 ```bash
-bun add @filefn/server @superfunctions/storage @superfunctions/db
+bun add @filefn/server @superfunctions/storage-local @superfunctions/db
 ```
 
 ## Server
@@ -6186,7 +5915,7 @@ bun add @filefn/server @superfunctions/storage @superfunctions/db
 ```ts
 import { createFileFn } from "@filefn/server";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import { createLocalStorageAdapter } from "@superfunctions/storage";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
 const fileFn = createFileFn({
   db: memoryAdapter({ debug: false }),
@@ -6243,8 +5972,8 @@ Express ships Node's classic `IncomingMessage` / `ServerResponse` instead of a F
 ## Install
 
 ```bash
-npm install express
-npm install @filefn/server @superfunctions/storage @superfunctions/db
+npm install express @superfunctions/http-express
+npm install @filefn/server @superfunctions/storage-local @superfunctions/db
 ```
 
 ## Server
@@ -6253,8 +5982,8 @@ npm install @filefn/server @superfunctions/storage @superfunctions/db
 import express from "express";
 import { createFileFn } from "@filefn/server";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import { createLocalStorageAdapter } from "@superfunctions/storage";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
+import { toExpress } from "@superfunctions/http-express";
 
 const fileFn = createFileFn({
   db: memoryAdapter({ debug: false }),
@@ -6272,42 +6001,8 @@ const fileFn = createFileFn({
 
 const app = express();
 
-app.use("/filefn", async (req: IncomingMessage, res: ServerResponse) => {
-  const url = `http://${req.headers.host ?? "localhost"}${req.url ?? "/"}`;
-  const headers = new Headers();
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (Array.isArray(value)) {
-      for (const v of value) headers.append(key, v);
-    } else if (typeof value === "string") {
-      headers.set(key, value);
-    }
-  }
-
-  const body =
-    req.method === "GET" || req.method === "HEAD"
-      ? undefined
-      : (req as unknown as ReadableStream<Uint8Array>);
-
-  const fetchRequest = new Request(url, {
-    method: req.method,
-    headers,
-    body,
-    duplex: "half",
-  } as any);
-
-  const response = await fileFn.router.handle(fetchRequest);
-  if (!response) {
-    res.statusCode = 404;
-    res.end();
-    return;
-  }
-
-  res.statusCode = response.status;
-  response.headers.forEach((value, key) => res.setHeader(key, value));
-
-  const buffer = Buffer.from(await response.arrayBuffer());
-  res.end(buffer);
-});
+// Raw parsing preserves chunk bytes; keep this limit above the configured chunk size.
+app.use("/filefn", express.raw({ type: "*/*", limit: "10mb" }), toExpress(fileFn.router));
 
 app.listen(3001);
 ```
@@ -6539,7 +6234,7 @@ Hono is the canonical filefn integration: native `Request`/`Response`, runs on N
 
 ```bash
 npm install hono @hono/node-server
-npm install @filefn/server @superfunctions/storage @superfunctions/db
+npm install @filefn/server @superfunctions/storage-local @superfunctions/db
 ```
 
 For Bun or Workers, drop `@hono/node-server` and use the runtime's native `serve` / `fetch`.
@@ -6552,7 +6247,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createFileFn } from "@filefn/server";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import { createLocalStorageAdapter } from "@superfunctions/storage";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
 const fileFn = createFileFn({
   db: memoryAdapter({ debug: false }),
@@ -6662,7 +6357,7 @@ Next.js exposes the Web `Request` API in App Router route handlers, so filefn sl
 ## Install
 
 ```bash
-npm install @filefn/server @superfunctions/storage @superfunctions/db
+npm install @filefn/server @superfunctions/storage-local @superfunctions/db
 ```
 
 ## Kernel singleton
@@ -6673,7 +6368,7 @@ npm install @filefn/server @superfunctions/storage @superfunctions/db
 import "server-only";
 import { createFileFn } from "@filefn/server";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import { createLocalStorageAdapter } from "@superfunctions/storage";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
 export const fileFn = createFileFn({
   db: memoryAdapter({ debug: false }),
@@ -6753,7 +6448,7 @@ SvelteKit can host filefn as a server route under any prefix. The server runs in
 ## Install
 
 ```bash
-npm install @filefn/server @superfunctions/storage @superfunctions/db
+npm install @filefn/server @superfunctions/storage-local @superfunctions/db
 ```
 
 ## Server (server.ts)
@@ -6763,7 +6458,7 @@ Keep the kernel out of `+server.ts` so it survives HMR. Create `src/lib/server/f
 ```ts
 import { createFileFn } from "@filefn/server";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import { createLocalStorageAdapter } from "@superfunctions/storage";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
 export const fileFn = createFileFn({
   db: memoryAdapter({ debug: false }),
@@ -7014,120 +6709,34 @@ Each recipe is a complete, production-tested pattern for a real problem. Copy it
 Source: https://filefn.superfunctions.dev/docs/recipes/cdn-integration
 
 
-Serve filefn-managed bytes through CloudFront, Cloud CDN, or Cloudflare without breaking signed URLs or auth.
+Separate storage authorization from public asset delivery.
 
 
 # CDN integration
 
-Goal: bandwidth-heavy reads (downloads, thumbnails, previews) go through a CDN; auth and metadata stay with filefn.
+The S3 and R2 adapters expose storage operations and signed URLs. They do not accept `cdnPrefix` or rewrite signed storage URLs to a CDN domain. Provision and configure your CDN in the host infrastructure, and choose an authorization model appropriate to public or private assets.
 
-## Two patterns
+For private files, call FileFn's authorized download-resolution APIs. Preserve the returned URL, request headers, and expiry. Replacing the hostname of a signed URL can invalidate the signature or bypass the intended access policy. Use a host-owned adapter or delivery service if the CDN needs a different signing protocol.
 
-### Pattern A — CDN in front of the storage bucket
-
-```mermaid
-graph LR
-  C[Client] -->|GET signed URL| F[filefn]
-  F -->|signed URL with CDN host| C
-  C -->|GET| CDN[CloudFront]
-  CDN -->|cache miss| S3[S3]
-  CDN -->|hit| C
-```
-
-Signed URLs are minted by filefn with the CDN host substituted. The CDN forwards them to S3 transparently.
+## Route policies to configured storage targets
 
 ```ts
-const storage = createS3Storage({
-  region: "us-east-1",
-  bucket: "filefn-prod",
-  cdnPrefix: "https://cdn.example.com",
-  // ...
-});
-```
+import { createRoutedStorageAdapter } from "@superfunctions/storage";
+import { createS3StorageAdapter } from "@superfunctions/storage-s3";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
-CDN config:
-
-- Origin: your S3 bucket.
-- Forward query strings (signed URL parameters live there).
-- Cache key: include the relevant query parameters.
-- TTL: shorter than `signedUrlTtlSeconds` (15 min).
-
-### Pattern B — CDN in front of filefn
-
-```mermaid
-graph LR
-  C[Client] -->|GET| CDN[CloudFront]
-  CDN -->|cache miss| F[filefn]
-  F -->|stream from S3| CDN
-  CDN -->|hit / cached| C
-```
-
-Use the `/proxy/files/...` routes. The CDN caches filefn responses, not S3 responses. This works when:
-
-- you want filefn to apply Content-Disposition rewrites
-- you want CDN-level rate limiting on filefn routes
-- you want the CDN to cache responses for many users with identical access (e.g. public files)
-
-CDN config:
-
-- Origin: your filefn host.
-- Forward `Authorization` for private files (or `Vary: Authorization`).
-- Don't cache `4xx`s.
-
-For public files, mark them `public` and let the CDN cache aggressively.
-
-## Public buckets
-
-For genuinely public files (avatars, brand assets):
-
-```ts
-fileFn.definePolicy("public-avatar", {
-  contentTypes: ["image/png", "image/jpeg"],
-  maxSizeBytes: 5 * 1024 * 1024,
-  visibility: "public",
-  storageTarget: "public-cdn",
-  // ...
-});
-
-const storageRouter = createStorageRouter({
-  default: durable,
-  targets: {
-    "public-cdn": createS3Storage({
-      bucket: "public-assets",
-      cdnPrefix: "https://cdn.example.com",
-      // bucket policy: public-read
-    }),
+const storage = createRoutedStorageAdapter({
+  defaultTarget: "durable",
+  adapters: {
+    durable: createS3StorageAdapter({ bucket: process.env.S3_BUCKET!, region: process.env.AWS_REGION! }),
+    temporary: createLocalStorageAdapter({ rootDir: "./.filefn-storage" }),
   },
 });
 ```
 
-Visibility `public` skips the auth check; the bucket-level policy serves the bytes; signed URLs aren't required.
+Policies select a registered target through `storageTarget` and `artifactStorageTarget`. The router uses an explicit adapter map and `defaultTarget`; it has no arbitrary per-request `resolveTarget` callback. Validate environment variables before constructing adapters.
 
-## Per-tenant CDNs
-
-Different tenants might need different CDN domains (e.g. white-label deployments):
-
-```ts
-const storage = createStorageRouter({
-  default: durable,
-  resolveTarget: (input) => {
-    if (input.policy === "tenant-asset") {
-      return createS3Storage({
-        bucket: `${input.tenantId}-assets`,
-        cdnPrefix: `https://${input.tenantId}.cdn.example.com`,
-      });
-    }
-    return durable;
-  },
-});
-```
-
-`resolveTarget` runs per request — cache the adapter instances per tenant for efficiency.
-
-## See also
-
-- [Storage targets](../core-concepts/storage-targets) — multi-target routing.
-- [Adapters › S3](../adapters/storage-s3) — `cdnPrefix` semantics.
+Public CDN delivery is a separate host policy: publish only objects intended to be public, configure cache keys and content headers, and plan invalidation when replacing or removing content. Do not expose private storage keys or long-lived credentials to the browser. See [downloads](/docs/features/downloads) and [storage targets](/docs/core-concepts/storage-targets).
 
 
 ---
@@ -7310,8 +6919,9 @@ const pdfPreview = createPdfPreviewProcessor({
 });
 
 const ocr = createOCRProcessor({
-  provider: createTesseractJsOCRProvider({ languages: ["eng"] }),
-  outputs: ["text"],
+  provider: createTesseractJsOCRProvider(),
+  language: "eng",
+  outputFormat: "text",
 });
 
 const fileFn = createFileFn({
@@ -7433,27 +7043,8 @@ If you'd rather keep HEIC originals and transcode on the server, opt out of prep
 
 ```ts
 const transform = createImageTransformProcessor({
-  pipeline: [
-    { kind: "auto-orient" },
-    { kind: "format", format: "jpeg", quality: 85 },
-  ],
-  outputName: "normalised",
-});
-
-const fileFn = createFileFn({
-  db, storage,
-  processing: {
-    enabled: true,
-    processors: [transform],
-  },
-});
-```
-
-The processor reads HEIC via `sharp` (which uses libheif under the hood). Make sure your runtime image has libheif installed.
-
-## See also
-
-- [Features › HEIC](../features/heic) — full reference.
+  operations: [{ operation: "resize", options: { width: 2048, fit: "inside" }, suffix: "preview" }],
+  outputFormat: "jpeg",
 
 
 ---
@@ -7509,12 +7100,9 @@ const thumbnails = createThumbnailProcessor({
 });
 
 const stripExif = createImageTransformProcessor({
-  pipeline: [
-    { kind: "auto-orient" },                  // honour EXIF orientation
-    { kind: "strip-metadata" },               // delete EXIF / IPTC / XMP
-    { kind: "format", format: "jpeg", quality: 85 },
-  ],
-  outputName: "normalised",
+  operations: [{ operation: "resize", options: { width: 2048, fit: "inside", withoutEnlargement: true }, suffix: "normalised" }],
+  outputFormat: "jpeg",
+  outputQuality: 85,
 });
 
 const fileFn = createFileFn({
@@ -7829,21 +7417,7 @@ fileFn.definePolicy("user-document", {
 
 Every storage object lives under `tenants/<tenantId>/`. If you front it with a CDN, configure cache keys to include the tenant prefix to keep tenant data isolated at the cache layer too.
 
-For per-tenant buckets, route at the storage layer:
-
-```ts
-import { createStorageRouter } from "@superfunctions/storage";
-
-const storage = createStorageRouter({
-  default: durable,
-  resolveTarget: (input) => {
-    if (input.policy === "user-document") {
-      return tenantBuckets.get(input.tenantId)!;
-    }
-    return durable;
-  },
-});
-```
+For multiple buckets, register named adapters with `createRoutedStorageAdapter({ adapters, defaultTarget })` and assign trusted policies to those targets. The router has no `resolveTarget` callback. Keep tenant authorization in the host and do not accept an arbitrary adapter/target from the client. See [CDN and storage routing](/docs/recipes/cdn-integration).
 
 ## Quotas
 
@@ -7973,11 +7547,9 @@ const flowFn = createFlowFnProvider({
 
 const video = createVideoProcessor({
   provider: createCommandVideoProvider({ ffmpegPath: "ffmpeg" }),
-  poster: { time: 1.0, width: 1024 },
-  transcode: [
-    { resolution: "720p", codec: "h264", bitrate: "2M" },
-    { resolution: "480p", codec: "h264", bitrate: "1M" },
-  ],
+  posterOptions: { timestamp: 1.0, width: 1024 },
+  transcode: true,
+  transcodeOptions: { resolution: "720p", codec: "h264", bitrate: "2M" },
 });
 
 const fileFn = createFileFn({
@@ -8889,12 +8461,14 @@ Index: `(fileId)`.
 ## Migration
 
 ```ts
-import { applySchemaToAdapter } from "@superfunctions/db";
-const { schemas } = fileFn.getSchema();
-await applySchemaToAdapter(db, schemas);
+import { getSchema } from "@filefn/server";
+
+const { version, schemas } = getSchema({ namespace: "filefn" });
+// Feed these table descriptors into your application's migration tooling.
+console.log(version, schemas.map((table) => table.modelName));
 ```
 
-Idempotent — safe to run on every boot. Production deployments should generate SQL once and run it through their normal migration pipeline.
+This only reads schema descriptors; it does not apply a migration. Provision the tables and indexes with your host migration pipeline before serving traffic.
 
 ## See also
 
