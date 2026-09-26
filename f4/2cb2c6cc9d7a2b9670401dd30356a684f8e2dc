@@ -1,0 +1,53 @@
+searchfn/docs/content/docs/documentation/advanced/adapter-migration.mdx
+  s_ee6f287c08acb3::t_5fd37e639936e1 50,52
+searchfn/docs/content/docs/documentation/deploy/cloudflare-workers.mdx
+  s_ee6f287c08acb3::t_e05b0844bf06b8 35,38-40,43,52,87,91-93
+searchfn/docs/content/docs/documentation/deploy/fly.mdx
+  s_ee6f287c08acb3::t_a78aacb180258c 74-76,83,85-87
+searchfn/docs/content/docs/documentation/deploy/railway.mdx
+  s_ee6f287c08acb3::t_4d71f46fbd2ddf 21,23-25,29,44,48,68-71
+searchfn/docs/content/docs/documentation/deploy/vercel.mdx
+  s_ee6f287c08acb3::t_10c66e2c64e7b2 27,29-31,34,45
+searchfn/docs/content/docs/documentation/security/request-authz.mdx
+  s_ee6f287c08acb3::t_6c4746da66b076 121,123
+searchfn/docs/content/docs/getting-started.mdx
+  s_ee6f287c08acb3::t_2f7bccc400ee33 168
+searchfn/docs/content/docs/quickstart/bun.mdx
+  s_ee6f287c08acb3::t_01c1111703b7f8 20,22,26,34,41
+searchfn/docs/content/docs/quickstart/express.mdx
+  s_ee6f287c08acb3::t_5319b3107b7452 9,16,20,22,26,31-32,51
+searchfn/docs/content/docs/quickstart/fastapi.mdx
+  s_ee6f287c08acb3::t_8faa1aa8538e09 20-21,24,29-34
+searchfn/docs/content/docs/quickstart/fastify.mdx
+  s_ee6f287c08acb3::t_12b45d7f15a1a3 9,16,20,22,26,32
+searchfn/docs/content/docs/quickstart/hono.mdx
+  s_ee6f287c08acb3::t_2548c612559c34 11,24,28,30,34,42-43,46,54
+searchfn/docs/content/docs/quickstart/nextjs.mdx
+  s_ee6f287c08acb3::t_a02e48af580129 20,22,26,31
+searchfn/docs/content/docs/quickstart/sveltekit.mdx
+  s_ee6f287c08acb3::t_582b6c84311240 16,19,24,26,30,34-35,37-38
+searchfn/docs/content/docs/reference/adapters/postgres.mdx
+  s_ee6f287c08acb3::t_1e63f9e8d56ff0 22
+searchfn/docs/content/docs/reference/changelog.mdx
+  s_ee6f287c08acb3::t_bea6c53d2b3331 41
+searchfn/docs/public/llms-full.txt
+  s_ee6f287c08acb3::t_e0fcfe456d783f 1004,1219-1243,1295,1297,1599,1603,1605-1606,1611,3352,3355-3357,3360,3369,3404,3408-3410,3620-3622,3629,3631-3633,3937,3939-3941,3945,3960,3964,3984-3987,4149,4151-4153,4156,4167,4693,4696,4699,4703-4705,4708,4710,4718,4721,4723,4725-4727,4729,4737,4740,4743,4745-4746,4749,4751,4759,4762,4765,4767-4768,4771,4773,4781,4786,4790,4793-4794,4796,4798,4802,4805,4807,4809,4811,5365,5367,6395,6397,6401,6409,6416,6454,6461,6465,6467,6471,6476-6477,6496,6510,6513-6514,6517,6520,6522,6525,6527-6534,6536,6539-6541,6544,6546,6548,6562,6569,6573,6575,6579,6585,6615,6618-6619,6624,6626,6629,6631-6635,6637-6639,6642,6644,6646,6662,6675,6679,6681,6685,6693-6694,6697,6705,6779,6781,6785,6790,6868,6871-6872,6879,6881,6883,6887-6890,6893-6896,6901,6903,6905,6926,6929,6934,6936,6940,6944-6945,6947-6948,9368,9543,10261,10264,10267,10270,10272-10274,10279,10281,10283
+searchfn/docs/public/llms.txt
+  s_ee6f287c08acb3::t_d29487afca815f 30,60-64,92,94,97,133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f42cb2c6cc9d7a2b9670401dd30356a684f8e2dc",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
