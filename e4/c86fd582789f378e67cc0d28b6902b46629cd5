@@ -1,0 +1,36 @@
+mcpfn/docs/content/docs/getting-started.md
+  h_bdc5b81c173ee9 45,51-58,63-70
+mcpfn/docs/src/app.css
+  h_bdc5b81c173ee9 73-77
+mcpfn/docs/src/lib/components/DocsSiteSearch.svelte
+  h_bdc5b81c173ee9 2,5
+mcpfn/docs/src/lib/server/docs-site-source.ts
+  h_bdc5b81c173ee9 2,4-5,7-8,11-17
+mcpfn/docs/src/routes/+layout.server.ts
+  h_bdc5b81c173ee9 5-6,8-11
+mcpfn/docs/src/routes/+layout.svelte
+  h_bdc5b81c173ee9 24
+mcpfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  h_bdc5b81c173ee9 10,35-36
+mcpfn/docs/static/llms-full.txt
+  h_bdc5b81c173ee9 162,168-175,180-187
+mcpfn/docs/vite.config.ts
+  h_bdc5b81c173ee9 21-23
+scripts/docs-site/README.md
+  h_bdc5b81c173ee9 1-9
+scripts/docs-site/Search.svelte
+  h_bdc5b81c173ee9 1-83
+scripts/docs-site/runtime.ts
+  h_bdc5b81c173ee9 1-537
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e4c86fd582789f378e67cc0d28b6902b46629cd5",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
