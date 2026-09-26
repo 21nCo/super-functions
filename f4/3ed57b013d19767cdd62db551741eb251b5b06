@@ -1,0 +1,61 @@
+botfn/docs/README.md
+  s_ee6f287c08acb3::t_83f86f9fd374ae 12-23
+botfn/docs/content/docs/integrations.md
+  s_16208d9e94c152::t_e6ebfedd82aa7a 6
+botfn/docs/content/docs/persistence.md
+  s_16208d9e94c152::t_a497394ad805ce 8,13
+botfn/docs/content/docs/reference/commands-and-routes.md
+  s_16208d9e94c152::t_2fb62cabf830ce 20-21
+botfn/docs/package.json
+  s_16208d9e94c152::t_e15ae27239bf06 28,31-33
+botfn/docs/scripts/generate-llms.mjs
+  s_16208d9e94c152::t_88bf461e6b5ef7 32,38
+botfn/docs/src/app.css
+  s_16208d9e94c152::t_5452d2a1e18318 19,76-80
+botfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_16208d9e94c152::t_559f5337fcfc40 2
+botfn/docs/src/routes/+layout.svelte
+  s_16208d9e94c152::t_66d5403f434d30 6-7,16-17,22
+botfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_16208d9e94c152::t_f3f6e03df3d1b7 2,15-17,27-29
+botfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_2a960b71a7f547 6,90,126,131,167-168
+botfn/docs/svelte.config.js
+  s_ee6f287c08acb3::t_66a81136724202 17
+botfn/docs/tsconfig.json
+  s_16208d9e94c152::t_2b1a26835dc490 23-24,26
+botfn/docs/vite.config.ts
+  s_16208d9e94c152::t_a70cbd6b8a86a9 2,9-10,24,26-27
+package-lock.json
+  s_ee6f287c08acb3::t_ccd3fc2ae241a6 5749-5750,5753-5754,66590-66616
+scripts/docs-site/Search.svelte
+  s_16208d9e94c152::t_91a572322c610f 13
+scripts/docs-site/layout.ts
+  s_16208d9e94c152::t_69e2a97101dd23 1-10
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_de4f2effa9f354 187,214,323-326,351,356,361,364,372,399,406,425,431,444,449,466,472
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f43ed57b013d19767cdd62db551741eb251b5b06",
+  "prompts": {},
+  "sessions": {
+    "s_16208d9e94c152": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe7-1ef9-7b80-8341-fe952b6e9b65",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
