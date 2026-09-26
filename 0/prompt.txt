@@ -1,0 +1,1 @@
+dont create too many worktrees - we have less storage on disk
