@@ -1,0 +1,35 @@
+packages/cli/src/__tests__/schema-index-migrations.test.ts
+  s_d473070cda5c3b::t_fec888eb7aaa6b 109-110,112,122-124,126
+packages/cli/src/utils/schema-generators.ts
+  s_d473070cda5c3b::t_fec888eb7aaa6b 9-10,102-108,114-121,185
+packages/db/src/adapters/drizzle/mysql-upsert.test.ts
+  s_d473070cda5c3b::t_fec888eb7aaa6b 4,13-17
+packages/db/src/adapters/internal-utils.ts
+  s_d473070cda5c3b::t_fec888eb7aaa6b 90
+authfn/docs/content/docs/quickstart/nodejs.md
+  s_d473070cda5c3b::t_43d46205ebf846 21-22,34-40,121-122,128-129
+authfn/docs/content/docs/adapters/database/drizzle.md
+  s_d473070cda5c3b::t_2acd3fe4e806a9 111-112,126-133
+  s_d473070cda5c3b::t_9b5cfb3c828b84 134
+authfn/docs/content/docs/plugins/authoring.md
+  s_d473070cda5c3b::t_f51c97d27a91d8 172-173
+  s_d473070cda5c3b::t_0ab90f532126ee 50-54,100,103-104,116,129,216
+authfn/docs/static/llms-full.txt
+  s_d473070cda5c3b::t_acd0c53163d44f 239-240,254-262,5579-5583,5629,5632-5633,5645,5658,5701-5702,5745,7678-7679,7691-7697,7778-7779,7785-7786
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8e7b1bca3a0a79f652a867e1abc1be458641c305",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

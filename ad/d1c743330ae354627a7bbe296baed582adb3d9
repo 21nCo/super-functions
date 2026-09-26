@@ -1,0 +1,58 @@
+authfn/docs/content/docs/adapters/database/drizzle.md
+  s_d473070cda5c3b::t_ac3fbf2d89ff98 161-162
+  s_d473070cda5c3b::t_6315f329f08028 138-140
+authfn/core/src/core/verifications.ts
+  s_d473070cda5c3b::t_ed1d99ee50fe30 23,90,106-109
+authfn/core/src/core/sessions.ts
+  s_d473070cda5c3b::t_bf5391b24e2c1a 21,91
+authfn/core/package.json
+  s_d473070cda5c3b::t_ac3fbf2d89ff98 61
+authfn/multi-region/src/__tests__/index.test.ts
+  s_d473070cda5c3b::t_6315f329f08028 43-49
+authfn/core/src/index.ts
+  s_d473070cda5c3b::t_14431376c9b738 86-88
+  s_d473070cda5c3b::t_4cc08166f9b277 85
+packages/cli/src/utils/schema-generators.ts
+  s_d473070cda5c3b::t_ac3fbf2d89ff98 103
+authfn/core/src/__tests__/sessions.test.ts
+  s_d473070cda5c3b::t_c85dda43689692 38-55
+packages/cli/src/__tests__/schema-index-migrations.test.ts
+  s_d473070cda5c3b::t_69ca80f473acd2 165
+  s_d473070cda5c3b::t_2fb224a6b95523 115,141
+authfn/core/src/core/users.ts
+  s_d473070cda5c3b::t_300d51f2a1ec5c 5,20,32
+authfn/core/src/schema.ts
+  s_d473070cda5c3b::t_ac3fbf2d89ff98 5
+authfn/social-oauth/src/index.ts
+  s_d473070cda5c3b::t_208296826f4f40 1,63,952,2017-2024
+authfn/core/src/core/regions.ts
+  s_d473070cda5c3b::t_392a4b3a6d6ee2 29,45,127-140
+  s_d473070cda5c3b::t_c272d7e64b3441 141-142
+authfn/core/src/__tests__/social-google.test.ts
+  s_d473070cda5c3b::t_6315f329f08028 14,25,112,142-177
+  s_d473070cda5c3b::t_619578fef8d5f9 178-179
+authfn/core/src/core/limits.ts
+  s_d473070cda5c3b::t_ac3fbf2d89ff98 1-14
+packages/cli/src/__tests__/authfn-schema-discovery.test.ts
+  s_d473070cda5c3b::t_2a2fe49f5e7a34 6,201-207
+  s_d473070cda5c3b::t_6315f329f08028 159
+  s_d473070cda5c3b::t_55babc2de45792 208-209
+authfn/docs/static/llms-full.txt
+  s_d473070cda5c3b::t_197ef7f9a89cc7 266-268,289-290
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "add1c743330ae354627a7bbe296baed582adb3d9",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

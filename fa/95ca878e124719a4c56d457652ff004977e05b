@@ -1,0 +1,23 @@
+.factory/settings.json
+  s_6386f03cb2f253::t_e6ff76b5ab898c 1-85
+.opencode/plugins/entire.ts
+  s_6386f03cb2f253::t_ea643313a7494b 1-269
+.pi/extensions/entire/index.ts
+  s_6386f03cb2f253::t_73a6680c451d54 1-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fa95ca878e124719a4c56d457652ff004977e05b",
+  "prompts": {},
+  "sessions": {
+    "s_6386f03cb2f253": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a53f-a1e6-7cc3-b676-4786df1a293f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

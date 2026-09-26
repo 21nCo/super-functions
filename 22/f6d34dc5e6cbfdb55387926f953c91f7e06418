@@ -1,0 +1,68 @@
+mcpfn/datafn/package.json
+  s_a75667985e6362::t_cb9880976baa65 3,26,30
+mcpfn/ADR-0001-COMPATIBILITY.md
+  s_a75667985e6362::t_fb4809f012721e 10-17
+  s_a75667985e6362::t_a4d3bf4e82f797 23-53
+mcpfn/core/README.md
+  s_a75667985e6362::t_0bd2e174f7f587 109-121
+mcpfn/inspector/package.json
+  s_a75667985e6362::t_cb9880976baa65 3,25,30
+scripts/gate-mcpfn-release.mjs
+  s_a75667985e6362::t_e34ce537ac857f 477-479
+scripts/test-mcpfn-cloudflare-worker.mjs
+  s_a75667985e6362::t_6ca99fca9806b1 130-131
+  s_a75667985e6362::t_192aea6fcdfaf3 1-93,95-100,102-103,127-129,132-184
+  s_a75667985e6362::t_8178552ab7654c 94,101,104-126
+mcpfn/TESTING.md
+  s_a75667985e6362::t_f8262eef572afd 108-114
+mcpfn/core/tsup.config.ts
+  s_a75667985e6362::t_0ec8bbbfbced41 10-16
+mcpfn/core/src/validation.ts
+  s_a75667985e6362::t_1fe4cbf06a3ada 1-116
+mcpfn/auth/package.json
+  s_a75667985e6362::t_cb9880976baa65 3
+mcpfn/cli/package.json
+  s_a75667985e6362::t_cb9880976baa65 3,26,28-30
+mcpfn/auth/tsup.config.ts
+  s_a75667985e6362::t_ab7149ebd794c6 12-15
+mcpfn/core/package.json
+  s_a75667985e6362::t_606d18f55a83bb 24
+  s_a75667985e6362::t_cb9880976baa65 3
+mcpfn/core/src/manifest.ts
+  s_a75667985e6362::t_b9b44110d82b7b 350
+  s_a75667985e6362::t_5eeba24c0c26db 1
+  s_a75667985e6362::t_96efc102e06808 228-229
+mcpfn/client/package.json
+  s_a75667985e6362::t_cb9880976baa65 28
+mcpfn/core/src/registry.ts
+  s_a75667985e6362::t_3d98d400c2d265 2
+  s_a75667985e6362::t_e2c7ea1ad7d056 55
+  s_a75667985e6362::t_c91105ba79a1f7 432-433,435,437
+  s_a75667985e6362::t_a62064560eac17 309,311
+  s_a75667985e6362::t_a4e311f6aad0ab 33-34,39
+  s_a75667985e6362::t_07d4b602dc06ae 591,593
+mcpfn/testing/package.json
+  s_a75667985e6362::t_cb9880976baa65 3,34,47
+mcpfn/MIGRATION.md
+  s_a75667985e6362::t_204eba37a95fd6 45-62
+mcpfn/client/tsup.config.ts
+  s_a75667985e6362::t_79c0b93ac49191 10-15
+package-lock.json
+  s_a75667985e6362::t_e3f00c179ab3b1 11431-11444,12878,13352,13355,13357-13359,13832,14290,14293,14756,14761,14764,14829,14833,14838,15296,15300,15305,19221-19234,22050-22055,52885-53344,58566-58619,58659-58671,58704-58771,58800-58861,58880-58909,58923-58938,58949-58957,59004-59082,59125-59155,59182-59226,59422-59452
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "22f6d34dc5e6cbfdb55387926f953c91f7e06418",
+  "prompts": {},
+  "sessions": {
+    "s_a75667985e6362": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "c691f260-6ab4-4f66-a62f-a992bda63d77",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,75 @@
+mcpfn/cli/tests/inspect-redaction.test.ts
+  s_77d7bb3189c71a::t_1f47ba16f575eb 16,54,56-69,77
+mcpfn/testing/README.md
+  s_77d7bb3189c71a::t_466713c9228989 73,75,88-96,99-103
+  s_dbeaf6beea25e6::t_a003a33fc1f967 104
+mcpfn/testing/tests/remote-target.test.ts
+  s_77d7bb3189c71a::t_c69f758cf869a0 16,18,147-152,174-179,192-201,203-209,211-246,248-275,277,280,282-284,286-287,290
+  s_77d7bb3189c71a::t_c277a46806af9e 276,278-279,281,285,288
+  s_77d7bb3189c71a::t_b91753607ab29f 182,190-191,202,210
+mcpfn/inspector/README.md
+  s_77d7bb3189c71a::t_466713c9228989 24-25
+mcpfn/inspector/tests/authenticated-artifacts.test.ts
+  s_77d7bb3189c71a::t_c69f758cf869a0 370-387
+mcpfn/cli/src/index.ts
+  s_77d7bb3189c71a::t_9529d1425534ca 31,36,358-362,442-464
+mcpfn/client/src/targets.ts
+  s_77d7bb3189c71a::t_fef8e97cd13956 40,52-54
+mcpfn/client/src/types.ts
+  s_77d7bb3189c71a::t_fef8e97cd13956 116-118
+mcpfn/testing/src/artifact-guards.ts
+  s_77d7bb3189c71a::t_aa6f4a02b08fb2 27,40-49,55-64
+mcpfn/client/src/client.ts
+  s_77d7bb3189c71a::t_fef8e97cd13956 303-325
+mcpfn/inspector/src/index.ts
+  s_77d7bb3189c71a::t_9529d1425534ca 83-89,232-243
+  s_dbeaf6beea25e6::t_aa3b67f484247f 244-245
+mcpfn/cli/tests/target-suite-cleanup.test.ts
+  s_77d7bb3189c71a::t_481f321e2562e7 8,43,98-120
+  s_dbeaf6beea25e6::t_fa7bd339eddc8e 121
+mcpfn/testing/src/suite.ts
+  s_77d7bb3189c71a::t_aa6f4a02b08fb2 29-32,56-57,134-139,144-148,152-157,165-175,446,531,723
+  s_77d7bb3189c71a::t_942a29b1ce793b 457
+  s_77d7bb3189c71a::t_3ffb9208697b6f 140-143
+  s_9bf391f59b269b::t_6ebf858f08899b 28
+mcpfn/testing/tests/suite.test.ts
+  s_77d7bb3189c71a::t_a097d35ed44bdc 658,661,668
+mcpfn/testing/src/remote-target.ts
+  s_77d7bb3189c71a::t_aa6f4a02b08fb2 208
+  s_77d7bb3189c71a::t_fef8e97cd13956 297-305,308,314-335,353,474-489,651
+mcpfn/testing/src/reports.ts
+  s_77d7bb3189c71a::t_aa6f4a02b08fb2 4-7,37-61
+  s_dbeaf6beea25e6::t_6da9491977765c 62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "930bfa62412b36f51f0c2fb20c7fc7b1776c4f9e",
+  "prompts": {},
+  "sessions": {
+    "s_77d7bb3189c71a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b3f5-d570-7a72-b668-401efd539e3b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_9bf391f59b269b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ce71-e142-7240-95a6-a393b1b7cac6",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_dbeaf6beea25e6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c886-73ef-72c2-b7ee-54bc7cc84533",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

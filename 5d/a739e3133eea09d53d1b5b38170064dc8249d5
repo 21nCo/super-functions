@@ -1,0 +1,19 @@
+langfn/typescript/src/models/stream-lines.ts
+  s_62d00a12187e6b::t_c3b3877074af07 1-2,4-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "5da739e3133eea09d53d1b5b38170064dc8249d5",
+  "prompts": {},
+  "sessions": {
+    "s_62d00a12187e6b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09981-8f95-7e22-90a5-204718c73810",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,31 @@
+authfn/docs/content/docs/plugins/social-oauth/google.md
+  s_d473070cda5c3b::t_86374cd193ffd1 19
+authfn/docs/content/docs/adapters/database/sqlite.md
+  s_d473070cda5c3b::t_86374cd193ffd1 25,27,35-36
+authfn/docs/content/docs/adapters/database/drizzle.md
+  s_d473070cda5c3b::t_86374cd193ffd1 12,15-19,27,30,43,45,58,61,73,77,87,89-90
+authfn/docs/content/docs/quickstart/nodejs.md
+  s_d473070cda5c3b::t_1685e5376112f0 107,109,112,119,122
+authfn/docs/content/docs/plugins/authoring.md
+  s_d473070cda5c3b::t_83fdba6054b9c5 117-125,265-266
+authfn/docs/content/docs/frameworks/bun.md
+  s_d473070cda5c3b::t_86374cd193ffd1 45-48,54,56
+authfn/docs/static/llms-full.txt
+  s_d473070cda5c3b::t_b4a59ca143dd77 140,143-147,155,158,171,173,186,189,201,205,215,217-218,475,477,485-486,4494-4497,4503,4505,5592-5600,5740-5741,6922,7703,7705,7708,7715,7718
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4379654c7708b90af22fd54e187d7c587200466a",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

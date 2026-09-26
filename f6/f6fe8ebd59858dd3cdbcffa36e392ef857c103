@@ -1,0 +1,63 @@
+mcpfn/core/src/index.ts
+  s_9ab4ca7dfe56d4::t_6ce8a2e8f5775b 11
+mcpfn/core/src/validation.ts
+  s_9ab4ca7dfe56d4::t_e765b0d7cdc2ce 5
+  s_9ab4ca7dfe56d4::t_f2fd18be355a21 29
+  s_9ab4ca7dfe56d4::t_6ce8a2e8f5775b 32,40,42-44,46,56-59,88,92-112,121-138,141-170,174
+  s_9ab4ca7dfe56d4::t_4e0a41eb92f073 47-55
+  s_9ab4ca7dfe56d4::t_f95ae4babe3ae0 6
+mcpfn/client/tsup.config.ts
+  s_9ab4ca7dfe56d4::t_ec172870ab185d 11-15
+mcpfn/MIGRATION.md
+  s_9ab4ca7dfe56d4::t_ba1c87d0513d8f 53-57,66
+mcpfn/core/src/draft-07-meta-schema.ts
+  s_9ab4ca7dfe56d4::t_e765b0d7cdc2ce 1-111
+scripts/test-mcpfn-cloudflare-worker.mjs
+  s_9ab4ca7dfe56d4::t_b796877b7b2eb2 4-7,40-49,53-58,89-105,110-112,114,179-192,195-197,213-223,230-231
+package.json
+  s_9ab4ca7dfe56d4::t_7a3192461c39e7 141
+  s_9ab4ca7dfe56d4::t_ec172870ab185d 149-150,155-156
+mcpfn/core/src/manifest.ts
+  s_9ab4ca7dfe56d4::t_6ce8a2e8f5775b 1,147,229-230,351
+langfn/typescript/package.json
+  s_9ab4ca7dfe56d4::t_ec172870ab185d 104
+mcpfn/core/package.json
+  s_9ab4ca7dfe56d4::t_ec172870ab185d 27-28
+mcpfn/ADR-0001-COMPATIBILITY.md
+  s_9ab4ca7dfe56d4::t_80725acccc3141 35-43,52-58
+mcpfn/core/src/registry.ts
+  s_9ab4ca7dfe56d4::t_6ce8a2e8f5775b 2-7,316,380,386-389,445,447,603
+mcpfn/core/tests/validation.test.ts
+  s_9ab4ca7dfe56d4::t_4e0a41eb92f073 47
+  s_9ab4ca7dfe56d4::t_d0ed695fb83114 1-46,48-49
+packages/admin/package.json
+  s_9ab4ca7dfe56d4::t_ec172870ab185d 26
+mcpfn/TESTING.md
+  s_9ab4ca7dfe56d4::t_80725acccc3141 109-112
+mcpfn/auth/package.json
+  s_9ab4ca7dfe56d4::t_ec172870ab185d 26-27
+mcpfn/core/README.md
+  s_9ab4ca7dfe56d4::t_80725acccc3141 115-119
+superconsole/package.json
+  s_9ab4ca7dfe56d4::t_ec172870ab185d 27
+memoryfn/typescript/package.json
+  s_9ab4ca7dfe56d4::t_ec172870ab185d 45
+package-lock.json
+  s_9ab4ca7dfe56d4::t_56a8cb92b04458 57,63,65,70-71,11417,11725,12846-12847,13101-13103,13111,13187-13189,13547-13549,13557,13633-13635,13985-13987,13995,14071-14073,14179-14180,14426-14428,14513-14515,14940-14942,14950,15026-15028,15389-15391,15399,15475-15477,18994,19520,25701-25703,39153,52613,57609,57887,58029
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f6f6fe8ebd59858dd3cdbcffa36e392ef857c103",
+  "prompts": {},
+  "sessions": {
+    "s_9ab4ca7dfe56d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c77b-792d-77b3-a4db-ea9dd7195376",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

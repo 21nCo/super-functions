@@ -1,0 +1,47 @@
+authfn/adapters/lookup-cloudflare-do/package.json
+  s_baf2c675cbc477::t_c4fdb7e58d99fc 3,29
+authfn/adapters/lookup-dynamodb/package.json
+  s_baf2c675cbc477::t_5aff51bc86e2fb 3,31
+authfn/admin/package.json
+  s_baf2c675cbc477::t_fc92ffc541c339 3,36,41-42
+authfn/api-keys/package.json
+  s_baf2c675cbc477::t_e67bb9e5b62cc2 3,24
+authfn/client/package.json
+  s_baf2c675cbc477::t_8e32519d041531 3,28,32-37
+authfn/core/package.json
+  s_baf2c675cbc477::t_b5ca97c4fda134 3
+authfn/email-otp/package.json
+  s_baf2c675cbc477::t_247deebac42721 3,24
+authfn/multi-region/package.json
+  s_baf2c675cbc477::t_4e92df6c39611d 3,24
+authfn/native-handoff/package.json
+  s_baf2c675cbc477::t_35c560c4784062 3,24
+authfn/password/package.json
+  s_baf2c675cbc477::t_ab9cf754e8a4db 3,24
+authfn/schema-plugin/package.json
+  s_baf2c675cbc477::t_ea763549ae3c9d 3,24
+authfn/social-oauth/package.json
+  s_baf2c675cbc477::t_8835005490b0b3 3,28
+authfn/svelte/package.json
+  s_baf2c675cbc477::t_bf1a318fc4b7ed 3,27,31
+authfn/two-factor/package.json
+  s_baf2c675cbc477::t_8854f3dff5495e 3,24
+package-lock.json
+  s_baf2c675cbc477::t_8bddd0267687af 492,496,544,550,598,604,607-608,711,714,743,747,750-755,782,884-962,1051-1070,1092-1107,1122,1125,3168,3172,3201,3205,3262,3265,3294,3297,3345,3354,3412,3415,3422,3438,3441,52988-53003,53982-53983,55092-55099,57927-57987,58143-58185,58295-58301
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "42290ad51a95d5f9436d7926e075a4fa8ff784b5",
+  "prompts": {},
+  "sessions": {
+    "s_baf2c675cbc477": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0baeb-adb7-7871-b382-5a2ca62b3af5",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

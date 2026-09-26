@@ -1,0 +1,36 @@
+authfn/python/authfn/http.py
+  s_d473070cda5c3b::t_c28d4f89512500 392-403,408
+authfn/core/src/__tests__/sessions.test.ts
+  s_d473070cda5c3b::t_7a86479b6f6542 45-48
+  s_d473070cda5c3b::t_c28d4f89512500 60-84
+authfn/python/authfn/plugins/social_oauth.py
+  s_d473070cda5c3b::t_0efd42e84c6d9d 1528-1530
+  s_d473070cda5c3b::t_c28d4f89512500 8,803-806,1525-1527,1531-1532
+  s_d473070cda5c3b::t_de7fbda5062eae 1533-1534
+authfn/python/tests/test_social_oauth.py
+  s_d473070cda5c3b::t_c28d4f89512500 401-429
+  s_d473070cda5c3b::t_ece9606e9e783f 33
+  s_d473070cda5c3b::t_a6576fe31b1cb1 400
+authfn/python/tests/test_sessions.py
+  s_d473070cda5c3b::t_c28d4f89512500 18-25,48-84
+  s_d473070cda5c3b::t_4357214e90a7d1 85-86
+authfn/core/src/core/sessions.ts
+  s_d473070cda5c3b::t_1141fd2ba0abff 21-24,93-96,102,122
+  s_d473070cda5c3b::t_c28d4f89512500 92,99-101,103-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ae05c950f1cddf45b97abcdfd2ef86cc19638d2c",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

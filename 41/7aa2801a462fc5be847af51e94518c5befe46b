@@ -1,0 +1,43 @@
+packages/cli/src/__tests__/generate-command.test.ts
+  s_d473070cda5c3b::t_b90f19ff984dfc 33,129-149
+authfn/core/src/core/limits.ts
+  s_d473070cda5c3b::t_09aeb4c5f03bab 5-9,11,13-14
+authfn/core/src/__tests__/social-google.test.ts
+  s_d473070cda5c3b::t_09aeb4c5f03bab 79-87
+  s_d473070cda5c3b::t_b90f19ff984dfc 7,66-78,88-93
+  s_d473070cda5c3b::t_d7cf72728484e6 94
+authfn/core/src/__tests__/password.test.ts
+  s_d473070cda5c3b::t_b90f19ff984dfc 9,30-53
+packages/cli/src/utils/schema-diff.ts
+  s_d473070cda5c3b::t_02ce2069e5f740 393
+packages/cli/src/commands/generate.ts
+  s_d473070cda5c3b::t_02ce2069e5f740 49
+authfn/core/src/core/passwords.ts
+  s_d473070cda5c3b::t_02ce2069e5f740 33,277,281,310,315,320,328
+packages/cli/src/utils/generators.ts
+  s_d473070cda5c3b::t_02ce2069e5f740 931,937-947
+authfn/core/src/core/oauth-accounts.ts
+  s_d473070cda5c3b::t_09aeb4c5f03bab 94-96,105,119
+  s_d473070cda5c3b::t_02ce2069e5f740 4,83-88,91-92,104,116-118
+authfn/core/src/__tests__/two-factor.test.ts
+  s_d473070cda5c3b::t_b90f19ff984dfc 13,48-80
+  s_d473070cda5c3b::t_9d0d6e35a861cc 81
+authfn/core/src/core/two-factor.ts
+  s_d473070cda5c3b::t_02ce2069e5f740 30,99,102,108,118,203-204,212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "417aa2801a462fc5be847af51e94518c5befe46b",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

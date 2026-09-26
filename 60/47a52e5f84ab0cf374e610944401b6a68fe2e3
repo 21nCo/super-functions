@@ -1,0 +1,31 @@
+datafn/cli/package.json
+  s_4e753e53e0316e::t_9ad4f3c31ac08f 30-31
+  s_4e753e53e0316e::t_f77e6c38434871 3
+datafn/core/package.json
+  s_4e753e53e0316e::t_0ac639c2b34efd 3
+datafn/server/package.json
+  s_4e753e53e0316e::t_712b4654b6c9a5 55
+  s_4e753e53e0316e::t_0609e0152f4ec3 61
+  s_4e753e53e0316e::t_8134f30b8adf3c 3
+datafn/client/package.json
+  s_4e753e53e0316e::t_c5ed6dcf2c5e73 23
+  s_4e753e53e0316e::t_56ed1aee289d0f 3
+package-lock.json
+  s_4e753e53e0316e::t_12639f0563296d 6139-6162,6213,6216-6217,6419,6422,6628,7624-7643,7656,7659,7665,7709-7717,13704-13727
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6047a52e5f84ab0cf374e610944401b6a68fe2e3",
+  "prompts": {},
+  "sessions": {
+    "s_4e753e53e0316e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "80802291-3b7f-46b3-9f7e-8440ac4cf2c4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

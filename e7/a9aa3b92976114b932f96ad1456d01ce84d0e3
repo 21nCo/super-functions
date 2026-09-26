@@ -1,0 +1,44 @@
+scripts/test-mcpfn-built-schema-entries.mjs
+  s_8b12c11549f1ff::t_7b1aefe965e845 70-84
+mcpfn/testing/src/client-profile-contracts.ts
+  s_8b12c11549f1ff::t_0d8e514aa91b26 17,559,682
+mcpfn/core/tests/client-profiles.test.ts
+  s_8b12c11549f1ff::t_80090aefd5cc41 774,831,839-840,886,893
+  s_8b12c11549f1ff::t_19308448dca890 14,17,173-179
+  s_08f717a247c1f6::t_16bd5ef891cfd9 180-181
+mcpfn/core/src/client-profiles.ts
+  s_8b12c11549f1ff::t_ed0cb8d553095a 643,661-662,672-673,676,685,693-694
+  s_8b12c11549f1ff::t_0d8e514aa91b26 8,409-415,418-419,440,442-443,532-534
+  s_8b12c11549f1ff::t_19308448dca890 417
+mcpfn/testing/tests/client-profile-contracts.test.ts
+  s_8b12c11549f1ff::t_e3d75da22638cf 18-19,431-446
+  s_8b12c11549f1ff::t_9d866685579cc4 447
+mcpfn/cli/src/index.ts
+  s_8b12c11549f1ff::t_0d8e514aa91b26 576-585
+mcpfn/cli/tests/cli.test.ts
+  s_8b12c11549f1ff::t_be972b2f8505d0 208-215
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e7a9aa3b92976114b932f96ad1456d01ce84d0e3",
+  "prompts": {},
+  "sessions": {
+    "s_08f717a247c1f6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6390a73d-6f97-430a-a7be-049aa2eb4292",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_8b12c11549f1ff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0d7dd-a226-71f1-953a-3f8414a2a923",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

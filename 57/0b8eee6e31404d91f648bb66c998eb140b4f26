@@ -1,0 +1,21 @@
+searchfn/adapter-contracts/adapter-vitest.config.ts
+  s_d473070cda5c3b::t_db06f76ce518d3 5,13,18-19
+searchfn/adapter-contracts/README.md
+  s_d473070cda5c3b::t_7f838501a2fbd5 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "570b8eee6e31404d91f648bb66c998eb140b4f26",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

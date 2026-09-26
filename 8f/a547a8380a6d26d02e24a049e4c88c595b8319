@@ -1,0 +1,73 @@
+authfn/python/authfn/plugins/social_oauth.py
+  s_d473070cda5c3b::t_3290800f250d30 46-50
+  s_d473070cda5c3b::t_46088db91f984d 971-985,988,1274
+packages/cli/src/commands/generate.ts
+  s_d473070cda5c3b::t_f005734b03f692 40-41,47
+  s_d473070cda5c3b::t_3290800f250d30 42,46
+packages/cli/src/__tests__/generate-command.test.ts
+  s_d473070cda5c3b::t_f005734b03f692 10,18
+authfn/social-oauth/src/index.ts
+  s_d473070cda5c3b::t_3290800f250d30 28-36,1585
+authfn/core/src/core/oauth-accounts.ts
+  s_d473070cda5c3b::t_3290800f250d30 4-9,98-101,104-110
+authfn/python/authfn/types.py
+  s_d473070cda5c3b::t_3290800f250d30 651
+authfn/docs/content/docs/adapters/database/drizzle.md
+  s_d473070cda5c3b::t_7971208afe850c 142-147
+  s_d473070cda5c3b::t_d6dfb7dcd98901 148-182
+authfn/multi-region/src/index.ts
+  s_d473070cda5c3b::t_80a61da5fed58e 10-14,272-277
+authfn/core/src/core/passwords.ts
+  s_d473070cda5c3b::t_3290800f250d30 23,33-37,281-290
+authfn/core/src/schema.ts
+  s_d473070cda5c3b::t_80a61da5fed58e 2,30-35,58
+authfn/password/src/index.ts
+  s_d473070cda5c3b::t_3290800f250d30 6-11,49-54
+authfn/core/src/__tests__/password.test.ts
+  s_d473070cda5c3b::t_30f16caa2cc8f8 83-110
+authfn/python/tests/test_schema.py
+  s_d473070cda5c3b::t_f005734b03f692 69-70,80,87-88,94,96-97
+  s_d473070cda5c3b::t_30f16caa2cc8f8 71,75,86,89-93,95
+authfn/python/tests/test_otp.py
+  s_d473070cda5c3b::t_6cdfdd3769f7ef 273-306
+  s_d473070cda5c3b::t_ac98ecf184ce39 272
+authfn/core/src/core/regions.ts
+  s_d473070cda5c3b::t_4a347d0574547d 383-392
+  s_d473070cda5c3b::t_80a61da5fed58e 31
+authfn/python/tests/test_social_oauth.py
+  s_d473070cda5c3b::t_30f16caa2cc8f8 531,569
+authfn/python/authfn/plugins/multi_region.py
+  s_d473070cda5c3b::t_f005734b03f692 122,128
+  s_d473070cda5c3b::t_4a347d0574547d 115,117-121,123-124,340
+  s_d473070cda5c3b::t_66bc41e638f4b7 11-15,116,125-127
+authfn/python/authfn/plugins/email_otp.py
+  s_d473070cda5c3b::t_46088db91f984d 13,321-323,328
+authfn/python/authfn/schema.py
+  s_d473070cda5c3b::t_f005734b03f692 7,41
+  s_d473070cda5c3b::t_786a1a6266c877 83
+authfn/core/src/__tests__/multi-region.test.ts
+  s_d473070cda5c3b::t_d9b706778e10f9 75-105
+authfn/core/src/__tests__/social-google.test.ts
+  s_d473070cda5c3b::t_30f16caa2cc8f8 130-159
+authfn/python/tests/test_multi_region.py
+  s_d473070cda5c3b::t_d9b706778e10f9 195,342-373
+  s_d473070cda5c3b::t_4017dd5a1e2293 374-375
+authfn/docs/static/llms-full.txt
+  s_d473070cda5c3b::t_3bc792cdf8339a 270-310
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8fa547a8380a6d26d02e24a049e4c88c595b8319",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

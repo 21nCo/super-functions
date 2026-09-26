@@ -1,0 +1,75 @@
+authfn/docs/content/docs/frameworks/bun.md
+  s_d473070cda5c3b::t_2bb39c650516d9 46,52-55
+authfn/docs/content/docs/plugins/authoring.md
+  s_d473070cda5c3b::t_54d43e4a154445 56-64,177-184
+  s_d473070cda5c3b::t_bad864be973100 185
+authfn/docs/content/docs/core-concepts/hooks.md
+  s_d473070cda5c3b::t_cc3e79d79d71f3 16-17
+authfn/docs/content/docs/reference/configuration.md
+  s_d473070cda5c3b::t_232d369aab58df 105,122-123
+  s_d473070cda5c3b::t_393ce8eeaa82f3 62
+authfn/docs/content/docs/adapters/database/drizzle.md
+  s_d473070cda5c3b::t_2bb39c650516d9 17,25-26,32,39-40,46,54-55,61,68-69
+authfn/docs/content/docs/plugins/social-oauth/apple.md
+  s_d473070cda5c3b::t_50c5c4e3778654 23-25
+authfn/docs/content/docs/plugins/social-oauth/google.md
+  s_d473070cda5c3b::t_50c5c4e3778654 19-21
+authfn/docs/content/docs/adapters/database/index.md
+  s_d473070cda5c3b::t_2bb39c650516d9 8
+authfn/docs/content/docs/adapters/database/postgres.md
+  s_d473070cda5c3b::t_2bb39c650516d9 11,20-21
+authfn/docs/content/docs/plugins/social-oauth/github.md
+  s_d473070cda5c3b::t_50c5c4e3778654 17-19
+authfn/docs/content/docs/plugins/multi-region.md
+  s_d473070cda5c3b::t_84254898fe0f26 132,134-137
+authfn/docs/content/docs/core-concepts/runtime.md
+  s_d473070cda5c3b::t_393ce8eeaa82f3 84
+authfn/docs/content/docs/examples/index.md
+  s_d473070cda5c3b::t_cc3e79d79d71f3 10
+authfn/docs/content/docs/core-concepts/cookies.md
+  s_d473070cda5c3b::t_393ce8eeaa82f3 86
+authfn/docs/content/docs/plugins/index.md
+  s_d473070cda5c3b::t_cc3e79d79d71f3 77-78
+authfn/docs/content/docs/plugins/social-oauth/index.md
+  s_d473070cda5c3b::t_ef26cdb7b1b7d2 61,83-84
+authfn/docs/content/docs/recipes/admin-tool.md
+  s_d473070cda5c3b::t_f71e170a58f044 22-30,33
+authfn/docs/content/docs/adapters/database/sqlite.md
+  s_d473070cda5c3b::t_2bb39c650516d9 21,28-31,39,45-46
+authfn/docs/content/docs/core-concepts/architecture.md
+  s_d473070cda5c3b::t_393ce8eeaa82f3 3
+authfn/docs/content/docs/recipes/custom-validation.md
+  s_d473070cda5c3b::t_cc3e79d79d71f3 85-88
+authfn/docs/content/docs/reference/changelog.md
+  s_d473070cda5c3b::t_cc3e79d79d71f3 24
+authfn/docs/content/docs/core-concepts/regions.md
+  s_d473070cda5c3b::t_cc3e79d79d71f3 144
+authfn/docs/content/docs/core-concepts/rate-limiting.md
+  s_d473070cda5c3b::t_232d369aab58df 16-17
+authfn/docs/content/docs/frameworks/sveltekit.md
+  s_d473070cda5c3b::t_2bb39c650516d9 76-80
+authfn/docs/content/docs/core-concepts/plugins.md
+  s_d473070cda5c3b::t_cc3e79d79d71f3 62-64,193-198
+authfn/docs/content/docs/adapters/database/memory.md
+  s_d473070cda5c3b::t_2bb39c650516d9 11,14-15
+authfn/docs/static/llms-full.txt
+  s_d473070cda5c3b::t_fdf178b60a7256 145,153-154,160,167-168,174,182-183,189,196-197,250,301,304-305,362,371-372,466,473-476,484,490-491,1815,2016,2486-2487,3158-3160,3289-3294,3321-3322,3581,3707,4137,4503,4509-4512,5135-5139,5561-5569,5682-5690,6108-6109,6261,6263-6266,6684-6686,6854-6856,6943-6945,7076,7098-7099,8345-8353,8356,8874-8877,9773,9847,9890,9907-9908
+authfn/docs/static/llms.txt
+  s_d473070cda5c3b::t_5988a46fc7e2b7 31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d5ea234da252ec80b8c066270110006017c3e4f0",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

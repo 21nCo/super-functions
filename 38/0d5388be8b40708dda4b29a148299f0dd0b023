@@ -1,0 +1,22 @@
+authfn/docs/content/docs/sdk/python.md
+  s_d473070cda5c3b::t_dcb234ab8b068a 36,49-70,73-75
+  s_d473070cda5c3b::t_2aa744ee5c59f2 76
+authfn/docs/static/llms-full.txt
+  s_d473070cda5c3b::t_2e895db60720c0 10730,10743-10769
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "380d5388be8b40708dda4b29a148299f0dd0b023",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

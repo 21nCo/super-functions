@@ -1,0 +1,34 @@
+.conduct/pr-204-remediation-ledger.md
+  s_9ab4ca7dfe56d4::t_0941fb17358695 24
+  s_9ab4ca7dfe56d4::t_dcab4cc815b507 1-23,25,27,29-43,49,56-71,73-77
+  s_9ab4ca7dfe56d4::t_be3cdd0b813d50 26,28,44-48,50-55,72,78-88
+mcpfn/core/src/validation.ts
+  s_9ab4ca7dfe56d4::t_94707bafda939a 3-9,179-180,182-183,187-188,192-209,233-236,243-258,288-296,298-302,306-307,329-334,341,422,426
+  s_9ab4ca7dfe56d4::t_832ae422a995c1 210-232,237-242,259-287,297,308
+  s_9ab4ca7dfe56d4::t_67c21765d61b79 309-310
+  s_9ab4ca7dfe56d4::t_ce9d73d705a316 189-191
+scripts/test-mcpfn-cloudflare-worker.mjs
+  s_9ab4ca7dfe56d4::t_94707bafda939a 61,74-77,147,226,230-233
+  s_9ab4ca7dfe56d4::t_61fc66a58b8af2 234
+mcpfn/core/tests/validation.test.ts
+  s_9ab4ca7dfe56d4::t_832ae422a995c1 67,78-79,83
+  s_9ab4ca7dfe56d4::t_ce9d73d705a316 69-76,81-82,116
+  s_9ab4ca7dfe56d4::t_94707bafda939a 65-66,68,77,80,84-87,104-115,117-120
+  s_9ab4ca7dfe56d4::t_753e57e8c24699 64,88-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a48674cd06ea12de3f3a0efd738ec3a6b179fc5f",
+  "prompts": {},
+  "sessions": {
+    "s_9ab4ca7dfe56d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c77b-792d-77b3-a4db-ea9dd7195376",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+authfn/core/src/core/regions.ts
+  s_d473070cda5c3b::t_22bd2400f47c77 398
+  s_d473070cda5c3b::t_ad0e2e40261110 29-32
+authfn/core/src/__tests__/multi-region.test.ts
+  s_d473070cda5c3b::t_22bd2400f47c77 52-66
+authfn/docs/content/docs/plugins/authoring.md
+  s_d473070cda5c3b::t_22bd2400f47c77 77
+authfn/docs/static/llms-full.txt
+  s_d473070cda5c3b::t_06c09cf993b146 5646
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bb55c11ac63848a75968a49d510112440f1a7325",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

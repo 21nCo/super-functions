@@ -1,0 +1,21 @@
+scripts/test-mcpfn-registry-install.mjs
+  s_bf3d04c49b65ff::t_982adc51ad4dc0 69-71,79,87
+mcpfn/cli/tests/cli.test.ts
+  s_bf3d04c49b65ff::t_7f5cf392345671 1,581-582,594-596
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "02ff513a892b7b237577c7e1189cf3abd348a37e",
+  "prompts": {},
+  "sessions": {
+    "s_bf3d04c49b65ff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0d89d-905e-7980-97dd-21cb2b155096",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+mcpfn/testing/tests/host-authorization.test.ts
+  s_77d7bb3189c71a::t_cf63885700a75c 172-212,216-218
+  s_77d7bb3189c71a::t_1c232d0345744e 213-215
+mcpfn/cli/tests/target-suite-cleanup.test.ts
+  s_77d7bb3189c71a::t_cf63885700a75c 52,88-118
+mcpfn/testing/src/host-authorization.ts
+  s_77d7bb3189c71a::t_151d5fa00dec5b 406
+mcpfn/cli/tests/conformance-cleanup.test.ts
+  s_77d7bb3189c71a::t_cf63885700a75c 128-175
+mcpfn/cli/src/index.ts
+  s_77d7bb3189c71a::t_151d5fa00dec5b 61-114,285-297,318-319,327-336,338,402-418,450-453,459
+mcpfn/cli/src/bin.ts
+  s_77d7bb3189c71a::t_151d5fa00dec5b 9-13,26-27
+mcpfn/cli/tests/inspect-redaction.test.ts
+  s_77d7bb3189c71a::t_cf63885700a75c 5-11,15-20,23,65-84
+  s_77d7bb3189c71a::t_a053ef24c83a7b 85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9371beeb842106255854ee40f951819fb72ebed8",
+  "prompts": {},
+  "sessions": {
+    "s_77d7bb3189c71a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b3f5-d570-7a72-b668-401efd539e3b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

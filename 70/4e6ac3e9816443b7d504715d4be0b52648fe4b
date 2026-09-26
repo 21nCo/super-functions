@@ -1,0 +1,22 @@
+searchfn/adapter-contracts/__tests__/contracts.test.ts
+  s_d473070cda5c3b::t_a0f5ddeb4e2cee 35,50-52
+  s_d473070cda5c3b::t_eb7e77df7f876a 53
+searchfn/adapter-contracts/src/testing.ts
+  s_d473070cda5c3b::t_a0f5ddeb4e2cee 58-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "704e6ac3e9816443b7d504715d4be0b52648fe4b",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

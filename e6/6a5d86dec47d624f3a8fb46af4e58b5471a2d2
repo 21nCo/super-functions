@@ -1,0 +1,35 @@
+packages/db/src/adapters/internal-utils.ts
+  s_d473070cda5c3b::t_43842a7530f8a5 88,90-95
+authfn/docs/content/docs/plugins/authoring.md
+  s_d473070cda5c3b::t_43842a7530f8a5 160-170
+packages/db/src/adapters/drizzle/mysql-upsert.test.ts
+  s_d473070cda5c3b::t_43842a7530f8a5 12-36
+authfn/docs/content/docs/quickstart/nodejs.md
+  s_d473070cda5c3b::t_43842a7530f8a5 23,36
+authfn/docs/content/docs/quickstart/bun.md
+  s_d473070cda5c3b::t_43842a7530f8a5 21,34
+packages/db/src/adapters/drizzle/index.ts
+  s_d473070cda5c3b::t_43842a7530f8a5 32,259,275
+authfn/docs/content/docs/quickstart/nextjs.md
+  s_d473070cda5c3b::t_43842a7530f8a5 22,37
+authfn/docs/content/docs/quickstart/sveltekit.md
+  s_d473070cda5c3b::t_43842a7530f8a5 22,38
+authfn/docs/static/llms-full.txt
+  s_d473070cda5c3b::t_1d98c5923746e2 5679-5689,7401,7414,7523,7538,7665,7678,7910,7926
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e66a5d86dec47d624f3a8fb46af4e58b5471a2d2",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

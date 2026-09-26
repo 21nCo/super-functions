@@ -1,0 +1,21 @@
+botfn/bot-discord/package.json
+  s_d473070cda5c3b::t_c8d013ae4fec33 24-25
+package-lock.json
+  s_d473070cda5c3b::t_1752487e5d8ae2 4616
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7ca72d5f8380995e74ddc2d608612b0e811a2912",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

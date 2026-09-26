@@ -1,0 +1,19 @@
+datafn/docs/content/docs/documentation/direct-regional-sync.mdx
+  s_c97ce47fb19027::t_15ed0202826a43 157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c87614c2c6131483e7697538cf103fba45b92122",
+  "prompts": {},
+  "sessions": {
+    "s_c97ce47fb19027": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0bd2d-fcd8-75d3-8666-348633042463",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

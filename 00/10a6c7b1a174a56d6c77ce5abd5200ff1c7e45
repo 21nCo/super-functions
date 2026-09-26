@@ -1,0 +1,52 @@
+mcpfn/testing/tests/host-authorization.test.ts
+  s_d2a882e8cbcc02::t_1d41a3ea8b0b18 56-64,271-293
+  s_d2a882e8cbcc02::t_70837d8a2559ac 294-295
+mcpfn/testing/src/scenarios.ts
+  s_d2a882e8cbcc02::t_e001599689f6a4 147-148,162,504,506,509-510,516-521,524,529,624-629,669-681,704-708,720,722-731
+mcpfn/testing/tests/suite.test.ts
+  s_d2a882e8cbcc02::t_aa6f15389ae9a4 132
+  s_d2a882e8cbcc02::t_944b1016ee7ff2 141-144
+  s_d2a882e8cbcc02::t_04c27540dca630 121-131,133-140,145-166
+mcpfn/testing/tests/remote-target.test.ts
+  s_d2a882e8cbcc02::t_e8559ca300235f 758
+  s_d2a882e8cbcc02::t_eb178af186ca57 762-767
+  s_d2a882e8cbcc02::t_1d41a3ea8b0b18 25,31,39
+  s_d2a882e8cbcc02::t_91455f8db59688 759-761
+mcpfn/testing/src/host-authorization.ts
+  s_d2a882e8cbcc02::t_e001599689f6a4 25,148,244,250,281,310,376-381,394-398,414-418,428-431,435
+mcpfn/testing/tests/testing.test.ts
+  s_d2a882e8cbcc02::t_1d41a3ea8b0b18 59-63,65-70,106-128
+  s_d2a882e8cbcc02::t_04c27540dca630 105
+  s_d2a882e8cbcc02::t_949b7764d50e87 129-131
+  s_d2a882e8cbcc02::t_d5c77d48a3e73c 132-133
+mcpfn/testing/src/suite.ts
+  s_d2a882e8cbcc02::t_e001599689f6a4 60,266-270,296,306-309
+mcpfn/testing/src/remote-target.ts
+  s_d2a882e8cbcc02::t_95c682e3f15aef 126-129,133-134
+  s_d2a882e8cbcc02::t_e001599689f6a4 65-66,131,136-137,148-158,195,203
+  s_d2a882e8cbcc02::t_3aed21ad303b21 132
+  s_d2a882e8cbcc02::t_e8559ca300235f 130,135,176,196-202
+mcpfn/client/src/client.ts
+  s_d2a882e8cbcc02::t_5253c8b85aef43 388-392
+mcpfn/testing/README.md
+  s_d2a882e8cbcc02::t_3f2f25f12379da 144-146,198-199
+mcpfn/testing/src/client.ts
+  s_d2a882e8cbcc02::t_e001599689f6a4 47-51
+  s_d2a882e8cbcc02::t_5253c8b85aef43 125-127,129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0010a6c7b1a174a56d6c77ce5abd5200ff1c7e45",
+  "prompts": {},
+  "sessions": {
+    "s_d2a882e8cbcc02": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a522-f7e4-7422-a0fb-002c30b622cc",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

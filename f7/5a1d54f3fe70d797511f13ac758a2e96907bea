@@ -1,0 +1,53 @@
+packages/cli/src/commands/generate.ts
+  s_d473070cda5c3b::t_ea1b56399df472 38-44,87-94
+authfn/core/src/__tests__/api-keys.test.ts
+  s_d473070cda5c3b::t_aeb6b5aeb9483e 79-100
+authfn/core/src/core/limits.ts
+  s_d473070cda5c3b::t_ea1b56399df472 4-6
+authfn/python/tests/test_schema.py
+  s_d473070cda5c3b::t_c3eb4e52d9ca39 76-77,79,86-87
+authfn/python/authfn/plugins/two_factor.py
+  s_d473070cda5c3b::t_ea1b56399df472 16-20,163-165,260-262,442
+  s_d473070cda5c3b::t_63ed9e26d2a34f 497
+authfn/core/src/index.ts
+  s_d473070cda5c3b::t_ea1b56399df472 87
+authfn/api-keys/src/index.ts
+  s_d473070cda5c3b::t_ea1b56399df472 6-11,40-45
+authfn/python/authfn/limits.py
+  s_d473070cda5c3b::t_ea1b56399df472 6,9-13,16,18,21
+authfn/core/src/__tests__/two-factor.test.ts
+  s_d473070cda5c3b::t_ea1b56399df472 144-152
+packages/cli/src/__tests__/generate-command.test.ts
+  s_d473070cda5c3b::t_aeb6b5aeb9483e 23-41,268-290
+  s_d473070cda5c3b::t_f825ab77ca3228 291
+authfn/two-factor/src/index.ts
+  s_d473070cda5c3b::t_ea1b56399df472 4-8,44-49,89-94
+  s_d473070cda5c3b::t_604cc00f0bd21e 3
+authfn/core/src/core/api-keys.ts
+  s_d473070cda5c3b::t_ea1b56399df472 6,50-54
+authfn/python/tests/test_api_keys.py
+  s_d473070cda5c3b::t_aeb6b5aeb9483e 175-191
+authfn/python/authfn/plugins/api_keys.py
+  s_d473070cda5c3b::t_63ed9e26d2a34f 237
+  s_d473070cda5c3b::t_ea1b56399df472 11-15,98-100
+authfn/core/src/core/two-factor.ts
+  s_d473070cda5c3b::t_ea1b56399df472 32,107-111,220-224
+authfn/python/authfn/__init__.py
+  s_d473070cda5c3b::t_63ed9e26d2a34f 10-14,118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f75a1d54f3fe70d797511f13ac758a2e96907bea",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

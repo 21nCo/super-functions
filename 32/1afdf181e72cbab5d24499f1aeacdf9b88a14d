@@ -1,0 +1,19 @@
+.github/workflows/ci.yml
+  s_0434c9990ef7d4::t_2a0f315b525389 83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "321afdf181e72cbab5d24499f1aeacdf9b88a14d",
+  "prompts": {},
+  "sessions": {
+    "s_0434c9990ef7d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09433-0d85-7c73-b6d3-8256f2b2aa01",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

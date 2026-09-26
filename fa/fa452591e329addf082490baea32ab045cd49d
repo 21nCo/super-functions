@@ -1,0 +1,56 @@
+memoryfn/typescript/tsup.config.ts
+  s_74c100180e3979::t_e028ee55ac568a 15
+  s_74c100180e3979::t_f0686aecaee793 17
+  s_74c100180e3979::t_cfdb48871469c4 2-5,16,18-22
+memoryfn/typescript/package.json
+  s_74c100180e3979::t_cfcbf888d95efe 6-7,12-13,17-18,22-23,27-28
+secfn/core/src/__tests__/scanner.test.ts
+  s_74c100180e3979::t_a063f4e053078e 63-88
+secfn/core/src/scanner/scanner.ts
+  s_74c100180e3979::t_a063f4e053078e 50-54,65,68,84,86,89,91
+  s_74c100180e3979::t_68b2587400f214 75,79
+  s_74c100180e3979::t_f0686aecaee793 88
+secfn/core/package.json
+  s_74c100180e3979::t_68b2587400f214 45
+langfn/typescript/tests/streaming-observability.test.ts
+  s_74c100180e3979::t_6d0b1ae2aa8245 143-162
+scripts/sfns4/packed-consumers.mjs
+  s_74c100180e3979::t_cfcbf888d95efe 145-159
+  s_d2a882e8cbcc02::t_fad7deb05b1f3c 144
+langfn/typescript/src/client.ts
+  s_74c100180e3979::t_6d0b1ae2aa8245 357-359,377-388
+package-lock.json
+  s_85aec2585b9146::t_b55bb6df20cf2a 56087
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fafa452591e329addf082490baea32ab045cd49d",
+  "prompts": {},
+  "sessions": {
+    "s_74c100180e3979": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a4a8-4cc6-7b03-a1c5-d382213eae73",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_85aec2585b9146": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "53b5e45e-9d51-46dc-995c-c638259427c4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_d2a882e8cbcc02": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a522-f7e4-7422-a0fb-002c30b622cc",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

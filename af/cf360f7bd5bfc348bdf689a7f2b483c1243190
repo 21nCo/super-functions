@@ -1,0 +1,50 @@
+mcpfn/testing/src/suite.ts
+  s_77d7bb3189c71a::t_e8826043a241b3 12-15,270-274
+  s_77d7bb3189c71a::t_3f7f40d2258525 118-119,156,204-205,278-287
+  s_77d7bb3189c71a::t_41662dc007e661 11
+  s_77d7bb3189c71a::t_95c25796ecf8ab 288
+mcpfn/client/src/client.ts
+  s_77d7bb3189c71a::t_646f7a49236b3b 50-78,275-291,957,962-963,972,974,991,1006,1008,1013,1021-1022,1027,1036,1038,1044-1052,1054-1075,1077-1095
+  s_77d7bb3189c71a::t_76252cbef5da71 123-124,301-307,1053,1076
+mcpfn/inspector/tests/authenticated-artifacts.test.ts
+  s_77d7bb3189c71a::t_e153aef6e35980 35-36,51-54,56,178,191-196,219,224,226-227
+  s_77d7bb3189c71a::t_45a09f651066f4 59-76,153,155-157,203,213-215,302,309,313
+  s_77d7bb3189c71a::t_4c52b987de14c3 57-58
+mcpfn/inspector/src/index.ts
+  s_77d7bb3189c71a::t_7c7459b1f7b95e 186-188,192-194,245-246,257,262-263,265-269,281-285,306-311,313,317-318,328-329
+  s_77d7bb3189c71a::t_76252cbef5da71 113,128-129,173,203-204
+  s_77d7bb3189c71a::t_685d16ef83fec3 114,174-179,303-305
+  s_77d7bb3189c71a::t_d7d4027982048b 242-244
+mcpfn/testing/README.md
+  s_77d7bb3189c71a::t_dc208a4b248c56 197-201
+mcpfn/client/tests/client.test.ts
+  s_77d7bb3189c71a::t_e153aef6e35980 9-52
+mcpfn/testing/tests/testing.test.ts
+  s_77d7bb3189c71a::t_e153aef6e35980 13,28-57
+  s_77d7bb3189c71a::t_3c95c5d3664ab1 104-136
+mcpfn/testing/tests/suite.test.ts
+  s_77d7bb3189c71a::t_51e3a1de97b375 513
+mcpfn/testing/src/client.ts
+  s_77d7bb3189c71a::t_947f2730f9070a 129
+  s_77d7bb3189c71a::t_dc208a4b248c56 45,49,128,190-195
+mcpfn/testing/src/scenarios.ts
+  s_77d7bb3189c71a::t_7fc1973b104c47 505,508-509,531,622-628
+scripts/test-mcpfn-mixed-entry-redaction.mjs
+  s_77d7bb3189c71a::t_09fb52d737d07b 29-31,33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "afcf360f7bd5bfc348bdf689a7f2b483c1243190",
+  "prompts": {},
+  "sessions": {
+    "s_77d7bb3189c71a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b3f5-d570-7a72-b668-401efd539e3b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

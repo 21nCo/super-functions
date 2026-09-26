@@ -1,0 +1,72 @@
+mcpfn/testing/src/reports.ts
+  s_77d7bb3189c71a::t_9f5a60f7a1ad67 71-75,79,104-108
+mcpfn/test-support/authenticated-server.ts
+  s_77d7bb3189c71a::t_d909322c5dbf36 75,81-83
+  s_77d7bb3189c71a::t_632137a4c07a40 84-85
+mcpfn/testing/tests/host-authorization.test.ts
+  s_77d7bb3189c71a::t_eae27d6d28036b 285-324
+mcpfn/cli/src/index.ts
+  s_77d7bb3189c71a::t_a2dd49346bb327 126-146,482,567
+  s_77d7bb3189c71a::t_aa0acff3446352 577
+  s_77d7bb3189c71a::t_c38969033082af 23,93,100
+mcpfn/cli/tests/target-suite-cleanup.test.ts
+  s_77d7bb3189c71a::t_4ca56dbb59cec3 21
+  s_77d7bb3189c71a::t_97abb755f0df9f 8,10,18-20,22-24,62,104,130-152
+mcpfn/testing/tests/remote-target.test.ts
+  s_77d7bb3189c71a::t_c38969033082af 1-4,774,776
+  s_77d7bb3189c71a::t_eae27d6d28036b 757-773,775,777-783
+mcpfn/inspector/src/index.ts
+  s_77d7bb3189c71a::t_d909322c5dbf36 38,283-288
+  s_77d7bb3189c71a::t_652cfa73fef337 241-250
+mcpfn/testing/src/host-authorization.ts
+  s_77d7bb3189c71a::t_652cfa73fef337 516
+  s_77d7bb3189c71a::t_aa0acff3446352 507
+  s_77d7bb3189c71a::t_de3b5ecaaebbb0 241-249,251-252,254-257,262-269,271-274,276-294,297-300,306-317,319-349
+  s_77d7bb3189c71a::t_709788d5c14e42 225,233,350,352-368,383-385,396,423,425-451,453-468
+  s_77d7bb3189c71a::t_20cb5a71d5f709 240,250,253,258-261,270,301-305
+  s_77d7bb3189c71a::t_025d577a3f0aaf 351
+mcpfn/inspector/tests/authenticated-artifacts.test.ts
+  s_77d7bb3189c71a::t_eae27d6d28036b 230-248
+mcpfn/testing/src/conformance.ts
+  s_77d7bb3189c71a::t_9300e0fd3f20ab 321,327,331
+mcpfn/testing/src/remote-target.ts
+  s_77d7bb3189c71a::t_6aff066c1161c0 14,29,605-606,636,640
+  s_77d7bb3189c71a::t_aab75189cf047d 117-141
+  s_77d7bb3189c71a::t_c42ac02ccebba3 32-34,36,41-90,172
+  s_77d7bb3189c71a::t_3fc4c5c2cf18ac 229-248,251
+  s_77d7bb3189c71a::t_4b666cbeac0bf9 143,157-171
+  s_77d7bb3189c71a::t_2f0fe49ce95c5f 204,277-280,289-290,448,502-504,506,615
+  s_77d7bb3189c71a::t_c8c23eee071f64 91
+  s_77d7bb3189c71a::t_c6fa1c3a29a928 173
+mcpfn/examples/external-http-server.mjs
+  s_77d7bb3189c71a::t_d909322c5dbf36 131,136-138
+  s_77d7bb3189c71a::t_aeb5394cac46c8 139-140
+mcpfn/client/src/targets.ts
+  s_77d7bb3189c71a::t_d909322c5dbf36 38
+mcpfn/testing/src/suite.ts
+  s_77d7bb3189c71a::t_2ffb4e5e310c9c 466,470,503,520
+  s_77d7bb3189c71a::t_107a85242bcb9f 133-150
+  s_77d7bb3189c71a::t_c38969033082af 78-90,101-106,108-114,515
+  s_77d7bb3189c71a::t_4ca56dbb59cec3 107
+  s_77d7bb3189c71a::t_5bf470c499be90 151-247,406-411,422,425,438,453,478,483-486,497-498
+  s_77d7bb3189c71a::t_5b21cdb12a0f3d 248-397,415,427,429,431-437
+  s_77d7bb3189c71a::t_652cfa73fef337 509,514,516-517
+mcpfn/cli/src/bin.ts
+  s_77d7bb3189c71a::t_c38969033082af 5,26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "80ba026172a774ea95277393becffa35c9892fc1",
+  "prompts": {},
+  "sessions": {
+    "s_77d7bb3189c71a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b3f5-d570-7a72-b668-401efd539e3b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

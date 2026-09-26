@@ -1,0 +1,22 @@
+authfn/python/authfn/plugins/multi_region.py
+  s_d473070cda5c3b::t_ccf921110946a6 129
+authfn/python/tests/test_multi_region.py
+  s_d473070cda5c3b::t_ccf921110946a6 27,293-314
+  s_d473070cda5c3b::t_c8dcb0d9268f63 315-316
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dc689d7ac2767af15f49a66c8ad23b0c9eec7f62",
+  "prompts": {},
+  "sessions": {
+    "s_d473070cda5c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b44c-c149-7270-9519-9e2888cdae23",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

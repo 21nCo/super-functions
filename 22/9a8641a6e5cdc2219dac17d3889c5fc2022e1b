@@ -1,0 +1,20 @@
+packages/http/README.md
+  s_0a81436eb5b847::t_9dcb282e8a50c0 263,270-272
+  s_0a81436eb5b847::t_0725e28029b9c0 273
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "229a8641a6e5cdc2219dac17d3889c5fc2022e1b",
+  "prompts": {},
+  "sessions": {
+    "s_0a81436eb5b847": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034PcJ0qWArCRb5qe6fChq",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

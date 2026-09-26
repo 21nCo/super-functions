@@ -1,0 +1,26 @@
+mcpfn/core/src/validation.ts
+  s_9ab4ca7dfe56d4::t_339141f752aa06 177-204,207-220,222-224,316-317,324,443,464,482
+  s_9ab4ca7dfe56d4::t_861484049aedd5 119,145-176,206
+  s_9ab4ca7dfe56d4::t_6e6cbea74ab265 312,314-315,318
+.conduct/pr-204-remediation-ledger.md
+  s_9ab4ca7dfe56d4::t_f9691227d25ba0 20,26,38-41,50-62,64-67,79-80,84,86,88-94,97-99
+mcpfn/core/tests/validation.test.ts
+  s_9ab4ca7dfe56d4::t_a3e63825306654 55,75-92
+  s_9ab4ca7dfe56d4::t_61e08ae7fa1ca3 56-74,93-112,174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0efb989819c85505c754de1aff290c6860d7e6c6",
+  "prompts": {},
+  "sessions": {
+    "s_9ab4ca7dfe56d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c77b-792d-77b3-a4db-ea9dd7195376",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}

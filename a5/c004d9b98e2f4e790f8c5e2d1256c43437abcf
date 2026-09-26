@@ -1,0 +1,19 @@
+datafn/server/src/multi-region-routing.test.ts
+  s_5a409e26f114fe::t_c659130da4c95d 1448-1474
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a5c004d9b98e2f4e790f8c5e2d1256c43437abcf",
+  "prompts": {},
+  "sessions": {
+    "s_5a409e26f114fe": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "6918c516-f470-429d-9273-5e5239db7534",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
