@@ -10,7 +10,7 @@ This walkthrough takes you from zero to a running file server with multipart upl
 ## 1. Install
 
 ```bash
-npm install @filefn/server @superfunctions/storage @superfunctions/db hono @hono/node-server
+npm install @filefn/server @superfunctions/storage-local @superfunctions/db hono @hono/node-server
 npm install @filefn/client
 ```
 
@@ -31,7 +31,7 @@ The in-memory adapter is fine for tests and quickstarts; data is lost on restart
 ## 3. Pick a storage adapter
 
 ```ts
-import { createLocalStorageAdapter } from "@superfunctions/storage";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
 const storage = createLocalStorageAdapter({
   rootDir: "./.filefn-storage",

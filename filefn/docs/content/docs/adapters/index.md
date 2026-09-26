@@ -27,7 +27,7 @@ The kernel never reaches outside these contracts. If you can implement them, fil
 - [DB adapters overview](./db)
 - [Memory](./db-memory) — tests, CI, ephemeral demos.
 - [Drizzle](./db-drizzle) — Drizzle ORM with PG/SQLite/MySQL.
-- [Postgres](./db-postgres) — direct `pg` adapter.
+- [Postgres](./db-postgres) — PostgreSQL through Drizzle and `pg`.
 - [SQLite](./db-sqlite) — local file or in-memory.
 - [Processors](./processors) — bundled processor catalog.
 

@@ -11,7 +11,7 @@ Hono is the canonical filefn integration: native `Request`/`Response`, runs on N
 
 ```bash
 npm install hono @hono/node-server
-npm install @filefn/server @superfunctions/storage @superfunctions/db
+npm install @filefn/server @superfunctions/storage-local @superfunctions/db
 ```
 
 For Bun or Workers, drop `@hono/node-server` and use the runtime's native `serve` / `fetch`.
@@ -24,7 +24,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createFileFn } from "@filefn/server";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import { createLocalStorageAdapter } from "@superfunctions/storage";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
 const fileFn = createFileFn({
   db: memoryAdapter({ debug: false }),

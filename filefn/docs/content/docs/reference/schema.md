@@ -135,12 +135,14 @@ Index: `(fileId)`.
 ## Migration
 
 ```ts
-import { applySchemaToAdapter } from "@superfunctions/db";
-const { schemas } = fileFn.getSchema();
-await applySchemaToAdapter(db, schemas);
+import { getSchema } from "@filefn/server";
+
+const { version, schemas } = getSchema({ namespace: "filefn" });
+// Feed these table descriptors into your application's migration tooling.
+console.log(version, schemas.map((table) => table.modelName));
 ```
 
-Idempotent — safe to run on every boot. Production deployments should generate SQL once and run it through their normal migration pipeline.
+This only reads schema descriptors; it does not apply a migration. Provision the tables and indexes with your host migration pipeline before serving traffic.
 
 ## See also
 

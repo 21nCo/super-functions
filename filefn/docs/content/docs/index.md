@@ -74,4 +74,5 @@ If you're **comparing tools**, the highlights below are a cheatsheet against Upl
 - [Frameworks](./frameworks) — Hono, Express, Bun, SvelteKit, Next.js, FastAPI, Flask.
 - [Recipes](./recipes) — copy-pasteable solutions for common flows.
 - [API Reference](./api) — OpenAPI-backed endpoint documentation, derived from the canonical client contract.
+- [Administration](./admin) — scoped FileFn operations for a host-owned Super Console.
 - [AI resources](./ai-resources) — `llms.txt`, MCP, and Skills for coding assistants.
