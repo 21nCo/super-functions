@@ -1,0 +1,37 @@
+apifn/docs/src/app.css
+  s_ee6f287c08acb3::t_bf17bc8a207b63 73-77
+apifn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_ee6f287c08acb3::t_9e2a745d72e012 2,5
+apifn/docs/src/lib/server/docs-site-source.ts
+  s_ee6f287c08acb3::t_77cd923dd77f88 2,4-5,7-8,11-17
+apifn/docs/src/routes/+layout.server.ts
+  s_ee6f287c08acb3::t_7a2696c2e1770d 5-6,8-11
+apifn/docs/src/routes/+layout.svelte
+  s_ee6f287c08acb3::t_ff83d97d8ab1d2 24
+apifn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ee6f287c08acb3::t_7905b8a57da9da 10,35-36
+apifn/docs/vite.config.ts
+  s_ee6f287c08acb3::t_4d117aeb08f974 21-23
+scripts/docs-site/README.md
+  s_ee6f287c08acb3::t_5f108e6fa970b8 1-9
+scripts/docs-site/Search.svelte
+  s_ee6f287c08acb3::t_9fb02eb477f6ad 1-83
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_3cd2f5ca07d7b6 1-537
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4e9f1038792480cf156aeb637aa1f5ed4c057d4f",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
