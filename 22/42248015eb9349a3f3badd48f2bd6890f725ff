@@ -1,0 +1,35 @@
+authfn/docs/content/docs/adapters/database/drizzle.md
+  s_ee6f287c08acb3::t_9c4c483de31680 101
+authfn/docs/content/docs/admin/super-console.md
+  s_ee6f287c08acb3::t_c72a24ff7343ea 12,21
+authfn/docs/content/docs/frameworks/bun.md
+  s_ee6f287c08acb3::t_cb3b3f95f01098 23
+authfn/docs/content/docs/frameworks/byo.md
+  s_ee6f287c08acb3::t_cae43c8b9bb115 38,56,69,87,97
+authfn/docs/content/docs/frameworks/sveltekit.md
+  s_ee6f287c08acb3::t_4be430cd1f5bd4 66
+authfn/docs/content/docs/plugins/authoring.md
+  s_ee6f287c08acb3::t_ae11f9f5298710 323
+authfn/docs/content/docs/quickstart/bun.md
+  s_ee6f287c08acb3::t_8cd54f9691fb0a 8,67
+authfn/docs/content/docs/quickstart/nextjs.md
+  s_ee6f287c08acb3::t_4fd8f277d06a1e 98,116
+authfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_44c2f8f7a708e4 229,1186,1195,4639,4723,4741,4754,4772,4782,5258,5961,7519,7578,7730,7748
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2242248015eb9349a3f3badd48f2bd6890f725ff",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
