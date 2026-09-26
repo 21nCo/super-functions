@@ -1,0 +1,37 @@
+scripts/docs-site/README.md
+  s_ee6f287c08acb3::t_f9a1f2e574a251 1-9
+scripts/docs-site/Search.svelte
+  s_ee6f287c08acb3::t_313780cf41a391 1-83
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_cce5414938a7ac 1-537
+secfn/docs/src/app.css
+  s_ee6f287c08acb3::t_d922b6076dc8b7 73-77
+secfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_ee6f287c08acb3::t_6cf3d008a55ec6 2,5
+secfn/docs/src/lib/server/docs-site-source.ts
+  s_ee6f287c08acb3::t_0c2c9d78aa9fb3 2,4-5,7-8,11-17
+secfn/docs/src/routes/+layout.server.ts
+  s_ee6f287c08acb3::t_e73fe9dcfe33ea 5-6,8-11
+secfn/docs/src/routes/+layout.svelte
+  s_ee6f287c08acb3::t_12d7150eedfc49 24
+secfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ee6f287c08acb3::t_b706cd3d23029e 10,35-36
+secfn/docs/vite.config.ts
+  s_ee6f287c08acb3::t_74c8de23ab577d 21-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "284950d129159ce33dec81f154f7ce4c00a184a1",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
