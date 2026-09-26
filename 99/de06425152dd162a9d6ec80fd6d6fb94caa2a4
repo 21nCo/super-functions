@@ -1,0 +1,61 @@
+filefn/docs/content/docs/adapters/db-drizzle.md
+  s_ee6f287c08acb3::t_43a6a0558a2efe 16,19-20,30-31
+filefn/docs/content/docs/adapters/db-memory.md
+  s_ee6f287c08acb3::t_e8863f618bd217 13
+filefn/docs/content/docs/adapters/db-postgres.md
+  s_ee6f287c08acb3::t_906463980c391b 16,19,24-26
+filefn/docs/content/docs/adapters/db-sqlite.md
+  s_ee6f287c08acb3::t_4ebae186ebb4a3 17,21,27-28
+filefn/docs/content/docs/adapters/db.md
+  s_ee6f287c08acb3::t_49630ba6a8340f 25-26
+filefn/docs/content/docs/adapters/processors.md
+  s_ee6f287c08acb3::t_803a4719b31fcd 27
+filefn/docs/content/docs/adapters/storage-gcs.md
+  s_ee6f287c08acb3::t_26c588d1acee31 24-25
+filefn/docs/content/docs/admin/index.md
+  s_ee6f287c08acb3::t_24232a20d1e1a2 28,31-32
+filefn/docs/content/docs/frameworks/bun.md
+  s_ee6f287c08acb3::t_308d1de9c0be0e 13,15,21-22,25,75-76
+filefn/docs/content/docs/frameworks/express.md
+  s_ee6f287c08acb3::t_5497dc42d065c5 3,12,18,22,26
+filefn/docs/content/docs/frameworks/hono.md
+  s_ee6f287c08acb3::t_0b19d5f1d082c4 16,22,33,73,91,114-115
+filefn/docs/content/docs/frameworks/nextjs.md
+  s_ee6f287c08acb3::t_67852743bf85c8 15,19
+filefn/docs/content/docs/quickstart/express.md
+  s_ee6f287c08acb3::t_b01f4cdfd8cfd0 13,17-70,78,81,96-97,102
+filefn/docs/content/docs/recipes/heic-conversion.md
+  s_ee6f287c08acb3::t_80db145e487002 12,14,17-18,25-29,57,60-62,66-74
+filefn/docs/content/docs/recipes/image-uploads.md
+  s_ee6f287c08acb3::t_dd792ccf96eb3f 13,48-49,59,66,105,109
+filefn/docs/content/docs/recipes/video-uploads.md
+  s_ee6f287c08acb3::t_9734592bf68b9c 3,12
+filefn/docs/src/lib/server/docs-site-source.ts
+  s_ee6f287c08acb3::t_acc6fd647a515d 2,4-5,7-8,11-17
+filefn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_e5ffdaa5107ce0 164-165,193,196-197,208-209,228,251,254,259-261,285,289,296-297,330,574-575,899,903-904,4969,4971,4977-4978,4981,5032-5033,5042,5051,5057,5061,5065,5282,5288,5299,5339,5357,5381-5382,5403,5407,5996,6000-6053,6061,6064,6079-6080,6085,7062,7064,7067-7068,7075-7079,7107,7110-7112,7116-7124,7144,7179-7180,7190,7197,7236,7240,7587,7596
+filefn/docs/static/llms.txt
+  s_ee6f287c08acb3::t_cc045a7e3eb557 68,93
+filefn/docs/vite.config.ts
+  s_ee6f287c08acb3::t_c93d97b7e3834a 10,23-24
+scripts/docs-site/README.md
+  s_ee6f287c08acb3::t_b748d56c0bbd36 1-11
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_727eab13e2422a 1-536
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "99de06425152dd162a9d6ec80fd6d6fb94caa2a4",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
