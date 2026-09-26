@@ -1,0 +1,29 @@
+---
+title: Administration and operator service
+description: Bind scoped HostFn deployment operations to a host-owned control plane.
+---
+
+The HostFn CLI deploys an application from a developer or CI machine. The separate `hostfn/operator` entry point and `@hostfn/admin` package let a host application expose deployment administration through Super Console. The capability is a contract; it does not provision a control plane by itself.
+
+## What the host supplies
+
+`HostFnOperatorService` takes a `HostFnOperatorStore` and a `HostFnDeploymentExecutor`. The store owns targets, deployments, domains, and variable metadata. The executor performs external deploy, cancel, rollback, restart, domain, and variable effects. `MemoryHostFnOperatorStore` is a reference store for development and single-process installations; use a durable implementation for a production control plane.
+
+Every operator record carries an `installationId`, `workspaceId`, `projectId`, and `environmentId` scope. The host must derive the active scope from the authenticated admin context and enforce authorization before invoking the adapter. Domain attachment uses an immutable identity and a reclaimable work lease so retries do not attach the same hostname to a different target. The external executor must be idempotent for retries with the same domain ID.
+
+## Capability resources and actions
+
+| Resource | Reads | Actions |
+| --- | --- | --- |
+| Targets | List and get | Restart |
+| Deployments | List and get | Deploy, cancel, rollback |
+| Domains | List | Attach, detach |
+| Variables | List keys | Set, delete |
+
+Variable values are never returned by the list operation. Target server addresses are marked sensitive in the capability. Read and write operations have separate permissions. Destructive actions require MFA confirmation; variable writes require recent authentication; deploy and domain attach require explicit confirmation for their external effects. All writes require audit evidence through the shared admin dispatcher.
+
+## Binding the adapter
+
+Create an operator service with your store and executor, then pass it to `createHostFnOperatorAdminService` and `createHostFnAdminAdapter` from `@hostfn/admin`. The host must connect the adapter to its authenticated Super Console dispatcher and supply the active environment scope. The [operator source](https://github.com/21nCo/super-functions/blob/dev/hostfn/cli/src/operator.ts) and [admin capability](https://github.com/21nCo/super-functions/blob/dev/hostfn/admin/src/index.ts) define the exact interfaces and operation IDs.
+
+This integration is distinct from the CLI deployment flow. Review [deployment locks](/docs/documentation/advanced/deployment-locks), [rollbacks](/docs/documentation/advanced/rollback), and [environment variables](/docs/documentation/environment/overview) for the corresponding operator policies.
