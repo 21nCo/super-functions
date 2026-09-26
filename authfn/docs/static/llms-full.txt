@@ -3,8 +3,7 @@
 > Self-hosted authentication for any stack. Sessions, OTP, passwords, social OAuth, 2FA, API keys, multi-region. TypeScript, Python, and Swift SDKs.
 
 This file concatenates the full text of every documentation page so it can be loaded into
-an LLM-based assistant in a single shot. For programmatic access, prefer the MCP server
-or the structured manifest emitted alongside this file.
+an LLM-based assistant in a single shot. For a page index, see /docs/llms.txt.
 
 # Documentation
 
@@ -226,7 +225,7 @@ export default {
     const db = drizzle(env.DB, { schema });
     const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
     const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'sqlite' }) });
-    return auth.router.fetch(request);
+    return auth.router.handle(request);
   },
 };
 ```
@@ -1021,6 +1020,8 @@ Provider descriptors (the URLs, default scopes, profile-resolution code) live in
 
 `@authfn/admin` is a small package that mounts admin-only HTTP routes alongside your kernel. It uses the same database, the same namespace, and the same observability sink. You bring the **authorization** — a callback that decides whether a given request is allowed to perform a given admin action.
 
+The package also exports a separate [Super Console integration](/docs/admin/super-console) for scoped user and session operations and operator authentication. The routes below describe the direct admin API; a Super Console host uses the capability adapter and its own dispatcher.
+
 ```bash
 npm install @authfn/admin
 ```
@@ -1166,6 +1167,37 @@ Two reasons:
 - [Concepts → Errors](../core-concepts/errors)
 - [Concepts → Observability](../core-concepts/observability)
 - [Recipes → Building an admin tool](../recipes/admin-tool)
+
+---
+
+<!-- page:docs:admin/super-console.md path:/docs/admin/super-console -->
+# Super Console integration
+
+> Bind scoped AuthFn user and session operations to an authorized operator.
+
+
+# Super Console integration
+
+`@authfn/admin` exports two distinct surfaces. The [direct admin routes](/docs/admin) accept an application `authorize` callback. The Super Console capability exposes users and sessions through the shared admin dispatcher, and `createAuthFnOperatorAuth` supplies operator sign-in, two-factor completion, sign-out, scope authorization, and mutation checks.
+
+## Scoped capability
+
+The capability lists and gets users in the configured namespace, restricted to a region only when `AdminScope.region` is supplied, deletes an in-scope user, lists that user's active sessions, and revokes a session. The host binds `createAuthFnAdminService(authFnConfig)` to `createAuthFnAdminAdapter(service)` and mounts the adapter in its authenticated Super Console dispatcher. `createAuthFnAdminClient(adminClient)` supplies typed calls for the same operations.
+
+| Operation | Permission | Safety |
+| --- | --- | --- |
+| List or get users | `authfn.users.read` | Read, audited |
+| Delete user | `authfn.users.delete` | Destructive, MFA confirmation, audited |
+| List user sessions | `authfn.sessions.read` | Read, audited |
+| Revoke session | `authfn.sessions.revoke` | Destructive, recent-auth confirmation, audited |
+
+User deletion permanently removes the user and owned authentication state. Do not expose the capability without scope, permission, confirmation, and audit enforcement. The capability always checks the namespace, but region checks are conditional on `scope.region`. Omitting the region allows operations across regions within the configured namespace. Hosts requiring region isolation must supply and authorize `scope.region` for every operation; these checks are additional to operator authorization.
+
+## Operator authentication
+
+`createAuthFnOperatorAuth` takes an AuthFn config plus two host callbacks: `resolveOperator` maps an authenticated AuthFn session to an allowed console operator, and `authorizeScope` checks a requested admin scope. The integration uses the configured AuthFn plugins, hooks, rate limits, two-factor flow, CSRF policy, and cookie names. An ordinary signed-in AuthFn user does not become a console operator unless `resolveOperator` approves that session.
+
+The [capability source](https://github.com/21nCo/super-functions/blob/dev/authfn/admin/src/index.ts) defines the operation schemas. The [operator integration source](https://github.com/21nCo/super-functions/blob/dev/authfn/admin/src/superconsole.ts) defines authentication and scope callbacks. Use the [direct route guide](/docs/admin) when a custom internal tool needs only user list and delete routes.
 
 ---
 
@@ -4603,7 +4635,7 @@ Bun.serve({
     }
 
     if (url.pathname.startsWith('/auth')) {
-      return auth.router.fetch(stripPrefix(request, '/auth'));
+      return auth.router.handle(stripPrefix(request, '/auth'));
     }
 
     return new Response('not found', { status: 404 });
@@ -4687,7 +4719,7 @@ createServer(async (req, res) => {
       });
 
   const request = new Request(url, { method: req.method ?? 'GET', headers, body });
-  const response = await auth.router.fetch(request);
+  const response = await auth.router.handle(request);
 
   res.statusCode = response.status;
   response.headers.forEach((v, k) => res.setHeader(k, v));
@@ -4705,7 +4737,7 @@ createServer(async (req, res) => {
 ```ts
 import { auth } from './auth.ts';
 
-Deno.serve({ port: 3000 }, (request) => auth.router.fetch(request));
+Deno.serve({ port: 3000 }, (request) => auth.router.handle(request));
 ```
 
 ## AWS Lambda (function URLs)
@@ -4718,7 +4750,7 @@ export const handler = async (event: any) => {
   const headers = new Headers(event.headers);
   const body = event.body ? Buffer.from(event.body, event.isBase64Encoded ? 'base64' : 'utf8') : null;
   const request = new Request(url, { method: event.requestContext.http.method, headers, body });
-  const response = await auth.router.fetch(request);
+  const response = await auth.router.handle(request);
   const buf = await response.arrayBuffer();
   return {
     statusCode: response.status,
@@ -4736,7 +4768,7 @@ import { auth } from './auth.js';
 
 export default {
   fetch(request) {
-    return auth.router.fetch(request);
+    return auth.router.handle(request);
   },
 };
 ```
@@ -4746,7 +4778,7 @@ export default {
 Whatever your framework looks like, the integration always reduces to:
 
 1. Build a `Request` from the framework's incoming representation.
-2. Call `auth.router.fetch(request)`.
+2. Call `auth.router.handle(request)`.
 3. Translate the resulting `Response` to your framework's outgoing representation.
 
 If you find yourself wishing for a bundled adapter for your framework, the [authoring guide](https://github.com/21nCo/super-functions/tree/dev/packages/http) is short — most adapters are < 100 lines.
@@ -5050,10 +5082,10 @@ npm install @superfunctions/http-next
 
 ```ts
 // app/auth/[...path]/route.ts
-import { toNext } from '@superfunctions/http-next';
+import { toNextHandlers } from '@superfunctions/http-next';
 import { auth } from '../_runtime';
 
-const handler = toNext(auth.router);
+const handler = toNextHandlers(auth.router).GET;
 export const GET = handler;
 export const POST = handler;
 export const PUT = handler;
@@ -5077,12 +5109,7 @@ export default async function Dashboard() {
 }
 ```
 
-`@superfunctions/http-next` exposes a helper for the fake-request pattern:
-
-```ts
-import { toNextSession } from '@superfunctions/http-next';
-const session = await toNextSession(auth, await headers());
-```
+Use `auth.provider.authenticate(request)` with the incoming headers, as above. The HTTP adapter only creates route handlers; session lookup belongs to the auth provider.
 
 ## Server Actions
 
@@ -5097,7 +5124,7 @@ export async function deleteMyAccount() {
     method: 'DELETE',
     headers: reqHeaders,
   });
-  const response = await auth.router.fetch(request);
+  const response = await auth.router.handle(request);
   if (!response.ok) throw new Error('delete failed');
 }
 ```
@@ -5106,7 +5133,8 @@ export async function deleteMyAccount() {
 
 ```ts
 // middleware.ts
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
+import { auth } from './app/auth/_runtime';
 
 export async function middleware(request: NextRequest) {
   const url = request.nextUrl;
@@ -5176,13 +5204,13 @@ npm install @superfunctions/http-sveltekit
 
 ```ts
 // src/routes/auth/[...path]/+server.ts
-import { toSvelteKit } from '@superfunctions/http-sveltekit';
+import { toSvelteKitHandler } from '@superfunctions/http-sveltekit';
 import { auth } from '$lib/server/auth';
 
-export const GET = toSvelteKit(auth.router);
-export const POST = toSvelteKit(auth.router);
-export const PUT = toSvelteKit(auth.router);
-export const DELETE = toSvelteKit(auth.router);
+export const GET = toSvelteKitHandler(auth.router);
+export const POST = toSvelteKitHandler(auth.router);
+export const PUT = toSvelteKitHandler(auth.router);
+export const DELETE = toSvelteKitHandler(auth.router);
 ```
 
 ## Reading sessions in `+page.server.ts`
@@ -5226,7 +5254,7 @@ export {};
 SvelteKit's form actions submit via POST — and the authfn router enforces CSRF on POST. The cleanest pattern is:
 
 1. Use the `@authfn/client` browser SDK from `+page.svelte` for sign-in / sign-up / OTP / OAuth — these flows need the CSRF cookie anyway.
-2. Use server-side `auth.router.fetch` from `+page.server.ts` only for actions that don't have a CSRF context (e.g. an admin tool calling on behalf of a user).
+2. Use server-side `auth.router.handle` from `+page.server.ts` only for actions that don't have a CSRF context (e.g. an admin tool calling on behalf of a user).
 
 For a form action that *does* run on cookie-authenticated users, redirect them through a normal POST to `/auth/...` rather than rebuilding the request server-side.
 
@@ -5435,7 +5463,7 @@ If you're **comparing tools**, the highlights below are a cheatsheet against Bet
 | Two-factor (TOTP) | RFC 6238 TOTP with recovery codes, time-window tolerance, and pluggable encryption | `@authfn/two-factor` |
 | Multi-region | Region-aware lookup and request-specific runtime environment resolution | `@authfn/multi-region` |
 | Native handoff | Web ↔ native session handoff for iOS/Android wrappers | `@authfn/native-handoff` |
-| Admin API | List/delete users with custom authorization | `@authfn/admin` |
+| Admin API and Super Console | Direct user routes plus scoped user/session capability and operator authentication | `@authfn/admin` |
 | OpenAPI | Auto-generated spec from your enabled plugins, served from the kernel | bundled in `authfn` |
 
 ## SDK matrix
@@ -5929,7 +5957,7 @@ Plugins can be unit-tested by:
 
 1. Declaring an app with `authfn({ plugins: authFnPlugins(yourPlugin()) })`.
 2. Creating a server with `memoryAdapter` from `@superfunctions/db/testing`.
-3. Calling `auth.router.fetch(<Request>)` directly.
+3. Calling `auth.router.handle(<Request>)` directly.
 4. Asserting on the response envelope.
 
 The bundled plugins follow this pattern; see `authfn/core/src/__tests__/*.test.ts` for examples.
@@ -7487,7 +7515,7 @@ The enrollment row does not store `encryptionKeyRef`. Changing the configured ke
 
 # Bun quickstart
 
-authfn's router is built on the WHATWG `Request`/`Response` standard, so Bun is a first-class runtime. You don't need a framework adapter at all — `auth.router.fetch` _is_ a `(Request) => Promise<Response>` handler.
+authfn's router is built on the WHATWG `Request`/`Response` standard, so Bun is a first-class runtime. You don't need a framework adapter at all — `auth.router.handle` _is_ a `(Request) => Promise<Response>` handler.
 
 ## 1. Install
 
@@ -7546,7 +7574,7 @@ Bun.serve({
 
     if (url.pathname.startsWith("/auth")) {
       // The authfn router already includes its /auth basePath.
-      return auth.router.fetch(request);
+      return auth.router.handle(request);
     }
 
     return new Response("not found", { status: 404 });
@@ -7667,9 +7695,9 @@ export const auth = authApp.createServer({
 ```ts
 // app/auth/[...path]/route.ts
 import { auth } from "../_runtime";
-import { toNext } from "@superfunctions/http-next";
+import { toNextHandlers } from "@superfunctions/http-next";
 
-const handler = toNext(auth.router);
+const handler = toNextHandlers(auth.router).GET;
 
 export const GET = handler;
 export const POST = handler;
@@ -7698,7 +7726,7 @@ export default async function Dashboard() {
 }
 ```
 
-> The fake-request pattern is the canonical way to authenticate a Next.js Server Component with the cookie-based authfn session. The `@superfunctions/http-next` package exposes a helper for this — see [Frameworks → Next.js](../frameworks/nextjs).
+> The fake-request pattern is the canonical way to authenticate a Next.js Server Component with the cookie-based authfn session. Use `auth.provider.authenticate(request)` to read the session directly, as shown above and in [Frameworks → Next.js](../frameworks/nextjs). The HTTP adapter supplies route handlers; it does not provide a session helper.
 
 ## 5. Use Server Actions
 
@@ -7716,7 +7744,7 @@ export async function deleteMyAccount() {
     headers: reqHeaders,
   });
 
-  const response = await auth.router.fetch(fakeRequest);
+  const response = await auth.router.handle(fakeRequest);
   if (!response.ok) throw new Error("delete failed");
 
   revalidatePath("/");
@@ -8064,12 +8092,12 @@ export const auth = authApp.createServer({
 ```ts
 // src/routes/auth/[...path]/+server.ts
 import { auth } from "$lib/server/auth";
-import { toSvelteKit } from "@superfunctions/http-sveltekit";
+import { toSvelteKitHandler } from "@superfunctions/http-sveltekit";
 
-export const GET = toSvelteKit(auth.router);
-export const POST = toSvelteKit(auth.router);
-export const PUT = toSvelteKit(auth.router);
-export const DELETE = toSvelteKit(auth.router);
+export const GET = toSvelteKitHandler(auth.router);
+export const POST = toSvelteKitHandler(auth.router);
+export const PUT = toSvelteKitHandler(auth.router);
+export const DELETE = toSvelteKitHandler(auth.router);
 ```
 
 ## 4. Wire the client and Svelte store

@@ -16,7 +16,7 @@
    * TopBar is outside DocsLayout but uses position:sticky in theme.css.
    * Set this to roughly the rendered top bar height so the docs sidebar/TOC stick below it.
    */
-  /* --docsfn-sticky-top-offset: 2.7rem; */
+  --docsfn-sticky-top-offset: 4rem;
 
   /* Whole docs chrome (left sidebar + article + right TOC) max width; centers as a group */
   --docsfn-docs-shell-max-width: min(100rem, 100%);
@@ -68,5 +68,14 @@ body {
     padding-left: calc(var(--docsfn-sidebar-width) + var(--docsfn-main-padding-inline));
     padding-right: var(--docsfn-main-padding-inline);
     box-sizing: border-box;
+  }
+}
+
+/* The published theme hides this column on mobile; an open drawer must override it. */
+@media (max-width: 1023px) {
+  .docsfn-site-root .docsfn-sidebar-col.docsfn-sidebar-col--open {
+    display: block;
+    top: var(--docsfn-sticky-top-offset);
+    height: calc(100dvh - var(--docsfn-sticky-top-offset));
   }
 }

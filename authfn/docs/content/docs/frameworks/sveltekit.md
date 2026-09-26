@@ -13,13 +13,13 @@ npm install @superfunctions/http-sveltekit
 
 ```ts
 // src/routes/auth/[...path]/+server.ts
-import { toSvelteKit } from '@superfunctions/http-sveltekit';
+import { toSvelteKitHandler } from '@superfunctions/http-sveltekit';
 import { auth } from '$lib/server/auth';
 
-export const GET = toSvelteKit(auth.router);
-export const POST = toSvelteKit(auth.router);
-export const PUT = toSvelteKit(auth.router);
-export const DELETE = toSvelteKit(auth.router);
+export const GET = toSvelteKitHandler(auth.router);
+export const POST = toSvelteKitHandler(auth.router);
+export const PUT = toSvelteKitHandler(auth.router);
+export const DELETE = toSvelteKitHandler(auth.router);
 ```
 
 ## Reading sessions in `+page.server.ts`
@@ -63,7 +63,7 @@ export {};
 SvelteKit's form actions submit via POST — and the authfn router enforces CSRF on POST. The cleanest pattern is:
 
 1. Use the `@authfn/client` browser SDK from `+page.svelte` for sign-in / sign-up / OTP / OAuth — these flows need the CSRF cookie anyway.
-2. Use server-side `auth.router.fetch` from `+page.server.ts` only for actions that don't have a CSRF context (e.g. an admin tool calling on behalf of a user).
+2. Use server-side `auth.router.handle` from `+page.server.ts` only for actions that don't have a CSRF context (e.g. an admin tool calling on behalf of a user).
 
 For a form action that *does* run on cookie-authenticated users, redirect them through a normal POST to `/auth/...` rather than rebuilding the request server-side.
 
