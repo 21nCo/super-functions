@@ -1,0 +1,89 @@
+package-lock.json
+  s_ee6f287c08acb3::t_0e58cae13706a8 66478-66479,66488-66489,66492-66493,66591-66617
+plugfn/docs/README.md
+  s_ee6f287c08acb3::t_caded317ba4982 12-25
+plugfn/docs/content/docs/getting-started.md
+  s_ee6f287c08acb3::t_f210f5ecc3b7b6 12
+plugfn/docs/content/docs/provider-readiness.md
+  s_ee6f287c08acb3::t_a6887c438d385b 6,8
+plugfn/docs/content/docs/python.md
+  s_ee6f287c08acb3::t_0418523ea39240 12
+plugfn/docs/content/docs/reference/client-boundary.md
+  s_ee6f287c08acb3::t_e51a1d19f49763 2-3,6
+plugfn/docs/content/docs/reference/readiness.md
+  s_ee6f287c08acb3::t_0ef918749a07b9 2-3,6,8
+plugfn/docs/content/docs/reference/release-gates.md
+  s_ee6f287c08acb3::t_b6de9e16d203da 2-3,6,22-25
+plugfn/docs/content/docs/workflows-and-sync.md
+  s_ee6f287c08acb3::t_1dc2ca6c5ecd4e 32
+plugfn/docs/operations/release-gates.md
+  s_ee6f287c08acb3::t_798286deae4a6d 17-20
+plugfn/docs/package.json
+  s_ee6f287c08acb3::t_9a957abf178de1 10,12-15,22-23,32,35-37
+plugfn/docs/scripts/generate-llms.mjs
+  s_ee6f287c08acb3::t_88f61beda5b63f 2,30-31,33-34
+plugfn/docs/scripts/sync-references.mjs
+  s_ee6f287c08acb3::t_cd634de2f3c8b2 1-27
+plugfn/docs/src/app.css
+  s_ee6f287c08acb3::t_2adbb45361c9ee 19,76-80
+plugfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_ee6f287c08acb3::t_ea88be24277c9b 2
+plugfn/docs/src/lib/server/docs-site-source.ts
+  s_ee6f287c08acb3::t_c3ae180fb4f52b 7
+plugfn/docs/src/routes/+layout.svelte
+  s_ee6f287c08acb3::t_243d673728fc79 6-7,16-17,22
+plugfn/docs/src/routes/+page.svelte
+  s_ee6f287c08acb3::t_c9a644ff482547 2,28
+plugfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ee6f287c08acb3::t_62ecf66ca2f778 2,15-17,27-29,93,106
+plugfn/docs/src/routes/docs/llms-full.txt/+server.ts
+  s_ee6f287c08acb3::t_072b99e678c679 1-5
+plugfn/docs/src/routes/docs/llms.txt/+server.ts
+  s_ee6f287c08acb3::t_1433f4c954cb4c 1-5
+plugfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_f828bdca3ad1c5 6,18,106,157,169,187,197,199,215,220,222,225,277,282,284,287,289,342,344,347,363-366,462,486,490,510
+plugfn/docs/static/llms.txt
+  s_ee6f287c08acb3::t_73c1ae8a834c6a 7-21
+plugfn/docs/svelte.config.js
+  s_ee6f287c08acb3::t_8a1e88cc2ef361 17
+plugfn/docs/tsconfig.json
+  s_ee6f287c08acb3::t_9ad8c96a9775d4 19-20,24-25,27
+plugfn/docs/vite.config.ts
+  s_ee6f287c08acb3::t_5c802d9d930d24 2,10,22,24-28
+plugfn/scripts/gate-plugfn-release.mjs
+  s_ee6f287c08acb3::t_890b97ac6925b5 16-18,30
+scripts/docs-site/LandingPage.svelte
+  s_ee6f287c08acb3::t_1f3b12191333f1 1-216
+scripts/docs-site/README.md
+  s_ee6f287c08acb3::t_8a365dfee794ac 3,7,9-15
+scripts/docs-site/Search.svelte
+  s_ee6f287c08acb3::t_15dd71e11f7b2a 13,59
+scripts/docs-site/layout.ts
+  s_ee6f287c08acb3::t_7ba66b504dafe1 1-10
+scripts/docs-site/llms.mjs
+  s_ee6f287c08acb3::t_4da53231c79c22 1-32
+scripts/docs-site/runtime.test.ts
+  s_ee6f287c08acb3::t_64341b477cbed8 1-76
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_d35f1368e85b7b 2,188,215-218,327-330,354-355,360,365,368,376,403,410,428,434,446,451,467,473,484-485
+scripts/docs-site/vite.ts
+  s_ee6f287c08acb3::t_f681870005058e 1-17
+scripts/docs-site/vitest.config.ts
+  s_ee6f287c08acb3::t_6bee0517bbb2c9 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7242d43a7208c5032f2e276f01ff21fe729618d2",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
