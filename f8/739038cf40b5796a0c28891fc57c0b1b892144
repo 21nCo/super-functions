@@ -1,0 +1,31 @@
+searchfn/docs/content/docs/documentation/deploy/fly.mdx
+  s_ee6f287c08acb3::t_88e2b113169dfc 19-27,79
+searchfn/docs/content/docs/documentation/deploy/railway.mdx
+  s_ee6f287c08acb3::t_8d4a16372944ce 59,63-64
+searchfn/docs/content/docs/documentation/python/search.mdx
+  s_ee6f287c08acb3::t_b51c38e43be8cb 17
+searchfn/docs/content/docs/quickstart/fastapi.mdx
+  s_ee6f287c08acb3::t_c1e717a81984fe 13-14,23-28,30
+searchfn/docs/content/docs/quickstart/flask.mdx
+  s_ee6f287c08acb3::t_31c7ddd40c3328 13,22-28
+searchfn/docs/content/docs/quickstart/hono.mdx
+  s_ee6f287c08acb3::t_fe1e40324d100c 89-93,95,98
+searchfn/docs/public/llms-full.txt
+  s_ee6f287c08acb3::t_add1e4785d9c0f 3565-3573,3625,3984,3988-3989,4776,6523-6524,6533-6538,6540,6631,6640-6646,6753-6754,6756-6759,6762
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f8739038cf40b5796a0c28891fc57c0b1b892144",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
