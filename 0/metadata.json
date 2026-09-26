@@ -1,0 +1,52 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3E0HCT9CNKJRRXBGQC6ADD0",
+  "session_id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-26T04:45:54.438853Z",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "memoryfn/docs/content/docs/mcp.md",
+    "memoryfn/docs/src/app.css",
+    "memoryfn/docs/src/lib/components/DocsSiteSearch.svelte",
+    "memoryfn/docs/src/lib/server/docs-site-source.ts",
+    "memoryfn/docs/src/routes/+layout.server.ts",
+    "memoryfn/docs/src/routes/+layout.svelte",
+    "memoryfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "memoryfn/docs/static/llms-full.txt",
+    "memoryfn/docs/vite.config.ts",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/runtime.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-astra",
+  "turn_id": "1469c0f6d67c",
+  "checkpoint_transcript_start": 1043,
+  "transcript_lines_at_start": 1043,
+  "compact_transcript_start": 133,
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-26T04:45:54.314395Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 1476,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1476,
+    "total_lines_changed": 1476,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3E0HCT9CNKJRRXBGQC6ADD0",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "memoryfn/docs/content/docs/mcp.md",
+    "memoryfn/docs/src/app.css",
+    "memoryfn/docs/src/lib/components/DocsSiteSearch.svelte",
+    "memoryfn/docs/src/lib/server/docs-site-source.ts",
+    "memoryfn/docs/src/routes/+layout.server.ts",
+    "memoryfn/docs/src/routes/+layout.svelte",
+    "memoryfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "memoryfn/docs/static/llms-full.txt",
+    "memoryfn/docs/vite.config.ts",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/runtime.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
