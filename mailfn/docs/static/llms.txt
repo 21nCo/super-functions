@@ -1,0 +1,31 @@
+# MailFn
+
+> Programmable inboxes, MIME evidence, scoped access, testing, and agent workflows.
+
+## Documentation
+
+- [Administration capability](/docs/administration) — Understand MailFn's Super Console resource and action contract.
+- [CLI and MCP](/docs/cli-and-mcp) — Operate inboxes with sanitized CLI output and narrow agent tools.
+- [Cloudflare runtime](/docs/cloudflare-runtime) — Provision Email Routing, D1, R2, Queues, and Worker handlers.
+- [Core and storage](/docs/core-and-storage) — Embed the provider-neutral service and supply durable adapters.
+- [Credentials and scope](/docs/credentials-and-scope) — Use one-time inbox credentials and narrow API permissions.
+- [Getting started](/docs/getting-started) — Create a scoped inbox, wait for mail, and extract a verification value.
+- [MailFn](/docs) — Programmable inboxes with durable MIME evidence and scoped APIs.
+- [Messages and evidence](/docs/messages-and-evidence) — Understand raw MIME, normalized messages, attachments, and retention.
+- [Operations and limits](/docs/operations-and-limits) — Release gate, retention, production flags, and live-service proof.
+- [Outbound through SendFn](/docs/outbound) — Compose drafts, replies, and forwards with a delivery adapter.
+- [@mailfn/cli](/docs/reference/cli) — Source package guide for MailFn cli.
+- [@mailfn/client](/docs/reference/client) — Source package guide for MailFn client.
+- [@mailfn/cloudflare](/docs/reference/cloudflare) — Source package guide for MailFn cloudflare.
+- [Consumer fixtures](/docs/reference/consumers) — Typechecked integration shapes used by the release gate.
+- [@mailfn/core](/docs/reference/core) — Source package guide for MailFn core.
+- [mailfn facade](/docs/reference/facade) — Source package guide for MailFn facade.
+- [Reference](/docs/reference) — MailFn domain, deployment, threat, and package contracts.
+- [@mailfn/mcp](/docs/reference/mcp) — Source package guide for MailFn mcp.
+- [Operations](/docs/reference/operations) — Cloudflare setup, queues, reconciliation, and release gates.
+- [@mailfn/sendfn](/docs/reference/sendfn) — Source package guide for MailFn sendfn.
+- [Specification](/docs/reference/spec) — MailFn domain and API contract.
+- [@mailfn/testing](/docs/reference/testing) — Source package guide for MailFn testing.
+- [Threat model](/docs/reference/threat-model) — Ingress, credentials, webhooks, retention, and deployment trust.
+- [Testing with inbox fixtures](/docs/testing) — Use expiring fixtures, deterministic waits, and scoped cleanup.
+- [Webhooks and domains](/docs/webhooks-and-domains) — Configure durable delivery and verified inbound domain routing.
