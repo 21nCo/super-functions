@@ -1,0 +1,83 @@
+filefn/docs/content/docs/adapters/db-drizzle.md
+  s_ee6f287c08acb3::t_5236213c4d779c 3,8-9,13-15,17-19,22,24,26,28
+filefn/docs/content/docs/adapters/db-memory.md
+  s_ee6f287c08acb3::t_ad9409c907f90b 2-3,6,9-10,13
+filefn/docs/content/docs/adapters/db-postgres.md
+  s_ee6f287c08acb3::t_a966fecafc475c 2-3,6,8-9,13-15,17-18,21,23
+filefn/docs/content/docs/adapters/db-sqlite.md
+  s_ee6f287c08acb3::t_a7011047f83d1e 2-3,6,8-11,15-16,18,20,23,25
+filefn/docs/content/docs/adapters/db.md
+  s_ee6f287c08acb3::t_737355550a1943 3,8,11-12,15,17,20-22,25,27,29
+filefn/docs/content/docs/adapters/index.md
+  s_ee6f287c08acb3::t_68c0e3aeece289 30
+filefn/docs/content/docs/adapters/processors.md
+  s_ee6f287c08acb3::t_2f8bc3a802fff7 3,8,10,13,16,22-23,27,33,36,41,43-45,49,55-58,60-61,65,70,72-77,81,86,88-92,96,98,100,103-111,113,116
+filefn/docs/content/docs/adapters/storage-azure.md
+  s_ee6f287c08acb3::t_13ef61aa1eac53 3,9,11-12,14
+filefn/docs/content/docs/adapters/storage-gcs.md
+  s_ee6f287c08acb3::t_5f067700f13938 3,9,11,15-16,24
+filefn/docs/content/docs/adapters/storage-local.md
+  s_ee6f287c08acb3::t_1d5b296d3f02e6 9
+filefn/docs/content/docs/adapters/storage-minio.md
+  s_ee6f287c08acb3::t_440a1d0b1c7687 11
+filefn/docs/content/docs/adapters/storage-r2.md
+  s_ee6f287c08acb3::t_4335363da5c5c6 11,31
+filefn/docs/content/docs/adapters/storage-s3.md
+  s_ee6f287c08acb3::t_1d177fa3cfdf9c 3,9,27,29,31
+filefn/docs/content/docs/adapters/storage.md
+  s_ee6f287c08acb3::t_11a49836040687 41,43-45
+filefn/docs/content/docs/frameworks/bun.md
+  s_ee6f287c08acb3::t_71d2e55537f73d 12-14,20
+filefn/docs/content/docs/frameworks/express.md
+  s_ee6f287c08acb3::t_d03e04057009ce 3,8,12,14-15,17-20,22,26,28
+filefn/docs/content/docs/frameworks/hono.md
+  s_ee6f287c08acb3::t_0af6d39ef94ca7 15-17,21
+filefn/docs/content/docs/frameworks/nextjs.md
+  s_ee6f287c08acb3::t_af7231c32a84d0 15,18
+filefn/docs/content/docs/getting-started.md
+  s_ee6f287c08acb3::t_bd7af2a4fb4701 13,34
+filefn/docs/content/docs/quickstart/bun.md
+  s_ee6f287c08acb3::t_fd77632e06007a 13,21
+filefn/docs/content/docs/quickstart/express.md
+  s_ee6f287c08acb3::t_fbad6acf25f1da 13-14,23-24,42-43
+filefn/docs/content/docs/quickstart/hono.md
+  s_ee6f287c08acb3::t_a5990af0d9b6d1 14,27
+filefn/docs/content/docs/quickstart/nextjs.md
+  s_ee6f287c08acb3::t_cddf4c503cd4a0 13,24
+filefn/docs/content/docs/quickstart/sveltekit.md
+  s_ee6f287c08acb3::t_2a13464ca243fd 13,23
+filefn/docs/content/docs/recipes/cdn-integration.md
+  s_ee6f287c08acb3::t_77b61ac7e3ab89 3,8,10,12,15-23,28,30
+filefn/docs/content/docs/recipes/document-uploads.md
+  s_ee6f287c08acb3::t_d96104734c7282 47-49
+filefn/docs/content/docs/recipes/heic-conversion.md
+  s_ee6f287c08acb3::t_4de649db2daadc 71-72
+filefn/docs/content/docs/recipes/image-uploads.md
+  s_ee6f287c08acb3::t_a30875e8b587b6 49-51
+filefn/docs/content/docs/recipes/tenant-isolation.md
+  s_ee6f287c08acb3::t_a8db4b36640ba0 40
+filefn/docs/content/docs/recipes/video-uploads.md
+  s_ee6f287c08acb3::t_2a34adcff86a9f 44-46
+filefn/docs/content/docs/reference/schema.md
+  s_ee6f287c08acb3::t_8f8425885c37ee 138-142,145
+filefn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_af9bbd8887213d 125,142,147,150-151,154,156,159-161,164,166,168,178,183-184,188-190,192-194,197,199,201,203,208,213,216,219-220,223,228,233,236,238-239,243-245,247-248,251,253,258,263,266,268-271,275-276,278,280,283,285,295,300,302,305,308,314-315,319,325,328,333,335-337,341,347-350,352-353,357,362,364-369,373,378,380-384,388,390,392,395-403,405,408,456,458-460,489,495,497-498,500,542,548,550,554-555,563,613,662,734,754,783,789,807,809,811,4955-4957,4963,5026,5031,5035,5037-5038,5040-5043,5045,5049,5051,5265-5267,5271,5384,5387,5662,5683,5910,5918,5975-5976,5985-5986,6004-6005,6237,6250,6360,6371,6451,6461,6712,6717,6719,6721,6724-6726,6728-6732,6737,6739,6922-6924,7046-7047,7103-7105,7420,7550-7552,8464-8468,8471
+filefn/docs/static/llms.txt
+  s_ee6f287c08acb3::t_e9d0938adbd8f9 9-14,16-17,21,68,85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0cc3c6c0cdf86cba0cc4600c4b65378abc1aa608",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
