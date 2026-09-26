@@ -1,0 +1,438 @@
+# MemoryFn
+
+> Scoped memory storage, semantic retrieval, revisioned updates, and deletion for applications and agents.
+
+This file concatenates the full text of every documentation page so it can be loaded into
+an LLM-based assistant in a single shot. For a page index, see /docs/llms.txt.
+
+# Documentation
+
+<!-- page:docs:embeddings-and-extraction.md path:/docs/embeddings-and-extraction -->
+# Embeddings and extraction
+
+> Configure supported providers and understand ingestion and deduplication behavior.
+
+
+The `memoryfn()` factory currently supports OpenAI for `embedder.provider` and `llm.provider`. An embedder is required for semantic retrieval. The built-in embedder defaults to `text-embedding-3-small`, requests the storage dimension when known, batches inputs, and checks response count and order. The default batch size is 2048; configured values must be an integer from 1 through 2048.
+
+```ts
+const memory = memoryfn({
+  storage: { kind: "pg", url: process.env.MEMORY_DATABASE_URL! },
+  embedder: {
+    provider: "openai",
+    model: "text-embedding-3-small",
+    apiKey: process.env.OPENAI_API_KEY!,
+    dims: 1536,
+  },
+});
+```
+
+The factory rejects unsupported provider values and missing API keys at initialization. For another provider, inject an `Embedder` or `LLMProvider` into the `MemoryFn` constructor with a compatible `StorageAdapter`; the factory does not select custom provider names.
+
+Without an LLM, `add()` stores supplied content as one memory. With an LLM, it extracts facts, embeds them, checks for vector duplicates, and may resolve updates or relationships. The deduplication threshold is 0.95. Extracted tags are descriptive metadata; they never replace caller scope.
+
+Multi-fact extraction is **not an atomic batch**. A failure may occur after some facts have been inserted. Reconcile before replaying an entire batch, or use explicit single-memory writes for confirmed user memory until the application has an ingestion job with recovery. A conflicting fact requires adapter transactions for its new row, revision changes, and relationships. See [operations and limits](/docs/operations-and-limits) for unsupported configuration fields.
+
+---
+
+<!-- page:docs:getting-started.md path:/docs/getting-started -->
+# Getting started
+
+> Add, update, and forget scoped memories with the TypeScript package.
+
+
+The source package is `memoryfn/typescript`, published as `@memoryfn/core`. This dev contract is not yet represented by the same-version registry package. Build or pack the checked-out source when evaluating it; do not assume `npm install @memoryfn/core@0.0.3` reproduces these pages.
+
+## Use an explicit ephemeral store
+
+```ts
+import { memoryfn } from "@memoryfn/core";
+
+const memory = memoryfn({ storage: { kind: "memory" } });
+const scope = { tenantId: "workspace-1", containerTags: ["user:alice"] };
+
+try {
+  const { memories } = await memory.add({ ...scope, content: "Prefers dark mode" });
+  const saved = memories[0];
+  if (saved) {
+    await memory.update({
+      ...scope,
+      id: saved.id,
+      expectedRevision: saved.revision ?? 1,
+      content: "Prefers a dark theme",
+    });
+    await memory.forget({ ...scope, id: saved.id });
+  }
+} finally {
+  await memory.close();
+}
+```
+
+`kind: "memory"` is process-local and intended for tests or deliberate ephemeral use. `add`, `update`, and `forget` work without an embedder, but `search` rejects with `MEMORY_EMBEDDER_REQUIRED`. A supplied tenant ID and tag array are required at runtime even where legacy TypeScript inputs still mark `tenantId` optional.
+
+Use [PostgreSQL storage](/docs/storage) for durable data and configure an [embedder](/docs/embeddings-and-extraction) for semantic search. Apply the bundled SQL migrations before using the PostgreSQL adapter. The host must authenticate callers and derive scope; request bodies and model-controlled tool arguments cannot choose a tenant.
+
+The [API reference](/docs/reference/api) lists the current entry points and input shapes.
+
+---
+
+<!-- page:docs:http.md path:/docs/http -->
+# HTTP adapter
+
+> Mount the authorized MemoryFn router and understand its request boundary.
+
+
+Import `createMemoryRouter` from `@memoryfn/core/http` and supply an `authorize(request)` callback. It must authenticate **every request** and return trusted `{ tenantId, containerTags }` or `null`. The request body cannot choose a tenant.
+
+```ts
+import { createMemoryRouter } from "@memoryfn/core/http";
+
+const router = createMemoryRouter(memory, {
+  authorize: async (request) => {
+    const principal = await authenticateRequest(request);
+    return principal
+      ? { tenantId: principal.tenantId, containerTags: principal.allowedTags }
+      : null;
+  },
+  maxBodyBytes: 1024 * 1024,
+});
+```
+
+The router matches the exact paths it sees. If the host mounts it under a prefix such as `/api`, the host must strip that prefix before calling `handle`; the router has no mount-prefix option. It exposes `POST /v1/memories` with `content`, optional `containerTags`, and optional `metadata`; and `POST /v1/memories/search` with `q`, optional tags, filters, limit, and threshold. Body tags add constraints to the trusted host tags. Inputs are strict: a body `tenantId` is rejected, as are unknown fields. The limit is 1–100 and threshold is -1 to 1. Missing authorization returns 401; schema-invalid JSON returns 400. Malformed JSON fails before schema validation and currently reaches the shared router’s 500 handler. The default body cap is one MiB.
+
+The router does not supply membership checks or a token verifier. The application must implement those in `authorize` and recheck current permission and deletion state before returning search results. The [source router](https://github.com/21nCo/super-functions/blob/dev/memoryfn/typescript/src/http/router.ts) is the precise endpoint contract.
+
+---
+
+<!-- page:docs:index.md path:/docs -->
+# MemoryFn documentation
+
+> Scoped memory storage, retrieval, updates, and forgetting for application developers.
+
+
+MemoryFn's TypeScript package, `@memoryfn/core`, stores tenant-scoped memories, searches them by embedding, updates them with revisions, and forgets them with tombstones. It also offers an authorized HTTP router and a scoped stdio MCP adapter.
+
+These pages describe the **current `origin/dev` source**. Its README calls this an unpublished candidate: the same numbered registry release does not contain all the changes here. Test the package from this source or a packed build before adopting these contracts in a deployed consumer.
+
+## Choose a path
+
+- [Getting started](/docs/getting-started): add, update, and forget an ephemeral memory.
+- [Scope and lifecycle](/docs/scope-and-lifecycle): tenant and tag boundaries, revisions, and forgetting.
+- [Storage](/docs/storage): PostgreSQL migrations, connection ownership, and custom adapters.
+- [Embeddings and extraction](/docs/embeddings-and-extraction): supported providers and ingestion behavior.
+- [Search](/docs/search): semantic retrieval and result limits.
+- [HTTP](/docs/http) or [MCP](/docs/mcp): expose memories through host-controlled authorization.
+- [Operations and limits](/docs/operations-and-limits): unsupported settings and proof boundaries.
+
+MemoryFn is a derived store. The application remains responsible for membership, sharing policy, current permissions, and authoritative deletion state. Intersect retrieved results with that authority before showing them to a caller.
+
+---
+
+<!-- page:docs:mcp.md path:/docs/mcp -->
+# MCP adapter
+
+> Expose scoped MemoryFn tools through a trusted stdio host.
+
+
+`MemoryMCP` from `@memoryfn/core/mcp` wraps a MemoryFn instance with two McpFn tools over stdio: `add_memory` and `search_memories`. Construct it for a **trusted scope**. Tool arguments may add tag constraints but cannot choose the tenant.
+
+```ts
+import { MemoryMCP } from "@memoryfn/core/mcp";
+
+const adapter = new MemoryMCP(memory, {
+  tenantId: authorizedTenantId,
+  containerTags: authorizedTags,
+});
+
+let closing = false;
+async function shutdown() {
+  if (closing) return;
+  closing = true;
+  try {
+    await adapter.close();
+  } finally {
+    await memory.close();
+  }
+}
+function requestShutdown() {
+  void shutdown().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, requestShutdown);
+}
+process.stdin.once("end", requestShutdown);
+try {
+  await adapter.start(); // Resolves when connected; the transport keeps listening.
+} catch (error) {
+  console.error(error);
+  process.exitCode = 1;
+  await shutdown();
+}
+```
+
+`add_memory` accepts required `content` and optional `tags`, and returns a structured summary of created, updated, and deduplicated counts. `search_memories` accepts required `query`, optional `limit` (1–100; default 5), and optional tags. It returns only result content plus count metadata. The adapter also exposes `manifest()` and `connect(transport)` for host integration.
+
+The scope is captured at construction. Instantiate per authorized scope and make the host revoke access when that authority ends; the adapter does not infer a later permission change. Semantic search still requires an embedder. The [MCP source](https://github.com/21nCo/super-functions/blob/dev/memoryfn/typescript/src/mcp/server.ts) defines the tool schemas and output shapes.
+
+---
+
+<!-- page:docs:operations-and-limits.md path:/docs/operations-and-limits -->
+# Operations and current limits
+
+> Supported configuration, migration responsibility, tests, and proof boundaries.
+
+
+This site describes the `origin/dev` source, an unpublished candidate. A green local build is workspace evidence, not proof that the same-version registry package or a hosted deployment has these changes.
+
+## Configuration boundaries
+
+- The factory supports OpenAI `llm` and `embedder` providers. Other provider values fail at initialization.
+- `policies.redaction` is rejected with `MEMORY_REDACTION_UNSUPPORTED`.
+- `maxMemoriesPerContainer` and `maxMemorySizeBytes` are rejected with `MEMORY_LIMITS_UNSUPPORTED`.
+- SQLite requires an injected adapter. The factory does not implement Qdrant, graph storage, reranking, or caching merely because legacy config types mention them.
+- Search is vector based. Without an embedder, it fails with `MEMORY_EMBEDDER_REQUIRED`.
+- Multi-fact extraction can partially write; design application-level reconciliation before replaying an ingest batch.
+
+## Database and release operations
+
+The host applies `0001-initial.sql` and `0002-memory-lifecycle.sql` itself. There is no CLI schema discovery or `getSchema` contract. Use a disposable database for the real PostgreSQL test suite: `MEMORYFN_TEST_DATABASE_URL` enables integration tests that create tables and truncate memory data. A local PostgreSQL pass does not prove hosted Hyperdrive behavior.
+
+Application code owns the source-of-truth record, caller authorization, and the deletion deny path. MemoryFn owns scoped derived-store operations. Keep external replicas and indexes behind equivalent tombstone and cleanup controls. See the [storage and lifecycle source guide](/docs/reference/storage-lifecycle) for the detailed contract.
+
+---
+
+<!-- page:docs:reference/api.md path:/docs/reference/api -->
+# Public API
+
+> MemoryFn package entry points, methods, input types, and adapters.
+
+
+| Import | Main surface | Purpose |
+| --- | --- | --- |
+| `@memoryfn/core` | `memoryfn`, `MemoryFn`, `Memory`, input/result types, `StorageAdapter`, `MemoryStorageAdapter`, `PostgresAdapter` | Factory, pipeline, and storage contracts |
+| `@memoryfn/core/http` | `createMemoryRouter` | Authorized HTTP router |
+| `@memoryfn/core/mcp` | `MemoryMCP` | Scoped stdio MCP tools |
+| `@memoryfn/core/storage/pg` | `PostgresAdapter`, `memories`, `memoryRelationships` | PostgreSQL adapter and Drizzle schema |
+
+## Factory and pipeline
+
+`memoryfn(config: MemoryFnConfig): MemoryFn` selects process-local storage, an owned PostgreSQL connection, or an injected adapter. Supported factory providers are OpenAI LLM and embeddings. `new MemoryFn(config, storage, embedder?, llm?)` allows custom provider instances.
+
+`MemoryFn` methods:
+
+- `add({ tenantId, containerTags, content?, messages?, type?, metadata? })` returns memories, relationships, and created/updated/deduplicated counts. Content or messages must be nonempty.
+- `search({ tenantId, containerTags, q, filters?, limit?, threshold? })` returns scoped vector results and count metadata; it requires an embedder.
+- `update({ tenantId, containerTags, id, expectedRevision, content, metadata? })` returns a new revision or fails on a stale revision.
+- `forget({ tenantId, containerTags, id, expectedRevision? })` scrubs a memory and retains its tombstone.
+- `close()` disposes only resources owned by the selected adapter.
+
+`Memory` includes ID, tenant and tags, type, content, embedding, metadata, revision, deleted timestamp, latest flag, and created/updated timestamps. The factory's public type unions retain some unsupported options; consult [operations and limits](/docs/operations-and-limits) before using them.
+
+The [source factory](https://github.com/21nCo/super-functions/blob/dev/memoryfn/typescript/src/index.ts), [pipeline](https://github.com/21nCo/super-functions/blob/dev/memoryfn/typescript/src/core/pipeline.ts), and [type definitions](https://github.com/21nCo/super-functions/blob/dev/memoryfn/typescript/src/core/types.ts) define exact signatures.
+
+---
+
+<!-- page:docs:reference/index.md path:/docs/reference -->
+# API reference
+
+> Public TypeScript entry points and source-aligned package guidance.
+
+
+- [Public API](/docs/reference/api) maps the current package exports and operation inputs.
+- [Storage and lifecycle guide](/docs/reference/storage-lifecycle) carries the detailed source README for the dev adoption.
+- [Package overview](/docs/reference/package-overview) carries the top-level source README.
+
+For a published release, inspect its actual package artifact. The same-version registry release does not yet identify all `origin/dev` changes documented here.
+
+---
+
+<!-- page:docs:reference/package-overview.md path:/docs/reference/package-overview -->
+# Package overview
+
+> Source-aligned MemoryFn guidance from origin/dev.
+
+
+The TypeScript package `@memoryfn/core` provides scoped memory storage, embedding-based retrieval, revisioned updates and forgetting. This worktree adopts the implementation from next and hardens its storage and lifecycle for hosted consumers.
+
+```ts
+import { memoryfn } from '@memoryfn/core';
+const memory = memoryfn({ storage: { kind: 'memory' } });
+const { memories } = await memory.add({ tenantId: 'workspace-1', containerTags: ['user:alice'], content: 'Prefers dark mode' });
+await memory.forget({ tenantId: 'workspace-1', containerTags: ['user:alice'], id: memories[0].id });
+await memory.close();
+```
+
+Use injected Postgres storage for durable data and configure an embedder for semantic retrieval. The process-local adapter is intended for tests and explicit ephemeral use. SQLite requires a supplied adapter.
+
+Read [TypeScript storage, migrations and lifecycle](https://github.com/21nCo/super-functions/blob/dev/memoryfn/typescript/README.md). Application membership, sharing and authoritative deletion state remain the consumer's responsibility. This is an unpublished candidate; the registry version does not identify these local changes. Admin and Python packages have not been adopted into this dev worktree.
+
+Semantic search requires a configured embedder and fails with `MEMORY_EMBEDDER_REQUIRED` otherwise. The built-in PostgreSQL schema uses 1536 dimensions; the factory requests that dimension and rejects conflicting configuration, including injected `PostgresAdapter` instances.
+
+---
+
+<!-- page:docs:reference/storage-lifecycle.md path:/docs/reference/storage-lifecycle -->
+# Storage and lifecycle source guide
+
+> Source-aligned MemoryFn guidance from origin/dev.
+
+
+This dev adoption is based on next `b21477fc9a32ae425c38a2de810b5a8705fc711f` with explicit scope and lifecycle changes. It is an unpublished candidate; the same-version registry package does not contain these changes.
+
+## PostgreSQL and ownership
+
+Apply `migrations/0001-initial.sql` and `0002-memory-lifecycle.sql` in order, using a migration role against the intended application schema. Existing installations apply 0002 after confirming their baseline matches 0001. Migrations are additive and repeatable. They do not provision a database, grants, or Hyperdrive. The vector dimension is 1536. An approximate vector index is an operational choice after data loading; exact search works without one.
+
+```ts
+import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { memoryfn } from '@memoryfn/core';
+import { PostgresAdapter, memories, memoryRelationships } from '@memoryfn/core/storage/pg';
+
+const client = postgres(connectionString, { prepare: false, max: 5 });
+const storage = new PostgresAdapter(drizzle(client, { schema: { memories, memoryRelationships } }));
+const memory = memoryfn({ storage: { kind: 'adapter', adapter: storage } });
+// Supply a supported embedder for vector retrieval.
+// memory.close() does not close this caller-owned client.
+```
+
+A URL configured with `kind: 'pg'` creates an owned client; `memory.close()` closes it. Injecting an adapter lets the consumer control request/Worker lifecycle, Hyperdrive connection options, and disposal. Local real-Postgres tests are separate from hosted Hyperdrive qualification.
+
+## Scope and forgetting
+
+Every operation requires an explicit tenant ID and tag array. All supplied tags must match; an empty array selects the entire explicit tenant. Tags are retrieval filters, not membership or sharing authority. Model-extracted tags are stored as descriptive metadata and cannot expand the caller's container tags.
+
+`update({ tenantId, containerTags, id, expectedRevision, content })` uses compare-and-update and replaces the embedding. Failed re-embedding leaves the prior revision intact. `forget({ tenantId, containerTags, id, expectedRevision? })` scrubs content, vector and metadata, removes relationships and retains an immutable-ID tombstone. Concurrent stale updates cannot resurrect a tombstone. Forget can be retried; Postgres performs scrubbing and relationship cleanup in one transaction. A failed transaction reports failure and can be retried.
+
+The application must deny retrieval as soon as its authoritative application record is forgotten, including while derived-store cleanup is pending. MemoryFn cannot infer the state of an external source of authority. Results must be intersected with current application permissions and authoritative deletion state. External indexes and replicas require equivalent tombstone checks and retryable cleanup; this package's Postgres vector lives in the same row as the tombstone.
+
+The HTTP router requires an `authorize(request)` callback returning trusted scope or null. Request bodies cannot choose a tenant. The MCP adapter requires a trusted scope at construction; instantiate it per authorized scope and revoke access at the host boundary.
+
+## Compatibility and limits
+
+- `kind: 'memory'` selects process-local storage. `kind: 'sqlite'` without an explicit adapter throws; it no longer silently creates a memory store.
+- Storage adapters must implement scoped get/update/delete and immutable-ID tombstones. The old insert/search-only interface is insufficient.
+- `@memoryfn/core/http`, `/mcp`, and `/storage/pg` are separate subpaths; use these instead of root namespace re-exports.
+- Fact extraction across multiple facts is not an atomic batch transaction. A failure can follow some inserts; reconcile before replaying an entire extracted batch. Prefer explicit single-memory writes for confirmed user memory until an application-level ingestion job provides reconciliation.
+- Configure an embedder for meaningful vector search; the legacy no-embedder vector fallback is not a lexical search engine.
+
+Run the test suite with `MEMORYFN_TEST_DATABASE_URL` pointing only to a disposable database. Integration tests create tables and truncate memory data.
+
+The factory currently supports only OpenAI for `llm.provider` and `embedder.provider`.
+Other values supplied from JavaScript or unvalidated configuration fail at initialization;
+they never silently disable extraction or embeddings. The public TypeScript unions match
+these implemented providers. Custom providers may be injected through the `MemoryFn` constructor.
+
+`policies.redaction` is not implemented. Both the factory and direct `MemoryFn`
+constructor reject it with `MEMORY_REDACTION_UNSUPPORTED`, before extraction or
+persistence; the TypeScript configuration does not advertise it as supported.
+
+`maxMemoriesPerContainer` and `maxMemorySizeBytes` are also unsupported and rejected
+at initialization with `MEMORY_LIMITS_UNSUPPORTED`. Conflict persistence requires
+an adapter transaction: the new record, revision changes, and relationships commit
+together. Both bundled adapters support this; custom adapters without transactions
+reject conflicts before writing. Memory storage uses optimistic conflict detection.
+
+CLI schema discovery is not supported. PostgreSQL hosts must apply the bundled
+`migrations/0001-initial.sql` and `0002-memory-lifecycle.sql`; in-memory storage
+needs no migration. This package does not export the shared `getSchema` contract.
+
+---
+
+<!-- page:docs:scope-and-lifecycle.md path:/docs/scope-and-lifecycle -->
+# Scope and lifecycle
+
+> Tenant and tag constraints, optimistic revisions, updates, and tombstones.
+
+
+Every operation needs a nonempty `tenantId` and an array of nonempty `containerTags`. All supplied tags must match within that tenant; an empty array selects the explicit tenant as a whole. Tags constrain retrieval and storage operations, but they are not an application membership or sharing policy. The host must derive and enforce authorization independently.
+
+`requireScope()` runs in the pipeline and bundled adapters. Model-extracted tags are stored as descriptive `metadata.extractedTags`; they cannot expand the caller's container tags. HTTP and MCP adapters derive the tenant from trusted host scope rather than a request body or tool arguments.
+
+## Update with a revision
+
+```ts
+const changed = await memory.update({
+  tenantId: scope.tenantId,
+  containerTags: scope.containerTags,
+  id: saved.id,
+  expectedRevision: saved.revision ?? 1,
+  content: "Updated memory",
+});
+```
+
+`update()` checks the current scoped row and performs compare-and-update. With an embedder, it replaces the embedding. A failed re-embedding leaves the previous revision intact. A stale `expectedRevision` fails with `MEMORY_REVISION_CONFLICT`.
+
+`forget({ tenantId, containerTags, id, expectedRevision? })` scrubs content, embedding, and metadata; removes relationships; and retains an immutable-ID tombstone. The bundled PostgreSQL adapter performs scrub and relationship cleanup in one transaction. It can be retried, and an update cannot resurrect the tombstone. `expectedRevision` can protect against forgetting a newer revision.
+
+The application's authoritative record may be forgotten before this derived store is cleaned. Deny retrieval immediately using that authoritative state, retry derived-store cleanup, and apply equivalent tombstone checks to any external indexes or replicas. See the [storage guide](/docs/storage) for adapter requirements.
+
+---
+
+<!-- page:docs:search.md path:/docs/search -->
+# Semantic search
+
+> Query scoped vector memories and enforce host authorization on results.
+
+
+`memory.search()` embeds the query and asks the storage adapter for nearest vectors. It fails with `MEMORY_EMBEDDER_REQUIRED` when no embedder is configured; there is no lexical fallback.
+
+```ts
+const result = await memory.search({
+  tenantId: scope.tenantId,
+  containerTags: scope.containerTags,
+  q: "interface theme preference",
+  limit: 10,
+  threshold: 0.7,
+});
+
+for (const entry of result.results) {
+  // Check current application permissions and deletion state before display.
+  console.log(entry.content);
+}
+```
+
+The PostgreSQL adapter filters to the explicit tenant, all supplied tags, active rows, and latest revisions. `filters` perform exact JSONB metadata containment. `threshold` is a cosine similarity floor, and the adapter orders by vector distance. The returned metadata reports `totalFound` and `returned` for that storage query; it is not a count of all tenant memories.
+
+The input type still advertises `rerank`, relationship traversal, hybrid ranking, token limits, and `onlyLatest`. The current `search()` pipeline does not implement those options. Do not rely on them until code and tests establish their behavior. The host must intersect every result with its current permissions and authoritative deletion state.
+
+---
+
+<!-- page:docs:storage.md path:/docs/storage -->
+# Storage and migrations
+
+> PostgreSQL setup, connection ownership, transaction requirements, and custom adapters.
+
+
+`kind: "memory"` provides a process-local adapter. Durable PostgreSQL needs the SQL in `memoryfn/typescript/migrations`: apply `0001-initial.sql`, then `0002-memory-lifecycle.sql`, using a migration role in the intended application schema. The first migration creates pgvector-backed tables with `vector(1536)`; the second adds revisions, tombstones, and an active-row index. Neither migration provisions a database, grants, or Hyperdrive. Exact vector search works without an approximate index.
+
+## Inject a caller-owned PostgreSQL adapter
+
+```ts
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { memoryfn } from "@memoryfn/core";
+import { PostgresAdapter, memories, memoryRelationships } from "@memoryfn/core/storage/pg";
+
+const client = postgres(connectionString, { prepare: false, max: 5 });
+const adapter = new PostgresAdapter(
+  drizzle(client, { schema: { memories, memoryRelationships } }),
+);
+const memory = memoryfn({ storage: { kind: "adapter", adapter } });
+
+// The caller owns this client. Closing MemoryFn does not close it.
+await memory.close();
+await client.end();
+```
+
+Use an injected adapter when the host controls request or Worker lifetimes, pooling, and Hyperdrive options. `kind: "pg"` with a URL creates an owned client; `memory.close()` closes it. Passing a `connection` option to the factory's PostgreSQL branch is rejected: inject a `PostgresAdapter` instead.
+
+PostgreSQL storage fixes embedding dimensions at 1536. The factory requests that dimension and rejects a conflicting embedder configuration, including with an injected `PostgresAdapter`.
+
+The `StorageAdapter` contract includes scoped insert, search, get, compare-and-update, delete, optional close, and optional transaction. Immutable-ID tombstones and scope checks are required for equivalent behavior. A conflict resolution that changes several records requires `transaction()`; an adapter without it rejects that conflict before writing.
+
+`kind: "sqlite"` requires an explicit adapter. The factory does not create SQLite storage. `qdrant` is present in a legacy type union but has no factory implementation. Review the [source lifecycle guide](/docs/reference/storage-lifecycle) and [adapter interface](https://github.com/21nCo/super-functions/blob/dev/memoryfn/typescript/src/storage/adapter.ts) before implementing a custom store.
+
+---
