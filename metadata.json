@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3E0F62CNQXTDXHQ8SXZ7PCC",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "botfn/docs/src/app.css",
+    "botfn/docs/src/lib/components/DocsSiteSearch.svelte",
+    "botfn/docs/src/lib/server/docs-site-source.ts",
+    "botfn/docs/src/routes/+layout.server.ts",
+    "botfn/docs/src/routes/+layout.svelte",
+    "botfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "botfn/docs/vite.config.ts",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/runtime.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1897,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 221696,
+    "output_tokens": 1216,
+    "api_call_count": 1
+  }
+}
