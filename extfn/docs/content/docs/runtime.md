@@ -3,18 +3,12 @@ title: Runtime and browser access
 description: Use the Promise-first browser facade, messaging, events, and capabilities.
 ---
 
-# Runtime and browser access
-
 `@extfn/core` provides `createRuntime`, context and capability detection, browser access, RPC, events, ports, envelopes, and content primitives. Create a runtime in an extension entry point and pass the active target:
 
 ```ts
 import { createRuntime } from "@extfn/core";
 
 const runtime = createRuntime({
-  globals: globalThis as never,
-  rawBrowser: (globalThis as { browser?: unknown; chrome?: unknown }).browser
-    ?? (globalThis as { browser?: unknown; chrome?: unknown }).chrome
-    ?? {},
   target: "chromium-mv3",
 });
 

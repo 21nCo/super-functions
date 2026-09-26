@@ -3,8 +3,6 @@ title: Reference
 description: Source-aligned ExtFn guides and examples.
 ---
 
-# Reference
-
 The detailed guides mirror the existing Markdown documents in `extfn/docs` so repository links remain valid:
 
 - [CLI reference](/docs/reference/cli)

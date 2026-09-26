@@ -3,8 +3,6 @@ title: CLI reference
 description: Develop, build, scan, and package extension targets.
 ---
 
-# extfn CLI
-
 The shipped binary is `extfn`.
 
 ## Global options

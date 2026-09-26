@@ -3,8 +3,6 @@ title: Getting started
 description: Define an extension and run the canonical ExtFn workflow.
 ---
 
-# Getting started
-
 Create `extfn.config.ts` and default-export `defineExtension(...)`. Configure one or more targets and a background service worker. Add page surfaces and content scripts as needed:
 
 ```ts

@@ -3,9 +3,7 @@ title: CLI workflow
 description: Develop, build, scan, and package extension targets.
 ---
 
-# CLI workflow
-
-`@extfn/cli` ships the `extfn` binary. `dev` watches exactly one target and supports `--open`, `--no-open`, and `--browser`. `build` builds all config targets by default or a selected target list. `scan` analyzes emitted files and manifests. `package` builds if needed, scans by default, and writes store-uploadable archives.
+`@extfn/cli` ships the `extfn` binary. `dev` watches exactly one target and supports `--open`, `--no-open`, and `--browser`. `build` builds all config targets by default or a selected target list. `scan` analyzes emitted files and manifests. `package` always rebuilds the extension, scans by default, and writes store-uploadable archives.
 
 ```sh
 npm exec extfn dev -- --config extfn.config.ts --target chromium-mv3 --no-open

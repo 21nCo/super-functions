@@ -3,8 +3,6 @@ title: Consumer host abstraction
 description: Move SvelteKit runtime dependencies behind consumer-owned adapters.
 ---
 
-# Consumer Host Abstraction
-
 This guide exists for consumers such as `nucleus` that already have shared UI packages tied to SvelteKit runtime imports like `$app/navigation`, `$app/stores`, or `$app/environment`.
 
 ## The problem
@@ -79,21 +77,20 @@ Extension adapter in the consumer repo:
 import { createRuntime } from "@extfn/core";
 
 const runtime = createRuntime({
-  globals: globalThis as never,
-  rawBrowser:
-    (globalThis as { browser?: unknown; chrome?: unknown }).browser ??
-    (globalThis as { browser?: unknown; chrome?: unknown }).chrome ??
-    {},
   target: "chromium-mv3",
 });
 
 export const extfnHost = {
   navigation: {
     async goto(url: string) {
-      await runtime.browser.call("tabs.create", { url });
+      if (runtime.address.context === "content") {
+        globalThis.location.assign(url); // Navigates the host page.
+      } else {
+        await runtime.browser.call("tabs.create", { url });
+      }
     },
     currentPath() {
-      return runtime.address.context;
+      return globalThis.location?.pathname ?? "";
     },
   },
   session: {
@@ -103,6 +100,8 @@ export const extfnHost = {
   },
 };
 ```
+
+Content scripts cannot call `tabs.create` directly. This adapter navigates the host page in a content context and opens a new tab from extension pages. If a content-mounted panel needs to open a tab without navigating its host, delegate that operation to a validated background RPC handler. `currentPath()` reads the current document pathname; it is not the runtime context label.
 
 ## Migration plan away from `$app/*`
 

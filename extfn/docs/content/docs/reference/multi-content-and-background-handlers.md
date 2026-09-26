@@ -3,8 +3,6 @@ title: Content and background handlers
 description: Multiple content modules, message handlers, ports, and Svelte mounts.
 ---
 
-# Multi-content and Background Handlers
-
 This guide documents the repository pattern used by the example extensions for multiple content modules and modular background handlers.
 
 ## Background layout

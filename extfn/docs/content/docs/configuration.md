@@ -3,13 +3,13 @@ title: Configuration
 description: Choose targets, background handlers, page surfaces, and content mounts.
 ---
 
-# Configuration
-
 `defineExtension` takes a name, version, target list, and background definition. The resolver requires a nonempty name and version and a `background.serviceWorker`. Supported targets are `chromium-mv3` and `firefox-mv3`. Add `popup`, `options`, or `sidepanel` surfaces with entry files, and declare `contentScripts` with stable IDs, entries, URL matches, and anchors.
 
 An example with modular background handlers:
 
 ```ts
+import { defineExtension } from "@extfn/core";
+
 export default defineExtension({
   name: "Example Extension",
   version: "0.1.0",

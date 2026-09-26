@@ -3,8 +3,7 @@
 > Browser extension configuration, runtime, build, scan, and packaging for Chromium and Firefox.
 
 This file concatenates the full text of every documentation page so it can be loaded into
-an LLM-based assistant in a single shot. For programmatic access, prefer the MCP server
-or the structured manifest emitted alongside this file.
+an LLM-based assistant in a single shot. For a page index, see /llms.txt.
 
 # Documentation
 
@@ -14,9 +13,7 @@ or the structured manifest emitted alongside this file.
 > Develop, build, scan, and package extension targets.
 
 
-# CLI workflow
-
-`@extfn/cli` ships the `extfn` binary. `dev` watches exactly one target and supports `--open`, `--no-open`, and `--browser`. `build` builds all config targets by default or a selected target list. `scan` analyzes emitted files and manifests. `package` builds if needed, scans by default, and writes store-uploadable archives.
+`@extfn/cli` ships the `extfn` binary. `dev` watches exactly one target and supports `--open`, `--no-open`, and `--browser`. `build` builds all config targets by default or a selected target list. `scan` analyzes emitted files and manifests. `package` always rebuilds the extension, scans by default, and writes store-uploadable archives.
 
 ```sh
 npm exec extfn dev -- --config extfn.config.ts --target chromium-mv3 --no-open
@@ -35,13 +32,13 @@ Global output flags are `--json`, `--quiet`, `--verbose`, and `--color`. Scan is
 > Choose targets, background handlers, page surfaces, and content mounts.
 
 
-# Configuration
-
 `defineExtension` takes a name, version, target list, and background definition. The resolver requires a nonempty name and version and a `background.serviceWorker`. Supported targets are `chromium-mv3` and `firefox-mv3`. Add `popup`, `options`, or `sidepanel` surfaces with entry files, and declare `contentScripts` with stable IDs, entries, URL matches, and anchors.
 
 An example with modular background handlers:
 
 ```ts
+import { defineExtension } from "@extfn/core";
+
 export default defineExtension({
   name: "Example Extension",
   version: "0.1.0",
@@ -70,9 +67,7 @@ Side-panel support is target-gated; do not assume Firefox supports the Chromium 
 > Register multiple content modules and discover background handlers.
 
 
-# Content and background handlers
-
-The config can declare several content scripts, each with its own ID, entry, match patterns, anchors, mount mode, and style isolation. Anchor kinds include `selector`, `selector-list`, and `resolver`; mount modes include `append`, `prepend`, `replace`, and `shadow`. The content helpers manage anchored mounting and reinjection.
+The config can declare several content scripts, each with its own ID, entry, match patterns, anchors, and style isolation. Anchor kinds include `selector`, `selector-list`, and `resolver`; each anchor carries its own `mountMode`, with values including `append`, `prepend`, `replace`, and `shadow`. The content helpers manage anchored mounting and reinjection.
 
 Background handlers are separate modules discovered from `messageHandlersDir` and `portHandlersDir`. A message handler uses `defineBackgroundHandler({ namespace, method, handle })`; a port handler uses `defineBackgroundPortHandler({ channel, onMessage })`. The namespace/method pair and port channel must each be unique across discovered handlers.
 
@@ -85,8 +80,6 @@ Background handlers are separate modules discovered from `messageHandlersDir` an
 
 > Define an extension and run the canonical ExtFn workflow.
 
-
-# Getting started
 
 Create `extfn.config.ts` and default-export `defineExtension(...)`. Configure one or more targets and a background service worker. Add page surfaces and content scripts as needed:
 
@@ -121,8 +114,6 @@ Development emits an unpacked extension at `dist/<target>-dev`; production build
 > Code-first browser extension development for Chromium and Firefox.
 
 
-# ExtFn
-
 ExtFn provides code-first configuration, runtime helpers, a Vite build pipeline, a CLI, and a thin Svelte adapter for browser extensions. It supports Chromium MV3 and Firefox MV3 targets, background service workers, popup and options pages, Chromium side panels, and multiple anchored content modules.
 
 The [getting-started guide](/docs/getting-started) walks through a config and the CLI. Read [runtime](/docs/runtime) for browser APIs and messaging, [content and background](/docs/content-and-background) for handler discovery and mounts, and [scan and package](/docs/scan-and-package) before distributing an extension.
@@ -136,8 +127,6 @@ ExtFn owns extension infrastructure. Domain logic stays in packages such as `@da
 
 > Keep domain contracts and host adapters with their owners.
 
-
-# Integrations and Svelte
 
 `@extfn/svelte` provides page and content mounting adapters. It does not turn an extension page into SvelteKit. Shared UI that imports `$app/*` directly needs consumer-owned host interfaces for navigation, session, and other app state before it can run in an extension. The [consumer host guide](/docs/reference/consumer-host-abstraction) shows a migration pattern.
 
@@ -153,8 +142,6 @@ ExtFn owns extension infrastructure. Domain logic stays in packages such as `@da
 > Supported browser targets, manual steps, and validation boundaries.
 
 
-# Operations and limits
-
 ExtFn supports Chromium MV3 and Firefox MV3. Side-panel and other capabilities vary by target. Development output is an unpacked extension; Firefox loading remains manual after `--open`. Production archives are `.zip` for Chromium and `.xpi` for Firefox.
 
 CLI scans are strict by default but are limited to emitted files and manifests. Review permissions, CSP, externally connectable scope, privacy claims, and store listing content before release. A successful local scan or build does not prove installation, browser behavior, or store approval.
@@ -168,8 +155,6 @@ Keep domain operations in their owner packages. The ExtFn runtime and CLI provid
 
 > Develop, build, scan, and package extension targets.
 
-
-# extfn CLI
 
 The shipped binary is `extfn`.
 
@@ -321,8 +306,6 @@ npm exec extfn scan -- --config extfn/examples/svelte-datafn-demo/extfn.config.t
 > Move SvelteKit runtime dependencies behind consumer-owned adapters.
 
 
-# Consumer Host Abstraction
-
 This guide exists for consumers such as `nucleus` that already have shared UI packages tied to SvelteKit runtime imports like `$app/navigation`, `$app/stores`, or `$app/environment`.
 
 ## The problem
@@ -397,21 +380,20 @@ Extension adapter in the consumer repo:
 import { createRuntime } from "@extfn/core";
 
 const runtime = createRuntime({
-  globals: globalThis as never,
-  rawBrowser:
-    (globalThis as { browser?: unknown; chrome?: unknown }).browser ??
-    (globalThis as { browser?: unknown; chrome?: unknown }).chrome ??
-    {},
   target: "chromium-mv3",
 });
 
 export const extfnHost = {
   navigation: {
     async goto(url: string) {
-      await runtime.browser.call("tabs.create", { url });
+      if (runtime.address.context === "content") {
+        globalThis.location.assign(url); // Navigates the host page.
+      } else {
+        await runtime.browser.call("tabs.create", { url });
+      }
     },
     currentPath() {
-      return runtime.address.context;
+      return globalThis.location?.pathname ?? "";
     },
   },
   session: {
@@ -421,6 +403,8 @@ export const extfnHost = {
   },
 };
 ```
+
+Content scripts cannot call `tabs.create` directly. This adapter navigates the host page in a content context and opens a new tab from extension pages. If a content-mounted panel needs to open a tab without navigating its host, delegate that operation to a validated background RPC handler. `currentPath()` reads the current document pathname; it is not the runtime context label.
 
 ## Migration plan away from `$app/*`
 
@@ -478,8 +462,6 @@ without requiring changes in `extfn` itself.
 > Source-aligned ExtFn guides and examples.
 
 
-# Reference
-
 The detailed guides mirror the existing Markdown documents in `extfn/docs` so repository links remain valid:
 
 - [CLI reference](/docs/reference/cli)
@@ -496,8 +478,6 @@ The [getting-started guide](/docs/getting-started) and [runtime guide](/docs/run
 
 > Multiple content modules, message handlers, ports, and Svelte mounts.
 
-
-# Multi-content and Background Handlers
 
 This guide documents the repository pattern used by the example extensions for multiple content modules and modular background handlers.
 
@@ -653,8 +633,6 @@ Examples:
 > Strict scan rules, findings, formats, and packaging behavior.
 
 
-# extfn scan
-
 `extfn scan` analyzes built extension outputs for review-blocking and store-readiness concerns.
 
 ## Strict by default
@@ -738,10 +716,10 @@ SARIF:
 npm exec extfn scan -- --config extfn/examples/svelte-multi-content-demo/extfn.config.ts --format sarif
 ```
 
-Custom report directory:
+Custom report directory (relative paths resolve from the parent of the configured output directory, normally the extension config directory):
 
 ```bash
-npm exec extfn scan -- --config extfn/examples/svelte-datafn-demo/extfn.config.ts --report-dir extfn/examples/svelte-datafn-demo/dist/custom-scan
+npm exec extfn scan -- --config extfn/examples/svelte-datafn-demo/extfn.config.ts --report-dir dist/custom-scan
 ```
 
 ## Packaging interaction
@@ -773,18 +751,12 @@ npm exec extfn scan -- --config extfn/examples/svelte-datafn-demo/extfn.config.t
 > Use the Promise-first browser facade, messaging, events, and capabilities.
 
 
-# Runtime and browser access
-
 `@extfn/core` provides `createRuntime`, context and capability detection, browser access, RPC, events, ports, envelopes, and content primitives. Create a runtime in an extension entry point and pass the active target:
 
 ```ts
 import { createRuntime } from "@extfn/core";
 
 const runtime = createRuntime({
-  globals: globalThis as never,
-  rawBrowser: (globalThis as { browser?: unknown; chrome?: unknown }).browser
-    ?? (globalThis as { browser?: unknown; chrome?: unknown }).chrome
-    ?? {},
   target: "chromium-mv3",
 });
 
@@ -802,8 +774,6 @@ Use `runtime.rpc`, `runtime.events`, and `runtime.ports` to communicate across e
 
 > Interpret strict findings and produce extension archives.
 
-
-# Scan and package
 
 `extfn scan` examines built manifests and files for remote code, insecure transport, dynamic execution, risky permissions, externally connectable scope, CSP issues, content-script sockets, and store-readiness reminders. Findings include rule ID, severity, category, actionability, target, message, and optional file and details. Reports can be text, JSON, or SARIF.
 

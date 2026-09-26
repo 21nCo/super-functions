@@ -83,10 +83,10 @@ SARIF:
 npm exec extfn scan -- --config extfn/examples/svelte-multi-content-demo/extfn.config.ts --format sarif
 ```
 
-Custom report directory:
+Custom report directory (relative paths resolve from the parent of the configured output directory, normally the extension config directory):
 
 ```bash
-npm exec extfn scan -- --config extfn/examples/svelte-datafn-demo/extfn.config.ts --report-dir extfn/examples/svelte-datafn-demo/dist/custom-scan
+npm exec extfn scan -- --config extfn/examples/svelte-datafn-demo/extfn.config.ts --report-dir dist/custom-scan
 ```
 
 ## Packaging interaction
