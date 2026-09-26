@@ -10,6 +10,7 @@ pip install searchfn flask
 ```python
 import asyncio
 from flask import Flask, jsonify, request
+from werkzeug.exceptions import BadRequest, UnsupportedMediaType
 from searchfn import create_searchfn_server
 from myapp.storage import schema, db
 
@@ -18,7 +19,13 @@ plugin = create_searchfn_server({"schema": schema, "db": db})
 
 def wrap(handler):
     def view():
-        result = asyncio.run(handler(None, request.get_json(silent=True) or {}))
+        try:
+            payload = request.get_json()
+        except (BadRequest, UnsupportedMediaType):
+            return jsonify({"ok": False, "error": "Expected a JSON object"}), 400
+        if not isinstance(payload, dict):
+            return jsonify({"ok": False, "error": "Expected a JSON object"}), 400
+        result = asyncio.run(handler(None, payload))
         return jsonify(result), (200 if result.get("ok") else 400)
     return view
 

@@ -56,18 +56,12 @@ httpServer.listen(parseInt(process.env.PORT ?? "8080"));
 
 ## Migrations
 
-Run the Postgres migration on first deploy:
-
-```bash
-railway run npx @searchfn/adapter-postgres migrate
-```
-
-Or programmatically at app start (idempotent):
+Provision the `articles` resource programmatically against the same database used by the server (idempotent). The adapter package does not provide a migration CLI:
 
 ```typescript
 import { PostgresAdapter } from "@searchfn/adapter-postgres";
-const adapter = new PostgresAdapter({ connectionString: process.env.SEARCH_DB_URL! });
-await adapter.initialize({ resources: [{ name: "items", searchFields: ["title", "body"] }] });
+const adapter = new PostgresAdapter({ connectionString: process.env.DATABASE_URL! });
+await adapter.initialize({ resources: [{ name: "articles", searchFields: ["title", "body"] }] });
 await adapter.dispose();
 ```
 

@@ -3562,6 +3562,15 @@ graph LR
 
 The app is stateless. Postgres holds the index. Multiple Fly machines run the same app.
 
+## Install dependencies
+
+```bash
+npm install @searchfn/server @searchfn/adapter-postgres express @superfunctions/http-express
+npm install --save-dev typescript @types/node @types/express
+```
+
+Compile `server.ts` to `dist/server.js` with your project’s TypeScript build before building this image, and commit the updated npm lockfile.
+
 ## App Dockerfile
 
 ```dockerfile
@@ -3613,7 +3622,7 @@ fly postgres create --name my-searchfn-db --region iad
 fly postgres attach my-searchfn-db --app my-searchfn
 ```
 
-Fly injects `DATABASE_URL` into the app. Use it as `SEARCH_DB_URL` (or migrate the migrations to the same database as DataFn if co-located).
+Fly injects `DATABASE_URL` into the app. The example reads that variable directly; resource initialization must use the same database.
 
 ```typescript
 import { createSearchFnServer } from "@searchfn/server";
@@ -3972,18 +3981,12 @@ httpServer.listen(parseInt(process.env.PORT ?? "8080"));
 
 ## Migrations
 
-Run the Postgres migration on first deploy:
-
-```bash
-railway run npx @searchfn/adapter-postgres migrate
-```
-
-Or programmatically at app start (idempotent):
+Provision the `articles` resource programmatically against the same database used by the server (idempotent). The adapter package does not provide a migration CLI:
 
 ```typescript
 import { PostgresAdapter } from "@searchfn/adapter-postgres";
-const adapter = new PostgresAdapter({ connectionString: process.env.SEARCH_DB_URL! });
-await adapter.initialize({ resources: [{ name: "items", searchFields: ["title", "body"] }] });
+const adapter = new PostgresAdapter({ connectionString: process.env.DATABASE_URL! });
+await adapter.initialize({ resources: [{ name: "articles", searchFields: ["title", "body"] }] });
 await adapter.dispose();
 ```
 
@@ -4770,7 +4773,7 @@ hits = await search_index(schema, db, query="search world", model="articles")
 
 The function looks up each distinct query token once. It increments a result's score for **each matching index row**, so repeated or multi-field term rows can contribute more than one point. This is a simple term-row count, not BM25, field weighting, or length normalization. Results are sorted by score descending, then model and record ID ascending for stable ties. `matches` contains sorted distinct matched terms.
 
-An empty or punctuation-only query returns no hits. `limit` must be a positive integer; booleans and non-positive values are rejected. The HTTP handler caps `limit` at 10,000 and returns an error envelope for invalid requests. SearchFn returns IDs and scores, not hydrated source records; read the records through your own adapter and authorization layer. See [indexing](/docs/documentation/python/indexing) and [HTTP mount](/docs/documentation/python/http-mount).
+The function returns no hits for an empty or punctuation-only query. The HTTP handler instead rejects a blank query with `Missing query`; punctuation-only input still produces no hits. Both APIs convert `limit` using `int(...)`, so `1.9` becomes `1` and an integer string such as `"5"` is accepted. Booleans, non-convertible values, and non-positive converted values are rejected. The HTTP handler caps `limit` at 10,000 and returns an error envelope for invalid requests. SearchFn returns IDs and scores, not hydrated source records; read the records through your own adapter and authorization layer. See [indexing](/docs/documentation/python/indexing) and [HTTP mount](/docs/documentation/python/http-mount).
 
 
 
@@ -6517,7 +6520,8 @@ pip install searchfn fastapi uvicorn
 Provide `schema` and a compatible async `db` from your application. The adapter needs `find_many`, `create`, and `delete`. Route keys include the HTTP method, and handlers accept `(ctx, payload)`:
 
 ```python
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from searchfn import create_searchfn_server
 from myapp.storage import schema, db
 
@@ -6526,12 +6530,14 @@ plugin = create_searchfn_server({"schema": schema, "db": db})
 
 def make_endpoint(handler):
     async def endpoint(request: Request):
-        body = await request.body()
-        payload = await request.json() if body else {}
+        try:
+            payload = await request.json()
+        except ValueError:
+            return JSONResponse({"ok": False, "error": "Expected a JSON object"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Expected a JSON object"}, status_code=400)
         result = await handler(None, payload)
-        if not result.get("ok"):
-            raise HTTPException(status_code=400, detail=result.get("error"))
-        return result
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
 
     return endpoint
 
@@ -6622,6 +6628,7 @@ pip install searchfn flask
 ```python
 import asyncio
 from flask import Flask, jsonify, request
+from werkzeug.exceptions import BadRequest, UnsupportedMediaType
 from searchfn import create_searchfn_server
 from myapp.storage import schema, db
 
@@ -6630,7 +6637,13 @@ plugin = create_searchfn_server({"schema": schema, "db": db})
 
 def wrap(handler):
     def view():
-        result = asyncio.run(handler(None, request.get_json(silent=True) or {}))
+        try:
+            payload = request.get_json()
+        except (BadRequest, UnsupportedMediaType):
+            return jsonify({"ok": False, "error": "Expected a JSON object"}), 400
+        if not isinstance(payload, dict):
+            return jsonify({"ok": False, "error": "Expected a JSON object"}), 400
+        result = asyncio.run(handler(None, payload))
         return jsonify(result), (200 if result.get("ok") else 400)
     return view
 
@@ -6737,15 +6750,16 @@ Swap the adapter:
 ```typescript
 import { PostgresAdapter } from "@searchfn/adapter-postgres";
 
-const sf = await createSearchFnServer({
-  adapter: new PostgresAdapter({
-    connectionString: process.env.SEARCH_DB_URL!,
-  }),
-  basePath: "/searchfn",
+const adapter = new PostgresAdapter({
+  connectionString: process.env.SEARCH_DB_URL!,
 });
+await adapter.initialize({
+  resources: [{ name: "articles", searchFields: ["title", "body"] }],
+});
+const sf = await createSearchFnServer({ adapter, basePath: "/searchfn" });
 ```
 
-Run the [Postgres adapter migration SQL](/docs/reference/adapters/postgres) once. Everything else stays the same.
+Initialize the same adapter instance passed to the server, before accepting requests. Keep the Hono routes and server startup from above. See the [Postgres adapter](/docs/reference/adapters/postgres) for provisioning details.
 
 ## Next steps
 

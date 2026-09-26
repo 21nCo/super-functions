@@ -10,7 +10,8 @@ pip install searchfn fastapi uvicorn
 Provide `schema` and a compatible async `db` from your application. The adapter needs `find_many`, `create`, and `delete`. Route keys include the HTTP method, and handlers accept `(ctx, payload)`:
 
 ```python
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from searchfn import create_searchfn_server
 from myapp.storage import schema, db
 
@@ -19,12 +20,14 @@ plugin = create_searchfn_server({"schema": schema, "db": db})
 
 def make_endpoint(handler):
     async def endpoint(request: Request):
-        body = await request.body()
-        payload = await request.json() if body else {}
+        try:
+            payload = await request.json()
+        except ValueError:
+            return JSONResponse({"ok": False, "error": "Expected a JSON object"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Expected a JSON object"}, status_code=400)
         result = await handler(None, payload)
-        if not result.get("ok"):
-            raise HTTPException(status_code=400, detail=result.get("error"))
-        return result
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
 
     return endpoint
 

@@ -86,15 +86,16 @@ Swap the adapter:
 ```typescript
 import { PostgresAdapter } from "@searchfn/adapter-postgres";
 
-const sf = await createSearchFnServer({
-  adapter: new PostgresAdapter({
-    connectionString: process.env.SEARCH_DB_URL!,
-  }),
-  basePath: "/searchfn",
+const adapter = new PostgresAdapter({
+  connectionString: process.env.SEARCH_DB_URL!,
 });
+await adapter.initialize({
+  resources: [{ name: "articles", searchFields: ["title", "body"] }],
+});
+const sf = await createSearchFnServer({ adapter, basePath: "/searchfn" });
 ```
 
-Run the [Postgres adapter migration SQL](/docs/reference/adapters/postgres) once. Everything else stays the same.
+Initialize the same adapter instance passed to the server, before accepting requests. Keep the Hono routes and server startup from above. See the [Postgres adapter](/docs/reference/adapters/postgres) for provisioning details.
 
 ## Next steps
 
