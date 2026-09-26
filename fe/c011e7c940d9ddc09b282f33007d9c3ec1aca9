@@ -1,0 +1,63 @@
+extfn/docs/README.md
+  s_ee6f287c08acb3::t_08a402ce6cba09 12-22
+extfn/docs/consumer-host-abstraction.md
+  s_ee6f287c08acb3::t_eff4ebec7a12c6 83-87,90,101-102
+extfn/docs/content/docs/cli.md
+  s_ee6f287c08acb3::t_a33619ad6502c4 6
+extfn/docs/content/docs/configuration.md
+  s_ee6f287c08acb3::t_6f579533381b98 11-12
+extfn/docs/content/docs/content-and-background.md
+  s_ee6f287c08acb3::t_da7025f1ec47c0 6
+extfn/docs/content/docs/reference/consumer-host-abstraction.md
+  s_ee6f287c08acb3::t_11c5d439592508 86-90,93,104-105
+extfn/docs/content/docs/reference/scan.md
+  s_ee6f287c08acb3::t_6b15389b6a0327 89,92
+extfn/docs/package.json
+  s_ee6f287c08acb3::t_0731ba87f25a2b 28,31-33
+extfn/docs/scan.md
+  s_ee6f287c08acb3::t_1349011b65e964 86,89
+extfn/docs/scripts/generate-llms.mjs
+  s_ee6f287c08acb3::t_11f4ca8bc50748 32,38
+extfn/docs/src/app.css
+  s_ee6f287c08acb3::t_dec390a011b45c 19,74-77,79-83
+extfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_ee6f287c08acb3::t_4b3f303b203f60 2
+extfn/docs/src/routes/+layout.svelte
+  s_ee6f287c08acb3::t_131bc4ae030831 6-7,16-17,22
+extfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ee6f287c08acb3::t_d9ad2b270b561a 2,15-17,27-29
+extfn/docs/svelte.config.js
+  s_ee6f287c08acb3::t_8a75ad2b8cc1f7 17
+extfn/docs/tsconfig.json
+  s_ee6f287c08acb3::t_d8234cb5bb650f 23-24,26
+extfn/docs/vite.config.ts
+  s_ee6f287c08acb3::t_1460c1adee1429 2,9-10,24,26-32
+package-lock.json
+  s_ee6f287c08acb3::t_0d07006112b7f2 8796-8797,8800-8801,66590-66616
+scripts/docs-site/README.md
+  s_ee6f287c08acb3::t_fc79bbc3891563 3,10-11
+scripts/docs-site/Search.svelte
+  s_ee6f287c08acb3::t_9507d92bce1d8b 13
+scripts/docs-site/layout.ts
+  s_ee6f287c08acb3::t_b78e9e0c02118a 1-10
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_6545084fd22998 187,214,323-326,351,356,361,364,372,399,406,425,431,444,449,466,472,484-490
+extfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_5f6aec4934380f 6,16,40-41,70,389-393,396,407-408,719,722
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fec011e7c940d9ddc09b282f33007d9c3ec1aca9",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
