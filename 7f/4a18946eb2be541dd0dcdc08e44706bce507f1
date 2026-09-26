@@ -1,0 +1,29 @@
+uifn/docs/generated/delivery.md
+  s_4e0e6cec9d8f32::t_c01cc701c5da5e 3-18
+uifn/docs/generated/site/index.html
+  s_4e0e6cec9d8f32::t_c01cc701c5da5e 1
+uifn/docs/generated/site/delivery.html
+  s_4e0e6cec9d8f32::t_c01cc701c5da5e 1-4
+uifn/storybook/generated/story-inventory.json
+  s_4e0e6cec9d8f32::t_c01cc701c5da5e 15
+scripts/generate-uifn-phase-17.mjs
+  s_4e0e6cec9d8f32::t_6a5f9501110cb6 575-576,579
+uifn/docs/generated/docs-coverage.json
+  s_4e0e6cec9d8f32::t_c01cc701c5da5e 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7f4a18946eb2be541dd0dcdc08e44706bce507f1",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "thyaravind <samalaaravind02@gmail.com>"
+    }
+  }
+}
