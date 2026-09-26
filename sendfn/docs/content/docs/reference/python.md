@@ -1,4 +1,7 @@
-# SendFn Python SDK
+---
+title: Python SDK source guide
+description: Current source README for the python package.
+---
 
 Self-hosted communications platform SDK for email, push notifications, and SMS.
 
