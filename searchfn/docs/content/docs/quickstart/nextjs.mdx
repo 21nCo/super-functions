@@ -17,22 +17,18 @@ npm install @searchfn/server @searchfn/adapter-postgres @searchfn/client @search
 import { createSearchFnServer } from "@searchfn/server";
 import { PostgresAdapter } from "@searchfn/adapter-postgres";
 
+const adapter = new PostgresAdapter({ connectionString: process.env.SEARCH_DB_URL! });
 const sf = await createSearchFnServer({
-  adapter: new PostgresAdapter({ connectionString: process.env.SEARCH_DB_URL! }),
+  adapter,
   basePath: "/searchfn",
 });
 
-await sf.adapter.initialize?.({
+await adapter.initialize({
   resources: [{ name: "tasks", searchFields: ["title", "description"] }],
 });
 
 const handler = (request: Request) =>
-  sf.router.handle({
-    method: request.method,
-    url: request.url,
-    headers: request.headers,
-    body: request.body,
-  });
+  sf.router.handle(request);
 
 export const GET = handler;
 export const POST = handler;

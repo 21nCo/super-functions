@@ -19,14 +19,7 @@ npm install @searchfn/adapter-postgres
 
 ## Setup
 
-The adapter requires search tables and indexes in your Postgres database. Run the migration SQL shipped with the package:
-
-```typescript
-import { getPostgresMigrationSQL } from "@searchfn/adapter-postgres";
-
-const sql = getPostgresMigrationSQL();
-// Execute this SQL against your database to create required tables and indexes
-```
+`PostgresAdapter.initialize({ resources })` creates adapter-owned metadata/resource tables and indexes idempotently. Provision the database and configured schema first, and run initialization with credentials allowed to create those objects. There is no `getPostgresMigrationSQL` export. The example below initializes the declared resources before indexing.
 
 ## Usage
 

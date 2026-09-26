@@ -17,18 +17,21 @@ from myapp.storage import schema, db
 app = FastAPI()
 plugin = create_searchfn_server({"schema": schema, "db": db})
 
-for spec, handler in plugin["routes"].items():
-    method, path = spec.split(" ", 1)
-
-    async def endpoint(request: Request, _handler=handler):
+def make_endpoint(handler):
+    async def endpoint(request: Request):
         body = await request.body()
         payload = await request.json() if body else {}
-        result = await _handler(None, payload)
+        result = await handler(None, payload)
         if not result.get("ok"):
             raise HTTPException(status_code=400, detail=result.get("error"))
         return result
 
-    app.add_api_route(path, endpoint, methods=[method])
+    return endpoint
+
+
+for spec, handler in plugin["routes"].items():
+    method, path = spec.split(" ", 1)
+    app.add_api_route(path, make_endpoint(handler), methods=[method])
 ```
 
 Run `uvicorn myapp.app:app` (adjust to your module), then POST JSON to `/searchfn/index` or `/searchfn/search`. Protect index rebuilding with operator authorization and apply your normal request authentication to search.

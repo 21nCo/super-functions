@@ -8,7 +8,7 @@ This guide gets a Hono server indexing and searching in under 10 minutes. The sa
 ## 1. Install
 
 ```bash
-npm install hono @searchfn/server @searchfn/adapter-memory
+npm install hono @hono/node-server @searchfn/server @searchfn/adapter-memory
 ```
 
 For production with Postgres:
@@ -21,15 +21,17 @@ npm install @searchfn/adapter-postgres
 
 ```typescript
 import { Hono } from "hono";
+import { serve } from "@hono/node-server";
 import { createSearchFnServer } from "@searchfn/server";
 import { MemoryAdapter } from "@searchfn/adapter-memory";
 
+const adapter = new MemoryAdapter();
 const sf = await createSearchFnServer({
-  adapter: new MemoryAdapter(),
+  adapter,
   basePath: "/searchfn",
 });
 
-await sf.adapter.initialize?.({
+await adapter.initialize({
   resources: [
     { name: "articles", searchFields: ["title", "body"] },
   ],
@@ -37,20 +39,11 @@ await sf.adapter.initialize?.({
 
 const app = new Hono();
 
-app.all("/searchfn/*", async (c) => {
-  const res = await sf.router.handle({
-    method: c.req.method,
-    url: c.req.url,
-    headers: c.req.raw.headers,
-    body: c.req.raw.body,
-  });
-  return new Response(res.body, { status: res.status, headers: res.headers });
-});
-
-export default app;
+app.all("/searchfn/*", (c) => sf.router.handle(c.req.raw));
+serve({ fetch: app.fetch, port: 3000 });
 ```
 
-`@searchfn/server` exposes a generic `router` that adapts to any HTTP framework through small request/response shims. The example above is a 10-line shim; if you use `@superfunctions/http`'s Hono adapter, you can drop the shim entirely.
+The router consumes a Web `Request` and returns a Web `Response`; Hono exposes its incoming request as `c.req.raw`. This example starts a Node server explicitly. On Bun, use `Bun.serve({ fetch: app.fetch, port: 3000 })` instead of the Node server adapter.
 
 ## 3. Run
 
@@ -58,7 +51,7 @@ export default app;
 npx tsx --watch server.ts
 ```
 
-Server listens on the default Hono port (3000).
+Server listens on the configured port 3000.
 
 ## 4. Index your first documents
 

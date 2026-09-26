@@ -47,8 +47,9 @@ class DualAdapter implements SearchAdapter {
 Wire it in:
 
 ```typescript
+const adapter = new DualAdapter(oldAdapter, newAdapter);
 const sf = await createSearchFnServer({
-  adapter: new DualAdapter(oldAdapter, newAdapter),
+  adapter,
   basePath: "/searchfn",
 });
 ```
