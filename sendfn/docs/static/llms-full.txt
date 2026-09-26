@@ -3,8 +3,7 @@
 > Self-hosted email, SMS, WhatsApp, and push delivery with provider adapters.
 
 This file concatenates the full text of every documentation page so it can be loaded into
-an LLM-based assistant in a single shot. For programmatic access, prefer the MCP server
-or the structured manifest emitted alongside this file.
+an LLM-based assistant in a single shot. For a page index, see /docs/llms.txt.
 
 # Documentation
 
@@ -13,8 +12,6 @@ or the structured manifest emitted alongside this file.
 
 > Integrate SendFn into a host control plane.
 
-
-# Administration
 
 `sendfn/admin` declares a Super Console capability and adapter for SendFn resources. The domain adapter binds a project-owned public SendFn client to administrative actions. This package is a contract and integration layer; the host is responsible for authorization, audit, secure credential handling, and deployment.
 
@@ -27,8 +24,6 @@ See the [admin package source](https://github.com/21nCo/super-functions/tree/dev
 
 > Send email, SMS, WhatsApp, and push with the TypeScript SDK.
 
-
-# Channels
 
 The TypeScript client exposes `email`, `sms`, `whatsapp`, and `push`. Each channel requires its provider and channel-specific credentials. Associate sends with a `userId` so transaction and event records can be queried.
 
@@ -47,8 +42,6 @@ For push, register a device token before calling `client.push`. The package incl
 
 > Initialize a TypeScript client with a database and provider.
 
-
-# Getting started
 
 Install the TypeScript SDK and shared adapters:
 
@@ -78,8 +71,6 @@ The empty cast above is a placeholder; configure a real adapter before running t
 > Expose the optional router with an admin key.
 
 
-# HTTP API
-
 Set `enableApi: true` and supply `apiConfig.adminKey`, then mount `client.router` using a Superfunctions HTTP adapter. The router includes sends, device-token management, event queries, and an SES webhook route when SNS topics are configured. Administrative endpoints require `Authorization: Bearer <adminKey>`.
 
 ```ts
@@ -96,8 +87,6 @@ In an actual deployment, also configure the providers those routes need. Keep th
 > Use stable keys for retried outbound requests.
 
 
-# Idempotent email sends
-
 Email calls can include an `idempotencyKey` so a retried request maps to the same logical transaction. Keep the key stable for one logical message and change it for a new send. Provider behavior matters: the edge email adapter rejects an idempotency key when the selected provider does not declare idempotency support.
 
 Do not blindly retry after an ambiguous provider response. Check the transaction status and provider guarantees before retrying. The TypeScript email service stores request fingerprints and ambiguity state to help distinguish these outcomes. See the [source email service](https://github.com/21nCo/super-functions/blob/dev/sendfn/typescript/src/email/service.ts) and [edge adapter](https://github.com/21nCo/super-functions/blob/dev/sendfn/typescript/src/edge.ts).
@@ -110,8 +99,6 @@ Do not blindly retry after an ambiguous provider response. Check the transaction
 > Self-hosted communications with provider adapters and persistence.
 
 
-# SendFn
-
 SendFn provides product communications through TypeScript and Python SDKs. The TypeScript package supports email, SMS, WhatsApp, and push with injected providers, a database adapter, transaction and event records, and an optional HTTP router. The Python package has its own version and feature surface.
 
 Start with [getting started](/docs/getting-started), then choose [channels](/docs/channels) and [providers](/docs/providers). Read the [TypeScript](/docs/reference/typescript) or [Python](/docs/reference/python) source guide for exact APIs.
@@ -123,8 +110,6 @@ Start with [getting started](/docs/getting-started), then choose [channels](/doc
 
 > Understand records, suppressions, and delivery lifecycle.
 
-
-# Persistence and events
 
 SendFn records email, SMS, WhatsApp, and push transactions plus communication events. Device tokens and the suppression list are separate records. The TypeScript database adapter expects the corresponding models in the host database.
 
@@ -140,8 +125,6 @@ See the [TypeScript source guide](/docs/reference/typescript) for the expected m
 > Inject delivery adapters and keep credentials in your deployment.
 
 
-# Providers
-
 SendFn separates sending from providers. The TypeScript package includes AWS SES email, Meta WhatsApp, APNS/FCM push, and console SMS development paths. Supply the relevant adapter in `sendfn({ ... })`; omit channels the application does not use.
 
 Keep provider credentials in a secret store or deployment environment. Validate required variables before constructing adapters. The SDK's database adapter persists transactions, events, device tokens, and suppressions, so a production deployment needs durable storage.
@@ -156,13 +139,17 @@ The package [configuration guide](/docs/reference/typescript) shows imports and 
 > Install channel extras and configure a Python client.
 
 
-# Python SDK
-
 The separately versioned Python package supports email, push, and SMS. Install only the extras needed by the host:
 
 ```sh
 pip install sendfn[email]
 # or: pip install sendfn[push] sendfn[fastapi]
+```
+
+For durable SQLAlchemy storage, install the database extra and a database driver:
+
+```sh
+pip install 'sendfn[database]' psycopg
 ```
 
 Create a `SendfnConfig` with a database adapter and channel configuration, then call `create_sendfn`. `MemoryAdapter` is useful for tests; production SQLAlchemy hosts can use the schema helpers and a durable adapter. The [Python source guide](/docs/reference/python) contains complete examples, template registration, suppression management, and event queries. Check the Python package's exact feature list before assuming parity with TypeScript.
@@ -175,8 +162,6 @@ Create a `SendfnConfig` with a database adapter and channel configuration, then 
 > Source package guides for TypeScript and Python.
 
 
-# SDK reference
-
 The [TypeScript source guide](/docs/reference/typescript) covers channel configuration, examples, provider setup, HTTP routes, webhooks, and database models. The [Python source guide](/docs/reference/python) covers installation extras, configuration, templates, suppressions, events, and SQLAlchemy integration. These pages mirror their source READMEs.
 
 ---
@@ -186,8 +171,6 @@ The [TypeScript source guide](/docs/reference/typescript) covers channel configu
 
 > Current source README for the python package.
 
-
-# SendFn Python SDK
 
 Self-hosted communications platform SDK for email, push notifications, and SMS.
 
@@ -209,7 +192,7 @@ For push notification support:
 pip install sendfn[push]
 ```
 
-For all features:
+For email, push, and database support (`all` excludes web-framework extras):
 
 ```bash
 pip install sendfn[all]
@@ -236,98 +219,114 @@ python -m pytest sendfn/python/tests
 ### Email Sending
 
 ```python
-from sendfn import create_sendfn, SendfnConfig
-from sendfn.models import EmailConfig, AwsSesConfig, SendEmailParams
-from sendfn.database import MemoryAdapter
+import asyncio
+import os
 
-# Create configuration
-config = SendfnConfig(
-    database=MemoryAdapter(),
-    email=EmailConfig(
-        from_email="noreply@example.com",
-        from_name="My App",
-        aws_ses=AwsSesConfig(
-            access_key_id="YOUR_ACCESS_KEY",
-            secret_access_key="YOUR_SECRET_KEY",
-            region="us-east-1",
+async def main():
+    from sendfn import create_sendfn, SendfnConfig
+    from sendfn.models import EmailConfig, AwsSesConfig, SendEmailParams
+    from sendfn.database import MemoryAdapter
+
+    # Create configuration
+    config = SendfnConfig(
+        database=MemoryAdapter(),
+        email=EmailConfig(
+            from_email="noreply@example.com",
+            from_name="My App",
+            aws_ses=AwsSesConfig(
+                access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+                region="us-east-1",
+            ),
         ),
-    ),
-)
-
-# Create client
-sendfn = create_sendfn(config)
-
-# Send an email
-transaction = await sendfn.send_email(
-    SendEmailParams(
-        user_id="user-123",
-        to="user@example.com",
-        subject="Welcome!",
-        html="<h1>Welcome to our app!</h1>",
-        text="Welcome to our app!",
     )
-)
 
-print(f"Email sent! Transaction ID: {transaction.id}")
+    # Create client
+    sendfn = create_sendfn(config)
+
+    # Send an email
+    transaction = await sendfn.send_email(
+        SendEmailParams(
+            user_id="user-123",
+            to="user@example.com",
+            subject="Welcome!",
+            html="<h1>Welcome to our app!</h1>",
+            text="Welcome to our app!",
+        )
+    )
+
+    print(f"Email sent! Transaction ID: {transaction.id}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ### Using Templates
 
 ```python
-from sendfn.models import EmailTemplate
+async def register_welcome(sendfn):
+    from sendfn.models import EmailTemplate
 
-# Register a custom template
-template = EmailTemplate(
-    id="welcome",
-    name="Welcome Email",
-    subject="Welcome to {{appName}}!",
-    html="<h1>Hi {{userName}}!</h1><p>Welcome to {{appName}}.</p>",
-    variables=["userName", "appName"],
-)
-
-await sendfn.register_template(template)
-
-# Send email using template
-transaction = await sendfn.send_email(
-    SendEmailParams(
-        user_id="user-123",
-        to="user@example.com",
-        template_id="welcome",
-        template_data={
-            "userName": "John",
-            "appName": "My App",
-        },
+    # Register a custom template
+    template = EmailTemplate(
+        id="welcome",
+        name="Welcome Email",
+        subject="Welcome to {{appName}}!",
+        html="<h1>Hi {{userName}}!</h1><p>Welcome to {{appName}}.</p>",
+        variables=["userName", "appName"],
     )
-)
+
+    await sendfn.register_template(template)
+
+    # Send email using template
+    transaction = await sendfn.send_email(
+        SendEmailParams(
+            user_id="user-123",
+            to="user@example.com",
+            template_id="welcome",
+            template_data={
+                "userName": "John",
+                "appName": "My App",
+            },
+        )
+    )
+
+# Call `await register_welcome(sendfn)` inside main() after creating the client.
 ```
 
 ### Suppression List
 
 ```python
-# Check if email is suppressed
-result = await sendfn.check_suppression_list("user@example.com")
-if result["suppressed"]:
-    print(f"Email is suppressed: {result['entry'].reason}")
+async def manage_suppression(sendfn):
+    # Check if email is suppressed
+    result = await sendfn.check_suppression_list("user@example.com")
+    if result["suppressed"]:
+        print(f"Email is suppressed: {result['entry'].reason}")
 
-# Add to suppression list
-await sendfn.add_to_suppression_list(
-    email="spam@example.com",
-    reason="manual",
-    source="admin-action",
-)
+    # Add to suppression list
+    await sendfn.add_to_suppression_list(
+        email="spam@example.com",
+        reason="manual",
+        source="admin-action",
+    )
 
-# Remove from suppression list
-await sendfn.remove_from_suppression_list("user@example.com")
+    # Remove from suppression list
+    await sendfn.remove_from_suppression_list("user@example.com")
+
+# Call `await manage_suppression(sendfn)` inside main() after creating the client.
 ```
 
 ### Event Tracking
 
 ```python
-# Get events for an email transaction
-events = await sendfn.get_email_events(transaction_id="...")
+async def show_events(sendfn):
+    # Get events for an email transaction
+    events = await sendfn.get_email_events(transaction_id="...")
 
-for event in events:
-    print(f"{event.event_type} at {event.event_timestamp}")
+    for event in events:
+        print(f"{event.event_type} at {event.event_timestamp}")
+
+# Call `await show_events(sendfn)` inside main() after creating the client.
 ```
 
 ## Features
@@ -345,13 +344,14 @@ for event in events:
 ### Email Configuration
 
 ```python
+import os
 EmailConfig(
     from_email="noreply@example.com",  # Required
     from_name="My App",  # Optional
     reply_to="support@example.com",  # Optional
     aws_ses=AwsSesConfig(
-        access_key_id="...",
-        secret_access_key="...",
+        access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
         region="us-east-1",
         configuration_set_name="my-config-set",  # Optional
     ),
@@ -388,11 +388,12 @@ python -m pip install 'sendfn[database]' psycopg
 ```
 
 ```python
+import os
 from sqlalchemy import create_engine
 from sendfn.database import create_sqlalchemy_schema
 from superfunctions_sqlalchemy import create_adapter
 
-engine = create_engine("postgresql+psycopg://user:password@localhost/sendfn")
+engine = create_engine(os.environ["DATABASE_URL"])
 create_sqlalchemy_schema(engine)  # New installations; use this metadata in migrations for existing databases.
 adapter = create_adapter(engine)
 ```
@@ -438,19 +439,17 @@ MIT License - see LICENSE file for details.
 
 ## Links
 
-- [Documentation](https://docs.superfunctions.dev/sendfn)
+- [Documentation](https://sendfn.com/docs)
 - [GitHub](https://github.com/21nCo/super-functions)
 - [Issues](https://github.com/21nCo/super-functions/issues)
 
 ---
 
 <!-- page:docs:reference/typescript.md path:/docs/reference/typescript -->
-# Typescript SDK source guide
+# TypeScript SDK source guide
 
-> Current source README for the typescript package.
+> Current source README for the TypeScript package.
 
-
-# Sendfn TypeScript SDK
 
 The `sendfn` SDK is a unified communications platform that provides email, SMS, WhatsApp, and push notification capabilities. It follows the Superfunctions pattern, utilizing shared database and HTTP abstractions with a modular adapter system for providers.
 
@@ -466,7 +465,7 @@ The `sendfn` SDK is a unified communications platform that provides email, SMS, 
 ## Installation
 
 ```bash
-npm install sendfn @superfunctions/db @superfunctions/http
+npm install sendfn @superfunctions/db @superfunctions/http express @superfunctions/http-express
 ```
 
 ## Verify From Repo Root
@@ -653,18 +652,16 @@ const client = sendfn({
 });
 ```
 
-Then mount the webhook handler. Preserve the raw SNS envelope JSON exactly as AWS sends it; production deployments must keep the full SNS signature fields intact so the webhook handler can perform signature verification before any delivery, bounce, or complaint event mutates state.
+For an HTTP host, include this `awsSns` option in the client configured with
+`enableApi: true` above and mount `client.router` using the API-router example.
+Its built-in `POST /webhooks/aws-ses` route parses the raw JSON body and verifies
+the complete SNS envelope before mutating delivery, bounce, or complaint state.
+Do not register a second Express handler that passes the `express.raw()` Buffer
+directly to `handleSnsNotification`, which expects an SNS message object.
 
-```typescript
-app.post('/webhooks/aws-ses', async (req, res) => {
-  const handler = client.getWebhookHandlers().awsSes;
-  // req.body should be the SNS notification JSON
-  await handler.handleSnsNotification(req.body);
-  res.sendStatus(200);
-});
-```
-
-Do not proxy, partially parse, or reshape the SNS payload before passing it to `handleSnsNotification`.
+For a custom host calling `handleSnsNotification` directly, JSON-decode the bytes
+and preserve every SNS envelope field, including `Signature`, `SigningCertURL`,
+`Timestamp`, and `Message`; do not pass only the inner SES message.
 
 ## Examples
 
@@ -696,8 +693,6 @@ MIT
 
 > Verify SNS messages before changing delivery state.
 
-
-# SES webhooks
 
 Configure `awsSns.topicArns` with every SNS topic allowed to deliver SES lifecycle events. The built-in route and handler are unavailable with an empty allowlist. Mount `/webhooks/aws-ses` only after setting the allowlist.
 

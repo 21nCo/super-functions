@@ -3,8 +3,6 @@ title: Getting started
 description: Initialize a TypeScript client with a database and provider.
 ---
 
-# Getting started
-
 Install the TypeScript SDK and shared adapters:
 
 ```sh

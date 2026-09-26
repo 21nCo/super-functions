@@ -20,7 +20,7 @@ For push notification support:
 pip install sendfn[push]
 ```
 
-For all features:
+For email, push, and database support (`all` excludes web-framework extras):
 
 ```bash
 pip install sendfn[all]
@@ -47,98 +47,114 @@ python -m pytest sendfn/python/tests
 ### Email Sending
 
 ```python
-from sendfn import create_sendfn, SendfnConfig
-from sendfn.models import EmailConfig, AwsSesConfig, SendEmailParams
-from sendfn.database import MemoryAdapter
+import asyncio
+import os
 
-# Create configuration
-config = SendfnConfig(
-    database=MemoryAdapter(),
-    email=EmailConfig(
-        from_email="noreply@example.com",
-        from_name="My App",
-        aws_ses=AwsSesConfig(
-            access_key_id="YOUR_ACCESS_KEY",
-            secret_access_key="YOUR_SECRET_KEY",
-            region="us-east-1",
+async def main():
+    from sendfn import create_sendfn, SendfnConfig
+    from sendfn.models import EmailConfig, AwsSesConfig, SendEmailParams
+    from sendfn.database import MemoryAdapter
+
+    # Create configuration
+    config = SendfnConfig(
+        database=MemoryAdapter(),
+        email=EmailConfig(
+            from_email="noreply@example.com",
+            from_name="My App",
+            aws_ses=AwsSesConfig(
+                access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+                region="us-east-1",
+            ),
         ),
-    ),
-)
-
-# Create client
-sendfn = create_sendfn(config)
-
-# Send an email
-transaction = await sendfn.send_email(
-    SendEmailParams(
-        user_id="user-123",
-        to="user@example.com",
-        subject="Welcome!",
-        html="<h1>Welcome to our app!</h1>",
-        text="Welcome to our app!",
     )
-)
 
-print(f"Email sent! Transaction ID: {transaction.id}")
+    # Create client
+    sendfn = create_sendfn(config)
+
+    # Send an email
+    transaction = await sendfn.send_email(
+        SendEmailParams(
+            user_id="user-123",
+            to="user@example.com",
+            subject="Welcome!",
+            html="<h1>Welcome to our app!</h1>",
+            text="Welcome to our app!",
+        )
+    )
+
+    print(f"Email sent! Transaction ID: {transaction.id}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ### Using Templates
 
 ```python
-from sendfn.models import EmailTemplate
+async def register_welcome(sendfn):
+    from sendfn.models import EmailTemplate
 
-# Register a custom template
-template = EmailTemplate(
-    id="welcome",
-    name="Welcome Email",
-    subject="Welcome to {{appName}}!",
-    html="<h1>Hi {{userName}}!</h1><p>Welcome to {{appName}}.</p>",
-    variables=["userName", "appName"],
-)
-
-await sendfn.register_template(template)
-
-# Send email using template
-transaction = await sendfn.send_email(
-    SendEmailParams(
-        user_id="user-123",
-        to="user@example.com",
-        template_id="welcome",
-        template_data={
-            "userName": "John",
-            "appName": "My App",
-        },
+    # Register a custom template
+    template = EmailTemplate(
+        id="welcome",
+        name="Welcome Email",
+        subject="Welcome to {{appName}}!",
+        html="<h1>Hi {{userName}}!</h1><p>Welcome to {{appName}}.</p>",
+        variables=["userName", "appName"],
     )
-)
+
+    await sendfn.register_template(template)
+
+    # Send email using template
+    transaction = await sendfn.send_email(
+        SendEmailParams(
+            user_id="user-123",
+            to="user@example.com",
+            template_id="welcome",
+            template_data={
+                "userName": "John",
+                "appName": "My App",
+            },
+        )
+    )
+
+# Call `await register_welcome(sendfn)` inside main() after creating the client.
 ```
 
 ### Suppression List
 
 ```python
-# Check if email is suppressed
-result = await sendfn.check_suppression_list("user@example.com")
-if result["suppressed"]:
-    print(f"Email is suppressed: {result['entry'].reason}")
+async def manage_suppression(sendfn):
+    # Check if email is suppressed
+    result = await sendfn.check_suppression_list("user@example.com")
+    if result["suppressed"]:
+        print(f"Email is suppressed: {result['entry'].reason}")
 
-# Add to suppression list
-await sendfn.add_to_suppression_list(
-    email="spam@example.com",
-    reason="manual",
-    source="admin-action",
-)
+    # Add to suppression list
+    await sendfn.add_to_suppression_list(
+        email="spam@example.com",
+        reason="manual",
+        source="admin-action",
+    )
 
-# Remove from suppression list
-await sendfn.remove_from_suppression_list("user@example.com")
+    # Remove from suppression list
+    await sendfn.remove_from_suppression_list("user@example.com")
+
+# Call `await manage_suppression(sendfn)` inside main() after creating the client.
 ```
 
 ### Event Tracking
 
 ```python
-# Get events for an email transaction
-events = await sendfn.get_email_events(transaction_id="...")
+async def show_events(sendfn):
+    # Get events for an email transaction
+    events = await sendfn.get_email_events(transaction_id="...")
 
-for event in events:
-    print(f"{event.event_type} at {event.event_timestamp}")
+    for event in events:
+        print(f"{event.event_type} at {event.event_timestamp}")
+
+# Call `await show_events(sendfn)` inside main() after creating the client.
 ```
 
 ## Features
@@ -156,13 +172,14 @@ for event in events:
 ### Email Configuration
 
 ```python
+import os
 EmailConfig(
     from_email="noreply@example.com",  # Required
     from_name="My App",  # Optional
     reply_to="support@example.com",  # Optional
     aws_ses=AwsSesConfig(
-        access_key_id="...",
-        secret_access_key="...",
+        access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
         region="us-east-1",
         configuration_set_name="my-config-set",  # Optional
     ),
@@ -199,11 +216,12 @@ python -m pip install 'sendfn[database]' psycopg
 ```
 
 ```python
+import os
 from sqlalchemy import create_engine
 from sendfn.database import create_sqlalchemy_schema
 from superfunctions_sqlalchemy import create_adapter
 
-engine = create_engine("postgresql+psycopg://user:password@localhost/sendfn")
+engine = create_engine(os.environ["DATABASE_URL"])
 create_sqlalchemy_schema(engine)  # New installations; use this metadata in migrations for existing databases.
 adapter = create_adapter(engine)
 ```
@@ -249,6 +267,6 @@ MIT License - see LICENSE file for details.
 
 ## Links
 
-- [Documentation](https://docs.superfunctions.dev/sendfn)
+- [Documentation](https://sendfn.com/docs)
 - [GitHub](https://github.com/21nCo/super-functions)
 - [Issues](https://github.com/21nCo/super-functions/issues)

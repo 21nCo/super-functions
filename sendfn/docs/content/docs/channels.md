@@ -3,8 +3,6 @@ title: Channels
 description: Send email, SMS, WhatsApp, and push with the TypeScript SDK.
 ---
 
-# Channels
-
 The TypeScript client exposes `email`, `sms`, `whatsapp`, and `push`. Each channel requires its provider and channel-specific credentials. Associate sends with a `userId` so transaction and event records can be queried.
 
 ```ts

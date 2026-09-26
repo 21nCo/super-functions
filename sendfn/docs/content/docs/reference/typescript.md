@@ -1,9 +1,7 @@
 ---
-title: Typescript SDK source guide
-description: Current source README for the typescript package.
+title: TypeScript SDK source guide
+description: Current source README for the TypeScript package.
 ---
-
-# Sendfn TypeScript SDK
 
 The `sendfn` SDK is a unified communications platform that provides email, SMS, WhatsApp, and push notification capabilities. It follows the Superfunctions pattern, utilizing shared database and HTTP abstractions with a modular adapter system for providers.
 
@@ -19,7 +17,7 @@ The `sendfn` SDK is a unified communications platform that provides email, SMS, 
 ## Installation
 
 ```bash
-npm install sendfn @superfunctions/db @superfunctions/http
+npm install sendfn @superfunctions/db @superfunctions/http express @superfunctions/http-express
 ```
 
 ## Verify From Repo Root
@@ -206,18 +204,16 @@ const client = sendfn({
 });
 ```
 
-Then mount the webhook handler. Preserve the raw SNS envelope JSON exactly as AWS sends it; production deployments must keep the full SNS signature fields intact so the webhook handler can perform signature verification before any delivery, bounce, or complaint event mutates state.
+For an HTTP host, include this `awsSns` option in the client configured with
+`enableApi: true` above and mount `client.router` using the API-router example.
+Its built-in `POST /webhooks/aws-ses` route parses the raw JSON body and verifies
+the complete SNS envelope before mutating delivery, bounce, or complaint state.
+Do not register a second Express handler that passes the `express.raw()` Buffer
+directly to `handleSnsNotification`, which expects an SNS message object.
 
-```typescript
-app.post('/webhooks/aws-ses', async (req, res) => {
-  const handler = client.getWebhookHandlers().awsSes;
-  // req.body should be the SNS notification JSON
-  await handler.handleSnsNotification(req.body);
-  res.sendStatus(200);
-});
-```
-
-Do not proxy, partially parse, or reshape the SNS payload before passing it to `handleSnsNotification`.
+For a custom host calling `handleSnsNotification` directly, JSON-decode the bytes
+and preserve every SNS envelope field, including `Signature`, `SigningCertURL`,
+`Timestamp`, and `Message`; do not pass only the inner SES message.
 
 ## Examples
 

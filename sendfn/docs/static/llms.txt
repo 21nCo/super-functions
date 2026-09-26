@@ -4,16 +4,16 @@
 
 ## Documentation
 
-- [Administration](/docs/administration) — Integrate SendFn into a host control plane.
-- [Channels](/docs/channels) — Send email, SMS, WhatsApp, and push with the TypeScript SDK.
-- [Getting started](/docs/getting-started) — Initialize a TypeScript client with a database and provider.
-- [HTTP API](/docs/http-api) — Expose the optional router with an admin key.
-- [Idempotent email sends](/docs/idempotency) — Use stable keys for retried outbound requests.
-- [SendFn](/docs) — Self-hosted communications with provider adapters and persistence.
-- [Persistence and events](/docs/persistence-and-events) — Understand records, suppressions, and delivery lifecycle.
-- [Providers](/docs/providers) — Inject delivery adapters and keep credentials in your deployment.
-- [Python SDK](/docs/python) — Install channel extras and configure a Python client.
-- [SDK reference](/docs/reference) — Source package guides for TypeScript and Python.
-- [Python SDK source guide](/docs/reference/python) — Current source README for the python package.
-- [Typescript SDK source guide](/docs/reference/typescript) — Current source README for the typescript package.
-- [SES webhooks](/docs/webhooks) — Verify SNS messages before changing delivery state.
+- [Administration](https://sendfn.com/docs/administration) — Integrate SendFn into a host control plane.
+- [Channels](https://sendfn.com/docs/channels) — Send email, SMS, WhatsApp, and push with the TypeScript SDK.
+- [Getting started](https://sendfn.com/docs/getting-started) — Initialize a TypeScript client with a database and provider.
+- [HTTP API](https://sendfn.com/docs/http-api) — Expose the optional router with an admin key.
+- [Idempotent email sends](https://sendfn.com/docs/idempotency) — Use stable keys for retried outbound requests.
+- [SendFn](https://sendfn.com/docs) — Self-hosted communications with provider adapters and persistence.
+- [Persistence and events](https://sendfn.com/docs/persistence-and-events) — Understand records, suppressions, and delivery lifecycle.
+- [Providers](https://sendfn.com/docs/providers) — Inject delivery adapters and keep credentials in your deployment.
+- [Python SDK](https://sendfn.com/docs/python) — Install channel extras and configure a Python client.
+- [SDK reference](https://sendfn.com/docs/reference) — Source package guides for TypeScript and Python.
+- [Python SDK source guide](https://sendfn.com/docs/reference/python) — Current source README for the python package.
+- [TypeScript SDK source guide](https://sendfn.com/docs/reference/typescript) — Current source README for the TypeScript package.
+- [SES webhooks](https://sendfn.com/docs/webhooks) — Verify SNS messages before changing delivery state.
