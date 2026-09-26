@@ -1,0 +1,27 @@
+authfn/docs/content/docs/frameworks/nextjs.md
+  s_ee6f287c08acb3::t_82001595cd9024 16,19,43,58,67-68
+authfn/docs/content/docs/frameworks/sveltekit.md
+  s_ee6f287c08acb3::t_4242e67fb49282 16,19-22
+authfn/docs/content/docs/quickstart/nextjs.md
+  s_ee6f287c08acb3::t_7f579d313dd1d7 67,69
+authfn/docs/content/docs/quickstart/sveltekit.md
+  s_ee6f287c08acb3::t_f5440033f57f2a 68,70-73
+authfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_04ccc67086f674 5086,5089,5113,5128,5137-5138,5208,5211-5214,7699,7701,8096,8098-8101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5da35d55c689b80d738e30c2ba643bddc095112c",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
