@@ -1,0 +1,25 @@
+datafn/docs/content/docs/documentation/server/administration.mdx
+  s_ee6f287c08acb3::t_dc5c45ce4cf74a 20,26
+datafn/docs/content/docs/reference/changelog.mdx
+  s_ee6f287c08acb3::t_09711629ad0a4d 16
+datafn/docs/content/docs/reference/events.mdx
+  s_ee6f287c08acb3::t_e4fb5d7c8a4f4d 24,34-35,37,39,45
+datafn/docs/public/llms-full.txt
+  s_ee6f287c08acb3::t_009d953d3a4ce2 15318,15324,23631,26844,26854-26855,26857,26859,26865
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c2594c0d2649df1acc843f4947b44ce2d54fa724",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
