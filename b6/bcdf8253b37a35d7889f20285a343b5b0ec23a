@@ -1,0 +1,91 @@
+sendfn/docs/content/docs/http-api.md
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-14
+sendfn/docs/content/docs/idempotency.md
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-10
+sendfn/docs/content/docs/reference/python.md
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-259
+sendfn/docs/content/docs/reference/typescript.md
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-239
+sendfn/docs/content/docs/administration.md
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-10
+sendfn/docs/content/docs/webhooks.md
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-12
+sendfn/docs/content/docs/reference/meta.json
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-8
+sendfn/docs/content/docs/index.md
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-10
+sendfn/docs/content/docs/getting-started.md
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-26
+sendfn/docs/README.md
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-12
+sendfn/docs/content/docs/meta.json
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-16
+sendfn/docs/static/llms-full.txt
+  s_4e0e6cec9d8f32::t_9295a8dfdc4490 1-704
+sendfn/docs/content/docs/providers.md
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-12
+sendfn/docs/src/routes/+page.svelte
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-231
+sendfn/docs/content/docs/channels.md
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-16
+sendfn/docs/static/llms.txt
+  s_4e0e6cec9d8f32::t_9295a8dfdc4490 1-19
+sendfn/docs/docsfn.config.ts
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-36
+sendfn/docs/content/docs/python.md
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-15
+sendfn/docs/package.json
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-34
+sendfn/docs/content/docs/reference/index.md
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-8
+sendfn/docs/content/docs/persistence-and-events.md
+  s_4e0e6cec9d8f32::t_2f1e55ec965ede 1-12
+package-lock.json
+  s_4e0e6cec9d8f32::t_83b7463ce8c916 66470-66589
+sendfn/docs/.gitignore
+  s_4e0e6cec9d8f32::t_46cba995b43e6c 1-10
+sendfn/docs/scripts/generate-llms.mjs
+  s_4e0e6cec9d8f32::t_2b39bdf296ec06 1-39
+sendfn/docs/src/app.css
+  s_4e0e6cec9d8f32::t_30af65ee9311bb 1-72
+sendfn/docs/src/app.html
+  s_4e0e6cec9d8f32::t_6219bacae3ee20 1-11
+sendfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_4e0e6cec9d8f32::t_7a81ba2321f1e0 1-17
+sendfn/docs/src/lib/server/docs-site-source.ts
+  s_4e0e6cec9d8f32::t_ce2056ee432c9b 1-501
+sendfn/docs/src/routes/+layout.server.ts
+  s_4e0e6cec9d8f32::t_9abc78449ba146 1-8
+sendfn/docs/src/routes/+layout.svelte
+  s_4e0e6cec9d8f32::t_a84bdcd6211c92 1-88
+sendfn/docs/src/routes/+page.server.ts
+  s_4e0e6cec9d8f32::t_bb3c169fea2005 1-6
+sendfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_4e0e6cec9d8f32::t_703ecf2e5f6b45 1-120
+sendfn/docs/src/routes/docs/[...slug]/+page.svelte
+  s_4e0e6cec9d8f32::t_9bbb94cb9415b7 1-41
+sendfn/docs/src/routes/search.json/+server.ts
+  s_4e0e6cec9d8f32::t_9eb6eccfe8c5e8 1-8
+sendfn/docs/svelte.config.js
+  s_4e0e6cec9d8f32::t_499911345c1b7b 1-24
+sendfn/docs/tsconfig.json
+  s_4e0e6cec9d8f32::t_d8f0b4c689cf3f 1-33
+sendfn/docs/vite.config.ts
+  s_4e0e6cec9d8f32::t_ee9004bd95b036 1-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b6bcdf8253b37a35d7889f20285a343b5b0ec23a",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "thyaravind <samalaaravind02@gmail.com>"
+    }
+  }
+}
