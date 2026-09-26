@@ -1,0 +1,37 @@
+---
+title: Administration
+description: Bind the BillFn Super Console capability to an authorized billing subject.
+---
+
+`@billfn/admin` exposes a function-owned Super Console capability over a configured `BillFnInstance`. The package uses BillFn's public domain API. It does not read billing tables directly or provide a standalone admin server.
+
+## Bind an active billing subject
+
+The host must authenticate the administrator, authorize the active organization, workspace, project, or environment scope, and map that scope to a `BillableSubject`. Pass that mapping to the domain service:
+
+```ts
+import { createBillFnAdminAdapter, createBillFnDomainAdminService } from "@billfn/admin";
+
+const service = createBillFnDomainAdminService({
+  billfn,
+  subject: async (context) => resolveAuthorizedBillableSubject(context),
+});
+const adapter = createBillFnAdminAdapter(service);
+```
+
+`resolveAuthorizedBillableSubject` is host code. It must only return a subject after scope authorization; a request-supplied billing account ID is not sufficient. Connect `adapter` to the shared admin dispatcher with its permission, confirmation, idempotency, and audit controls. Configure a dispatcher policy or equivalent host check that authorizes the actor’s selected scope for **every operation**, including catalog reads. The default permission check does not prove scope ownership. Authorization inside the subject resolver alone is insufficient because catalog operations never call it.
+
+## Available operations
+
+Products, plans, and prices come from `billfn.getCatalog()` and are instance-wide catalog data; the subject resolver does not scope these reads. Subscriptions, entitlements, and usage are resolved for the active billable subject. Its write actions change or cancel a subscription, refund a payment, and queue provider reconciliation. The broader exported `billFnAdminResources` inventory contains descriptive entries for other billing concepts; those entries are **not** mounted as operations by the current capability.
+
+| Action | Required confirmation |
+| --- | --- |
+| Change subscription | Recent authentication |
+| Cancel subscription | MFA |
+| Refund payment | MFA |
+| Reconcile provider | Explicit confirmation |
+
+All writes require audit evidence and an idempotency key through the admin contract. Reconciliation is restricted to an account scan or the active subject's subscription; provider-wide jobs cannot be scheduled through this subject-scoped action. Listing uses a scope-bound cursor tied to its query, so reuse the cursor only with the same search, filters, and sort.
+
+The [capability source](https://github.com/21nCo/super-functions/blob/dev/billfn/admin/src/index.ts) defines operation IDs and schemas. The [domain service](https://github.com/21nCo/super-functions/blob/dev/billfn/admin/src/domain-service.ts) shows how those operations call BillFn. For normal product access, use the [TypeScript client](/docs/clients/typescript) and [entitlement and quota API](/docs/server/entitlements-and-quotas).

@@ -1,4 +1,4 @@
 {
   "title": "Server",
-  "pages": ["setup", "routes", "reconciliation", "entitlements-and-quotas"]
+  "pages": ["setup", "routes", "reconciliation", "entitlements-and-quotas", "administration"]
 }
