@@ -1,0 +1,57 @@
+devfn/docs/README.md
+  s_ee6f287c08acb3::t_10b5322a452649 12-22
+devfn/docs/content/docs/lifecycle.md
+  s_ee6f287c08acb3::t_78381b6ae8e3e4 8
+devfn/docs/content/docs/reference/configuration.md
+  s_ee6f287c08acb3::t_8f38477892f0cc 26
+devfn/docs/content/docs/reference/migration.md
+  s_ee6f287c08acb3::t_eb9936f50e7b43 11-14
+devfn/docs/content/docs/reference/security.md
+  s_ee6f287c08acb3::t_ae5f8874777220 7
+devfn/docs/package.json
+  s_ee6f287c08acb3::t_7bab990283c01f 28,31-33
+devfn/docs/scripts/generate-llms.mjs
+  s_ee6f287c08acb3::t_f4b1a843435e9c 32,38
+devfn/docs/src/app.css
+  s_ee6f287c08acb3::t_d852f53cd71c91 19,76-80
+devfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_ee6f287c08acb3::t_b852e1e171683e 2
+devfn/docs/src/routes/+layout.svelte
+  s_ee6f287c08acb3::t_cf6ff71d49eb08 6-7,16-17,22
+devfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ee6f287c08acb3::t_4699340f63b4c3 2,15-17,27-29,67
+devfn/docs/svelte.config.js
+  s_ee6f287c08acb3::t_ed2a3b2d8c0c29 17
+devfn/docs/tsconfig.json
+  s_ee6f287c08acb3::t_cd44084aba68e9 23-24,26
+devfn/docs/vite.config.ts
+  s_ee6f287c08acb3::t_49bd1eb90efeb3 2,9-10,24,26-27
+package-lock.json
+  s_ee6f287c08acb3::t_fc2491d246469a 8566-8567,8570-8571,66590-66616
+scripts/docs-site/README.md
+  s_ee6f287c08acb3::t_f8dbd874ca62f3 3,10-11
+scripts/docs-site/Search.svelte
+  s_ee6f287c08acb3::t_fd745b30cb99ba 13
+scripts/docs-site/layout.ts
+  s_ee6f287c08acb3::t_84e5792801e894 1-10
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_1fe479ef115b79 187,214,323-326,351,356,361,364,372,399,406,425,431,444,449,466,472,484-485,489,494
+devfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_f3a0136a451b34 6,73,216,303-306,349
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "13f561830279b4c40c8d095f2fdd38ff4c719bfa",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
