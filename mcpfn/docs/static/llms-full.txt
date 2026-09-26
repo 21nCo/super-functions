@@ -32,7 +32,7 @@ const fetch = createOAuthResourceServerHandler(mcp, {
 });
 ```
 
-The wrapper publishes protected-resource metadata and passes verified auth information to server context. Keep identity, tenant, scopes, and resource binding out of model-controlled arguments. The [authorization reference](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/auth.md) covers the generic provider adapter and diagnostic entry points.
+The wrapper publishes protected-resource metadata and passes verified auth information to server context. Keep identity, tenant, scopes, and resource binding out of model-controlled arguments. The [authorization reference](/docs/reference/auth) covers the generic provider adapter and diagnostic entry points.
 
 ## Complete client OAuth
 
@@ -42,7 +42,7 @@ The wrapper publishes protected-resource metadata and passes verified auth infor
 
 `createMcpAuthorizationCompatibilityHandler()` composes authorization-server metadata, registration, Client ID Metadata Documents, PKCE code validation, token exchange, refresh rotation, and revocation. The host remains responsible for login, consent, durable clients, token signing and values, and revocation state. This is separate from outbound provider account-linking flows.
 
-Run `mcpfn auth-diagnose URL` for read-only discovery checks. Add the [authentication regression suite](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/testing.md) before deploying a protected endpoint.
+Run `mcpfn auth-diagnose URL` for read-only discovery checks. Add the [authentication regression suite](/docs/testing) before deploying a protected endpoint.
 
 ---
 
@@ -81,7 +81,7 @@ Pass an official `OAuthClientProvider` to a Streamable HTTP target. `@mcpfn/auth
 await client.completeAuthorization({ code, state });
 ```
 
-McpFn reconnects after the SDK exchange. Connection retries happen only when configured, and capability calls are never replayed implicitly. Register `handlers.roots`, `handlers.sampling`, or `handlers.elicitation` to advertise client-mediated capabilities. `onEvent()` observes redacted lifecycle and capability events. The [client reference](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/client.md) documents the target and event surfaces.
+McpFn reconnects after the SDK exchange. Connection retries happen only when configured, and capability calls are never replayed implicitly. Register `handlers.roots`, `handlers.sampling`, or `handlers.elicitation` to advertise client-mediated capabilities. `onEvent()` observes redacted lifecycle and capability events. The [client reference](/docs/reference/client) documents the target and event surfaces.
 
 ---
 
@@ -91,7 +91,7 @@ McpFn reconnects after the SDK exchange. Connection retries happen only when con
 > Run McpFn over HTTP on Node or Cloudflare Workers and keep the transport boundary secure.
 
 
-Serve HTTP with `createWebStandardHandler()` and mount the resulting Web Standard handler in your application's router. The official SDK owns Streamable HTTP and protocol behavior. Wrap protected endpoints with `createOAuthResourceServerHandler()` and derive trusted context from verified request metadata. See [authorization](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/authorization.md) for the resource-server boundary.
+Serve HTTP with `createWebStandardHandler()` and mount the resulting Web Standard handler in your application's router. The official SDK owns Streamable HTTP and protocol behavior. Wrap protected endpoints with `createOAuthResourceServerHandler()` and derive trusted context from verified request metadata. See [authorization](/docs/authorization) for the resource-server boundary.
 
 ## Stateless and sessionful HTTP
 
@@ -103,7 +103,7 @@ Initialization metadata is available only to sessionful client-profile hooks. St
 
 `@mcpfn/core` and `@mcpfn/auth` ship self-contained SDK bundles. Enable Cloudflare's `nodejs_compat` flag because the SDK uses Node built-ins such as `node:crypto`. Serve the Web Standard handler from the Worker. Do not import the Node-oriented client, CLI, testing, or inspector packages into the edge bundle.
 
-Schema validation uses Ajv draft-07 on Node and `@cfworker/json-schema` in runtimes that forbid runtime code generation. The repository's `cloudflare:worker-startup` release-gate step boots this shape under `workerd` with a protected request. For the exact compatibility and bundling policy, see the [core reference](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/core.md) and [architecture](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/architecture.md).
+Schema validation uses Ajv draft-07 on Node and `@cfworker/json-schema` in runtimes that forbid runtime code generation. The repository's `cloudflare:worker-startup` release-gate step boots this shape under `workerd` with a protected request. For the exact compatibility and bundling policy, see the [core reference](/docs/reference/core) and [architecture](/docs/reference/architecture).
 
 ---
 
@@ -119,7 +119,7 @@ Schema validation uses Ajv draft-07 on Node and `@cfworker/json-schema` in runti
 npm install @mcpfn/core
 ```
 
-Add `@mcpfn/client` to connect from an application and `@mcpfn/cli` plus `@mcpfn/testing` for regression checks. McpFn packages require Node.js 18.18 or newer. The HTTP runtime also supports Web Standard handlers on edge runtimes; see [deployment](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/deployment.md).
+Add `@mcpfn/client` to connect from an application and `@mcpfn/cli` plus `@mcpfn/testing` for regression checks. McpFn packages require Node.js 18.18 or newer. The HTTP runtime also supports Web Standard handlers on edge runtimes; see [deployment](/docs/deployment).
 
 ## Declare a tool
 
@@ -180,7 +180,7 @@ The declaration is safe to import from manifest and test tooling. Create a separ
 
 ## Add the regression contract
 
-Commit a reviewed manifest and semantic scenarios with the application. Run the candidate through `mcpfn diff` and the scenarios through `mcpfn test` in CI. The [testing guide](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/testing.md) explains each layer and its limits.
+Commit a reviewed manifest and semantic scenarios with the application. Run the candidate through `mcpfn diff` and the scenarios through `mcpfn test` in CI. The [testing guide](/docs/testing) explains each layer and its limits.
 
 For a complete runnable example, see the [calculator server](https://github.com/21nCo/super-functions/blob/dev/mcpfn/examples/calculator-server.ts), [stdio entrypoint](https://github.com/21nCo/super-functions/blob/dev/mcpfn/examples/calculator-stdio-server.ts), [HTTP entrypoint](https://github.com/21nCo/super-functions/blob/dev/mcpfn/examples/calculator-http-server.ts), and [client](https://github.com/21nCo/super-functions/blob/dev/mcpfn/examples/calculator-client.ts).
 
@@ -196,11 +196,11 @@ McpFn provides a validated Model Context Protocol server runtime, a production c
 
 ## Choose a path
 
-- [Build a server](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/getting-started.md): declare a tool and serve it over stdio or Streamable HTTP.
-- [Connect a client](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/client.md): select a target, manage the session, and list or call capabilities.
-- [Protect HTTP](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/authorization.md): add protected-resource metadata, bearer verification, and client OAuth.
-- [Prevent regressions](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/testing.md): compare manifests and run scenarios, authentication checks, and conformance.
-- [Integrate DataFn](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/datafn.md): expose only approved data operations as tools.
+- [Build a server](/docs/getting-started): declare a tool and serve it over stdio or Streamable HTTP.
+- [Connect a client](/docs/client): select a target, manage the session, and list or call capabilities.
+- [Protect HTTP](/docs/authorization): add protected-resource metadata, bearer verification, and client OAuth.
+- [Prevent regressions](/docs/testing): compare manifests and run scenarios, authentication checks, and conformance.
+- [Integrate DataFn](/docs/reference/datafn): expose only approved data operations as tools.
 
 ## Packages
 
@@ -214,7 +214,7 @@ McpFn provides a validated Model Context Protocol server runtime, a production c
 | `@mcpfn/datafn` | Explicit, bounded DataFn-to-MCP tool projection |
 | `@mcpfn/cli` | Manifest, diff, test, inspect, authorization, and conformance commands |
 
-The [package reference](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/index.md) includes the source-aligned README for every package, architecture details, and the full CI guide. Install only the packages your application uses. Node.js 18.18 or newer supports normal McpFn commands; the pinned official conformance runner requires Node.js 22 or newer.
+The [package reference](/docs/reference) includes the source-aligned README for every package, architecture details, and the full CI guide. Install only the packages your application uses. Node.js 18.18 or newer supports normal McpFn commands; the pinned official conformance runner requires Node.js 22 or newer.
 
 ---
 
@@ -230,7 +230,7 @@ To migrate the runtime, preserve the existing public tool names and descriptions
 
 For protected HTTP, add a resource-server wrapper and keep the current identity and token authority. Hosted authorization composition does not move outbound provider OAuth or account-linking into McpFn. Declare host requirements for roots, sampling, elicitation, and MCP Apps before release.
 
-The [migration source guide](https://github.com/21nCo/super-functions/blob/dev/mcpfn/MIGRATION.md) gives the full sequence, including edge deployment and current Superfunctions migration boundaries. The [testing guide](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/testing.md) explains the evidence to retain at each step.
+The [migration source guide](https://github.com/21nCo/super-functions/blob/dev/mcpfn/MIGRATION.md) gives the full sequence, including edge deployment and current Superfunctions migration boundaries. The [testing guide](/docs/testing) explains the evidence to retain at each step.
 
 ---
 
@@ -936,14 +936,14 @@ Adapter construction fails before serving if a resource or field is unknown, unr
 
 These pages incorporate the package documentation from the current `origin/dev` source. Use them for detailed API examples and edge cases after the guides.
 
-- [Core runtime](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/core.md): declarations, registries, profiles, resources, tasks, apps, and error behavior.
-- [Client](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/client.md): targets, lifecycle, inventories, events, and OAuth completion.
-- [Authorization](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/auth.md): resource server, client provider, hosted authorization, and redirects.
-- [Testing API](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/testing.md): test clients, profile contracts, remote suites, and auth fixtures.
-- [Inspector](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/inspector.md): headless operations and sanitized scenario export.
-- [DataFn adapter](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/datafn.md): allowlisted resource and field exposure.
-- [CLI](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/cli.md): command usage and result behavior.
-- [Architecture](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/architecture.md) and [testing and CI](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/testing-and-ci.md): design boundaries and release evidence.
+- [Core runtime](/docs/reference/core): declarations, registries, profiles, resources, tasks, apps, and error behavior.
+- [Client](/docs/reference/client): targets, lifecycle, inventories, events, and OAuth completion.
+- [Authorization](/docs/reference/auth): resource server, client provider, hosted authorization, and redirects.
+- [Testing API](/docs/reference/testing): test clients, profile contracts, remote suites, and auth fixtures.
+- [Inspector](/docs/reference/inspector): headless operations and sanitized scenario export.
+- [DataFn adapter](/docs/reference/datafn): allowlisted resource and field exposure.
+- [CLI](/docs/reference/cli): command usage and result behavior.
+- [Architecture](/docs/reference/architecture) and [testing and CI](/docs/reference/testing-and-ci): design boundaries and release evidence.
 
 The source of truth for a published package's exact exports is its versioned package artifact. These pages describe the code on `origin/dev` at the time this site was prepared.
 
@@ -1531,17 +1531,17 @@ const server = declaration.createServer({
 });
 ```
 
-`toolVisibility` affects both listing and calls. A hidden call returns the same protocol `MethodNotFound` result as an unknown tool; the static manifest still describes the complete server contract. See the [core reference](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/core.md) for error envelopes and context details.
+`toolVisibility` affects both listing and calls. A hidden call returns the same protocol `MethodNotFound` result as an unknown tool; the static manifest still describes the complete server contract. See the [core reference](/docs/reference/core) for error envelopes and context details.
 
 ## Match authenticated client profiles carefully
 
-`clientProfiles` can project an effective tool catalog for a verified client and inject server-owned required arguments from trusted context. Profile matching uses `McpFnVerifiedClientIdentity`, not a client-reported name or version. McpFn applies canonical visibility, checks the effective catalog, rejects client-supplied server-owned fields, enriches from the server context, then validates against the canonical schema. The [core reference](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/core.md) includes the complete profile example and schema restrictions.
+`clientProfiles` can project an effective tool catalog for a verified client and inject server-owned required arguments from trusted context. Profile matching uses `McpFnVerifiedClientIdentity`, not a client-reported name or version. McpFn applies canonical visibility, checks the effective catalog, rejects client-supplied server-owned fields, enriches from the server context, then validates against the canonical schema. The [core reference](/docs/reference/core) includes the complete profile example and schema restrictions.
 
 ## Serve over the right transport
 
-Use `serveStdio()` for process-launched clients. Use `createWebStandardHandler()` for Streamable HTTP and wrap protected endpoints with [OAuth resource-server handling](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/authorization.md). A server instance connects to one transport; share the declaration or registry and create an instance per connection. Sessionful HTTP needs a cryptographically secure `sessionIdGenerator` for correlated server-to-client requests such as sampling and elicitation.
+Use `serveStdio()` for process-launched clients. Use `createWebStandardHandler()` for Streamable HTTP and wrap protected endpoints with [OAuth resource-server handling](/docs/authorization). A server instance connects to one transport; share the declaration or registry and create an instance per connection. Sessionful HTTP needs a cryptographically secure `sessionIdGenerator` for correlated server-to-client requests such as sampling and elicitation.
 
-McpFn Apps helpers validate `ui://` resource MIME type, CSP metadata, visibility, and tool links. The consuming host owns iframe rendering. The [architecture reference](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/architecture.md) explains each boundary.
+McpFn Apps helpers validate `ui://` resource MIME type, CSP metadata, visibility, and tool links. The consuming host owns iframe rendering. The [architecture reference](/docs/reference/architecture) explains each boundary.
 
 ---
 
@@ -1587,6 +1587,6 @@ For a running Streamable HTTP endpoint, use the pinned official runner:
 mcpfn conformance http://127.0.0.1:3000/mcp --suite active
 ```
 
-Conformance requires Node.js 22 or newer. The [full testing and CI reference](https://github.com/21nCo/super-functions/blob/dev/mcpfn/docs/content/docs/reference/testing-and-ci.md) covers profile fixtures, scenario format, proof levels, and the repository release gate.
+Conformance requires Node.js 22 or newer. The [full testing and CI reference](/docs/reference/testing-and-ci) covers profile fixtures, scenario format, proof levels, and the repository release gate.
 
 ---

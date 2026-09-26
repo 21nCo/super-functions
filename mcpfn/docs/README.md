@@ -19,6 +19,6 @@ npm exec -- docsfn build --root . --out-dir .docsfn
 ```
 
 The site defaults to port 6010 in development and preview. Set `CLOUDFLARE_DOCS_DEPLOY=1` when building with the Cloudflare adapter.
-Set `site.canonicalUrl` in `docsfn.config.ts` after the public host is assigned.
+The public documentation URL is `https://mcpfn.com/docs`.
 
-The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Until `site.canonicalUrl` is configured for an assigned public host, generated page links target the checked-in source pages on `dev`.
+The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Generated page links use the configured public host, `https://mcpfn.com/docs`.

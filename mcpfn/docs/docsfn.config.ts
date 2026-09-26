@@ -3,6 +3,7 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
+    canonicalUrl: "https://mcpfn.com",
     title: "McpFn",
     description: "Build, secure, test, and evolve Model Context Protocol servers with stable consumer contracts.",
     basePath: "/docs",
