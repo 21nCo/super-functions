@@ -3,6 +3,7 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
+    canonicalUrl: "https://reviewfn.com",
     title: "ReviewFn",
     description: "Evidence-backed advisory pull request reviews, isolated execution, and report contracts.",
     basePath: "/docs",
