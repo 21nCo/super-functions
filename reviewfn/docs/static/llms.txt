@@ -1,0 +1,19 @@
+# ReviewFn
+
+> Evidence-backed advisory pull request reviews, isolated execution, and report contracts.
+
+## Documentation
+
+- [Getting started](https://reviewfn.com/docs/getting-started) — Install ReviewFn and run a local advisory review.
+- [ReviewFn](https://reviewfn.com/docs) — Evidence-backed advisory pull request review.
+- [Operations and limits](https://reviewfn.com/docs/operations-and-limits) — Deployment gates, retention, and evidence boundaries.
+- [Packages](https://reviewfn.com/docs/packages) — Choose the ReviewFn package for each integration layer.
+- [GitHub publication](https://reviewfn.com/docs/publication) — Keep review execution separate from trusted advisory publishing.
+- [Configuration contract](https://reviewfn.com/docs/reference/configuration) — Versioned config, policy, adapter selection, and execution limits.
+- [Evaluation contract](https://reviewfn.com/docs/reference/evaluation) — Measure frozen cases and report comparison confounds.
+- [GitHub Action and publication](https://reviewfn.com/docs/reference/github-action) — Set up a credential-free review job and a separate trusted publisher.
+- [Reference](https://reviewfn.com/docs/reference) — Source-aligned ReviewFn contracts and operational guides.
+- [Report schema](https://reviewfn.com/docs/reference/report-schema) — Execution, coverage, verdict, assessments, evidence, and findings.
+- [Security model](https://reviewfn.com/docs/reference/security) — Trust boundaries, Docker containment, credentials, and retention.
+- [Security and isolation](https://reviewfn.com/docs/security) — Prepare the trusted runner, containers, credentials, and output boundary.
+- [Review workflow](https://reviewfn.com/docs/workflow) — Follow exact revisions from context capture to validated report.
