@@ -1,0 +1,32 @@
+botfn/docs/src/app.css
+  h_bdc5b81c173ee9 73-77
+botfn/docs/src/lib/components/DocsSiteSearch.svelte
+  h_bdc5b81c173ee9 2,5
+botfn/docs/src/lib/server/docs-site-source.ts
+  h_bdc5b81c173ee9 2,4-5,7-8,11-17
+botfn/docs/src/routes/+layout.server.ts
+  h_bdc5b81c173ee9 5-6,8-11
+botfn/docs/src/routes/+layout.svelte
+  h_bdc5b81c173ee9 24
+botfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  h_bdc5b81c173ee9 10,35-36
+botfn/docs/vite.config.ts
+  h_bdc5b81c173ee9 21-23
+scripts/docs-site/README.md
+  h_bdc5b81c173ee9 1-9
+scripts/docs-site/Search.svelte
+  h_bdc5b81c173ee9 1-83
+scripts/docs-site/runtime.ts
+  h_bdc5b81c173ee9 1-537
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "18f71771435d3b1aa0493cc7e6ae68ede4d226ec",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
