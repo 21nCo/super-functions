@@ -1,0 +1,422 @@
+# DevFn
+
+> Trusted local profiles, process and Compose lifecycle, port leases, readiness, and localhost routes.
+
+This file concatenates the full text of every documentation page so it can be loaded into
+an LLM-based assistant in a single shot. For programmatic access, prefer the MCP server
+or the structured manifest emitted alongside this file.
+
+# Documentation
+
+<!-- page:docs:configuration.md path:/docs/configuration -->
+# Configuration
+
+> Declare project identity, ports, processes, Compose services, and profiles.
+
+
+# Configuration
+
+DevFn discovers `devfn.config.ts`, `.js`, `.mjs`, `.cjs`, or `.json` while walking upward. Each manifest has `version: 1`, a stable `project.id`, and named profiles. It may define ports, native processes, Compose services, hostname routes, prerequisites, environment outputs, and a repository-relative organization policy.
+
+JavaScript-family manifests are executable but must be self-contained; imports and `require()` are rejected. JSON is parsed as data. Both forms require digest-bound trust before loading. Repository-relative paths reject absolute paths, `..` traversal, and symlink escape. References and dependency cycles are validated before lifecycle mutation.
+
+A port can select exact, preferred, range, ephemeral, loopback/public, or contiguous-block allocation. Processes declare an adapter, command or script, dependencies, readiness, environment allowlist, and optional secret names. Compose services select a declared service, port mappings, health, and persistence. Profiles select these resources transitively and may enable the shared proxy.
+
+Read the [complete configuration reference](/docs/reference/configuration) for field shapes, adapter values, health check examples, hostname templates, and policy rules. Treat examples as a starting point and verify every process command before trusting a manifest.
+
+---
+
+<!-- page:docs:getting-started.md path:/docs/getting-started -->
+# Getting started
+
+> Initialize, trust, inspect, and start a local profile.
+
+
+# Getting started
+
+Install or invoke `@devfn/cli` from the repository you want to run. `init` previews detected configuration; review it before accepting generated files. The first load of any manifest needs `--trust`, even for JSON, because it can declare lifecycle commands. Trust is bound to the exact manifest digest, so an edit requires review and trust again.
+
+```sh
+npx @devfn/cli init
+npx @devfn/cli doctor --trust
+npx @devfn/cli up --profile default
+npx @devfn/cli status --json
+npx @devfn/cli logs app
+npx @devfn/cli down
+```
+
+Profiles containing public processes or ports also require `--allow-public` on every start. `up --json` emits one lifecycle receipt with state, instance and invocation IDs, allocations, managed resources, and resolved URLs. Read-only commands return structured command data in JSON mode; failures use stable `DEVFN_*` codes and exit nonzero.
+
+Runtime files default to `.devfn/` with owner-only permissions. If the manifest configures `environmentOutputs`, inspect and back up any pre-existing target file before starting: DevFn overwrites configured outputs and cannot restore their former contents. See the [migration guide](/docs/migration).
+
+---
+
+<!-- page:docs:index.md path:/docs -->
+# DevFn
+
+> Trusted lifecycle orchestration for local development.
+
+
+# DevFn
+
+DevFn coordinates native application processes, Docker Compose infrastructure, machine-local port leases, readiness, logs, diagnostics, and stable `.localhost` URLs through one command contract. It identifies each worktree instance so concurrent local environments do not silently share mutable resources.
+
+Start with [getting started](/docs/getting-started), then define a [manifest](/docs/configuration) and operate a [profile](/docs/lifecycle). Review [trust and exposure](/docs/security) before loading a manifest or opening a public port. Existing projects should follow the [migration guide](/docs/migration).
+
+DevFn does not replace HostFn deployment, browser evidence, ExtFn extension semantics, Docker Compose, Wrangler, or Xcode. It coordinates local runtimes through explicit adapters. Version 0.1 uses CLI-managed state rather than a daemon.
+
+---
+
+<!-- page:docs:lifecycle.md path:/docs/lifecycle -->
+# Lifecycle and diagnostics
+
+> Start, inspect, stop, and recover one worktree instance.
+
+
+# Lifecycle and diagnostics
+
+`devfn up` plans resources in dependency order, reserves ports before mutation, starts selected native processes and Compose services, verifies readiness, registers proxy routes, and returns a machine-readable receipt. If an invocation fails, rollback targets resources created by that invocation. `status`, `logs`, and `doctor` expose live state and diagnostics; `down` stops only the exact worktree instance.
+
+There is no background daemon in version 0.1. State, journals, logs, and generated environment files are kept under the configured runtime directory, `.devfn/` by default. Process ownership uses a PID birth signature where the host supplies one, so cleanup refuses a reused PID.
+
+Ordinary `down` does not delete persistent Docker volumes. It is also not a general reset command. Explicit configured environment outputs may have overwritten files that existed before adoption; inspect them before manual cleanup. The [core package](/docs/reference/core), [process supervisor](/docs/reference/processes), and [migration guide](/docs/reference/migration) describe lifecycle boundaries.
+
+---
+
+<!-- page:docs:migration.md path:/docs/migration -->
+# Migrating a project
+
+> Adopt DevFn while preserving existing startup and data paths.
+
+
+# Migrating a project
+
+Preserve existing scripts and Compose data. Run `devfn init`, inspect confirmed and proposed detections, then edit the manifest until every command, dependency, port, profile, and health check is explicit. Run `devfn doctor --trust` and resolve prerequisites and exact-port collisions before the first start.
+
+Back up any pre-existing path named by `environmentOutputs[].path`; DevFn overwrites configured outputs and does not restore previous contents. Start with a minimal profile, compare behavior against manual startup, then add full, OAuth, test, or docs profiles. Verify that `devfn down` preserves databases and volumes before making it the daily workflow.
+
+To roll back, run `down`, inspect the configured runtime directory and output paths, and remove only DevFn-generated files that did not replace user content. Then remove the manifest and resume the preserved scripts. The [source migration guide](/docs/reference/migration) gives the complete checklist.
+
+---
+
+<!-- page:docs:packages.md path:/docs/packages -->
+# Packages
+
+> Map DevFn's eight packages to their responsibilities.
+
+
+# Packages
+
+| Package | Responsibility |
+| --- | --- |
+| `@devfn/cli` | `devfn` command, initialization, diagnostics, lifecycle, and JSON receipts. |
+| `@devfn/core` | Dependency plans, journals, receipts, rollback, and diagnostics. |
+| `@devfn/config` | Manifest discovery, validation, digest trust, and policy. |
+| `@devfn/ports` | Lock-protected machine port leases, reconciliation, and reports. |
+| `@devfn/processes` | Native process supervision, logs, readiness, and ownership. |
+| `@devfn/compose` | Worktree-scoped Docker Compose infrastructure. |
+| `@devfn/proxy` | Shared Caddy route control for `.localhost` names. |
+| `@devfn/testing` | Deterministic fixtures and fake listeners. |
+
+The packages expose separate public entry points. Use the CLI for the supported end-to-end workflow; lower-level packages are for integrations that preserve DevFn's identity, trust, and ownership contracts. Detailed source guides are under [reference](/docs/reference).
+
+---
+
+<!-- page:docs:ports-and-proxy.md path:/docs/ports-and-proxy -->
+# Ports and localhost routes
+
+> Allocate per-worktree ports and publish concrete local URLs.
+
+
+# Ports and localhost routes
+
+`@devfn/ports` uses machine-local locking and worktree identity to allocate and reconcile exact, preferred, ranged, ephemeral, and contiguous-block ports. `exact: true` fails closed on collision. Public port exposure needs an explicit manifest choice and `--allow-public` on each start. Inspect allocations with `devfn ports` and the full machine registry with `devfn ports report`.
+
+`@devfn/proxy` manages one lock-protected Caddy route registry with concrete `.localhost` names and loopback targets. It validates generated configuration before reload and refuses to take over an unrelated Caddy admin endpoint. Hostname templates accept `{project}` and `{instance}` and must resolve to `.localhost`.
+
+DevFn returns HTTP URLs only for explicit hostname routes or ports named by HTTP health checks. A database or arbitrary TCP listener remains a transport allocation rather than an invented HTTP URL. The [configuration reference](/docs/reference/configuration) covers port and hostname fields, while [ports](/docs/reference/ports) and [proxy](/docs/reference/proxy) document package behavior.
+
+---
+
+<!-- page:docs:processes-and-compose.md path:/docs/processes-and-compose -->
+# Processes and Compose
+
+> Run native applications and worktree-scoped infrastructure.
+
+
+# Processes and Compose
+
+Native process adapters include `command`, `npm`, `pnpm`, `turbo`, `wrangler`, `xcode`, and `extfn`. Commands run locally under supervision with declared working directory, dependency order, environment, ports, readiness, and shutdown timeout. Turbo, Wrangler, and ExtFn resolve project-local binaries without downloading missing tools; pnpm follows the repository's Corepack pin. Yarn and Bun discovery is proposed and does not create guessed processes.
+
+Compose services use Docker Compose 2.24.4 or newer. DevFn adds a worktree instance suffix to the Compose project, generates host-port overrides with loopback mapping by default, starts only the requested service with `--no-deps`, and preserves persistent volumes during ordinary cleanup. Services with `secretEnv` disable Docker log persistence and cannot use log-pattern readiness.
+
+Readiness checks may use HTTP, TCP, command, or log patterns. Local-process exposure verification needs `lsof` on macOS/Linux or `netstat` on Windows. Run `doctor` to surface missing prerequisites. See [processes](/docs/reference/processes), [Compose](/docs/reference/compose), and [configuration](/docs/reference/configuration) for exact settings.
+
+---
+
+<!-- page:docs:reference/cli.md path:/docs/reference/cli -->
+# @devfn/cli
+
+> Source package guide for @devfn/cli.
+
+
+# DevFn
+
+DevFn runs heterogeneous local environments through one command contract while keeping application processes native and infrastructure Compose-backed where appropriate.
+
+```bash
+npx @devfn/cli init
+npx @devfn/cli init --yes
+npx @devfn/cli doctor --trust
+npx @devfn/cli up --profile default
+npx @devfn/cli status --json
+npx @devfn/cli logs app
+npx @devfn/cli down
+```
+
+Profiles that declare public processes or ports require `--allow-public` on every start.
+
+The first load of any manifest requires `--trust` because JSON and executable manifests can both declare lifecycle commands. Trust is bound to the manifest digest, so edits require review and trust again. Lifecycle mutations return receipts in JSON mode; read-only commands return command-specific structured data, and failures use stable error codes. Runtime files are written with restrictive permissions under `.devfn/` by default.
+
+For automation, `devfn up --json` emits one lifecycle receipt object containing `state`, `instanceId`, `invocationId`, allocations, managed processes/services, and resolved URLs. Failures emit `{ "ok": false, "error": { "code": "DEVFN_*", "message": "..." } }` and exit nonzero. Treat fields not documented here as additive.
+
+DevFn v0.1 uses transactional CLI-managed state rather than a daemon. Runtime logic is platform-aware; macOS and Linux are the validated first-release hosts, while Windows process ownership is implemented but requires platform CI before it is declared supported.
+
+---
+
+<!-- page:docs:reference/compose.md path:/docs/reference/compose -->
+# @devfn/compose
+
+> Source package guide for @devfn/compose.
+
+
+# @devfn/compose
+
+Requires Docker Compose 2.24.4 or newer. Starts only declared Compose services with `--no-deps` under a worktree-specific project name, replaces source mappings with loopback or explicitly public DevFn host-port mappings while retaining conventional container ports, and never removes persistent volumes during ordinary cleanup. Secret-bearing services disable Docker log persistence.
+
+---
+
+<!-- page:docs:reference/config.md path:/docs/reference/config -->
+# @devfn/config
+
+> Source package guide for @devfn/config.
+
+
+# @devfn/config
+
+Validated DevFn project manifests and organization port-policy contracts. Every manifest can declare lifecycle commands and must be reviewed and explicitly trusted before the DevFn CLI loads its exact digest; executable manifests additionally must be self-contained.
+
+---
+
+<!-- page:docs:reference/configuration.md path:/docs/reference/configuration -->
+# Configuration contract
+
+> Manifest fields, ports, processes, services, profiles, and policy.
+
+
+# DevFn configuration reference
+
+DevFn discovers `devfn.config.ts`, `.js`, `.mjs`, `.cjs`, or `.json` while walking upward from the current directory. JavaScript-family manifests are executable code, require digest-bound trust, and must be self-contained (no imports or `require()`). JSON is data-only.
+
+## Top-level manifest
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `version: 1` | yes | Manifest schema version. |
+| `project.id` | yes | Stable semantic project identity. |
+| `project.name` | no | Human display name. |
+| `defaultProfile` | no | Profile selected when `--profile` is omitted. Without it, a `profiles.default` entry is required. |
+| `runtimeDir` | no | Repository-relative generated-state root; defaults to `.devfn`. |
+| `ports` | no | Named `PortSpec` map. |
+| `processes` | no | Named native process map. |
+| `services` | no | Named Docker Compose service map. |
+| `profiles` | yes | Named selections of processes/services plus non-secret environment and proxy choice. |
+| `hostnames` | no | Explicit local hostname routes to named ports. |
+| `prerequisites` | no | Required command/version diagnostics, optionally profile-scoped. |
+| `environmentOutputs` | no | Repository-relative dotenv or JSON runtime files and owner-only permission modes. |
+| `policy` | no | Repository-relative organization policy JSON path. |
+
+Every repository-relative path rejects absolute paths, `..` escape, and runtime symlink escape. References to ports, processes, services, profiles, dependencies, and hostname targets must resolve during validation. An explicitly configured but missing policy is an error; only the conventional unconfigured policy path is optional.
+
+## Ports
+
+A port can specify `protocol` (`tcp` or `udp`), `preferred`, `range: [start, end]`, `exact`, `ephemeral`, `exposure` (`loopback` or `public`), conventional container `internal` port, contiguous `block` name, and exported `env` key.
+
+- `exact: true` requires `preferred` and fails closed on collision.
+- `ephemeral: true` cannot be combined with fixed preferences.
+- Requirements sharing `block` receive a contiguous allocation.
+- Public ports require `devfn up --allow-public`.
+
+## Native processes
+
+`adapter` is one of `command`, `npm`, `pnpm`, `turbo`, `wrangler`, `xcode`, or `extfn`. A process can specify `command`, package-manager `script`, repository-relative `cwd`, non-secret literal `env`, inherited `envAllowlist`, redacted `secretEnv`, named `ports`, `dependsOn`, `health`, `shutdownTimeoutMs`, and `exposure` (`local` or `public`).
+
+Turbo, Wrangler, and ExtFn resolve project-local binaries with offline npm execution; pnpm runs through Corepack so the repository's `packageManager` pin is honored. Adapters never download a missing tool during startup. `doctor` reports the missing prerequisite instead. Discovery marks Yarn and Bun as proposed and emits no guessed npm process; add an explicit command adapter after review.
+
+Local-process exposure verification requires `lsof` on macOS and Linux; Windows uses `netstat`. Run `devfn doctor` before startup to detect a missing listener-inspection tool.
+
+Sensitive-looking keys cannot be literal manifest values. They must be inherited by name in `envAllowlist` and repeated in `secretEnv`, which activates streaming redaction before logs are persisted. This is a key-name safeguard, not general secret detection; reviewers must inspect all other literal values. Public processes require `--allow-public`.
+
+## Compose services
+
+A service uses `adapter: "compose"`, Compose `service`, optional repository-relative `file`, project-name prefix, named host-port-to-container-port mappings, dependencies, health, `persistent`, non-secret `env`, `envAllowlist`, and `secretEnv`. DevFn always adds the worktree instance suffix to the Compose project name.
+
+DevFn writes a generated override with loopback host mappings unless the named port explicitly selects public exposure. It starts only the requested service with `--no-deps`. Services declaring `secretEnv` use Docker's `none` logging driver and therefore cannot use log-pattern health checks. Ordinary cleanup stops/removes only invocation-owned containers and never passes a volume-deletion flag.
+
+## Health checks
+
+- HTTP: `{ type: "http", port: "app", path: "/health", expectedStatus: 200, timeoutMs: 120000 }`
+- TCP: `{ type: "tcp", port: "postgres" }`
+- Command: `{ type: "command", command: ["node", "scripts/ready.mjs"] }`
+- Log: `{ type: "log", pattern: "ready on" }`
+
+HTTP URLs are returned only for explicitly routed hostnames or ports named by HTTP health checks. Other services remain transport allocations visible through `devfn ports`; DevFn does not invent an HTTP URL for a database or arbitrary TCP listener.
+
+## Profiles and hostnames
+
+Profiles select named processes/services, add non-secret environment, and opt into the shared proxy with `proxy: true`. Dependencies are included transitively and started topologically. Cycles fail before mutation.
+
+A hostname maps a route name to `target`, optional `hostname` template, `tls` (`off` or `internal`), and optional `profiles` filter. Templates accept `{project}` and `{instance}`. Every resolved name must end in `.localhost`.
+
+## Organization policy
+
+`devfn.policy.json` supports `fallbackRange`, `hostnameSuffix`, and entries with `name`, exactly one of `port`/`range`, `kind` (`protected`, `preferred`, or `excluded`), optional `project`, and `description`. `devfn ports report` combines the policy with the entire machine registry into Markdown; it is not limited to the current project or profile. `--output` must remain inside the repository.
+
+---
+
+<!-- page:docs:reference/core.md path:/docs/reference/core -->
+# @devfn/core
+
+> Source package guide for @devfn/core.
+
+
+# @devfn/core
+
+Builds dependency-ordered lifecycle plans, reserves ports before mutation, starts Compose and native resources, verifies readiness, registers shared proxy routes, emits machine-readable receipts, and rolls back only resources created by the failing invocation.
+
+---
+
+<!-- page:docs:reference/index.md path:/docs/reference -->
+# Reference
+
+> DevFn configuration, security, migration, and package guides.
+
+
+# Reference
+
+The reference pages mirror existing source guides:
+
+- [Configuration contract](/docs/reference/configuration)
+- [Security contract](/docs/reference/security)
+- [Migration guide](/docs/reference/migration)
+- [CLI](/docs/reference/cli), [core](/docs/reference/core), [config](/docs/reference/config)
+- [Ports](/docs/reference/ports), [processes](/docs/reference/processes), [Compose](/docs/reference/compose), [proxy](/docs/reference/proxy), [testing](/docs/reference/testing)
+
+Keep source and site copies aligned when changing a public contract.
+
+---
+
+<!-- page:docs:reference/migration.md path:/docs/reference/migration -->
+# Migration guide
+
+> Adopt DevFn without losing existing scripts, outputs, or Compose data.
+
+
+# Migrating an existing project
+
+1. Preserve all existing scripts and Compose data.
+2. Run `devfn init`, inspect confirmed versus proposed detections, then rerun with `--yes` only when the preview is truthful.
+3. Edit the manifest so every command, dependency, port, profile, and health check is explicit.
+4. Run `devfn doctor --trust`; address missing runtimes and exact-port conflicts.
+5. Before the first start, back up every pre-existing file targeted by `environmentOutputs[].path`; DevFn overwrites configured outputs and cannot restore prior contents.
+6. Start with a minimal profile and compare it with the existing manual startup flow.
+7. Add full, OAuth, test, or docs profiles incrementally. Public tunnels must remain explicit.
+8. Verify `devfn down` preserves databases and volumes before adopting it as the daily command.
+
+Rollback by running `devfn down`, then inspect `runtimeDir` and every `environmentOutputs[].path` in the manifest before removing generated files. The default generated location is `.devfn/`, but custom paths may live elsewhere. Preserve any target that existed before DevFn adoption; cleanup does not know whether a configured output replaced user-owned content. Finally remove the DevFn manifest and continue using the preserved original scripts. Docker volumes and source configuration are not deleted.
+
+---
+
+<!-- page:docs:reference/ports.md path:/docs/reference/ports -->
+# @devfn/ports
+
+> Source package guide for @devfn/ports.
+
+
+# @devfn/ports
+
+Machine-local, lock-protected port leases with worktree instance identity, exact/preferred/range/ephemeral allocation, stale reconciliation, listener discovery, Docker mapping discovery, and generated inventory reports. Reports enumerate the complete machine registry, including other projects and profiles, and are not a current-selection view.
+
+---
+
+<!-- page:docs:reference/processes.md path:/docs/reference/processes -->
+# @devfn/processes
+
+> Source package guide for @devfn/processes.
+
+
+# @devfn/processes
+
+Native process groups, durable logs, HTTP/TCP/command/log readiness, PID-birth ownership checks, and graceful termination. It is deliberately browser- and artifact-model-neutral so ProbeFn can adopt it later without depending on DevFn orchestration.
+
+---
+
+<!-- page:docs:reference/proxy.md path:/docs/reference/proxy -->
+# @devfn/proxy
+
+> Source package guide for @devfn/proxy.
+
+
+# @devfn/proxy
+
+Maintains one lock-protected, DevFn-owned Caddy route registry. Generated configurations contain concrete `.localhost` routes and loopback targets only, are validated before reload, and never include a catch-all. If another Caddy owns the admin endpoint, DevFn refuses to replace its configuration.
+
+---
+
+<!-- page:docs:reference/security.md path:/docs/reference/security -->
+# Security contract
+
+> Manifest trust, secret handling, local exposure, and ownership.
+
+
+# DevFn security
+
+- Every DevFn manifest can declare lifecycle commands, so the CLI refuses to load JSON, TypeScript, or JavaScript until the user records trust for its exact digest with `--trust`. JSON is parsed directly from the verified bytes; executable manifests run from a private copy of those same bytes and must be self-contained, with imports and `require()` rejected so dependency files cannot bypass the digest boundary.
+- Runtime children inherit a small base environment plus explicit `envAllowlist` entries. Sensitive-looking keys must also be listed in `secretEnv`; a detached wrapper redacts those effective values before native-process logs are persisted. Literal values are rejected only when their key looks sensitive, so review every manifest literal. Compose logging is disabled for services with `secretEnv` because Docker otherwise retains historical unredacted logs. Secrets are not persisted in the registry or lifecycle receipt.
+- Generated environment and state files use owner-only modes (default `0600`); their directories use `0700`. Existing files are explicitly re-permissioned after each write.
+- Local ports and proxy targets bind to loopback unless a manifest explicitly selects public exposure. Profiles containing public processes or ports require the separate `--allow-public` confirmation on every start. A public Cloudflare tunnel must never be inferred.
+- Repository-relative process, Compose, runtime, policy, and output paths are validated against lexical and symlink path escape.
+- PID ownership uses a birth signature where the host exposes one. DevFn refuses to stop a reused PID.
+- `down` stops only the exact worktree instance. Ordinary shutdown removes no persistent Docker volumes.
+- Project hostnames must be concrete `.localhost` names. DevFn manages only a Caddy process it started itself and refuses to overwrite an unrelated Caddy admin endpoint.
+- Volume deletion, database reset, public tunnels, and other destructive operations are outside ordinary lifecycle commands and require separate explicit tooling and confirmation.
+
+---
+
+<!-- page:docs:reference/testing.md path:/docs/reference/testing -->
+# @devfn/testing
+
+> Source package guide for @devfn/testing.
+
+
+# @devfn/testing
+
+Deterministic fixture manifests, temporary projects, and fake listeners for allocator, lifecycle, crash-recovery, and CLI contract tests.
+
+---
+
+<!-- page:docs:security.md path:/docs/security -->
+# Trust and secret handling
+
+> Review manifests, isolate secrets, and confirm public exposure.
+
+
+# Trust and secret handling
+
+Every manifest can declare lifecycle commands. DevFn requires explicit trust for its exact digest before first load and after edits, including JSON manifests. Executable manifests run from a private verified copy and cannot import other files, closing a dependency escape around the digest check.
+
+Runtime children inherit a small base environment plus named `envAllowlist` entries. Sensitive-looking names must also appear in `secretEnv` so effective values are redacted before native logs persist. The literal-key safeguard is not full secret detection; inspect all manifest literals. Compose services with `secretEnv` use Docker's `none` logging driver. Runtime directories and files default to owner-only modes.
+
+Ports and proxy targets bind to loopback unless the manifest explicitly selects public exposure; `--allow-public` is an additional confirmation on every start. DevFn does not infer a public tunnel. `down` stops only owned instance resources and does not delete persistent volumes. Read the [full security contract](/docs/reference/security) before using DevFn with sensitive data.
+
+---

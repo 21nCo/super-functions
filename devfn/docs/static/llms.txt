@@ -1,0 +1,27 @@
+# DevFn
+
+> Trusted local profiles, process and Compose lifecycle, port leases, readiness, and localhost routes.
+
+## Documentation
+
+- [Configuration](/docs/configuration) — Declare project identity, ports, processes, Compose services, and profiles.
+- [Getting started](/docs/getting-started) — Initialize, trust, inspect, and start a local profile.
+- [DevFn](/docs) — Trusted lifecycle orchestration for local development.
+- [Lifecycle and diagnostics](/docs/lifecycle) — Start, inspect, stop, and recover one worktree instance.
+- [Migrating a project](/docs/migration) — Adopt DevFn while preserving existing startup and data paths.
+- [Packages](/docs/packages) — Map DevFn's eight packages to their responsibilities.
+- [Ports and localhost routes](/docs/ports-and-proxy) — Allocate per-worktree ports and publish concrete local URLs.
+- [Processes and Compose](/docs/processes-and-compose) — Run native applications and worktree-scoped infrastructure.
+- [@devfn/cli](/docs/reference/cli) — Source package guide for @devfn/cli.
+- [@devfn/compose](/docs/reference/compose) — Source package guide for @devfn/compose.
+- [@devfn/config](/docs/reference/config) — Source package guide for @devfn/config.
+- [Configuration contract](/docs/reference/configuration) — Manifest fields, ports, processes, services, profiles, and policy.
+- [@devfn/core](/docs/reference/core) — Source package guide for @devfn/core.
+- [Reference](/docs/reference) — DevFn configuration, security, migration, and package guides.
+- [Migration guide](/docs/reference/migration) — Adopt DevFn without losing existing scripts, outputs, or Compose data.
+- [@devfn/ports](/docs/reference/ports) — Source package guide for @devfn/ports.
+- [@devfn/processes](/docs/reference/processes) — Source package guide for @devfn/processes.
+- [@devfn/proxy](/docs/reference/proxy) — Source package guide for @devfn/proxy.
+- [Security contract](/docs/reference/security) — Manifest trust, secret handling, local exposure, and ownership.
+- [@devfn/testing](/docs/reference/testing) — Source package guide for @devfn/testing.
+- [Trust and secret handling](/docs/security) — Review manifests, isolate secrets, and confirm public exposure.
