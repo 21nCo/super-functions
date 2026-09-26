@@ -1,0 +1,45 @@
+plugfn/docs/content/docs/connections-and-oauth.md
+  s_ee6f287c08acb3::t_9a6f9ea45f084e 13-58
+plugfn/docs/content/docs/getting-started.md
+  s_ee6f287c08acb3::t_ba6e052e234675 30-80
+plugfn/docs/content/docs/workflows-and-sync.md
+  s_ee6f287c08acb3::t_9c5920ef4233ff 11-77
+plugfn/docs/src/app.css
+  s_ee6f287c08acb3::t_26a2e1553331c7 73-77
+plugfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_ee6f287c08acb3::t_4f3658fb469cef 2,5
+plugfn/docs/src/lib/server/docs-site-source.ts
+  s_ee6f287c08acb3::t_769ea222bbc12b 2,4-5,7-8,11-17
+plugfn/docs/src/routes/+layout.server.ts
+  s_ee6f287c08acb3::t_687aa3f6a6415b 5-6,8-11
+plugfn/docs/src/routes/+layout.svelte
+  s_ee6f287c08acb3::t_c0fb09bea7c9ed 24
+plugfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ee6f287c08acb3::t_1e5c2d081a9e6c 10,35-36
+plugfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_175d91c44d3a4a 53-98,132-182,524-590
+plugfn/docs/vite.config.ts
+  s_ee6f287c08acb3::t_a61a8126e826b1 21-23
+scripts/docs-site/README.md
+  s_ee6f287c08acb3::t_19d891bf34c8fe 1-9
+scripts/docs-site/Search.svelte
+  s_ee6f287c08acb3::t_69b8a2e4135b69 1-83
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_7cd3ed0cc2d6bc 1-537
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ec6768e8df9d0bba8ee8a616b31930a010972f82",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
