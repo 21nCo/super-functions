@@ -63,7 +63,7 @@ export {};
 SvelteKit's form actions submit via POST — and the authfn router enforces CSRF on POST. The cleanest pattern is:
 
 1. Use the `@authfn/client` browser SDK from `+page.svelte` for sign-in / sign-up / OTP / OAuth — these flows need the CSRF cookie anyway.
-2. Use server-side `auth.router.fetch` from `+page.server.ts` only for actions that don't have a CSRF context (e.g. an admin tool calling on behalf of a user).
+2. Use server-side `auth.router.handle` from `+page.server.ts` only for actions that don't have a CSRF context (e.g. an admin tool calling on behalf of a user).
 
 For a form action that *does* run on cookie-authenticated users, redirect them through a normal POST to `/auth/...` rather than rebuilding the request server-side.
 

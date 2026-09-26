@@ -9,7 +9,7 @@ description: Bind scoped AuthFn user and session operations to an authorized ope
 
 ## Scoped capability
 
-The capability lists and gets users in the configured namespace and active region, deletes an in-scope user, lists that user's active sessions, and revokes a session. The host binds `createAuthFnAdminService(authFnConfig)` to `createAuthFnAdminAdapter(service)` and mounts the adapter in its authenticated Super Console dispatcher. `createAuthFnAdminClient(adminClient)` supplies typed calls for the same operations.
+The capability lists and gets users in the configured namespace, restricted to a region only when `AdminScope.region` is supplied, deletes an in-scope user, lists that user's active sessions, and revokes a session. The host binds `createAuthFnAdminService(authFnConfig)` to `createAuthFnAdminAdapter(service)` and mounts the adapter in its authenticated Super Console dispatcher. `createAuthFnAdminClient(adminClient)` supplies typed calls for the same operations.
 
 | Operation | Permission | Safety |
 | --- | --- | --- |
@@ -18,7 +18,7 @@ The capability lists and gets users in the configured namespace and active regio
 | List user sessions | `authfn.sessions.read` | Read, audited |
 | Revoke session | `authfn.sessions.revoke` | Destructive, recent-auth confirmation, audited |
 
-User deletion permanently removes the user and owned authentication state. Do not expose the capability without scope, permission, confirmation, and audit enforcement. The capability's namespace and region checks are additional to the host's operator authorization.
+User deletion permanently removes the user and owned authentication state. Do not expose the capability without scope, permission, confirmation, and audit enforcement. The capability always checks the namespace, but region checks are conditional on `scope.region`. Omitting the region allows operations across regions within the configured namespace. Hosts requiring region isolation must supply and authorize `scope.region` for every operation; these checks are additional to operator authorization.
 
 ## Operator authentication
 
