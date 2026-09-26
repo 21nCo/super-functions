@@ -3,8 +3,6 @@ title: Configuration
 description: Declare project identity, ports, processes, Compose services, and profiles.
 ---
 
-# Configuration
-
 DevFn discovers `devfn.config.ts`, `.js`, `.mjs`, `.cjs`, or `.json` while walking upward. Each manifest has `version: 1`, a stable `project.id`, and named profiles. It may define ports, native processes, Compose services, hostname routes, prerequisites, environment outputs, and a repository-relative organization policy.
 
 JavaScript-family manifests are executable but must be self-contained; imports and `require()` are rejected. JSON is parsed as data. Both forms require digest-bound trust before loading. Repository-relative paths reject absolute paths, `..` traversal, and symlink escape. References and dependency cycles are validated before lifecycle mutation.

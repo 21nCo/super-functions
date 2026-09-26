@@ -3,8 +3,6 @@ title: Configuration contract
 description: Manifest fields, ports, processes, services, profiles, and policy.
 ---
 
-# DevFn configuration reference
-
 DevFn discovers `devfn.config.ts`, `.js`, `.mjs`, `.cjs`, or `.json` while walking upward from the current directory. JavaScript-family manifests are executable code, require digest-bound trust, and must be self-contained (no imports or `require()`). JSON is data-only.
 
 ## Top-level manifest
@@ -25,7 +23,7 @@ DevFn discovers `devfn.config.ts`, `.js`, `.mjs`, `.cjs`, or `.json` while walki
 | `environmentOutputs` | no | Repository-relative dotenv or JSON runtime files and owner-only permission modes. |
 | `policy` | no | Repository-relative organization policy JSON path. |
 
-Every repository-relative path rejects absolute paths, `..` escape, and runtime symlink escape. References to ports, processes, services, profiles, dependencies, and hostname targets must resolve during validation. An explicitly configured but missing policy is an error; only the conventional unconfigured policy path is optional.
+Every repository-relative path rejects absolute paths, `..` escape, and runtime symlink escape. Validation resolves process/service dependencies, port references, profile selections, the default profile, and hostname targets/profile filters. It does not validate `prerequisites[].profiles` against known profiles; an unknown name silently skips that prerequisite in `doctor`. Check these filters explicitly. An explicitly configured but missing policy is an error; only the conventional unconfigured policy path is optional.
 
 ## Ports
 

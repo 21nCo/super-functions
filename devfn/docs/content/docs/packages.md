@@ -3,8 +3,6 @@ title: Packages
 description: Map DevFn's eight packages to their responsibilities.
 ---
 
-# Packages
-
 | Package | Responsibility |
 | --- | --- |
 | `@devfn/cli` | `devfn` command, initialization, diagnostics, lifecycle, and JSON receipts. |

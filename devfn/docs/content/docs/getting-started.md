@@ -3,8 +3,6 @@ title: Getting started
 description: Initialize, trust, inspect, and start a local profile.
 ---
 
-# Getting started
-
 Install or invoke `@devfn/cli` from the repository you want to run. `init` previews detected configuration; review it before accepting generated files. The first load of any manifest needs `--trust`, even for JSON, because it can declare lifecycle commands. Trust is bound to the exact manifest digest, so an edit requires review and trust again.
 
 ```sh

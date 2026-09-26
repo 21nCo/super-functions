@@ -3,8 +3,6 @@ title: "@devfn/cli"
 description: Source package guide for @devfn/cli.
 ---
 
-# DevFn
-
 DevFn runs heterogeneous local environments through one command contract while keeping application processes native and infrastructure Compose-backed where appropriate.
 
 ```bash

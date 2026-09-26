@@ -11,7 +11,4 @@ const assets = import.meta.glob("../../../static/**/*", {
 export const {
   loadDocsSiteSource,
   getCompiledDocsPage,
-  getCompiledDocsPost,
-  getDocsSiteCompiledCacheSummary,
-  createDocsSiteSearchRuntime,
 } = createDocsSiteRuntime(docsConfig, content, assets);

@@ -3,8 +3,6 @@ title: Reference
 description: DevFn configuration, security, migration, and package guides.
 ---
 
-# Reference
-
 The reference pages mirror existing source guides:
 
 - [Configuration contract](/docs/reference/configuration)
