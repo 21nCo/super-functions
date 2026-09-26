@@ -3,11 +3,9 @@ title: GitHub Action and publication
 description: Set up a credential-free review job and a separate trusted publisher.
 ---
 
-# GitHub Action setup
-
 The bundled composite is the credential-free review stage. It installs the pinned public CLI with lifecycle scripts disabled in a fresh runner-temporary directory, ignores checkout/user npm configuration, and invokes the installed entrypoint by absolute path while passing the checkout via --root. PR-local node_modules and executables cannot satisfy or shadow the launcher. Install the pinned CLI version, pull the pinned test image and build `reviewfn-codex:0.154.0` using the Dockerfile from the trusted harness package. Provision an inference-only Responses API proxy outside the untrusted review job. Set trusted base configuration to `action-proxy` with an explicit model, omit `harness.executable`, and provide an endpoint reachable from the Docker bridge.
 
-Use `pull_request` opened/synchronize/reopened or a maintainer-authorized dispatch. Checkout the exact head with full history and `persist-credentials: false`. Pin the Action to a reviewed commit. The review job needs only `contents: read`; it must not contain `GITHUB_TOKEN` in its environment or credentials cached in the checkout. Input values are transported through environment variables to quoted argv, and versions/commit IDs are validated before invoking npx.
+Use `pull_request` opened/synchronize/reopened or a maintainer-authorized dispatch. Checkout the exact head with full history and `persist-credentials: false`. Pin the Action to a reviewed commit. The review job needs only `contents: read`; it must not contain `GITHUB_TOKEN` in its environment or credentials cached in the checkout. Input values are transported through environment variables to quoted argv, and versions/commit IDs are validated before invoking the installed CLI entrypoint with `node`.
 
 Upload the caller-owned output directory with `actions/upload-artifact@v4` and a unique PR/head/run name. Include report JSON, rendered Markdown and its artifacts directory. Publish in a separate trusted job with `pull-requests: write`, `issues: write`, and `checks: write`, without checking out PR code. Pin/install the published CLI there, download only the artifact from the corresponding review job, and run:
 

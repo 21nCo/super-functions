@@ -21,7 +21,7 @@ const config: DocsConfig = {
   navigation: {
     topNav: [
       { label: "Docs", href: "/docs" },
-      { label: "Packages", href: "/docs/reference" },
+      { label: "Packages", href: "/docs/packages" },
       { label: "GitHub", href: "https://github.com/21nCo/super-functions/tree/dev/reviewfn", external: true },
     ],
     sidebars: {

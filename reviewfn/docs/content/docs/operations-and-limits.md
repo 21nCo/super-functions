@@ -3,8 +3,6 @@ title: Operations and limits
 description: Deployment gates, retention, and evidence boundaries.
 ---
 
-# Operations and limits
-
 ReviewFn's release gate runs package suites, Docker containment cases, Action shell-input tests, and an external installed CLI pipeline. Docker images, Composio/Linear access, GitHub publication credentials, and the inference proxy need explicit setup. Local docs validation cannot prove those hosted systems.
 
 The output is advisory. A `ready` verdict requires complete coverage and validated evidence; it is not a merge authorization. Required GitHub checks need a later calibrated policy and release. The publisher uses a neutral check and one profile summary for the exact reviewed head.

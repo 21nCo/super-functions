@@ -3,8 +3,6 @@ title: Report schema
 description: Execution, coverage, verdict, assessments, evidence, and findings.
 ---
 
-# Report schema version 1
-
 A report records three independent axes:
 
 - execution: `queued`, `running`, `completed`, `failed`, `canceled`, or `superseded`;

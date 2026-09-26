@@ -3,8 +3,7 @@
 > Evidence-backed advisory pull request reviews, isolated execution, and report contracts.
 
 This file concatenates the full text of every documentation page so it can be loaded into
-an LLM-based assistant in a single shot. For programmatic access, prefer the MCP server
-or the structured manifest emitted alongside this file.
+an LLM-based assistant in a single shot. For a page index, see /docs/llms.txt.
 
 # Documentation
 
@@ -13,8 +12,6 @@ or the structured manifest emitted alongside this file.
 
 > Install ReviewFn and run a local advisory review.
 
-
-# Getting started
 
 ReviewFn requires Node.js 22 or newer, Git, a supported Codex CLI, and Docker for approved tests. Install the CLI as a development dependency in the repository being reviewed:
 
@@ -27,7 +24,7 @@ npx reviewfn review --base origin/main --head HEAD --issue ENG-123
 
 `init` creates versioned `.reviewfn/config.json` and `.reviewfn/policy.json`. Review and edit them before running inference. `preflight` checks adapter, harness, model/auth, Docker, policy, and context compatibility. `review` captures committed revisions and writes `.reviewfn/output/report.json`, `.reviewfn/output/report.md`, and content-addressed evidence under `.reviewfn/output/artifacts` (or `<output>/artifacts` when `--output` is set). Ignore generated output and artifacts in the consumer repository.
 
-The local CLI also supports `render --input report.json` and `evaluate --input evaluation.json`. `publish` is a separate command for a trusted GitHub job. The [CLI source](https://github.com/21nCo/super-functions/blob/dev/reviewfn/cli/src/main.ts) lists the current flags. Use [configuration](/docs/reference/configuration) for adapters, model authentication, test argv, and retention settings.
+The local CLI also supports `render --input report.json` and `evaluate --input evaluation.json`. `publish` is a separate command for a trusted GitHub job. The [CLI source](https://github.com/21nCo/super-functions/blob/dev/reviewfn/cli/src/main.ts) lists the current flags. Use [configuration](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/configuration.md) for adapters, model authentication, test argv, and retention settings.
 
 For a setup without connected services, use only the `repository-markdown` context adapter. For Linear, configure `composio-linear` with an explicit account, expected workspace, and issue key. Never put credential values into the config files; `credentialEnv` records an environment variable name.
 
@@ -39,13 +36,11 @@ For a setup without connected services, use only the `repository-markdown` conte
 > Evidence-backed advisory pull request review.
 
 
-# ReviewFn
-
 ReviewFn reviews a frozen base/head change against issue and repository context. It runs approved tests in a disposable, isolated checkout, asks a compatible review harness for structured assessments, validates citations and evidence, and produces an advisory report. A separate trusted job can publish one current-head summary and a neutral GitHub check.
 
-The first release is advisory. It does not edit code, push, merge, or declare a passing review when context, execution, evidence, or head identity is incomplete. Start with the [CLI quick start](/docs/getting-started), follow the [review workflow](/docs/workflow), and configure the [security boundary](/docs/security) before reviewing untrusted PRs.
+The first release is advisory. It does not edit code, push, merge, or declare a passing review when context, execution, evidence, or head identity is incomplete. Start with the [CLI quick start](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/getting-started.md), follow the [review workflow](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/workflow.md), and configure the [security boundary](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/security.md) before reviewing untrusted PRs.
 
-The detailed [configuration](/docs/reference/configuration), [report schema](/docs/reference/report-schema), [GitHub Action](/docs/reference/github-action), and [evaluation](/docs/reference/evaluation) pages mirror the source guides in this repository. They describe the current `origin/dev` contract; verify the installed package version before assuming an earlier release has the same behavior.
+The detailed [configuration](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/configuration.md), [report schema](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/report-schema.md), [GitHub Action](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/github-action.md), and [evaluation](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/evaluation.md) pages mirror the source guides in this repository. They describe the current `origin/dev` contract; verify the installed package version before assuming an earlier release has the same behavior.
 
 ---
 
@@ -55,15 +50,13 @@ The detailed [configuration](/docs/reference/configuration), [report schema](/do
 > Deployment gates, retention, and evidence boundaries.
 
 
-# Operations and limits
-
 ReviewFn's release gate runs package suites, Docker containment cases, Action shell-input tests, and an external installed CLI pipeline. Docker images, Composio/Linear access, GitHub publication credentials, and the inference proxy need explicit setup. Local docs validation cannot prove those hosted systems.
 
 The output is advisory. A `ready` verdict requires complete coverage and validated evidence; it is not a merge authorization. Required GitHub checks need a later calibrated policy and release. The publisher uses a neutral check and one profile summary for the exact reviewed head.
 
-ReviewFn retains content-addressed artifacts and redacted logs. Transcripts require explicit `retainTranscript: true`. The CLI applies retention cleanup when saving a new run. Idle stores need scheduled `FileArtifactStore.deleteExpired()`, and an ambiguous retention or publication lock requires operator verification before removal. See [security details](/docs/reference/security).
+ReviewFn retains content-addressed artifacts and redacted logs. Transcripts require explicit `retainTranscript: true`. The CLI applies retention cleanup when saving a new run. Idle stores need scheduled `FileArtifactStore.deleteExpired()`, and an ambiguous retention or publication lock requires operator verification before removal. See [security details](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/security.md).
 
-Evaluation examples in the repository include retrospective, agent-labeled and limited live receipts. They are schema and integration evidence, not a held-out model quality estimate. Review [evaluation](/docs/reference/evaluation) before using these numbers to choose a model or policy.
+Evaluation examples in the repository include retrospective, agent-labeled and limited live receipts. They are schema and integration evidence, not a held-out model quality estimate. Review [evaluation](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/evaluation.md) before using these numbers to choose a model or policy.
 
 ---
 
@@ -72,8 +65,6 @@ Evaluation examples in the repository include retrospective, agent-labeled and l
 
 > Choose the ReviewFn package for each integration layer.
 
-
-# Packages
 
 | Package | Consumer responsibility |
 | --- | --- |
@@ -94,8 +85,6 @@ Each package is independently installable and has a separate `README.md`. The CL
 > Keep review execution separate from trusted advisory publishing.
 
 
-# GitHub publication
-
 `reviewfn/github/action.yml` is a composite action for the credential-free review stage. Pin the action and CLI version, check out the exact head with full history and no persisted credentials, and supply trusted base/head/PR identity. The review job uploads its report and artifacts. Public forks require an explicitly provisioned isolated proxy runner.
 
 In a separate trusted job, download only the artifact from that review job and run:
@@ -107,7 +96,7 @@ reviewfn publish --input "$REPORT" --repository "$REPOSITORY" \
 
 Derive those values from trusted workflow metadata, not the report artifact. The publisher needs GitHub write permissions for PR comments and checks and must not execute PR code. Use one repository/PR/profile concurrency group. Publication rechecks the current head before writes, maintains a single profile summary, and updates the same run's check idempotently. A head change during a GitHub write can leave a clearly labeled older-head comment; the next run replaces it.
 
-Checks remain neutral regardless of verdict. Version 0.1 does not support a `gate` output mode. The [full GitHub Action guide](/docs/reference/github-action) gives permissions, pinning, retries, lease recovery, and publisher-login details.
+Checks remain neutral regardless of verdict. Version 0.1 does not support a `gate` output mode. The [full GitHub Action guide](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/github-action.md) gives permissions, pinning, retries, lease recovery, and publisher-login details.
 
 ---
 
@@ -116,8 +105,6 @@ Checks remain neutral regardless of verdict. Version 0.1 does not support a `gat
 
 > Versioned config, policy, adapter selection, and execution limits.
 
-
-# Configuration
 
 ReviewFn uses versioned JSON files at `.reviewfn/config.json` and `.reviewfn/policy.json`. Unknown adapters fail preflight. Secret values never belong in either file; `credentialEnv` names an environment variable without recording its value.
 
@@ -149,8 +136,6 @@ Linear comment and document connection requests share a request budget equal to 
 > Measure frozen cases and report comparison confounds.
 
 
-# Evaluation
-
 `reviewfn evaluate --input evaluation.json` consumes frozen cases and observed outcomes. Each case records source/change digests, agent-authored requirements, known gaps, valid findings, acceptability, retrospective status and limitations.
 
 The result always includes numerators and denominators for requirement-extraction recall, gap-detection recall, finding precision, false-block rate, evidence validity and completion rate. Failed and missing outcomes remain in completion denominators. The false-block denominator includes only acceptable cases with an observed outcome; when none exist, the rate is null rather than zero. Runtime, tokens and measurable cost are reported only when observed; unavailable values remain null.
@@ -173,11 +158,9 @@ The executable release gate runs the package suites, Docker containment cases, A
 > Set up a credential-free review job and a separate trusted publisher.
 
 
-# GitHub Action setup
-
 The bundled composite is the credential-free review stage. It installs the pinned public CLI with lifecycle scripts disabled in a fresh runner-temporary directory, ignores checkout/user npm configuration, and invokes the installed entrypoint by absolute path while passing the checkout via --root. PR-local node_modules and executables cannot satisfy or shadow the launcher. Install the pinned CLI version, pull the pinned test image and build `reviewfn-codex:0.154.0` using the Dockerfile from the trusted harness package. Provision an inference-only Responses API proxy outside the untrusted review job. Set trusted base configuration to `action-proxy` with an explicit model, omit `harness.executable`, and provide an endpoint reachable from the Docker bridge.
 
-Use `pull_request` opened/synchronize/reopened or a maintainer-authorized dispatch. Checkout the exact head with full history and `persist-credentials: false`. Pin the Action to a reviewed commit. The review job needs only `contents: read`; it must not contain `GITHUB_TOKEN` in its environment or credentials cached in the checkout. Input values are transported through environment variables to quoted argv, and versions/commit IDs are validated before invoking npx.
+Use `pull_request` opened/synchronize/reopened or a maintainer-authorized dispatch. Checkout the exact head with full history and `persist-credentials: false`. Pin the Action to a reviewed commit. The review job needs only `contents: read`; it must not contain `GITHUB_TOKEN` in its environment or credentials cached in the checkout. Input values are transported through environment variables to quoted argv, and versions/commit IDs are validated before invoking the installed CLI entrypoint with `node`.
 
 Upload the caller-owned output directory with `actions/upload-artifact@v4` and a unique PR/head/run name. Include report JSON, rendered Markdown and its artifacts directory. Publish in a separate trusted job with `pull-requests: write`, `issues: write`, and `checks: write`, without checking out PR code. Pin/install the published CLI there, download only the artifact from the corresponding review job, and run:
 
@@ -204,17 +187,15 @@ The CLI preserves a named base ref as target-branch provenance. With SHA-only in
 > Source-aligned ReviewFn contracts and operational guides.
 
 
-# Reference
-
 These pages mirror the detailed Markdown guides in `reviewfn/docs` so existing repository links keep working:
 
-- [Configuration](/docs/reference/configuration)
-- [Security model](/docs/reference/security)
-- [GitHub Action and publication](/docs/reference/github-action)
-- [Report schema](/docs/reference/report-schema)
-- [Evaluation](/docs/reference/evaluation)
+- [Configuration](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/configuration.md)
+- [Security model](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/security.md)
+- [GitHub Action and publication](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/github-action.md)
+- [Report schema](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/report-schema.md)
+- [Evaluation](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/evaluation.md)
 
-The [package map](/docs/packages) and [CLI quick start](/docs/getting-started) provide a shorter entry point.
+The [package map](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/packages.md) and [CLI quick start](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/getting-started.md) provide a shorter entry point.
 
 ---
 
@@ -223,8 +204,6 @@ The [package map](/docs/packages) and [CLI quick start](/docs/getting-started) p
 
 > Execution, coverage, verdict, assessments, evidence, and findings.
 
-
-# Report schema version 1
 
 A report records three independent axes:
 
@@ -247,8 +226,6 @@ The validator rejects duplicate identifiers, unknown requirements/evidence/sourc
 
 > Trust boundaries, Docker containment, credentials, and retention.
 
-
-# Security model
 
 The trusted boundary contains the pinned installation, base-revision policy, context collector, coordinator and separate publisher. Repository files, retrieved text, test output and model output are untrusted.
 
@@ -285,15 +262,13 @@ Normalized Codex telemetry is capped at 10,000 retained events including a trunc
 > Prepare the trusted runner, containers, credentials, and output boundary.
 
 
-# Security and isolation
-
 Treat repository files, issue text, test output, and model output as untrusted. The trusted boundary contains the installed CLI, base-revision policy, context collector, coordinator, and separate publisher. In CI, pass `--trusted-config-from-base` so a PR cannot change the policy or executable that evaluates itself.
 
 Tests require a pinned Docker image with no network, no credentials, a read-only root, an unprivileged UID, and fixed CPU, memory, process, disk, and time limits. There is no host-execution fallback. PR inference requires the trusted `reviewfn-codex:0.154.0` image and an inference-only proxy; it must not receive a raw provider or GitHub publication token. Build that image from the packaged harness Dockerfile and provision the proxy before enabling reviews.
 
 The review CLI refuses `GITHUB_TOKEN` in its environment. Put publication in a separate trusted job that reads a retained report and verifies the PR, head, and profile from event metadata. The CLI rejects changed auto-loaded agent instruction and configuration paths before inference. Locally trusted API-key and ChatGPT modes are not PR inference modes.
 
-The [full security model](/docs/reference/security) records exact bounds, redaction, artifact retention, symlink protection, platform caveats, and cleanup rules. Review it before running against untrusted code.
+The [full security model](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/security.md) records exact bounds, redaction, artifact retention, symlink protection, platform caveats, and cleanup rules. Review it before running against untrusted code.
 
 ---
 
@@ -303,14 +278,12 @@ The [full security model](/docs/reference/security) records exact bounds, redact
 > Follow exact revisions from context capture to validated report.
 
 
-# Review workflow
-
 ReviewFn identifies the base, head, merge-base, diff, configuration, policy, prompt, harness, model, and budget for each run. It freezes authoritative issue and repository context before inference. A source adapter rejects a dirty review root, while the CLI clones committed input into its own checkout so mutable caller files are excluded.
 
 Approved test commands are argv arrays, not shell scripts. The test adapter runs them in a bounded Docker container against a committed archive. The review harness receives the frozen evidence and returns structured assessments and findings. The validator checks source IDs, requirements, exact-head code anchors, test receipts, evidence links, severity, and verdict consistency before a report can be ready.
 
 Every extracted requirement resolves to exactly one assessment. The report separates execution (`completed`, `failed`, and other states), coverage (`complete` or `incomplete`), and verdict (`ready`, `changes_requested`, or `needs_verification`). A completed model call alone does not imply a valid review. Missing context, malformed output, timeout, quota, cancellation, stale head, or unsupported auth remains visible in the report.
 
-Use the [report schema](/docs/reference/report-schema) for field-level rules and [security model](/docs/reference/security) for checkout, test, and inference isolation. To compare review quality, run [frozen evaluations](/docs/reference/evaluation) and retain their limitations.
+Use the [report schema](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/report-schema.md) for field-level rules and [security model](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/security.md) for checkout, test, and inference isolation. To compare review quality, run [frozen evaluations](https://github.com/21nCo/super-functions/blob/dev/reviewfn/docs/content/docs/reference/evaluation.md) and retain their limitations.
 
 ---

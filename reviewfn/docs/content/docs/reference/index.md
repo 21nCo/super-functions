@@ -3,8 +3,6 @@ title: Reference
 description: Source-aligned ReviewFn contracts and operational guides.
 ---
 
-# Reference
-
 These pages mirror the detailed Markdown guides in `reviewfn/docs` so existing repository links keep working:
 
 - [Configuration](/docs/reference/configuration)

@@ -3,8 +3,6 @@ title: Security model
 description: Trust boundaries, Docker containment, credentials, and retention.
 ---
 
-# Security model
-
 The trusted boundary contains the pinned installation, base-revision policy, context collector, coordinator and separate publisher. Repository files, retrieved text, test output and model output are untrusted.
 
 The CLI clones the committed target into an owned independent checkout. Mutable tracked and untracked caller files are excluded. The source adapter independently rejects dirty review roots. Configuration is loaded from the immutable base revision in CI; a PR cannot select its own executable, commands or limits. Global execution configuration must be controlled by the runner administrator.

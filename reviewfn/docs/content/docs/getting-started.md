@@ -3,8 +3,6 @@ title: Getting started
 description: Install ReviewFn and run a local advisory review.
 ---
 
-# Getting started
-
 ReviewFn requires Node.js 22 or newer, Git, a supported Codex CLI, and Docker for approved tests. Install the CLI as a development dependency in the repository being reviewed:
 
 ```sh

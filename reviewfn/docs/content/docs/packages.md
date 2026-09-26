@@ -3,8 +3,6 @@ title: Packages
 description: Choose the ReviewFn package for each integration layer.
 ---
 
-# Packages
-
 | Package | Consumer responsibility |
 | --- | --- |
 | `@superfunctions/reviewfn-cli` | `reviewfn` binary for init, preflight, review, render, publish, and evaluate. |

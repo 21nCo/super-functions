@@ -3,8 +3,6 @@ title: Configuration contract
 description: Versioned config, policy, adapter selection, and execution limits.
 ---
 
-# Configuration
-
 ReviewFn uses versioned JSON files at `.reviewfn/config.json` and `.reviewfn/policy.json`. Unknown adapters fail preflight. Secret values never belong in either file; `credentialEnv` names an environment variable without recording its value.
 
 In GitHub Actions, pass `--trusted-config-from-base`. ReviewFn reads both files using `git show BASE:path`, so a pull request cannot weaken the policy controlling its own review.

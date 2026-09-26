@@ -3,8 +3,6 @@ title: GitHub publication
 description: Keep review execution separate from trusted advisory publishing.
 ---
 
-# GitHub publication
-
 `reviewfn/github/action.yml` is a composite action for the credential-free review stage. Pin the action and CLI version, check out the exact head with full history and no persisted credentials, and supply trusted base/head/PR identity. The review job uploads its report and artifacts. Public forks require an explicitly provisioned isolated proxy runner.
 
 In a separate trusted job, download only the artifact from that review job and run:

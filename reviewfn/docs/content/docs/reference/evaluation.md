@@ -3,8 +3,6 @@ title: Evaluation contract
 description: Measure frozen cases and report comparison confounds.
 ---
 
-# Evaluation
-
 `reviewfn evaluate --input evaluation.json` consumes frozen cases and observed outcomes. Each case records source/change digests, agent-authored requirements, known gaps, valid findings, acceptability, retrospective status and limitations.
 
 The result always includes numerators and denominators for requirement-extraction recall, gap-detection recall, finding precision, false-block rate, evidence validity and completion rate. Failed and missing outcomes remain in completion denominators. The false-block denominator includes only acceptable cases with an observed outcome; when none exist, the rate is null rather than zero. Runtime, tokens and measurable cost are reported only when observed; unavailable values remain null.
