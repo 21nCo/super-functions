@@ -1,0 +1,4 @@
+{
+  "title": "SecFn",
+  "pages": ["index", "getting-started", "server", "scope-and-permissions", "secrets-and-sets", "runtime", "scanning", "audit-and-rate-limits", "migrations", "operations-and-limits", "reference"]
+}

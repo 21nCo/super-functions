@@ -1,4 +1,7 @@
-# @secfn/core
+---
+title: Core package
+description: Encryption, scanner, schema, and shared contracts.
+---
 
 Core contracts and pure utilities for SecFn V1.
 

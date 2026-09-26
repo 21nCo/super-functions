@@ -1,4 +1,7 @@
-# @secfn/server
+---
+title: Server package
+description: Control plane, runtime API, migration, and storage contract.
+---
 
 Adapter-backed SecFn server package.
 
