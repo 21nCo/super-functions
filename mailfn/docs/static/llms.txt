@@ -1,0 +1,31 @@
+# MailFn
+
+> Programmable inboxes, MIME evidence, scoped access, testing, and agent workflows.
+
+## Documentation
+
+- [Administration capability](https://mailfn.com/docs/administration) — Understand MailFn's Super Console resource and action contract.
+- [CLI and MCP](https://mailfn.com/docs/cli-and-mcp) — Operate inboxes with sanitized CLI output and narrow agent tools.
+- [Cloudflare runtime](https://mailfn.com/docs/cloudflare-runtime) — Provision Email Routing, D1, R2, Queues, and Worker handlers.
+- [Core and storage](https://mailfn.com/docs/core-and-storage) — Embed the provider-neutral service and supply durable adapters.
+- [Credentials and scope](https://mailfn.com/docs/credentials-and-scope) — Use one-time inbox credentials and narrow API permissions.
+- [Getting started](https://mailfn.com/docs/getting-started) — Create a scoped inbox, wait for mail, and extract a verification value.
+- [MailFn](https://mailfn.com/docs) — Programmable inboxes with durable MIME evidence and scoped APIs.
+- [Messages and evidence](https://mailfn.com/docs/messages-and-evidence) — Understand raw MIME, normalized messages, attachments, and retention.
+- [Operations and limits](https://mailfn.com/docs/operations-and-limits) — Release gate, retention, production flags, and live-service proof.
+- [Outbound through SendFn](https://mailfn.com/docs/outbound) — Compose drafts, replies, and forwards with a delivery adapter.
+- [@mailfn/cli](https://mailfn.com/docs/reference/cli) — Source package guide for MailFn cli.
+- [@mailfn/client](https://mailfn.com/docs/reference/client) — Source package guide for MailFn client.
+- [@mailfn/cloudflare](https://mailfn.com/docs/reference/cloudflare) — Source package guide for MailFn cloudflare.
+- [Consumer fixtures](https://mailfn.com/docs/reference/consumers) — Typechecked integration shapes used by the release gate.
+- [@mailfn/core](https://mailfn.com/docs/reference/core) — Source package guide for MailFn core.
+- [mailfn facade](https://mailfn.com/docs/reference/facade) — Source package guide for MailFn facade.
+- [Reference](https://mailfn.com/docs/reference) — MailFn domain, deployment, threat, and package contracts.
+- [@mailfn/mcp](https://mailfn.com/docs/reference/mcp) — Source package guide for MailFn mcp.
+- [Operations](https://mailfn.com/docs/reference/operations) — Cloudflare setup, queues, reconciliation, and release gates.
+- [@mailfn/sendfn](https://mailfn.com/docs/reference/sendfn) — Source package guide for MailFn sendfn.
+- [Specification](https://mailfn.com/docs/reference/spec) — MailFn domain and API contract.
+- [@mailfn/testing](https://mailfn.com/docs/reference/testing) — Source package guide for MailFn testing.
+- [Threat model](https://mailfn.com/docs/reference/threat-model) — Ingress, credentials, webhooks, retention, and deployment trust.
+- [Testing with inbox fixtures](https://mailfn.com/docs/testing) — Use expiring fixtures, deterministic waits, and scoped cleanup.
+- [Webhooks and domains](https://mailfn.com/docs/webhooks-and-domains) — Configure durable delivery and verified inbound domain routing.

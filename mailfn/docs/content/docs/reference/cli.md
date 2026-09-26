@@ -1,4 +1,7 @@
-# `@mailfn/cli`
+---
+title: "@mailfn/cli"
+description: Source package guide for MailFn cli.
+---
 
 Least-privilege MailFn CLI built with `@clifn/core`.
 

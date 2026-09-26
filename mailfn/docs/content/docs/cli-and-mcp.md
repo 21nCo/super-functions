@@ -1,6 +1,9 @@
-# `@mailfn/cli`
+---
+title: CLI and MCP
+description: Operate inboxes with sanitized CLI output and narrow agent tools.
+---
 
-Least-privilege MailFn CLI built with `@clifn/core`.
+`@mailfn/cli` ships the `mailfn` command for inbox create/list/get/delete, message list/read/attachments/wait/extract, token revoke, domain create/verify, and operations. It uses `@clifn/core` and applies command-aware sanitization in text and JSON modes.
 
 The following shell example requires `jq`; it captures the explicitly revealed credential without printing it and uses the inbox-scoped token for subsequent calls.
 
@@ -15,4 +18,4 @@ mailfn message wait "$inbox_id" --sender-domain example.com --subject Verify --t
 mailfn message extract "$inbox_id" msg_123 # Use the message ID returned by wait.
 ```
 
-Commands cover inbox create/list/get/delete, message list/read/attachments/wait/extract, token revoke, domain create/verify, and operations. Text and `--json` output pass through the same command-aware sanitizer. Message bodies, raw data, credentials, webhook secrets, and verification values are redacted by default. `message extract` is an explicit content action; `--show-content` explicitly opts into message content and `--show-secrets` explicitly reveals one-time credentials.
+`@mailfn/mcp` ships `mailfn-mcp` for expiring inbox creation, message wait/list/read, OTP/link extraction, and token revocation. Tool outputs are redacted by default, and sensitive values require an explicit read or extract action. Give the process an inbox-scoped token with only required scopes. See [CLI reference](/docs/reference/cli) and [MCP reference](/docs/reference/mcp).

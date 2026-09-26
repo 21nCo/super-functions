@@ -1,0 +1,663 @@
+# MailFn
+
+> Programmable inboxes, MIME evidence, scoped access, testing, and agent workflows.
+
+This file concatenates the full text of every documentation page so it can be loaded into
+an LLM-based assistant in a single shot. For a page index, see /docs/llms.txt.
+
+# Documentation
+
+<!-- page:docs:administration.md path:/docs/administration -->
+# Administration capability
+
+> Understand MailFn's Super Console resource and action contract.
+
+
+`@mailfn/admin` declares a required-product Super Console capability for MailFn resources and actions. It describes projects, inboxes, messages, domains, webhooks, operational controls, and related permissions through a typed admin manifest. Sensitive fields are marked for redaction, and higher-risk actions require explicit confirmation in the capability definition.
+
+The capability package is a contract, not a deployed control plane. The host must bind real MailFn services, authorization, audit, and credential handling. Do not expose reveal or destructive actions solely because the manifest declares them. See the [admin source](https://github.com/21nCo/super-functions/blob/dev/mailfn/admin/src/index.ts) for exact resource IDs and action schemas.
+
+---
+
+<!-- page:docs:cli-and-mcp.md path:/docs/cli-and-mcp -->
+# CLI and MCP
+
+> Operate inboxes with sanitized CLI output and narrow agent tools.
+
+
+`@mailfn/cli` ships the `mailfn` command for inbox create/list/get/delete, message list/read/attachments/wait/extract, token revoke, domain create/verify, and operations. It uses `@clifn/core` and applies command-aware sanitization in text and JSON modes.
+
+The following shell example requires `jq`; it captures the explicitly revealed credential without printing it and uses the inbox-scoped token for subsequent calls.
+
+```sh
+export MAILFN_URL=https://mail.example.com
+# MAILFN_PROJECT_TOKEN must already contain a project token allowed to create inboxes.
+created=$(MAILFN_TOKEN="$MAILFN_PROJECT_TOKEN" mailfn inbox create --expires 3600 --idempotency-key run-123 --json --show-secrets)
+export MAILFN_TOKEN=$(printf '%s' "$created" | jq -er '.credential.token')
+inbox_id=$(printf '%s' "$created" | jq -er '.inbox.id')
+unset created
+mailfn message wait "$inbox_id" --sender-domain example.com --subject Verify --timeout 30000
+mailfn message extract "$inbox_id" msg_123 # Use the message ID returned by wait.
+```
+
+`@mailfn/mcp` ships `mailfn-mcp` for expiring inbox creation, message wait/list/read, OTP/link extraction, and token revocation. Tool outputs are redacted by default, and sensitive values require an explicit read or extract action. Give the process an inbox-scoped token with only required scopes. See [CLI reference](/docs/reference/cli) and [MCP reference](/docs/reference/mcp).
+
+---
+
+<!-- page:docs:cloudflare-runtime.md path:/docs/cloudflare-runtime -->
+# Cloudflare runtime
+
+> Provision Email Routing, D1, R2, Queues, and Worker handlers.
+
+
+`@mailfn/cloudflare` supplies Email Worker ingress, the HTTP Worker API, D1 store and migrations, R2 objects, separate parse and webhook Queues, MIME parsing, signed webhooks, scheduled retention, and Cloudflare custom-domain operations.
+
+```ts
+import { createMailFnCloudflareHandlers } from "@mailfn/cloudflare";
+
+export default createMailFnCloudflareHandlers({
+  // Optional: sendAdapter supplied by your application.
+});
+```
+
+Copy the package's `wrangler.example.jsonc`, provision its bindings, apply `migrations/0001_mailfn.sql`, set a 32-byte `MAILFN_SECRET_KEY`, and ensure `MAILFN_STORAGE_REGION` matches the D1/R2 deployment location. `MAILFN_ADMIN_TOKEN` protects initial `POST /v1/admin/projects`; set `MAILFN_PROJECT_ID` after bootstrap. Custom domains need the exact zone ID and name. Public-platform, production-security, billing, and support flags default off.
+
+Ingress checks recipient lifecycle, sender policy, size, and quotas before reading MIME. It commits raw MIME to R2 before the D1 row, then enqueues parsing. Queue failure leaves a reconcilable row. Webhook deliveries use a separate Queue so endpoint latency cannot block MIME parsing. Read the [Cloudflare guide](/docs/reference/cloudflare), [operations](/docs/reference/operations), and [threat model](/docs/reference/threat-model) before deployment.
+
+For outbound SendFn composition, import `createSendFnAdapter` from `@mailfn/sendfn` and pass `sendAdapter: createSendFnAdapter(sendfn)` to `createMailFnCloudflareHandlers`. The configured `sendfn` instance is host-owned; the adapter is not exported by `@mailfn/cloudflare`.
+
+---
+
+<!-- page:docs:core-and-storage.md path:/docs/core-and-storage -->
+# Core and storage
+
+> Embed the provider-neutral service and supply durable adapters.
+
+
+`@mailfn/core` owns projects, inboxes, scoped credentials, inbound orchestration, normalized MIME results, raw and attachment evidence, waits, extraction, threads, labels, search, drafts, webhooks, domains, retention, audit, quotas, and operational controls. It has no Cloudflare dependency.
+
+```ts
+import {
+  MailFn,
+  MemoryMailFnObjectStore,
+  MemoryMailFnStore,
+  noOpSecretProtector,
+} from "@mailfn/core";
+
+const mailfn = new MailFn({
+  store: new MemoryMailFnStore(),
+  objects: new MemoryMailFnObjectStore(),
+  defaultDomain: "inbound.example.com",
+  secretProtector: noOpSecretProtector, // tests only
+});
+```
+
+The memory stores and no-op secret protector are for tests and local examples. A production host supplies durable `MailFnStore` and `MailFnObjectStore` implementations and an encrypted `MailFnSecretProtector`, plus appropriate Queue, MIME, webhook, domain, and SendFn adapters. The [core source guide](/docs/reference/core) and [specification](/docs/reference/spec) describe the domain contract.
+
+---
+
+<!-- page:docs:credentials-and-scope.md path:/docs/credentials-and-scope -->
+# Credentials and scope
+
+> Use one-time inbox credentials and narrow API permissions.
+
+
+Create inboxes with a project credential authorized for that action, then use the returned one-time inbox credential for the inbox's subsequent read and wait operations. Store it as a secret; do not log or display it by default. Revoke scoped tokens when a fixture or agent task ends.
+
+The CLI sanitizes text and JSON output by command. It redacts credentials, webhook secrets, raw data, message bodies, and verification values by default. `--show-secrets` explicitly reveals one-time credentials; `--show-content` explicitly reveals message content. The MCP server exposes narrow tools and redacted results; give agents only inbox-scoped credentials for their task.
+
+Public-platform outbound remains denied without explicit production-security approval, and verified sender domains are required by default. Review the [threat model](/docs/reference/threat-model) and [operations guide](/docs/reference/operations) for bootstrap, token, domain, webhook, and retention responsibilities.
+
+---
+
+<!-- page:docs:getting-started.md path:/docs/getting-started -->
+# Getting started
+
+> Create a scoped inbox, wait for mail, and extract a verification value.
+
+
+The `mailfn` facade exports `MailFnClient` and public core types. Point the client at a deployed MailFn `/v1` API using a token with the needed project scope. Creating an inbox returns its address and a one-time scoped credential; use that credential for subsequent inbox access.
+
+```ts
+import { MailFnClient } from "mailfn";
+
+const admin = new MailFnClient({
+  baseUrl: process.env.MAILFN_URL!,
+  token: process.env.MAILFN_TOKEN!,
+});
+
+const { inbox, credential } = await admin.createInbox({
+  kind: "expiring",
+  expirySeconds: 3600,
+  idempotencyKey: `signup:${crypto.randomUUID()}`,
+});
+
+const scoped = new MailFnClient({
+  baseUrl: process.env.MAILFN_URL!,
+  token: credential.token,
+});
+
+const result = await scoped.waitForMessages(inbox.id, {
+  senderDomain: "example.com",
+  subject: "Verify",
+  after: new Date().toISOString(),
+  timeoutMs: 30_000,
+});
+```
+
+`waitForMessages` returns a normal `{ status: "timeout", retryable: true }` result on timeout. Cancellation uses `AbortSignal`. Filter by sender, subject, time, and expected count when multiple messages may arrive. On a matched result, call `extractVerification` explicitly to retrieve an OTP or link. The [client guide](/docs/reference/client) lists the rest of the API.
+
+---
+
+<!-- page:docs:index.md path:/docs -->
+# MailFn
+
+> Programmable inboxes with durable MIME evidence and scoped APIs.
+
+
+MailFn accepts real email, stores original MIME as evidence, parses normalized messages and attachments, and exposes inbox operations through a provider-neutral core, a Cloudflare runtime, a typed client, a CLI, an MCP server, and test helpers. It composes outbound delivery through SendFn.
+
+Begin with [getting started](/docs/getting-started). Deployment operators should read the [Cloudflare runtime](/docs/cloudflare-runtime), [security boundary](/docs/credentials-and-scope), [threat model](/docs/reference/threat-model), and [operations guide](/docs/reference/operations) before receiving live mail.
+
+The package family targets `0.1.0` and API/event version `v1`. Public-platform mode, billing, support, future IMAP/SMTP/JMAP services, and production-security approval are separate gates that default off. Local build and release-gate results do not prove live DNS or Email Routing behavior.
+
+---
+
+<!-- page:docs:messages-and-evidence.md path:/docs/messages-and-evidence -->
+# Messages and evidence
+
+> Understand raw MIME, normalized messages, attachments, and retention.
+
+
+MailFn stores original MIME in object storage before the message row and parse job. The parse consumer normalizes content, writes attachment bytes, and resolves threading. The typed client exposes message list, read, search, raw download, attachments, labels, threads, and explicit OTP/link extraction. `readRaw` returns `Uint8Array` directly. `downloadAttachment` returns `{ attachment: AttachmentDescriptor, data: Uint8Array }`; use `result.data` for the bytes.
+
+The delivery identity is a SHA-256 fingerprint over normalized envelope plus raw evidence rather than sender-controlled `Message-ID`. A parse Queue failure leaves a recoverable `queue_failed` row. Scheduled work expires inboxes and independently enforces raw, attachment, message, and audit retention. Set those policies according to the application's evidence and privacy requirements.
+
+The client retries reads and explicitly idempotent writes within a bound; unsafe writes are not retried. Use idempotency keys on create or outbound flows, and keep an `AbortSignal` for cancellation. See the [client contract](/docs/reference/client), [operations](/docs/reference/operations), and [specification](/docs/reference/spec).
+
+---
+
+<!-- page:docs:operations-and-limits.md path:/docs/operations-and-limits -->
+# Operations and limits
+
+> Release gate, retention, production flags, and live-service proof.
+
+
+The MailFn release gate builds, tests, packs, installs, and imports every public package. It runs the Cloudflare adapter in workerd with local D1/R2, Email and Queue handlers, durable webhook replay, and concurrent quota checks, and typechecks Router-shaped and framework-neutral consumers from packed tarballs. Run `npm run gate:mailfn-release` from the repository root for this qualification.
+
+Provision D1, R2, Queues, Email Routing, secrets, migrations, and region settings before deploying. Queue failures require reconciliation; scheduled retention must run; webhook DNS targets must be direct public origins. Public-platform, billing, support, future protocol compatibility, and production-security approval are distinct gates. Outbound stays denied in public-platform mode without explicit production-security approval.
+
+The local gate does not prove live Cloudflare DNS or Email Routing, public production security, package publication, or an operated service. Review the [operations guide](/docs/reference/operations), [threat model](/docs/reference/threat-model), and [specification](/docs/reference/spec) for the full contract.
+
+---
+
+<!-- page:docs:outbound.md path:/docs/outbound -->
+# Outbound through SendFn
+
+> Compose drafts, replies, and forwards with a delivery adapter.
+
+
+`@mailfn/sendfn` adapts an existing SendFn service to MailFn outbound contracts. It prefers modern `sendEmail` and supports the legacy `email` method. MailFn does not embed delivery provider implementations.
+
+```ts
+import { createSendFnAdapter } from "@mailfn/sendfn";
+
+const sendAdapter = createSendFnAdapter(sendfn);
+```
+
+The adapter passes a stable draft idempotency key, reply `In-Reply-To` and `References`, attachment IDs, MailFn project/inbox metadata, and the logical sender address. The underlying SendFn implementation must honor idempotency keys. Public-platform outbound is gated by production-security approval, domain verification, scope, and daily quotas. See [SendFn adapter reference](/docs/reference/sendfn) and [operations](/docs/reference/operations).
+
+---
+
+<!-- page:docs:reference/cli.md path:/docs/reference/cli -->
+# @mailfn/cli
+
+> Source package guide for MailFn cli.
+
+
+Least-privilege MailFn CLI built with `@clifn/core`.
+
+The following shell example requires `jq`; it captures the explicitly revealed credential without printing it and uses the inbox-scoped token for subsequent calls.
+
+```sh
+export MAILFN_URL=https://mail.example.com
+# MAILFN_PROJECT_TOKEN must already contain a project token allowed to create inboxes.
+created=$(MAILFN_TOKEN="$MAILFN_PROJECT_TOKEN" mailfn inbox create --expires 3600 --idempotency-key run-123 --json --show-secrets)
+export MAILFN_TOKEN=$(printf '%s' "$created" | jq -er '.credential.token')
+inbox_id=$(printf '%s' "$created" | jq -er '.inbox.id')
+unset created
+mailfn message wait "$inbox_id" --sender-domain example.com --subject Verify --timeout 30000
+mailfn message extract "$inbox_id" msg_123 # Use the message ID returned by wait.
+```
+
+Commands cover inbox create/list/get/delete, message list/read/attachments/wait/extract, token revoke, domain create/verify, and operations. Text and `--json` output pass through the same command-aware sanitizer. Message bodies, raw data, credentials, webhook secrets, and verification values are redacted by default. `message extract` is an explicit content action; `--show-content` explicitly opts into message content and `--show-secrets` explicitly reveals one-time credentials.
+
+---
+
+<!-- page:docs:reference/client.md path:/docs/reference/client -->
+# @mailfn/client
+
+> Source package guide for MailFn client.
+
+
+Typed TypeScript client for a remote MailFn `/v1` API.
+
+```ts
+import { MailFnClient } from '@mailfn/client';
+
+const client = new MailFnClient({
+  baseUrl: 'https://mail.example.com',
+  token: () => loadScopedToken(),
+  timeoutMs: 30_000,
+  retries: 2,
+});
+```
+
+The client supports inbox/token lifecycle, message list/read/raw/attachments/wait/search/extraction/labels, threads, drafts/reply/forward/send, webhooks, custom domains, audit, operations, usage, abuse/reputation/support management, and compliance export. Reads and explicitly idempotent writes receive bounded retry; unsafe writes do not. `AbortSignal` cancellation and typed `MailFnClientError` metadata are preserved. `readRaw` returns `Uint8Array` directly. `downloadAttachment` returns `{ attachment: AttachmentDescriptor, data: Uint8Array }`; read its `data` field for bytes.
+
+---
+
+<!-- page:docs:reference/cloudflare.md path:/docs/reference/cloudflare -->
+# @mailfn/cloudflare
+
+> Source package guide for MailFn cloudflare.
+
+
+Cloudflare runtime adapter for MailFn: Email Worker ingress, Worker HTTP API, D1 store/migrations, R2 object storage, Queue producer/consumer, `postal-mime` parsing, signed webhooks, scheduled retention, and Cloudflare Email Routing custom-domain operations.
+
+```ts
+import { createMailFnCloudflareHandlers } from '@mailfn/cloudflare';
+
+export default createMailFnCloudflareHandlers({
+  // Optional: sendAdapter: createSendFnAdapter(sendfn)
+});
+```
+
+Copy `wrangler.example.jsonc`, provision the declared bindings, apply `migrations/0001_mailfn.sql`, and set a 32-byte `MAILFN_SECRET_KEY`. `MAILFN_STORAGE_REGION` must match the D1/R2 deployment location. `MAILFN_ADMIN_TOKEN` protects initial `POST /v1/admin/projects`; set `MAILFN_PROJECT_ID` after bootstrap. Custom domains require an exact `CLOUDFLARE_ZONE_ID` plus `CLOUDFLARE_ZONE_NAME`. Public-platform, production-security, billing, and support flags default off.
+
+The Email Worker preflights recipient lifecycle, sender policy, declared size, ingress quota, and stored-byte quota before reading raw MIME. Delivery identity is a SHA-256 fingerprint over normalized envelope plus raw evidence, not sender-controlled `Message-ID`. Raw MIME is then committed to R2 before the D1 row; the parse Queue job is sent last. Queue failures leave a reconcilable `queue_failed` row. Events and pending webhook deliveries are committed together, then webhook-delivery jobs use a separate Queue binding and consumer so endpoint latency cannot block MIME parsing; scheduled reconciliation recovers unsent or abandoned jobs. See the parent `OPERATIONS.md` and `THREAT_MODEL.md` before deployment.
+
+Webhook targets must resolve directly to public origin IP addresses. Cloudflare-proxied targets are rejected when the webhook is created because the Workers TCP socket API cannot connect to Cloudflare IP ranges; use a non-proxied DNS record or a direct-origin endpoint for webhook delivery.
+
+The package test command includes Node unit tests and a workerd integration suite using real local D1 and R2 bindings, Email/Queue handler invocation, D1 batch atomicity, durable webhook replay, and concurrent quota enforcement. A real Cloudflare Email Routing/DNS smoke remains an approval-gated pre-runtime-release operation.
+
+---
+
+<!-- page:docs:reference/consumers.md path:/docs/reference/consumers -->
+# Consumer fixtures
+
+> Typechecked integration shapes used by the release gate.
+
+
+These compile-only fixtures keep the reusable boundary honest:
+
+- `router-cloudflare.ts` models Router's Cloudflare Worker service shape and composes MailFn with SendFn without importing MailFn internals.
+- `framework-neutral.ts` proves an unrelated application can use the provider-neutral in-memory core and typed HTTP client.
+
+The MailFn release gate copies both fixtures into the clean tarball-install project and typechecks them there. They are validation inputs, not published packages and not production deployment configuration.
+
+---
+
+<!-- page:docs:reference/core.md path:/docs/reference/core -->
+# @mailfn/core
+
+> Source package guide for MailFn core.
+
+
+Provider-neutral MailFn domain service and contracts. It includes projects, stable/expiring inboxes, scoped credentials, inbound durability orchestration, MIME result normalization, raw/attachment evidence, waits, OTP/link extraction, threads, labels, search, drafts, SendFn-compatible outbound contracts, webhooks, custom domains, retention, audit, usage, quotas, abuse/support/compliance controls, and deterministic memory adapters.
+
+```ts
+import { MailFn, MemoryMailFnObjectStore, MemoryMailFnStore, noOpSecretProtector } from '@mailfn/core';
+
+const mailfn = new MailFn({
+  store: new MemoryMailFnStore(),
+  objects: new MemoryMailFnObjectStore(),
+  defaultDomain: 'inbound.example.com',
+  secretProtector: noOpSecretProtector, // tests only
+});
+
+const bootstrap = await mailfn.bootstrapProject({ slug: 'app', displayName: 'App' });
+```
+
+Production runtimes must provide durable `MailFnStore` and `MailFnObjectStore` implementations, an encrypted `MailFnSecretProtector`, and usually Queue, MIME, webhook, domain, and SendFn adapters. The core has no Cloudflare dependency.
+
+---
+
+<!-- page:docs:reference/facade.md path:/docs/reference/facade -->
+# mailfn facade
+
+> Source package guide for MailFn facade.
+
+
+Convenience facade for the MailFn TypeScript client and public core types.
+
+```ts
+import { MailFnClient, type Message, type WaitForMessageResult } from 'mailfn';
+```
+
+Use the focused `@mailfn/*` packages when embedding the domain service, deploying the Cloudflare runtime, integrating tests/agents, or composing SendFn.
+
+---
+
+<!-- page:docs:reference/index.md path:/docs/reference -->
+# Reference
+
+> MailFn domain, deployment, threat, and package contracts.
+
+
+Start with the detailed [specification](/docs/reference/spec), [threat model](/docs/reference/threat-model), and [operations guide](/docs/reference/operations). The [consumer fixtures](/docs/reference/consumers) describe package-boundary checks.
+
+Package guides: [core](/docs/reference/core), [Cloudflare](/docs/reference/cloudflare), [client](/docs/reference/client), [facade](/docs/reference/facade), [testing](/docs/reference/testing), [CLI](/docs/reference/cli), [MCP](/docs/reference/mcp), and [SendFn adapter](/docs/reference/sendfn).
+
+These pages mirror source Markdown under `mailfn/`. Keep source and site copies aligned when changing a public contract.
+
+---
+
+<!-- page:docs:reference/mcp.md path:/docs/reference/mcp -->
+# @mailfn/mcp
+
+> Source package guide for MailFn mcp.
+
+
+Agent-safe MCP server for focused MailFn workflows.
+
+```sh
+MAILFN_URL=https://mail.example.com MAILFN_TOKEN=... mailfn-mcp
+```
+
+Tools cover expiring inbox creation, message wait/list/read, OTP/link extraction, and token revocation. Tool schemas are narrow, results are redacted by default, and content or verification values require an explicit read/extract action. Give agents inbox-scoped credentials containing only the scopes needed for their task.
+
+---
+
+<!-- page:docs:reference/operations.md path:/docs/reference/operations -->
+# Operations
+
+> Cloudflare setup, queues, reconciliation, and release gates.
+
+
+## Cloudflare deployment inputs
+
+Use `@mailfn/cloudflare` and copy `wrangler.example.jsonc`. Provision one D1 database, one private R2 bucket, separate parse and webhook-delivery Queues with their own DLQs, an Email Routing Worker binding, and a scheduled retention trigger. Configure these secrets/variables:
+
+- `MAILFN_DOMAIN`, `MAILFN_SECRET_KEY` (32 random bytes, hex or base64)
+- `MAILFN_STORAGE_REGION`, matching the provisioned D1 location and R2 jurisdiction; a deployment accepts only this region
+- `MAILFN_ADMIN_TOKEN` for project bootstrap/admin operations
+- `MAILFN_PROJECT_ID` after bootstrap
+- optional `MAILFN_CORS_ORIGINS`
+- optional Cloudflare API token, zone ID, and Worker name for custom domains
+- custom domains also require `CLOUDFLARE_ZONE_NAME`; it must exactly match the authorized zone ID
+- keep `MAILFN_PUBLIC_PLATFORM_ENABLED`, production approval, billing, and support false until separately approved
+- keep `MAILFN_PROTOCOL_SERVICES_ENABLED=false`; HTTP/MCP availability never authorizes public IMAP/SMTP/JMAP services
+
+Apply `migrations/0001_mailfn.sql` or allow `createCloudflareMailFn` to run versioned migrations. Bootstrap once with `POST /v1/admin/projects`, store the returned project credential in a secret manager, then set the project ID used by administrative operations.
+Provision a separate Worker/D1/R2 deployment for every supported data region. MailFn rejects an allowlist that does not exactly match the deployment's declared storage region; region migration requires an explicit export/import operation and is not performed by configuration alone.
+
+## Health and observability
+
+`GET /health` confirms the Worker/API version. `GET /v1/operations/snapshot` reports active/expired inboxes, pending/failed parses, storage estimate, webhook failures, authorization failures, and rate-limit events with threshold alerts. Usage records support tenant billing/reconciliation but do not activate a billing provider.
+
+Alert on Queue DLQ growth, `queue_failed` or `parse_failed` messages, webhook quarantine, authorization/rate-limit spikes, R2/D1 errors, retention deletion failures, stored-byte growth, and Email Routing failures. Cloudflare logs must not capture Authorization headers or content-bearing bodies.
+
+Internal rollout succeeds only after a seven-day observation window meets all of these thresholds: at least 99.9% of accepted messages reach `ready` without operator repair, parse latency p95 is under 30 seconds, wait-to-visible latency p95 is under 35 seconds, the committed MIME extraction fixture set remains 100% deterministic, attachment/raw hash mismatches are zero, orphaned R2 objects found by reconciliation are zero, DLQ rate is below 0.1%, and MailFn-specific operational work is below one intervention per 1,000 accepted messages. Any threshold breach pauses expansion and triggers rollback to the prior Worker route.
+
+## Recovery
+
+- Queue outage: accepted messages remain `queue_failed` with raw MIME. Call `POST /v1/admin/reconcile` after Queue recovery.
+- Parse failure: raw MIME remains. Fix parser/configuration and replay the versioned job; consumers must tolerate at-least-once delivery.
+- Webhook outage: delivery state remains independent of message acceptance. Retry bounded transient failures; quarantine endpoints after repeated failures.
+- Retention deletion failure: message/attachment metadata remains so the next scheduled pass can retry. Review `retention.delete_failed` audits.
+- D1 metadata write after R2 raw write: raw cleanup is best effort. Inventory R2 keys without matching D1 IDs during maintenance.
+- R2 loss: normalized D1 message remains but raw/attachment retrieval fails; restore from bucket recovery if configured.
+- Project/inbox bootstrap: D1 batch transactions commit the resource and its initial credential/idempotency record together; a batch failure exposes neither.
+- Concurrent inbound duplicate: the unique D1 delivery constraint elects one canonical message; the losing request removes its own R2 object and quota reservations, then returns the canonical row.
+- Cloudflare delivery identity: normalized envelope plus SHA-256 raw evidence is the stable retry key. Do not substitute sender-controlled `Message-ID`. Distinct raw messages that reuse a header remain distinct; byte-identical envelope/raw evidence is intentionally treated as the same delivery.
+- Ingress reservations: each new hourly bucket deletes older bucket rows through the indexed cleanup path, bounding the durable rate-limit ledger.
+- Custom-domain activation: if D1 cannot persist the active rule ID, MailFn deletes the newly created provider rule. Rule creation first reuses a matching owned rule to make retry safe.
+- Outbound failure: a newly created daily quota reservation is released when SendFn rejects before accepting the send; queued/sent provider acceptance keeps one deterministic per-draft usage record.
+
+Before runtime changes, export D1 with `wrangler d1 export`, confirm R2 object-version recovery for the target bucket, and retain the prior Worker version and Email Routing rule ID. Restore validation must compare message IDs, raw object keys, attachment hashes, credential status, and schema version in a disposable environment. Rollback restores the previous Worker route and D1 export together; never roll schema state backward while leaving a newer Worker active.
+
+## Verification and release
+
+Before a package release, use Node 22 and run:
+
+```sh
+npm run gate:mailfn-release
+sqlite3 :memory: < mailfn/cloudflare/migrations/0001_mailfn.sql
+```
+
+Before a runtime release, additionally deploy to a non-production Cloudflare environment, bootstrap a disposable project, create an expiring inbox, deliver real multipart mail through Email Routing, verify raw/attachment hashes, OTP/link extraction, webhook signature/replay handling, Queue retry/DLQ, retention, custom-domain enable/disable, and log redaction. Run a restore rehearsal from the D1 export and R2 recovery configuration, then record the rollout thresholds above for Router and one unrelated consumer. Deployment, DNS mutation, registry publication, and public-platform approval require explicit authorization.
+
+---
+
+<!-- page:docs:reference/sendfn.md path:/docs/reference/sendfn -->
+# @mailfn/sendfn
+
+> Source package guide for MailFn sendfn.
+
+
+Outbound composition adapter between MailFn and SendFn.
+
+```ts
+import { createSendFnAdapter } from '@mailfn/sendfn';
+
+const adapter = createSendFnAdapter(sendfn);
+```
+
+The adapter prefers SendFn's modern `sendEmail` surface and supports the legacy `email` surface without embedding provider implementations in MailFn. It preserves a stable draft idempotency key, reply `In-Reply-To`/`References`, attachment IDs, MailFn project/inbox metadata, and the logical sender address. The underlying SendFn delivery implementation must honor the idempotency key. Public-platform outbound remains subject to MailFn production-security, domain, scope, and daily-quota gates.
+
+---
+
+<!-- page:docs:reference/spec.md path:/docs/reference/spec -->
+# Specification
+
+> MailFn domain and API contract.
+
+
+## Status and boundaries
+
+- Package release: `0.1.0`
+- HTTP API: `/v1`
+- Event envelope: version `1`
+- Queue jobs: `mailfn.parse` and `mailfn.webhook-delivery`, version `1`, on separate queue bindings so endpoint latency cannot delay MIME parsing
+- Initial deployment adapter: Cloudflare Email Workers + Workers + D1 + R2 + Queues
+- Outbound transport owner: SendFn through `@mailfn/sendfn`
+- Protocol clients in scope: TypeScript client, CLI, MCP, test helpers
+- Public multi-tenant launch: implemented as gated controls, not authorized or deployed
+
+The core package must not import Cloudflare APIs or embed provider DNS/routing policy. Runtime integrations supply provider-required DNS records and implement the contracts in `@mailfn/core`.
+
+## Domain model
+
+`Project` is the tenancy and environment boundary. An `Inbox` owns an address, lifecycle, labels, and optional expiry. `Credential` holds only a token hash plus explicit scopes and may be project- or inbox-bound. `Message` owns normalized headers/content and independent raw, attachment, and message expiry clocks. `Attachment` points to object storage and includes a SHA-256 digest. `Thread`, `Draft`, `Webhook`, `WebhookDelivery`, `MailDomain`, `AuditEvent`, and versioned `MailFnEvent` are durable entities.
+
+Tokens use the `mfn_<credential-id>_<secret>` form, are returned once, and are compared against a hash. Inbox-scoped credentials cannot cross inboxes or delegate permissions they do not hold. Idempotent inbox creation may replay the one-time token only when encrypted response storage is configured.
+
+## Core behavior by phase
+
+### Phase 0: definition and release design
+
+- Stable and expiring inboxes are first-class modes.
+- Stable defaults: message 30 days, raw 14 days, attachments 14 days, audit 365 days.
+- Expiring defaults: message/raw/attachments 24 hours, audit 90 days, delete on inbox expiry.
+- The core owns OTP and verification-link extraction so client, test, CLI, and MCP behavior cannot drift.
+- Initial waits use bounded long polling; webhooks supply push delivery.
+- Custom domains use reversible DNS verification and routing operations; provider-specific routing records belong to `MailFnDomainAdapter` implementations.
+- Semver governs packages; breaking API/event changes require a new major/versioned route or envelope.
+
+### Phase 1: inbound test inbox
+
+- Project bootstrap and stable/expiring inbox CRUD.
+- Scoped credentials, revocation, expiry, audit, atomic project/inbox/sender rate limits, stored-byte/outbound reservations, quotas, and idempotency.
+- Preflight recipient lifecycle, declared size, sender policy, ingress quota, and storage quota before consuming raw MIME; store raw before metadata and enqueue only after both durable writes.
+- Dedupe on `(inbox_id, provider_delivery_id)` for at-least-once delivery. Cloudflare derives this identity from normalized envelope plus raw SHA-256 evidence, never sender-controlled `Message-ID` alone.
+- Parse MIME, sanitize HTML, block remote images, normalize addresses/headers, hash attachments, and preserve raw evidence.
+- List, filter, paginate, read, download raw/attachments, wait with timeout/cancel, and extract OTP/link with source attribution.
+- Typed TypeScript client and deterministic memory adapters/tests.
+
+### Phase 2: integrations and operations
+
+- CLI text/JSON and MCP surfaces default to metadata/redaction and reveal content or one-time credentials only through explicit actions. MCP validates JSON-RPC requests, enforces initialization, and never replies to notifications.
+- Signed, timestamped, versioned webhooks have bounded retry, quarantine, DNS destination validation, and durable delivery-ID replay protection.
+- Cloudflare custom-domain adapter verifies expected DNS before enabling routing and can disable the routing rule.
+- Testing fixtures create expiring, idempotent inboxes and always dispose in lifecycle cleanup.
+- Scheduled retention, audit trail, usage records, reconciliation, and operational snapshots/alerts are implemented.
+
+### Phase 3: mailbox depth and outbound composition
+
+- Thread resolution uses `In-Reply-To`/`References` before normalized-subject fallback.
+- Labels and bounded message content search are scoped capabilities; the Cloudflare store maintains an FTS5 index transactionally with message rows.
+- Draft, reply, reply-all, and forward flows preserve thread metadata and attachment references.
+- Sending delegates to `MailFnSendAdapter`; `@mailfn/sendfn` adapts modern and legacy SendFn surfaces and propagates a stable per-draft idempotency key.
+- Delegated credentials are limited to an actor's existing scopes and inbox boundary.
+
+### Phase 4: gated public readiness
+
+- Tenant quotas, hourly project/inbox/sender ingress rate limiting, daily outbound limits, usage accounting, abuse/support case management, compliance exports/retention locks/deletion SLAs, region-bound deployments, and operational alert thresholds are implemented.
+- `PublicPlatformPolicy` defaults to disabled. Production-security approval, billing, support, verified-domain outbound, data residency, and future protocol services are explicit controls.
+- A repository implementation is not public-launch approval. Deployment, DNS, package publication, billing activation, outbound approval, and compliance attestation remain external release gates.
+
+## HTTP surface
+
+All JSON responses use `{ ok, data, error, meta: { requestId, version } }`. Binary raw/attachment responses use `Cache-Control: private, no-store`. Representative routes:
+
+- `POST /v1/admin/projects`
+- `POST|GET /v1/inboxes`; `GET|PATCH|DELETE /v1/inboxes/:id`
+- `POST|DELETE /v1/inboxes/:id/tokens[/:tokenId]`
+- `GET /v1/inboxes/:id/messages`; `POST .../wait`; `GET .../search`
+- `GET /v1/inboxes/:id/messages/:messageId[/raw|/attachments|/attachments/:attachmentId]`
+- `POST .../extract|/reply|/forward`; `PUT .../labels`
+- `GET /v1/inboxes/:id/threads`; `PUT .../threads/:threadId/labels`; `GET|POST /v1/inboxes/:id/drafts`; `GET|PATCH|DELETE /v1/drafts/:id`; `POST /v1/drafts/:id/send`
+- `POST /v1/webhooks`; `POST /v1/domains`; `POST /v1/domains/:id/verify`; `DELETE /v1/domains/:id`
+- `GET /v1/audit|/v1/operations/snapshot|/v1/billing/usage`
+- `GET|POST /v1/abuse`; `PATCH /v1/abuse/:id`; `GET /v1/reputation`; `PUT /v1/reputation/:sender`; `GET|POST /v1/support/cases`; `PATCH /v1/support/cases/:id`; `PUT /v1/compliance`; `GET /v1/compliance/export`
+- `POST /v1/admin/retention|/v1/admin/reconcile`
+
+## Failure invariants
+
+| Failure | Required result |
+| --- | --- |
+| R2 raw write fails | No D1 row or queue message; transient SMTP failure |
+| D1 message write fails | Best-effort raw cleanup; no queue message; transient failure |
+| Parse Queue send fails | Raw and D1 row remain; message becomes `queue_failed`; retry/reconcile is idempotent |
+| Webhook Queue send fails | Event and pending delivery remain in D1; scheduled delivery reconciliation retries it without blocking inbound mail |
+| Duplicate inbound delivery | Existing message returned; no duplicate row/event; failed queue may be retried |
+| MIME/attachment parse fails | Raw remains; partial attachment writes are cleaned; state becomes `parse_failed`; Queue retries/DLQ applies |
+| Webhook consumer fails | Accepted mail is not rolled back; delivery is failed/dead-lettered and repeated failures quarantine endpoint |
+| Object deletion fails | Metadata remains retryable; retention audits failure and continues other records |
+| Unknown/inactive/oversize/policy recipient | Permanent SMTP rejection with non-sensitive reason |
+
+## Acceptance
+
+The release gate must typecheck/build the package graph, pass unit/integration tests, create npm tarballs, install them into a clean temporary project, and import every public runtime. D1 migration SQL must execute in SQLite, schema and runtime migration definitions must cover every durable entity, and failure-mode tests must cover at-least-once dedupe, queue reconciliation, independent retention, object deletion retry, webhook isolation, credential containment, HTML sanitization, threading, extraction, and the public outbound gate.
+
+---
+
+<!-- page:docs:reference/testing.md path:/docs/reference/testing -->
+# @mailfn/testing
+
+> Source package guide for MailFn testing.
+
+
+Deterministic test primitives for MailFn.
+
+```ts
+import { withInboxFixture, waitForOtp } from '@mailfn/testing';
+
+await withInboxFixture(client, { testRunId: crypto.randomUUID() }, async ({ inbox }) => {
+  const after = new Date(Date.now() - 1).toISOString(); // Strict receivedAfter boundary.
+  // Trigger the product workflow with inbox.address.
+  const code = await waitForOtp(client, inbox.id, {
+    senderDomain: 'example.com',
+    subject: 'Verify',
+    after,
+    timeoutMs: 30_000,
+  });
+  expect(code.sourceMessageId).toBeTruthy();
+});
+```
+
+Fixtures are expiring and idempotent, and cleanup is safe to call more than once. `waitForOtp` and `waitForVerificationLink` throw `MailFnAssertionError` on timeout. Use `client.waitForMessages` for result-based timeout handling; cancellation rejects. Helpers provide deterministic assertions for sender, recipient, subject, content, headers, attachment metadata, sizes, and hashes.
+
+---
+
+<!-- page:docs:reference/threat-model.md path:/docs/reference/threat-model -->
+# Threat model
+
+> Ingress, credentials, webhooks, retention, and deployment trust.
+
+
+## Assets and trust boundaries
+
+The protected assets are mailbox addresses, raw MIME, normalized bodies, attachments, verification secrets, credential and webhook secrets, sender identity evidence, audit logs, usage records, and outbound authority. Trust boundaries exist at SMTP/Email Routing ingress, HTTP authentication, D1, R2, Queue jobs, webhook consumers, DNS/Cloudflare API calls, SendFn, CLI output, and MCP tool output.
+
+## Required controls
+
+- Credentials are random bearer secrets, stored only as hashes, returned once, explicitly scoped, revocable, and optionally expiring. Token comparisons and admin-token checks are constant-time.
+- Project/inbox ownership is checked before resource existence is disclosed. Inbox-scoped actors cannot cross inboxes or expand delegated scopes.
+- Raw MIME is evidence, never executable input. Parsed HTML removes scripts, event handlers, dangerous URLs, and remote-image loads. Attachment filenames and content types are normalized; bytes are hashed.
+- Size, project/inbox/sender message-rate, inbox-count, attachment-size, webhook-count, domain-count, stored-byte, and outbound limits are tenant policy, not client suggestions. Ingress counts, stored bytes, and outbound sends use durable atomic reservations.
+- Every Queue job and webhook event is versioned. Cloudflare ingress derives delivery identity from normalized envelope plus SHA-256 raw evidence rather than trusting sender-controlled `Message-ID`; byte-identical retries deduplicate before parsing while different raw messages sharing `Message-ID` remain distinct. Webhooks are HMAC-signed with timestamp and delivery ID; `verifyMailFnWebhookOnce` consumes delivery IDs through a durable replay store.
+- Raw, attachment, message, and audit retention clocks are independent. Deletion metadata advances only after object deletion succeeds.
+- CLI text and JSON plus MCP surfaces redact bodies, raw data, tokens, secrets, and verification values by default. Explicit extraction, content display, and one-time credential reveal are auditable opt-ins.
+- Custom-domain routing is enabled only after DNS verification, exact zone-ID/name authorization, and explicit Email Routing enablement. Rule creation is idempotent and persistence failure compensates by deleting the provider rule. Public outbound requires separate production-security approval and verified sender domains.
+- Errors and audits never include bearer tokens, webhook secrets, raw MIME, message bodies, or extracted verification values.
+
+## Abuse cases
+
+- Address enumeration: use generic recipient rejection reasons and avoid cross-tenant resource disclosure.
+- Inbox flooding/storage exhaustion: preflight recipient, lifecycle, sender policy, declared size, hourly ingress, stored-byte, and active-inbox quotas before consuming or parsing MIME. Completed hourly ingress buckets are aged before new reservations. Abuse signals lower durable sender reputation, and blocked senders are rejected before storage.
+- Open relay/spam: no SMTP submission exists in core; outbound requires SendFn, `send:write`, daily quota, platform approval, and domain policy.
+- Verification-code theft: source attribution, least-privilege inbox tokens, short-lived test inboxes, no-store responses, and redacted agent surfaces.
+- MIME parser exploits/tracking: treat parser as untrusted boundary, preserve raw separately, sanitize display HTML, block remote images, and cap attachment sizes.
+- Webhook SSRF/exfiltration: dispatch resolves A/AAAA evidence, rejects non-public destinations and redirects, and still requires a production egress policy to close DNS-rebinding races; secrets are encrypted at rest and delivery failure cannot roll back mail.
+- Replay/duplicate delivery: unique provider-delivery constraint, signed webhook timestamp/delivery ID, and idempotency keys.
+- DNS takeover or routing mistakes: require expected-record verification, scoped Cloudflare token, explicit routing creation, and reversible disable.
+
+## Public launch checklist
+
+Public launch remains blocked until production-security approval is explicitly set after external review of tenant isolation, egress/SSRF policy, domain ownership, abuse response, billing enforcement, support operations, compliance/data residency, deletion evidence, alert routing, incident runbooks, and any IMAP/SMTP/JMAP compatibility service. Code defaults alone do not satisfy those reviews.
+
+---
+
+<!-- page:docs:testing.md path:/docs/testing -->
+# Testing with inbox fixtures
+
+> Use expiring fixtures, deterministic waits, and scoped cleanup.
+
+
+`@mailfn/testing` provides expiring inbox fixtures, lifecycle hooks, OTP/link waits, and deterministic assertions. A fixture can supply a fresh address to the product workflow, wait with sender/subject/time filters, assert the result, and clean up safely even when called more than once.
+
+```ts
+import { withInboxFixture, waitForOtp } from "@mailfn/testing";
+
+await withInboxFixture(client, { testRunId: crypto.randomUUID() }, async ({ inbox }) => {
+  const after = new Date(Date.now() - 1).toISOString(); // Strict receivedAfter boundary.
+  // Trigger your product workflow with inbox.address.
+  const code = await waitForOtp(client, inbox.id, {
+    senderDomain: "example.com",
+    subject: "Verify",
+    after,
+    timeoutMs: 30_000,
+  });
+  expect(code.sourceMessageId).toBeTruthy();
+});
+```
+
+`waitForOtp` and `waitForVerificationLink` throw `MailFnAssertionError` on timeout or missing verification data. Use `client.waitForMessages` when you need to inspect a timeout result instead; cancellation still rejects. Assertions can cover sender, recipient, subject, content, headers, attachment metadata, sizes, and hashes. The [testing package guide](/docs/reference/testing) has the exact API.
+
+---
+
+<!-- page:docs:webhooks-and-domains.md path:/docs/webhooks-and-domains -->
+# Webhooks and domains
+
+> Configure durable delivery and verified inbound domain routing.
+
+
+MailFn persists events and pending webhook deliveries before enqueueing delivery work. A separate Queue binding and consumer handle webhook dispatch; scheduled reconciliation recovers unsent or abandoned jobs. Webhook handlers need signed delivery verification and idempotent processing in the receiving application.
+
+Webhook targets must resolve directly to public origin IP addresses. Cloudflare-proxied targets are rejected at creation because the Workers TCP socket API cannot connect to Cloudflare IP ranges. Use a non-proxied DNS record or direct-origin endpoint for webhook delivery.
+
+Custom domains require an exact Cloudflare zone ID and zone name, plus DNS and Email Routing setup owned by the deployment operator. Local workerd integration does not prove live DNS, provider routing, or mailbox deliverability. See the [Cloudflare guide](/docs/reference/cloudflare) and [operations reference](/docs/reference/operations).
+
+---

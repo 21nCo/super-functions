@@ -1,0 +1,4 @@
+{
+  "title": "MailFn",
+  "pages": ["index", "getting-started", "core-and-storage", "cloudflare-runtime", "credentials-and-scope", "messages-and-evidence", "testing", "outbound", "cli-and-mcp", "webhooks-and-domains", "administration", "operations-and-limits", "reference"]
+}
