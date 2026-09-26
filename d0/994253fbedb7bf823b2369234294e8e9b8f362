@@ -1,0 +1,49 @@
+mailfn/docs/README.md
+  s_ee6f287c08acb3::t_342a4ba59e8373 23,25
+mailfn/docs/docsfn.config.ts
+  s_ee6f287c08acb3::t_db757d89b49bc2 6
+mailfn/docs/package.json
+  s_ee6f287c08acb3::t_d3bdf5b75e1983 10,12-13
+mailfn/docs/scripts/generate-llms.mjs
+  s_ee6f287c08acb3::t_6219e748a64881 2,33-34
+mailfn/docs/src/lib/server/docs-site-source.ts
+  s_ee6f287c08acb3::t_6732e2d1091d95 7
+mailfn/docs/src/routes/+page.svelte
+  s_ee6f287c08acb3::t_027f1129df7237 2,28
+mailfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ee6f287c08acb3::t_1d4608e76a6d44 93,106
+mailfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_9241ca930904d6 43,65,95,109,148,160,176,190,208,348,350,647,661
+mailfn/docs/static/llms.txt
+  s_ee6f287c08acb3::t_adacfe8fe6cb2d 7-31
+mailfn/docs/tsconfig.json
+  s_ee6f287c08acb3::t_45395a83a9cdfa 19-20
+scripts/docs-site/LandingPage.svelte
+  s_ee6f287c08acb3::t_1ec839f6af8df2 1-216
+scripts/docs-site/README.md
+  s_ee6f287c08acb3::t_9e8f379b70d240 7,9,12-15
+scripts/docs-site/llms.mjs
+  s_ee6f287c08acb3::t_bf037dab02da9c 1-10,24-43
+scripts/docs-site/runtime.test.ts
+  s_ee6f287c08acb3::t_01230b73c21219 1-76
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_a21d5170648eed 215-218,354
+scripts/docs-site/vitest.config.ts
+  s_ee6f287c08acb3::t_f6a8e59c654514 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d0994253fbedb7bf823b2369234294e8e9b8f362",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
