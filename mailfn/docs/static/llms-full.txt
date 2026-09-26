@@ -666,7 +666,7 @@ Public launch remains blocked until production-security approval is explicitly s
 import { withInboxFixture, waitForOtp } from "@mailfn/testing";
 
 await withInboxFixture(client, { testRunId: crypto.randomUUID() }, async ({ inbox }) => {
-  triggerSignup(inbox.address);
+  // Trigger your product workflow with inbox.address.
   const code = await waitForOtp(client, inbox.id, {
     senderDomain: "example.com",
     subject: "Verify",
