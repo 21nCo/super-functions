@@ -1,0 +1,55 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EH524Z1RE8BKTHV5X4SYJW",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "botfn/docs/README.md",
+    "botfn/docs/content/docs/admin.md",
+    "botfn/docs/content/docs/discord-bot.md",
+    "botfn/docs/content/docs/getting-started.md",
+    "botfn/docs/content/docs/index.md",
+    "botfn/docs/content/docs/integrations.md",
+    "botfn/docs/content/docs/operations-and-limits.md",
+    "botfn/docs/content/docs/persistence.md",
+    "botfn/docs/content/docs/reference/commands-and-routes.md",
+    "botfn/docs/content/docs/reference/configuration.md",
+    "botfn/docs/content/docs/reference/index.md",
+    "botfn/docs/content/docs/reference/packages.md",
+    "botfn/docs/content/docs/slack-bot.md",
+    "botfn/docs/package.json",
+    "botfn/docs/scripts/generate-llms.mjs",
+    "botfn/docs/src/app.css",
+    "botfn/docs/src/lib/components/DocsSiteSearch.svelte",
+    "botfn/docs/src/lib/server/docs-site-source.ts",
+    "botfn/docs/src/routes/+layout.svelte",
+    "botfn/docs/src/routes/+page.server.ts",
+    "botfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "botfn/docs/src/routes/docs/search.json/+server.ts",
+    "botfn/docs/src/routes/search.json/+server.ts",
+    "botfn/docs/static/llms-full.txt",
+    "botfn/docs/svelte.config.js",
+    "botfn/docs/tsconfig.json",
+    "botfn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/layout.ts",
+    "scripts/docs-site/runtime.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 18969,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 937216,
+    "output_tokens": 5101,
+    "api_call_count": 9
+  }
+}
