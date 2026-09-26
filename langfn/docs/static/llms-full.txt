@@ -50,6 +50,55 @@ Trace listing and feedback require an authenticated actor. Their stored and quer
 
 HTTP provider errors omit upstream response bodies and metadata. SSE client disconnects cancel model work. See the [source router](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/http/routes.ts) and [release gate](/docs/reference/release-gate) for exact input and scope rules.
 
+## Mount an authenticated Node server
+
+```sh
+npm install langfn express @superfunctions/http-express
+npm install --save-dev tsx
+```
+
+This local single-user example requires `LANGFN_DEMO_TOKEN`, `OPENAI_API_KEY`, and `OPENAI_MODEL` in the server environment. Save it as `server.ts` and run `npx tsx server.ts`:
+
+```ts
+import express from "express";
+import { LangFn } from "langfn";
+import { OpenAIChatModel } from "langfn/models";
+import { createLangFnRouter } from "langfn/http";
+import { toExpress } from "@superfunctions/http-express";
+
+const token = process.env.LANGFN_DEMO_TOKEN;
+if (!token || !process.env.OPENAI_API_KEY || !process.env.OPENAI_MODEL) {
+  throw new Error("Set the demo token, provider key, and model");
+}
+const lang = new LangFn({ model: new OpenAIChatModel({
+  apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL,
+}) });
+const router = createLangFnRouter(lang, {
+  auth: {
+    validateBearerToken(value) {
+      return value === token ? {
+        id: "local-session", type: "bearer",
+        subject: { actorId: "local-user", actorType: "user", tenantId: "local" },
+      } : null;
+    },
+  },
+  maxBodyBytes: 1024 * 1024,
+});
+const app = express();
+app.use(express.raw({ type: "application/json", limit: "1mb" }));
+app.use("/api/langfn", toExpress(router));
+app.listen(3020);
+```
+
+```sh
+curl http://localhost:3020/api/langfn/complete \
+  -H "Authorization: Bearer $LANGFN_DEMO_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"Describe optimistic concurrency in one sentence."}'
+```
+
+Read the response envelope and check `ok` before using its data. Invalid credentials return an authentication error; oversized requests are rejected. In production, replace the demo token check with the host's session provider and configure the rate-limit provider. Keep model credentials server-side and configure scoped trace storage before enabling trace/feedback features. The mount prefix belongs to the HTTP adapter; the LangFn router's routes remain `/complete`, `/chat`, and so on.
+
 ---
 
 <!-- page:docs:index.md path:/docs -->
@@ -109,6 +158,61 @@ The current TypeScript source includes first-party chat adapters for OpenAI, Ant
 Provider `timeout` is a total response deadline, including streaming bodies, in milliseconds. Set `0` only when intentionally disabling it. Cancellation remains independent. For Google tool continuations, persist the returned assistant `message`, including `providerData`, before appending tool results; streamed chat emits a `message` event for the same purpose. `stream` is the prompt-only convenience method.
 
 The Google TypeScript adoption includes native SSE and signed tool continuation, but live Gemini qualification is a separate release gate. Python has not been migrated into this `origin/dev` worktree. Use the [source model exports](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/models/index.ts) for concrete constructors and options.
+
+## Construct a real provider
+
+Install `langfn`, keep API keys on the server, and set `OPENAI_API_KEY` and `OPENAI_MODEL` to credentials/model access available to your application:
+
+```ts
+import { OpenAIChatModel } from "langfn/models";
+
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing ${name}`);
+  return value;
+}
+const model = new OpenAIChatModel({
+  apiKey: required("OPENAI_API_KEY"),
+  model: required("OPENAI_MODEL"),
+  timeout: 30_000,
+});
+const response = await model.chat({
+  messages: [{ role: "user", content: "Explain optimistic concurrency in one sentence." }],
+  signal: AbortSignal.timeout(30_000),
+});
+console.log(response.message.content);
+console.log(response.usage?.total_tokens);
+```
+
+A successful response contains an assistant `message`; usage may be absent depending on the provider. Preserve that complete message when continuing a conversation. Calls throw on missing credentials, provider authentication failures, rate limits, and timeouts; handle these at your application boundary and avoid unconditional retries of tool side effects.
+
+Other first-party constructors use the same model contract:
+
+```ts
+import { AnthropicChatModel, GoogleChatModel, MistralChatModel, OllamaChatModel } from "langfn/models";
+
+const anthropic = new AnthropicChatModel({ apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.ANTHROPIC_MODEL });
+const google = new GoogleChatModel({ apiKey: process.env.GOOGLE_API_KEY, model: process.env.GOOGLE_MODEL });
+const mistral = new MistralChatModel({ apiKey: process.env.MISTRAL_API_KEY, model: process.env.MISTRAL_MODEL });
+const ollama = new OllamaChatModel({ baseUrl: "http://localhost:11434", model: process.env.OLLAMA_MODEL });
+```
+
+Validate required environment variables before constructing the selected provider. Model identifiers and access are provider/account-specific. For Ollama, run the local service and provision the model before calling it. These examples do not claim capability parity: consult the compatibility matrix before enabling tools or streaming for a provider.
+
+## Streaming and cancellation
+
+Continuing with `model` from the first example:
+
+```ts
+for await (const event of model.stream({
+  prompt: "Describe a safe retry policy.",
+  signal: AbortSignal.timeout(30_000),
+})) {
+  if (event.type === "content") process.stdout.write(event.delta);
+}
+```
+
+`stream` takes a prompt, not a conversation. Event types also carry usage, tool, and completion information; do not assume every event is a text delta. To get LangFn's tracing, policy, and orchestration layer, pass the provider to `new LangFn({ model })` from `langfn`.
 
 ---
 
@@ -345,6 +449,52 @@ LangFn exposes streaming model operations and a tool abstraction with JSON-schem
 
 Streaming HTTP responses cancel model work when clients disconnect. Configured retry signals remain active unless a per-call cancellation token overrides them. Read the [release gate contract](/docs/reference/release-gate) for these boundaries and the [tool source](https://github.com/21nCo/super-functions/tree/dev/langfn/typescript/src/tools) for concrete APIs.
 
+## Define and execute a validated tool
+
+The runtime parser and JSON schema serve different purposes: the parser validates actual calls; the JSON schema describes the tool to a model. Keep them equivalent.
+
+```ts
+import { Tool } from "langfn/tools";
+
+const textLength = new Tool<{ text: string }, { length: number }>({
+  name: "text_length",
+  description: "Count UTF-16 code units in a string.",
+  schema: {
+    jsonSchema: {
+      type: "object", properties: { text: { type: "string" } },
+      required: ["text"], additionalProperties: false,
+    },
+    parse(value) {
+      if (typeof value !== "object" || value === null || !("text" in value)
+          || typeof value.text !== "string" || Object.keys(value).length !== 1) {
+        throw new Error("Expected only a text string");
+      }
+      return { text: value.text };
+    },
+  },
+  execute: ({ text }) => ({ length: text.length }),
+});
+console.log(await textLength.run({ text: "hello" })); // { length: 5 }
+```
+
+An invalid argument rejects with `ToolSchemaError`; a handler failure is wrapped as `ToolExecutionError` unless it is already a LangFn error. Tool output passes through the execution context's policy sanitization/redaction. A custom tool must still enforce its own resource authorization.
+
+## Let an agent choose the tool
+
+Continuing with `textLength` above and a configured tool-capable `model` from [Models and providers](/docs/models-and-providers):
+
+```ts
+import { LangFn } from "langfn";
+import { ToolAgent } from "langfn/agents";
+
+const lang = new LangFn({ model });
+const agent = new ToolAgent({ lang, tools: [textLength], max_iterations: 3 });
+const result = await agent.run("Use text_length to count hello.");
+console.log(result.output);
+```
+
+The loop validates arguments, executes registered tools, and appends tool results to the conversation. Exhausting the iteration limit throws `AgentMaxIterationsError`. Register only the tools the current user is authorized to use; prompts do not grant authority.
+
 ---
 
 <!-- page:docs:workflows.md path:/docs/workflows -->
@@ -360,5 +510,43 @@ Subpath exports include chains, parallel orchestration, routers, state graphs, a
 Graph resumption requires a checkpoint store with atomic `take(id)`; a save/load-only custom store fails before node execution. The built-in in-memory store keeps up to 1000 entries, evicts the oldest, and does not survive process restart. A consumed checkpoint cannot be replayed after a failed node; reconcile any external effect at the application layer. This is at-most-once checkpoint admission, not exactly-once execution.
 
 Inject a durable store for cross-process recovery and test its atomic consumption under concurrency. The [state graph source](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/graph/state_graph.ts) and [checkpoint interface](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/graph/checkpoint.ts) define the contract.
+
+## A runnable sequential workflow
+
+```ts
+import { Chain } from "langfn/orchestration";
+
+const summarize = Chain.sequential([
+  (input: string) => input.trim(),
+  (input: string) => ({ text: input, characters: input.length }),
+]);
+console.log(await summarize.run("  example  "));
+// { text: "example", characters: 7 }
+```
+
+Each step receives the previous step's output. An exception rejects `run()` and later steps do not execute. A model call can be a step, for example `(text: string) => model.complete({ prompt: text })`; add cancellation and bounds when integrating external calls.
+
+## Parallel and routed work
+
+```ts
+import { Chain } from "langfn/orchestration";
+
+const analyze = Chain.parallel<string>([
+  (text) => text.length,
+  (text) => text.toUpperCase(),
+]);
+console.log(await analyze.run("hello")); // [5, "HELLO"]
+
+const route = Chain.router<string, string>({
+  router: (text) => text.length > 20 ? "long" : "short",
+  routes: {
+    long: (text) => text.slice(0, 20),
+    short: (text) => text,
+  },
+});
+console.log(await route.run("hello")); // hello
+```
+
+Parallel results preserve step order. A router selecting an unregistered key throws a validation error. Chains are in-process composition; they do not provide durable checkpoints. Use the graph API and an appropriate checkpoint store when the host must resume across interruptions.
 
 ---
