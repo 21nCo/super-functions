@@ -9,6 +9,8 @@ Install or invoke `@devfn/cli` from the repository you want to run. `init` previ
 
 ```sh
 npx @devfn/cli init
+# Review the preview, then write the manifest:
+npx @devfn/cli init --yes
 npx @devfn/cli doctor --trust
 npx @devfn/cli up --profile default
 npx @devfn/cli status --json
