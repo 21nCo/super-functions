@@ -9,7 +9,7 @@ const ROOT = resolve(__dirname, "..");
 const CONTENT_DIR = join(ROOT, "content", "docs");
 const PUBLIC_DIR = join(ROOT, "public");
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://datafn.21n.co";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://datafn.com";
 
 const HEADER = `# DataFn Documentation
 
