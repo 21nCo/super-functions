@@ -1,0 +1,14 @@
+{
+  "title": "CliFn",
+  "pages": [
+    "index",
+    "getting-started",
+    "cli-builder",
+    "output-and-diagnostics",
+    "configuration",
+    "credentials-and-client",
+    "automation",
+    "interaction-and-stdio",
+    "reference"
+  ]
+}
