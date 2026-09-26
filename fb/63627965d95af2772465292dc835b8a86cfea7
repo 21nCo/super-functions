@@ -1,0 +1,102 @@
+mcpfn/docs/content/docs/server.md
+  s_4e0e6cec9d8f32::t_121d53fc3a3594 1-36
+mcpfn/docs/content/docs/getting-started.md
+  s_4e0e6cec9d8f32::t_121d53fc3a3594 1-61
+mcpfn/docs/content/docs/deployment.md
+  s_4e0e6cec9d8f32::t_121d53fc3a3594 1-20
+mcpfn/docs/content/docs/reference/index.md
+  s_4e0e6cec9d8f32::t_121d53fc3a3594 1-19
+mcpfn/docs/content/docs/authorization.md
+  s_4e0e6cec9d8f32::t_121d53fc3a3594 1-37
+mcpfn/docs/README.md
+  s_4e0e6cec9d8f32::t_96eaa72ad62a53 21
+  s_4e0e6cec9d8f32::t_7c5656e6031be1 1-20
+mcpfn/docs/content/docs/testing.md
+  s_4e0e6cec9d8f32::t_121d53fc3a3594 1-44
+mcpfn/docs/content/docs/index.md
+  s_4e0e6cec9d8f32::t_121d53fc3a3594 1-30
+mcpfn/docs/content/docs/migration.md
+  s_4e0e6cec9d8f32::t_121d53fc3a3594 1-14
+mcpfn/docs/docsfn.config.ts
+  s_4e0e6cec9d8f32::t_96eaa72ad62a53 1-36
+mcpfn/docs/vite.config.ts
+  s_4e0e6cec9d8f32::t_7c5656e6031be1 1-28
+mcpfn/docs/content/docs/client.md
+  s_4e0e6cec9d8f32::t_121d53fc3a3594 1-37
+mcpfn/docs/.gitignore
+  s_4e0e6cec9d8f32::t_2af290263d493d 1-10
+mcpfn/docs/content/docs/meta.json
+  s_4e0e6cec9d8f32::t_25de06601c278c 1-14
+mcpfn/docs/content/docs/reference/architecture.md
+  s_4e0e6cec9d8f32::t_6178862719d318 1-180
+mcpfn/docs/content/docs/reference/auth.md
+  s_4e0e6cec9d8f32::t_d16506b1f88f48 1-98
+mcpfn/docs/content/docs/reference/cli.md
+  s_4e0e6cec9d8f32::t_fb4505ec9e0353 1-69
+mcpfn/docs/content/docs/reference/client.md
+  s_4e0e6cec9d8f32::t_8e28ccd5d317ee 1-49
+mcpfn/docs/content/docs/reference/core.md
+  s_4e0e6cec9d8f32::t_2b9e211cd21afb 1-227
+mcpfn/docs/content/docs/reference/datafn.md
+  s_4e0e6cec9d8f32::t_83a6c6931541aa 1-60
+mcpfn/docs/content/docs/reference/inspector.md
+  s_4e0e6cec9d8f32::t_e399ffb029d350 1-48
+mcpfn/docs/content/docs/reference/meta.json
+  s_4e0e6cec9d8f32::t_6971544880ad61 1-15
+mcpfn/docs/content/docs/reference/testing-and-ci.md
+  s_4e0e6cec9d8f32::t_2704416ca556c8 1-202
+mcpfn/docs/content/docs/reference/testing.md
+  s_4e0e6cec9d8f32::t_7a828974ee3794 1-303
+mcpfn/docs/package.json
+  s_4e0e6cec9d8f32::t_b0c427330446b8 1-34
+mcpfn/docs/scripts/generate-llms.mjs
+  s_4e0e6cec9d8f32::t_b73b5ae5bf80e2 1-39
+mcpfn/docs/src/app.css
+  s_4e0e6cec9d8f32::t_3d8264bb8b0f2e 1-72
+mcpfn/docs/src/app.html
+  s_4e0e6cec9d8f32::t_14f105ffea2d85 1-11
+mcpfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_4e0e6cec9d8f32::t_3f0d7b554f41b4 1-17
+mcpfn/docs/src/lib/server/docs-site-source.ts
+  s_4e0e6cec9d8f32::t_83396194e284bd 1-501
+mcpfn/docs/src/routes/+layout.server.ts
+  s_4e0e6cec9d8f32::t_82cf5bb10634c6 1-8
+mcpfn/docs/src/routes/+layout.svelte
+  s_4e0e6cec9d8f32::t_7cce45cf0c21c3 1-88
+mcpfn/docs/src/routes/+page.server.ts
+  s_4e0e6cec9d8f32::t_a77d471636fabf 1-6
+mcpfn/docs/src/routes/+page.svelte
+  s_4e0e6cec9d8f32::t_6d0ae6d5b22c99 1-231
+mcpfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_4e0e6cec9d8f32::t_ad8cbe542dbdb4 1-120
+mcpfn/docs/src/routes/docs/[...slug]/+page.svelte
+  s_4e0e6cec9d8f32::t_40966db690b008 1-41
+mcpfn/docs/src/routes/search.json/+server.ts
+  s_4e0e6cec9d8f32::t_8a231d9ef18341 1-8
+mcpfn/docs/static/llms-full.txt
+  s_4e0e6cec9d8f32::t_b3709d3288e919 1-1615
+mcpfn/docs/static/llms.txt
+  s_4e0e6cec9d8f32::t_1eedbdd5ca8d35 1-24
+mcpfn/docs/svelte.config.js
+  s_4e0e6cec9d8f32::t_1fe0a105a08dcd 1-24
+mcpfn/docs/tsconfig.json
+  s_4e0e6cec9d8f32::t_dd094903807b0b 1-33
+package-lock.json
+  s_4e0e6cec9d8f32::t_06fa86880926df 14687-14802,25341-25344
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fb63627965d95af2772465292dc835b8a86cfea7",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e6cec9d8f32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0db9a-51eb-7103-aa3b-7788a41ce0bf",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
