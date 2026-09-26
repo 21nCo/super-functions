@@ -1,0 +1,20 @@
+---
+title: Administration
+description: Bind SearchFn's operator capability to a scope-isolated adapter.
+---
+
+`@searchfn/admin` exposes a Super Console capability over a configured `SearchAdapter`. The host supplies two callbacks: `adapter(context)` returns an adapter already isolated to the active scope and optional namespace or region, and `resources(context)` returns index names visible in that same scope. The capability does not create an authorization boundary around a shared cross-tenant adapter for you.
+
+```ts
+import { createSearchFnAdminAdapter, createSearchFnDomainAdminService } from "@searchfn/admin";
+
+const service = createSearchFnDomainAdminService({
+  adapter: (context) => resolveAuthorizedSearchAdapter(context),
+  resources: (context) => visibleIndexes(context),
+});
+const admin = createSearchFnAdminAdapter(service);
+```
+
+The host must authenticate the operator, enforce permission and scope in the shared admin dispatcher, and audit writes. The bound capability lists or gets adapter backends, index collections, and health. It can index one document, batch-index, remove a document, and clear an index. Removal and clear are destructive operations requiring confirmation. The package exports a broader action inventory, but the current domain adapter does not mount reindex, schema, synonym, ranking, key rotation, or snapshot restore actions.
+
+Document targets use `resource:id`. Percent-encode resource names containing `:`; use `resource:number:<id>` for a numeric ID and `resource:string:<percent-encoded-id>` for an arbitrary string ID. Cursors are bound to scope and the list query. See the [capability source](https://github.com/21nCo/super-functions/blob/dev/searchfn/admin/src/index.ts) and [domain service](https://github.com/21nCo/super-functions/blob/dev/searchfn/admin/src/domain-service.ts) for exact operation schemas.

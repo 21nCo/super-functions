@@ -1,55 +1,41 @@
 ---
 title: Flask
-description: Mount SearchFn into a Flask app.
+description: Bridge async Python SearchFn handlers into Flask.
 ---
 
-## 1. Install
-
-```bash
-pip install flask searchfn datafn
+```sh
+pip install searchfn flask
 ```
-
-## 2. App
 
 ```python
-from flask import Flask, request, jsonify
 import asyncio
-import os
-
+from flask import Flask, jsonify, request
+from werkzeug.exceptions import BadRequest, UnsupportedMediaType
 from searchfn import create_searchfn_server
-from datafn.db import PostgresAdapter
-from schema import schema
-
-db = PostgresAdapter(connection_string=os.environ["SEARCH_DB_URL"])
-
-search_plugin = create_searchfn_server({
-    "schema": schema,
-    "db": db,
-})
+from myapp.storage import schema, db
 
 app = Flask(__name__)
+plugin = create_searchfn_server({"schema": schema, "db": db})
 
-for path, handler in search_plugin["routes"].items():
-    def make_view(_handler):
-        def view():
-            return jsonify(asyncio.run(_handler(request.get_json())))
-        return view
-    app.add_url_rule(path, endpoint=f"sf{path}", view_func=make_view(handler), methods=["POST"])
+def wrap(handler):
+    def view():
+        try:
+            payload = request.get_json()
+        except (BadRequest, UnsupportedMediaType):
+            return jsonify({"ok": False, "error": "Expected a JSON object"}), 400
+        if not isinstance(payload, dict):
+            return jsonify({"ok": False, "error": "Expected a JSON object"}), 400
+        result = asyncio.run(handler(None, payload))
+        return jsonify(result), (200 if result.get("ok") else 400)
+    return view
 
-if __name__ == "__main__":
-    app.run(port=8000)
+for spec, handler in plugin["routes"].items():
+    method, path = spec.split(" ", 1)
+    app.add_url_rule(path, endpoint=f"searchfn_{path.rsplit('/', 1)[-1]}", view_func=wrap(handler), methods=[method])
 ```
 
-Flask is synchronous; the wrapper bridges Python's async SearchFn into Flask's sync request lifecycle via `asyncio.run`. For higher throughput consider Starlette or FastAPI.
+For a synchronous Flask host, the wrapper runs each async handler in its own event loop. Check whether your database adapter supports that lifecycle; an async-native framework may fit better for a high-throughput service. Authenticate search requests and restrict indexing to operators.
 
-## 3. Smoke test
+The host must provision `<table_prefix>index` (default `_searchfn_index`) and authorize both routes. `searchfn` does not import DataFn or set up database tables. For a standalone adapter example, see the [Python source README](https://github.com/21nCo/super-functions/blob/dev/searchfn/python/README.md).
 
-```bash
-curl -X POST http://localhost:8000/searchfn/index -H 'content-type: application/json' -d '{"model":"products"}'
-curl -X POST http://localhost:8000/searchfn/search -H 'content-type: application/json' -d '{"query":"laptop"}'
-```
-
-## Next steps
-
-- [Python reference](/docs/reference/python)
-- [Production scaling](/docs/documentation/deploy/scaling)
+See [Python setup](/docs/documentation/python/setup) and [HTTP mount](/docs/documentation/python/http-mount).

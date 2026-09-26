@@ -13,33 +13,29 @@ npm install @searchfn/client @searchfn/adapter-indexeddb @searchfn/server @searc
 
 ## 2. Server route
 
-`src/routes/searchfn/+server.ts`:
+`src/routes/searchfn/[...path]/+server.ts`:
 
 ```typescript
-import { json } from "@sveltejs/kit";
+import type { RequestHandler } from "./$types";
 import { createSearchFnServer } from "@searchfn/server";
 import { PostgresAdapter } from "@searchfn/adapter-postgres";
 import { SEARCH_DB_URL } from "$env/static/private";
 
+const adapter = new PostgresAdapter({ connectionString: SEARCH_DB_URL });
 const sf = await createSearchFnServer({
-  adapter: new PostgresAdapter({ connectionString: SEARCH_DB_URL }),
+  adapter,
   basePath: "/searchfn",
 });
 
-await sf.adapter.initialize?.({
+await adapter.initialize({
   resources: [{ name: "notes", searchFields: ["title", "body"] }],
 });
 
-export const GET = async ({ request }) =>
-  sf.router.handle({ method: "GET", url: request.url, headers: request.headers });
+export const GET: RequestHandler = async ({ request }) =>
+  sf.router.handle(request);
 
-export const POST = async ({ request }) =>
-  sf.router.handle({
-    method: "POST",
-    url: request.url,
-    headers: request.headers,
-    body: request.body,
-  });
+export const POST: RequestHandler = async ({ request }) =>
+  sf.router.handle(request);
 ```
 
 Run the Postgres migrations once — see the [PostgresAdapter reference](/docs/reference/adapters/postgres).

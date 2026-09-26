@@ -27,6 +27,7 @@ This document is intended for large language models and agentic developer tools.
 
 ## Documentation
 
+- [Administration](https://searchfn.com/docs/documentation/administration): Bind SearchFn's operator capability to a scope-isolated adapter.
 - [Migrating Between Adapters](https://searchfn.com/docs/documentation/advanced/adapter-migration): Move from Memory → Postgres → Meilisearch → Elasticsearch without downtime.
 - [Writing an Adapter](https://searchfn.com/docs/documentation/advanced/writing-an-adapter): Implement SearchAdapter against your own backend — full guide.
 - [Diagnostics](https://searchfn.com/docs/documentation/apple/diagnostics): Opt-in event sink for observing SearchFn lifecycle on Apple.
@@ -56,11 +57,11 @@ This document is intended for large language models and agentic developer tools.
 - [Performance](https://searchfn.com/docs/documentation/performance): Where to look when SearchFn is slow.
 - [Indexing Throughput](https://searchfn.com/docs/documentation/performance/indexing-throughput): Make backfills and bulk indexing fast.
 - [Query Latency](https://searchfn.com/docs/documentation/performance/query-latency): Where the milliseconds go and how to claw them back.
-- [HTTP Mount](https://searchfn.com/docs/documentation/python/http-mount): Mount the SearchFn routes on FastAPI, Starlette, or Flask.
-- [Python](https://searchfn.com/docs/documentation/python): SearchFn Python — a lightweight DataFn companion for database-backed full-text search.
-- [Indexing](https://searchfn.com/docs/documentation/python/indexing): How index_data walks DataFn models and populates the inverted index.
-- [Search](https://searchfn.com/docs/documentation/python/search): How search_index ranks records and what to expect from the Python scoring model.
-- [Setup](https://searchfn.com/docs/documentation/python/setup): Install searchfn (Python) and wire it to your DataFn schema.
+- [HTTP mount](https://searchfn.com/docs/documentation/python/http-mount): Wrap Python SearchFn's route map with your framework and auth policy.
+- [Python](https://searchfn.com/docs/documentation/python): A small Python inverted-index kernel for a duck-typed database adapter.
+- [Indexing](https://searchfn.com/docs/documentation/python/indexing): Scan configured string fields and replace index rows for each record.
+- [Search](https://searchfn.com/docs/documentation/python/search): Rank Python inverted-index hits by matching row count.
+- [Setup](https://searchfn.com/docs/documentation/python/setup): Install Python SearchFn with a schema and duck-typed database adapter.
 - [Security](https://searchfn.com/docs/documentation/security): The threat model and defense layers for a SearchFn deployment.
 - [Multi-Tenant Isolation](https://searchfn.com/docs/documentation/security/multi-tenant-isolation): Stop tenants from leaking into each other's search results.
 - [Payload Limits](https://searchfn.com/docs/documentation/security/payload-limits): How SearchFn caps request size, query length, and batch counts — and why.
@@ -88,12 +89,12 @@ This document is intended for large language models and agentic developer tools.
 
 - [Bun](https://searchfn.com/docs/quickstart/bun): SearchFn on Bun's native HTTP server.
 - [Express](https://searchfn.com/docs/quickstart/express): Mount SearchFn into an Express app in under 10 minutes.
-- [FastAPI](https://searchfn.com/docs/quickstart/fastapi): Mount the Python SearchFn server inside a FastAPI app.
+- [FastAPI](https://searchfn.com/docs/quickstart/fastapi): Mount Python SearchFn handlers in a FastAPI application.
 - [Fastify](https://searchfn.com/docs/quickstart/fastify): SearchFn on Fastify with a single route registration.
-- [Flask](https://searchfn.com/docs/quickstart/flask): Mount SearchFn into a Flask app.
+- [Flask](https://searchfn.com/docs/quickstart/flask): Bridge async Python SearchFn handlers into Flask.
 - [Hono](https://searchfn.com/docs/quickstart/hono): SearchFn on Hono with the Memory adapter for dev and Postgres for prod.
 - [Next.js](https://searchfn.com/docs/quickstart/nextjs): SearchFn in Next.js (App Router) — server route for search + IndexedDB on the client.
-- [Starlette](https://searchfn.com/docs/quickstart/starlette): Mount SearchFn into a Starlette app.
+- [Starlette](https://searchfn.com/docs/quickstart/starlette): Mount Python SearchFn handlers in a Starlette application.
 - [SvelteKit](https://searchfn.com/docs/quickstart/sveltekit): SearchFn in a SvelteKit app — IndexedDB on the client, Postgres on the server.
 - [Swift](https://searchfn.com/docs/quickstart/swift): SearchFn on iOS, macOS, watchOS — in-memory or SQLite-backed local search.
 
@@ -129,7 +130,7 @@ This document is intended for large language models and agentic developer tools.
 - [Envelopes](https://searchfn.com/docs/reference/envelopes): Canonical SearchFn request and response envelopes.
 - [Errors](https://searchfn.com/docs/reference/errors): All SearchFn error codes — cause, fix, and retry semantics.
 - [Events](https://searchfn.com/docs/reference/events): Server log events and Swift diagnostics events.
-- [Python Reference](https://searchfn.com/docs/reference/python): API reference for the Python SearchFn package.
+- [Python reference](https://searchfn.com/docs/reference/python): Public Python API, schema contract, and HTTP handler shapes.
 - [Server API](https://searchfn.com/docs/reference/server): Expose SearchFn as an HTTP API with authorization, logging, and secret redaction.
 - [Swift Package Reference](https://searchfn.com/docs/reference/swift): Reference for the standalone SearchFn Swift package, adapters, convenience APIs, and diagnostics.
 

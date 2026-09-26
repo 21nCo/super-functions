@@ -6,38 +6,30 @@ description: SearchFn on Fastify with a single route registration.
 ## 1. Install
 
 ```bash
-npm install fastify @searchfn/server @searchfn/adapter-memory
+npm install fastify @superfunctions/http-fastify @searchfn/server @searchfn/adapter-memory
 ```
 
 ## 2. Register the route
 
 ```typescript
 import Fastify from "fastify";
+import { toFastify } from "@superfunctions/http-fastify";
 import { createSearchFnServer } from "@searchfn/server";
 import { MemoryAdapter } from "@searchfn/adapter-memory";
 
+const adapter = new MemoryAdapter();
 const sf = await createSearchFnServer({
-  adapter: new MemoryAdapter(),
+  adapter,
   basePath: "/searchfn",
 });
 
-await sf.adapter.initialize?.({
+await adapter.initialize({
   resources: [{ name: "books", searchFields: ["title", "author"] }],
 });
 
 const app = Fastify({ bodyLimit: 2 * 1024 * 1024 });
 
-app.all("/searchfn/*", async (request, reply) => {
-  const response = await sf.router.handle({
-    method: request.method,
-    url: request.url,
-    headers: new Headers(request.headers as Record<string, string>),
-    body: request.body ? JSON.stringify(request.body) : undefined,
-  });
-  reply.status(response.status);
-  response.headers.forEach((v, k) => reply.header(k, v));
-  return response.text();
-});
+await app.register(toFastify(sf.router));
 
 await app.listen({ port: 3000 });
 ```

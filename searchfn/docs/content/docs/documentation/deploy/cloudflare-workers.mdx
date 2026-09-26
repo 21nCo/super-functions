@@ -32,14 +32,15 @@ let sf: Awaited<ReturnType<typeof createSearchFnServer>> | null = null;
 
 async function getServer(env: Env) {
   if (sf) return sf;
-  sf = await createSearchFnServer({
-    adapter: new MeilisearchAdapter({
+  const adapter = new MeilisearchAdapter({
       host: env.MEILI_URL,
       apiKey: env.MEILI_API_KEY,
-    }),
+    });
+  sf = await createSearchFnServer({
+    adapter,
     basePath: "/searchfn",
   });
-  await sf.adapter.initialize?.({
+  await adapter.initialize({
     resources: [{ name: "articles", searchFields: ["title", "body"] }],
   });
   return sf;
@@ -48,12 +49,7 @@ async function getServer(env: Env) {
 export default {
   async fetch(request: Request, env: Env) {
     const server = await getServer(env);
-    return server.router.handle({
-      method: request.method,
-      url: request.url,
-      headers: request.headers,
-      body: request.body,
-    });
+    return server.router.handle(request);
   },
 };
 ```
@@ -88,12 +84,13 @@ export class TenantSearch extends DurableObject {
 
   async fetch(request: Request) {
     if (!this.sf) {
-      this.sf = await createSearchFnServer({
-        adapter: new MeilisearchAdapter({
+      const adapter = new MeilisearchAdapter({
           host: env.MEILI_URL,
           apiKey: env.MEILI_API_KEY,
           indexPrefix: `tenant-${this.ctx.id.toString()}_`,
-        }),
+        });
+      this.sf = await createSearchFnServer({
+        adapter,
         basePath: "/searchfn",
       });
     }

@@ -1,72 +1,44 @@
 ---
 title: FastAPI
-description: Mount the Python SearchFn server inside a FastAPI app.
+description: Mount Python SearchFn handlers in a FastAPI application.
 ---
 
-## 1. Install
-
-```bash
-pip install fastapi uvicorn searchfn datafn
+```sh
+pip install searchfn fastapi uvicorn
 ```
 
-## 2. Set up SearchFn alongside DataFn
-
-`app.py`:
+Provide `schema` and a compatible async `db` from your application. The adapter needs `find_many`, `create`, and `delete`. Route keys include the HTTP method, and handlers accept `(ctx, payload)`:
 
 ```python
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from searchfn import create_searchfn_server
-from datafn.db import PostgresAdapter
-from schema import schema  # your DataFn schema
-
-db = PostgresAdapter(connection_string=os.environ["SEARCH_DB_URL"])
-
-search_plugin = create_searchfn_server({
-    "schema": schema,
-    "db": db,
-    "table_prefix": "_searchfn_",
-})
+from myapp.storage import schema, db
 
 app = FastAPI()
+plugin = create_searchfn_server({"schema": schema, "db": db})
 
-for path, handler in search_plugin["routes"].items():
-    @app.api_route(path, methods=["POST"], name=f"sf-{path}")
-    async def route(request: Request, _handler=handler):
-        body = await request.json()
-        return await _handler(body)
+def make_endpoint(handler):
+    async def endpoint(request: Request):
+        try:
+            payload = await request.json()
+        except ValueError:
+            return JSONResponse({"ok": False, "error": "Expected a JSON object"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Expected a JSON object"}, status_code=400)
+        result = await handler(None, payload)
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+
+    return endpoint
+
+
+for spec, handler in plugin["routes"].items():
+    method, path = spec.split(" ", 1)
+    app.add_api_route(path, make_endpoint(handler), methods=[method])
 ```
 
-The Python SearchFn server stores its inverted index inside your existing Postgres database, alongside the DataFn data. No additional infrastructure required for moderate-scale apps.
+Run `uvicorn myapp.app:app` (adjust to your module), then POST JSON to `/searchfn/index` or `/searchfn/search`. Protect index rebuilding with operator authorization and apply your normal request authentication to search.
 
-## 3. Run
+The host must provision `<table_prefix>index` (default `_searchfn_index`) and authorize both routes. `searchfn` does not import DataFn or set up database tables. For a standalone adapter example, see the [Python source README](https://github.com/21nCo/super-functions/blob/dev/searchfn/python/README.md).
 
-```bash
-uvicorn app:app --reload
-```
-
-## 4. Index
-
-```bash
-curl -X POST http://localhost:8000/searchfn/index \
-  -H 'content-type: application/json' \
-  -d '{ "model": "products" }'
-```
-
-This scans all rows in `products`, tokenizes the string fields, and populates `_searchfn_index`.
-
-## 5. Search
-
-```bash
-curl -X POST http://localhost:8000/searchfn/search \
-  -H 'content-type: application/json' \
-  -d '{ "query": "fast laptop", "limit": 10 }'
-```
-
-## When to use the TypeScript adapters instead
-
-The Python package is optimized for the "DataFn + Postgres" case. If you need an external search service (Meilisearch, Elasticsearch), stand up the TypeScript server in a sidecar and have FastAPI call it. The Python package and TypeScript server share the same envelope contract, so client code stays portable.
-
-## Next steps
-
-- [Python reference](/docs/reference/python)
-- [DataFn integration](/docs/integrations/datafn)
+See [Python setup](/docs/documentation/python/setup) and [HTTP mount](/docs/documentation/python/http-mount).

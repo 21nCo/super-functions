@@ -18,14 +18,15 @@ import { createServer } from "node:http";
 import { createSearchFnServer } from "@searchfn/server";
 import { PostgresAdapter } from "@searchfn/adapter-postgres";
 
-const sf = await createSearchFnServer({
-  adapter: new PostgresAdapter({
+const adapter = new PostgresAdapter({
     connectionString: process.env.DATABASE_URL!,
-  }),
+  });
+const sf = await createSearchFnServer({
+  adapter,
   basePath: "/searchfn",
 });
 
-await sf.adapter.initialize?.({
+await adapter.initialize({
   resources: [{ name: "articles", searchFields: ["title", "body"] }],
 });
 
@@ -40,12 +41,11 @@ const httpServer = createServer(async (req, res) => {
   for await (const chunk of req) chunks.push(chunk);
   const body = Buffer.concat(chunks).toString("utf8");
 
-  const response = await sf.router.handle({
+  const response = await sf.router.handle(new Request(`http://${req.headers.host}${req.url}`, {
     method: req.method ?? "GET",
-    url: `http://${req.headers.host}${req.url}`,
     headers: new Headers(req.headers as Record<string, string>),
     body: body || undefined,
-  });
+  }));
 
   res.writeHead(response.status, Object.fromEntries(response.headers));
   res.end(await response.text());
@@ -56,20 +56,13 @@ httpServer.listen(parseInt(process.env.PORT ?? "8080"));
 
 ## Migrations
 
-Run the Postgres migration on first deploy:
-
-```bash
-railway run npx @searchfn/adapter-postgres migrate
-```
-
-Or programmatically at app start (idempotent):
+Provision the `articles` resource programmatically against the same database used by the server (idempotent). The adapter package does not provide a migration CLI:
 
 ```typescript
-import { getPostgresMigrationSQL } from "@searchfn/adapter-postgres";
-import postgres from "postgres";
-
-const sql = postgres(process.env.DATABASE_URL!);
-await sql.unsafe(getPostgresMigrationSQL());
+import { PostgresAdapter } from "@searchfn/adapter-postgres";
+const adapter = new PostgresAdapter({ connectionString: process.env.DATABASE_URL! });
+await adapter.initialize({ resources: [{ name: "articles", searchFields: ["title", "body"] }] });
+await adapter.dispose();
 ```
 
 ## Meilisearch on Railway

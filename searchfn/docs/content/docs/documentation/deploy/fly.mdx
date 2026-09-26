@@ -16,6 +16,15 @@ graph LR
 
 The app is stateless. Postgres holds the index. Multiple Fly machines run the same app.
 
+## Install dependencies
+
+```bash
+npm install @searchfn/server @searchfn/adapter-postgres express @superfunctions/http-express
+npm install --save-dev typescript @types/node @types/express
+```
+
+Compile `server.ts` to `dist/server.js` with your project’s TypeScript build before building this image, and commit the updated npm lockfile.
+
 ## App Dockerfile
 
 ```dockerfile
@@ -67,20 +76,24 @@ fly postgres create --name my-searchfn-db --region iad
 fly postgres attach my-searchfn-db --app my-searchfn
 ```
 
-Fly injects `DATABASE_URL` into the app. Use it as `SEARCH_DB_URL` (or migrate the migrations to the same database as DataFn if co-located).
+Fly injects `DATABASE_URL` into the app. The example reads that variable directly; resource initialization must use the same database.
 
 ```typescript
 import { createSearchFnServer } from "@searchfn/server";
-import { PostgresAdapter, getPostgresMigrationSQL } from "@searchfn/adapter-postgres";
+import express from "express";
+import { toExpress } from "@superfunctions/http-express";
+import { PostgresAdapter } from "@searchfn/adapter-postgres";
 
 const adapter = new PostgresAdapter({
   connectionString: process.env.DATABASE_URL!,
 });
 
 const sf = await createSearchFnServer({ adapter, basePath: "/searchfn" });
-await sf.adapter.initialize?.({ resources: [...] });
+await adapter.initialize({ resources: [{ name: "articles", searchFields: ["title", "body"] }] });
 
-const server = createHttpServer(sf);
+const server = express();
+server.use(express.raw({ type: "application/json", limit: "2mb" }));
+server.use(toExpress(sf.router));
 server.listen(parseInt(process.env.PORT ?? "8080"));
 ```
 

@@ -1001,7 +1001,7 @@ The legacy aggregate adapters package has been removed. SearchFn now ships one p
 | --- | --- |
 | `import { MemoryAdapter } from "<legacy-adapters-package>"` | `import { MemoryAdapter } from "@searchfn/adapter-memory"` |
 | `import { IndexedDbAdapter } from "<legacy-adapters-package>"` | `import { IndexedDbAdapter } from "@searchfn/adapter-indexeddb"` |
-| `import { PostgresAdapter, getPostgresMigrationSQL } from "<legacy-adapters-package>"` | `import { PostgresAdapter, getPostgresMigrationSQL } from "@searchfn/adapter-postgres"` |
+| `import { PostgresAdapter } from "<legacy-adapters-package>"` | `import { PostgresAdapter } from "@searchfn/adapter-postgres"` |
 | `import { MeilisearchAdapter } from "<legacy-adapters-package>"` | `import { MeilisearchAdapter } from "@searchfn/adapter-meilisearch"` |
 | `import { ElasticsearchAdapter } from "<legacy-adapters-package>"` | `import { ElasticsearchAdapter } from "@searchfn/adapter-elasticsearch"` |
 | `import { OpenSearchAdapter } from "<legacy-adapters-package>"` | `import { OpenSearchAdapter } from "@searchfn/adapter-opensearch"` |
@@ -1217,6 +1217,31 @@ If you're building a new feature, start from the closest recipe and adjust. The 
 
 
 --------------------------------------------------------------------------------
+### Administration
+
+URL: https://searchfn.com/docs/documentation/administration
+Description: Bind SearchFn's operator capability to a scope-isolated adapter.
+--------------------------------------------------------------------------------
+
+`@searchfn/admin` exposes a Super Console capability over a configured `SearchAdapter`. The host supplies two callbacks: `adapter(context)` returns an adapter already isolated to the active scope and optional namespace or region, and `resources(context)` returns index names visible in that same scope. The capability does not create an authorization boundary around a shared cross-tenant adapter for you.
+
+```ts
+import { createSearchFnAdminAdapter, createSearchFnDomainAdminService } from "@searchfn/admin";
+
+const service = createSearchFnDomainAdminService({
+  adapter: (context) => resolveAuthorizedSearchAdapter(context),
+  resources: (context) => visibleIndexes(context),
+});
+const admin = createSearchFnAdminAdapter(service);
+```
+
+The host must authenticate the operator, enforce permission and scope in the shared admin dispatcher, and audit writes. The bound capability lists or gets adapter backends, index collections, and health. It can index one document, batch-index, remove a document, and clear an index. Removal and clear are destructive operations requiring confirmation. The package exports a broader action inventory, but the current domain adapter does not mount reindex, schema, synonym, ranking, key rotation, or snapshot restore actions.
+
+Document targets use `resource:id`. Percent-encode resource names containing `:`; use `resource:number:<id>` for a numeric ID and `resource:string:<percent-encoded-id>` for an arbitrary string ID. Cursors are bound to scope and the list query. See the [capability source](https://github.com/21nCo/super-functions/blob/dev/searchfn/admin/src/index.ts) and [domain service](https://github.com/21nCo/super-functions/blob/dev/searchfn/admin/src/domain-service.ts) for exact operation schemas.
+
+
+
+--------------------------------------------------------------------------------
 ### Migrating Between Adapters
 
 URL: https://searchfn.com/docs/documentation/advanced/adapter-migration
@@ -1267,8 +1292,9 @@ class DualAdapter implements SearchAdapter {
 Wire it in:
 
 ```typescript
+const adapter = new DualAdapter(oldAdapter, newAdapter);
 const sf = await createSearchFnServer({
-  adapter: new DualAdapter(oldAdapter, newAdapter),
+  adapter,
   basePath: "/searchfn",
 });
 ```
@@ -1570,19 +1596,19 @@ Beyond these, define your own codes — the server passes them through.
 Use the shared test suite:
 
 ```typescript
-import { runAdapterContractTests } from "@searchfn/adapter-contracts/testing";
+import { runConformanceSuite } from "@searchfn/adapter-contracts/testing";
 import { MyAdapter } from "./my-adapter";
 
 describe("MyAdapter contract", () => {
-  runAdapterContractTests({
+  runConformanceSuite({
     name: "my-adapter",
-    create: async () => new MyAdapter({ /* config */ }),
-    teardown: async (adapter) => adapter.dispose?.(),
+    create: () => new MyAdapter({ /* config */ }),
+    persistent: true,
   });
 });
 ```
 
-The contract suite exercises every method, edge case, abort handling, idempotency, and concurrent access. If your adapter passes, the server can use it.
+The `/testing` export is ESM-only and requires `vitest`. The conformance suite exercises contract shape, index/search, upsert, limits, remove, clear, optional `searchAll`, and dispose/reinitialize. If your adapter passes, the server can use it.
 
 ## Skeleton
 
@@ -3323,14 +3349,15 @@ let sf: Awaited<ReturnType<typeof createSearchFnServer>> | null = null;
 
 async function getServer(env: Env) {
   if (sf) return sf;
-  sf = await createSearchFnServer({
-    adapter: new MeilisearchAdapter({
+  const adapter = new MeilisearchAdapter({
       host: env.MEILI_URL,
       apiKey: env.MEILI_API_KEY,
-    }),
+    });
+  sf = await createSearchFnServer({
+    adapter,
     basePath: "/searchfn",
   });
-  await sf.adapter.initialize?.({
+  await adapter.initialize({
     resources: [{ name: "articles", searchFields: ["title", "body"] }],
   });
   return sf;
@@ -3339,12 +3366,7 @@ async function getServer(env: Env) {
 export default {
   async fetch(request: Request, env: Env) {
     const server = await getServer(env);
-    return server.router.handle({
-      method: request.method,
-      url: request.url,
-      headers: request.headers,
-      body: request.body,
-    });
+    return server.router.handle(request);
   },
 };
 ```
@@ -3379,12 +3401,13 @@ export class TenantSearch extends DurableObject {
 
   async fetch(request: Request) {
     if (!this.sf) {
-      this.sf = await createSearchFnServer({
-        adapter: new MeilisearchAdapter({
+      const adapter = new MeilisearchAdapter({
           host: env.MEILI_URL,
           apiKey: env.MEILI_API_KEY,
           indexPrefix: `tenant-${this.ctx.id.toString()}_`,
-        }),
+        });
+      this.sf = await createSearchFnServer({
+        adapter,
         basePath: "/searchfn",
       });
     }
@@ -3539,6 +3562,15 @@ graph LR
 
 The app is stateless. Postgres holds the index. Multiple Fly machines run the same app.
 
+## Install dependencies
+
+```bash
+npm install @searchfn/server @searchfn/adapter-postgres express @superfunctions/http-express
+npm install --save-dev typescript @types/node @types/express
+```
+
+Compile `server.ts` to `dist/server.js` with your project’s TypeScript build before building this image, and commit the updated npm lockfile.
+
 ## App Dockerfile
 
 ```dockerfile
@@ -3590,20 +3622,24 @@ fly postgres create --name my-searchfn-db --region iad
 fly postgres attach my-searchfn-db --app my-searchfn
 ```
 
-Fly injects `DATABASE_URL` into the app. Use it as `SEARCH_DB_URL` (or migrate the migrations to the same database as DataFn if co-located).
+Fly injects `DATABASE_URL` into the app. The example reads that variable directly; resource initialization must use the same database.
 
 ```typescript
 import { createSearchFnServer } from "@searchfn/server";
-import { PostgresAdapter, getPostgresMigrationSQL } from "@searchfn/adapter-postgres";
+import express from "express";
+import { toExpress } from "@superfunctions/http-express";
+import { PostgresAdapter } from "@searchfn/adapter-postgres";
 
 const adapter = new PostgresAdapter({
   connectionString: process.env.DATABASE_URL!,
 });
 
 const sf = await createSearchFnServer({ adapter, basePath: "/searchfn" });
-await sf.adapter.initialize?.({ resources: [...] });
+await adapter.initialize({ resources: [{ name: "articles", searchFields: ["title", "body"] }] });
 
-const server = createHttpServer(sf);
+const server = express();
+server.use(express.raw({ type: "application/json", limit: "2mb" }));
+server.use(toExpress(sf.router));
 server.listen(parseInt(process.env.PORT ?? "8080"));
 ```
 
@@ -3907,14 +3943,15 @@ import { createServer } from "node:http";
 import { createSearchFnServer } from "@searchfn/server";
 import { PostgresAdapter } from "@searchfn/adapter-postgres";
 
-const sf = await createSearchFnServer({
-  adapter: new PostgresAdapter({
+const adapter = new PostgresAdapter({
     connectionString: process.env.DATABASE_URL!,
-  }),
+  });
+const sf = await createSearchFnServer({
+  adapter,
   basePath: "/searchfn",
 });
 
-await sf.adapter.initialize?.({
+await adapter.initialize({
   resources: [{ name: "articles", searchFields: ["title", "body"] }],
 });
 
@@ -3929,12 +3966,11 @@ const httpServer = createServer(async (req, res) => {
   for await (const chunk of req) chunks.push(chunk);
   const body = Buffer.concat(chunks).toString("utf8");
 
-  const response = await sf.router.handle({
+  const response = await sf.router.handle(new Request(`http://${req.headers.host}${req.url}`, {
     method: req.method ?? "GET",
-    url: `http://${req.headers.host}${req.url}`,
     headers: new Headers(req.headers as Record<string, string>),
     body: body || undefined,
-  });
+  }));
 
   res.writeHead(response.status, Object.fromEntries(response.headers));
   res.end(await response.text());
@@ -3945,20 +3981,13 @@ httpServer.listen(parseInt(process.env.PORT ?? "8080"));
 
 ## Migrations
 
-Run the Postgres migration on first deploy:
-
-```bash
-railway run npx @searchfn/adapter-postgres migrate
-```
-
-Or programmatically at app start (idempotent):
+Provision the `articles` resource programmatically against the same database used by the server (idempotent). The adapter package does not provide a migration CLI:
 
 ```typescript
-import { getPostgresMigrationSQL } from "@searchfn/adapter-postgres";
-import postgres from "postgres";
-
-const sql = postgres(process.env.DATABASE_URL!);
-await sql.unsafe(getPostgresMigrationSQL());
+import { PostgresAdapter } from "@searchfn/adapter-postgres";
+const adapter = new PostgresAdapter({ connectionString: process.env.DATABASE_URL! });
+await adapter.initialize({ resources: [{ name: "articles", searchFields: ["title", "body"] }] });
+await adapter.dispose();
 ```
 
 ## Meilisearch on Railway
@@ -4120,13 +4149,14 @@ let sfPromise: ReturnType<typeof createSearchFnServer> | null = null;
 
 function getServer() {
   if (!sfPromise) {
-    sfPromise = createSearchFnServer({
-      adapter: new PostgresAdapter({
+    const adapter = new PostgresAdapter({
         connectionString: process.env.SEARCH_DB_URL!,
-      }),
+      });
+    sfPromise = createSearchFnServer({
+      adapter,
       basePath: "/searchfn",
     }).then(async (sf) => {
-      await sf.adapter.initialize?.({
+      await adapter.initialize({
         resources: [{ name: "articles", searchFields: ["title", "body"] }],
       });
       return sf;
@@ -4137,12 +4167,7 @@ function getServer() {
 
 const handler = async (request: Request) => {
   const sf = await getServer();
-  return sf.router.handle({
-    method: request.method,
-    url: request.url,
-    headers: request.headers,
-    body: request.body,
-  });
+  return sf.router.handle(request);
 };
 
 export const GET = handler;
@@ -4668,162 +4693,24 @@ The profile shows per-shard breakdown. Look for high `rewrite_time_in_nanos` (of
 
 
 --------------------------------------------------------------------------------
-### HTTP Mount
+### HTTP mount
 
 URL: https://searchfn.com/docs/documentation/python/http-mount
-Description: Mount the SearchFn routes on FastAPI, Starlette, or Flask.
+Description: Wrap Python SearchFn's route map with your framework and auth policy.
 --------------------------------------------------------------------------------
 
-`create_searchfn_server` returns a dict of route handlers in the format:
+`create_searchfn_server({"schema": schema, "db": db})` returns a `routes` mapping with keys `POST /searchfn/index` and `POST /searchfn/search`. Each value is an async handler called as `await handler(ctx, payload)`. The current handlers do not use `ctx`; `payload` is the parsed JSON body. Split each route key into method and path before registering it in your framework.
 
 ```python
-{
-    "routes": {
-        "POST /searchfn/index":  async_handler,
-        "POST /searchfn/search": async_handler,
-    }
-}
-```
-
-Each handler has the signature `async def handler(ctx, payload) -> dict`. `ctx` is unused (reserved); `payload` is the parsed JSON body.
-
-## FastAPI
-
-```python
-from fastapi import FastAPI, Request, HTTPException
-from searchfn import create_searchfn_server
-
-app = FastAPI()
-
 plugin = create_searchfn_server({"schema": schema, "db": db})
-routes = plugin["routes"]
-
-@app.post("/searchfn/index")
-async def search_index_route(request: Request):
-    payload = await request.json() if await request.body() else {}
-    result = await routes["POST /searchfn/index"](None, payload)
-    if not result.get("ok"):
-        raise HTTPException(status_code=400, detail=result.get("error"))
-    return result
-
-@app.post("/searchfn/search")
-async def search_search_route(request: Request):
-    payload = await request.json()
-    result = await routes["POST /searchfn/search"](None, payload)
-    if not result.get("ok"):
-        raise HTTPException(status_code=400, detail=result.get("error"))
-    return result
+for spec, handler in plugin["routes"].items():
+    method, path = spec.split(" ", 1)
+    # Register path with method. In your wrapper, call await handler(None, parsed_json).
 ```
 
-A small wrapper translates `{"ok": False, "error": ...}` into HTTP 400. Successful responses pass through.
+The handler returns an envelope with `ok`. Translate `ok: False` into an appropriate HTTP status, and keep the response body for callers. The handlers do not authenticate, rate-limit, or configure CORS. Gate indexing behind an operator permission and apply a read policy to search. Framework examples: [FastAPI](/docs/quickstart/fastapi), [Starlette](/docs/quickstart/starlette), and [Flask](/docs/quickstart/flask).
 
-## Starlette
-
-```python
-from starlette.applications import Starlette
-from starlette.responses import JSONResponse
-from starlette.routing import Route
-from searchfn import create_searchfn_server
-
-plugin = create_searchfn_server({"schema": schema, "db": db})
-routes_map = plugin["routes"]
-
-async def handle(spec: str):
-    handler = routes_map[spec]
-
-    async def endpoint(request):
-        body = await request.body()
-        payload = await request.json() if body else {}
-        result = await handler(None, payload)
-        if not result.get("ok"):
-            return JSONResponse(result, status_code=400)
-        return JSONResponse(result)
-
-    return endpoint
-
-app = Starlette(routes=[
-    Route("/searchfn/index", endpoint=await handle("POST /searchfn/index"), methods=["POST"]),
-    Route("/searchfn/search", endpoint=await handle("POST /searchfn/search"), methods=["POST"]),
-])
-```
-
-## Flask
-
-Flask is sync; bridge with `asyncio.run`:
-
-```python
-import asyncio
-from flask import Flask, request, jsonify
-from searchfn import create_searchfn_server
-
-app = Flask(__name__)
-plugin = create_searchfn_server({"schema": schema, "db": db})
-routes = plugin["routes"]
-
-def _bridge(handler):
-    def view():
-        payload = request.get_json(silent=True) or {}
-        result = asyncio.run(handler(None, payload))
-        return jsonify(result), (200 if result.get("ok") else 400)
-    return view
-
-app.add_url_rule("/searchfn/index", view_func=_bridge(routes["POST /searchfn/index"]),
-                 methods=["POST"], endpoint="sf_index")
-app.add_url_rule("/searchfn/search", view_func=_bridge(routes["POST /searchfn/search"]),
-                 methods=["POST"], endpoint="sf_search")
-```
-
-For high-throughput Flask deployments, prefer Quart (Flask-API-compatible, async-native).
-
-## Auth wrapper
-
-The handlers don't authenticate. Wrap them:
-
-```python
-def require_admin(handler):
-    async def wrapped(ctx, payload):
-        # ctx carries request-derived auth in your wrapper
-        if not ctx or not ctx.get("is_admin"):
-            return {"ok": False, "error": "Forbidden"}
-        return await handler(ctx, payload)
-    return wrapped
-
-routes["POST /searchfn/index"] = require_admin(routes["POST /searchfn/index"])
-```
-
-Or gate in the HTTP framework layer (FastAPI dependency, Starlette middleware, Flask decorator).
-
-## CORS
-
-CORS isn't handled by `create_searchfn_server` — it's a transport concern. Use your framework's CORS middleware:
-
-- FastAPI: `fastapi.middleware.cors.CORSMiddleware`
-- Starlette: `starlette.middleware.cors.CORSMiddleware`
-- Flask: `flask-cors`
-
-## Tests
-
-You don't need HTTP to test:
-
-```python
-import pytest
-from searchfn import create_searchfn_server
-
-@pytest.mark.asyncio
-async def test_search_returns_results(test_schema, test_db):
-    plugin = create_searchfn_server({"schema": test_schema, "db": test_db})
-    handler = plugin["routes"]["POST /searchfn/search"]
-    result = await handler(None, {"query": "hello"})
-    assert result["ok"]
-    assert len(result["results"]) > 0
-```
-
-## See also
-
-- [FastAPI quickstart](/docs/quickstart/fastapi)
-- [Starlette quickstart](/docs/quickstart/starlette)
-- [Flask quickstart](/docs/quickstart/flask)
-- [Python reference](/docs/reference/python)
+The host must provision the index table; see [setup](/docs/documentation/python/setup). The [source README](https://github.com/21nCo/super-functions/blob/dev/searchfn/python/README.md) includes a minimal adapter example.
 
 
 
@@ -4831,68 +4718,18 @@ async def test_search_returns_results(test_schema, test_db):
 ### Python
 
 URL: https://searchfn.com/docs/documentation/python
-Description: SearchFn Python — a lightweight DataFn companion for database-backed full-text search.
+Description: A small Python inverted-index kernel for a duck-typed database adapter.
 --------------------------------------------------------------------------------
 
-The Python package (`searchfn`) is a companion plugin for **DataFn Python**. It maintains an inverted index inside the same database DataFn uses, and exposes index / search operations as HTTP handlers and async functions.
+The Python `searchfn` package is an independent, dependency-free inverted-index kernel. It accepts a schema and any async database adapter with `find_many`, `create`, and `delete`. DataFn is one compatible host; it is not required to import or install this package. The package requires Python 3.9 or newer and does not provide the TypeScript engine's BM25 or adapter set.
 
-It is **not** a full port of the TypeScript engine. The Python flavor targets:
-
-- Quick prototyping with DataFn Python.
-- Moderate-scale apps (tens to hundreds of thousands of records).
-- Environments where adding Elasticsearch is overkill.
-
-For everything else, run the TypeScript server (it's framework-agnostic and works across stacks).
-
-## Two surfaces
-
-| Surface | What it does |
+| Surface | Purpose |
 | --- | --- |
-| `create_searchfn_server` | Returns route handlers you mount on FastAPI, Flask, Starlette, etc. |
-| `index_data` / `search_index` | Async functions for direct use in background jobs and tests. |
+| `create_searchfn_server` | Return async index and search handlers for a host HTTP framework. |
+| `index_data` | Scan declared string fields and write term rows. |
+| `search_index` | Look up matching term rows and rank results. |
 
-## How it works
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Routes as SearchFn routes
-    participant DB as Database (DataFn-managed)
-    Client->>Routes: POST /searchfn/index
-    Routes->>DB: scan models, INSERT into _searchfn_index
-    Routes-->>Client: { totalIndexed, totalTerms }
-    Client->>Routes: POST /searchfn/search { query }
-    Routes->>DB: SELECT FROM _searchfn_index WHERE term IN (...)
-    Routes-->>Client: { results: [{ id, model, score, matches }] }
-```
-
-The index is a single table named `<prefix>index` (default `_searchfn_index`) with columns `term, model, recordId, field`.
-
-## Where it lives
-
-```
-searchfn/python/
-  src/searchfn/
-    __init__.py        ← public surface
-    server.py          ← create_searchfn_server (HTTP handlers)
-    indexing.py        ← index_data
-    search.py          ← search_index
-    utils.py           ← tokenize, schema helpers
-```
-
-## Sub-pages
-
-- [Setup](/docs/documentation/python/setup) — install, configure, schema requirements.
-- [Indexing](/docs/documentation/python/indexing) — `index_data` semantics.
-- [Search](/docs/documentation/python/search) — `search_index`, scoring, limits.
-- [HTTP mount](/docs/documentation/python/http-mount) — FastAPI, Starlette, Flask integration.
-
-## See also
-
-- [FastAPI quickstart](/docs/quickstart/fastapi)
-- [Starlette quickstart](/docs/quickstart/starlette)
-- [Flask quickstart](/docs/quickstart/flask)
-- [Python reference](/docs/reference/python)
+The host must provision the `<table_prefix>index` table and authorize the HTTP routes. The default name is `_searchfn_index`. SearchFn does not create database tables or authenticate requests. See [setup](/docs/documentation/python/setup), [indexing](/docs/documentation/python/indexing), [search](/docs/documentation/python/search), and [HTTP mount](/docs/documentation/python/http-mount).
 
 
 
@@ -4900,120 +4737,21 @@ searchfn/python/
 ### Indexing
 
 URL: https://searchfn.com/docs/documentation/python/indexing
-Description: How index_data walks DataFn models and populates the inverted index.
+Description: Scan configured string fields and replace index rows for each record.
 --------------------------------------------------------------------------------
 
-`index_data` is the core indexer. It scans DataFn models for string fields, tokenizes their values, and writes rows to the `<prefix>index` table.
-
-## Signature
+`index_data(schema, db, model=None, table_prefix="_searchfn_")` reads `resources` or `models` from the schema and scans fields declared with `type: "string"`. It accepts field mappings and lists of named fields. With `model=None`, it scans all definitions; pass a name to scan one.
 
 ```python
-async def index_data(
-    schema,
-    db,
-    model: Optional[str] = None,
-    table_prefix: str = "_searchfn_"
-) -> dict
+from searchfn import index_data
+
+result = await index_data(schema, db, model="articles")
+# {"totalIndexed": number_of_records_with_terms, "totalTerms": number_of_rows_inserted}
 ```
 
-Returns:
+For each record with an `id`, the indexer removes existing rows for that model and record ID, then writes a row for each token in each string field. The adapter must provide `find_many`, `delete`, and `create` for the index table. Provision that table first. Duplicate or unique-constraint errors on insertion are skipped; other errors propagate.
 
-```python
-{ "totalIndexed": int, "totalTerms": int }
-```
-
-## Single model vs full
-
-```python
-# Index every model with string fields
-await index_data(schema, db)
-
-# Index only "articles"
-await index_data(schema, db, model="articles")
-```
-
-The model-scoped variant is what you call from background jobs after writing a record — see [partial reindex](/docs/recipes/partial-reindex).
-
-## Pipeline
-
-For each model:
-
-1. Read schema fields, pick the ones with `"type": "string"`.
-2. `db.find_many(model_name, [])` — fetch all records.
-3. For each record:
-   - Delete prior index rows for `(model, recordId)` to avoid stale terms.
-   - For each string field, tokenize and `db.create` one row per (term, model, recordId, field).
-
-## Tokenization
-
-```python
-def tokenize(value: str) -> Iterable[str]:
-    return (
-        token
-        for token in re.split(r"[^a-z0-9]+", value.lower())
-        if len(token) > 1
-    )
-```
-
-Lowercase, split on non-alphanumeric runs, keep tokens of 2+ characters. Whitespace, punctuation, accents stripped. (Accents stripped means "café" → "caf" — fine for English-leaning content; for full unicode support, swap to ICU or trim before passing.)
-
-## Duplicate handling
-
-If the index already has a row with `(term, model, recordId, field)`, the insert is treated as a duplicate and skipped silently. SearchFn detects this via the error message:
-
-```python
-def _is_duplicate_error(error: Exception) -> bool:
-    message = str(error).lower()
-    return (
-        "duplicate" in message
-        or "unique constraint" in message
-        or "already exists" in message
-    )
-```
-
-This makes re-indexing the same content idempotent.
-
-## Performance
-
-Indexing is single-threaded and per-document. Rough numbers on Postgres:
-
-| Corpus | Time |
-| --- | --- |
-| 1k docs, 5 string fields × 100 words | ~5s |
-| 10k docs | ~50s |
-| 100k docs | ~10 min |
-
-For large datasets, the bottleneck is per-row `INSERT`s. To accelerate:
-
-- Use Postgres `COPY` directly for the first load (bypass the abstraction).
-- Run indexing in parallel batches if your DataFn adapter is thread-safe.
-- Avoid re-indexing fields that haven't changed (partial reindex).
-
-## Read consistency
-
-`index_data` does not lock. If records are written during indexing:
-
-- Records that exist when `find_many` runs are indexed.
-- Newer writes are not seen by the current run.
-
-For correctness under concurrent writes, prefer the [partial reindex pattern](/docs/recipes/partial-reindex) — re-index single records on write, run a full re-index only periodically.
-
-## Errors
-
-The function raises non-duplicate exceptions. Wrap calls:
-
-```python
-try:
-    result = await index_data(schema, db)
-except Exception as e:
-    logger.exception("indexing failed", exc_info=e)
-```
-
-## See also
-
-- [Search](/docs/documentation/python/search)
-- [Partial reindex](/docs/recipes/partial-reindex)
-- [Backfill from DB](/docs/recipes/backfill-from-db)
+Tokenization lowercases the text, removes punctuation with `[^\w\s]`, splits on whitespace, and keeps non-empty tokens. Punctuation is removed rather than replaced with a separator, so `foo-bar` becomes `foobar`; Unicode word characters and one-character tokens can remain. Indexing is a full scan, not an incremental change feed. Schedule it for your data volume and re-run it after writes or use a host-specific update hook. See [setup](/docs/documentation/python/setup) and [search](/docs/documentation/python/search).
 
 
 
@@ -5021,131 +4759,21 @@ except Exception as e:
 ### Search
 
 URL: https://searchfn.com/docs/documentation/python/search
-Description: How search_index ranks records and what to expect from the Python scoring model.
+Description: Rank Python inverted-index hits by matching row count.
 --------------------------------------------------------------------------------
 
-`search_index` queries the inverted index and returns ranked records.
-
-## Signature
+`search_index(schema, db, query, model=None, limit=20, table_prefix="_searchfn_")` tokenizes the query and reads matching rows from the index table. The schema argument is retained for API compatibility; search reads the index rather than the source records. Pass `model` to restrict results to one indexed resource.
 
 ```python
-async def search_index(
-    schema,
-    db,
-    query: str,
-    model: Optional[str] = None,
-    limit: int = 20,
-    table_prefix: str = "_searchfn_"
-) -> list[dict]
+from searchfn import search_index
+
+hits = await search_index(schema, db, query="search world", model="articles")
+# [{"id": "1", "model": "articles", "score": 2, "matches": ["search", "world"]}]
 ```
 
-Returns:
+The function looks up each distinct query token once. It increments a result's score for **each matching index row**, so repeated or multi-field term rows can contribute more than one point. This is a simple term-row count, not BM25, field weighting, or length normalization. Results are sorted by score descending, then model and record ID ascending for stable ties. `matches` contains sorted distinct matched terms.
 
-```python
-[
-    {
-        "id": "...",
-        "model": "articles",
-        "score": 3,
-        "matches": ["bm25", "ranking", "term"]
-    },
-    ...
-]
-```
-
-## Scoring
-
-The Python flavor uses a much simpler scoring model than the TypeScript engine: **term-count scoring**.
-
-```python
-scores[(model, recordId)] += 1  # per unique-term row matched
-```
-
-That's it. No BM25, no field weighting, no length normalization. Records with more distinct matched terms rank higher.
-
-Tradeoffs:
-
-- Predictable, easy to reason about.
-- Fast for moderate corpora.
-- Less relevance precision than BM25.
-
-For production-grade relevance, switch to the TypeScript engine + Postgres adapter, or use Postgres `tsvector` directly.
-
-## Tokenization
-
-Same as the indexer — see [Indexing](/docs/documentation/python/indexing). Queries are tokenized identically, ensuring index/query agreement.
-
-```python
-tokens = list(dict.fromkeys(tokenize(query)))
-# "BM25 Ranking BM25" → ["bm25", "ranking"]
-```
-
-Duplicate tokens are de-duplicated before lookup.
-
-## Per-token lookup
-
-For each unique token, one `find_many` runs against `_searchfn_index`:
-
-```python
-WHERE term = 'bm25' [AND model = '...']
-```
-
-Then matches are merged in memory and counted.
-
-This is fast for short queries. For very long queries (10+ unique tokens), the round-trip count grows linearly — consider batching in a future patch.
-
-## Model filtering
-
-```python
-results = await search_index(schema, db, "ranking", model="articles")
-```
-
-Without a model, all models are searched and the results carry their `model` field.
-
-## Limits
-
-```python
-results = await search_index(schema, db, "ranking", limit=50)
-```
-
-Defaults to 20. The HTTP handler caps at 10,000. Beyond that, paginate via your own filter logic — SearchFn returns the top-N by score.
-
-## Ordering
-
-Results are sorted by:
-
-1. Score (descending)
-2. Model name (ascending)
-3. Record ID (ascending — string-coerced)
-
-Deterministic for ties.
-
-## Empty queries
-
-```python
-await search_index(schema, db, "")        # → []
-await search_index(schema, db, "!!!?")    # → [] (no surviving tokens)
-```
-
-The handler returns `400 Missing query` for empty strings; the function returns an empty list.
-
-## Joining back to the records
-
-`search_index` returns IDs, not records. To hydrate:
-
-```python
-hits = await search_index(schema, db, "ranking", model="articles")
-ids = [h["id"] for h in hits]
-records = await db.find_many("articles", [{"field": "id", "operator": "in", "value": ids}])
-```
-
-Or in one round-trip via your DataFn query API.
-
-## See also
-
-- [Indexing](/docs/documentation/python/indexing)
-- [HTTP mount](/docs/documentation/python/http-mount)
-- [Python reference](/docs/reference/python)
+The function returns no hits for an empty or punctuation-only query. The HTTP handler instead rejects a blank query with `Missing query`; punctuation-only input still produces no hits. Both APIs convert `limit` using `int(...)`, so `1.9` becomes `1` and an integer string such as `"5"` is accepted. Booleans, non-convertible values, and non-positive converted values are rejected. The HTTP handler caps `limit` at 10,000 and returns an error envelope for invalid requests. SearchFn returns IDs and scores, not hydrated source records; read the records through your own adapter and authorization layer. See [indexing](/docs/documentation/python/indexing) and [HTTP mount](/docs/documentation/python/http-mount).
 
 
 
@@ -5153,125 +4781,37 @@ Or in one round-trip via your DataFn query API.
 ### Setup
 
 URL: https://searchfn.com/docs/documentation/python/setup
-Description: Install searchfn (Python) and wire it to your DataFn schema.
+Description: Install Python SearchFn with a schema and duck-typed database adapter.
 --------------------------------------------------------------------------------
 
 ## Install
 
-```bash
+```sh
 pip install searchfn
 ```
 
-You'll also need DataFn Python installed and configured (DataFn is the source of truth for the schema and the database connection).
-
-## Minimum schema requirements
-
-`searchfn` only indexes string fields. Every model you want to search needs:
-
-- An `id` field that's stringifiable.
-- One or more fields of `type: "string"`.
-
-Example schema fragment:
-
-```python
-schema = {
-    "models": {
-        "articles": {
-            "fields": {
-                "id":       {"type": "uuid"},
-                "title":    {"type": "string"},
-                "body":     {"type": "string"},
-                "author_id":{"type": "string"},  # not indexed (would be, but you can filter post-search)
-            }
-        }
-    }
-}
-```
-
-The indexer walks `fields` and picks anything with `"type": "string"`. To exclude a field, change its type or move it to a sub-table.
-
-## Storage
-
-SearchFn creates a single table at first index:
-
-```sql
-CREATE TABLE _searchfn_index (
-    id        SERIAL PRIMARY KEY,
-    term      VARCHAR,
-    model     VARCHAR,
-    recordId  VARCHAR,
-    field     VARCHAR,
-    UNIQUE (term, model, recordId, field)
-);
-```
-
-(Exact DDL depends on your DataFn adapter; the indexer uses `db.create`, so the table is created via DataFn's migration story.)
-
-The `table_prefix` is configurable:
-
-```python
-search_plugin = create_searchfn_server({
-    "schema": schema,
-    "db": db,
-    "table_prefix": "fts_",  # → fts_index
-})
-```
-
-## Initialization
+The package requires Python 3.9 or newer and has no required runtime dependencies. Supply a schema containing `resources` or `models`, as a mapping or a list of named definitions. Each definition can hold fields as a mapping or a list; fields with `type: "string"` are indexed. Each record needs an `id`.
 
 ```python
 from searchfn import create_searchfn_server
 
-search_plugin = create_searchfn_server({
-    "schema": schema,
-    "db": db,
-})
-```
-
-The plugin returns a dict:
-
-```python
-{
-    "routes": {
-        "POST /searchfn/index":  index_handler,
-        "POST /searchfn/search": search_handler,
+schema = {
+    "resources": {
+        "articles": {
+            "fields": {"title": {"type": "string"}, "views": {"type": "number"}}
+        }
     }
 }
+plugin = create_searchfn_server({"schema": schema, "db": db})
 ```
 
-Mount the routes on your HTTP framework — see [HTTP mount](/docs/documentation/python/http-mount).
+`db` is your async adapter. It must implement `find_many(table, where, limit=None)`, `create(table, value)`, and `delete(table, where)`. A DataFn adapter with those methods is one option. The Python kernel does not import DataFn.
 
-## Trigger first index
+## Index storage
 
-After mounting the server:
+Provision an index table in the same adapter before indexing. With the default `table_prefix`, the table name is `_searchfn_index`. Rows hold `term`, `model`, `recordId`, and `field`; an adapter may also assign an `id`. Configure a uniqueness rule for `(term, model, recordId, field)` if your database needs duplicate protection. SearchFn does not run migrations or create this table.
 
-```bash
-curl -X POST http://localhost:8000/searchfn/index
-# → { "ok": true, "result": { "totalIndexed": 1234, "totalTerms": 50000 } }
-```
-
-Or programmatically in a startup hook:
-
-```python
-from searchfn import index_data
-
-@app.on_event("startup")
-async def initial_index():
-    await index_data(schema, db)
-```
-
-## Configuration summary
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `schema` | required | DataFn schema dict |
-| `db` | required | DataFn-compatible adapter instance |
-| `table_prefix` | `"_searchfn_"` | Prefix for SearchFn-owned tables |
-
-## See also
-
-- [Indexing](/docs/documentation/python/indexing)
-- [HTTP mount](/docs/documentation/python/http-mount)
+Pass `"table_prefix": "fts_"` to use `fts_index`. The prefix must be a non-empty string. The index route returns `{ "ok": true, "result": { "totalIndexed": ..., "totalTerms": ... } }`; the search route returns `{ "ok": true, "results": [...] }`. Mount and authorize them through your framework as shown in [HTTP mount](/docs/documentation/python/http-mount).
 
 
 
@@ -5825,8 +5365,9 @@ Treat `authorize` like any other async function — handle your own errors.
 import { createSearchFnServer } from "@searchfn/server";
 import { MemoryAdapter } from "@searchfn/adapter-memory";
 
+const adapter = new MemoryAdapter();
 const sf = await createSearchFnServer({
-  adapter: new MemoryAdapter(),
+  adapter,
   authorize: async (ctx, action) => action === "search",
 });
 
@@ -6854,12 +6395,13 @@ bun add @searchfn/server @searchfn/adapter-memory
 import { createSearchFnServer } from "@searchfn/server";
 import { MemoryAdapter } from "@searchfn/adapter-memory";
 
+const adapter = new MemoryAdapter();
 const sf = await createSearchFnServer({
-  adapter: new MemoryAdapter(),
+  adapter,
   basePath: "/searchfn",
 });
 
-await sf.adapter.initialize?.({
+await adapter.initialize({
   resources: [{ name: "messages", searchFields: ["body"] }],
 });
 
@@ -6867,19 +6409,14 @@ Bun.serve({
   port: 3000,
   fetch: async (req) => {
     if (new URL(req.url).pathname.startsWith("/searchfn/")) {
-      return sf.router.handle({
-        method: req.method,
-        url: req.url,
-        headers: req.headers,
-        body: req.body,
-      });
+      return sf.router.handle(req);
     }
     return new Response("Not found", { status: 404 });
   },
 });
 ```
 
-`Bun.serve` accepts native `Request`s, and `sf.router.handle` returns one — no shim needed.
+`Bun.serve` accepts native `Request`s, and `sf.router.handle` returns a `Response` — no shim needed.
 
 ## 3. Smoke test
 
@@ -6917,39 +6454,30 @@ Description: Mount SearchFn into an Express app in under 10 minutes.
 ## 1. Install
 
 ```bash
-npm install express @searchfn/server @searchfn/adapter-memory
+npm install express @superfunctions/http-express @searchfn/server @searchfn/adapter-memory
 ```
 
 ## 2. Mount
 
 ```typescript
 import express from "express";
+import { toExpress } from "@superfunctions/http-express";
 import { createSearchFnServer } from "@searchfn/server";
 import { MemoryAdapter } from "@searchfn/adapter-memory";
 
+const adapter = new MemoryAdapter();
 const sf = await createSearchFnServer({
-  adapter: new MemoryAdapter(),
+  adapter,
   basePath: "/searchfn",
 });
 
-await sf.adapter.initialize?.({
+await adapter.initialize({
   resources: [{ name: "products", searchFields: ["name", "description"] }],
 });
 
 const app = express();
-app.use(express.json({ limit: "2mb" }));
-
-app.all("/searchfn/*", async (req, res) => {
-  const response = await sf.router.handle({
-    method: req.method,
-    url: req.originalUrl,
-    headers: new Headers(req.headers as Record<string, string>),
-    body: JSON.stringify(req.body),
-  });
-  res.status(response.status);
-  response.headers.forEach((v, k) => res.setHeader(k, v));
-  res.send(await response.text());
-});
+app.use(express.raw({ type: "*/*", limit: "2mb" }));
+app.use(toExpress(sf.router));
 
 app.listen(3000);
 ```
@@ -6968,7 +6496,7 @@ curl -X POST http://localhost:3000/searchfn/search \
 
 ## Production
 
-Use `@searchfn/adapter-postgres` for persistence, set `authorize` to gate writes to admin/service principals, and add an `express.json({ limit })` matching the server's `maxPayloadBytes`.
+Use `@searchfn/adapter-postgres` for persistence, set `authorize` to gate writes to admin/service principals, and add an `express.raw({ type: "*/*", limit })` matching the server's `maxPayloadBytes`.
 
 ## Next steps
 
@@ -6982,76 +6510,48 @@ Use `@searchfn/adapter-postgres` for persistence, set `authorize` to gate writes
 ### FastAPI
 
 URL: https://searchfn.com/docs/quickstart/fastapi
-Description: Mount the Python SearchFn server inside a FastAPI app.
+Description: Mount Python SearchFn handlers in a FastAPI application.
 --------------------------------------------------------------------------------
 
-## 1. Install
-
-```bash
-pip install fastapi uvicorn searchfn datafn
+```sh
+pip install searchfn fastapi uvicorn
 ```
 
-## 2. Set up SearchFn alongside DataFn
-
-`app.py`:
+Provide `schema` and a compatible async `db` from your application. The adapter needs `find_many`, `create`, and `delete`. Route keys include the HTTP method, and handlers accept `(ctx, payload)`:
 
 ```python
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from searchfn import create_searchfn_server
-from datafn.db import PostgresAdapter
-from schema import schema  # your DataFn schema
-
-db = PostgresAdapter(connection_string=os.environ["SEARCH_DB_URL"])
-
-search_plugin = create_searchfn_server({
-    "schema": schema,
-    "db": db,
-    "table_prefix": "_searchfn_",
-})
+from myapp.storage import schema, db
 
 app = FastAPI()
+plugin = create_searchfn_server({"schema": schema, "db": db})
 
-for path, handler in search_plugin["routes"].items():
-    @app.api_route(path, methods=["POST"], name=f"sf-{path}")
-    async def route(request: Request, _handler=handler):
-        body = await request.json()
-        return await _handler(body)
+def make_endpoint(handler):
+    async def endpoint(request: Request):
+        try:
+            payload = await request.json()
+        except ValueError:
+            return JSONResponse({"ok": False, "error": "Expected a JSON object"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Expected a JSON object"}, status_code=400)
+        result = await handler(None, payload)
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+
+    return endpoint
+
+
+for spec, handler in plugin["routes"].items():
+    method, path = spec.split(" ", 1)
+    app.add_api_route(path, make_endpoint(handler), methods=[method])
 ```
 
-The Python SearchFn server stores its inverted index inside your existing Postgres database, alongside the DataFn data. No additional infrastructure required for moderate-scale apps.
+Run `uvicorn myapp.app:app` (adjust to your module), then POST JSON to `/searchfn/index` or `/searchfn/search`. Protect index rebuilding with operator authorization and apply your normal request authentication to search.
 
-## 3. Run
+The host must provision `<table_prefix>index` (default `_searchfn_index`) and authorize both routes. `searchfn` does not import DataFn or set up database tables. For a standalone adapter example, see the [Python source README](https://github.com/21nCo/super-functions/blob/dev/searchfn/python/README.md).
 
-```bash
-uvicorn app:app --reload
-```
-
-## 4. Index
-
-```bash
-curl -X POST http://localhost:8000/searchfn/index \
-  -H 'content-type: application/json' \
-  -d '{ "model": "products" }'
-```
-
-This scans all rows in `products`, tokenizes the string fields, and populates `_searchfn_index`.
-
-## 5. Search
-
-```bash
-curl -X POST http://localhost:8000/searchfn/search \
-  -H 'content-type: application/json' \
-  -d '{ "query": "fast laptop", "limit": 10 }'
-```
-
-## When to use the TypeScript adapters instead
-
-The Python package is optimized for the "DataFn + Postgres" case. If you need an external search service (Meilisearch, Elasticsearch), stand up the TypeScript server in a sidecar and have FastAPI call it. The Python package and TypeScript server share the same envelope contract, so client code stays portable.
-
-## Next steps
-
-- [Python reference](/docs/reference/python)
-- [DataFn integration](/docs/integrations/datafn)
+See [Python setup](/docs/documentation/python/setup) and [HTTP mount](/docs/documentation/python/http-mount).
 
 
 
@@ -7065,38 +6565,30 @@ Description: SearchFn on Fastify with a single route registration.
 ## 1. Install
 
 ```bash
-npm install fastify @searchfn/server @searchfn/adapter-memory
+npm install fastify @superfunctions/http-fastify @searchfn/server @searchfn/adapter-memory
 ```
 
 ## 2. Register the route
 
 ```typescript
 import Fastify from "fastify";
+import { toFastify } from "@superfunctions/http-fastify";
 import { createSearchFnServer } from "@searchfn/server";
 import { MemoryAdapter } from "@searchfn/adapter-memory";
 
+const adapter = new MemoryAdapter();
 const sf = await createSearchFnServer({
-  adapter: new MemoryAdapter(),
+  adapter,
   basePath: "/searchfn",
 });
 
-await sf.adapter.initialize?.({
+await adapter.initialize({
   resources: [{ name: "books", searchFields: ["title", "author"] }],
 });
 
 const app = Fastify({ bodyLimit: 2 * 1024 * 1024 });
 
-app.all("/searchfn/*", async (request, reply) => {
-  const response = await sf.router.handle({
-    method: request.method,
-    url: request.url,
-    headers: new Headers(request.headers as Record<string, string>),
-    body: request.body ? JSON.stringify(request.body) : undefined,
-  });
-  reply.status(response.status);
-  response.headers.forEach((v, k) => reply.header(k, v));
-  return response.text();
-});
+await app.register(toFastify(sf.router));
 
 await app.listen({ port: 3000 });
 ```
@@ -7126,59 +6618,45 @@ Fuzzy matching is on by default — the typo-corrected hit comes back.
 ### Flask
 
 URL: https://searchfn.com/docs/quickstart/flask
-Description: Mount SearchFn into a Flask app.
+Description: Bridge async Python SearchFn handlers into Flask.
 --------------------------------------------------------------------------------
 
-## 1. Install
-
-```bash
-pip install flask searchfn datafn
+```sh
+pip install searchfn flask
 ```
-
-## 2. App
 
 ```python
-from flask import Flask, request, jsonify
 import asyncio
-import os
-
+from flask import Flask, jsonify, request
+from werkzeug.exceptions import BadRequest, UnsupportedMediaType
 from searchfn import create_searchfn_server
-from datafn.db import PostgresAdapter
-from schema import schema
-
-db = PostgresAdapter(connection_string=os.environ["SEARCH_DB_URL"])
-
-search_plugin = create_searchfn_server({
-    "schema": schema,
-    "db": db,
-})
+from myapp.storage import schema, db
 
 app = Flask(__name__)
+plugin = create_searchfn_server({"schema": schema, "db": db})
 
-for path, handler in search_plugin["routes"].items():
-    def make_view(_handler):
-        def view():
-            return jsonify(asyncio.run(_handler(request.get_json())))
-        return view
-    app.add_url_rule(path, endpoint=f"sf{path}", view_func=make_view(handler), methods=["POST"])
+def wrap(handler):
+    def view():
+        try:
+            payload = request.get_json()
+        except (BadRequest, UnsupportedMediaType):
+            return jsonify({"ok": False, "error": "Expected a JSON object"}), 400
+        if not isinstance(payload, dict):
+            return jsonify({"ok": False, "error": "Expected a JSON object"}), 400
+        result = asyncio.run(handler(None, payload))
+        return jsonify(result), (200 if result.get("ok") else 400)
+    return view
 
-if __name__ == "__main__":
-    app.run(port=8000)
+for spec, handler in plugin["routes"].items():
+    method, path = spec.split(" ", 1)
+    app.add_url_rule(path, endpoint=f"searchfn_{path.rsplit('/', 1)[-1]}", view_func=wrap(handler), methods=[method])
 ```
 
-Flask is synchronous; the wrapper bridges Python's async SearchFn into Flask's sync request lifecycle via `asyncio.run`. For higher throughput consider Starlette or FastAPI.
+For a synchronous Flask host, the wrapper runs each async handler in its own event loop. Check whether your database adapter supports that lifecycle; an async-native framework may fit better for a high-throughput service. Authenticate search requests and restrict indexing to operators.
 
-## 3. Smoke test
+The host must provision `<table_prefix>index` (default `_searchfn_index`) and authorize both routes. `searchfn` does not import DataFn or set up database tables. For a standalone adapter example, see the [Python source README](https://github.com/21nCo/super-functions/blob/dev/searchfn/python/README.md).
 
-```bash
-curl -X POST http://localhost:8000/searchfn/index -H 'content-type: application/json' -d '{"model":"products"}'
-curl -X POST http://localhost:8000/searchfn/search -H 'content-type: application/json' -d '{"query":"laptop"}'
-```
-
-## Next steps
-
-- [Python reference](/docs/reference/python)
-- [Production scaling](/docs/documentation/deploy/scaling)
+See [Python setup](/docs/documentation/python/setup) and [HTTP mount](/docs/documentation/python/http-mount).
 
 
 
@@ -7194,7 +6672,7 @@ This guide gets a Hono server indexing and searching in under 10 minutes. The sa
 ## 1. Install
 
 ```bash
-npm install hono @searchfn/server @searchfn/adapter-memory
+npm install hono @hono/node-server @searchfn/server @searchfn/adapter-memory
 ```
 
 For production with Postgres:
@@ -7207,15 +6685,17 @@ npm install @searchfn/adapter-postgres
 
 ```typescript
 import { Hono } from "hono";
+import { serve } from "@hono/node-server";
 import { createSearchFnServer } from "@searchfn/server";
 import { MemoryAdapter } from "@searchfn/adapter-memory";
 
+const adapter = new MemoryAdapter();
 const sf = await createSearchFnServer({
-  adapter: new MemoryAdapter(),
+  adapter,
   basePath: "/searchfn",
 });
 
-await sf.adapter.initialize?.({
+await adapter.initialize({
   resources: [
     { name: "articles", searchFields: ["title", "body"] },
   ],
@@ -7223,20 +6703,11 @@ await sf.adapter.initialize?.({
 
 const app = new Hono();
 
-app.all("/searchfn/*", async (c) => {
-  const res = await sf.router.handle({
-    method: c.req.method,
-    url: c.req.url,
-    headers: c.req.raw.headers,
-    body: c.req.raw.body,
-  });
-  return new Response(res.body, { status: res.status, headers: res.headers });
-});
-
-export default app;
+app.all("/searchfn/*", (c) => sf.router.handle(c.req.raw));
+serve({ fetch: app.fetch, port: 3000 });
 ```
 
-`@searchfn/server` exposes a generic `router` that adapts to any HTTP framework through small request/response shims. The example above is a 10-line shim; if you use `@superfunctions/http`'s Hono adapter, you can drop the shim entirely.
+The router consumes a Web `Request` and returns a Web `Response`; Hono exposes its incoming request as `c.req.raw`. This example starts a Node server explicitly. On Bun, use `Bun.serve({ fetch: app.fetch, port: 3000 })` instead of the Node server adapter.
 
 ## 3. Run
 
@@ -7244,7 +6715,7 @@ export default app;
 npx tsx --watch server.ts
 ```
 
-Server listens on the default Hono port (3000).
+Server listens on the configured port 3000.
 
 ## 4. Index your first documents
 
@@ -7279,15 +6750,16 @@ Swap the adapter:
 ```typescript
 import { PostgresAdapter } from "@searchfn/adapter-postgres";
 
-const sf = await createSearchFnServer({
-  adapter: new PostgresAdapter({
-    connectionString: process.env.SEARCH_DB_URL!,
-  }),
-  basePath: "/searchfn",
+const adapter = new PostgresAdapter({
+  connectionString: process.env.SEARCH_DB_URL!,
 });
+await adapter.initialize({
+  resources: [{ name: "articles", searchFields: ["title", "body"] }],
+});
+const sf = await createSearchFnServer({ adapter, basePath: "/searchfn" });
 ```
 
-Run the [Postgres adapter migration SQL](/docs/reference/adapters/postgres) once. Everything else stays the same.
+Initialize the same adapter instance passed to the server, before accepting requests. Keep the Hono routes and server startup from above. See the [Postgres adapter](/docs/reference/adapters/postgres) for provisioning details.
 
 ## Next steps
 
@@ -7318,22 +6790,18 @@ npm install @searchfn/server @searchfn/adapter-postgres @searchfn/client @search
 import { createSearchFnServer } from "@searchfn/server";
 import { PostgresAdapter } from "@searchfn/adapter-postgres";
 
+const adapter = new PostgresAdapter({ connectionString: process.env.SEARCH_DB_URL! });
 const sf = await createSearchFnServer({
-  adapter: new PostgresAdapter({ connectionString: process.env.SEARCH_DB_URL! }),
+  adapter,
   basePath: "/searchfn",
 });
 
-await sf.adapter.initialize?.({
+await adapter.initialize({
   resources: [{ name: "tasks", searchFields: ["title", "description"] }],
 });
 
 const handler = (request: Request) =>
-  sf.router.handle({
-    method: request.method,
-    url: request.url,
-    headers: request.headers,
-    body: request.body,
-  });
+  sf.router.handle(request);
 
 export const GET = handler;
 export const POST = handler;
@@ -7411,62 +6879,44 @@ The MemoryAdapter and PostgresAdapter both work on Node.js. For Edge runtimes (V
 ### Starlette
 
 URL: https://searchfn.com/docs/quickstart/starlette
-Description: Mount SearchFn into a Starlette app.
+Description: Mount Python SearchFn handlers in a Starlette application.
 --------------------------------------------------------------------------------
 
-## 1. Install
-
-```bash
-pip install starlette uvicorn searchfn datafn
+```sh
+pip install searchfn starlette uvicorn
 ```
-
-## 2. App
 
 ```python
 from starlette.applications import Starlette
-from starlette.routing import Route
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-
+from starlette.routing import Route
 from searchfn import create_searchfn_server
-from datafn.db import PostgresAdapter
-from schema import schema
+from myapp.storage import schema, db
 
-db = PostgresAdapter(connection_string=os.environ["SEARCH_DB_URL"])
-
-search_plugin = create_searchfn_server({
-    "schema": schema,
-    "db": db,
-})
+plugin = create_searchfn_server({"schema": schema, "db": db})
 
 def wrap(handler):
     async def endpoint(request: Request):
-        body = await request.json()
-        return JSONResponse(await handler(body))
+        body = await request.body()
+        payload = await request.json() if body else {}
+        result = await handler(None, payload)
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     return endpoint
 
-routes = [Route(path, wrap(handler), methods=["POST"]) for path, handler in search_plugin["routes"].items()]
+routes = []
+for spec, handler in plugin["routes"].items():
+    method, path = spec.split(" ", 1)
+    routes.append(Route(path, endpoint=wrap(handler), methods=[method]))
 
 app = Starlette(routes=routes)
 ```
 
-## 3. Run
+Run `uvicorn myapp.app:app` (adjust to your module). Authenticate search requests and restrict the indexing route to operators.
 
-```bash
-uvicorn app:app --reload
-```
+The host must provision `<table_prefix>index` (default `_searchfn_index`) and authorize both routes. `searchfn` does not import DataFn or set up database tables. For a standalone adapter example, see the [Python source README](https://github.com/21nCo/super-functions/blob/dev/searchfn/python/README.md).
 
-## Smoke test
-
-```bash
-curl -X POST http://localhost:8000/searchfn/index -d '{"model": "products"}'
-curl -X POST http://localhost:8000/searchfn/search -d '{"query": "laptop"}'
-```
-
-## Next steps
-
-- [Python reference](/docs/reference/python)
-- [Security: authorization](/docs/documentation/security/request-authz)
+See [Python setup](/docs/documentation/python/setup) and [HTTP mount](/docs/documentation/python/http-mount).
 
 
 
@@ -7487,33 +6937,29 @@ npm install @searchfn/client @searchfn/adapter-indexeddb @searchfn/server @searc
 
 ## 2. Server route
 
-`src/routes/searchfn/+server.ts`:
+`src/routes/searchfn/[...path]/+server.ts`:
 
 ```typescript
-import { json } from "@sveltejs/kit";
+import type { RequestHandler } from "./$types";
 import { createSearchFnServer } from "@searchfn/server";
 import { PostgresAdapter } from "@searchfn/adapter-postgres";
 import { SEARCH_DB_URL } from "$env/static/private";
 
+const adapter = new PostgresAdapter({ connectionString: SEARCH_DB_URL });
 const sf = await createSearchFnServer({
-  adapter: new PostgresAdapter({ connectionString: SEARCH_DB_URL }),
+  adapter,
   basePath: "/searchfn",
 });
 
-await sf.adapter.initialize?.({
+await adapter.initialize({
   resources: [{ name: "notes", searchFields: ["title", "body"] }],
 });
 
-export const GET = async ({ request }) =>
-  sf.router.handle({ method: "GET", url: request.url, headers: request.headers });
+export const GET: RequestHandler = async ({ request }) =>
+  sf.router.handle(request);
 
-export const POST = async ({ request }) =>
-  sf.router.handle({
-    method: "POST",
-    url: request.url,
-    headers: request.headers,
-    body: request.body,
-  });
+export const POST: RequestHandler = async ({ request }) =>
+  sf.router.handle(request);
 ```
 
 Run the Postgres migrations once — see the [PostgresAdapter reference](/docs/reference/adapters/postgres).
@@ -9933,14 +9379,7 @@ npm install @searchfn/adapter-postgres
 
 ## Setup
 
-The adapter requires search tables and indexes in your Postgres database. Run the migration SQL shipped with the package:
-
-```typescript
-import { getPostgresMigrationSQL } from "@searchfn/adapter-postgres";
-
-const sql = getPostgresMigrationSQL();
-// Execute this SQL against your database to create required tables and indexes
-```
+`PostgresAdapter.initialize({ resources })` creates adapter-owned metadata/resource tables and indexes idempotently. Provision the database and configured schema first, and run initialization with credentials allowed to create those objects. There is no `getPostgresMigrationSQL` export. The example below initializes the declared resources before indexing.
 
 ## Usage
 
@@ -10115,7 +9554,7 @@ SearchFn ships a coordinated set of packages. Each release notes which packages 
 | --- | --- |
 | `import { MemoryAdapter } from "<legacy>"` | `import { MemoryAdapter } from "@searchfn/adapter-memory"` |
 | `import { IndexedDbAdapter } from "<legacy>"` | `import { IndexedDbAdapter } from "@searchfn/adapter-indexeddb"` |
-| `import { PostgresAdapter } from "<legacy>"` | `import { PostgresAdapter, getPostgresMigrationSQL } from "@searchfn/adapter-postgres"` |
+| `import { PostgresAdapter } from "<legacy>"` | `import { PostgresAdapter } from "@searchfn/adapter-postgres"` |
 | `import { MeilisearchAdapter } from "<legacy>"` | `import { MeilisearchAdapter } from "@searchfn/adapter-meilisearch"` |
 | `import { ElasticsearchAdapter } from "<legacy>"` | `import { ElasticsearchAdapter } from "@searchfn/adapter-elasticsearch"` |
 | `import { OpenSearchAdapter } from "<legacy>"` | `import { OpenSearchAdapter } from "@searchfn/adapter-opensearch"` |
@@ -10833,147 +10272,29 @@ Wrap each handler to start a span; emit `searchfn` span attributes from the even
 
 
 --------------------------------------------------------------------------------
-### Python Reference
+### Python reference
 
 URL: https://searchfn.com/docs/reference/python
-Description: API reference for the Python SearchFn package.
+Description: Public Python API, schema contract, and HTTP handler shapes.
 --------------------------------------------------------------------------------
 
-The Python SearchFn package is a lightweight, database-backed search engine designed as a DataFn companion. It stores its inverted index in the same database as your DataFn data — no extra infrastructure for small to medium apps.
-
-## Install
-
-```bash
-pip install searchfn
-```
-
-## `create_searchfn_server(config)`
-
-Creates the server plugin definitions for mounting into an HTTP framework.
+The Python `searchfn` kernel requires Python 3.9 or newer and has no required DataFn dependency. Any async adapter with `find_many`, `create`, and `delete` can back the index. A DataFn adapter is compatible when it offers those methods.
 
 ```python
-from searchfn import create_searchfn_server
-from datafn.db import PostgresAdapter
+from searchfn import create_searchfn_server, index_data, search_index
 
-search_plugin = create_searchfn_server({
-    "schema": schema,        # DataFn schema dict
-    "db": db,                # DataFn DB adapter instance
+plugin = create_searchfn_server({
+    "schema": schema,          # resources or models; mapping or named list
+    "db": db,                  # duck-typed async adapter
     "table_prefix": "_searchfn_",  # optional
 })
 ```
 
-| Key | Type | Required | Description |
-| --- | --- | --- | --- |
-| `schema` | `dict` | yes | DataFn schema object |
-| `db` | DB adapter | yes | DataFn-compatible DB adapter (Postgres, SQLite) |
-| `table_prefix` | `str` | no | Prefix for SearchFn-owned tables. Default: `_searchfn_` |
+`create_searchfn_server` returns `{"routes": {"POST /searchfn/index": handler, "POST /searchfn/search": handler}}`. Each handler is async and accepts `(ctx, payload)`. The index handler accepts optional `model` and returns `{"ok": True, "result": {"totalIndexed": int, "totalTerms": int}}`. The search handler requires a non-empty `query`, accepts optional `model` and positive `limit` up to 10,000, and returns `{"ok": True, "results": [...]}`.
 
-**Returns:** `dict` with `routes` key — a map of HTTP paths to async handlers.
+`index_data(schema, db, model=None, table_prefix="_searchfn_")` scans string fields and replaces term rows for each source record. `search_index(schema, db, query, model=None, limit=20, table_prefix="_searchfn_")` ranks by matching index-row count. Hits contain `id`, `model`, `score`, and sorted `matches`. Ties sort by model and record ID. The host provisions the `<table_prefix>index` table, authorizes routes, and decides when to reindex.
 
-## HTTP endpoints
-
-When mounted, the plugin exposes:
-
-### `POST /searchfn/index`
-
-Triggers (re-)indexing of a model or all models.
-
-**Request:**
-
-```json
-{ "model": "products" }
-```
-
-Omit `model` to index all string fields across all resources.
-
-**Response:**
-
-```json
-{ "ok": true, "result": { "totalIndexed": 1234 } }
-```
-
-### `POST /searchfn/search`
-
-Searches the inverted index.
-
-**Request:**
-
-```json
-{ "query": "fast laptop", "model": "products", "limit": 20 }
-```
-
-`model` is optional; omit to search across all indexed models.
-
-**Response:**
-
-```json
-{
-  "ok": true,
-  "results": [
-    { "id": "p-1", "model": "products", "score": 1.42 },
-    { "id": "p-7", "model": "products", "score": 0.88 }
-  ]
-}
-```
-
-## Core functions
-
-### `index_data(schema, db, model=None, table_prefix="_searchfn_")`
-
-Indexes records into the search table. Use for background indexing jobs.
-
-```python
-import asyncio
-from searchfn import index_data
-
-async def reindex():
-    await index_data(schema, db, model="products")
-
-asyncio.run(reindex())
-```
-
-### `search_index(schema, db, query, model=None, limit=20, table_prefix="_searchfn_")`
-
-Search programmatically. Returns matching records sorted by relevance.
-
-```python
-import asyncio
-from searchfn import search_index
-
-async def go():
-    results = await search_index(schema, db, query="fast laptop")
-    for r in results:
-        print(r["id"], r["model"], r["score"])
-
-asyncio.run(go())
-```
-
-## How it works
-
-The Python package maintains an inverted index in a single table (default `_searchfn_index`):
-
-| Column | Description |
-| --- | --- |
-| `term` | A token from the indexed text |
-| `model` | The DataFn resource name |
-| `record_id` | The record's ID |
-| `field` | Which field this term came from |
-
-Search scoring is based on the number of matching terms per record. The package is intentionally simple — for richer ranking (BM25, fuzzy, field boosts), use the TypeScript server's `PostgresAdapter`, which writes a tsvector-backed index, and call it from Python over HTTP.
-
-## When to choose which Python path
-
-| Need | Use |
-| --- | --- |
-| Quick MVP, DataFn already on Postgres/SQLite | Python `create_searchfn_server` |
-| Production-grade ranking, BM25 | TypeScript `@searchfn/server` + `PostgresAdapter`, called over HTTP |
-| Browser local search | TypeScript `@searchfn/adapter-indexeddb` |
-
-## See also
-
-- [FastAPI quickstart](/docs/quickstart/fastapi)
-- [Starlette quickstart](/docs/quickstart/starlette)
-- [Flask quickstart](/docs/quickstart/flask)
+Read [setup](/docs/documentation/python/setup), [indexing](/docs/documentation/python/indexing), [search](/docs/documentation/python/search), and [HTTP mount](/docs/documentation/python/http-mount) for integration details. The [source README](https://github.com/21nCo/super-functions/blob/dev/searchfn/python/README.md) includes a minimal adapter example.
 
 
 
