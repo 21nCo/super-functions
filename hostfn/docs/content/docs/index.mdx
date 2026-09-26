@@ -5,6 +5,8 @@ description: Universal application deployment CLI for VPS and bare-metal servers
 
 HostFn is a deployment CLI that makes it simple to deploy Node.js applications to any Linux server over SSH. It handles the entire deployment lifecycle: server provisioning, file syncing, building, process management with PM2, Nginx configuration, SSL certificates, health checks, backups, and rollbacks.
 
+Applications that need a control plane can also use the separate `hostfn/operator` service and `@hostfn/admin` capability to manage scoped targets, deployments, domains, and environment-variable keys. See [Administration](/docs/documentation/advanced/administration) for the host-owned storage, executor, authorization, and audit boundaries.
+
 ## Why HostFn?
 
 Deploying to a VPS or bare-metal server shouldn't require complex infrastructure. HostFn gives you production-grade deployments with a single command:
