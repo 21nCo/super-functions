@@ -64,9 +64,9 @@ export const auth = authApp.createServer({
 ```ts
 // app/auth/[...path]/route.ts
 import { auth } from "../_runtime";
-import { toNext } from "@superfunctions/http-next";
+import { toNextHandlers } from "@superfunctions/http-next";
 
-const handler = toNext(auth.router);
+const handler = toNextHandlers(auth.router).GET;
 
 export const GET = handler;
 export const POST = handler;

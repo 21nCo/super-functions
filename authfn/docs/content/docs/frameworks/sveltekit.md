@@ -13,13 +13,13 @@ npm install @superfunctions/http-sveltekit
 
 ```ts
 // src/routes/auth/[...path]/+server.ts
-import { toSvelteKit } from '@superfunctions/http-sveltekit';
+import { toSvelteKitHandler } from '@superfunctions/http-sveltekit';
 import { auth } from '$lib/server/auth';
 
-export const GET = toSvelteKit(auth.router);
-export const POST = toSvelteKit(auth.router);
-export const PUT = toSvelteKit(auth.router);
-export const DELETE = toSvelteKit(auth.router);
+export const GET = toSvelteKitHandler(auth.router);
+export const POST = toSvelteKitHandler(auth.router);
+export const PUT = toSvelteKitHandler(auth.router);
+export const DELETE = toSvelteKitHandler(auth.router);
 ```
 
 ## Reading sessions in `+page.server.ts`

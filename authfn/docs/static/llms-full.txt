@@ -5083,10 +5083,10 @@ npm install @superfunctions/http-next
 
 ```ts
 // app/auth/[...path]/route.ts
-import { toNext } from '@superfunctions/http-next';
+import { toNextHandlers } from '@superfunctions/http-next';
 import { auth } from '../_runtime';
 
-const handler = toNext(auth.router);
+const handler = toNextHandlers(auth.router).GET;
 export const GET = handler;
 export const POST = handler;
 export const PUT = handler;
@@ -5110,12 +5110,7 @@ export default async function Dashboard() {
 }
 ```
 
-`@superfunctions/http-next` exposes a helper for the fake-request pattern:
-
-```ts
-import { toNextSession } from '@superfunctions/http-next';
-const session = await toNextSession(auth, await headers());
-```
+Use `auth.provider.authenticate(request)` with the incoming headers, as above. The HTTP adapter only creates route handlers; session lookup belongs to the auth provider.
 
 ## Server Actions
 
@@ -5130,7 +5125,7 @@ export async function deleteMyAccount() {
     method: 'DELETE',
     headers: reqHeaders,
   });
-  const response = await auth.router.fetch(request);
+  const response = await auth.router.handle(request);
   if (!response.ok) throw new Error('delete failed');
 }
 ```
@@ -5139,7 +5134,8 @@ export async function deleteMyAccount() {
 
 ```ts
 // middleware.ts
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
+import { auth } from './app/auth/_runtime';
 
 export async function middleware(request: NextRequest) {
   const url = request.nextUrl;
@@ -5209,13 +5205,13 @@ npm install @superfunctions/http-sveltekit
 
 ```ts
 // src/routes/auth/[...path]/+server.ts
-import { toSvelteKit } from '@superfunctions/http-sveltekit';
+import { toSvelteKitHandler } from '@superfunctions/http-sveltekit';
 import { auth } from '$lib/server/auth';
 
-export const GET = toSvelteKit(auth.router);
-export const POST = toSvelteKit(auth.router);
-export const PUT = toSvelteKit(auth.router);
-export const DELETE = toSvelteKit(auth.router);
+export const GET = toSvelteKitHandler(auth.router);
+export const POST = toSvelteKitHandler(auth.router);
+export const PUT = toSvelteKitHandler(auth.router);
+export const DELETE = toSvelteKitHandler(auth.router);
 ```
 
 ## Reading sessions in `+page.server.ts`
@@ -7700,9 +7696,9 @@ export const auth = authApp.createServer({
 ```ts
 // app/auth/[...path]/route.ts
 import { auth } from "../_runtime";
-import { toNext } from "@superfunctions/http-next";
+import { toNextHandlers } from "@superfunctions/http-next";
 
-const handler = toNext(auth.router);
+const handler = toNextHandlers(auth.router).GET;
 
 export const GET = handler;
 export const POST = handler;
@@ -8097,12 +8093,12 @@ export const auth = authApp.createServer({
 ```ts
 // src/routes/auth/[...path]/+server.ts
 import { auth } from "$lib/server/auth";
-import { toSvelteKit } from "@superfunctions/http-sveltekit";
+import { toSvelteKitHandler } from "@superfunctions/http-sveltekit";
 
-export const GET = toSvelteKit(auth.router);
-export const POST = toSvelteKit(auth.router);
-export const PUT = toSvelteKit(auth.router);
-export const DELETE = toSvelteKit(auth.router);
+export const GET = toSvelteKitHandler(auth.router);
+export const POST = toSvelteKitHandler(auth.router);
+export const PUT = toSvelteKitHandler(auth.router);
+export const DELETE = toSvelteKitHandler(auth.router);
 ```
 
 ## 4. Wire the client and Svelte store
