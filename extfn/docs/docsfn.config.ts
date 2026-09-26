@@ -3,6 +3,7 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
+    canonicalUrl: "https://extfn.com",
     title: "ExtFn",
     description: "Browser extension configuration, runtime, build, scan, and packaging for Chromium and Firefox.",
     basePath: "/docs",
