@@ -1,0 +1,81 @@
+apifn/docs/README.md
+  s_ee6f287c08acb3::t_79d9432b0e218e 12-22
+apifn/docs/content/docs/collections-and-tests.md
+  s_ee6f287c08acb3::t_7cf31cab90b367 9-10
+apifn/docs/content/docs/diff-and-ci.md
+  s_ee6f287c08acb3::t_8a4f2a053473b7 9-11,14
+apifn/docs/content/docs/getting-started.md
+  s_ee6f287c08acb3::t_84e9610c50cafd 10,26-29
+apifn/docs/content/docs/mocking.md
+  s_ee6f287c08acb3::t_a338e050236dfc 9
+apifn/docs/content/docs/openapi-from-router.md
+  s_ee6f287c08acb3::t_3024b0b19a48e2 19
+apifn/docs/content/docs/python.md
+  s_ee6f287c08acb3::t_e8934a0e6d161b 6
+apifn/docs/content/docs/reference/cli.md
+  s_ee6f287c08acb3::t_ab1be24a9b02fd 58,147,160,191-192
+apifn/docs/content/docs/reference/collections.md
+  s_ee6f287c08acb3::t_d8ad5e1063d59c 19,192
+apifn/docs/content/docs/reference/core.md
+  s_ee6f287c08acb3::t_568362b3efb749 42-43,48-49,190
+apifn/docs/content/docs/reference/docsfn.md
+  s_ee6f287c08acb3::t_2019c66e904f81 51,98
+apifn/docs/content/docs/reference/mock.md
+  s_ee6f287c08acb3::t_e316625dac4153 20-21,59-60,116
+apifn/docs/content/docs/reference/overview.md
+  s_ee6f287c08acb3::t_f5e5e38ba86308 14-21,25,33,133,147-149
+apifn/docs/content/docs/reference/react.md
+  s_ee6f287c08acb3::t_2947fe2cda8489 116
+apifn/docs/content/docs/reference/svelte.md
+  s_ee6f287c08acb3::t_51057b88e65eed 6
+apifn/docs/content/docs/snippets.md
+  s_ee6f287c08acb3::t_b6004e2e0cc223 9
+apifn/docs/package.json
+  s_ee6f287c08acb3::t_7036ddb326afbc 29,32-33
+apifn/docs/scripts/generate-llms.mjs
+  s_ee6f287c08acb3::t_5ddccc7c4d4651 32,38
+apifn/docs/src/app.css
+  s_ee6f287c08acb3::t_fa81302b80a694 19,76-80
+apifn/docs/src/routes/+layout.svelte
+  s_03d36f71153c0c::t_a86e1b3c83dc36 6-7,16-17,22
+apifn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ee6f287c08acb3::t_f41f5c9f84419d 2,15-17,27-29
+apifn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_14be9dfd798635 6,19-20,36-38,41,55,71-74,116,144,154,218,307,320,351-352,395,568,669-670,675-676,817,942,989,1049-1050,1088-1089,1145,1201-1208,1212,1220,1320,1334-1336,1473,1600,1718
+apifn/docs/tsconfig.json
+  s_ee6f287c08acb3::t_cf35975fa90be0 25
+apifn/docs/vite.config.ts
+  s_ee6f287c08acb3::t_02a47259cac981 2,9-10,25-26
+package-lock.json
+  s_ee6f287c08acb3::t_f5613c450fe3df 66488,66491-66492,66590-66616
+scripts/docs-site/Search.svelte
+  s_ee6f287c08acb3::t_98fb4bd6b12d5d 13
+scripts/docs-site/layout.ts
+  s_03d36f71153c0c::t_91a263d9807b5f 1-10
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_dea78c20076480 359
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0f5bf2da811a021d1f45f0e49a856fd482de0df9",
+  "prompts": {},
+  "sessions": {
+    "s_03d36f71153c0c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dd0a-8a36-7fc0-b600-70f28f9752eb",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
