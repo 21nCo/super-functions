@@ -1,0 +1,166 @@
+---
+title: ApiFn source overview
+description: Source guide for overview.
+---
+
+ApiFn is a code-first, self-hosted API development toolkit. Generate OpenAPI specs from your router, diff them for breaking changes, run collection-based test suites, mock endpoints, embed interactive API docs, and gate it all in CI — without leaving your codebase.
+
+Your router is the source of truth: introspect it into OpenAPI 3.1, then drive validation, diffing, testing, mocking, snippets, and documentation from the same spec.
+
+## npm packages
+
+| Package | Description |
+|---------|-------------|
+| [`@apifn/core`](https://github.com/21nCo/super-functions/tree/dev/apifn/core) | Route introspection, schema conversion (Zod/TypeBox → JSON Schema), OpenAPI 3.1 generation, diff, and ecosystem integrations. The other ApiFn npm packages build on it. |
+| [`@apifn/cli`](https://github.com/21nCo/super-functions/tree/dev/apifn/cli) | The `apifn` command — generate, export, import, validate, diff, test, mock, serve, snippet. |
+| [`@apifn/collections`](https://github.com/21nCo/super-functions/tree/dev/apifn/collections) | OpenCollection YAML read/write/run: portable request collections with assertions, scripting, and reporters. |
+| [`@apifn/mock`](https://github.com/21nCo/super-functions/tree/dev/apifn/mock) | Framework-free mock server from any OpenAPI spec, with schema/example/random responses and request validation. |
+| [`@apifn/snippets`](https://github.com/21nCo/super-functions/tree/dev/apifn/snippets) | Generate request code snippets for 11 languages/clients (curl, fetch, axios, Python, Go, Java, …). |
+| [`@apifn/react`](https://github.com/21nCo/super-functions/tree/dev/apifn/react) | React components — interactive API explorer, Try-It console, schema viewer, diff, performance overlays. |
+| [`@apifn/svelte`](https://github.com/21nCo/super-functions/tree/dev/apifn/svelte) | The same UI surface for Svelte, shipped as `.svelte` source. |
+| [`@apifn/docsfn`](https://github.com/21nCo/super-functions/tree/dev/apifn/docsfn) | docsfn plugin — render an OpenAPI spec as an interactive API reference. |
+
+## Python SDK
+
+[`apifn`](https://github.com/21nCo/super-functions/tree/dev/apifn/python) provides Python helpers for OpenAPI generation, diffing, collections, FastAPI, and Flask. It requires Python 3.10 or newer and is versioned separately from the npm packages.
+
+## Quick Start
+
+Install the CLI and scaffold a collection:
+
+```bash
+npm install --save-dev @apifn/cli
+npx @apifn/cli init .apifn/collection
+```
+
+Generate an OpenAPI document from your `@superfunctions/http` router:
+
+```typescript
+// apifn.config.ts
+import { defineConfig } from "@apifn/cli";
+
+export default defineConfig({
+  router: "./src/router.ts",
+  output: ".apifn",
+  openapi: {
+    info: { title: "My API", version: "1.0.0" },
+    servers: [{ url: "https://api.example.com" }],
+  },
+});
+```
+
+```bash
+apifn generate                          # → .apifn/openapi.yml
+apifn validate .apifn/openapi.yml       # validate the document
+apifn mock .apifn/openapi.yml           # mock server on :4010
+apifn serve .apifn/openapi.yml          # interactive explorer on :4100
+apifn test .apifn/collection            # run collection tests
+```
+
+Or use the library directly:
+
+```typescript
+import { fromRouter, diffOpenAPI, formatDiffAsText } from "@apifn/core";
+
+const doc = fromRouter(router, {
+  info: { title: "My API", version: "1.0.0" },
+  servers: [{ url: "https://api.example.com" }],
+});
+
+const result = diffOpenAPI(baselineDoc, doc);
+console.log(formatDiffAsText(result));
+```
+
+## Ecosystem Integrations
+
+`@apifn/core` ships first-class hooks into the wider Superfunctions stack:
+
+- **watchfn** — per-endpoint performance metrics and request telemetry
+- **authfn** — mint short-lived test tokens and inject auth into collection runs
+- **secfn** — read rate-limit state for endpoints
+- **logfn** — structured run reporting and a CLI logger
+- **testfn** — an adapter that discovers and runs collections as test cases
+
+## CI/CD
+
+ApiFn provides a reusable GitHub Actions workflow at `.github/workflows/apifn-api-check.yml` (repo root, so GitHub Actions can register and call it).
+
+The workflow checks out the **caller**, installs the pinned published `@apifn/cli`
+version, then runs it against the caller's spec and collection. The caller does
+not need to be this monorepo or contain an `@apifn/cli` workspace. Grant
+`pull-requests: write` on the calling job even when `post_pr_comment` is false;
+the reusable workflow cannot elevate the caller token. Same-repo callers:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  api-check:
+    uses: ./.github/workflows/apifn-api-check.yml
+    with:
+      spec_path: .apifn/openapi.yml
+      collection_dir: .apifn/collection
+```
+
+External repositories can use the registered workflow directly:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  api-check:
+    uses: 21nCo/super-functions/.github/workflows/apifn-api-check.yml@dev
+    with:
+      spec_path: openapi.yml
+      collection_dir: .apifn/collection
+```
+
+Pin a commit or release tag instead of `@dev` when the caller requires an
+immutable workflow. Omit `cli_version` to use the workflow's static default
+(`0.0.2`), which must stay equal to that revision's lockfile pin. If you set it
+explicitly, read the version from the same ref in the
+[workflow's CLI lockfile](https://github.com/21nCo/super-functions/blob/dev/.github/apifn-cli-install/package-lock.json); the
+input is an assertion, not a package selector. For GitLab/Jenkins/Buildkite,
+run the CLI commands in [Non-GitHub CI](#non-github-ci).
+
+### What it does
+
+- Validates OpenAPI specs via `apifn validate --format json`
+- Diffs current spec against base branch via `apifn diff --format json`
+- Runs collection tests via `apifn test --reporter json`
+- Writes machine-readable JSON reports in the runner workspace (no artifact-upload step is included) (`validate-report.json`, `diff-report.json`, `test-report.json`)
+- Builds a markdown summary and posts/updates a PR comment (optional)
+- Enforces non-zero exits for validation failures, breaking changes, and test failures
+
+### Inputs
+
+- `spec_path` (required): Repo-relative OpenAPI path (e.g. `.apifn/openapi.yml`)
+- `collection_dir` (required): Repo-relative OpenCollection directory (e.g. `.apifn/collection`)
+- `environment` (optional, default `development`): Collection environment
+- `cli_version` (optional, default `0.0.2`): Assertion against the `@apifn/cli` version pinned by the selected workflow revision. The default is static in the workflow file and must stay equal to that revision's lockfile pin. Omit it to use the default, or set it from the same ref in the [workflow's CLI lockfile](https://github.com/21nCo/super-functions/blob/dev/.github/apifn-cli-install/package-lock.json). External callers do not need the lockfile locally—the workflow sparse-checks it out from `job.workflow_repository` at `job.workflow_sha`.
+- `base_branch` (optional, default `main`): Branch used to fetch baseline spec
+- `fail_on_breaking` (optional, default `true`): Whether breaking diff exits non-zero
+- `post_pr_comment` (optional, default `true`): Whether to post/update PR summary comment
+
+- `start_mock_server` (optional, default `false`): Start a mock server for collection tests
+- `mock_port` (optional, default `19999`): Port for the mock server
+
+### Example
+
+See [`apifn/examples/ci-cd/github-actions.yml`](https://github.com/21nCo/super-functions/blob/dev/apifn/examples/ci-cd/github-actions.yml).
+
+### Non-GitHub CI
+
+For GitLab/Jenkins/Buildkite, run the same CLI commands directly:
+
+```bash
+apifn validate .apifn/openapi.yml --format json
+apifn diff .apifn/base-openapi.yml .apifn/openapi.yml --format json
+apifn test .apifn/collection --env development --reporter json
+```
+
+## License
+
+MIT

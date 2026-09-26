@@ -1,0 +1,15 @@
+{
+  "title": "Reference",
+  "pages": [
+    "index",
+    "overview",
+    "core",
+    "cli",
+    "collections",
+    "mock",
+    "snippets",
+    "react",
+    "svelte",
+    "docsfn"
+  ]
+}
