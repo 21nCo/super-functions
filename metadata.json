@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3E0H3V9ZBXM4F1C2H6YE04Z",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "mdfn/docs/content/docs/framework-editors.md",
+    "mdfn/docs/content/docs/getting-started.md",
+    "mdfn/docs/content/docs/reference/client.md",
+    "mdfn/docs/content/docs/reference/dom.md",
+    "mdfn/docs/content/docs/reference/react.md",
+    "mdfn/docs/content/docs/reference/server.md",
+    "mdfn/docs/content/docs/reference/solid.md",
+    "mdfn/docs/content/docs/reference/svelte.md",
+    "mdfn/docs/content/docs/server-and-storage.md",
+    "mdfn/docs/src/app.css",
+    "mdfn/docs/src/lib/components/DocsSiteSearch.svelte",
+    "mdfn/docs/src/lib/server/docs-site-source.ts",
+    "mdfn/docs/src/routes/+layout.server.ts",
+    "mdfn/docs/src/routes/+layout.svelte",
+    "mdfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "mdfn/docs/static/llms-full.txt",
+    "mdfn/docs/static/llms.txt",
+    "mdfn/docs/vite.config.ts",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/runtime.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
