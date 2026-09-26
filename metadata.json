@@ -1,0 +1,60 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EHCFXKA27WD3N6650YSGMP",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "extfn/docs/README.md",
+    "extfn/docs/consumer-host-abstraction.md",
+    "extfn/docs/content/docs/cli.md",
+    "extfn/docs/content/docs/configuration.md",
+    "extfn/docs/content/docs/content-and-background.md",
+    "extfn/docs/content/docs/getting-started.md",
+    "extfn/docs/content/docs/index.md",
+    "extfn/docs/content/docs/integrations.md",
+    "extfn/docs/content/docs/operations-and-limits.md",
+    "extfn/docs/content/docs/reference/cli.md",
+    "extfn/docs/content/docs/reference/consumer-host-abstraction.md",
+    "extfn/docs/content/docs/reference/index.md",
+    "extfn/docs/content/docs/reference/multi-content-and-background-handlers.md",
+    "extfn/docs/content/docs/reference/scan.md",
+    "extfn/docs/content/docs/runtime.md",
+    "extfn/docs/content/docs/scan-and-package.md",
+    "extfn/docs/package.json",
+    "extfn/docs/scan.md",
+    "extfn/docs/scripts/generate-llms.mjs",
+    "extfn/docs/src/app.css",
+    "extfn/docs/src/lib/components/DocsSiteSearch.svelte",
+    "extfn/docs/src/lib/server/docs-site-source.ts",
+    "extfn/docs/src/routes/+layout.svelte",
+    "extfn/docs/src/routes/+page.server.ts",
+    "extfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "extfn/docs/src/routes/docs/search.json/+server.ts",
+    "extfn/docs/src/routes/search.json/+server.ts",
+    "extfn/docs/static/llms-full.txt",
+    "extfn/docs/svelte.config.js",
+    "extfn/docs/tsconfig.json",
+    "extfn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/layout.ts",
+    "scripts/docs-site/runtime.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 11164,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 731648,
+    "output_tokens": 3824,
+    "api_call_count": 5
+  }
+}
