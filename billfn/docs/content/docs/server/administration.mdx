@@ -19,11 +19,11 @@ const service = createBillFnDomainAdminService({
 const adapter = createBillFnAdminAdapter(service);
 ```
 
-`resolveAuthorizedBillableSubject` is host code. It must only return a subject after scope authorization; a request-supplied billing account ID is not sufficient. Connect `adapter` to the shared admin dispatcher with its permission, confirmation, idempotency, and audit controls.
+`resolveAuthorizedBillableSubject` is host code. It must only return a subject after scope authorization; a request-supplied billing account ID is not sufficient. Connect `adapter` to the shared admin dispatcher with its permission, confirmation, idempotency, and audit controls. Configure a dispatcher policy or equivalent host check that authorizes the actor’s selected scope for **every operation**, including catalog reads. The default permission check does not prove scope ownership. Authorization inside the subject resolver alone is insufficient because catalog operations never call it.
 
 ## Available operations
 
-The bound capability lists and gets products, plans, prices, subscriptions, entitlements, and usage for the active subject. Its write actions change or cancel a subscription, refund a payment, and queue provider reconciliation. The broader exported `billFnAdminResources` inventory contains descriptive entries for other billing concepts; those entries are **not** mounted as operations by the current capability.
+Products, plans, and prices come from `billfn.getCatalog()` and are instance-wide catalog data; the subject resolver does not scope these reads. Subscriptions, entitlements, and usage are resolved for the active billable subject. Its write actions change or cancel a subscription, refund a payment, and queue provider reconciliation. The broader exported `billFnAdminResources` inventory contains descriptive entries for other billing concepts; those entries are **not** mounted as operations by the current capability.
 
 | Action | Required confirmation |
 | --- | --- |
