@@ -1,0 +1,21 @@
+langfn/docs/content/docs/http.md
+  s_ee6f287c08acb3::t_86e0fe1d271061 93-94,106
+langfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_5e10d635ce3856 129-130,142
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ff0d5ce0e343109a5875ed211a6a8bfb07167966",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
