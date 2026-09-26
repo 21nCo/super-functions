@@ -1,0 +1,65 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3E0DE1RYHRSHP8BCP7NEF3B",
+  "session_id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-26T04:43:44.614479Z",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "searchfn/docs/content/docs/documentation/advanced/adapter-migration.mdx",
+    "searchfn/docs/content/docs/documentation/deploy/cloudflare-workers.mdx",
+    "searchfn/docs/content/docs/documentation/deploy/fly.mdx",
+    "searchfn/docs/content/docs/documentation/deploy/railway.mdx",
+    "searchfn/docs/content/docs/documentation/deploy/vercel.mdx",
+    "searchfn/docs/content/docs/documentation/security/request-authz.mdx",
+    "searchfn/docs/content/docs/getting-started.mdx",
+    "searchfn/docs/content/docs/quickstart/bun.mdx",
+    "searchfn/docs/content/docs/quickstart/express.mdx",
+    "searchfn/docs/content/docs/quickstart/fastapi.mdx",
+    "searchfn/docs/content/docs/quickstart/fastify.mdx",
+    "searchfn/docs/content/docs/quickstart/hono.mdx",
+    "searchfn/docs/content/docs/quickstart/nextjs.mdx",
+    "searchfn/docs/content/docs/quickstart/sveltekit.mdx",
+    "searchfn/docs/content/docs/reference/adapters/postgres.mdx",
+    "searchfn/docs/content/docs/reference/changelog.mdx",
+    "searchfn/docs/public/llms-full.txt",
+    "searchfn/docs/public/llms.txt"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-astra",
+  "turn_id": "1469c0f6d67c",
+  "checkpoint_transcript_start": 939,
+  "transcript_lines_at_start": 939,
+  "compact_transcript_start": 120,
+  "token_usage": {
+    "input_tokens": 12728,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1687168,
+    "output_tokens": 5591,
+    "api_call_count": 8
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-26T04:43:44.491314Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 333,
+    "human_removed": 768,
+    "total_committed": 0,
+    "total_lines_changed": 1101,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

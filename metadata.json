@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3E0DE1RYHRSHP8BCP7NEF3B",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "searchfn/docs/content/docs/documentation/advanced/adapter-migration.mdx",
+    "searchfn/docs/content/docs/documentation/deploy/cloudflare-workers.mdx",
+    "searchfn/docs/content/docs/documentation/deploy/fly.mdx",
+    "searchfn/docs/content/docs/documentation/deploy/railway.mdx",
+    "searchfn/docs/content/docs/documentation/deploy/vercel.mdx",
+    "searchfn/docs/content/docs/documentation/security/request-authz.mdx",
+    "searchfn/docs/content/docs/getting-started.mdx",
+    "searchfn/docs/content/docs/quickstart/bun.mdx",
+    "searchfn/docs/content/docs/quickstart/express.mdx",
+    "searchfn/docs/content/docs/quickstart/fastapi.mdx",
+    "searchfn/docs/content/docs/quickstart/fastify.mdx",
+    "searchfn/docs/content/docs/quickstart/hono.mdx",
+    "searchfn/docs/content/docs/quickstart/nextjs.mdx",
+    "searchfn/docs/content/docs/quickstart/sveltekit.mdx",
+    "searchfn/docs/content/docs/reference/adapters/postgres.mdx",
+    "searchfn/docs/content/docs/reference/changelog.mdx",
+    "searchfn/docs/public/llms-full.txt",
+    "searchfn/docs/public/llms.txt"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 12728,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1687168,
+    "output_tokens": 5591,
+    "api_call_count": 8
+  }
+}
