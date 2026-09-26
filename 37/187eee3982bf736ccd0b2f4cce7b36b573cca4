@@ -1,0 +1,69 @@
+clifn/docs/README.md
+  s_ee6f287c08acb3::t_a4791a66b95fc2 12-22
+clifn/docs/content/docs/cli-builder.md
+  s_16208d9e94c152::t_3f0ffd943d32f9 23
+clifn/docs/content/docs/configuration.md
+  s_16208d9e94c152::t_e7b96ba29e4858 30
+clifn/docs/content/docs/credentials-and-client.md
+  s_16208d9e94c152::t_b9be3b60c725d2 30
+clifn/docs/content/docs/getting-started.md
+  s_16208d9e94c152::t_aba7f7f62fff74 30
+clifn/docs/content/docs/interaction-and-stdio.md
+  s_16208d9e94c152::t_dc21ef9d3b9591 6
+clifn/docs/content/docs/reference/core-readme.md
+  s_16208d9e94c152::t_7a6367f8b8f247 55,151-152,165-169,187,403
+clifn/docs/package.json
+  s_ee6f287c08acb3::t_155d33189d02e9 28,31-33
+clifn/docs/scripts/generate-llms.mjs
+  s_ee6f287c08acb3::t_fdb60288cca138 32,38
+clifn/docs/src/app.css
+  s_ee6f287c08acb3::t_6be9b5419b4795 19,76-80
+clifn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_ee6f287c08acb3::t_3a00c869b5d8e9 2
+clifn/docs/src/routes/+layout.svelte
+  s_ee6f287c08acb3::t_3b5a0bdf8ea43b 6-7,16-17,22
+clifn/docs/src/routes/+page.svelte
+  s_16208d9e94c152::t_da9cb73e26839e 21-27
+clifn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ee6f287c08acb3::t_0f21eb58804114 2,15-17,27-29
+clifn/docs/static/llms-full.txt
+  s_16208d9e94c152::t_ece95c0af90514 6,68,115,153,187,223,349,445-446,459-463,481,697
+clifn/docs/svelte.config.js
+  s_ee6f287c08acb3::t_da7b302404b56d 17
+clifn/docs/tsconfig.json
+  s_ee6f287c08acb3::t_941b75e0b945f1 23-24,26
+clifn/docs/vite.config.ts
+  s_ee6f287c08acb3::t_2641e6a0468bd6 2,9-10,24,26-27
+package-lock.json
+  s_ee6f287c08acb3::t_dd4f52f74734a9 6592-6593,6596-6597,66590-66616
+scripts/docs-site/Search.svelte
+  s_ee6f287c08acb3::t_d1e42f01e5c2f8 13
+scripts/docs-site/layout.ts
+  s_ee6f287c08acb3::t_39ca7afc549ee5 1-10
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_89e407ffd3ea5a 187,214,323-326,351,356,361,364,372,399,406,425,431,444,449,466,472
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "37187eee3982bf736ccd0b2f4cce7b36b573cca4",
+  "prompts": {},
+  "sessions": {
+    "s_16208d9e94c152": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe7-1ef9-7b80-8341-fe952b6e9b65",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
