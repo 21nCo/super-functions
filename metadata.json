@@ -1,0 +1,60 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EK1XXR2M3HCC78TZ8KSH67",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/docs/README.md",
+    "authfn/docs/docsfn.config.ts",
+    "authfn/docs/package.json",
+    "authfn/docs/scripts/generate-llms.mjs",
+    "authfn/docs/src/app.css",
+    "authfn/docs/src/lib/components/DocsSiteSearch.svelte",
+    "authfn/docs/src/lib/server/docs-site-source.ts",
+    "authfn/docs/src/routes/+layout.server.ts",
+    "authfn/docs/src/routes/+layout.svelte",
+    "authfn/docs/src/routes/+page.server.ts",
+    "authfn/docs/src/routes/+page.svelte",
+    "authfn/docs/src/routes/blog/+page.server.ts",
+    "authfn/docs/src/routes/blog/+page.ts",
+    "authfn/docs/src/routes/blog/[slug]/+page.server.ts",
+    "authfn/docs/src/routes/blog/[slug]/+page.svelte",
+    "authfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "authfn/docs/src/routes/docs/[...slug]/+page.svelte",
+    "authfn/docs/src/routes/docs/llms-full.txt/+server.ts",
+    "authfn/docs/src/routes/docs/llms.txt/+server.ts",
+    "authfn/docs/src/routes/docs/search.json/+server.ts",
+    "authfn/docs/src/routes/search.json/+server.ts",
+    "authfn/docs/static/llms-full.txt",
+    "authfn/docs/static/llms.txt",
+    "authfn/docs/svelte.config.js",
+    "authfn/docs/tsconfig.json",
+    "authfn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/docs-site/LandingPage.svelte",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/layout.ts",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/runtime.test.ts",
+    "scripts/docs-site/runtime.ts",
+    "scripts/docs-site/vite.ts",
+    "scripts/docs-site/vitest.config.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 21079,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2022528,
+    "output_tokens": 6506,
+    "api_call_count": 12
+  }
+}
