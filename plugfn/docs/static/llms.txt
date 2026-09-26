@@ -1,0 +1,21 @@
+# PlugFn
+
+> Self-hosted provider connections, OAuth, webhooks, workflows, and sync jobs.
+
+## Documentation
+
+- [Browser client](https://plugfn.com/docs/browser-client) — Use only the narrow browser-safe route helper.
+- [CLI and administration](https://plugfn.com/docs/cli-and-admin) — Use local diagnostics and a scoped admin adapter.
+- [Connections and OAuth](https://plugfn.com/docs/connections-and-oauth) — Start, inspect, and disconnect owned provider connections.
+- [Getting started](https://plugfn.com/docs/getting-started) — Configure a TypeScript runtime and mount owned routes.
+- [PlugFn](https://plugfn.com/docs) — A shared integration runtime for provider connections and workflows.
+- [Operations](https://plugfn.com/docs/operations) — Run the release gate and consult incident runbooks.
+- [Provider readiness](https://plugfn.com/docs/provider-readiness) — Use per-provider status and the release gate together.
+- [Python runtime](https://plugfn.com/docs/python) — Assess the experimental Python surface per provider.
+- [Client SDK boundary](https://plugfn.com/docs/reference/client-boundary) — Generated mirror of the release-gated PlugFn source guide.
+- [Source reference](https://plugfn.com/docs/reference) — Authoritative readiness, browser, and release contracts.
+- [Provider readiness matrix](https://plugfn.com/docs/reference/readiness) — Generated mirror of the release-gated PlugFn source guide.
+- [Release gates](https://plugfn.com/docs/reference/release-gates) — Generated mirror of the release-gated PlugFn source guide.
+- [Security boundaries](https://plugfn.com/docs/security-boundaries) — Keep credentials and privileged work on the server.
+- [Webhooks](https://plugfn.com/docs/webhooks) — Verify provider events before processing them.
+- [Workflows and sync](https://plugfn.com/docs/workflows-and-sync) — Run provider actions and persisted integration jobs.

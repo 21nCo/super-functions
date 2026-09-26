@@ -1,4 +1,9 @@
-# PlugFn Release Gates
+---
+title: Release gates
+description: Generated mirror of the release-gated PlugFn source guide.
+---
+
+This page mirrors [plugfn/docs/operations/release-gates.md](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/operations/release-gates.md). Edit that source and run `npm --workspace @plugfn/docs run generate:references` to update this page.
 
 ## Canonical command
 
@@ -51,7 +56,7 @@ PlugFn still does not make blanket claims for every provider or vertical module.
 A PlugFn provider or runtime surface may be described as production-ready only when both conditions are true on the same commit:
 
 1. `npm run gate:plugfn-release` passes
-2. the surface is marked `production` in [../provider-readiness-matrix.md](../provider-readiness-matrix.md)
+2. the surface is marked `production` in [../provider-readiness-matrix.md](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/provider-readiness-matrix.md)
 
 Anything outside that boundary remains `beta`, `experimental`, `vertical-only`, or `unsupported` according to the matrix.
 
