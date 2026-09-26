@@ -1,0 +1,21 @@
+# PlugFn
+
+> Self-hosted provider connections, OAuth, webhooks, workflows, and sync jobs.
+
+## Documentation
+
+- [Browser client](/docs/browser-client) — Use only the narrow browser-safe route helper.
+- [CLI and administration](/docs/cli-and-admin) — Use local diagnostics and a scoped admin adapter.
+- [Connections and OAuth](/docs/connections-and-oauth) — Start, inspect, and disconnect owned provider connections.
+- [Getting started](/docs/getting-started) — Configure a TypeScript runtime and mount owned routes.
+- [PlugFn](/docs) — A shared integration runtime for provider connections and workflows.
+- [Operations](/docs/operations) — Run the release gate and consult incident runbooks.
+- [Provider readiness](/docs/provider-readiness) — Use per-provider status and the release gate together.
+- [Python runtime](/docs/python) — Assess the experimental Python surface per provider.
+- [Client Boundary source guide](/docs/reference/client-boundary) — Authoritative PlugFn source document.
+- [Source reference](/docs/reference) — Authoritative readiness, browser, and release contracts.
+- [Readiness source guide](/docs/reference/readiness) — Authoritative PlugFn source document.
+- [Release Gates source guide](/docs/reference/release-gates) — Authoritative PlugFn source document.
+- [Security boundaries](/docs/security-boundaries) — Keep credentials and privileged work on the server.
+- [Webhooks](/docs/webhooks) — Verify provider events before processing them.
+- [Workflows and sync](/docs/workflows-and-sync) — Run provider actions and persisted integration jobs.

@@ -1,0 +1,427 @@
+# PlugFn
+
+> Self-hosted provider connections, OAuth, webhooks, workflows, and sync jobs.
+
+This file concatenates the full text of every documentation page so it can be loaded into
+an LLM-based assistant in a single shot. For programmatic access, prefer the MCP server
+or the structured manifest emitted alongside this file.
+
+# Documentation
+
+<!-- page:docs:browser-client.md path:/docs/browser-client -->
+# Browser client
+
+> Use only the narrow browser-safe route helper.
+
+
+# Browser client
+
+`@plugfn/client` calls PlugFn's server routes for provider discovery, connection initiation and inspection, disconnect, sync jobs, and checkpoints. It does not contain provider credentials, OAuth token exchange, webhook signature verification, or direct provider API clients.
+
+The server must authenticate every request and enforce ownership. A browser helper does not grant provider access by itself. The exact allowed operations are in the [client boundary](/docs/reference/client-boundary); direct provider actions and workflow execution stay server-side.
+
+---
+
+<!-- page:docs:cli-and-admin.md path:/docs/cli-and-admin -->
+# CLI and administration
+
+> Use local diagnostics and a scoped admin adapter.
+
+
+# CLI and administration
+
+`@plugfn/cli` supplies project initialization, provider scaffolding, and `plugfn test` diagnostics. The test command is still being hardened and is not a full production-readiness proof. Use the [CLI source guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/cli/README.md) for commands.
+
+`@plugfn/admin` exposes a function-owned Super Console capability and adapter through a project-owned public PlugFn facade. The host maps admin context to PlugFn identity and supplies project scope, authorization, audit, and high-assurance confirmation for destructive actions. The [admin guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/admin/README.md) lists supported actions and deliberately absent ones.
+
+---
+
+<!-- page:docs:connections-and-oauth.md path:/docs/connections-and-oauth -->
+# Connections and OAuth
+
+> Start, inspect, and disconnect owned provider connections.
+
+
+# Connections and OAuth
+
+Register a provider and its application credentials on the server. A user starts a connection through an authenticated route, completes the provider OAuth flow, and returns through PlugFn's callback routes. PlugFn stores connection state and encrypted tokens through its configured storage.
+
+The TypeScript router exposes provider discovery, connection list/get/status, start, and disconnect routes. For non-webhook routes, it derives the principal from `auth.authenticate` unless a router override is supplied. Caller-provided `userId` and `tenantId` values are checked against that principal and rejected on mismatch.
+
+See the [source setup guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/getting-started.md) for route inventory and the [OAuth incident runbook](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/oauth-incident.md) for operations.
+
+---
+
+<!-- page:docs:getting-started.md path:/docs/getting-started -->
+# Getting started
+
+> Configure a TypeScript runtime and mount owned routes.
+
+
+# Getting started
+
+Install the runtime, provider package, and shared adapters:
+
+```sh
+npm install plugfn @plugfn/providers @plugfn/client @superfunctions/db @superfunctions/http
+```
+
+```ts
+import { createPlugFnRouter, plugFn } from "plugfn";
+import { githubProvider } from "@plugfn/providers";
+
+const plug = plugFn({
+  database: adapter,
+  auth: authProvider,
+  baseUrl: "https://app.example.com",
+  encryptionKey: process.env.ENCRYPTION_KEY!,
+  integrations: { github: { clientId: process.env.GITHUB_CLIENT_ID!, clientSecret: process.env.GITHUB_CLIENT_SECRET! } },
+});
+plug.providers.register(githubProvider);
+const router = createPlugFnRouter(plug);
+```
+
+Supply a durable database adapter, a real authentication provider, and secrets from the deployment environment. Mount the router through a `@superfunctions/http` framework adapter under an application path such as `/api/plugfn`. The [source setup guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/getting-started.md) has Express, Fastify, and Hono examples plus the full route list.
+
+---
+
+<!-- page:docs:index.md path:/docs -->
+# PlugFn
+
+> A shared integration runtime for provider connections and workflows.
+
+
+# PlugFn
+
+PlugFn is a self-hosted integration runtime for provider registration, connection lifecycle, OAuth callbacks, webhook reception, actions, workflows, and sync jobs. It is a server-side substrate shared by applications; `@plugfn/client` is a narrow browser helper for owned routes.
+
+Start with [getting started](/docs/getting-started), then check [provider readiness](/docs/provider-readiness). Read the [security boundaries](/docs/security-boundaries) before exposing routes. The current [release contract](/docs/reference/release-gates) limits production claims by provider and commit.
+
+---
+
+<!-- page:docs:operations.md path:/docs/operations -->
+# Operations
+
+> Run the release gate and consult incident runbooks.
+
+
+# Operations
+
+Run the authoritative repo-root gate on the exact commit you plan to use:
+
+```sh
+npm run gate:plugfn-release
+```
+
+The gate covers the runtime, browser helper, providers, CLI, Python baseline, provider-specific checks, and docs inventory. A green result is still subject to each provider's matrix row. Production claims apply only to surfaces marked `production` on that same commit.
+
+The [release guide](/docs/reference/release-gates) gives the gate steps. Source runbooks cover [OAuth](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/oauth-incident.md), [provider throttling](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/provider-throttle-incident.md), and [webhook security](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/webhook-security-incident.md).
+
+---
+
+<!-- page:docs:provider-readiness.md path:/docs/provider-readiness -->
+# Provider readiness
+
+> Use per-provider status and the release gate together.
+
+
+# Provider readiness
+
+The [readiness matrix](/docs/reference/readiness) is the public source of truth. GitHub, Linear, ClickUp, and Gmail are the core cross-language set; Notion is beta overall because Python parity is unsupported. Adjacent providers can be experimental, and inbound mail connectors are vertical-only. Unlisted providers are unsupported by default.
+
+A provider is production-ready only when the matrix marks it `production` **and** `npm run gate:plugfn-release` passes on the same commit. Presence in the source tree or a passing provider-specific test alone is insufficient. Check the exact TypeScript and Python columns before adoption.
+
+---
+
+<!-- page:docs:python.md path:/docs/python -->
+# Python runtime
+
+> Assess the experimental Python surface per provider.
+
+
+# Python runtime
+
+The Python `plugfn` package is an experimental baseline. It exports the declared core provider set of GitHub, Linear, ClickUp, and Gmail, but does not match the full TypeScript provider surface.
+
+```sh
+pip install plugfn
+```
+
+The [Python source guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/python/README.md) shows its setup shape. Check the matrix's Python column for each provider and avoid assuming parity with TypeScript.
+
+---
+
+<!-- page:docs:reference/client-boundary.md path:/docs/reference/client-boundary -->
+# Client Boundary source guide
+
+> Authoritative PlugFn source document.
+
+
+# PlugFn Client SDK Boundary
+
+## Current status
+
+PlugFn publishes a thin browser-safe helper as `@plugfn/client`.
+
+The default contract is server-side:
+
+- provider credentials stay on the server
+- OAuth token exchange stays on the server
+- webhook verification stays on the server
+- privileged provider actions stay on the server
+
+## Browser-safe operations
+
+Only the following operations are allowed in the browser-facing helper:
+
+- `listProviders`
+- `startConnection`
+- `listConnections`
+- `getConnection`
+- `getConnectionStatus`
+- `disconnect`
+- `createSyncJob`
+- `listSyncJobs`
+- `getSyncJob`
+- `cancelSyncJob`
+- `upsertCheckpoint`
+
+These operations intentionally call the server-side PlugFn routes. The browser package must not contain provider credentials, token exchange code, webhook verification code, or direct provider API clients.
+
+## Server-only operations
+
+The following operations remain server-only and must not move into a browser package:
+
+- token exchange
+- token refresh
+- direct credentialed provider actions
+- workflow execution
+- webhook signature verification
+- provider secret resolution
+
+Browser attempts to perform server-only operations should be treated as contract violations.
+
+---
+
+<!-- page:docs:reference/index.md path:/docs/reference -->
+# Source reference
+
+> Authoritative readiness, browser, and release contracts.
+
+
+# Source reference
+
+The [provider readiness matrix](/docs/reference/readiness), [client boundary](/docs/reference/client-boundary), and [release gates](/docs/reference/release-gates) are mirrored here from the existing PlugFn Markdown guides. The complete [specification](https://github.com/21nCo/super-functions/blob/dev/plugfn/SPEC.md), [runtime guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/core/README.md), and [provider guides](https://github.com/21nCo/super-functions/tree/dev/plugfn/docs/providers) remain in the source tree.
+
+---
+
+<!-- page:docs:reference/readiness.md path:/docs/reference/readiness -->
+# Readiness source guide
+
+> Authoritative PlugFn source document.
+
+
+# PlugFn Provider Readiness Matrix
+
+This matrix is the public source of truth for provider readiness. A provider is not production-ready unless:
+
+1. this matrix marks it `production`
+2. the repo-root PlugFn release gate passes on the same commit
+
+Unlisted providers are unsupported by default.
+
+Important: a `production` row means the provider contract and parity scope are the intended release target. The provider is only production-ready on a given commit when the repo-root PlugFn release gate is also green on that same commit.
+
+## Status vocabulary
+
+- `production`: release-gated and approved for default adoption
+- `beta`: useful and intentionally supported, but not yet release-gated
+- `experimental`: present but still under hardening or incomplete
+- `vertical-only`: useful for a specific product or mail workflow, not part of the default shared-runtime adoption story
+- `unsupported`: not currently available for adoption
+
+## Core provider set tracked by the release gate
+
+The minimum provider set that the release gate tracks is:
+
+- `github`
+- `linear`
+- `clickup`
+- `gmail`
+- `notion`
+
+## Matrix
+
+| Provider | Scope | Overall status | TypeScript readiness | Python readiness | Notes |
+| --- | --- | --- | --- | --- | --- |
+| github | core | production | production | production | Core provider contract exists in both languages; final production-ready claim still depends on the repo-root release gate. |
+| linear | core | production | production | production | Core provider contract exists in both languages; final production-ready claim still depends on the repo-root release gate. |
+| clickup | core | production | production | production | Core provider contract exists in both languages; final production-ready claim still depends on the repo-root release gate. |
+| gmail | core | production | production | production | Core provider contract exists in both languages; final production-ready claim still depends on the repo-root release gate. |
+| notion | core | beta | production | unsupported | TypeScript provider is release-gated for Nucleum adoption; overall status stays beta until Python parity exists. |
+| slack | adjacent | experimental | experimental | experimental | Present in both trees, but not part of the declared core release set. |
+| discord | adjacent | experimental | experimental | unsupported | TypeScript-only today. |
+| stripe | adjacent | experimental | experimental | unsupported | TypeScript-only today. |
+| outlook | vertical | vertical-only | vertical-only | unsupported | Inbound Microsoft Graph mail connector; outbound delivery is SendFn scope. |
+| yahoo | vertical | vertical-only | vertical-only | unsupported | Inbound OAuth IMAP connector; outbound delivery is SendFn scope. |
+| icloud | vertical | vertical-only | vertical-only | unsupported | Inbound app-password IMAP connector; outbound delivery is SendFn scope. |
+| imap-smtp | vertical | vertical-only | vertical-only | unsupported | Compatibility provider ID for the generic inbound IMAP connector; SMTP delivery is SendFn scope. |
+
+## Interpretation rules
+
+- Do not convert `beta`, `experimental`, or `vertical-only` entries into blanket production claims.
+- Do not assume source-tree presence equals supported adoption.
+- Python parity for the core set is now tracked provider-by-provider in this matrix rather than by blanket language claims.
+
+---
+
+<!-- page:docs:reference/release-gates.md path:/docs/reference/release-gates -->
+# Release Gates source guide
+
+> Authoritative PlugFn source document.
+
+
+# PlugFn Release Gates
+
+## Canonical command
+
+The authoritative repo-root release proof is:
+
+```bash
+npm run gate:plugfn-release
+```
+
+This command is the only supported global readiness check for PlugFn. It emits a deterministic JSON result with step status, docs inventory status, and the final production-claim rule.
+
+## Gate coverage
+
+`npm run gate:plugfn-release` proves all of the following from the repository root:
+
+1. `npm --prefix plugfn/core run build`
+2. `npm --prefix plugfn/core run type-check`
+3. `npm --prefix plugfn/core test -- --run`
+4. `npm --prefix plugfn/core test -- --run tests/e2e/oauth-callback.test.ts tests/e2e/webhook-verification.test.ts`
+5. `npm --prefix plugfn/client run build`
+6. `npm --prefix plugfn/client run typecheck`
+7. `npm --prefix plugfn/client test -- --run`
+8. `npm --prefix plugfn/providers run build`
+9. `npm --prefix plugfn/providers run typecheck`
+10. `npm --prefix plugfn/providers test -- --run`
+11. provider-specific gates:
+   - `npm run gate:plugfn-provider-github`
+   - `npm run gate:plugfn-provider-linear`
+   - `npm run gate:plugfn-provider-clickup`
+   - `npm run gate:plugfn-provider-gmail`
+   - `npm run gate:plugfn-provider-notion`
+12. `npm --prefix plugfn/cli run build`
+13. `npm --prefix plugfn/cli run type-check`
+14. `npm --prefix plugfn/cli test -- --run`
+15. `python3 -m pytest -q plugfn/python/tests`
+16. docs/status inventory checks for:
+   - portable paths in public docs
+   - package-name truth
+   - current gate wording
+   - readiness-matrix coverage for `github`, `linear`, `clickup`, `gmail`, and `notion`
+
+## Production-ready claim rule
+
+PlugFn still does not make blanket claims for every provider or vertical module.
+
+A PlugFn provider or runtime surface may be described as production-ready only when both conditions are true on the same commit:
+
+1. `npm run gate:plugfn-release` passes
+2. the surface is marked `production` in [../provider-readiness-matrix.md](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/provider-readiness-matrix.md)
+
+Anything outside that boundary remains `beta`, `experimental`, `vertical-only`, or `unsupported` according to the matrix.
+
+## Repo-root verification commands
+
+These commands are the reproducible verification surface documented by Phase 08:
+
+```bash
+npm run gate:plugfn-release
+npm run gate:plugfn-provider-github
+npm run gate:plugfn-provider-linear
+npm run gate:plugfn-provider-clickup
+npm run gate:plugfn-provider-gmail
+npm run gate:plugfn-provider-notion
+npm test --workspace plugfn
+npm test --workspace @plugfn/cli
+python3 -m pytest -q plugfn/python/tests
+```
+
+## Phase 04 runtime semantics
+
+Workflow lifecycle hardening in Phase 04 uses the following production-truth model:
+
+- Trigger backend coverage: in-process `WebhookHandler` bindings only.
+- Unregister semantics: disable/delete must detach the active local binding; if no live binding exists to detach, the runtime returns `WORKFLOW_TRIGGER_UNREGISTER_FAILED` instead of silently logging and continuing.
+- Durability model: idempotent resume is DB-backed through `workflow_executions` state, so failed executions can resume after restart or from another engine instance when the same durable storage is shared.
+- Delay semantics: process-local timers are not treated as production-safe. Delay steps fail closed with `WORKFLOW_DURABILITY_UNSUPPORTED` until a durable scheduler backend exists.
+
+CLI diagnostics in Phase 04 use the following deterministic exit-code contract:
+
+- `0`: runtime load, connection resolution, provider action, and any requested OAuth/webhook diagnostics all passed.
+- `1`: validation or runtime/config loading failed before provider execution.
+- `2`: provider registration, connection resolution, or action execution failed.
+- `3`: requested webhook diagnostic failed.
+
+## Phase 00 documentation checks
+
+These checks are intentionally lightweight and only prove contract truth, not runtime readiness. They should look for:
+
+- outdated scoped-package install instructions
+- machine-specific local paths in public docs
+- broad unsupported readiness language in the primary contract docs
+
+Expected interpretation:
+
+- old package names should be absent from public docs
+- machine-specific absolute paths should be absent from public docs
+- broad unsupported readiness claims should be absent from the primary contract docs
+
+---
+
+<!-- page:docs:security-boundaries.md path:/docs/security-boundaries -->
+# Security boundaries
+
+> Keep credentials and privileged work on the server.
+
+
+# Security boundaries
+
+Provider secrets, refresh tokens, OAuth exchange, webhook signature checks, direct provider API calls, and workflow execution belong on the server. Use a deployment secret store for `encryptionKey` and provider credentials. A browser may call only the owned routes exposed by `@plugfn/client`.
+
+Authentication identifies the caller; authorization still has to enforce user, tenant, and organization ownership at each route and admin action. For inbound email connectors, PlugFn owns account connections and ingestion, while programmable inboxes belong to MailFn and outbound delivery to SendFn.
+
+See the [client contract](/docs/reference/client-boundary) and [provider readiness matrix](/docs/reference/readiness).
+
+---
+
+<!-- page:docs:webhooks.md path:/docs/webhooks -->
+# Webhooks
+
+> Verify provider events before processing them.
+
+
+# Webhooks
+
+Mount the PlugFn webhook routes under the application's integration path, including `POST /webhooks/:provider` and `POST /webhooks/:provider/:event`. Configure provider-specific signing secrets and route policies before accepting public traffic. Verification must happen before a payload changes connection, workflow, or sync state.
+
+Webhook receipts and delivery attempts are administrative surfaces. Operate with replay controls and incident procedures from the [webhook security runbook](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/webhook-security-incident.md). For provider-specific behavior, consult the [provider docs](https://github.com/21nCo/super-functions/tree/dev/plugfn/docs/providers).
+
+---
+
+<!-- page:docs:workflows-and-sync.md path:/docs/workflows-and-sync -->
+# Workflows and sync
+
+> Run provider actions and persisted integration jobs.
+
+
+# Workflows and sync
+
+PlugFn coordinates provider actions, workflows, sync jobs, checkpoints, events, and metrics. The TypeScript router includes workflow discovery, sync-job create/list/get/cancel, checkpoint upsert, event list, and metrics routes. Keep workflow execution server-side and authorize it against the derived principal.
+
+The release contract describes DB-backed idempotent workflow resume. Process-local delay timers are not considered production-safe; delay steps fail closed until a durable scheduler exists. Read the [release gates](/docs/reference/release-gates) and [provider throttle runbook](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/provider-throttle-incident.md).
+
+---
