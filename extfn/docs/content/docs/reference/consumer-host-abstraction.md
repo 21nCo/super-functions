@@ -1,4 +1,7 @@
-# Consumer Host Abstraction
+---
+title: Consumer host abstraction
+description: Move SvelteKit runtime dependencies behind consumer-owned adapters.
+---
 
 This guide exists for consumers such as `nucleus` that already have shared UI packages tied to SvelteKit runtime imports like `$app/navigation`, `$app/stores`, or `$app/environment`.
 
@@ -144,6 +147,6 @@ without requiring changes in `extfn` itself.
 
 ## Related guidance
 
-- `extfn` runtime APIs are documented in [../README.md](../README.md)
-- CLI workflow is documented in [./cli.md](./cli.md)
-- DataFn integration is documented in [../../datafn/extfn/README.md](../../datafn/extfn/README.md)
+- `extfn` runtime APIs are documented in [ExtFn overview](/docs)
+- CLI workflow is documented in [CLI reference](/docs/reference/cli)
+- DataFn integration is documented in [DataFn ExtFn source](https://github.com/21nCo/super-functions/blob/dev/datafn/extfn/README.md)

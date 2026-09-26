@@ -1,4 +1,7 @@
-# extfn scan
+---
+title: Scanner and report
+description: Strict scan rules, findings, formats, and packaging behavior.
+---
 
 `extfn scan` analyzes built extension outputs for review-blocking and store-readiness concerns.
 
