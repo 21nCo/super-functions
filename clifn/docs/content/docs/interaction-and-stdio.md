@@ -3,9 +3,7 @@ title: Prompts and JSON stdio
 description: Interactive input, terminal feedback, and machine-readable pipes.
 ---
 
-# Prompts and JSON stdio
-
-`@clifn/core/prompt` exports the default `prompt` object and `createPrompt()` for an injected ask function. It supports `select`, `multiSelect`, `text`, and `confirm`. Use the runner's `nonInteractive` flag to decide whether your command should prompt or require flags; the prompt API itself does not infer that policy.
+`@clifn/core/prompt` exports the named, preconfigured `prompt` object and `createPrompt()` for an injected ask function. It supports `select`, `multiSelect`, `text`, and `confirm`. Use the runner's `nonInteractive` flag to decide whether your command should prompt or require flags; the prompt API itself does not infer that policy.
 
 ```ts
 import { prompt } from "@clifn/core/prompt";

@@ -3,8 +3,6 @@ title: Configuration
 description: Load local config files, JSON project settings, and typed environment values.
 ---
 
-# Configuration
-
 CliFn has separate facilities for a discovered config module, a simple JSON project config store, and environment variables. Choose the one that fits the lifecycle of the consuming CLI.
 
 ## Discover a config file
@@ -29,7 +27,7 @@ The loader accepts local TS, JS, MJS, CJS, and JSON files. TS uses Jiti. Module 
 
 ## Store project settings
 
-`createProjectConfig(path?)` provides a JSON store with `read`, `write`, `get`, and `set`. Supply a product-specific path; its default filename is Conduct-specific. an invalid JSON or non-object shape raises `InvalidConfigError`. It is separate from the discovered module loader.
+`createProjectConfig(path?)` provides a JSON store with `read`, `write`, `get`, and `set`. Supply a product-specific path; its default filename is Conduct-specific. Invalid JSON or a non-object shape raises `InvalidConfigError`. It is separate from the discovered module loader.
 
 ## Read environment values
 

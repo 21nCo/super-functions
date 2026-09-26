@@ -18,12 +18,13 @@
     { title: "Automation primitives", text: "Run subprocesses, scaffold files, and compose non-interactive actions." },
   ];
 
-  const quickLinks = [
-    { label: "Get started", href: "/docs/getting-started", blurb: "Install the package and run your first action." },
-    { label: "CLI builder", href: "/docs/cli-builder", blurb: "Runner, output, diagnostics, and parser integration." },
-    { label: "Configuration", href: "/docs/configuration", blurb: "Config files, environment values, and credentials." },
-    { label: "API reference", href: "/docs/reference", blurb: "Every public subpath and its contracts." },
-  ];
+  const docsBasePath = $derived(data.source.config.site.basePath ?? "/docs");
+  const quickLinks = $derived([
+    { label: "Get started", href: `${docsBasePath}/getting-started`, blurb: "Install the package and run your first action." },
+    { label: "CLI builder", href: `${docsBasePath}/cli-builder`, blurb: "Runner, output, diagnostics, and parser integration." },
+    { label: "Configuration", href: `${docsBasePath}/configuration`, blurb: "Config files, environment values, and credentials." },
+    { label: "API reference", href: `${docsBasePath}/reference`, blurb: "Every public subpath and its contracts." },
+  ]);
 </script>
 
 <svelte:head>

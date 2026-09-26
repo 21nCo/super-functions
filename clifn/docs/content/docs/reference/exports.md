@@ -3,8 +3,6 @@ title: Public exports
 description: Map CliFn subpaths to their public functions, types, and errors.
 ---
 
-# Public exports
-
 `@clifn/core` provides these public subpaths. Import from a subpath or the documented package root, never from `dist/*`.
 
 | Subpath | Main exports | Detail |

@@ -3,8 +3,6 @@ title: Build a CLI
 description: Wire any parser to the shared action runner and preserve command ownership.
 ---
 
-# Build a CLI
-
 `runAction(action, options, runnerOptions)` executes a parsed action and returns a numeric exit code. Pass the parser's resolved options to it; keep command names, flags, validation, and help text in your CLI package. Parser packages remain consumer dependencies.
 
 ```ts
@@ -22,7 +20,7 @@ const { values, positionals } = parseArgs({
 if (positionals[0] === "greet") {
   process.exitCode = await runAction(
     ({ name }, ctx) => {
-      ctx.output.info(`Hello, ${name}!`);
+      if (ctx.output.mode !== "json") ctx.output.info(`Hello, ${name}!`);
       return { data: { greeting: `Hello, ${name}!` } };
     },
     { name: values.name ?? "world" },

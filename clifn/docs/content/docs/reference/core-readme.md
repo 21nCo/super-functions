@@ -3,8 +3,6 @@ title: Package README
 description: Complete source-aligned CliFn package guide.
 ---
 
-# clifn
-
 Reusable CLI primitives for Superfunctions packages and downstream CLIs.
 
 `clifn` remains a single package at `clifn/core`, published as `@clifn/core`. It is the shared parser-agnostic CLI toolkit for generic concerns that repeat across Superfunctions CLIs, while each owning CLI keeps its product-specific command graph and behavior.
@@ -54,7 +52,7 @@ const api = createApiClient({
 });
 
 const input = await readJsonStdin<{ command: string }>();
-ui.info(`running command: ${input.command}`);
+process.stderr.write(`running command: ${input.command}\n`);
 const result = await api.post("/runs", input);
 writeJsonStdout(result.data);
 ```
@@ -150,8 +148,8 @@ cli.option("--json", "Emit machine-readable output");
 cli
   .command("greet")
   .option("--name <name>", "Name to greet")
-  .action((options) =>
-    runAction(
+  .action(async (options) => {
+    process.exitCode = await runAction(
       async ({ name }, ctx) => {
         return {
           data: {
@@ -164,8 +162,11 @@ cli
       {
         mode: options.json ? "json" : "text",
       }
-    )
-  );
+    );
+  });
+
+cli.parse(process.argv, { run: false });
+await cli.runMatchedCommand();
 ```
 
 ### `node:util.parseArgs`
@@ -183,7 +184,7 @@ const { values, positionals } = parseArgs({
 });
 
 if (positionals[0] === "greet") {
-  await runAction(
+  process.exitCode = await runAction(
     async ({ name }, ctx) => {
       ctx.output.info(`hello ${name}`);
     },
@@ -399,4 +400,4 @@ The synchronous `CredentialStore` interface is injectable into `createApiClient`
 
 Only GET requests retry by default. `request({ ..., retrySafe: true })` opts in when the server guarantees idempotency for that operation; it does not manufacture such a guarantee. Non-replayable request bodies are not retried. A timed-out write may already have succeeded and must be reconciled.
 
-Executable naming belongs to the consumer package. Rex's `rex-agent` package should declare both `rex` and `rex-agent` bins targeting the same entrypoint, detect an existing `rex` command and document the fallback. Do not use forced installation to overwrite another package's executable.
+Executable naming belongs to the consumer package.

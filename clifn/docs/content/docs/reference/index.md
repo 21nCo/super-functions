@@ -3,8 +3,6 @@ title: API reference
 description: Public CliFn entry points, exports, and source-aligned package documentation.
 ---
 
-# API reference
-
 - [Public exports](/docs/reference/exports) maps every `@clifn/core/*` subpath to its principal functions, types, and errors.
 - [Package README](/docs/reference/core-readme) contains the complete source-aligned usage guide and parser examples.
 - [Admin capability](/docs/reference/admin) explains the separate Super Console package and its current availability.

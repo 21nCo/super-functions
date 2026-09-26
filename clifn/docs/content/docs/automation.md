@@ -3,8 +3,6 @@ title: Subprocesses and scaffolding
 description: Execute commands and create files with explicit limits and overwrite policy.
 ---
 
-# Subprocesses and scaffolding
-
 `@clifn/core/exec` exports `createExec()`. Call `command(file, args, options)` with a separate executable and argument array. The result includes command, exit code or signal, captured stdout and stderr, timeout state, and duration. Capture defaults to one MiB per stream, and timeout defaults to 30 seconds. Pass callbacks or `streamOutput` to observe chunks while the command runs.
 
 ```ts

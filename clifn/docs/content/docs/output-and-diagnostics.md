@@ -3,8 +3,6 @@ title: Output and diagnostics
 description: Use text or JSON output and stable, redacted diagnostic reports.
 ---
 
-# Output and diagnostics
-
 `createOutput()` supplies `debug`, `info`, `success`, `warn`, `error`, `json`, `table`, and `spinner`. Use `@clifn/core/output` for new CLIs; `@clifn/core/ui` remains the compatibility terminal helper path.
 
 ```ts

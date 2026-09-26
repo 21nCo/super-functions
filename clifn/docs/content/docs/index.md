@@ -3,8 +3,6 @@ title: CliFn documentation
 description: Build reliable command-line tools with parser-agnostic primitives.
 ---
 
-# CliFn
-
 `@clifn/core` is a Node.js toolkit for the concerns that recur across command-line applications. It supplies an action runner, text and JSON output, configuration and environment readers, credential storage, an authenticated HTTP client, prompts, JSON stdio, subprocess execution, scaffolding, and diagnostics. Your CLI owns its commands, parser, and product behavior.
 
 ## Start here

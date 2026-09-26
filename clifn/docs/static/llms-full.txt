@@ -3,8 +3,7 @@
 > Reusable CLI building blocks for command execution, output, configuration, credentials, and safe automation.
 
 This file concatenates the full text of every documentation page so it can be loaded into
-an LLM-based assistant in a single shot. For programmatic access, prefer the MCP server
-or the structured manifest emitted alongside this file.
+an LLM-based assistant in a single shot. For a page index, see /llms.txt.
 
 # Documentation
 
@@ -13,8 +12,6 @@ or the structured manifest emitted alongside this file.
 
 > Execute commands and create files with explicit limits and overwrite policy.
 
-
-# Subprocesses and scaffolding
 
 `@clifn/core/exec` exports `createExec()`. Call `command(file, args, options)` with a separate executable and argument array. The result includes command, exit code or signal, captured stdout and stderr, timeout state, and duration. Capture defaults to one MiB per stream, and timeout defaults to 30 seconds. Pass callbacks or `streamOutput` to observe chunks while the command runs.
 
@@ -51,8 +48,6 @@ Use `dryRun` to display a planned change before applying it. `ScaffoldError` car
 > Wire any parser to the shared action runner and preserve command ownership.
 
 
-# Build a CLI
-
 `runAction(action, options, runnerOptions)` executes a parsed action and returns a numeric exit code. Pass the parser's resolved options to it; keep command names, flags, validation, and help text in your CLI package. Parser packages remain consumer dependencies.
 
 ```ts
@@ -70,7 +65,7 @@ const { values, positionals } = parseArgs({
 if (positionals[0] === "greet") {
   process.exitCode = await runAction(
     ({ name }, ctx) => {
-      ctx.output.info(`Hello, ${name}!`);
+      if (ctx.output.mode !== "json") ctx.output.info(`Hello, ${name}!`);
       return { data: { greeting: `Hello, ${name}!` } };
     },
     { name: values.name ?? "world" },
@@ -92,8 +87,6 @@ See the [runner source](https://github.com/21nCo/super-functions/blob/dev/clifn/
 
 > Load local config files, JSON project settings, and typed environment values.
 
-
-# Configuration
 
 CliFn has separate facilities for a discovered config module, a simple JSON project config store, and environment variables. Choose the one that fits the lifecycle of the consuming CLI.
 
@@ -119,7 +112,7 @@ The loader accepts local TS, JS, MJS, CJS, and JSON files. TS uses Jiti. Module 
 
 ## Store project settings
 
-`createProjectConfig(path?)` provides a JSON store with `read`, `write`, `get`, and `set`. Supply a product-specific path; its default filename is Conduct-specific. an invalid JSON or non-object shape raises `InvalidConfigError`. It is separate from the discovered module loader.
+`createProjectConfig(path?)` provides a JSON store with `read`, `write`, `get`, and `set`. Supply a product-specific path; its default filename is Conduct-specific. Invalid JSON or a non-object shape raises `InvalidConfigError`. It is separate from the discovered module loader.
 
 ## Read environment values
 
@@ -132,8 +125,6 @@ The loader accepts local TS, JS, MJS, CJS, and JSON files. TS uses Jiti. Module 
 
 > Persist named profiles and make authenticated requests with bounded retries.
 
-
-# Credentials and HTTP client
 
 `createCredentialStore(path?)` stores named `{ backend, key }` profiles in an INI file. Pass a product-specific path; the legacy default is Conduct-specific. The synchronous store supports `getProfile`, `setProfile`, `hasProfile`, `removeProfile`, and `listProfiles`. A missing profile raises `MissingProfileError`.
 
@@ -159,7 +150,7 @@ console.log(response.data);
 
 Alternatively pass `{ baseUrl, apiKey }` directly. The client adds Bearer authorization unless the request sets its own authorization header, and adds `X-Project-ID` when configured. Paths must be relative. Responses include status, parsed data, and headers. Non-2xx responses throw `HttpFailureError`; transport failures throw `HttpRequestError`.
 
-Only GET requests retry by default, on HTTP 429 or 5xx and retryable transport failures. Use `request({ ..., retrySafe: true })` only when the server guarantees idempotency. One-shot stream bodies are not retried. A timed-out write may already have succeeded, so reconcile before repeating it. `ApiClientConfig` accepts retries, delay, timeout, default headers, and an injected fetch implementation.
+Only GET requests retry by default, on HTTP 429 or 5xx and retryable transport failures. Use `request({ ..., retrySafe: true })` only when the server guarantees idempotency. One-shot stream bodies are not retried. A timed-out write may already have succeeded, so reconcile before repeating it. `ApiClientConfig` accepts `retries`, `retryDelayMs`, `timeoutMs`, `defaultHeaders`, and `fetchImpl`.
 
 ---
 
@@ -168,8 +159,6 @@ Only GET requests retry by default, on HTTP 429 or 5xx and retryable transport f
 
 > Install CliFn and run your first parser-independent action.
 
-
-# Getting started
 
 ## Install
 
@@ -195,7 +184,7 @@ const exitCode = await runAction(
 process.exitCode = exitCode;
 ```
 
-`runAction()` provides a normalized working directory, environment, output service, diagnostic sink, subprocess service, scaffold service, and `nonInteractive` flag. An action can return `exitCode`, `data`, and diagnostics; thrown errors become exit code 1 with a stable `CLIFN_RUNNER_FAILED` envelope. In JSON mode, returned `data` is emitted as JSON. See [CLI builder](/docs/cli-builder) for parser wiring and [output and diagnostics](/docs/output-and-diagnostics) for formatting.
+`runAction()` provides a normalized working directory, environment, output service, diagnostic sink, subprocess service, scaffold service, and `nonInteractive` flag. An action can return `exitCode`, `data`, and diagnostics; thrown errors become exit code 1. JSON mode emits a stable `CLIFN_RUNNER_FAILED` envelope; text mode writes the failure message. In JSON mode, returned `data` is emitted as JSON. See [CLI builder](/docs/cli-builder) for parser wiring and [output and diagnostics](/docs/output-and-diagnostics) for formatting.
 
 The [package README](/docs/reference/core-readme) contains working examples for `commander`, `cac`, and raw `parseArgs`, along with the established compatibility imports.
 
@@ -206,8 +195,6 @@ The [package README](/docs/reference/core-readme) contains working examples for 
 
 > Build reliable command-line tools with parser-agnostic primitives.
 
-
-# CliFn
 
 `@clifn/core` is a Node.js toolkit for the concerns that recur across command-line applications. It supplies an action runner, text and JSON output, configuration and environment readers, credential storage, an authenticated HTTP client, prompts, JSON stdio, subprocess execution, scaffolding, and diagnostics. Your CLI owns its commands, parser, and product behavior.
 
@@ -233,9 +220,7 @@ Import from documented subpaths such as `@clifn/core/runner`, `@clifn/core/outpu
 > Interactive input, terminal feedback, and machine-readable pipes.
 
 
-# Prompts and JSON stdio
-
-`@clifn/core/prompt` exports the default `prompt` object and `createPrompt()` for an injected ask function. It supports `select`, `multiSelect`, `text`, and `confirm`. Use the runner's `nonInteractive` flag to decide whether your command should prompt or require flags; the prompt API itself does not infer that policy.
+`@clifn/core/prompt` exports the named, preconfigured `prompt` object and `createPrompt()` for an injected ask function. It supports `select`, `multiSelect`, `text`, and `confirm`. Use the runner's `nonInteractive` flag to decide whether your command should prompt or require flags; the prompt API itself does not infer that policy.
 
 ```ts
 import { prompt } from "@clifn/core/prompt";
@@ -258,8 +243,6 @@ if (await prompt.confirm(`Continue with ${target}?`)) {
 
 > Use text or JSON output and stable, redacted diagnostic reports.
 
-
-# Output and diagnostics
 
 `createOutput()` supplies `debug`, `info`, `success`, `warn`, `error`, `json`, `table`, and `spinner`. Use `@clifn/core/output` for new CLIs; `@clifn/core/ui` remains the compatibility terminal helper path.
 
@@ -302,8 +285,6 @@ Redaction applies to diagnostic `details`; applications should still avoid putti
 > The current Super Console declaration for CliFn.
 
 
-# Admin capability
-
 `@clifn/admin` exports `cliFnAdminCapability`, `cliFnAdminAdapter`, and their `adminCapability` and `adminAdapter` aliases for Super Console registration. Its capability is declared **unavailable** and has no operations. CliFn currently provides local CLI process utilities; it has no durable server-side operator service or remote authorization boundary.
 
 Do not expose credential files, local command execution, or scaffolding as remote admin actions. Consumers building command-line tools should use `@clifn/core` directly. See the [admin source](https://github.com/21nCo/super-functions/blob/dev/clifn/admin/src/index.ts) for the declared schema version, installation scope, and availability reason.
@@ -315,8 +296,6 @@ Do not expose credential files, local command execution, or scaffolding as remot
 
 > Complete source-aligned CliFn package guide.
 
-
-# clifn
 
 Reusable CLI primitives for Superfunctions packages and downstream CLIs.
 
@@ -367,7 +346,7 @@ const api = createApiClient({
 });
 
 const input = await readJsonStdin<{ command: string }>();
-ui.info(`running command: ${input.command}`);
+process.stderr.write(`running command: ${input.command}\n`);
 const result = await api.post("/runs", input);
 writeJsonStdout(result.data);
 ```
@@ -463,8 +442,8 @@ cli.option("--json", "Emit machine-readable output");
 cli
   .command("greet")
   .option("--name <name>", "Name to greet")
-  .action((options) =>
-    runAction(
+  .action(async (options) => {
+    process.exitCode = await runAction(
       async ({ name }, ctx) => {
         return {
           data: {
@@ -477,8 +456,11 @@ cli
       {
         mode: options.json ? "json" : "text",
       }
-    )
-  );
+    );
+  });
+
+cli.parse(process.argv, { run: false });
+await cli.runMatchedCommand();
 ```
 
 ### `node:util.parseArgs`
@@ -496,7 +478,7 @@ const { values, positionals } = parseArgs({
 });
 
 if (positionals[0] === "greet") {
-  await runAction(
+  process.exitCode = await runAction(
     async ({ name }, ctx) => {
       ctx.output.info(`hello ${name}`);
     },
@@ -712,7 +694,7 @@ The synchronous `CredentialStore` interface is injectable into `createApiClient`
 
 Only GET requests retry by default. `request({ ..., retrySafe: true })` opts in when the server guarantees idempotency for that operation; it does not manufacture such a guarantee. Non-replayable request bodies are not retried. A timed-out write may already have succeeded and must be reconciled.
 
-Executable naming belongs to the consumer package. Rex's `rex-agent` package should declare both `rex` and `rex-agent` bins targeting the same entrypoint, detect an existing `rex` command and document the fallback. Do not use forced installation to overwrite another package's executable.
+Executable naming belongs to the consumer package.
 
 ---
 
@@ -721,8 +703,6 @@ Executable naming belongs to the consumer package. Rex's `rex-agent` package sho
 
 > Map CliFn subpaths to their public functions, types, and errors.
 
-
-# Public exports
 
 `@clifn/core` provides these public subpaths. Import from a subpath or the documented package root, never from `dist/*`.
 
@@ -751,8 +731,6 @@ See the [package export map](https://github.com/21nCo/super-functions/blob/dev/c
 
 > Public CliFn entry points, exports, and source-aligned package documentation.
 
-
-# API reference
 
 - [Public exports](/docs/reference/exports) maps every `@clifn/core/*` subpath to its principal functions, types, and errors.
 - [Package README](/docs/reference/core-readme) contains the complete source-aligned usage guide and parser examples.
