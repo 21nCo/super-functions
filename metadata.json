@@ -1,0 +1,56 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EH775A2V9RKAH8JDA3R7EZ",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "clifn/docs/README.md",
+    "clifn/docs/content/docs/automation.md",
+    "clifn/docs/content/docs/cli-builder.md",
+    "clifn/docs/content/docs/configuration.md",
+    "clifn/docs/content/docs/credentials-and-client.md",
+    "clifn/docs/content/docs/getting-started.md",
+    "clifn/docs/content/docs/index.md",
+    "clifn/docs/content/docs/interaction-and-stdio.md",
+    "clifn/docs/content/docs/output-and-diagnostics.md",
+    "clifn/docs/content/docs/reference/admin.md",
+    "clifn/docs/content/docs/reference/core-readme.md",
+    "clifn/docs/content/docs/reference/exports.md",
+    "clifn/docs/content/docs/reference/index.md",
+    "clifn/docs/package.json",
+    "clifn/docs/scripts/generate-llms.mjs",
+    "clifn/docs/src/app.css",
+    "clifn/docs/src/lib/components/DocsSiteSearch.svelte",
+    "clifn/docs/src/lib/server/docs-site-source.ts",
+    "clifn/docs/src/routes/+layout.svelte",
+    "clifn/docs/src/routes/+page.server.ts",
+    "clifn/docs/src/routes/+page.svelte",
+    "clifn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "clifn/docs/src/routes/docs/search.json/+server.ts",
+    "clifn/docs/src/routes/search.json/+server.ts",
+    "clifn/docs/static/llms-full.txt",
+    "clifn/docs/svelte.config.js",
+    "clifn/docs/tsconfig.json",
+    "clifn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/layout.ts",
+    "scripts/docs-site/runtime.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 14547,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 591104,
+    "output_tokens": 2893,
+    "api_call_count": 5
+  }
+}
