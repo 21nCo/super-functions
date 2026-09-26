@@ -17,12 +17,12 @@ const service = createDataFnDomainAdminService({
 const adapter = createDataFnAdminAdapter(service);
 ```
 
-`resolveAuthorizedDataFnContext` is host code. It must construct the same context used by DataFn authorization and namespace providers after checking the active admin scope. Mount the adapter through the shared admin dispatcher; do not use a privileged cross-namespace executor merely because the caller can reach the console. Review [server authorization](/docs/documentation/server/authorization) and [namespace isolation](/docs/documentation/security/namespace-isolation).
+`resolveAuthorizedDataFnContext` is host code. It must construct the same context used by DataFn authorization and namespace providers after checking the active admin scope. Mount the adapter through the shared admin dispatcher; do not use a privileged cross-namespace executor merely because the caller can reach the console. Review [server authorization](/docs/documentation/server/authorization) and [namespace isolation](/docs/documentation/namespaces).
 
 ## Current operation surface
 
 The mounted capability lists and gets schemas, resources, relations, indices, capabilities, and records. It also offers a query action plus record mutation and transaction actions. Record lists require a `filter.resource` pointing at a resource in the active schema. Record IDs encode both resource and record identity; a mutation target must match the payload's resource and ID.
 
-The package exports broader resource and action inventories, but the current domain adapter mounts only the operations above. In particular, it does not mount the inventory's seed, conflict-resolution, or sync-client actions. The capability declares a minimum project scope. Reads and writes have separate permissions, and writes require audit evidence through the admin contract.
+The package exports broader resource and action inventories, but the current domain adapter mounts only the operations above. In particular, it does not mount the inventory's seed, conflict-resolution, or sync-client actions. The capability declares a minimum project scope. Reads and writes have separate permissions, and writes require audit evidence through a configured audit sink. Every mounted mutation and transaction is idempotent: the host must configure a durable idempotency store on the dispatcher and supply an `idempotencyKey` for each write. The dispatcher rejects missing prerequisites before calling the executor.
 
 Metadata list cursors are bound to their collection and scope. Record cursors are bound to scope and resource; reuse them only with the same resource list. The [capability source](https://github.com/21nCo/super-functions/blob/dev/datafn/admin/src/index.ts) defines exact schemas and operation IDs, and the [domain service](https://github.com/21nCo/super-functions/blob/dev/datafn/admin/src/domain-service.ts) shows the executor calls.

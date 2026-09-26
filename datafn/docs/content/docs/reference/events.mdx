@@ -21,7 +21,7 @@ export const auditPlugin: DatafnPlugin = {
   },
   afterMutation(ctx, mutation, result) {
     console.log("after mutation", ctx.env, mutation, result);
-    // Returning undefined preserves the existing result.
+    // This callback observes the result; its return value is ignored by the caller.
   },
 };
 ```
@@ -31,18 +31,18 @@ export const auditPlugin: DatafnPlugin = {
 | Callback | Arguments after `ctx` | Purpose |
 | --- | --- | --- |
 | `beforeQuery` | query | Inspect or replace the query. |
-| `afterQuery` | query, result | Inspect or replace the query result. |
-| `beforeSearch` | search | Inspect or replace the search request. |
+| `afterQuery` | query, result | Inspect the result; only server-side `afterQuery` can replace the result returned to the caller. |
+| `beforeSearch` | search | Server only: inspect or replace the search request. Client search does not invoke this hook. |
 | `beforeMutation` | mutation or mutation array | Inspect or replace the mutation payload. |
-| `afterMutation` | mutation or mutation array, result | Observe the completed operation; the hook runner can transform its result. |
+| `afterMutation` | mutation or mutation array, result | Observe the completed operation; return values do not replace the caller’s result. |
 | `beforeSync` | phase, payload | Inspect or replace the sync payload. |
-| `afterSync` | phase, payload, result | Observe a sync operation and optionally transform its result. |
+| `afterSync` | phase, payload, result | Observe a sync operation; return values do not replace the caller’s result. |
 
 Sync phases are `seed`, `clone`, `pull`, `push`, `cloneUp`, and `reconcile`. There are no `beforeTransact` or `afterTransact` members in the current plugin contract.
 
 ## Ordering, return values, and failures
 
-Hooks execute in registration order for plugins whose `runsOn` includes the current environment. An undefined return keeps the current value; a defined return supplies the next hook's input/result. Preserve the shape expected by the operation and its caller. Returning `{ abort: ... }` is not an abort protocol: it would replace the payload.
+Hooks execute in registration order for plugins whose `runsOn` includes the current environment. For before-hooks, an undefined return keeps the current payload and a defined return supplies the next hook’s input. Only server-side `afterQuery` propagates its final replacement result to the operation caller. Client `afterQuery`, `afterMutation`, and `afterSync` return the original operation result; server `afterMutation` and `afterSync` also discard the hook runner’s final value. A replacement may reach subsequent hooks but does not replace these callers’ results. Preserve the shape expected by the operation. Returning `{ abort: ... }` is not an abort protocol: it would replace the payload.
 
 Before-hooks fail closed: throwing stops the chain and fails the operation. After-hooks fail open: errors are logged and subsequent hooks continue. After-hooks cannot roll back an operation that has already executed. Keep authorization in the server's authorization policy; a client plugin is not a security boundary.
 
