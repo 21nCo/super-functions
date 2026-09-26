@@ -19,4 +19,6 @@ npm run build --workspace @searchfn/adapter-indexeddb
 npm run build --workspace @searchfn/client
 npm exec --workspace @clifn/docs -- docsfn validate --root .
 ```
-  The site defaults to port 6011. Set `site.canonicalUrl` in `docsfn.config.ts` after the public host is assigned.
+  The site defaults to port 6011. The public documentation URL is `https://clifn.com/docs`.
+
+The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt`.

@@ -4,15 +4,15 @@
 
 ## Documentation
 
-- [Subprocesses and scaffolding](/docs/automation) — Execute commands and create files with explicit limits and overwrite policy.
-- [Build a CLI](/docs/cli-builder) — Wire any parser to the shared action runner and preserve command ownership.
-- [Configuration](/docs/configuration) — Load local config files, JSON project settings, and typed environment values.
-- [Credentials and HTTP client](/docs/credentials-and-client) — Persist named profiles and make authenticated requests with bounded retries.
-- [Getting started](/docs/getting-started) — Install CliFn and run your first parser-independent action.
-- [CliFn documentation](/docs) — Build reliable command-line tools with parser-agnostic primitives.
-- [Prompts and JSON stdio](/docs/interaction-and-stdio) — Interactive input, terminal feedback, and machine-readable pipes.
-- [Output and diagnostics](/docs/output-and-diagnostics) — Use text or JSON output and stable, redacted diagnostic reports.
-- [Admin capability](/docs/reference/admin) — The current Super Console declaration for CliFn.
-- [Package README](/docs/reference/core-readme) — Complete source-aligned CliFn package guide.
-- [Public exports](/docs/reference/exports) — Map CliFn subpaths to their public functions, types, and errors.
-- [API reference](/docs/reference) — Public CliFn entry points, exports, and source-aligned package documentation.
+- [Subprocesses and scaffolding](https://clifn.com/docs/automation) — Execute commands and create files with explicit limits and overwrite policy.
+- [Build a CLI](https://clifn.com/docs/cli-builder) — Wire any parser to the shared action runner and preserve command ownership.
+- [Configuration](https://clifn.com/docs/configuration) — Load local config files, JSON project settings, and typed environment values.
+- [Credentials and HTTP client](https://clifn.com/docs/credentials-and-client) — Persist named profiles and make authenticated requests with bounded retries.
+- [Getting started](https://clifn.com/docs/getting-started) — Install CliFn and run your first parser-independent action.
+- [CliFn documentation](https://clifn.com/docs) — Build reliable command-line tools with parser-agnostic primitives.
+- [Prompts and JSON stdio](https://clifn.com/docs/interaction-and-stdio) — Interactive input, terminal feedback, and machine-readable pipes.
+- [Output and diagnostics](https://clifn.com/docs/output-and-diagnostics) — Use text or JSON output and stable, redacted diagnostic reports.
+- [Admin capability](https://clifn.com/docs/reference/admin) — The current Super Console declaration for CliFn.
+- [Package README](https://clifn.com/docs/reference/core-readme) — Complete source-aligned CliFn package guide.
+- [Public exports](https://clifn.com/docs/reference/exports) — Map CliFn subpaths to their public functions, types, and errors.
+- [API reference](https://clifn.com/docs/reference) — Public CliFn entry points, exports, and source-aligned package documentation.

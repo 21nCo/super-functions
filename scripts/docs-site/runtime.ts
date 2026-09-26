@@ -1,4 +1,5 @@
 import { basename, extname } from "node:path";
+import matter from "gray-matter";
 import {
   assertValidSourceEntries,
   buildManifest,
@@ -211,7 +212,10 @@ export function createDocsSiteRuntime(
           },
           compiledCache,
         };
-    })();
+    })().catch((error) => {
+      serverStatePromise = null;
+      throw error;
+    });
 
     return serverStatePromise;
   }
@@ -347,7 +351,7 @@ function collectEntriesForCollection(
     const extension = extname(relativePath).toLowerCase();
     const fileName = basename(relativePath).toLowerCase();
 
-    if (fileName === (config.content.metaFileName ?? "meta.json")) {
+    if (fileName === (config.content.metaFileName ?? "meta.json").toLowerCase()) {
       entries.push(createControlEntry(collection, relativePath, source, modulePath));
       continue;
     }
@@ -411,7 +415,6 @@ function createMarkdownEntry(
       ...parsed.frontmatter,
     },
     bytes: byteLength(source),
-    updatedAt: "1970-01-01T00:00:00.000Z",
     meta: {
       extension: extname(relativePath).toLowerCase(),
     },
@@ -433,7 +436,6 @@ function createControlEntry(
     body: source,
     frontmatter: {},
     bytes: byteLength(source),
-    updatedAt: "1970-01-01T00:00:00.000Z",
     meta: {
       controlFile: true,
       parsed: parseJson(source),
@@ -453,7 +455,6 @@ function createApiEntry(relativePath: string, source: string, sourcePath: string
       title: deriveTitleFromPath(relativePath),
     },
     bytes: byteLength(source),
-    updatedAt: "1970-01-01T00:00:00.000Z",
     meta: {
       extension: extname(relativePath).toLowerCase(),
     },
@@ -473,7 +474,6 @@ function createAssetEntry(
     entryType: "asset",
     frontmatter: {},
     bytes: byteLength(source),
-    updatedAt: "1970-01-01T00:00:00.000Z",
   };
 }
 
@@ -481,38 +481,8 @@ function parseFrontmatter(source: string): {
   body: string;
   frontmatter: Record<string, unknown>;
 } {
-  if (!source.startsWith("---\n")) {
-    return { body: source, frontmatter: {} };
-  }
-
-  const closingIndex = source.indexOf("\n---", 4);
-  if (closingIndex === -1) {
-    return { body: source, frontmatter: {} };
-  }
-
-  const rawFrontmatter = source.slice(4, closingIndex);
-  const body = source.slice(closingIndex + 4).replace(/^\r?\n/, "");
-  const frontmatter: Record<string, unknown> = {};
-
-  for (const line of rawFrontmatter.split(/\r?\n/)) {
-    const separator = line.indexOf(":");
-    if (separator === -1) continue;
-
-    const key = line.slice(0, separator).trim();
-    const value = line.slice(separator + 1).trim();
-    if (!key) continue;
-
-    frontmatter[key] = parseFrontmatterValue(value);
-  }
-
-  return { body, frontmatter };
-}
-
-function parseFrontmatterValue(value: string): unknown {
-  const unquoted = value.replace(/^['"]|['"]$/g, "");
-  if (unquoted === "true") return true;
-  if (unquoted === "false") return false;
-  return unquoted;
+  const parsed = matter(source);
+  return { body: parsed.content, frontmatter: parsed.data };
 }
 
 function parseJson(source: string): unknown {
