@@ -1,0 +1,81 @@
+langfn/docs/README.md
+  s_ee6f287c08acb3::t_19a0d504491667 12-22
+langfn/docs/content/docs/http.md
+  s_ee6f287c08acb3::t_b9f51a4739d612 10,12,15,26,47-48,60-115
+langfn/docs/content/docs/mcp.md
+  s_062481a62a0416::t_d925b05df87a20 6
+langfn/docs/content/docs/memory-and-rag.md
+  s_062481a62a0416::t_cc7a8c2b2ac3f8 8
+langfn/docs/content/docs/observability-and-evaluation.md
+  s_062481a62a0416::t_b8bc3db33dc51e 8
+langfn/docs/content/docs/operations-and-limits.md
+  s_062481a62a0416::t_c64f8bcbf4c415 8
+langfn/docs/content/docs/reference/compatibility.md
+  s_062481a62a0416::t_f8d399b6e43f37 11
+langfn/docs/content/docs/reference/package-exports.md
+  s_062481a62a0416::t_84fd000a30ca28 10
+langfn/docs/content/docs/reference/release-gate.md
+  s_062481a62a0416::t_113eb84e37a909 17
+langfn/docs/content/docs/reference/typescript.md
+  s_062481a62a0416::t_bd0c6484cddb74 16
+langfn/docs/content/docs/streaming-and-tools.md
+  s_062481a62a0416::t_ff6d41906a5d8f 10
+langfn/docs/package.json
+  s_ee6f287c08acb3::t_957b1991207b7a 28,31-33
+langfn/docs/scripts/generate-llms.mjs
+  s_ee6f287c08acb3::t_3dd31f39f24848 32,38
+langfn/docs/src/app.css
+  s_ee6f287c08acb3::t_6884150a2f2222 19,76-80
+langfn/docs/src/lib/components/DocsSiteSearch.svelte
+  s_ee6f287c08acb3::t_aeeadbc4d6a7d1 2
+langfn/docs/src/routes/+layout.svelte
+  s_ee6f287c08acb3::t_56c0215bcd2c64 6-7,16-17,22
+langfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ee6f287c08acb3::t_c07282b315301c 2,15-17,27-29
+langfn/docs/svelte.config.js
+  s_ee6f287c08acb3::t_df294b48c01ea2 17
+langfn/docs/tsconfig.json
+  s_ee6f287c08acb3::t_798cf25f040120 23-24,26
+langfn/docs/vite.config.ts
+  s_ee6f287c08acb3::t_8e3079622145eb 2,9-10,24,26-32
+langfn/typescript/src/orchestration/chain.ts
+  s_062481a62a0416::t_7aa2c517925fb2 58-59
+langfn/typescript/tests/chain-router.test.ts
+  s_062481a62a0416::t_f80bae0830c963 1-22
+scripts/docs-site/README.md
+  s_ee6f287c08acb3::t_4a279d8a716c68 3,10-11
+scripts/docs-site/Search.svelte
+  s_062481a62a0416::t_42e983dbf31b2e 13,59
+scripts/docs-site/layout.ts
+  s_ee6f287c08acb3::t_1de3faeb10573e 1-10
+scripts/docs-site/runtime.ts
+  s_ee6f287c08acb3::t_b01491edccdfe2 187,214,323-326,351,356,361,364,372,399,406,425,431,444,449,466,472,484-490
+langfn/docs/static/llms-full.txt
+  s_ee6f287c08acb3::t_1730154c11f5ce 6,46,48,51,62,83-84,97-152,173,187,270,284,315,357,394,414,472
+package-lock.json
+  s_ee6f287c08acb3::t_d1109f61122870 11430-11431,11434-11435,66591-66617
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cd6fb5f4eda171902a984522405827ea02110f11",
+  "prompts": {},
+  "sessions": {
+    "s_062481a62a0416": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dc9c-5fbe-7c31-a014-ff5ecc64716b",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
