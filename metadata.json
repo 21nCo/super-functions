@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EHK07A3FKWS828AFDQCH3S",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "filefn/docs/content/docs/adapters/db-drizzle.md",
+    "filefn/docs/content/docs/adapters/db-memory.md",
+    "filefn/docs/content/docs/adapters/db-postgres.md",
+    "filefn/docs/content/docs/adapters/db-sqlite.md",
+    "filefn/docs/content/docs/adapters/db.md",
+    "filefn/docs/content/docs/adapters/processors.md",
+    "filefn/docs/content/docs/adapters/storage-gcs.md",
+    "filefn/docs/content/docs/admin/index.md",
+    "filefn/docs/content/docs/frameworks/bun.md",
+    "filefn/docs/content/docs/frameworks/express.md",
+    "filefn/docs/content/docs/frameworks/hono.md",
+    "filefn/docs/content/docs/frameworks/nextjs.md",
+    "filefn/docs/content/docs/quickstart/express.md",
+    "filefn/docs/content/docs/recipes/heic-conversion.md",
+    "filefn/docs/content/docs/recipes/image-uploads.md",
+    "filefn/docs/content/docs/recipes/video-uploads.md",
+    "filefn/docs/src/lib/server/docs-site-source.ts",
+    "filefn/docs/static/llms-full.txt",
+    "filefn/docs/static/llms.txt",
+    "filefn/docs/vite.config.ts",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/runtime.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 33906,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1882240,
+    "output_tokens": 8762,
+    "api_call_count": 11
+  }
+}

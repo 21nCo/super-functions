@@ -1,0 +1,69 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3EHK07A3FKWS828AFDQCH3S",
+  "session_id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-26T09:43:52.950753Z",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "filefn/docs/content/docs/adapters/db-drizzle.md",
+    "filefn/docs/content/docs/adapters/db-memory.md",
+    "filefn/docs/content/docs/adapters/db-postgres.md",
+    "filefn/docs/content/docs/adapters/db-sqlite.md",
+    "filefn/docs/content/docs/adapters/db.md",
+    "filefn/docs/content/docs/adapters/processors.md",
+    "filefn/docs/content/docs/adapters/storage-gcs.md",
+    "filefn/docs/content/docs/admin/index.md",
+    "filefn/docs/content/docs/frameworks/bun.md",
+    "filefn/docs/content/docs/frameworks/express.md",
+    "filefn/docs/content/docs/frameworks/hono.md",
+    "filefn/docs/content/docs/frameworks/nextjs.md",
+    "filefn/docs/content/docs/quickstart/express.md",
+    "filefn/docs/content/docs/recipes/heic-conversion.md",
+    "filefn/docs/content/docs/recipes/image-uploads.md",
+    "filefn/docs/content/docs/recipes/video-uploads.md",
+    "filefn/docs/src/lib/server/docs-site-source.ts",
+    "filefn/docs/static/llms-full.txt",
+    "filefn/docs/static/llms.txt",
+    "filefn/docs/vite.config.ts",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/runtime.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-astra",
+  "turn_id": "4fad7f0db819",
+  "checkpoint_transcript_start": 1572,
+  "transcript_lines_at_start": 1572,
+  "compact_transcript_start": 201,
+  "token_usage": {
+    "input_tokens": 33906,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1882240,
+    "output_tokens": 8762,
+    "api_call_count": 11
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-26T09:43:52.763521Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 1208,
+    "human_removed": 440,
+    "total_committed": 0,
+    "total_lines_changed": 1648,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
