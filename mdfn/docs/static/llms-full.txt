@@ -1,0 +1,833 @@
+# MDFN
+
+> Markdown-native authoring with source preservation, safe rendering, and collaboration.
+
+This file concatenates the full text of every documentation page so it can be loaded into
+an LLM-based assistant in a single shot. For a page index, see /docs/llms.txt.
+
+# Documentation
+
+<!-- page:docs:collaboration.md path:/docs/collaboration -->
+# Collaboration
+
+> Exchange authorized Yjs updates and compact exact batches.
+
+
+`@mdfn/collab` handles shared Markdown, sidecar data, awareness, offline queues, reconnects, and contract negotiation. The host owns transport and authentication. The host must authorize the transport or supply `authorizeUpdate`; MDFN does not authorize updates by default. Use `authorizeSidecarUpdate` for protected editorial changes. Before applying a remote update, MDFN checks size, invokes the configured authorization callback, then validates a candidate against document ID, schema hash, profile, protocol, extensions, Markdown, and sidecar rules.
+
+The server's collaboration reads return a bounded batch with `includedUpdateIds` and an optional `nextCursor`. Pass those exact IDs with the snapshot to compaction so updates that arrived afterward remain. Do not replace them with a guessed range. See [collaboration](/docs/reference/collab), [client](/docs/reference/client), and [server](/docs/reference/server).
+
+---
+
+<!-- page:docs:extensions.md path:/docs/extensions -->
+# Extensions and profiles
+
+> Resolve syntax ownership, conflicts, and migrations.
+
+
+`@mdfn/extensions` declares built-in syntax and extension helpers. Extensions may declare syntax ownership, dependencies, conflicts, preservation behavior, security rules, diagnostics, and migrations; these capabilities are optional, and built-in extensions do not all declare every field. `@mdfn/registry` holds host-controlled extension packages and reusable editor profiles.
+
+Use the same resolved extension set across parse, serialize, render, editor, and collaboration boundaries. Changing a profile can change schema and normalization behavior, so treat it as a document migration. See [extensions](/docs/reference/extensions) and [registry](/docs/reference/registry).
+
+---
+
+<!-- page:docs:framework-editors.md path:/docs/framework-editors -->
+# Framework editors
+
+> Install and mount a controller in React, Svelte, Solid, or the vanilla DOM.
+
+
+Choose the adapter for your existing application. All use the same `EditorController`; keep it stable across renders and destroy it when its owning view is permanently removed. Adapters release their DOM bindings but do not take ownership of the controller.
+
+| Application | Install | Mounting example |
+| --- | --- | --- |
+| React | `npm install @mdfn/facade @mdfn/react` | [React](/docs/reference/react) |
+| Svelte | `npm install @mdfn/facade @mdfn/svelte` | [Svelte](/docs/reference/svelte) |
+| Solid | `npm install @mdfn/facade @mdfn/solid` | [Solid](/docs/reference/solid) |
+| Vanilla DOM | `npm install @mdfn/facade @mdfn/dom` | [DOM](/docs/reference/dom) |
+
+Framework `MdfnEditor` components support `visual`, `source`, `split`, `preview`, and `read-only` modes. `readOnly` also disables editing independently of mode. Use `ariaLabel` for an accessible name and `onLoadError` to display failed browser-module loads. These adapters mount editing surfaces; use `@mdfn/components-*` when you also want a toolbar and application shell.
+
+Browser editing modules load after mount. Keep file and credential operations in your host application; `onFiles` receives selected files but does not upload them. Saving Markdown and sidecar state is a separate operation described in [server and storage](/docs/server-and-storage).
+
+---
+
+<!-- page:docs:getting-started.md path:/docs/getting-started -->
+# Getting started
+
+> Install MDFN, edit Markdown, observe changes, and release the controller.
+
+
+```sh
+npm install @mdfn/facade
+```
+
+The headless facade combines the controller, Markdown parser, rendering helpers, and built-in extensions. It does not mount a browser editor or persist documents automatically.
+
+```ts
+import { createMdfn, Transaction } from "@mdfn/facade";
+
+const editor = createMdfn({ markdown: "# Hello\n\nStart writing.\n" });
+const unsubscribe = editor.subscribe(({ current }) => {
+  console.log(current.markdown, current.dirty);
+});
+editor.dispatch(new Transaction().replaceSource(2, 7, "Welcome"));
+console.log(editor.getState().markdown); // # Welcome followed by the original body
+editor.undo();
+editor.redo();
+
+// Only after the corresponding source/sidecar has been saved successfully:
+editor.markSaved();
+unsubscribe();
+editor.destroy();
+```
+
+Source offsets are JavaScript string offsets. Subscribe for changes rather than modifying state objects. `getState()` exposes Markdown, parsed document, selection, sidecar, version, and dirty state. A destroyed controller cannot be reused; create one per editor lifetime.
+
+The default extension set handles the standard authoring profile. Pass `markdownOptions: { dialect: "commonmark" }` for CommonMark-only behavior, or supply a configured extension set. Keep that configuration consistent between browser and server.
+
+Next, [mount a framework editor](/docs/framework-editors), then [persist documents](/docs/server-and-storage). Source preservation and rendering security are covered in [source preservation](/docs/source-preservation) and [rendering](/docs/rendering-and-security).
+
+---
+
+<!-- page:docs:index.md path:/docs -->
+# MDFN
+
+> Markdown-native authoring with a durable source contract.
+
+
+MDFN treats Markdown as the durable document boundary. It derives a structured editor model while retaining source spans and raw slices, so unsupported syntax can survive editing. The package graph separates headless parsing and rendering, framework editors, persistence, collaboration, review, and ecosystem bridges.
+
+Start with [getting started](/docs/getting-started) or explore the [package map](/docs/reference). Read [source preservation](/docs/source-preservation) and [rendering safety](/docs/rendering-and-security) before integrating the editor into a content pipeline.
+
+---
+
+<!-- page:docs:integrations.md path:/docs/integrations -->
+# Integrations
+
+> Connect assets, search, content, and AI through explicit bridges.
+
+
+MDFN keeps ecosystem bridges separate from the headless controller. `@mdfn/filefn` formats and checks asset URLs; `@mdfn/searchfn` extracts searchable content; `@mdfn/contentfn` maps snapshots and sidecars into content workflows. `@mdfn/ai` treats model output as data, validates ranges, and sends accepted edits through the regular transaction pipeline.
+
+Use only the bridge needed by the host. Keep access control and storage in the respective host service. Package guides: [FileFn](/docs/reference/filefn), [SearchFn](/docs/reference/searchfn), [ContentFn](/docs/reference/contentfn), and [AI](/docs/reference/ai).
+
+---
+
+<!-- page:docs:reference/adapter-kit.md path:/docs/reference/adapter-kit -->
+# @mdfn/adapter-kit
+
+> Source guide for adapter-kit.
+
+
+Framework-neutral lifecycle and subscription bridges. Framework adapters bind
+these contracts; they do not own commands, normalization, Markdown parsing,
+serialization, schema, or persistence behavior.
+
+---
+
+<!-- page:docs:reference/ai.md path:/docs/reference/ai -->
+# @mdfn/ai
+
+> Source guide for ai.
+
+
+AI output is data, never executable editor code. Changes are range-validated and may be returned as reviewable suggestions or dispatched through the normal transaction pipeline.
+
+---
+
+<!-- page:docs:reference/client.md path:/docs/reference/client -->
+# @mdfn/client
+
+> Source guide for client.
+
+
+Typed fetch client for documents, versions, sidecar state, and persisted
+collaboration updates. `getCollaborationUpdates` returns the update batch with
+its `includedUpdateIds`; pass those ids to `compactCollaborationUpdates` with
+the snapshot so updates arriving after the read are preserved. Authentication
+stays host-controlled through a header callback.
+
+See [Create, edit, and save](/docs/server-and-storage#create-edit-and-save) for a complete `createMdfnClient` example, optimistic concurrency, and handling `MdfnClientError`.
+
+---
+
+<!-- page:docs:reference/collab.md path:/docs/reference/collab -->
+# @mdfn/collab
+
+> Source guide for collab.
+
+
+Yjs-backed collaboration for canonical Markdown, validated editorial/asset
+sidecar data, awareness, offline update queues, reconnect flushing, compaction,
+and contract negotiation. Transport remains host-controlled: exchange
+`encodeUpdate()` bytes over an authorized provider and call `applyUpdate()` for
+remote data.
+
+Each remote update is size checked, passed to `authorizeUpdate` when configured,
+then applied to an isolated
+candidate document. The candidate must retain the expected document ID, schema
+hash, profile, protocol version, extension set, Markdown, and sidecar validity
+before the live document is changed. Rejections and queue lifecycle events are
+available through the audit callback.
+
+The host must authorize its transport or supply `authorizeUpdate`; there is no
+default identity check. Use `authorizeSidecarUpdate` for protected editorial changes.
+
+Queue compaction merges unsent updates. A merged batch can depend on the preceding
+in-flight update; preserve queue delivery order rather than treating it as a
+standalone snapshot. It never
+re-encodes the full long-lived `Y.Doc`, whose retained CRDT history can exceed
+the transport limit. If a merged row would exceed `maxUpdateBytes`, the session
+keeps the original incremental rows and flushes them independently.
+
+---
+
+<!-- page:docs:reference/components-react.md path:/docs/reference/components-react -->
+# @mdfn/components-react
+
+> Source guide for components-react.
+
+
+React editor shell, authoring controls, editorial surfaces, and toolbar rendered
+with UIFn components. It supports Strict Mode, hydration, source fallback, and
+the shared adapter command/file contract. Import the UIFn and MDFN component
+styles once at the app boundary.
+
+---
+
+<!-- page:docs:reference/components-solid.md path:/docs/reference/components-solid -->
+# @mdfn/components-solid
+
+> Source guide for components-solid.
+
+
+Solid editor shell, complete authoring/editorial controls, and toolbar rendered
+with UIFn components. The package publishes ESM/CJS browser builds plus genuine
+ESM/CJS Node SSR entries and shares the canonical adapter command/file contract.
+
+---
+
+<!-- page:docs:reference/components-svelte.md path:/docs/reference/components-svelte -->
+# @mdfn/components-svelte
+
+> Source guide for components-svelte.
+
+
+Svelte editor shell, complete authoring/editorial controls, and toolbar rendered
+with UIFn components. The package publishes separate browser and Node SSR
+entries and shares the canonical adapter command/file contract.
+
+---
+
+<!-- page:docs:reference/components.md path:/docs/reference/components -->
+# @mdfn/components
+
+> Source guide for components.
+
+
+Framework-neutral models for complete authoring chrome: primary, selection,
+and floating toolbars; slash commands; link/table/file controls; outline;
+diagnostics; comments; suggestions; review state; and audit history. The engine
+remains headless; framework packages render these models with UIFn components.
+
+Import `@uifn/components/styles.css` and `@mdfn/components/styles.css` once in applications that use the styled framework components.
+
+---
+
+<!-- page:docs:reference/contentfn.md path:/docs/reference/contentfn -->
+# @mdfn/contentfn
+
+> Source guide for contentfn.
+
+
+Defines Markdown as a versioned content kind and carries its dialect, raw-HTML
+policy, extension set, schema version/hash, canonical source, and sidecar as an
+explicit profile envelope.
+
+Migration helpers upgrade strings and legacy Markdown envelopes without source
+loss. Known rich-text blocks are projected to Markdown; unsupported blocks are
+retained as inert encoded migration comments and produce loss diagnostics.
+
+---
+
+<!-- page:docs:reference/core.md path:/docs/reference/core -->
+# @mdfn/core
+
+> Source guide for core.
+
+
+Environment-neutral mdfn document state, transactions, commands, history,
+extensions, migrations, diagnostics, snapshots, and sidecar anchor mapping.
+
+This package imports no DOM, framework, UI, storage, transport, or
+collaboration code.
+
+---
+
+<!-- page:docs:reference/dom.md path:/docs/reference/dom -->
+# @mdfn/dom
+
+> Mount and dispose a vanilla browser editor.
+
+
+```sh
+npm install @mdfn/facade @mdfn/dom
+```
+
+Add `<div id="editor"></div>` to the page and run this in a browser entrypoint after the element exists:
+
+```ts
+import { createMdfn } from "@mdfn/facade";
+import { createDomEditor } from "@mdfn/dom";
+
+const target = document.querySelector<HTMLElement>("#editor");
+if (!target) throw new Error("Editor container is missing");
+const controller = createMdfn({ markdown: "# New document\n" });
+const view = createDomEditor({ target, controller, attributes: { "aria-label": "Document editor" } });
+view.focus();
+
+export function dispose() {
+  view.destroy();
+  controller.destroy();
+}
+```
+
+Call `dispose()` when the host removes the owning view. Do not destroy the editor on `pagehide`: a page kept in the back/forward cache can be restored without running setup again. `createDomEditor` is browser-only; dynamically import it after mount in an SSR host. Its options include `readOnly`, `attributes`, `onFocus`, `onBlur`, and `onFiles`. The returned editor provides `run`, `can`, link/table/Markdown commands, `focus`, `setReadOnly`, and `destroy`. Call `can(command)` before enabling toolbar actions. Persist the controller's Markdown and sidecar rather than ProseMirror internals.
+
+---
+
+<!-- page:docs:reference/examples.md path:/docs/reference/examples -->
+# MDFN framework examples
+
+> Source guide for examples.
+
+
+These apps mount the same Markdown authoring workflow through each supported
+framework adapter. Every example includes the complete authoring shell, a live
+Markdown readout, file insertion, review controls, and document reset behavior.
+
+```bash
+npm run dev --workspace=mdfn-example-react
+npm run dev --workspace=mdfn-example-svelte
+npm run dev --workspace=mdfn-example-solid
+```
+
+Build and exercise all three apps in Chromium, Firefox, WebKit, and a mobile
+Chromium viewport with:
+
+```bash
+npm run verify:mdfn-examples
+```
+
+The browser probe writes per-step screenshots, captured runtime events, failure
+HTML, and a machine-readable result into the ignored
+`mdfn/examples/test-results/` directory.
+
+---
+
+<!-- page:docs:reference/extensions.md path:/docs/reference/extensions -->
+# @mdfn/extensions
+
+> Source guide for extensions.
+
+
+Certified extension declarations and helpers. Each extension declares syntax
+ownership, conflicts, dependencies, preservation, security, diagnostics, and
+migrations.
+
+---
+
+<!-- page:docs:reference/facade.md path:/docs/reference/facade -->
+# @mdfn/facade
+
+> Source guide for facade.
+
+
+Curated facade for headless Markdown parsing, secure rendering, transactions,
+extensions, diagnostics, snapshots, and source preservation. Browser,
+framework, collaboration, and server packages remain explicit imports.
+
+---
+
+<!-- page:docs:reference/filefn.md path:/docs/reference/filefn -->
+# @mdfn/filefn
+
+> Source guide for filefn.
+
+
+Storage-neutral asset contracts plus the production FileFn client bridge for
+selection, upload, resolution, document association, rendering, and cleanup.
+Every operation can be authorized by the host, references are bound to a
+document, durable references omit delivery URLs, and resolved URLs pass the
+shared MDFN URL policy before rendering.
+
+`createAssetGateway` enforces the contract for any provider.
+`createFileFnAssetProvider` bridges the real FileFn client and requires a
+`resolveDocumentId` callback backed by the durable FileFn upload metadata so
+management operations never trust a document id supplied by the caller. The deterministic
+memory provider exists only for tests and examples and is not durable storage.
+
+---
+
+<!-- page:docs:reference/index.md path:/docs/reference -->
+# Package reference
+
+> Source guides for every MDFN package.
+
+
+The [overview](/docs/reference/overview) explains the product guarantees. Headless packages: [facade](/docs/reference/facade), [core](/docs/reference/core), [Markdown](/docs/reference/markdown), [render](/docs/reference/render), [source](/docs/reference/source), and [extensions](/docs/reference/extensions).
+
+Browser and server packages: [DOM](/docs/reference/dom), [React](/docs/reference/react), [Svelte](/docs/reference/svelte), [Solid](/docs/reference/solid), [components](/docs/reference/components), [server](/docs/reference/server), [client](/docs/reference/client), and [collaboration](/docs/reference/collab). The other package guides are in the navigation. These pages mirror the current source READMEs.
+
+---
+
+<!-- page:docs:reference/markdown.md path:/docs/reference/markdown -->
+# @mdfn/markdown
+
+> Source guide for markdown.
+
+
+The canonical CommonMark/GFM parser and serializer for mdfn. It records source
+spans and raw slices, preserves unsupported constructs as opaque nodes, returns
+byte-identical source when nothing changed, and patches only dirty top-level
+regions when source spans remain valid.
+
+---
+
+<!-- page:docs:reference/overview.md path:/docs/reference/overview -->
+# MDFN overview
+
+> Source guide for overview.
+
+
+mdfn is the Markdown-native authoring platform for Superfunctions. Markdown is
+the durable boundary; structured editor state is derived, versioned, and
+replaceable.
+
+The package graph separates environment-neutral parsing, transactions, safe
+rendering, and extension contracts from browser editing, framework bindings,
+UIFn chrome, persistence, collaboration, and ecosystem bridges.
+
+## Guarantees
+
+- No-edit import/export is byte-identical.
+- Supported syntax has a semantic round trip.
+- Visual edits normalize only the touched top-level source regions whenever
+  their source spans remain mappable.
+- Unsupported and disabled constructs survive as opaque nodes with
+  diagnostics.
+- Raw HTML is disabled by default.
+- React, Svelte, Solid, and vanilla DOM share the same semantic controller.
+- Comments, suggestions, review transitions, history references, and audit data live in a
+  validated sidecar bound to the canonical source.
+- The host authenticates collaboration updates through its transport or authorization
+  callbacks; accepted updates must match
+  the document, schema, profile, protocol, and extension contract.
+- Durable server operation is transactional; the explicit ephemeral mode is
+  reserved for memory-backed tests and examples.
+
+## Authoring surfaces
+
+`@mdfn/components` exposes the framework-neutral toolbar, slash-command,
+outline, diagnostics, asset, and editorial models. The React, Svelte, and Solid
+component packages render the same model with UIFn. The vanilla DOM adapter and
+all framework adapters share command, selection, undo/redo, file-drop, paste,
+and source-fallback semantics.
+
+Framework packages publish separate browser and server entry points. Packed
+consumer verification builds and executes browser and SSR applications for all
+three framework adapters and checks ESM, CJS, and extension subpath exports.
+
+## Verification
+
+From the repository root:
+
+```sh
+npm run verify:mdfn
+npm run verify:mdfn-browser
+npm run verify:mdfn-consumers
+npm run verify:mdfn-examples
+```
+
+The complete gate includes the official CommonMark examples, deterministic
+fuzz and large-document checks, package builds/typechecks/tests/packs, runtime
+export checks, SSR execution, and Chromium, Firefox, WebKit, and mobile browser
+flows.
+
+Runnable React, Svelte, and Solid authoring apps, together with their browser
+workflow and artifact contract, are documented in `mdfn/examples/README.md`.
+
+See [Source preservation](/docs/source-preservation), [Extensions](/docs/extensions),
+[Collaboration](/docs/collaboration), and [Server and storage](/docs/server-and-storage)
+for the consumer contracts.
+
+---
+
+<!-- page:docs:reference/react.md path:/docs/reference/react -->
+# @mdfn/react
+
+> Mount a React editor and observe controller state.
+
+
+```sh
+npm install @mdfn/facade @mdfn/react
+```
+
+Use a client component. Creating the controller in the effect gives each mount its own lifetime, including React development-mode effect replay:
+
+```tsx
+"use client";
+import { useEffect, useState } from "react";
+import { createMdfn, type EditorController } from "@mdfn/facade";
+import { MdfnEditor, useMdfn } from "@mdfn/react";
+
+function EditorView({ controller }: { controller: EditorController }) {
+  const snapshot = useMdfn(controller);
+  return <>
+    <MdfnEditor controller={controller} mode="split" ariaLabel="Document editor"
+      onLoadError={(error) => console.error(error)} />
+    <output>{snapshot.dirty ? "Unsaved changes" : "Saved"}</output>
+  </>;
+}
+
+export default function DocumentEditor() {
+  const [controller, setController] = useState<EditorController | null>(null);
+  useEffect(() => {
+    const editor = createMdfn({ markdown: "# New document\n" });
+    setController(editor);
+    return () => editor.destroy();
+  }, []);
+  return controller ? <EditorView controller={controller} /> : <p>Loading editor…</p>;
+}
+```
+
+`useMdfn` subscribes to Markdown, dirty state, version, and undo/redo availability. The component accepts ordinary div attributes plus `controller`, `mode`, `readOnly`, `ariaLabel`, `onLoadError`, `onFiles`, and `onReady`. Its forwarded `MdfnEditorHandle` supports `focus`, `run`, `can`, link commands, `insertTable`, and `insertMarkdown`.
+
+The controller belongs to the host, so preserve it when changing modes and destroy it only when the owning document view is removed. See [persistence](/docs/server-and-storage) before treating `markSaved()` as evidence of a durable save.
+
+---
+
+<!-- page:docs:reference/registry.md path:/docs/reference/registry -->
+# @mdfn/registry
+
+> Source guide for registry.
+
+
+In-memory, host-controlled registry for extension packages and reusable editor profiles. Registration resolves the same dependency, conflict, security, and schema checks used by the core engine.
+
+---
+
+<!-- page:docs:reference/render.md path:/docs/reference/render -->
+# @mdfn/render
+
+> Source guide for render.
+
+
+Environment-neutral HTML and render-tree output. `renderHtml` requires an explicit
+sanitizer for raw HTML, rejects unsafe URL schemes, and enforces resource limits.
+`renderTree` returns an unfiltered tree and does not enforce those safety or
+resource checks; hosts must validate URLs, sanitize content, and bound traversal
+before rendering a tree from untrusted input.
+
+---
+
+<!-- page:docs:reference/searchfn.md path:/docs/reference/searchfn -->
+# @mdfn/searchfn
+
+> Source guide for searchfn.
+
+
+Converts the canonical render/extraction model into stable records suitable for SearchFn indexing.
+
+---
+
+<!-- page:docs:reference/server.md path:/docs/reference/server -->
+# @mdfn/server
+
+> Source guide for server.
+
+
+Self-hosted document CRUD, canonical source validation, optimistic versioning,
+immutable revisions, editorial workflows, persisted collaboration updates,
+authorization hooks, and a Web Standard router. The incoming
+`@superfunctions/db` adapter is always wrapped internally with the MDFN schema.
+
+Durable mode is the default and rejects database adapters without transaction
+and relational-constraint support. Create/update/restore/editorial writes
+validate both Markdown and the complete sidecar and run atomically. Update,
+restore, and editorial writes support idempotency through the `Idempotency-Key`
+header or request body; document creation does not. Delete atomically removes the
+document, revisions, receipts, and collaboration updates. Ephemeral mode must
+be selected explicitly and is intended only for memory-backed tests.
+
+The router exposes document and version CRUD, version restore, sidecar and
+audit reads, comment/reply/resolve, suggestion/decision, review transitions,
+and collaboration update append/read/compact routes under `/api/mdfn` by
+default. Version history returns bounded lightweight metadata pages; fetch an
+individual version for its Markdown and sidecar. Collaboration reads return a
+bounded page containing the updates, their exact `includedUpdateIds`, and a
+stable `nextCursor` when another page remains; pass that cursor back as the
+`cursor` query parameter. Compaction requires the represented ids and preserves
+updates that arrive concurrently without invalidating an existing cursor. The
+default collaboration and router body limits are derived from the configured maximum
+Markdown size plus Yjs and transport-encoding overhead. Every operation is
+tenant/owner scoped and passes through the host's authorization callback.
+
+For package installation, a complete authenticated HTTP mount, a typed create/update client, version-conflict handling, and database provisioning requirements, follow [Server and storage](/docs/server-and-storage).
+
+---
+
+<!-- page:docs:reference/solid.md path:/docs/reference/solid -->
+# @mdfn/solid
+
+> Mount a Solid editor and observe its reactive snapshot.
+
+
+```sh
+npm install @mdfn/facade @mdfn/solid
+```
+
+```tsx
+import { onCleanup } from "solid-js";
+import { createMdfn } from "@mdfn/facade";
+import { MdfnEditor, createMdfnSignal } from "@mdfn/solid";
+
+export function DocumentEditor() {
+  const controller = createMdfn({ markdown: "# New document\n" });
+  const snapshot = createMdfnSignal(controller);
+  onCleanup(() => controller.destroy());
+  return <>
+    <MdfnEditor controller={controller} mode="split" ariaLabel="Document editor"
+      onLoadError={(error) => console.error(error)} />
+    <output>{snapshot().dirty ? "Unsaved changes" : "Saved"}</output>
+  </>;
+}
+```
+
+`createMdfnSignal` accepts a controller or an accessor and cleans up its bridge with the Solid owner. Call it inside a component or reactive root. `MdfnEditor` supports `mode`, `readOnly`, `ariaLabel`, `onLoadError`, `onFiles`, and `editorRef` alongside div attributes. The host owns controller cleanup. See [persistence](/docs/server-and-storage).
+
+---
+
+<!-- page:docs:reference/source.md path:/docs/reference/source -->
+# @mdfn/source
+
+> Source guide for source.
+
+
+Code-oriented Markdown source editing with shared diagnostics and one-way
+controller transactions. The source editor and visual editor can mount
+independently against the same mdfn controller for source, split, and fallback
+modes.
+
+---
+
+<!-- page:docs:reference/svelte.md path:/docs/reference/svelte -->
+# @mdfn/svelte
+
+> Mount a Svelte editor and subscribe with a readable store.
+
+
+```sh
+npm install @mdfn/facade @mdfn/svelte
+```
+
+```svelte
+<script lang="ts">
+  import { onDestroy } from "svelte";
+  import { createMdfn } from "@mdfn/facade";
+  import { MdfnEditor, createMdfnStore } from "@mdfn/svelte";
+
+  const controller = createMdfn({ markdown: "# New document\n" });
+  const snapshot = createMdfnStore(controller);
+  onDestroy(() => controller.destroy());
+</script>
+
+<MdfnEditor {controller} mode="split" ariaLabel="Document editor"
+  onLoadError={(error) => console.error(error)} />
+<output>{$snapshot.dirty ? "Unsaved changes" : "Saved"}</output>
+```
+
+`createMdfnStore` returns a readable store and releases its subscription when unused. `MdfnEditor` accepts `controller`, `mode`, `readOnly`, `ariaLabel`, `class`, `onLoadError`, `onFiles`, and `editorRef`. `editorRef` receives the command handle on mount and `null` during teardown. Use `controller.undo()` and `controller.redo()` for history and the handle for editor focus and visual commands.
+
+Create a controller per document/view. In SvelteKit, browser editor dependencies load after mount; avoid sharing a mutable controller between server requests. See [persistence](/docs/server-and-storage).
+
+---
+
+<!-- page:docs:reference/testing.md path:/docs/reference/testing -->
+# @mdfn/testing
+
+> Source guide for testing.
+
+
+Reusable preservation, rendering-security, extension, adapter-trace, official
+CommonMark, fuzz, performance, mounted-framework, real-browser, SSR, runtime
+export, and packed-consumer conformance helpers.
+
+## Large-document performance budget
+
+The large-document test builds a ~200k-character fixture and times the full
+`parseMarkdown` → `serializeMarkdown` → `renderHtml` pipeline. Local development
+must stay under **5s**; CI shared runners use a **20s** ceiling. Scoped GHA runs
+finish in ~12s, but full-graph turbo CI (300+ tasks) was observed at ~12.1s on
+PR 133, so the ceiling leaves headroom for runner contention.
+
+---
+
+<!-- page:docs:rendering-and-security.md path:/docs/rendering-and-security -->
+# Rendering and security
+
+> Apply a rendering policy to untrusted Markdown.
+
+
+`@mdfn/render` produces safe HTML or a render tree without a browser dependency. Raw HTML is disabled by default; enabling it requires an explicit sanitizer. Unsafe URL schemes are rejected, and resource limits apply before output is returned.
+
+Treat Markdown imports, extension output, asset URLs, and AI suggestions as untrusted data. Render with an appropriate policy for the destination and inspect diagnostics before publishing. Do not bypass the renderer with raw HTML from a document or sidecar.
+
+See [render](/docs/reference/render), [core](/docs/reference/core), [asset bridge](/docs/reference/filefn), and [AI bridge](/docs/reference/ai).
+
+---
+
+<!-- page:docs:review-and-sidecar.md path:/docs/review-and-sidecar -->
+# Review and sidecar
+
+> Keep editorial data bound to canonical source.
+
+
+Comments, replies, suggestions, review transitions, history references, audit data, and asset references live in a validated sidecar bound to the Markdown source. Immutable revision history is stored separately by `@mdfn/server`. Source edits map anchors through the transaction pipeline.
+
+Persist the source and complete sidecar together. A client must use the document version and the server's authorization policy when changing review state. The [core](/docs/reference/core), [server](/docs/reference/server), and [components](/docs/reference/components) packages define the underlying model.
+
+---
+
+<!-- page:docs:server-and-storage.md path:/docs/server-and-storage -->
+# Server and storage
+
+> Mount authenticated document routes and save with optimistic concurrency.
+
+
+`@mdfn/server` provides document CRUD, immutable versions, restore, editorial workflows, and collaboration-update storage. Every operation passes through the host's principal resolver and authorization callback.
+
+## Run a local server
+
+This single-user example uses ephemeral storage. Install the packages, save the code as `server.ts`, set `MDFN_DEMO_TOKEN` to a local secret, and run `npx tsx server.ts`:
+
+```sh
+npm install @mdfn/server @superfunctions/db hono @hono/node-server
+npm install --save-dev tsx
+```
+
+```ts
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { memoryAdapter } from "@superfunctions/db/adapters/memory";
+import { createMdfnServer, MdfnServerError } from "@mdfn/server";
+
+const token = process.env.MDFN_DEMO_TOKEN;
+if (!token) throw new Error("Set MDFN_DEMO_TOKEN before starting");
+const { router } = createMdfnServer({
+  database: memoryAdapter(),
+  durability: "ephemeral",
+  resolvePrincipal(request) {
+    if (request.headers.get("authorization") !== `Bearer ${token}`) {
+      throw new MdfnServerError("MDFN_UNAUTHENTICATED", 401);
+    }
+    return { id: "local-author", tenantId: "local" };
+  },
+  authorize(_action, principal, document) {
+    return !document || (document.ownerId === principal.id && document.tenantId === principal.tenantId);
+  },
+});
+const app = new Hono();
+app.all("/api/mdfn/*", (c) => router.handle(c.req.raw));
+serve({ fetch: app.fetch, port: 3010 });
+```
+
+Replace the demo resolver with your application's verified session identity for production. A missing resolver denies HTTP access. Never derive authority from an unverified owner/tenant field in a request body.
+
+## Create, edit, and save
+
+Install `@mdfn/client @mdfn/facade`. The following is a Node client for the local server; browser applications should use their authenticated same-origin session instead of shipping the demo token:
+
+```ts
+import { writeFile } from "node:fs/promises";
+import { createMdfn, Transaction } from "@mdfn/facade";
+import { createMdfnClient, MdfnClientError } from "@mdfn/client";
+
+const client = createMdfnClient({
+  baseUrl: "http://localhost:3010/api/mdfn",
+  headers: { authorization: `Bearer ${process.env.MDFN_DEMO_TOKEN}` },
+});
+let remote = await client.createDocument({ title: "Example", markdown: "# Hello\n" });
+const editor = createMdfn({ markdown: remote.markdown, sidecar: remote.sidecar });
+editor.dispatch(new Transaction().replaceSource(2, 7, "Welcome"));
+const snapshot = editor.getState();
+let canDispose = false;
+try {
+  remote = await client.updateDocument(remote.id, {
+    expectedVersion: remote.version,
+    markdown: snapshot.markdown,
+    sidecar: snapshot.sidecar,
+    idempotencyKey: crypto.randomUUID(),
+  });
+  if (editor.getState().version === snapshot.version) editor.markSaved();
+  canDispose = true;
+  console.log(remote.version, remote.markdown);
+} catch (error) {
+  // Save the complete draft before disposing, including on network/key-reuse errors.
+  await writeFile("mdfn-unsaved-draft.json", JSON.stringify({ documentId: remote.id, expectedVersion: remote.version, markdown: snapshot.markdown, sidecar: snapshot.sidecar }), { mode: 0o600 });
+  canDispose = true;
+  if (error instanceof MdfnClientError && error.code === "MDFN_VERSION_CONFLICT") {
+    const latest = await client.getDocument(remote.id);
+    console.error("Version conflict: reconcile mdfn-unsaved-draft.json with", latest.version);
+    process.exitCode = 1;
+  } else {
+    throw error;
+  }
+} finally {
+  if (canDispose) editor.destroy(); // Keep the editor alive if backing up the draft fails.
+}
+```
+
+Use the last **server** version for `expectedVersion`, not the controller's local version. A stale update returns `MDFN_VERSION_CONFLICT` (409); retain the user's edits and reconcile with the latest document instead of blindly retrying. For a network retry of the same write, reuse its idempotency key and payload. `markSaved()` is local bookkeeping and does not persist anything.
+
+## Durable deployment
+
+Durable mode is the default and requires transactions plus relational constraints. Supply a durable `@superfunctions/db` adapter, provision the descriptors from `getSchema()` with your migration system, and keep browser/server Markdown extensions aligned. The returned `schema` describes required storage; construction does not replace the host's migration process. Ephemeral mode is only for local/testing hosts and loses data on restart.
+
+Persist Markdown and the complete sidecar together. Writes validate them atomically. `listVersions` returns summaries and a continuation cursor; `getVersion` fetches full historical content, and `restoreVersion` requires the current expected version. Collaboration update storage is a separate protocol covered in [collaboration](/docs/collaboration).
+
+---
+
+<!-- page:docs:source-preservation.md path:/docs/source-preservation -->
+# Source preservation
+
+> Keep untouched Markdown bytes and unknown constructs.
+
+
+The canonical Markdown parser records raw slices and source spans. A no-edit parse and serialize returns byte-identical input. Supported syntax has a semantic round trip; unsupported or disabled constructs remain opaque with diagnostics.
+
+When a visual edit changes a mappable top-level region, MDFN patches that region and leaves other source bytes alone. If a span cannot be mapped safely, the serializer may normalize a broader region. Persist the serialized Markdown after edits; keep the original input only as the serializer’s preservation baseline and review diagnostics when importing unfamiliar syntax.
+
+The [Markdown package](/docs/reference/markdown), [source editor](/docs/reference/source), and [testing helpers](/docs/reference/testing) explain these contracts.
+
+---
+
+<!-- page:docs:verification.md path:/docs/verification -->
+# Verification
+
+> Run the consumer and browser gates for an MDFN integration.
+
+
+The repository checks the source and package contract with:
+
+```sh
+npm run verify:mdfn
+npm run verify:mdfn-browser
+npm run verify:mdfn-consumers
+npm run verify:mdfn-examples
+```
+
+These gates include CommonMark examples, source preservation, fuzz and large-document cases, package builds and packs, runtime exports, SSR, and browser flows for the supported framework adapters. They verify the repository implementation, while a host application should also test its own database, authorization callback, transport, and deployment. See the [overview](/docs/reference/overview) and [testing package](/docs/reference/testing).
+
+---

@@ -1,4 +1,7 @@
-# @mdfn/render
+---
+title: "@mdfn/render"
+description: Source guide for render.
+---
 
 Environment-neutral HTML and render-tree output. `renderHtml` requires an explicit
 sanitizer for raw HTML, rejects unsafe URL schemes, and enforces resource limits.
