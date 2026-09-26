@@ -1,9 +1,9 @@
 ---
-title: Client Boundary source guide
-description: Authoritative PlugFn source document.
+title: Client SDK boundary
+description: Generated mirror of the release-gated PlugFn source guide.
 ---
 
-# PlugFn Client SDK Boundary
+This page mirrors [plugfn/docs/client-sdk-boundary.md](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/client-sdk-boundary.md). Edit that source and run `npm --workspace @plugfn/docs run generate:references` to update this page.
 
 ## Current status
 

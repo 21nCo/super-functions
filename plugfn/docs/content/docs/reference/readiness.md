@@ -1,11 +1,11 @@
 ---
-title: Readiness source guide
-description: Authoritative PlugFn source document.
+title: Provider readiness matrix
+description: Generated mirror of the release-gated PlugFn source guide.
 ---
 
-# PlugFn Provider Readiness Matrix
+This page mirrors [plugfn/docs/provider-readiness-matrix.md](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/provider-readiness-matrix.md). Edit that source and run `npm --workspace @plugfn/docs run generate:references` to update this page.
 
-This matrix is the public source of truth for provider readiness. A provider is not production-ready unless:
+The linked source matrix defines provider readiness. A provider is not production-ready unless:
 
 1. this matrix marks it `production`
 2. the repo-root PlugFn release gate passes on the same commit

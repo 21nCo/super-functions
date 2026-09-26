@@ -1,12 +1,10 @@
 import { error } from "@sveltejs/kit";
-import { getTopNavigation } from "@docsfn/core";
-import type { Sidebar } from "@docsfn/core";
+import { getTopNavigation, resolveMarkdownRelativeLinks, type Sidebar } from "@docsfn/core";
 import {
   resolveDocsPageSurface,
   resolveDocsRouteDataOrThrow,
   type SvelteDocsPageSurface,
 } from "@docsfn/sveltekit";
-import { resolveMarkdownRelativeLinks } from "@docsfn/core";
 import { getCompiledDocsPage, loadDocsSiteSource } from "$lib/server/docs-site-source";
 import type { PageServerLoad } from "./$types";
 
@@ -14,7 +12,9 @@ function buildCanonicalUrl(canonicalBase: string | undefined, path: string): str
   if (!canonicalBase) {
     return path;
   }
-  const origin = canonicalBase.replace(/\/+$/, "");
+  let end = canonicalBase.length;
+  while (end > 0 && canonicalBase[end - 1] === "/") end--;
+  const origin = canonicalBase.slice(0, end);
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${origin}${normalizedPath}`;
 }
@@ -24,7 +24,9 @@ function isRouteNotFoundError(input: unknown): input is { message: string } {
     typeof input === "object" &&
     input !== null &&
     "code" in input &&
-    String((input as { code: unknown }).code) === "DOCS_ROUTE_NOT_FOUND"
+    input.code === "DOCS_ROUTE_NOT_FOUND" &&
+    "message" in input &&
+    typeof input.message === "string"
   );
 }
 
@@ -88,14 +90,7 @@ export const load: PageServerLoad = async ({ params }) => {
   }
 
   const sidebarId = surface.sidebarId ?? "default";
-  const sidebar: Sidebar | undefined = source.manifest.sidebars[sidebarId];
-
-  const searchDocumentCount = Array.isArray(source.searchArtifact.documents)
-    ? source.searchArtifact.documents.length
-    : 0;
-  const searchScopes = Array.isArray(source.searchArtifact.scopes)
-    ? source.searchArtifact.scopes.join(", ")
-    : "none";
+  const sidebar: Sidebar | undefined = source.manifest.sidebars[sidebarId] ?? source.manifest.sidebars.docs;
 
   const compiled =
     routeEntry.kind === "page"
@@ -108,13 +103,10 @@ export const load: PageServerLoad = async ({ params }) => {
       : undefined;
 
   return {
-    routeEntry,
+    routeEntry: routeEntry.kind === "page" ? { kind: "page" as const } : routeEntry,
     surface,
     sidebar,
     compiled,
-    searchDocumentCount,
-    searchScopes,
     siteTitle: source.siteTitle,
-    compatPreset: source.compatPreset,
   };
 };

@@ -3,8 +3,6 @@ title: Operations
 description: Run the release gate and consult incident runbooks.
 ---
 
-# Operations
-
 Run the authoritative repo-root gate on the exact commit you plan to use:
 
 ```sh

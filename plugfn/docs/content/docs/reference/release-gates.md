@@ -1,9 +1,9 @@
 ---
-title: Release Gates source guide
-description: Authoritative PlugFn source document.
+title: Release gates
+description: Generated mirror of the release-gated PlugFn source guide.
 ---
 
-# PlugFn Release Gates
+This page mirrors [plugfn/docs/operations/release-gates.md](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/operations/release-gates.md). Edit that source and run `npm --workspace @plugfn/docs run generate:references` to update this page.
 
 ## Canonical command
 
@@ -18,6 +18,10 @@ This command is the only supported global readiness check for PlugFn. It emits a
 ## Gate coverage
 
 `npm run gate:plugfn-release` proves all of the following from the repository root:
+
+Before these checks, the gate runs `npm --prefix plugfn/core run clean` and,
+before provider builds, `npm --prefix plugfn/providers run clean`. It also
+checks that the site reference mirrors match their source guides.
 
 1. `npm --prefix plugfn/core run build`
 2. `npm --prefix plugfn/core run type-check`

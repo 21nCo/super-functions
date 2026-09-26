@@ -3,8 +3,6 @@ title: Workflows and sync
 description: Run provider actions and persisted integration jobs.
 ---
 
-# Workflows and sync
-
 PlugFn coordinates provider actions, workflows, sync jobs, checkpoints, events, and metrics. The TypeScript router includes workflow discovery, sync-job create/list/get/cancel, checkpoint upsert, event list, and metrics routes. Keep workflow execution server-side and authorize it against the derived principal.
 
 The release contract describes DB-backed idempotent workflow resume. Process-local delay timers are not considered production-safe; delay steps fail closed until a durable scheduler exists. Read the [release gates](/docs/reference/release-gates) and [provider throttle runbook](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/provider-throttle-incident.md).
@@ -31,7 +29,7 @@ The result is the action's data (an array for `repos.list`), not an HTTP envelop
 
 ## Queue and inspect a sync job
 
-Register `gmailProvider` from `@plugfn/providers` on the server, configure its OAuth application, and connect Gmail with the scopes required by `mail.sync`. The browser client can then request an authorized sync job; the server worker performs it:
+Register `gmailProvider` from `@plugfn/providers` on the server, configure its OAuth application, and connect Gmail with the scopes required by `mail.sync`. `mail.sync` requires a nonempty, authenticated `tenantId` on the principal and connection; a user-only connection cannot run this example. The browser client can then request an authorized sync job; the server worker performs it:
 
 ```ts
 import { createPlugFnClient } from "@plugfn/client";

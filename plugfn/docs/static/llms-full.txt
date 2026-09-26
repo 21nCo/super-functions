@@ -3,8 +3,7 @@
 > Self-hosted provider connections, OAuth, webhooks, workflows, and sync jobs.
 
 This file concatenates the full text of every documentation page so it can be loaded into
-an LLM-based assistant in a single shot. For programmatic access, prefer the MCP server
-or the structured manifest emitted alongside this file.
+an LLM-based assistant in a single shot. For a page index, see /docs/llms.txt.
 
 # Documentation
 
@@ -14,11 +13,9 @@ or the structured manifest emitted alongside this file.
 > Use only the narrow browser-safe route helper.
 
 
-# Browser client
-
 `@plugfn/client` calls PlugFn's server routes for provider discovery, connection initiation and inspection, disconnect, sync jobs, and checkpoints. It does not contain provider credentials, OAuth token exchange, webhook signature verification, or direct provider API clients.
 
-The server must authenticate every request and enforce ownership. A browser helper does not grant provider access by itself. The exact allowed operations are in the [client boundary](/docs/reference/client-boundary); direct provider actions and workflow execution stay server-side.
+The server must authenticate every request and enforce ownership. A browser helper does not grant provider access by itself. The exact allowed operations are in the [client boundary](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/client-boundary.md); direct provider actions and workflow execution stay server-side.
 
 ---
 
@@ -27,8 +24,6 @@ The server must authenticate every request and enforce ownership. A browser help
 
 > Use local diagnostics and a scoped admin adapter.
 
-
-# CLI and administration
 
 `@plugfn/cli` supplies project initialization, provider scaffolding, and `plugfn test` diagnostics. The test command is still being hardened and is not a full production-readiness proof. Use the [CLI source guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/cli/README.md) for commands.
 
@@ -41,8 +36,6 @@ The server must authenticate every request and enforce ownership. A browser help
 
 > Start, inspect, and disconnect owned provider connections.
 
-
-# Connections and OAuth
 
 Register a provider and its application credentials on the server. A user starts a connection through an authenticated route, completes the provider OAuth flow, and returns through PlugFn's callback routes. PlugFn stores connection state and encrypted tokens through its configured storage.
 
@@ -104,30 +97,13 @@ Treat `expired`, `revoked`, and `error` status as unavailable until the connecti
 > Configure a TypeScript runtime and mount owned routes.
 
 
-# Getting started
-
 Install the runtime, provider package, and shared adapters:
 
 ```sh
 npm install plugfn @plugfn/providers @plugfn/client @superfunctions/db @superfunctions/http
 ```
 
-```ts
-import { createPlugFnRouter, plugFn } from "plugfn";
-import { githubProvider } from "@plugfn/providers";
-
-const plug = plugFn({
-  database: adapter,
-  auth: authProvider,
-  baseUrl: "https://app.example.com",
-  encryptionKey: process.env.ENCRYPTION_KEY!,
-  integrations: { github: { clientId: process.env.GITHUB_CLIENT_ID!, clientSecret: process.env.GITHUB_CLIENT_SECRET! } },
-});
-plug.providers.register(githubProvider);
-const router = createPlugFnRouter(plug);
-```
-
-Supply a durable database adapter, a real authentication provider, and secrets from the deployment environment. Mount the router through a `@superfunctions/http` framework adapter under an application path such as `/api/plugfn`. The [source setup guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/getting-started.md) has Express, Fastify, and Hono examples plus the full route list.
+The complete factory below accepts the host’s database adapter and authenticated session resolver as parameters. Supply a durable adapter and provision its schema before serving requests.
 
 ## Application-owned setup and mounting
 
@@ -178,7 +154,7 @@ Install `express @superfunctions/http-express` as well as the packages above. Ca
 
 `PLUGFN_ENCRYPTION_KEY` is a 32-byte key encoded as 64 hexadecimal characters. Generate and store it once in the deployment's secret manager; changing it without migrating encrypted connection state makes stored credentials unreadable. Set `APP_URL` to the application's public URL. Register the exact callback URI, such as `https://app.example.com/api/plugfn/callback/github`, with the provider and supply that URI when starting the connection.
 
-The host resolver returns an authenticated `userId` and, where applicable, `tenantId`. Returning null denies protected routes. Browser-supplied owner fields do not replace that identity. Continue with [Connections and OAuth](/docs/connections-and-oauth) and [Actions, workflows, and sync](/docs/workflows-and-sync).
+The host resolver returns an authenticated `userId` and, where applicable, `tenantId`. Returning null denies protected routes. Browser-supplied owner fields do not replace that identity. Continue with [Connections and OAuth](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/connections-and-oauth.md) and [Actions, workflows, and sync](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/workflows-and-sync.md).
 
 ---
 
@@ -188,11 +164,9 @@ The host resolver returns an authenticated `userId` and, where applicable, `tena
 > A shared integration runtime for provider connections and workflows.
 
 
-# PlugFn
-
 PlugFn is a self-hosted integration runtime for provider registration, connection lifecycle, OAuth callbacks, webhook reception, actions, workflows, and sync jobs. It is a server-side substrate shared by applications; `@plugfn/client` is a narrow browser helper for owned routes.
 
-Start with [getting started](/docs/getting-started), then check [provider readiness](/docs/provider-readiness). Read the [security boundaries](/docs/security-boundaries) before exposing routes. The current [release contract](/docs/reference/release-gates) limits production claims by provider and commit.
+Start with [getting started](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/getting-started.md), then check [provider readiness](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/provider-readiness.md). Read the [security boundaries](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/security-boundaries.md) before exposing routes. The current [release contract](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/release-gates.md) limits production claims by provider and commit.
 
 ---
 
@@ -202,8 +176,6 @@ Start with [getting started](/docs/getting-started), then check [provider readin
 > Run the release gate and consult incident runbooks.
 
 
-# Operations
-
 Run the authoritative repo-root gate on the exact commit you plan to use:
 
 ```sh
@@ -212,7 +184,7 @@ npm run gate:plugfn-release
 
 The gate covers the runtime, browser helper, providers, CLI, Python baseline, provider-specific checks, and docs inventory. A green result is still subject to each provider's matrix row. Production claims apply only to surfaces marked `production` on that same commit.
 
-The [release guide](/docs/reference/release-gates) gives the gate steps. Source runbooks cover [OAuth](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/oauth-incident.md), [provider throttling](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/provider-throttle-incident.md), and [webhook security](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/webhook-security-incident.md).
+The [release guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/release-gates.md) gives the gate steps. Source runbooks cover [OAuth](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/oauth-incident.md), [provider throttling](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/provider-throttle-incident.md), and [webhook security](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/webhook-security-incident.md).
 
 ---
 
@@ -222,11 +194,9 @@ The [release guide](/docs/reference/release-gates) gives the gate steps. Source 
 > Use per-provider status and the release gate together.
 
 
-# Provider readiness
+The [readiness matrix](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/readiness.md) mirrors the [release-gated source matrix](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/provider-readiness-matrix.md). GitHub, Linear, ClickUp, and Gmail are the core cross-language set; Notion is beta overall because Python parity is unsupported. Adjacent providers can be experimental, and inbound mail connectors are vertical-only. Unlisted providers are unsupported by default.
 
-The [readiness matrix](/docs/reference/readiness) is the public source of truth. GitHub, Linear, ClickUp, and Gmail are the core cross-language set; Notion is beta overall because Python parity is unsupported. Adjacent providers can be experimental, and inbound mail connectors are vertical-only. Unlisted providers are unsupported by default.
-
-A provider is production-ready only when the matrix marks it `production` **and** `npm run gate:plugfn-release` passes on the same commit. Presence in the source tree or a passing provider-specific test alone is insufficient. Check the exact TypeScript and Python columns before adoption.
+A provider is production-ready only when the matrix marks it `production` **and** `npm run gate:plugfn-release` passes from the repository root on the same commit. Presence in the source tree or a passing provider-specific test alone is insufficient. Check the exact TypeScript and Python columns before adoption.
 
 ---
 
@@ -236,25 +206,23 @@ A provider is production-ready only when the matrix marks it `production` **and*
 > Assess the experimental Python surface per provider.
 
 
-# Python runtime
-
 The Python `plugfn` package is an experimental baseline. It exports the declared core provider set of GitHub, Linear, ClickUp, and Gmail, but does not match the full TypeScript provider surface.
 
 ```sh
 pip install plugfn
 ```
 
-The [Python source guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/python/README.md) shows its setup shape. Check the matrix's Python column for each provider and avoid assuming parity with TypeScript.
+The [Python source guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/python/README.md) shows its setup shape. Check the [readiness matrix](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/readiness.md)'s Python column for each provider and avoid assuming parity with TypeScript.
 
 ---
 
 <!-- page:docs:reference/client-boundary.md path:/docs/reference/client-boundary -->
-# Client Boundary source guide
+# Client SDK boundary
 
-> Authoritative PlugFn source document.
+> Generated mirror of the release-gated PlugFn source guide.
 
 
-# PlugFn Client SDK Boundary
+This page mirrors [plugfn/docs/client-sdk-boundary.md](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/client-sdk-boundary.md). Edit that source and run `npm --workspace @plugfn/docs run generate:references` to update this page.
 
 ## Current status
 
@@ -306,21 +274,19 @@ Browser attempts to perform server-only operations should be treated as contract
 > Authoritative readiness, browser, and release contracts.
 
 
-# Source reference
-
-The [provider readiness matrix](/docs/reference/readiness), [client boundary](/docs/reference/client-boundary), and [release gates](/docs/reference/release-gates) are mirrored here from the existing PlugFn Markdown guides. The complete [specification](https://github.com/21nCo/super-functions/blob/dev/plugfn/SPEC.md), [runtime guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/core/README.md), and [provider guides](https://github.com/21nCo/super-functions/tree/dev/plugfn/docs/providers) remain in the source tree.
+The [provider readiness matrix](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/readiness.md), [client boundary](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/client-boundary.md), and [release gates](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/release-gates.md) are mirrored here from the existing PlugFn Markdown guides. The complete [specification](https://github.com/21nCo/super-functions/blob/dev/plugfn/SPEC.md), [runtime guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/core/README.md), and [provider guides](https://github.com/21nCo/super-functions/tree/dev/plugfn/docs/providers) remain in the source tree.
 
 ---
 
 <!-- page:docs:reference/readiness.md path:/docs/reference/readiness -->
-# Readiness source guide
+# Provider readiness matrix
 
-> Authoritative PlugFn source document.
+> Generated mirror of the release-gated PlugFn source guide.
 
 
-# PlugFn Provider Readiness Matrix
+This page mirrors [plugfn/docs/provider-readiness-matrix.md](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/provider-readiness-matrix.md). Edit that source and run `npm --workspace @plugfn/docs run generate:references` to update this page.
 
-This matrix is the public source of truth for provider readiness. A provider is not production-ready unless:
+The linked source matrix defines provider readiness. A provider is not production-ready unless:
 
 1. this matrix marks it `production`
 2. the repo-root PlugFn release gate passes on the same commit
@@ -373,12 +339,12 @@ The minimum provider set that the release gate tracks is:
 ---
 
 <!-- page:docs:reference/release-gates.md path:/docs/reference/release-gates -->
-# Release Gates source guide
+# Release gates
 
-> Authoritative PlugFn source document.
+> Generated mirror of the release-gated PlugFn source guide.
 
 
-# PlugFn Release Gates
+This page mirrors [plugfn/docs/operations/release-gates.md](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/operations/release-gates.md). Edit that source and run `npm --workspace @plugfn/docs run generate:references` to update this page.
 
 ## Canonical command
 
@@ -393,6 +359,10 @@ This command is the only supported global readiness check for PlugFn. It emits a
 ## Gate coverage
 
 `npm run gate:plugfn-release` proves all of the following from the repository root:
+
+Before these checks, the gate runs `npm --prefix plugfn/core run clean` and,
+before provider builds, `npm --prefix plugfn/providers run clean`. It also
+checks that the site reference mirrors match their source guides.
 
 1. `npm --prefix plugfn/core run build`
 2. `npm --prefix plugfn/core run type-check`
@@ -485,13 +455,11 @@ Expected interpretation:
 > Keep credentials and privileged work on the server.
 
 
-# Security boundaries
-
 Provider secrets, refresh tokens, OAuth exchange, webhook signature checks, direct provider API calls, and workflow execution belong on the server. Use a deployment secret store for `encryptionKey` and provider credentials. A browser may call only the owned routes exposed by `@plugfn/client`.
 
 Authentication identifies the caller; authorization still has to enforce user, tenant, and organization ownership at each route and admin action. For inbound email connectors, PlugFn owns account connections and ingestion, while programmable inboxes belong to MailFn and outbound delivery to SendFn.
 
-See the [client contract](/docs/reference/client-boundary) and [provider readiness matrix](/docs/reference/readiness).
+See the [client contract](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/client-boundary.md) and [provider readiness matrix](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/readiness.md).
 
 ---
 
@@ -500,8 +468,6 @@ See the [client contract](/docs/reference/client-boundary) and [provider readine
 
 > Verify provider events before processing them.
 
-
-# Webhooks
 
 Mount the PlugFn webhook routes under the application's integration path, including `POST /webhooks/:provider` and `POST /webhooks/:provider/:event`. Configure provider-specific signing secrets and route policies before accepting public traffic. Verification must happen before a payload changes connection, workflow, or sync state.
 
@@ -515,15 +481,13 @@ Webhook receipts and delivery attempts are administrative surfaces. Operate with
 > Run provider actions and persisted integration jobs.
 
 
-# Workflows and sync
-
 PlugFn coordinates provider actions, workflows, sync jobs, checkpoints, events, and metrics. The TypeScript router includes workflow discovery, sync-job create/list/get/cancel, checkpoint upsert, event list, and metrics routes. Keep workflow execution server-side and authorize it against the derived principal.
 
-The release contract describes DB-backed idempotent workflow resume. Process-local delay timers are not considered production-safe; delay steps fail closed until a durable scheduler exists. Read the [release gates](/docs/reference/release-gates) and [provider throttle runbook](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/provider-throttle-incident.md).
+The release contract describes DB-backed idempotent workflow resume. Process-local delay timers are not considered production-safe; delay steps fail closed until a durable scheduler exists. Read the [release gates](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/release-gates.md) and [provider throttle runbook](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/provider-throttle-incident.md).
 
 ## Execute an action on the server
 
-Use the `plug` instance from [setup](/docs/getting-started). Derive the actor from the host's verified session and select a connection owned by that actor:
+Use the `plug` instance from [setup](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/getting-started.md). Derive the actor from the host's verified session and select a connection owned by that actor:
 
 ```ts
 import type { PlugFn, PlugFnActor } from "plugfn";
@@ -543,7 +507,7 @@ The result is the action's data (an array for `repos.list`), not an HTTP envelop
 
 ## Queue and inspect a sync job
 
-Register `gmailProvider` from `@plugfn/providers` on the server, configure its OAuth application, and connect Gmail with the scopes required by `mail.sync`. The browser client can then request an authorized sync job; the server worker performs it:
+Register `gmailProvider` from `@plugfn/providers` on the server, configure its OAuth application, and connect Gmail with the scopes required by `mail.sync`. `mail.sync` requires a nonempty, authenticated `tenantId` on the principal and connection; a user-only connection cannot run this example. The browser client can then request an authorized sync job; the server worker performs it:
 
 ```ts
 import { createPlugFnClient } from "@plugfn/client";
