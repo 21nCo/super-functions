@@ -22,4 +22,4 @@ npm exec --workspace @plugfn/docs -- docsfn validate --root .
 
 The site defaults to port 6023. Set `site.canonicalUrl` once the public host is assigned.
 
-The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Until `site.canonicalUrl` is configured for an assigned public host, generated page links target the checked-in source pages on `dev`.
+The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Generated page links use the configured public host, `https://plugfn.com/docs`.

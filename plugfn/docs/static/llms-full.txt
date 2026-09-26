@@ -15,7 +15,7 @@ an LLM-based assistant in a single shot. For a page index, see /docs/llms.txt.
 
 `@plugfn/client` calls PlugFn's server routes for provider discovery, connection initiation and inspection, disconnect, sync jobs, and checkpoints. It does not contain provider credentials, OAuth token exchange, webhook signature verification, or direct provider API clients.
 
-The server must authenticate every request and enforce ownership. A browser helper does not grant provider access by itself. The exact allowed operations are in the [client boundary](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/client-boundary.md); direct provider actions and workflow execution stay server-side.
+The server must authenticate every request and enforce ownership. A browser helper does not grant provider access by itself. The exact allowed operations are in the [client boundary](/docs/reference/client-boundary); direct provider actions and workflow execution stay server-side.
 
 ---
 
@@ -154,7 +154,7 @@ Install `express @superfunctions/http-express` as well as the packages above. Ca
 
 `PLUGFN_ENCRYPTION_KEY` is a 32-byte key encoded as 64 hexadecimal characters. Generate and store it once in the deployment's secret manager; changing it without migrating encrypted connection state makes stored credentials unreadable. Set `APP_URL` to the application's public URL. Register the exact callback URI, such as `https://app.example.com/api/plugfn/callback/github`, with the provider and supply that URI when starting the connection.
 
-The host resolver returns an authenticated `userId` and, where applicable, `tenantId`. Returning null denies protected routes. Browser-supplied owner fields do not replace that identity. Continue with [Connections and OAuth](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/connections-and-oauth.md) and [Actions, workflows, and sync](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/workflows-and-sync.md).
+The host resolver returns an authenticated `userId` and, where applicable, `tenantId`. Returning null denies protected routes. Browser-supplied owner fields do not replace that identity. Continue with [Connections and OAuth](/docs/connections-and-oauth) and [Actions, workflows, and sync](/docs/workflows-and-sync).
 
 ---
 
@@ -166,7 +166,7 @@ The host resolver returns an authenticated `userId` and, where applicable, `tena
 
 PlugFn is a self-hosted integration runtime for provider registration, connection lifecycle, OAuth callbacks, webhook reception, actions, workflows, and sync jobs. It is a server-side substrate shared by applications; `@plugfn/client` is a narrow browser helper for owned routes.
 
-Start with [getting started](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/getting-started.md), then check [provider readiness](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/provider-readiness.md). Read the [security boundaries](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/security-boundaries.md) before exposing routes. The current [release contract](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/release-gates.md) limits production claims by provider and commit.
+Start with [getting started](/docs/getting-started), then check [provider readiness](/docs/provider-readiness). Read the [security boundaries](/docs/security-boundaries) before exposing routes. The current [release contract](/docs/reference/release-gates) limits production claims by provider and commit.
 
 ---
 
@@ -184,7 +184,7 @@ npm run gate:plugfn-release
 
 The gate covers the runtime, browser helper, providers, CLI, Python baseline, provider-specific checks, and docs inventory. A green result is still subject to each provider's matrix row. Production claims apply only to surfaces marked `production` on that same commit.
 
-The [release guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/release-gates.md) gives the gate steps. Source runbooks cover [OAuth](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/oauth-incident.md), [provider throttling](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/provider-throttle-incident.md), and [webhook security](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/webhook-security-incident.md).
+The [release guide](/docs/reference/release-gates) gives the gate steps. Source runbooks cover [OAuth](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/oauth-incident.md), [provider throttling](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/provider-throttle-incident.md), and [webhook security](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/webhook-security-incident.md).
 
 ---
 
@@ -194,7 +194,7 @@ The [release guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/doc
 > Use per-provider status and the release gate together.
 
 
-The [readiness matrix](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/readiness.md) mirrors the [release-gated source matrix](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/provider-readiness-matrix.md). GitHub, Linear, ClickUp, and Gmail are the core cross-language set; Notion is beta overall because Python parity is unsupported. Adjacent providers can be experimental, and inbound mail connectors are vertical-only. Unlisted providers are unsupported by default.
+The [readiness matrix](/docs/reference/readiness) mirrors the [release-gated source matrix](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/provider-readiness-matrix.md). GitHub, Linear, ClickUp, and Gmail are the core cross-language set; Notion is beta overall because Python parity is unsupported. Adjacent providers can be experimental, and inbound mail connectors are vertical-only. Unlisted providers are unsupported by default.
 
 A provider is production-ready only when the matrix marks it `production` **and** `npm run gate:plugfn-release` passes from the repository root on the same commit. Presence in the source tree or a passing provider-specific test alone is insufficient. Check the exact TypeScript and Python columns before adoption.
 
@@ -212,7 +212,7 @@ The Python `plugfn` package is an experimental baseline. It exports the declared
 pip install plugfn
 ```
 
-The [Python source guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/python/README.md) shows its setup shape. Check the [readiness matrix](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/readiness.md)'s Python column for each provider and avoid assuming parity with TypeScript.
+The [Python source guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/python/README.md) shows its setup shape. Check the [readiness matrix](/docs/reference/readiness)'s Python column for each provider and avoid assuming parity with TypeScript.
 
 ---
 
@@ -274,7 +274,7 @@ Browser attempts to perform server-only operations should be treated as contract
 > Authoritative readiness, browser, and release contracts.
 
 
-The [provider readiness matrix](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/readiness.md), [client boundary](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/client-boundary.md), and [release gates](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/release-gates.md) are mirrored here from the existing PlugFn Markdown guides. The complete [specification](https://github.com/21nCo/super-functions/blob/dev/plugfn/SPEC.md), [runtime guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/core/README.md), and [provider guides](https://github.com/21nCo/super-functions/tree/dev/plugfn/docs/providers) remain in the source tree.
+The [provider readiness matrix](/docs/reference/readiness), [client boundary](/docs/reference/client-boundary), and [release gates](/docs/reference/release-gates) are mirrored here from the existing PlugFn Markdown guides. The complete [specification](https://github.com/21nCo/super-functions/blob/dev/plugfn/SPEC.md), [runtime guide](https://github.com/21nCo/super-functions/blob/dev/plugfn/core/README.md), and [provider guides](https://github.com/21nCo/super-functions/tree/dev/plugfn/docs/providers) remain in the source tree.
 
 ---
 
@@ -459,7 +459,7 @@ Provider secrets, refresh tokens, OAuth exchange, webhook signature checks, dire
 
 Authentication identifies the caller; authorization still has to enforce user, tenant, and organization ownership at each route and admin action. For inbound email connectors, PlugFn owns account connections and ingestion, while programmable inboxes belong to MailFn and outbound delivery to SendFn.
 
-See the [client contract](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/client-boundary.md) and [provider readiness matrix](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/readiness.md).
+See the [client contract](/docs/reference/client-boundary) and [provider readiness matrix](/docs/reference/readiness).
 
 ---
 
@@ -483,11 +483,11 @@ Webhook receipts and delivery attempts are administrative surfaces. Operate with
 
 PlugFn coordinates provider actions, workflows, sync jobs, checkpoints, events, and metrics. The TypeScript router includes workflow discovery, sync-job create/list/get/cancel, checkpoint upsert, event list, and metrics routes. Keep workflow execution server-side and authorize it against the derived principal.
 
-The release contract describes DB-backed idempotent workflow resume. Process-local delay timers are not considered production-safe; delay steps fail closed until a durable scheduler exists. Read the [release gates](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/reference/release-gates.md) and [provider throttle runbook](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/provider-throttle-incident.md).
+The release contract describes DB-backed idempotent workflow resume. Process-local delay timers are not considered production-safe; delay steps fail closed until a durable scheduler exists. Read the [release gates](/docs/reference/release-gates) and [provider throttle runbook](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/runbooks/provider-throttle-incident.md).
 
 ## Execute an action on the server
 
-Use the `plug` instance from [setup](https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/content/docs/getting-started.md). Derive the actor from the host's verified session and select a connection owned by that actor:
+Use the `plug` instance from [setup](/docs/getting-started). Derive the actor from the host's verified session and select a connection owned by that actor:
 
 ```ts
 import type { PlugFn, PlugFnActor } from "plugfn";
