@@ -1,0 +1,19 @@
+package-lock.json
+  s_ee6f287c08acb3::t_9d237a735369f9 11421-11422
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "353f22772f9eba7f80c11b3029b4e867bb08fe09",
+  "prompts": {},
+  "sessions": {
+    "s_ee6f287c08acb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dbe8-d479-71a1-9012-f08e8b29a7ff",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
