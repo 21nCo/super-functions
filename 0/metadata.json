@@ -1,0 +1,69 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3Q5AAQN8YF0HPEHAVNFNAY9",
+  "session_id": "01a0ee25-fef3-7643-b3da-8732f3cec764",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-29T18:02:35.345536Z",
+  "branch": "codex/docs-botfn-20260926",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    "authfn/docs/package.json",
+    "authfn/docs/scripts/generate-llms.mjs",
+    "authfn/docs/src/lib/server/docs-site-source.ts",
+    "authfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "authfn/docs/vite.config.ts",
+    "botfn/docs/package.json",
+    "botfn/docs/scripts/generate-llms.mjs",
+    "botfn/docs/src/app.html",
+    "botfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "botfn/docs/src/routes/docs/llms-full.txt/+server.ts",
+    "botfn/docs/src/routes/docs/llms.txt/+server.ts",
+    "botfn/docs/vite.config.ts",
+    "filefn/docs/scripts/generate-llms.mjs",
+    "filefn/docs/src/lib/server/docs-site-source.ts",
+    "filefn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "filefn/docs/static/llms-full.txt",
+    "filefn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/cloudflare-docs/select-products.mjs",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/page.ts",
+    "scripts/docs-site/vite.ts",
+    "scripts/docs-site/vitest.config.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-sol",
+  "turn_id": "6f1b7d2aba45",
+  "checkpoint_transcript_start": 1710,
+  "transcript_lines_at_start": 1710,
+  "compact_transcript_start": 252,
+  "token_usage": {
+    "input_tokens": 75479,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 8665344,
+    "output_tokens": 15713,
+    "api_call_count": 69
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-29T18:02:35.237849Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 936,
+    "human_removed": 712,
+    "total_committed": 0,
+    "total_lines_changed": 1648,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
