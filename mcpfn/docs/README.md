@@ -5,7 +5,6 @@ This SvelteKit site uses the published DocsFn packages. Its consumer guides live
 From the repository root, install workspace dependencies and run:
 
 ```sh
-npm run build --workspace @searchfn/core --workspace @searchfn/adapter-contracts --workspace @searchfn/adapter-memory --workspace @searchfn/adapter-indexeddb --workspace @searchfn/client
 npm --workspace @mcpfn/docs run dev
 npm --workspace @mcpfn/docs run build
 ```
@@ -19,6 +18,6 @@ npm exec -- docsfn build --root . --out-dir .docsfn
 ```
 
 The site defaults to port 6010 in development and preview. Set `CLOUDFLARE_DOCS_DEPLOY=1` when building with the Cloudflare adapter.
-The public documentation URL is `https://mcpfn.com/docs`.
+The public documentation route is `/docs`.
 
-The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Generated page links use the configured public host, `https://mcpfn.com/docs`.
+The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Until a public host is serving the site, generated indexes link to the repository source pages.
