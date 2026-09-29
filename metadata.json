@@ -1,0 +1,57 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3Q9GX2KDMPQ3SVT43QP1WZT",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/superfunctions-docs-cloudflare-deploy.yml",
+    "authfn/docs/package.json",
+    "authfn/docs/scripts/generate-llms.mjs",
+    "authfn/docs/src/lib/server/docs-site-source.ts",
+    "authfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "authfn/docs/vite.config.ts",
+    "filefn/docs/scripts/generate-llms.mjs",
+    "filefn/docs/src/lib/server/docs-site-source.ts",
+    "filefn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "filefn/docs/static/llms-full.txt",
+    "filefn/docs/vite.config.ts",
+    "package-lock.json",
+    "plugfn/docs/content/docs/getting-started.md",
+    "plugfn/docs/package.json",
+    "plugfn/docs/scripts/generate-llms.mjs",
+    "plugfn/docs/src/lib/components/PlugFnLanding.svelte",
+    "plugfn/docs/src/lib/server/docs-site-source.ts",
+    "plugfn/docs/src/routes/+page.svelte",
+    "plugfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "plugfn/docs/src/routes/docs/[...slug]/+page.svelte",
+    "plugfn/docs/src/routes/docs/llms-full.txt/+server.ts",
+    "plugfn/docs/src/routes/docs/llms.txt/+server.ts",
+    "plugfn/docs/static/llms-full.txt",
+    "plugfn/docs/svelte.config.js",
+    "plugfn/docs/vite.config.ts",
+    "scripts/cloudflare-docs/select-products.mjs",
+    "scripts/docs-site/LandingPage.svelte",
+    "scripts/docs-site/layout.ts",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/page.ts",
+    "scripts/docs-site/vite.ts",
+    "scripts/docs-site/vitest.config.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 24631,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2605568,
+    "output_tokens": 4791,
+    "api_call_count": 18
+  }
+}
