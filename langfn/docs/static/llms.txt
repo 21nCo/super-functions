@@ -4,19 +4,19 @@
 
 ## Documentation
 
-- [Getting started](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/getting-started.md) — Create a TypeScript client and run a deterministic model call.
-- [HTTP routes](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/http.md) — Mount model and trace endpoints with trusted authentication.
-- [LangFn](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/index.md) — TypeScript SDK for model, tool, graph, retrieval, and evaluation workflows.
-- [MCP integration](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/mcp.md) — Expose selected LangFn tools through McpFn.
-- [Memory and RAG](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/memory-and-rag.md) — Choose in-process memory or injected retrieval adapters.
-- [Models and providers](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/models-and-providers.md) — Select first-party capabilities and preserve provider messages.
-- [Observability and evaluation](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/observability-and-evaluation.md) — Capture scoped traces, usage, feedback, and measured outcomes.
-- [Operations and limits](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/operations-and-limits.md) — Source availability, release checks, and external proof boundaries.
-- [Prompts and structured output](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/prompts-and-structured.md) — Format prompt templates and validate model output.
-- [Provider compatibility](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/compatibility.md) — First-party TypeScript provider capability matrix.
-- [Reference](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/index.md) — TypeScript package exports, provider matrix, and source release contract.
-- [Package exports](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/package-exports.md) — Public TypeScript subpaths in the current langfn manifest.
-- [Release gate](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/release-gate.md) — TypeScript build, test, package, and live-qualification boundaries.
-- [TypeScript package](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/typescript.md) — Current langfn TypeScript package guide.
-- [Streaming and tools](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/streaming-and-tools.md) — Handle cancellation, tool policy, and network boundaries.
-- [Workflows and agents](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/workflows.md) — Compose chains, parallel work, routers, state graphs, and agents.
+- [Getting started](https://langfn.com/docs/getting-started) — Create a TypeScript client and run a deterministic model call.
+- [HTTP routes](https://langfn.com/docs/http) — Mount model and trace endpoints with trusted authentication.
+- [LangFn](https://langfn.com/docs) — TypeScript SDK for model, tool, graph, retrieval, and evaluation workflows.
+- [MCP integration](https://langfn.com/docs/mcp) — Expose selected LangFn tools through McpFn.
+- [Memory and RAG](https://langfn.com/docs/memory-and-rag) — Choose in-process memory or injected retrieval adapters.
+- [Models and providers](https://langfn.com/docs/models-and-providers) — Select first-party capabilities and preserve provider messages.
+- [Observability and evaluation](https://langfn.com/docs/observability-and-evaluation) — Capture scoped traces, usage, feedback, and measured outcomes.
+- [Operations and limits](https://langfn.com/docs/operations-and-limits) — Source availability, release checks, and external proof boundaries.
+- [Prompts and structured output](https://langfn.com/docs/prompts-and-structured) — Format prompt templates and validate model output.
+- [Provider compatibility](https://langfn.com/docs/reference/compatibility) — First-party TypeScript provider capability matrix.
+- [Reference](https://langfn.com/docs/reference) — TypeScript package exports, provider matrix, and source release contract.
+- [Package exports](https://langfn.com/docs/reference/package-exports) — Public TypeScript subpaths in the current langfn manifest.
+- [Release gate](https://langfn.com/docs/reference/release-gate) — TypeScript build, test, package, and live-qualification boundaries.
+- [TypeScript package](https://langfn.com/docs/reference/typescript) — Current langfn TypeScript package guide.
+- [Streaming and tools](https://langfn.com/docs/streaming-and-tools) — Handle cancellation, tool policy, and network boundaries.
+- [Workflows and agents](https://langfn.com/docs/workflows) — Compose chains, parallel work, routers, state graphs, and agents.

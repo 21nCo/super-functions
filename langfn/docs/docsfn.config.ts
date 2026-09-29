@@ -6,6 +6,7 @@ const config: DocsConfig = {
     title: "LangFn",
     description: "TypeScript SDK for model calls, tools, graphs, retrieval, observability, HTTP, and MCP.",
     basePath: "/docs",
+    canonicalUrl: "https://langfn.com",
     editLink: { pattern: "https://github.com/21nCo/super-functions/edit/dev/langfn/docs/{path}" },
   },
   compat: { preset: "none" },

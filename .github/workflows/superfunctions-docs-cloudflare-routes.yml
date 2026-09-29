@@ -13,6 +13,7 @@ on:
         default: all
         options:
           - all
+          - langfn
           - datafn
           - filefn
           - searchfn
@@ -44,6 +45,7 @@ jobs:
         env:
           CLOUDFLARE_ROUTES_TOKEN: ${{ secrets.CLOUDFLARE_ROUTES_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ZONE_ID_DATAFN_DEV: ${{ vars.CLOUDFLARE_ZONE_ID_DATAFN_DEV }}
+          CLOUDFLARE_ZONE_ID_LANGFN_COM: ${{ vars.CLOUDFLARE_ZONE_ID_LANGFN_COM }}
           CLOUDFLARE_ZONE_ID_FILEFN_COM: ${{ vars.CLOUDFLARE_ZONE_ID_FILEFN_COM }}
           CLOUDFLARE_ZONE_ID_SEARCHFN_COM: ${{ vars.CLOUDFLARE_ZONE_ID_SEARCHFN_COM }}
           CLOUDFLARE_ZONE_ID_AUTHFN_COM: ${{ vars.CLOUDFLARE_ZONE_ID_AUTHFN_COM }}
