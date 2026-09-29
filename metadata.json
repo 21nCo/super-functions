@@ -1,0 +1,51 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3Q9R06HAX5S06HVP7N7RSC5",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/superfunctions-docs-cloudflare-deploy.yml",
+    "authfn/docs/package.json",
+    "authfn/docs/scripts/generate-llms.mjs",
+    "authfn/docs/src/lib/server/docs-site-source.ts",
+    "authfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "authfn/docs/vite.config.ts",
+    "filefn/docs/scripts/generate-llms.mjs",
+    "filefn/docs/src/lib/server/docs-site-source.ts",
+    "filefn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "filefn/docs/static/llms-full.txt",
+    "filefn/docs/vite.config.ts",
+    "package-lock.json",
+    "reviewfn/docs/package.json",
+    "reviewfn/docs/scripts/generate-llms.mjs",
+    "reviewfn/docs/src/lib/server/docs-site-source.ts",
+    "reviewfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "reviewfn/docs/src/routes/docs/search.json/+server.ts",
+    "reviewfn/docs/static/llms-full.txt",
+    "reviewfn/docs/svelte.config.js",
+    "reviewfn/docs/vite.config.ts",
+    "scripts/cloudflare-docs/select-products.mjs",
+    "scripts/docs-site/layout.ts",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/page.ts",
+    "scripts/docs-site/vite.ts",
+    "scripts/docs-site/vitest.config.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 17728,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2609920,
+    "output_tokens": 3624,
+    "api_call_count": 16
+  }
+}
