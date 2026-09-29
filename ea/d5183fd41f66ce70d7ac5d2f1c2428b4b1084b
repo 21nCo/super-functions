@@ -1,0 +1,30 @@
+searchfn/docs/content/docs/documentation/python/setup.mdx
+  s_110c7532cf7634::t_3fb2b9839f57e9 31
+searchfn/docs/content/docs/quickstart/fastapi.mdx
+  s_110c7532cf7634::t_3fb2b9839f57e9 24-25,43
+  s_110c7532cf7634::t_7ebffb50113db9 44
+searchfn/docs/content/docs/quickstart/flask.mdx
+  s_110c7532cf7634::t_3fb2b9839f57e9 23-24,40
+  s_110c7532cf7634::t_9b4ec30afbd77d 41
+searchfn/docs/content/docs/quickstart/starlette.mdx
+  s_110c7532cf7634::t_3fb2b9839f57e9 22-28,43
+  s_110c7532cf7634::t_ad6d0720fdba2d 44
+searchfn/docs/public/llms-full.txt
+  s_110c7532cf7634::t_753e7e83b21053 4812,6534-6535,6553-6554,6644-6645,6661-6662,6907-6913,6928-6929
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ead5183fd41f66ce70d7ac5d2f1c2428b4b1084b",
+  "prompts": {},
+  "sessions": {
+    "s_110c7532cf7634": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee25-fef3-7643-b3da-8732f3cec764",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
