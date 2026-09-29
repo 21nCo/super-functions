@@ -1,0 +1,62 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3QAE0H9F6N7NGX80R0TFGZQ",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/superfunctions-docs-cloudflare-deploy.yml",
+    ".github/workflows/superfunctions-docs-cloudflare-routes.yml",
+    "authfn/docs/package.json",
+    "authfn/docs/scripts/generate-llms.mjs",
+    "authfn/docs/src/lib/server/docs-site-source.ts",
+    "authfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "authfn/docs/vite.config.ts",
+    "filefn/docs/scripts/generate-llms.mjs",
+    "filefn/docs/src/lib/server/docs-site-source.ts",
+    "filefn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "filefn/docs/static/llms-full.txt",
+    "filefn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/cloudflare-docs/config.mjs",
+    "scripts/cloudflare-docs/select-products.mjs",
+    "scripts/docs-site/LandingPage.svelte",
+    "scripts/docs-site/layout.ts",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/page.ts",
+    "scripts/docs-site/vite.ts",
+    "scripts/docs-site/vitest.config.ts",
+    "sendfn/docs/README.md",
+    "sendfn/docs/content/docs/reference/python.md",
+    "sendfn/docs/content/docs/reference/typescript.md",
+    "sendfn/docs/docsfn.config.ts",
+    "sendfn/docs/package.json",
+    "sendfn/docs/scripts/generate-llms.mjs",
+    "sendfn/docs/src/app.css",
+    "sendfn/docs/src/lib/server/docs-site-source.ts",
+    "sendfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "sendfn/docs/static/llms-full.txt",
+    "sendfn/docs/static/llms.txt",
+    "sendfn/docs/svelte.config.js",
+    "sendfn/docs/vite.config.ts",
+    "sendfn/python/README.md",
+    "sendfn/typescript/README.md",
+    "sendfn/typescript/tests/release_gate.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 41766,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 6925056,
+    "output_tokens": 9313,
+    "api_call_count": 33
+  }
+}
