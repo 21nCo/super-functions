@@ -1,0 +1,31 @@
+mcpfn/docs/README.md
+  s_181bb405165ede::t_0678d25807bd42 21,23
+scripts/cloudflare-docs/select-products.mjs
+  s_181bb405165ede::t_0678d25807bd42 49,56,58
+scripts/cloudflare-docs/config.mjs
+  s_181bb405165ede::t_0678d25807bd42 8-17
+.github/workflows/superfunctions-docs-cloudflare-deploy.yml
+  s_181bb405165ede::t_0678d25807bd42 13,18,24,31,46
+mcpfn/docs/static/llms-full.txt
+  s_181bb405165ede::t_20944a50362a67 35,45,84,94,106,122,183,199-203,217,233,939-946,1534,1538,1542,1544,1590
+mcpfn/docs/static/llms.txt
+  s_181bb405165ede::t_29e5464e845478 7-24
+scripts/docs-site/runtime.ts
+  s_181bb405165ede::t_3dda34b664a4ab 351-352,363-386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6934fdf1d427a5bb67807a192c7e7753baaef254",
+  "prompts": {},
+  "sessions": {
+    "s_181bb405165ede": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0eccb-56ef-7ea0-a2e1-c84027ac735e",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
