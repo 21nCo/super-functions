@@ -1,0 +1,21 @@
+billfn/docs/content/docs/server/administration.mdx
+  s_181bb405165ede::t_c6490711b71238 10
+billfn/docs/app/layout.tsx
+  s_181bb405165ede::t_c6490711b71238 9-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e67590e91ae6ec74cee7c722e1e6c783ade607f",
+  "prompts": {},
+  "sessions": {
+    "s_181bb405165ede": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0eccb-56ef-7ea0-a2e1-c84027ac735e",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
