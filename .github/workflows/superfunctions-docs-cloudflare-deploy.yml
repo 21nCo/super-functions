@@ -11,18 +11,22 @@ on:
       - superfunctions-docs-live-*
       - superfunctions-docs-datafn-live-*
       - superfunctions-docs-filefn-live-*
+      - superfunctions-docs-mdfn-live-*
       - superfunctions-docs-searchfn-live-*
       - superfunctions-docs-authfn-live-*
       - superfunctions-datafn-docs-live-*
       - superfunctions-filefn-docs-live-*
+      - superfunctions-mdfn-docs-live-*
       - superfunctions-searchfn-docs-live-*
       - superfunctions-authfn-docs-live-*
     paths:
       - datafn/docs/**
       - filefn/docs/**
+      - mdfn/docs/**
       - searchfn/docs/**
       - authfn/docs/**
       - docsfn/**
+      - scripts/docs-site/**
       - packages/docs-theme/**
       - scripts/cloudflare-docs/**
       - package.json
@@ -40,6 +44,7 @@ on:
           - all
           - datafn
           - filefn
+          - mdfn
           - searchfn
           - authfn
       environment:

@@ -23,8 +23,8 @@ UIFn chrome, persistence, collaboration, and ecosystem bridges.
 - React, Svelte, Solid, and vanilla DOM share the same semantic controller.
 - Comments, suggestions, review transitions, history references, and audit data live in a
   validated sidecar bound to the canonical source.
-- The host authenticates collaboration updates through its transport or authorization
-  callbacks; accepted updates must match
+- The host authenticates the actor on its transport. It authorizes updates through
+  its transport policy or an `authorizeUpdate` callback; accepted updates must match
   the document, schema, profile, protocol, and extension contract.
 - Durable server operation is transactional; the explicit ephemeral mode is
   reserved for memory-backed tests and examples.
