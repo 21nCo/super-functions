@@ -57,6 +57,10 @@ function productsFromChangedFiles() {
       selectExisting("authfn");
       continue;
     }
+    if (/^scripts\/docs-site\//.test(file)) {
+      for (const productId of ["authfn", "filefn"]) selectExisting(productId);
+      continue;
+    }
     if (/^datafn\/docs\//.test(file)) selectExisting("datafn");
     if (/^filefn\/docs\//.test(file)) selectExisting("filefn");
     if (/^searchfn\/docs\//.test(file)) selectExisting("searchfn");

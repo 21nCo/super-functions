@@ -1,5 +1,46 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+/**
+ * Resolve DocsFn from the consumer site so each site's published package pin is honored.
+ * @param {string} cwd
+ * @param {{buildManifest: Function, loadDocsConfig: Function, FsContentProvider: new (options: object) => object}} dependencies
+ */
+export async function loadLlmsSiteSource(cwd, dependencies) {
+  const { buildManifest, loadDocsConfig, FsContentProvider } = dependencies;
+  const config = await loadDocsConfig({ cwd });
+  const provider = new FsContentProvider({
+    root: config.content.root || cwd,
+    docsDir: config.content.docsDir,
+    pagesDir: config.content.pagesDir,
+    blogDir: config.content.blogDir,
+    apiDir: config.content.apiDir,
+    assetsDir: config.content.assetsDir,
+  });
+  const manifest = await buildManifest(provider, config);
+  return { config, manifest };
+}
+
+/** @param {string} cwd
+ * @param {Parameters<typeof loadLlmsSiteSource>[1] & { buildLlmsTxtArtifacts: Function }} dependencies
+ */
+export async function buildLlmsSiteArtifacts(cwd, dependencies) {
+  const { config, manifest } = await loadLlmsSiteSource(cwd, dependencies);
+  const { buildLlmsTxtArtifacts } = dependencies;
+  const artifacts = buildLlmsTxtArtifacts(manifest, {
+    canonicalUrl: config.site?.canonicalUrl,
+    includeBlog: false,
+  });
+  return { artifacts, config, manifest };
+}
+
+export function rewriteAuthfnBoilerplate(artifacts) {
+  const expected = "For programmatic access, prefer the MCP server\nor the structured manifest emitted alongside this file.";
+  if (!artifacts.llmsFullTxt.includes(expected)) {
+    throw new Error("Expected DocsFn LLM boilerplate was not found; review the generator output.");
+  }
+  artifacts.llmsFullTxt = artifacts.llmsFullTxt.replace(expected, "For a page index, see /docs/llms.txt.");
+  return artifacts;
+}
 
 /**
  * Keep LLM indexes navigable before a public documentation host is assigned.
