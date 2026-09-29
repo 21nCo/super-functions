@@ -1,0 +1,67 @@
+.github/workflows/ci.yml
+  s_110c7532cf7634::t_39bf37ed1dee4b 120,122
+authfn/docs/package.json
+  s_110c7532cf7634::t_ce62493b8289f0 32-33,39-40
+authfn/docs/scripts/generate-llms.mjs
+  s_110c7532cf7634::t_11641697437853 5-6,8-10,12
+authfn/docs/src/lib/server/docs-site-source.ts
+  s_110c7532cf7634::t_dc872302ab4246 2,4-5,7-8,11-22
+authfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_110c7532cf7634::t_cdd29c95315a6e 2-3,8
+authfn/docs/vite.config.ts
+  s_110c7532cf7634::t_335bef6718f4bc 2,17
+filefn/docs/scripts/generate-llms.mjs
+  s_110c7532cf7634::t_ceadff0d8fee86 6,8-10,67
+filefn/docs/src/lib/server/docs-site-source.ts
+  s_110c7532cf7634::t_a0b26c4c68e35e 2,4-5,7-8,11-22
+filefn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_110c7532cf7634::t_852d0f493d0ba3 1,8
+filefn/docs/static/llms-full.txt
+  s_110c7532cf7634::t_f884b0b433bf0f 3056-3061
+filefn/docs/vite.config.ts
+  s_110c7532cf7634::t_8939dfcdb84314 2,17
+memoryfn/docs/package.json
+  s_110c7532cf7634::t_f96afc48ec9a8a 28,30,34-35
+memoryfn/docs/scripts/generate-llms.mjs
+  s_110c7532cf7634::t_5566bf33a16836 6,8-22
+memoryfn/docs/src/lib/server/docs-site-source.ts
+  s_110c7532cf7634::t_0d81e7212e8f2a 4
+memoryfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_110c7532cf7634::t_2bad911aea6cc3 1,3,7-16,18-22
+memoryfn/docs/static/llms-full.txt
+  s_110c7532cf7634::t_7edd2487cc72f1 6
+memoryfn/docs/svelte.config.js
+  s_110c7532cf7634::t_9fcc6204c43fe1 4,18
+memoryfn/docs/tsconfig.json
+  s_110c7532cf7634::t_83aede4bb1f82e 24
+memoryfn/docs/vite.config.ts
+  s_110c7532cf7634::t_a35e6d4868afc0 6,10
+package-lock.json
+  s_110c7532cf7634::t_d19e5c13b6d05f 876-877,19011,19017,19080-19136,19158-19217,19230-19344,25746-25749
+scripts/docs-site/layout.ts
+  s_110c7532cf7634::t_87097bde021ad8 4-7
+scripts/docs-site/llms.mjs
+  s_110c7532cf7634::t_849153b80df2d2 3-35,54
+scripts/docs-site/page.ts
+  s_110c7532cf7634::t_a8982cabd297a5 1-120
+scripts/docs-site/vite.ts
+  s_110c7532cf7634::t_bb3843f1c09a74 1,8,11,14-15
+scripts/docs-site/vitest.config.ts
+  s_110c7532cf7634::t_febfa83fb8349a 4,7-12,14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b11df1a5bc87de4e355aeab25cd647019cd96fd3",
+  "prompts": {},
+  "sessions": {
+    "s_110c7532cf7634": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee25-fef3-7643-b3da-8732f3cec764",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
