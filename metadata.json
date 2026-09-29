@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3PG69CT4WDF8K1XKDVBVQZ9",
+  "strategy": "manual-commit",
+  "branch": "review/docs-pr-215-20260929",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "hostfn/docs/app/layout.tsx",
+    "hostfn/docs/content/docs/documentation/advanced/administration.mdx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 21654,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 7035008,
+    "output_tokens": 3616,
+    "api_call_count": 41
+  }
+}
