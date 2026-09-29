@@ -1,0 +1,77 @@
+.github/workflows/ci.yml
+  s_110c7532cf7634::t_72c08602bb01f8 120,122
+.github/workflows/superfunctions-docs-cloudflare-deploy.yml
+  s_110c7532cf7634::t_08cef238e905e7 16,21,27-29,49
+.github/workflows/superfunctions-docs-cloudflare-routes.yml
+  s_110c7532cf7634::t_c7238c056db9d2 20,51
+authfn/docs/package.json
+  s_110c7532cf7634::t_0fa70ed4dd6665 32-33,39-40
+authfn/docs/scripts/generate-llms.mjs
+  s_110c7532cf7634::t_c755a893577904 5-6,8-10,12
+authfn/docs/src/lib/server/docs-site-source.ts
+  s_110c7532cf7634::t_5dc6294d9aa416 2,4-5,7-8,11-22
+authfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_110c7532cf7634::t_3e3db27943d20e 2-3,8
+authfn/docs/vite.config.ts
+  s_110c7532cf7634::t_4c134fbc759dda 2,17
+filefn/docs/scripts/generate-llms.mjs
+  s_110c7532cf7634::t_3490fa9a531fd9 6,8-10,67
+filefn/docs/src/lib/server/docs-site-source.ts
+  s_110c7532cf7634::t_96f0f1008682f9 2,4-5,7-8,11-22
+filefn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_110c7532cf7634::t_d57f0fbd8f9461 1,8
+filefn/docs/static/llms-full.txt
+  s_110c7532cf7634::t_4be7fce9dfb25d 3056-3061
+filefn/docs/vite.config.ts
+  s_110c7532cf7634::t_2b1da92020e9ef 2,17
+package-lock.json
+  s_110c7532cf7634::t_4f71b662dc75d0 876-877,57063,57069,57132-57188,57210-57269,57282-57396
+scripts/cloudflare-docs/config.mjs
+  s_110c7532cf7634::t_2154b6862ff03b 8-14
+scripts/cloudflare-docs/select-products.mjs
+  s_110c7532cf7634::t_1787ecf8b3d534 49,56,61
+scripts/docs-site/layout.ts
+  s_110c7532cf7634::t_ca0225d2d5185c 4-7
+scripts/docs-site/llms.mjs
+  s_110c7532cf7634::t_72e2437e71e164 3-35
+scripts/docs-site/page.ts
+  s_110c7532cf7634::t_85e0a60a2cd5e4 1-120
+scripts/docs-site/vite.ts
+  s_110c7532cf7634::t_989e854308f395 11
+scripts/docs-site/vitest.config.ts
+  s_110c7532cf7634::t_78231eee269b76 4,7-12,14
+secfn/docs/README.md
+  s_110c7532cf7634::t_e4e6ab2a6f70a3 20,23,25
+secfn/docs/package.json
+  s_110c7532cf7634::t_43f1d2e66e9200 10,29,31,35-36
+secfn/docs/scripts/generate-llms.mjs
+  s_110c7532cf7634::t_d69ba2208e7d63 6,8-22
+secfn/docs/src/lib/server/docs-site-source.ts
+  s_110c7532cf7634::t_3e492095cfe7a8 4
+secfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_110c7532cf7634::t_10802d9cfa0483 1,3,7-16,18-22
+secfn/docs/static/llms-full.txt
+  s_110c7532cf7634::t_117c54fa07709b 20,36,38,48,64,139-143,175,356,370,386,400,452
+secfn/docs/static/llms.txt
+  s_110c7532cf7634::t_fd7fd5d306bcd9 7-22
+secfn/docs/svelte.config.js
+  s_110c7532cf7634::t_0ec24612bd659f 4,18
+secfn/docs/vite.config.ts
+  s_110c7532cf7634::t_61ce67f337b251 6,10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "42a2b72754611286ba75357e2625f1849e4dd251",
+  "prompts": {},
+  "sessions": {
+    "s_110c7532cf7634": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee25-fef3-7643-b3da-8732f3cec764",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
