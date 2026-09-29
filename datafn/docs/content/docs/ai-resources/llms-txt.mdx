@@ -12,13 +12,13 @@ The DataFn docs site publishes two artifacts that follow the emerging [`llms.txt
 A short outline of the site organized by section. Suitable for grounding a single prompt or seeding a retrieval index.
 
 ```
-https://datafn.21n.co/llms.txt
+https://datafn.com/llms.txt
 ```
 
 Typical size: ~20–40 KB. Each entry is a Markdown bullet:
 
 ```
-- [Schema Definition](https://datafn.21n.co/docs/dfql/schema): Define and validate your DataFn schema, including capability-driven behavior.
+- [Schema Definition](https://datafn.com/docs/dfql/schema): Define and validate your DataFn schema, including capability-driven behavior.
 ```
 
 The file is regenerated from `content/docs/**` on every build so it never drifts from the rendered site.
@@ -28,7 +28,7 @@ The file is regenerated from `content/docs/**` on every build so it never drifts
 The complete body of every page, concatenated with section separators and deep-link headers. Suitable for direct ingestion by long-context models, embeddings, or fine-tuning datasets.
 
 ```
-https://datafn.21n.co/llms-full.txt
+https://datafn.com/llms-full.txt
 ```
 
 Typical size: 300–500 KB. Structure:
@@ -41,7 +41,7 @@ Typical size: 300–500 KB. Structure:
 --------------------------------------------------------------------------------
 ### Schema Definition
 
-URL: https://datafn.21n.co/docs/dfql/schema
+URL: https://datafn.com/docs/dfql/schema
 Description: Define and validate your DataFn schema, including capability-driven behavior.
 --------------------------------------------------------------------------------
 
@@ -76,7 +76,7 @@ GET /api/docs/raw/<path-to-page>.mdx
 Example:
 
 ```bash
-curl https://datafn.21n.co/api/docs/raw/dfql/filters.mdx
+curl https://datafn.com/api/docs/raw/dfql/filters.mdx
 ```
 
 The "Copy Markdown" button at the top of every page uses this endpoint behind the scenes.

@@ -51,7 +51,7 @@ The content can be largely the same across formats. Below is a starter that work
 - Don't use `replace` when `merge` will do. `replace` overwrites all fields including capability-managed ones.
 
 ## When in doubt
-1. Read the DataFn docs at https://datafn.21n.co/docs (raw markdown at /api/docs/raw/<path>).
+1. Read the DataFn docs at https://datafn.com/docs (raw markdown at /api/docs/raw/<path>).
 2. Use the MCP server (`datafn-mcp`) if it's registered.
 3. Ask the user before introducing a new capability, plugin, or sync route.
 ```
@@ -105,5 +105,5 @@ Codex auto-discovers `AGENTS.md` at the repo root.
 
 - Keep skills under ~200 lines. Long skills hurt context.
 - Pin to a DataFn version: "We are on `@datafn/server` 0.3.x" prevents the assistant from suggesting deprecated APIs.
-- Link out to the docs. `See https://datafn.21n.co/docs/dfql/mutations` is better than inlining all the rules.
+- Link out to the docs. `See https://datafn.com/docs/dfql/mutations` is better than inlining all the rules.
 - Re-read the skill on major refactors. Stale skills mislead agents harder than no skills at all.

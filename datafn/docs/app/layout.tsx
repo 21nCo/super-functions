@@ -6,7 +6,11 @@ import type { Metadata } from "next";
 
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ??
-  "https://datafn.com";
+  (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : process.env.NODE_ENV === "development"
+      ? "http://localhost:6001"
+      : "https://datafn.com");
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

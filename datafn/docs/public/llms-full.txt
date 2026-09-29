@@ -49,7 +49,7 @@ This project uses DataFn as the data layer.
 5. Write at least one integration test under `tests/integration/`.
 
 ## Docs
-The full DataFn documentation is at https://datafn.21n.co/docs. Raw markdown for any page is at /api/docs/raw/<path>.mdx. For example: https://datafn.21n.co/api/docs/raw/dfql/mutations.mdx
+The full DataFn documentation is at https://datafn.com/docs. Raw markdown for any page is at /api/docs/raw/<path>.mdx. For example: https://datafn.com/api/docs/raw/dfql/mutations.mdx
 ```
 
 ### Skills
@@ -154,7 +154,7 @@ This repo uses DataFn for sync, queries, and mutations.
 3. If a new error code is needed, add it to `core/src/errors.ts` first, then update the server.
 
 ## Docs
-See https://datafn.21n.co/docs. Raw markdown is at /api/docs/raw/<path>.mdx.
+See https://datafn.com/docs. Raw markdown is at /api/docs/raw/<path>.mdx.
 ```
 
 ## GitHub Copilot
@@ -232,7 +232,7 @@ This project uses DataFn for the client/server data layer.
 - Sync routes are mounted on `/datafn/*` and should not be wrapped in custom middleware. Cross-cutting concerns belong in the `authorize` callback or a server plugin.
 - Errors travel as `DatafnEnvelope`. Surface `error.code` to the UI for routing; never show raw `error.message` to end users.
 
-See the docs at https://datafn.21n.co/docs.
+See the docs at https://datafn.com/docs.
 ```
 
 See the [Skills](/docs/ai-resources/skills) page for a fuller starter template.
@@ -242,10 +242,10 @@ See the [Skills](/docs/ai-resources/skills) page for a fuller starter template.
 The "Open in Cursor" button on every page sends the page URL to Cursor's prompt panel. From there Cursor can fetch the raw markdown:
 
 ```
-fetch https://datafn.21n.co/api/docs/raw/dfql/queries.mdx
+fetch https://datafn.com/api/docs/raw/dfql/queries.mdx
 ```
 
-Cursor also accepts `@docs` references in the chat panel. If you've added DataFn as a docs source (Cursor settings → Indexing → Docs → Add → `https://datafn.21n.co/docs`), every page is searchable as `@docs:datafn`.
+Cursor also accepts `@docs` references in the chat panel. If you've added DataFn as a docs source (Cursor settings → Indexing → Docs → Add → `https://datafn.com/docs`), every page is searchable as `@docs:datafn`.
 
 ## 3. MCP server
 
@@ -321,13 +321,13 @@ The DataFn docs site publishes two artifacts that follow the emerging [`llms.txt
 A short outline of the site organized by section. Suitable for grounding a single prompt or seeding a retrieval index.
 
 ```
-https://datafn.21n.co/llms.txt
+https://datafn.com/llms.txt
 ```
 
 Typical size: ~20–40 KB. Each entry is a Markdown bullet:
 
 ```
-- [Schema Definition](https://datafn.21n.co/docs/dfql/schema): Define and validate your DataFn schema, including capability-driven behavior.
+- [Schema Definition](https://datafn.com/docs/dfql/schema): Define and validate your DataFn schema, including capability-driven behavior.
 ```
 
 The file is regenerated from `content/docs/**` on every build so it never drifts from the rendered site.
@@ -337,7 +337,7 @@ The file is regenerated from `content/docs/**` on every build so it never drifts
 The complete body of every page, concatenated with section separators and deep-link headers. Suitable for direct ingestion by long-context models, embeddings, or fine-tuning datasets.
 
 ```
-https://datafn.21n.co/llms-full.txt
+https://datafn.com/llms-full.txt
 ```
 
 Typical size: 300–500 KB. Structure:
@@ -350,7 +350,7 @@ Typical size: 300–500 KB. Structure:
 --------------------------------------------------------------------------------
 ### Schema Definition
 
-URL: https://datafn.21n.co/docs/dfql/schema
+URL: https://datafn.com/docs/dfql/schema
 Description: Define and validate your DataFn schema, including capability-driven behavior.
 --------------------------------------------------------------------------------
 
@@ -385,7 +385,7 @@ GET /api/docs/raw/<path-to-page>.mdx
 Example:
 
 ```bash
-curl https://datafn.21n.co/api/docs/raw/dfql/filters.mdx
+curl https://datafn.com/api/docs/raw/dfql/filters.mdx
 ```
 
 The "Copy Markdown" button at the top of every page uses this endpoint behind the scenes.
@@ -424,7 +424,7 @@ A minimal Node.js implementation that wraps the static documentation and the run
 ```typescript
 import { McpServer, StdioServerTransport } from "@modelcontextprotocol/sdk/server";
 
-const docsRoot = "https://datafn.21n.co";
+const docsRoot = "https://datafn.com";
 
 const server = new McpServer({ name: "datafn-docs", version: "0.1.0" });
 
@@ -552,7 +552,7 @@ The content can be largely the same across formats. Below is a starter that work
 - Don't use `replace` when `merge` will do. `replace` overwrites all fields including capability-managed ones.
 
 ## When in doubt
-1. Read the DataFn docs at https://datafn.21n.co/docs (raw markdown at /api/docs/raw/<path>).
+1. Read the DataFn docs at https://datafn.com/docs (raw markdown at /api/docs/raw/<path>).
 2. Use the MCP server (`datafn-mcp`) if it's registered.
 3. Ask the user before introducing a new capability, plugin, or sync route.
 ```
@@ -606,7 +606,7 @@ Codex auto-discovers `AGENTS.md` at the repo root.
 
 - Keep skills under ~200 lines. Long skills hurt context.
 - Pin to a DataFn version: "We are on `@datafn/server` 0.3.x" prevents the assistant from suggesting deprecated APIs.
-- Link out to the docs. `See https://datafn.21n.co/docs/dfql/mutations` is better than inlining all the rules.
+- Link out to the docs. `See https://datafn.com/docs/dfql/mutations` is better than inlining all the rules.
 - Re-read the skill on major refactors. Stale skills mislead agents harder than no skills at all.
 
 
@@ -649,9 +649,9 @@ This documentation site is built to be consumed by AI assistants as well as peop
 You can verify the artifacts are live from the command line:
 
 ```bash
-curl https://datafn.21n.co/llms.txt | head -50
-curl https://datafn.21n.co/llms-full.txt | wc -c
-curl https://datafn.21n.co/api/docs/raw/dfql/queries.mdx | head -30
+curl https://datafn.com/llms.txt | head -50
+curl https://datafn.com/llms-full.txt | wc -c
+curl https://datafn.com/api/docs/raw/dfql/queries.mdx | head -30
 ```
 
 If you're self-hosting these docs the same URLs work against your own deployment.
@@ -26858,13 +26858,13 @@ export const auditPlugin: DatafnPlugin = {
 | `beforeSync` | phase, payload | Inspect or replace the sync payload. |
 | `afterSync` | phase, payload, result | Observe a sync operation; return values do not replace the caller’s result. |
 
-Sync phases are `seed`, `clone`, `pull`, `push`, `cloneUp`, and `reconcile`. There are no `beforeTransact` or `afterTransact` members in the current plugin contract.
+Sync phases are `seed`, `clone`, `pull`, `push`, `cloneUp`, and `reconcile`. There are no `beforeTransact` or `afterTransact` members in the current plugin contract. The `/datafn/transact` route executes its query and mutation steps without invoking these plugin hooks; attach hooks to separate query or mutation operations when they are required.
 
 ## Ordering, return values, and failures
 
 Hooks execute in registration order for plugins whose `runsOn` includes the current environment. For before-hooks, an undefined return keeps the current payload and a defined return supplies the next hook’s input. Only server-side `afterQuery` propagates its final replacement result to the operation caller. Client `afterQuery`, `afterMutation`, and `afterSync` return the original operation result; server `afterMutation` and `afterSync` also discard the hook runner’s final value. A replacement may reach subsequent hooks but does not replace these callers’ results. Preserve the shape expected by the operation. Returning `{ abort: ... }` is not an abort protocol: it would replace the payload.
 
-Before-hooks fail closed: throwing stops the chain and fails the operation. After-hooks fail open: errors are logged and subsequent hooks continue. After-hooks cannot roll back an operation that has already executed. Keep authorization in the server's authorization policy; a client plugin is not a security boundary.
+Before-hooks fail closed: throwing stops the chain and fails the operation. After-hooks fail open: errors are swallowed and subsequent hooks continue. Server `afterQuery` logs failures only when its caller supplies a logger; the current query route does not. Do not rely on an after-hook error being logged. After-hooks cannot roll back an operation that has already executed. Keep authorization in the server's authorization policy; a client plugin is not a security boundary.
 
 ## Restricting a hook to a resource
 
