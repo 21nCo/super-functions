@@ -1,0 +1,21 @@
+hostfn/docs/content/docs/documentation/advanced/administration.mdx
+  s_181bb405165ede::t_a3b07ec0f75991 29-30
+hostfn/docs/app/layout.tsx
+  s_181bb405165ede::t_a3b07ec0f75991 9-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b84ad3a0a703d92085f2496132b7d7868a775f8f",
+  "prompts": {},
+  "sessions": {
+    "s_181bb405165ede": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0eccb-56ef-7ea0-a2e1-c84027ac735e",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
