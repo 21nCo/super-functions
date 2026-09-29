@@ -20,6 +20,6 @@ npm run build --workspace @searchfn/client
 npm exec --workspace @memoryfn/docs -- docsfn validate --root .
 ```
 
-The site defaults to port 6012. The public documentation URL is `https://memoryfn.com/docs`.
+The site defaults to port 6012. Set `site.canonicalUrl` once the public docs host serves these routes.
 
-The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Generated page links use the configured public host, `https://memoryfn.com/docs`.
+The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Until the public docs host is live, generated page links point to the source files on GitHub.

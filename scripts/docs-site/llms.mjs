@@ -18,7 +18,7 @@ export function withSourceLinks(text, manifest, product, canonicalUrl) {
     const source = sources.get(url.pathname);
     if (!source) return match;
     const path = source.split("/").map(encodeURIComponent).join("/");
-    return `](https://github.com/21nCo/super-functions/blob/dev/${product}/docs/content/docs/${path}${url.hash})`;
+    return `](https://github.com/21nCo/super-functions/blob/dev/${product}/docs/content/docs/${path}${url.search}${url.hash})`;
   });
 }
 

@@ -30,5 +30,5 @@ const artifacts = buildLlmsTxtArtifacts(manifest, {
 artifacts.llmsTxt = withSourceLinks(artifacts.llmsTxt, manifest, "memoryfn", config.site?.canonicalUrl);
 artifacts.llmsFullTxt = withSourceLinks(artifacts.llmsFullTxt, manifest, "memoryfn", config.site?.canonicalUrl);
 
-artifacts.llmsFullTxt = artifacts.llmsFullTxt.replace("For programmatic access, prefer the MCP server\nor the structured manifest emitted alongside this file.", "For a page index, see /docs/llms.txt.");
+artifacts.llmsFullTxt = artifacts.llmsFullTxt.replace("For programmatic access, prefer the MCP server\nor the structured manifest emitted alongside this file.", "For a page index, see https://github.com/21nCo/super-functions/blob/dev/memoryfn/docs/static/llms.txt.");
 writeLlmsArtifacts(staticDir, artifacts);
