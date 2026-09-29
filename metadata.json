@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3PJY9JS7CR10A43BB9SJRF5",
+  "strategy": "manual-commit",
+  "branch": "review/docs-pr-222-20260929",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/superfunctions-docs-cloudflare-deploy.yml",
+    ".github/workflows/superfunctions-docs-cloudflare-routes.yml",
+    "package-lock.json",
+    "reviewfn/docs/README.md",
+    "reviewfn/docs/docsfn.config.ts",
+    "reviewfn/docs/package.json",
+    "reviewfn/docs/scripts/generate-llms.mjs",
+    "reviewfn/docs/src/app.css",
+    "reviewfn/docs/static/llms-full.txt",
+    "reviewfn/docs/static/llms.txt",
+    "scripts/cloudflare-docs/config.mjs",
+    "scripts/cloudflare-docs/select-products.mjs",
+    "scripts/docs-site/LandingPage.svelte",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/vite.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 33465,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 6424320,
+    "output_tokens": 9330,
+    "api_call_count": 51
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3PJY9JS7CR10A43BB9SJRF5",
+  "session_id": "01a0eccb-56ef-7ea0-a2e1-c84027ac735e",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-29T12:41:26.566625Z",
+  "branch": "review/docs-pr-222-20260929",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/superfunctions-docs-cloudflare-deploy.yml",
+    ".github/workflows/superfunctions-docs-cloudflare-routes.yml",
+    "package-lock.json",
+    "reviewfn/docs/README.md",
+    "reviewfn/docs/docsfn.config.ts",
+    "reviewfn/docs/package.json",
+    "reviewfn/docs/scripts/generate-llms.mjs",
+    "reviewfn/docs/src/app.css",
+    "reviewfn/docs/static/llms-full.txt",
+    "reviewfn/docs/static/llms.txt",
+    "scripts/cloudflare-docs/config.mjs",
+    "scripts/cloudflare-docs/select-products.mjs",
+    "scripts/docs-site/LandingPage.svelte",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/vite.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-sol",
+  "turn_id": "624742fab273",
+  "checkpoint_transcript_start": 5031,
+  "transcript_lines_at_start": 5031,
+  "compact_transcript_start": 802,
+  "token_usage": {
+    "input_tokens": 33465,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 6424320,
+    "output_tokens": 9330,
+    "api_call_count": 51
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-29T12:41:26.407565Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 703,
+    "human_modified": 366,
+    "human_removed": 0,
+    "total_committed": 703,
+    "total_lines_changed": 1069,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
