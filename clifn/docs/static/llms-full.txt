@@ -78,7 +78,7 @@ In text mode, emit user-facing messages with `ctx.output`. In JSON mode, returne
 
 Return `exitCode` for an expected product failure you have handled. An invalid or negative returned exit code normalizes to zero, so set explicit positive codes for failure cases. Thrown failures normalize to code 1. The runner does not print collected diagnostics automatically; use `onDiagnostics` or your own output policy to present them.
 
-See the [runner source](https://github.com/21nCo/super-functions/blob/dev/clifn/core/src/runner.ts) and [package examples](/docs/reference/core-readme) for `commander` and `cac` integration.
+See the [runner source](https://github.com/21nCo/super-functions/blob/dev/clifn/core/src/runner.ts) and [package examples](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/reference/core-readme.md) for `commander` and `cac` integration.
 
 ---
 
@@ -116,7 +116,7 @@ The loader accepts local TS, JS, MJS, CJS, and JSON files. TS uses Jiti. Module 
 
 ## Read environment values
 
-`@clifn/core/env` exports `readRequiredStringEnv`, `readStringEnv`, `readIntEnv`, and `readBooleanEnv`. Each accepts an injected `env` map for tests. Defaults, empty-string rules, and integer `min`/`max` are explicit. Errors have `CLIFN_ENV_MISSING`, `CLIFN_ENV_INVALID`, or `CLIFN_ENV_OUT_OF_RANGE` codes. See the [export reference](/docs/reference/exports) for option types.
+`@clifn/core/env` exports `readRequiredStringEnv`, `readStringEnv`, `readIntEnv`, and `readBooleanEnv`. Each accepts an injected `env` map for tests. Defaults, empty-string rules, and integer `min`/`max` are explicit. Errors have `CLIFN_ENV_MISSING`, `CLIFN_ENV_INVALID`, or `CLIFN_ENV_OUT_OF_RANGE` codes. See the [export reference](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/reference/exports.md) for option types.
 
 ---
 
@@ -184,9 +184,9 @@ const exitCode = await runAction(
 process.exitCode = exitCode;
 ```
 
-`runAction()` provides a normalized working directory, environment, output service, diagnostic sink, subprocess service, scaffold service, and `nonInteractive` flag. An action can return `exitCode`, `data`, and diagnostics; thrown errors become exit code 1. JSON mode emits a stable `CLIFN_RUNNER_FAILED` envelope; text mode writes the failure message. In JSON mode, returned `data` is emitted as JSON. See [CLI builder](/docs/cli-builder) for parser wiring and [output and diagnostics](/docs/output-and-diagnostics) for formatting.
+`runAction()` provides a normalized working directory, environment, output service, diagnostic sink, subprocess service, scaffold service, and `nonInteractive` flag. An action can return `exitCode`, `data`, and diagnostics; thrown errors become exit code 1. JSON mode emits a stable `CLIFN_RUNNER_FAILED` envelope; text mode writes the failure message. In JSON mode, returned `data` is emitted as JSON. See [CLI builder](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/cli-builder.md) for parser wiring and [output and diagnostics](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/output-and-diagnostics.md) for formatting.
 
-The [package README](/docs/reference/core-readme) contains working examples for `commander`, `cac`, and raw `parseArgs`, along with the established compatibility imports.
+The [package README](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/reference/core-readme.md) contains working examples for `commander`, `cac`, and raw `parseArgs`, along with the established compatibility imports.
 
 ---
 
@@ -200,17 +200,17 @@ The [package README](/docs/reference/core-readme) contains working examples for 
 
 ## Start here
 
-- [Getting started](/docs/getting-started): install the package and run an action.
-- [Build a CLI](/docs/cli-builder): connect your parser to `runAction()` and set exit status.
-- [Output and diagnostics](/docs/output-and-diagnostics): human and machine-readable results.
-- [Configuration](/docs/configuration): config modules, JSON project settings, and environment values.
-- [Credentials and HTTP](/docs/credentials-and-client): profile persistence and safe request retries.
-- [Automation](/docs/automation): subprocesses and bounded file generation.
-- [Interaction and stdio](/docs/interaction-and-stdio): prompts, terminal helpers, and JSON pipes.
+- [Getting started](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/getting-started.md): install the package and run an action.
+- [Build a CLI](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/cli-builder.md): connect your parser to `runAction()` and set exit status.
+- [Output and diagnostics](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/output-and-diagnostics.md): human and machine-readable results.
+- [Configuration](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/configuration.md): config modules, JSON project settings, and environment values.
+- [Credentials and HTTP](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/credentials-and-client.md): profile persistence and safe request retries.
+- [Automation](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/automation.md): subprocesses and bounded file generation.
+- [Interaction and stdio](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/interaction-and-stdio.md): prompts, terminal helpers, and JSON pipes.
 
 ## Public entry points
 
-Import from documented subpaths such as `@clifn/core/runner`, `@clifn/core/output`, or `@clifn/core/credentials`. The [export reference](/docs/reference/exports) lists all thirteen public subpaths and their principal functions and types. `@clifn/core` itself also exports the shared surface. Avoid importing internal `dist/*` paths.
+Import from documented subpaths such as `@clifn/core/runner`, `@clifn/core/output`, or `@clifn/core/credentials`. The [export reference](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/reference/exports.md) lists all thirteen public subpaths and their principal functions and types. `@clifn/core` itself also exports the shared surface. Avoid importing internal `dist/*` paths.
 
 ---
 
@@ -232,7 +232,7 @@ if (await prompt.confirm(`Continue with ${target}?`)) {
 }
 ```
 
-`@clifn/core/ui` retains the established `success`, `error`, `warn`, `info`, `spinner`, and `table` terminal helpers. For new CLI output policies, prefer the configurable `createOutput()` service described in [output and diagnostics](/docs/output-and-diagnostics).
+`@clifn/core/ui` retains the established `success`, `error`, `warn`, `info`, `spinner`, and `table` terminal helpers. For new CLI output policies, prefer the configurable `createOutput()` service described in [output and diagnostics](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/output-and-diagnostics.md).
 
 `@clifn/core/stdio` exports `readJsonStdin<T>()` and `writeJsonStdout(value)`. The reader parses one JSON document from stdin and raises `InvalidJsonStdinError` on malformed input. The writer emits one serialized JSON document followed by a newline. Both accept injected streams for testing. Keep progress and human messages off stdout when a command promises machine-readable output.
 
@@ -275,7 +275,7 @@ const diagnostics = [createDiagnostic({
 process.stdout.write(formatDiagnosticsJson(redactDiagnostics(diagnostics)));
 ```
 
-Redaction applies to diagnostic `details`; applications should still avoid putting credentials in messages or paths. Formatters sort diagnostics and add a trailing newline. Consult the [export reference](/docs/reference/exports) for types and the [source](https://github.com/21nCo/super-functions/blob/dev/clifn/core/src/diagnostics.ts) for redaction rules.
+Redaction applies to diagnostic `details`; applications should still avoid putting credentials in messages or paths. Formatters sort diagnostics and add a trailing newline. Consult the [export reference](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/reference/exports.md) for types and the [source](https://github.com/21nCo/super-functions/blob/dev/clifn/core/src/diagnostics.ts) for redaction rules.
 
 ---
 
@@ -732,9 +732,9 @@ See the [package export map](https://github.com/21nCo/super-functions/blob/dev/c
 > Public CliFn entry points, exports, and source-aligned package documentation.
 
 
-- [Public exports](/docs/reference/exports) maps every `@clifn/core/*` subpath to its principal functions, types, and errors.
-- [Package README](/docs/reference/core-readme) contains the complete source-aligned usage guide and parser examples.
-- [Admin capability](/docs/reference/admin) explains the separate Super Console package and its current availability.
+- [Public exports](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/reference/exports.md) maps every `@clifn/core/*` subpath to its principal functions, types, and errors.
+- [Package README](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/reference/core-readme.md) contains the complete source-aligned usage guide and parser examples.
+- [Admin capability](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/reference/admin.md) explains the separate Super Console package and its current availability.
 
 The precise exports for a published release are the versioned package artifact. These pages describe the source on `origin/dev` when the site was prepared.
 

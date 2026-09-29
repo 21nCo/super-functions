@@ -3,7 +3,6 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
-    canonicalUrl: "https://clifn.com",
     title: "CliFn",
     description: "Reusable CLI building blocks for command execution, output, configuration, credentials, and safe automation.",
     basePath: "/docs",
