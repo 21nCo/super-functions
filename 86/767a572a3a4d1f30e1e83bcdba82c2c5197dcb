@@ -1,0 +1,37 @@
+authfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_181bb405165ede::t_19e40687a58ad4 71
+authfn/docs/content/docs/ai-resources/llms-txt.md
+  s_181bb405165ede::t_9d53a1dd2c47d5 8,10-11,20,36,42-43,74
+authfn/docs/package.json
+  s_181bb405165ede::t_76a9ee0b950baa 25-31
+authfn/docs/content/docs/ai-resources/claude.md
+  s_181bb405165ede::t_92aa164acab540 65
+authfn/docs/content/docs/ai-resources/codex.md
+  s_181bb405165ede::t_81715c6baaa0fe 24-25
+authfn/docs/content/docs/ai-resources/cursor.md
+  s_181bb405165ede::t_3128318e175a2f 32,46
+authfn/docs/content/docs/ai-resources/index.md
+  s_181bb405165ede::t_5697ddfdf6a79a 53
+authfn/docs/static/llms-full.txt
+  s_181bb405165ede::t_81766bb7f2a5fa 1269,1307-1308,1384,1398,1480,1495,1497-1498,1507,1523,1529-1530,1561
+package-lock.json
+  s_181bb405165ede::t_8bb72e5d8739a9 867-873,949-954,1015-1023,1040-1045,1058-1083
+scripts/docs-site/runtime.ts
+  s_181bb405165ede::t_34192258d3420f 351-352,363-386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "86767a572a3a4d1f30e1e83bcdba82c2c5197dcb",
+  "prompts": {},
+  "sessions": {
+    "s_181bb405165ede": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0eccb-56ef-7ea0-a2e1-c84027ac735e",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
