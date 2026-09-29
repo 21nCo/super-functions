@@ -1,0 +1,52 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3Q92YC406V1VSW5ZM118VQ9",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    "authfn/docs/package.json",
+    "authfn/docs/scripts/generate-llms.mjs",
+    "authfn/docs/src/lib/server/docs-site-source.ts",
+    "authfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "authfn/docs/vite.config.ts",
+    "filefn/docs/scripts/generate-llms.mjs",
+    "filefn/docs/src/lib/server/docs-site-source.ts",
+    "filefn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "filefn/docs/static/llms-full.txt",
+    "filefn/docs/vite.config.ts",
+    "mdfn/docs/README.md",
+    "mdfn/docs/content/docs/reference/extensions.md",
+    "mdfn/docs/content/docs/rendering-and-security.md",
+    "mdfn/docs/package.json",
+    "mdfn/docs/scripts/generate-llms.mjs",
+    "mdfn/docs/src/lib/server/docs-site-source.ts",
+    "mdfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "mdfn/docs/static/llms-full.txt",
+    "mdfn/docs/svelte.config.js",
+    "mdfn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/layout.ts",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/page.ts",
+    "scripts/docs-site/vite.ts",
+    "scripts/docs-site/vitest.config.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 28236,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2398080,
+    "output_tokens": 5052,
+    "api_call_count": 22
+  }
+}
