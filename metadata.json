@@ -1,0 +1,49 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3Q7XZ8QXWNXEPK02CDT2ZAD",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    "authfn/docs/package.json",
+    "authfn/docs/src/lib/server/docs-site-source.ts",
+    "authfn/docs/src/routes/+page.svelte",
+    "authfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "authfn/docs/vite.config.ts",
+    "filefn/docs/content/docs/adapters/db-drizzle.md",
+    "filefn/docs/content/docs/adapters/db-postgres.md",
+    "filefn/docs/content/docs/frameworks/bun.md",
+    "filefn/docs/package.json",
+    "filefn/docs/scripts/generate-llms.mjs",
+    "filefn/docs/src/app.html",
+    "filefn/docs/src/routes/blog/+page.server.ts",
+    "filefn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "filefn/docs/static/llms-full.txt",
+    "filefn/docs/svelte.config.js",
+    "filefn/docs/tsconfig.json",
+    "filefn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/page.ts",
+    "scripts/docs-site/runtime.test.ts",
+    "scripts/docs-site/vite.ts",
+    "scripts/docs-site/vitest.config.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 63233,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 11434240,
+    "output_tokens": 11233,
+    "api_call_count": 57
+  }
+}
