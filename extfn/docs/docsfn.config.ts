@@ -6,6 +6,7 @@ const config: DocsConfig = {
     title: "ExtFn",
     description: "Browser extension configuration, runtime, build, scan, and packaging for Chromium and Firefox.",
     basePath: "/docs",
+    canonicalUrl: "https://extfn.com",
     showFooter: false,
     editLink: { pattern: "https://github.com/21nCo/super-functions/edit/dev/extfn/docs/{path}" },
   },

@@ -6,7 +6,7 @@ The new per-function sites supply their config and Vite raw-content globs to `cr
 
 Each site resolves the shared module's DocsFn imports through the scoped Vite resolver so it uses the versions pinned by that site. Run `npm run build` in the affected `<function>/docs` directory. After changing shared code, build all consumers and verify desktop search (including a result navigation and Escape) plus the mobile Menu drawer. Keep the responsive open-drawer override when using the current published theme.
 
-Each new-site PR includes this shared directory at the same repository path so it can land independently. New site factory wrappers reference this canonical directory; older AuthFn and FileFn wrappers still have local implementations. After merge, edit the shared runtime for sites that import it.
+Each new-site PR includes this shared directory at the same repository path so it can land independently. ExtFn, AuthFn, and FileFn factory wrappers reference this canonical runtime. After changing it, build each of those consumers.
 
 Only sites whose factory wrappers import this directory consume this runtime. Check those imports when planning cross-site validation.
 
