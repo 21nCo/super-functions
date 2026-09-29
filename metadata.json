@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3Q67G5ZT7RPYA00BT89Z12R",
+  "strategy": "manual-commit",
+  "branch": "codex/docs-datafn-20260926",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "datafn/docs/app/layout.tsx",
+    "datafn/docs/content/docs/ai-resources/claude.mdx",
+    "datafn/docs/content/docs/ai-resources/codex.mdx",
+    "datafn/docs/content/docs/ai-resources/cursor.mdx",
+    "datafn/docs/content/docs/ai-resources/index.mdx",
+    "datafn/docs/content/docs/ai-resources/llms-txt.mdx",
+    "datafn/docs/content/docs/ai-resources/mcp.mdx",
+    "datafn/docs/content/docs/ai-resources/skills.mdx",
+    "datafn/docs/content/docs/reference/events.mdx",
+    "datafn/docs/public/llms-full.txt",
+    "datafn/docs/public/llms.txt",
+    "datafn/docs/scripts/generate-llms.mjs",
+    "scripts/cloudflare-docs/deploy.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 42149,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 8950656,
+    "output_tokens": 10171,
+    "api_call_count": 43
+  }
+}

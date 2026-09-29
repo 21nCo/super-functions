@@ -1,0 +1,58 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3Q67G5ZT7RPYA00BT89Z12R",
+  "session_id": "01a0ee25-fef3-7643-b3da-8732f3cec764",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-29T18:18:31.36185Z",
+  "branch": "codex/docs-datafn-20260926",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "datafn/docs/app/layout.tsx",
+    "datafn/docs/content/docs/ai-resources/claude.mdx",
+    "datafn/docs/content/docs/ai-resources/codex.mdx",
+    "datafn/docs/content/docs/ai-resources/cursor.mdx",
+    "datafn/docs/content/docs/ai-resources/index.mdx",
+    "datafn/docs/content/docs/ai-resources/llms-txt.mdx",
+    "datafn/docs/content/docs/ai-resources/mcp.mdx",
+    "datafn/docs/content/docs/ai-resources/skills.mdx",
+    "datafn/docs/content/docs/reference/events.mdx",
+    "datafn/docs/public/llms-full.txt",
+    "datafn/docs/public/llms.txt",
+    "datafn/docs/scripts/generate-llms.mjs",
+    "scripts/cloudflare-docs/deploy.mjs"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-sol",
+  "turn_id": "6f1b7d2aba45",
+  "checkpoint_transcript_start": 2666,
+  "transcript_lines_at_start": 2666,
+  "compact_transcript_start": 398,
+  "token_usage": {
+    "input_tokens": 42149,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 8950656,
+    "output_tokens": 10171,
+    "api_call_count": 43
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-29T18:18:31.233634Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 551,
+    "human_modified": 696,
+    "human_removed": 0,
+    "total_committed": 551,
+    "total_lines_changed": 1247,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
