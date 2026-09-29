@@ -10,7 +10,7 @@ const siteUrl =
     ? `https://${process.env.VERCEL_URL}`
     : process.env.NODE_ENV === "development"
       ? "http://localhost:6001"
-      : "https://datafn.com");
+      : "https://datafn.dev");
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
