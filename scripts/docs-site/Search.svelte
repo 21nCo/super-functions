@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { DocsSearchArtifact } from "@docsfn/core";
   import { createDocsSearchRuntime, type DocsSearchRuntimeResultItem } from "@docsfn/core/search-runtime";
 
   let dialog: HTMLDialogElement;
@@ -12,9 +13,22 @@
     loadArtifact: async () => {
       const response = await fetch("/docs/search.json");
       if (!response.ok) throw new Error("Could not load documentation search.");
-      return response.json();
+      const payload: unknown = await response.json();
+      if (!isSearchArtifact(payload)) throw new Error("Documentation search returned an invalid index.");
+      return payload;
     },
   });
+
+  function isSearchArtifact(value: unknown): value is DocsSearchArtifact {
+    if (typeof value !== "object" || value === null) return false;
+    const artifact = value as Partial<DocsSearchArtifact>;
+    return artifact.schemaVersion === 1 && artifact.engine === "searchfn"
+      && Array.isArray(artifact.documents) && Array.isArray(artifact.fields)
+      && Array.isArray(artifact.scopes) && Array.isArray(artifact.diagnostics)
+      && typeof artifact.snapshot === "object" && artifact.snapshot !== null
+      && Array.isArray(artifact.snapshot.documents) && Array.isArray(artifact.snapshot.postings)
+      && Array.isArray(artifact.snapshot.stats) && Array.isArray(artifact.snapshot.vocabulary);
+  }
 
   function openSearch() {
     if (!dialog.open) dialog.showModal();

@@ -20,6 +20,6 @@ npm run build --workspace @searchfn/client
 npm exec --workspace @mailfn/docs -- docsfn validate --root .
 ```
 
-The site defaults to port 6019. The public documentation URL is `https://mailfn.com/docs`.
+The site defaults to port 6019. The public documentation route is `/docs`.
 
-The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Generated page links use the configured public host, `https://mailfn.com/docs`.
+The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Until a public host is serving the site, generated indexes link to the repository source pages.
