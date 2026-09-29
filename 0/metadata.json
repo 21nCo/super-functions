@@ -1,0 +1,49 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3Q6WAMBNPKKMS2PK0RG6N9R",
+  "session_id": "01a0ee25-fef3-7643-b3da-8732f3cec764",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-29T18:29:53.736938Z",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "searchfn/docs/content/docs/documentation/python/setup.mdx",
+    "searchfn/docs/content/docs/quickstart/fastapi.mdx",
+    "searchfn/docs/content/docs/quickstart/flask.mdx",
+    "searchfn/docs/content/docs/quickstart/starlette.mdx",
+    "searchfn/docs/public/llms-full.txt"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-sol",
+  "turn_id": "6f1b7d2aba45",
+  "checkpoint_transcript_start": 3446,
+  "transcript_lines_at_start": 3446,
+  "compact_transcript_start": 518,
+  "token_usage": {
+    "input_tokens": 23590,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1249024,
+    "output_tokens": 3605,
+    "api_call_count": 17
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-29T18:29:53.590903Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 343,
+    "human_removed": 801,
+    "total_committed": 0,
+    "total_lines_changed": 1144,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
