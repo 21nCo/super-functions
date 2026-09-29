@@ -37,7 +37,7 @@ function hasNestedDocsRoutes(routes: Record<string, string>, route: string): boo
 export const load: PageServerLoad = async ({ params }) => {
   const source = await loadDocsSiteSource();
 
-  let routeEntry;
+  let routeEntry: ReturnType<typeof resolveDocsRouteDataOrThrow>;
   try {
     routeEntry = resolveDocsRouteDataOrThrow(params.slug, source.manifest, {
       basePath: "/docs",
