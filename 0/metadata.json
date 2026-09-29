@@ -1,0 +1,47 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3PECG65W90NMWYR8ZXMZRJT",
+  "session_id": "01a0eccb-56ef-7ea0-a2e1-c84027ac735e",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-29T11:21:49.002991Z",
+  "branch": "codex/docs-billfn-20260926",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "billfn/docs/app/layout.tsx",
+    "billfn/docs/content/docs/server/administration.mdx"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-sol",
+  "turn_id": "98b450a04b6e",
+  "checkpoint_transcript_start": 1208,
+  "transcript_lines_at_start": 1208,
+  "compact_transcript_start": 158,
+  "token_usage": {
+    "input_tokens": 15294,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4232960,
+    "output_tokens": 4247,
+    "api_call_count": 19
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-29T11:21:48.927802Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 37,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 37,
+    "total_lines_changed": 37,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
