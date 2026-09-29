@@ -29,5 +29,9 @@ const artifacts = buildLlmsTxtArtifacts(manifest, {
 
 artifacts.llmsTxt = withSourceLinks(artifacts.llmsTxt, manifest, "botfn", config.site?.canonicalUrl);
 artifacts.llmsFullTxt = withSourceLinks(artifacts.llmsFullTxt, manifest, "botfn", config.site?.canonicalUrl);
-artifacts.llmsFullTxt = artifacts.llmsFullTxt.replace("For programmatic access, prefer the MCP server\nor the structured manifest emitted alongside this file.", "For a page index, see /docs/llms.txt.");
+const generatedFooter = "For programmatic access, prefer the MCP server\nor the structured manifest emitted alongside this file.";
+if (!artifacts.llmsFullTxt.includes(generatedFooter)) {
+  throw new Error("Unexpected DocsFn llms-full footer; review the generated artifact before publishing");
+}
+artifacts.llmsFullTxt = artifacts.llmsFullTxt.replace(generatedFooter, "For a page index, see /docs/llms.txt.");
 writeLlmsArtifacts(staticDir, artifacts);

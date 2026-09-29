@@ -35,13 +35,13 @@ See the [admin source](https://github.com/21nCo/super-functions/blob/dev/botfn/a
 
 1. Create a Discord application and obtain its application ID, public key, and bot token. Set the interaction endpoint to the deployed Worker's `/interactions` route.
 2. Create and install a GitHub App for the repositories to expose. Provide `GITHUB_APP_ID`, `GITHUB_INSTALLATION_ID`, and `GITHUB_PRIVATE_KEY` to the Worker as secrets. A Linear API key is needed for Linear commands.
-3. Deploy the [persistence service](/docs/persistence) if issue-to-thread records are required. Set `PERSISTENCE_SERVICE_URL` to its actual reachable URL; the checked-in `wrangler.toml` value is only a deployment-specific setting.
+3. Deploy the [persistence service](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/persistence.md) if issue-to-thread records are required. Set `PERSISTENCE_SERVICE_URL` to its actual reachable URL; the checked-in `wrangler.toml` value is only a deployment-specific setting.
 4. Set `DISCORD_PUBLIC_KEY`, `DISCORD_CLIENT_ID`, GitHub credentials, and `LINEAR_API_KEY` as Worker secrets as applicable. Use `botfn/bot-discord/.env.example` for local command registration credentials.
 5. Run `npm --workspace @botfn/discord-bot run register-commands`, then `npm --workspace @botfn/discord-bot run deploy` from the repository root.
 
 The registered commands are `link-github-issue`, `create-github-issue`, `link-linear-issue`, and `create-linear-issue`. Autocomplete fetches repositories or issues from GitHub and teams or issues from Linear. Commands add a Discord thread link to the external issue or create an issue with that link.
 
-The command handler catches persistence failures, logs them, and still reports the external issue operation as successful. Reconcile missing issue-to-thread records if persistence is essential to your workflow. The GitHub and Linear API operations themselves can fail after Discord has acknowledged the command; the Worker then edits the response with an error. Review the [command reference](/docs/reference/commands-and-routes) and [source app](https://github.com/21nCo/super-functions/blob/dev/botfn/bot-discord/src/core.ts) for exact behavior.
+The command handler catches persistence failures, logs them, and still reports the external issue operation as successful. Reconcile missing issue-to-thread records if persistence is essential to your workflow. The GitHub and Linear API operations themselves can fail after Discord has acknowledged the command; the Worker then edits the response with an error. Review the [command reference](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/reference/commands-and-routes.md) and [source app](https://github.com/21nCo/super-functions/blob/dev/botfn/bot-discord/src/core.ts) for exact behavior.
 
 ---
 
@@ -59,11 +59,11 @@ npm --workspace @botfn/discord-bot run dev
 npm --workspace @botfn/persistence-service run dev
 ```
 
-For Discord, register the four slash commands with `npm --workspace @botfn/discord-bot run register-commands` after providing `DISCORD_TOKEN` and `DISCORD_CLIENT_ID` in a local `.env`. Configure the Worker secrets and the persistence URL separately. See the [Discord setup](/docs/discord-bot) before deploying.
+For Discord, register the four slash commands with `npm --workspace @botfn/discord-bot run register-commands` after providing `DISCORD_TOKEN` and `DISCORD_CLIENT_ID` in a local `.env`. Configure the Worker secrets and the persistence URL separately. See the [Discord setup](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/discord-bot.md) before deploying.
 
-For Slack, `@botfn/bot-slack` is a private Worker package. Its `/slack/events` route currently handles URL verification and acknowledges signed events; use it as a receiver starting point, not a complete Slack bot. See [Slack setup](/docs/slack-bot).
+For Slack, `@botfn/bot-slack` is a private Worker package. Its `/slack/events` route currently handles URL verification and acknowledges signed events; use it as a receiver starting point, not a complete Slack bot. See [Slack setup](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/slack-bot.md).
 
-Consumers building another bot can import platform verification, API helpers, and Zod schemas from the [shared packages](/docs/reference/packages). These packages have distinct exports and lifecycles; the source entry points are the authoritative import surface.
+Consumers building another bot can import platform verification, API helpers, and Zod schemas from the [shared packages](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/reference/packages.md). These packages have distinct exports and lifecycles; the source entry points are the authoritative import surface.
 
 ---
 
@@ -75,9 +75,9 @@ Consumers building another bot can import platform verification, API helpers, an
 
 BotFn contains a Discord issue-linking bot, a small Slack event receiver, shared platform helpers, a PostgreSQL persistence service, and an optional Super Console administration capability. These are separate packages and services, not one deployable bot.
 
-The Discord Worker verifies signed interactions, acknowledges slash commands, then calls GitHub or Linear and optionally records issue-to-thread relationships. The Slack Worker verifies signed requests and acknowledges events; it does not yet implement command or event business actions. Start with [getting started](/docs/getting-started), then read the [Discord](/docs/discord-bot), [Slack](/docs/slack-bot), and [persistence](/docs/persistence) guides.
+The Discord Worker verifies signed interactions, acknowledges slash commands, then calls GitHub or Linear and optionally records issue-to-thread relationships. The Slack Worker verifies signed requests and acknowledges events; it does not yet implement command or event business actions. Start with [getting started](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/getting-started.md), then read the [Discord](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/discord-bot.md), [Slack](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/slack-bot.md), and [persistence](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/persistence.md) guides.
 
-These pages follow the current `origin/dev` package layout. The top-level BotFn README still describes an older nested monorepo layout; use the [package map](/docs/reference/packages) and actual package entry points here when integrating. Deployments, external credentials, and hosted database state require separate verification.
+These pages follow the current `origin/dev` package layout. The top-level BotFn README still describes an older nested monorepo layout; use the [package map](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/reference/packages.md) and actual package entry points here when integrating. Deployments, external credentials, and hosted database state require separate verification.
 
 ---
 
@@ -95,7 +95,7 @@ These pages follow the current `origin/dev` package layout. The top-level BotFn 
 
 `@botfn/linear-integration` exports `LinearClient`, `linearRequest`, `getTeams`, `searchIssues`, `getIssue`, `createIssue`, and `createComment`. These call Linear's GraphQL endpoint using the supplied API key and throw on HTTP or GraphQL errors. Scope the key to the intended workspace and operations.
 
-`@botfn/shared-types` provides Zod schemas and TypeScript types for Discord interactions, GitHub, and Linear structures. These schemas validate shapes; they do not authenticate requests. The [package map](/docs/reference/packages) links each source entry point.
+`@botfn/shared-types` provides Zod schemas and TypeScript types for Discord interactions, GitHub, and Linear structures. These schemas validate shapes; they do not authenticate requests. The [package map](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/reference/packages.md) links each source entry point.
 
 ---
 
@@ -109,7 +109,7 @@ The Discord bot and persistence service are independent Workers. Set secrets in 
 
 The Discord app verifies signatures before handling interactions. It defers commands and edits their responses after external API calls. Persistence errors are logged and suppressed, so monitor and reconcile missing records. The GitHub helper uses installation tokens; the Linear helper uses the configured API key. Check the scope and rotation of those credentials in your host environment.
 
-The Slack Worker only verifies and acknowledges events. Its token binding is unused. The top-level BotFn README and architecture note include older path and platform examples that have no matching entry points in this checkout. Consult the [package map](/docs/reference/packages) before copying commands from those files.
+The Slack Worker only verifies and acknowledges events. Its token binding is unused. The top-level BotFn README and architecture note include older path and platform examples that have no matching entry points in this checkout. Consult the [package map](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/reference/packages.md) before copying commands from those files.
 
 The persistence tRPC route does not authenticate callers or partition by tenant. Protect the service before public exposure. The admin capability has its own scoped store contract and does not automatically share the persistence schema. Do not assume that connecting an admin channel deploys or configures a Discord or Slack Worker.
 
@@ -182,7 +182,7 @@ The `/link-*` and `/create-*` entries are Discord slash command names handled in
 | Persistence Worker | `DATABASE_URL` | PostgreSQL schema must be applied separately. |
 | Admin service | `BotFnOperatorStore`, `verifyChannel` | Host supplies scope, permissions, audit, and durable storage. |
 
-Store private keys, signing secrets, and API tokens in the platform's secret mechanism. A URL in `wrangler.toml` is configuration, not proof that the service exists or is reachable. The [Discord guide](/docs/discord-bot) and [persistence guide](/docs/persistence) cover setup order.
+Store private keys, signing secrets, and API tokens in the platform's secret mechanism. A URL in `wrangler.toml` is configuration, not proof that the service exists or is reachable. The [Discord guide](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/discord-bot.md) and [persistence guide](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/persistence.md) cover setup order.
 
 ---
 
@@ -192,9 +192,9 @@ Store private keys, signing secrets, and API tokens in the platform's secret mec
 > BotFn package and runtime contract index.
 
 
-- [Packages](/docs/reference/packages) maps npm names to source entry points and current roles.
-- [Commands and routes](/docs/reference/commands-and-routes) lists the Discord, Slack, persistence, and admin operation surfaces.
-- [Configuration](/docs/reference/configuration) lists the bindings and credentials used by each service.
+- [Packages](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/reference/packages.md) maps npm names to source entry points and current roles.
+- [Commands and routes](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/reference/commands-and-routes.md) lists the Discord, Slack, persistence, and admin operation surfaces.
+- [Configuration](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/reference/configuration.md) lists the bindings and credentials used by each service.
 
 Read the current `origin/dev` source when using a package programmatically. The existing top-level README describes paths that are no longer present in this checkout.
 
