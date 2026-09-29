@@ -28,6 +28,16 @@ export const docsProducts = {
       live: "filefn.com",
     },
   },
+  reviewfn: {
+    packageName: "@reviewfn/docs",
+    docsDir: "reviewfn/docs",
+    kind: "sveltekit-cloudflare",
+    zoneName: "reviewfn.com",
+    hosts: {
+      dev: "dev.reviewfn.com",
+      live: "reviewfn.com",
+    },
+  },
   searchfn: {
     packageName: "@searchfn/docs",
     docsDir: "searchfn/docs",

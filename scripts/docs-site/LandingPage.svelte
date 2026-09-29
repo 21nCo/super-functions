@@ -177,7 +177,7 @@
 
   .landing-card:hover {
     border-color: var(--docsfn-color-primary);
-    box-shadow: 0 8px 28px rgb(37 99 235 / 0.12);
+    box-shadow: 0 8px 28px color-mix(in srgb, var(--docsfn-color-primary) 12%, transparent);
     transform: translateY(-1px);
   }
 

@@ -18,7 +18,7 @@ export function withSourceLinks(text, manifest, product, canonicalUrl) {
     const source = sources.get(url.pathname);
     if (!source) return match;
     const path = source.split("/").map(encodeURIComponent).join("/");
-    return `](https://github.com/21nCo/super-functions/blob/dev/${product}/docs/content/docs/${path}${url.hash})`;
+    return `](https://github.com/21nCo/super-functions/blob/dev/${product}/docs/content/docs/${path}${url.search}${url.hash})`;
   });
 }
 
@@ -26,7 +26,7 @@ export function withSourceLinks(text, manifest, product, canonicalUrl) {
  * --check compares without modifying tracked artifacts.
  * @param {string} directory
  * @param {{llmsTxt: string, llmsFullTxt: string}} artifacts
- * @param {boolean} check
+ * @param {boolean} [check]
  */
 export function writeLlmsArtifacts(directory, artifacts, check = process.argv.includes("--check")) {
   const files = { "llms.txt": artifacts.llmsTxt, "llms-full.txt": artifacts.llmsFullTxt };
