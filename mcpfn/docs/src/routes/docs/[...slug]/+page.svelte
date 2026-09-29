@@ -1,5 +1,6 @@
 <script lang="ts">
   import DocsContent from "@docsfn/svelte/DocsContent.svelte";
+  import McpFnLanding from "$lib/components/McpFnLanding.svelte";
   import DocsLayout from "@docsfn/svelte/DocsLayout.svelte";
   import ApiReferenceRenderer from "@docsfn/svelte/ApiReferenceRenderer.svelte";
   import Breadcrumbs from "@docsfn/svelte/Breadcrumbs.svelte";
@@ -20,6 +21,9 @@
   {/if}
 </svelte:head>
 
+{#if data.surface.canonicalPath === "/docs"}
+  <McpFnLanding siteTitle={data.siteTitle} description={data.surface.description ?? ""} />
+{:else}
 <DocsLayout surface={data.surface} sidebar={data.sidebar}>
   <Breadcrumbs surface={data.surface} />
   {#if data.routeEntry.kind === "page" && data.compiled}
@@ -33,6 +37,7 @@
   {/if}
   <Pagination surface={data.surface} />
 </DocsLayout>
+{/if}
 
 <style>
   .docs-page-article {

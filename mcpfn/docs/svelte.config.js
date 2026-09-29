@@ -1,6 +1,7 @@
 import adapterAuto from "@sveltejs/adapter-auto";
 import adapterCloudflare from "@sveltejs/adapter-cloudflare";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
+import { fileURLToPath } from "node:url";
 
 const adapter = process.env.CLOUDFLARE_DOCS_DEPLOY === "1"
   ? adapterCloudflare()
@@ -14,7 +15,7 @@ const config = {
   preprocess: vitePreprocess({ script: true }),
   kit: {
     adapter,
-    alias: { "@site/docs-search": "../../scripts/docs-site/Search.svelte" },
+    alias: { "@site/docs-search": fileURLToPath(new URL("../../scripts/docs-site/Search.svelte", import.meta.url)) },
     appDir: docsDeploy ? "docs/_app" : "_app",
     paths: {
       assets: /** @type {"" | `http://${string}` | `https://${string}`} */ (process.env.CLOUDFLARE_DOCS_ASSETS_ORIGIN ?? ""),
