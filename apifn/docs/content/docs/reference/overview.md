@@ -111,17 +111,19 @@ permissions:
   pull-requests: write
 jobs:
   api-check:
-    uses: 21nCo/super-functions/.github/workflows/apifn-api-check.yml@dev
+    uses: 21nCo/super-functions/.github/workflows/apifn-api-check.yml@7c6ec512235176b1667b7c5e01193ae783003ac9
     with:
       spec_path: openapi.yml
       collection_dir: .apifn/collection
 ```
 
-Pin a commit or release tag instead of `@dev` when the caller requires an
-immutable workflow. Omit `cli_version` to use the workflow's static default
+The example pins a full-length commit SHA of the repository hosting the workflow.
+Choose a reviewed commit for your own integration; a release tag is suitable
+only when that repository enforces immutable releases. Omit `cli_version` to use
+the workflow's static default
 (`0.0.2`), which must stay equal to that revision's lockfile pin. If you set it
 explicitly, read the version from the same ref in the
-[workflow's CLI lockfile](https://github.com/21nCo/super-functions/blob/dev/.github/apifn-cli-install/package-lock.json); the
+[workflow's CLI lockfile](https://github.com/21nCo/super-functions/blob/7c6ec512235176b1667b7c5e01193ae783003ac9/.github/apifn-cli-install/package-lock.json); the
 input is an assertion, not a package selector. For GitLab/Jenkins/Buildkite,
 run the CLI commands in [Non-GitHub CI](#non-github-ci).
 
@@ -139,7 +141,7 @@ run the CLI commands in [Non-GitHub CI](#non-github-ci).
 - `spec_path` (required): Repo-relative OpenAPI path (e.g. `.apifn/openapi.yml`)
 - `collection_dir` (required): Repo-relative OpenCollection directory (e.g. `.apifn/collection`)
 - `environment` (optional, default `development`): Collection environment
-- `cli_version` (optional, default `0.0.2`): Assertion against the `@apifn/cli` version pinned by the selected workflow revision. The default is static in the workflow file and must stay equal to that revision's lockfile pin. Omit it to use the default, or set it from the same ref in the [workflow's CLI lockfile](https://github.com/21nCo/super-functions/blob/dev/.github/apifn-cli-install/package-lock.json). External callers do not need the lockfile locally—the workflow sparse-checks it out from `job.workflow_repository` at `job.workflow_sha`.
+- `cli_version` (optional, default `0.0.2`): Assertion against the `@apifn/cli` version pinned by the selected workflow revision. The default is static in the workflow file and must stay equal to that revision's lockfile pin. Omit it to use the default, or set it from the same ref in the [workflow's CLI lockfile](https://github.com/21nCo/super-functions/blob/7c6ec512235176b1667b7c5e01193ae783003ac9/.github/apifn-cli-install/package-lock.json). External callers do not need the lockfile locally—the workflow sparse-checks it out from `job.workflow_repository` at `job.workflow_sha`.
 - `base_branch` (optional, default `main`): Branch used to fetch baseline spec
 - `fail_on_breaking` (optional, default `true`): Whether breaking diff exits non-zero
 - `post_pr_comment` (optional, default `true`): Whether to post/update PR summary comment

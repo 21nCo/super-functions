@@ -24,7 +24,7 @@
   <Breadcrumbs surface={data.surface} />
   {#if data.routeEntry.kind === "page" && data.compiled}
     <article class="docs-page-article">
-      <h1 class="docs-page-title">{data.surface.title}</h1>
+      <h1 class="docs-page-title">{data.surface.title ?? data.siteTitle}</h1>
       <DocsContent compiled={data.compiled} />
     </article>
   {:else if data.routeEntry.kind === "api"}

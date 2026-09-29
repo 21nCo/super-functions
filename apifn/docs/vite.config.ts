@@ -3,11 +3,12 @@ import { docsSiteCorePlugin } from "../../scripts/docs-site/vite";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { sveltekit } from "@sveltejs/kit/vite";
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
-  plugins: [docsSiteCorePlugin(import.meta.url), tailwindcss(), sveltekit()],
+  // Tailwind and Kit resolve root Vite types while this site pins Vite 6.
+  plugins: [docsSiteCorePlugin(import.meta.url), tailwindcss(), sveltekit()] as unknown as PluginOption[],
   ssr: {
     // Force @docsfn/core through Vite's transform pipeline so the
     // `@searchfn/client` alias below resolves the workspace source in dev.

@@ -65,6 +65,7 @@ import {
   ResponseDiff,
   PerformanceOverlay,
 } from "@apifn/react";
+import type { TryItProps } from "@apifn/react";
 
 // Docs for one operation
 <EndpointViewer path="/users/{id}" method="get" operation={op} />
@@ -72,16 +73,20 @@ import {
 // Schema tree
 <SchemaViewer schema={userSchema} name="User" required expandDepth={3} />
 
-// Live request console
-// Obtain a short-lived, user-scoped token from your own backend.
-<TryIt
-  path="/users"
-  method="post"
-  operation={op}
-  baseUrl="https://api.example.com"
-  defaultAuth={{ type: "bearer", token: userScopedAccessToken }}
-  onResponse={(r) => console.log(r.statusCode)}
-/>
+// Live request console. Pass a short-lived, user-scoped token from your backend.
+function LiveRequest({ operation, userScopedAccessToken }: {
+  operation: TryItProps["operation"];
+  userScopedAccessToken: string;
+}) {
+  return <TryIt
+    path="/users"
+    method="post"
+    operation={operation}
+    baseUrl="https://api.example.com"
+    defaultAuth={{ type: "bearer", token: userScopedAccessToken }}
+    onResponse={(r) => console.log(r.statusCode)}
+  />;
+}
 
 // History (typically driven by TryIt via onResponse)
 <RequestHistory entries={entries} onClear={() => setEntries([])} onSelect={setSelected} maxEntries={500} />
