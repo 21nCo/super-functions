@@ -5,7 +5,7 @@ description: HTTP endpoints exposed by filefn — annotated OpenAPI spec coverin
 
 # API Reference
 
-filefn exposes 24 paths across 27 operations. The interactive OpenAPI explorer is mounted under `/api/filefn` and reads from the generated [`content/api/filefn.json`](https://docs.filefn.dev/api/filefn.json).
+filefn exposes 24 paths across 27 operations. The API reference is served under `/docs/api`; its source is the generated [`content/api/filefn.json`](https://github.com/21nCo/super-functions/blob/dev/filefn/docs/content/api/filefn.json).
 
 The spec is regenerated on every docs build from `filefn/server/contracts/filefn-client-v1.openapi.json` — a single source of truth shared with the Node, Python, and Swift SDKs.
 

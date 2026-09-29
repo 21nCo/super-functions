@@ -13,7 +13,7 @@ npm install @superfunctions/db drizzle-orm pg
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
-import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
+import { schema } from "./schema"; // Generated Drizzle table registry for this dialect.
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzleAdapter({ db: drizzle(pool, { schema }), dialect: "postgres" });
@@ -28,4 +28,4 @@ Use `getSchema({ namespace })` from `@filefn/server` as the source of table/fiel
 
 See [DB adapters](./db) for the schema contract and [SQLite](./db-sqlite) for a local SQL configuration.
 
-Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
+Generate/import the named `schema` table registry from `./schema` and pass it to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.

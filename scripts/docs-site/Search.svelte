@@ -7,6 +7,8 @@
   let results = $state<DocsSearchRuntimeResultItem[]>([]);
   let pending = $state(false);
   let failure = $state("");
+  let visibleLimit = $state(10);
+  let hasMore = $state(false);
   let requestId = 0;
   const runtime = createDocsSearchRuntime({
     loadArtifact: async () => {
@@ -32,11 +34,15 @@
     const current = ++requestId;
     failure = "";
     results = [];
+    hasMore = false;
     pending = Boolean(query.trim());
     if (!pending) return;
     try {
-      const found = await runtime.query({ query, scope: "all", limit: 10 });
-      if (current === requestId) results = found;
+      const found = await runtime.query({ query, scope: "all", limit: visibleLimit + 1 });
+      if (current === requestId) {
+        hasMore = found.length > visibleLimit;
+        results = found.slice(0, visibleLimit);
+      }
     } catch {
       if (current === requestId) failure = "Search is unavailable. Please try again.";
     } finally {
@@ -55,7 +61,7 @@
     <button type="button" onclick={() => dialog.close()} aria-label="Close search">Close</button>
   </div>
   <label for="docs-search-query">Search terms</label>
-  <input id="docs-search-query" bind:this={input} value={query} oninput={(event) => { query = event.currentTarget.value; void search(); }} type="search" autocomplete="off" placeholder="Search documentation…" />
+  <input id="docs-search-query" bind:this={input} value={query} oninput={(event) => { query = event.currentTarget.value; visibleLimit = 10; void search(); }} type="search" autocomplete="off" placeholder="Search documentation…" />
   <p role="status">{failure ? "" : pending ? "Searching…" : query.trim() ? `${results.length} results` : "Enter a term to search."}</p>
   {#if failure}<p role="alert">{failure}</p>{/if}
   <ul>
@@ -63,6 +69,7 @@
       <li><a href={result.path} onclick={() => dialog.close()}>{result.title}</a></li>
     {/each}
   </ul>
+  {#if hasMore}<button type="button" onclick={() => { visibleLimit += 10; void search(); }}>Show more results</button>{/if}
 </dialog>
 
 <style>

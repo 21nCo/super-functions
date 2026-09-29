@@ -190,7 +190,7 @@ npm install @superfunctions/db drizzle-orm pg
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
-import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
+import { schema } from "./schema"; // Generated Drizzle table registry for this dialect.
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzleAdapter({ db: drizzle(pool, { schema }), dialect: "postgres" });
@@ -205,7 +205,7 @@ Use `getSchema({ namespace })` from `@filefn/server` as the source of table/fiel
 
 See [DB adapters](./db) for the schema contract and [SQLite](./db-sqlite) for a local SQL configuration.
 
-Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
+Generate/import the named `schema` table registry from `./schema` and pass it to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
 
 
 ---
@@ -248,7 +248,7 @@ npm install @superfunctions/db drizzle-orm pg
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
-import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
+import { schema } from "./schema"; // Generated Drizzle table registry for this dialect.
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
 const db = drizzleAdapter({ db: drizzle(pool, { schema }), dialect: "postgres" });
@@ -258,7 +258,7 @@ Pass `db` to `createFileFn`. Size the pool for your database connection budget a
 
 Provision the table and index definitions from `getSchema({ namespace })` exported by `@filefn/server` through your host migration system before handling requests. Neither the adapter nor FileFn runs DDL automatically. There is no `generateSqlForSchema` export from a `@superfunctions/db-postgres` package. See [DB adapters](./db) and [schema](../reference/schema).
 
-Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
+Generate/import the named `schema` table registry from `./schema` and pass it to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
 
 
 ---
@@ -910,37 +910,14 @@ The admin service itself only rejects descriptors with non-empty provider header
 Source: https://filefn.com/docs/ai-resources
 
 
-Use filefn from your AI coding assistant — llms.txt, MCP server, Skills, and editor configurations.
+Machine-readable FileFn documentation and assistant setup.
 
 
 # AI Resources
 
-filefn ships first-class support for AI coding assistants. The same documentation you read here is mirrored as machine-readable surfaces.
+The docs build publishes [llms.txt](./llms-txt) and llms-full.txt at `/docs/llms.txt` and `/docs/llms-full.txt`. The full file contains the authored documentation in one text resource. Assistants can also use the [docs search index](/docs/search.json) to find page titles and paths.
 
-| Surface | Use it from | Best for |
-| --- | --- | --- |
-| [llms.txt](./llms-txt) | Anywhere | Auto-included context in tools that read llms.txt. |
-| [llms-full.txt](./llms-txt) | Anywhere | The whole site as a single text file. |
-| [MCP server](./mcp) | MCP-aware clients (Claude Desktop, Cursor, etc.) | Live search + page fetch. |
-| [Skills](./skills) | Skill-aware assistants | Pre-baked workflows (set up filefn, add a processor, debug a stuck upload). |
-| [Cursor](./cursor) | Cursor IDE | Project-level rules + skills. |
-| [Claude](./claude) | Claude Code / Claude Desktop | CLAUDE.md hints + MCP wiring. |
-| [Codex](./codex) | OpenAI Codex / GPT-based agents | system-prompt friendly bundle. |
-
-## Why?
-
-filefn's surface is wide: 24 routes, 27 operations, a dozen configuration knobs, eight bundled processors, six storage adapters, and language SDKs in JS, Python, and Swift. AI assistants help users navigate it without reading every page.
-
-When you wire filefn into your AI tool of choice, the tool can:
-
-- answer "how do I make this S3 bucket use a CDN?" without you opening a docs tab.
-- generate a custom processor matching your style with up-to-date type signatures.
-- detect when your error code (e.g. `FILEFN_POLICY_MAX_SIZE_EXCEEDED`) is hit and suggest the relevant fix.
-- run pre-baked workflows ("install filefn into my Hono app", "add HEIC support") without you knowing the route map.
-
-## See also
-
-- [Reference](../reference) — the same content the AI surfaces consume.
+Start with the small index, then open the relevant [guide](/docs/getting-started) or [reference](/docs/reference). The site does not currently publish an MCP endpoint or downloadable skill catalog; the [MCP](./mcp) and [Skills](./skills) pages describe that availability boundary.
 
 
 ---
@@ -950,77 +927,20 @@ When you wire filefn into your AI tool of choice, the tool can:
 Source: https://filefn.com/docs/ai-resources/claude
 
 
-Wire filefn into Claude Desktop and Claude Code — MCP server, CLAUDE.md, and recommended hints.
+Use the FileFn documentation indexes with Claude.
 
 
 # Claude
 
-## Claude Desktop
-
-In `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "filefn": {
-      "type": "http",
-      "url": "https://docs.filefn.dev/mcp"
-    }
-  }
-}
-```
-
-Restart Claude Desktop. The MCP tools panel now lists filefn search / fetch.
-
-## Claude Code
-
-```bash
-claude mcp add filefn https://docs.filefn.dev/mcp --type http
-```
-
-Or use Droid's wrapper:
-
-```bash
-droid mcp add filefn https://docs.filefn.dev/mcp --type http
-```
-
-## CLAUDE.md
-
-Drop a `CLAUDE.md` into your repo root:
+Download [`llms.txt`](/docs/llms.txt) or [`llms-full.txt`](/docs/llms-full.txt) and provide the relevant content to Claude. For a project, a short `CLAUDE.md` can point to the docs and the packages in use:
 
 ```md
-# filefn
+# FileFn
 
-This repo uses **filefn** for file uploads, processing, and previews.
-
-Key packages:
-- `@filefn/server` — server kernel (createFileFn, FileProvider, Authorizer).
-- `@filefn/client` — browser/Bun/Deno client (uploadFile, resumeUpload, resolveRenderable).
-- `@filefn/processing` — bundled processors (thumbnails, PDF, OCR, image transforms, video, audio).
-- `FileFnClient` (Swift) — native iOS/macOS client.
-
-Common operations:
-- New upload: `client.uploadFile({ policy, file })` returns an `UploadHandle`.
-- Resumable: `client.resumeUpload(uploadSessionId, file, { uploadSessionToken })`.
-- Render: `client.resolveRenderable({ fileId, intent: "preview" })`.
-- Server routes: mount `fileFn.router.handle(request)`.
-
-For docs, use the filefn MCP server (`search_docs`, `fetch_page`, `get_route`, `get_error`).
-For workflows, use filefn skills (`list_skills` then `run_skill`).
-
-Common error codes:
-- `FILEFN_POLICY_NOT_FOUND` — policy name doesn't exist.
-- `FILEFN_POLICY_MAX_SIZE_EXCEEDED` — file too large for policy.
-- `FILEFN_UPLOAD_SESSION_EXPIRED` — session past TTL.
-- `FILEFN_QUOTA_EXCEEDED` — storage quota hit.
+This project uses FileFn for uploads and downloads. Read https://filefn.com/docs/getting-started and the relevant adapter guide before changing its configuration. Check the installed package APIs and run the project tests.
 ```
 
-Claude reads `CLAUDE.md` on every conversation in that repo and uses it to ground its answers.
-
-## See also
-
-- [MCP server](./mcp).
-- [Skills](./skills).
+The docs site currently has no MCP endpoint to register. See [MCP availability](./mcp).
 
 
 ---
@@ -1030,95 +950,14 @@ Claude reads `CLAUDE.md` on every conversation in that repo and uses it to groun
 Source: https://filefn.com/docs/ai-resources/codex
 
 
-Wire filefn into OpenAI Codex / GPT-based agents — system prompt bundle, JSON schema, and tool wrappers.
+Ground FileFn changes in the generated docs and source.
 
 
 # Codex
 
-For agents based on OpenAI Codex / GPT (Codex CLI, ChatGPT custom GPTs, Continue.dev with GPT models):
+Use [`llms.txt`](/docs/llms.txt) to find the relevant page, then read that page or [`llms-full.txt`](/docs/llms-full.txt) before changing a FileFn integration. The [search index](/docs/search.json) provides structured page metadata for clients that implement their own retrieval.
 
-## System prompt bundle
-
-Drop `https://docs.filefn.dev/llms.txt` (lightweight) or `https://docs.filefn.dev/llms-full.txt` (full) into the agent's system prompt. The lightweight version is ~3 KiB and gives the agent enough scaffolding to know what's available; the full version is ~150 KiB and is suitable for agents that pre-cache context.
-
-## Function tools
-
-For agents that support function calling, register the filefn MCP tools. Most clients (Cursor, Continue, ChatGPT custom GPT) speak MCP natively; for ones that don't, write a thin wrapper:
-
-```ts
-const tools = [
-  {
-    type: "function",
-    function: {
-      name: "filefn_search_docs",
-      description: "Search filefn documentation",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string" },
-          limit: { type: "integer", default: 5 },
-        },
-        required: ["query"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "filefn_fetch_page",
-      description: "Fetch a filefn docs page",
-      parameters: {
-        type: "object",
-        properties: {
-          slug: { type: "string" },
-        },
-        required: ["slug"],
-      },
-    },
-  },
-];
-
-async function handleToolCall(name, args) {
-  if (name === "filefn_search_docs") {
-    return await fetch(`https://docs.filefn.dev/search.json?q=${encodeURIComponent(args.query)}&limit=${args.limit}`)
-      .then((r) => r.json());
-  }
-  if (name === "filefn_fetch_page") {
-    return await fetch(`https://docs.filefn.dev/docs/${args.slug}/raw`).then((r) => r.text());
-  }
-}
-```
-
-The kernel exposes `/search.json` and `/docs/<slug>/raw` for non-MCP consumers.
-
-## ChatGPT custom GPT
-
-In the GPT builder:
-
-1. Knowledge → Upload `llms-full.txt`.
-2. Actions → Import the OpenAPI from `https://docs.filefn.dev/api/filefn.json` (the docs site OpenAPI, not the filefn server's OpenAPI).
-3. Instructions → "When the user asks about filefn, search the knowledge base or call the search_docs / fetch_page actions before answering."
-
-## Continue.dev
-
-`config.json`:
-
-```json
-{
-  "mcpServers": [
-    {
-      "name": "filefn",
-      "type": "http",
-      "url": "https://docs.filefn.dev/mcp"
-    }
-  ]
-}
-```
-
-## See also
-
-- [MCP server](./mcp) — the canonical surface.
-- [llms.txt](./llms-txt) — static alternative.
+The docs site does not expose MCP tools, a raw-page endpoint, or a separate OpenAPI action endpoint. Use the [API reference](/docs/api) and repository contracts when building tools. Check the installed package version and run local tests against generated code.
 
 
 ---
@@ -1128,68 +967,14 @@ In the GPT builder:
 Source: https://filefn.com/docs/ai-resources/cursor
 
 
-Wire filefn into Cursor — MCP server, project rules, and recommended .cursorrules.
+Give Cursor access to current FileFn documentation.
 
 
 # Cursor
 
-## MCP
+Add `https://filefn.com/docs` as a docs source in Cursor, or copy the generated [`llms.txt`](/docs/llms.txt) index into your project context. Use the [quickstart](/docs/quickstart) and [adapter guides](/docs/adapters) for the specific stack you are editing.
 
-In `.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "filefn": {
-      "type": "http",
-      "url": "https://docs.filefn.dev/mcp"
-    }
-  }
-}
-```
-
-Reload Cursor. The Composer panel now has search / fetch tools wired to the filefn docs.
-
-## .cursorrules
-
-```md
-# filefn rules
-
-This project uses filefn for file uploads, processing, and previews.
-
-When asked about file uploads:
-- Prefer @filefn/client (`uploadFile`, `resumeUpload`).
-- Always pass a `policy` matching one defined on the server.
-- Honour OPFS offline if `offline.enabled` is true.
-
-When asked about server config:
-- Use `createFileFn` from @filefn/server.
-- Wire @superfunctions/db and @superfunctions/storage adapters.
-- For processing, use processors from @filefn/processing.
-
-Reference docs at https://docs.filefn.dev. Use the MCP search_docs / fetch_page tools to find the latest content.
-```
-
-## Project rules folder
-
-For larger setups, create `.cursor/rules/filefn.md`:
-
-```md
-# filefn
-
-@filefn/server is the kernel. @filefn/client is the browser SDK. @filefn/processing has bundled processors.
-
-Routes are mounted via `fileFn.router.handle(request)`. The kernel returns `Response | null`; null means 404.
-
-Errors throw `FileFnError` with a canonical `code` (e.g. `FILEFN_POLICY_NOT_FOUND`). On the client, errors are `FileFnHttpError`.
-
-For more, query the filefn MCP server: search_docs / fetch_page / get_route / get_error.
-```
-
-## See also
-
-- [MCP server](./mcp) — the underlying tools.
-- [Skills](./skills) — pre-baked workflows.
+The docs site currently has no MCP endpoint to add to `.cursor/mcp.json`. See [MCP availability](./mcp).
 
 
 ---
@@ -1199,307 +984,61 @@ For more, query the filefn MCP server: search_docs / fetch_page / get_route / ge
 Source: https://filefn.com/docs/ai-resources/llms-txt
 
 
-The static AI surfaces — llms.txt, llms-full.txt, llms-rich.json — generated on every docs build.
+Use the generated FileFn documentation indexes with an AI assistant.
 
 
 # llms.txt
 
-filefn publishes three machine-readable surfaces alongside the docs site:
+The docs build generates two text resources:
 
-| URL | Format | Use |
-| --- | --- | --- |
-| `/llms.txt` | Plain text outline | Lightweight context drop-in for any LLM. |
-| `/llms-full.txt` | Full plain text | The entire docs as one file. ~150 KiB. |
-| `/llms-rich.json` | Structured JSON | Pages with route maps, error codes, type signatures. |
+| URL | Contents |
+| --- | --- |
+| [`/docs/llms.txt`](/docs/llms.txt) | Page titles, descriptions, and links. |
+| [`/docs/llms-full.txt`](/docs/llms-full.txt) | Full authored docs content. |
 
-These are generated automatically by `scripts/generate-llms.mjs` on every docs build (`npm run generate:llms` or `npm run build`).
+For a local copy after the site is deployed:
 
-## Format
-
-`llms.txt` follows the [llmstxt.org](https://llmstxt.org/) specification. A short version:
-
-```
-# filefn
-
-> File uploads, downloads, processing, and previews — for any stack.
-
-## Docs
-
-- [Welcome](https://docs.filefn.dev/docs): Overview and capability matrix.
-- [Getting started](https://docs.filefn.dev/docs/getting-started): 9-step walkthrough.
-- [Quickstart](https://docs.filefn.dev/docs/quickstart): Framework-specific.
-- [Core Concepts](https://docs.filefn.dev/docs/core-concepts): Architecture.
-- [Features](https://docs.filefn.dev/docs/features): Bundled features.
-- [SDKs](https://docs.filefn.dev/docs/sdk): Server, client, Python, Swift.
-- [Adapters](https://docs.filefn.dev/docs/adapters): Storage and DB.
-- [Frameworks](https://docs.filefn.dev/docs/frameworks): Production wiring.
-- [Recipes](https://docs.filefn.dev/docs/recipes): Production patterns.
-- [Examples](https://docs.filefn.dev/docs/examples): Reference apps.
-- [Reference](https://docs.filefn.dev/docs/reference): Routes, errors, events, schema.
-
-## Optional
-
-- [llms-full.txt](https://docs.filefn.dev/llms-full.txt): The whole site.
-- [OpenAPI](https://docs.filefn.dev/api/filefn.json): Annotated spec.
-- [MCP](https://docs.filefn.dev/docs/ai-resources/mcp): Live search + fetch.
+```sh
+curl https://filefn.com/docs/llms.txt -o filefn-llms.txt
 ```
 
-## Use it from any tool
+The generated indexes are also committed as `filefn/docs/static/llms.txt` and `filefn/docs/static/llms-full.txt`. During development, use those files directly. Regenerate them with `npm run generate:llms --workspace=@filefn/docs` after changing docs content.
 
-Most LLM clients accept arbitrary text context. Drop `llms.txt` into your project's prompt:
-
-```bash
-curl https://docs.filefn.dev/llms.txt > .ai/filefn-llms.txt
-# include .ai/filefn-llms.txt in your assistant's system prompt
-```
-
-For tools that read `llms.txt` directly (Cursor, certain MCP servers), they'll discover it via the well-known URL.
-
-## llms-full.txt
-
-When the outline isn't enough — e.g. you want the full route reference and the entire processor catalog inline — use `llms-full.txt`. It's a single document containing every docs page, in IA order.
-
-## llms-rich.json
-
-Structured JSON for tools that want metadata (route HTTP methods, error code groups, page tags). Schema:
-
-```jsonc
-{
-  "site": { "name": "filefn", "tagline": "...", "version": "..." },
-  "pages": [
-    {
-      "slug": "core-concepts/upload-sessions",
-      "title": "Upload sessions",
-      "description": "...",
-      "tags": ["multipart", "uploads", "lifecycle"],
-      "url": "https://docs.filefn.dev/docs/core-concepts/upload-sessions",
-      "body": "..."
-    }
-  ],
-  "routes": [
-    { "method": "POST", "path": "/upload/init", "description": "..." }
-  ],
-  "errors": [
-    { "code": "FILEFN_POLICY_NOT_FOUND", "status": 404, "description": "..." }
-  ]
-}
-```
-
-## See also
-
-- [MCP server](./mcp) — live alternative.
-- [Reference](../reference) — the same content, formatted for humans.
+The site does not generate `llms-rich.json`. The [search index](/docs/search.json) is a separate JSON resource used by site search.
 
 
 ---
 
-# MCP server
+# MCP availability
 
 Source: https://filefn.com/docs/ai-resources/mcp
 
 
-Connect AI assistants to live filefn docs via the Model Context Protocol — search, fetch, and reference.
+Current machine-readable FileFn docs and MCP endpoint status.
 
 
-# MCP server
+# MCP availability
 
-filefn ships an MCP server that exposes the docs site as live tools. Clients see:
+This DocsFn site does not expose an MCP server or `/mcp` route. Do not register the retired `docs.filefn.dev/mcp` address in an assistant.
 
-| Tool | Purpose |
-| --- | --- |
-| `search_docs` | Full-text search; returns matching pages with snippets. |
-| `fetch_page` | Fetch a single page's full content by slug. |
-| `list_pages` | Enumerate the docs IA. |
-| `get_route` | Look up an HTTP route by `path` + `method`. |
-| `get_error` | Look up an error by code. |
-| `get_event` | Look up an event by name. |
-
-## Installing
-
-```bash
-droid mcp add filefn https://docs.filefn.dev/mcp --type http
-```
-
-That registers the MCP server with Droid and similar MCP-aware clients.
-
-For Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "filefn": {
-      "type": "http",
-      "url": "https://docs.filefn.dev/mcp"
-    }
-  }
-}
-```
-
-For Cursor (`.cursor/mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "filefn": {
-      "type": "http",
-      "url": "https://docs.filefn.dev/mcp"
-    }
-  }
-}
-```
-
-## Self-hosting
-
-The MCP server is part of the docs site. To run it under your own domain:
-
-```bash
-git clone https://github.com/21nco/super-functions.git
-cd super-functions/filefn/docs
-npm install
-npm run build
-npm run start
-```
-
-The server is available at `https://your-domain/mcp`. Behind it is the same content as `llms-full.txt` plus the structured `llms-rich.json` index.
-
-## Tool details
-
-### `search_docs`
-
-```jsonc
-{
-  "name": "search_docs",
-  "description": "Full-text search filefn documentation",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "query": { "type": "string" },
-      "limit": { "type": "integer", "default": 10 }
-    },
-    "required": ["query"]
-  }
-}
-```
-
-Returns top matches with title, snippet, slug.
-
-### `fetch_page`
-
-```jsonc
-{
-  "name": "fetch_page",
-  "description": "Fetch a single docs page by slug",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "slug": { "type": "string" }
-    },
-    "required": ["slug"]
-  }
-}
-```
-
-Returns the full markdown.
-
-### `get_route`
-
-```jsonc
-{
-  "name": "get_route",
-  "description": "Look up an HTTP route by method + path",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"] },
-      "path": { "type": "string" }
-    },
-    "required": ["method", "path"]
-  }
-}
-```
-
-Returns the route's request schema, response schema, error codes, and a link to the docs page.
-
-### `get_error`
-
-```jsonc
-{
-  "name": "get_error",
-  "description": "Look up an error code",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "code": { "type": "string" }
-    },
-    "required": ["code"]
-  }
-}
-```
-
-Returns the canonical message, HTTP status, and "common causes" / "fixes" prose.
-
-## See also
-
-- [llms.txt](./llms-txt) — static alternative.
-- [Skills](./skills) — pre-baked workflows.
+For machine-readable documentation, use [llms.txt](./llms-txt) or the [search index](/docs/search.json). To build an MCP integration, host an MCP server separately and point its tools at these resources; the docs site does not supply search or fetch MCP tools itself.
 
 
 ---
 
-# Skills
+# Skills availability
 
 Source: https://filefn.com/docs/ai-resources/skills
 
 
-Pre-baked filefn workflows your AI assistant can run on your behalf — install, configure, debug, extend.
+FileFn guides available for assistant workflows.
 
 
-# Skills
+# Skills availability
 
-A "skill" is a small, self-contained recipe an AI assistant can run end-to-end. filefn ships skills for the most common workflows.
+This docs site does not publish a `/skills/` catalog or a `list_skills` MCP tool. Use the [quickstarts](/docs/quickstart), [adapter guides](/docs/adapters), and [recipes](/docs/recipes) as source material when writing an assistant workflow for a project.
 
-| Skill | What it does |
-| --- | --- |
-| `filefn-install` | Detects your framework, installs filefn, adds the route mount, writes a sample policy. |
-| `filefn-add-storage` | Replaces the default local FS storage with S3 / GCS / R2 / MinIO. |
-| `filefn-add-processor` | Adds a bundled processor (thumbnails, OCR, video) to your config. |
-| `filefn-add-share-links` | Wires share-link UI components into your app. |
-| `filefn-debug-upload` | Walks the upload state machine to diagnose stuck uploads. |
-| `filefn-write-processor` | Scaffolds a custom `Processor` with tests. |
-| `filefn-add-tenant-isolation` | Adds tenant scoping to storage paths, quotas, and authorizer. |
-| `filefn-migrate-from` | Migrates from UploadThing / Roll-your-own / Direct S3 to filefn. |
-
-## Discoverability
-
-Skills are exposed via the MCP server (`list_skills` tool) and as static markdown under `https://docs.filefn.dev/skills/`. AI assistants that support skills (Claude Code, Cursor, Droid) discover them automatically once the MCP server is registered.
-
-## Authoring your own
-
-Skills are markdown files with a frontmatter header:
-
-```md
----
-name: filefn-add-watermark-processor
-description: Add an image watermarking processor to your filefn config.
-inputs:
-  - name: watermark_path
-    description: Path to the PNG watermark.
-    type: string
----
-
-# Steps
-
-1. Read filefn server config.
-2. Add a `createWatermarkProcessor` import.
-3. Insert the processor into `processing.processors`.
-4. Run tests.
-```
-
-Drop them under your project's `.factory/skills/` directory and the assistant picks them up.
-
-## See also
-
-- [Cursor](./cursor), [Claude](./claude), [Codex](./codex) — how each tool consumes skills.
+Check package APIs and run the project's tests before applying generated configuration. The [LLM indexes](./llms-txt) provide a page list and full text for retrieval.
 
 
 ---
@@ -1514,7 +1053,7 @@ HTTP endpoints exposed by filefn — annotated OpenAPI spec covering uploads, do
 
 # API Reference
 
-filefn exposes 24 paths across 27 operations. The interactive OpenAPI explorer is mounted under `/api/filefn` and reads from the generated [`content/api/filefn.json`](https://docs.filefn.dev/api/filefn.json).
+filefn exposes 24 paths across 27 operations. The API reference is served under `/docs/api`; its source is the generated [`content/api/filefn.json`](https://github.com/21nCo/super-functions/blob/dev/filefn/docs/content/api/filefn.json).
 
 The spec is regenerated on every docs build from `filefn/server/contracts/filefn-client-v1.openapi.json` — a single source of truth shared with the Node, Python, and Swift SDKs.
 
@@ -4966,7 +4505,7 @@ Bun's `Bun.serve(...)` already speaks `Request` / `Response`. filefn drops in:
 ```ts
 import { createFileFn, createNucleusPolicies } from "@filefn/server";
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
-import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
+import { schema } from "./schema"; // Generated Drizzle table registry for this dialect.
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 import { Database } from "bun:sqlite";
@@ -5029,6 +4568,9 @@ Bun.serve({ port: 3000, fetch: app.fetch });
 
 - [Quickstart › Bun](../quickstart/bun) — minimal version.
 
+## Schema setup
+
+Export the table registry as a named `schema` value from `./schema` and pass it to `drizzle(..., { schema })`. Apply the matching SQL migrations before starting the server.
 Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
 
 
@@ -7954,7 +7496,7 @@ Default authorizer reads `filefn_file_permissions` and respects ownership.
 ```ts
 const fileFn = createFileFn({
   db: createPostgresAdapter({ pool }),
-  storage: createS3Storage({ region, bucket, cdnPrefix }),
+  storage: createS3Storage({ region, bucket }),
   policies: createNucleusPolicies(),
 
   auth: {

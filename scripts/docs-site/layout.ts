@@ -2,7 +2,10 @@
 export function observeTopBar(root: HTMLElement): () => void {
   const bar = root.querySelector<HTMLElement>(".docsfn-topbar");
   if (!bar) return () => {};
-  const update = () => root.style.setProperty("--docsfn-sticky-top-offset", `${bar.getBoundingClientRect().height}px`);
+  const update = () => {
+    const height = Math.ceil(bar.getBoundingClientRect().height);
+    if (height > 0) root.style.setProperty("--docsfn-sticky-top-offset", `${height}px`);
+  };
   update();
   const observer = new ResizeObserver(update);
   observer.observe(bar);

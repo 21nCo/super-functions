@@ -24,5 +24,6 @@
       "node"
     ]
   },
-  "extends": "./.svelte-kit/tsconfig.json"
+  "extends": "./.svelte-kit/tsconfig.json",
+  "files": ["svelte.config.js"]
 }

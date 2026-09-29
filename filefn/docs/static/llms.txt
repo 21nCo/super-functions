@@ -20,13 +20,13 @@
 - [Cloudflare R2 adapter](https://filefn.com/docs/adapters/storage-r2): createS3Storage configured for Cloudflare R2 — egress-free production storage with full S3 multipart compatibility.
 - [S3 adapter](https://filefn.com/docs/adapters/storage-s3): createS3Storage — production-grade storage on AWS S3 with signed URLs and multipart uploads.
 - [Administration](https://filefn.com/docs/admin): Bind FileFn's scoped Super Console capability to an authorized principal.
-- [AI Resources](https://filefn.com/docs/ai-resources): Use filefn from your AI coding assistant — llms.txt, MCP server, Skills, and editor configurations.
-- [Claude](https://filefn.com/docs/ai-resources/claude): Wire filefn into Claude Desktop and Claude Code — MCP server, CLAUDE.md, and recommended hints.
-- [Codex](https://filefn.com/docs/ai-resources/codex): Wire filefn into OpenAI Codex / GPT-based agents — system prompt bundle, JSON schema, and tool wrappers.
-- [Cursor](https://filefn.com/docs/ai-resources/cursor): Wire filefn into Cursor — MCP server, project rules, and recommended .cursorrules.
-- [llms.txt](https://filefn.com/docs/ai-resources/llms-txt): The static AI surfaces — llms.txt, llms-full.txt, llms-rich.json — generated on every docs build.
-- [MCP server](https://filefn.com/docs/ai-resources/mcp): Connect AI assistants to live filefn docs via the Model Context Protocol — search, fetch, and reference.
-- [Skills](https://filefn.com/docs/ai-resources/skills): Pre-baked filefn workflows your AI assistant can run on your behalf — install, configure, debug, extend.
+- [AI Resources](https://filefn.com/docs/ai-resources): Machine-readable FileFn documentation and assistant setup.
+- [Claude](https://filefn.com/docs/ai-resources/claude): Use the FileFn documentation indexes with Claude.
+- [Codex](https://filefn.com/docs/ai-resources/codex): Ground FileFn changes in the generated docs and source.
+- [Cursor](https://filefn.com/docs/ai-resources/cursor): Give Cursor access to current FileFn documentation.
+- [llms.txt](https://filefn.com/docs/ai-resources/llms-txt): Use the generated FileFn documentation indexes with an AI assistant.
+- [MCP availability](https://filefn.com/docs/ai-resources/mcp): Current machine-readable FileFn docs and MCP endpoint status.
+- [Skills availability](https://filefn.com/docs/ai-resources/skills): FileFn guides available for assistant workflows.
 - [API Reference](https://filefn.com/docs/api): HTTP endpoints exposed by filefn — annotated OpenAPI spec covering uploads, downloads, share links, grants, processing, and capabilities.
 - [Core Concepts](https://filefn.com/docs/core-concepts): How filefn is wired — upload sessions, multipart, policies, render intents, the canonical envelope/error model, share links, grants, dedup, offline, events, and security.
 - [Architecture](https://filefn.com/docs/core-concepts/architecture): How filefn separates upload sessions, files, share links, grants, processing, and adapters into composable subsystems.
