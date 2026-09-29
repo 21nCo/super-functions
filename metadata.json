@@ -1,0 +1,51 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3Q44NS936ZWYB3BPG6DD8KR",
+  "strategy": "manual-commit",
+  "branch": "codex/docs-apifn-20260926",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    "apifn/docs/content/docs/diff-and-ci.md",
+    "apifn/docs/content/docs/reference/overview.md",
+    "apifn/docs/content/docs/reference/react.md",
+    "apifn/docs/content/docs/reference/snippets.md",
+    "apifn/docs/package.json",
+    "apifn/docs/scripts/generate-llms.mjs",
+    "apifn/docs/src/routes/+page.svelte",
+    "apifn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "apifn/docs/src/routes/docs/[...slug]/+page.svelte",
+    "apifn/docs/static/llms-full.txt",
+    "apifn/docs/vite.config.ts",
+    "authfn/docs/scripts/generate-llms.mjs",
+    "authfn/docs/src/lib/server/docs-site-source.ts",
+    "authfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "authfn/docs/vite.config.ts",
+    "filefn/docs/scripts/generate-llms.mjs",
+    "filefn/docs/src/lib/server/docs-site-source.ts",
+    "filefn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "filefn/docs/static/llms-full.txt",
+    "filefn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/cloudflare-docs/select-products.mjs",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/page.ts",
+    "scripts/docs-site/vite.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 248858,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 28359808,
+    "output_tokens": 51439,
+    "api_call_count": 173
+  }
+}
