@@ -1,0 +1,37 @@
+datafn/docs/app/layout.tsx
+  s_181bb405165ede::t_01ca33081bcaee 9-13
+datafn/docs/content/docs/reference/events.mdx
+  s_181bb405165ede::t_01ca33081bcaee 41,47
+datafn/docs/content/docs/ai-resources/claude.mdx
+  s_181bb405165ede::t_14e7052b18abc5 40
+datafn/docs/content/docs/ai-resources/codex.mdx
+  s_181bb405165ede::t_7351d3565515cc 47
+datafn/docs/content/docs/ai-resources/cursor.mdx
+  s_181bb405165ede::t_4c9e07eb37d940 40,50,53
+datafn/docs/content/docs/ai-resources/index.mdx
+  s_181bb405165ede::t_af0467cf3d30ff 35-37
+datafn/docs/content/docs/ai-resources/llms-txt.mdx
+  s_181bb405165ede::t_eab44425f1e28e 15,21,31,44,79
+datafn/docs/content/docs/ai-resources/mcp.mdx
+  s_181bb405165ede::t_81cc14d65ac417 33
+datafn/docs/content/docs/ai-resources/skills.mdx
+  s_181bb405165ede::t_bf3c11b6ef0b72 54,108
+datafn/docs/public/llms-full.txt
+  s_181bb405165ede::t_173653adf8a777 52,157,235,245,248,324,330,340,353,388,427,555,609,652-654,26861,26867
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ec8e558eda07f8b0e528ac3450e769ddcea474e8",
+  "prompts": {},
+  "sessions": {
+    "s_181bb405165ede": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0eccb-56ef-7ea0-a2e1-c84027ac735e",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
