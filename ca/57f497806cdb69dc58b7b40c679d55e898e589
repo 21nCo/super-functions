@@ -1,0 +1,67 @@
+scripts/docs-site/llms.mjs
+  s_110c7532cf7634::t_cffd13ee5ee622 17
+scripts/docs-site/runtime.test.ts
+  s_110c7532cf7634::t_782cf3dc5ebe88 67-79
+filefn/docs/scripts/generate-llms.mjs
+  s_110c7532cf7634::t_cffd13ee5ee622 2,79-82
+filefn/docs/src/routes/blog/+page.server.ts
+  s_110c7532cf7634::t_1bf03e7b812f84 9
+filefn/docs/vite.config.ts
+  s_110c7532cf7634::t_8567c91eae19c8 6,10
+filefn/docs/content/docs/adapters/db-postgres.md
+  s_110c7532cf7634::t_1bf03e7b812f84 16,26
+filefn/docs/svelte.config.js
+  s_110c7532cf7634::t_8567c91eae19c8 4,18
+filefn/docs/src/app.html
+  s_110c7532cf7634::t_8567c91eae19c8 6
+filefn/docs/content/docs/adapters/db-drizzle.md
+  s_110c7532cf7634::t_1bf03e7b812f84 16,31
+filefn/docs/content/docs/frameworks/bun.md
+  s_110c7532cf7634::t_1bf03e7b812f84 13,78
+filefn/docs/tsconfig.json
+  s_110c7532cf7634::t_8567c91eae19c8 28
+scripts/docs-site/README.md
+  s_110c7532cf7634::t_8567c91eae19c8 9
+.github/workflows/ci.yml
+  s_110c7532cf7634::t_62f0545f5724aa 120,122
+authfn/docs/package.json
+  s_110c7532cf7634::t_079a92d92212c0 32-33,39-40
+authfn/docs/src/lib/server/docs-site-source.ts
+  s_110c7532cf7634::t_ef023166dccdac 2,4-5,7-8,11-22
+authfn/docs/src/routes/+page.svelte
+  s_110c7532cf7634::t_4bdb750f1f337f 2,39
+authfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_110c7532cf7634::t_66d13d68a8a84f 2-3,8
+authfn/docs/vite.config.ts
+  s_110c7532cf7634::t_8e823c6926f7ef 2,17
+filefn/docs/package.json
+  s_110c7532cf7634::t_01d1124a64458c 29,31,35-36
+filefn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_110c7532cf7634::t_1f4299030ffe43 1,3,7-17,19-23
+filefn/docs/static/llms-full.txt
+  s_110c7532cf7634::t_ca44338b94631f 193,208,251,261,296,899,918,920,935,958,960,975,996-997,1007,1024,1039,4508,4573,4588,4606,4608,4922,6356,7040
+package-lock.json
+  s_110c7532cf7634::t_8d2829df340d8d 875-876,8977,8983,9046-9108,9130-9204,9217-9330
+scripts/docs-site/page.ts
+  s_110c7532cf7634::t_5aa78f662b093f 1-120
+scripts/docs-site/vite.ts
+  s_110c7532cf7634::t_866f49f19005a7 11
+scripts/docs-site/vitest.config.ts
+  s_110c7532cf7634::t_5e8834fc1ef485 4,7-12,14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ca57f497806cdb69dc58b7b40c679d55e898e589",
+  "prompts": {},
+  "sessions": {
+    "s_110c7532cf7634": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee25-fef3-7643-b3da-8732f3cec764",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
