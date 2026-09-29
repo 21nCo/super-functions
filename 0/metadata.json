@@ -1,0 +1,55 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3PF5JJEWACT1GKDS5XVQAF4",
+  "session_id": "01a0eccb-56ef-7ea0-a2e1-c84027ac735e",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-29T11:35:30.730103Z",
+  "branch": "review/docs-pr-211-20260929",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "datafn/docs/app/layout.tsx",
+    "datafn/docs/content/docs/ai-resources/claude.mdx",
+    "datafn/docs/content/docs/ai-resources/codex.mdx",
+    "datafn/docs/content/docs/ai-resources/cursor.mdx",
+    "datafn/docs/content/docs/ai-resources/index.mdx",
+    "datafn/docs/content/docs/ai-resources/llms-txt.mdx",
+    "datafn/docs/content/docs/ai-resources/mcp.mdx",
+    "datafn/docs/content/docs/ai-resources/skills.mdx",
+    "datafn/docs/content/docs/reference/events.mdx",
+    "datafn/docs/public/llms-full.txt"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-sol",
+  "turn_id": "98b450a04b6e",
+  "checkpoint_transcript_start": 1969,
+  "transcript_lines_at_start": 1969,
+  "compact_transcript_start": 281,
+  "token_usage": {
+    "input_tokens": 34141,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 5280000,
+    "output_tokens": 5103,
+    "api_call_count": 62
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-29T11:35:30.580019Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 536,
+    "human_modified": 511,
+    "human_removed": 0,
+    "total_committed": 536,
+    "total_lines_changed": 1047,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
