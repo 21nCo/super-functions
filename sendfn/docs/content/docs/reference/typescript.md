@@ -17,7 +17,7 @@ The `sendfn` SDK is a unified communications platform that provides email, SMS, 
 ## Installation
 
 ```bash
-npm install sendfn @superfunctions/db @superfunctions/http express @superfunctions/http-express
+npm install sendfn @superfunctions/db @superfunctions/http@0.1.2 @superfunctions/http-express@0.1.2 express
 ```
 
 ## Verify From Repo Root
@@ -105,7 +105,8 @@ if (!client.router) throw new Error('Set enableApi: true before mounting');
 app.use(toExpress(client.router));
 app.listen(3000);
 
-// Endpoints (Requires 'Authorization: Bearer <adminKey>'):
+// Admin endpoints require 'Authorization: Bearer <adminKey>'.
+// The SNS webhook is an exception: it verifies the SNS signature and topic ARN.
 // POST /email - Send an email
 // POST /sms   - Send an SMS
 // POST /whatsapp - Send a WhatsApp message

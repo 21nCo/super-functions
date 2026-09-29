@@ -17,6 +17,7 @@ on:
           - filefn
           - searchfn
           - authfn
+          - sendfn
       environment:
         description: Docs route environment
         required: true
@@ -47,4 +48,5 @@ jobs:
           CLOUDFLARE_ZONE_ID_FILEFN_COM: ${{ vars.CLOUDFLARE_ZONE_ID_FILEFN_COM }}
           CLOUDFLARE_ZONE_ID_SEARCHFN_COM: ${{ vars.CLOUDFLARE_ZONE_ID_SEARCHFN_COM }}
           CLOUDFLARE_ZONE_ID_AUTHFN_COM: ${{ vars.CLOUDFLARE_ZONE_ID_AUTHFN_COM }}
+          CLOUDFLARE_ZONE_ID_SENDFN_COM: ${{ vars.CLOUDFLARE_ZONE_ID_SENDFN_COM }}
         run: node scripts/cloudflare-docs/sync-routes.mjs ${{ github.event.inputs.environment }} --products=${{ github.event.inputs.product }}

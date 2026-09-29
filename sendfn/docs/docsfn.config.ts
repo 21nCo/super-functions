@@ -3,7 +3,6 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
-    canonicalUrl: "https://sendfn.com",
     title: "SendFn",
     description: "Self-hosted email, SMS, WhatsApp, and push delivery with provider adapters.",
     basePath: "/docs",

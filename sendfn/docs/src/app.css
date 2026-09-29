@@ -77,5 +77,6 @@ body {
     display: block;
     top: var(--docsfn-sticky-top-offset);
     height: calc(100dvh - var(--docsfn-sticky-top-offset));
+    overflow-y: auto;
   }
 }

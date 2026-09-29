@@ -96,7 +96,7 @@ if __name__ == "__main__":
 
 ```python
 async def register_welcome(sendfn):
-    from sendfn.models import EmailTemplate
+    from sendfn.models import EmailTemplate, SendEmailParams
 
     # Register a custom template
     template = EmailTemplate(
