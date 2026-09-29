@@ -79,6 +79,7 @@ body {
   .docsfn-site-root .docsfn-sidebar-col.docsfn-sidebar-col--open {
     display: block;
     top: var(--docsfn-sticky-top-offset);
+    height: calc(100vh - var(--docsfn-sticky-top-offset));
     height: calc(100dvh - var(--docsfn-sticky-top-offset));
   }
 }

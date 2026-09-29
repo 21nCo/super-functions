@@ -3,10 +3,10 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
-    canonicalUrl: "https://extfn.com",
     title: "ExtFn",
     description: "Browser extension configuration, runtime, build, scan, and packaging for Chromium and Firefox.",
     basePath: "/docs",
+    showFooter: false,
     editLink: { pattern: "https://github.com/21nCo/super-functions/edit/dev/extfn/docs/{path}" },
   },
   compat: { preset: "none" },

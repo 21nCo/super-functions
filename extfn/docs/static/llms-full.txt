@@ -22,7 +22,7 @@ npm exec extfn scan -- --config extfn.config.ts --format sarif
 npm exec extfn package -- --config extfn.config.ts --target firefox-mv3
 ```
 
-Global output flags are `--json`, `--quiet`, `--verbose`, and `--color`. Scan is strict by default: error-severity findings cause a nonzero exit. `--no-strict` preserves findings while allowing success; `package --no-scan` skips scanning. Use these opt-outs deliberately and review the reports before distribution. The [full CLI reference](/docs/reference/cli) lists every option and output path.
+Global output flags are `--json`, `--quiet`, `--verbose`, and `--color`. Scan is strict by default: error-severity findings cause a nonzero exit. `--no-strict` preserves findings while allowing success; `package --no-scan` skips scanning. Use these opt-outs deliberately and review the reports before distribution. The [full CLI reference](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/reference/cli.md) lists every option and output path.
 
 ---
 
@@ -71,7 +71,7 @@ The config can declare several content scripts, each with its own ID, entry, mat
 
 Background handlers are separate modules discovered from `messageHandlersDir` and `portHandlersDir`. A message handler uses `defineBackgroundHandler({ namespace, method, handle })`; a port handler uses `defineBackgroundPortHandler({ channel, onMessage })`. The namespace/method pair and port channel must each be unique across discovered handlers.
 
-`@extfn/svelte` supplies thin page and content mount functions. Components remain ordinary Svelte components; config owns DOM placement and isolation. The [multi-content source guide](/docs/reference/multi-content-and-background-handlers) includes complete examples and the [Svelte demo](https://github.com/21nCo/super-functions/tree/dev/extfn/examples/svelte-multi-content-demo) shows shadow and light DOM mounts.
+`@extfn/svelte` supplies thin page and content mount functions. Components remain ordinary Svelte components; config owns DOM placement and isolation. The [multi-content source guide](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/reference/multi-content-and-background-handlers.md) includes complete examples and the [Svelte demo](https://github.com/21nCo/super-functions/tree/dev/extfn/examples/svelte-multi-content-demo) shows shadow and light DOM mounts.
 
 ---
 
@@ -104,7 +104,7 @@ npm exec extfn scan -- --config extfn.config.ts
 npm exec extfn package -- --config extfn.config.ts
 ```
 
-Development emits an unpacked extension at `dist/<target>-dev`; production builds emit `dist/<target>`. `package` builds if needed, scans by default, and emits `.zip` for Chromium or `.xpi` for Firefox. Loading an unpacked extension into Firefox remains manual even when `--open` launches `about:debugging`. See [CLI workflow](/docs/cli) and the [vanilla example](https://github.com/21nCo/super-functions/tree/dev/extfn/examples/vanilla-messaging-demo).
+Development emits an unpacked extension at `dist/<target>-dev`; production builds emit `dist/<target>`. `package` builds if needed, scans by default, and emits `.zip` for Chromium or `.xpi` for Firefox. Loading an unpacked extension into Firefox remains manual even when `--open` launches `about:debugging`. See [CLI workflow](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/cli.md) and the [vanilla example](https://github.com/21nCo/super-functions/tree/dev/extfn/examples/vanilla-messaging-demo).
 
 ---
 
@@ -116,9 +116,9 @@ Development emits an unpacked extension at `dist/<target>-dev`; production build
 
 ExtFn provides code-first configuration, runtime helpers, a Vite build pipeline, a CLI, and a thin Svelte adapter for browser extensions. It supports Chromium MV3 and Firefox MV3 targets, background service workers, popup and options pages, Chromium side panels, and multiple anchored content modules.
 
-The [getting-started guide](/docs/getting-started) walks through a config and the CLI. Read [runtime](/docs/runtime) for browser APIs and messaging, [content and background](/docs/content-and-background) for handler discovery and mounts, and [scan and package](/docs/scan-and-package) before distributing an extension.
+The [getting-started guide](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/getting-started.md) walks through a config and the CLI. Read [runtime](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/runtime.md) for browser APIs and messaging, [content and background](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/content-and-background.md) for handler discovery and mounts, and [scan and package](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/scan-and-package.md) before distributing an extension.
 
-ExtFn owns extension infrastructure. Domain logic stays in packages such as `@datafn/extfn`, which bridges DataFn authority into extension contexts. The optional `@extfn/admin` package currently declares an unavailable capability; it is not an operator UI. See [package integrations](/docs/integrations).
+ExtFn owns extension infrastructure. Domain logic stays in packages such as `@datafn/extfn`, which bridges DataFn authority into extension contexts. The optional `@extfn/admin` package currently declares an unavailable capability; it is not an operator UI. See [package integrations](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/integrations.md).
 
 ---
 
@@ -128,7 +128,7 @@ ExtFn owns extension infrastructure. Domain logic stays in packages such as `@da
 > Keep domain contracts and host adapters with their owners.
 
 
-`@extfn/svelte` provides page and content mounting adapters. It does not turn an extension page into SvelteKit. Shared UI that imports `$app/*` directly needs consumer-owned host interfaces for navigation, session, and other app state before it can run in an extension. The [consumer host guide](/docs/reference/consumer-host-abstraction) shows a migration pattern.
+`@extfn/svelte` provides page and content mounting adapters. It does not turn an extension page into SvelteKit. Shared UI that imports `$app/*` directly needs consumer-owned host interfaces for navigation, session, and other app state before it can run in an extension. The [consumer host guide](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/reference/consumer-host-abstraction.md) shows a migration pattern.
 
 `@datafn/extfn` lives under `datafn/` and owns DataFn authority and proxy behavior in extension contexts. Keep any other domain-specific integration in its owning package tree, reusing its public contracts. The root ExtFn README names possible future SearchFn and FileFn integrations as examples; those examples are not shipped ExtFn packages here.
 
@@ -146,7 +146,7 @@ ExtFn supports Chromium MV3 and Firefox MV3. Side-panel and other capabilities v
 
 CLI scans are strict by default but are limited to emitted files and manifests. Review permissions, CSP, externally connectable scope, privacy claims, and store listing content before release. A successful local scan or build does not prove installation, browser behavior, or store approval.
 
-Keep domain operations in their owner packages. The ExtFn runtime and CLI provide extension infrastructure; `@datafn/extfn` is a separate integration. The admin package currently marks its capability unavailable. See [reference guides](/docs/reference) for exact CLI behavior and content patterns.
+Keep domain operations in their owner packages. The ExtFn runtime and CLI provide extension infrastructure; `@datafn/extfn` is a separate integration. The admin package currently marks its capability unavailable. See [reference guides](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/reference/index.md) for exact CLI behavior and content patterns.
 
 ---
 
@@ -450,8 +450,8 @@ without requiring changes in `extfn` itself.
 
 ## Related guidance
 
-- `extfn` runtime APIs are documented in [ExtFn overview](/docs)
-- CLI workflow is documented in [CLI reference](/docs/reference/cli)
+- `extfn` runtime APIs are documented in [ExtFn overview](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/index.md)
+- CLI workflow is documented in [CLI reference](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/reference/cli.md)
 - DataFn integration is documented in [DataFn ExtFn source](https://github.com/21nCo/super-functions/blob/dev/datafn/extfn/README.md)
 
 ---
@@ -464,12 +464,12 @@ without requiring changes in `extfn` itself.
 
 The detailed guides mirror the existing Markdown documents in `extfn/docs` so repository links remain valid:
 
-- [CLI reference](/docs/reference/cli)
-- [Scanner report](/docs/reference/scan)
-- [Multiple content scripts and background handlers](/docs/reference/multi-content-and-background-handlers)
-- [Consumer host abstraction](/docs/reference/consumer-host-abstraction)
+- [CLI reference](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/reference/cli.md)
+- [Scanner report](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/reference/scan.md)
+- [Multiple content scripts and background handlers](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/reference/multi-content-and-background-handlers.md)
+- [Consumer host abstraction](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/reference/consumer-host-abstraction.md)
 
-The [getting-started guide](/docs/getting-started) and [runtime guide](/docs/runtime) provide a shorter path to the current packages.
+The [getting-started guide](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/getting-started.md) and [runtime guide](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/runtime.md) provide a shorter path to the current packages.
 
 ---
 
@@ -779,6 +779,6 @@ Use `runtime.rpc`, `runtime.events`, and `runtime.ports` to communicate across e
 
 Strict mode returns a nonzero exit code for error findings. `--no-strict` does not hide findings; it only changes the command result and whether `package` can emit an archive. `package --no-scan` bypasses the scanner entirely. Default packaging runs the scanner first and blocks archives on error findings.
 
-The scanner is a local static check of emitted artifacts. It cannot prove that store review, browser permissions, network behavior, or extension runtime behavior will pass in a deployed browser. Run the [example validation matrix](/docs/reference/cli) and inspect the generated manifest and [scan report contract](/docs/reference/scan) before distribution.
+The scanner is a local static check of emitted artifacts. It cannot prove that store review, browser permissions, network behavior, or extension runtime behavior will pass in a deployed browser. Run the [example validation matrix](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/reference/cli.md) and inspect the generated manifest and [scan report contract](https://github.com/21nCo/super-functions/blob/dev/extfn/docs/content/docs/reference/scan.md) before distribution.
 
 ---
