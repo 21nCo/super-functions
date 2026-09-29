@@ -1,0 +1,66 @@
+devfn/docs/svelte.config.js
+  s_110c7532cf7634::t_c35599696e04d4 4,18
+.github/workflows/superfunctions-docs-cloudflare-routes.yml
+  s_110c7532cf7634::t_2313426dc99aa6 16,48
+devfn/docs/src/app.html
+  s_110c7532cf7634::t_2313426dc99aa6 5
+scripts/cloudflare-docs/select-products.mjs
+  s_110c7532cf7634::t_2313426dc99aa6 56-59,61
+  s_110c7532cf7634::t_1a6b27e2e229b5 49
+.github/workflows/ci.yml
+  s_110c7532cf7634::t_1803125322a7af 120,122
+authfn/docs/package.json
+  s_110c7532cf7634::t_85e25323f3ff02 32-33,39-40
+authfn/docs/scripts/generate-llms.mjs
+  s_110c7532cf7634::t_5f8d618a9b3b39 5-6,8-10,12
+authfn/docs/src/lib/server/docs-site-source.ts
+  s_110c7532cf7634::t_0d87361c1ac163 2,4-5,7-8,11-22
+authfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_110c7532cf7634::t_5a5bc9c915c22d 2-3,8
+authfn/docs/vite.config.ts
+  s_110c7532cf7634::t_3161b2aff89f7a 2,17
+devfn/docs/package.json
+  s_110c7532cf7634::t_b86cef768118fa 28,30,34-35
+devfn/docs/scripts/generate-llms.mjs
+  s_110c7532cf7634::t_557ceefd4c80ca 6,8-22
+devfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_110c7532cf7634::t_5ffe5ca55fbe50 1,3,7-17,19-23
+devfn/docs/vite.config.ts
+  s_110c7532cf7634::t_a839dca3dfabc6 6,10
+filefn/docs/scripts/generate-llms.mjs
+  s_110c7532cf7634::t_add743b29514a5 6,8-10,67
+filefn/docs/src/lib/server/docs-site-source.ts
+  s_110c7532cf7634::t_c3b65a8426ab14 2,4-5,7-8,11-22
+filefn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_110c7532cf7634::t_6d27749e9419d8 1,8
+filefn/docs/static/llms-full.txt
+  s_110c7532cf7634::t_31ef798afda78f 3056-3061
+filefn/docs/vite.config.ts
+  s_110c7532cf7634::t_72bdd9ab706a79 2,17
+package-lock.json
+  s_110c7532cf7634::t_2633073f413ab3 875-876,8567,8573,8636-8692,8714-8773,8786-8900
+scripts/docs-site/llms.mjs
+  s_110c7532cf7634::t_30ee2999deaa56 3-35
+scripts/docs-site/page.ts
+  s_110c7532cf7634::t_6624ed5677469e 1-120
+scripts/docs-site/vite.ts
+  s_110c7532cf7634::t_2ae4aa4fe0fac3 11
+scripts/docs-site/vitest.config.ts
+  s_110c7532cf7634::t_023ab2a5b2d6e1 4,7-12,14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "261b6de9a9e85bb2833bee7aeef9ea4433595156",
+  "prompts": {},
+  "sessions": {
+    "s_110c7532cf7634": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee25-fef3-7643-b3da-8732f3cec764",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
