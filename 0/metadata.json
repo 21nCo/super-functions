@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3PGZ26N7SG1Y0G4QAD4MAPA",
+  "session_id": "01a0eccb-56ef-7ea0-a2e1-c84027ac735e",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-29T12:06:54.456027Z",
+  "branch": "review/docs-pr-218-20260929",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/superfunctions-docs-cloudflare-deploy.yml",
+    "mcpfn/docs/README.md",
+    "mcpfn/docs/docsfn.config.ts",
+    "mcpfn/docs/static/llms-full.txt",
+    "mcpfn/docs/static/llms.txt",
+    "scripts/cloudflare-docs/config.mjs",
+    "scripts/cloudflare-docs/select-products.mjs",
+    "scripts/docs-site/runtime.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-sol",
+  "turn_id": "98b450a04b6e",
+  "checkpoint_transcript_start": 3933,
+  "transcript_lines_at_start": 3933,
+  "compact_transcript_start": 628,
+  "token_usage": {
+    "input_tokens": 20072,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 10869120,
+    "output_tokens": 4378,
+    "api_call_count": 47
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-29T12:06:54.324213Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 2197,
+    "human_modified": 5,
+    "human_removed": 0,
+    "total_committed": 2197,
+    "total_lines_changed": 2202,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
