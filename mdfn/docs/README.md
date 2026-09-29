@@ -17,7 +17,7 @@ npm run build --workspace @searchfn/adapter-contracts
 npm run build --workspace @searchfn/adapter-memory
 npm run build --workspace @searchfn/adapter-indexeddb
 npm run build --workspace @searchfn/client
-npm exec --workspace @mdfn/docs -- docsfn validate --root .
+npm run validate --workspace=@mdfn/docs
 ```
 
 The site defaults to port 6022. Set `site.canonicalUrl` once the public docs host serves these routes.

@@ -3,7 +3,7 @@
 > Markdown-native authoring with source preservation, safe rendering, and collaboration.
 
 This file concatenates the full text of every documentation page so it can be loaded into
-an LLM-based assistant in a single shot. For a page index, see https://github.com/21nCo/super-functions/blob/dev/mdfn/docs/static/llms.txt.
+an LLM-based assistant in a single shot. For a page index, see /docs/llms.txt.
 
 # Documentation
 
@@ -332,7 +332,7 @@ HTML, and a machine-readable result into the ignored
 > Source guide for extensions.
 
 
-Certified extension declarations and helpers. Each extension declares syntax
+Certified extension declarations and helpers. Extensions can declare syntax
 ownership, conflicts, dependencies, preservation, security, diagnostics, and
 migrations.
 
@@ -680,7 +680,7 @@ PR 133, so the ceiling leaves headroom for runner contention.
 > Apply a rendering policy to untrusted Markdown.
 
 
-`@mdfn/render` produces safe HTML or a render tree without a browser dependency. Raw HTML is disabled by default; enabling it requires an explicit sanitizer. Unsafe URL schemes are rejected, and resource limits apply before output is returned.
+`@mdfn/render` produces HTML or a render tree without a browser dependency. `renderHtml` disables raw HTML by default; enabling it requires an explicit sanitizer. Its HTML renderer rejects unsafe URL schemes and enforces resource limits. `renderTree` copies nodes and attributes without sanitizing URLs or enforcing traversal limits, so tree consumers must validate the result before rendering it.
 
 Treat Markdown imports, extension output, asset URLs, and AI suggestions as untrusted data. Render with an appropriate policy for the destination and inspect diagnostics before publishing. Do not bypass the renderer with raw HTML from a document or sidecar.
 

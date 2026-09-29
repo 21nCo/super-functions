@@ -3,11 +3,11 @@ import { docsSiteCorePlugin } from "../../scripts/docs-site/vite";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { sveltekit } from "@sveltejs/kit/vite";
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
-  plugins: [docsSiteCorePlugin(import.meta.url), tailwindcss(), sveltekit()],
+  plugins: [docsSiteCorePlugin(import.meta.url), tailwindcss(), sveltekit()] as unknown as PluginOption[],
   ssr: {
     // Force @docsfn/core through Vite's transform pipeline so the
     // `@searchfn/client` alias below resolves the workspace source in dev.
@@ -19,7 +19,6 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      { find: "@site/docs-search", replacement: path.resolve(dirname, "../../scripts/docs-site/Search.svelte") },
       // Resolve shared source against this site's pinned DocsFn installation.
       { find: /^@searchfn\/client$/, replacement: path.resolve(dirname, "../../searchfn/client/src/index.ts") },
       { find: /^@searchfn\/core$/, replacement: path.resolve(dirname, "../../searchfn/core/src/index.ts") },
