@@ -64,6 +64,19 @@ describe("bundled DocsFn provider", () => {
     expect(await other.loadDocsSiteSource()).not.toBe(left);
   });
 
+  it("caches posts and exposes the compiled cache and search runtime", async () => {
+    const runtime = createDocsSiteRuntime(config, {
+      "../../../guide/index.md": "# Guide",
+      "../../../blog/post.md": "---\ntitle: Post\ndate: '2026-01-01'\n---\nPost body",
+    }, {});
+    expect(await runtime.getCompiledDocsPost("blog:post.md")).toBe(await runtime.getCompiledDocsPost("blog:post.md"));
+    await expect(runtime.getCompiledDocsPost("blog:missing.md")).rejects.toMatchObject({ code: "DOCS_ARTIFACT_INVALID" });
+    const summary = await runtime.getDocsSiteCompiledCacheSummary();
+    expect(summary.postKeys).toHaveLength(1);
+    expect(summary.pageKeys).toHaveLength(1);
+    expect(await runtime.createDocsSiteSearchRuntime()).toBeDefined();
+  });
+
   it("retries after a rejected initialization", async () => {
     vi.mocked(buildManifest).mockRejectedValueOnce(new Error("transient"));
     const runtime = createDocsSiteRuntime(config, { "../../../guide/index.md": "# Guide" }, {});

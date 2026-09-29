@@ -6,7 +6,7 @@ export const load: PageServerLoad = async () => {
 
   const posts = Object.values(source.manifest.posts)
     .filter((post) => !post.draft)
-    .sort((left, right) => right.date.localeCompare(left.date));
+    .sort((left, right) => (right.date ?? "").localeCompare(left.date ?? ""));
 
   return { posts: posts.map(({ id, slug, title, date, excerpt, summary }) => ({ id, slug, title, date, excerpt, summary })) };
 };

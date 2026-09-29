@@ -9,12 +9,12 @@ import { resolve } from "node:path";
  * @param {string | undefined} canonicalUrl
  */
 export function withSourceLinks(text, manifest, product, canonicalUrl) {
-  if (canonicalUrl) return text;
   const sources = new Map(Object.values(manifest.pages)
     .filter((page) => page.id.startsWith("docs:"))
     .map((page) => [page.path, page.id.slice("docs:".length)]));
   return text.replace(/\]\((\/docs[^\s)]*)\)/g, (match, href) => {
     const url = new URL(href, "https://docs.invalid");
+    if (canonicalUrl) return `](${canonicalUrl.replace(/\/+$/, "")}${url.pathname}${url.search}${url.hash})`;
     const source = sources.get(url.pathname);
     if (!source) return match;
     const path = source.split("/").map(encodeURIComponent).join("/");

@@ -190,7 +190,7 @@ npm install @superfunctions/db drizzle-orm pg
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
-import { schema } from "./schema"; // Generated Drizzle table registry for this dialect.
+import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzleAdapter({ db: drizzle(pool, { schema }), dialect: "postgres" });
@@ -205,7 +205,7 @@ Use `getSchema({ namespace })` from `@filefn/server` as the source of table/fiel
 
 See [DB adapters](./db) for the schema contract and [SQLite](./db-sqlite) for a local SQL configuration.
 
-Generate/import the named `schema` table registry from `./schema` and pass it to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
+Generate the Drizzle table definitions in `./schema` and namespace-import them as `schema`; the CLI emits individual table exports, not a named `schema` aggregate. Pass that namespace to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](https://filefn.com/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
 
 
 ---
@@ -248,7 +248,7 @@ npm install @superfunctions/db drizzle-orm pg
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
-import { schema } from "./schema"; // Generated Drizzle table registry for this dialect.
+import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
 const db = drizzleAdapter({ db: drizzle(pool, { schema }), dialect: "postgres" });
@@ -258,7 +258,7 @@ Pass `db` to `createFileFn`. Size the pool for your database connection budget a
 
 Provision the table and index definitions from `getSchema({ namespace })` exported by `@filefn/server` through your host migration system before handling requests. Neither the adapter nor FileFn runs DDL automatically. There is no `generateSqlForSchema` export from a `@superfunctions/db-postgres` package. See [DB adapters](./db) and [schema](../reference/schema).
 
-Generate/import the named `schema` table registry from `./schema` and pass it to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
+Generate the Drizzle table definitions in `./schema` and namespace-import them as `schema`; the CLI emits individual table exports, not a named `schema` aggregate. Pass that namespace to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](https://filefn.com/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
 
 
 ---
@@ -293,7 +293,7 @@ Provision the FileFn tables from `getSchema({ namespace })` using the host migra
 
 SQLite concurrency and filesystem durability depend on deployment topology. Use a database supported by your hosting environment; a local file is not shared storage across application replicas. See [DB adapters](./db).
 
-Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
+Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](https://filefn.com/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
 
 
 ---
@@ -896,7 +896,7 @@ The capability covers files, versions, upload sessions, grants, share links, pol
 
 File deletion requires MFA confirmation and removes the file's versions, artifacts, grants, and shares. Other writes carry their own risk and confirmation metadata; the host must enforce the capability's declared policy and write audit records. Upload tokens, storage keys, share tokens, provider URLs and headers, and policy storage paths are sensitive and must not leak through list responses.
 
-For an admin download, standard FileFn download services normally produce a signed URL or application proxy descriptor. It rejects provider request headers instead of exposing them to a browser. Review [downloads](/docs/features/downloads), [grants](/docs/features/grants), and [share links](/docs/features/share-links) for the underlying FileFn access rules.
+For an admin download, standard FileFn download services normally produce a signed URL or application proxy descriptor. It rejects provider request headers instead of exposing them to a browser. Review [downloads](https://filefn.com/docs/features/downloads), [grants](https://filefn.com/docs/features/grants), and [share links](https://filefn.com/docs/features/share-links) for the underlying FileFn access rules.
 
 The [capability source](https://github.com/21nCo/super-functions/blob/dev/filefn/admin/src/index.ts) defines operation IDs and schemas. The [domain service](https://github.com/21nCo/super-functions/blob/dev/filefn/admin/src/domain-service.ts) shows how the public FileFn facade enforces ownership and creates safe responses.
 
@@ -915,9 +915,9 @@ Machine-readable FileFn documentation and assistant setup.
 
 # AI Resources
 
-The docs build publishes [llms.txt](./llms-txt) and llms-full.txt at `/docs/llms.txt` and `/docs/llms-full.txt`. The full file contains the authored documentation in one text resource. Assistants can also use the [docs search index](/docs/search.json) to find page titles and paths.
+The docs build publishes [llms.txt](./llms-txt) and llms-full.txt at `/docs/llms.txt` and `/docs/llms-full.txt`. The full file contains the authored documentation in one text resource. Assistants can also use the [docs search index](https://filefn.com/docs/search.json) to find page titles and paths.
 
-Start with the small index, then open the relevant [guide](/docs/getting-started) or [reference](/docs/reference). The site does not currently publish an MCP endpoint or downloadable skill catalog; the [MCP](./mcp) and [Skills](./skills) pages describe that availability boundary.
+Start with the small index, then open the relevant [guide](https://filefn.com/docs/getting-started) or [reference](https://filefn.com/docs/reference). The site does not currently publish an MCP endpoint or downloadable skill catalog; the [MCP](./mcp) and [Skills](./skills) pages describe that availability boundary.
 
 
 ---
@@ -932,7 +932,7 @@ Use the FileFn documentation indexes with Claude.
 
 # Claude
 
-Download [`llms.txt`](/docs/llms.txt) or [`llms-full.txt`](/docs/llms-full.txt) and provide the relevant content to Claude. For a project, a short `CLAUDE.md` can point to the docs and the packages in use:
+Download [`llms.txt`](https://filefn.com/docs/llms.txt) or [`llms-full.txt`](https://filefn.com/docs/llms-full.txt) and provide the relevant content to Claude. For a project, a short `CLAUDE.md` can point to the docs and the packages in use:
 
 ```md
 # FileFn
@@ -955,9 +955,9 @@ Ground FileFn changes in the generated docs and source.
 
 # Codex
 
-Use [`llms.txt`](/docs/llms.txt) to find the relevant page, then read that page or [`llms-full.txt`](/docs/llms-full.txt) before changing a FileFn integration. The [search index](/docs/search.json) provides structured page metadata for clients that implement their own retrieval.
+Use [`llms.txt`](https://filefn.com/docs/llms.txt) to find the relevant page, then read that page or [`llms-full.txt`](https://filefn.com/docs/llms-full.txt) before changing a FileFn integration. The [search index](https://filefn.com/docs/search.json) provides structured page metadata for clients that implement their own retrieval.
 
-The docs site does not expose MCP tools, a raw-page endpoint, or a separate OpenAPI action endpoint. Use the [API reference](/docs/api) and repository contracts when building tools. Check the installed package version and run local tests against generated code.
+The docs site does not expose MCP tools, a raw-page endpoint, or a separate OpenAPI action endpoint. Use the [API reference](https://filefn.com/docs/api) and repository contracts when building tools. Check the installed package version and run local tests against generated code.
 
 
 ---
@@ -972,7 +972,7 @@ Give Cursor access to current FileFn documentation.
 
 # Cursor
 
-Add `https://filefn.com/docs` as a docs source in Cursor, or copy the generated [`llms.txt`](/docs/llms.txt) index into your project context. Use the [quickstart](/docs/quickstart) and [adapter guides](/docs/adapters) for the specific stack you are editing.
+Add `https://filefn.com/docs` as a docs source in Cursor, or copy the generated [`llms.txt`](https://filefn.com/docs/llms.txt) index into your project context. Use the [quickstart](https://filefn.com/docs/quickstart) and [adapter guides](https://filefn.com/docs/adapters) for the specific stack you are editing.
 
 The docs site currently has no MCP endpoint to add to `.cursor/mcp.json`. See [MCP availability](./mcp).
 
@@ -993,8 +993,8 @@ The docs build generates two text resources:
 
 | URL | Contents |
 | --- | --- |
-| [`/docs/llms.txt`](/docs/llms.txt) | Page titles, descriptions, and links. |
-| [`/docs/llms-full.txt`](/docs/llms-full.txt) | Full authored docs content. |
+| [`/docs/llms.txt`](https://filefn.com/docs/llms.txt) | Page titles, descriptions, and links. |
+| [`/docs/llms-full.txt`](https://filefn.com/docs/llms-full.txt) | Full authored docs content. |
 
 For a local copy after the site is deployed:
 
@@ -1004,7 +1004,7 @@ curl https://filefn.com/docs/llms.txt -o filefn-llms.txt
 
 The generated indexes are also committed as `filefn/docs/static/llms.txt` and `filefn/docs/static/llms-full.txt`. During development, use those files directly. Regenerate them with `npm run generate:llms --workspace=@filefn/docs` after changing docs content.
 
-The site does not generate `llms-rich.json`. The [search index](/docs/search.json) is a separate JSON resource used by site search.
+The site does not generate `llms-rich.json`. The [search index](https://filefn.com/docs/search.json) is a separate JSON resource used by site search.
 
 
 ---
@@ -1021,7 +1021,7 @@ Current machine-readable FileFn docs and MCP endpoint status.
 
 This DocsFn site does not expose an MCP server or `/mcp` route. Do not register the retired `docs.filefn.dev/mcp` address in an assistant.
 
-For machine-readable documentation, use [llms.txt](./llms-txt) or the [search index](/docs/search.json). To build an MCP integration, host an MCP server separately and point its tools at these resources; the docs site does not supply search or fetch MCP tools itself.
+For machine-readable documentation, use [llms.txt](./llms-txt) or the [search index](https://filefn.com/docs/search.json). To build an MCP integration, host an MCP server separately and point its tools at these resources; the docs site does not supply search or fetch MCP tools itself.
 
 
 ---
@@ -1036,7 +1036,7 @@ FileFn guides available for assistant workflows.
 
 # Skills availability
 
-This docs site does not publish a `/skills/` catalog or a `list_skills` MCP tool. Use the [quickstarts](/docs/quickstart), [adapter guides](/docs/adapters), and [recipes](/docs/recipes) as source material when writing an assistant workflow for a project.
+This docs site does not publish a `/skills/` catalog or a `list_skills` MCP tool. Use the [quickstarts](https://filefn.com/docs/quickstart), [adapter guides](https://filefn.com/docs/adapters), and [recipes](https://filefn.com/docs/recipes) as source material when writing an assistant workflow for a project.
 
 Check package APIs and run the project's tests before applying generated configuration. The [LLM indexes](./llms-txt) provide a page list and full text for retrieval.
 
@@ -4505,7 +4505,7 @@ Bun's `Bun.serve(...)` already speaks `Request` / `Response`. filefn drops in:
 ```ts
 import { createFileFn, createNucleusPolicies } from "@filefn/server";
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
-import { schema } from "./schema"; // Generated Drizzle table registry for this dialect.
+import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 import { Database } from "bun:sqlite";
@@ -4570,8 +4570,7 @@ Bun.serve({ port: 3000, fetch: app.fetch });
 
 ## Schema setup
 
-Export the table registry as a named `schema` value from `./schema` and pass it to `drizzle(..., { schema })`. Apply the matching SQL migrations before starting the server.
-Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
+Generate the Drizzle table definitions in `./schema` and namespace-import them as `schema`; the CLI emits individual table exports. Pass that namespace to `drizzle(..., { schema })` and apply matching SQL migrations before starting the server. The adapter requires both the runtime table registry and provisioned SQL tables. See [schema setup](https://filefn.com/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
 
 
 ---
@@ -4586,7 +4585,7 @@ Mount FileFn with a byte-preserving streaming bridge.
 
 # Express
 
-Follow the [Express quickstart](/docs/quickstart/express) for a complete local setup. After creating `fileFn` with an explicit storage adapter, mount its router:
+Follow the [Express quickstart](https://filefn.com/docs/quickstart/express) for a complete local setup. After creating `fileFn` with an explicit storage adapter, mount its router:
 
 ```ts
 import express from "express";
@@ -4604,9 +4603,9 @@ app.use("/filefn", fileFnHandler(fileFn.router));
 app.listen(3000);
 ```
 
-Use the complete Node 20+ streaming bridge from the [quickstart](/docs/quickstart/express). It consumes the original request stream, preserves binary response bytes, and maps unmatched routes to 404. Express strips the mount prefix from `req.url` before the bridge creates the Web Request. Do not put a JSON or raw body parser before this mount. Configure policies and authentication before allowing uploads; the snippet above only mounts the kernel.
+Use the complete Node 20+ streaming bridge from the [quickstart](https://filefn.com/docs/quickstart/express). It consumes the original request stream, preserves binary response bytes, and maps unmatched routes to 404. Express strips the mount prefix from `req.url` before the bridge creates the Web Request. Do not put a JSON or raw body parser before this mount. Configure policies and authentication before allowing uploads; the snippet above only mounts the kernel.
 
-Use host CSRF protection for cookie-authenticated writes and the kernel's authorization and upload-token checks. Keep unrelated JSON middleware scoped so it does not consume binary upload bodies. See [rate limiting](/docs/features/rate-limiting) and [storage adapters](/docs/adapters/storage).
+Use host CSRF protection for cookie-authenticated writes and the kernel's authorization and upload-token checks. Keep unrelated JSON middleware scoped so it does not consume binary upload bodies. See [rate limiting](https://filefn.com/docs/features/rate-limiting) and [storage adapters](https://filefn.com/docs/adapters/storage).
 
 
 ---
@@ -4920,7 +4919,7 @@ Behind a reverse proxy (Cloudflare, ALB), set `Trust-Forwarded-Headers` and ensu
 - [Quickstart › Hono](../quickstart/hono) — minimal version.
 - [Examples › Production](../examples/production) — full repo.
 
-Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
+Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](https://filefn.com/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
 
 
 ---
@@ -6354,7 +6353,7 @@ const storage = createRoutedStorageAdapter({
 
 Policies select a registered target through `storageTarget` and `artifactStorageTarget`. The router uses an explicit adapter map and `defaultTarget`; it has no arbitrary per-request `resolveTarget` callback. Validate environment variables before constructing adapters.
 
-Public CDN delivery is a separate host policy: publish only objects intended to be public, configure cache keys and content headers, and plan invalidation when replacing or removing content. Do not expose private storage keys or long-lived credentials to the browser. See [downloads](/docs/features/downloads) and [storage targets](/docs/core-concepts/storage-targets).
+Public CDN delivery is a separate host policy: publish only objects intended to be public, configure cache keys and content headers, and plan invalidation when replacing or removing content. Do not expose private storage keys or long-lived credentials to the browser. See [downloads](https://filefn.com/docs/features/downloads) and [storage targets](https://filefn.com/docs/core-concepts/storage-targets).
 
 
 ---
@@ -7038,7 +7037,7 @@ fileFn.definePolicy("user-document", {
 
 Every storage object lives under `tenants/<tenantId>/`. If you front it with a CDN, configure cache keys to include the tenant prefix to keep tenant data isolated at the cache layer too.
 
-For multiple buckets, register named adapters with `createRoutedStorageAdapter({ adapters, defaultTarget })` and assign trusted policies to those targets. The router has no `resolveTarget` callback. Keep tenant authorization in the host and do not accept an arbitrary adapter/target from the client. See [CDN and storage routing](/docs/recipes/cdn-integration).
+For multiple buckets, register named adapters with `createRoutedStorageAdapter({ adapters, defaultTarget })` and assign trusted policies to those targets. The router has no `resolveTarget` callback. Keep tenant authorization in the host and do not accept an arbitrary adapter/target from the client. See [CDN and storage routing](https://filefn.com/docs/recipes/cdn-integration).
 
 ## Quotas
 

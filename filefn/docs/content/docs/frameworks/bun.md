@@ -10,7 +10,7 @@ Bun's `Bun.serve(...)` already speaks `Request` / `Response`. filefn drops in:
 ```ts
 import { createFileFn, createNucleusPolicies } from "@filefn/server";
 import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
-import { schema } from "./schema"; // Generated Drizzle table registry for this dialect.
+import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 import { Database } from "bun:sqlite";
@@ -75,5 +75,4 @@ Bun.serve({ port: 3000, fetch: app.fetch });
 
 ## Schema setup
 
-Export the table registry as a named `schema` value from `./schema` and pass it to `drizzle(..., { schema })`. Apply the matching SQL migrations before starting the server.
-Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.
+Generate the Drizzle table definitions in `./schema` and namespace-import them as `schema`; the CLI emits individual table exports. Pass that namespace to `drizzle(..., { schema })` and apply matching SQL migrations before starting the server. The adapter requires both the runtime table registry and provisioned SQL tables. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.

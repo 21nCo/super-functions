@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { writeLlmsArtifacts } from "../../../scripts/docs-site/llms.mjs";
+import { withSourceLinks, writeLlmsArtifacts } from "../../../scripts/docs-site/llms.mjs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -76,4 +76,7 @@ for (const page of docsPages) {
 }
 const llmsFullTxt = fullSections.join("\n");
 
-writeLlmsArtifacts(staticDir, { llmsTxt, llmsFullTxt });
+writeLlmsArtifacts(staticDir, {
+  llmsTxt: withSourceLinks(llmsTxt, manifest, "filefn", canonicalUrl),
+  llmsFullTxt: withSourceLinks(llmsFullTxt, manifest, "filefn", canonicalUrl),
+});
