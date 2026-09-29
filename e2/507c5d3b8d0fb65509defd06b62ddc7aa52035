@@ -1,0 +1,42 @@
+scripts/cloudflare-docs/config.mjs
+  s_181bb405165ede::t_f31e53844b9d57 8-17
+mailfn/docs/README.md
+  s_181bb405165ede::t_f31e53844b9d57 23,25
+.github/workflows/superfunctions-docs-cloudflare-deploy.yml
+  s_181bb405165ede::t_f31e53844b9d57 13,18,24,31,46
+scripts/docs-site/Search.svelte
+  s_181bb405165ede::t_31bd26fe54aad0 2,16-18,22-31
+  s_181bb405165ede::t_d9737f236dc422 32
+scripts/cloudflare-docs/select-products.mjs
+  s_181bb405165ede::t_f31e53844b9d57 49,56,58
+mailfn/cli/README.md
+  s_181bb405165ede::t_5f84c290d16d27 8,12-13,16-18
+mailfn/docs/content/docs/cli-and-mcp.md
+  s_181bb405165ede::t_27d96bc4a94222 11,15-16,19-21
+mailfn/docs/content/docs/reference/cli.md
+  s_181bb405165ede::t_1f783831c0325a 11,15-16,19-21
+mailfn/docs/static/llms-full.txt
+  s_181bb405165ede::t_8757b03004c0b1 33,37-38,41-43,46,68,98,112,151,163,179,193,211,226,230-231,234-236,354,356,653,667
+mailfn/docs/static/llms.txt
+  s_181bb405165ede::t_96ca540fa37a1e 7-31
+scripts/docs-site/LandingPage.svelte
+  s_181bb405165ede::t_df7687425b7a6c 178-179,181,186-188,215-216
+scripts/docs-site/runtime.ts
+  s_181bb405165ede::t_db7579f1c00a4a 351-352,363-386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e2507c5d3b8d0fb65509defd06b62ddc7aa52035",
+  "prompts": {},
+  "sessions": {
+    "s_181bb405165ede": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0eccb-56ef-7ea0-a2e1-c84027ac735e",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
