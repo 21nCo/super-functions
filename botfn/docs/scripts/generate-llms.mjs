@@ -1,32 +1,14 @@
 #!/usr/bin/env node
-import { withSourceLinks, writeLlmsArtifacts } from "../../../scripts/docs-site/llms.mjs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import { buildLlmsTxtArtifacts, buildManifest, loadDocsConfig } from "@docsfn/core";
 import { FsContentProvider } from "@docsfn/provider-fs";
+import { buildLlmsSiteArtifacts, withSourceLinks, writeLlmsArtifacts } from "../../../scripts/docs-site/llms.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const cwd = resolve(here, "..");
-const staticDir = resolve(cwd, "static");
-
-const config = await loadDocsConfig({ cwd });
-const provider = new FsContentProvider({
-  root: config.content.root || cwd,
-  docsDir: config.content.docsDir,
-  pagesDir: config.content.pagesDir,
-  blogDir: config.content.blogDir,
-  apiDir: config.content.apiDir,
-  assetsDir: config.content.assetsDir,
+const cwd = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const { artifacts, config, manifest } = await buildLlmsSiteArtifacts(cwd, {
+  buildLlmsTxtArtifacts, buildManifest, loadDocsConfig, FsContentProvider,
 });
-
-const manifest = await buildManifest(provider, config);
-
-const artifacts = buildLlmsTxtArtifacts(manifest, {
-  canonicalUrl: config.site?.canonicalUrl,
-  includeBlog: false,
-});
-
 artifacts.llmsTxt = withSourceLinks(artifacts.llmsTxt, manifest, "botfn", config.site?.canonicalUrl);
 artifacts.llmsFullTxt = withSourceLinks(artifacts.llmsFullTxt, manifest, "botfn", config.site?.canonicalUrl);
 const generatedFooter = "For programmatic access, prefer the MCP server\nor the structured manifest emitted alongside this file.";
@@ -34,4 +16,4 @@ if (!artifacts.llmsFullTxt.includes(generatedFooter)) {
   throw new Error("Unexpected DocsFn llms-full footer; review the generated artifact before publishing");
 }
 artifacts.llmsFullTxt = artifacts.llmsFullTxt.replace(generatedFooter, "For a page index, see /docs/llms.txt.");
-writeLlmsArtifacts(staticDir, artifacts);
+writeLlmsArtifacts(resolve(cwd, "static"), artifacts);
