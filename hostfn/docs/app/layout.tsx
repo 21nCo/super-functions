@@ -6,7 +6,11 @@ import type { Metadata } from "next";
 
 const rawSiteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ??
-  "https://hostfn.com";
+  (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : process.env.NODE_ENV === "development"
+      ? "http://localhost:6003"
+      : "https://hostfn.com");
 
 const siteUrl = rawSiteUrl.match(/^https?:\/\//i)
   ? rawSiteUrl
