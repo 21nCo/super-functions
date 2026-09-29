@@ -9,7 +9,7 @@ Install the runtime, provider package, and shared adapters:
 npm install plugfn @plugfn/providers @plugfn/client @superfunctions/db @superfunctions/http
 ```
 
-The complete factory below accepts the host’s database adapter and authenticated session resolver as parameters. Supply a durable adapter and provision its schema before serving requests.
+Supply a durable database adapter and provision its schema before serving requests.
 
 ## Application-owned setup and mounting
 

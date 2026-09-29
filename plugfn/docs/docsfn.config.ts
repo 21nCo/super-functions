@@ -3,10 +3,10 @@ import type { DocsConfig } from "@docsfn/core";
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
-    canonicalUrl: "https://plugfn.com",
     title: "PlugFn",
     description: "Self-hosted provider connections, OAuth, webhooks, workflows, and sync jobs.",
     basePath: "/docs",
+    showFooter: false,
     editLink: { pattern: "https://github.com/21nCo/super-functions/edit/dev/plugfn/docs/{path}" },
   },
   compat: { preset: "none" },

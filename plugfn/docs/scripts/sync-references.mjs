@@ -12,7 +12,7 @@ const pages = [
 for (const [source, slug, title] of pages) {
   const sourcePath = `plugfn/docs/${source}`;
   const url = `https://github.com/21nCo/super-functions/blob/dev/${sourcePath}`;
-  let body = readFileSync(resolve(root, sourcePath), "utf8").replace(/^# [^\n]+\n\n/, "");
+  let body = readFileSync(resolve(root, sourcePath), "utf8").replace(/^# [^\r\n]+\r?\n\r?\n/, "");
   body = body.replace("This matrix is the public source of truth for provider readiness.", "The linked source matrix defines provider readiness.");
   body = body.replace(/\]\(([^\s)]+)\)/g, (match, href) => {
     if (/^(?:[a-z]+:|#|\/)/i.test(href)) return match;
