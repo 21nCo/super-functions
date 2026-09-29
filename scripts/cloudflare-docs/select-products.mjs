@@ -46,16 +46,19 @@ function productsFromChangedFiles() {
   };
 
   for (const file of changedFiles) {
-    if (/^(package\.json|package-lock\.json|turbo\.json|scripts\/cloudflare-docs\/|scripts\/docs-site\/|\.github\/workflows\/superfunctions-docs-cloudflare-)/.test(file)) {
+    if (/^(package\.json|package-lock\.json|turbo\.json|scripts\/cloudflare-docs\/|\.github\/workflows\/superfunctions-docs-cloudflare-)/.test(file)) {
       return existingProductIds();
     }
     if (/^packages\/docs-theme\//.test(file)) {
       for (const productId of existingProductIds()) selectExisting(productId);
       continue;
     }
-    if (/^docsfn\//.test(file)) return existingProductIds();
+    if (file.startsWith("docsfn/") || file.startsWith("scripts/docs-site/")) {
+      for (const productId of ["authfn", "devfn", "filefn"]) selectExisting(productId);
+      continue;
+    }
     if (/^datafn\/docs\//.test(file)) selectExisting("datafn");
-    if (/^devfn\/docs\//.test(file)) selectExisting("devfn");
+    if (file.startsWith("devfn/docs/")) selectExisting("devfn");
     if (/^filefn\/docs\//.test(file)) selectExisting("filefn");
     if (/^searchfn\/docs\//.test(file)) selectExisting("searchfn");
     if (/^authfn\/docs\//.test(file)) selectExisting("authfn");
