@@ -1,0 +1,72 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3Q89FEVARQXV6HC71K551D4",
+  "session_id": "01a0ee25-fef3-7643-b3da-8732f3cec764",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-29T18:54:33.421645Z",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/superfunctions-docs-cloudflare-routes.yml",
+    "authfn/docs/package.json",
+    "authfn/docs/scripts/generate-llms.mjs",
+    "authfn/docs/src/lib/server/docs-site-source.ts",
+    "authfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "authfn/docs/vite.config.ts",
+    "filefn/docs/scripts/generate-llms.mjs",
+    "filefn/docs/src/lib/server/docs-site-source.ts",
+    "filefn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "filefn/docs/static/llms-full.txt",
+    "filefn/docs/vite.config.ts",
+    "langfn/docs/docsfn.config.ts",
+    "langfn/docs/package.json",
+    "langfn/docs/scripts/generate-llms.mjs",
+    "langfn/docs/src/app.html",
+    "langfn/docs/src/lib/server/docs-site-source.ts",
+    "langfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "langfn/docs/static/llms-full.txt",
+    "langfn/docs/static/llms.txt",
+    "langfn/docs/svelte.config.js",
+    "langfn/docs/vite.config.ts",
+    "package-lock.json",
+    "scripts/docs-site/layout.ts",
+    "scripts/docs-site/llms.mjs",
+    "scripts/docs-site/page.ts",
+    "scripts/docs-site/vite.ts",
+    "scripts/docs-site/vitest.config.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-sol",
+  "turn_id": "6f1b7d2aba45",
+  "checkpoint_transcript_start": 4477,
+  "transcript_lines_at_start": 4477,
+  "compact_transcript_start": 682,
+  "token_usage": {
+    "input_tokens": 52915,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 8604544,
+    "output_tokens": 5784,
+    "api_call_count": 44
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-29T18:54:33.174433Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 1622,
+    "human_removed": 24,
+    "total_committed": 0,
+    "total_lines_changed": 1646,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
