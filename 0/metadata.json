@@ -1,0 +1,66 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3PG0FN4FV3CSPKWSDJH36GY",
+  "session_id": "01a0eccb-56ef-7ea0-a2e1-c84027ac735e",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-29T11:50:12.398852Z",
+  "branch": "review/docs-pr-214-20260929",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "filefn/docs/content/docs/adapters/db-drizzle.md",
+    "filefn/docs/content/docs/adapters/db-postgres.md",
+    "filefn/docs/content/docs/ai-resources/claude.md",
+    "filefn/docs/content/docs/ai-resources/codex.md",
+    "filefn/docs/content/docs/ai-resources/cursor.md",
+    "filefn/docs/content/docs/ai-resources/index.md",
+    "filefn/docs/content/docs/ai-resources/llms-txt.md",
+    "filefn/docs/content/docs/ai-resources/mcp.md",
+    "filefn/docs/content/docs/ai-resources/skills.md",
+    "filefn/docs/content/docs/api/index.md",
+    "filefn/docs/content/docs/frameworks/bun.md",
+    "filefn/docs/content/docs/reference/configuration.md",
+    "filefn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "filefn/docs/src/routes/docs/llms-full.txt/+server.ts",
+    "filefn/docs/src/routes/docs/llms.txt/+server.ts",
+    "filefn/docs/static/llms-full.txt",
+    "filefn/docs/static/llms.txt",
+    "filefn/docs/tsconfig.json",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/layout.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-sol",
+  "turn_id": "98b450a04b6e",
+  "checkpoint_transcript_start": 2805,
+  "transcript_lines_at_start": 2805,
+  "compact_transcript_start": 421,
+  "token_usage": {
+    "input_tokens": 55477,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 10714880,
+    "output_tokens": 12172,
+    "api_call_count": 72
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-29T11:50:12.291914Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 820,
+    "human_removed": 1132,
+    "total_committed": 0,
+    "total_lines_changed": 1952,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

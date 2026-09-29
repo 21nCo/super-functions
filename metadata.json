@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.11.2",
+  "checkpoint_id": "01M3PG0FN4FV3CSPKWSDJH36GY",
+  "strategy": "manual-commit",
+  "branch": "review/docs-pr-214-20260929",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "filefn/docs/content/docs/adapters/db-drizzle.md",
+    "filefn/docs/content/docs/adapters/db-postgres.md",
+    "filefn/docs/content/docs/ai-resources/claude.md",
+    "filefn/docs/content/docs/ai-resources/codex.md",
+    "filefn/docs/content/docs/ai-resources/cursor.md",
+    "filefn/docs/content/docs/ai-resources/index.md",
+    "filefn/docs/content/docs/ai-resources/llms-txt.md",
+    "filefn/docs/content/docs/ai-resources/mcp.md",
+    "filefn/docs/content/docs/ai-resources/skills.md",
+    "filefn/docs/content/docs/api/index.md",
+    "filefn/docs/content/docs/frameworks/bun.md",
+    "filefn/docs/content/docs/reference/configuration.md",
+    "filefn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "filefn/docs/src/routes/docs/llms-full.txt/+server.ts",
+    "filefn/docs/src/routes/docs/llms.txt/+server.ts",
+    "filefn/docs/static/llms-full.txt",
+    "filefn/docs/static/llms.txt",
+    "filefn/docs/tsconfig.json",
+    "scripts/docs-site/README.md",
+    "scripts/docs-site/Search.svelte",
+    "scripts/docs-site/layout.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 55477,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 10714880,
+    "output_tokens": 12172,
+    "api_call_count": 72
+  }
+}
