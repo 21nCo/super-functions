@@ -7,7 +7,7 @@ description: Bind the BillFn Super Console capability to an authorized billing s
 
 ## Bind an active billing subject
 
-The host must authenticate the administrator, authorize the active organization, workspace, project, or environment scope, and map that scope to a `BillableSubject`. Pass that mapping to the domain service:
+The host must authenticate the administrator, authorize the active workspace, project, or environment scope, and map that scope to a `BillableSubject`. Every mounted operation requires at least a workspace scope; an organization-only selection is rejected. Pass the mapping to the domain service:
 
 ```ts
 import { createBillFnAdminAdapter, createBillFnDomainAdminService } from "@billfn/admin";
