@@ -8,6 +8,7 @@ export function docsSiteCorePlugin(configUrl: string): Plugin {
   const directory = path.dirname(require.resolve("@docsfn/core"));
   return {
     name: "docs-site-pinned-core",
+    enforce: "pre",
     resolveId(source, importer) {
       if (!importer?.replaceAll("\\", "/").includes("/scripts/docs-site/")) return;
       if (source === "@docsfn/core") return path.join(directory, "index.js");

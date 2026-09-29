@@ -17,9 +17,9 @@ npm run build --workspace @searchfn/adapter-contracts
 npm run build --workspace @searchfn/adapter-memory
 npm run build --workspace @searchfn/adapter-indexeddb
 npm run build --workspace @searchfn/client
-npm exec --workspace @secfn/docs -- docsfn validate --root .
+npm run validate --workspace=@secfn/docs
 ```
 
-The site defaults to port 6016. The public documentation URL is `https://secfn.com/docs`.
+The site defaults to port 6016. The planned public documentation URL is `https://secfn.com/docs`; set `site.canonicalUrl` after the host serves the site.
 
-The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Generated page links use the configured public host, `https://secfn.com/docs`.
+The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Until the public docs host is live, generated page links point to the source files on GitHub.

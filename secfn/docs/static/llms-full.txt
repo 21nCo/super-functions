@@ -17,7 +17,7 @@ The server exposes `AuditService`, `AccessService`, and `SecFnRateLimiter`. An a
 
 Rate limiting is disabled by default; set `rateLimit.enabled: true` to enforce quotas. When enabled, rate checks run before admin and runtime actions. In-memory defaults are process-local. For shared quotas across instances, configure `rateLimit.atomicStore` with linearizable compare-and-set. Legacy persistence is accepted only with `singleProcess: true`. Multi-scope checks preflight all configured limits before charging; under shared CAS contention earlier charges may conservatively remain.
 
-The DB adapter provides audit durability: `AuditService.write()` persists the event before delivering it to the optional sink. Sink failures are swallowed after persistence; the sink and host monitoring add operational visibility. Read the [server contract](/docs/reference/server) for exact transaction and rate-store guarantees, and the [source audit service](https://github.com/21nCo/super-functions/blob/dev/secfn/server/src/audit.ts) for event behavior.
+The DB adapter provides audit durability: `AuditService.write()` persists the event before delivering it to the optional sink. Sink failures are swallowed after persistence; the sink and host monitoring add operational visibility. Read the [server contract](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/server.md) for exact transaction and rate-store guarantees, and the [source audit service](https://github.com/21nCo/super-functions/blob/dev/secfn/server/src/audit.ts) for event behavior.
 
 ---
 
@@ -33,9 +33,9 @@ Install the package for the task. `@secfn/core` provides pure encryption, scanne
 npm install @secfn/core @secfn/server @secfn/runtime
 ```
 
-Provision the database and apply the [schema migrations](/docs/migrations), supply a key provider or master key, mount the [server router](/docs/server), and implement host authentication and admin authorization. Create service tokens through authorized admin flows before configuring a [runtime client](/docs/runtime). The server does not provision a database or framework-specific mount for you.
+Provision the database and apply the [schema migrations](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/migrations.md), supply a key provider or master key, mount the [server router](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/server.md), and implement host authentication and admin authorization. Create service tokens through authorized admin flows before configuring a [runtime client](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/runtime.md). The server does not provision a database or framework-specific mount for you.
 
-For pure encryption, use `buildSecretAad`, `encryptSecret`, and `decryptSecret` from `@secfn/core` with a `KeyProvider`. For secret scanning, use `createSecurityScanner` and a reporter from the core package. See [package reference](/docs/reference/packages) for exports and responsibility boundaries.
+For pure encryption, use `buildSecretAad`, `encryptSecret`, and `decryptSecret` from `@secfn/core` with a `KeyProvider`. For secret scanning, use `createSecurityScanner` and a reporter from the core package. See [package reference](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/packages.md) for exports and responsibility boundaries.
 
 ---
 
@@ -45,7 +45,7 @@ For pure encryption, use `buildSecretAad`, `encryptSecret`, and `decryptSecret` 
 > Encrypted secrets, scoped retrieval, scanning, and security services.
 
 
-SecFn's implemented packages provide pure encryption and scanner contracts, an adapter-backed server with admin and runtime routes, and a read-only runtime client. The server also handles RBAC, service tokens, rate limiting, and durable audit events. Start with [getting started](/docs/getting-started), then follow the [server](/docs/server), [scope](/docs/scope-and-permissions), and [runtime](/docs/runtime) guides.
+SecFn's implemented packages provide pure encryption and scanner contracts, an adapter-backed server with admin and runtime routes, and a read-only runtime client. The server also handles RBAC, service tokens, rate limiting, and durable audit events. Start with [getting started](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/getting-started.md), then follow the [server](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/server.md), [scope](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/scope-and-permissions.md), and [runtime](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/runtime.md) guides.
 
 The older `secfn/SPEC.md` is a V0 proposal with paths and features that do not match this checkout. These pages follow `@secfn/core`, `@secfn/server`, and `@secfn/runtime` on `origin/dev`. Apply the current schema and migration requirements before using a database, and keep secret material in trusted processes.
 
@@ -61,7 +61,7 @@ The older `secfn/SPEC.md` is a V0 proposal with paths and features that do not m
 
 The current server guide describes four schema stages. Version 2 adds nullable `tenant_id` to scan runs. Version 3 adds `migrations/0003_scan_run_tenant_index.sql`. Version 4 adds optional immutable environment bindings with `migrations/0004_secret_set_environment.sql`, which requires PostgreSQL 15+ and `NULLS NOT DISTINCT` uniqueness. Apply them in order against the intended deployment schema. For a shared database, set `secfn.migration_schema`; otherwise the version 4 script refuses to guess when it cannot uniquely find the table.
 
-Version 4 preflights duplicate secret-set identities and aborts with an actionable unique-violation error. It does not merge or delete data. Resolve duplicate names by ID in a reviewed transaction, preserve set IDs and members, roll back failed migration transactions, and retry only after the duplicates are gone. The [server README reference](/docs/reference/server) includes the diagnostic SQL and detailed rollout notes.
+Version 4 preflights duplicate secret-set identities and aborts with an actionable unique-violation error. It does not merge or delete data. Resolve duplicate names by ID in a reviewed transaction, preserve set IDs and members, roll back failed migration transactions, and retry only after the duplicates are gone. The [server README reference](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/server.md) includes the diagnostic SQL and detailed rollout notes.
 
 Verify generated schema diffs, existing row ownership, and adapter capabilities before deploying. A local schema build does not prove a hosted migration or data backfill.
 
@@ -136,11 +136,11 @@ Production storage, admin routes, runtime routes, RBAC services, rate limiting, 
 > SecFn packages, routes, and source package guides.
 
 
-- [Package map](/docs/reference/packages)
-- [Admin and runtime routes](/docs/reference/routes)
-- [Core package README](/docs/reference/core)
-- [Runtime package README](/docs/reference/runtime)
-- [Server package README](/docs/reference/server)
+- [Package map](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/packages.md)
+- [Admin and runtime routes](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/routes.md)
+- [Core package README](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/core.md)
+- [Runtime package README](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/runtime.md)
+- [Server package README](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/server.md)
 
 The package pages mirror the source READMEs. Keep those copies aligned when a public contract changes.
 
@@ -172,7 +172,7 @@ The server router defaults to `/secfn` as its base path. Admin routes require ho
 
 Runtime routes are `GET /runtime/secrets/:key` and `POST /runtime/secret-sets/:name/resolve`, both under the base path. They require a bearer service token, trusted scope, and rate checks. `GET /runtime/health` returns `{ ok: true, data: { status: "ok" } }` without the runtime token flow.
 
-Admin lists and runtime reads have different authorization paths. The host should not expose admin routes to a token intended only for runtime retrieval. For exact methods, body fields, and response envelopes, use the [source router](https://github.com/21nCo/super-functions/blob/dev/secfn/server/src/router.ts) and [server package guide](/docs/reference/server).
+Admin lists and runtime reads have different authorization paths. The host should not expose admin routes to a token intended only for runtime retrieval. For exact methods, body fields, and response envelopes, use the [source router](https://github.com/21nCo/super-functions/blob/dev/secfn/server/src/router.ts) and [server package guide](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/server.md).
 
 ---
 
@@ -353,7 +353,7 @@ const values = await secfn.getSet("service-runtime");
 
 `get` reads one secret; `getSet` resolves a set; `preload` warms either form (`set:name` selects a set); `toEnv` returns a set as an object; `toDotEnv` returns formatted text without writing it; and `injectEnv` writes into the current process environment after validating variable names. A per-call `environment` overrides the configured environment. `bypassCache` forces retrieval, and `clearCache()` drops cached entries. The default cache TTL is zero; any positive TTL can temporarily retain a rotated value, so choose it deliberately.
 
-The client calls `GET /runtime/secrets/:key` and `POST /runtime/secret-sets/:name/resolve` under the configured endpoint and expects the SecFn response envelope. See [runtime package reference](/docs/reference/runtime).
+The client calls `GET /runtime/secrets/:key` and `POST /runtime/secret-sets/:name/resolve` under the configured endpoint and expects the SecFn response envelope. See [runtime package reference](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/runtime.md).
 
 ---
 
@@ -367,7 +367,7 @@ The client calls `GET /runtime/secrets/:key` and `POST /runtime/secret-sets/:nam
 
 To retain run history, call `vault.recordScanRun({ tenantId, startedAt, target, status, findingCount })` after scanning. Tenant-scoped scan history needs the schema version 2 column and version 3 index migration. Existing unowned rows remain hidden from tenant lists until a trusted ownership backfill is performed. The admin router exposes `GET /admin/scan-runs` through host authorization.
 
-Git history scanning is implemented by `scanGitHistory`; a pre-commit workflow remains host-owned. See [core package reference](/docs/reference/core) and [server package reference](/docs/reference/server).
+Git history scanning is implemented by `scanGitHistory`; a pre-commit workflow remains host-owned. See [core package reference](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/core.md) and [server package reference](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/server.md).
 
 ---
 
@@ -383,7 +383,7 @@ The host derives `tenantId`, namespace, actor identity, IP, and related request 
 
 Runtime service tokens are created through admin routes and verified against the requested secret scope. The runtime client sends the bearer token and configured tenant and namespace headers. Select environments through the client configuration or a per-call option. The server rejects conflicting namespace names or IDs and checks set members against the resolved runtime scope.
 
-Read the [server contract](/docs/reference/server) for detailed namespace, environment, and secret-set behavior. Mounting the router is not an authentication policy: the host must supply its own principal resolution and admin permission decisions.
+Read the [server contract](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/server.md) for detailed namespace, environment, and secret-set behavior. Mounting the router is not an authentication policy: the host must supply its own principal resolution and admin permission decisions.
 
 ---
 
@@ -397,7 +397,7 @@ Read the [server contract](/docs/reference/server) for detailed namespace, envir
 
 Secret creation and rotation require transactional storage. Creation inserts the secret and first encrypted version together. Rotation inserts a new version and advances the pointer together; an adapter without transaction support fails before writing. Admin reveal requires explicit confirmation and is audited. Runtime reads require a scoped service token.
 
-Secret sets map members to output names. New sets validate members and output names before persistence. Schema version 4 can bind a set to an immutable environment ID. Runtime resolution prefers an exact environment binding, then a legacy unbound set; members must still pass scope checks. Duplicate output names in corrupt or legacy sets are rejected instead of silently overwriting values. See the [server package reference](/docs/reference/server) and [migration guide](/docs/migrations).
+Secret sets map members to output names. New sets validate members and output names before persistence. Schema version 4 can bind a set to an immutable environment ID. Runtime resolution prefers an exact environment binding, then a legacy unbound set; members must still pass scope checks. Duplicate output names in corrupt or legacy sets are rejected instead of silently overwriting values. See the [server package reference](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/server.md) and [migration guide](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/migrations.md).
 
 ---
 
@@ -449,6 +449,6 @@ The host’s `authenticate` callback must verify session identity and derive act
 
 Supply either `keyProvider` or `encryption.masterKey`; server creation fails when both are absent. The host owns key custody and rotation. The default router base path is `/secfn`, and the default JSON body limit is one MiB. SecFn does not re-export Express, Hono, Fastify, Next.js, or SvelteKit adapters. Use the shared HTTP adapter for the chosen host.
 
-Rate limiting is disabled unless `rateLimit.enabled` is `true`. Every admin route passes a rate check and the host's `authorize` callback. If `authorize` is absent, admin access is denied. Runtime routes require a bearer service token and verify its scope before returning values. The health route returns `{ ok: true, data: { status: "ok" } }`. See [route reference](/docs/reference/routes) and [source router](https://github.com/21nCo/super-functions/blob/dev/secfn/server/src/router.ts).
+Rate limiting is disabled unless `rateLimit.enabled` is `true`. Every admin route passes a rate check and the host's `authorize` callback. If `authorize` is absent, admin access is denied. Runtime routes require a bearer service token and verify its scope before returning values. The health route returns `{ ok: true, data: { status: "ok" } }`. See [route reference](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/routes.md) and [source router](https://github.com/21nCo/super-functions/blob/dev/secfn/server/src/router.ts).
 
 ---
