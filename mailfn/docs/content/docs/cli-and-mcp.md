@@ -8,7 +8,7 @@ description: Operate inboxes with sanitized CLI output and narrow agent tools.
 The following shell example requires `jq`; it captures the explicitly revealed credential without printing it and uses the inbox-scoped token for subsequent calls.
 
 ```sh
-set -euo pipefail
+set -eu
 export MAILFN_URL=https://mail.example.com
 # MAILFN_PROJECT_TOKEN must already contain a project token allowed to create inboxes.
 created=$(MAILFN_TOKEN="$MAILFN_PROJECT_TOKEN" mailfn inbox create --expires 3600 --idempotency-key run-123 --json --show-secrets)
