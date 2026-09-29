@@ -1,0 +1,33 @@
+scripts/docs-site/LandingPage.svelte
+  s_181bb405165ede::t_afc058c7d24ecf 216-225
+scripts/cloudflare-docs/config.mjs
+  s_181bb405165ede::t_afc058c7d24ecf 8-17
+scripts/docs-site/layout.ts
+  s_181bb405165ede::t_afc058c7d24ecf 5-8
+.github/workflows/superfunctions-docs-cloudflare-deploy.yml
+  s_181bb405165ede::t_afc058c7d24ecf 13,18,24,31,46
+clifn/docs/README.md
+  s_181bb405165ede::t_afc058c7d24ecf 22
+scripts/cloudflare-docs/select-products.mjs
+  s_181bb405165ede::t_afc058c7d24ecf 49,56,58
+clifn/docs/static/llms-full.txt
+  s_181bb405165ede::t_c9e6e8c895b812 81,119,187,189,203-209,213,235,278,735-737
+clifn/docs/static/llms.txt
+  s_181bb405165ede::t_f1b4c3162217ab 7-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "425da3ea4756aa047c6fb738cf224ada16e83c81",
+  "prompts": {},
+  "sessions": {
+    "s_181bb405165ede": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0eccb-56ef-7ea0-a2e1-c84027ac735e",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
