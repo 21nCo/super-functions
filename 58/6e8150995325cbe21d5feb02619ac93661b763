@@ -1,0 +1,41 @@
+memoryfn/docs/scripts/generate-llms.mjs
+  s_181bb405165ede::t_3fb46820744390 33
+scripts/docs-site/vite.ts
+  s_181bb405165ede::t_3fb46820744390 7-8,13-14
+scripts/docs-site/llms.mjs
+  s_181bb405165ede::t_3fb46820744390 21
+.github/workflows/superfunctions-docs-cloudflare-deploy.yml
+  s_181bb405165ede::t_08e349eafae718 14,19,25,29,47
+.github/workflows/superfunctions-docs-cloudflare-routes.yml
+  s_181bb405165ede::t_08e349eafae718 18,49
+scripts/cloudflare-docs/config.mjs
+  s_181bb405165ede::t_08e349eafae718 31-40
+scripts/cloudflare-docs/select-products.mjs
+  s_181bb405165ede::t_08e349eafae718 49,56,59
+memoryfn/docs/README.md
+  s_181bb405165ede::t_3fb46820744390 23,25
+memoryfn/docs/package.json
+  s_181bb405165ede::t_046414632640d3 33
+memoryfn/docs/static/llms-full.txt
+  s_181bb405165ede::t_64c0ac5b796e2a 6,34,73,75,119-125,203,232,244-246,370,436
+memoryfn/docs/static/llms.txt
+  s_181bb405165ede::t_a6879fd7fa3927 7-19
+package-lock.json
+  s_181bb405165ede::t_61b589c7f1a890 19015
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "586e8150995325cbe21d5feb02619ac93661b763",
+  "prompts": {},
+  "sessions": {
+    "s_181bb405165ede": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0eccb-56ef-7ea0-a2e1-c84027ac735e",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
