@@ -147,6 +147,8 @@ run the CLI commands in [Non-GitHub CI](#non-github-ci).
 - `start_mock_server` (optional, default `false`): Start a mock server for collection tests
 - `mock_port` (optional, default `19999`): Port for the mock server
 
+`start_mock_server` only starts the server. Set the collection environment's base URL to `http://127.0.0.1:<mock_port>` when you want tests to send requests to it.
+
 ### Example
 
 See [`apifn/examples/ci-cd/github-actions.yml`](https://github.com/21nCo/super-functions/blob/dev/apifn/examples/ci-cd/github-actions.yml).

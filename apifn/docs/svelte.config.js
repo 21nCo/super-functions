@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import adapterAuto from "@sveltejs/adapter-auto";
 import adapterCloudflare from "@sveltejs/adapter-cloudflare";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";

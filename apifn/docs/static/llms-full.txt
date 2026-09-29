@@ -20,7 +20,7 @@ npx @apifn/cli init .apifn/collection --yes
 npx @apifn/cli test .apifn/collection --env development --reporter json
 ```
 
-Store environment-specific base URLs and credentials outside reusable request definitions. The runner supports assertions, bounded retries, timeouts, and console, JSON, JUnit, or silent reports. Pre-request and test scripts run in a restricted Node VM; treat that as a convenience boundary, not a process isolation guarantee. Read the [collections reference](/docs/reference/collections) and [CLI options](/docs/reference/cli) for the request model and runner settings.
+Store environment-specific base URLs and credentials outside reusable request definitions. The runner supports assertions, bounded retries, timeouts, and console, JSON, JUnit, or silent reports. Pre-request and test scripts run in a restricted Node VM; treat that as a convenience boundary, not a process isolation guarantee. Read the [collections reference](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/collections.md) and [CLI options](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/cli.md) for the request model and runner settings.
 
 ---
 
@@ -38,7 +38,7 @@ npx @apifn/cli diff .apifn/base-openapi.yml .apifn/openapi.yml --format json
 npx @apifn/cli test .apifn/collection --env development --reporter json
 ```
 
-The reusable GitHub Actions workflow at `.github/workflows/apifn-api-check.yml` runs the published pinned CLI against the caller repository. It validates the spec, reports breaking changes, runs collections, and can post a PR summary. The caller needs `contents: read` and `pull-requests: write` permissions. Pin a commit or release tag for an immutable workflow. The workflow's `cli_version` input asserts its lockfile pin; it does not select an arbitrary package version. See the [source overview](/docs/reference/overview) for a complete caller example and non-GitHub CI setup.
+The reusable GitHub Actions workflow at `.github/workflows/apifn-api-check.yml` runs the published pinned CLI against the caller repository. It validates the spec, reports breaking changes, runs collections, and can post a PR summary. The caller needs `contents: read` and `pull-requests: write` permissions. Pin a full-length commit SHA for an immutable workflow revision; use a release tag only if your repository enforces immutable releases. The workflow's `cli_version` input asserts its lockfile pin; it does not select an arbitrary package version. See the [source overview](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/overview.md) for a complete caller example and non-GitHub CI setup.
 
 ---
 
@@ -74,7 +74,7 @@ npx @apifn/cli mock .apifn/openapi.yml
 npx @apifn/cli serve .apifn/openapi.yml
 ```
 
-Generation targets OpenAPI 3.1. `validate` checks the document; `mock` runs a mock HTTP server; `serve` opens an interactive explorer. Read the [CLI reference](/docs/reference/cli) for flags and defaults.
+Generation targets OpenAPI 3.1. `validate` checks the document; `mock` runs a mock HTTP server; `serve` opens an interactive explorer. Read the [CLI reference](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/cli.md) for flags and defaults.
 
 ---
 
@@ -86,7 +86,7 @@ Generation targets OpenAPI 3.1. `validate` checks the document; `mock` runs a mo
 
 ApiFn is a code-first API toolkit. Generate OpenAPI 3.1 from a `@superfunctions/http` router, then use the spec to validate changes, run portable request collections, mock responses, generate snippets, and render an interactive reference.
 
-Start with [getting started](/docs/getting-started). For exact options and public APIs, use the [package reference](/docs/reference). The [source overview](/docs/reference/overview) also covers CI configuration and ecosystem integrations.
+Start with [getting started](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/getting-started.md). For exact options and public APIs, use the [package reference](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/index.md). The [source overview](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/overview.md) also covers CI configuration and ecosystem integrations.
 
 ---
 
@@ -100,7 +100,7 @@ Start with [getting started](/docs/getting-started). For exact options and publi
 
 The Svelte package ships `.svelte` source subpaths; the package root exports types. The DocsFn plugin `@apifn/docsfn` converts an OpenAPI document to DocsFn content entries and has framework-specific renderers. It is optional and separate from this site's guide content.
 
-Read the [React](/docs/reference/react), [Svelte](/docs/reference/svelte), and [DocsFn plugin](/docs/reference/docsfn) package guides for component imports and provider options.
+Read the [React](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/react.md), [Svelte](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/svelte.md), and [DocsFn plugin](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/docsfn.md) package guides for component imports and provider options.
 
 ---
 
@@ -116,7 +116,7 @@ Run the CLI against an OpenAPI document:
 npx @apifn/cli mock .apifn/openapi.yml
 ```
 
-`@apifn/mock` also exposes `createMockServer` for embedding a mock server in test setup. It can generate responses from schemas or examples, optionally validate incoming requests, apply latency, and configure CORS and request-body limits. Defaults and exact options are in the [mock package reference](/docs/reference/mock).
+`@apifn/mock` also exposes `createMockServer` for embedding a mock server in test setup. It can generate responses from schemas or examples, optionally validate incoming requests, apply latency, and configure CORS and request-body limits. Defaults and exact options are in the [mock package reference](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/mock.md).
 
 Mocked responses show contract behavior. They do not prove that a deployed server implements the same contract. Run collection tests against the real server before release.
 
@@ -141,7 +141,7 @@ const doc = fromRouter(router, {
 });
 ```
 
-Use `introspectRouter` when you need route descriptions before generation; `generateOpenAPI` accepts those descriptions. `include` and `exclude` use raw prefix matching on the final path (including `basePath`): `/v1` also matches `/v10`. Choose non-overlapping prefixes. Restrict included paths deliberately so internal routes do not enter a public contract. See the [core reference](/docs/reference/core) for schema conversion, parsing, validation, and integration hooks.
+Use `introspectRouter` when you need route descriptions before generation; `generateOpenAPI` accepts those descriptions. `include` and `exclude` use raw prefix matching on the final path (including `basePath`): `/v1` also matches `/v10`. Choose non-overlapping prefixes. Restrict included paths deliberately so internal routes do not enter a public contract. See the [core reference](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/core.md) for schema conversion, parsing, validation, and integration hooks.
 
 ---
 
@@ -392,7 +392,7 @@ npm install @apifn/collections
 - **Read / Write** — Load and persist an OpenCollection directory (`opencollection.yml` + per-request YAML + environments)
 - **Generate** — Produce a collection from an OpenAPI document or a `@superfunctions/http` router
 - **Run** — Execute a collection with sequential or parallel scheduling, retries, timeouts, and bail-on-failure
-- **Assertions** — Chai-like `expect`/`test` runtime with JSONPath and a JSON Schema subset: `type`, `enum`, `required`, `properties`, and `items`. `.matchSchema` does not check `minimum`, `format`, `$ref`, or other unsupported keywords
+- **Assertions** — Chai-like `expect`/`test` runtime with JSONPath and a JSON Schema subset: `type`, primitive-value `enum`, `required`, `properties`, and `items`. Object and array enum members use identity comparison, so separately parsed equal values may not match. `.matchSchema` does not check `minimum`, `format`, `$ref`, or other unsupported keywords
 - **Scripting** — Sandboxed pre-request and test scripts (Node `vm`, no `process`/`require`/`fetch`)
 - **Reporters** — Console, JSON, JUnit XML, and silent reporters
 - **Safety** — Secret redaction in captured request/response data, path-traversal-safe writes
@@ -1022,7 +1022,7 @@ MIT
 > Source package guides and public API details.
 
 
-These pages mirror the source READMEs at the `dev` branch used to build this site. Start with the [overview](/docs/reference/overview), then use [core](/docs/reference/core), [CLI](/docs/reference/cli), [collections](/docs/reference/collections), [mock](/docs/reference/mock), [snippets](/docs/reference/snippets), [React](/docs/reference/react), [Svelte](/docs/reference/svelte), or the [DocsFn plugin](/docs/reference/docsfn).
+These pages mirror the source READMEs at the `dev` branch used to build this site. Start with the [overview](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/overview.md), then use [core](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/core.md), [CLI](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/cli.md), [collections](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/collections.md), [mock](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/mock.md), [snippets](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/snippets.md), [React](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/react.md), [Svelte](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/svelte.md), or the [DocsFn plugin](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/docsfn.md).
 
 ---
 
@@ -1334,6 +1334,8 @@ run the CLI commands in [Non-GitHub CI](#non-github-ci).
 - `start_mock_server` (optional, default `false`): Start a mock server for collection tests
 - `mock_port` (optional, default `19999`): Port for the mock server
 
+`start_mock_server` only starts the server. Set the collection environment's base URL to `http://127.0.0.1:<mock_port>` when you want tests to send requests to it.
+
 ### Example
 
 See [`apifn/examples/ci-cd/github-actions.yml`](https://github.com/21nCo/super-functions/blob/dev/apifn/examples/ci-cd/github-actions.yml).
@@ -1430,12 +1432,13 @@ import {
 <SchemaViewer schema={userSchema} name="User" required expandDepth={3} />
 
 // Live request console
+// Obtain a short-lived, user-scoped token from your own backend.
 <TryIt
   path="/users"
   method="post"
   operation={op}
   baseUrl="https://api.example.com"
-  defaultAuth={{ type: "bearer", token: "abc" }}
+  defaultAuth={{ type: "bearer", token: userScopedAccessToken }}
   onResponse={(r) => console.log(r.statusCode)}
 />
 
@@ -1532,15 +1535,20 @@ Generate a snippet for a single operation.
 ```typescript
 import { generateSnippet } from "@apifn/snippets";
 
+const token = process.env.API_TOKEN;
+if (!token) throw new Error("API_TOKEN is required");
+
 const code = generateSnippet(operation, "/users/{id}", "get", {
   target: "curl",
   baseUrl: "https://api.example.com",
-  auth: { type: "bearer", token: "abc123" },
+  auth: { type: "bearer", token },
   indent: 2,
 });
 
 console.log(code);
 ```
+
+Supply `API_TOKEN` through your server or CI secret store. Generated snippets can contain the token, so handle their output as sensitive data.
 
 ### SnippetOptions
 
@@ -1718,6 +1726,6 @@ MIT
 npx @apifn/cli snippet .apifn/openapi.yml --all
 ```
 
-The library accepts an operation, path, method, target, base URL, and optional auth values. Review generated snippets before sharing: tokens, sample bodies, and production base URLs may be embedded. See the [snippets reference](/docs/reference/snippets) for `generateSnippet`, `generateAllSnippets`, and the supported targets.
+The library accepts an operation, path, method, target, base URL, and optional auth values. Review generated snippets before sharing: tokens, sample bodies, and production base URLs may be embedded. See the [snippets reference](https://github.com/21nCo/super-functions/blob/dev/apifn/docs/content/docs/reference/snippets.md) for `generateSnippet`, `generateAllSnippets`, and the supported targets.
 
 ---

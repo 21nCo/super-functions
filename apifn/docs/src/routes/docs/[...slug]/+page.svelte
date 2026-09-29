@@ -24,6 +24,7 @@
   <Breadcrumbs surface={data.surface} />
   {#if data.routeEntry.kind === "page" && data.compiled}
     <article class="docs-page-article">
+      <h1 class="docs-page-title">{data.surface.title}</h1>
       <DocsContent compiled={data.compiled} />
     </article>
   {:else if data.routeEntry.kind === "api"}
@@ -35,6 +36,12 @@
 </DocsLayout>
 
 <style>
+  .docs-page-title {
+    margin: 0.5rem 0 1rem;
+    font-size: clamp(1.75rem, 3vw, 2.25rem);
+    line-height: 1.2;
+  }
+
   .docs-page-article {
     margin-top: 0.5rem;
   }

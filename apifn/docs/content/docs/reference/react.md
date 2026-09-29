@@ -73,12 +73,13 @@ import {
 <SchemaViewer schema={userSchema} name="User" required expandDepth={3} />
 
 // Live request console
+// Obtain a short-lived, user-scoped token from your own backend.
 <TryIt
   path="/users"
   method="post"
   operation={op}
   baseUrl="https://api.example.com"
-  defaultAuth={{ type: "bearer", token: "abc" }}
+  defaultAuth={{ type: "bearer", token: userScopedAccessToken }}
   onResponse={(r) => console.log(r.statusCode)}
 />
 

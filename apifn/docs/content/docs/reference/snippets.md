@@ -38,15 +38,20 @@ Generate a snippet for a single operation.
 ```typescript
 import { generateSnippet } from "@apifn/snippets";
 
+const token = process.env.API_TOKEN;
+if (!token) throw new Error("API_TOKEN is required");
+
 const code = generateSnippet(operation, "/users/{id}", "get", {
   target: "curl",
   baseUrl: "https://api.example.com",
-  auth: { type: "bearer", token: "abc123" },
+  auth: { type: "bearer", token },
   indent: 2,
 });
 
 console.log(code);
 ```
+
+Supply `API_TOKEN` through your server or CI secret store. Generated snippets can contain the token, so handle their output as sensitive data.
 
 ### SnippetOptions
 

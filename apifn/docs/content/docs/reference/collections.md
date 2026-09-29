@@ -16,7 +16,7 @@ npm install @apifn/collections
 - **Read / Write** — Load and persist an OpenCollection directory (`opencollection.yml` + per-request YAML + environments)
 - **Generate** — Produce a collection from an OpenAPI document or a `@superfunctions/http` router
 - **Run** — Execute a collection with sequential or parallel scheduling, retries, timeouts, and bail-on-failure
-- **Assertions** — Chai-like `expect`/`test` runtime with JSONPath and a JSON Schema subset: `type`, `enum`, `required`, `properties`, and `items`. `.matchSchema` does not check `minimum`, `format`, `$ref`, or other unsupported keywords
+- **Assertions** — Chai-like `expect`/`test` runtime with JSONPath and a JSON Schema subset: `type`, primitive-value `enum`, `required`, `properties`, and `items`. Object and array enum members use identity comparison, so separately parsed equal values may not match. `.matchSchema` does not check `minimum`, `format`, `$ref`, or other unsupported keywords
 - **Scripting** — Sandboxed pre-request and test scripts (Node `vm`, no `process`/`require`/`fetch`)
 - **Reporters** — Console, JSON, JUnit XML, and silent reporters
 - **Safety** — Secret redaction in captured request/response data, path-traversal-safe writes

@@ -21,8 +21,7 @@
     ],
     "types": [
       "svelte",
-      "vite/client",
-      "node"
+      "vite/client"
     ]
   }
 }
