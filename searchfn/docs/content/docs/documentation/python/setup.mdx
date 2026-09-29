@@ -28,6 +28,6 @@ plugin = create_searchfn_server({"schema": schema, "db": db})
 
 ## Index storage
 
-Provision an index table in the same adapter before indexing. With the default `table_prefix`, the table name is `_searchfn_index`. Rows hold `term`, `model`, `recordId`, and `field`; an adapter may also assign an `id`. Configure a uniqueness rule for `(term, model, recordId, field)` if your database needs duplicate protection. SearchFn does not run migrations or create this table.
+Provision an index table in the same adapter before indexing. With the default `table_prefix`, the table name is `_searchfn_index`. Rows hold `term`, `model`, `recordId`, and `field`; an adapter may also assign an `id`. Allow repeated `(term, model, recordId, field)` rows: each occurrence contributes to `totalTerms` and the search score. A uniqueness constraint on those four columns would silently discard repeated terms. SearchFn does not run migrations or create this table.
 
 Pass `"table_prefix": "fts_"` to use `fts_index`. The prefix must be a non-empty string. The index route returns `{ "ok": true, "result": { "totalIndexed": ..., "totalTerms": ... } }`; the search route returns `{ "ok": true, "results": [...] }`. Mount and authorize them through your framework as shown in [HTTP mount](/docs/documentation/python/http-mount).

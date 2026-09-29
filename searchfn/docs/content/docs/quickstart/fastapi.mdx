@@ -21,7 +21,8 @@ plugin = create_searchfn_server({"schema": schema, "db": db})
 def make_endpoint(handler):
     async def endpoint(request: Request):
         try:
-            payload = await request.json()
+            body = await request.body()
+            payload = await request.json() if body else {}
         except ValueError:
             return JSONResponse({"ok": False, "error": "Expected a JSON object"}, status_code=400)
         if not isinstance(payload, dict):
@@ -38,6 +39,8 @@ for spec, handler in plugin["routes"].items():
 ```
 
 Run `uvicorn myapp.app:app` (adjust to your module), then POST JSON to `/searchfn/index` or `/searchfn/search`. Protect index rebuilding with operator authorization and apply your normal request authentication to search.
+
+An empty index request forwards `{}` and indexes all configured resources. Malformed JSON and non-object payloads return a 400 error envelope.
 
 The host must provision `<table_prefix>index` (default `_searchfn_index`) and authorize both routes. `searchfn` does not import DataFn or set up database tables. For a standalone adapter example, see the [Python source README](https://github.com/21nCo/super-functions/blob/dev/searchfn/python/README.md).
 

@@ -20,7 +20,8 @@ plugin = create_searchfn_server({"schema": schema, "db": db})
 def wrap(handler):
     def view():
         try:
-            payload = request.get_json()
+            body = request.get_data(cache=True)
+            payload = request.get_json() if body else {}
         except (BadRequest, UnsupportedMediaType):
             return jsonify({"ok": False, "error": "Expected a JSON object"}), 400
         if not isinstance(payload, dict):
@@ -35,6 +36,8 @@ for spec, handler in plugin["routes"].items():
 ```
 
 For a synchronous Flask host, the wrapper runs each async handler in its own event loop. Check whether your database adapter supports that lifecycle; an async-native framework may fit better for a high-throughput service. Authenticate search requests and restrict indexing to operators.
+
+An empty index request forwards `{}` and indexes all configured resources. Malformed JSON and non-object payloads return a 400 error envelope.
 
 The host must provision `<table_prefix>index` (default `_searchfn_index`) and authorize both routes. `searchfn` does not import DataFn or set up database tables. For a standalone adapter example, see the [Python source README](https://github.com/21nCo/super-functions/blob/dev/searchfn/python/README.md).
 
