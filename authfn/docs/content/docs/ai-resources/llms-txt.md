@@ -5,10 +5,10 @@ description: Static context files generated from the docs — drop into your ass
 
 # llms.txt
 
-[`llms.txt`](https://llmstxt.org/) is a community convention for static, LLM-friendly summaries of a project. authfn ships **two** files at the docs origin:
+[`llms.txt`](https://llmstxt.org/) is a community convention for static, LLM-friendly summaries of a project. authfn serves **two** files under `/docs`:
 
-- `https://authfn.superfunctions.dev/llms.txt` — short index. Lists every doc page with a one-line description and a link.
-- `https://authfn.superfunctions.dev/llms-full.txt` — full text. Concatenated markdown of every doc page plus the OpenAPI spec.
+- `https://authfn.com/docs/llms.txt` — short index. Lists every doc page with a one-line description and a link.
+- `https://authfn.com/docs/llms-full.txt` — full text. Concatenated markdown of every doc page plus the OpenAPI spec.
 
 Use whichever fits your assistant's context budget.
 
@@ -17,7 +17,7 @@ Use whichever fits your assistant's context budget.
 Both files are emitted by docsfn at build time:
 
 ```bash
-npm run docs:llms     # writes static/llms.txt and static/llms-full.txt
+npm run generate:llms --workspace=@authfn/docs
 ```
 
 The pipeline:
@@ -33,14 +33,14 @@ The pipeline:
 In Cursor, Claude Desktop, ChatGPT custom GPTs, or anything that accepts a URL as context:
 
 ```
-https://authfn.superfunctions.dev/llms-full.txt
+https://authfn.com/docs/llms-full.txt
 ```
 
 For local development against your own fork, you can also point at:
 
 ```
-http://localhost:5173/llms.txt
-http://localhost:5173/llms-full.txt
+http://localhost:6005/docs/llms.txt
+http://localhost:6005/docs/llms-full.txt
 ```
 
 ## What's in `llms-full.txt`
@@ -71,19 +71,7 @@ Roughly:
 
 ## Customizing
 
-The `docs:llms` task is configurable via `docsfn.config.ts`:
-
-```ts
-{
-  // ...
-  llmsTxt: {
-    enabled: true,
-    includeOpenApi: true,
-    includePages: ['docs/**'],
-    excludePages: ['docs/blog/**'],
-  },
-}
-```
+The `generate:llms` script builds the manifest from `docsfn.config.ts` and writes the files to `static/`. It excludes blog posts and uses the configured canonical URL for page links.
 
 ## Token budget
 

@@ -68,7 +68,7 @@ export const load: PageServerLoad = async ({ params }) => {
       headings: [],
       breadcrumbs: [
         { label: "Docs", href: "/docs" },
-        { label: "Package reference", href: "/docs/reference" },
+        { label: "API Reference", href: "/docs/api" },
         { label: api.title, href: route },
       ],
       pagination: {},
