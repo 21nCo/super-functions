@@ -25,7 +25,6 @@ on:
       - memoryfn/docs/**
       - searchfn/docs/**
       - authfn/docs/**
-      - docsfn/**
       - scripts/docs-site/**
       - packages/docs-theme/**
       - scripts/cloudflare-docs/**

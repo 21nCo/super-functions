@@ -53,7 +53,6 @@ function productsFromChangedFiles() {
       for (const productId of existingProductIds()) selectExisting(productId);
       continue;
     }
-    if (/^docsfn\//.test(file)) return existingProductIds();
     if (/^datafn\/docs\//.test(file)) selectExisting("datafn");
     if (/^filefn\/docs\//.test(file)) selectExisting("filefn");
     if (/^memoryfn\/docs\//.test(file)) selectExisting("memoryfn");
