@@ -4,17 +4,17 @@ Package mode imports stable subpaths from `@uifn/components-react`, `@uifn/compo
 
 ## Source installation
 
-Install the CLI as a development dependency in your consumer project. The `@uifn/registry` package provides the `uifn` executable; use `npx --no-install` to run that local installation.
+Install the CLI as a development dependency in your consumer project. Run the installed `@uifn/registry` binary by its package path so a missing local installation fails.
 
 ```sh
 npm install --save-dev @uifn/registry
-npx --no-install uifn add button --framework react --cwd . --dry-run --json
-npx --no-install uifn add button --framework react --cwd . --json
-npx --no-install uifn diff --cwd . --json
-npx --no-install uifn update button --cwd . --dry-run --json
+node ./node_modules/@uifn/registry/dist/bin.mjs add button --framework react --cwd . --dry-run --json
+node ./node_modules/@uifn/registry/dist/bin.mjs add button --framework react --cwd . --json
+node ./node_modules/@uifn/registry/dist/bin.mjs diff --cwd . --json
+node ./node_modules/@uifn/registry/dist/bin.mjs update button --cwd . --dry-run --json
 ```
 
-Dry run shows the exact plan without writing. Add and update validate catalog signatures, package dependencies, workspace ownership, source hashes, and dirty-file conflicts before an atomic write. Local edits are never silently overwritten.
+Dry run shows the exact plan without writing. Add and update validate catalog signatures, package dependencies, source hashes, and dirty-file conflicts before an atomic write. Check that `--cwd` points to the intended project before running a write; planning does not verify ancestor workspace declarations. Local edits are never silently overwritten.
 
 ## Npm lockfiles after dependency changes
 
