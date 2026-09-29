@@ -1,0 +1,70 @@
+apifn/docs/tsconfig.json
+  s_181bb405165ede::t_e23af00338ba7f 24
+scripts/cloudflare-docs/select-products.mjs
+  s_181bb405165ede::t_e1873c6734d86f 60
+  s_181bb405165ede::t_f799c78fabb5da 57
+  s_181bb405165ede::t_192f71b4b23239 49
+apifn/docs/content/docs/reference/react.md
+  s_181bb405165ede::t_e23af00338ba7f 76,82
+apifn/docs/content/docs/reference/collections.md
+  s_181bb405165ede::t_e23af00338ba7f 19
+scripts/cloudflare-docs/config.mjs
+  s_181bb405165ede::t_e1873c6734d86f 8-17
+apifn/docs/src/routes/docs/[...slug]/+page.svelte
+  s_181bb405165ede::t_10ae0911d2010c 27
+  s_181bb405165ede::t_e23af00338ba7f 39-44
+apifn/docs/svelte.config.js
+  s_181bb405165ede::t_e23af00338ba7f 1
+.github/workflows/superfunctions-docs-cloudflare-deploy.yml
+  s_181bb405165ede::t_e1873c6734d86f 13,18,24,46
+  s_181bb405165ede::t_192f71b4b23239 31
+apifn/docs/content/docs/diff-and-ci.md
+  s_181bb405165ede::t_e1873c6734d86f 14
+scripts/docs-site/LandingPage.svelte
+  s_181bb405165ede::t_e23af00338ba7f 178-179,186-187,215-216
+apifn/docs/content/docs/reference/snippets.md
+  s_181bb405165ede::t_9a57523a59151c 41-43,47
+  s_181bb405165ede::t_e23af00338ba7f 54
+  s_6126673cc0a89e::t_0f61b32932bfd4 55
+scripts/docs-site/runtime.ts
+  s_181bb405165ede::t_9cb8fd698dbbd0 351-352,363-384
+  s_522df49918ebb5::t_f36bae6abe0f4b 385-386
+apifn/docs/content/docs/reference/overview.md
+  s_181bb405165ede::t_e1873c6734d86f 150-151
+apifn/docs/static/llms-full.txt
+  s_181bb405165ede::t_12b8ab94a498fd 23,41,77,89,103,119,144,395,1025,1337-1338,1435,1441,1538-1540,1544,1551-1552,1729
+apifn/docs/static/llms.txt
+  s_181bb405165ede::t_d0d0808217a388 7-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cfdeab4ae690c82ebe730308836dc3b538442bfd",
+  "prompts": {},
+  "sessions": {
+    "s_181bb405165ede": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0eccb-56ef-7ea0-a2e1-c84027ac735e",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_522df49918ebb5": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "e35139f7-4fd7-415c-a363-19fcf00e5daf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_6126673cc0a89e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c2bc-9ed5-72b0-a4bd-e7dcb1d6a6eb",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
