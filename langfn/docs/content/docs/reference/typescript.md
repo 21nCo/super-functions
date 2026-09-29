@@ -9,9 +9,14 @@ Current release target: `0.1.0`.
 
 ## Install
 
+From the repository root, build this checkout before using its TypeScript exports:
+
 ```bash
-npm install langfn@0.1.0
+npm install
+npm run build --workspace=langfn
 ```
+
+For a separate application, pack this built workspace and install the resulting tarball. A same-version registry package may contain different code from this unpublished source.
 
 Python is outside this TypeScript source adoption. This site does not prescribe a Python registry installation; inspect its separately maintained source and release line.
 

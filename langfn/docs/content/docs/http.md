@@ -9,10 +9,12 @@ Trace listing and feedback require an authenticated actor. Their stored and quer
 
 HTTP provider errors omit upstream response bodies and metadata. The built-in `POST /stream` SSE route cancels model work when the request signal aborts; this requires a host bridge that propagates disconnects and streams response chunks. The current `@superfunctions/http-express` adapter buffers responses and does not provide that behavior. See the [source router](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/http/routes.ts) and [release gate](/docs/reference/release-gate) for exact input and scope rules.
 
-## Mount an authenticated Node 20+ server
+## Mount an authenticated Node 20.16+ server
+
+Run this example in the repository checkout after building the local `langfn` workspace as described in the [TypeScript package guide](/docs/reference/typescript). The source changes documented here are not yet available from the registry.
 
 ```sh
-npm install langfn express
+npm install express
 npm install --save-dev tsx
 ```
 
@@ -20,6 +22,7 @@ This local single-user example requires `LANGFN_DEMO_TOKEN`, `OPENAI_API_KEY`, a
 
 ```ts
 import express from "express";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { LangFn } from "langfn";
 import { OpenAIChatModel } from "langfn/models";
 import { createLangFnRouter } from "langfn/http";
@@ -29,13 +32,15 @@ const token = process.env.LANGFN_DEMO_TOKEN;
 if (!token || !process.env.OPENAI_API_KEY || !process.env.OPENAI_MODEL) {
   throw new Error("Set the demo token, provider key, and model");
 }
+const tokenDigest = createHash("sha256").update(token).digest();
 const lang = new LangFn({ model: new OpenAIChatModel({
   apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL,
 }) });
 const router = createLangFnRouter(lang, {
   auth: {
     validateBearerToken(value) {
-      return value === token ? {
+      const suppliedDigest = createHash("sha256").update(value).digest();
+      return timingSafeEqual(suppliedDigest, tokenDigest) ? {
         id: "local-session", type: "bearer",
         subject: { actorId: "local-user", actorType: "user", tenantId: "local" },
       } : null;

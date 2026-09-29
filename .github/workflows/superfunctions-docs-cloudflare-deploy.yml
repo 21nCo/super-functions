@@ -10,21 +10,25 @@ on:
     tags:
       - superfunctions-docs-live-*
       - superfunctions-docs-datafn-live-*
+      - superfunctions-docs-langfn-live-*
       - superfunctions-docs-filefn-live-*
       - superfunctions-docs-searchfn-live-*
       - superfunctions-docs-authfn-live-*
       - superfunctions-datafn-docs-live-*
+      - superfunctions-langfn-docs-live-*
       - superfunctions-filefn-docs-live-*
       - superfunctions-searchfn-docs-live-*
       - superfunctions-authfn-docs-live-*
     paths:
       - datafn/docs/**
+      - langfn/docs/**
       - filefn/docs/**
       - searchfn/docs/**
       - authfn/docs/**
       - docsfn/**
       - packages/docs-theme/**
       - scripts/cloudflare-docs/**
+      - scripts/docs-site/**
       - package.json
       - package-lock.json
       - turbo.json
@@ -39,6 +43,7 @@ on:
         options:
           - all
           - datafn
+          - langfn
           - filefn
           - searchfn
           - authfn

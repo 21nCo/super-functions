@@ -29,7 +29,7 @@ const response = await client.complete(prompt.format({ name: "Ada" }));
 console.log(response.content);
 ```
 
-Use `MockChatModel` for deterministic setup and tests. Choose a real provider from [models and providers](/docs/models-and-providers), supply its credentials from a trusted host, and configure total response deadlines for network calls. The [package export map](/docs/reference/package-exports) lists the subpaths available from the current manifest.
+Use `MockChatModel` for deterministic setup and tests. Choose a real provider from [models and providers](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/models-and-providers.md), supply its credentials from a trusted host, and configure total response deadlines for network calls. The [package export map](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/package-exports.md) lists the subpaths available from the current manifest.
 
 ---
 
@@ -43,12 +43,14 @@ Use `MockChatModel` for deterministic setup and tests. Choose a real provider fr
 
 Trace listing and feedback require an authenticated actor. Their stored and queried scope comes from trusted session metadata, not request-supplied tenant or user values. Custom trace stores serving scoped HTTP access must advertise `supportsScope: true`, apply both tenant and user predicates before pagination, and implement scoped `findOne` for feedback ownership. Historical unowned traces do not appear in HTTP results.
 
-HTTP provider errors omit upstream response bodies and metadata. The built-in `POST /stream` SSE route cancels model work when the request signal aborts; this requires a host bridge that propagates disconnects and streams response chunks. The current `@superfunctions/http-express` adapter buffers responses and does not provide that behavior. See the [source router](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/http/routes.ts) and [release gate](/docs/reference/release-gate) for exact input and scope rules.
+HTTP provider errors omit upstream response bodies and metadata. The built-in `POST /stream` SSE route cancels model work when the request signal aborts; this requires a host bridge that propagates disconnects and streams response chunks. The current `@superfunctions/http-express` adapter buffers responses and does not provide that behavior. See the [source router](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/http/routes.ts) and [release gate](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/release-gate.md) for exact input and scope rules.
 
-## Mount an authenticated Node 20+ server
+## Mount an authenticated Node 20.16+ server
+
+Run this example in the repository checkout after building the local `langfn` workspace as described in the [TypeScript package guide](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/typescript.md). The source changes documented here are not yet available from the registry.
 
 ```sh
-npm install langfn express
+npm install express
 npm install --save-dev tsx
 ```
 
@@ -56,6 +58,7 @@ This local single-user example requires `LANGFN_DEMO_TOKEN`, `OPENAI_API_KEY`, a
 
 ```ts
 import express from "express";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { LangFn } from "langfn";
 import { OpenAIChatModel } from "langfn/models";
 import { createLangFnRouter } from "langfn/http";
@@ -65,13 +68,15 @@ const token = process.env.LANGFN_DEMO_TOKEN;
 if (!token || !process.env.OPENAI_API_KEY || !process.env.OPENAI_MODEL) {
   throw new Error("Set the demo token, provider key, and model");
 }
+const tokenDigest = createHash("sha256").update(token).digest();
 const lang = new LangFn({ model: new OpenAIChatModel({
   apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL,
 }) });
 const router = createLangFnRouter(lang, {
   auth: {
     validateBearerToken(value) {
-      return value === token ? {
+      const suppliedDigest = createHash("sha256").update(value).digest();
+      return timingSafeEqual(suppliedDigest, tokenDigest) ? {
         id: "local-session", type: "bearer",
         subject: { actorId: "local-user", actorType: "user", tenantId: "local" },
       } : null;
@@ -159,7 +164,7 @@ export function langFnHandler(router: WebRouter): RequestHandler {
 > TypeScript SDK for model, tool, graph, retrieval, and evaluation workflows.
 
 
-The `langfn` TypeScript package provides model calls, prompts, structured output, tools, chains, state graphs, agents, memory, RAG, observability, evaluation, HTTP routes, and MCP adapters. Start with [getting started](/docs/getting-started) and use the [provider matrix](/docs/reference/compatibility) when choosing a model.
+The `langfn` TypeScript package provides model calls, prompts, structured output, tools, chains, state graphs, agents, memory, RAG, observability, evaluation, HTTP routes, and MCP adapters. Start with [getting started](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/getting-started.md) and use the [provider matrix](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/compatibility.md) when choosing a model.
 
 This site describes the current `origin/dev` TypeScript source, an unpublished adoption targeting package version `0.1.0`. The root LangFn README still lists Python and `@langfn/admin`, but neither package is present in this checkout. Its linked `SPEC.md` is also absent. Do not infer those surfaces from the root README or assume a same-version registry artifact includes these dev changes. Verify the actual installed artifact before adoption.
 
@@ -197,7 +202,7 @@ Inspect [memory exports](https://github.com/21nCo/super-functions/blob/dev/langf
 > Select first-party capabilities and preserve provider messages.
 
 
-The current TypeScript source includes first-party chat adapters for OpenAI, Anthropic, Ollama, Google, and Mistral, plus mock and custom model interfaces. The [compatibility matrix](/docs/reference/compatibility) distinguishes completion, chat, streaming, tools, embeddings, and evaluation. Only OpenAI ships a first-party embeddings adapter in this release line. Ollama has streaming but no first-party tool mapping.
+The current TypeScript source includes first-party chat adapters for OpenAI, Anthropic, Ollama, Google, and Mistral, plus mock and custom model interfaces. The [compatibility matrix](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/compatibility.md) distinguishes completion, chat, streaming, tools, embeddings, and evaluation. Only OpenAI ships a first-party embeddings adapter in this release line. Ollama has streaming but no first-party tool mapping.
 
 Provider `timeout` is a total response deadline, including streaming bodies, in milliseconds. Set `0` only when intentionally disabling it. Cancellation remains independent. For Google tool continuations, persist the returned assistant `message`, including `providerData`, before appending tool results; streamed chat emits a `message` event for the same purpose. `stream` is the prompt-only convenience method.
 
@@ -270,7 +275,7 @@ for await (const event of model.stream({
 
 `TraceStorage.saveFeedback` normalizes top-level tenant/user fields or nested `scope` and rejects conflicts. `LangFn.feedback()` accepts nested `scope` only; HTTP `/feedback` derives scope from the authenticated actor and does not accept caller-supplied tenant/user scope. Cached completions create a fresh scoped trace, so feedback can refer to each returned trace ID. For SQL-backed custom trace stores, include tenant and user columns and query predicates. A local evaluator result only describes the frozen dataset, model, prompt, context, and budget used for that run.
 
-The [release gate](/docs/reference/release-gate) details HTTP scope and trace-store requirements. See [observability exports](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/observability/index.ts) and [evaluation exports](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/evaluation/index.ts) for integration APIs.
+The [release gate](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/release-gate.md) details HTTP scope and trace-store requirements. See [observability exports](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/observability/index.ts) and [evaluation exports](https://github.com/21nCo/super-functions/blob/dev/langfn/typescript/src/evaluation/index.ts) for integration APIs.
 
 ---
 
@@ -284,7 +289,7 @@ The root README describes a dual-language SDK and an admin package, but the curr
 
 Run `npm run gate:langfn-release` from the repository root for TypeScript build, type checking, the full TypeScript test suite, and built import checks. The gate does not run a duplication check. Live Gemini qualification remains separate. Green static docs checks do not establish a provider's live behavior, database migration, hosted HTTP security, or release readiness.
 
-Keep model credentials and tool/network privileges in a trusted host. Use scoped stores for HTTP traces and feedback, atomic checkpoint consumption for graph resume, and an egress proxy when dynamic tool hostnames are required. The [release gate reference](/docs/reference/release-gate) records precise constraints.
+Keep model credentials and tool/network privileges in a trusted host. Use scoped stores for HTTP traces and feedback, atomic checkpoint consumption for graph resume, and an egress proxy when dynamic tool hostnames are required. The [release gate reference](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/release-gate.md) records precise constraints.
 
 ---
 
@@ -336,12 +341,12 @@ The dev adoption targets the TypeScript package. Its Google adapter now supports
 > TypeScript package exports, provider matrix, and source release contract.
 
 
-- [Package exports](/docs/reference/package-exports)
-- [TypeScript package README](/docs/reference/typescript)
-- [Provider compatibility](/docs/reference/compatibility)
-- [Release gate](/docs/reference/release-gate)
+- [Package exports](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/package-exports.md)
+- [TypeScript package README](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/typescript.md)
+- [Provider compatibility](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/compatibility.md)
+- [Release gate](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/release-gate.md)
 
-The source pages mirror the current `origin/dev` Markdown documents. The root README has references to packages and files absent from this checkout; the [operations page](/docs/operations-and-limits) explains the boundary.
+The source pages mirror the current `origin/dev` Markdown documents. The root README has references to packages and files absent from this checkout; the [operations page](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/operations-and-limits.md) explains the boundary.
 
 ---
 
@@ -408,9 +413,14 @@ Current release target: `0.1.0`.
 
 ## Install
 
+From the repository root, build this checkout before using its TypeScript exports:
+
 ```bash
-npm install langfn@0.1.0
+npm install
+npm run build --workspace=langfn
 ```
+
+For a separate application, pack this built workspace and install the resulting tarball. A same-version registry package may contain different code from this unpublished source.
 
 Python is outside this TypeScript source adoption. This site does not prescribe a Python registry installation; inspect its separately maintained source and release line.
 
@@ -453,7 +463,7 @@ npm run gate:langfn-release
 
 ## Compatibility
 
-See [Provider compatibility](/docs/reference/compatibility) for first-party provider support across completion, chat, streaming, tools, embeddings, and evaluation.
+See [Provider compatibility](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/compatibility.md) for first-party provider support across completion, chat, streaming, tools, embeddings, and evaluation.
 
 CLI schema discovery is not supported: this package does not export the shared
 `getSchema` contract. Hosts must provision adapter tables explicitly.
@@ -470,7 +480,7 @@ LangFn exposes streaming model operations and a tool abstraction with JSON-schem
 
 `api_call` permits public IPv4 literals by default. Hostnames and IPv6 literals require an explicit `allowedHosts` entry because portable fetch cannot validate and pin DNS results across Node and Workers. That allowlist trusts all addresses a hostname resolves to. `allowPrivateNetwork: true` is a broader opt-in. Redirects and URLs with embedded credentials are rejected. Use an egress proxy for dynamic hostname access.
 
-The built-in `POST /stream` SSE route cancels model work when its Web Request signal aborts. The host adapter must stream the response and propagate disconnects to that signal; arbitrary custom handlers and adapters do not gain this behavior automatically. Configured retry signals remain active unless a per-call cancellation token overrides them. Read the [release gate contract](/docs/reference/release-gate) for these boundaries and the [tool source](https://github.com/21nCo/super-functions/tree/dev/langfn/typescript/src/tools) for concrete APIs.
+The built-in `POST /stream` SSE route cancels model work when its Web Request signal aborts. The host adapter must stream the response and propagate disconnects to that signal; arbitrary custom handlers and adapters do not gain this behavior automatically. Configured retry signals remain active unless a per-call cancellation token overrides them. Read the [release gate contract](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/release-gate.md) for these boundaries and the [tool source](https://github.com/21nCo/super-functions/tree/dev/langfn/typescript/src/tools) for concrete APIs.
 
 ## Define and execute a validated tool
 
@@ -504,7 +514,7 @@ An invalid argument rejects with `ToolSchemaError`; a handler failure is wrapped
 
 ## Let an agent choose the tool
 
-Continuing with `textLength` above and a configured tool-capable `model` from [Models and providers](/docs/models-and-providers):
+Continuing with `textLength` above and a configured tool-capable `model` from [Models and providers](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/models-and-providers.md):
 
 ```ts
 import { LangFn } from "langfn";
@@ -526,7 +536,7 @@ The loop validates arguments, executes registered tools, and appends tool result
 > Compose chains, parallel work, routers, state graphs, and agents.
 
 
-Subpath exports include chains, parallel orchestration, routers, state graphs, and ReAct, tool, plan-execute, and multi-agent patterns. Keep the model, tool policy, and application state explicit when composing them. Use the [package export map](/docs/reference/package-exports) to select the narrow import path.
+Subpath exports include chains, parallel orchestration, routers, state graphs, and ReAct, tool, plan-execute, and multi-agent patterns. Keep the model, tool policy, and application state explicit when composing them. Use the [package export map](https://github.com/21nCo/super-functions/blob/dev/langfn/docs/content/docs/reference/package-exports.md) to select the narrow import path.
 
 Graph resumption requires a checkpoint store with atomic `take(id)`; a save/load-only custom store fails before node execution. The built-in in-memory store keeps up to 1000 entries, evicts the oldest, and does not survive process restart. A consumed checkpoint cannot be replayed after a failed node; reconcile any external effect at the application layer. This is at-most-once checkpoint admission, not exactly-once execution.
 

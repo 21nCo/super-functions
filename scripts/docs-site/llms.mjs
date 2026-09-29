@@ -35,7 +35,11 @@ export function writeLlmsArtifacts(directory, artifacts, check = process.argv.in
     const target = resolve(directory, name);
     if (check) {
       let actual;
-      try { actual = readFileSync(target, "utf8"); } catch { /* Report missing files as stale. */ }
+      try {
+        actual = readFileSync(target, "utf8");
+      } catch (error) {
+        if (typeof error !== "object" || error === null || !("code" in error) || error.code !== "ENOENT") throw error;
+      }
       if (actual !== body) throw new Error(`${name} is stale; run npm run generate:llms`);
     } else writeFileSync(target, body, "utf8");
   }
