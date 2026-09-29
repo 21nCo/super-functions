@@ -28,7 +28,7 @@
 
   <section class="landing-features" aria-label="Highlights">
     <ul class="landing-feature-grid">
-      {#each features as item (item.title)}
+      {#each features as item}
         <li class="landing-feature">
           <h2 class="landing-feature-title">{item.title}</h2>
           <p class="landing-feature-text">{item.text}</p>
@@ -40,7 +40,7 @@
   <section class="landing-links" aria-label="Quick links">
     <h2 class="landing-section-heading">Explore</h2>
     <div class="landing-cards">
-      {#each quickLinks as link (link.href)}
+      {#each quickLinks as link}
         <a class="landing-card" href={link.href}>
           <span class="landing-card-label">{link.label}</span>
           <p class="landing-card-blurb">{link.blurb}</p>

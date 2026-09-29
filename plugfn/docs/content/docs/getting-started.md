@@ -6,7 +6,7 @@ description: Configure a TypeScript runtime and mount owned routes.
 Install the runtime, provider package, and shared adapters:
 
 ```sh
-npm install plugfn @plugfn/providers @plugfn/client @superfunctions/db @superfunctions/http
+npm install plugfn @plugfn/providers @plugfn/client @superfunctions/db @superfunctions/http@0.2.0 @superfunctions/http-express@0.2.0 express
 ```
 
 Supply a durable database adapter and provision its schema before serving requests.
@@ -56,7 +56,7 @@ export async function createIntegrationApp(
 }
 ```
 
-Install `express @superfunctions/http-express` as well as the packages above. Call this factory from your host bootstrap, then `app.listen(...)` or mount the returned app in your existing Express server. Provision PlugFn's `getSchema()` tables with the host migration system first. `plug.ready` rejects if persisted workflow triggers cannot be restored; do not report the service ready before it resolves.
+Call this factory from your host bootstrap, then `app.listen(...)` or mount the returned app in your existing Express server. Provision PlugFn's `getSchema()` tables with the host migration system first. `plug.ready` rejects if persisted workflow triggers cannot be restored; do not report the service ready before it resolves.
 
 `PLUGFN_ENCRYPTION_KEY` is a 32-byte key encoded as 64 hexadecimal characters. Generate and store it once in the deployment's secret manager; changing it without migrating encrypted connection state makes stored credentials unreadable. Set `APP_URL` to the application's public URL. Register the exact callback URI, such as `https://app.example.com/api/plugfn/callback/github`, with the provider and supply that URI when starting the connection.
 

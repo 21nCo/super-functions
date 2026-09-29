@@ -1,5 +1,5 @@
 import content from "../../../../static/llms-full.txt?raw";
 
 export function GET() {
-  return new Response(content, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" } });
+  return new Response(content, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=0, must-revalidate" } });
 }
