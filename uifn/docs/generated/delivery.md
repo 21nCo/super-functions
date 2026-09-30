@@ -4,14 +4,15 @@ Package mode imports stable subpaths from `@uifn/components-react`, `@uifn/compo
 
 ## Source installation
 
-Install the CLI as a development dependency in your consumer project. Run the installed `@uifn/registry` binary by its package path so a missing local installation fails.
+Install the CLI as a development dependency in your consumer project. Resolve the installed `@uifn/registry` entry from that project, then use its sibling CLI file. This also finds npm-hoisted workspace dependencies without downloading a package or falling back to a global `uifn` binary. Stop if resolution fails.
 
 ```sh
 npm install --save-dev @uifn/registry
-node ./node_modules/@uifn/registry/dist/bin.mjs add button --framework react --cwd . --dry-run --json
-node ./node_modules/@uifn/registry/dist/bin.mjs add button --framework react --cwd . --json
-node ./node_modules/@uifn/registry/dist/bin.mjs diff --cwd . --json
-node ./node_modules/@uifn/registry/dist/bin.mjs update button --cwd . --dry-run --json
+UIFN_CLI="$(node -p "require('node:path').join(require('node:path').dirname(require.resolve('@uifn/registry')), 'bin.mjs')")"
+node "$UIFN_CLI" add button --framework react --cwd . --dry-run --json
+node "$UIFN_CLI" add button --framework react --cwd . --json
+node "$UIFN_CLI" diff --cwd . --json
+node "$UIFN_CLI" update button --cwd . --dry-run --json
 ```
 
 Dry run shows the exact plan without writing. Add and update validate catalog signatures, package dependencies, source hashes, and dirty-file conflicts before an atomic write. Check that `--cwd` points to the intended project before running a write; planning does not verify ancestor workspace declarations. Local edits are never silently overwritten.

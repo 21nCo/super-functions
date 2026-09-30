@@ -581,13 +581,14 @@ const deliverySections = [
     'Package mode imports stable subpaths from `@uifn/components-react`, `@uifn/components-svelte`, or `@uifn/components-solid`. Source mode uses the signed offline catalog in `@uifn/registry` and records source ownership and hashes in `.uifn/registry.lock`. Both modes expose the same named parts and compound root contract.',
   ] },
   { heading: 'Source installation', level: 2, paragraphs: [
-    'Install the CLI as a development dependency in your consumer project. Run the installed `@uifn/registry` binary by its package path so a missing local installation fails.',
+    'Install the CLI as a development dependency in your consumer project. Resolve the installed `@uifn/registry` entry from that project, then use its sibling CLI file. This also finds npm-hoisted workspace dependencies without downloading a package or falling back to a global `uifn` binary. Stop if resolution fails.',
   ], code: [
     'npm install --save-dev @uifn/registry',
-    'node ./node_modules/@uifn/registry/dist/bin.mjs add button --framework react --cwd . --dry-run --json',
-    'node ./node_modules/@uifn/registry/dist/bin.mjs add button --framework react --cwd . --json',
-    'node ./node_modules/@uifn/registry/dist/bin.mjs diff --cwd . --json',
-    'node ./node_modules/@uifn/registry/dist/bin.mjs update button --cwd . --dry-run --json',
+    'UIFN_CLI="$(node -p "require(\'node:path\').join(require(\'node:path\').dirname(require.resolve(\'@uifn/registry\')), \'bin.mjs\')")"',
+    'node "$UIFN_CLI" add button --framework react --cwd . --dry-run --json',
+    'node "$UIFN_CLI" add button --framework react --cwd . --json',
+    'node "$UIFN_CLI" diff --cwd . --json',
+    'node "$UIFN_CLI" update button --cwd . --dry-run --json',
   ], after: 'Dry run shows the exact plan without writing. Add and update validate catalog signatures, package dependencies, source hashes, and dirty-file conflicts before an atomic write. Check that `--cwd` points to the intended project before running a write; planning does not verify ancestor workspace declarations. Local edits are never silently overwritten.' },
   { heading: 'Npm lockfiles after dependency changes', level: 2, paragraphs: [
     'Whenever `uifn add`, `uifn update`, or `uifn apply` changes `package.json` in a project with `package-lock.json`, refresh the npm lockfile. `apply` reports `requiredActions`; `add` and `update` do not, so inspect the package diff yourself.',
