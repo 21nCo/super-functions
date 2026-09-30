@@ -1,0 +1,48 @@
+filefn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ad500513bc9987::t_94f8349fd86183 8
+scripts/docs-site/vite.ts
+  s_ad500513bc9987::t_ee7ce658a1a5b1 6,17
+authfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ad500513bc9987::t_757db468dad3b7 8
+scripts/docs-site/vitest.config.ts
+  s_ad500513bc9987::t_df218838b7cef9 7-19,22
+  s_ad500513bc9987::t_032a39f6c09e3b 20-21
+  s_ad500513bc9987::t_32582cbf121bbd 27
+clifn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_ffbaa230915ea7 10
+scripts/cloudflare-docs/deploy.mjs
+  s_ad500513bc9987::t_9c26b015081f97 56
+scripts/docs-site/public-origin.test.mjs
+  s_ad500513bc9987::t_c535a64cf1aad4 7,52-59
+  s_ad500513bc9987::t_493826a2f3e052 1-6,8-50,60-66,70-76
+  s_ad500513bc9987::t_99dff3d414da0b 51
+  s_ad500513bc9987::t_8581e29bcfdff1 67-69
+clifn/docs/vite.config.ts
+  s_ad500513bc9987::t_4bcef3e570397c 10
+scripts/docs-site/llms.mjs
+  s_ad500513bc9987::t_d81dc0818084fc 10-17,19
+scripts/docs-site/llms.test.mjs
+  s_ad500513bc9987::t_2981837a826f11 1-35
+scripts/docs-site/page.test.ts
+  s_ad500513bc9987::t_06754f3862dc74 1-67
+scripts/docs-site/page.ts
+  s_ad500513bc9987::t_e7890adc5c0e5a 22-26,108,114
+scripts/docs-site/runtime.test.ts
+  s_ad500513bc9987::t_4d29ea0ad38940 3-4,53-56,72-90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d5633e3d036305b0c826ff65adc763bfb34919fe",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
