@@ -1,0 +1,72 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3S5JTCMVDMA6V3SXM66GK67",
+  "session_id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-30T12:45:41.651687Z",
+  "branch": "codex/docs-hostfn-20260926",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "hostfn/docs/content/docs/documentation/advanced/administration.mdx"
+  ],
+  "agent": "Pi",
+  "model": "gpt-6.1-sol",
+  "turn_id": "b9607aad236a",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 182704,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 5547008,
+    "output_tokens": 18772,
+    "api_call_count": 75
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "pi-skill-use-skillplane-2026-09-30T11:47:31.905Z-0",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "use-skillplane"
+      },
+      "source": {
+        "agent": "pi",
+        "signal": "input_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "82601ad0e239",
+      "timestamp": "2026-09-30T11:47:31.905Z",
+      "native": {
+        "command": "/skill:use-skillplane"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/skill:use-skillplane",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-30T12:45:41.623105Z",
+    "agent_lines": 35,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 35,
+    "total_lines_changed": 35,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
