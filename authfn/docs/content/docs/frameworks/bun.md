@@ -20,7 +20,7 @@ Bun.serve({
     }
 
     if (url.pathname.startsWith('/auth')) {
-      return auth.router.fetch(stripPrefix(request, '/auth'));
+      return auth.router.handle(stripPrefix(request, '/auth'));
     }
 
     return new Response('not found', { status: 404 });

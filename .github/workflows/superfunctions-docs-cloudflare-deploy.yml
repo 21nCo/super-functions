@@ -24,6 +24,7 @@ on:
       - authfn/docs/**
       - docsfn/**
       - packages/docs-theme/**
+      - scripts/docs-site/**
       - scripts/cloudflare-docs/**
       - package.json
       - package-lock.json

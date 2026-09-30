@@ -13,8 +13,16 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
-    "lib": ["ES2022", "DOM"],
-    "types": ["svelte", "vite/client"]
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "svelte",
+      "vite/client",
+      "node"
+    ]
   },
-  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte", "vite.config.ts", "svelte.config.js"]
+  "extends": "./.svelte-kit/tsconfig.json"
 }

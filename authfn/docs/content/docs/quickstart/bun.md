@@ -5,7 +5,7 @@ description: Run authfn under Bun's native HTTP server with zero compatibility s
 
 # Bun quickstart
 
-authfn's router is built on the WHATWG `Request`/`Response` standard, so Bun is a first-class runtime. You don't need a framework adapter at all — `auth.router.fetch` _is_ a `(Request) => Promise<Response>` handler.
+authfn's router is built on the WHATWG `Request`/`Response` standard, so Bun is a first-class runtime. You don't need a framework adapter at all — `auth.router.handle` _is_ a `(Request) => Promise<Response>` handler.
 
 ## 1. Install
 
@@ -64,7 +64,7 @@ Bun.serve({
 
     if (url.pathname.startsWith("/auth")) {
       // The authfn router already includes its /auth basePath.
-      return auth.router.fetch(request);
+      return auth.router.handle(request);
     }
 
     return new Response("not found", { status: 404 });

@@ -35,7 +35,7 @@ createServer(async (req, res) => {
       });
 
   const request = new Request(url, { method: req.method ?? 'GET', headers, body });
-  const response = await auth.router.fetch(request);
+  const response = await auth.router.handle(request);
 
   res.statusCode = response.status;
   response.headers.forEach((v, k) => res.setHeader(k, v));
@@ -53,7 +53,7 @@ createServer(async (req, res) => {
 ```ts
 import { auth } from './auth.ts';
 
-Deno.serve({ port: 3000 }, (request) => auth.router.fetch(request));
+Deno.serve({ port: 3000 }, (request) => auth.router.handle(request));
 ```
 
 ## AWS Lambda (function URLs)
@@ -66,7 +66,7 @@ export const handler = async (event: any) => {
   const headers = new Headers(event.headers);
   const body = event.body ? Buffer.from(event.body, event.isBase64Encoded ? 'base64' : 'utf8') : null;
   const request = new Request(url, { method: event.requestContext.http.method, headers, body });
-  const response = await auth.router.fetch(request);
+  const response = await auth.router.handle(request);
   const buf = await response.arrayBuffer();
   return {
     statusCode: response.status,
@@ -84,7 +84,7 @@ import { auth } from './auth.js';
 
 export default {
   fetch(request) {
-    return auth.router.fetch(request);
+    return auth.router.handle(request);
   },
 };
 ```
@@ -94,7 +94,7 @@ export default {
 Whatever your framework looks like, the integration always reduces to:
 
 1. Build a `Request` from the framework's incoming representation.
-2. Call `auth.router.fetch(request)`.
+2. Call `auth.router.handle(request)`.
 3. Translate the resulting `Response` to your framework's outgoing representation.
 
 If you find yourself wishing for a bundled adapter for your framework, the [authoring guide](https://github.com/21nCo/super-functions/tree/dev/packages/http) is short — most adapters are < 100 lines.

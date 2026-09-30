@@ -1,9 +1,9 @@
 <script lang="ts">
-  import DocsContent from "@site/docs-content";
-  import DocsLayout from "@site/docs-layout";
-  import ApiReferenceRenderer from "@site/api-reference-renderer";
-  import Breadcrumbs from "@site/breadcrumbs";
-  import Pagination from "@site/pagination";
+  import DocsContent from "@docsfn/svelte/DocsContent.svelte";
+  import DocsLayout from "@docsfn/svelte/DocsLayout.svelte";
+  import ApiReferenceRenderer from "@docsfn/svelte/ApiReferenceRenderer.svelte";
+  import Breadcrumbs from "@docsfn/svelte/Breadcrumbs.svelte";
+  import Pagination from "@docsfn/svelte/Pagination.svelte";
   import type { PageData } from "./$types";
 
   interface Props {
@@ -26,7 +26,7 @@
     <article class="docs-page-article">
       <DocsContent compiled={data.compiled} />
     </article>
-  {:else}
+  {:else if data.routeEntry.kind === "api"}
     <article class="docs-page-article">
       <ApiReferenceRenderer api={data.routeEntry.api} />
     </article>
