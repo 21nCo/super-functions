@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3S5WG7BBSRVZ7T49Y7HCH5Y",
+  "strategy": "manual-commit",
+  "branch": "codex/docs-searchfn-20260926",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "searchfn/docs/content/docs/operations/setup.mdx",
+    "searchfn/docs/content/docs/quickstart/nextjs.mdx",
+    "searchfn/docs/content/docs/quickstart/sveltekit.mdx",
+    "searchfn/docs/public/llms-full.txt"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 19392,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2281728,
+    "output_tokens": 4485,
+    "api_call_count": 14
+  }
+}
