@@ -1,0 +1,52 @@
+scripts/docs-site/page.test.ts
+  s_ad500513bc9987::t_9fa597f72fa48c 4-66
+  s_ad500513bc9987::t_dce798cec48ad8 1-3
+  s_ad500513bc9987::t_39c0ebb208bff2 67
+authfn/docs/package.json
+  s_ad500513bc9987::t_6705fc6e1c5b5a 34-35
+filefn/docs/content/docs/core-concepts/rate-limiting.md
+  s_ad500513bc9987::t_42ebf135f0a130 15,17,75-83
+scripts/docs-site/vitest.config.ts
+  s_ad500513bc9987::t_9314e431652d14 8-9
+scripts/docs-site/llms.test.mjs
+  s_ad500513bc9987::t_d73b6d286e0451 1-35
+scripts/docs-site/llms.mjs
+  s_ad500513bc9987::t_09c317e06c9260 10-17,19
+scripts/docs-site/auth-page.test.ts
+  s_ad500513bc9987::t_b514ff657c2816 1-6,8-27
+  s_ad500513bc9987::t_649f87f744f1a3 7
+filefn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_00e624fae18c87 8,14-15
+authfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ad500513bc9987::t_3cca64bb593d9f 12
+filefn/docs/static/llms-full.txt
+  s_ad500513bc9987::t_bed6f42e28f5b9 2997,2999,3057-3066
+package-lock.json
+  s_d52385ad0fbd0d::t_b19663d893e1b0 876-877
+scripts/docs-site/page.ts
+  s_ad500513bc9987::t_7a4e323ddb1cb8 22-26,108,114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6c5347e6a1051a329d6f2932a2ff4f93f53a8e87",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_d52385ad0fbd0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f1cc-46a9-73a2-bf93-2e81a58b21fc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
