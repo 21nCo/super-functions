@@ -7,9 +7,16 @@ import { resolve } from "node:path";
  */
 export async function loadLlmsSiteSource(cwd, dependencies) {
   const { buildManifest, loadDocsConfig, FsContentProvider } = dependencies;
-  const config = await loadDocsConfig({ cwd });
+  const loadedConfig = await loadDocsConfig({ cwd });
+  const config = {
+    ...loadedConfig,
+    content: {
+      ...loadedConfig.content,
+      root: resolve(cwd, loadedConfig.content.root || "."),
+    },
+  };
   const provider = new FsContentProvider({
-    root: config.content.root || cwd,
+    root: config.content.root,
     docsDir: config.content.docsDir,
     pagesDir: config.content.pagesDir,
     blogDir: config.content.blogDir,

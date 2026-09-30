@@ -1705,7 +1705,7 @@ Unlike the React package's callback props, Svelte components dispatch events:
 
 ## Theming
 
-Components use `--apifn-*` CSS variables scoped to `.apifn-root`. `ApiExplorer` injects the theme automatically; the leaf components expect those variables to be provided by a parent (an `ApiExplorer` or docsfn's `ApifnApiReference`). `theme="auto"` follows `prefers-color-scheme`.
+Components use `--apifn-*` CSS variables scoped to `.apifn-root`. `ApiExplorer` injects the theme for its own internal components; it does not expose a slot for standalone leaf components. When using `TryIt`, `SchemaViewer`, or another leaf directly, define the `--apifn-*` variables on your own wrapper. Alternatively, use docsfn's `ApifnApiReference` for a complete themed reference. `ApiExplorer`'s `theme="auto"` follows `prefers-color-scheme`.
 
 ## Types
 

@@ -25,11 +25,4 @@
   ];
 </script>
 
-<svelte:head>
-  <title>{data.source.siteTitle}</title>
-  {#if data.source.config.site.description}
-    <meta name="description" content={data.source.config.site.description} />
-  {/if}
-</svelte:head>
-
 <LandingPage name="ApiFn" siteTitle={data.source.siteTitle} description={data.source.config.site.description} {tagline} {features} {quickLinks} />

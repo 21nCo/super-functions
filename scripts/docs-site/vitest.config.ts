@@ -5,5 +5,5 @@ import { docsSiteCorePlugin } from "./vite";
 
 export default defineConfig({
   plugins: [docsSiteCorePlugin(pathToFileURL(resolve(process.cwd(), "package.json")).href)],
-  test: { root: fileURLToPath(new URL(".", import.meta.url)), include: ["runtime.test.ts"] },
+  test: { root: fileURLToPath(new URL(".", import.meta.url)), include: ["runtime.test.ts", "page.test.ts", "llms.test.mjs"] },
 });
