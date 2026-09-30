@@ -1,0 +1,25 @@
+searchfn/docs/content/docs/quickstart/sveltekit.mdx
+  s_ad500513bc9987::t_646b2b739d5062 41
+searchfn/docs/content/docs/quickstart/nextjs.mdx
+  s_ad500513bc9987::t_7d0d4a20010d9b 37
+searchfn/docs/content/docs/operations/setup.mdx
+  s_ad500513bc9987::t_3e0aab84649072 10-12,18-23,25
+searchfn/docs/public/llms-full.txt
+  s_ad500513bc9987::t_1cef5e2a4c7fe7 6095-6097,6103-6108,6110,6819,6981
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d0aa44fa5464f7c283b40581cf5c2983e91bfe75",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
