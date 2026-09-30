@@ -1,0 +1,19 @@
+scripts/docs-site/vitest.config.ts
+  s_b689957ad1e653::t_b715a5743b18c5 8-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0680df1ee45cd4797f574bc99489d2dc1d1532ca",
+  "prompts": {},
+  "sessions": {
+    "s_b689957ad1e653": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f22f-b073-747e-be42-a3cc77214117",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
