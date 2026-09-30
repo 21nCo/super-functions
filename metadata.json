@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3S9EGDZS7AE77Q95WTH4M5V",
+  "strategy": "manual-commit",
+  "branch": "codex/docs-datafn-20260926",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "authfn/docs/package.json",
+    "datafn/docs/content/docs/ai-resources/index.mdx",
+    "datafn/docs/public/llms-full.txt",
+    "package-lock.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 136604,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3199872,
+    "output_tokens": 13575,
+    "api_call_count": 29
+  }
+}
