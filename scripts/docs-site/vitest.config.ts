@@ -12,5 +12,5 @@ if (!sitePackage.name?.endsWith("/docs") || !sitePackage.dependencies?.["@docsfn
 
 export default defineConfig({
   plugins: [docsSiteCorePlugin(pathToFileURL(sitePackagePath).href)],
-  test: { root: fileURLToPath(new URL(".", import.meta.url)), include: ["runtime.test.ts"] },
+  test: { root: fileURLToPath(new URL(".", import.meta.url)), include: ["runtime.test.ts", "page.test.ts", "llms.test.mjs"] },
 });
