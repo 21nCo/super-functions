@@ -7,7 +7,7 @@ import { defineConfig, type PluginOption } from "vite";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
-  plugins: [docsSiteCorePlugin(import.meta.url), tailwindcss(), sveltekit()] as unknown as PluginOption[],
+  plugins: [docsSiteCorePlugin(import.meta.url), tailwindcss(), sveltekit()] satisfies PluginOption[],
   ssr: {
     // Force @docsfn/core through Vite's transform pipeline so the
     // `@searchfn/client` alias below resolves the workspace source in dev.

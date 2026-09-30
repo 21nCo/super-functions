@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import type { Plugin } from "vite";
 
 /** Resolve shared source with its consuming site's pin, preserving dependency-owned imports. */
-export function docsSiteCorePlugin(configUrl: string): Plugin {
+export function docsSiteCorePlugin(configUrl: string) {
   const require = createRequire(configUrl);
   const directory = path.dirname(require.resolve("@docsfn/core"));
   return {
@@ -14,5 +14,5 @@ export function docsSiteCorePlugin(configUrl: string): Plugin {
       if (source === "@docsfn/core") return path.join(directory, "index.js");
       if (source === "@docsfn/core/search-runtime") return path.join(directory, "search-runtime.js");
     },
-  };
+  } satisfies Plugin;
 }

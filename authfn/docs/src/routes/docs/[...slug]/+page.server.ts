@@ -5,5 +5,5 @@ import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ params, parent }) => {
   const { source } = await parent();
-  return loadDocsPage({ slug: params.slug, source, getCompiledDocsPage, resolveMarkdownRelativeLinks });
+  return loadDocsPage({ slug: params.slug, source, getCompiledDocsPage, resolveMarkdownRelativeLinks, options: { fallbackSidebarId: "docs" } });
 };
