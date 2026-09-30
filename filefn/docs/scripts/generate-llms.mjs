@@ -5,22 +5,15 @@ import { fileURLToPath } from "node:url";
 
 import { buildManifest, loadDocsConfig } from "@docsfn/core";
 import { FsContentProvider } from "@docsfn/provider-fs";
+import { loadLlmsSiteSource } from "../../../scripts/docs-site/llms.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cwd = resolve(here, "..");
 const staticDir = resolve(cwd, "static");
 
-const config = await loadDocsConfig({ cwd });
-const provider = new FsContentProvider({
-  root: config.content.root || cwd,
-  docsDir: config.content.docsDir,
-  pagesDir: config.content.pagesDir,
-  blogDir: config.content.blogDir,
-  apiDir: config.content.apiDir,
-  assetsDir: config.content.assetsDir,
+const { config, manifest } = await loadLlmsSiteSource(cwd, {
+  buildManifest, loadDocsConfig, FsContentProvider,
 });
-
-const manifest = await buildManifest(provider, config);
 
 const siteTitle = manifest.site?.title ?? config.site?.name ?? "filefn";
 const siteDescription =

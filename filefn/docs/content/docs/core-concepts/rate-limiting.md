@@ -12,8 +12,9 @@ filefn integrates with `@superfunctions/middleware`'s `RateLimiter` to throttle 
 ```ts
 const fileFn = createFileFn({
   db, storage,
+  stores: { kv: sharedKv },               // omit for in-memory limits
   rateLimit: {
-    persistence: redisPersistence,        // or undefined for in-memory
+    mode: "best-effort",                  // or "local" without a store
     algorithm: "sliding-window",          // or "fixed-window" | "token-bucket"
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -71,11 +72,15 @@ In-memory persistence is fine for development and single-instance deployments. F
 
 `@superfunctions/middleware` ships persistence implementations or accepts your own.
 
-For a strict limit shared by multiple processes, configure `atomicStore` with
-an `AtomicKVStoreAdapter` that implements `compareAndSet`. The limiter rejects
-an `atomicStore` without CAS support instead of silently falling back to
-process-local serialization. Plain `persistence` remains suitable for
-single-process use or deployments that accept best-effort cross-replica limits.
+For a strict limit shared by multiple processes, configure `createFileFn` with
+`stores.atomicKv` and `rateLimit.mode: "strict"`. FileFn passes this adapter to
+`createRateLimiter` as `atomicStore`. When constructing a `createRateLimiter`
+directly, pass the adapter as its `atomicStore` option. The adapter must
+implement `compareAndSet`; the limiter rejects an `atomicStore` without CAS
+support instead of silently falling back to process-local serialization.
+For best-effort cross-replica limits in `createFileFn`, provide `stores.kv`
+and set `rateLimit.mode: "best-effort"`. Direct `createRateLimiter` calls can
+use `persistence` for single-process or best-effort shared limits.
 
 ## What clients see
 

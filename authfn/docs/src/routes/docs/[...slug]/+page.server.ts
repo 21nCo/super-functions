@@ -9,4 +9,5 @@ export const load: PageServerLoad = async ({ params }) =>
     source: await loadDocsSiteSource(),
     getCompiledDocsPage,
     resolveMarkdownRelativeLinks,
+    options: { fallbackSidebarId: "docs" },
   });
