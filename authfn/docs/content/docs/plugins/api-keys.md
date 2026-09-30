@@ -91,6 +91,30 @@ function require(session: AuthFnSession, scope: string) {
 }
 ```
 
+## Unowned service keys
+
+Trusted server code can issue an unowned key with the exported `createApiKey` helper. Pass `userId: null` explicitly, along with your server's database adapter and namespace:
+
+```ts
+import { createApiKey, revokeApiKeyById } from 'authfn/core/api-keys';
+
+const config = { database, namespace: 'authfn' };
+const serviceKey = await createApiKey(config, {
+  userId: null,
+  name: 'retrieval-worker',
+  scopes: ['skills:read'],
+  metadata: { servicePrincipalId: 'service:retrieval-worker' },
+  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+});
+
+// After checking your application's service-principal management policy:
+await revokeApiKeyById(config, serviceKey.keyId);
+```
+
+These keys persist a null owner, use the same hashed-secret, expiry, and revocation behavior, and authenticate as `actorType: 'api-key'` with the key ID as their actor ID. Authentication exposes the stored scopes in `session.metadata.scopes` and leaves `session.metadata.ownerUserId` undefined. Your application must authorize service-principal issuance and use and enforce scopes; the helper does not create a user identity.
+
+The cookie-session routes above remain user-owned: creation always uses the signed-in user's ID, and user listing and revocation exclude unowned keys. Manage unowned keys through trusted server code after applying your application's authorization policy.
+
 ## Revocation
 
 ```ts
