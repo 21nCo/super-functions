@@ -37,4 +37,4 @@ curl https://datafn.dev/docs/llms-full.txt | wc -c
 curl https://datafn.dev/docs/api/docs/raw/dfql/queries.mdx | head -30
 ```
 
-If you're self-hosting these docs the same URLs work against your own deployment.
+These paths describe the hosted Cloudflare deployment. A standard Next.js self-hosted deployment serves raw Markdown at `/api/docs/raw/<path>` and the LLM artifacts at `/llms.txt` and `/llms-full.txt` on your own origin; documentation pages remain under `/docs`. To serve the hosted paths on your own origin, use the Cloudflare docs deployment pipeline: it builds with `CLOUDFLARE_DOCS_DEPLOY=1` and stages the raw Markdown and LLM artifacts under `/docs/`. Setting the build flag alone does not relocate the LLM artifacts.
