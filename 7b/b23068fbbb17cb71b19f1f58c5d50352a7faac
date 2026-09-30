@@ -1,0 +1,33 @@
+authfn/docs/package.json
+  s_e84a8141b691ce::t_60c409215f8359 33-34
+datafn/docs/content/docs/ai-resources/index.mdx
+  s_ad500513bc9987::t_0a9d9cf9ed3df9 40
+datafn/docs/public/llms-full.txt
+  s_ad500513bc9987::t_edabcb6db606fc 657
+package-lock.json
+  s_e84a8141b691ce::t_e7ac5b99df4b65 875-876
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7bb23068fbbb17cb71b19f1f58c5d50352a7faac",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_e84a8141b691ce": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f22f-b02f-77d3-b84a-24f46d56eb13",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
