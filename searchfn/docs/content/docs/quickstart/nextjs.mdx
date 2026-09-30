@@ -34,7 +34,7 @@ export const GET = handler;
 export const POST = handler;
 ```
 
-Run the [Postgres migration](/docs/reference/adapters/postgres) once.
+Provision the database and configured schema first. The awaited `adapter.initialize({ resources })` above creates adapter-owned tables and indexes idempotently; use credentials with permission to create those objects. There is no separate migration CLI. See the [PostgresAdapter reference](/docs/reference/adapters/postgres).
 
 ## 3. Client side
 
