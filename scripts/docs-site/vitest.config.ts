@@ -5,9 +5,15 @@ import { readFileSync } from "node:fs";
 import { docsSiteCorePlugin } from "./vite";
 
 const sitePackagePath = resolve(process.cwd(), "package.json");
-const sitePackage = JSON.parse(readFileSync(sitePackagePath, "utf8"));
-if (!sitePackage.name?.endsWith("/docs") || !sitePackage.dependencies?.["@docsfn/core"]) {
-  throw new Error("Run DocsFn site tests from a consuming docs workspace, for example npm test --workspace @botfn/docs");
+const invocationHint = "Run DocsFn site tests from a consuming docs workspace, for example npm test --workspace @devfn/docs";
+let sitePackage;
+try {
+  sitePackage = JSON.parse(readFileSync(sitePackagePath, "utf8"));
+} catch (cause) {
+  throw new Error(invocationHint, { cause });
+}
+if (!sitePackage?.name?.endsWith("/docs") || !sitePackage.dependencies?.["@docsfn/core"]) {
+  throw new Error(invocationHint);
 }
 
 export default defineConfig({
