@@ -1,0 +1,40 @@
+scripts/docs-site/page.test.ts
+  s_ad500513bc9987::t_2addb6d8f49614 18-36
+  s_ad500513bc9987::t_f89c16cd7e78dd 15-17
+  s_ad500513bc9987::t_b36bc128e99346 37-39
+  s_ad500513bc9987::t_8599e512f63bd5 1-14,40-67
+scripts/docs-site/page.ts
+  s_ad500513bc9987::t_d7f071513f009f 22-26,114
+  s_ad500513bc9987::t_094cdf02cfe440 108
+scripts/docs-site/runtime.test.ts
+  s_ad500513bc9987::t_e37a1c9acb8b1d 53-56
+  s_ad500513bc9987::t_b09b527bfd754a 3-4,72-90
+scripts/docs-site/vitest.config.ts
+  s_ad500513bc9987::t_a16a333ccee453 15
+scripts/docs-site/llms.mjs
+  s_ad500513bc9987::t_1f23717130aee5 10-17,19
+.github/workflows/superfunctions-docs-cloudflare-routes.yml
+  s_ad500513bc9987::t_8ad7a9cca3d6af 20,51
+authfn/docs/package.json
+  s_ad500513bc9987::t_a5e7964ea05a25 32
+package-lock.json
+  s_ad500513bc9987::t_f0da51094eb602 875
+scripts/docs-site/llms.test.mjs
+  s_ad500513bc9987::t_eaf39daac8b9d8 1-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d2ff58998148593be2dd96961d28701c33555bb8",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
