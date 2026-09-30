@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3SFG0H2W8N6QAYP3W4DGPDB",
+  "strategy": "manual-commit",
+  "branch": "codex/docs-apifn-20260926",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "apifn/docs/content/docs/reference/svelte.md",
+    "apifn/docs/src/routes/+page.svelte",
+    "apifn/docs/static/llms-full.txt",
+    "authfn/docs/package.json",
+    "filefn/docs/content/docs/core-concepts/rate-limiting.md",
+    "filefn/docs/static/llms-full.txt",
+    "package-lock.json",
+    "scripts/docs-site/page.test.ts",
+    "scripts/docs-site/page.ts",
+    "scripts/docs-site/vitest.config.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 136739,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 5511296,
+    "output_tokens": 14792,
+    "api_call_count": 70
+  }
+}
