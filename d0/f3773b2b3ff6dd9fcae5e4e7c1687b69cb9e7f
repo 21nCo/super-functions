@@ -1,0 +1,69 @@
+authfn/docs/package.json
+  s_2218afa5a1aab2::t_7d351ec7770882 32,34-40
+authfn/docs/static/llms-full.txt
+  s_846566ec30bd2e::t_682fa058807110 5568-5593
+authfn/docs/content/docs/plugins/api-keys.md
+  s_7661f88143b559::t_10274c58622cb4 117
+  s_5ac1187000b1ef::t_114ebe9723cd6b 116
+authfn/core/src/__tests__/placement-context.test.ts
+  s_4bfe43ac2769c8::t_1a860242a52855 19
+  s_cba1208d8c85e4::t_8068902d79c43d 499-503
+package-lock.json
+  s_2218afa5a1aab2::t_65afc5b984a982 874,876-882
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d0f3773b2b3ff6dd9fcae5e4e7c1687b69cb9e7f",
+  "prompts": {},
+  "sessions": {
+    "s_2218afa5a1aab2": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034XwsnHPbLklXrEsEgLGP",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_4bfe43ac2769c8": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034XwpV5BSHBSjE02W1HSb",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_5ac1187000b1ef": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034XwpJ5VUuj5L5HocLhGV",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_7661f88143b559": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034Xwp3rbhYQoPMIdxRGF9",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_846566ec30bd2e": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034XwrnV7t8LUYRzkij0cV",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_cba1208d8c85e4": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034XwpQgd21667uNE3JLH7",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
