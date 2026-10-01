@@ -1,5 +1,31 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+/**
+ * Resolve DocsFn from the consumer site so each site's published package pin is honored.
+ * @param {string} cwd
+ * @param {{buildManifest: Function, loadDocsConfig: Function, FsContentProvider: new (options: object) => object}} dependencies
+ */
+export async function loadLlmsSiteSource(cwd, dependencies) {
+  const { buildManifest, loadDocsConfig, FsContentProvider } = dependencies;
+  const loadedConfig = await loadDocsConfig({ cwd });
+  const config = {
+    ...loadedConfig,
+    content: {
+      ...loadedConfig.content,
+      root: resolve(cwd, loadedConfig.content.root || "."),
+    },
+  };
+  const provider = new FsContentProvider({
+    root: config.content.root,
+    docsDir: config.content.docsDir,
+    pagesDir: config.content.pagesDir,
+    blogDir: config.content.blogDir,
+    apiDir: config.content.apiDir,
+    assetsDir: config.content.assetsDir,
+  });
+  const manifest = await buildManifest(provider, config);
+  return { config, manifest };
+}
 
 /**
  * Keep LLM indexes navigable before a public documentation host is assigned.
