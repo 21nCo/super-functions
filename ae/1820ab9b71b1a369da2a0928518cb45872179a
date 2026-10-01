@@ -1,0 +1,109 @@
+mailfn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_5bc0c57d74449e 10,15-17
+filefn/docs/src/lib/server/docs-site-source.ts
+  s_ad500513bc9987::t_a631fc53390a0e 7
+filefn/docs/src/routes/docs/llms.txt/+server.ts
+  s_ad500513bc9987::t_ec10ec4c4561c7 1-5
+authfn/docs/content/docs/ai-resources/llms-txt.md
+  s_ad500513bc9987::t_75861ce5e82637 10-11,36,42-43
+scripts/docs-site/llms.test.mjs
+  s_ad500513bc9987::t_ae0bd0c604d150 1-32
+authfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ad500513bc9987::t_9158c0cb81ac32 2
+filefn/docs/package.json
+  s_ad500513bc9987::t_76aab0f0038ad1 20-21
+authfn/docs/content/docs/ai-resources/cursor.md
+  s_ad500513bc9987::t_ca37ec4629bd4c 32,46
+authfn/docs/content/docs/ai-resources/codex.md
+  s_ad500513bc9987::t_3aa9a7d4cedf97 24-25
+scripts/docs-site/origin.test.mjs
+  s_ad500513bc9987::t_8f4207e4450e13 1-41
+authfn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_80624cc7eb241b 9,12
+filefn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_4cdc9cf2bce96b 19
+scripts/docs-site/runtime.test.ts
+  s_ad500513bc9987::t_9e1b5d7502ee5f 3-4,68-70,72-84,87-98
+  s_ad500513bc9987::t_938b0fc791d74e 71
+  s_ad500513bc9987::t_4a9731d0749c89 99,101-106,108-112,114-116
+  s_ad500513bc9987::t_b0448d4bc85729 107
+  s_ad500513bc9987::t_52ba84ab423919 113
+  s_ad500513bc9987::t_309d69db0895dd 85-86
+  s_b3fff04b8a1e80::t_fdf10c614b1247 100
+authfn/docs/src/routes/docs/llms-full.txt/+server.ts
+  s_ad500513bc9987::t_159dff1edaf11f 1-5
+scripts/docs-site/vitest.config.ts
+  s_ad500513bc9987::t_547339b36ceb2d 21-27
+  s_ad500513bc9987::t_593b4fb88ce803 7-17
+  s_ad500513bc9987::t_0f3d5201695999 28-31
+scripts/docs-site/README.md
+  s_ad500513bc9987::t_cb43cab119960a 13,15-17
+authfn/docs/content/docs/ai-resources/index.md
+  s_ad500513bc9987::t_29f612168ff592 53
+mailfn/docs/src/lib/server/docs-site-source.ts
+  s_ad500513bc9987::t_23c64e6a55f900 7
+scripts/docs-site/page.ts
+  s_ad500513bc9987::t_6920f6aafec39c 22-25,107,113
+mailfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ad500513bc9987::t_a4dc6f7591813e 13
+scripts/docs-site/page.test.ts
+  s_ad500513bc9987::t_f98f7a52cec059 1-24
+authfn/docs/src/lib/server/docs-site-source.ts
+  s_ad500513bc9987::t_5124bb816eab8c 7
+scripts/docs-site/llms.mjs
+  s_ad500513bc9987::t_73f54e333bdcfc 10-11,26,45,47,57
+mailfn/docs/vite.config.ts
+  s_ad500513bc9987::t_6cf0df4566adb8 10
+authfn/docs/content/docs/ai-resources/claude.md
+  s_ad500513bc9987::t_f537798b782bf3 65
+authfn/docs/src/routes/docs/llms.txt/+server.ts
+  s_ad500513bc9987::t_a9307a61654986 1-5
+scripts/cloudflare-docs/deploy.mjs
+  s_ad500513bc9987::t_4263693c7741bb 55
+scripts/cloudflare-docs/select-products.mjs
+  s_ad500513bc9987::t_ba3109e9dc86f0 58
+authfn/docs/docsfn.config.ts
+  s_ad500513bc9987::t_1279308c5b4114 9
+filefn/docs/src/routes/docs/llms-full.txt/+server.ts
+  s_ad500513bc9987::t_87898f1b365e0d 1-5
+authfn/docs/package.json
+  s_ad500513bc9987::t_d2192ee61fa4f3 20-21
+scripts/docs-site/vite.ts
+  s_ad500513bc9987::t_b435ac1c89a510 1,4-9,14-16,18
+filefn/docs/docsfn.config.ts
+  s_ad500513bc9987::t_359a795df37149 9
+authfn/docs/static/llms-full.txt
+  s_ad500513bc9987::t_7cc763b90dc036 1237,1275-1276,1352,1366,1448,1465-1466,1491,1497-1498
+authfn/docs/static/llms.txt
+  s_ad500513bc9987::t_6ea4a1eec6ecda 7-115,119
+filefn/docs/static/llms-full.txt
+  s_ad500513bc9987::t_dc4630a8afab7a 10,94,138,212,267,309,376,441,639,710,763,828,875,947,1005,1102,1142,1222,1320,1391,1490,1643,1701,1720,1808,1920,2034,2115,2217,2299,2403,2486,2599,2733,2845,2982,3101,3221,3320,3429,3498,3617,3691,3718,3804,3932,3967,4037,4123,4219,4311,4442,4535,4693,4785,4855,4920,5033,5121,5148,5227,5293,5407,5485,5603,5743,5882,6090,6130,6195,6293,6417,6490,6614,6705,6815,6948,6976,7099,7228,7327,7425,7548,7649,7754,7894,7996,8116,8145,8179,8322,8424,8530,8606,8716,8870,8906,9132,9289,9489,9684,9821
+filefn/docs/static/llms.txt
+  s_ad500513bc9987::t_bfee47bb82a198 7-108
+package-lock.json
+  s_ad500513bc9987::t_be745276cd490d 863-864,8970-8971
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ae1820ab9b71b1a369da2a0928518cb45872179a",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_b3fff04b8a1e80": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "af277a64-7676-4d3a-b4f6-34ecb5685031",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
