@@ -1,0 +1,4 @@
+{
+  "title": "LangFn",
+  "pages": ["index", "getting-started", "models-and-providers", "streaming-and-tools", "workflows", "memory-and-rag", "prompts-and-structured", "http", "mcp", "observability-and-evaluation", "operations-and-limits", "reference"]
+}

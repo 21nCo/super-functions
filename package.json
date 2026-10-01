@@ -41,6 +41,7 @@
     "filefn/examples/production/*",
     "plugfn/*",
     "sendfn/*",
+    "langfn/docs",
     "langfn/typescript",
     "memoryfn/typescript",
     "secfn/core",

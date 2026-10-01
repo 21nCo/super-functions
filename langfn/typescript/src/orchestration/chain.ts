@@ -55,8 +55,8 @@ export class Chain<TIn, TOut> {
       } catch (error) {
         throw new InternalError("Router failed to select a route", { cause: error });
       }
-      const handler = options.routes[key];
-      if (!handler) {
+      const handler = Object.hasOwn(options.routes, key) ? options.routes[key] : undefined;
+      if (typeof handler !== "function") {
         throw new ValidationError(`Unknown route: ${key}`, { metadata: { route: key } });
       }
       return await handler(input);
