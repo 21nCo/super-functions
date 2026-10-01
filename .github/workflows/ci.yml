@@ -23,7 +23,7 @@ concurrency:
 jobs:
   plan:
     name: Plan
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       base_ref: ${{ steps.plan.outputs.base_ref }}
       changed_files_count: ${{ steps.plan.outputs.changed_files_count }}
@@ -44,7 +44,7 @@ jobs:
       mcpfn_only: ${{ steps.plan.outputs.mcpfn_only }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: useblacksmith/checkout@v1
         with:
           fetch-depth: 0
 
@@ -75,10 +75,10 @@ jobs:
     name: JavaScript
     needs: plan
     if: needs.plan.outputs.run_js == 'true' && needs.plan.outputs.mcpfn_only != 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: useblacksmith/checkout@v1
         with:
           fetch-depth: 0
 
@@ -154,10 +154,10 @@ jobs:
     name: McpFn Node 20 compatibility
     needs: plan
     if: needs.plan.outputs.run_mcpfn == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: useblacksmith/checkout@v1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -187,14 +187,14 @@ jobs:
     name: Python
     needs: plan
     if: needs.plan.outputs.run_python == 'true' && needs.plan.outputs.mcpfn_only != 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
       matrix:
         package: ${{ fromJson(needs.plan.outputs.python_matrix) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: useblacksmith/checkout@v1
         with:
           fetch-depth: 0
 
@@ -221,10 +221,10 @@ jobs:
     name: McpFn release gate
     needs: plan
     if: needs.plan.outputs.run_mcpfn == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: useblacksmith/checkout@v1
         with:
           fetch-depth: 0
 
@@ -267,10 +267,10 @@ jobs:
     name: McpFn Node 18 CommonJS
     needs: plan
     if: needs.plan.outputs.run_mcpfn == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: useblacksmith/checkout@v1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

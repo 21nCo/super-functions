@@ -101,11 +101,11 @@ permissions:
 
 jobs:
   api-check:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: useblacksmith/checkout@v1
         with:
           fetch-depth: 0
 
@@ -116,7 +116,7 @@ jobs:
 
       - name: Fetch CLI lockfile for external callers
         if: hashFiles('.github/apifn-cli-install/package-lock.json') == ''
-        uses: actions/checkout@v4
+        uses: useblacksmith/checkout@v1
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
