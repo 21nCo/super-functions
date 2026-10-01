@@ -7,8 +7,8 @@ description: Static context files generated from the docs — drop into your ass
 
 [`llms.txt`](https://llmstxt.org/) is a community convention for static, LLM-friendly summaries of a project. authfn ships **two** files at the docs origin:
 
-- `https://authfn.superfunctions.dev/llms.txt` — short index. Lists every doc page with a one-line description and a link.
-- `https://authfn.superfunctions.dev/llms-full.txt` — full text. Concatenated markdown of every doc page plus the OpenAPI spec.
+- `https://authfn.com/docs/llms.txt` — short index. Lists every doc page with a one-line description and a link.
+- `https://authfn.com/docs/llms-full.txt` — full text. Concatenated markdown of every doc page plus the OpenAPI spec.
 
 Use whichever fits your assistant's context budget.
 
@@ -33,14 +33,14 @@ The pipeline:
 In Cursor, Claude Desktop, ChatGPT custom GPTs, or anything that accepts a URL as context:
 
 ```
-https://authfn.superfunctions.dev/llms-full.txt
+https://authfn.com/docs/llms-full.txt
 ```
 
 For local development against your own fork, you can also point at:
 
 ```
-http://localhost:5173/llms.txt
-http://localhost:5173/llms-full.txt
+http://localhost:6005/docs/llms.txt
+http://localhost:6005/docs/llms-full.txt
 ```
 
 ## What's in `llms-full.txt`

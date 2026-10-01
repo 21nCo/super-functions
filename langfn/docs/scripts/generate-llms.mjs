@@ -7,7 +7,7 @@ import { buildLlmsSiteArtifacts, withSourceLinks, writeLlmsArtifacts } from "../
 
 const cwd = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const deploymentOrigin = process.env.CLOUDFLARE_DOCS_DEPLOY === "1"
-  ? process.env.CLOUDFLARE_DOCS_ASSETS_ORIGIN
+  ? process.env.CLOUDFLARE_DOCS_PUBLIC_ORIGIN || undefined
   : undefined;
 const { artifacts, manifest, canonicalUrl } = await buildLlmsSiteArtifacts(cwd, {
   buildLlmsTxtArtifacts, buildManifest, loadDocsConfig, FsContentProvider,

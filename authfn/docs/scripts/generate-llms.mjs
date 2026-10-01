@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 import { buildLlmsSiteArtifacts, writeLlmsArtifacts } from "../../../scripts/docs-site/llms.mjs";
 
 const cwd = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const deploymentOrigin = process.env.CLOUDFLARE_DOCS_DEPLOY === "1"
+  ? process.env.CLOUDFLARE_DOCS_PUBLIC_ORIGIN || undefined
+  : undefined;
 const { artifacts } = await buildLlmsSiteArtifacts(cwd, {
   buildLlmsTxtArtifacts, buildManifest, loadDocsConfig, FsContentProvider,
-});
+}, { canonicalUrl: deploymentOrigin });
 writeLlmsArtifacts(resolve(cwd, "static"), artifacts);

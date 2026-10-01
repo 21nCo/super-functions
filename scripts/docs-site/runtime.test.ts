@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createDocsSiteRuntime } from "./runtime";
-import { buildManifest, type DocsConfig } from "@docsfn/core";
+import { buildManifest, resolveMarkdownRelativeLinks, type DocsConfig } from "@docsfn/core";
+import { loadDocsPage } from "./page";
 
 // Keep the real manifest/provider pipeline; inject one transient initialization failure.
 vi.mock("@docsfn/core", async (original) => {
@@ -24,6 +25,7 @@ describe("bundled DocsFn provider", () => {
     const runtime = createDocsSiteRuntime(config, { "../../../guide/index.md": markdown }, {});
     const source = await runtime.loadDocsSiteSource();
     const page = source.manifest.pages["docs:index.md"];
+    expect(source.manifest.sidebars).toHaveProperty("default");
     expect(page.title).toBe("true");
     expect(page.frontmatter.order).toBe(2);
     expect(page.frontmatter.tags).toEqual(["memory", "api"]);
@@ -62,6 +64,18 @@ describe("bundled DocsFn provider", () => {
     await expect(runtime.getCompiledDocsPage("docs:missing.md")).rejects.toMatchObject({ code: "DOCS_ARTIFACT_INVALID" });
     const other = createDocsSiteRuntime(config, { "../../../guide/index.md": "# Other" }, {});
     expect(await other.loadDocsSiteSource()).not.toBe(left);
+  });
+
+  it.each(["docs", "pages"])("resolves real %s provider index links from source filename", async collection => {
+    const directory = collection === "docs" ? "guide" : "pages";
+    const runtime = createDocsSiteRuntime(config, { [`../../../${directory}/index.md`]: "# About\n\n[Child](child.md)" }, {});
+    const source = await runtime.loadDocsSiteSource();
+    const id = `${collection}:index.md`;
+    source.manifest.pages[id].path = "/docs/about";
+    source.manifest.routes = { "/docs/about": id };
+    source.manifest.sidebars = { docs: { id: "docs", items: [{ type: "link", text: "About", link: "/docs/about" }] } };
+    const data = await loadDocsPage({ slug: "about", source, getCompiledDocsPage: runtime.getCompiledDocsPage, resolveMarkdownRelativeLinks });
+    expect(JSON.stringify(data.compiled?.blocks)).toContain("/docs/about/child.md");
   });
 
   it("retries after a rejected initialization", async () => {
