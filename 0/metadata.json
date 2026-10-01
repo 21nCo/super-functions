@@ -1,0 +1,82 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3WG2PK1B7S0M2Y0TGBG94D4",
+  "session_id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-01T19:46:51.559648Z",
+  "branch": "codex/docs-memoryfn-20260926",
+  "checkpoints_count": 1,
+  "save_step_count": 3,
+  "files_touched": [],
+  "agent": "Pi",
+  "model": "gpt-6.1-sol",
+  "turn_id": "713164a23788",
+  "checkpoint_transcript_start": 2194,
+  "transcript_lines_at_start": 2194,
+  "compact_transcript_start": 913,
+  "token_usage": {
+    "input_tokens": 421105,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 7394048,
+    "output_tokens": 42809,
+    "api_call_count": 65
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "pi-skill-use-skillplane-2026-09-30T11:47:31.905Z-0",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "use-skillplane"
+      },
+      "source": {
+        "agent": "pi",
+        "signal": "input_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "82601ad0e239",
+      "timestamp": "2026-09-30T11:47:31.905Z",
+      "native": {
+        "command": "/skill:use-skillplane"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/skill:use-skillplane",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 20
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
