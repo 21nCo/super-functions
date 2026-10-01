@@ -1,4 +1,5 @@
 import path from "node:path";
+import { docsSiteCorePlugin } from "../../scripts/docs-site/vite";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
@@ -13,7 +14,7 @@ const docsfnSvelteSrc = path.join(
 );
 
 export default defineConfig({
-  plugins: [tailwindcss(), sveltekit()],
+  plugins: [docsSiteCorePlugin(import.meta.url), tailwindcss(), sveltekit()],
   ssr: {
     // Force @docsfn/core through Vite's transform pipeline so the
     // `@searchfn/client` alias below resolves the workspace source in dev.
