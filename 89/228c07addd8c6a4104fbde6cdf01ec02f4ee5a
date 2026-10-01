@@ -1,0 +1,27 @@
+authfn/docs/content/docs/index.md
+  s_a670c0444bf388::t_1f405199a58d9b 36
+authfn/docs/content/docs/plugins/api-keys.md
+  s_a670c0444bf388::t_1f405199a58d9b 3,8,10,13-14
+authfn/docs/static/llms-full.txt
+  s_a670c0444bf388::t_19e7830dd28335 5434,5477,5482,5484,5487-5488,6198
+authfn/docs/static/llms.txt
+  s_a670c0444bf388::t_19e7830dd28335 64
+authfn/docs/content/docs/plugins/index.md
+  s_a670c0444bf388::t_1f405199a58d9b 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "89228c07addd8c6a4104fbde6cdf01ec02f4ee5a",
+  "prompts": {},
+  "sessions": {
+    "s_a670c0444bf388": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
