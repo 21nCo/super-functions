@@ -37,7 +37,7 @@ const response = await fetch('https://api.acme.com/projects', {
 
 ## Server-side authentication
 
-Your protected endpoint authenticates via `auth.provider`:
+Your protected endpoint authenticates via `auth.provider` and uses the `hasScope` helper below to return HTTP 403 before loading protected data:
 
 ```ts
 app.get('/projects', async (c) => {
@@ -45,20 +45,23 @@ app.get('/projects', async (c) => {
   if (!session || session.actorType !== 'api-key') {
     return c.json({ error: 'unauthorized' }, 401);
   }
+  if (!hasScope(session, 'read')) {
+    return c.json({ error: 'forbidden' }, 403);
+  }
   // session.actorId === api key id
   // session.metadata.scopes === ['read', 'write']
-  return c.json({ projects: [...] });
+  return c.json({ projects: [] }); // Replace with your application's project data.
 });
 ```
 
 ## Per-key scopes
 
-Authorization is up to your application:
+Authorization is up to your application. This predicate reads the stored key scopes; the handler above owns the HTTP 403 response instead of throwing a generic error:
 
 ```ts
-function require(session: AuthFnSession, scope: string) {
+function hasScope(session: AuthFnSession, scope: string): boolean {
   const scopes = session.metadata?.scopes;
-  if (!Array.isArray(scopes) || !scopes.includes(scope)) throw new Error('forbidden');
+  return Array.isArray(scopes) && scopes.includes(scope);
 }
 ```
 

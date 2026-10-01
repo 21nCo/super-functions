@@ -59,7 +59,7 @@ The synthesized session is what `auth.provider.authenticate(request)` returns. Y
 if (session.actorType === 'api-key') {
   const scopes = session.metadata?.scopes;
   if (!Array.isArray(scopes) || !scopes.includes('repo:read')) {
-    return forbidden();
+    return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 }
 ```
@@ -81,16 +81,27 @@ The plaintext follows `<secretPrefix><base64url(random)>`. Display it once, then
 repo:read repo:write account:read
 ```
 
-Authorize like this in your handlers:
+Return an explicit HTTP 403 when an authenticated API-key request lacks the required scope. In this example, `auth` is your AuthFn server and `handleAuthorizedRequest` is your application's protected handler; it only runs after the scope check passes.
 
 ```ts
-function require(session: AuthFnSession, scope: string) {
+function hasScope(session: AuthFnSession, scope: string): boolean {
   const scopes = session.metadata?.scopes;
-  if (!Array.isArray(scopes) || !scopes.includes(scope)) {
-    throw new Error(`scope ${scope} required`);
+  return Array.isArray(scopes) && scopes.includes(scope);
+}
+
+async function handleRepositoryRequest(request: Request): Promise<Response> {
+  const session = await auth.provider.authenticate(request);
+  if (!session || session.actorType !== 'api-key') {
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasScope(session, 'repo:read')) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+  return handleAuthorizedRequest(request, session);
 }
 ```
+
+Scope denial belongs to your application's HTTP response layer. Do not throw a plain `Error` for this path: AuthFn's error handler normalizes it to `AUTHFN_INTERNAL_ERROR` (HTTP 500).
 
 ## Unowned service keys
 
