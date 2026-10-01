@@ -1,0 +1,19 @@
+authfn/docs/turbo.json
+  s_c110885eb0629b::t_b68f34158061e0 1-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "89c3c4a4cc06952a1af30fd15ee0b120dfe5b304",
+  "prompts": {},
+  "sessions": {
+    "s_c110885eb0629b": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034YFn9R9CbjHc1pEnQA4K",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
