@@ -348,33 +348,8 @@ function collectEntriesForCollection(
       continue;
     }
 
-    const extension = extname(relativePath).toLowerCase();
-    const fileName = basename(relativePath).toLowerCase();
-
-    if (fileName === (config.content.metaFileName ?? "meta.json").toLowerCase()) {
-      entries.push(createControlEntry(collection, relativePath, source, modulePath));
-      continue;
-    }
-
-    if (collection === "assets") {
-      entries.push(createAssetEntry(relativePath, source, modulePath));
-      continue;
-    }
-
-    if (
-      isMarkdownCollection(collection) &&
-      [".md", ".mdx"].includes(extension)
-    ) {
-      entries.push(createMarkdownEntry(collection, relativePath, source, modulePath));
-      continue;
-    }
-
-    if (
-      collection === "api" &&
-      [".json", ".yaml", ".yml"].includes(extension)
-    ) {
-      entries.push(createApiEntry(relativePath, source, modulePath));
-    }
+    const entry = createEntryForModule(collection, relativePath, source, modulePath, config);
+    if (entry) entries.push(entry);
   }
 
   return entries.sort((left, right) =>
@@ -383,6 +358,27 @@ function collectEntriesForCollection(
       numeric: true,
     }),
   );
+}
+
+function createEntryForModule(
+  collection: DocsCollection,
+  relativePath: string,
+  source: string,
+  modulePath: string,
+  config: DocsConfig,
+): DocsSourceEntry | undefined {
+  const extension = extname(relativePath).toLowerCase();
+  const fileName = basename(relativePath).toLowerCase();
+  if (fileName === (config.content.metaFileName ?? "meta.json").toLowerCase()) {
+    return createControlEntry(collection, relativePath, source, modulePath);
+  }
+  if (collection === "assets") return createAssetEntry(relativePath, source, modulePath);
+  if (isMarkdownCollection(collection) && [".md", ".mdx"].includes(extension)) {
+    return createMarkdownEntry(collection, relativePath, source, modulePath);
+  }
+  if (collection === "api" && [".json", ".yaml", ".yml"].includes(extension)) {
+    return createApiEntry(relativePath, source, modulePath);
+  }
 }
 
 function collectionDirectory(

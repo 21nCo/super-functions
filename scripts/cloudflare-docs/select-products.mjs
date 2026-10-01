@@ -46,8 +46,15 @@ function productsFromChangedFiles() {
   };
 
   for (const file of changedFiles) {
-    if (/^(package\.json|package-lock\.json|turbo\.json|scripts\/cloudflare-docs\/|scripts\/docs-site\/|\.github\/workflows\/superfunctions-docs-cloudflare-)/.test(file)) {
+    if (/^(package\.json|package-lock\.json|turbo\.json|scripts\/cloudflare-docs\/|\.github\/workflows\/superfunctions-docs-cloudflare-)/.test(file)) {
       return existingProductIds();
+    }
+    if (file.startsWith("scripts/docs-site/")) {
+      for (const productId of existingProductIds()) {
+        const wrapper = spawnSync("git", ["show", `${after}:${productId}/docs/src/lib/server/docs-site-source.ts`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+        if (wrapper.status === 0 && wrapper.stdout.includes("scripts/docs-site/runtime")) selectExisting(productId);
+      }
+      continue;
     }
     if (/^packages\/docs-theme\//.test(file)) {
       for (const productId of existingProductIds()) selectExisting(productId);
@@ -56,7 +63,7 @@ function productsFromChangedFiles() {
     if (/^docsfn\//.test(file)) return existingProductIds();
     if (/^datafn\/docs\//.test(file)) selectExisting("datafn");
     if (/^filefn\/docs\//.test(file)) selectExisting("filefn");
-    if (/^mdfn\/docs\//.test(file)) selectExisting("mdfn");
+    if (file.startsWith("mdfn/docs/")) selectExisting("mdfn");
     if (/^searchfn\/docs\//.test(file)) selectExisting("searchfn");
     if (/^authfn\/docs\//.test(file)) selectExisting("authfn");
   }

@@ -12,6 +12,7 @@ export const load: PageServerLoad = async ({ params }) => {
     options: {
       apiBreadcrumbLabel: "Package reference",
       apiBreadcrumbHref: "/docs/reference",
+      fallbackSidebarId: "docs",
     },
   });
   return {
