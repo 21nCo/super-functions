@@ -20,4 +20,4 @@ npm exec -- docsfn build --root . --out-dir .docsfn
 The site defaults to port 6010 in development and preview. Set `CLOUDFLARE_DOCS_DEPLOY=1` when building with the Cloudflare adapter.
 The public documentation route is `/docs`.
 
-The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Until a public host is serving the site, generated indexes link to the repository source pages.
+The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Until a public host is serving the site, generated indexes link to the repository source pages and the full corpus footer links to the source index. The default Git ref is `dev`; set `DOCS_SOURCE_REF` to a branch or commit when generating preview/version-pinned links (for example `DOCS_SOURCE_REF=codex/docs-mcpfn-20260926 npm run generate:llms --workspace @mcpfn/docs`). Deployment builds use `CLOUDFLARE_DOCS_PUBLIC_ORIGIN` for page/body/footer links, independently of `CLOUDFLARE_DOCS_ASSETS_ORIGIN` for assets.

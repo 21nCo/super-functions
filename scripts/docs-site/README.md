@@ -10,6 +10,8 @@ Each new-site PR includes this shared directory at the same repository path so i
 
 Only sites whose factory wrappers import this directory consume this runtime. Check those imports when planning cross-site validation.
 
-Bundled files have no reliable filesystem modification time; the provider omits `updatedAt` instead of inventing one. YAML frontmatter uses the same gray-matter parser as the filesystem provider. Binary static files stay in SvelteKit’s static passthrough.
+Bundled files have no reliable filesystem modification time; the provider omits `updatedAt` instead of inventing one. YAML frontmatter uses the same gray-matter parser as the filesystem provider. Binary static files stay in SvelteKit’s static passthrough; wrappers raw-import only text assets. Content globs retain Markdown, JSON control/API records and YAML API records instead of dropping API inputs while excluding binary files. Consumers declare `gray-matter` directly, and shared dependencies resolve through each consumer's export conditions and framework plugins.
 
-Run `npm test` in a new-site workspace to check generated LLM files and the shared provider/cache contracts. Initialization failures are retryable; concurrent successful requests reuse one cache.
+Run `npm test` in a new-site workspace to check generated LLM files and the shared provider/cache contracts. Initialization failures are retryable; concurrent successful requests reuse one cache. The shared test config accepts explicit `DOCS_SITE_DIR`, npm's consumer manifest, or a valid consumer cwd before resolving dependencies; enabled search uses the same repository peer-source aliases as builds. Tests cover real posts, cache summaries, API JSON/YAML and real search queries.
+
+LLM providers and effective config roots are both anchored to the consumer directory. Public deployment origins are independent of asset origins. McpFn's undeployed source links (including its full-corpus footer) default to `dev` and support `DOCS_SOURCE_REF` for branch/commit previews; deployment body links and footer use the selected public host. Keep `buildLlmsSiteArtifacts`' canonical override API typed for checkJs consumers.
