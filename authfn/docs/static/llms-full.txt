@@ -5431,7 +5431,7 @@ If you're **comparing tools**, the highlights below are a cheatsheet against Bet
 | Email & password | Sign-up/sign-in, password reset via OTP, optional compromised-password checks | `@authfn/password` |
 | Email OTP | One-time codes for email verification, sign-in, sign-up, and password reset | `@authfn/email-otp` |
 | Social OAuth | Google, Apple, GitHub — and custom providers through the shared OAuth contracts | `@authfn/social-oauth` |
-| API keys | User-owned API keys with scopes, named, revocable, securely hashed | `@authfn/api-keys` |
+| API keys | Scoped, named, revocable, securely hashed keys: user-owned through HTTP routes; unowned through the trusted TypeScript server helper | `@authfn/api-keys` |
 | Two-factor (TOTP) | RFC 6238 TOTP with recovery codes, time-window tolerance, and pluggable encryption | `@authfn/two-factor` |
 | Multi-region | Region-aware lookup and request-specific runtime environment resolution | `@authfn/multi-region` |
 | Native handoff | Web ↔ native session handoff for iOS/Android wrappers | `@authfn/native-handoff` |
@@ -5474,18 +5474,18 @@ If you're **comparing tools**, the highlights below are a cheatsheet against Bet
 <!-- page:docs:plugins/api-keys.md path:/docs/plugins/api-keys -->
 # API keys plugin
 
-> User-owned API keys — issued, hashed, scoped, revocable.
+> User-owned and server-issued unowned API keys — hashed, scoped, revocable.
 
 
 # API keys plugin
 
-`authFnApiKeyPlugin` lets users issue API keys and use them as bearer tokens against your service. Keys are:
+`authFnApiKeyPlugin` lets signed-in users issue user-owned API keys and use them as bearer tokens against your service. Trusted TypeScript server code can also issue unowned service keys with the exported `createApiKey` helper. Keys are:
 
-- **User-owned** — every key is bound to a `userId`.
+- **User-owned or unowned** — cookie-session routes bind keys to the signed-in user's `userId`; trusted server code can explicitly pass `userId: null` to issue an unowned service key.
 - **Hashed at rest** — the plaintext is shown once at creation; only `secretHash` is persisted.
 - **Scoped** — keys carry an array of scope strings; your app decides what they mean.
-- **Named** — for the user's UI ("CI", "personal laptop").
-- **Revocable** — `DELETE /auth/api-keys/:id` flips `revokedAt`.
+- **Named** — for a user's UI or a service ("CI", "personal laptop", "retrieval-worker").
+- **Revocable** — cookie-session routes revoke the caller's user-owned keys; trusted server code can revoke unowned keys with `revokeApiKeyById`. Both set `revokedAt`.
 
 ```ts
 import { authfn, authFnPlugins } from 'authfn';
@@ -6195,7 +6195,7 @@ authfn ships seven plugins as independent packages. They compose into a single `
 | `authFnPasswordPlugin` | `@authfn/password` | Email + password sign-up, sign-in, reset-via-OTP. | [Password](./password) |
 | `authFnEmailOtpPlugin` | `@authfn/email-otp` | One-time codes for email verification, sign-in, sign-up, password reset. | [Email OTP](./email-otp) |
 | `authFnSocialOAuthPlugin` | `@authfn/social-oauth` | Google, Apple, GitHub OAuth. Custom providers via a plugin. | [Social OAuth](./social-oauth) |
-| `authFnApiKeyPlugin` | `@authfn/api-keys` | User-owned API keys with scopes. | [API keys](./api-keys) |
+| `authFnApiKeyPlugin` | `@authfn/api-keys` | Scoped API keys: user-owned through HTTP routes; unowned through the trusted TypeScript server helper. | [API keys](./api-keys) |
 | `authFnTwoFactorPlugin` | `@authfn/two-factor` | TOTP-based 2FA with recovery codes. | [Two-factor](./two-factor) |
 | `authFnMultiRegionPlugin` | `@authfn/multi-region` | Region pinning, lookup, runtime overlays. | [Multi-region](./multi-region) |
 | `authFnNativeHandoffPlugin` | `@authfn/native-handoff` | Web ↔ native session handoff. | [Native handoff](./native-handoff) |

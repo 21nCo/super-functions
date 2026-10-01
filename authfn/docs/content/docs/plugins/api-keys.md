@@ -1,17 +1,17 @@
 ---
 title: API keys plugin
-description: User-owned API keys — issued, hashed, scoped, revocable.
+description: User-owned and server-issued unowned API keys — hashed, scoped, revocable.
 ---
 
 # API keys plugin
 
-`authFnApiKeyPlugin` lets users issue API keys and use them as bearer tokens against your service. Keys are:
+`authFnApiKeyPlugin` lets signed-in users issue user-owned API keys and use them as bearer tokens against your service. Trusted TypeScript server code can also issue unowned service keys with the exported `createApiKey` helper. Keys are:
 
-- **User-owned** — every key is bound to a `userId`.
+- **User-owned or unowned** — cookie-session routes bind keys to the signed-in user's `userId`; trusted server code can explicitly pass `userId: null` to issue an unowned service key.
 - **Hashed at rest** — the plaintext is shown once at creation; only `secretHash` is persisted.
 - **Scoped** — keys carry an array of scope strings; your app decides what they mean.
-- **Named** — for the user's UI ("CI", "personal laptop").
-- **Revocable** — `DELETE /auth/api-keys/:id` flips `revokedAt`.
+- **Named** — for a user's UI or a service ("CI", "personal laptop", "retrieval-worker").
+- **Revocable** — cookie-session routes revoke the caller's user-owned keys; trusted server code can revoke unowned keys with `revokeApiKeyById`. Both set `revokedAt`.
 
 ```ts
 import { authfn, authFnPlugins } from 'authfn';
