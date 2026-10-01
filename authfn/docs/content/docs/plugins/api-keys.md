@@ -57,7 +57,8 @@ The synthesized session is what `auth.provider.authenticate(request)` returns. Y
 
 ```ts
 if (session.actorType === 'api-key') {
-  if (!session.subject.attributes?.scopes?.includes('repo:read')) {
+  const scopes = session.metadata?.scopes;
+  if (!Array.isArray(scopes) || !scopes.includes('repo:read')) {
     return forbidden();
   }
 }
@@ -84,9 +85,9 @@ Authorize like this in your handlers:
 
 ```ts
 function require(session: AuthFnSession, scope: string) {
-  const scopes = (session.subject.attributes as any)?.scopes ?? [];
-  if (!scopes.includes(scope)) {
-    throw new AuthFnForbiddenError(`scope ${scope} required`);
+  const scopes = session.metadata?.scopes;
+  if (!Array.isArray(scopes) || !scopes.includes(scope)) {
+    throw new Error(`scope ${scope} required`);
   }
 }
 ```

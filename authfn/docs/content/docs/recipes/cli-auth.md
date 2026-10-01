@@ -46,7 +46,7 @@ app.get('/projects', async (c) => {
     return c.json({ error: 'unauthorized' }, 401);
   }
   // session.actorId === api key id
-  // session.subject.attributes.scopes === ['read', 'write']
+  // session.metadata.scopes === ['read', 'write']
   return c.json({ projects: [...] });
 });
 ```
@@ -57,8 +57,8 @@ Authorization is up to your application:
 
 ```ts
 function require(session: AuthFnSession, scope: string) {
-  const scopes = session.subject.attributes?.scopes ?? [];
-  if (!scopes.includes(scope)) throw new Error('forbidden');
+  const scopes = session.metadata?.scopes;
+  if (!Array.isArray(scopes) || !scopes.includes(scope)) throw new Error('forbidden');
 }
 ```
 
