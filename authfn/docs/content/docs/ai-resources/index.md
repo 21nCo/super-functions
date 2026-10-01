@@ -50,7 +50,7 @@ The same content powers all three surfaces; each is the right shape for a differ
 The fastest way to get going is to point your assistant at the canonical URL:
 
 ```
-https://authfn.superfunctions.dev/llms-full.txt
+https://authfn.com/docs/llms-full.txt
 ```
 
 Most assistants will accept that as a context source. If your tool is MCP-aware, see [MCP](./mcp) for a richer experience that surfaces type definitions, route metadata, and example apps on demand.

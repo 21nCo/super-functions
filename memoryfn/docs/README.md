@@ -22,4 +22,4 @@ npm exec --workspace @memoryfn/docs -- docsfn validate --root .
 
 The site defaults to port 6012. Set `site.canonicalUrl` once the public docs host serves these routes.
 
-The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Until the public docs host is live, generated page links point to the source files on GitHub.
+The LLM resources are served at `/docs/llms.txt` and `/docs/llms-full.txt` so they stay inside the shared docs Worker route. Until the public docs host is live, generated page links point to source files on GitHub. The default source ref is `dev`; for an unmerged preview, generate with `DOCS_SOURCE_REF=<branch-or-commit>` so links name that preview rather than implying the new files already exist on `dev`. Cloudflare builds use the selected public docs host independently of the asset/CDN host, including the full corpus footer's absolute index link.

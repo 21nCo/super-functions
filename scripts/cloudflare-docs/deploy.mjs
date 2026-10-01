@@ -52,6 +52,7 @@ function buildDocs(product, docsDir, environment) {
     cwd: repoRoot,
     env: {
       CLOUDFLARE_DOCS_DEPLOY: "1",
+      CLOUDFLARE_DOCS_PUBLIC_ORIGIN: `https://${product.hosts[environment]}`,
       CLOUDFLARE_DOCS_ASSETS_ORIGIN: assetsOrigin,
       NODE_ENV: "production",
       NEXT_TELEMETRY_DISABLED: "1",

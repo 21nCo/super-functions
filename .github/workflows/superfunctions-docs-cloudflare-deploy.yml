@@ -26,6 +26,7 @@ on:
       - searchfn/docs/**
       - authfn/docs/**
       - scripts/docs-site/**
+      - docsfn/**
       - packages/docs-theme/**
       - scripts/cloudflare-docs/**
       - package.json

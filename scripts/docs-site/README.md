@@ -6,10 +6,14 @@ The new per-function sites supply their config and Vite raw-content globs to `cr
 
 Each site resolves the shared module's DocsFn imports through the scoped Vite resolver so it uses the versions pinned by that site. Run `npm run build` in the affected `<function>/docs` directory. After changing shared code, build all consumers and verify desktop search (including a result navigation and Escape) plus the mobile Menu drawer. Keep the responsive open-drawer override when using the current published theme.
 
-Each new-site PR includes this shared directory at the same repository path so it can land independently. All factory wrappers reference this one canonical directory. After merge, edit it directly rather than duplicating provider logic in individual sites.
+Each new-site PR includes this shared directory at the same repository path so it can land independently. The factory wrappers for these sites reference this shared directory. After merge, edit it directly rather than duplicating provider logic in individual sites.
+
+`LandingPage.svelte` owns the shared landing markup/styles; consumers retain their own name, tagline, feature and quick-link arrays and route metadata inputs. AuthFn, FileFn and MemoryFn use it.
 
 Only sites whose factory wrappers import this directory consume this runtime. Check those imports when planning cross-site validation.
 
-Bundled files have no reliable filesystem modification time; the provider omits `updatedAt` instead of inventing one. YAML frontmatter uses the same gray-matter parser as the filesystem provider. Binary static files stay in SvelteKit’s static passthrough.
+Bundled files have no reliable filesystem modification time; the provider omits `updatedAt` instead of inventing one. YAML frontmatter uses the same gray-matter parser as the filesystem provider. Binary static files stay in SvelteKit’s static passthrough. Raw wrappers import only text assets and retain Markdown/JSON/YAML content, including API and control inputs. Consumers declare their parser directly; shared dependencies resolve through consumer exports and framework plugins, not guessed sibling filenames.
 
-Run `npm test` in a new-site workspace to check generated LLM files and the shared provider/cache contracts. Initialization failures are retryable; concurrent successful requests reuse one cache.
+Run `npm test` in a new-site workspace to check generated LLM files and the shared provider/cache contracts. Initialization failures are retryable; concurrent successful requests reuse one cache. Launch from a consuming workspace or specify `DOCS_SITE_DIR`; tests validate context before resolving pins and use production SearchFn peer aliases. Tests cover real posts/cache/search/API JSON/YAML, source identity, lean page payloads and preserved API records, actual exports retargeting and committed-wrapper deployment selection.
+
+The filesystem provider and effective config root both anchor to the consuming site. LLM public origins are independent of asset hosts; MemoryFn supports explicit `DOCS_SOURCE_REF` for unmerged source links, and deployed body/index references use the public host. Canonical override options remain typed for checkJs. CI checks committed LLM bytes before prebuild can rewrite them.
