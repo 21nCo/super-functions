@@ -1,0 +1,14 @@
+{
+  "title": "McpFn",
+  "pages": [
+    "index",
+    "getting-started",
+    "server",
+    "client",
+    "authorization",
+    "testing",
+    "deployment",
+    "migration",
+    "reference"
+  ]
+}
