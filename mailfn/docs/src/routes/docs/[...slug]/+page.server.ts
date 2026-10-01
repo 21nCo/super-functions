@@ -10,6 +10,7 @@ export const load: PageServerLoad = async ({ params }) => {
     getCompiledDocsPage,
     resolveMarkdownRelativeLinks,
     options: {
+      fallbackSidebarId: "docs",
       apiBreadcrumbLabel: "Package reference",
       apiBreadcrumbHref: "/docs/reference",
     },

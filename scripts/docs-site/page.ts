@@ -19,8 +19,10 @@ interface DocsPageOptions {
 
 function buildCanonicalUrl(canonicalBase: string | undefined, path: string): string {
   if (!canonicalBase) return path;
-  const origin = canonicalBase.replace(/\/+$/, "");
-  return `${origin}${path.startsWith("/") ? path : `/${path}`}`;
+  let end = canonicalBase.length;
+  while (end > 0 && canonicalBase[end - 1] === "/") end -= 1;
+  const origin = canonicalBase.slice(0, end);
+  return origin + (path.startsWith("/") ? path : "/" + path);
 }
 
 function isRouteNotFoundError(input: unknown): input is { message: string } {
@@ -102,13 +104,13 @@ export async function loadDocsPage(input: {
     ? resolveMarkdownRelativeLinks({
         compiled: await getCompiledDocsPage(routeEntry.page.id),
         route: routeEntry.route,
-        sourcePath: routeEntry.page.id.replace(/^docs:/, ""),
+        sourcePath: routeEntry.page.id.slice(routeEntry.page.id.indexOf(":") + 1),
         isIndexRoute: hasNestedDocsRoutes(source.manifest.routes, routeEntry.route),
       })
     : undefined;
 
   return {
-    routeEntry,
+    routeEntry: routeEntry.kind === "page" ? { kind: "page" as const } : routeEntry,
     surface,
     sidebar,
     compiled,
