@@ -1,0 +1,143 @@
+memoryfn/docs/README.md
+  s_ad500513bc9987::t_3768a9bdda8eed 25
+.github/workflows/ci.yml
+  s_ad500513bc9987::t_5b0a0dc5b8269a 116-119
+memoryfn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_f643283b5e2c57 10,15-17,22-24
+  s_c21fd820d3c09f::t_f2f2a46709aa4e 25
+scripts/docs-site/page.ts
+  s_ad500513bc9987::t_26cada50a4bee4 22-25,107,113
+.github/workflows/superfunctions-docs-cloudflare-deploy.yml
+  s_ad500513bc9987::t_12b8196a303dce 29
+memoryfn/docs/package.json
+  s_ad500513bc9987::t_e47ce09eccf9c5 35-36
+scripts/docs-site/landing.test.mjs
+  s_ad500513bc9987::t_9a88ca52145f86 1-18
+scripts/docs-site/README.md
+  s_ad500513bc9987::t_74a777125e3385 11
+  s_d52385ad0fbd0d::t_4a66e41041e75d 9-10,15-17,19
+scripts/cloudflare-docs/select-products.mjs
+  s_ad500513bc9987::t_cbc9d40a30c5c2 49,52-59,66
+scripts/docs-site/runtime.ts
+  s_ad500513bc9987::t_32af8e14bcae0f 351-352,363-381
+  s_a670c0444bf388::t_f580fb61d995d4 382-383
+authfn/docs/src/routes/+page.svelte
+  s_ad500513bc9987::t_e3fc9ab4bc0df1 2
+  s_ad500513bc9987::t_2fb299b3ce143c 39
+filefn/docs/src/routes/+page.svelte
+  s_ad500513bc9987::t_deab72b47e4d24 39
+  s_ad500513bc9987::t_8a1ea6e95e15b7 2
+scripts/cloudflare-docs/deploy.mjs
+  s_ad500513bc9987::t_551a5433312f33 55
+memoryfn/docs/vite.config.ts
+  s_ad500513bc9987::t_b861ae86bba10d 10
+scripts/docs-site/vitest.config.ts
+  s_ad500513bc9987::t_56af12ab91164c 29
+  s_ad500513bc9987::t_0aed818f04b2a6 26-28
+  s_ad500513bc9987::t_25459cbc55e25a 30
+  s_ad500513bc9987::t_1b414cd408584f 7-17,21-25
+memoryfn/docs/src/lib/server/docs-site-source.ts
+  s_ad500513bc9987::t_06c2a5ba9c286b 4
+authfn/docs/content/docs/ai-resources/claude.md
+  s_ad500513bc9987::t_9d2334f8b6a7b1 65
+authfn/docs/content/docs/ai-resources/codex.md
+  s_ad500513bc9987::t_a08f30aac1bd4b 24-25
+authfn/docs/content/docs/ai-resources/cursor.md
+  s_ad500513bc9987::t_5406f99472f6f6 32,46
+authfn/docs/content/docs/ai-resources/index.md
+  s_ad500513bc9987::t_1cd5456957bab8 53
+authfn/docs/content/docs/ai-resources/llms-txt.md
+  s_ad500513bc9987::t_aec4d1ee7234a7 10-11,36,42-43
+authfn/docs/docsfn.config.ts
+  s_d52385ad0fbd0d::t_b1e81c3ffc95c6 9
+authfn/docs/package.json
+  s_d52385ad0fbd0d::t_c18c2baf0169ac 20-21
+authfn/docs/scripts/generate-llms.mjs
+  s_d52385ad0fbd0d::t_9c6a8df77996b5 9,12
+authfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ad500513bc9987::t_097b1de25b7f9c 2
+authfn/docs/src/routes/docs/llms-full.txt/+server.ts
+  s_ad500513bc9987::t_c20d0fc56ad50a 1-5
+authfn/docs/src/routes/docs/llms.txt/+server.ts
+  s_ad500513bc9987::t_9f98e00a70b392 1-5
+authfn/docs/static/llms-full.txt
+  s_ad500513bc9987::t_9cd761177336aa 1237,1275-1276,1352,1366,1448,1465-1466,1491,1497-1498
+authfn/docs/static/llms.txt
+  s_ad500513bc9987::t_d57e8e31effb92 7-115,119
+filefn/docs/docsfn.config.ts
+  s_d52385ad0fbd0d::t_ac449cf8ea726f 9
+filefn/docs/package.json
+  s_ad500513bc9987::t_37571f107e6582 20-21
+filefn/docs/scripts/generate-llms.mjs
+  s_d52385ad0fbd0d::t_84947558f88345 19
+filefn/docs/src/routes/docs/llms-full.txt/+server.ts
+  s_ad500513bc9987::t_db125e1c091b0b 1-5
+filefn/docs/src/routes/docs/llms.txt/+server.ts
+  s_ad500513bc9987::t_4ddc699e0e7c6f 1-5
+filefn/docs/static/llms-full.txt
+  s_ad500513bc9987::t_1ae537c4fb3d08 10,94,138,212,267,309,376,441,639,710,763,828,875,947,1005,1102,1142,1222,1320,1391,1490,1643,1701,1720,1808,1920,2034,2115,2217,2299,2403,2486,2599,2733,2845,2982,3101,3221,3320,3429,3498,3617,3691,3718,3804,3932,3967,4037,4123,4219,4311,4442,4535,4693,4785,4855,4920,5033,5121,5148,5227,5293,5407,5485,5603,5743,5882,6090,6130,6195,6293,6417,6490,6614,6705,6815,6948,6976,7099,7228,7327,7425,7548,7649,7754,7894,7996,8116,8145,8179,8322,8424,8530,8606,8716,8870,8906,9132,9289,9489,9684,9821
+filefn/docs/static/llms.txt
+  s_ad500513bc9987::t_98bb63f55fbe0c 7-108
+memoryfn/docs/static/llms-full.txt
+  s_ad500513bc9987::t_e98ed5cf873c5c 6
+package-lock.json
+  s_ad500513bc9987::t_b11b590253169d 864-865,8971-8972,19020-19021
+scripts/docs-site/freshness.test.mjs
+  s_ad500513bc9987::t_694a6aa768ed70 1-18
+scripts/docs-site/llms.mjs
+  s_c21fd820d3c09f::t_aae952bbfb004d 10-11,26,45,47-51,55,60
+scripts/docs-site/llms.test.mjs
+  s_ad500513bc9987::t_91257eb2474f4c 1-34
+scripts/docs-site/origin.test.mjs
+  s_ad500513bc9987::t_d4e8ec10994cb8 1-46
+scripts/docs-site/page.test.ts
+  s_ad500513bc9987::t_1e7bd23b47f163 1-24
+scripts/docs-site/runtime.test.ts
+  s_ad500513bc9987::t_eb7deb7dbf3306 3-4,68-127
+scripts/docs-site/selector.test.mjs
+  s_ad500513bc9987::t_3cf14c78a1ada1 1-36
+scripts/docs-site/vite.test.mjs
+  s_ad500513bc9987::t_40d81e3c44d439 1-26
+scripts/docs-site/vite.ts
+  s_d52385ad0fbd0d::t_6ca795a8ea1b3f 1,4-9,14-16,18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0f62eb20b4ff5317336419e9e3e9ee2a0a310d83",
+  "prompts": {},
+  "sessions": {
+    "s_a670c0444bf388": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_c21fd820d3c09f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f828-b1f7-7171-a758-1b4c085d88f7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_d52385ad0fbd0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f1cc-46a9-73a2-bf93-2e81a58b21fc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
