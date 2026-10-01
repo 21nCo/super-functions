@@ -58,7 +58,7 @@ jobs:
       environment: ${{ steps.detect.outputs.environment }}
       products: ${{ steps.detect.outputs.products }}
     steps:
-      - uses: useblacksmith/checkout@v1
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           fetch-depth: 0
 
@@ -94,7 +94,7 @@ jobs:
       matrix:
         product: ${{ fromJson(needs.detect.outputs.products) }}
     steps:
-      - uses: useblacksmith/checkout@v1
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
 
       - uses: actions/setup-node@v4
         with:
