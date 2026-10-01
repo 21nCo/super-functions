@@ -117,7 +117,7 @@ Options:
 
 Behavior:
 
-- Builds first if required.
+- Always rebuilds the selected targets before scanning or creating archives, even when build output already exists.
 - Runs `scan` by default before emitting archives.
 - Chromium archives use `.zip`.
 - Firefox archives use `.xpi`.
