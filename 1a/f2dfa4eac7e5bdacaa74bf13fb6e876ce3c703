@@ -1,0 +1,93 @@
+authfn/docs/content/docs/ai-resources/codex.md
+  s_ad500513bc9987::t_3146687bfd5d79 24-25
+scripts/docs-site/page.ts
+  s_ad500513bc9987::t_80dff513a3e712 22-26,108,114
+langfn/docs/src/lib/server/docs-site-source.ts
+  s_ad500513bc9987::t_f67bd531ac4175 7
+authfn/docs/content/docs/ai-resources/claude.md
+  s_ad500513bc9987::t_e4c10e81d5abde 65
+scripts/cloudflare-docs/deploy.mjs
+  s_ad500513bc9987::t_017d2ac0e0bf72 55
+scripts/docs-site/vite.ts
+  s_ad500513bc9987::t_bba161fa4d62cb 10,18,20
+  s_ad500513bc9987::t_a2865878baf767 3,19
+  s_ad500513bc9987::t_71149ea0aae30e 7,22
+filefn/docs/src/routes/docs/llms.txt/+server.ts
+  s_ad500513bc9987::t_4a2e1174051391 1-7
+scripts/docs-site/runtime.test.ts
+  s_ad500513bc9987::t_4015973c608247 3-4,69-75,77-78
+  s_ad500513bc9987::t_483f1be54b4999 76
+  s_ad500513bc9987::t_e87e54d4ae4d52 28
+  s_ad500513bc9987::t_4118d34890515e 79-80
+filefn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_3ddda77834e248 19
+authfn/docs/src/lib/server/docs-site-source.ts
+  s_ad500513bc9987::t_d272a762643338 7
+scripts/docs-site/llms.mjs
+  s_ad500513bc9987::t_243c53a746ed90 10-17
+authfn/docs/package.json
+  s_ad500513bc9987::t_acee9d83f2d962 20-21
+authfn/docs/content/docs/ai-resources/cursor.md
+  s_ad500513bc9987::t_d5fc556ff8de61 32,46
+authfn/docs/content/docs/ai-resources/index.md
+  s_ad500513bc9987::t_e6cb0fae085a84 53
+scripts/docs-site/page.test.ts
+  s_ad500513bc9987::t_c67f5f8a6af89f 9-11,15-16,27,30
+  s_ad500513bc9987::t_c0ec12c47c5749 1-8,12-14,17-26,28-29,31-34
+authfn/docs/content/docs/ai-resources/llms-txt.md
+  s_ad500513bc9987::t_34b5168abf6078 10-11,36,42-43
+scripts/docs-site/origin.test.mjs
+  s_ad500513bc9987::t_f4330dd89c2544 1-53
+filefn/docs/src/routes/docs/llms-full.txt/+server.ts
+  s_ad500513bc9987::t_7746dea0e502df 7
+  s_ad500513bc9987::t_ff67aa533a5819 1-6
+authfn/docs/src/routes/docs/llms.txt/+server.ts
+  s_ad500513bc9987::t_91c44381bd5cd6 1-7
+scripts/docs-site/llms.test.mjs
+  s_ad500513bc9987::t_55c3bc2cf8256f 1-15,17-28
+  s_ad500513bc9987::t_f58943b476266c 16
+langfn/docs/vite.config.ts
+  s_ad500513bc9987::t_fdb849fa15394c 10
+langfn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_9a261ca14d02f4 10
+authfn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_57f4201d1e4e80 9-11,14
+filefn/docs/docsfn.config.ts
+  s_ad500513bc9987::t_8dc457a6bc0e3b 9
+filefn/docs/src/lib/server/docs-site-source.ts
+  s_ad500513bc9987::t_eff5a88907c8cd 7
+authfn/docs/docsfn.config.ts
+  s_ad500513bc9987::t_e9d6c85137f07f 9
+scripts/docs-site/vitest.config.ts
+  s_ad500513bc9987::t_ad00a6afe0d797 7-22,27
+filefn/docs/package.json
+  s_ad500513bc9987::t_c1bcf20e638365 20-21
+authfn/docs/src/routes/docs/llms-full.txt/+server.ts
+  s_ad500513bc9987::t_6d54acfc577559 1-7
+authfn/docs/static/llms-full.txt
+  s_ad500513bc9987::t_8ce5315e769931 1237,1275-1276,1352,1366,1448,1465-1466,1491,1497-1498
+authfn/docs/static/llms.txt
+  s_ad500513bc9987::t_20e6d341c83e05 7-115,119
+filefn/docs/static/llms-full.txt
+  s_ad500513bc9987::t_8f4f38a8628e0d 10,94,138,212,267,309,376,441,639,710,763,828,875,947,1005,1102,1142,1222,1320,1391,1490,1643,1701,1720,1808,1920,2034,2115,2217,2299,2403,2486,2599,2733,2845,2982,3101,3221,3320,3429,3498,3617,3691,3718,3804,3932,3967,4037,4123,4219,4311,4442,4535,4693,4785,4855,4920,5033,5121,5148,5227,5293,5407,5485,5603,5743,5882,6090,6130,6195,6293,6417,6490,6614,6705,6815,6948,6976,7099,7228,7327,7425,7548,7649,7754,7894,7996,8116,8145,8179,8322,8424,8530,8606,8716,8870,8906,9132,9289,9489,9684,9821
+filefn/docs/static/llms.txt
+  s_ad500513bc9987::t_3a6803a00e4a4c 7-108
+package-lock.json
+  s_ad500513bc9987::t_47d5a32dbde019 864-865,8971-8972
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1af2dfa4eac7e5bdacaa74bf13fb6e876ce3c703",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
