@@ -1,0 +1,25 @@
+authfn/docs/content/docs/recipes/cli-auth.md
+  s_a670c0444bf388::t_2a1e3242916899 49,60-61
+authfn/docs/content/docs/plugins/api-keys.md
+  s_a670c0444bf388::t_2a1e3242916899 60-61,88-89
+  s_a670c0444bf388::t_7422db3370b77a 90
+authfn/docs/static/llms-full.txt
+  s_a670c0444bf388::t_3e3964e24441bf 5534-5535,5562-5563,8800,8811-8812
+  s_a670c0444bf388::t_349a950d65d28b 5564
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f24a75b75d1da0475314d34601052c579f47b845",
+  "prompts": {},
+  "sessions": {
+    "s_a670c0444bf388": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
