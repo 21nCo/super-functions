@@ -1,0 +1,15 @@
+{
+  "title": "MemoryFn",
+  "pages": [
+    "index",
+    "getting-started",
+    "scope-and-lifecycle",
+    "storage",
+    "embeddings-and-extraction",
+    "search",
+    "http",
+    "mcp",
+    "operations-and-limits",
+    "reference"
+  ]
+}

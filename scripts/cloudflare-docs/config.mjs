@@ -28,6 +28,16 @@ export const docsProducts = {
       live: "filefn.com",
     },
   },
+  memoryfn: {
+    packageName: "@memoryfn/docs",
+    docsDir: "memoryfn/docs",
+    kind: "sveltekit-cloudflare",
+    zoneName: "memoryfn.com",
+    hosts: {
+      dev: "dev.memoryfn.com",
+      live: "memoryfn.com",
+    },
+  },
   searchfn: {
     packageName: "@searchfn/docs",
     docsDir: "searchfn/docs",
