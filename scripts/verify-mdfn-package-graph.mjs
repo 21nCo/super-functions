@@ -110,7 +110,10 @@ if (Object.keys(allowedLayers).some((layer) => !nodes.some((node) => node.layer 
 const discovered = readdirSync(path.join(root, "mdfn"))
   .map((entry) => path.join(root, "mdfn", entry, "package.json"))
   .filter(existsSync)
-  .map((file) => JSON.parse(readFileSync(file, "utf8")).name)
+  .map((file) => JSON.parse(readFileSync(file, "utf8")))
+  // Consumer sites are not publishable nodes in the MDFN package graph.
+  .filter((manifest) => manifest.private !== true)
+  .map((manifest) => manifest.name)
   .sort();
 if (json(discovered) !== json([...byName.keys()].sort())) fail("MDFN_GRAPH_INVENTORY_MISMATCH", { expected: [...byName.keys()].sort(), actual: discovered });
 
