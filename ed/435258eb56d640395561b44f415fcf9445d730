@@ -1,0 +1,97 @@
+docsfn/core/src/collection-json.test.ts
+  s_ca4389ed886d1f::t_8ba8e115ac040b 156-175
+docsfn/docs/content/docs/core-concepts/configuration.md
+  s_f35acf97713caf::t_54cafe1b5fbfd8 18
+  s_ca4389ed886d1f::t_1e540bfdeeff28 23
+  s_f35acf97713caf::t_c266dfaf2c8790 19-22
+docsfn/core/src/rss.ts
+  s_ca4389ed886d1f::t_2118116c4ed29f 56-64,67,72,89
+docsfn/core/src/config.ts
+  s_f35acf97713caf::t_247224f0a1bae9 267-269,388
+  s_f35acf97713caf::t_2e9fe903edf689 343,398-406,408-411,413-415,417-426
+  s_f35acf97713caf::t_3b960c9ede99e7 349-357
+  s_f35acf97713caf::t_29851b6f6d8239 2-5,331-334,337-342,344-348,358-367,374-379,385-387,390-391,394-397,429
+docsfn/core/src/search.ts
+  s_f35acf97713caf::t_0e231cc4426f2b 348-354,360,366-370,372,374-386,388-434
+  s_ca4389ed886d1f::t_bf7278079df64b 524-537
+docsfn/react/src/DocsSearch.test.tsx
+  s_ca4389ed886d1f::t_feff003a447503 194-201
+docsfn/core/src/search.test.ts
+  s_ca4389ed886d1f::t_62747c9af6a92f 592-597
+  s_f35acf97713caf::t_0e231cc4426f2b 610-661
+  s_f35acf97713caf::t_013c8a78ba9be2 605-609
+docsfn/core/src/rss.test.ts
+  s_ca4389ed886d1f::t_a78c3eef941c9c 301-315
+docsfn/core/package.json
+  s_f35acf97713caf::t_f88cc9d595add5 51,68
+docsfn/docs/content/docs/getting-started/quick-start.md
+  s_f35acf97713caf::t_c266dfaf2c8790 110
+docsfn/cli/tests/dev-output-watch.test.mjs
+  s_f35acf97713caf::t_9c772e4f73227f 7,9
+  s_ca4389ed886d1f::t_7c018a9a98afa3 1-4,6,8,11-20,22-30,42,48-49,60-62,68-70,72-78
+  s_f35acf97713caf::t_9000a4f6024fe9 5
+  s_f35acf97713caf::t_0e231cc4426f2b 10,31-41,43-46,50-59,63-67,71
+  s_f35acf97713caf::t_c7680a1fd42fb7 21,47
+docsfn/docs/content/docs/core-concepts/cli.md
+  s_f35acf97713caf::t_c266dfaf2c8790 49-53,55-65,102-108
+docsfn/docs/content/docs/guides/nextjs.md
+  s_f35acf97713caf::t_c266dfaf2c8790 46
+  s_f35acf97713caf::t_9fd1fd951184b4 47
+docsfn/cli/tests/dev-config-reload.test.mjs
+  s_f35acf97713caf::t_9c772e4f73227f 7-9
+  s_f35acf97713caf::t_0e231cc4426f2b 10-23,25,29-35,39-45,48-53,55-57,59-212,214-218,220-235
+  s_f35acf97713caf::t_d347bb51ab03b6 236-256
+  s_f35acf97713caf::t_247224f0a1bae9 27-28,36-37,46,54,58,213,219
+  s_f35acf97713caf::t_9000a4f6024fe9 5
+  s_f35acf97713caf::t_7f14f85c6a9584 1-4,6,24,26,38,47
+docsfn/sveltekit/README.md
+  s_f35acf97713caf::t_c266dfaf2c8790 45-47
+docsfn/cli/src/index.ts
+  s_f35acf97713caf::t_0e231cc4426f2b 461-463,545-570,572,574-599,601,603-611,616-617,619-626,628-643,652-657,660-697,699,701-708,710,713-724,726-734,739-742
+  s_f35acf97713caf::t_3b960c9ede99e7 612-613
+  s_f35acf97713caf::t_9000a4f6024fe9 615,650
+  s_f35acf97713caf::t_aaf66241b6882e 460,464-467,614,649,738,743-756
+  s_ca4389ed886d1f::t_36a000203a44cb 452-457
+  s_f35acf97713caf::t_4d8d0fbb70f60a 3,20,40,540-543,618,644-648,651,735-737,914,961-968
+docsfn/next/README.md
+  s_f35acf97713caf::t_c266dfaf2c8790 98-100
+docsfn/core/src/config.test.ts
+  s_f35acf97713caf::t_e8915ecbbe0073 48-54,56-59,62-90
+  s_f35acf97713caf::t_5136cff6b8f057 4-8,12-22,167,185-186,495,502-503,513,520-521,542,546,548-549,552,559-560,562,568-569,573,580-581,589,624,632,634-635,648,675,682,685-686,688,691-694,706-707,720,726-727,743-744,746-748
+  s_f35acf97713caf::t_90a6a54e22cadc 55,60-61,733
+docsfn/docs/content/docs/guides/sveltekit.md
+  s_f35acf97713caf::t_c266dfaf2c8790 217-219
+docsfn/CONTRACT_REVIEW.md
+  s_f35acf97713caf::t_c266dfaf2c8790 79-91
+  s_f35acf97713caf::t_cd42c09131d1f8 11-12,21,68-69
+  s_ca4389ed886d1f::t_6711b784391cc8 78
+  s_f35acf97713caf::t_54cafe1b5fbfd8 53
+docsfn/docs/content/docs/core-concepts/search.md
+  s_f35acf97713caf::t_eaf6a4c7bfbbc4 55-56
+package-lock.json
+  s_f35acf97713caf::t_66e96ceb487052 8388,8397
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ed435258eb56d640395561b44f415fcf9445d730",
+  "prompts": {},
+  "sessions": {
+    "s_ca4389ed886d1f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f22f-b407-701b-8f24-ac1f7cbd866f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_f35acf97713caf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0fc84-64a0-7e21-abe8-470ad56e7650",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
