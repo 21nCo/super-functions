@@ -14,6 +14,10 @@ This command is the only supported global readiness check for PlugFn. It emits a
 
 `npm run gate:plugfn-release` proves all of the following from the repository root:
 
+Before these checks, the gate runs `npm --prefix plugfn/core run clean` and,
+before provider builds, `npm --prefix plugfn/providers run clean`. It also
+checks that the site reference mirrors match their source guides.
+
 1. `npm --prefix plugfn/core run build`
 2. `npm --prefix plugfn/core run type-check`
 3. `npm --prefix plugfn/core test -- --run`

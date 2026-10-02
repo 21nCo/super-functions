@@ -13,6 +13,9 @@ const docsInventory = [
   'plugfn/docs/provider-readiness-matrix.md',
   'plugfn/docs/client-sdk-boundary.md',
   'plugfn/docs/operations/release-gates.md',
+  'plugfn/docs/content/docs/reference/readiness.md',
+  'plugfn/docs/content/docs/reference/release-gates.md',
+  'plugfn/docs/content/docs/reference/client-boundary.md',
   'plugfn/python/README.md',
   'plugfn/python/SUMMARY.md',
 ];
@@ -24,6 +27,7 @@ const legacyPackagePatterns = [/@superfunctions\/plugfn\b/, /@superfunctions\/pl
 const requiredCoreProviders = ['github', 'linear', 'clickup', 'gmail', 'notion'];
 
 const steps = [
+  { name: 'docsReferenceMirrors', command: 'node', args: ['plugfn/docs/scripts/sync-references.mjs', '--check'] },
   {
     name: 'typescriptClean',
     command: 'npm',

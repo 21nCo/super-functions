@@ -1,0 +1,17 @@
+{
+  "title": "PlugFn",
+  "pages": [
+    "index",
+    "getting-started",
+    "provider-readiness",
+    "connections-and-oauth",
+    "browser-client",
+    "webhooks",
+    "workflows-and-sync",
+    "security-boundaries",
+    "python",
+    "cli-and-admin",
+    "operations",
+    "reference"
+  ]
+}
