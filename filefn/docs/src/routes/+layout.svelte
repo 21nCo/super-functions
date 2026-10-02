@@ -20,6 +20,10 @@
   });
 </script>
 
+<svelte:head>
+  <title>{data.source.siteTitle}</title>
+</svelte:head>
+
 <div
   class="docsfn-site-root"
   class:docsfn-docs-chrome={$page.url.pathname.startsWith("/docs")}

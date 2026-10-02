@@ -22,6 +22,13 @@
   }
 
   function shortcut(event: KeyboardEvent) {
+    // A nonempty native search input consumes Escape to clear its value.
+    // Close our modal explicitly so one Escape always dismisses search.
+    if (event.key === "Escape" && dialog?.open) {
+      event.preventDefault();
+      dialog.close();
+      return;
+    }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
       openSearch();

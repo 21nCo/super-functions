@@ -48,7 +48,9 @@ Default authorizer reads `filefn_file_permissions` and respects ownership.
 | Field | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `rateLimit.persistence` | `RateLimitPersistence` | undefined | Shared persistence (Redis/KV). |
+| `stores.atomicKv` | `AtomicKVStoreAdapter` | undefined | CAS-capable shared store for strict limits. |
+| `stores.kv` | `KVStoreAdapter` | undefined | Shared store for best-effort limits. |
+| `rateLimit.mode` | `"strict" | "best-effort" | "local"` | store-dependent | Defaults to strict with `atomicKv`, best-effort with `kv`, otherwise local. |
 | `rateLimit.algorithm` | `"fixed-window" | "sliding-window" | "token-bucket"` | `"fixed-window"` | Algorithm. |
 | `rateLimit.limits.uploadInit` | `{ windowSeconds, maxRequests }` | undefined | Per-route. |
 | `rateLimit.limits.uploadSign` | same | undefined | |
@@ -101,8 +103,9 @@ const fileFn = createFileFn({
   authorizer: composeAuthorizers([orgAdminCanRead, createDefaultAuthorizer({ db, namespace: "filefn" })]),
   logger: pinoLogger,
 
+  stores: { atomicKv },
   rateLimit: {
-    persistence: redisPersistence,
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },

@@ -12,10 +12,9 @@ export default defineConfig({
   ssr: {
     // Force @docsfn/core through Vite's transform pipeline so the
     // `@searchfn/client` alias below resolves the workspace source in dev.
-    // Without this, the dynamic `import("@searchfn/client")` inside
-    // @docsfn/core is externalized and resolved by Node, which fails because
-    // @searchfn/client is not installed as a dependency and its dist is not
-    // built in the monorepo.
+    // Without this, the dynamic import resolves through Node instead of the
+    // active workspace source aliases. Standalone installs also declare the
+    // published client, but these aliases deliberately exercise local source.
     noExternal: ["@docsfn/core", "@docsfn/svelte"],
   },
   resolve: {

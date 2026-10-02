@@ -4804,8 +4804,9 @@ import { createFileFn } from "@filefn/server";
 
 const fileFn = createFileFn({
   db, storage,
+  stores: { kv: sharedKv },
   rateLimit: {
-    persistence: redisPersistence, // optional; in-memory by default
+    mode: "best-effort", // or "local" without a store
     algorithm: "sliding-window",
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -4823,7 +4824,7 @@ const fileFn = createFileFn({
 
 `rateLimit.algorithm` is one of `"fixed-window" | "sliding-window" | "token-bucket"`.
 
-`rateLimit.persistence` plugs in a shared store (Redis / Postgres / KV) so multi-instance deployments share counters.
+For strict shared limits, use `stores.atomicKv` with `rateLimit.mode: "strict"` and a CAS-capable adapter. For best-effort shared limits, use `stores.kv` with `rateLimit.mode: "best-effort"`. Use `persistence` only when calling `createRateLimiter` directly.
 
 ## Pre-built rate limiter
 
@@ -5559,8 +5560,9 @@ Use the `rateLimit` config:
 ```ts
 const fileFn = createFileFn({
   db, storage,
+  stores: { atomicKv },
   rateLimit: {
-    persistence: redisPersistence,
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit: { windowSeconds: 60, maxRequests: 10 },
@@ -5570,7 +5572,7 @@ const fileFn = createFileFn({
 });
 ```
 
-For multi-instance deployments, plug in a shared persistence (Redis, KV).
+For strict multi-instance limits, `atomicKv` must implement `compareAndSet`. For best-effort shared limits, use `stores: { kv: sharedKv }` and `rateLimit.mode: "best-effort"`. Direct `createRateLimiter` calls use `atomicStore` or `persistence` instead.
 
 ## Observability
 
@@ -8232,7 +8234,9 @@ Default authorizer reads `filefn_file_permissions` and respects ownership.
 | Field | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `rateLimit.persistence` | `RateLimitPersistence` | undefined | Shared persistence (Redis/KV). |
+| `stores.atomicKv` | `AtomicKVStoreAdapter` | undefined | CAS-capable shared store for strict limits. |
+| `stores.kv` | `KVStoreAdapter` | undefined | Shared store for best-effort limits. |
+| `rateLimit.mode` | `"strict" | "best-effort" | "local"` | store-dependent | Defaults to strict with `atomicKv`, best-effort with `kv`, otherwise local. |
 | `rateLimit.algorithm` | `"fixed-window" | "sliding-window" | "token-bucket"` | `"fixed-window"` | Algorithm. |
 | `rateLimit.limits.uploadInit` | `{ windowSeconds, maxRequests }` | undefined | Per-route. |
 | `rateLimit.limits.uploadSign` | same | undefined | |
@@ -8285,8 +8289,9 @@ const fileFn = createFileFn({
   authorizer: composeAuthorizers([orgAdminCanRead, createDefaultAuthorizer({ db, namespace: "filefn" })]),
   logger: pinoLogger,
 
+  stores: { atomicKv },
   rateLimit: {
-    persistence: redisPersistence,
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },

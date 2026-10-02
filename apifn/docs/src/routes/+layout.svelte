@@ -18,6 +18,10 @@
 
 </script>
 
+<svelte:head>
+  <title>{data.source.siteTitle}</title>
+</svelte:head>
+
 <div
   bind:this={siteRoot}
   class="docsfn-site-root"
