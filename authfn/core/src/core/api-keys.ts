@@ -10,7 +10,8 @@ import { hashSecret } from './sessions.js';
 import { findUserById } from './users.js';
 
 export interface CreateApiKeyInput {
-  userId: string;
+  /** Explicit null creates an unowned key for a trusted service principal. */
+  userId: string | null;
   name: string;
   scopes?: string[];
   metadata?: Record<string, unknown>;
@@ -43,22 +44,25 @@ export async function createApiKey(
 ): Promise<CreatedApiKey> {
   assertValidApiKeyName(input.name);
   assertValidApiKeyExpiry(input.expiresAt);
-  const userIdLength = Array.from(input.userId).length;
-  assertAuthFnDatabaseKeyLength(
-    input.userId,
-    'userId',
-    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
-  );
-  const legacyUser = userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
-    ? await findUserById(config, input.userId)
-    : null;
-  const userId = legacyUser
-    ? assertAuthFnDatabaseKeyLength(
-        input.userId,
-        'userId',
-        AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
-      )
-    : assertAuthFnDatabaseKeyLength(input.userId, 'userId');
+  let userId = input.userId;
+  if (userId !== null) {
+    const userIdLength = Array.from(userId).length;
+    assertAuthFnDatabaseKeyLength(
+      userId,
+      'userId',
+      AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+    );
+    const legacyUser = userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
+      ? await findUserById(config, userId)
+      : null;
+    userId = legacyUser
+      ? assertAuthFnDatabaseKeyLength(
+          userId,
+          'userId',
+          AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        )
+      : assertAuthFnDatabaseKeyLength(userId, 'userId');
+  }
   const now = options?.now?.() ?? new Date();
   const secret = createApiKeySecret(options?.secretPrefix);
   const record: AuthFnApiKeyRecord = {

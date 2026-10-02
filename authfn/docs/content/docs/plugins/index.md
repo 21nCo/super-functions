@@ -12,7 +12,7 @@ authfn ships seven plugins as independent packages. They compose into a single `
 | `authFnPasswordPlugin` | `@authfn/password` | Email + password sign-up, sign-in, reset-via-OTP. | [Password](./password) |
 | `authFnEmailOtpPlugin` | `@authfn/email-otp` | One-time codes for email verification, sign-in, sign-up, password reset. | [Email OTP](./email-otp) |
 | `authFnSocialOAuthPlugin` | `@authfn/social-oauth` | Google, Apple, GitHub OAuth. Custom providers via a plugin. | [Social OAuth](./social-oauth) |
-| `authFnApiKeyPlugin` | `@authfn/api-keys` | User-owned API keys with scopes. | [API keys](./api-keys) |
+| `authFnApiKeyPlugin` | `@authfn/api-keys` | Scoped API keys: user-owned through HTTP routes; unowned through the trusted TypeScript server helper. | [API keys](./api-keys) |
 | `authFnTwoFactorPlugin` | `@authfn/two-factor` | TOTP-based 2FA with recovery codes. | [Two-factor](./two-factor) |
 | `authFnMultiRegionPlugin` | `@authfn/multi-region` | Region pinning, lookup, runtime overlays. | [Multi-region](./multi-region) |
 | `authFnNativeHandoffPlugin` | `@authfn/native-handoff` | Web ↔ native session handoff. | [Native handoff](./native-handoff) |

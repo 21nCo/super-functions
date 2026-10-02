@@ -1,0 +1,19 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "^build",
+        "@superfunctions/auth#build",
+        "@superfunctions/delivery#build",
+        "@superfunctions/http-openapi#build",
+        "@superfunctions/oauth-flow#build",
+        "@superfunctions/oauth-http#build",
+        "@superfunctions/oauth-providers#build",
+        "@superfunctions/oauth-storage#build",
+        "@superfunctions/observability#build"
+      ]
+    }
+  }
+}
