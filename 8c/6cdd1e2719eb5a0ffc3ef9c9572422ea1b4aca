@@ -1,0 +1,130 @@
+reviewfn/docs/scripts/sync-references.mjs
+  s_ad500513bc9987::t_a6b0ae048ba244 1-24
+filefn/docs/src/routes/docs/llms-full.txt/+server.ts
+  s_ad500513bc9987::t_5f1e58931c913d 1-6
+authfn/docs/src/routes/docs/llms.txt/+server.ts
+  s_ad500513bc9987::t_e6780fa80cca3f 1-6
+.github/workflows/ci.yml
+  s_ad500513bc9987::t_fa4ad0891b6715 116-121
+  s_ad500513bc9987::t_01752cc328f2b5 122-127
+filefn/docs/package.json
+  s_ad500513bc9987::t_00cc1b6c1ab48d 13
+  s_ad500513bc9987::t_6c3a7fe6f37d3f 21-22
+reviewfn/docs/github-action.md
+  s_ad500513bc9987::t_e1dcb7ff75939c 5
+scripts/cloudflare-docs/select-products.mjs
+  s_ad500513bc9987::t_3886ae0c0ff3dc 66
+  s_ad500513bc9987::t_2f3072b29cf4ab 49,52-58
+reviewfn/docs/package.json
+  s_ad500513bc9987::t_b6d31d478dba06 10,12-15,37-38
+filefn/docs/src/routes/docs/llms.txt/+server.ts
+  s_ad500513bc9987::t_ef9408dd978f82 1-6
+scripts/docs-site/origin.test.mjs
+  s_ad500513bc9987::t_e81f08115b16f5 13-44
+  s_ad500513bc9987::t_1059f080d8f9fc 10-12
+  s_ad500513bc9987::t_6064432d3ebf89 45-46
+  s_ad500513bc9987::t_2b73d594e99145 1-9
+filefn/docs/src/lib/server/docs-site-source.ts
+  s_ad500513bc9987::t_ed28d234ccb1ca 4,7
+authfn/docs/package.json
+  s_ad500513bc9987::t_727da389c4da0f 13
+  s_ad500513bc9987::t_32d96695323e8f 21-22
+filefn/docs/docsfn.config.ts
+  s_ad500513bc9987::t_1601f62c0490bf 9
+authfn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_9254987dbe98e0 6,9-12,14-16
+reviewfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ad500513bc9987::t_122ad40d76e45e 15
+authfn/docs/docsfn.config.ts
+  s_ad500513bc9987::t_7d117544725b42 9
+scripts/cloudflare-docs/deploy.mjs
+  s_ad500513bc9987::t_01a59062546e85 56
+reviewfn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_2fb3ec2011bac1 10,15-17,22-25
+authfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ad500513bc9987::t_43a1cd4bccdf84 2
+reviewfn/docs/src/lib/server/docs-site-source.ts
+  s_ad500513bc9987::t_fc9f69dd03f222 4
+authfn/docs/src/routes/docs/llms-full.txt/+server.ts
+  s_ad500513bc9987::t_a08b34a24bd874 1-6
+filefn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_0dc503d443b4a0 6,19,21,62
+scripts/docs-site/freshness.test.mjs
+  s_ad500513bc9987::t_4d27b4d65a8832 11-14
+  s_ad500513bc9987::t_fbf8f0fc68a1b0 6,22
+  s_ad500513bc9987::t_2408a1334edb1b 17-19
+  s_ad500513bc9987::t_059f391d7ec5bb 3-5
+  s_ad500513bc9987::t_cab7578aba229d 7-10
+  s_ad500513bc9987::t_9941a5b6dbe4c5 15-16
+  s_ad500513bc9987::t_b92ec3d09733f5 20-21
+  s_ad500513bc9987::t_951c9e101d1df9 23-25
+  s_ad500513bc9987::t_7f1a4b83850ed0 1-2,26
+authfn/docs/src/lib/server/docs-site-source.ts
+  s_ad500513bc9987::t_f5457d9d0067f3 4,7
+reviewfn/docs/README.md
+  s_ad500513bc9987::t_cd6ceeb09f5ec3 3,25
+scripts/docs-site/vitest.config.ts
+  s_ad500513bc9987::t_ef0e53452a2b49 7
+  s_ad500513bc9987::t_ba0fa2efd3f22c 8-17,21-30
+reviewfn/docs/vite.config.ts
+  s_ad500513bc9987::t_179e81cbdf83ed 10
+scripts/docs-site/selector.test.mjs
+  s_ad500513bc9987::t_b934731bbbbead 16-33
+  s_ad500513bc9987::t_61115eef4e9d9e 13-15
+  s_ad500513bc9987::t_a99b48e4406954 34-36
+  s_ad500513bc9987::t_d18ad9c94216cd 1-12,37-38
+authfn/docs/content/docs/ai-resources/claude.md
+  s_ad500513bc9987::t_a4c7ece4cb9344 65
+authfn/docs/content/docs/ai-resources/codex.md
+  s_ad500513bc9987::t_9bf01fafe5a80a 24-25
+authfn/docs/content/docs/ai-resources/cursor.md
+  s_ad500513bc9987::t_de1417a7c2e1d2 32,46
+authfn/docs/content/docs/ai-resources/index.md
+  s_ad500513bc9987::t_b0a9be8af3df9d 10,53
+authfn/docs/content/docs/ai-resources/llms-txt.md
+  s_ad500513bc9987::t_414424659ed7b0 10-11,20,36,42-43,74
+authfn/docs/static/llms-full.txt
+  s_ad500513bc9987::t_5c5b9b3dca01bd 1237,1275-1276,1352,1366,1405,1448,1465-1466,1475,1491,1497-1498,1529,7072
+authfn/docs/static/llms.txt
+  s_ad500513bc9987::t_e98eefbd4358c6 7-115,119
+filefn/docs/static/llms-full.txt
+  s_ad500513bc9987::t_35da04f936e439 10,94,138,212,267,309,376,441,639,710,763,828,875,947,1005,1102,1142,1222,1320,1391,1490,1643,1701,1720,1808,1920,2034,2115,2217,2299,2403,2486,2599,2733,2845,2982,3101,3221,3320,3429,3498,3617,3691,3718,3804,3932,3967,4037,4123,4219,4311,4442,4535,4693,4785,4855,4920,5033,5121,5148,5227,5293,5407,5485,5603,5743,5882,6090,6130,6195,6293,6417,6490,6614,6705,6815,6948,6976,7099,7228,7327,7425,7548,7649,7754,7894,7996,8116,8145,8179,8322,8424,8530,8606,8716,8870,8906,9132,9289,9489,9684,9821
+filefn/docs/static/llms.txt
+  s_ad500513bc9987::t_51dad5f14857d7 7-108
+reviewfn/docs/static/llms-full.txt
+  s_ad500513bc9987::t_8378ff0a2c57f7 6
+scripts/docs-site/llms.mjs
+  s_ad500513bc9987::t_248f453739c6d9 10-11,26,45,47-51,55,60
+scripts/docs-site/llms.test.mjs
+  s_ad500513bc9987::t_2caf14a2d2080a 1-34
+scripts/docs-site/page.test.ts
+  s_ad500513bc9987::t_65eb1bd2f0cc4e 1-24
+scripts/docs-site/page.ts
+  s_ad500513bc9987::t_99d48fc98c34f1 22-26,108,114-116
+scripts/docs-site/runtime.test.ts
+  s_ad500513bc9987::t_6f201979f3a8ab 3-4,68-127
+scripts/docs-site/runtime.ts
+  s_ad500513bc9987::t_86a5142bacad6d 344-345,356-378
+scripts/docs-site/vite.test.mjs
+  s_ad500513bc9987::t_87fd7ce66e4495 1-26
+scripts/docs-site/vite.ts
+  s_ad500513bc9987::t_466d90e589363e 1,6,12-13
+package-lock.json
+  s_ad500513bc9987::t_858307a654119d 863-864,8970-8971,54743-54744
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8c6cdd1e2719eb5a0ffc3ef9c9572422ea1b4aca",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
