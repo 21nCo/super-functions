@@ -37,9 +37,16 @@ const response = await fetch('https://api.acme.com/projects', {
 
 ## Server-side authentication
 
-Your protected endpoint authenticates via `auth.provider` and uses the `hasScope` helper below to return HTTP 403 before loading protected data:
+Your protected endpoint authenticates via `auth.provider` and uses `hasScope` to return HTTP 403 before loading protected data. Here `auth` is your AuthFn server and `app` is your application's HTTP router:
 
 ```ts
+import type { AuthFnSession } from 'authfn';
+
+function hasScope(session: AuthFnSession, scope: string): boolean {
+  const scopes = session.metadata?.scopes;
+  return Array.isArray(scopes) && scopes.includes(scope);
+}
+
 app.get('/projects', async (c) => {
   let session: AuthFnSession | null;
   try {
@@ -67,14 +74,7 @@ Missing, invalid, expired, revoked, or non-API-key credentials receive HTTP 401.
 
 ## Per-key scopes
 
-Authorization is up to your application. This predicate reads the stored key scopes; the handler above owns the HTTP 403 response instead of throwing a generic error:
-
-```ts
-function hasScope(session: AuthFnSession, scope: string): boolean {
-  const scopes = session.metadata?.scopes;
-  return Array.isArray(scopes) && scopes.includes(scope);
-}
-```
+Authorization is up to your application. `hasScope` in the server snippet above checks that `session.metadata.scopes` is an array containing the exact required scope. The handler owns the HTTP 403 response instead of throwing a generic error.
 
 ## Refreshing keys
 

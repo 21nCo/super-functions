@@ -47,9 +47,9 @@ const authApp = authfn({
 
 When a request carries `Authorization: Bearer <secret>`, the kernel:
 
-1. Looks up the key by `secretHash`.
-2. Rejects if `revokedAt` is set (`AUTHFN_API_KEY_REVOKED`).
-3. Rejects if `expiresAt` is at or before the current time.
+1. Looks up the key by `secretHash`; returns `null` if no key matches.
+2. Throws `AUTHFN_API_KEY_REVOKED` if `revokedAt` is set.
+3. Returns `null` if `expiresAt` is at or before the current time.
 4. Updates `lastUsedAt`.
 5. Synthesizes an `AuthFnSession` with `type: 'api-key'`, `actorType: 'api-key'`, `methods: ['api-key']`.
 
@@ -84,6 +84,8 @@ repo:read repo:write account:read
 Return an explicit HTTP 403 when an authenticated API-key request lacks the required scope. In this example, `auth` is your AuthFn server and `handleAuthorizedRequest` is your application's protected handler; it only runs after the scope check passes.
 
 ```ts
+import type { AuthFnSession } from 'authfn';
+
 function hasScope(session: AuthFnSession, scope: string): boolean {
   const scopes = session.metadata?.scopes;
   return Array.isArray(scopes) && scopes.includes(scope);
@@ -128,8 +130,12 @@ const serviceKey = await createApiKey(config, {
   expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
 });
 
+// Before distributing serviceKey.secret, persist serviceKey.keyId in your
+// application's authorized service-key inventory and audit the issuance.
+
 // After checking your application's service-principal management policy:
 await revokeApiKeyById(config, serviceKey.keyId);
+// Update your inventory and audit the successful revocation.
 ```
 
 These keys persist a null owner, use the same hashed-secret, expiry, and revocation behavior, and authenticate as `actorType: 'api-key'` with the key ID as their actor ID. Authentication exposes the stored scopes in `session.metadata.scopes` and leaves `session.metadata.ownerUserId` undefined. Your application must authorize service-principal issuance and use and enforce scopes; the helper does not create a user identity.
@@ -137,6 +143,14 @@ These keys persist a null owner, use the same hashed-secret, expiry, and revocat
 Unowned keys authenticate through the normal `auth.provider.authenticate` path only. The opt-in [placement-context issuer](../recipes/placement-bound-auth-context) (`createAuthFnPlacementContextIssuer`) binds each API-key grant to its owning user's placement, so it rejects an unowned key with `AUTHFN_UNAUTHENTICATED`. Use a user-owned key when a service must derive placement-bound context.
 
 The cookie-session routes above remain user-owned: creation always uses the signed-in user's ID, and user listing and revocation exclude unowned keys. Manage unowned keys through trusted server code after applying your application's authorization policy.
+
+### Service-key inventory and audit ownership
+
+Keep a durable, access-controlled inventory mapping each `keyId` to its service principal, name, scopes, expiry, and revocation state. Record the ID before distributing the secret: `revokeApiKeyById` requires that ID, and the user listing route cannot discover unowned keys. Use bounded expiries, as in the example, to limit the lifetime of keys whose management records are lost.
+
+Inventory persistence, secret delivery, and recovery are application-owned. The helpers do not make inventory or audit writes atomic with issuance. If inventory persistence fails, do not distribute the secret; use the still-known key ID to attempt revocation and reconcile any cleanup failure through your application's operational tooling.
+
+Direct `createApiKey` and `revokeApiKeyById` calls do **not** emit the HTTP route events listed below. Audit successful service-key issuance and revocation in your application, recording the authorized management actor, service principal, key ID, timestamp, and relevant scopes. Exclude the plaintext secret and secret hash from inventory and audit logs.
 
 ## Revocation
 
@@ -157,8 +171,12 @@ After revocation, `auth.provider.authenticate(request)` rejects with `AUTHFN_API
 
 ## Events
 
+The cookie-session HTTP routes emit these events:
+
 - `authfn.api_key.created`
 - `authfn.api_key.revoked`
+
+Trusted persistence helpers do not emit them; direct service-key lifecycle auditing is the application's responsibility.
 
 ## Quick UI: list and revoke keys
 

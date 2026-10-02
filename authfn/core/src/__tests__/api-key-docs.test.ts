@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { ScriptTarget, transpileModule } from 'typescript';
+import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 import { authFnApiKeyPlugin } from '@authfn/api-keys';
 import { createRouter } from '@superfunctions/http';
@@ -20,13 +21,23 @@ function readGuide(guide: 'plugin' | 'cli'): string {
 function readBlock(text: string, prefix: string): string {
   const block = [...text.matchAll(/```ts\n([\s\S]*?)```/g)]
     .map((match) => match[1])
-    .find((code) => code.startsWith(prefix));
+    .find((code) => code.includes(prefix));
   if (!block) throw new Error(`Missing documented example: ${prefix}`);
   return block;
 }
 
 function compile(code: string): string {
-  return transpileModule(code, { compilerOptions: { target: ScriptTarget.ES2022 } }).outputText;
+  // Type-only imports are checked separately and have no runtime dependency.
+  return ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } })
+    .outputText.replace(/^export \{\};\s*$/gm, '');
+}
+
+function scopeExample(guide: 'plugin' | 'cli'): string {
+  const text = readGuide(guide);
+  const helper = readBlock(text, 'function hasScope');
+  if (guide === 'plugin') return helper;
+  const route = readBlock(text, "app.get('/projects'");
+  return route === helper ? route : `${helper}\n${route}`;
 }
 
 function documentedHandler(guide: 'plugin' | 'cli', auth: AuthFnServer, protectedWork: ProtectedWork): Handler {
@@ -43,7 +54,7 @@ function documentedHandler(guide: 'plugin' | 'cli', auth: AuthFnServer, protecte
       handler = incoming;
     }
   };
-  new Function('app', 'auth', compile(`${helper}\n${readBlock(text, "app.get('/projects'")}`))(app, auth);
+  new Function('app', 'auth', compile(scopeExample(guide)))(app, auth);
   return async (request) => {
     if (!handler) throw new Error('CLI example did not register its route');
     return handler({
@@ -57,7 +68,7 @@ function documentedHandler(guide: 'plugin' | 'cli', auth: AuthFnServer, protecte
 }
 
 describe.each(['plugin', 'cli'] as const)('%s API-key documentation HTTP boundary', (guide) => {
-  it.each([null, 'user:docs'])('returns 401 at the host HTTP boundary for revoked and expired keys (owner %s)', async (userId) => {
+  it.each([null, 'user:docs'])('distinguishes invalid credentials from valid keys at the host HTTP boundary (owner %s)', async (userId) => {
     const config: AuthFnRuntimeConfig = { database: memoryAdapter({ debug: false }), namespace: 'authfn', plugins: [authFnApiKeyPlugin()] };
     const auth = createTestServer(config);
     const protectedWork = vi.fn(() => Response.json({ allowed: true }));
@@ -78,6 +89,14 @@ describe.each(['plugin', 'cli'] as const)('%s API-key documentation HTTP boundar
       expect(protectedWork).not.toHaveBeenCalled();
       expect(onError).not.toHaveBeenCalled();
     }
+
+    const valid = await createApiKey(config, { userId, name: 'valid-control', scopes: ['repo:read', 'read'] });
+    const response = await router.handle(new Request('https://example.com/app/doc-example', {
+      headers: { authorization: `Bearer ${valid.secret}` }
+    }));
+    expect(response.status).toBe(200);
+    expect(protectedWork).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it('propagates unexpected authentication and protected-handler failures to the host', async () => {
@@ -187,5 +206,29 @@ describe.each(['plugin', 'cli'] as const)('%s API-key documentation HTTP boundar
     const text = readGuide(guide);
     expect(generated).toContain(readBlock(text, 'function hasScope'));
     if (guide === 'cli') expect(generated).toContain(readBlock(text, "app.get('/projects'"));
+  });
+
+  it('typechecks the copyable scope example with only documented application dependencies', () => {
+    const fileName = fileURLToPath(new URL(`../../__docs_scope_${guide}.ts`, import.meta.url));
+    const source = `
+      declare const auth: import('authfn').AuthFnServer;
+      declare const handleAuthorizedRequest: (request: Request, session: import('authfn').AuthFnSession) => Response | Promise<Response>;
+      declare const app: {
+        get(path: string, handler: (context: { req: { raw: Request }; json(data: unknown, status?: number): Response }) => Promise<Response>): void;
+      };
+      ${scopeExample(guide)}
+    `;
+    const options: ts.CompilerOptions = {
+      noEmit: true, strict: true, skipLibCheck: true, types: [],
+      target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext
+    };
+    const host = ts.createCompilerHost(options);
+    const getSourceFile = host.getSourceFile.bind(host);
+    host.getSourceFile = (name, ...args) => name === fileName
+      ? ts.createSourceFile(name, source, options.target!, true)
+      : getSourceFile(name, ...args);
+    const diagnostics = ts.getPreEmitDiagnostics(ts.createProgram([fileName], options, host));
+    expect(diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))).toEqual([]);
   });
 });
