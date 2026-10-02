@@ -14,7 +14,7 @@ The `sendfn` SDK is a unified communications platform that provides email, SMS, 
 ## Installation
 
 ```bash
-npm install sendfn @superfunctions/db @superfunctions/http
+npm install sendfn @superfunctions/db @superfunctions/http@0.1.2 @superfunctions/http-express@0.1.2 express
 ```
 
 ## Verify From Repo Root
@@ -93,12 +93,17 @@ const client = sendfn({
 If `enableApi` is true, the `client.router` instance is available to be mounted on any supported framework via Superfunctions HTTP adapters.
 
 ```typescript
-import { createExpressApp } from '@superfunctions/http-express';
+import express from 'express';
+import { toExpress } from '@superfunctions/http-express';
 
-const app = createExpressApp(client.router);
+const app = express();
+app.use(express.raw({ type: '*/*', limit: '2mb' }));
+if (!client.router) throw new Error('Set enableApi: true before mounting');
+app.use(toExpress(client.router));
 app.listen(3000);
 
-// Endpoints (Requires 'Authorization: Bearer <adminKey>'):
+// Admin endpoints require 'Authorization: Bearer <adminKey>'.
+// The SNS webhook is an exception: it verifies the SNS signature and topic ARN.
 // POST /email - Send an email
 // POST /sms   - Send an SMS
 // POST /whatsapp - Send a WhatsApp message
@@ -197,18 +202,16 @@ const client = sendfn({
 });
 ```
 
-Then mount the webhook handler. Preserve the raw SNS envelope JSON exactly as AWS sends it; production deployments must keep the full SNS signature fields intact so the webhook handler can perform signature verification before any delivery, bounce, or complaint event mutates state.
+For an HTTP host, include this `awsSns` option in the client configured with
+`enableApi: true` above and mount `client.router` using the API-router example.
+Its built-in `POST /webhooks/aws-ses` route parses the raw JSON body and verifies
+the complete SNS envelope before mutating delivery, bounce, or complaint state.
+Do not register a second Express handler that passes the `express.raw()` Buffer
+directly to `handleSnsNotification`, which expects an SNS message object.
 
-```typescript
-app.post('/webhooks/aws-ses', async (req, res) => {
-  const handler = client.getWebhookHandlers().awsSes;
-  // req.body should be the SNS notification JSON
-  await handler.handleSnsNotification(req.body);
-  res.sendStatus(200);
-});
-```
-
-Do not proxy, partially parse, or reshape the SNS payload before passing it to `handleSnsNotification`.
+For a custom host calling `handleSnsNotification` directly, JSON-decode the bytes
+and preserve every SNS envelope field, including `Signature`, `SigningCertURL`,
+`Timestamp`, and `Message`; do not pass only the inner SES message.
 
 ## Examples
 

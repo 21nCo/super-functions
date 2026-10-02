@@ -61,7 +61,7 @@ describe('release gate metadata', () => {
     expect(readme).not.toContain('npm run release:verify --workspace sendfn/typescript');
     expect(readme).toContain("import { sendfn, awsSesAdapter, consoleSmsAdapter } from 'sendfn';");
     expect(readme).toContain("import { apnsAdapter } from 'sendfn/adapters/apns';");
-    expect(readme).toContain("app.post('/webhooks/aws-ses'");
+    expect(readme).toContain("app.use(toExpress(client.router))");
     expect(readme).toContain('Present only when awsSns.topicArns is configured');
     expect(eventExample).toContain('AWS_SNS_TOPIC_ARN');
     expect(eventExample).toContain('topicArns: [awsSnsTopicArn]');

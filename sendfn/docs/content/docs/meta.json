@@ -1,0 +1,16 @@
+{
+  "title": "SendFn",
+  "pages": [
+    "index",
+    "getting-started",
+    "channels",
+    "providers",
+    "persistence-and-events",
+    "webhooks",
+    "idempotency",
+    "http-api",
+    "python",
+    "administration",
+    "reference"
+  ]
+}

@@ -1,0 +1,19 @@
+# SendFn
+
+> Self-hosted email, SMS, WhatsApp, and push delivery with provider adapters.
+
+## Documentation
+
+- [Administration](https://github.com/21nCo/super-functions/blob/dev/sendfn/docs/content/docs/administration.md) — Integrate SendFn into a host control plane.
+- [Channels](https://github.com/21nCo/super-functions/blob/dev/sendfn/docs/content/docs/channels.md) — Send email, SMS, WhatsApp, and push with the TypeScript SDK.
+- [Getting started](https://github.com/21nCo/super-functions/blob/dev/sendfn/docs/content/docs/getting-started.md) — Initialize a TypeScript client with a database and provider.
+- [HTTP API](https://github.com/21nCo/super-functions/blob/dev/sendfn/docs/content/docs/http-api.md) — Expose the optional router with an admin key.
+- [Idempotent email sends](https://github.com/21nCo/super-functions/blob/dev/sendfn/docs/content/docs/idempotency.md) — Use stable keys for retried outbound requests.
+- [SendFn](https://github.com/21nCo/super-functions/blob/dev/sendfn/docs/content/docs/index.md) — Self-hosted communications with provider adapters and persistence.
+- [Persistence and events](https://github.com/21nCo/super-functions/blob/dev/sendfn/docs/content/docs/persistence-and-events.md) — Understand records, suppressions, and delivery lifecycle.
+- [Providers](https://github.com/21nCo/super-functions/blob/dev/sendfn/docs/content/docs/providers.md) — Inject delivery adapters and keep credentials in your deployment.
+- [Python SDK](https://github.com/21nCo/super-functions/blob/dev/sendfn/docs/content/docs/python.md) — Install channel extras and configure a Python client.
+- [SDK reference](https://github.com/21nCo/super-functions/blob/dev/sendfn/docs/content/docs/reference/index.md) — Source package guides for TypeScript and Python.
+- [Python SDK source guide](https://github.com/21nCo/super-functions/blob/dev/sendfn/docs/content/docs/reference/python.md) — Current source README for the python package.
+- [TypeScript SDK source guide](https://github.com/21nCo/super-functions/blob/dev/sendfn/docs/content/docs/reference/typescript.md) — Current source README for the TypeScript package.
+- [SES webhooks](https://github.com/21nCo/super-functions/blob/dev/sendfn/docs/content/docs/webhooks.md) — Verify SNS messages before changing delivery state.

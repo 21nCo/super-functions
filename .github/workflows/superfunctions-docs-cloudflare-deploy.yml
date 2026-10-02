@@ -13,16 +13,20 @@ on:
       - superfunctions-docs-filefn-live-*
       - superfunctions-docs-searchfn-live-*
       - superfunctions-docs-authfn-live-*
+      - superfunctions-docs-sendfn-live-*
       - superfunctions-datafn-docs-live-*
       - superfunctions-filefn-docs-live-*
       - superfunctions-searchfn-docs-live-*
       - superfunctions-authfn-docs-live-*
+      - superfunctions-sendfn-docs-live-*
     paths:
       - datafn/docs/**
       - filefn/docs/**
       - searchfn/docs/**
       - authfn/docs/**
-      - docsfn/**
+      - sendfn/docs/**
+      - apifn/docsfn/**
+      - scripts/docs-site/**
       - packages/docs-theme/**
       - scripts/cloudflare-docs/**
       - package.json
@@ -42,6 +46,7 @@ on:
           - filefn
           - searchfn
           - authfn
+          - sendfn
       environment:
         description: Docs environment to deploy
         required: true
