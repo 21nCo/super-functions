@@ -15,9 +15,11 @@
 </script>
 
 <svelte:head>
-  <title>{data.surface.title ?? data.siteTitle}</title>
-  {#if data.surface.description}
-    <meta name="description" content={data.surface.description} />
+  {#if data.surface.canonicalPath !== "/docs"}
+    <title>{data.surface.title ?? data.siteTitle}</title>
+    {#if data.surface.description}
+      <meta name="description" content={data.surface.description} />
+    {/if}
   {/if}
 </svelte:head>
 

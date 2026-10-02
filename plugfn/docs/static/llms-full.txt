@@ -3,7 +3,7 @@
 > Self-hosted provider connections, OAuth, webhooks, workflows, and sync jobs.
 
 This file concatenates the full text of every documentation page so it can be loaded into
-an LLM-based assistant in a single shot. For a page index, see /docs/llms.txt.
+an LLM-based assistant in a single shot. For a page index, see https://github.com/21nCo/super-functions/blob/dev/plugfn/docs/static/llms.txt.
 
 # Documentation
 
