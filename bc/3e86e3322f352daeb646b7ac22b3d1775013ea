@@ -1,0 +1,31 @@
+authfn/core/src/__tests__/api-key-docs.test.ts
+  s_a670c0444bf388::t_30031026d43a81 5,8,60-87,89-102,104-109
+  s_a670c0444bf388::t_e6af0be34b2eef 88
+  s_a670c0444bf388::t_6c6cd239740585 103
+authfn/docs/content/docs/recipes/cli-auth.md
+  s_a670c0444bf388::t_6c6cd239740585 44-53,66
+  s_a670c0444bf388::t_6f758e6d7c7c0a 67
+authfn/docs/static/llms-full.txt
+  s_a670c0444bf388::t_9b9971c02e2d9e 5567-5576,5587,8815-8824,8837
+  s_a670c0444bf388::t_ab779ca34f5a45 5526,5621,5629
+  s_a670c0444bf388::t_609e0df8941b96 8838
+authfn/docs/content/docs/plugins/api-keys.md
+  s_a670c0444bf388::t_74391ccdf76e3e 52,147,155
+  s_a670c0444bf388::t_6c6cd239740585 93-102,113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bc3e86e3322f352daeb646b7ac22b3d1775013ea",
+  "prompts": {},
+  "sessions": {
+    "s_a670c0444bf388": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
