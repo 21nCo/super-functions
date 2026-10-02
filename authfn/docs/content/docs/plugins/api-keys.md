@@ -49,7 +49,7 @@ When a request carries `Authorization: Bearer <secret>`, the kernel:
 
 1. Looks up the key by `secretHash`.
 2. Rejects if `revokedAt` is set (`AUTHFN_API_KEY_REVOKED`).
-3. Rejects if `expiresAt` is past.
+3. Rejects if `expiresAt` is at or before the current time.
 4. Updates `lastUsedAt`.
 5. Synthesizes an `AuthFnSession` with `type: 'api-key'`, `actorType: 'api-key'`, `methods: ['api-key']`.
 
@@ -90,7 +90,16 @@ function hasScope(session: AuthFnSession, scope: string): boolean {
 }
 
 async function handleRepositoryRequest(request: Request): Promise<Response> {
-  const session = await auth.provider.authenticate(request);
+  let session: AuthFnSession | null;
+  try {
+    session = await auth.provider.authenticate(request);
+  } catch (error) {
+    if (error !== null && typeof error === 'object' &&
+        'code' in error && error.code === 'AUTHFN_API_KEY_REVOKED') {
+      return Response.json({ error: 'unauthorized' }, { status: 401 });
+    }
+    throw error;
+  }
   if (!session || session.actorType !== 'api-key') {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -101,7 +110,7 @@ async function handleRepositoryRequest(request: Request): Promise<Response> {
 }
 ```
 
-Scope denial belongs to your application's HTTP response layer. Do not throw a plain `Error` for this path: AuthFn's error handler normalizes it to `AUTHFN_INTERNAL_ERROR` (HTTP 500).
+Authentication and scope denial belong to your application's HTTP response layer: missing, invalid, expired, revoked, or non-API-key credentials receive HTTP 401; an active key without the required scope receives HTTP 403. The catch covers only authentication and only maps `AUTHFN_API_KEY_REVOKED`; unexpected failures propagate to your host's error handler, and protected work stays outside the catch. Do not throw a plain `Error` for scope denial: AuthFn's error handler normalizes it to `AUTHFN_INTERNAL_ERROR` (HTTP 500).
 
 ## Unowned service keys
 
@@ -135,7 +144,7 @@ The cookie-session routes above remain user-owned: creation always uses the sign
 await client.revokeApiKey({ keyId });
 ```
 
-After revocation, every subsequent request with that key returns `AUTHFN_API_KEY_REVOKED` (HTTP 401).
+After revocation, `auth.provider.authenticate(request)` rejects with `AUTHFN_API_KEY_REVOKED`. AuthFn's HTTP error handler maps that error to HTTP 401; application-owned endpoints should return HTTP 401 as shown above. Unknown or expired keys instead authenticate to `null`.
 
 ## Errors
 
@@ -143,7 +152,7 @@ After revocation, every subsequent request with that key returns `AUTHFN_API_KEY
 | --- | --- |
 | `AUTHFN_VALIDATION_ERROR` | Invalid name / scopes / expiresAt. |
 | `AUTHFN_UNAUTHENTICATED` | Caller is not signed in (key creation requires a session). |
-| `AUTHFN_API_KEY_REVOKED` | Key was used after revocation or expiry. |
+| `AUTHFN_API_KEY_REVOKED` | Key was used after revocation. |
 | `AUTHFN_NOT_FOUND` | `revokeApiKey` for a missing key id. |
 
 ## Events

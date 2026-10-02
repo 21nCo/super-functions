@@ -41,7 +41,16 @@ Your protected endpoint authenticates via `auth.provider` and uses the `hasScope
 
 ```ts
 app.get('/projects', async (c) => {
-  const session = await auth.provider.authenticate(c.req.raw);
+  let session: AuthFnSession | null;
+  try {
+    session = await auth.provider.authenticate(c.req.raw);
+  } catch (error) {
+    if (error !== null && typeof error === 'object' &&
+        'code' in error && error.code === 'AUTHFN_API_KEY_REVOKED') {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    throw error;
+  }
   if (!session || session.actorType !== 'api-key') {
     return c.json({ error: 'unauthorized' }, 401);
   }
@@ -53,6 +62,8 @@ app.get('/projects', async (c) => {
   return c.json({ projects: [] }); // Replace with your application's project data.
 });
 ```
+
+Missing, invalid, expired, revoked, or non-API-key credentials receive HTTP 401. The catch only handles the expected revocation error from authentication; unexpected provider failures and failures while loading project data remain host application errors. Active keys lacking `read` receive HTTP 403.
 
 ## Per-key scopes
 

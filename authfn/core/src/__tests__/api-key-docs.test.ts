@@ -2,9 +2,10 @@ import { readFileSync } from 'node:fs';
 import { ScriptTarget, transpileModule } from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 import { authFnApiKeyPlugin } from '@authfn/api-keys';
+import { createRouter } from '@superfunctions/http';
 import { memoryAdapter } from '../../../../packages/db/src/adapters/memory/index.js';
 import type { AuthFnRuntimeConfig, AuthFnServer, AuthFnSession } from '../index.js';
-import { createApiKey } from '../core/api-keys.js';
+import { createApiKey, revokeApiKeyById } from '../core/api-keys.js';
 import { createAuthFnRouter } from '../http/router.js';
 import { createTestServer } from './test-server.js';
 
@@ -56,6 +57,56 @@ function documentedHandler(guide: 'plugin' | 'cli', auth: AuthFnServer, protecte
 }
 
 describe.each(['plugin', 'cli'] as const)('%s API-key documentation HTTP boundary', (guide) => {
+  it.each([null, 'user:docs'])('returns 401 at the host HTTP boundary for revoked and expired keys (owner %s)', async (userId) => {
+    const config: AuthFnRuntimeConfig = { database: memoryAdapter({ debug: false }), namespace: 'authfn', plugins: [authFnApiKeyPlugin()] };
+    const auth = createTestServer(config);
+    const protectedWork = vi.fn(() => Response.json({ allowed: true }));
+    const handler = documentedHandler(guide, auth, protectedWork);
+    const onError = vi.fn(async () => Response.json({ error: 'internal' }, { status: 500 }));
+    const router = createRouter({ basePath: '/app', routes: [{ method: 'GET', path: '/doc-example', handler }], onError });
+    const revoked = await createApiKey(config, { userId, name: 'revoked', scopes: ['repo:read', 'read'] });
+    await revokeApiKeyById(config, revoked.keyId);
+    const expired = await createApiKey(config, { userId, name: 'expired', scopes: ['repo:read', 'read'], expiresAt: new Date(0) });
+
+    for (const authorization of [`Bearer ${revoked.secret}`, `Api-Key ${revoked.secret}`, `Bearer ${expired.secret}`, 'Bearer unknown-key', 'Basic invalid', undefined]) {
+      const request = new Request('https://example.com/app/doc-example', {
+        headers: authorization ? { authorization } : {}
+      });
+      const response = await router.handle(request);
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: 'unauthorized' });
+      expect(protectedWork).not.toHaveBeenCalled();
+      expect(onError).not.toHaveBeenCalled();
+    }
+  });
+
+  it('propagates unexpected authentication and protected-handler failures to the host', async () => {
+    const config: AuthFnRuntimeConfig = { database: memoryAdapter({ debug: false }), namespace: 'authfn', plugins: [authFnApiKeyPlugin()] };
+    const auth = createTestServer(config);
+    const protectedWork = vi.fn(() => Response.json({ allowed: true }));
+    const handler = documentedHandler(guide, auth, protectedWork);
+    const onError = vi.fn(async (_error: unknown) => Response.json({ error: 'internal' }, { status: 500 }));
+    const router = createRouter({ basePath: '/app', routes: [{ method: 'GET', path: '/doc-example', handler }], onError });
+    const key = await createApiKey(config, { userId: null, name: 'valid', scopes: ['repo:read', 'read'] });
+    const request = () => new Request('https://example.com/app/doc-example', { headers: { authorization: `Bearer ${key.secret}` } });
+    const failure = new Error('database unavailable');
+    const database = vi.spyOn(config.database, 'findOne').mockRejectedValue(failure);
+    try {
+      await expect(handler(request())).rejects.toBe(failure);
+      expect((await router.handle(request())).status).toBe(500);
+      expect(onError.mock.calls[0]?.[0]).toBe(failure);
+      expect(protectedWork).not.toHaveBeenCalled();
+    } finally {
+      database.mockRestore();
+    }
+
+    const applicationFailure = Object.assign(new Error('protected application work failed'), { code: 'AUTHFN_API_KEY_REVOKED' });
+    protectedWork.mockImplementation(() => { throw applicationFailure; });
+    await expect(handler(request())).rejects.toBe(applicationFailure);
+    expect((await router.handle(request())).status).toBe(500);
+    expect(onError.mock.calls[1]?.[0]).toBe(applicationFailure);
+  });
+
   it.each([null, 'user:docs'])('returns 403 without protected work for denied scopes (owner %s)', async (userId) => {
     const config: AuthFnRuntimeConfig = { database: memoryAdapter({ debug: false }), namespace: 'authfn', plugins: [authFnApiKeyPlugin()] };
     const auth = createTestServer(config);
