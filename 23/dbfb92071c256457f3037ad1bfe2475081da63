@@ -1,0 +1,20 @@
+authfn/core/src/__tests__/api-key-docs.test.ts
+  s_a670c0444bf388::t_aa0ec323969944 212-214
+  s_a670c0444bf388::t_045140bf35efb7 211,224,226-228,231-232,236-240,242-243
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "23dbfb92071c256457f3037ad1bfe2475081da63",
+  "prompts": {},
+  "sessions": {
+    "s_a670c0444bf388": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
