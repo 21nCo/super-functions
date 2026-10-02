@@ -208,8 +208,10 @@ describe.each(['plugin', 'cli'] as const)('%s API-key documentation HTTP boundar
     if (guide === 'cli') expect(generated).toContain(readBlock(text, "app.get('/projects'"));
   });
 
-  it('typechecks the copyable scope example with only documented application dependencies', () => {
-    const fileName = fileURLToPath(new URL(`../../__docs_scope_${guide}.ts`, import.meta.url));
+  it.each([false, true])('typechecks the current public source with core build artifacts hidden: %s', (hideBuildArtifacts) => {
+    const fileName = fileURLToPath(new URL(`../../__docs_scope_${guide}.ts`, import.meta.url)).replaceAll('\\', '/');
+    const publicEntry = fileURLToPath(new URL('../index.ts', import.meta.url)).replaceAll('\\', '/');
+    const buildDirectory = fileURLToPath(new URL('../../dist/', import.meta.url)).replaceAll('\\', '/');
     const source = `
       declare const auth: import('authfn').AuthFnServer;
       declare const handleAuthorizedRequest: (request: Request, session: import('authfn').AuthFnSession) => Response | Promise<Response>;
@@ -219,16 +221,25 @@ describe.each(['plugin', 'cli'] as const)('%s API-key documentation HTTP boundar
       ${scopeExample(guide)}
     `;
     const options: ts.CompilerOptions = {
-      noEmit: true, strict: true, skipLibCheck: true, types: [],
+      noEmit: true, strict: true, skipLibCheck: true, types: ['node'],
       target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      // Match Vitest's public-entry alias without depending on an earlier self-build.
+      paths: { authfn: [publicEntry] }
     };
     const host = ts.createCompilerHost(options);
+    const fileExists = host.fileExists.bind(host);
+    host.fileExists = (name) => !(hideBuildArtifacts && name.startsWith(buildDirectory)) && fileExists(name);
     const getSourceFile = host.getSourceFile.bind(host);
     host.getSourceFile = (name, ...args) => name === fileName
       ? ts.createSourceFile(name, source, options.target!, true)
-      : getSourceFile(name, ...args);
-    const diagnostics = ts.getPreEmitDiagnostics(ts.createProgram([fileName], options, host));
+      : hideBuildArtifacts && name.startsWith(buildDirectory)
+        ? undefined
+        : getSourceFile(name, ...args);
+    const program = ts.createProgram([fileName], options, host);
+    const diagnostics = ts.getPreEmitDiagnostics(program);
     expect(diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))).toEqual([]);
+    expect(program.getSourceFile(publicEntry)).toBeDefined();
+    expect(program.getSourceFiles().some((file) => file.fileName.startsWith(buildDirectory))).toBe(false);
   });
 });
