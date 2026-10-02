@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildManifest, loadDocsConfig } from "@docsfn/core";
 import { FsContentProvider } from "@docsfn/provider-fs";
-import { loadLlmsSiteSource, writeLlmsArtifacts } from "../../../scripts/docs-site/llms.mjs";
+import { loadLlmsSiteSource, withSourceLinks, writeLlmsArtifacts } from "../../../scripts/docs-site/llms.mjs";
 
 const cwd = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { config, manifest } = await loadLlmsSiteSource(cwd, {
@@ -16,8 +16,9 @@ const siteDescription =
   config.site?.tagline ??
   "Self-hosted file uploads, storage, and processing for TypeScript, Python, and Swift.";
 const canonicalUrl =
+  (process.env.CLOUDFLARE_DOCS_DEPLOY === "1" && process.env.CLOUDFLARE_DOCS_PUBLIC_ORIGIN) ||
   (config.site && (config.site.canonicalUrl || config.site.url)) ||
-  "https://docs.filefn.dev";
+  "https://filefn.com";
 
 const pages = Object.values(manifest.pages)
   .filter((page) => (page.id ?? "").startsWith("docs:"))
@@ -58,7 +59,7 @@ for (const page of docsPages) {
   }
   if (page.body) {
     fullSections.push("");
-    fullSections.push(page.body.trim());
+    fullSections.push(withSourceLinks(page.body.trim(), manifest, "filefn", canonicalUrl));
     fullSections.push("");
   }
 }

@@ -10,6 +10,7 @@
     "test": "vitest run --passWithNoTests",
     "generate:openapi": "node scripts/generate-openapi.mjs",
     "generate:llms": "node scripts/generate-llms.mjs",
+    "check:llms": "node scripts/generate-llms.mjs --check",
     "prebuild": "npm run generate:openapi && npm run generate:llms"
   },
   "dependencies": {
@@ -17,7 +18,8 @@
     "@docsfn/core": "0.0.5",
     "@docsfn/provider-fs": "0.0.2",
     "@docsfn/svelte": "0.0.3",
-    "@docsfn/sveltekit": "0.0.2"
+    "@docsfn/sveltekit": "0.0.2",
+    "gray-matter": "^4.0.3"
   },
   "devDependencies": {
     "@authfn/api-keys": "0.1.1",
