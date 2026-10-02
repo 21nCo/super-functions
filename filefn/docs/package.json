@@ -10,14 +10,16 @@
     "test": "vitest run --passWithNoTests",
     "generate:openapi": "node scripts/generate-openapi.mjs",
     "generate:llms": "node scripts/generate-llms.mjs",
-    "prebuild": "npm run generate:openapi && npm run generate:llms"
+    "prebuild": "npm run generate:openapi && npm run generate:llms",
+    "check:llms": "node scripts/generate-llms.mjs --check"
   },
   "dependencies": {
     "@21n/fonts": "^1.0.1",
     "@docsfn/core": "0.0.5",
     "@docsfn/provider-fs": "0.0.2",
     "@docsfn/svelte": "0.0.3",
-    "@docsfn/sveltekit": "0.0.2"
+    "@docsfn/sveltekit": "0.0.2",
+    "gray-matter": "^4.0.3"
   },
   "devDependencies": {
     "@docsfn/cli": "0.0.2",

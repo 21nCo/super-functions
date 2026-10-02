@@ -97,7 +97,8 @@ import express from 'express';
 import { toExpress } from '@superfunctions/http-express';
 
 const app = express();
-app.use(express.raw({ type: '*/*', limit: '2mb' }));
+// Adapter 0.1.2 serializes req.body: parse JSON, including SNS text/plain.
+app.use(express.json({ type: ['application/json', 'text/plain'], limit: '2mb' }));
 if (!client.router) throw new Error('Set enableApi: true before mounting');
 app.use(toExpress(client.router));
 app.listen(3000);
@@ -204,10 +205,14 @@ const client = sendfn({
 
 For an HTTP host, include this `awsSns` option in the client configured with
 `enableApi: true` above and mount `client.router` using the API-router example.
-Its built-in `POST /webhooks/aws-ses` route parses the raw JSON body and verifies
+The JSON middleware above accepts both API `application/json` and SNS
+`text/plain` JSON notifications. Malformed JSON and bodies over 2 MB are rejected
+by Express before reaching SendFn. Keep it before `toExpress`: the pinned adapter
+0.1.2 serializes `req.body`, so `express.raw()` would serialize a Buffer wrapper
+instead of the notification. The built-in `POST /webhooks/aws-ses` route verifies
 the complete SNS envelope before mutating delivery, bounce, or complaint state.
-Do not register a second Express handler that passes the `express.raw()` Buffer
-directly to `handleSnsNotification`, which expects an SNS message object.
+Do not register a second handler that passes a Buffer directly to
+`handleSnsNotification`, which expects an SNS message object.
 
 For a custom host calling `handleSnsNotification` directly, JSON-decode the bytes
 and preserve every SNS envelope field, including `Signature`, `SigningCertURL`,

@@ -29,7 +29,7 @@ description: authfn — self-hosted authentication
 
 When working with `@authfn/*`, prefer the MCP tools `authfn.docs.search`, `authfn.openapi.operation`, and `authfn.skills.invoke`. For migration questions, use `authfn.skills.invoke`. For schema/code generation, use `authfn.openapi.operation`.
 
-Reference docs: https://authfn.superfunctions.dev
+Reference docs: https://authfn.com/docs
 ```
 
 That's it. Cursor will use the MCP server for retrieval.
@@ -43,7 +43,7 @@ If you'd rather not run an MCP server, point Cursor at the static file:
 description: authfn
 ---
 
-When working with @authfn/*, fetch context from https://authfn.superfunctions.dev/llms-full.txt as needed.
+When working with @authfn/*, fetch context from https://authfn.com/docs/llms-full.txt as needed.
 ```
 
 ## Project-specific tweaks

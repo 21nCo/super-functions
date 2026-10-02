@@ -8,10 +8,12 @@
     "build": "vite build",
     "preview": "vite preview --port 6021",
     "validate": "docsfn validate --root .",
-    "test": "npm run check:llms && vitest run --config ../../scripts/docs-site/vitest.config.ts",
+    "test": "npm run check:references && npm run check:llms && vitest run --config ../../scripts/docs-site/vitest.config.ts",
     "generate:llms": "node scripts/generate-llms.mjs",
     "prebuild": "npm run generate:llms",
-    "check:llms": "node scripts/generate-llms.mjs --check"
+    "check:llms": "node scripts/generate-llms.mjs --check",
+    "generate:references": "node scripts/sync-references.mjs",
+    "check:references": "node scripts/sync-references.mjs --check"
   },
   "dependencies": {
     "@21n/fonts": "^1.0.1",
@@ -33,6 +35,7 @@
     "tailwindcss": "^4.0.0",
     "typescript": "^5.0.0",
     "vite": "^6.4.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "yaml": "^2.8.2"
   }
 }

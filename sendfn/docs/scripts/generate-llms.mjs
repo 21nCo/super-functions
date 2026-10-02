@@ -7,16 +7,20 @@ import { buildLlmsSiteArtifacts, withSourceLinks, writeLlmsArtifacts } from "../
 
 const cwd = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const deploymentOrigin = process.env.CLOUDFLARE_DOCS_DEPLOY === "1"
-  ? process.env.CLOUDFLARE_DOCS_ASSETS_ORIGIN
+  ? process.env.CLOUDFLARE_DOCS_PUBLIC_ORIGIN ?? ""
   : undefined;
 const { artifacts, manifest, canonicalUrl } = await buildLlmsSiteArtifacts(cwd, {
   buildLlmsTxtArtifacts, buildManifest, loadDocsConfig, FsContentProvider,
 }, { canonicalUrl: deploymentOrigin });
-artifacts.llmsTxt = withSourceLinks(artifacts.llmsTxt, manifest, "sendfn", canonicalUrl);
-artifacts.llmsFullTxt = withSourceLinks(artifacts.llmsFullTxt, manifest, "sendfn", canonicalUrl);
+const sourceRef = process.env.DOCS_SOURCE_REF ?? "dev";
+artifacts.llmsTxt = withSourceLinks(artifacts.llmsTxt, manifest, "sendfn", canonicalUrl, sourceRef);
+artifacts.llmsFullTxt = withSourceLinks(artifacts.llmsFullTxt, manifest, "sendfn", canonicalUrl, sourceRef);
 const generatedFooter = "For programmatic access, prefer the MCP server\nor the structured manifest emitted alongside this file.";
 if (!artifacts.llmsFullTxt.includes(generatedFooter)) {
   throw new Error("Unexpected DocsFn llms-full footer; review the generated artifact before publishing");
 }
-artifacts.llmsFullTxt = artifacts.llmsFullTxt.replace(generatedFooter, "For a page index, see /docs/llms.txt.");
+const indexUrl = canonicalUrl
+  ? `${canonicalUrl.replace(/\/$/, "")}/docs/llms.txt`
+  : `https://github.com/21nCo/super-functions/blob/${encodeURIComponent(sourceRef)}/sendfn/docs/static/llms.txt`;
+artifacts.llmsFullTxt = artifacts.llmsFullTxt.replace(generatedFooter, `For a page index, see ${indexUrl}.`);
 writeLlmsArtifacts(resolve(cwd, "static"), artifacts);
