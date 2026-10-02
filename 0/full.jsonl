@@ -20,17 +20,17 @@
     },
     "cost": 0,
     "tokens": {
-      "input": 700893,
-      "output": 24556,
-      "reasoning": 11732,
+      "input": 706969,
+      "output": 25737,
+      "reasoning": 11889,
       "cache": {
-        "read": 13791104,
+        "read": 15266048,
         "write": 0
       }
     },
     "time": {
       "created": 1790855098799,
-      "updated": 1790920753077
+      "updated": 1790920824984
     }
   },
   "messages": [
@@ -11008,8 +11008,8 @@
           "diffs": [
             {
               "file": ".conduct/pr-227-remediation-ledger.md",
-              "patch": "Index: .conduct/pr-227-remediation-ledger.md\n===================================================================\n--- .conduct/pr-227-remediation-ledger.md\t\n+++ .conduct/pr-227-remediation-ledger.md\t\n@@ -0,0 +1,87 @@\n+# PR 227 remediation ledger\n+\n+- PR: https://github.com/21nCo/super-functions/pull/227\n+- Worktree: `/Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys`\n+- Branch: `codex/authfn-null-owner-api-keys`\n+- Workflow: explicit user invocations, not a scheduled automation.\n+- Hosted skill: `21n/pr-refetch-fix`, `skill:3ba0f6dd-212c-4933-9feb-cf87481a0466`, v1.4.0, revision 6.\n+- Version: `skill-version:f6e3a7a2-9fb9-4d2e-9d31-213353744a9e`.\n+- Digest: `sha256:b6a6e7a8c670bc5ab12540910401d153e8eedd533d89fd1a1925bc9979112726`.\n+- Current snapshot: `fbc4d6903d30724636acad6ed7efccc39b9b8a89`.\n+- Mode: `architecture_reset`.\n+\n+## Stable families and history\n+\n+### `docs.api-key-ownership-overview`\n+\n+- First assessed: round 1, snapshot `c822ed05852cc2e4e1c9d5fafb33b55351c6c0e4`.\n+- Repair: `89228c07addd8c6a4104fbde6cdf01ec02f4ee5a`, canonical overview/indices and generated references.\n+- Current state: already fixed; no reappearance. Known failed repair rounds: 0.\n+\n+### `docs.api-key-scope-contract`\n+\n+- First assessed: round 2, snapshot `89228c07addd8c6a4104fbde6cdf01ec02f4ee5a`.\n+- Round 2 repair: `f24a75b75d1da0475314d34601052c579f47b845`, corrected scope provenance in plugin/CLI docs, but changed rejection to a generic Error. Verification proved allow/deny decisions but missed HTTP status. Failure: generic error became HTTP 500.\n+- Round 3 repair: `fbc4d6903d30724636acad6ed7efccc39b9b8a89`, explicit 403 handlers and executable documentation tests. Scope-denial repair verified, but newly added authentication wrapper omitted handling rejected authentication for revoked credentials. Failure: external host received an exception and returned HTTP 500 rather than 401.\n+- Known failed repair rounds for the complete HTTP contract: 2. Counts retained across sibling defects; this is not a new family.\n+- Round 4 snapshot thread: `PRRT_kwDOP-e7KM6oGfE5`, comment https://github.com/21nCo/super-functions/pull/227#discussion_r4159524402.\n+- Direct sibling: CLI recipe has the same unhandled revoked-key authentication error.\n+- Reset event: `ARCHITECTURE_RESET_REQUIRED:docs.api-key-scope-contract`.\n+- Current state: coordinated repair implemented and locally verified, publication pending.\n+\n+### `codeql.random-token-password-classification`\n+\n+- Recurring diagnostic: `js/insufficient-password-hash`, `authfn/core/src/core/sessions.ts:425`.\n+- Current check: https://github.com/21nCo/super-functions/runs/110538833596; one failure annotation on the exact snapshot SHA.\n+- Evidence unchanged: API keys are generated with `randomBytes(24)` (192 random bits), then SHA-256 hashed for lookup; the diagnostic treats a high-entropy random token as a low-entropy password.\n+- Disposition: invalid; hosted gate remains failed. No attempted repair and no failed repair rounds.\n+\n+## Reset assessment: all four required fields\n+\n+### 1. Shared behavioral invariant\n+\n+At application-owned HTTP endpoints, no protected work runs unless authentication yields an API-key actor and its stored scope array contains the exact required scope. Missing, unknown, malformed, expired, revoked, and non-API-key credentials yield HTTP 401. Valid API keys lacking the scope yield HTTP 403. Valid granted keys reach protected work. Unexpected database/environment/authentication or protected-work exceptions remain failures and are propagated unchanged to the host error handler, never converted into authentication denial.\n+\n+### 2. Faithful old-head reproduction\n+\n+Before changing either canonical example, expanded `authfn/core/src/__tests__/api-key-docs.test.ts` to execute the current snapshot's real documented handlers against real issued/revoked keys in isolated memory databases. Routed them through the generic host HTTP router, whose error handler produces 500; deliberately did not use AuthFn's error normalizer for this acceptance boundary.\n+\n+Command: `npm test --workspace ./authfn/core -- src/__tests__/api-key-docs.test.ts`.\n+\n+Observed on unchanged snapshot docs: 4 failures / 12 passes. Both plugin and CLI handlers, with null and user owners, returned HTTP 500 for revoked keys instead of the required 401. The distinguishing assertion is `response.status === 401`, followed by the unauthorized response body, zero protected-work calls and zero host-error-handler calls. Unexpected authentication/protected-work failure tests already passed on the old behavior.\n+\n+### 3. Coordinated ownership and failure-boundary plan\n+\n+- Producer: `authenticateRequest` in sessions.ts returns null for missing/invalid credentials, user sessions for valid cookie/token sessions, or delegates to API-key authentication.\n+- API-key producer: api-keys.ts returns null for unknown/expired keys, throws `AUTHFN_API_KEY_REVOKED` for revoked records, returns canonical `metadata.scopes` for active keys, and can propagate storage failures.\n+- Consumers: plugin guide's `handleRepositoryRequest`, CLI recipe's `/projects` handler, generated LLM reference, executable docs tests.\n+- Enforcement owner: each host application's HTTP handler, not the scope predicate and not an AuthFn runtime change.\n+- Repair both handlers: place a narrowly scoped try/catch around only the authentication call, map only `AUTHFN_API_KEY_REVOKED` to 401, rethrow all other errors unchanged; preserve null/actor checks, exact array scope checks, 403 responses and protected-work ordering.\n+- Preserve core issuance, authentication, revocation, database/schema and placement runtime behavior.\n+- Keep protected work outside the authentication catch; regenerate `llms-full.txt`.\n+- Assumptions: trusted server provider/database adapters emit the documented structured revocation error; the host supplies its own protected handler and error handling. Concurrent revocation dominance/database isolation is an unchanged runtime concern outside this documentation boundary.\n+\n+### 4. Independent verification criteria\n+\n+- Consumer-visible HTTP status/body and absence of protected work, not the predicate's return value, are the acceptance oracle.\n+- Execute actual canonical snippets for both consumer paths and owned/unowned keys.\n+- Cover revoked credentials using Bearer and Api-Key schemes, expiry, unknown/malformed/missing credentials, wrong actor type, missing/empty/non-array scopes, exact grants versus nonmatching scopes, and forged metadata/subject attributes.\n+- Prove unexpected storage and protected-work failures retain identity and reach the host's 500 error path.\n+- Check generated reference contains exact executable snippets.\n+- Run focused docs, API-key lifecycle and placement-context tests, core typecheck and docs production build; review staged allowlist/diff before one commit and normal push.\n+\n+## External and deferred findings\n+\n+- Reviewer rate/billing limitations and older unsupported docstring coverage provide no actionable code diagnostic; remain verification gaps. Next action requires reviewer availability or specific function diagnostics, not code mutation.\n+- Baseline revocation concurrency and downstream deployment policies are out of scope; not classified as fixed or accepted risk.\n+- No scheduler or review-thread state mutations authorized or performed.\n+\n+## Round 4 pre-publication verification\n+\n+- Both handlers now catch only the expected structured revocation error from the authentication call; null and non-API-key actors remain 401, missing scopes remain 403, and protected work is outside the catch.\n+- Clarified provider-versus-HTTP revocation semantics and expiry/null behavior in the guide; both canonical examples and generated reference repaired together.\n+- Focused suite: 58 tests passed, including 16 executable documentation tests. The four distinguishing old-head revocation failures now pass.\n+- Coverage includes owned/unowned keys, Bearer/Api-Key revocation, expiry, unknown/malformed/absent credentials, 403 scope denials, exact grants, malformed/forged scope data, wrong actor type, and unchanged unexpected-failure identity at the host 500 boundary. A protected-work exception tagged with the revocation code is deliberately not swallowed.\n+- Core typecheck and docs production build passed; pre-existing Svelte/tsconfig/deprecation notices observed.\n+- Snapshot valid blocking root causes: 1; locally remaining: 0. Five earlier threads already fixed, one current snapshot thread repaired, no thread mutations. Recurring failed CodeQL diagnostic remains invalid with a failed hosted gate.\n+- Historical failed rounds remain 2; the reset was assessed and verified, not cleared by renaming the family or resolving comments.\n",
-              "additions": 87,
+              "patch": "Index: .conduct/pr-227-remediation-ledger.md\n===================================================================\n--- .conduct/pr-227-remediation-ledger.md\t\n+++ .conduct/pr-227-remediation-ledger.md\t\n@@ -0,0 +1,96 @@\n+# PR 227 remediation ledger\n+\n+- PR: https://github.com/21nCo/super-functions/pull/227\n+- Worktree: `/Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys`\n+- Branch: `codex/authfn-null-owner-api-keys`\n+- Workflow: explicit user invocations, not a scheduled automation.\n+- Hosted skill: `21n/pr-refetch-fix`, `skill:3ba0f6dd-212c-4933-9feb-cf87481a0466`, v1.4.0, revision 6.\n+- Version: `skill-version:f6e3a7a2-9fb9-4d2e-9d31-213353744a9e`.\n+- Digest: `sha256:b6a6e7a8c670bc5ab12540910401d153e8eedd533d89fd1a1925bc9979112726`.\n+- Current snapshot: `fbc4d6903d30724636acad6ed7efccc39b9b8a89`.\n+- Mode: `architecture_reset`.\n+\n+## Stable families and history\n+\n+### `docs.api-key-ownership-overview`\n+\n+- First assessed: round 1, snapshot `c822ed05852cc2e4e1c9d5fafb33b55351c6c0e4`.\n+- Repair: `89228c07addd8c6a4104fbde6cdf01ec02f4ee5a`, canonical overview/indices and generated references.\n+- Current state: already fixed; no reappearance. Known failed repair rounds: 0.\n+\n+### `docs.api-key-scope-contract`\n+\n+- First assessed: round 2, snapshot `89228c07addd8c6a4104fbde6cdf01ec02f4ee5a`.\n+- Round 2 repair: `f24a75b75d1da0475314d34601052c579f47b845`, corrected scope provenance in plugin/CLI docs, but changed rejection to a generic Error. Verification proved allow/deny decisions but missed HTTP status. Failure: generic error became HTTP 500.\n+- Round 3 repair: `fbc4d6903d30724636acad6ed7efccc39b9b8a89`, explicit 403 handlers and executable documentation tests. Scope-denial repair verified, but newly added authentication wrapper omitted handling rejected authentication for revoked credentials. Failure: external host received an exception and returned HTTP 500 rather than 401.\n+- Known failed repair rounds for the complete HTTP contract: 2. Counts retained across sibling defects; this is not a new family.\n+- Round 4 snapshot thread: `PRRT_kwDOP-e7KM6oGfE5`, comment https://github.com/21nCo/super-functions/pull/227#discussion_r4159524402.\n+- Direct sibling: CLI recipe has the same unhandled revoked-key authentication error.\n+- Reset event: `ARCHITECTURE_RESET_REQUIRED:docs.api-key-scope-contract`.\n+- Current state: coordinated repair locally verified and published as `bc3e86e3322f352daeb646b7ac22b3d1775013ea`. New-head external CI/reviews unverified; no feedback refetch or polling performed.\n+\n+### `codeql.random-token-password-classification`\n+\n+- Recurring diagnostic: `js/insufficient-password-hash`, `authfn/core/src/core/sessions.ts:425`.\n+- Current check: https://github.com/21nCo/super-functions/runs/110538833596; one failure annotation on the exact snapshot SHA.\n+- Evidence unchanged: API keys are generated with `randomBytes(24)` (192 random bits), then SHA-256 hashed for lookup; the diagnostic treats a high-entropy random token as a low-entropy password.\n+- Disposition: invalid; hosted gate remains failed. No attempted repair and no failed repair rounds.\n+\n+## Reset assessment: all four required fields\n+\n+### 1. Shared behavioral invariant\n+\n+At application-owned HTTP endpoints, no protected work runs unless authentication yields an API-key actor and its stored scope array contains the exact required scope. Missing, unknown, malformed, expired, revoked, and non-API-key credentials yield HTTP 401. Valid API keys lacking the scope yield HTTP 403. Valid granted keys reach protected work. Unexpected database/environment/authentication or protected-work exceptions remain failures and are propagated unchanged to the host error handler, never converted into authentication denial.\n+\n+### 2. Faithful old-head reproduction\n+\n+Before changing either canonical example, expanded `authfn/core/src/__tests__/api-key-docs.test.ts` to execute the current snapshot's real documented handlers against real issued/revoked keys in isolated memory databases. Routed them through the generic host HTTP router, whose error handler produces 500; deliberately did not use AuthFn's error normalizer for this acceptance boundary.\n+\n+Command: `npm test --workspace ./authfn/core -- src/__tests__/api-key-docs.test.ts`.\n+\n+Observed on unchanged snapshot docs: 4 failures / 12 passes. Both plugin and CLI handlers, with null and user owners, returned HTTP 500 for revoked keys instead of the required 401. The distinguishing assertion is `response.status === 401`, followed by the unauthorized response body, zero protected-work calls and zero host-error-handler calls. Unexpected authentication/protected-work failure tests already passed on the old behavior.\n+\n+### 3. Coordinated ownership and failure-boundary plan\n+\n+- Producer: `authenticateRequest` in sessions.ts returns null for missing/invalid credentials, user sessions for valid cookie/token sessions, or delegates to API-key authentication.\n+- API-key producer: api-keys.ts returns null for unknown/expired keys, throws `AUTHFN_API_KEY_REVOKED` for revoked records, returns canonical `metadata.scopes` for active keys, and can propagate storage failures.\n+- Consumers: plugin guide's `handleRepositoryRequest`, CLI recipe's `/projects` handler, generated LLM reference, executable docs tests.\n+- Enforcement owner: each host application's HTTP handler, not the scope predicate and not an AuthFn runtime change.\n+- Repair both handlers: place a narrowly scoped try/catch around only the authentication call, map only `AUTHFN_API_KEY_REVOKED` to 401, rethrow all other errors unchanged; preserve null/actor checks, exact array scope checks, 403 responses and protected-work ordering.\n+- Preserve core issuance, authentication, revocation, database/schema and placement runtime behavior.\n+- Keep protected work outside the authentication catch; regenerate `llms-full.txt`.\n+- Assumptions: trusted server provider/database adapters emit the documented structured revocation error; the host supplies its own protected handler and error handling. Concurrent revocation dominance/database isolation is an unchanged runtime concern outside this documentation boundary.\n+\n+### 4. Independent verification criteria\n+\n+- Consumer-visible HTTP status/body and absence of protected work, not the predicate's return value, are the acceptance oracle.\n+- Execute actual canonical snippets for both consumer paths and owned/unowned keys.\n+- Cover revoked credentials using Bearer and Api-Key schemes, expiry, unknown/malformed/missing credentials, wrong actor type, missing/empty/non-array scopes, exact grants versus nonmatching scopes, and forged metadata/subject attributes.\n+- Prove unexpected storage and protected-work failures retain identity and reach the host's 500 error path.\n+- Check generated reference contains exact executable snippets.\n+- Run focused docs, API-key lifecycle and placement-context tests, core typecheck and docs production build; review staged allowlist/diff before one commit and normal push.\n+\n+## External and deferred findings\n+\n+- Reviewer rate/billing limitations and older unsupported docstring coverage provide no actionable code diagnostic; remain verification gaps. Next action requires reviewer availability or specific function diagnostics, not code mutation.\n+- Baseline revocation concurrency and downstream deployment policies are out of scope; not classified as fixed or accepted risk.\n+- No scheduler or review-thread state mutations authorized or performed.\n+\n+## Round 4 pre-publication verification\n+\n+- Both handlers now catch only the expected structured revocation error from the authentication call; null and non-API-key actors remain 401, missing scopes remain 403, and protected work is outside the catch.\n+- Clarified provider-versus-HTTP revocation semantics and expiry/null behavior in the guide; both canonical examples and generated reference repaired together.\n+- Focused suite: 58 tests passed, including 16 executable documentation tests. The four distinguishing old-head revocation failures now pass.\n+- Coverage includes owned/unowned keys, Bearer/Api-Key revocation, expiry, unknown/malformed/absent credentials, 403 scope denials, exact grants, malformed/forged scope data, wrong actor type, and unchanged unexpected-failure identity at the host 500 boundary. A protected-work exception tagged with the revocation code is deliberately not swallowed.\n+- Core typecheck and docs production build passed; pre-existing Svelte/tsconfig/deprecation notices observed.\n+- Snapshot valid blocking root causes: 1; locally remaining: 0. Five earlier threads already fixed, one current snapshot thread repaired, no thread mutations. Recurring failed CodeQL diagnostic remains invalid with a failed hosted gate.\n+- Historical failed rounds remain 2; the reset was assessed and verified, not cleared by renaming the family or resolving comments.\n+\n+## Round 4 publication and termination\n+\n+- One reviewed four-file commit and one normal branch push completed: `bc3e86e3322f352daeb646b7ac22b3d1775013ea`.\n+- Local, remote and PR head SHAs verified equal once after push.\n+- Ledger is a local reusable handoff excluded from the commit; tracked worktree clean.\n+- Current snapshot thread is fixed and eligible for resolution, but its GitHub state was not changed.\n+- Assessed contract locally improving (1 valid blocking family before, 0 after); no observed new regression. New-head hosted verification remains unknown.\n+- Invocation complete; no further collection or mutation authorized within this round.\n",
+              "additions": 96,
               "deletions": 0,
               "status": "added"
             },
@@ -13524,19 +13524,22 @@
         },
         "cost": 0,
         "tokens": {
-          "input": 0,
-          "output": 0,
-          "reasoning": 0,
+          "total": 295669,
+          "input": 4136,
+          "output": 60,
+          "reasoning": 17,
           "cache": {
-            "read": 0,
-            "write": 0
+            "write": 0,
+            "read": 291456
           }
         },
         "modelID": "gpt-6.1-sol",
         "providerID": "openai",
         "time": {
-          "created": 1790920753071
+          "created": 1790920753071,
+          "completed": 1790920776372
         },
+        "finish": "tool-calls",
         "id": "msg_0fb31ffaf001CV3Gu15gN29PNg",
         "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1"
       },
@@ -13570,16 +13573,21 @@
           "tool": "bash",
           "callID": "call_zI6GFU33oxIiRPGl8gpSxi4a",
           "state": {
-            "metadata": {
-              "output": ""
-            },
-            "status": "running",
+            "status": "completed",
             "input": {
               "command": "git commit -m \"fix(authfn): map revoked credentials at documented HTTP boundaries\" && git push origin HEAD:refs/heads/codex/authfn-null-owner-api-keys",
               "timeout": 120000
             },
+            "output": "[codex/authfn-null-owner-api-keys bc3e86e33] fix(authfn): map revoked credentials at documented HTTP boundaries\n 4 files changed, 104 insertions(+), 13 deletions(-)\n[entire] Pushing 2 checkpoint ref(s) to origin......... done\nremote: \nremote: GitHub found 893 vulnerabilities on 21nCo/super-functions's default branch (74 critical, 194 high, 582 moderate, 43 low). To find out more, visit:        \nremote:      https://github.com/21nCo/super-functions/security/dependabot        \nremote: \nTo https://github.com/21nCo/super-functions.git\n   fbc4d6903..bc3e86e33  HEAD -> codex/authfn-null-owner-api-keys\n",
+            "metadata": {
+              "output": "[codex/authfn-null-owner-api-keys bc3e86e33] fix(authfn): map revoked credentials at documented HTTP boundaries\n 4 files changed, 104 insertions(+), 13 deletions(-)\n[entire] Pushing 2 checkpoint ref(s) to origin......... done\nremote: \nremote: GitHub found 893 vulnerabilities on 21nCo/super-functions's default branch (74 critical, 194 high, 582 moderate, 43 low). To find out more, visit:        \nremote:      https://github.com/21nCo/super-functions/security/dependabot        \nremote: \nTo https://github.com/21nCo/super-functions.git\n   fbc4d6903..bc3e86e33  HEAD -> codex/authfn-null-owner-api-keys\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "git commit -m \"fix(authfn): map revoked credentials at documented HTTP boundaries\" && git push origin HEAD:refs/heads/codex/authfn-null-owner-api-keys",
             "time": {
-              "start": 1790920759712
+              "start": 1790920759712,
+              "end": 1790920776074
             }
           },
           "metadata": {
@@ -13590,6 +13598,485 @@
           "id": "prt_0fb32123b001smVw0UhFbG1ZLB",
           "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
           "messageID": "msg_0fb31ffaf001CV3Gu15gN29PNg"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "83d20a6fbc977e5d83a9e91d91723edbdcf39ed2",
+          "type": "step-finish",
+          "tokens": {
+            "total": 295669,
+            "input": 4136,
+            "output": 60,
+            "reasoning": 17,
+            "cache": {
+              "write": 0,
+              "read": 291456
+            }
+          },
+          "cost": 0,
+          "id": "prt_0fb325a43001QpqHjfqfz7Rc2m",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb31ffaf001CV3Gu15gN29PNg"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_0fb29a8310011wx3Z5H3kkAkLq",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "variant": "high",
+        "path": {
+          "cwd": "/Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys",
+          "root": "/Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 295962,
+          "input": 428,
+          "output": 110,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 295424
+          }
+        },
+        "modelID": "gpt-6.1-sol",
+        "providerID": "openai",
+        "time": {
+          "created": 1790920776392,
+          "completed": 1790920787974
+        },
+        "finish": "tool-calls",
+        "id": "msg_0fb325ac80016G5G2IC3FCZENj",
+        "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1"
+      },
+      "parts": [
+        {
+          "snapshot": "83d20a6fbc977e5d83a9e91d91723edbdcf39ed2",
+          "type": "step-start",
+          "id": "prt_0fb327fe6001KdXf9g596eoMB1",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb325ac80016G5G2IC3FCZENj"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "call_20CcZz5dTjIl7pyiz1bqG8Ts",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git rev-parse HEAD && git ls-remote origin refs/heads/codex/authfn-null-owner-api-keys && git status --short"
+            },
+            "output": "bc3e86e3322f352daeb646b7ac22b3d1775013ea\nbc3e86e3322f352daeb646b7ac22b3d1775013ea\trefs/heads/codex/authfn-null-owner-api-keys\n?? .conduct/pr-227-remediation-ledger.md\n",
+            "metadata": {
+              "output": "bc3e86e3322f352daeb646b7ac22b3d1775013ea\nbc3e86e3322f352daeb646b7ac22b3d1775013ea\trefs/heads/codex/authfn-null-owner-api-keys\n?? .conduct/pr-227-remediation-ledger.md\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "git rev-parse HEAD && git ls-remote origin refs/heads/codex/authfn-null-owner-api-keys && git status --short",
+            "time": {
+              "start": 1790920786035,
+              "end": 1790920787638
+            }
+          },
+          "metadata": {
+            "openai": {
+              "itemId": "fc_031378f931006aeb016abf4850fda487d2a55a3929f37cb7b9"
+            }
+          },
+          "id": "prt_0fb328006001WKrS6ng57oCkEs",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb325ac80016G5G2IC3FCZENj"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "call_HSTbxYX9HUUPDVMS403bGEtM",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "GH_CONFIG_DIR=~/.config/gh-other gh pr view 227 --repo 21nCo/super-functions --json headRefOid,url",
+              "timeout": 120000
+            },
+            "output": "{\"headRefOid\":\"bc3e86e3322f352daeb646b7ac22b3d1775013ea\",\"url\":\"https://github.com/21nCo/super-functions/pull/227\"}\n",
+            "metadata": {
+              "output": "{\"headRefOid\":\"bc3e86e3322f352daeb646b7ac22b3d1775013ea\",\"url\":\"https://github.com/21nCo/super-functions/pull/227\"}\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "GH_CONFIG_DIR=~/.config/gh-other gh pr view 227 --repo 21nCo/super-functions --json headRefOid,url",
+            "time": {
+              "start": 1790920786200,
+              "end": 1790920787456
+            }
+          },
+          "metadata": {
+            "openai": {
+              "itemId": "fc_031378f931006aeb016abf4850fdbc87d29cccc1c796ab7392"
+            }
+          },
+          "id": "prt_0fb328089001yoBEPOsF5s626G",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb325ac80016G5G2IC3FCZENj"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "83d20a6fbc977e5d83a9e91d91723edbdcf39ed2",
+          "type": "step-finish",
+          "tokens": {
+            "total": 295962,
+            "input": 428,
+            "output": 110,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 295424
+            }
+          },
+          "cost": 0,
+          "id": "prt_0fb3287460017CvywK5WNgQANI",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb325ac80016G5G2IC3FCZENj"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_0fb29a8310011wx3Z5H3kkAkLq",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "variant": "high",
+        "path": {
+          "cwd": "/Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys",
+          "root": "/Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 296572,
+          "input": 423,
+          "output": 329,
+          "reasoning": 140,
+          "cache": {
+            "write": 0,
+            "read": 295680
+          }
+        },
+        "modelID": "gpt-6.1-sol",
+        "providerID": "openai",
+        "time": {
+          "created": 1790920788008,
+          "completed": 1790920812910
+        },
+        "finish": "tool-calls",
+        "id": "msg_0fb3288280014Dc06XeGe2bPWz",
+        "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1"
+      },
+      "parts": [
+        {
+          "snapshot": "83d20a6fbc977e5d83a9e91d91723edbdcf39ed2",
+          "type": "step-start",
+          "id": "prt_0fb3296e5001H0YZ3ERydgXham",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb3288280014Dc06XeGe2bPWz"
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "start": 1790920791788,
+            "end": 1790920800519
+          },
+          "metadata": {
+            "openai": {
+              "itemId": "rs_0b1c798b2197267b016abf4857ae6887d295c5aa26c84da654",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "id": "prt_0fb3296ec001OP5CXDEZhKI8Hc",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb3288280014Dc06XeGe2bPWz"
+        },
+        {
+          "type": "tool",
+          "tool": "apply_patch",
+          "callID": "call_0UtbaJjbW1Af840R2n1vA5iC",
+          "state": {
+            "status": "completed",
+            "input": {
+              "patchText": "*** Begin Patch\n*** Update File: /Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys/.conduct/pr-227-remediation-ledger.md\n@@\n-- Current state: coordinated repair implemented and locally verified, publication pending.\n+- Current state: coordinated repair locally verified and published as `bc3e86e3322f352daeb646b7ac22b3d1775013ea`. New-head external CI/reviews unverified; no feedback refetch or polling performed.\n@@\n ## Round 4 pre-publication verification\n@@\n - Historical failed rounds remain 2; the reset was assessed and verified, not cleared by renaming the family or resolving comments.\n+\n+## Round 4 publication and termination\n+\n+- One reviewed four-file commit and one normal branch push completed: `bc3e86e3322f352daeb646b7ac22b3d1775013ea`.\n+- Local, remote and PR head SHAs verified equal once after push.\n+- Ledger is a local reusable handoff excluded from the commit; tracked worktree clean.\n+- Current snapshot thread is fixed and eligible for resolution, but its GitHub state was not changed.\n+- Assessed contract locally improving (1 valid blocking family before, 0 after); no observed new regression. New-head hosted verification remains unknown.\n+- Invocation complete; no further collection or mutation authorized within this round.\n*** End Patch"
+            },
+            "output": "Success. Updated the following files:\nM .conduct/pr-227-remediation-ledger.md",
+            "metadata": {
+              "diff": "Index: /Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys/.conduct/pr-227-remediation-ledger.md\n===================================================================\n--- /Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys/.conduct/pr-227-remediation-ledger.md\n+++ /Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys/.conduct/pr-227-remediation-ledger.md\n@@ -26,9 +26,9 @@\n - Known failed repair rounds for the complete HTTP contract: 2. Counts retained across sibling defects; this is not a new family.\n - Round 4 snapshot thread: `PRRT_kwDOP-e7KM6oGfE5`, comment https://github.com/21nCo/super-functions/pull/227#discussion_r4159524402.\n - Direct sibling: CLI recipe has the same unhandled revoked-key authentication error.\n - Reset event: `ARCHITECTURE_RESET_REQUIRED:docs.api-key-scope-contract`.\n-- Current state: coordinated repair implemented and locally verified, publication pending.\n+- Current state: coordinated repair locally verified and published as `bc3e86e3322f352daeb646b7ac22b3d1775013ea`. New-head external CI/reviews unverified; no feedback refetch or polling performed.\n \n ### `codeql.random-token-password-classification`\n \n - Recurring diagnostic: `js/insufficient-password-hash`, `authfn/core/src/core/sessions.ts:425`.\n@@ -84,4 +84,13 @@\n - Coverage includes owned/unowned keys, Bearer/Api-Key revocation, expiry, unknown/malformed/absent credentials, 403 scope denials, exact grants, malformed/forged scope data, wrong actor type, and unchanged unexpected-failure identity at the host 500 boundary. A protected-work exception tagged with the revocation code is deliberately not swallowed.\n - Core typecheck and docs production build passed; pre-existing Svelte/tsconfig/deprecation notices observed.\n - Snapshot valid blocking root causes: 1; locally remaining: 0. Five earlier threads already fixed, one current snapshot thread repaired, no thread mutations. Recurring failed CodeQL diagnostic remains invalid with a failed hosted gate.\n - Historical failed rounds remain 2; the reset was assessed and verified, not cleared by renaming the family or resolving comments.\n+\n+## Round 4 publication and termination\n+\n+- One reviewed four-file commit and one normal branch push completed: `bc3e86e3322f352daeb646b7ac22b3d1775013ea`.\n+- Local, remote and PR head SHAs verified equal once after push.\n+- Ledger is a local reusable handoff excluded from the commit; tracked worktree clean.\n+- Current snapshot thread is fixed and eligible for resolution, but its GitHub state was not changed.\n+- Assessed contract locally improving (1 valid blocking family before, 0 after); no observed new regression. New-head hosted verification remains unknown.\n+- Invocation complete; no further collection or mutation authorized within this round.\n\n",
+              "files": [
+                {
+                  "filePath": "/Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys/.conduct/pr-227-remediation-ledger.md",
+                  "relativePath": ".conduct/pr-227-remediation-ledger.md",
+                  "type": "update",
+                  "patch": "Index: /Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys/.conduct/pr-227-remediation-ledger.md\n===================================================================\n--- /Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys/.conduct/pr-227-remediation-ledger.md\n+++ /Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys/.conduct/pr-227-remediation-ledger.md\n@@ -26,9 +26,9 @@\n - Known failed repair rounds for the complete HTTP contract: 2. Counts retained across sibling defects; this is not a new family.\n - Round 4 snapshot thread: `PRRT_kwDOP-e7KM6oGfE5`, comment https://github.com/21nCo/super-functions/pull/227#discussion_r4159524402.\n - Direct sibling: CLI recipe has the same unhandled revoked-key authentication error.\n - Reset event: `ARCHITECTURE_RESET_REQUIRED:docs.api-key-scope-contract`.\n-- Current state: coordinated repair implemented and locally verified, publication pending.\n+- Current state: coordinated repair locally verified and published as `bc3e86e3322f352daeb646b7ac22b3d1775013ea`. New-head external CI/reviews unverified; no feedback refetch or polling performed.\n \n ### `codeql.random-token-password-classification`\n \n - Recurring diagnostic: `js/insufficient-password-hash`, `authfn/core/src/core/sessions.ts:425`.\n@@ -84,4 +84,13 @@\n - Coverage includes owned/unowned keys, Bearer/Api-Key revocation, expiry, unknown/malformed/absent credentials, 403 scope denials, exact grants, malformed/forged scope data, wrong actor type, and unchanged unexpected-failure identity at the host 500 boundary. A protected-work exception tagged with the revocation code is deliberately not swallowed.\n - Core typecheck and docs production build passed; pre-existing Svelte/tsconfig/deprecation notices observed.\n - Snapshot valid blocking root causes: 1; locally remaining: 0. Five earlier threads already fixed, one current snapshot thread repaired, no thread mutations. Recurring failed CodeQL diagnostic remains invalid with a failed hosted gate.\n - Historical failed rounds remain 2; the reset was assessed and verified, not cleared by renaming the family or resolving comments.\n+\n+## Round 4 publication and termination\n+\n+- One reviewed four-file commit and one normal branch push completed: `bc3e86e3322f352daeb646b7ac22b3d1775013ea`.\n+- Local, remote and PR head SHAs verified equal once after push.\n+- Ledger is a local reusable handoff excluded from the commit; tracked worktree clean.\n+- Current snapshot thread is fixed and eligible for resolution, but its GitHub state was not changed.\n+- Assessed contract locally improving (1 valid blocking family before, 0 after); no observed new regression. New-head hosted verification remains unknown.\n+- Invocation complete; no further collection or mutation authorized within this round.\n",
+                  "additions": 10,
+                  "deletions": 1
+                }
+              ],
+              "diagnostics": {},
+              "truncated": false
+            },
+            "title": "Success. Updated the following files:\nM .conduct/pr-227-remediation-ledger.md",
+            "time": {
+              "start": 1790920812415,
+              "end": 1790920812438
+            }
+          },
+          "metadata": {
+            "openai": {
+              "itemId": "fc_0b1c798b2197267b016abf486067d087d2818719c3bf039ef7"
+            }
+          },
+          "id": "prt_0fb32b912001wp9xJCVJMjut31",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb3288280014Dc06XeGe2bPWz"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "dce27b5d88a1a01c12c1e27aac24069556e534d6",
+          "type": "step-finish",
+          "tokens": {
+            "total": 296572,
+            "input": 423,
+            "output": 329,
+            "reasoning": 140,
+            "cache": {
+              "write": 0,
+              "read": 295680
+            }
+          },
+          "cost": 0,
+          "id": "prt_0fb32e8f6001Qdnrgi59yLrCxA",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb3288280014Dc06XeGe2bPWz"
+        },
+        {
+          "type": "patch",
+          "hash": "83d20a6fbc977e5d83a9e91d91723edbdcf39ed2",
+          "files": [
+            "/Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys/.conduct/pr-227-remediation-ledger.md"
+          ],
+          "id": "prt_0fb32e96c001eJh1WjZSJtDOQT",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb3288280014Dc06XeGe2bPWz"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_0fb29a8310011wx3Z5H3kkAkLq",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "variant": "high",
+        "path": {
+          "cwd": "/Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys",
+          "root": "/Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 296713,
+          "input": 665,
+          "output": 112,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 295936
+          }
+        },
+        "modelID": "gpt-6.1-sol",
+        "providerID": "openai",
+        "time": {
+          "created": 1790920812921,
+          "completed": 1790920824970
+        },
+        "finish": "tool-calls",
+        "id": "msg_0fb32e97900130j6caFrjm5X34",
+        "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1"
+      },
+      "parts": [
+        {
+          "snapshot": "dce27b5d88a1a01c12c1e27aac24069556e534d6",
+          "type": "step-start",
+          "id": "prt_0fb33099c001bvYrudzwe2zi6C",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb32e97900130j6caFrjm5X34"
+        },
+        {
+          "type": "tool",
+          "tool": "todowrite",
+          "callID": "call_HIv6037KlS94kLJOVcLbmj5p",
+          "state": {
+            "status": "completed",
+            "input": {
+              "todos": [
+                {
+                  "content": "Verify PR worktree and collect review plus current-head CI snapshot",
+                  "status": "completed",
+                  "priority": "high"
+                },
+                {
+                  "content": "Classify findings and check convergence against prior rounds",
+                  "status": "completed",
+                  "priority": "high"
+                },
+                {
+                  "content": "Reproduce old-head failures and record coordinated HTTP-boundary reset assessment",
+                  "status": "completed",
+                  "priority": "high"
+                },
+                {
+                  "content": "Repair both handlers, verify full boundary matrix, publish once, and report",
+                  "status": "completed",
+                  "priority": "high"
+                }
+              ]
+            },
+            "output": "[\n  {\n    \"content\": \"Verify PR worktree and collect review plus current-head CI snapshot\",\n    \"status\": \"completed\",\n    \"priority\": \"high\"\n  },\n  {\n    \"content\": \"Classify findings and check convergence against prior rounds\",\n    \"status\": \"completed\",\n    \"priority\": \"high\"\n  },\n  {\n    \"content\": \"Reproduce old-head failures and record coordinated HTTP-boundary reset assessment\",\n    \"status\": \"completed\",\n    \"priority\": \"high\"\n  },\n  {\n    \"content\": \"Repair both handlers, verify full boundary matrix, publish once, and report\",\n    \"status\": \"completed\",\n    \"priority\": \"high\"\n  }\n]",
+            "metadata": {
+              "todos": [
+                {
+                  "content": "Verify PR worktree and collect review plus current-head CI snapshot",
+                  "status": "completed",
+                  "priority": "high"
+                },
+                {
+                  "content": "Classify findings and check convergence against prior rounds",
+                  "status": "completed",
+                  "priority": "high"
+                },
+                {
+                  "content": "Reproduce old-head failures and record coordinated HTTP-boundary reset assessment",
+                  "status": "completed",
+                  "priority": "high"
+                },
+                {
+                  "content": "Repair both handlers, verify full boundary matrix, publish once, and report",
+                  "status": "completed",
+                  "priority": "high"
+                }
+              ],
+              "truncated": false
+            },
+            "title": "0 todos",
+            "time": {
+              "start": 1790920824386,
+              "end": 1790920824388
+            }
+          },
+          "metadata": {
+            "openai": {
+              "itemId": "fc_0e0f04ad2eb4687f016abf4875009087d2afa013608f9ff282"
+            }
+          },
+          "id": "prt_0fb3309a5001PMSaNXd1qlS2Vq",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb32e97900130j6caFrjm5X34"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "dce27b5d88a1a01c12c1e27aac24069556e534d6",
+          "type": "step-finish",
+          "tokens": {
+            "total": 296713,
+            "input": 665,
+            "output": 112,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 295936
+            }
+          },
+          "cost": 0,
+          "id": "prt_0fb3318210014LjqqIHt9coV21",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb32e97900130j6caFrjm5X34"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_0fb29a8310011wx3Z5H3kkAkLq",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "variant": "high",
+        "path": {
+          "cwd": "/Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys",
+          "root": "/Users/serro/orca/workspaces/superfunctions/authfn-null-owner-api-keys"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 297442,
+          "input": 424,
+          "output": 570,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 296448
+          }
+        },
+        "modelID": "gpt-6.1-sol",
+        "providerID": "openai",
+        "time": {
+          "created": 1790920824983,
+          "completed": 1790920848129
+        },
+        "finish": "stop",
+        "id": "msg_0fb331897001CioZOF9b9IwGSv",
+        "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1"
+      },
+      "parts": [
+        {
+          "snapshot": "dce27b5d88a1a01c12c1e27aac24069556e534d6",
+          "type": "step-start",
+          "id": "prt_0fb332b09001jHzodDjKJkolF4",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb331897001CioZOF9b9IwGSv"
+        },
+        {
+          "type": "text",
+          "text": "Completed the fourth bounded round for [PR #227](https://github.com/21nCo/super-functions/pull/227) and pushed:\n\n`bc3e86e3322f352daeb646b7ac22b3d1775013ea` — `fix(authfn): map revoked credentials at documented HTTP boundaries`\n\n### Fixed\n- Addressed cubic’s revoked-key finding in the API-key guide and the matching CLI handler.\n- Both examples now map `AUTHFN_API_KEY_REVOKED` from authentication to **HTTP 401**.\n- Unexpected authentication failures propagate unchanged; protected work remains outside the catch.\n- Clarified revocation versus expiry behavior and regenerated `llms-full.txt`.\n- Expanded executable documentation tests to verify the application’s HTTP boundary.\n\nThe snapshot thread remains open and eligible for resolution; no thread mutations were performed.\n\n### Skipped (Already Fixed / Stale)\nFive earlier snapshot threads remain fixed and resolved, including the previous HTTP-403 denial issue.\n\n### Invalid\nThe sole failed CodeQL diagnostic remains the unchanged password-hashing alert for a cryptographically random 192-bit API token. The false-positive assessment still applies; the hosted check remains failed.\n\n### Not Attempted\nReviewer rate/billing limits and the older unsupported docstring-coverage warning remain external verification gaps.\n\n### Verification\n- Before editing the examples, **four revoked-key cases failed with HTTP 500 instead of 401**, covering both handlers and owned/unowned keys.\n- After repair, **58 focused tests passed**, including 16 executable documentation tests.\n- Verified revoked, expired, unknown, malformed, and missing credentials return 401; scope denials return 403; valid grants reach protected work.\n- Verified unexpected database and protected-work errors retain their identity and reach the host error handler.\n- Core typecheck, docs build, and staged diff checks passed.\n- Local, remote, and PR head SHAs match. Tracked files are clean; the local ledger remains untracked.\n- New-head CI and reviewer results are unverified.\n\n### Convergence / Gate\nThe recurring `docs.api-key-scope-contract` family triggered reassessment after **two failed repair rounds**. This invocation ran in **`architecture_reset`** mode.\n\nThe invariant, faithful old-head reproduction, coordinated ownership/failure-boundary plan, and independent verification criteria are recorded in:\n\n`.conduct/pr-227-remediation-ledger.md`\n\nAssessed valid blocking families improved **1 → 0 locally**. Historical failure counts are preserved; no new fix-induced regression was observed. The hosted skill remains **v1.4.0 / revision 6**, with its identity and digest recorded in the ledger.\n\nOne review round is complete. No post-push feedback refetch, CI polling, or additional review loop was performed.",
+          "time": {
+            "start": 1790920829721,
+            "end": 1790920847643
+          },
+          "metadata": {
+            "openai": {
+              "itemId": "msg_01bd567740f7c9ef016abf487d914087d28fdde3d0007a388c",
+              "phase": "final_answer"
+            }
+          },
+          "id": "prt_0fb332b19001oUNiTP3w3AbLIW",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb331897001CioZOF9b9IwGSv"
+        },
+        {
+          "reason": "stop",
+          "snapshot": "dce27b5d88a1a01c12c1e27aac24069556e534d6",
+          "type": "step-finish",
+          "tokens": {
+            "total": 297442,
+            "input": 424,
+            "output": 570,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 296448
+            }
+          },
+          "cost": 0,
+          "id": "prt_0fb33727a001I3xyvWdCs8Pwbn",
+          "sessionID": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+          "messageID": "msg_0fb331897001CioZOF9b9IwGSv"
         }
       ]
     }
