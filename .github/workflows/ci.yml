@@ -113,13 +113,25 @@ jobs:
           echo "lint filters: ${{ needs.plan.outputs.js_lint_filters }}"
           echo "typecheck filters: ${{ needs.plan.outputs.js_typecheck_filters }}"
 
+      - name: Check ReviewFn docs reference mirrors
+        run: npm run check:references --workspace @reviewfn/docs
+
+      - name: Check ReviewFn docs LLM artifacts
+        run: npm run check:llms --workspace @reviewfn/docs
+
+      - name: Check AuthFn docs LLM artifacts
+        run: npm run check:llms --workspace @authfn/docs
+
+      - name: Check FileFn docs LLM artifacts
+        run: npm run check:llms --workspace @filefn/docs
+
       - name: Build
         if: needs.plan.outputs.has_js_build == 'true'
         run: |
           if [ "${{ needs.plan.outputs.full_js }}" = "true" ]; then
-            ./node_modules/.bin/turbo run build
+            ./node_modules/.bin/turbo run build --concurrency=2
           else
-            ./node_modules/.bin/turbo run build ${{ needs.plan.outputs.js_build_filters }}
+            ./node_modules/.bin/turbo run build --concurrency=2 ${{ needs.plan.outputs.js_build_filters }}
           fi
 
       - name: Typecheck
