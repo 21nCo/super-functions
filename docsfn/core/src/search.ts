@@ -345,57 +345,93 @@ function collectSearchDocuments(input: {
   }
 
   for (const api of Object.values(input.manifest.apis)) {
-    if (isApiArtifactProtected(api, route => isProtected(api.frontmatter, route), Boolean(input.auth?.enabled && input.auth.mode === "mixed" && input.isRoutePrivate))) {
+    if (
+      isApiArtifactProtected(
+        api,
+        (route) => isProtected(api.frontmatter, route),
+        Boolean(input.auth?.enabled && input.auth.mode === "mixed" && input.isRoutePrivate)
+      )
+    ) {
       continue;
     }
     const scope = resolveSearchScopeForRoute({
       route: api.path,
       kind: "api",
-      routeScopeOverrides: input.routeScopeOverrides,
+      routeScopeOverrides: input.routeScopeOverrides
     });
-    if (!input.scopes.includes(scope)) {
-      continue;
-    }
     const summary =
       (typeof api.frontmatter.description === "string" &&
         normalizeWhitespace(api.frontmatter.description)) ||
       (api.spec &&
-        typeof api.spec === "object" &&
-        "info" in api.spec &&
-        api.spec.info &&
-        typeof (api.spec.info as { description?: unknown }).description === "string"
-        ? normalizeWhitespace(
-            (api.spec.info as { description: string }).description
-          )
+      typeof api.spec === "object" &&
+      "info" in api.spec &&
+      api.spec.info &&
+      typeof (api.spec.info as { description?: unknown }).description === "string"
+        ? normalizeWhitespace((api.spec.info as { description: string }).description)
         : "");
-    documents.push({
-      id: api.id,
-      scope,
-      kind: "api",
-      path: api.path,
-      title: redactSensitiveText(api.title),
-      summary: redactSensitiveText(summary),
-      headings: [],
-      tags: [],
-      body: resolveBodyField({
-        bodyIndexing: input.bodyIndexing,
-        body: JSON.stringify(api.spec ?? {}),
-        summary: redactSensitiveText(summary),
-      }),
-    });
-    const operations = (api.spec as { operations?: unknown } | undefined)?.operations;
-    if (Array.isArray(operations)) for (const operation of operations) {
-      if (!operation || typeof operation.routePath !== "string" || isProtected(api.frontmatter, operation.routePath)) continue;
-      const operationScope = resolveSearchScopeForRoute({ route: operation.routePath, kind: "api", routeScopeOverrides: input.routeScopeOverrides });
-      if (!input.scopes.includes(operationScope)) continue;
-      const operationSummary = redactSensitiveText(normalizeWhitespace([operation.operationId, operation.method, operation.path, operation.summary, operation.description].filter(value => typeof value === "string").join(" ")));
+    if (input.scopes.includes(scope))
       documents.push({
-        id: `${api.id}:operation:${operation.id}`, scope: operationScope, kind: "api", path: operation.routePath,
-        title: redactSensitiveText(operation.summary || `${operation.method} ${operation.path}`), summary: operationSummary,
-        headings: [], tags: Array.isArray(operation.tags) ? operation.tags.map((tag: string) => redactSensitiveText(tag)) : [],
-        body: resolveBodyField({ bodyIndexing: input.bodyIndexing, body: operationSummary, summary: operationSummary }),
+        id: api.id,
+        scope,
+        kind: "api",
+        path: api.path,
+        title: redactSensitiveText(api.title),
+        summary: redactSensitiveText(summary),
+        headings: [],
+        tags: [],
+        body: resolveBodyField({
+          bodyIndexing: input.bodyIndexing,
+          body: JSON.stringify(api.spec ?? {}),
+          summary: redactSensitiveText(summary)
+        })
       });
-    }
+    const operations = (api.spec as { operations?: unknown } | undefined)?.operations;
+    if (Array.isArray(operations))
+      for (const operation of operations) {
+        if (
+          !operation ||
+          typeof operation.routePath !== "string" ||
+          isProtected(api.frontmatter, operation.routePath)
+        )
+          continue;
+        const operationScope = resolveSearchScopeForRoute({
+          route: operation.routePath,
+          kind: "api",
+          defaultScope: scope,
+          routeScopeOverrides: input.routeScopeOverrides
+        });
+        if (!input.scopes.includes(operationScope)) continue;
+        const operationSummary = redactSensitiveText(
+          normalizeWhitespace(
+            [
+              operation.operationId,
+              operation.method,
+              operation.path,
+              operation.summary,
+              operation.description
+            ]
+              .filter((value) => typeof value === "string")
+              .join(" ")
+          )
+        );
+        documents.push({
+          id: `${api.id}:operation:${operation.id}`,
+          scope: operationScope,
+          kind: "api",
+          path: operation.routePath,
+          title: redactSensitiveText(operation.summary || `${operation.method} ${operation.path}`),
+          summary: operationSummary,
+          headings: [],
+          tags: Array.isArray(operation.tags)
+            ? operation.tags.map((tag: string) => redactSensitiveText(tag))
+            : [],
+          body: resolveBodyField({
+            bodyIndexing: input.bodyIndexing,
+            body: operationSummary,
+            summary: operationSummary
+          })
+        });
+      }
   }
 
   for (const post of Object.values(input.manifest.posts)) {
@@ -485,7 +521,20 @@ export async function buildSearchIndex(
   const scopes = normalizeScopes(searchConfig, manifest);
   const bodyIndexing = resolveBodyIndexing(searchConfig);
   const searchAdapter = options.searchAdapter ?? getDefaultDocsSearchEngineAdapter();
-  normalizeRouteScopeOverrides(searchConfig?.routeScopeOverrides);
+  const overrides = normalizeRouteScopeOverrides(searchConfig?.routeScopeOverrides);
+  for (const override of overrides) {
+    if (!scopes.includes(override.scope)) {
+      throw createDocsError({
+        code: "DOCS_SEARCH_SCOPE_INVALID",
+        message: `search.routeScopeOverrides scope '${override.scope}' is not enabled in search.scopes`,
+        diagnostics: [createDiagnostic({
+          code: "DOCS_SEARCH_SCOPE_INVALID",
+          message: `search.routeScopeOverrides scope '${override.scope}' is not enabled in search.scopes`,
+          details: { pattern: override.pattern, scope: override.scope, scopes },
+        })],
+      });
+    }
+  }
   const diagnostics: DocsDiagnostic[] = [];
 
   if (!enabled) {

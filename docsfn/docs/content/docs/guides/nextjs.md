@@ -43,6 +43,8 @@ Reuse the same config shape as the SvelteKit guide (`schemaVersion`, `site`, `co
 
 Create **`src/server/docs-source.ts`** (name arbitrary) that builds once per process:
 
+`loadDocsConfig` keeps one config snapshot per host process, including live functions and class instances. Restart the framework dev server after config or config-dependency edits, or after repairing a failed config import. `docsfn dev` automatically rebuilds artifacts in fresh processes; it does not restart the framework server.
+
 ```ts
 // src/server/docs-source.ts
 import path from "node:path";

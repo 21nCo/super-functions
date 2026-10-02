@@ -214,6 +214,9 @@ export async function loadDocsSiteSource(): Promise<DocsSiteSource> {
 }
 ```
 
+`loadDocsConfig` keeps one config snapshot per host process, including live functions and class instances. Restart the framework dev server after config or config-dependency edits, or after repairing a failed config import. `docsfn dev` automatically rebuilds artifacts in fresh processes; it does not restart the framework server.
+
+
 ---
 
 ## Step 7 — Root `+layout.server.ts`

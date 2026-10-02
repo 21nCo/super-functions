@@ -95,6 +95,9 @@ export default function Page({ params }: { params: { slug?: string[] } }) {
 }
 ```
 
+`loadDocsConfig` keeps one config snapshot per host process, including live functions and class instances. Restart the framework dev server after config or config-dependency edits, or after repairing a failed config import. `docsfn dev` automatically rebuilds artifacts in fresh processes; it does not restart the framework server.
+
+
 ## Root and Nested Route Behavior
 
 - Root docs route resolves when `params.slug` is absent.

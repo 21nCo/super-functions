@@ -589,6 +589,12 @@ it.each(["operations", "schemas", "tags"])("omits malformed canonical API %s rec
   expect(JSON.stringify(artifact)).not.toContain("Hidden malformed child detail");
 });
 
+it.each([true, false])("rejects overrides to disabled scopes (enabled=%s)", async (enabled) => {
+  await expect(buildSearchIndex(createManifest(), {
+    search: { enabled, scopes: ["docs", "api"], routeScopeOverrides: [{ pattern: "/docs/api/**", scope: "aip" }] },
+  })).rejects.toMatchObject({ code: "DOCS_SEARCH_SCOPE_INVALID" });
+});
+
 it("omits all programmatic mixed-mode search content without a classifier", async () => {
   const manifest = createManifest();
   const artifact = await buildSearchIndex(manifest, { auth: { enabled: true, mode: "mixed" }, search: { enabled: true, bodyIndexing: "full" } });
@@ -596,3 +602,60 @@ it("omits all programmatic mixed-mode search content without a classifier", asyn
   const control = await buildSearchIndex(manifest, { auth: { enabled: true, mode: "mixed" }, isRoutePrivate: () => false, search: { enabled: true } });
   expect(control.documents.length).toBeGreaterThan(0);
 });
+
+it("inherits the overview scope for operations without a child override", async () => {
+  const manifest = createManifest();
+  const api = manifest.apis["api:search"];
+  const routePath = "/docs/api/operations/create";
+  api.spec = {
+    operations: [
+      {
+        id: "create",
+        operationId: "createUser",
+        method: "POST",
+        path: "/users",
+        routePath,
+        summary: "Create user"
+      }
+    ]
+  };
+  const artifact = await buildSearchIndex(manifest, {
+    search: {
+      enabled: true,
+      scopes: ["docs", "api"],
+      routeScopeOverrides: [{ pattern: api.path, scope: "docs" }]
+    }
+  });
+  expect(artifact.documents.find((document) => document.id === api.id)?.scope).toBe("docs");
+  expect(artifact.documents.find((document) => document.path === routePath)?.scope).toBe("docs");
+});
+
+it.each([true, false])(
+  "honors an explicit operation override independently of overview inclusion: %s",
+  async (includeOverview) => {
+    const manifest = createManifest();
+    const api = manifest.apis["api:search"];
+    const routePath = "/docs/api/operations/create";
+    api.spec = {
+      operations: [
+        {
+          id: "create",
+          operationId: "createUser",
+          method: "POST",
+          path: "/users",
+          routePath,
+          summary: "Create user"
+        }
+      ]
+    };
+    const artifact = await buildSearchIndex(manifest, {
+      search: {
+        enabled: true,
+        scopes: includeOverview ? ["api", "docs"] : ["docs"],
+        routeScopeOverrides: [{ pattern: routePath, scope: "docs" }]
+      }
+    });
+    expect(artifact.documents.some((document) => document.id === api.id)).toBe(includeOverview);
+    expect(artifact.documents.find((document) => document.path === routePath)?.scope).toBe("docs");
+  }
+);

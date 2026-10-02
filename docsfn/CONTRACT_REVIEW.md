@@ -8,8 +8,8 @@ separate merge gates.
 | Surface | Required contract | Gap addressed | Regression evidence |
 | --- | --- | --- | --- |
 | Config discovery | An unreadable config must not silently select defaults | Discovery swallowed access errors | Inaccessible-directory fixture rejects loading |
-| Config imports | Reload local dependencies while preserving package resolution context | Temporary staging lost package-local aliases and self references | ESM alias/self-reference edits refresh; CJS selects its require condition |
-| Config lifecycle | Read-only source trees; dispose staging on success and rejection | Failure cleanup and cache lifetime needed explicit boundaries | Read-only graph fixture; rejected async export leaves no temporary graph |
+| Config imports | Preserve live exports and native module context; refresh in a new host | Custom graph compilation owned partial module semantics | Fresh-host ESM/CJS/JSON/TS edits; live function/class identity; actual native startup flags |
+| Config lifecycle | Read-only source trees; evaluate one factory per host; restart the whole consumer | Same-process ESM cache could not be unloaded safely | Read-only fixture; concurrent factory identity; fresh CLI worker per build and worker shutdown |
 | Artifact publication | Never expose a partially written individual output | Direct writes could truncate files or follow symlinks | Injected second-rename failure; artifact and marker symlink sentinels |
 | Artifact ownership | Cleanup removes generated files only when identity still matches | Hash-only ownership could claim an identical manual file before replacement | Identical manual-file failure fixture; malformed journal refusal |
 | Artifact recovery | Failed runs invalidate owned outputs and recover recorded staging | Old/new outputs could survive a partial publication without usable ownership | Child process exits after first rename; next invocation removes both generations and recorded temporary files |
@@ -18,14 +18,7 @@ separate merge gates.
 
 ## Design and boundaries
 
-Config modules remain trusted executable code. Native resolution is used for
-package-local aliases and self references; ESM resolution runs a bounded Node
-resolver subprocess without executing the config there. Local resolved files join
-the same staged graph. Literal imports are tracked; computed imports and ordinary
-external package cache invalidation are outside this guarantee. Temporary files
-are removed and staging CommonJS cache entries evicted, but ESM cache retention
-remains a long-lived watcher memory limitation. Per-load graph limits do not bound
-lifetime memory. Worker isolation would be a separate architectural change.
+Config modules remain trusted executable code. Jiti loads modules in their original source context; the maintained loader handles TypeScript and legacy JSON syntax. Config factories are evaluated once per host and their live values stay with the consuming pipeline. Direct API hosts restart after dependency changes or evaluation failures. CLI dev starts a fresh whole-pipeline worker for each build, watches declared directory boundaries before loading, and sends only diagnostics and watch paths across IPC. No custom graph compiler, rewritten source staging, resolver subprocess, or Node cache eviction remains.
 
 Build/dev and LLM outputs share one internal publisher. Callers supply their
 complete output namespace, with `undefined` requesting removal. The journal stores
@@ -57,14 +50,7 @@ local success is not evidence that Sonar or the full release gate has passed.
 
 ## Follow-up review corrections
 
-Module-relative ESM `dirname`, `filename` and `resolve`, and CommonJS
-`require.resolve`, now use the original source context. ESM resolve remains
-synchronous via a bounded native resolver subprocess. Resolver subprocesses carry
-active custom `--conditions`/`-C` flags without forwarding unrelated execution
-flags. Ordinary Node `NODE_OPTIONS` inheritance remains intact. Package manifests
-are recorded before parsing so a watcher can recover after malformed JSON is
-repaired. File-URL module imports containing queries or fragments are explicitly
-unsupported and rejected, rather than silently collapsing their identities.
+Module-relative ESM and CommonJS resolver APIs use the original source context. Native startup conditions, symlink flags and environment options apply without custom flag parsing. File-URL query and fragment identities are supported. Native `import.meta.dirname`/`filename` are available in Node 20.11+, 21.2+, and later majors; portable older-Node configs can derive them from `import.meta.url`. Bootstrap watches cover package scope manifests without parsing them first, so CLI dev can recover after malformed JSON is repaired.
 
 Cleanup before any generation is non-creating when no ownership record exists.
 The reported missing-source HTML bypass was invalid: `isUnsafeHtmlAllowed` returns
@@ -79,10 +65,8 @@ adapters while preventing browser history navigation for handled shortcuts.
 Config identity now follows native real paths by default, including symlinked
 entry configs and graph dependencies; `--preserve-symlinks` preserves lexical
 identity. The optional `import.meta.resolve` parent is honored when Node's
-`--experimental-import-meta-resolve` feature is enabled. Generated preludes follow
-hashbangs and directive prologues, preserving CommonJS strict mode. A native-loader
-regression exercises quoted and newline-containing filesystem paths: runtime
-paths and argument arrays are serialized as JSON literals before interpolation.
+`--experimental-import-meta-resolve` feature is enabled. Hashbangs and directive prologues preserve CommonJS strict mode. A native-loader
+regression exercises quoted and newline-containing filesystem paths: the maintained loader handles the filesystem paths directly.
 The corresponding CodeQL sanitization findings were assessed against those exact
 scalar/array inputs; this does not expand the trust boundary for executable config.
 
@@ -91,3 +75,17 @@ artifacts; callers must supply it because manifests do not contain that policy.
 Mixed mode without a classifier fails closed. Additional coverage includes OpenAPI
 3.2 QUERY operations, changing embedded mode in persistent Svelte shells, and
 intersection of explicit React search scopes with the loaded artifact.
+
+## 2026-09-30 bounded reset assessment (superseded loader proposal)
+
+The initial local proposal claimed support for Node-equivalent flag spellings and early rejection of computed imports. Those claims were not established by the production loader at that point. The subsequent maintained-loader investigation superseded that proposal; historical acceptance receipts above describe their original staged-loader implementation, not the current implementation.
+
+## 2026-10-02 approved restart contract
+
+The author approved retaining live config values and using host restart as the reload boundary. Core now uses Jiti 2.7.0, evaluates a config factory once per host process, and retains both successful snapshots and failed evaluations. Direct API consumers must restart their host after config dependency changes or repairs. Native source identity, conditional resolution, file-URL variants, and computed imports replace the staged graph's restrictions.
+
+CLI dev owns the full pipeline in a fresh child for every build. It starts broad bootstrap watches before the first load, keeps them active after failures, and supports declared external dependency roots with repeatable `--watch-root`. Only diagnostic reports and watch directories cross IPC; live config values stay with their consumer. Content watches survive output ancestors, while exact publisher-owned output names and temporary files are ignored at both requested and physical output paths.
+
+Public RSS filters protected candidates before ordered or fallback metadata validation. Search override scopes must be enabled even for disabled search, so configuration typos cannot silently erase documents. These earlier local corrections remain in scope for verification.
+
+This is a coordinated config/watch remediation, not a certification of all remaining hosted review findings. Current validation receipts and unresolved boundaries are recorded in `.conduct/pr-133-remediation-ledger.md`; historical receipts above must not be read as checks on the current change.

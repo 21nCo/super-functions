@@ -53,18 +53,23 @@ export function generateRSSFeed(
   const orderedIds = hasRequestedCollection
     ? collectionSurface?.postOrder ?? []
     : manifest.blog?.postOrder ?? [];
+  const isPublicPost = (post: BlogPost): boolean =>
+    !parseDraftFlag(post.draft ?? post.frontmatter?.draft) &&
+    normalizeDatedCollectionId(post.collectionId ?? "blog") === (requestedCollectionId ?? "blog") &&
+    !isDocsContentProtected({
+      auth: options.auth,
+      isRoutePrivate: options.isRoutePrivate,
+      frontmatter: post.frontmatter,
+      route: post.path,
+    });
   const orderedPostsFromManifest = orderedIds
     .map((id) => manifest.posts[id])
-    .filter((post): post is BlogPost => Boolean(post) && !parseDraftFlag(post.draft ?? post.frontmatter?.draft));
+    .filter((post): post is BlogPost => Boolean(post) && isPublicPost(post));
   const fallbackPosts =
     hasRequestedCollection && !collectionSurface
       ? []
       : Object.values(manifest.posts)
-          .filter(
-            (post) =>
-              !parseDraftFlag(post.draft ?? post.frontmatter?.draft) && normalizeDatedCollectionId(post.collectionId ?? "blog") ===
-              (requestedCollectionId ?? "blog")
-          )
+          .filter(isPublicPost)
           .sort((left, right) => {
             const leftDate = assertValidBlogPublishMetadata(left).timestamp;
             const rightDate = assertValidBlogPublishMetadata(right).timestamp;
@@ -81,7 +86,7 @@ export function generateRSSFeed(
       ? orderedPostsFromManifest
       : fallbackPosts;
 
-  const publicPosts = posts.filter(post => !isDocsContentProtected({auth: options.auth, isRoutePrivate: options.isRoutePrivate, frontmatter: post.frontmatter, route: post.path}));
+  const publicPosts = posts;
   const items = publicPosts
     .map((post) => {
       const publish = assertValidBlogPublishMetadata(post);

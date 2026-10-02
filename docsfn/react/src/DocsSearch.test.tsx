@@ -191,10 +191,12 @@ it("queries the caller supplied search runtime", async () => {
   view.unmount();
 });
 
-it('intersects explicit scopes with the loaded artifact', async () => {
-  const artifact=await buildSearchIndex(createManifest(),{search:{enabled:true,scopes:['docs']}});
-  render(<DocsSearch searchArtifact={artifact} scopes={['docs','stale-scope']} />);
-  fireEvent.click(screen.getByRole('button',{name:'Search documentation'}));
-  expect(screen.queryByRole('button',{name:'Stale Scope'})).toBeNull();
-  expect(screen.getByRole('button',{name:'Docs'})).toBeTruthy();
+it("intersects explicit scopes with the loaded artifact", async () => {
+  const artifact = await buildSearchIndex(createManifest(), {
+    search: { enabled: true, scopes: ["docs"] },
+  });
+  render(<DocsSearch searchArtifact={artifact} scopes={["docs", "stale-scope"]} />);
+  fireEvent.click(screen.getByRole("button", { name: "Search documentation" }));
+  expect(screen.queryByRole("button", { name: "Stale Scope" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Docs" })).toBeTruthy();
 });

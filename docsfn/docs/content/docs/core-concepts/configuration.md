@@ -15,6 +15,12 @@ docsfn loads **`docsfn.config.ts`**, **`docsfn.config.mjs`**, or **`docsfn.confi
 | `docsfn.config.mjs` | ESM JavaScript. |
 | `docsfn.config.js` | CommonJS or ESM depending on your package `"type"`. |
 
+Config exports may be objects or async factories. Live values such as functions and class instances in supported fields remain available to the consuming host. Jiti loads TypeScript and JavaScript dependencies without writing a compiled graph beside your sources. Static imports, literal and computed runtime imports, and CommonJS dependencies are supported. Module-relative resolver APIs retain their source context. Native `import.meta.dirname` and `import.meta.filename` are available in Node 20.11+, 21.2+, and later major versions ([Node documentation](https://nodejs.org/api/esm.html#importmetadirname)); use `fileURLToPath(import.meta.url)` and `path.dirname` for older Node 20 hosts.
+
+**Reload contract:** `loadDocsConfig` evaluates a given config once per host process. Repeated calls retain that snapshot, including failed evaluations. Restart a framework or other API host after changing the config, its dependencies, or repairing a failed import. `docsfn dev` handles this automatically by running each complete build in a fresh child process.
+
+CLI dev watches the project directory, explicit config directory, physical config symlink target directory, and content directories. Dependencies outside those roots must be declared with repeatable `--watch-root` options, for example `docsfn dev . --watch-root ../shared-settings`. Installed packages and framework output directories are ignored unless explicitly opted into with a watch root. The watcher remains active after configuration errors so creating a missing local dependency or repairing a package manifest can recover on the next build.
+
 If no file is found, docsfn uses **built-in defaults** (see [`createDefaultDocsConfig`](https://github.com/21nCo/super-functions/tree/dev/docsfn/core) behavior in `@docsfn/core`).
 
 ---

@@ -52,6 +52,8 @@ search: {
 },
 ```
 
+Every override scope must be enabled in `search.scopes`, including when search is disabled; a typo produces `DOCS_SEARCH_SCOPE_INVALID`. OpenAPI operations inherit their overview entry's resolved scope unless an explicit operation-route override matches. A child override can include an operation even when the overview's scope is excluded.
+
 That is the supported way to make Markdown package docs under `content/docs/api` appear in the API scope. `content.apiDir` should still point at your OpenAPI spec directory such as `content/api`.
 
 ## Body indexing modes

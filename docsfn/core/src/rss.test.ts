@@ -298,6 +298,21 @@ it("uses creator metadata for display-name authors", () => {
   expect(xml).not.toContain("<author>");
 });
 
+it.each([true, false])("filters protected posts before validating dates (ordered=%s)", (ordered) => {
+  const manifest = createManifest();
+  const hidden = manifest.posts["blog:beta.mdx"];
+  hidden.frontmatter.private = true;
+  hidden.date = "invalid";
+  hidden.publishedAt = "invalid";
+  if (!ordered) delete manifest.blog;
+  const xml = generateRSSFeed(manifest, {
+    title: "Public", description: "Public", link: "https://example.com",
+    auth: { enabled: true, mode: "mixed" }, isRoutePrivate: () => false,
+  });
+  expect(xml).toContain("Alpha");
+  expect(xml).not.toContain("Beta");
+});
+
 it("omits protected posts and their metadata from public RSS", () => {
   const manifest=createManifest();
   for(const post of Object.values(manifest.posts)) {post.frontmatter.private=true;post.title='private-feed-title';post.excerpt='private-feed-excerpt';}

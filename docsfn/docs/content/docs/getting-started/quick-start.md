@@ -107,6 +107,6 @@ Exact imports evolve with releases; align with the version of `@docsfn/next` you
 ## 6. Run the dev server
 
 - **CLI watch** (artifacts only): `npx docsfn dev --root .`
-- **Framework dev**: run `vite dev` / `next dev` as usual; reload when content or config changes.
+- **Framework dev**: run `vite dev` / `next dev` as usual. Content follows the framework's normal development reload behavior; restart the framework host after changing config or config dependencies.
 
 You now have a validated config, a routed doc page, and a repeatable build. Next, read [Project Structure](./project-structure) and [Configuration](../core-concepts/configuration).

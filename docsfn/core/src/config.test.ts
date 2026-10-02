@@ -1,13 +1,25 @@
 import { chmod, mkdir, mkdtemp, realpath, readdir, rm, unlink, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { getDocsConfigDependencies, isDocsConfigError, loadDocsConfig, validateDocsConfig } from "./config";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
+import { getDocsConfigDependencies, getDocsConfigWatchRoots, isDocsConfigError, loadDocsConfig, validateDocsConfig } from "./config";
 
 const tempDirs: string[] = [];
 
-// Load the compiler once outside per-case timing; production import remains lazy.
-beforeAll(async () => { await import("typescript"); }, 60_000);
+// Run the source API in a genuinely new host, with native startup flags.
+async function loadInFreshProcess(input: { cwd: string; configPath?: string }, flags: string[] = [], env: Record<string, string> = {}) {
+  const source = fileURLToPath(new URL("./config.ts", import.meta.url));
+  const script = `import { createJiti } from 'jiti';
+    const {loadDocsConfig} = await createJiti(${JSON.stringify(source)}, {fsCache:false,interopDefault:false}).import(${JSON.stringify(source)});
+    process.stdout.write(JSON.stringify(await loadDocsConfig(${JSON.stringify(input)})));`;
+  const {stdout} = await promisify(execFile)(process.execPath, [...flags, "--input-type=module", "-e", script], {
+    env: {...process.env, ...env}, timeout: 10000,
+  });
+  return JSON.parse(stdout);
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -32,6 +44,49 @@ async function createTempDir(): Promise<string> {
 function serializeConfig(config: unknown): string {
   return `export default ${JSON.stringify(config, null, 2)};\n`;
 }
+
+it.each(["mjs", "ts"])("evaluates one async %s factory and preserves live values", async extension => {
+  const cwd = await createTempDir();
+  const configPath = `docsfn.config.${extension}`;
+  await writeFile(join(cwd, configPath), `let calls = 0;
+    class Counter { value = 7; read() { return this.value; } }
+    const counter = new Counter(); const action = () => counter.read();
+    export default async () => { await Promise.resolve(); calls++;
+      return {schemaVersion:1,site:{title:String(calls),theme:{counter,action},editLink:{counter,action},pageActions:[{counter,action}]},content:{root:'.'}};
+    };`);
+  const configs = await Promise.all(Array.from({length:12}, () => loadDocsConfig({cwd,configPath})));
+  const theme = configs[0].site.theme!;
+  expect(configs.every(config => config.site.title === "1" && config.site.theme!.counter === theme.counter && config.site.theme!.action === theme.action)).toBe(true);
+  expect(configs[0].site.editLink!.counter).toBe(theme.counter);
+  expect(configs[0].site.pageActions![0].action).toBe(theme.action);
+  expect((theme.action as () => number)()).toBe(7);
+  (theme.counter as {value:number}).value = 9;
+  expect((theme.action as () => number)()).toBe(9);
+  expect((theme.counter as object).constructor.name).toBe("Counter");
+});
+
+it("supports computed imports and require calls without discovering a staged graph", async () => {
+  const cwd = await createTempDir();
+  await writeFile(join(cwd,"title.mjs"), "export default 'ESM';");
+  await writeFile(join(cwd,"title.cjs"), "module.exports = 'CJS';");
+  await writeFile(join(cwd,"docsfn.config.mjs"), `import {createRequire} from 'node:module';
+    const esm = './title.mjs', cjs = './title.cjs'; const require = createRequire(import.meta.url);
+    export default async () => ({schemaVersion:1,site:{title:(await import(esm)).default+'/'+require(cjs)},content:{root:'.'}});`);
+  expect((await loadDocsConfig({cwd})).site.title).toBe("ESM/CJS");
+});
+
+it("provides project, external, missing and physical config watch roots before loading", async () => {
+  const cwd = await createTempDir();
+  const external = await createTempDir();
+  const physical = await createTempDir();
+  await writeFile(join(physical,"settings.mjs"), "throw new Error('not evaluated');");
+  const {symlink} = await import("node:fs/promises");
+  await symlink(join(physical,"settings.mjs"),join(external,"settings.mjs"));
+  await writeFile(join(external,"package.json"), "{invalid");
+  const roots = await getDocsConfigWatchRoots({cwd,configPath:join(external,"settings.mjs"),watchRoots:["../missing-root",physical]});
+  expect(roots).toEqual(expect.arrayContaining([cwd,external,physical,join(external,"package.json"),join(cwd,"../missing-root")]));
+  expect(getDocsConfigDependencies(join(external,"settings.mjs"))).toEqual([join(external,"settings.mjs"),external]);
+});
 
 describe("loadDocsConfig", () => {
   it("loads explicit configPath before default config file", async () => {
@@ -109,7 +164,7 @@ describe("loadDocsConfig", () => {
     expect(second.site.title).toBe("Imported Theme");
   });
 
-  it("reloads an edited JavaScript config instead of returning the module cache", async () => {
+  it("keeps a host snapshot and loads an edited JavaScript config in a fresh host", async () => {
     const cwd = await createTempDir();
     const configPath = join(cwd, "docsfn.config.mjs");
     const createConfig = (title: string) =>
@@ -127,7 +182,8 @@ describe("loadDocsConfig", () => {
     const changedAt = new Date(Date.now() + 1_000);
     await utimes(configPath, changedAt, changedAt);
 
-    expect((await loadDocsConfig({ cwd })).site.title).toBe("After");
+    expect((await loadDocsConfig({ cwd })).site.title).toBe("Before");
+    expect((await loadInFreshProcess({ cwd })).site.title).toBe("After");
   });
 
   it("fails closed with DOCS_CONFIG_INVALID when config shape is invalid", async () => {
@@ -436,14 +492,15 @@ describe("loadDocsConfig", () => {
   });
 });
 
-it("reloads transitive ESM config imports and cleans temporary modules", async () => {
+it("loads edited transitive ESM config imports in a fresh host without staging", async () => {
   const cwd = await createTempDir();
   await writeFile(join(cwd, "docsfn.config.mjs"), 'import { title } from "./theme.mjs"; export default { schemaVersion: 1, site: { title }, content: { root: "." } };');
   await writeFile(join(cwd, "theme.mjs"), 'export { title } from "./title.mjs";');
   await writeFile(join(cwd, "title.mjs"), 'export const title = "Before";');
   expect((await loadDocsConfig({ cwd })).site.title).toBe("Before");
   await writeFile(join(cwd, "title.mjs"), 'export const title = "After";');
-  expect((await loadDocsConfig({ cwd })).site.title).toBe("After");
+  expect((await loadDocsConfig({ cwd })).site.title).toBe("Before");
+    expect((await loadInFreshProcess({ cwd })).site.title).toBe("After");
   expect((await readdir(cwd)).filter((name) => name.startsWith(".docsfn."))).toEqual([]);
 });
 it.each([["/"], ["v1", "v1"]])("rejects ambiguous version slugs %j", async (...values) => {
@@ -453,14 +510,15 @@ it.each([["/"], ["v1", "v1"]])("rejects ambiguous version slugs %j", async (...v
   await expect(loadDocsConfig({ cwd })).rejects.toMatchObject({ code: "DOCS_CONFIG_INVALID" });
 });
 
-it("reloads local CommonJS and JSON dependencies without retaining files", async () => {
+it("loads edited local CommonJS and JSON dependencies in a fresh host without staging", async () => {
   const cwd = await createTempDir();
   await writeFile(join(cwd, "docsfn.config.js"), 'const title = require("./theme.cjs"); module.exports = { schemaVersion: 1, site: { title }, content: { root: "." } };');
   await writeFile(join(cwd, "theme.cjs"), 'module.exports = require("./title.json").title;');
   await writeFile(join(cwd, "title.json"), '{"title":"Before"}');
   expect((await loadDocsConfig({ cwd })).site.title).toBe("Before");
   await writeFile(join(cwd, "title.json"), '{"title":"After"}');
-  expect((await loadDocsConfig({ cwd })).site.title).toBe("After");
+  expect((await loadDocsConfig({ cwd })).site.title).toBe("Before");
+    expect((await loadInFreshProcess({ cwd })).site.title).toBe("After");
   expect((await readdir(cwd)).filter((name) => name.startsWith(".docsfn."))).toEqual([]);
 });
 
@@ -481,42 +539,46 @@ it('respects CommonJS scope for side-effect-only require dependencies', async ()
   expect((await loadDocsConfig({ cwd, configPath: 'docsfn.config.cjs' })).site.title).toBe('CJS');
 });
 
-it("records missing extensionless dependency candidates and recovers when created", async () => {
+it("provides bootstrap roots on failure and recovers in a fresh host after a missing import is created", async () => {
   const cwd = await createTempDir();
   await writeFile(join(cwd, "docsfn.config.ts"), `import { title } from './missing'; export default { schemaVersion: 1, site: { title }, content: { root: ${JSON.stringify(cwd)} } };`);
   await expect(loadDocsConfig({ cwd })).rejects.toThrow();
-  expect(getDocsConfigDependencies(join(cwd, "docsfn.config.ts"))).toContain(join(cwd, "missing.ts"));
+  expect(await getDocsConfigWatchRoots({cwd})).toContain(cwd);
   await writeFile(join(cwd, "missing.ts"), 'export const title = "Recovered";');
-  expect((await loadDocsConfig({ cwd })).site.title).toBe("Recovered");
+  await expect(loadDocsConfig({cwd})).rejects.toThrow();
+  expect((await loadInFreshProcess({ cwd })).site.title).toBe("Recovered");
 });
 
-it.each(['theme', 'theme/index.js', 'theme/index.ts'])('reloads exact extensionless and directory dependencies: %s', async relative => {
+it.each(['theme', 'theme/index.js', 'theme/index.ts'])('loads edited exact extensionless and directory dependencies in a fresh host: %s', async relative => {
   const cwd = await createTempDir();
   if (relative.includes('/')) await mkdir(join(cwd, 'theme'));
   await writeFile(join(cwd, relative), 'export const title = "Before";');
   await writeFile(join(cwd, 'docsfn.config.ts'), `import { title } from './theme'; export default { schemaVersion: 1, site: { title }, content: { root: '.' } };`);
   expect((await loadDocsConfig({ cwd })).site.title).toBe('Before');
   await writeFile(join(cwd, relative), 'export const title = "After";');
-  expect((await loadDocsConfig({ cwd })).site.title).toBe('After');
+  expect((await loadDocsConfig({ cwd })).site.title).toBe('Before');
+  expect((await loadInFreshProcess({ cwd })).site.title).toBe('After');
 });
-it.each(['import values from "./values.json";', 'const { default: values } = await import("./values.json");', 'import values from "./values.json" with { type: "json" };', 'import values from "./values.json" assert { type: "json" };', 'const { default: values } = await import("./values.json", { with: { type: "json" } });'])('loads and refreshes ESM JSON config imports: %s', async statement => {
+it.each(['import values from "./values.json";', 'const { default: values } = await import("./values.json");', 'import values from "./values.json" with { type: "json" };', 'import values from "./values.json" assert { type: "json" };', 'const { default: values } = await import("./values.json", { with: { type: "json" } });'])('loads ESM JSON config imports in a fresh host: %s', async statement => {
   const cwd = await createTempDir();
   await writeFile(join(cwd, 'values.json'), '{"title":"Before"}');
   await writeFile(join(cwd, 'docsfn.config.mjs'), `${statement} export default { schemaVersion: 1, site: { title: values.title }, content: { root: '.' } };`);
   expect((await loadDocsConfig({ cwd })).site.title).toBe('Before');
   await writeFile(join(cwd, 'values.json'), '{"title":"After"}');
-  expect((await loadDocsConfig({ cwd })).site.title).toBe('After');
+  expect((await loadDocsConfig({ cwd })).site.title).toBe('Before');
+  expect((await loadInFreshProcess({ cwd })).site.title).toBe('After');
   expect((await readdir(cwd)).some(file => file.startsWith('.docsfn.'))).toBe(false);
 });
 
-it.each(['theme', 'theme/index.js'])('reloads CommonJS exact and directory modules: %s', async relative => {
+it.each(['theme', 'theme/index.js'])('loads edited CommonJS exact and directory modules in a fresh host: %s', async relative => {
   const cwd = await createTempDir();
   if (relative.includes('/')) await mkdir(join(cwd, 'theme'));
   await writeFile(join(cwd, relative), 'module.exports = "Before";');
   await writeFile(join(cwd, 'docsfn.config.cjs'), `const title = require('./theme'); module.exports = { schemaVersion: 1, site: { title }, content: { root: '.' } };`);
   expect((await loadDocsConfig({ cwd, configPath: 'docsfn.config.cjs' })).site.title).toBe('Before');
   await writeFile(join(cwd, relative), 'module.exports = "After";');
-  expect((await loadDocsConfig({ cwd, configPath: 'docsfn.config.cjs' })).site.title).toBe('After');
+  expect((await loadDocsConfig({ cwd, configPath: 'docsfn.config.cjs' })).site.title).toBe('Before');
+  expect((await loadInFreshProcess({ cwd, configPath: 'docsfn.config.cjs' })).site.title).toBe('After');
 });
 
 it.each(['//outside.example', '/docs?x=1', '/docs#anchor', '/\\outside', '/docs/../internal', '/docs/./internal', '/docs/%2e%2e/internal', '/docs/.%2E/internal', '/docs/%2e/internal', '/docs/%2e%2f../internal', '/docs/%zz', '/docs/%3Fmanual', '/docs/v%31'])('rejects nonlocal route configuration %s', async route => {
@@ -524,7 +586,7 @@ it.each(['//outside.example', '/docs?x=1', '/docs#anchor', '/\\outside', '/docs/
   const base = { schemaVersion: 1, site: { title: 'Routes', basePath: '/docs' }, content: { root: cwd, docsDir: 'content/docs' } };
   for (const extra of [{ site: { ...base.site, basePath: route } }, { blog: { routeBase: route } }, { blog: { feedPath: route } }, { collections: { posts: { dir: 'posts', routeBase: route } } }]) {
     await writeFile(join(cwd, 'docsfn.config.mjs'), serializeConfig({ ...base, ...extra }));
-    await expect(loadDocsConfig({ cwd })).rejects.toThrow();
+    expect(() => validateDocsConfig({ ...base, ...extra })).toThrow();
   }
 });
 
@@ -559,7 +621,7 @@ it("loads config from a read-only source tree with local modules and conditional
   } finally { await chmod(modules, 0o755); await chmod(cwd, 0o755); }
 });
 
-it("refreshes package-local aliases and self references with the correct import conditions", async () => {
+it("loads package-local aliases and self references with the correct import conditions", async () => {
   const cwd = await createTempDir();
   const manifest = join(cwd, "package.json");
   await writeFile(manifest, JSON.stringify({ name: "docsfn-config-fixture", type: "module", imports: { "#path": "path", "#theme": { import: "./theme.mjs", require: "./theme.cjs" } }, exports: { "./theme": "./theme.mjs" } }));
@@ -567,9 +629,10 @@ it("refreshes package-local aliases and self references with the correct import 
   await writeFile(join(cwd, "theme.cjs"), 'module.exports = "CommonJS";');
   await writeFile(join(cwd, "docsfn.config.mjs"), 'import {basename} from "#path"; if(basename("a/b")!=="b") throw new Error("alias failed"); import title from "#theme"; import self from "docsfn-config-fixture/theme"; export default {schemaVersion:1,site:{title:title+"/"+self},content:{root:"."}};');
   expect((await loadDocsConfig({ cwd })).site.title).toBe("Before/Before");
-  expect(getDocsConfigDependencies(join(cwd, "docsfn.config.mjs"))).toContain(manifest);
+  expect(await getDocsConfigWatchRoots({cwd})).toContain(manifest);
   await writeFile(join(cwd, "theme.mjs"), 'export default "After";');
-  expect((await loadDocsConfig({ cwd })).site.title).toBe("After/After");
+  expect((await loadDocsConfig({ cwd })).site.title).toBe("Before/Before");
+  expect((await loadInFreshProcess({ cwd })).site.title).toBe("After/After");
   await writeFile(join(cwd, "docsfn.config.cjs"), 'module.exports={schemaVersion:1,site:{title:require("#theme")},content:{root:"."}};');
   expect((await loadDocsConfig({ cwd, configPath: "docsfn.config.cjs" })).site.title).toBe("CommonJS");
 });
@@ -582,7 +645,7 @@ it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("does not re
   finally { await chmod(cwd, 0o755); }
 });
 
-it("cleans staging after an async config export throws", async () => {
+it("does not write staging files when an async config export throws", async () => {
   const cwd = await createTempDir();
   const scratch = join(cwd, "scratch");
   await mkdir(scratch);
@@ -609,24 +672,26 @@ it("keeps module-relative location and resolver APIs bound to the original confi
   await writeFile(join(cwd, "docsfn.config.cjs"), `const path=require('node:path'); module.exports={schemaVersion:1,site:{title:"Test"},content:{root:path.dirname(require.resolve('./asset.json'))}};`);
   expect((await loadDocsConfig({ cwd, configPath: 'docsfn.config.cjs' })).content.root).toBe(await (await import('node:fs/promises')).realpath(cwd));
 });
-it("tracks an invalid package manifest and recovers after repair", async () => {
+it("watches an invalid package manifest and recovers in a fresh host after repair", async () => {
   const cwd = await createTempDir();
   const manifest = join(cwd, 'package.json');
   const config = join(cwd, 'docsfn.config.mjs');
   await writeFile(manifest, '{broken');
   await writeFile(config, "import title from '#title'; export default {schemaVersion:1,site:{title},content:{root:'.'}};");
   await expect(loadDocsConfig({ cwd })).rejects.toThrow();
-  expect(getDocsConfigDependencies(config)).toContain(manifest);
+  expect(await getDocsConfigWatchRoots({cwd})).toContain(manifest);
   await writeFile(manifest, JSON.stringify({type:'module',imports:{'#title':'./title.mjs'}}));
   await writeFile(join(cwd,'title.mjs'), "export default 'repaired';");
-  expect((await loadDocsConfig({ cwd })).site.title).toBe('repaired');
+  await expect(loadDocsConfig({cwd})).rejects.toThrow();
+  expect((await loadInFreshProcess({ cwd })).site.title).toBe('repaired');
 });
-it("rejects file URL variants instead of collapsing distinct module identities", async () => {
+it("preserves distinct native file URL query and fragment identities", async () => {
   const cwd = await createTempDir();
   const {pathToFileURL} = await import('node:url');
-  await writeFile(join(cwd,'theme.mjs'), "export default 'title';");
-  await writeFile(join(cwd,'docsfn.config.mjs'), `import title from ${JSON.stringify(pathToFileURL(join(cwd,'theme.mjs')).href+'?variant=1')}; export default {schemaVersion:1,site:{title},content:{root:'.'}};`);
-  await expect(loadDocsConfig({ cwd })).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringContaining('query or fragment')})});
+  const theme = pathToFileURL(join(cwd,'theme.mjs')).href;
+  await writeFile(join(cwd,'theme.mjs'), "export default import.meta.url;");
+  await writeFile(join(cwd,'docsfn.config.mjs'), `import one from ${JSON.stringify(theme+'?variant=1')}; import two from ${JSON.stringify(theme+'#variant=2')}; export default {schemaVersion:1,site:{title:one+'|'+two},content:{root:'.'}};`);
+  expect((await loadDocsConfig({cwd})).site.title).toBe(theme+'?variant=1|'+theme+'#variant=2');
 });
 it("rejects repeated separators in route bases", () => {
   expect(() => validateDocsConfig({schemaVersion:1,site:{title:'Test',basePath:'/docs//v1'},content:{root:'.'}})).toThrow();
@@ -638,10 +703,8 @@ it.each([['--conditions=development'], ['-C', 'development']])("preserves active
   await writeFile(join(cwd,'dev.mjs'), "export default 'development';");
   await writeFile(join(cwd,'prod.mjs'), "export default 'production';");
   await writeFile(join(cwd,'docsfn.config.mjs'), "import title from '#theme'; export default {schemaVersion:1,site:{title},content:{root:'.'}};");
-  const previous = process.execArgv;
-  process.execArgv = [...previous, ...args];
-  try { expect((await loadDocsConfig({cwd})).site.title).toBe('development'); }
-  finally { process.execArgv = previous; }
+  expect((await loadInFreshProcess({cwd}, args)).site.title).toBe('development');
+  expect((await loadInFreshProcess({cwd}, [], {NODE_OPTIONS:'--conditions=development'})).site.title).toBe('development');
 });
 
 it.each(['mjs','cjs'])("preserves hashbangs and strict directives in %s configs", async extension => {
@@ -654,21 +717,20 @@ it.each(['mjs','cjs'])("preserves hashbangs and strict directives in %s configs"
   await writeFile(join(cwd, configPath), source);
   expect((await loadDocsConfig({cwd,configPath})).site.title).toBe(extension==='cjs'?'Strict':'Hashbang');
 });
-it("honors the optional resolver parent when the Node feature is enabled", async () => {
+it.each(["--experimental-import-meta-resolve", "--experimental_import_meta_resolve"])("honors the optional resolver parent with %s", async flag => {
   const cwd=await createTempDir(); const alternate=join(cwd,'alternate'); await mkdir(alternate);
   await writeFile(join(alternate,'asset.json'),'{}');
   const {pathToFileURL}=await import('node:url');
   const parent=pathToFileURL(join(alternate,'parent.mjs')).href;
   await writeFile(join(cwd,'docsfn.config.mjs'), `import {fileURLToPath} from 'node:url'; export default {schemaVersion:1,site:{title:fileURLToPath(import.meta.resolve('./asset.json',${JSON.stringify(parent)}))},content:{root:'.'}};`);
-  const previous=process.execArgv; process.execArgv=[...previous,'--experimental-import-meta-resolve'];
-  try { expect((await loadDocsConfig({cwd})).site.title).toBe(join(alternate,'asset.json')); }
-  finally { process.execArgv=previous; }
+  expect((await loadInFreshProcess({cwd}, [flag])).site.title).toBe(join(alternate,'asset.json'));
+  expect((await loadInFreshProcess({cwd}, [], {NODE_OPTIONS:flag})).site.title).toBe(join(alternate,'asset.json'));
 });
 it.each(['mjs','cjs'])("uses native source identity for a symlinked %s config", async (extension, context) => {
   const cwd=await createTempDir(); const source=join(cwd,'real'); const alias=join(cwd,'alias');
   await mkdir(source); await mkdir(alias); await writeFile(join(source,'theme.cjs'), 'module.exports="real-theme";');
   const file=`docsfn.config.${extension}`;
-  const body=extension==='mjs' ? `import theme from './theme.cjs'; export default {schemaVersion:1,site:{title:theme},content:{root:import.meta.dirname}};`
+  const body=extension==='mjs' ? `import theme from './theme.cjs'; import {dirname} from 'node:path'; import {fileURLToPath} from 'node:url'; export default {schemaVersion:1,site:{title:theme},content:{root:dirname(fileURLToPath(import.meta.url))}};`
     : `module.exports={schemaVersion:1,site:{title:require('./theme.cjs')},content:{root:__dirname}};`;
   await writeFile(join(source,file), body);
   const {symlink}=await import('node:fs/promises');
@@ -678,9 +740,10 @@ it.each(['mjs','cjs'])("uses native source identity for a symlinked %s config", 
   expect(loaded.site.title).toBe('real-theme'); expect(loaded.content.root).toBe(source);
   expect(getDocsConfigDependencies(join(alias,file))).toContain(join(source,file));
   await writeFile(join(alias,'theme.cjs'), 'module.exports="alias-theme";');
-  const previous=process.execArgv; process.execArgv=[...previous,'--preserve-symlinks'];
-  try {
-    const preserved=await loadDocsConfig({cwd:alias,configPath:file});
+  for (const flag of ['--preserve-symlinks', '--preserve_symlinks']) {
+    const preserved=await loadInFreshProcess({cwd:alias,configPath:file}, [flag]);
     expect(preserved.site.title).toBe('alias-theme'); expect(preserved.content.root).toBe(alias);
-  } finally {process.execArgv=previous;}
+  }
+  const preserved=await loadInFreshProcess({cwd:alias,configPath:file}, [], {NODE_PRESERVE_SYMLINKS:'1'});
+  expect(preserved.site.title).toBe('alias-theme'); expect(preserved.content.root).toBe(alias);
 });

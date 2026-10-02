@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
+import { fork } from "node:child_process";
 import { publishOwnedArtifacts } from "./owned-artifacts.js";
 import path from "node:path";
 import cac from "cac";
@@ -16,7 +17,7 @@ import {
   formatDiagnosticsForCli,
   hasErrorDiagnostics,
   loadDocsConfig,
-  getDocsConfigDependencies,
+  getDocsConfigWatchRoots,
   redactDiagnostics,
   type BuildLlmsFullTxtOptions,
   type DocsCompatPreset,
@@ -36,6 +37,7 @@ interface BuildCommandOptions {
   out?: string;
   outDir?: string;
   config?: string;
+  watchRoot?: string[];
 }
 
 interface LlmsCommandOptions extends BuildCommandOptions {
@@ -447,58 +449,23 @@ function printCommandSummary(command: string, result: PipelineResult): void {
   }
 }
 
-function resolveWatchTargets(input: {
-  cwd: string;
-  config?: DocsConfig;
-  configPath?: string;
-  providerMetadata?: DocsProviderWatchMetadata;
-  outDir: string;
-}): string[] {
-  const targets = new Set<string>();
-  const cwd = path.resolve(input.cwd);
-  const outDir = path.resolve(input.outDir);
-
-  for (const candidate of resolveConfigWatchPaths(cwd, input.configPath)) {
-    targets.add(candidate);
-  }
-
-  if (input.providerMetadata?.watchedDirectories?.length) {
-    for (const directory of input.providerMetadata.watchedDirectories) {
-      const resolved = path.resolve(directory);
-      if (resolved === outDir || resolved.startsWith(`${outDir}${path.sep}`)) {
-        continue;
-      }
-      targets.add(resolved);
-    }
-  } else if (input.config) {
-    const directories = resolveCollectionDirectories(input.config, cwd);
-    for (const directory of Object.values(directories).flat()) {
-      const resolved = path.resolve(directory);
-      if (resolved === outDir || resolved.startsWith(`${outDir}${path.sep}`)) {
-        continue;
-      }
-      targets.add(resolved);
-    }
-  }
-
-  return [...targets].sort(compareStrings);
+function isGeneratedWatchPath(pathname: string, outDir: string): boolean {
+  const absolute = path.resolve(pathname);
+  const name = path.basename(absolute);
+  if (path.dirname(absolute) !== outDir) return false;
+  return ["manifest.json", "search.json", "diagnostics.json", "compat-report.json", ".docsfn-build-outputs.json"].includes(name)
+    || /^\.docsfn-artifact-[0-9a-f-]+\.tmp$/.test(name);
 }
 
-function resolveConfigWatchPaths(cwd: string, configPath?: string): string[] {
-  const paths = [
-    path.resolve(cwd, "docsfn.config.ts"),
-    path.resolve(cwd, "docsfn.config.mjs"),
-    path.resolve(cwd, "docsfn.config.js"),
-  ];
-  if (configPath) {
-    paths.push(path.resolve(cwd, configPath));
+async function physicalWatchPath(pathname: string): Promise<string> {
+  try {
+    return await fs.realpath(pathname);
+  } catch (error) {
+    if (!["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+    const parent = path.dirname(pathname);
+    if (parent === pathname) return pathname;
+    return path.join(await physicalWatchPath(parent), path.basename(pathname));
   }
-  return [...new Set([...paths, ...paths.flatMap(configFile => getDocsConfigDependencies(configFile))])];
-}
-
-function isConfigWatchPath(changedPath: string, cwd: string, configPath?: string): boolean {
-  const absolutePath = path.resolve(changedPath);
-  return resolveConfigWatchPaths(cwd, configPath).includes(absolutePath);
 }
 
 async function resolveProviderWatchMetadata(
@@ -570,107 +537,223 @@ async function runBuildCommand(
   process.exitCode = hasErrorDiagnostics(result.diagnostics) ? 1 : 0;
 }
 
+interface DevPipelineReport extends Omit<PipelineResult, "config" | "manifest" | "searchArtifact"> {
+  hasConfig: boolean;
+  watchDirectories: string[];
+}
+
+async function runFreshPipeline(
+  input: PipelineInput & { outDir: string },
+  signal: AbortSignal
+): Promise<DevPipelineReport> {
+  return new Promise((resolve, reject) => {
+    const child = fork(path.resolve(process.argv[1]), ["--docsfn-dev-worker"], {
+      stdio: ["ignore", "inherit", "inherit", "ipc"],
+      signal,
+      killSignal: "SIGKILL"
+    });
+    let report: DevPipelineReport | undefined;
+    child.on("message", (message: any) => {
+      if (message?.type === "docsfn.dev.result") report = message.report;
+    });
+    child.once("error", reject);
+    child.once("close", (code, exitSignal) => {
+      if (code === 0 && report) resolve(report);
+      else
+        reject(new Error(`docsfn build process exited ${code ?? exitSignal} without completing`));
+    });
+    child.send({ type: "docsfn.dev.build", input }, (error) => {
+      if (error) {
+        child.kill("SIGKILL");
+        reject(error);
+      }
+    });
+  });
+}
+
+async function runDevWorker(input: PipelineInput & { outDir: string }): Promise<void> {
+  try {
+    const result = await runPipeline(input);
+    await writeArtifacts(input.outDir, result);
+    const metadata = result.config
+      ? await resolveProviderWatchMetadata(result.config, input.cwd)
+      : undefined;
+    const watchDirectories = metadata?.watchedDirectories?.length
+      ? metadata.watchedDirectories.map((directory) => path.resolve(directory))
+      : result.config
+        ? Object.values(resolveCollectionDirectories(result.config, input.cwd)).flat()
+        : [];
+    // The config and its live values never leave this process. Send only the
+    // completed diagnostic report and scalar watch directories after publication.
+    const report: DevPipelineReport = {
+      cwd: result.cwd,
+      hasConfig: Boolean(result.config),
+      watchDirectories,
+      diagnostics: result.diagnostics,
+      compatReport: result.compatReport,
+      invalidatedPaths: result.invalidatedPaths
+    };
+    process.send!({ type: "docsfn.dev.result", report }, () => process.exit(0));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
 async function runDevCommand(
   rootArg: string | undefined,
   options: BuildCommandOptions
 ): Promise<void> {
-  const rootValue = options.root ?? rootArg ?? ".";
-  const cwd = path.resolve(rootValue);
+  const cwd = path.resolve(options.root ?? rootArg ?? ".");
   const outDir = resolveOutDirectory(options, cwd);
-
+  const watchRoots = options.watchRoot ?? [];
+  const bootstrapRoots = () =>
+    getDocsConfigWatchRoots({ cwd, configPath: options.config, watchRoots });
+  // Chokidar may emit physical paths for symlinked roots (including macOS
+  // /var). Match publisher files in both the requested and physical directory.
+  let physicalOutDir = await physicalWatchPath(outDir);
+  let explicitRoots = await Promise.all(
+    watchRoots.map((root) => physicalWatchPath(path.resolve(cwd, root)))
+  );
+  const ignored = (pathname: string): boolean => {
+    if (isGeneratedWatchPath(pathname, outDir) || isGeneratedWatchPath(pathname, physicalOutDir))
+      return true;
+    // Explicit roots can opt into dependency/build directories. Broad project
+    // watches otherwise avoid package installs and framework/git output loops.
+    const absolute = path.resolve(pathname);
+    if (
+      [...watchRoots.map((root) => path.resolve(cwd, root)), ...explicitRoots].some((base) => {
+        return absolute === base || absolute.startsWith(base + path.sep);
+      })
+    )
+      return false;
+    return absolute
+      .split(path.sep)
+      .some((segment) =>
+        ["node_modules", ".git", ".next", ".svelte-kit", ".turbo"].includes(segment)
+      );
+  };
   console.log(pc.blue("ℹ Starting docsfn dev..."));
+  let activeTargets = new Set(await bootstrapRoots());
+  const watcher = chokidar.watch([...activeTargets], { ignoreInitial: true, ignored });
+  const controller = new AbortController();
+  const pendingPaths = new Set<string>();
+  let ready = false,
+    building = false,
+    stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let activeBuild: Promise<void> | undefined;
+  let providerDirectories: string[] = [];
 
-  const initialResult = await runPipeline({
-    cwd,
-    configPath: options.config,
-  });
-  await writeArtifacts(outDir, initialResult);
-
-  printDiagnostics(initialResult.diagnostics);
-  printCommandSummary("dev:initial", initialResult);
-
-  if (hasErrorDiagnostics(initialResult.diagnostics) || !initialResult.config) {
-    process.exitCode = 1;
+  async function refreshWatchTargets(report: DevPipelineReport): Promise<void> {
+    physicalOutDir = await physicalWatchPath(outDir);
+    explicitRoots = await Promise.all(watchRoots.map((root) => physicalWatchPath(path.resolve(cwd, root))));
+    if (report.hasConfig) providerDirectories = report.watchDirectories;
+    const nextTargets = new Set([...(await bootstrapRoots()), ...providerDirectories]);
+    const removed = [...activeTargets].filter((target) => !nextTargets.has(target));
+    const added = [...nextTargets].filter((target) => !activeTargets.has(target));
+    if (removed.length) await watcher.unwatch(removed);
+    if (added.length) watcher.add(added);
+    activeTargets = nextTargets;
   }
 
-  const providerMetadata = initialResult.config
-    ? await resolveProviderWatchMetadata(initialResult.config, cwd)
-    : undefined;
-
-  const watchTargets = resolveWatchTargets({
-    cwd,
-    config: initialResult.config,
-    configPath: options.config,
-    providerMetadata,
-    outDir,
-  });
-
-  console.log(pc.cyan(`ℹ Watching for changes in ${watchTargets.length} location(s)...`));
-
-  const watcher = chokidar.watch(watchTargets, {
-    ignoreInitial: true,
-    ignored: (pathname) => /^\.docsfn\..+\.(?:mjs|cjs)$/.test(path.basename(pathname)),
-  });
-  let activeWatchTargets = new Set(watchTargets);
-
-  let lastWatchConfig = initialResult.config;
-  async function refreshWatchTargets(config = lastWatchConfig): Promise<void> {
-    if (config) lastWatchConfig = config;
-    const metadata = config ? await resolveProviderWatchMetadata(config, cwd) : undefined;
-    const nextTargets = new Set(
-      resolveWatchTargets({
-        cwd,
-        config,
-        configPath: options.config,
-        providerMetadata: metadata,
-        outDir,
-      })
-    );
-    const removed = [...activeWatchTargets].filter((target) => !nextTargets.has(target));
-    const added = [...nextTargets].filter((target) => !activeWatchTargets.has(target));
-    if (removed.length > 0) await watcher.unwatch(removed);
-    if (added.length > 0) watcher.add(added);
-    activeWatchTargets = nextTargets;
-  }
-
-  let rebuildQueue = Promise.resolve();
-
-  watcher.on("all", (_event, changedPath) => {
-    const absolutePath = path.resolve(changedPath);
-    if (absolutePath === outDir || absolutePath.startsWith(`${outDir}${path.sep}`)) {
-      return;
-    }
-    console.log(pc.dim(`Change detected: ${absolutePath}`));
-
-    rebuildQueue = rebuildQueue
-      .then(async () => {
-        const result = await runPipeline({
-          cwd,
-          configPath: options.config,
-          changedPaths: [absolutePath],
-        });
-        await writeArtifacts(outDir, result);
-        printDiagnostics(result.diagnostics);
-        printCommandSummary("dev:rebuild", result);
-        if (hasErrorDiagnostics(result.diagnostics) || !result.config) {
-          process.exitCode = 1;
-        } else {
-          process.exitCode = 0;
-        }
-        if (isConfigWatchPath(absolutePath, cwd, options.config)) {
-          await refreshWatchTargets(result.config);
-        }
-      })
-      .catch((error) => {
-        console.error(
-          pc.red(
-            error instanceof Error
-              ? `dev rebuild failed: ${error.message}`
-              : "dev rebuild failed"
-          )
+  async function execute(command: string, changedPaths: string[]): Promise<void> {
+    building = true;
+    try {
+      let report: DevPipelineReport;
+      try {
+        report = await runFreshPipeline(
+          { cwd, configPath: options.config, changedPaths, outDir },
+          controller.signal
         );
+      } catch (error) {
+        if (stopped) return;
+        const diagnostics = redactDiagnostics(
+          diagnosticsFromUnknownError(error, {
+            code: "DOCS_ARTIFACT_INVALID",
+            message: "fresh docsfn build process failed"
+          })
+        );
+        report = {
+          cwd,
+          hasConfig: false,
+          watchDirectories: [],
+          diagnostics,
+          compatReport: createCompatReport({ preset: "none", diagnostics }),
+          invalidatedPaths: []
+        };
+        // A worker crash still invalidates publisher-owned successful artifacts.
+        await writeArtifacts(outDir, report);
+      }
+      if (stopped) return;
+      printDiagnostics(report.diagnostics);
+      printCommandSummary(command, report);
+      process.exitCode = hasErrorDiagnostics(report.diagnostics) ? 1 : 0;
+      // Refresh even after errors, including retargeted config symlinks. Keep
+      // the last successful provider directories until another config succeeds.
+      await refreshWatchTargets(report);
+    } finally {
+      building = false;
+      schedule();
+    }
+  }
+
+  function schedule(): void {
+    if (!ready || stopped || building || timer || !pendingPaths.size) return;
+    timer = setTimeout(() => {
+      timer = undefined;
+      const changedPaths = [...pendingPaths].sort(compareStrings);
+      pendingPaths.clear();
+      activeBuild = execute("dev:rebuild", changedPaths).catch((error) => {
+        if (!stopped) {
+          process.exitCode = 1;
+          console.error(error instanceof Error ? error.message : String(error));
+        }
       });
+    }, 100);
+  }
+  watcher.on("all", (_event, changedPath) => {
+    if (stopped || ignored(changedPath)) return;
+    const absolute = path.resolve(changedPath);
+    pendingPaths.add(absolute);
+    console.log(pc.dim(`Change detected: ${absolute}`));
+    schedule();
   });
+  watcher.on("error", (error) => {
+    process.exitCode = 1;
+    console.error(error);
+  });
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    if (timer) clearTimeout(timer);
+    controller.abort();
+    void watcher
+      .close()
+      .then(() => activeBuild)
+      .finally(() => process.exit(process.exitCode ?? 0));
+  };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      watcher.once("ready", resolve);
+      watcher.once("error", reject);
+    });
+    activeBuild = execute("dev:initial", []);
+    await activeBuild;
+    if (stopped) return;
+    ready = true;
+    console.log(pc.cyan(`ℹ Watching for changes in ${activeTargets.size} location(s)...`));
+    schedule();
+  } catch (error) {
+    stopped = true;
+    controller.abort();
+    await watcher.close();
+    process.removeListener("SIGINT", stop);
+    process.removeListener("SIGTERM", stop);
+    throw error;
+  }
 }
 
 async function runLlmsCommand(
@@ -828,6 +911,7 @@ cli
 
 cli
   .command("dev [root]", "Start dev mode")
+  .option("--watch-root <dir>", "Additional config dependency directory (repeatable)", { type: [String] })
   .option("--root <dir>", "Root directory")
   .option("--config <path>", "Explicit docsfn config path")
   .option("--out <dir>", "Output directory (legacy option)")
@@ -874,4 +958,11 @@ cli
   });
 
 cli.help();
-cli.parse();
+if (process.argv[2] === "--docsfn-dev-worker" && process.send) {
+  process.once("message", (message: any) => {
+    if (message?.type !== "docsfn.dev.build") process.exit(1);
+    void runDevWorker(message.input);
+  });
+} else {
+  cli.parse();
+}

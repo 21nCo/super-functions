@@ -46,13 +46,23 @@ Runs the full pipeline and writes output under **`--out-dir`** (default **`.docs
 
 ## `docsfn dev [root]`
 
-1. Runs an **initial** pipeline + `writeArtifacts` (same as build).
-2. If errors occur, exits with code **`1`**.
-3. Computes **watch targets**: config file candidates, content collection directories from config (and optional provider watch metadata), **excluding** the output directory.
-4. Starts **chokidar** on those paths with `ignoreInitial: true`.
-5. On any change, queues a **rebuild** (`runPipeline` with `changedPaths`), rewrites artifacts, and prints diagnostics + `dev:rebuild` summary.
+1. Starts watching project/config roots before the first build, so local import failures can recover.
+2. Runs the complete pipeline and artifact publication in a fresh child process for every build. Config functions and class instances stay in that child.
+3. Keeps watching after errors, prints diagnostics, and invalidates publisher-owned stale successful artifacts.
+4. Queues and debounces changes, including changes received during an active build; builds run one at a time.
+5. Refreshes content watch directories after a successful config load and checks bootstrap roots after every build.
 
-**Output directory exclusion:** Changes **inside** `.docsfn` (or your chosen `--out-dir`) do **not** trigger rebuilds, preventing feedback loops.
+**Additional dependency roots:** repeat `--watch-root <dir>` for config dependencies outside the project/config/content directories:
+
+```sh
+docsfn dev . --watch-root ../shared-settings --watch-root ../shared-content
+```
+
+Relative roots resolve from the docs project. Ordinary `node_modules`, `.git`, `.next`, `.svelte-kit`, and `.turbo` directories are ignored; an explicit watch root opts into these directories. Bootstrap watches include real paths of symlinked roots and the nearest package scope manifest.
+
+**Generated outputs:** only the build publisher's files, ownership journal, and staging files at the selected output directory are ignored. Content under an output ancestor remains watched, including when `--out-dir .` is used.
+
+Stop dev with Ctrl+C; it closes the watcher and terminates any active build child.
 
 ## Pipeline overview
 
@@ -89,23 +99,10 @@ the journal is written may leave an unrecorded temporary file.
 
 ## Config loading
 
-Config import graphs are compiled into a temporary directory, so deployment
-source directories can be read-only. Static local imports and literal dynamic
-imports are staged together. Package-local aliases and package self references
-resolve using Node's import/require conditions; their package manifest is tracked
-as a config dependency. Only missing paths permit discovery to continue; access
-errors fail loading instead of silently selecting default configuration.
+Config is trusted executable code. Jiti loads TypeScript and JavaScript modules without staging a rewritten dependency graph. Read-only source trees, CommonJS dependencies, package-local aliases, self references, and async export factories are supported. Module-relative `import.meta` and CommonJS resolver APIs use source paths; native startup conditions and symlink flags apply. File-URL query and fragment identities remain distinct.
 
-The temporary graph is removed after the config export resolves, including on
-failure. Configuration is trusted executable JavaScript, not a sandbox. Computed
-runtime imports are not dependency-tracked; ordinary external packages retain
-Node's cache behavior. CommonJS staging cache entries are evicted, but Node's ESM
-module cache cannot be unloaded: repeated reloads can retain memory in a long-lived
-watch process. Graph limits bound each load, not lifetime process memory.
+`loadDocsConfig` evaluates a config once per host process. Repeated calls use that snapshot, including cached evaluation failures. CLI dev obtains fresh transitive ESM, CommonJS, JSON, and TypeScript dependencies by starting a new **whole-pipeline** process on every rebuild; it sends only diagnostics and watch paths back to the watcher. Direct API consumers, including Next.js and SvelteKit loaders, must restart their host after config/dependency edits or repairs.
 
-Module-relative `import.meta.dirname`, `import.meta.filename`,
-`import.meta.resolve()` and `require.resolve()` retain the source module context.
-ESM resolver subprocesses preserve custom `--conditions`/`-C` flags. File-URL imports
-with query strings or fragments are rejected explicitly; remove those suffixes
-from config dependencies. First-run failure cleanup creates no output directory
-or marker when no ownership record exists.
+Watch roots are a declared directory boundary, not an exhaustive import graph. Declare external dependencies with `--watch-root`, including dependencies loaded through computed imports or filesystem reads. `getDocsConfigWatchRoots` supplies bootstrap roots without evaluating the config. The deprecated `getDocsConfigDependencies` returns bootstrap files/directories and no longer enumerates transitive dependencies.
+
+Only missing paths permit config discovery to continue; access errors fail loading. First-run failure cleanup creates no output directory or marker when no ownership record exists.
