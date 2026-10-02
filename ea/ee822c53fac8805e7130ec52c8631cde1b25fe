@@ -1,0 +1,21 @@
+hostfn/docs/content/docs/documentation/advanced/administration.mdx
+  s_ad500513bc9987::t_98048254045f7c 29-35
+hostfn/docs/app/layout.tsx
+  s_ad500513bc9987::t_cf281f0ed5b38f 7-11,16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eaee822c53fac8805e7130ec52c8631cde1b25fe",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
