@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3XK4750QTXY2H39BTWP6JCR",
+  "strategy": "manual-commit",
+  "branch": "codex/authfn-null-owner-api-keys",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/core/src/__tests__/api-key-docs.test.ts",
+    "authfn/docs/content/docs/plugins/api-keys.md",
+    "authfn/docs/content/docs/recipes/cli-auth.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 294029,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4306176,
+    "output_tokens": 6506,
+    "api_call_count": 18
+  }
+}

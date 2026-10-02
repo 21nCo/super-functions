@@ -1,0 +1,51 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3XK4750QTXY2H39BTWP6JCR",
+  "session_id": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-02T05:59:26.546904Z",
+  "branch": "codex/authfn-null-owner-api-keys",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "authfn/core/src/__tests__/api-key-docs.test.ts",
+    "authfn/docs/content/docs/plugins/api-keys.md",
+    "authfn/docs/content/docs/recipes/cli-auth.md"
+  ],
+  "agent": "OpenCode",
+  "model": "gpt-6.1-sol",
+  "turn_id": "34d56ae4c030",
+  "checkpoint_transcript_start": 82,
+  "transcript_lines_at_start": 82,
+  "compact_transcript_start": 82,
+  "token_usage": {
+    "input_tokens": 294029,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4306176,
+    "output_tokens": 6506,
+    "api_call_count": 18
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-02T05:59:26.406723Z",
+    "agent_lines": 78,
+    "agent_removed": 7,
+    "human_added": 26,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 104,
+    "total_lines_changed": 117,
+    "agent_percentage": 72.64957264957265,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
