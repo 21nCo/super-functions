@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M3XX89RRT76NXFX7CN47H85X",
+  "session_id": "ses_f08b7ce50ffeoRPr6yE1zwhHh1",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-02T08:56:24.564774Z",
+  "branch": "codex/authfn-null-owner-api-keys",
+  "checkpoints_count": 1,
+  "save_step_count": 2,
+  "files_touched": [],
+  "agent": "OpenCode",
+  "model": "gpt-6.1-sol",
+  "turn_id": "340e223fe87d",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 1077753,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 22071680,
+    "output_tokens": 32716,
+    "api_call_count": 123
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 96,
+      "agent_lines_removed": 0
+    }
+  ]
+}
