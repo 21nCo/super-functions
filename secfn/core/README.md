@@ -2,7 +2,7 @@
 
 Core contracts and pure utilities for SecFn V1.
 
-`@secfn/core` intentionally contains no database adapter, HTTP router, or framework integration. It provides the shared types that `@secfn/server`, `@secfn/runtime`, and `@secfn/cli` build on.
+`@secfn/core` intentionally contains no database adapter, HTTP router, or framework integration. It provides the shared types that `@secfn/server` and `@secfn/runtime` build on.
 
 ## Exports
 

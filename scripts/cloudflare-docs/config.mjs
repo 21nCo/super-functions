@@ -5,6 +5,13 @@ import { fileURLToPath } from "node:url";
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export const docsProducts = {
+  secfn: {
+    packageName: "@secfn/docs",
+    docsDir: "secfn/docs",
+    kind: "sveltekit-cloudflare",
+    zoneName: "secfn.com",
+    hosts: { dev: "dev.secfn.com", live: "secfn.com" },
+  },
   datafn: {
     packageName: "@datafn/docs",
     docsDir: "datafn/docs",

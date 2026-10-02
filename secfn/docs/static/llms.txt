@@ -1,0 +1,22 @@
+# SecFn
+
+> Encrypted secrets, scoped runtime retrieval, scanning, and audit services.
+
+## Documentation
+
+- [Audit and rate limits](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/audit-and-rate-limits.md) — Configure durable security events and quota enforcement.
+- [Getting started](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/getting-started.md) — Choose the core, server, and runtime packages.
+- [SecFn](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/index.md) — Encrypted secrets, scoped retrieval, scanning, and security services.
+- [Schema and migrations](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/migrations.md) — Apply SecFn's schema and PostgreSQL changes in order.
+- [Operations and limits](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/operations-and-limits.md) — Key custody, adapter guarantees, and validation boundaries.
+- [Core package](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/core.md) — Encryption, scanner, schema, and shared contracts.
+- [Reference](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/index.md) — SecFn packages, routes, and source package guides.
+- [Packages](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/packages.md) — Current SecFn package map and import surfaces.
+- [Routes](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/routes.md) — SecFn admin and runtime route families.
+- [Runtime package](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/runtime.md) — Read-only runtime client and environment materialization.
+- [Server package](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/reference/server.md) — Control plane, runtime API, migration, and storage contract.
+- [Runtime client](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/runtime.md) — Read secrets and materialize sets in trusted processes.
+- [Secret scanning](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/scanning.md) — Run the core scanner and persist run metadata through the server.
+- [Scope and permissions](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/scope-and-permissions.md) — Enforce tenant, namespace, environment, and operator boundaries.
+- [Secrets and sets](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/secrets-and-sets.md) — Create, rotate, reveal, and resolve versioned secrets safely.
+- [Server setup](https://github.com/21nCo/super-functions/blob/dev/secfn/docs/content/docs/server.md) — Configure persistence, encryption, host context, and route mounting.
