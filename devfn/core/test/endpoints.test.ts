@@ -270,9 +270,12 @@ describe("endpoint and template contract", () => {
   it("derives stable route labels from opaque owners without changing their identity", () => {
     const owner = "session:any/owner";
     const hostname = resolveLocalHostname(undefined, "api", "fixture", owner);
-    expect(hostname).toMatch(/^api-session-any-owner-[a-f0-9]{12}\.localhost$/);
+    expect(hostname).toMatch(/^api-o-[a-f0-9]{20}\.localhost$/);
+    expect(hostname).not.toContain("session");
     expect(resolveLocalHostname(undefined, "api", "fixture", owner)).toBe(hostname);
     expect(resolveLocalHostname(undefined, "api", "fixture", "owner")).not.toBe(resolveLocalHostname(undefined, "api", "fixture", "OWNER").toLowerCase());
+    expect(resolveLocalHostname(undefined, "api", "fixture", "OWNER")).not.toBe(resolveLocalHostname(undefined, "api", "fixture", "owner-0559aadba9e2"));
+    expect(resolveLocalHostname(undefined, "api", "fixture", "--token=synthetic-sentinel")).not.toContain("synthetic-sentinel");
     const config = fixture();
     config.profiles.default.proxy = true;
     config.hostnames = { api: { target: "api" } };
@@ -295,6 +298,41 @@ describe("endpoint and template contract", () => {
     expect(resolved.nodes.worker.healthCommand).toEqual(["node", owner]);
     config.processes!.worker.command = ["node", "{{env.OWNER_NODE}} {{broken}}"];
     expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: owner, ports: { api: 4101, worker: 4102 } })).toThrow(/malformed template/);
+  });
+
+  it("preserves credential-shaped opaque owner data while rejecting manifest credentials", () => {
+    for (const owner of ["--token=owner", "session?token=owner"]) {
+      const config = fixture();
+      config.profiles.default.environment = { OWNER_COPY: "{{env.DEVFN_INSTANCE_ID}}" };
+      config.processes!.worker.env = { ...config.processes!.worker.env, OWNER_NODE: "{{env.OWNER_COPY}}" };
+      config.processes!.worker.command = ["node", "{{env.OWNER_NODE}}"];
+      config.processes!.worker.health = { type: "command", command: ["node", "{{env.OWNER_NODE}}"] };
+      const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: owner, ports: { api: 4101, worker: 4102 } });
+      expect(resolved.environment.OWNER_COPY).toBe(owner);
+      expect(resolved.nodes.worker.environment.OWNER_NODE).toBe(owner);
+      expect(resolved.nodes.worker.command).toEqual(["node", owner]);
+      expect(resolved.nodes.worker.healthCommand).toEqual(["node", owner]);
+      config.processes!.worker.command = ["node", "--token={{env.OWNER_NODE}}"];
+      expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: owner, ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+    }
+    const assembled = fixture();
+    assembled.profiles.default.environment = { FLAG: "--", ARGUMENT: "token=owner", COMBINED: "{{env.FLAG}}{{env.ARGUMENT}}" };
+    expect(() => resolveEndpointTemplates({ config: assembled, plan: createPlan(assembled), ownerId: "--token=owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+  });
+
+  it("shares effective Compose project identity across case variants", () => {
+    const config = fixture();
+    config.profiles.default.environment = {};
+    config.ports!.web = {};
+    config.services = {
+      web: { adapter: "compose", service: "web", projectName: "blue", ports: { web: 8080 }, health: { type: "http", port: "web" } },
+      consumer: { adapter: "compose", service: "consumer", projectName: "BLUE", dependsOn: ["web"], env: { UPSTREAM: "{{env.DEVFN_URL_WEB}}" } },
+    };
+    config.profiles.default.services = ["consumer"];
+    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "Owner", ports: { api: 4101, worker: 4102, web: 4103 } });
+    expect(resolved.nodes.consumer.environment.UPSTREAM).toBe("http://web:8080");
+    config.services.consumer.projectName = "green";
+    expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "Owner", ports: { api: 4101, worker: 4102, web: 4103 } })).toThrow(/another Compose project network/);
   });
 
   it("rejects invalid shadowed literals before creating state", async () => {
@@ -323,7 +361,7 @@ describe("endpoint and template contract", () => {
     const config = fixture();
     config.profiles.default.proxy = true;
     config.hostnames = { api: { target: "api" } };
-    config.processes!.api.health = { type: "http", url: "http://api-owner.test.localhost/health" };
+    config.processes!.api.health = { type: "http", url: `http://${resolveLocalHostname(undefined, "api", "fixture", "owner", ".test.localhost")}/health` };
     expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 }, hostnameSuffix: ".test.localhost" }))
       .toThrow(/URL-only readiness cannot wait for a selected proxy route/);
   });

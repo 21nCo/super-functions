@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -52,10 +53,11 @@ export class ComposeError extends Error {
   }
 }
 
-function safeProjectName(prefix: string, instanceId: string): string {
-  const suffix = instanceId.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 20);
-  const available = Math.max(1, 48 - suffix.length - 1);
-  const safePrefix = prefix.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, available);
+/** The effective Docker Compose namespace shared by startup and endpoint resolution. */
+export function composeProjectName(prefix: string, instanceId: string): string {
+  const digest = createHash("sha256").update(instanceId).digest("hex").slice(0, 20);
+  const suffix = `o-${digest}`;
+  const safePrefix = prefix.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "").slice(0, 48 - suffix.length - 1) || "d";
   return `${safePrefix}-${suffix}`;
 }
 
@@ -120,7 +122,7 @@ export class ComposeController {
     const environment = createComposeEnvironment(input.spec, input.environment);
     const dockerEnvironment = persistedDockerEnvironment(environment);
     if (!await this.available(input.root, environment)) throw new ComposeError("DEVFN_COMPOSE_UNAVAILABLE", "Docker Compose 2.24.4 or newer is required.");
-    const projectName = safeProjectName(input.spec.projectName ?? "devfn", input.instanceId);
+    const projectName = composeProjectName(input.spec.projectName ?? "devfn", input.instanceId);
     const sourceFile = await resolveContainedPath(input.root, input.spec.file ?? "compose.yaml", `services.${input.name}.file`);
     const overrideDir = path.join(input.runtimeDir, "compose");
     await mkdir(overrideDir, { recursive: true, mode: 0o700 });

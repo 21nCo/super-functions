@@ -4,11 +4,43 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { ComposeController, createComposeEnvironment, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
+import { ComposeController, composeProjectName, createComposeEnvironment, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
 
 describe("ComposeController", () => {
+  it("keeps case-distinct opaque owners in separate stable Compose projects", () => {
+    expect(composeProjectName("blue", "Owner")).not.toBe(composeProjectName("BLUE", "owner"));
+    expect(composeProjectName("blue", "OWNER")).not.toBe(composeProjectName("blue", "owner-0559aadba9e2"));
+    expect(composeProjectName("blue", "Owner")).toBe(composeProjectName("BLUE", "Owner"));
+    expect(composeProjectName("blue", "--token=synthetic-sentinel")).not.toContain("synthetic-sentinel");
+  });
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("isolates simultaneous case-distinct owners through stop and retry", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-dual-owner-"));
+    const file = path.join(root, "compose.yaml");
+    const controller = new ComposeController();
+    const prefix = path.basename(root).toLowerCase().slice(0, 22);
+    const owners = ["Owner", "owner"];
+    await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n');
+    const start = (owner: string) => controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: prefix }, root,
+      runtimeDir: path.join(root, owner), instanceId: owner, ports: {} });
+    try {
+      const first = await start(owners[0]);
+      const second = await start(owners[1]);
+      expect(first.projectName).not.toBe(second.projectName);
+      expect(first.containerIds[0]).not.toBe(second.containerIds[0]);
+      await controller.stop(first);
+      expect(await controller.status(second)).toBe("running");
+      await controller.stop(second);
+      const retried = await start(owners[0]);
+      expect(retried.projectName).toBe(first.projectName);
+      expect(await controller.status(retried)).toBe("running");
+    } finally {
+      for (const owner of owners) await execFileAsync("docker", ["compose", "-p", composeProjectName(prefix, owner), "-f", file, "down"], { cwd: root }).catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
   it("exposes availability as a non-throwing diagnostic", async () => {
     const available = new ComposeController(async () => ({ stdout: "2.24.4", stderr: "" }));
     const tooOld = new ComposeController(async () => ({ stdout: "Docker Compose version v2.23.99", stderr: "" }));
@@ -215,7 +247,7 @@ describe("ComposeController", () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-stale-real-"));
     const file = path.join(root, "compose.yaml");
     const projectPrefix = path.basename(root).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 42);
-    const projectName = `${projectPrefix}-owner`;
+    const projectName = composeProjectName(projectPrefix, "owner");
     await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n    environment:\n      DEVFN_PORT_API: "${DEVFN_PORT_API}"\n');
     try {
       await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "up", "-d", "api"], { cwd: root, env: { ...process.env, DEVFN_PORT_API: "4101" } });
@@ -236,7 +268,7 @@ describe("ComposeController", () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-removed-real-"));
     const file = path.join(root, "compose.yaml");
     const projectPrefix = path.basename(root).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 42);
-    const projectName = `${projectPrefix}-owner`;
+    const projectName = composeProjectName(projectPrefix, "owner");
     await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n    environment:\n      DEVFN_URL_API: "http://api:4101"\n');
     try {
       await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "up", "-d", "api"], { cwd: root });
@@ -260,7 +292,7 @@ describe("ComposeController", () => {
       const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-literal-real-"));
       const file = path.join(root, "compose.yaml");
       const projectPrefix = path.basename(root).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 42);
-      const projectName = `${projectPrefix}-owner`;
+      const projectName = composeProjectName(projectPrefix, "owner");
       await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n    environment:\n      MODE: "stale-literal"\n');
       try {
         await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "up", "-d", "api"], { cwd: root });

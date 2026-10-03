@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { validateDevFnConfig, type DevFnConfig } from "@devfn/config";
 import { resolveHttpReadinessUrl } from "@devfn/processes";
+import { composeProjectName } from "@devfn/compose";
 
 import { DevFnError, type LifecyclePlan } from "./types.js";
 
@@ -51,9 +52,15 @@ function invalid(field: string, message: string): never {
   throw new DevFnError("DEVFN_RUNTIME_INVALID", `${field}: ${message}`);
 }
 
-function resolveValues(values: Record<string, string>, base: Readonly<Record<string, string>>, generated: Readonly<Record<string, string>>, field: string): Record<string, string> {
-  const resolved: Record<string, string> = Object.assign(Object.create(null), base);
-  const generatedKeys = new Map(Object.keys(generated).map((key) => [key.toUpperCase(), key]));
+interface CheckedValues {
+  values: Record<string, string>;
+  checked: Record<string, string>;
+}
+
+function resolveValues(values: Record<string, string>, base: CheckedValues, generated: CheckedValues, field: string): CheckedValues {
+  const resolved: Record<string, string> = Object.assign(Object.create(null), base.values);
+  const resolvedChecked: Record<string, string> = Object.assign(Object.create(null), base.checked);
+  const generatedKeys = new Map(Object.keys(generated.values).map((key) => [key.toUpperCase(), key]));
   const checkedReferences = new Set<string>();
   const activeReferences = new Set<string>();
   const checkReferences = (key: string): void => {
@@ -68,42 +75,55 @@ function resolveValues(values: Record<string, string>, base: Readonly<Record<str
   for (const key of Object.keys(values)) {
     const generatedKey = generatedKeys.get(key.toUpperCase());
     if (generatedKey && generatedKey !== key) invalid(`${field}.${key}`, `collides with generated environment key ${generatedKey}.`);
-    if (!generatedKey) delete resolved[key];
+    if (!generatedKey) { delete resolved[key]; delete resolvedChecked[key]; }
   }
   const visiting = new Set<string>();
   const checked = new Set<string>();
-  const visit = (key: string): string => {
+  const visit = (key: string): [string, string] => {
     if (!Object.prototype.hasOwnProperty.call(values, key)) {
-      if (Object.prototype.hasOwnProperty.call(resolved, key)) return resolved[key];
+      if (Object.prototype.hasOwnProperty.call(resolved, key)) return [resolved[key], resolvedChecked[key]];
       invalid(field, `missing reference ${key}.`);
     }
-    if (checked.has(key)) return resolved[key];
+    if (checked.has(key)) return [resolved[key], resolvedChecked[key]];
     if (visiting.has(key)) invalid(field, `cyclic reference containing ${key}.`);
     visiting.add(key);
-    const value = expand(values[key], `${field}.${key}`, (reference) => {
-      if (reference === key && Object.prototype.hasOwnProperty.call(generated, key)) return generated[key];
-      if (Object.prototype.hasOwnProperty.call(generated, reference)) return generated[reference];
+    const expanded = expand(values[key], `${field}.${key}`, (reference) => {
+      if (reference === key && Object.prototype.hasOwnProperty.call(generated.values, key)) return [generated.values[key], generated.checked[key]];
+      if (Object.prototype.hasOwnProperty.call(generated.values, reference)) return [generated.values[reference], generated.checked[reference]];
       return visit(reference);
     });
     visiting.delete(key);
     checked.add(key);
-    if (!Object.prototype.hasOwnProperty.call(generated, key)) resolved[key] = value;
-    return resolved[key];
+    if (!Object.prototype.hasOwnProperty.call(generated.values, key)) {
+      resolved[key] = expanded[0];
+      resolvedChecked[key] = expanded[1];
+    }
+    return [resolved[key], resolvedChecked[key]];
   };
   for (const key of Object.keys(values)) visit(key);
-  return resolved;
+  return { values: resolved, checked: resolvedChecked };
 }
 
-function expand(value: string, field: string, lookup: (name: string) => string): string {
+function expand(value: string, field: string, lookup: (name: string) => [string, string]): [string, string] {
   // Parse the manifest source only. Referenced values (including opaque owners)
   // are data and must never be parsed as another template.
   const literal = value.replace(REFERENCE, "");
   if (literal.includes("{{") || literal.includes("}}")) invalid(field, "malformed template reference.");
-  const expanded = value.replace(REFERENCE, (_match, key: string) => lookup(key));
+  // Manifest syntax is checked before substitution. The owner is opaque data:
+  // its bytes may resemble a credential argument or URL without declaring one.
+  rejectUrlCredentials(value, field);
+  rejectCredentialArgument(value, field);
+  const references = new Map<string, [string, string]>();
+  const resolved = (key: string): [string, string] => {
+    if (!references.has(key)) references.set(key, lookup(key));
+    return references.get(key)!;
+  };
+  const expanded = value.replace(REFERENCE, (_match, key: string) => resolved(key)[0]);
   if (expanded.includes("\0")) invalid(field, "NUL is not a valid environment or argv value.");
-  rejectUrlCredentials(expanded, field);
-  rejectCredentialArgument(expanded, field);
-  return expanded;
+  const checked = value.replace(REFERENCE, (_match, key: string) => resolved(key)[1]);
+  rejectUrlCredentials(checked, field);
+  rejectCredentialArgument(checked, field);
+  return [expanded, checked];
 }
 
 function rejectCredentialArgument(value: string, field: string): void {
@@ -150,8 +170,8 @@ export function resolveLocalHostname(configured: string | undefined, key: string
   const template = (configured ?? `${key}-{instance}${suffix}`).replaceAll("{project}", projectId);
   const ownerLabel = template.split(".").find((label) => label.includes("{instance}"));
   const budget = ownerLabel ? 63 - ownerLabel.replaceAll("{instance}", "").length : 63;
-  if (budget < 14) invalid(`hostnames.${key}`, "hostname has no room for an opaque owner component.");
-  const safeOwner = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(ownerId) && ownerId.length <= budget ? ownerId : `${ownerId.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, budget - 13).replace(/-+$/g, "") || "o"}-${createHash("sha256").update(ownerId).digest("hex").slice(0, 12)}`;
+  if (budget < 22) invalid(`hostnames.${key}`, "hostname has no room for an opaque owner component.");
+  const safeOwner = `o-${createHash("sha256").update(ownerId).digest("hex").slice(0, 20)}`;
   const result = template.replaceAll("{instance}", safeOwner);
   if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(result)) invalid(`hostnames.${key}`, `local hostname ${result} must be a concrete .localhost name.`);
   return result;
@@ -216,7 +236,8 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
       }
     }
   }
-  const environment = resolveValues(profile.environment ?? {}, generated, generated, `profiles.${plan.profile}.environment`);
+  const checkedGenerated: CheckedValues = { values: generated, checked: { ...generated, DEVFN_INSTANCE_ID: "devfnopaqueowner" } };
+  const environment = resolveValues(profile.environment ?? {}, checkedGenerated, checkedGenerated, `profiles.${plan.profile}.environment`);
   const nodes: Record<string, ResolvedNodeStartup> = Object.create(null);
   for (const node of plan.nodes) {
     const spec = node.kind === "process" ? config.processes?.[node.name] : config.services?.[node.name];
@@ -229,9 +250,9 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     }
     const processSpec = node.kind === "process" ? config.processes![node.name] : undefined;
     const nativeBind: Record<string, string> = processSpec && processSpec.exposure !== "public" ? { HOST: "127.0.0.1", DEVFN_HOST: "127.0.0.1" } : {};
-    const nodeGenerated = { ...generated };
+    const nodeGenerated: CheckedValues = { values: { ...generated }, checked: { ...checkedGenerated.checked } };
     if (node.kind === "service") {
-      const consumerProject = config.services![node.name].projectName ?? "devfn";
+      const consumerProject = composeProjectName(config.services![node.name].projectName ?? "devfn", ownerId);
       const unreachable = new Set<string>();
       for (const producer of plan.nodes) {
         const producerPorts = producer.kind === "service" ? config.services![producer.name].ports ?? {} :
@@ -239,8 +260,10 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
         for (const port of Object.keys(producerPorts)) {
           const key = `DEVFN_URL_${normalized(port)}`;
           if (!Object.prototype.hasOwnProperty.call(directUrls, port)) continue;
-          if (producer.kind === "service" && (config.services![producer.name].projectName ?? "devfn") === consumerProject) nodeGenerated[key] = composeUrls[port];
-          else { delete nodeGenerated[key]; unreachable.add(key); }
+          if (producer.kind === "service" && composeProjectName(config.services![producer.name].projectName ?? "devfn", ownerId) === consumerProject) {
+            nodeGenerated.values[key] = composeUrls[port];
+            nodeGenerated.checked[key] = composeUrls[port];
+          } else { delete nodeGenerated.values[key]; delete nodeGenerated.checked[key]; unreachable.add(key); }
         }
       }
       for (const value of [...Object.values(profile.environment ?? {}), ...Object.values(spec.env ?? {})]) {
@@ -252,33 +275,35 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
       }
     }
     const profileEnvironment = node.kind === "service" ? resolveValues(profile.environment ?? {}, nodeGenerated, nodeGenerated, `profiles.${plan.profile}.environment`) : environment;
-    const nodeEnvironment = resolveValues(spec.env ?? {}, { ...profileEnvironment, ...nativeBind }, { ...nodeGenerated, ...nativeBind }, `${field}.env`);
+    const nodeEnvironment = resolveValues(spec.env ?? {},
+      { values: { ...profileEnvironment.values, ...nativeBind }, checked: { ...profileEnvironment.checked, ...nativeBind } },
+      { values: { ...nodeGenerated.values, ...nativeBind }, checked: { ...nodeGenerated.checked, ...nativeBind } }, `${field}.env`);
     const readinessEnvironment = node.kind === "service" ?
-      resolveValues(spec.env ?? {}, environment, generated, `${field}.env`) : nodeEnvironment;
-    const lookup = (key: string): string => {
-      if (!Object.prototype.hasOwnProperty.call(nodeEnvironment, key)) invalid(field, `missing reference ${key}.`);
-      return nodeEnvironment[key];
+      resolveValues(spec.env ?? {}, environment, checkedGenerated, `${field}.env`) : nodeEnvironment;
+    const lookup = (key: string): [string, string] => {
+      if (!Object.prototype.hasOwnProperty.call(nodeEnvironment.values, key)) invalid(field, `missing reference ${key}.`);
+      return [nodeEnvironment.values[key], nodeEnvironment.checked[key]];
     };
     const argv = (item: string, location: string): string => {
-      const value = expand(item, location, lookup);
+      const value = expand(item, location, lookup)[0];
       if (value.length === 0) invalid(location, "argv value cannot be empty.");
       return value;
     };
     const command = processSpec?.command?.map((item, index) => argv(item, `${field}.command[${index}]`));
     const script = processSpec?.script !== undefined ? argv(processSpec.script, `${field}.script`) : undefined;
-    const healthLookup = (key: string): string => {
-      if (!Object.prototype.hasOwnProperty.call(readinessEnvironment, key)) invalid(field, `missing reference ${key}.`);
-      return readinessEnvironment[key];
+    const healthLookup = (key: string): [string, string] => {
+      if (!Object.prototype.hasOwnProperty.call(readinessEnvironment.values, key)) invalid(field, `missing reference ${key}.`);
+      return [readinessEnvironment.values[key], readinessEnvironment.checked[key]];
     };
     const healthCommand = spec.health?.type === "command" ? spec.health.command.map((item, index) => {
       const location = `${field}.health.command[${index}]`;
-      const value = expand(item, location, healthLookup);
+      const value = expand(item, location, healthLookup)[0];
       if (!value.length) invalid(location, "argv value cannot be empty.");
       return value;
     }) : undefined;
-    nodes[node.name] = { environment: nodeEnvironment, readinessEnvironment, ...(healthUrls.has(node.name) ? { healthUrl: healthUrls.get(node.name) } : {}), ...(command ? { command } : {}), ...(script ? { script } : {}), ...(healthCommand ? { healthCommand } : {}) };
+    nodes[node.name] = { environment: nodeEnvironment.values, readinessEnvironment: readinessEnvironment.values, ...(healthUrls.has(node.name) ? { healthUrl: healthUrls.get(node.name) } : {}), ...(command ? { command } : {}), ...(script ? { script } : {}), ...(healthCommand ? { healthCommand } : {}) };
   }
-  return { ownerId, generated, environment, directUrls, composeUrls, nodes };
+  return { ownerId, generated, environment: environment.values, directUrls, composeUrls, nodes };
 }
 
 function producerIsNative(plan: LifecyclePlan, config: DevFnConfig, key: string): boolean {

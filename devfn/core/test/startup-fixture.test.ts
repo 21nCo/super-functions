@@ -8,7 +8,7 @@ import { validateDevFnConfig } from "@devfn/config";
 import { proxyOwnerStatus } from "@devfn/proxy";
 import { describe, expect, it } from "vitest";
 
-import { DevFnOrchestrator, readReceipt, resolveInstanceIdentity } from "../src/index.js";
+import { DevFnOrchestrator, readReceipt, resolveInstanceIdentity, resolveLocalHostname } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -95,7 +95,7 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       ports: { native: {} },
       processes: { native: {
         adapter: "command", command: [process.execPath, "server.mjs", "{{env.DEVFN_URL_NATIVE}}", "literal $HOME `id` ; & |", "{{env.HOST}}", "{{env.DEVFN_HOST}}"],
-        ports: ["native"], health: { type: "http", port: "native", url: `${withTls ? "https" : "http"}://${withProxy ? `native-${owner}.test.localhost` : "route-not-yet-installed.localhost"}/health?probe=1`, timeoutMs: 15_000 },
+        ports: ["native"], health: { type: "http", port: "native", url: `${withTls ? "https" : "http"}://${withProxy ? resolveLocalHostname(undefined, "native", "endpoint-fixture", owner, ".test.localhost") : "route-not-yet-installed.localhost"}/health?probe=1`, timeoutMs: 15_000 },
         env: { OBSERVED_FILE: observed, UPSTREAM_URL: "{{env.DEVFN_URL_NATIVE}}", EXPECTED_HEALTH_PATH: "/health?probe=1", MODE: "node" },
         envAllowlist: ["SECRET_TOKEN"], secretEnv: ["SECRET_TOKEN"],
       } },
@@ -113,7 +113,7 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       expect(observation).toMatchObject({ port: String(receipt.allocations[0].port), url: `http://127.0.0.1:${receipt.allocations[0].port}`, host: "127.0.0.1", devfnHost: "127.0.0.1", mode: "node", profileOnly: "first" });
       expect(observation.argv).toEqual([observation.url, "literal $HOME `id` ; & |", "127.0.0.1", "127.0.0.1"]);
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
-      if (withProxy) expect(receipt.urls.native).toBe(`${withTls ? "https" : "http"}://native-${owner}.test.localhost`);
+      if (withProxy) expect(receipt.urls.native).toBe(`${withTls ? "https" : "http"}://${resolveLocalHostname(undefined, "native", "endpoint-fixture", owner, ".test.localhost")}`);
       await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       config.profiles.default.environment = { MODE: "profile", PROFILE_ONLY: "second" };
