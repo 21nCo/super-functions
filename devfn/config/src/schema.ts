@@ -14,9 +14,9 @@ import type {
   RuntimePrerequisite,
 } from "./types.js";
 import { DevFnConfigError } from "./errors.js";
+import { isCredentialKey } from "./credentials.js";
 
 type RecordValue = Record<string, unknown>;
-const SENSITIVE_KEY = /(authorization|token|secret|password|cookie|api[-_]?key|session[-_]?id|access[-_]?key|refresh[-_]?token)/i;
 
 function fail(message: string, field?: string): never {
   throw new DevFnConfigError("DEVFN_CONFIG_INVALID", message, field);
@@ -154,9 +154,9 @@ function environmentFields(input: RecordValue, field: string, allowHost = false)
   const secretEnv = stringArray(input.secretEnv, `${field}.secretEnv`);
   for (const key of envAllowlist ?? []) environmentKey(key, `${field}.envAllowlist`, allowHost);
   for (const key of secretEnv ?? []) environmentKey(key, `${field}.secretEnv`, allowHost);
-  for (const key of Object.keys(env ?? {})) if (SENSITIVE_KEY.test(key)) fail(`${field}.env.${key} must not contain a literal secret; inherit it through envAllowlist and declare it in secretEnv.`, `${field}.env.${key}`);
+  for (const key of Object.keys(env ?? {})) if (isCredentialKey(key)) fail(`${field}.env.${key} must not contain a literal secret; inherit it through envAllowlist and declare it in secretEnv.`, `${field}.env.${key}`);
   for (const key of secretEnv ?? []) if (!envAllowlist?.includes(key)) fail(`${field}.secretEnv contains ${key}, which is not present in envAllowlist.`, `${field}.secretEnv`);
-  for (const key of envAllowlist ?? []) if (SENSITIVE_KEY.test(key) && !secretEnv?.includes(key)) fail(`${field}.envAllowlist contains sensitive key ${key}; declare it in secretEnv for log redaction.`, `${field}.envAllowlist`);
+  for (const key of envAllowlist ?? []) if (isCredentialKey(key) && !secretEnv?.includes(key)) fail(`${field}.envAllowlist contains sensitive key ${key}; declare it in secretEnv for log redaction.`, `${field}.envAllowlist`);
   return { ...(env ? { env } : {}), ...(envAllowlist ? { envAllowlist } : {}), ...(secretEnv ? { secretEnv } : {}) };
 }
 
@@ -214,7 +214,7 @@ function profileSpec(value: unknown, field: string): ProfileSpec {
   const input = record(value, field);
   const environment = stringMap(input.environment, `${field}.environment`);
   const proxy = optionalBoolean(input.proxy, `${field}.proxy`);
-  for (const key of Object.keys(environment ?? {})) if (SENSITIVE_KEY.test(key)) fail(`${field}.environment.${key} must not contain a secret. Use process envAllowlist and secretEnv.`, `${field}.environment.${key}`);
+  for (const key of Object.keys(environment ?? {})) if (isCredentialKey(key)) fail(`${field}.environment.${key} must not contain a secret. Use process envAllowlist and secretEnv.`, `${field}.environment.${key}`);
   return {
     ...(stringArray(input.processes, `${field}.processes`) ? { processes: stringArray(input.processes, `${field}.processes`) } : {}),
     ...(stringArray(input.services, `${field}.services`) ? { services: stringArray(input.services, `${field}.services`) } : {}),

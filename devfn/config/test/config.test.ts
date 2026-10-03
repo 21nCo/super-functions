@@ -59,6 +59,27 @@ describe("DevFn configuration", () => {
     expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: ["API_TOKEN"], secretEnv: ["API_TOKEN"] } } }).processes?.app.secretEnv).toEqual(["API_TOKEN"]);
   });
 
+  it("rejects qualified credential literals consistently while allowing declared host secrets", () => {
+    const marker = "synthetic-sentinel";
+    const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
+    for (const key of ["DB_PRIVATE_KEY", "DB_CREDENTIALS", "DB_PASSWD", "DB_PWD"]) {
+      for (const location of ["profile", "process", "service"] as const) {
+        const config = location === "profile"
+          ? { ...base, profiles: { default: { environment: { [key]: marker } } } }
+          : location === "process"
+            ? { ...base, processes: { app: { adapter: "command", command: ["node"], env: { [key]: marker } } } }
+            : { ...base, services: { app: { adapter: "compose", service: "app", env: { [key]: marker } } } };
+        let message = "";
+        try { validateDevFnConfig(config); } catch (error) { message = (error as Error).message; }
+        expect(message).toMatch(/secret/);
+        expect(message).not.toContain(marker);
+      }
+      expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: [key] } } })).toThrow(/secretEnv/);
+      expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: [key], secretEnv: [key] } } }).processes?.app.secretEnv).toEqual([key]);
+      expect(validateDevFnConfig({ ...base, services: { app: { adapter: "compose", service: "app", envAllowlist: [key], secretEnv: [key] } } }).services?.app.secretEnv).toEqual([key]);
+    }
+  });
+
   it("requires an implicit default profile and private output modes", () => {
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, profiles: { one: {} } })).toThrow(/profiles.default/);
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, profiles: { default: {} }, environmentOutputs: [{ path: ".devfn/out", mode: 0o644 }] })).toThrow(/group or other/);
