@@ -1,0 +1,89 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M41SYR5YR2R630DREDA4S93W",
+  "session_id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-03T21:15:40.519051Z",
+  "branch": "linear/dev-4",
+  "checkpoints_count": 2,
+  "save_step_count": 4,
+  "files_touched": [],
+  "agent": "Pi",
+  "model": "gpt-6.1-sol",
+  "turn_id": "07702349b530",
+  "checkpoint_transcript_start": 5707,
+  "transcript_lines_at_start": 5707,
+  "compact_transcript_start": 2238,
+  "token_usage": {
+    "input_tokens": 31801,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1662336,
+    "output_tokens": 22000,
+    "api_call_count": 12
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "pi-skill-use-skillplane-2026-09-30T11:47:31.905Z-0",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "use-skillplane"
+      },
+      "source": {
+        "agent": "pi",
+        "signal": "input_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "82601ad0e239",
+      "timestamp": "2026-09-30T11:47:31.905Z",
+      "native": {
+        "command": "/skill:use-skillplane"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/skill:use-skillplane",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 47
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
