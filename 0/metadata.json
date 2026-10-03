@@ -1,0 +1,57 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M40HRZMZ94EP5RV03J1BEE83",
+  "session_id": "01a0f22f-b24e-713b-8baf-f6c8caffc2b4",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-03T09:33:27.592754Z",
+  "branch": "omr/upstream",
+  "checkpoints_count": 4,
+  "save_step_count": 2,
+  "files_touched": [
+    "mcpfn/docs/scripts/generate-llms.mjs",
+    "mcpfn/docs/src/routes/docs/[...slug]/+page.server.ts",
+    "scripts/docs-site/llms.mjs"
+  ],
+  "agent": "Pi",
+  "model": "gpt-6.1-sol",
+  "turn_id": "41e3d126977e",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 119769,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2220416,
+    "output_tokens": 7056,
+    "api_call_count": 36
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-03T09:33:27.568263Z",
+    "agent_lines": 0,
+    "agent_removed": 2,
+    "human_added": 2736,
+    "human_modified": 129,
+    "human_removed": 0,
+    "total_committed": 2745,
+    "total_lines_changed": 25958,
+    "agent_percentage": 0.007704753833115033,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 9,
+      "agent_lines_removed": 2
+    }
+  ]
+}
