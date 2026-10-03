@@ -1,0 +1,14 @@
+{
+  "title": "BotFn",
+  "pages": [
+    "index",
+    "getting-started",
+    "discord-bot",
+    "slack-bot",
+    "persistence",
+    "integrations",
+    "admin",
+    "operations-and-limits",
+    "reference"
+  ]
+}
