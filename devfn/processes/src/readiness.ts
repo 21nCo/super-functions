@@ -60,13 +60,14 @@ async function readLogWindow(logPath: string): Promise<string> {
   } finally { await handle.close(); }
 }
 
-function resolveHttpUrl(health: Extract<HealthCheck, { type: "http" }>, input: ReadinessInput): string {
-  const port = health.port ? input.ports[health.port] : undefined;
+/** Resolve the endpoint used by startup and later readiness probes. */
+export function resolveHttpReadinessUrl(health: Extract<HealthCheck, { type: "http" }>, ports: Readonly<Record<string, number>>): string {
+  const port = health.port ? ports[health.port] : undefined;
   const configured = health.url ? new URL(health.url) : undefined;
   if (configured && configured.protocol !== "http:" && configured.protocol !== "https:") throw new Error("HTTP readiness URL must use http or https.");
   // A leased port is reachable before any proxy route is installed. Retain the
   // configured path and query while replacing only the unavailable origin.
-  let url = port === undefined ? (health.url ?? "") : `http://127.0.0.1:${port}${configured ? `${configured.pathname}${configured.search}${configured.hash}` : (health.path ?? "/")}`;
+  let url = port === undefined ? (health.url ?? "") : `${configured?.protocol ?? "http:"}//127.0.0.1:${port}${configured ? `${configured.pathname}${configured.search}${configured.hash}` : (health.path ?? "/")}`;
   if (health.url && health.path) {
     const parsed = new URL(url);
     const baseSearch = parsed.search;
@@ -86,7 +87,7 @@ function resolveHttpUrl(health: Extract<HealthCheck, { type: "http" }>, input: R
 }
 
 async function httpReady(health: Extract<HealthCheck, { type: "http" }>, input: ReadinessInput, timeoutMs: number): Promise<boolean> {
-  const url = resolveHttpUrl(health, input);
+  const url = resolveHttpReadinessUrl(health, input.ports);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try { return (await fetch(url, { signal: controller.signal })).status === (health.expectedStatus ?? 200); }
@@ -148,7 +149,7 @@ export async function waitForReadiness(input: ReadinessInput): Promise<void> {
     throw new ProcessError("DEVFN_PROCESS_NOT_READY", `Readiness check references unallocated port ${input.health.port}.`);
   }
   if (input.health.type === "http") {
-    try { resolveHttpUrl(input.health, input); }
+    try { resolveHttpReadinessUrl(input.health, input.ports); }
     catch (error) { throw new ProcessError("DEVFN_PROCESS_NOT_READY", "Invalid HTTP readiness configuration.", { cause: error instanceof Error ? error.message : String(error) }); }
   }
   while (Date.now() < deadline) {

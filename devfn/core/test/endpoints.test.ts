@@ -54,6 +54,62 @@ describe("endpoint and template contract", () => {
     expect(result.nodes.worker.healthCommand).toEqual(["node", "probe.mjs", "4102"]);
   });
 
+  it("uses the native loopback bind values in environment, argv and command health", () => {
+    const config = fixture();
+    config.processes!.worker.env = { ...config.processes!.worker.env, BIND: "{{env.HOST}}:{{env.DEVFN_HOST}}" };
+    config.processes!.worker.command = ["node", "{{env.HOST}}", "{{env.DEVFN_HOST}}", "{{env.BIND}}"];
+    config.processes!.worker.health = { type: "command", command: ["node", "{{env.HOST}}", "{{env.DEVFN_HOST}}"] };
+    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    expect(resolved.nodes.worker.environment).toMatchObject({ HOST: "127.0.0.1", DEVFN_HOST: "127.0.0.1", BIND: "127.0.0.1:127.0.0.1" });
+    expect(resolved.nodes.worker.command).toEqual(["node", "127.0.0.1", "127.0.0.1", "127.0.0.1:127.0.0.1"]);
+    expect(resolved.nodes.worker.healthCommand).toEqual(["node", "127.0.0.1", "127.0.0.1"]);
+    expect(resolved.environment).not.toHaveProperty("HOST");
+  });
+
+  it("publishes the scheme of an explicitly direct HTTPS health endpoint", () => {
+    const config = fixture();
+    config.processes!.api.health = { type: "http", port: "api", url: "https://api.localhost/health?ready=1" };
+    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    expect(resolved.directUrls.api).toBe("https://127.0.0.1:4101");
+    expect(resolved.nodes.worker.environment.UPSTREAM).toBe("https://127.0.0.1:4101/work");
+  });
+
+  it("keeps a leased-port health probe direct when its URL names a selected route", () => {
+    const config = fixture();
+    config.profiles.default.proxy = true;
+    config.hostnames = { api: { target: "api", hostname: "api.localhost" } };
+    config.processes!.api.health = { type: "http", port: "api", url: "http://api.localhost/health?ready=1" };
+    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    expect(resolved.directUrls.api).toBe("http://127.0.0.1:4101");
+  });
+
+  it("recognizes a selected URL-only route with a policy hostname suffix", () => {
+    const config = fixture();
+    config.profiles.default.proxy = true;
+    config.hostnames = { api: { target: "api" } };
+    config.processes!.api.health = { type: "http", url: "http://api-owner.test.localhost/health" };
+    expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 }, hostnameSuffix: ".test.localhost" }))
+      .toThrow(/URL-only readiness cannot wait for a selected proxy route/);
+  });
+
+  it("rejects URL-only readiness on a selected proxy route before state creation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-route-health-"));
+    const stateDir = path.join(root, "state");
+    try {
+      for (const kind of ["process", "service"] as const) {
+        const config = validateDevFnConfig({
+          version: 1, project: { id: "route-health" }, ports: { api: {} },
+          ...(kind === "process" ? { processes: { api: { adapter: "command", command: ["node", "api.mjs"], ports: ["api"], health: { type: "http", url: "http://api.localhost/health" } } } }
+            : { services: { api: { adapter: "compose", service: "api", ports: { api: 8080 }, health: { type: "http", url: "http://api.localhost./health" } } } }),
+          profiles: { default: { proxy: true, ...(kind === "process" ? { processes: ["api"] } : { services: ["api"] }) } },
+          hostnames: { api: { target: "api", hostname: "api.localhost" } },
+        });
+        await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toThrow(/URL-only readiness cannot wait for a selected proxy route/);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("rejects missing, cyclic, secret, malformed and empty argv references before state creation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-invalid-endpoint-"));
     const stateDir = path.join(root, "state");

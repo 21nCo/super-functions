@@ -11,7 +11,7 @@ import { checkReadinessNow, createProcessEnvironment, ProcessSupervisor, process
 import { CaddyProxyController, type ProxyRoute } from "@devfn/proxy";
 
 import { resolveInstanceIdentity } from "./identity.js";
-import { resolveEndpointTemplates } from "./endpoints.js";
+import { resolveEndpointTemplates, resolveLocalHostname } from "./endpoints.js";
 import { createPlan } from "./planner.js";
 import { readReceipt, secureRuntimeDirectory, writeEnvironmentOutputs, writeReceipt } from "./runtime.js";
 import { DevFnError, type CleanupResult, type InstanceIdentity, type LifecycleReceipt, type UpOptions } from "./types.js";
@@ -60,12 +60,12 @@ export function hasRecordedProcessOwner(allocations: readonly PortAllocation[], 
   return allocations.some((allocation) => allocation.projectId === projectId && allocation.instanceId === instanceId && allocation.state === "active" && allocation.process !== undefined && allocation.protocol === protocol && localProcessPorts.get(allocation.service) === protocol);
 }
 
-export function resolveAllocationUrls(allocations: readonly PortAllocation[], routes: readonly ProxyRoute[], httpPorts: ReadonlySet<string>): Record<string, string> {
+export function resolveAllocationUrls(allocations: readonly PortAllocation[], routes: readonly ProxyRoute[], httpPorts: ReadonlySet<string>, directUrls: Readonly<Record<string, string>> = {}): Record<string, string> {
   const urls: Record<string, string> = {};
   for (const allocation of allocations) {
     const route = allocation.protocol === "tcp" ? routes.find((item) => item.targetPort === allocation.port) : undefined;
     if (route) urls[allocation.service] = `${route.tls === "internal" ? "https" : "http"}://${route.hostname}`;
-    else if (allocation.protocol === "tcp" && httpPorts.has(allocation.service)) urls[allocation.service] = `http://127.0.0.1:${allocation.port}`;
+    else if (allocation.protocol === "tcp" && httpPorts.has(allocation.service)) urls[allocation.service] = directUrls[allocation.service] ?? `http://127.0.0.1:${allocation.port}`;
   }
   return urls;
 }
@@ -126,12 +126,6 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
   return processReady.every(Boolean) && serviceReady.every(Boolean);
 }
 
-function hostname(configured: string | undefined, key: string, projectId: string, instanceId: string, suffix = ".localhost"): string {
-  const result = (configured ?? `${key}-{instance}${suffix}`).replaceAll("{instance}", instanceId).replaceAll("{project}", projectId);
-  if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(result)) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Local hostname ${result} must be a concrete .localhost name.`);
-  return result;
-}
-
 export class DevFnOrchestrator {
   public async up(options: UpOptions): Promise<LifecycleReceipt> {
     validateDevFnConfig(options.config);
@@ -143,13 +137,14 @@ export class DevFnOrchestrator {
     }
     const requestedStateDir = options.stateDir ?? defaultStateDir();
     const identity = await resolveInstanceIdentity(options.config.project.id, options.root);
-    resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, ports: Object.fromEntries(plan.portNames.map((name) => [name, 1])) });
+    const loadedPolicy = await loadDevFnPolicy(options.root, options.config.policy);
+    resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, ports: Object.fromEntries(plan.portNames.map((name) => [name, 1])), hostnameSuffix: loadedPolicy?.policy.hostnameSuffix });
     await mkdir(requestedStateDir, { recursive: true, mode: 0o700 });
     const stateDir = await realpath(requestedStateDir);
-    return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => await this.upLocked(options, stateDir, identity), { timeoutMs: 30_000 });
+    return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => await this.upLocked(options, stateDir, identity, loadedPolicy), { timeoutMs: 30_000 });
   }
 
-  private async upLocked(options: UpOptions, stateDir: string, identity: InstanceIdentity): Promise<LifecycleReceipt> {
+  private async upLocked(options: UpOptions, stateDir: string, identity: InstanceIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>): Promise<LifecycleReceipt> {
     const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
     const existing = await readReceipt(options.config, options.root, identity.instanceId);
     if (existing && existing.state !== "stopped") {
@@ -176,11 +171,10 @@ export class DevFnOrchestrator {
     }
     const invocationId = randomUUID();
     const runtimeDir = await secureRuntimeDirectory(options.config, options.root, identity.instanceId);
-    const loadedPolicy = await loadDevFnPolicy(options.root, options.config.policy);
     const policy = resolvePolicy(loadedPolicy?.policy ?? null, options.config.project.id);
     const suffix = loadedPolicy?.policy.hostnameSuffix ?? ".localhost";
     const profileHostnames = Object.entries(options.config.hostnames ?? {}).filter(([, spec]) => !spec.profiles || spec.profiles.includes(plan.profile));
-    const configuredHostnames = Object.fromEntries(profileHostnames.map(([name, spec]) => [spec.target, hostname(spec.hostname, name, options.config.project.id, identity.instanceId, suffix)]));
+    const configuredHostnames = Object.fromEntries(profileHostnames.map(([name, spec]) => [spec.target, resolveLocalHostname(spec.hostname, name, options.config.project.id, identity.instanceId, suffix)]));
     const allocations = await registry.reserve({
       projectId: options.config.project.id,
       instanceId: identity.instanceId,
@@ -190,7 +184,7 @@ export class DevFnOrchestrator {
       ...policy,
     });
     const ports = Object.fromEntries(allocations.map((item) => [item.service, item.port]));
-    const resolved = resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, ports });
+    const resolved = resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, ports, hostnameSuffix: suffix });
     const environment = resolved.environment;
     const receipt: LifecycleReceipt = {
       version: 1, projectId: options.config.project.id, instanceId: identity.instanceId, invocationId, profile: plan.profile,
@@ -247,7 +241,7 @@ export class DevFnOrchestrator {
       if (plan.proxy) {
         const routes = profileHostnames.map(([name, spec]) => ({
           id: `${identity.instanceId}:${name}`, instanceId: identity.instanceId,
-          hostname: hostname(spec.hostname, name, options.config.project.id, identity.instanceId, suffix), targetHost: "127.0.0.1", targetPort: ports[spec.target], tls: spec.tls ?? "off",
+          hostname: resolveLocalHostname(spec.hostname, name, options.config.project.id, identity.instanceId, suffix), targetHost: "127.0.0.1", targetPort: ports[spec.target], tls: spec.tls ?? "off",
         }));
         receipt.routes = await proxy.upsert(routes);
       }
@@ -256,7 +250,7 @@ export class DevFnOrchestrator {
         const health = node.kind === "process" ? options.config.processes?.[node.name]?.health : options.config.services?.[node.name]?.health;
         if (health?.type === "http" && health.port) httpPorts.add(health.port);
       }
-      receipt.urls = resolveAllocationUrls(allocations, receipt.routes, httpPorts);
+      receipt.urls = resolveAllocationUrls(allocations, receipt.routes, httpPorts, resolved.directUrls);
       const owners: Record<string, { process?: PortAllocation["process"]; container?: PortAllocation["container"] }> = {};
       for (const process of receipt.processes) for (const name of options.config.processes?.[process.name]?.ports ?? []) owners[name] = { process: { pid: process.pid, ...(process.birthSignature ? { birthSignature: process.birthSignature } : {}) } };
       for (const service of receipt.services) for (const name of Object.keys(options.config.services?.[service.name]?.ports ?? {})) owners[name] = { container: { id: service.containerIds[0], name: service.composeService, ...(service.dockerEnvironment !== undefined ? { dockerEnvironment: service.dockerEnvironment } : {}) } };

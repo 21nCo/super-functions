@@ -30,6 +30,11 @@ describe("orchestrator listener ownership", () => {
     expect(resolveAllocationUrls([allocation, udp], [route], new Set())).toEqual({ web: "http://web.localhost" });
   });
 
+  it("keeps a direct HTTPS URL in the public receipt when no route is installed", () => {
+    const allocation = { service: "web", protocol: "tcp", port: 4100 } as PortAllocation;
+    expect(resolveAllocationUrls([allocation], [], new Set(["web"]), { web: "https://127.0.0.1:4100" })).toEqual({ web: "https://127.0.0.1:4100" });
+  });
+
   it("rejects undeclared public listeners owned by a local process", async () => {
     await expect(verifyOwnedLoopbackListeners("app", [], process.pid, {
       listeners: [{ protocol: "tcp", host: "0.0.0.0", port: 4100, pid: process.pid, source: "os" }],

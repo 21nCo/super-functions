@@ -5,11 +5,28 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { validateDevFnConfig } from "@devfn/config";
+import { proxyOwnerStatus } from "@devfn/proxy";
 import { describe, expect, it } from "vitest";
 
 import { DevFnOrchestrator } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
+
+async function stopFixtureProxy(stateDir: string): Promise<void> {
+  const raw = await readFile(path.join(stateDir, "proxy-owner.json"), "utf8").catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return undefined;
+    throw error;
+  });
+  if (!raw) return;
+  const owner = JSON.parse(raw) as { pid: number; birthSignature?: string };
+  if (await proxyOwnerStatus(owner) !== "active") return;
+  try { process.kill(owner.pid, "SIGTERM"); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+  for (let attempt = 0; attempt < 20 && await proxyOwnerStatus(owner) === "active"; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  if (await proxyOwnerStatus(owner) === "active") throw new Error(`Fixture Caddy process ${owner.pid} did not stop.`);
+}
 
 const serverScript = `import { createServer } from "node:http";
 import { writeFile } from "node:fs/promises";
@@ -22,6 +39,7 @@ await writeFile(process.env.OBSERVED_FILE, JSON.stringify({
   mode: process.env.MODE,
   argv: process.argv.slice(2),
   host: process.env.HOST,
+  devfnHost: process.env.DEVFN_HOST,
 }));
 if (process.env.SECRET_TOKEN) console.log(process.env.SECRET_TOKEN);
 createServer((request, response) => { response.writeHead(!process.env.EXPECTED_HEALTH_PATH || request.url === process.env.EXPECTED_HEALTH_PATH ? 200 : 404); response.end("ok"); })
@@ -30,6 +48,7 @@ createServer((request, response) => { response.writeHead(!process.env.EXPECTED_H
 
 describe("real local startup fixtures", () => {
   it("passes resolved URL, port and literal argv to a native process before readiness", async () => {
+    const withProxy = process.env.DEVFN_REAL_PROXY === "1";
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-native-endpoint-"));
     const observed = path.join(root, "observed.json");
     const originalSecret = process.env.SECRET_TOKEN;
@@ -39,12 +58,13 @@ describe("real local startup fixtures", () => {
       version: 1, project: { id: "endpoint-fixture" },
       ports: { native: {} },
       processes: { native: {
-        adapter: "command", command: [process.execPath, "server.mjs", "{{env.DEVFN_URL_NATIVE}}", "literal $HOME `id` ; & |"],
-        ports: ["native"], health: { type: "http", port: "native", url: "http://route-not-yet-installed.localhost/health?probe=1", timeoutMs: 15_000 },
+        adapter: "command", command: [process.execPath, "server.mjs", "{{env.DEVFN_URL_NATIVE}}", "literal $HOME `id` ; & |", "{{env.HOST}}", "{{env.DEVFN_HOST}}"],
+        ports: ["native"], health: { type: "http", port: "native", url: `http://${withProxy ? "native.localhost" : "route-not-yet-installed.localhost"}/health?probe=1`, timeoutMs: 15_000 },
         env: { OBSERVED_FILE: observed, UPSTREAM_URL: "{{env.DEVFN_URL_NATIVE}}", EXPECTED_HEALTH_PATH: "/health?probe=1", MODE: "node" },
         envAllowlist: ["SECRET_TOKEN"], secretEnv: ["SECRET_TOKEN"],
       } },
-      profiles: { default: { processes: ["native"], environment: { MODE: "profile" } } },
+      profiles: { default: { processes: ["native"], environment: { MODE: "profile" }, proxy: withProxy } },
+      ...(withProxy ? { hostnames: { native: { target: "native", hostname: "native.localhost" } } } : {}),
     });
     await writeFile(path.join(root, "server.mjs"), serverScript);
     const orchestrator = new DevFnOrchestrator();
@@ -53,9 +73,10 @@ describe("real local startup fixtures", () => {
       const receipt = await orchestrator.up({ config, root, stateDir: path.join(root, "state") });
       started = true;
       const observation = JSON.parse(await readFile(observed, "utf8"));
-      expect(observation).toMatchObject({ port: String(receipt.allocations[0].port), url: `http://127.0.0.1:${receipt.allocations[0].port}`, host: "127.0.0.1", mode: "node" });
-      expect(observation.argv).toEqual([observation.url, "literal $HOME `id` ; & |"]);
+      expect(observation).toMatchObject({ port: String(receipt.allocations[0].port), url: `http://127.0.0.1:${receipt.allocations[0].port}`, host: "127.0.0.1", devfnHost: "127.0.0.1", mode: "node" });
+      expect(observation.argv).toEqual([observation.url, "literal $HOME `id` ; & |", "127.0.0.1", "127.0.0.1"]);
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      if (withProxy) expect(receipt.urls.native).toBe("http://native.localhost");
       await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       expect(await readFile(receipt.environmentOutputs[0], "utf8")).toContain(`DEVFN_URL_NATIVE=http://127.0.0.1:${receipt.allocations[0].port}`);
@@ -63,6 +84,7 @@ describe("real local startup fixtures", () => {
       expect(await readFile(receipt.processes[0].logPath, "utf8")).not.toContain(secret);
     } finally {
       if (started) await orchestrator.down({ config, root, stateDir: path.join(root, "state") });
+      if (withProxy) await stopFixtureProxy(path.join(root, "state"));
       if (originalSecret === undefined) delete process.env.SECRET_TOKEN;
       else process.env.SECRET_TOKEN = originalSecret;
       await rm(root, { recursive: true, force: true });
@@ -70,6 +92,7 @@ describe("real local startup fixtures", () => {
   }, 40_000);
 
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("passes resolved values to Compose interpolation and wires a native dependent to its leased endpoint", async () => {
+    const withProxy = process.env.DEVFN_REAL_PROXY === "1";
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-endpoint-"));
     const observed = path.join(root, "observed");
     await mkdir(observed);
@@ -95,9 +118,10 @@ createServer((request, response) => { response.writeHead(request.url === "/healt
     const config = validateDevFnConfig({
       version: 1, project: { id: "compose-endpoint-fixture" },
       ports: { web: {}, native: {} },
-      services: { web: { adapter: "compose", service: "web", ports: { web: 8080 }, health: { type: "http", port: "web", url: "http://route-not-yet-installed.localhost/health?probe=1", timeoutMs: 30_000 }, env: { MODE: "service" } } },
+      services: { web: { adapter: "compose", service: "web", ports: { web: 8080 }, health: { type: "http", port: "web", url: `http://${withProxy ? "web.localhost" : "route-not-yet-installed.localhost"}/health?probe=1`, timeoutMs: 30_000 }, env: { MODE: "service" } } },
       processes: { native: { adapter: "command", command: [process.execPath, "server.mjs", "{{env.DEVFN_URL_WEB}}"], ports: ["native"], dependsOn: ["web"], health: { type: "http", port: "native", timeoutMs: 30_000 }, env: { OBSERVED_FILE: path.join(root, "native.json"), UPSTREAM_URL: "{{env.DEVFN_URL_WEB}}", MODE: "node" } } },
-      profiles: { default: { processes: ["native"], environment: { MODE: "profile" } } },
+      profiles: { default: { processes: ["native"], environment: { MODE: "profile" }, proxy: withProxy } },
+      ...(withProxy ? { hostnames: { web: { target: "web", hostname: "web.localhost" } } } : {}),
     });
     const orchestrator = new DevFnOrchestrator();
     let started = false;
@@ -114,8 +138,12 @@ createServer((request, response) => { response.writeHead(request.url === "/healt
       expect(native.upstream).toBe(web.url);
       expect(native.mode).toBe("node");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      if (withProxy) expect(receipt.urls.web).toBe("http://web.localhost");
+      await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
     } finally {
       if (started) await orchestrator.down({ config, root, stateDir: path.join(root, "state") });
+      if (withProxy) await stopFixtureProxy(path.join(root, "state"));
       if (composeProjectName) await execFileAsync("docker", ["network", "rm", `${composeProjectName}_default`]);
       await rm(root, { recursive: true, force: true });
     }
