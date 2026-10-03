@@ -1,5 +1,5 @@
 export { DevFnConfigError, type ConfigErrorCode } from "./errors.js";
-export { isCredentialKey } from "./credentials.js";
+export { isCredentialKey, assertEnvironmentKeyCasing } from "./credentials.js";
 export { discoverProject, renderDevFnConfig } from "./discovery.js";
 export { DEVFN_CONFIG_CANDIDATES, findDevFnRoot, loadDevFnConfig, loadDevFnPolicy, loadTrustedDevFnConfig, resolveDevFnManifestPath } from "./load.js";
 export { resolveContainedPath } from "./paths.js";

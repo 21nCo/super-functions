@@ -4,7 +4,7 @@ import { mkdir, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { ComposeController, createComposeEnvironment, type ManagedComposeService } from "@devfn/compose";
+import { ComposeController, createComposeEnvironment, fingerprintComposeSource, type ManagedComposeService } from "@devfn/compose";
 import { defaultStateDir, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
 import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, resolveAdapterCommand, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
@@ -49,7 +49,7 @@ function resolvedHealth(health: HealthCheck | undefined, command: string[] | und
   return health;
 }
 
-function startupFingerprints(config: DevFnConfig, resolved: ReturnType<typeof resolveEndpointTemplates>): Record<string, string> {
+async function startupFingerprints(config: DevFnConfig, root: string, resolved: ReturnType<typeof resolveEndpointTemplates>): Promise<Record<string, string>> {
   const fingerprints: Record<string, string> = {};
   for (const [name, node] of Object.entries(resolved.nodes)) {
     const processSpec = config.processes?.[name];
@@ -63,10 +63,12 @@ function startupFingerprints(config: DevFnConfig, resolved: ReturnType<typeof re
       };
     } else if (serviceSpec) {
       const spec = { ...serviceSpec, env: node.environment };
+      const environment = createComposeEnvironment(spec, node.environment);
       startup = {
         kind: "service", file: serviceSpec.file ?? "compose.yaml", service: serviceSpec.service,
         projectName: serviceSpec.projectName ?? "devfn", ports: serviceSpec.ports ?? {},
-        environment: Object.entries(createComposeEnvironment(spec, node.environment)).sort(([a], [b]) => a.localeCompare(b)),
+        environment: Object.entries(environment).sort(([a], [b]) => a.localeCompare(b)),
+        source: await fingerprintComposeSource(spec, root, resolved.ownerId, environment),
       };
     } else continue;
     fingerprints[name] = createHash("sha256").update(JSON.stringify(startup)).digest("hex");
@@ -133,7 +135,7 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
       plan.nodes.some((node) => !(node.kind === "process" ? receipt.processes : receipt.services).some((managed) => managed.name === node.name))) return false;
     const loadedPolicy = await loadDevFnPolicy(root, config.policy);
     resolved = resolveEndpointTemplates({ config, plan, ownerId: receipt.instanceId, ports, hostnameSuffix: loadedPolicy?.policy.hostnameSuffix });
-    const current = startupFingerprints(config, resolved);
+    const current = await startupFingerprints(config, root, resolved);
     if (!receipt.startupFingerprints || Object.keys(current).length !== Object.keys(receipt.startupFingerprints).length ||
       Object.entries(current).some(([name, fingerprint]) => receipt.startupFingerprints?.[name] !== fingerprint)) return false;
   } catch { return false; }
@@ -225,11 +227,17 @@ export class DevFnOrchestrator {
     const ports = Object.fromEntries(allocations.map((item) => [item.service, item.port]));
     const resolved = resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, ports, hostnameSuffix: suffix });
     const environment = resolved.environment;
+    let fingerprints: Record<string, string>;
+    try { fingerprints = await startupFingerprints(options.config, options.root, resolved); }
+    catch (error) {
+      await registry.release({ invocationId, errorCode: "DEVFN_STARTUP_FINGERPRINT_FAILED" });
+      throw error;
+    }
     const receipt: LifecycleReceipt = {
       version: 1, projectId: options.config.project.id, instanceId: identity.instanceId, invocationId, profile: plan.profile,
       state: "starting", root: options.root, runtimeDir, stateDir: path.resolve(stateDir), startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       allocations, processes: [], services: [], startedNodes: [], routes: [], urls: {}, environmentOutputs: [],
-      startupFingerprints: startupFingerprints(options.config, resolved),
+      startupFingerprints: fingerprints,
     };
     try {
       await registry.updateInvocation(invocationId, { state: "starting" });

@@ -62,7 +62,7 @@ describe("DevFn configuration", () => {
   it("rejects qualified credential literals consistently while allowing declared host secrets", () => {
     const marker = "synthetic-sentinel";
     const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
-    for (const key of ["DB_PRIVATE_KEY", "DB_CREDENTIALS", "DB_PASSWD", "DB_PWD", "DBPWD", "dbPwd", "DBAUTHKEY"]) {
+    for (const key of ["DB_PRIVATE_KEY", "DB_CREDENTIALS", "DB_PASSWD", "DB_PWD", "DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth"]) {
       for (const location of ["profile", "process", "service"] as const) {
         const config = location === "profile"
           ? { ...base, profiles: { default: { environment: { [key]: marker } } } }

@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
 import { isCredentialKey, validateDevFnConfig, type DevFnConfig } from "@devfn/config";
-import { resolveHttpReadinessUrl } from "@devfn/processes";
-import { composeProjectName } from "@devfn/compose";
+import { createProcessEnvironment, resolveHttpReadinessUrl } from "@devfn/processes";
+import { composeProjectName, createComposeEnvironment } from "@devfn/compose";
 
 import { DevFnError, type LifecyclePlan } from "./types.js";
 
@@ -295,6 +295,10 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
       if (!value.length) invalid(location, "argv value cannot be empty.");
       return value;
     }) : undefined;
+    try {
+      if (processSpec) createProcessEnvironment({ ...processSpec, env: nodeEnvironment.values });
+      else createComposeEnvironment({ ...config.services![node.name], env: nodeEnvironment.values });
+    } catch (error) { invalid(field, error instanceof Error ? error.message : "environment keys collide after case folding."); }
     nodes[node.name] = { environment: nodeEnvironment.values, readinessEnvironment: readinessEnvironment.values, ...(healthUrls.has(node.name) ? { healthUrl: healthUrls.get(node.name) } : {}), ...(command ? { command } : {}), ...(script ? { script } : {}), ...(healthCommand ? { healthCommand } : {}) };
   }
   return { ownerId, generated, environment: environment.values, directUrls, composeUrls, nodes };

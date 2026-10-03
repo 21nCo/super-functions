@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { resolveContainedPath, type ComposeServiceSpec } from "@devfn/config";
+import { assertEnvironmentKeyCasing, resolveContainedPath, type ComposeServiceSpec } from "@devfn/config";
 import { waitForReadiness } from "@devfn/processes";
 
 const execFileAsync = promisify(execFile);
@@ -63,9 +63,24 @@ export function composeProjectName(prefix: string, instanceId: string): string {
 
 export function createComposeEnvironment(spec: ComposeServiceSpec, generated: Record<string, string> = {}, source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const base = ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "XDG_RUNTIME_DIR", "SystemRoot", "ComSpec", "PATHEXT"];
+  assertEnvironmentKeyCasing(base, spec.envAllowlist ?? [], Object.keys(spec.env ?? {}), Object.keys(generated));
   const environment: NodeJS.ProcessEnv = {};
   for (const key of [...base, ...(spec.envAllowlist ?? [])]) if (source[key] !== undefined) environment[key] = source[key];
   return { ...environment, ...(spec.env ?? {}), ...generated };
+}
+
+/** Digest source bytes and Compose's effective interpolation without retaining values. */
+export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: string, instanceId: string, environment: NodeJS.ProcessEnv): Promise<string> {
+  const sourceFile = await resolveContainedPath(root, spec.file ?? "compose.yaml", `services.${spec.service}.file`);
+  const source = await readFile(sourceFile);
+  let effective: string;
+  try {
+    effective = (await execFileAsync("docker", ["compose", "-p", composeProjectName(spec.projectName ?? "devfn", instanceId),
+      "-f", sourceFile, "config", "--format", "json"], { cwd: root, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
+  } catch {
+    throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve effective Compose configuration for ${spec.service}.`);
+  }
+  return createHash("sha256").update(source).update("\0").update(effective).digest("hex");
 }
 
 const DOCKER_ENVIRONMENT_KEYS = ["DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"] as const;

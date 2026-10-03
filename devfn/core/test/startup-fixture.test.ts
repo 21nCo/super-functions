@@ -164,7 +164,7 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       expect(JSON.stringify(await readReceipt(config, root, owner))).not.toContain("synthetic-sentinel");
       expect(await readFile(receipt.environmentOutputs[0], "utf8")).not.toContain("synthetic-sentinel");
       expect(await readFile(receipt.processes[0].logPath, "utf8")).not.toContain("synthetic-sentinel");
-      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY"]) {
+      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth"]) {
         config.processes!.native.env![key] = "synthetic-sentinel";
         expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
         const failedRetry = await orchestrator.up({ config, root, stateDir: path.join(root, "state") }).then(() => "", (error: Error) => error.message);
@@ -304,7 +304,7 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
         const log = await execFileAsync("docker", ["logs", service.containerIds[0]]);
         expect(log.stdout + log.stderr).not.toContain("synthetic-sentinel");
       }
-      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY"]) {
+      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth"]) {
         config.services!.web.env![key] = "synthetic-sentinel";
         expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
         const failedRetry = await orchestrator.up({ config, root, stateDir: path.join(root, "state") }).then(() => "", (error: Error) => error.message);
@@ -327,6 +327,13 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
       const restarted = await orchestrator.up({ config, root, stateDir: path.join(root, "state") });
       expect(restarted.services[0].containerIds[0]).not.toBe(receipt.services[0].containerIds[0]);
       expect(JSON.parse(await readFile(path.join(observed, "web.json"), "utf8")).mode).toBe("service-next");
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      const composeFile = path.join(root, "compose.yaml");
+      await writeFile(composeFile, (await readFile(composeFile, "utf8")).replace('OBSERVED_MODE: "${MODE}"', 'OBSERVED_MODE: "source-next"'));
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+      const sourceRestarted = await orchestrator.up({ config, root, stateDir: path.join(root, "state") });
+      expect(sourceRestarted.services[0].containerIds[0]).not.toBe(restarted.services[0].containerIds[0]);
+      expect(JSON.parse(await readFile(path.join(observed, "web.json"), "utf8")).mode).toBe("source-next");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
     } finally {
       if (started) await orchestrator.down({ config, root, stateDir: path.join(root, "state") });

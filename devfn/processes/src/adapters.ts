@@ -1,4 +1,4 @@
-import type { ProcessSpec } from "@devfn/config";
+import { assertEnvironmentKeyCasing, type ProcessSpec } from "@devfn/config";
 
 export function resolveAdapterCommand(spec: ProcessSpec): string[] {
   const extra = spec.command ?? [];
@@ -20,6 +20,8 @@ export function resolveAdapterCommand(spec: ProcessSpec): string[] {
 const BASE_ENV = ["PATH", "SHELL", "HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "SystemRoot", "ComSpec", "PATHEXT"] as const;
 
 export function createProcessEnvironment(spec: ProcessSpec, generated: Record<string, string> = {}, source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  assertEnvironmentKeyCasing(BASE_ENV, spec.envAllowlist ?? [], Object.keys(spec.env ?? {}), Object.keys(generated),
+    spec.exposure === "public" ? [] : ["HOST", "DEVFN_HOST"], spec.adapter === "pnpm" ? ["COREPACK_ENABLE_NETWORK"] : []);
   const result: NodeJS.ProcessEnv = {};
   for (const key of [...BASE_ENV, ...(spec.envAllowlist ?? [])]) if (source[key] !== undefined) result[key] = source[key];
   Object.assign(result, spec.env ?? {}, generated);

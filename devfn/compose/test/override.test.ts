@@ -4,11 +4,30 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { ComposeController, composeProjectName, createComposeEnvironment, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
+import { ComposeController, composeProjectName, createComposeEnvironment, fingerprintComposeSource, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
 
 describe("ComposeController", () => {
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("fingerprints effective Compose command and env_file inputs", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-fingerprint-"));
+    const file = path.join(root, "compose.yaml");
+    const envFile = path.join(root, "service.env");
+    const spec = { adapter: "compose" as const, service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    try {
+      await writeFile(envFile, "MODE=first\n");
+      await writeFile(file, 'services:\n  api:\n    image: busybox\n    command: ["sleep", "10"]\n    env_file: service.env\n');
+      const first = await fingerprint();
+      expect(await fingerprint()).toBe(first);
+      await writeFile(envFile, "MODE=second\n");
+      const changedEnvironment = await fingerprint();
+      expect(changedEnvironment).not.toBe(first);
+      await writeFile(file, 'services:\n  api:\n    image: busybox\n    command: ["sleep", "20"]\n    env_file: service.env\n');
+      expect(await fingerprint()).not.toBe(changedEnvironment);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("keeps case-distinct opaque owners in separate stable Compose projects", () => {
     expect(composeProjectName("blue", "Owner")).not.toBe(composeProjectName("BLUE", "owner"));
     expect(composeProjectName("blue", "OWNER")).not.toBe(composeProjectName("blue", "owner-0559aadba9e2"));

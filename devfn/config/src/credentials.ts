@@ -12,8 +12,20 @@ export function isCredentialKey(name: string): boolean {
   // Qualified names include application prefixes and suffixes. Short labels
   // stay on token boundaries so ordinary names such as monkey remain valid.
   if ([...CREDENTIAL_KEYS].some((key) => key.length >= 5 && normalized.includes(key))) return true;
-  // PWD is also commonly written without a separator (DBPWD, dbPwd). KEY is
-  // too broad for that rule: MONKEY and similar ordinary names must survive.
-  if (normalized.length > 3 && normalized.endsWith("pwd")) return true;
+  // Compact qualified names appear in uppercase environment keys and camel
+  // case flags (DBKEY, DBAUTH, dbAuth). Keep lowercase words such as monkey.
+  if (normalized.length > 3 && ["pwd", "key", "auth"].some((key) => normalized.endsWith(key)) &&
+      (name === name.toUpperCase() || /[a-z][A-Z]/.test(name))) return true;
   return name.toLowerCase().split(/[^a-z0-9]+/).some((part) => CREDENTIAL_KEYS.has(part));
+}
+
+/** Reject keys that would alias on case-insensitive process environments. */
+export function assertEnvironmentKeyCasing(...groups: ReadonlyArray<Iterable<string>>): void {
+  const seen = new Map<string, string>();
+  for (const group of groups) for (const key of group) {
+    const folded = key.toUpperCase();
+    const previous = seen.get(folded);
+    if (previous && previous !== key) throw new Error(`Environment key ${key} collides with ${previous} after case folding.`);
+    seen.set(folded, key);
+  }
 }

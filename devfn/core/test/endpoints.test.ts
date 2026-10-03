@@ -313,7 +313,7 @@ describe("endpoint and template contract", () => {
     const stateDir = path.join(root, "state");
     const marker = "synthetic-sentinel";
     try {
-      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY"]) {
+      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth"]) {
         for (const location of ["argv", "query", "fragment", "health"] as const) {
           const config = fixture();
           if (location === "argv") config.processes!.worker.command = ["node", `--${key}=${marker}`];
@@ -492,5 +492,30 @@ describe("endpoint and template contract", () => {
     config.profiles.default.environment = { Mode: "profile" };
     config.processes!.worker.env = { MODE: "process" };
     expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/collides with profile environment key/);
+  });
+
+  it("rejects case-folded inherited and base keys before state mutation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-inherited-key-collision-"));
+    const stateDir = path.join(root, "state");
+    try {
+      for (const kind of ["process", "service"] as const) {
+        const config = fixture();
+        config.profiles.default.environment = { Mode: "profile" };
+        if (kind === "process") {
+          delete config.processes!.worker.env!.MODE;
+          config.processes!.worker.envAllowlist = ["MODE"];
+        }
+        else {
+          config.services = { web: { adapter: "compose", service: "web", envAllowlist: ["MODE"] } };
+          config.profiles.default.services = ["web"];
+        }
+        await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toThrow(/collides.*case folding/);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      const base = fixture();
+      base.profiles.default.environment = { Path: "alternate" };
+      await expect(new DevFnOrchestrator().up({ config: base, root, stateDir })).rejects.toThrow(/collides.*case folding/);
+      await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await rm(root, { recursive: true, force: true }); }
   });
 });
