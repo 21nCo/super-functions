@@ -13,6 +13,8 @@ export interface EndpointResolutionInput {
 export interface ResolvedNodeStartup {
   environment: Record<string, string>;
   command?: string[];
+  script?: string;
+  healthCommand?: string[];
 }
 
 export interface EndpointResolution {
@@ -32,8 +34,14 @@ function invalid(field: string, message: string): never {
   throw new DevFnError("DEVFN_RUNTIME_INVALID", `${field}: ${message}`);
 }
 
-function resolveValues(values: Record<string, string>, protectedValues: Readonly<Record<string, string>>, field: string): Record<string, string> {
-  const resolved: Record<string, string> = Object.assign(Object.create(null), protectedValues);
+function resolveValues(values: Record<string, string>, base: Readonly<Record<string, string>>, generated: Readonly<Record<string, string>>, field: string): Record<string, string> {
+  const resolved: Record<string, string> = Object.assign(Object.create(null), base);
+  const generatedKeys = new Map(Object.keys(generated).map((key) => [key.toUpperCase(), key]));
+  for (const key of Object.keys(values)) {
+    const generatedKey = generatedKeys.get(key.toUpperCase());
+    if (generatedKey && generatedKey !== key) invalid(`${field}.${key}`, `collides with generated environment key ${generatedKey}.`);
+    if (!generatedKey) delete resolved[key];
+  }
   const visiting = new Set<string>();
   const visit = (key: string): string => {
     if (Object.prototype.hasOwnProperty.call(resolved, key)) return resolved[key];
@@ -93,22 +101,32 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
       generated[`DEVFN_URL_${normalized(name)}`] = url;
     }
   }
-  const environment = resolveValues(profile.environment ?? {}, generated, `profiles.${plan.profile}.environment`);
+  const environment = resolveValues(profile.environment ?? {}, generated, generated, `profiles.${plan.profile}.environment`);
   const nodes: Record<string, ResolvedNodeStartup> = Object.create(null);
   for (const node of plan.nodes) {
     const spec = node.kind === "process" ? config.processes?.[node.name] : config.services?.[node.name];
     if (!spec) invalid(`nodes.${node.name}`, "selected node is missing.");
-    const nodeEnvironment = resolveValues({ ...environment, ...(spec.env ?? {}) }, generated, `${node.kind === "process" ? "processes" : "services"}.${node.name}.env`);
+    const field = `${node.kind === "process" ? "processes" : "services"}.${node.name}`;
+    const profileKeys = new Map(Object.keys(profile.environment ?? {}).map((key) => [key.toUpperCase(), key]));
+    for (const key of Object.keys(spec.env ?? {})) {
+      const profileKey = profileKeys.get(key.toUpperCase());
+      if (profileKey && profileKey !== key) invalid(`${field}.env.${key}`, `collides with profile environment key ${profileKey}.`);
+    }
+    const nodeEnvironment = resolveValues(spec.env ?? {}, environment, generated, `${field}.env`);
     const lookup = (key: string): string => {
-      if (!Object.prototype.hasOwnProperty.call(nodeEnvironment, key)) invalid(`processes.${node.name}.command`, `missing reference ${key}.`);
+      if (!Object.prototype.hasOwnProperty.call(nodeEnvironment, key)) invalid(field, `missing reference ${key}.`);
       return nodeEnvironment[key];
     };
-    const command = node.kind === "process" ? config.processes![node.name].command?.map((item, index) => {
-      const value = expand(item, `processes.${node.name}.command[${index}]`, lookup);
-      if (value.length === 0) invalid(`processes.${node.name}.command[${index}]`, "argv value cannot be empty.");
+    const argv = (item: string, location: string): string => {
+      const value = expand(item, location, lookup);
+      if (value.length === 0) invalid(location, "argv value cannot be empty.");
       return value;
-    }) : undefined;
-    nodes[node.name] = { environment: nodeEnvironment, ...(command ? { command } : {}) };
+    };
+    const processSpec = node.kind === "process" ? config.processes![node.name] : undefined;
+    const command = processSpec?.command?.map((item, index) => argv(item, `${field}.command[${index}]`));
+    const script = processSpec?.script !== undefined ? argv(processSpec.script, `${field}.script`) : undefined;
+    const healthCommand = spec.health?.type === "command" ? spec.health.command.map((item, index) => argv(item, `${field}.health.command[${index}]`)) : undefined;
+    nodes[node.name] = { environment: nodeEnvironment, ...(command ? { command } : {}), ...(script ? { script } : {}), ...(healthCommand ? { healthCommand } : {}) };
   }
   return { ownerId, generated, environment, directUrls, nodes };
 }

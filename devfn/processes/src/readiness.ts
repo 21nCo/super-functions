@@ -62,9 +62,13 @@ async function readLogWindow(logPath: string): Promise<string> {
 
 function resolveHttpUrl(health: Extract<HealthCheck, { type: "http" }>, input: ReadinessInput): string {
   const port = health.port ? input.ports[health.port] : undefined;
-  let url = health.url ?? `http://127.0.0.1:${port}${health.path ?? "/"}`;
+  const configured = health.url ? new URL(health.url) : undefined;
+  if (configured && configured.protocol !== "http:" && configured.protocol !== "https:") throw new Error("HTTP readiness URL must use http or https.");
+  // A leased port is reachable before any proxy route is installed. Retain the
+  // configured path and query while replacing only the unavailable origin.
+  let url = port === undefined ? (health.url ?? "") : `http://127.0.0.1:${port}${configured ? `${configured.pathname}${configured.search}${configured.hash}` : (health.path ?? "/")}`;
   if (health.url && health.path) {
-    const parsed = new URL(health.url);
+    const parsed = new URL(url);
     const baseSearch = parsed.search;
     const baseHash = parsed.hash;
     parsed.search = "";

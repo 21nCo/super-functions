@@ -27,6 +27,33 @@ describe("endpoint and template contract", () => {
     expect(result.nodes.worker.command).toEqual(["node", "worker.mjs", "http://127.0.0.1:4101/work", "literal $HOME `id` ; & |"]);
   });
 
+  it("keeps resolved profile references stable when a node overrides their source", () => {
+    const config = fixture();
+    config.profiles.default.environment = { MODE: "profile", PROFILE_MODE: "{{env.MODE}}" };
+    const result = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    expect(result.nodes.worker.environment).toMatchObject({ MODE: "process", PROFILE_MODE: "profile" });
+  });
+
+  it("keeps a generated port alias ahead of profile and node literals", () => {
+    const config = fixture();
+    config.ports!.api.env = "PORT";
+    config.profiles.default.environment = { PORT: "profile" };
+    config.processes!.worker.env = { PORT: "node", ACTUAL: "{{env.PORT}}", UPSTREAM: "{{env.DEVFN_URL_API}}/work" };
+    const result = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    expect(result.environment.PORT).toBe("4101");
+    expect(result.nodes.worker.environment).toMatchObject({ PORT: "4101", ACTUAL: "4101" });
+  });
+
+  it("resolves package-manager scripts and command-health argv through the selected node", () => {
+    const config = fixture();
+    config.processes!.worker.adapter = "npm";
+    config.processes!.worker.script = "start-{{env.MODE}}";
+    config.processes!.worker.health = { type: "command", command: ["node", "probe.mjs", "{{env.DEVFN_PORT_WORKER}}"] };
+    const result = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    expect(result.nodes.worker.script).toBe("start-process");
+    expect(result.nodes.worker.healthCommand).toEqual(["node", "probe.mjs", "4102"]);
+  });
+
   it("rejects missing, cyclic, secret, malformed and empty argv references before state creation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-invalid-endpoint-"));
     const stateDir = path.join(root, "state");
@@ -39,12 +66,26 @@ describe("endpoint and template contract", () => {
         await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toThrow();
         await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
       }
+      for (const [field, value] of [["script", "bad\0script"], ["script", "{{env.MISSING}}"], ["health", "bad\0check"], ["health", "{{env.MISSING}}"]] as const) {
+        const config = fixture();
+        if (field === "script") {
+          config.processes!.worker.adapter = "npm";
+          config.processes!.worker.script = value;
+        } else config.processes!.worker.health = { type: "command", command: ["node", value] };
+        await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toThrow();
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      const pnpm = fixture();
+      pnpm.processes!.worker.adapter = "pnpm";
+      pnpm.processes!.worker.script = "bad\0script";
+      await expect(new DevFnOrchestrator().up({ config: pnpm, root, stateDir })).rejects.toThrow();
+      await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
       const config = fixture();
       config.processes!.worker.env = { A: "{{env.B}}", B: "{{env.A}}" };
       await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toThrow(/cyclic reference/);
       await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
     } finally { await rm(root, { recursive: true, force: true }); }
-  });
+  }, 30_000);
 
   it("keeps the secret channel out of resolved outputs and rejects normalized key collisions", () => {
     const config = fixture();
@@ -56,5 +97,8 @@ describe("endpoint and template contract", () => {
     expect(() => validateDevFnConfig({ version: 1, project: { id: "fixture" }, profiles: { default: { environment: { DEVFN_URL_API: "fake" } } } })).toThrow(/reserved/);
     expect(() => validateDevFnConfig({ version: 1, project: { id: "fixture" }, profiles: { default: { environment: { HOST: "0.0.0.0" } } } })).toThrow(/reserved/);
     expect(() => validateDevFnConfig({ version: 1, project: { id: "fixture" }, profiles: { default: { environment: { Mode: "a", MODE: "b" } } } })).toThrow(/colliding environment keys/);
+    config.profiles.default.environment = { Mode: "profile" };
+    config.processes!.worker.env = { MODE: "process" };
+    expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/collides with profile environment key/);
   });
 });

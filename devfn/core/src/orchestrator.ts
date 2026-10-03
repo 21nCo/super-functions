@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { ComposeController, createComposeEnvironment, type ManagedComposeService } from "@devfn/compose";
-import { defaultStateDir, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig } from "@devfn/config";
+import { defaultStateDir, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
 import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
 import { CaddyProxyController, type ProxyRoute } from "@devfn/proxy";
@@ -41,6 +41,10 @@ function assertReceiptStateDir(receipt: LifecycleReceipt, stateDir: string): voi
   if (receipt.stateDir && path.resolve(receipt.stateDir) !== path.resolve(stateDir)) {
     throw new DevFnError("DEVFN_RUNTIME_INVALID", `This invocation was started with state directory ${receipt.stateDir}; rerun cleanup with that same --state-dir.`);
   }
+}
+
+function resolvedHealth(health: HealthCheck | undefined, command: string[] | undefined): HealthCheck | undefined {
+  return health?.type === "command" && command ? { ...health, command } : health;
 }
 
 function isDockerProxyListener(processName?: string): boolean {
@@ -102,7 +106,7 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     if (!spec || processStates[index] !== "running") return false;
     try {
       const ready = await checkReadinessNow({
-        health: spec.health, ports, logPath: managed.logPath, cwd: managed.cwd, environment: createProcessEnvironment({ ...spec, env: resolved.nodes[managed.name]?.environment }, resolved.environment),
+        health: resolvedHealth(spec.health, resolved.nodes[managed.name]?.healthCommand), ports, logPath: managed.logPath, cwd: managed.cwd, environment: createProcessEnvironment({ ...spec, env: resolved.nodes[managed.name]?.environment }, resolved.generated),
         previouslyReady: Boolean(managed.readyAt || receipt.state === "ready"), isAlive: async () => await supervisor.status(managed) === "running",
       });
       if (!ready || spec.exposure === "public") return ready;
@@ -114,7 +118,7 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     const spec = config.services?.[managed.name];
     if (!spec || serviceStates[index] !== "running") return false;
     return await checkReadinessNow({
-      health: spec.health, ports, logPath: "", cwd: root, environment: createComposeEnvironment({ ...spec, env: resolved.nodes[managed.name]?.environment }, resolved.environment),
+      health: resolvedHealth(spec.health, resolved.nodes[managed.name]?.healthCommand), ports, logPath: "", cwd: root, environment: createComposeEnvironment({ ...spec, env: resolved.nodes[managed.name]?.environment }, resolved.generated),
       previouslyReady: receipt.state === "ready", isAlive: async () => await compose.status(managed) === "running",
       readLog: async () => await compose.logs({ ...managed, logsDisabled: Boolean(managed.logsDisabled || spec.secretEnv?.length) }, 1000, managed.startedAt),
     });
@@ -211,9 +215,9 @@ export class DevFnOrchestrator {
         if (node.kind === "service") {
           const spec = options.config.services![node.name];
           await compose.start({
-            name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, health: spec.health?.type === "http" && spec.health.port ? { ...spec.health, url: undefined } : spec.health }, root: options.root, runtimeDir, instanceId: identity.instanceId, ports,
+            name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand) }, root: options.root, runtimeDir, instanceId: identity.instanceId, ports,
             portHosts: Object.fromEntries(allocations.map((item) => [item.service, item.host])),
-            portProtocols: Object.fromEntries(allocations.map((item) => [item.service, item.protocol])), environment,
+            portProtocols: Object.fromEntries(allocations.map((item) => [item.service, item.protocol])), environment: resolved.generated,
             onStarted: async (managed) => {
               receipt.services.push(managed);
               receipt.startedNodes?.push({ name: node.name, kind: node.kind });
@@ -224,7 +228,7 @@ export class DevFnOrchestrator {
         } else {
           const spec = options.config.processes![node.name];
           const managed = await supervisor.start({
-            name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, command: resolved.nodes[node.name].command, health: spec.health?.type === "http" && spec.health.port ? { ...spec.health, url: undefined } : spec.health }, root: options.root, runtimeDir, ports, environment,
+            name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, command: resolved.nodes[node.name].command, script: resolved.nodes[node.name].script, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand) }, root: options.root, runtimeDir, ports, environment: resolved.generated,
             onStarted: async (managed) => {
               receipt.processes.push(managed);
               receipt.startedNodes?.push({ name: node.name, kind: node.kind });
