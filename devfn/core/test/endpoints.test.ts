@@ -308,6 +308,27 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
+  it("rejects compact credential names in argv, URLs, and health before mutation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compact-secret-"));
+    const stateDir = path.join(root, "state");
+    const marker = "synthetic-sentinel";
+    try {
+      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY"]) {
+        for (const location of ["argv", "query", "fragment", "health"] as const) {
+          const config = fixture();
+          if (location === "argv") config.processes!.worker.command = ["node", `--${key}=${marker}`];
+          if (location === "query") config.processes!.worker.env = { ENDPOINT: `http://example.test/?${key}=${marker}` };
+          if (location === "fragment") config.profiles.default.environment = { ENDPOINT: `http://example.test/#${key}=${marker}` };
+          if (location === "health") config.processes!.api.health = { type: "http", port: "api", path: `/health?${key}=${marker}` };
+          const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+          expect(failure).toMatch(/secret channel/);
+          expect(failure).not.toContain(marker);
+          await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        }
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("derives stable route labels from opaque owners without changing their identity", () => {
     const owner = "session:any/owner";
     const hostname = resolveLocalHostname(undefined, "api", "fixture", owner);

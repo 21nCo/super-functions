@@ -181,7 +181,7 @@ function processSpec(value: unknown, field: string): ProcessSpec {
     ...(command ? { command } : {}),
     ...(script ? { script } : {}),
     ...(input.cwd === undefined ? {} : { cwd: relativePath(input.cwd, `${field}.cwd`) }),
-    ...environmentFields(input, field),
+    ...environmentFields(input, field, exposure === "public"),
     ...(ports ? { ports } : {}),
     ...(dependsOn ? { dependsOn } : {}),
     ...(parsedHealth ? { health: parsedHealth } : {}),

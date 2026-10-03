@@ -62,7 +62,7 @@ describe("DevFn configuration", () => {
   it("rejects qualified credential literals consistently while allowing declared host secrets", () => {
     const marker = "synthetic-sentinel";
     const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
-    for (const key of ["DB_PRIVATE_KEY", "DB_CREDENTIALS", "DB_PASSWD", "DB_PWD"]) {
+    for (const key of ["DB_PRIVATE_KEY", "DB_CREDENTIALS", "DB_PASSWD", "DB_PWD", "DBPWD", "dbPwd", "DBAUTHKEY"]) {
       for (const location of ["profile", "process", "service"] as const) {
         const config = location === "profile"
           ? { ...base, profiles: { default: { environment: { [key]: marker } } } }
@@ -78,6 +78,15 @@ describe("DevFn configuration", () => {
       expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: [key], secretEnv: [key] } } }).processes?.app.secretEnv).toEqual([key]);
       expect(validateDevFnConfig({ ...base, services: { app: { adapter: "compose", service: "app", envAllowlist: [key], secretEnv: [key] } } }).services?.app.secretEnv).toEqual([key]);
     }
+  });
+
+  it("permits HOST only on an explicitly public native process", () => {
+    const base = { version: 1, project: { id: "x" }, profiles: { default: { processes: ["app"] } } };
+    const process = { adapter: "command", command: ["node"], env: { HOST: "0.0.0.0" }, envAllowlist: ["HOST"] };
+    expect(() => validateDevFnConfig({ ...base, processes: { app: process } })).toThrow(/reserved/);
+    expect(validateDevFnConfig({ ...base, processes: { app: { ...process, exposure: "public" } } }).processes?.app).toMatchObject(process);
+    expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], exposure: "public", envAllowlist: ["HOST"] } } }).processes?.app.envAllowlist).toEqual(["HOST"]);
+    expect(() => validateDevFnConfig({ ...base, profiles: { default: { environment: { HOST: "0.0.0.0" } } } })).toThrow(/reserved/);
   });
 
   it("requires an implicit default profile and private output modes", () => {
