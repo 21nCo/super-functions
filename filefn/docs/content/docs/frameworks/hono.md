@@ -69,8 +69,9 @@ Use the `rateLimit` config:
 ```ts
 const fileFn = createFileFn({
   db, storage,
+  stores: { atomicKv },
   rateLimit: {
-    persistence: redisPersistence,
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit: { windowSeconds: 60, maxRequests: 10 },
@@ -80,7 +81,7 @@ const fileFn = createFileFn({
 });
 ```
 
-For multi-instance deployments, plug in a shared persistence (Redis, KV).
+For strict multi-instance limits, `atomicKv` must implement `compareAndSet`. For best-effort shared limits, use `stores: { kv: sharedKv }` and `rateLimit.mode: "best-effort"`. Direct `createRateLimiter` calls use `atomicStore` or `persistence` instead.
 
 ## Observability
 

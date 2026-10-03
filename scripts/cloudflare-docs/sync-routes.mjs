@@ -1,17 +1,24 @@
 import process from "node:process";
 import {
   normalizeEnvironment,
+  customDomainsFor,
   parseProducts,
   routesFor,
 } from "./config.mjs";
 
 const environment = normalizeEnvironment(process.argv[2] ?? "dev");
 if (!environment) {
-  console.error("Usage: node scripts/cloudflare-docs/sync-routes.mjs <dev|live> [--products=datafn,filefn,searchfn,authfn|all]");
+  console.error("Usage: node scripts/cloudflare-docs/sync-routes.mjs <dev|live> [--products=apifn,datafn,filefn,searchfn,authfn|all]");
   process.exit(1);
 }
 
 const products = parseProducts(getArgValue("products") ?? "all", { existingOnly: false });
+for (const domain of customDomainsFor(environment, products)) {
+  console.log(`skip ${domain.hostname}: docs-only Custom Domain is managed by deploy.mjs (${domain.script})`);
+}
+const routesByZone = groupRoutesByZone(routesFor(environment, products));
+if (routesByZone.size === 0) process.exit(0);
+
 const token = process.env.CLOUDFLARE_ROUTES_TOKEN
   ?? process.env.CLOUDFLARE_USER_TOKEN
   ?? process.env.CLOUDFLARE_API_TOKEN;
@@ -20,8 +27,6 @@ if (!token) {
   console.error("Set CLOUDFLARE_ROUTES_TOKEN, CLOUDFLARE_USER_TOKEN, or CLOUDFLARE_API_TOKEN before syncing docs routes.");
   process.exit(1);
 }
-
-const routesByZone = groupRoutesByZone(routesFor(environment, products));
 
 for (const [zoneName, routes] of routesByZone) {
   const zoneId = await resolveZoneId(zoneName, token);

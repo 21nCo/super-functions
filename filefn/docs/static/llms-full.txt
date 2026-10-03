@@ -2994,8 +2994,9 @@ filefn integrates with `@superfunctions/middleware`'s `RateLimiter` to throttle 
 ```ts
 const fileFn = createFileFn({
   db, storage,
+  stores: { kv: sharedKv },              // omit for in-memory limits
   rateLimit: {
-    persistence: redisPersistence,        // or undefined for in-memory
+    mode: "best-effort",                // or "local" without a store
     algorithm: "sliding-window",          // or "fixed-window" | "token-bucket"
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -3052,6 +3053,16 @@ In-memory persistence is fine for development and single-instance deployments. F
 - Cloudflare KV
 
 `@superfunctions/middleware` ships persistence implementations or accepts your own.
+
+For a strict limit shared by multiple processes, configure `createFileFn` with
+`stores.atomicKv` and `rateLimit.mode: "strict"`. FileFn passes this adapter to
+`createRateLimiter` as `atomicStore`. When constructing a `createRateLimiter`
+directly, pass the adapter as its `atomicStore` option. The adapter must
+implement `compareAndSet`; the limiter rejects an `atomicStore` without CAS
+support instead of silently falling back to process-local serialization.
+For best-effort cross-replica limits in `createFileFn`, provide `stores.kv`
+and set `rateLimit.mode: "best-effort"`. Direct `createRateLimiter` calls can
+use `persistence` for single-process or best-effort shared limits.
 
 ## What clients see
 
@@ -4793,8 +4804,9 @@ import { createFileFn } from "@filefn/server";
 
 const fileFn = createFileFn({
   db, storage,
+  stores: { kv: sharedKv },
   rateLimit: {
-    persistence: redisPersistence, // optional; in-memory by default
+    mode: "best-effort", // or "local" without a store
     algorithm: "sliding-window",
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -4812,7 +4824,7 @@ const fileFn = createFileFn({
 
 `rateLimit.algorithm` is one of `"fixed-window" | "sliding-window" | "token-bucket"`.
 
-`rateLimit.persistence` plugs in a shared store (Redis / Postgres / KV) so multi-instance deployments share counters.
+For strict shared limits, use `stores.atomicKv` with `rateLimit.mode: "strict"` and a CAS-capable adapter. For best-effort shared limits, use `stores.kv` with `rateLimit.mode: "best-effort"`. Use `persistence` only when calling `createRateLimiter` directly.
 
 ## Pre-built rate limiter
 
@@ -5548,8 +5560,9 @@ Use the `rateLimit` config:
 ```ts
 const fileFn = createFileFn({
   db, storage,
+  stores: { atomicKv },
   rateLimit: {
-    persistence: redisPersistence,
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit: { windowSeconds: 60, maxRequests: 10 },
@@ -5559,7 +5572,7 @@ const fileFn = createFileFn({
 });
 ```
 
-For multi-instance deployments, plug in a shared persistence (Redis, KV).
+For strict multi-instance limits, `atomicKv` must implement `compareAndSet`. For best-effort shared limits, use `stores: { kv: sharedKv }` and `rateLimit.mode: "best-effort"`. Direct `createRateLimiter` calls use `atomicStore` or `persistence` instead.
 
 ## Observability
 
@@ -8199,7 +8212,7 @@ Policies can also be added at runtime via `fileFn.definePolicy(name, policy)`.
 
 | Field | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `auth.resolveSession` | `(req: Request) => Promise<Principal | null>` | undefined | Resolves the calling principal. |
+| `auth.resolveSession` | `(req: Request) => Promise<Principal \| null>` | undefined | Resolves the calling principal. |
 | `auth.required` | `boolean` | `false` | When true, anonymous requests fail with `FILEFN_AUTH_REQUIRED`. |
 
 ## Authorizer
@@ -8221,8 +8234,10 @@ Default authorizer reads `filefn_file_permissions` and respects ownership.
 | Field | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `rateLimit.persistence` | `RateLimitPersistence` | undefined | Shared persistence (Redis/KV). |
-| `rateLimit.algorithm` | `"fixed-window" | "sliding-window" | "token-bucket"` | `"fixed-window"` | Algorithm. |
+| `stores.atomicKv` | `AtomicKvStore` | undefined | Shared atomic counters for strict mode. |
+| `stores.kv` | `KvStore` | undefined | Non-atomic shared counters for best-effort mode. |
+| `rateLimit.mode` | `"strict" \| "best-effort" \| "local"` | Store-dependent | Defaults to strict with `stores.atomicKv`, best-effort with `stores.kv`, otherwise local. |
+| `rateLimit.algorithm` | `"fixed-window" \| "sliding-window" \| "token-bucket"` | `"fixed-window"` | Algorithm. |
 | `rateLimit.limits.uploadInit` | `{ windowSeconds, maxRequests }` | undefined | Per-route. |
 | `rateLimit.limits.uploadSign` | same | undefined | |
 | `rateLimit.limits.uploadComplete` | same | undefined | |
@@ -8274,8 +8289,9 @@ const fileFn = createFileFn({
   authorizer: composeAuthorizers([orgAdminCanRead, createDefaultAuthorizer({ db, namespace: "filefn" })]),
   logger: pinoLogger,
 
+  stores: { atomicKv },
   rateLimit: {
-    persistence: redisPersistence,
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -9321,7 +9337,8 @@ interface FileFn extends FileProvider {
 | `auth` | `AuthConfig` | `{}` | `{ resolveSession, required }`. |
 | `quota` | `QuotaProvider` | undefined | Optional storage quota. |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `rateLimit` | `{ persistence?, algorithm?, limits? }` | undefined | Per-route rate limits. |
+| `stores` | `RuntimeStores` | undefined | Counter storage binding: `atomicKv` for strict mode, `kv` for best-effort. |
+| `rateLimit` | `{ mode?, algorithm?, limits? }` | undefined | Per-route rate limits; `mode` is `"strict"`, `"best-effort"`, or `"local"`. Without an explicit mode, an atomic store selects strict, a KV store selects best-effort, otherwise local. |
 | `logger` | `Logger` | undefined | Pluggable structured logger. |
 | `authorizer` | `Authorizer` | default | Permission resolution. |
 | `namespace` | `string` | `"filefn"` | Table prefix. |

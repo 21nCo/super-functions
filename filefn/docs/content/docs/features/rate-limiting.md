@@ -14,8 +14,9 @@ import { createFileFn } from "@filefn/server";
 
 const fileFn = createFileFn({
   db, storage,
+  stores: { kv: sharedKv },
   rateLimit: {
-    persistence: redisPersistence, // optional; in-memory by default
+    mode: "best-effort", // or "local" without a store
     algorithm: "sliding-window",
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -33,7 +34,7 @@ const fileFn = createFileFn({
 
 `rateLimit.algorithm` is one of `"fixed-window" | "sliding-window" | "token-bucket"`.
 
-`rateLimit.persistence` plugs in a shared store (Redis / Postgres / KV) so multi-instance deployments share counters.
+For strict shared limits, use `stores.atomicKv` with `rateLimit.mode: "strict"` and a CAS-capable adapter. For best-effort shared limits, use `stores.kv` with `rateLimit.mode: "best-effort"`. Use `persistence` only when calling `createRateLimiter` directly.
 
 ## Pre-built rate limiter
 
