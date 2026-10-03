@@ -1,0 +1,18 @@
+# CliFn
+
+> Reusable CLI building blocks for command execution, output, configuration, credentials, and safe automation.
+
+## Documentation
+
+- [Subprocesses and scaffolding](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/automation.md) — Execute commands and create files with explicit limits and overwrite policy.
+- [Build a CLI](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/cli-builder.md) — Wire any parser to the shared action runner and preserve command ownership.
+- [Configuration](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/configuration.md) — Load local config files, JSON project settings, and typed environment values.
+- [Credentials and HTTP client](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/credentials-and-client.md) — Persist named profiles and make authenticated requests with bounded retries.
+- [Getting started](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/getting-started.md) — Install CliFn and run your first parser-independent action.
+- [CliFn documentation](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/index.md) — Build reliable command-line tools with parser-agnostic primitives.
+- [Prompts and JSON stdio](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/interaction-and-stdio.md) — Interactive input, terminal feedback, and machine-readable pipes.
+- [Output and diagnostics](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/output-and-diagnostics.md) — Use text or JSON output and stable, redacted diagnostic reports.
+- [Admin capability](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/reference/admin.md) — The current Super Console declaration for CliFn.
+- [Package README](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/reference/core-readme.md) — Complete source-aligned CliFn package guide.
+- [Public exports](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/reference/exports.md) — Map CliFn subpaths to their public functions, types, and errors.
+- [API reference](https://github.com/21nCo/super-functions/blob/dev/clifn/docs/content/docs/reference/index.md) — Public CliFn entry points, exports, and source-aligned package documentation.
