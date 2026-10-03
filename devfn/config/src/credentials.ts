@@ -12,10 +12,17 @@ export function isCredentialKey(name: string): boolean {
   // Qualified names include application prefixes and suffixes. Short labels
   // stay on token boundaries so ordinary names such as monkey remain valid.
   if ([...CREDENTIAL_KEYS].some((key) => key.length >= 5 && normalized.includes(key))) return true;
-  // Compact qualified names appear in uppercase environment keys and camel
-  // case flags (DBKEY, DBAUTH, dbAuth). Keep lowercase words such as monkey.
-  if (normalized.length > 3 && ["pwd", "key", "auth"].some((key) => normalized.endsWith(key)) &&
-      (name === name.toUpperCase() || /[a-z][A-Z]/.test(name))) return true;
+  // Compact qualified names can also cross an acronym/title-case boundary
+  // (DBKey), or use a lowercase database prefix (dbkey). Keep ordinary words
+  // such as monkey from being classified solely by their final letters.
+  const compact = name.replace(/[^a-z0-9]/gi, "");
+  for (const suffix of ["pwd", "key", "auth"]) {
+    if (compact.length <= suffix.length || !compact.toLowerCase().endsWith(suffix)) continue;
+    const prefix = compact.slice(0, -suffix.length);
+    const tail = compact.slice(-suffix.length);
+    if (suffix !== "key" || prefix.toLowerCase() === "db" ||
+        prefix === prefix.toUpperCase() || tail[0] === tail[0].toUpperCase()) return true;
+  }
   return name.toLowerCase().split(/[^a-z0-9]+/).some((part) => CREDENTIAL_KEYS.has(part));
 }
 

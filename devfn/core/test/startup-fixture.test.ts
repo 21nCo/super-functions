@@ -164,7 +164,7 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       expect(JSON.stringify(await readReceipt(config, root, owner))).not.toContain("synthetic-sentinel");
       expect(await readFile(receipt.environmentOutputs[0], "utf8")).not.toContain("synthetic-sentinel");
       expect(await readFile(receipt.processes[0].logPath, "utf8")).not.toContain("synthetic-sentinel");
-      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth"]) {
+      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth", "DBKey", "DBAuth", "DBPwd", "DbKey", "dbKEY", "dbkey"]) {
         config.processes!.native.env![key] = "synthetic-sentinel";
         expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
         const failedRetry = await orchestrator.up({ config, root, stateDir: path.join(root, "state") }).then(() => "", (error: Error) => error.message);
@@ -304,7 +304,7 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
         const log = await execFileAsync("docker", ["logs", service.containerIds[0]]);
         expect(log.stdout + log.stderr).not.toContain("synthetic-sentinel");
       }
-      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth"]) {
+      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth", "DBKey", "DBAuth", "DBPwd", "DbKey", "dbKEY", "dbkey"]) {
         config.services!.web.env![key] = "synthetic-sentinel";
         expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
         const failedRetry = await orchestrator.up({ config, root, stateDir: path.join(root, "state") }).then(() => "", (error: Error) => error.message);

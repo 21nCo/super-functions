@@ -313,7 +313,7 @@ describe("endpoint and template contract", () => {
     const stateDir = path.join(root, "state");
     const marker = "synthetic-sentinel";
     try {
-      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth"]) {
+      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth", "DBKey", "DBAuth", "DBPwd", "DbKey", "dbKEY", "dbkey"]) {
         for (const location of ["argv", "query", "fragment", "health"] as const) {
           const config = fixture();
           if (location === "argv") config.processes!.worker.command = ["node", `--${key}=${marker}`];
