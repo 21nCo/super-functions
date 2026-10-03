@@ -1,0 +1,51 @@
+apifn/docs/.gitignore
+  s_ad500513bc9987::t_5c3d3033d6a79f 11
+scripts/cloudflare-docs/sync-routes.mjs
+  s_ad500513bc9987::t_6cf0f246b5d771 4,16-21
+scripts/cloudflare-docs/custom-domain.mjs
+  s_ad500513bc9987::t_5895707966401f 3,8-12,70-72,86,92-117,119-120
+  s_ad500513bc9987::t_c735b82f153ada 20,66
+  s_ad500513bc9987::t_9b4d33d36bd1d6 25,118
+  s_ad500513bc9987::t_373886c3f419f7 1-2,4-7,13-19,21-24,26-36,41-65,67-69,73-85,87-91,121
+  s_ad500513bc9987::t_de40f29f2d16dd 37-40
+scripts/cloudflare-docs/config.test.mjs
+  s_ad500513bc9987::t_f05862668b353e 3,6,9-26,35-39,41-44,47,50
+  s_ad500513bc9987::t_1f3cf2e725ed65 4,40
+scripts/cloudflare-docs/custom-domain.test.mjs
+  s_ad500513bc9987::t_93b868fb8986b2 4
+  s_ad500513bc9987::t_0ff22e372a6219 108,110,113-146
+  s_ad500513bc9987::t_529916f04578a2 1-3,5-107,109,111-112,147-159
+apifn/docs/package.json
+  s_ad500513bc9987::t_243cde2614bcc3 11
+  s_ad500513bc9987::t_4404b3e5f6d565 12
+scripts/cloudflare-docs/check-worker.mjs
+  s_ad500513bc9987::t_003b7e382838b7 18
+  s_ad500513bc9987::t_63230f9a08906a 1-17,19-84
+scripts/cloudflare-docs/config.mjs
+  s_ad500513bc9987::t_ad17e45a88791f 12-15,17-18,114-126,129,140
+apifn/docs/README.md
+  s_ad500513bc9987::t_713da45066a275 30-31
+  s_ad500513bc9987::t_5628a5b9209cee 22-29,32
+scripts/cloudflare-docs/deploy.test.mjs
+  s_ad500513bc9987::t_1d0588d99acea7 1-22,30-80
+  s_ad500513bc9987::t_574acb5e357940 23-29
+scripts/cloudflare-docs/deploy.mjs
+  s_ad500513bc9987::t_cdf395ab7d2f58 7,42,91,102,126-127,130,132
+  s_ad500513bc9987::t_28a3d74d418dd7 14,104-108,110,128-129,131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "33bc933ce414d3ac2b9be2f484a722200187656f",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
