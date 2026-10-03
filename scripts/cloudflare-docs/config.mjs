@@ -9,11 +9,13 @@ export const docsProducts = {
     packageName: "@apifn/docs",
     docsDir: "apifn/docs",
     kind: "sveltekit-cloudflare",
-    zoneName: "apifn.com",
-    routePaths: ["/docs*", "/"],
+    hosting: "custom-domain",
+    zoneName: "apifn.dev",
+    zoneId: "9e8b538ad4b7a44ce7bd85ff8db1cfdc",
+    accountId: "1befb9044360e6ea040ea5038f8ddb5a",
     hosts: {
-      dev: "dev.apifn.com",
-      live: "apifn.com",
+      dev: "dev-docs.apifn.dev",
+      live: "docs.apifn.dev",
     },
   },
   datafn: {
@@ -109,8 +111,22 @@ export function workerName(productId, environment) {
   return `superfunctions-${productId}-docs-${environment}`;
 }
 
+export function customDomainsFor(environment, products) {
+  if (!environments.includes(environment)) throw new Error(`Invalid docs environment: ${environment}`);
+  return products.filter((id) => docsProducts[id].hosting === "custom-domain").map((id) => ({
+    product: id,
+    environment,
+    hostname: docsProducts[id].hosts[environment],
+    zoneName: docsProducts[id].zoneName,
+    zoneId: docsProducts[id].zoneId,
+    accountId: docsProducts[id].accountId,
+    script: workerName(id, environment),
+  }));
+}
+
 export function routeDefinition(productId, environment) {
   const product = docsProducts[productId];
+  if (product.hosting === "custom-domain") throw new Error(`${productId} uses a docs-only Custom Domain, not Worker Routes`);
   return {
     product: productId,
     zoneName: product.zoneName,
@@ -121,6 +137,7 @@ export function routeDefinition(productId, environment) {
 
 export function routesFor(environment, products) {
   return products.flatMap((productId) => {
+    if (docsProducts[productId].hosting === "custom-domain") return [];
     const route = routeDefinition(productId, environment);
     const product = docsProducts[productId];
     const aliases = product.routeAliases?.[environment] ?? [];

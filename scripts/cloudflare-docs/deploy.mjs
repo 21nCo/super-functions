@@ -4,12 +4,14 @@ import process from "node:process";
 import { spawnSync } from "node:child_process";
 import {
   docsProducts,
+  customDomainsFor,
   hasDocsPackage,
   normalizeEnvironment,
   parseProducts,
   repoRoot,
   workerName,
 } from "./config.mjs";
+import { verifyCustomDomainOwnership, customDomainPublication, attachCustomDomain } from "./custom-domain.mjs";
 
 const environment = normalizeEnvironment(process.argv[2] ?? "dev");
 if (!environment) {
@@ -37,7 +39,7 @@ for (const productId of products) {
   if (product.kind === "next-static") {
     deployNextStatic(productId, docsDir, name);
   } else if (product.kind === "sveltekit-cloudflare") {
-    deploySvelteKitCloudflare(docsDir, name);
+    await deploySvelteKitCloudflare(docsDir, name, customDomainsFor(environment, [productId])[0]);
   } else {
     throw new Error(`Unsupported docs deployment kind: ${product.kind}`);
   }
@@ -86,7 +88,7 @@ function deployNextStatic(productId, docsDir, name) {
   runWranglerDeploy(docsDir, wranglerConfig, name);
 }
 
-function deploySvelteKitCloudflare(docsDir, name) {
+async function deploySvelteKitCloudflare(docsDir, name, customDomain) {
   const cloudflareOutputDir = path.join(docsDir, ".svelte-kit", "cloudflare");
   const workerEntry = path.join(cloudflareOutputDir, "_worker.js");
   assertFile(workerEntry, `SvelteKit Cloudflare build did not produce ${path.relative(repoRoot, workerEntry)}`);
@@ -97,8 +99,15 @@ function deploySvelteKitCloudflare(docsDir, name) {
     main: ".svelte-kit/cloudflare/_worker.js",
     assetsDirectory: ".svelte-kit/cloudflare",
     compatibilityFlags: ["nodejs_compat"],
+    customDomain,
   });
+  const ownershipOptions = {
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+    token: process.env.CLOUDFLARE_API_TOKEN,
+  };
+  if (customDomain && !dryRun) await verifyCustomDomainOwnership(customDomain, ownershipOptions);
   runWranglerDeploy(docsDir, wranglerConfig, name);
+  if (customDomain && !dryRun) await attachCustomDomain(customDomain, ownershipOptions);
 }
 
 function writeWranglerConfig(docsDir, options) {
@@ -114,6 +123,13 @@ function writeWranglerConfig(docsDir, options) {
       directory: options.assetsDirectory,
     },
   };
+  if (options.customDomain) {
+    config.account_id = options.customDomain.accountId;
+    // Wrangler's non-interactive domain publishing forces DNS/origin overrides.
+    // Upload only the Worker; our separate domain plan always disables them.
+    config.assets.binding = "ASSETS";
+    fs.writeFileSync(path.join(docsDir, ".cloudflare-docs-domain.json"), `${JSON.stringify(customDomainPublication(options.customDomain), null, 2)}\n`);
+  }
   if (options.main) config.main = options.main;
   if (options.compatibilityFlags) config.compatibility_flags = options.compatibilityFlags;
 

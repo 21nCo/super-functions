@@ -8,7 +8,8 @@
     "dev": "vite dev --port 6020",
     "build": "vite build",
     "preview": "vite preview --port 6020",
-    "test": "npm run check:llms && node --test ../../scripts/cloudflare-docs/config.test.mjs ../../scripts/docs-site/check-built-site.test.mjs && vitest run --config ../../scripts/docs-site/vitest.config.ts",
+    "test": "npm run check:llms && node --test ../../scripts/cloudflare-docs/config.test.mjs ../../scripts/cloudflare-docs/custom-domain.test.mjs ../../scripts/cloudflare-docs/deploy.test.mjs ../../scripts/docs-site/check-built-site.test.mjs && vitest run --config ../../scripts/docs-site/vitest.config.ts",
+    "check:cloudflare": "node ../../scripts/cloudflare-docs/check-worker.mjs",
     "generate:llms": "node scripts/generate-llms.mjs",
     "prebuild": "npm run generate:llms",
     "check:llms": "node scripts/generate-llms.mjs --check"
