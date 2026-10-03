@@ -1,0 +1,178 @@
+scripts/docs-site/auth-page.test.ts
+  s_ad500513bc9987::t_0dce1d75558c2d 1-86
+scripts/cloudflare-docs/config.mjs
+  s_ad500513bc9987::t_e5cc4daa9bb34d 13,127-128,130,132
+authfn/docs/src/routes/+layout.server.ts
+  s_ad500513bc9987::t_b95924e42b724b 5,7-10
+scripts/docs-site/vite.test.mjs
+  s_ad500513bc9987::t_c1506e70c432bb 34-35,40,47
+  s_ad500513bc9987::t_8f82b8d1130b66 56-74
+authfn/docs/package.json
+  s_ad500513bc9987::t_3dd95a636dc018 44
+authfn/docs/src/routes/blog/+page.server.ts
+  s_ad500513bc9987::t_c9be5eea47735e 1-10
+filefn/docs/content/docs/sdk/server.md
+  s_ad500513bc9987::t_e7635af9d9490a 41-42
+filefn/docs/package.json
+  s_ad500513bc9987::t_0e56643feff1b6 34
+scripts/docs-site/check-built-site.test.mjs
+  s_ad500513bc9987::t_f77b6a9d0e9bfa 1-14
+scripts/docs-site/vitest.config.ts
+  s_ad500513bc9987::t_893728bec5312d 1,10
+  s_ad500513bc9987::t_7d1aca8904d08f 9
+scripts/cloudflare-docs/sync-routes.mjs
+  s_ad500513bc9987::t_fdfae812ccf7cd 10
+filefn/docs/src/routes/+layout.server.ts
+  s_ad500513bc9987::t_4fd34288c9f7e7 5,7-10
+filefn/docs/src/routes/blog/[slug]/+page.server.ts
+  s_ad500513bc9987::t_37edcb3b702825 4,7-8,18,22
+authfn/docs/src/routes/blog/[slug]/+page.server.ts
+  s_ad500513bc9987::t_5ae034ba13be4c 4,7-8,18,22
+filefn/docs/src/routes/blog/+page.server.ts
+  s_ad500513bc9987::t_2dad0ee29a1f8c 1-10
+scripts/cloudflare-docs/config.test.mjs
+  s_ad500513bc9987::t_d3f9e946f29afe 1-35
+authfn/docs/content/docs/frameworks/bun.md
+  s_ad500513bc9987::t_b158ec9e4dfd19 23
+.github/workflows/superfunctions-docs-cloudflare-routes.yml
+  s_ad500513bc9987::t_cbdec9bf80eb10 16,47
+filefn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ad500513bc9987::t_b8e7106173b007 3,6-7
+authfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_ad500513bc9987::t_0d12bdf01cec2b 3,6-11
+apifn/docs/package.json
+  s_ad500513bc9987::t_d1b79e4384e7f7 11
+filefn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_0ee29a5f2b8569 2,7,68-83
+scripts/docs-site/vite.ts
+  s_ad500513bc9987::t_86363bd5263127 16,19
+scripts/docs-site/Search.svelte
+  s_ad500513bc9987::t_91095feb368fbc 25-26
+scripts/docs-site/check-built-site.mjs
+  s_ad500513bc9987::t_6c7ca3e6e35700 5-9,17-21,25,29-30,39
+filefn/docs/content/docs/reference/configuration.md
+  s_ad500513bc9987::t_261e9022c1739e 51-53
+  s_ad500513bc9987::t_71a918915b0e8f 29,54
+authfn/core/src/__tests__/api-key-docs.test.ts
+  s_ad500513bc9987::t_16c8ffb8bb7ad5 1-245
+authfn/core/src/__tests__/api-keys.test.ts
+  s_ad500513bc9987::t_d8e89a65c6afe5 9-14,38-175
+authfn/core/src/__tests__/placement-context.test.ts
+  s_ad500513bc9987::t_7102190a0397e5 19,499-503
+authfn/core/src/core/api-keys.ts
+  s_ad500513bc9987::t_0674bf3fec1660 13-14,47-65
+authfn/docs/content/docs/index.md
+  s_ad500513bc9987::t_b227f38aa6ea4f 36
+authfn/docs/content/docs/plugins/api-keys.md
+  s_ad500513bc9987::t_6b0d26bfd530a7 3,8,10,13-14,50-52,60-62,84,87-103,105-111,115-154,161,169,174-175,179-180
+authfn/docs/content/docs/plugins/index.md
+  s_ad500513bc9987::t_f008f5f1936482 15
+authfn/docs/content/docs/recipes/cli-auth.md
+  s_ad500513bc9987::t_e397455258eb04 40,43-49,51-60,64-66,68-69,73,75,77
+authfn/docs/static/llms-full.txt
+  s_ad500513bc9987::t_9c309790024b51 4606,5429,5472,5477,5479,5482-5483,5519-5521,5529-5531,5553,5556-5572,5574-5580,5584-5623,5630,5638,5643-5644,5648-5649,6232,8824,8827-8833,8835-8844,8848-8850,8852-8853,8857,8859,8861
+authfn/docs/static/llms.txt
+  s_ad500513bc9987::t_345d772fccf8f7 64
+authfn/docs/turbo.json
+  s_ad500513bc9987::t_5e478f1608be43 1-19
+billfn/README.md
+  s_ad500513bc9987::t_5010dd2b0f8e03 11,38,47
+billfn/docs/content/docs/index.mdx
+  s_ad500513bc9987::t_f2e2b3d225da77 15,97
+billfn/docs/content/docs/server/administration.mdx
+  s_ad500513bc9987::t_bbd64246d4bc66 1-37
+billfn/docs/content/docs/server/meta.json
+  s_ad500513bc9987::t_8029eac52a0469 3
+packages/db/package.json
+  s_ad500513bc9987::t_7607aeb30f0e9c 3
+searchfn/docs/app/layout.tsx
+  s_ad500513bc9987::t_e058e917eb3d61 9
+searchfn/docs/content/docs/documentation/administration.mdx
+  s_ad500513bc9987::t_1dea44fd146895 1-20
+searchfn/docs/content/docs/documentation/advanced/adapter-migration.mdx
+  s_ad500513bc9987::t_2e05eb8367f9e1 50,52
+searchfn/docs/content/docs/documentation/deploy/cloudflare-workers.mdx
+  s_ad500513bc9987::t_12a6e27917e436 35,38-40,43,52,87,91-93
+searchfn/docs/content/docs/documentation/deploy/fly.mdx
+  s_ad500513bc9987::t_30d4f1b0149f5c 19-27,79,83-85,92,94-96
+searchfn/docs/content/docs/documentation/deploy/railway.mdx
+  s_ad500513bc9987::t_fae7d3040ba517 21,23-25,29,44,48,59,62-65
+searchfn/docs/content/docs/documentation/deploy/vercel.mdx
+  s_ad500513bc9987::t_f1df51e24ea1b9 27,29-31,34,45
+searchfn/docs/content/docs/documentation/meta.json
+  s_ad500513bc9987::t_fb06c2e464840e 11
+searchfn/docs/content/docs/documentation/python/http-mount.mdx
+  s_ad500513bc9987::t_70a6d20bf3e877 2-3,6,10-12,15,17
+searchfn/docs/content/docs/documentation/python/index.mdx
+  s_ad500513bc9987::t_035c49c67c5fee 4,7,9,11-13,15
+searchfn/docs/content/docs/documentation/python/indexing.mdx
+  s_ad500513bc9987::t_09d20044b1c718 3,6,9,11-12,15,17
+searchfn/docs/content/docs/documentation/python/meta.json
+  s_ad500513bc9987::t_a5d4649dff179f 3
+searchfn/docs/content/docs/documentation/python/search.mdx
+  s_ad500513bc9987::t_10661a7feccf68 3,6,9,11-12,15,17
+searchfn/docs/content/docs/documentation/python/setup.mdx
+  s_ad500513bc9987::t_f7147f83a2bd5d 3,8,12,15-16,18,20,24,27,29,31,33
+searchfn/docs/content/docs/documentation/security/request-authz.mdx
+  s_ad500513bc9987::t_b3013298e371d4 121,123
+searchfn/docs/content/docs/getting-started.mdx
+  s_ad500513bc9987::t_83f012071a6bf8 168
+searchfn/docs/content/docs/operations/setup.mdx
+  s_ad500513bc9987::t_5d6d58c3bc6bb8 10-12,18-23,25
+searchfn/docs/content/docs/quickstart/bun.mdx
+  s_ad500513bc9987::t_92534a08110d51 20,22,26,34,41
+searchfn/docs/content/docs/quickstart/express.mdx
+  s_ad500513bc9987::t_2a227c862b1b67 9,16,20,22,26,31-32,51
+searchfn/docs/content/docs/quickstart/fastapi.mdx
+  s_ad500513bc9987::t_e5b381db0da047 3,6-7,10,14,16,19-38,41,43,45,47
+searchfn/docs/content/docs/quickstart/fastify.mdx
+  s_ad500513bc9987::t_f15bf4fdda190e 9,16,20,22,26,32
+searchfn/docs/content/docs/quickstart/flask.mdx
+  s_ad500513bc9987::t_1a16ca3d1f40bd 3,6-7,12-13,15,18-35,38,40,42,44
+searchfn/docs/content/docs/quickstart/hono.mdx
+  s_ad500513bc9987::t_c2a1e03bbbba40 11,24,28,30,34,42-43,46,54,89-93,95,98
+searchfn/docs/content/docs/quickstart/nextjs.mdx
+  s_ad500513bc9987::t_fd0bda76126168 20,22,26,31,37
+searchfn/docs/content/docs/quickstart/starlette.mdx
+  s_ad500513bc9987::t_6b664bef92f531 3,6-7,14,16,18,22-30,33-36,41,43,45,47
+searchfn/docs/content/docs/quickstart/sveltekit.mdx
+  s_ad500513bc9987::t_fc4ea5c6a65b6e 16,19,24,26,30,34-35,37-38,41
+searchfn/docs/content/docs/reference/adapters/postgres.mdx
+  s_ad500513bc9987::t_5c24692e21211f 22
+searchfn/docs/content/docs/reference/changelog.mdx
+  s_ad500513bc9987::t_e49e1a496ad4fb 41
+searchfn/docs/content/docs/reference/python.mdx
+  s_ad500513bc9987::t_c66bc207cd3450 2-3,6,9,11-13,18,20,22
+searchfn/docs/public/llms-full.txt
+  s_ad500513bc9987::t_8a5c21de900d4a 1004,1219-1243,1295,1297,1599,1603,1605-1606,1611,3352,3355-3357,3360,3369,3404,3408-3410,3565-3573,3625,3629-3631,3638,3640-3642,3946,3948-3950,3954,3969,3973,3984,3987-3990,4152,4154-4156,4159,4170,4696,4699,4702,4706-4708,4711,4713,4721,4724,4726,4728-4730,4732,4740,4743,4746,4748-4749,4752,4754,4762,4765,4768,4770-4771,4774,4776,4784,4789,4793,4796-4797,4799,4801,4805,4808,4810,4812,4814,5368,5370,6095-6097,6103-6108,6110,6401,6403,6407,6415,6422,6460,6467,6471,6473,6477,6482-6483,6502,6516,6519-6520,6523,6527,6529,6532,6534-6544,6546,6549-6551,6554,6556,6558,6560,6574,6581,6585,6587,6591,6597,6627,6630-6631,6636-6637,6639,6642,6644-6655,6657-6659,6662,6664,6666,6668,6684,6697,6701,6703,6707,6715-6716,6719,6727,6762-6766,6768,6771,6802,6804,6808,6813,6819,6891,6894-6895,6902,6904,6906,6910-6918,6921-6924,6929,6931,6933,6935,6956,6959,6964,6966,6970,6974-6975,6977-6978,6981,9398,9573,10291,10294,10297,10300,10302-10304,10309,10311,10313
+searchfn/docs/public/llms.txt
+  s_ad500513bc9987::t_15d434da85f010 30,60-64,92,94,97,133
+secfn/core/package.json
+  s_ad500513bc9987::t_6cf42a8bf8391c 48,59
+secfn/server/README.md
+  s_ad500513bc9987::t_68a9b6845e689b 5-10
+secfn/server/package.json
+  s_ad500513bc9987::t_8ff20fa0603ecf 45,48
+secfn/server/src/__tests__/installed-package.ts
+  s_ad500513bc9987::t_95c15c269f78fd 1-27
+secfn/server/src/__tests__/package-contracts.test.ts
+  s_ad500513bc9987::t_755ab27d4aa21a 1-103
+package-lock.json
+  s_ad500513bc9987::t_492dd416c85d97 1539,9375-9402,10215,51350-51363,51376-51431,54637,58860,58871,58908,58917
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e457a0e42a2dfade73eec090a37db3b9739a8907",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
