@@ -8,7 +8,7 @@ import { validateDevFnConfig } from "@devfn/config";
 import { proxyOwnerStatus } from "@devfn/proxy";
 import { describe, expect, it } from "vitest";
 
-import { DevFnOrchestrator, resolveInstanceIdentity } from "../src/index.js";
+import { DevFnOrchestrator, readReceipt, resolveInstanceIdentity } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -175,7 +175,7 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
       ports: { web: {}, consumer: {}, native: {} },
       services: {
         web: { adapter: "compose", service: "web", ports: { web: 8080 }, health: { type: "http", port: "web", url: `${withTls ? "https" : "http"}://${withProxy ? "web.localhost" : "route-not-yet-installed.localhost"}/health?probe=1`, timeoutMs: 30_000 }, env: { HOST: "0.0.0.0", MODE: "service" } },
-        consumer: { adapter: "compose", service: "consumer", ports: { consumer: 8081 }, dependsOn: ["web"], health: { type: "http", port: "consumer", timeoutMs: 30_000 } },
+        consumer: { adapter: "compose", service: "consumer", ports: { consumer: 8081 }, dependsOn: ["web"], health: { type: "command", command: [process.execPath, "-e", "Promise.all([fetch(process.argv[1] + '/health'), fetch(process.env.HEALTH_UPSTREAM + '/health')]).then((responses) => { if (responses.some((response) => !response.ok)) process.exitCode = 1; }).catch(() => { process.exitCode = 1; });", "{{env.DEVFN_URL_WEB}}"], timeoutMs: 30_000 }, env: { HEALTH_UPSTREAM: "{{env.DEVFN_URL_WEB}}" } },
       },
       processes: { native: { adapter: "command", command: [process.execPath, "server.mjs", "{{env.DEVFN_URL_WEB}}"], ports: ["native"], dependsOn: ["consumer"], health: { type: "http", port: "native", timeoutMs: 30_000 }, env: { OBSERVED_FILE: path.join(root, "native.json"), UPSTREAM_URL: "{{env.DEVFN_URL_WEB}}", MODE: "node" } } },
       profiles: { default: { processes: ["native"], environment: { MODE: "profile" }, proxy: withProxy } },
@@ -242,14 +242,14 @@ server.listen(8080, "0.0.0.0", async () => {
     command: ["node", "/app/service.mjs"]
     environment:
       SERVICE_NAME: beta
-      SELF_URL: "\${DEVFN_URL_BETA:-}"
+      SELF_URL: "http://beta:8080"
       SELF_PORT: "\${DEVFN_PORT_BETA:-}"
 `);
     const config = validateDevFnConfig({
       version: 1, project: { id: "independent-compose" }, ports: { alpha: {}, beta: {} },
       services: {
         alpha: { adapter: "compose", service: "alpha", projectName: "alpha", ports: { alpha: 8080 }, health: { type: "http", port: "alpha", timeoutMs: 30_000 } },
-        beta: { adapter: "compose", service: "beta", projectName: "beta", ports: { beta: 8080 }, health: { type: "http", port: "beta", timeoutMs: 30_000 } },
+        beta: { adapter: "compose", service: "beta", projectName: "beta", ports: { beta: 8080 }, dependsOn: ["alpha"], health: { type: "command", command: [process.execPath, "-e", "Promise.all([fetch(process.argv[1]), fetch('http://127.0.0.1:' + process.argv[2])]).then((responses) => { if (responses.some((response) => !response.ok)) process.exitCode = 1; }).catch(() => { process.exitCode = 1; });", "{{env.DEVFN_URL_ALPHA}}", "{{env.DEVFN_PORT_BETA}}"], timeoutMs: 30_000 } },
       },
       profiles: { default: { services: ["alpha", "beta"] } },
     });
@@ -264,9 +264,14 @@ server.listen(8080, "0.0.0.0", async () => {
         expect(actual).toEqual({ url: `http://${name}:8080`, port: String(receipt.allocations.find((port) => port.service === name)!.port), status: 200 });
       }
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
     } finally {
       await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
-      for (const project of projects) await execFileAsync("docker", ["network", "rm", `${project}_default`]);
+      const identity = await resolveInstanceIdentity(config.project.id, root);
+      const journaled = await readReceipt(config, root, identity.instanceId);
+      for (const project of new Set([...projects, ...(journaled?.services.map((service) => service.projectName) ?? [])])) {
+        await execFileAsync("docker", ["network", "rm", `${project}_default`]).catch(() => undefined);
+      }
       await rm(root, { recursive: true, force: true });
     }
   }, 90_000);

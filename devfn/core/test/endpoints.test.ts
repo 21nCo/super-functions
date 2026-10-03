@@ -108,10 +108,43 @@ describe("endpoint and template contract", () => {
     expect(resolved.environment.BASE).toBe("http://127.0.0.1:4103");
     expect(resolved.nodes.worker.environment.BASE).toBe("http://127.0.0.1:4103");
     expect(resolved.nodes.consumer.environment).toMatchObject({ DEVFN_URL_WEB: "http://web:8080", BASE: "http://web:8080", UPSTREAM: "http://web:8080", DEVFN_PORT_WEB: "4103" });
+    expect(resolved.nodes.consumer.readinessEnvironment).toMatchObject({ DEVFN_URL_WEB: "http://127.0.0.1:4103", BASE: "http://127.0.0.1:4103", UPSTREAM: "http://127.0.0.1:4103" });
+  });
+
+  it("rejects a native loopback URL consumed by Compose before creating state", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-native-compose-reference-"));
+    const stateDir = path.join(root, "state");
+    try {
+      for (const viaProfile of [false, true]) {
+        const config = fixture();
+        config.profiles.default.environment = {};
+        config.services = { consumer: { adapter: "compose", service: "consumer", dependsOn: ["api"], env: { UPSTREAM: viaProfile ? "{{env.PROFILE_UPSTREAM}}" : "{{env.DEVFN_URL_API}}" } } };
+        config.profiles.default.services = ["consumer"];
+        if (viaProfile) config.profiles.default.environment = { PROFILE_UPSTREAM: "{{env.DEVFN_URL_API}}" };
+        await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toThrow(/native loopback process unreachable from Compose|missing reference DEVFN_URL_API/);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("resolves Compose command readiness in host context while preserving container startup values", () => {
+    const config = fixture();
+    config.profiles.default.environment = {};
+    config.services = {
+      web: { adapter: "compose", service: "web", ports: { web: 8080 }, health: { type: "http", port: "web" } },
+      consumer: { adapter: "compose", service: "consumer", dependsOn: ["web"], env: { UPSTREAM: "{{env.DEVFN_URL_WEB}}" }, health: { type: "command", command: ["node", "probe.mjs", "{{env.UPSTREAM}}", "{{env.DEVFN_URL_WEB}}"] } },
+    };
+    config.ports!.web = {};
+    config.profiles.default.services = ["consumer"];
+    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103 } });
+    expect(resolved.nodes.consumer.environment.UPSTREAM).toBe("http://web:8080");
+    expect(resolved.nodes.consumer.readinessEnvironment.UPSTREAM).toBe("http://127.0.0.1:4103");
+    expect(resolved.nodes.consumer.healthCommand).toEqual(["node", "probe.mjs", "http://127.0.0.1:4103", "http://127.0.0.1:4103"]);
   });
 
   it("retains a Compose container bind HOST without changing native loopback HOST", () => {
     const config = fixture();
+    config.profiles.default.environment = {};
     config.services = { web: { adapter: "compose", service: "web", env: { HOST: "0.0.0.0" } } };
     config.profiles.default.services = ["web"];
     const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
@@ -121,6 +154,7 @@ describe("endpoint and template contract", () => {
 
   it("rejects Compose sibling URLs across isolated projects before state creation", async () => {
     const config = fixture();
+    config.profiles.default.environment = {};
     config.services = {
       web: { adapter: "compose", service: "web", projectName: "web", ports: { web: 8080 }, health: { type: "http", port: "web" } },
       consumer: { adapter: "compose", service: "consumer", projectName: "consumer", dependsOn: ["web"], env: { UPSTREAM: "{{env.DEVFN_URL_WEB}}" } },
@@ -137,6 +171,7 @@ describe("endpoint and template contract", () => {
 
   it("allows independent Compose projects without publishing unreachable sibling URLs", () => {
     const config = fixture();
+    config.profiles.default.environment = {};
     config.services = {
       web: { adapter: "compose", service: "web", projectName: "web", ports: { web: 8080 }, health: { type: "http", port: "web" } },
       other: { adapter: "compose", service: "other", projectName: "other", ports: { other: 8081 }, health: { type: "http", port: "other" } },
@@ -149,6 +184,11 @@ describe("endpoint and template contract", () => {
     expect(resolved.nodes.web.environment).not.toHaveProperty("DEVFN_URL_OTHER");
     expect(resolved.nodes.other.environment.DEVFN_URL_OTHER).toBe("http://other:8081");
     expect(resolved.nodes.other.environment).not.toHaveProperty("DEVFN_URL_WEB");
+    config.services.other.dependsOn = ["web"];
+    config.services.other.health = { type: "command", command: ["node", "probe.mjs", "{{env.DEVFN_URL_WEB}}"] };
+    const hostProbe = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103, other: 4104 } });
+    expect(hostProbe.nodes.other.healthCommand).toEqual(["node", "probe.mjs", "http://127.0.0.1:4103"]);
+    expect(hostProbe.nodes.other.environment).not.toHaveProperty("DEVFN_URL_WEB");
   });
 
   it("rejects credential-bearing health paths and argv before state creation", async () => {

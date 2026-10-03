@@ -41,6 +41,8 @@ export interface ComposeStartInput {
   portHosts?: Record<string, string>;
   portProtocols?: Record<string, "tcp" | "udp">;
   environment?: Record<string, string>;
+  /** Host-side environment used only by command readiness probes. */
+  readinessEnvironment?: Record<string, string>;
   onStarted?: (service: ManagedComposeService) => Promise<void>;
 }
 
@@ -190,7 +192,8 @@ export class ComposeController {
       const managed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: preservePreExisting, wasRunning: preservePreExisting && startedContainerIds.length === 0, startedContainerIds, createdContainerIds, startedAt, logsDisabled: Boolean(input.spec.secretEnv?.length), dockerEnvironment, composeCwd: input.root };
       await input.onStarted?.(managed);
       await waitForReadiness({
-        health: input.spec.health, ports: input.ports, logPath: overrideFile, cwd: input.root, environment,
+        health: input.spec.health, ports: input.ports, logPath: overrideFile, cwd: input.root,
+        environment: input.readinessEnvironment ? createComposeEnvironment({ ...input.spec, env: input.readinessEnvironment }, input.readinessEnvironment) : environment,
         isAlive: async () => await this.status(managed) === "running",
         readLog: async () => await this.logs(managed, 1000, managed.startedAt),
       });

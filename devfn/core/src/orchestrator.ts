@@ -128,7 +128,7 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     const spec = config.services?.[managed.name];
     if (!spec || serviceStates[index] !== "running") return false;
     return await checkReadinessNow({
-      health: resolvedHealth(spec.health, resolved.nodes[managed.name]?.healthCommand, resolved.nodes[managed.name]?.healthUrl), ports, logPath: "", cwd: root, environment: createComposeEnvironment({ ...spec, env: resolved.nodes[managed.name]?.environment }, resolved.nodes[managed.name]?.environment),
+      health: resolvedHealth(spec.health, resolved.nodes[managed.name]?.healthCommand, resolved.nodes[managed.name]?.healthUrl), ports, logPath: "", cwd: root, environment: createComposeEnvironment({ ...spec, env: resolved.nodes[managed.name]?.readinessEnvironment }, resolved.nodes[managed.name]?.readinessEnvironment),
       previouslyReady: receipt.state === "ready", isAlive: async () => await compose.status(managed) === "running",
       readLog: async () => await compose.logs({ ...managed, logsDisabled: Boolean(managed.logsDisabled || spec.secretEnv?.length) }, 1000, managed.startedAt),
     });
@@ -221,7 +221,7 @@ export class DevFnOrchestrator {
           await compose.start({
             name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand, resolved.nodes[node.name].healthUrl) }, root: options.root, runtimeDir, instanceId: identity.instanceId, ports,
             portHosts: Object.fromEntries(allocations.map((item) => [item.service, item.host])),
-            portProtocols: Object.fromEntries(allocations.map((item) => [item.service, item.protocol])), environment: resolved.nodes[node.name].environment,
+            portProtocols: Object.fromEntries(allocations.map((item) => [item.service, item.protocol])), environment: resolved.nodes[node.name].environment, readinessEnvironment: resolved.nodes[node.name].readinessEnvironment,
             onStarted: async (managed) => {
               receipt.services.push(managed);
               receipt.startedNodes?.push({ name: node.name, kind: node.kind });

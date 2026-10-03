@@ -17,6 +17,8 @@ export interface EndpointResolutionInput {
 
 export interface ResolvedNodeStartup {
   environment: Record<string, string>;
+  /** Non-secret host-side values for readiness commands executed outside Compose. */
+  readinessEnvironment: Record<string, string>;
   /** Fully resolved direct HTTP probe, including path and query. */
   healthUrl?: string;
   command?: string[];
@@ -226,23 +228,27 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
       const consumerProject = config.services![node.name].projectName ?? "devfn";
       const unreachable = new Set<string>();
       for (const producer of plan.nodes) {
-        if (producer.kind !== "service") continue;
-        const service = config.services![producer.name];
-        for (const port of Object.keys(service.ports ?? {})) {
+        const producerPorts = producer.kind === "service" ? config.services![producer.name].ports ?? {} :
+          Object.fromEntries((config.processes![producer.name].ports ?? []).map((port) => [port, true]));
+        for (const port of Object.keys(producerPorts)) {
           const key = `DEVFN_URL_${normalized(port)}`;
-          if (!Object.prototype.hasOwnProperty.call(composeUrls, port)) continue;
-          if ((service.projectName ?? "devfn") === consumerProject) nodeGenerated[key] = composeUrls[port];
+          if (!Object.prototype.hasOwnProperty.call(directUrls, port)) continue;
+          if (producer.kind === "service" && (config.services![producer.name].projectName ?? "devfn") === consumerProject) nodeGenerated[key] = composeUrls[port];
           else { delete nodeGenerated[key]; unreachable.add(key); }
         }
       }
       for (const value of [...Object.values(profile.environment ?? {}), ...Object.values(spec.env ?? {})]) {
         for (const match of value.matchAll(REFERENCE)) if (unreachable.has(match[1])) {
-          invalid(field, `reference ${match[1]} is in another Compose project network.`);
+          invalid(field, producerIsNative(plan, config, match[1]) ?
+            `reference ${match[1]} points to a native loopback process unreachable from Compose.` :
+            `reference ${match[1]} is in another Compose project network.`);
         }
       }
     }
     const profileEnvironment = node.kind === "service" ? resolveValues(profile.environment ?? {}, nodeGenerated, nodeGenerated, `profiles.${plan.profile}.environment`) : environment;
     const nodeEnvironment = resolveValues(spec.env ?? {}, { ...profileEnvironment, ...nativeBind }, { ...nodeGenerated, ...nativeBind }, `${field}.env`);
+    const readinessEnvironment = node.kind === "service" ?
+      resolveValues(spec.env ?? {}, environment, generated, `${field}.env`) : nodeEnvironment;
     const lookup = (key: string): string => {
       if (!Object.prototype.hasOwnProperty.call(nodeEnvironment, key)) invalid(field, `missing reference ${key}.`);
       return nodeEnvironment[key];
@@ -254,8 +260,22 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     };
     const command = processSpec?.command?.map((item, index) => argv(item, `${field}.command[${index}]`));
     const script = processSpec?.script !== undefined ? argv(processSpec.script, `${field}.script`) : undefined;
-    const healthCommand = spec.health?.type === "command" ? spec.health.command.map((item, index) => argv(item, `${field}.health.command[${index}]`)) : undefined;
-    nodes[node.name] = { environment: nodeEnvironment, ...(healthUrls.has(node.name) ? { healthUrl: healthUrls.get(node.name) } : {}), ...(command ? { command } : {}), ...(script ? { script } : {}), ...(healthCommand ? { healthCommand } : {}) };
+    const healthLookup = (key: string): string => {
+      if (!Object.prototype.hasOwnProperty.call(readinessEnvironment, key)) invalid(field, `missing reference ${key}.`);
+      return readinessEnvironment[key];
+    };
+    const healthCommand = spec.health?.type === "command" ? spec.health.command.map((item, index) => {
+      const location = `${field}.health.command[${index}]`;
+      const value = expand(item, location, healthLookup);
+      if (!value.length) invalid(location, "argv value cannot be empty.");
+      return value;
+    }) : undefined;
+    nodes[node.name] = { environment: nodeEnvironment, readinessEnvironment, ...(healthUrls.has(node.name) ? { healthUrl: healthUrls.get(node.name) } : {}), ...(command ? { command } : {}), ...(script ? { script } : {}), ...(healthCommand ? { healthCommand } : {}) };
   }
   return { ownerId, generated, environment, directUrls, composeUrls, nodes };
+}
+
+function producerIsNative(plan: LifecyclePlan, config: DevFnConfig, key: string): boolean {
+  return plan.nodes.some((node) => node.kind === "process" &&
+    (config.processes?.[node.name]?.ports ?? []).some((port) => `DEVFN_URL_${normalized(port)}` === key));
 }
