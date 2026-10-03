@@ -8,7 +8,7 @@ description: createS3Storage configured for self-hosted MinIO — S3-compatible 
 MinIO is S3-compatible. Use the S3 adapter with `forcePathStyle: true`:
 
 ```ts
-import { createS3Storage } from "@superfunctions/storage";
+import { createS3Storage } from "@superfunctions/storage-s3";
 
 const storage = createS3Storage({
   region: "us-east-1",

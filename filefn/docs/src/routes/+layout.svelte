@@ -1,10 +1,10 @@
 <script lang="ts">
   import "../app.css";
   import DocsSiteSearch from "$lib/components/DocsSiteSearch.svelte";
-  import TopBar from "@site/topbar";
+  import TopBar from "@docsfn/svelte/TopBar.svelte";
   import { page } from "$app/stores";
-  import type { Snippet } from "svelte";
-  import { onMount } from "svelte";
+  import { onMount, type Snippet } from "svelte";
+  import { observeTopBar } from "../../../../scripts/docs-site/layout";
   import type { LayoutData } from "./$types";
 
   interface Props {
@@ -13,21 +13,20 @@
   }
 
   let { data, children }: Props = $props();
+  let siteRoot: HTMLDivElement;
+  onMount(() => observeTopBar(siteRoot));
 
-  let clientSearchReady = $state(false);
-  onMount(() => {
-    clientSearchReady = true;
-  });
 </script>
 
 <div
+  bind:this={siteRoot}
   class="docsfn-site-root"
   class:docsfn-docs-chrome={$page.url.pathname.startsWith("/docs")}
 >
-  <!-- <TopBar
+  <TopBar
     items={data.source.config.navigation?.topNav}
-    searchTrigger={clientSearchReady ? DocsSiteSearch : undefined}
-  /> -->
+    searchTrigger={DocsSiteSearch}
+  />
   <div class="docsfn-site-main">
     {@render children()}
   </div>

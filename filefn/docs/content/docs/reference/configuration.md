@@ -86,7 +86,7 @@ Default authorizer reads `filefn_file_permissions` and respects ownership.
 ```ts
 const fileFn = createFileFn({
   db: createPostgresAdapter({ pool }),
-  storage: createS3Storage({ region, bucket, cdnPrefix }),
+  storage: createS3Storage({ region, bucket }),
   policies: createNucleusPolicies(),
 
   auth: {

@@ -1,17 +1,17 @@
 ---
 title: Azure Blob adapter
-description: createAzureStorage — production-grade storage on Azure Blob with SAS URLs and block blob multipart.
+description: createAzureStorageAdapter — production-grade storage on Azure Blob with SAS URLs and block blob multipart.
 ---
 
 # Azure Blob adapter
 
 ```ts
-import { createAzureStorage } from "@superfunctions/storage";
+import { createAzureStorageAdapter } from "@superfunctions/storage-azure";
 
-const storage = createAzureStorage({
-  account: process.env.AZURE_STORAGE_ACCOUNT!,
+const storage = createAzureStorageAdapter({
+  accountName: process.env.AZURE_STORAGE_ACCOUNT!,
   accountKey: process.env.AZURE_STORAGE_ACCOUNT_KEY!,
-  container: process.env.AZURE_CONTAINER!,
+  containerName: process.env.AZURE_CONTAINER!,
   // optional
   endpoint: process.env.AZURE_BLOB_ENDPOINT,
 });

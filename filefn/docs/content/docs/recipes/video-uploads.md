@@ -1,6 +1,6 @@
 ---
 title: Video uploads
-description: Large-file video uploads with multi-resolution transcoding, poster frames, and queued processing.
+description: Large-file video uploads with 720p transcoding, poster frames, and queued processing.
 ---
 
 # Video uploads
@@ -9,7 +9,7 @@ Goal:
 
 - Multi-GB uploads survive network blips.
 - Poster frame at 1s.
-- 720p and 480p transcodes for adaptive playback.
+- A 720p transcode; adaptive multi-resolution playback requires a custom processor.
 - Processing happens off the request path (queued).
 
 ## Policy
@@ -41,11 +41,9 @@ const flowFn = createFlowFnProvider({
 
 const video = createVideoProcessor({
   provider: createCommandVideoProvider({ ffmpegPath: "ffmpeg" }),
-  poster: { time: 1.0, width: 1024 },
-  transcode: [
-    { resolution: "720p", codec: "h264", bitrate: "2M" },
-    { resolution: "480p", codec: "h264", bitrate: "1M" },
-  ],
+  posterOptions: { timestamp: 1.0, width: 1024 },
+  transcode: true,
+  transcodeOptions: { resolution: "720p", codec: "h264", bitrate: "2M" },
 });
 
 const fileFn = createFileFn({

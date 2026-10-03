@@ -1,58 +1,28 @@
 ---
-title: SQLite DB adapter
-description: createSQLiteAdapter — better-sqlite3 / bun:sqlite for single-instance filefn deployments.
+title: SQLite adapter
+description: Connect FileFn to SQLite through Drizzle.
 ---
 
-# SQLite DB adapter
+# SQLite
 
-## Node (better-sqlite3)
+```sh
+npm install @superfunctions/db drizzle-orm better-sqlite3
+npm install --save-dev @types/better-sqlite3
+```
 
 ```ts
 import Database from "better-sqlite3";
-import { createSQLiteAdapter } from "@superfunctions/db-sqlite";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
+import * as schema from "./schema"; // Generated Drizzle table definitions for this dialect.
 
-const sqlite = new Database("./filefn.db");
+const sqlite = new Database("filefn.sqlite");
 sqlite.pragma("journal_mode = WAL");
-
-const db = createSQLiteAdapter({ db: sqlite });
+const db = drizzleAdapter({ db: drizzle(sqlite, { schema }), dialect: "sqlite" });
 ```
 
-## Bun
+Provision the FileFn tables from `getSchema({ namespace })` using the host migration system before serving traffic. Pass `db` to `createFileFn` and close `sqlite` during application shutdown. On Bun, use Bun's SQLite driver and `drizzle-orm/bun-sqlite` with the same `drizzleAdapter` entrypoint and dialect.
 
-```ts
-import { Database } from "bun:sqlite";
-import { createSQLiteAdapter } from "@superfunctions/db-sqlite";
+SQLite concurrency and filesystem durability depend on deployment topology. Use a database supported by your hosting environment; a local file is not shared storage across application replicas. See [DB adapters](./db).
 
-const sqlite = new Database("./filefn.db");
-sqlite.run("PRAGMA journal_mode = WAL");
-
-const db = createSQLiteAdapter({ db: sqlite });
-```
-
-## When to use it
-
-- Local dev.
-- Single-instance self-hosted deployments.
-- Edge runtimes that support SQLite (Cloudflare D1, Turso, libSQL).
-- Test environments.
-
-## When not to use it
-
-- Multi-instance horizontal scaling. SQLite isn't the right fit unless every instance shares the same disk (which usually defeats the point of horizontal scaling).
-
-## WAL mode
-
-Always enable WAL on persistent SQLite — it dramatically improves concurrency for read-heavy workloads and avoids most "database is locked" errors.
-
-## Schema
-
-```ts
-import { applySchemaToAdapter } from "@superfunctions/db";
-
-const { schemas } = fileFn.getSchema();
-await applySchemaToAdapter(db, schemas);
-```
-
-## See also
-
-- [db](./db) — the adapter contract.
+Generate/import the Drizzle table definitions in `./schema` and pass the namespace-imported table registry to `drizzle(..., { schema })`. SQL migrations alone are insufficient: the adapter also requires this runtime table registry. See [schema setup](/docs/adapters/db#schema-and-migrations); include every library sharing the adapter and use the same dialect and namespace.

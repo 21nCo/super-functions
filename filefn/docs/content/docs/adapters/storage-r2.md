@@ -8,7 +8,7 @@ description: createS3Storage configured for Cloudflare R2 — egress-free produc
 R2 is S3-compatible. Use the S3 adapter with R2's endpoint:
 
 ```ts
-import { createS3Storage } from "@superfunctions/storage";
+import { createS3Storage } from "@superfunctions/storage-s3";
 
 const storage = createS3Storage({
   region: "auto",
@@ -17,7 +17,6 @@ const storage = createS3Storage({
   secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
   endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
   forcePathStyle: true,
-  cdnPrefix: process.env.R2_PUBLIC_URL, // your r2.dev or custom domain
 });
 ```
 
@@ -29,7 +28,7 @@ const storage = createS3Storage({
 
 ## CDN
 
-R2 ships with `r2.dev` URLs (rate-limited, intended for dev) and a custom-domain feature (production). Wire the public domain through `cdnPrefix`.
+R2 ships with `r2.dev` URLs (rate-limited, intended for dev) and a custom-domain feature (production). Configure public delivery in your host infrastructure. The adapter has no `cdnPrefix` option; do not rewrite private signed URLs into public URLs.
 
 For private buckets, signed URLs work just like S3.
 

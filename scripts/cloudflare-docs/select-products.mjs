@@ -53,6 +53,13 @@ function productsFromChangedFiles() {
       for (const productId of existingProductIds()) selectExisting(productId);
       continue;
     }
+    if (/^scripts\/docs-site\//.test(file)) {
+      for (const productId of existingProductIds()) {
+        const wrapper = spawnSync("git", ["show", `${after}:${productId}/docs/src/lib/server/docs-site-source.ts`], { encoding: "utf8" });
+        if (wrapper.status === 0 && /scripts\/docs-site\/runtime/.test(wrapper.stdout)) selectExisting(productId);
+      }
+      continue;
+    }
     if (/^docsfn\//.test(file)) {
       selectExisting("authfn");
       continue;

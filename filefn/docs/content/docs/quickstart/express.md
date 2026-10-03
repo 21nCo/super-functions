@@ -11,7 +11,62 @@ Express ships Node's classic `IncomingMessage` / `ServerResponse` instead of a F
 
 ```bash
 npm install express
-npm install @filefn/server @superfunctions/storage @superfunctions/db
+npm install @filefn/server @superfunctions/storage-local @superfunctions/db
+```
+
+## Streaming bridge (Node 20+)
+
+Create `filefn-express.ts` in the same directory as your server. It accepts FileFn’s nullable router result, preserves binary responses, and streams uploads without a buffered 10 MB parser limit.
+
+```ts
+import type { RequestHandler } from "express";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
+
+type FileFnRouter = { handle(request: Request): Promise<Response | null> };
+
+export function fileFnHandler(router: FileFnRouter): RequestHandler {
+  return (req, res, next) => {
+    const controller = new AbortController();
+    const abort = () => { if (!res.writableEnded) controller.abort(); };
+    req.once("aborted", abort);
+    res.once("close", abort);
+    void (async () => {
+      const headers = new Headers();
+      for (let i = 0; i < req.rawHeaders.length; i += 2) {
+        headers.append(req.rawHeaders[i], req.rawHeaders[i + 1]);
+      }
+      // Express strips /filefn from req.url while this mounted handler runs.
+      const url = new URL(req.url, `${req.protocol}://${req.get("host")}`);
+      const init: RequestInit & { duplex?: "half" } = {
+        method: req.method, headers, signal: controller.signal,
+      };
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        init.body = Readable.toWeb(req) as ReadableStream<Uint8Array>;
+        init.duplex = "half";
+      }
+      const request = new Request(url, init);
+      const response = await router.handle(request);
+      if (!response) { res.status(404).end(); return; }
+      res.status(response.status);
+      response.headers.forEach((value, name) => {
+        if (name !== "set-cookie") res.setHeader(name, value);
+      });
+      const cookies = response.headers.getSetCookie();
+      if (cookies.length) res.setHeader("set-cookie", cookies);
+      if (req.method === "HEAD" || !response.body) {
+        await response.body?.cancel();
+        res.end();
+      } else {
+        await pipeline(Readable.fromWeb(response.body as NodeReadableStream<Uint8Array>), res, { signal: request.signal });
+      }
+    })().catch((error) => { if (!controller.signal.aborted) next(error); }).finally(() => {
+      req.off("aborted", abort);
+      res.off("close", abort);
+    });
+  };
+}
 ```
 
 ## Server
@@ -20,11 +75,11 @@ npm install @filefn/server @superfunctions/storage @superfunctions/db
 import express from "express";
 import { createFileFn } from "@filefn/server";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import { createLocalStorageAdapter } from "@superfunctions/storage";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
+import { fileFnHandler } from "./filefn-express";
 
 const fileFn = createFileFn({
-  db: memoryAdapter({ debug: false }),
+  database: memoryAdapter({ debug: false }),
   storage: createLocalStorageAdapter({ rootDir: "./.filefn-storage" }),
   policies: [
     {
@@ -39,47 +94,13 @@ const fileFn = createFileFn({
 
 const app = express();
 
-app.use("/filefn", async (req: IncomingMessage, res: ServerResponse) => {
-  const url = `http://${req.headers.host ?? "localhost"}${req.url ?? "/"}`;
-  const headers = new Headers();
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (Array.isArray(value)) {
-      for (const v of value) headers.append(key, v);
-    } else if (typeof value === "string") {
-      headers.set(key, value);
-    }
-  }
-
-  const body =
-    req.method === "GET" || req.method === "HEAD"
-      ? undefined
-      : (req as unknown as ReadableStream<Uint8Array>);
-
-  const fetchRequest = new Request(url, {
-    method: req.method,
-    headers,
-    body,
-    duplex: "half",
-  } as any);
-
-  const response = await fileFn.router.handle(fetchRequest);
-  if (!response) {
-    res.statusCode = 404;
-    res.end();
-    return;
-  }
-
-  res.statusCode = response.status;
-  response.headers.forEach((value, key) => res.setHeader(key, value));
-
-  const buffer = Buffer.from(await response.arrayBuffer());
-  res.end(buffer);
-});
+// Mount before body-consuming middleware: the bridge streams upload bytes.
+app.use("/filefn", fileFnHandler(fileFn.router));
 
 app.listen(3001);
 ```
 
-For large downloads, replace the buffered response handling with a streaming bridge that pipes the `Response.body` Web stream into `res` (Node 18+ supports `Readable.fromWeb(response.body)`).
+The bridge streams downloads with backpressure and preserves their bytes and headers. Unknown routes return 404. Keep JSON/raw body parsers off this mount; FileFn’s upload policy still controls accepted file size. The memory database is disposable and loses metadata on restart. Use your host’s persistent adapter, authentication, and policy configuration for production.
 
 ## When to use Express vs. Hono
 

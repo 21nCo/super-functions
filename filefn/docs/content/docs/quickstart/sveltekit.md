@@ -10,7 +10,7 @@ SvelteKit can host filefn as a server route under any prefix. The server runs in
 ## Install
 
 ```bash
-npm install @filefn/server @superfunctions/storage @superfunctions/db
+npm install @filefn/server @superfunctions/storage-local @superfunctions/db
 ```
 
 ## Server (server.ts)
@@ -20,7 +20,7 @@ Keep the kernel out of `+server.ts` so it survives HMR. Create `src/lib/server/f
 ```ts
 import { createFileFn } from "@filefn/server";
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import { createLocalStorageAdapter } from "@superfunctions/storage";
+import { createLocalStorageAdapter } from "@superfunctions/storage-local";
 
 export const fileFn = createFileFn({
   db: memoryAdapter({ debug: false }),

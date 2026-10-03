@@ -38,11 +38,11 @@ The optional `getSignedUrl` / `getSignedDownloadUrl` enable signed-URL downloads
 filefn supports multiple backends keyed by `storageTarget`:
 
 ```ts
-import { createStorageRouter } from "@superfunctions/storage";
+import { createRoutedStorageAdapter } from "@superfunctions/storage";
 
-const storage = createStorageRouter({
-  default: localStorage,
-  targets: {
+const storage = createRoutedStorageAdapter({
+  defaultTarget: "temporary",
+  adapters: {
     durable: gcsStorage,
     "hot-cdn": cloudfrontFrontedS3Storage,
     temporary: localStorage,

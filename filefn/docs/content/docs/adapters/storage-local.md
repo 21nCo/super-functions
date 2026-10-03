@@ -6,7 +6,7 @@ description: createLocalStorage — disk-backed storage for development, demos, 
 # Local FS adapter
 
 ```ts
-import { createLocalStorage } from "@superfunctions/storage";
+import { createLocalStorage } from "@superfunctions/storage-local";
 
 const storage = createLocalStorage({
   rootDir: "./.filefn-storage",

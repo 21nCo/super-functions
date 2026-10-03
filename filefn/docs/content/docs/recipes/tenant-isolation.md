@@ -37,21 +37,7 @@ fileFn.definePolicy("user-document", {
 
 Every storage object lives under `tenants/<tenantId>/`. If you front it with a CDN, configure cache keys to include the tenant prefix to keep tenant data isolated at the cache layer too.
 
-For per-tenant buckets, route at the storage layer:
-
-```ts
-import { createStorageRouter } from "@superfunctions/storage";
-
-const storage = createStorageRouter({
-  default: durable,
-  resolveTarget: (input) => {
-    if (input.policy === "user-document") {
-      return tenantBuckets.get(input.tenantId)!;
-    }
-    return durable;
-  },
-});
-```
+For multiple buckets, register named adapters with `createRoutedStorageAdapter({ adapters, defaultTarget })` and assign trusted policies to those targets. The router has no `resolveTarget` callback. Keep tenant authorization in the host and do not accept an arbitrary adapter/target from the client. See [CDN and storage routing](/docs/recipes/cdn-integration).
 
 ## Quotas
 

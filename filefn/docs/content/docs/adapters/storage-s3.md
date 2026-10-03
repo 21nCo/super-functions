@@ -1,23 +1,20 @@
 ---
 title: S3 adapter
-description: createS3Storage — production-grade storage on AWS S3 with signed-URL multipart, optional CDN fronting, and SSE.
+description: createS3Storage — production-grade storage on AWS S3 with signed URLs and multipart uploads.
 ---
 
 # S3 adapter
 
 ```ts
-import { createS3Storage } from "@superfunctions/storage";
+import { createS3Storage } from "@superfunctions/storage-s3";
 
 const storage = createS3Storage({
   region: process.env.AWS_REGION!,
   bucket: process.env.S3_BUCKET!,
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  sessionToken: process.env.AWS_SESSION_TOKEN,           // optional
   endpoint: process.env.S3_ENDPOINT,                     // optional, for non-AWS S3
   forcePathStyle: false,                                 // default; set true for MinIO
-  serverSideEncryption: "AES256",                        // optional; defaults off
-  cdnPrefix: process.env.CDN_PREFIX,                     // optional, e.g. https://cdn.example.com
 });
 ```
 
@@ -26,26 +23,12 @@ const storage = createS3Storage({
 - Multipart with `signPart` (5-MiB minimum, server-enforced).
 - `getSignedUrl` and `getSignedDownloadUrl` (15-minute default TTL).
 - `put`, `get`, `delete`.
-- SSE (server-side encryption) headers.
 
-## CDN fronting
+## Credentials and delivery
 
-`cdnPrefix` rewrites signed URLs to your CDN. For CloudFront, configure the distribution to:
+For workload credentials, omit both static credential fields and let the AWS SDK default credential chain resolve them. Temporary credentials (including session tokens) belong in that chain; `sessionToken` is not an adapter option. If supplying static keys, provide both nonempty fields.
 
-- forward `Authorization` and any custom headers
-- cache by `Vary: Authorization`
-- short TTLs for signed URLs (under filefn's `signedUrlTtlSeconds`)
-
-For unsigned public buckets:
-
-```ts
-const storage = createS3Storage({
-  region: "us-east-1",
-  bucket: "public-assets",
-  cdnPrefix: "https://cdn.example.com",
-  // no accessKeyId / secretAccessKey when bucket policy allows public reads
-});
-```
+Configure encryption and CDN delivery in your storage/infrastructure layer. The adapter has no `serverSideEncryption` or `cdnPrefix` option and does not rewrite signed S3 URLs into CDN URLs. Use FileFn's authorized download resolution for private objects.
 
 ## IAM
 

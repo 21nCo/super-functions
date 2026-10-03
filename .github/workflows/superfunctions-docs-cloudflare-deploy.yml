@@ -25,6 +25,7 @@ on:
       - docsfn/**
       - packages/docs-theme/**
       - scripts/cloudflare-docs/**
+      - scripts/docs-site/**
       - package.json
       - package-lock.json
       - turbo.json

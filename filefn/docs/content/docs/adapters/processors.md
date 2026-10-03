@@ -1,191 +1,116 @@
 ---
 title: Processors
-description: The bundled processor catalog from @filefn/processing — thumbnails, PDF previews, OCR, image transforms, video, audio, compression.
+description: Configure thumbnail, PDF, compression, OCR, image, video, and audio processing.
 ---
 
 # Processors
 
-`@filefn/processing` ships eight processors. They cover the most common post-upload work and are designed to be combined.
+Import processors from `@filefn/processing` and pass the instances in `createFileFn({ db, storage, processing: { enabled: true, processors } })`. Install the runtime dependencies of the processors you enable. Image operations use `sharp`; command media providers need FFmpeg (and FFprobe for metadata).
 
-## Thumbnails
+## Thumbnails and PDF previews
 
 ```ts
-import { createThumbnailProcessor } from "@filefn/processing";
+import { createThumbnailProcessor, createPdfPreviewProcessor } from "@filefn/processing";
 
 const thumbnails = createThumbnailProcessor({
-  sizes: [
-    { name: "thumb", width: 256, height: 256 },
-    { name: "preview", width: 1024, height: 1024 },
-  ],
+  sizes: [{ name: "thumb", width: 256, height: 256 }],
   format: "jpeg",
   quality: 80,
-  fit: "cover", // "cover" | "contain" | "fill"
 });
-```
-
-Outputs one artifact per size: `thumbnail-thumb`, `thumbnail-preview`. MIME `image/jpeg` (or `image/png` / `image/webp` per `format`).
-
-Backed by `sharp` on Node, native `Image` APIs on Bun.
-
-## PDF previews
-
-```ts
-import { createPdfPreviewProcessor } from "@filefn/processing";
-
 const pdf = createPdfPreviewProcessor({
   sizes: [{ name: "preview", width: 1024, height: 1024 }],
-  pages: [1], // optional; default first page only
+  density: 144,
+  format: "png",
 });
 ```
 
-Renders specified pages as raster artifacts (`pdf-preview-preview`).
+Thumbnail configuration accepts sizes, quality, and format; it has no top-level `fit`. PDF previews render the first page, with a placeholder fallback when rasterization is unavailable; there is no `pages` selector. Outputs include `thumbnail-thumb` and `pdf-preview-page-1-preview` for the names above.
 
 ## Compression
 
 ```ts
 import { createCompressionProcessor } from "@filefn/processing";
-
-const compress = createCompressionProcessor({
-  algorithm: "gzip", // "gzip" | "deflate"
-  threshold: 1024,   // skip if compressed isn't smaller than threshold
-});
+const compression = createCompressionProcessor({ algorithm: "gzip", level: 6 });
 ```
 
-Outputs `compressed-gzip` (or `-deflate`). Useful for `text/plain`, `application/json`, `text/css`, `application/javascript`.
+Algorithms are `gzip` and `deflate`. Empty inputs and outputs saving less than roughly 5% are skipped. There is no configurable byte `threshold`. An output artifact has kind `compressed-gzip` or `compressed-deflate`.
 
 ## OCR
 
 ```ts
-import {
-  createOCRProcessor,
-  createTesseractJsOCRProvider,
-} from "@filefn/processing";
-
+import { createOCRProcessor, createTesseractJsOCRProvider } from "@filefn/processing";
 const ocr = createOCRProcessor({
-  provider: createTesseractJsOCRProvider({ languages: ["eng"] }),
-  outputs: ["text", "hocr", "json"],
+  provider: createTesseractJsOCRProvider(),
+  language: "eng",
+  outputFormat: "all",
 });
 ```
 
-Outputs:
-
-- `ocr-text` (`text/plain`).
-- `ocr-hocr` (`text/html`, optional).
-- `ocr-json` (`application/json`, optional).
-
-The bundled `createTesseractJsOCRProvider` uses `tesseract.js` (browser-shaped) under Node. Swap in a cloud OCR (Google Vision, AWS Textract) by implementing `OCRProcessorProvider`:
-
-```ts
-interface OCRProcessorProvider {
-  recognize(input: { data: Uint8Array; mimeType: string }): Promise<{
-    text: string;
-    hocr?: string;
-    json?: unknown;
-  }>;
-}
-```
+Use `text`, `hocr`, `json`, or `all` for `outputFormat`. The provider factory takes no options; language belongs to the processor. Outputs have kinds `ocr-text`, `ocr-hocr`, and `ocr-json` when requested and available. A custom provider implements the exported `OCRProcessorProvider`, whose `recognize` receives `input`, `imageData`, `language`, and `includeHOCR`, and returns text, confidence, and optional hOCR.
 
 ## Image transforms
 
 ```ts
 import { createImageTransformProcessor } from "@filefn/processing";
-
-const transform = createImageTransformProcessor({
-  pipeline: [
-    { kind: "rotate", angle: -90 },
-    { kind: "resize", width: 1024 },
-    { kind: "format", format: "webp", quality: 80 },
+const images = createImageTransformProcessor({
+  operations: [
+    { operation: "rotate", options: { angle: -90 }, suffix: "rotated" },
+    { operation: "resize", options: { width: 1024, fit: "inside" }, suffix: "preview" },
   ],
-  outputName: "normalised",
+  outputFormat: "webp",
+  outputQuality: 80,
 });
 ```
 
-Outputs `image-transform-normalised` after applying the pipeline in order. Good for normalising user uploads (e.g. always rotate to EXIF orientation, resize to max dimension, re-encode as WebP).
+Each operation transforms the original input independently; this is not a sequential pipeline. The example emits `transform-rotated` and `transform-preview`. Operations are `resize`, `crop`, and `rotate`; output format and quality apply to every artifact.
 
 ## Video
 
 ```ts
-import {
-  createVideoProcessor,
-  createCommandVideoProvider,
-} from "@filefn/processing";
-
+import { createVideoProcessor, createCommandVideoProvider } from "@filefn/processing";
 const video = createVideoProcessor({
-  provider: createCommandVideoProvider({ ffmpegPath: "ffmpeg" }),
-  poster: { time: 1.0, width: 1024 },
-  transcode: [
-    { resolution: "720p", codec: "h264", bitrate: "2M" },
-    { resolution: "480p", codec: "h264", bitrate: "1M" },
-  ],
-  metadata: true,
+  provider: createCommandVideoProvider({ ffmpegPath: "ffmpeg", ffprobePath: "ffprobe" }),
+  generatePoster: true,
+  posterOptions: { timestamp: 1, width: 1024 },
+  transcode: true,
+  transcodeOptions: { resolution: "720p", codec: "h264", bitrate: "2M" },
+  extractMetadata: true,
 });
 ```
 
-Outputs:
-
-- `video-poster` (a JPEG poster frame).
-- `video-transcoded-720p`, `video-transcoded-480p` (MP4 / H.264).
-- `video-metadata` (`application/json` with width/height/duration/codecs).
-
-`createCommandVideoProvider` shells out to `ffmpeg`. Make sure it's installed in the runtime image.
+`transcode` is a boolean, with one `transcodeOptions` object per processor. The example emits `video-poster`, `video-transcoded-720p`, and `video-metadata`. Use separate processor instances if you need multiple renditions and ensure artifact names/storage keys remain distinct.
 
 ## Audio
 
 ```ts
-import {
-  createAudioProcessor,
-  createCommandAudioProvider,
-} from "@filefn/processing";
-
+import { createAudioProcessor, createCommandAudioProvider } from "@filefn/processing";
 const audio = createAudioProcessor({
-  provider: createCommandAudioProvider({ ffmpegPath: "ffmpeg" }),
-  waveform: { width: 1024, height: 128 },
-  transcode: [{ codec: "mp3", bitrate: "128k" }],
-  metadata: true,
+  provider: createCommandAudioProvider({ ffmpegPath: "ffmpeg", ffprobePath: "ffprobe" }),
+  transcode: true,
+  transcodeOptions: { codec: "mp3", bitrate: "128k" },
+  extractMetadata: true,
+  generateWaveform: true,
 });
 ```
 
-Outputs:
+Outputs include `audio-transcoded-mp3`, `audio-metadata`, and `audio-waveform`. Waveform data is JSON samples/metadata, not a PNG image. `generateWaveform`, `extractMetadata`, and `transcode` are booleans.
 
-- `audio-waveform` (a PNG waveform).
-- `audio-transcoded-mp3`.
-- `audio-metadata`.
+## Failures and custom processors
 
-## Composing in `processing.processors`
+A processor returns `{ success, artifacts, error? }`; inspect processing results rather than treating artifact presence as guaranteed. Unsupported MIME types and unavailable runtime tools can produce failures. A custom implementation follows the exported `Processor` contract:
 
 ```ts
-const fileFn = createFileFn({
-  db, storage,
-  processing: {
-    enabled: true,
-    processors: [
-      thumbnails,
-      pdf,
-      ocr,
-      video,
-      audio,
-    ],
+import type { Processor } from "@filefn/processing";
+const copyText: Processor = {
+  name: "copy-text",
+  supportedMimeTypes: ["text/plain"],
+  async process(input, getData) {
+    return {
+      success: true,
+      artifacts: [{ kind: "text-copy", data: await getData(), mimeType: "text/plain", storageKey: `${input.storageKey}.copy.txt` }],
+    };
   },
-});
+};
 ```
 
-The kernel runs every processor whose `supportedMimeTypes` matches the upload. A failure in one doesn't block the others.
-
-## Custom processors
-
-Anything that implements:
-
-```ts
-interface Processor {
-  name: string;
-  supportedMimeTypes: string[];
-  process(input: ProcessorInput, getData: () => Promise<Uint8Array>): Promise<ProcessorResult>;
-}
-```
-
-is a valid processor. See [Recipes › Custom processor](../recipes/custom-processor) for an end-to-end walkthrough.
-
-## See also
-
-- [Features › Processing](../features/processing) — the kernel side.
-- [Render intents](../core-concepts/render-intents) — how artifact `kind`s feed render-intent resolution.
+See [Processing](../features/processing) for execution and artifact lifecycle.
