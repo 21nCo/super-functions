@@ -8,7 +8,7 @@ import { validateDevFnConfig } from "@devfn/config";
 import { proxyOwnerStatus } from "@devfn/proxy";
 import { describe, expect, it } from "vitest";
 
-import { DevFnOrchestrator } from "../src/index.js";
+import { DevFnOrchestrator, resolveInstanceIdentity } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -84,6 +84,8 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
     const withTls = withProxy && process.env.DEVFN_REAL_TLS === "1";
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-native-endpoint-"));
     const observed = path.join(root, "observed.json");
+    const owner = (await resolveInstanceIdentity("endpoint-fixture", root)).instanceId;
+    if (withProxy) await writeFile(path.join(root, "policy.json"), JSON.stringify({ version: 1, hostnameSuffix: ".test.localhost" }));
     const originalSecret = process.env.SECRET_TOKEN;
     const secret = `private-${Date.now()}-credential`;
     process.env.SECRET_TOKEN = secret;
@@ -92,12 +94,13 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       ports: { native: {} },
       processes: { native: {
         adapter: "command", command: [process.execPath, "server.mjs", "{{env.DEVFN_URL_NATIVE}}", "literal $HOME `id` ; & |", "{{env.HOST}}", "{{env.DEVFN_HOST}}"],
-        ports: ["native"], health: { type: "http", port: "native", url: `${withTls ? "https" : "http"}://${withProxy ? "native.localhost" : "route-not-yet-installed.localhost"}/health?probe=1`, timeoutMs: 15_000 },
+        ports: ["native"], health: { type: "http", port: "native", url: `${withTls ? "https" : "http"}://${withProxy ? `native-${owner}.test.localhost` : "route-not-yet-installed.localhost"}/health?probe=1`, timeoutMs: 15_000 },
         env: { OBSERVED_FILE: observed, UPSTREAM_URL: "{{env.DEVFN_URL_NATIVE}}", EXPECTED_HEALTH_PATH: "/health?probe=1", MODE: "node" },
         envAllowlist: ["SECRET_TOKEN"], secretEnv: ["SECRET_TOKEN"],
       } },
       profiles: { default: { processes: ["native"], environment: { MODE: "profile" }, proxy: withProxy } },
-      ...(withProxy ? { hostnames: { native: { target: "native", hostname: "native.localhost", tls: withTls ? "internal" : "off" } } } : {}),
+      environmentOutputs: [{ path: ".devfn/generated.env" }],
+      ...(withProxy ? { policy: "policy.json", hostnames: { native: { target: "native", tls: withTls ? "internal" : "off" } } } : {}),
     });
     await writeFile(path.join(root, "server.mjs"), serverScript);
     const orchestrator = new DevFnOrchestrator();
@@ -109,7 +112,7 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       expect(observation).toMatchObject({ port: String(receipt.allocations[0].port), url: `http://127.0.0.1:${receipt.allocations[0].port}`, host: "127.0.0.1", devfnHost: "127.0.0.1", mode: "node" });
       expect(observation.argv).toEqual([observation.url, "literal $HOME `id` ; & |", "127.0.0.1", "127.0.0.1"]);
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
-      if (withProxy) expect(receipt.urls.native).toBe(`${withTls ? "https" : "http"}://native.localhost`);
+      if (withProxy) expect(receipt.urls.native).toBe(`${withTls ? "https" : "http"}://native-${owner}.test.localhost`);
       await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       expect(await readFile(receipt.environmentOutputs[0], "utf8")).toContain(`DEVFN_URL_NATIVE=http://127.0.0.1:${receipt.allocations[0].port}`);
@@ -133,7 +136,7 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
     await writeFile(path.join(root, "web.mjs"), `import { createServer } from "node:http";
 import { writeFile } from "node:fs/promises";
 await writeFile("/observed/web.json", JSON.stringify({ url: process.env.OBSERVED_URL, port: process.env.OBSERVED_PORT, mode: process.env.OBSERVED_MODE }));
-createServer((request, response) => { response.writeHead(request.url === "/health?probe=1" || request.url === "/health" ? 200 : 404); response.end("ok"); }).listen(8080, "0.0.0.0");
+createServer((request, response) => { response.writeHead(request.url === "/health?probe=1" || request.url === "/health" ? 200 : 404); response.end("ok"); }).listen(8080, process.env.HOST);
 `);
     await writeFile(path.join(root, "consumer.mjs"), `import { createServer } from "node:http";
 import { writeFile } from "node:fs/promises";
@@ -151,6 +154,7 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
       - ./observed:/observed
     command: ["node", "/app/web.mjs"]
     environment:
+      HOST: "\${HOST}"
       OBSERVED_URL: "\${DEVFN_URL_WEB}"
       OBSERVED_PORT: "\${DEVFN_PORT_WEB}"
       OBSERVED_MODE: "\${MODE}"
@@ -170,7 +174,7 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
       version: 1, project: { id: "compose-endpoint-fixture" },
       ports: { web: {}, consumer: {}, native: {} },
       services: {
-        web: { adapter: "compose", service: "web", ports: { web: 8080 }, health: { type: "http", port: "web", url: `${withTls ? "https" : "http"}://${withProxy ? "web.localhost" : "route-not-yet-installed.localhost"}/health?probe=1`, timeoutMs: 30_000 }, env: { MODE: "service" } },
+        web: { adapter: "compose", service: "web", ports: { web: 8080 }, health: { type: "http", port: "web", url: `${withTls ? "https" : "http"}://${withProxy ? "web.localhost" : "route-not-yet-installed.localhost"}/health?probe=1`, timeoutMs: 30_000 }, env: { HOST: "0.0.0.0", MODE: "service" } },
         consumer: { adapter: "compose", service: "consumer", ports: { consumer: 8081 }, dependsOn: ["web"], health: { type: "http", port: "consumer", timeoutMs: 30_000 } },
       },
       processes: { native: { adapter: "command", command: [process.execPath, "server.mjs", "{{env.DEVFN_URL_WEB}}"], ports: ["native"], dependsOn: ["consumer"], health: { type: "http", port: "native", timeoutMs: 30_000 }, env: { OBSERVED_FILE: path.join(root, "native.json"), UPSTREAM_URL: "{{env.DEVFN_URL_WEB}}", MODE: "node" } } },

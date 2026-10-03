@@ -90,7 +90,19 @@ function expand(value: string, field: string, lookup: (name: string) => string):
   const expanded = value.replace(REFERENCE, (_match, key: string) => lookup(key));
   if (expanded.includes("{{") || expanded.includes("}}")) invalid(field, "malformed template reference.");
   if (expanded.includes("\0")) invalid(field, "NUL is not a valid environment or argv value.");
+  rejectUrlCredentials(expanded, field);
   return expanded;
+}
+
+function rejectUrlCredentials(value: string, field: string): void {
+  for (const candidate of value.match(/[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s"'<>]+/g) ?? []) {
+    try {
+      const url = new URL(candidate);
+      if (url.username || url.password) invalid(field, "credential-bearing URL must use the secret channel.");
+    } catch (error) {
+      if (error instanceof DevFnError) throw error;
+    }
+  }
 }
 
 function normalized(name: string): string {
@@ -136,6 +148,7 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     const health = node.kind === "process" ? config.processes?.[node.name]?.health : config.services?.[node.name]?.health;
     if (health?.type !== "http") continue;
     const field = `${node.kind === "process" ? "processes" : "services"}.${node.name}.health`;
+    if (health.url) rejectUrlCredentials(health.url, `${field}.url`);
     let url: URL;
     try { url = new URL(resolveHttpReadinessUrl(health, ports)); }
     catch (error) { invalid(field, `invalid direct HTTP readiness URL: ${error instanceof Error ? error.message : String(error)}`); }
@@ -177,6 +190,14 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
       if (profileKey && profileKey !== key) invalid(`${field}.env.${key}`, `collides with profile environment key ${profileKey}.`);
     }
     const processSpec = node.kind === "process" ? config.processes![node.name] : undefined;
+    if (node.kind === "service") {
+      const consumerProject = config.services![node.name].projectName ?? "devfn";
+      for (const producer of plan.nodes) {
+        if (producer.kind !== "service" || !Object.keys(composeUrls).some((port) => config.services?.[producer.name]?.ports?.[port] !== undefined)) continue;
+        const producerProject = config.services![producer.name].projectName ?? "devfn";
+        if (producerProject !== consumerProject) invalid(field, `Compose service ${node.name} cannot receive a sibling URL from ${producer.name} in another Compose project network.`);
+      }
+    }
     const nativeBind: Record<string, string> = processSpec && processSpec.exposure !== "public" ? { HOST: "127.0.0.1", DEVFN_HOST: "127.0.0.1" } : {};
     const nodeGenerated = node.kind === "service" ? { ...generated, ...Object.fromEntries(Object.entries(composeUrls).map(([name, url]) => [`DEVFN_URL_${normalized(name)}`, url])) } : generated;
     const profileEnvironment = node.kind === "service" ? resolveValues(profile.environment ?? {}, nodeGenerated, nodeGenerated, `profiles.${plan.profile}.environment`) : environment;

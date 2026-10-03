@@ -106,7 +106,8 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     if (plan.portNames.length !== receipt.allocations.length || plan.portNames.some((name) => ports[name] === undefined) ||
       plan.nodes.length !== receipt.processes.length + receipt.services.length ||
       plan.nodes.some((node) => !(node.kind === "process" ? receipt.processes : receipt.services).some((managed) => managed.name === node.name))) return false;
-    resolved = resolveEndpointTemplates({ config, plan, ownerId: receipt.instanceId, ports });
+    const loadedPolicy = await loadDevFnPolicy(root, config.policy);
+    resolved = resolveEndpointTemplates({ config, plan, ownerId: receipt.instanceId, ports, hostnameSuffix: loadedPolicy?.policy.hostnameSuffix });
   } catch { return false; }
   const compose = new ComposeController();
   const supervisor = new ProcessSupervisor();

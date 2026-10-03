@@ -48,21 +48,21 @@ function stringArray(value: unknown, field: string): string[] | undefined {
   return value.map((item, index) => string(item, `${field}[${index}]`));
 }
 
-function stringMap(value: unknown, field: string): Record<string, string> | undefined {
+function stringMap(value: unknown, field: string, allowHost = false): Record<string, string> | undefined {
   if (value === undefined) return undefined;
   const seen = new Set<string>();
   return Object.fromEntries(Object.entries(record(value, field)).map(([key, item]) => {
-    environmentKey(key, `${field}.${key}`);
+    environmentKey(key, `${field}.${key}`, allowHost);
     if (seen.has(key.toUpperCase())) fail(`${field} has colliding environment keys for ${key}.`, `${field}.${key}`);
     seen.add(key.toUpperCase());
     return [key, string(item, `${field}.${key}`)];
   }));
 }
 
-function environmentKey(key: string, field: string): void {
+function environmentKey(key: string, field: string, allowHost = false): void {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) fail(`${field} must be an environment variable name.`, field);
   if (["__proto__", "constructor", "prototype"].includes(key)) fail(`${field} is not a supported environment key.`, field);
-  if (key.toUpperCase().startsWith("DEVFN_") || key.toUpperCase() === "HOST") fail(`${field} is reserved for DevFn startup.`, field);
+  if (key.toUpperCase().startsWith("DEVFN_") || (!allowHost && key.toUpperCase() === "HOST")) fail(`${field} is reserved for DevFn startup.`, field);
 }
 
 function integer(value: unknown, field: string, min = 1, max = 65535): number {
@@ -148,12 +148,12 @@ function portSpec(value: unknown, field: string): PortSpec {
   };
 }
 
-function environmentFields(input: RecordValue, field: string): Pick<ProcessSpec, "env" | "envAllowlist" | "secretEnv"> {
-  const env = stringMap(input.env, `${field}.env`);
+function environmentFields(input: RecordValue, field: string, allowHost = false): Pick<ProcessSpec, "env" | "envAllowlist" | "secretEnv"> {
+  const env = stringMap(input.env, `${field}.env`, allowHost);
   const envAllowlist = stringArray(input.envAllowlist, `${field}.envAllowlist`);
   const secretEnv = stringArray(input.secretEnv, `${field}.secretEnv`);
-  for (const key of envAllowlist ?? []) environmentKey(key, `${field}.envAllowlist`);
-  for (const key of secretEnv ?? []) environmentKey(key, `${field}.secretEnv`);
+  for (const key of envAllowlist ?? []) environmentKey(key, `${field}.envAllowlist`, allowHost);
+  for (const key of secretEnv ?? []) environmentKey(key, `${field}.secretEnv`, allowHost);
   for (const key of Object.keys(env ?? {})) if (SENSITIVE_KEY.test(key)) fail(`${field}.env.${key} must not contain a literal secret; inherit it through envAllowlist and declare it in secretEnv.`, `${field}.env.${key}`);
   for (const key of secretEnv ?? []) if (!envAllowlist?.includes(key)) fail(`${field}.secretEnv contains ${key}, which is not present in envAllowlist.`, `${field}.secretEnv`);
   for (const key of envAllowlist ?? []) if (SENSITIVE_KEY.test(key) && !secretEnv?.includes(key)) fail(`${field}.envAllowlist contains sensitive key ${key}; declare it in secretEnv for log redaction.`, `${field}.envAllowlist`);
@@ -206,7 +206,7 @@ function serviceSpec(value: unknown, field: string): ComposeServiceSpec {
     ...(dependsOn ? { dependsOn } : {}),
     ...(parsedHealth ? { health: parsedHealth } : {}),
     ...(input.persistent === undefined ? {} : { persistent: input.persistent === true }),
-    ...environmentFields(input, field),
+    ...environmentFields(input, field, true),
   };
 }
 

@@ -1,8 +1,12 @@
-import { mkdtemp } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { ComposeController, createComposeEnvironment, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
+
+const execFileAsync = promisify(execFile);
 
 describe("ComposeController", () => {
   it("exposes availability as a non-throwing diagnostic", async () => {
@@ -130,6 +134,46 @@ describe("ComposeController", () => {
     await abandoned.controller.stop(abandoned.managed);
     expect(abandoned.calls.some((args) => args[0] === "stop" && args.includes("new-id"))).toBe(true);
   });
+
+  it("refuses stale environment in an unmanaged container before Compose up", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-stale-"));
+    for (const running of [true, false]) {
+      const calls: string[][] = [];
+      const controller = new ComposeController(async (_file, args) => {
+        calls.push([...args]);
+        if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+        if (args.includes("ps")) return { stdout: args.includes("-a") || running ? "old-id\n" : "", stderr: "" };
+        if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: { DEVFN_PORT_API: "4102" } } } }), stderr: "" };
+        if (args[0] === "inspect") return { stdout: args.includes("{{json .Config.Env}}") ? '["DEVFN_PORT_API=4101"]\n' : "<no value>\t<no value>\t<no value>\n", stderr: "" };
+        return { stdout: "", stderr: "" };
+      });
+      await expect(controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: "shared" }, root,
+        runtimeDir: path.join(root, ".devfn", "instances", "owner"), instanceId: "owner", ports: {}, environment: { DEVFN_PORT_API: "4102" } })).rejects.toThrow(/stale startup environment/);
+      expect(calls.some((args) => args.includes("up"))).toBe(false);
+      expect(calls.some((args) => args[0] === "stop" || args[0] === "rm")).toBe(false);
+    }
+  });
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("preserves a real unmanaged container with an old leased value", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-stale-real-"));
+    const file = path.join(root, "compose.yaml");
+    const projectPrefix = path.basename(root).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 42);
+    const projectName = `${projectPrefix}-owner`;
+    await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n    environment:\n      DEVFN_PORT_API: "${DEVFN_PORT_API}"\n');
+    try {
+      await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "up", "-d", "api"], { cwd: root, env: { ...process.env, DEVFN_PORT_API: "4101" } });
+      const controller = new ComposeController();
+      await expect(controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: projectPrefix }, root,
+        runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: {}, environment: { DEVFN_PORT_API: "4102" } })).rejects.toThrow(/stale startup environment/);
+      const { stdout: id } = await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "ps", "-q", "api"], { cwd: root, env: { ...process.env, DEVFN_PORT_API: "4101" } });
+      expect(id.trim()).not.toBe("");
+      const { stdout: current } = await execFileAsync("docker", ["inspect", "--format", "{{json .Config.Env}}", id.trim()]);
+      expect(JSON.parse(current) as string[]).toContain("DEVFN_PORT_API=4101");
+    } finally {
+      await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "down"], { cwd: root, env: { ...process.env, DEVFN_PORT_API: "4101" } }).catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 40_000);
 
   it("restores only user-owned containers that DevFn started", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-mixed-"));

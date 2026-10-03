@@ -110,6 +110,48 @@ describe("endpoint and template contract", () => {
     expect(resolved.nodes.consumer.environment).toMatchObject({ DEVFN_URL_WEB: "http://web:8080", BASE: "http://web:8080", UPSTREAM: "http://web:8080", DEVFN_PORT_WEB: "4103" });
   });
 
+  it("retains a Compose container bind HOST without changing native loopback HOST", () => {
+    const config = fixture();
+    config.services = { web: { adapter: "compose", service: "web", env: { HOST: "0.0.0.0" } } };
+    config.profiles.default.services = ["web"];
+    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    expect(resolved.nodes.web.environment.HOST).toBe("0.0.0.0");
+    expect(resolved.nodes.api.environment.HOST).toBe("127.0.0.1");
+  });
+
+  it("rejects Compose sibling URLs across isolated projects before state creation", async () => {
+    const config = fixture();
+    config.services = {
+      web: { adapter: "compose", service: "web", projectName: "web", ports: { web: 8080 }, health: { type: "http", port: "web" } },
+      consumer: { adapter: "compose", service: "consumer", projectName: "consumer", dependsOn: ["web"], env: { UPSTREAM: "{{env.DEVFN_URL_WEB}}" } },
+    };
+    config.ports!.web = {};
+    config.profiles.default.services = ["consumer"];
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-project-network-"));
+    const stateDir = path.join(root, "state");
+    try {
+      await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toThrow(/another Compose project network/);
+      await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("rejects credential-bearing URL literals before state creation without echoing them", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-url-secret-"));
+    const stateDir = path.join(root, "state");
+    try {
+      for (const location of ["profile", "node", "health"] as const) {
+        const config = fixture();
+        if (location === "profile") config.profiles.default.environment = { DATABASE_URL: "postgres://user:private@database.test/db" };
+        if (location === "node") config.processes!.worker.env = { CONNECTION: "postgres://user:private@database.test/db" };
+        if (location === "health") config.processes!.api.health = { type: "http", url: "http://user:private@127.0.0.1:4101/health" };
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret channel/);
+        expect(failure).not.toContain("private");
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("derives stable route labels from opaque owners without changing their identity", () => {
     const owner = "session:any/owner";
     const hostname = resolveLocalHostname(undefined, "api", "fixture", owner);

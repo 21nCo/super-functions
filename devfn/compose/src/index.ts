@@ -145,6 +145,30 @@ export class ComposeController {
     const preservePreExisting = before.length > 0 && !reclaimManaged;
     const preExistingIds = new Set(before);
     const previouslyRunning = new Set(beforeRunning);
+    if (preservePreExisting && Object.keys(input.environment ?? {}).length) {
+      try {
+        const configuration = JSON.parse((await this.run("docker", [...baseArgs, "config", "--format", "json"], { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 10 * 1024 * 1024 })).stdout) as { services?: Record<string, { environment?: Record<string, string> }> };
+        const serviceConfiguration = configuration.services?.[input.spec.service];
+        if (!serviceConfiguration) throw new Error("Compose did not return the selected service.");
+        const expected = serviceConfiguration.environment ?? {};
+        if (typeof expected !== "object" || Array.isArray(expected)) throw new Error("Compose returned a malformed service environment.");
+        const actualRows = (await this.run("docker", ["inspect", "--format", "{{json .Config.Env}}", ...before], { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 10 * 1024 * 1024 })).stdout.trim().split("\n");
+        if (actualRows.length !== before.length) throw new Error("Docker returned incomplete container environments.");
+        for (const row of actualRows) {
+          const actual = Object.fromEntries((JSON.parse(row) as string[]).map((entry) => {
+            const separator = entry.indexOf("=");
+            if (separator < 0) throw new Error("Docker returned a malformed container environment.");
+            return [entry.slice(0, separator), entry.slice(separator + 1)];
+          }));
+          if (Object.entries(expected).some(([key, value]) => actual[key] !== value)) {
+            throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Pre-existing Compose service ${input.name} has a stale startup environment; refusing to reuse it.`);
+          }
+        }
+      } catch (error) {
+        if (error instanceof ComposeError) throw error;
+        throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to verify pre-existing Compose service ${input.name} environment.`);
+      }
+    }
     if (input.spec.secretEnv?.length && before.length) {
       try {
         const drivers = (await this.run("docker", ["inspect", "--format", "{{.HostConfig.LogConfig.Type}}", ...before], { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.split(/\s+/).filter(Boolean);
