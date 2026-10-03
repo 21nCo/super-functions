@@ -1,0 +1,30 @@
+secfn/server/package.json
+  s_ad500513bc9987::t_b9104d0a896205 45,48
+secfn/server/src/__tests__/package-contracts.test.ts
+  s_ad500513bc9987::t_597f1e23eca2c1 1-2,4-20,22-49
+  s_ad500513bc9987::t_aefb30965a58ad 3,21
+secfn/core/package.json
+  s_ad500513bc9987::t_24330a2c241183 48,59
+secfn/server/README.md
+  s_ad500513bc9987::t_10d3a51e5d8491 5-10
+packages/db/package.json
+  s_ad500513bc9987::t_c8b845c1f60e6c 3
+package-lock.json
+  s_ad500513bc9987::t_045e7b13c0f9f7 8166-8193,49586-49599,49612-49667,52873,57096,57107,57144,57153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eabddcd02031a154e514e5b69395efb1ef042e95",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
