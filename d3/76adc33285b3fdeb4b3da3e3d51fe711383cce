@@ -1,0 +1,16 @@
+devfn/core/src/endpoints.ts
+  h_bdc5b81c173ee9 41-46,104-118
+devfn/core/test/endpoints.test.ts
+  h_bdc5b81c173ee9 142-154,156-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d376adc33285b3fdeb4b3da3e3d51fe711383cce",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
