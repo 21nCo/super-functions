@@ -1,0 +1,48 @@
+scripts/docs-site/auth-page.test.ts
+  s_ad500513bc9987::t_aa11afe1f5b221 39
+  s_ad500513bc9987::t_46a4840031a23b 20-21,58,74
+  s_ad500513bc9987::t_aee12850b0b331 4,14-17,23-34
+  s_ad500513bc9987::t_4390a1a34664ff 1,54-55,59,75,87-92,101-102
+scripts/cloudflare-docs/check-worker.mjs
+  s_ad500513bc9987::t_3a8e9d9707b8cd 49-50,71
+  s_ad500513bc9987::t_7f6430ee781163 69-70
+scripts/cloudflare-docs/custom-domain.mjs
+  s_ad500513bc9987::t_5e1a69311d4438 11-55,76,84,89,92-95
+  s_ad500513bc9987::t_67a264d07a50e1 2,77-83
+scripts/cloudflare-docs/deploy.test.mjs
+  s_ad500513bc9987::t_6d8b4206ec2ab1 55-56
+  s_ad500513bc9987::t_ce7e9665689638 12
+scripts/cloudflare-docs/custom-domain.test.mjs
+  s_ad500513bc9987::t_cc13ec8e5a18e7 152-177
+  s_ad500513bc9987::t_679758df563124 10,26-27,40-43,85,89-90,94,99,101,106
+apifn/docs/README.md
+  s_ad500513bc9987::t_1ea5444ccf32a1 28
+filefn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_f03d47fdfd79b6 6,68
+apifn/docs/package.json
+  s_ad500513bc9987::t_10744cbc441973 11
+scripts/cloudflare-docs/inventory.test.mjs
+  s_ad500513bc9987::t_ad46199baa581c 14
+  s_ad500513bc9987::t_a199bfb36a9c65 1-13,15-69
+scripts/cloudflare-docs/inventory.mjs
+  s_ad500513bc9987::t_3d9e1fbd0aca34 71,78,82
+  s_ad500513bc9987::t_c4d6066262703e 1-22,24,27-30,40-54,57-70,72-77,80-81,83-90
+  s_ad500513bc9987::t_4af459b3062a1f 31-39,55-56,79
+  s_ad500513bc9987::t_0d6b869551c5ce 23,25-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a44402b3e47a410316720107721201fbcf1e36a1",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
