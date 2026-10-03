@@ -267,6 +267,47 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
+  it("rejects qualified credential keys in every manifest consumer before mutation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-qualified-secret-"));
+    const stateDir = path.join(root, "state");
+    const marker = "synthetic-sentinel";
+    try {
+      for (const kind of ["process", "service"] as const) {
+        for (const location of ["profile", "node", "argv", "health"] as const) {
+          const config = fixture();
+          const url = `http://example.test/health?db_password=${marker}`;
+          if (kind === "service") {
+            config.ports!.web = {};
+            config.services = { web: { adapter: "compose", service: "web", ports: { web: 8080 }, health: { type: "http", port: "web" } } };
+            config.profiles.default.services = ["web"];
+            config.profiles.default.environment = {};
+          }
+          if (location === "profile") config.profiles.default.environment = { ENDPOINT: url };
+          if (location === "node") {
+            if (kind === "process") config.processes!.worker.env = { ENDPOINT: url };
+            else config.services!.web.env = { ENDPOINT: url };
+          }
+          if (location === "argv") {
+            if (kind === "process") config.processes!.worker.command = ["node", `--db-password=${marker}`];
+            else config.services!.web.health = { type: "command", command: ["node", `--db-password=${marker}`] };
+          }
+          if (location === "health") {
+            if (kind === "process") config.processes!.api.health = { type: "http", port: "api", path: `/health#password_hint=${marker}` };
+            else config.services!.web.health = { type: "http", port: "web", path: `/health#password_hint=${marker}` };
+          }
+          expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103 } })).toThrow(/secret channel/);
+          const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+          expect(failure).toMatch(/secret channel/);
+          expect(failure).not.toContain(marker);
+          await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        }
+      }
+      const safe = fixture();
+      safe.profiles.default.environment = { ENDPOINT: "http://example.test/health?monkey=1&ready=1" };
+      expect(resolveEndpointTemplates({ config: safe, plan: createPlan(safe), ownerId: "--db-password=opaque", ports: { api: 4101, worker: 4102 } }).environment.ENDPOINT).toContain("monkey=1");
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("derives stable route labels from opaque owners without changing their identity", () => {
     const owner = "session:any/owner";
     const hostname = resolveLocalHostname(undefined, "api", "fixture", owner);

@@ -113,6 +113,19 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       expect(observation).toMatchObject({ port: String(receipt.allocations[0].port), url: `http://127.0.0.1:${receipt.allocations[0].port}`, host: "127.0.0.1", devfnHost: "127.0.0.1", mode: "node", profileOnly: "first" });
       expect(observation.argv).toEqual([observation.url, "literal $HOME `id` ; & |", "127.0.0.1", "127.0.0.1"]);
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      config.processes!.native.command!.push("--db-password=synthetic-sentinel");
+      const rejectedStatus = await orchestrator.status({ config, root });
+      expect(rejectedStatus).toMatchObject({ ok: false, state: "degraded", urls: {} });
+      expect(JSON.stringify(rejectedStatus)).not.toContain("synthetic-sentinel");
+      const rejectedRetry = await orchestrator.up({ config, root, stateDir: path.join(root, "state") }).then(() => "", (error: Error) => error.message);
+      expect(rejectedRetry).toMatch(/secret channel/);
+      expect(rejectedRetry).not.toContain("synthetic-sentinel");
+      config.processes!.native.command!.pop();
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      expect(JSON.stringify(await readReceipt(config, root, owner))).not.toContain("synthetic-sentinel");
+      expect(await readFile(observed, "utf8")).not.toContain("synthetic-sentinel");
+      expect(await readFile(receipt.environmentOutputs[0], "utf8")).not.toContain("synthetic-sentinel");
+      expect(await readFile(receipt.processes[0].logPath, "utf8")).not.toContain("synthetic-sentinel");
       if (withProxy) expect(receipt.urls.native).toBe(`${withTls ? "https" : "http"}://${resolveLocalHostname(undefined, "native", "endpoint-fixture", owner, ".test.localhost")}`);
       await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
@@ -210,6 +223,21 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
       expect(native.upstream).toBe(`http://127.0.0.1:${webPort}`);
       expect(native.mode).toBe("node");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      config.services!.web.env!.CHECK_URL = "http://example.test/?db_password=synthetic-sentinel";
+      const rejectedStatus = await orchestrator.status({ config, root });
+      expect(rejectedStatus).toMatchObject({ ok: false, state: "degraded", urls: {} });
+      expect(JSON.stringify(rejectedStatus)).not.toContain("synthetic-sentinel");
+      const rejectedRetry = await orchestrator.up({ config, root, stateDir: path.join(root, "state") }).then(() => "", (error: Error) => error.message);
+      expect(rejectedRetry).toMatch(/secret channel/);
+      expect(rejectedRetry).not.toContain("synthetic-sentinel");
+      delete config.services!.web.env!.CHECK_URL;
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      expect(JSON.stringify(await readReceipt(config, root, (await resolveInstanceIdentity(config.project.id, root)).instanceId))).not.toContain("synthetic-sentinel");
+      expect(await readFile(path.join(observed, "web.json"), "utf8")).not.toContain("synthetic-sentinel");
+      for (const service of receipt.services) {
+        const log = await execFileAsync("docker", ["logs", service.containerIds[0]]);
+        expect(log.stdout + log.stderr).not.toContain("synthetic-sentinel");
+      }
       if (withProxy) expect(receipt.urls.web).toBe(`${withTls ? "https" : "http"}://web.localhost`);
       await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });

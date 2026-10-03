@@ -48,6 +48,16 @@ const CREDENTIAL_QUERY_KEYS = new Set([
   "sig", "signature", "token", "xamzcredential", "xamzsignature", "xgoogcredential", "xgoogsignature",
 ]);
 
+function credentialKey(name: string): boolean {
+  const normalizedKey = name.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  if (CREDENTIAL_QUERY_KEYS.has(normalizedKey)) return true;
+  // A credential label may be qualified by an application prefix or suffix
+  // (db_password, db-password, passwordHint). Keep short, ambiguous labels
+  // such as key and sig on token boundaries to avoid matching ordinary words.
+  if ([...CREDENTIAL_QUERY_KEYS].some((key) => key.length >= 5 && normalizedKey.includes(key))) return true;
+  return name.toLowerCase().split(/[^a-z0-9]+/).some((part) => CREDENTIAL_QUERY_KEYS.has(part));
+}
+
 function invalid(field: string, message: string): never {
   throw new DevFnError("DEVFN_RUNTIME_INVALID", `${field}: ${message}`);
 }
@@ -128,7 +138,7 @@ function expand(value: string, field: string, lookup: (name: string) => [string,
 
 function rejectCredentialArgument(value: string, field: string): void {
   for (const argument of value.matchAll(/(?:^|\s)--([A-Za-z][A-Za-z0-9_-]*)(?==|\s|$)/g)) {
-    if (CREDENTIAL_QUERY_KEYS.has(argument[1].replace(/[^a-z0-9]/gi, "").toLowerCase())) {
+    if (credentialKey(argument[1])) {
       invalid(field, "credential-bearing argv must use the secret channel.");
     }
   }
@@ -137,7 +147,7 @@ function rejectCredentialArgument(value: string, field: string): void {
 function rejectUrlCredentials(value: string, field: string): void {
   for (const match of value.matchAll(/[?&#]([^=?#&]+)=([^&#]*)/g)) {
     const key = new URLSearchParams(`${match[1]}=x`).keys().next().value ?? match[1];
-    if (CREDENTIAL_QUERY_KEYS.has(key.replace(/[^a-z0-9]/gi, "").toLowerCase())) {
+    if (credentialKey(key)) {
       invalid(field, "credential-bearing URL must use the secret channel.");
     }
   }
@@ -149,7 +159,7 @@ function rejectUrlCredentials(value: string, field: string): void {
         const fragment = url.hash.slice(1);
         const fragmentParameters = new URLSearchParams(fragment.includes("?") ? fragment.slice(fragment.indexOf("?") + 1) : fragment);
         const sensitiveQueryKey = [...url.searchParams.keys(), ...fragmentParameters.keys()].some((key) =>
-          CREDENTIAL_QUERY_KEYS.has(key.replace(/[^a-z0-9]/gi, "").toLowerCase()));
+          credentialKey(key));
         if (url.username || url.password || sensitiveQueryKey) invalid(field, "credential-bearing URL must use the secret channel.");
         break;
       } catch (error) {
