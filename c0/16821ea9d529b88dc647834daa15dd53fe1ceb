@@ -1,0 +1,26 @@
+devfn/config/src/schema.ts
+  h_bdc5b81c173ee9 53-65,155-156,331-332,334-336,338
+devfn/core/src/endpoints.ts
+  h_bdc5b81c173ee9 1-114
+devfn/core/src/index.ts
+  h_bdc5b81c173ee9 4
+devfn/core/src/orchestrator.ts
+  h_bdc5b81c173ee9 8,14,97,105,117,133-139,142,189-190,212,214,225,227
+devfn/core/test/endpoints.test.ts
+  h_bdc5b81c173ee9 1-60
+devfn/core/test/startup-fixture.test.ts
+  h_bdc5b81c173ee9 1-116
+devfn/docs/configuration.md
+  h_bdc5b81c173ee9 59-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c016821ea9d529b88dc647834daa15dd53fe1ceb",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
