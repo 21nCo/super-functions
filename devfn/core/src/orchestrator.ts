@@ -43,8 +43,10 @@ function assertReceiptStateDir(receipt: LifecycleReceipt, stateDir: string): voi
   }
 }
 
-function resolvedHealth(health: HealthCheck | undefined, command: string[] | undefined): HealthCheck | undefined {
-  return health?.type === "command" && command ? { ...health, command } : health;
+function resolvedHealth(health: HealthCheck | undefined, command: string[] | undefined, url?: string): HealthCheck | undefined {
+  if (health?.type === "command" && command) return { ...health, command };
+  if (health?.type === "http" && url) return { type: "http", url, ...(health.expectedStatus ? { expectedStatus: health.expectedStatus } : {}), ...(health.timeoutMs ? { timeoutMs: health.timeoutMs } : {}) };
+  return health;
 }
 
 function isDockerProxyListener(processName?: string): boolean {
@@ -98,7 +100,14 @@ async function waitForOwnedLoopbackListeners(processName: string, expected: Arra
 
 async function receiptIsReady(config: DevFnConfig, root: string, receipt: LifecycleReceipt, processStates: readonly string[], serviceStates: readonly string[]): Promise<boolean> {
   const ports = Object.fromEntries(receipt.allocations.map((allocation) => [allocation.service, allocation.port]));
-  const resolved = resolveEndpointTemplates({ config, plan: createPlan(config, receipt.profile), ownerId: receipt.instanceId, ports });
+  let resolved: ReturnType<typeof resolveEndpointTemplates>;
+  try {
+    const plan = createPlan(config, receipt.profile);
+    if (plan.portNames.length !== receipt.allocations.length || plan.portNames.some((name) => ports[name] === undefined) ||
+      plan.nodes.length !== receipt.processes.length + receipt.services.length ||
+      plan.nodes.some((node) => !(node.kind === "process" ? receipt.processes : receipt.services).some((managed) => managed.name === node.name))) return false;
+    resolved = resolveEndpointTemplates({ config, plan, ownerId: receipt.instanceId, ports });
+  } catch { return false; }
   const compose = new ComposeController();
   const supervisor = new ProcessSupervisor();
   const processReady = await Promise.all(receipt.processes.map(async (managed, index) => {
@@ -106,7 +115,7 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     if (!spec || processStates[index] !== "running") return false;
     try {
       const ready = await checkReadinessNow({
-        health: resolvedHealth(spec.health, resolved.nodes[managed.name]?.healthCommand), ports, logPath: managed.logPath, cwd: managed.cwd, environment: createProcessEnvironment({ ...spec, env: resolved.nodes[managed.name]?.environment }, resolved.generated),
+        health: resolvedHealth(spec.health, resolved.nodes[managed.name]?.healthCommand, resolved.nodes[managed.name]?.healthUrl), ports, logPath: managed.logPath, cwd: managed.cwd, environment: createProcessEnvironment({ ...spec, env: resolved.nodes[managed.name]?.environment }, resolved.generated),
         previouslyReady: Boolean(managed.readyAt || receipt.state === "ready"), isAlive: async () => await supervisor.status(managed) === "running",
       });
       if (!ready || spec.exposure === "public") return ready;
@@ -118,7 +127,7 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     const spec = config.services?.[managed.name];
     if (!spec || serviceStates[index] !== "running") return false;
     return await checkReadinessNow({
-      health: resolvedHealth(spec.health, resolved.nodes[managed.name]?.healthCommand), ports, logPath: "", cwd: root, environment: createComposeEnvironment({ ...spec, env: resolved.nodes[managed.name]?.environment }, resolved.generated),
+      health: resolvedHealth(spec.health, resolved.nodes[managed.name]?.healthCommand, resolved.nodes[managed.name]?.healthUrl), ports, logPath: "", cwd: root, environment: createComposeEnvironment({ ...spec, env: resolved.nodes[managed.name]?.environment }, resolved.nodes[managed.name]?.environment),
       previouslyReady: receipt.state === "ready", isAlive: async () => await compose.status(managed) === "running",
       readLog: async () => await compose.logs({ ...managed, logsDisabled: Boolean(managed.logsDisabled || spec.secretEnv?.length) }, 1000, managed.startedAt),
     });
@@ -209,9 +218,9 @@ export class DevFnOrchestrator {
         if (node.kind === "service") {
           const spec = options.config.services![node.name];
           await compose.start({
-            name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand) }, root: options.root, runtimeDir, instanceId: identity.instanceId, ports,
+            name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand, resolved.nodes[node.name].healthUrl) }, root: options.root, runtimeDir, instanceId: identity.instanceId, ports,
             portHosts: Object.fromEntries(allocations.map((item) => [item.service, item.host])),
-            portProtocols: Object.fromEntries(allocations.map((item) => [item.service, item.protocol])), environment: resolved.generated,
+            portProtocols: Object.fromEntries(allocations.map((item) => [item.service, item.protocol])), environment: resolved.nodes[node.name].environment,
             onStarted: async (managed) => {
               receipt.services.push(managed);
               receipt.startedNodes?.push({ name: node.name, kind: node.kind });
@@ -222,7 +231,7 @@ export class DevFnOrchestrator {
         } else {
           const spec = options.config.processes![node.name];
           const managed = await supervisor.start({
-            name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, command: resolved.nodes[node.name].command, script: resolved.nodes[node.name].script, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand) }, root: options.root, runtimeDir, ports, environment: resolved.generated,
+            name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, command: resolved.nodes[node.name].command, script: resolved.nodes[node.name].script, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand, resolved.nodes[node.name].healthUrl) }, root: options.root, runtimeDir, ports, environment: resolved.generated,
             onStarted: async (managed) => {
               receipt.processes.push(managed);
               receipt.startedNodes?.push({ name: node.name, kind: node.kind });

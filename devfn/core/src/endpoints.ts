@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { validateDevFnConfig, type DevFnConfig } from "@devfn/config";
 import { resolveHttpReadinessUrl } from "@devfn/processes";
 
@@ -15,6 +17,8 @@ export interface EndpointResolutionInput {
 
 export interface ResolvedNodeStartup {
   environment: Record<string, string>;
+  /** Fully resolved direct HTTP probe, including path and query. */
+  healthUrl?: string;
   command?: string[];
   script?: string;
   healthCommand?: string[];
@@ -28,6 +32,8 @@ export interface EndpointResolution {
   environment: Record<string, string>;
   /** Direct loopback URLs available before proxy route installation. */
   directUrls: Record<string, string>;
+  /** URLs reachable by sibling services on the same Compose project network. */
+  composeUrls: Record<string, string>;
   nodes: Record<string, ResolvedNodeStartup>;
 }
 
@@ -40,21 +46,41 @@ function invalid(field: string, message: string): never {
 function resolveValues(values: Record<string, string>, base: Readonly<Record<string, string>>, generated: Readonly<Record<string, string>>, field: string): Record<string, string> {
   const resolved: Record<string, string> = Object.assign(Object.create(null), base);
   const generatedKeys = new Map(Object.keys(generated).map((key) => [key.toUpperCase(), key]));
+  const checkedReferences = new Set<string>();
+  const activeReferences = new Set<string>();
+  const checkReferences = (key: string): void => {
+    if (checkedReferences.has(key)) return;
+    if (activeReferences.has(key)) invalid(field, `cyclic reference containing ${key}.`);
+    activeReferences.add(key);
+    for (const match of values[key].matchAll(REFERENCE)) if (Object.prototype.hasOwnProperty.call(values, match[1])) checkReferences(match[1]);
+    activeReferences.delete(key);
+    checkedReferences.add(key);
+  };
+  for (const key of Object.keys(values)) checkReferences(key);
   for (const key of Object.keys(values)) {
     const generatedKey = generatedKeys.get(key.toUpperCase());
     if (generatedKey && generatedKey !== key) invalid(`${field}.${key}`, `collides with generated environment key ${generatedKey}.`);
     if (!generatedKey) delete resolved[key];
   }
   const visiting = new Set<string>();
+  const checked = new Set<string>();
   const visit = (key: string): string => {
-    if (Object.prototype.hasOwnProperty.call(resolved, key)) return resolved[key];
-    if (!Object.prototype.hasOwnProperty.call(values, key)) invalid(field, `missing reference ${key}.`);
+    if (!Object.prototype.hasOwnProperty.call(values, key)) {
+      if (Object.prototype.hasOwnProperty.call(resolved, key)) return resolved[key];
+      invalid(field, `missing reference ${key}.`);
+    }
+    if (checked.has(key)) return resolved[key];
     if (visiting.has(key)) invalid(field, `cyclic reference containing ${key}.`);
     visiting.add(key);
-    const value = expand(values[key], `${field}.${key}`, visit);
+    const value = expand(values[key], `${field}.${key}`, (reference) => {
+      if (reference === key && Object.prototype.hasOwnProperty.call(generated, key)) return generated[key];
+      if (Object.prototype.hasOwnProperty.call(generated, reference)) return generated[reference];
+      return visit(reference);
+    });
     visiting.delete(key);
-    resolved[key] = value;
-    return value;
+    checked.add(key);
+    if (!Object.prototype.hasOwnProperty.call(generated, key)) resolved[key] = value;
+    return resolved[key];
   };
   for (const key of Object.keys(values)) visit(key);
   return resolved;
@@ -72,7 +98,12 @@ function normalized(name: string): string {
 }
 
 export function resolveLocalHostname(configured: string | undefined, key: string, projectId: string, ownerId: string, suffix = ".localhost"): string {
-  const result = (configured ?? `${key}-{instance}${suffix}`).replaceAll("{instance}", ownerId).replaceAll("{project}", projectId);
+  const template = (configured ?? `${key}-{instance}${suffix}`).replaceAll("{project}", projectId);
+  const ownerLabel = template.split(".").find((label) => label.includes("{instance}"));
+  const budget = ownerLabel ? 63 - ownerLabel.replaceAll("{instance}", "").length : 63;
+  if (budget < 14) invalid(`hostnames.${key}`, "hostname has no room for an opaque owner component.");
+  const safeOwner = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(ownerId) && ownerId.length <= budget ? ownerId : `${ownerId.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, budget - 13).replace(/-+$/g, "") || "o"}-${createHash("sha256").update(ownerId).digest("hex").slice(0, 12)}`;
+  const result = template.replaceAll("{instance}", safeOwner);
   if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(result)) invalid(`hostnames.${key}`, `local hostname ${result} must be a concrete .localhost name.`);
   return result;
 }
@@ -90,8 +121,10 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     DEVFN_PROFILE: plan.profile,
   };
   const directUrls: Record<string, string> = Object.create(null);
+  const composeUrls: Record<string, string> = Object.create(null);
   const httpPorts = new Set<string>();
   const httpSchemes = new Map<string, string>();
+  const healthUrls = new Map<string, string>();
   const selectedRouteHostnames = new Set<string>();
   if (plan.proxy) for (const [name, hostname] of Object.entries(config.hostnames ?? {})) {
     if (!hostname.profiles || hostname.profiles.includes(plan.profile)) {
@@ -108,9 +141,11 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     catch (error) { invalid(field, `invalid direct HTTP readiness URL: ${error instanceof Error ? error.message : String(error)}`); }
     if (!health.port && selectedRouteHostnames.has(url.hostname.toLowerCase().replace(/\.$/, ""))) invalid(field, "URL-only readiness cannot wait for a selected proxy route before installation; use its leased port.");
     if (health.port) {
+      if (health.url && selectedRouteHostnames.has(new URL(health.url).hostname.toLowerCase().replace(/\.$/, ""))) url.protocol = "http:";
       httpPorts.add(health.port);
       httpSchemes.set(health.port, url.protocol.slice(0, -1));
     }
+    healthUrls.set(node.name, url.toString());
   }
   for (const name of plan.portNames) {
     const port = ports[name];
@@ -122,6 +157,12 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
       const url = `${httpSchemes.get(name) ?? "http"}://127.0.0.1:${port}`;
       directUrls[name] = url;
       generated[`DEVFN_URL_${normalized(name)}`] = url;
+      for (const node of plan.nodes) {
+        if (node.kind !== "service") continue;
+        const service = config.services?.[node.name];
+        const internal = service?.ports?.[name];
+        if (internal !== undefined) composeUrls[name] = `${httpSchemes.get(name) ?? "http"}://${service!.service}:${internal}`;
+      }
     }
   }
   const environment = resolveValues(profile.environment ?? {}, generated, generated, `profiles.${plan.profile}.environment`);
@@ -137,7 +178,9 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     }
     const processSpec = node.kind === "process" ? config.processes![node.name] : undefined;
     const nativeBind: Record<string, string> = processSpec && processSpec.exposure !== "public" ? { HOST: "127.0.0.1", DEVFN_HOST: "127.0.0.1" } : {};
-    const nodeEnvironment = resolveValues(spec.env ?? {}, { ...environment, ...nativeBind }, { ...generated, ...nativeBind }, `${field}.env`);
+    const nodeGenerated = node.kind === "service" ? { ...generated, ...Object.fromEntries(Object.entries(composeUrls).map(([name, url]) => [`DEVFN_URL_${normalized(name)}`, url])) } : generated;
+    const profileEnvironment = node.kind === "service" ? resolveValues(profile.environment ?? {}, nodeGenerated, nodeGenerated, `profiles.${plan.profile}.environment`) : environment;
+    const nodeEnvironment = resolveValues(spec.env ?? {}, { ...profileEnvironment, ...nativeBind }, { ...nodeGenerated, ...nativeBind }, `${field}.env`);
     const lookup = (key: string): string => {
       if (!Object.prototype.hasOwnProperty.call(nodeEnvironment, key)) invalid(field, `missing reference ${key}.`);
       return nodeEnvironment[key];
@@ -150,7 +193,7 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     const command = processSpec?.command?.map((item, index) => argv(item, `${field}.command[${index}]`));
     const script = processSpec?.script !== undefined ? argv(processSpec.script, `${field}.script`) : undefined;
     const healthCommand = spec.health?.type === "command" ? spec.health.command.map((item, index) => argv(item, `${field}.health.command[${index}]`)) : undefined;
-    nodes[node.name] = { environment: nodeEnvironment, ...(command ? { command } : {}), ...(script ? { script } : {}), ...(healthCommand ? { healthCommand } : {}) };
+    nodes[node.name] = { environment: nodeEnvironment, ...(healthUrls.has(node.name) ? { healthUrl: healthUrls.get(node.name) } : {}), ...(command ? { command } : {}), ...(script ? { script } : {}), ...(healthCommand ? { healthCommand } : {}) };
   }
-  return { ownerId, generated, environment, directUrls, nodes };
+  return { ownerId, generated, environment, directUrls, composeUrls, nodes };
 }

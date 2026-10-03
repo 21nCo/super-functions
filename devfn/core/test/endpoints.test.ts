@@ -5,7 +5,7 @@ import path from "node:path";
 import { validateDevFnConfig, type DevFnConfig } from "@devfn/config";
 import { describe, expect, it } from "vitest";
 
-import { createPlan, DevFnOrchestrator, resolveEndpointTemplates } from "../src/index.js";
+import { createPlan, DevFnOrchestrator, resolveEndpointTemplates, resolveLocalHostname } from "../src/index.js";
 
 const fixture = (): DevFnConfig => validateDevFnConfig({
   version: 1, project: { id: "fixture" },
@@ -81,6 +81,68 @@ describe("endpoint and template contract", () => {
     config.processes!.api.health = { type: "http", port: "api", url: "http://api.localhost/health?ready=1" };
     const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
     expect(resolved.directUrls.api).toBe("http://127.0.0.1:4101");
+    expect(resolved.nodes.api.healthUrl).toBe("http://127.0.0.1:4101/health?ready=1");
+  });
+
+  it("uses upstream HTTP for an HTTPS proxy route and retains direct HTTPS elsewhere", () => {
+    const config = fixture();
+    config.profiles.default.proxy = true;
+    config.hostnames = { api: { target: "api", hostname: "api.localhost", tls: "internal" } };
+    config.processes!.api.health = { type: "http", port: "api", url: "https://api.localhost/health?ready=1" };
+    const routed = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    expect(routed.directUrls.api).toBe("http://127.0.0.1:4101");
+    expect(routed.nodes.api.healthUrl).toBe("http://127.0.0.1:4101/health?ready=1");
+    config.processes!.api.health.url = "https://direct.example.test/health?ready=1";
+    const direct = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    expect(direct.directUrls.api).toBe("https://127.0.0.1:4101");
+    expect(direct.nodes.api.healthUrl).toBe("https://127.0.0.1:4101/health?ready=1");
+  });
+
+  it("gives Compose siblings network URLs while retaining host URLs for native nodes", () => {
+    const config = fixture();
+    config.services = { web: { adapter: "compose", service: "web", ports: { web: 8080 }, health: { type: "http", port: "web" } }, consumer: { adapter: "compose", service: "consumer", dependsOn: ["web"], env: { UPSTREAM: "{{env.DEVFN_URL_WEB}}" } } };
+    config.ports!.web = {};
+    config.profiles.default.services = ["consumer"];
+    config.profiles.default.environment = { BASE: "{{env.DEVFN_URL_WEB}}" };
+    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103 } });
+    expect(resolved.environment.BASE).toBe("http://127.0.0.1:4103");
+    expect(resolved.nodes.worker.environment.BASE).toBe("http://127.0.0.1:4103");
+    expect(resolved.nodes.consumer.environment).toMatchObject({ DEVFN_URL_WEB: "http://web:8080", BASE: "http://web:8080", UPSTREAM: "http://web:8080", DEVFN_PORT_WEB: "4103" });
+  });
+
+  it("derives stable route labels from opaque owners without changing their identity", () => {
+    const owner = "session:any/owner";
+    const hostname = resolveLocalHostname(undefined, "api", "fixture", owner);
+    expect(hostname).toMatch(/^api-session-any-owner-[a-f0-9]{12}\.localhost$/);
+    expect(resolveLocalHostname(undefined, "api", "fixture", owner)).toBe(hostname);
+    const config = fixture();
+    config.profiles.default.proxy = true;
+    config.hostnames = { api: { target: "api" } };
+    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: owner, ports: { api: 4101, worker: 4102 } });
+    expect(resolved.ownerId).toBe(owner);
+    expect(resolved.environment.DEVFN_INSTANCE_ID).toBe(owner);
+  });
+
+  it("rejects invalid shadowed literals before creating state", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-shadowed-template-"));
+    const stateDir = path.join(root, "state");
+    try {
+      for (const level of ["profile", "node"] as const) {
+        for (const invalid of ["{{env.MISSING}}", "{{env.BAD", "bad\0value"]) {
+          const config = fixture();
+          config.ports!.api.env = "PORT";
+          if (level === "profile") config.profiles.default.environment = { PORT: invalid };
+          else config.processes!.worker.env = { PORT: invalid };
+          await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toThrow();
+          await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        }
+      }
+      const cyclic = fixture();
+      cyclic.ports!.api.env = "PORT";
+      cyclic.profiles.default.environment = { PORT: "{{env.A}}", A: "{{env.PORT}}" };
+      await expect(new DevFnOrchestrator().up({ config: cyclic, root, stateDir })).rejects.toThrow(/cyclic reference/);
+      await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await rm(root, { recursive: true, force: true }); }
   });
 
   it("recognizes a selected URL-only route with a policy hostname suffix", () => {
