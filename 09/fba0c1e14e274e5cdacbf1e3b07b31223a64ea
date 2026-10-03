@@ -1,0 +1,18 @@
+authfn/core/README.md
+  h_bdc5b81c173ee9 12-31
+authfn/core/package.json
+  h_bdc5b81c173ee9 3
+package-lock.json
+  h_bdc5b81c173ee9 536-544,555-569,614-622,633-647,755-769,808-850,890-932,935,1305-1347,3395-3437,3499-3513,3546-3588,3630-3638,3649-3663,3731-3745,3804-3846
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "09fba0c1e14e274e5cdacbf1e3b07b31223a64ea",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
