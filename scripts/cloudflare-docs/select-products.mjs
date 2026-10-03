@@ -49,22 +49,22 @@ function productsFromChangedFiles() {
     if (/^(package\.json|package-lock\.json|turbo\.json|scripts\/cloudflare-docs\/|\.github\/workflows\/superfunctions-docs-cloudflare-)/.test(file)) {
       return existingProductIds();
     }
-    if (/^packages\/docs-theme\//.test(file)) {
+    if (file.startsWith("packages/docs-theme/")) {
       for (const productId of existingProductIds()) selectExisting(productId);
       continue;
     }
-    if (/^docsfn\//.test(file)) {
+    if (file.startsWith("docsfn/")) {
       selectExisting("authfn");
       continue;
     }
-    if (/^scripts\/docs-site\//.test(file)) {
+    if (file.startsWith("scripts/docs-site/")) {
       for (const productId of ["authfn", "filefn"]) selectExisting(productId);
       continue;
     }
-    if (/^datafn\/docs\//.test(file)) selectExisting("datafn");
-    if (/^filefn\/docs\//.test(file)) selectExisting("filefn");
-    if (/^searchfn\/docs\//.test(file)) selectExisting("searchfn");
-    if (/^authfn\/docs\//.test(file)) selectExisting("authfn");
+    if (file.startsWith("datafn/docs/")) selectExisting("datafn");
+    if (file.startsWith("filefn/docs/")) selectExisting("filefn");
+    if (file.startsWith("searchfn/docs/")) selectExisting("searchfn");
+    if (file.startsWith("authfn/docs/")) selectExisting("authfn");
   }
 
   return [...selected];
@@ -80,7 +80,7 @@ function resolveBeforeRef() {
 }
 
 function productFromLiveTag(tag) {
-  if (/^superfunctions-docs-live-/.test(tag)) return "all";
+  if (tag.startsWith("superfunctions-docs-live-")) return "all";
 
   for (const productId of productIds()) {
     const accepted = [

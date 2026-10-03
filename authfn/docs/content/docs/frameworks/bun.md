@@ -20,18 +20,13 @@ Bun.serve({
     }
 
     if (url.pathname.startsWith('/auth')) {
-      return auth.router.handle(stripPrefix(request, '/auth'));
+      return auth.router.handle(request);
     }
 
     return new Response('not found', { status: 404 });
   },
 });
 
-function stripPrefix(request: Request, prefix: string): Request {
-  const url = new URL(request.url);
-  url.pathname = url.pathname.slice(prefix.length) || '/';
-  return new Request(url, request);
-}
 ```
 
 ## Hot reload

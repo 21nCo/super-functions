@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -69,13 +69,18 @@ for (const page of docsPages) {
 }
 const llmsFullTxt = fullSections.join("\n");
 
-mkdirSync(staticDir, { recursive: true });
-writeFileSync(resolve(staticDir, "llms.txt"), llmsTxt, "utf8");
-writeFileSync(resolve(staticDir, "llms-full.txt"), llmsFullTxt, "utf8");
-
-console.log(
-  `Wrote ${resolve(staticDir, "llms.txt")} (${Buffer.byteLength(llmsTxt, "utf8")} bytes)`
-);
-console.log(
-  `Wrote ${resolve(staticDir, "llms-full.txt")} (${Buffer.byteLength(llmsFullTxt, "utf8")} bytes)`
-);
+const artifacts = [["llms.txt", llmsTxt], ["llms-full.txt", llmsFullTxt]];
+if (process.argv.includes("--check")) {
+  for (const [name, text] of artifacts) {
+    if (readFileSync(resolve(staticDir, name), "utf8") !== text) {
+      throw new Error(`${name} is stale. Run npm run generate:llms.`);
+    }
+  }
+  console.log("LLM artifacts are current");
+} else {
+  mkdirSync(staticDir, { recursive: true });
+  for (const [name, text] of artifacts) {
+    writeFileSync(resolve(staticDir, name), text, "utf8");
+    console.log(`Wrote ${resolve(staticDir, name)} (${Buffer.byteLength(text, "utf8")} bytes)`);
+  }
+}

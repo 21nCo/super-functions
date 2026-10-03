@@ -4804,8 +4804,9 @@ import { createFileFn } from "@filefn/server";
 
 const fileFn = createFileFn({
   db, storage,
+  stores: { atomicKv: redisAtomicKvStore },
   rateLimit: {
-    persistence: redisPersistence, // optional; in-memory by default
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -4823,7 +4824,7 @@ const fileFn = createFileFn({
 
 `rateLimit.algorithm` is one of `"fixed-window" | "sliding-window" | "token-bucket"`.
 
-`rateLimit.persistence` plugs in a shared store (Redis / Postgres / KV) so multi-instance deployments share counters.
+For exact multi-instance counters, provide a shared `stores.atomicKv` and set `rateLimit.mode: "strict"`. Use `stores.kv` with `mode: "best-effort"` for non-atomic shared storage. Omitting a store uses the built-in in-memory counters; it does not coordinate instances.
 
 ## Pre-built rate limiter
 
@@ -5559,8 +5560,9 @@ Use the `rateLimit` config:
 ```ts
 const fileFn = createFileFn({
   db, storage,
+  stores: { atomicKv: redisAtomicKvStore },
   rateLimit: {
-    persistence: redisPersistence,
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit: { windowSeconds: 60, maxRequests: 10 },
@@ -5570,7 +5572,7 @@ const fileFn = createFileFn({
 });
 ```
 
-For multi-instance deployments, plug in a shared persistence (Redis, KV).
+For exact multi-instance counters, bind a shared atomic store through `stores.atomicKv` and use `mode: "strict"`. A non-atomic `stores.kv` requires `mode: "best-effort"`.
 
 ## Observability
 
@@ -8232,7 +8234,9 @@ Default authorizer reads `filefn_file_permissions` and respects ownership.
 | Field | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `rateLimit.persistence` | `RateLimitPersistence` | undefined | Shared persistence (Redis/KV). |
+| `stores.atomicKv` | `AtomicKvStore` | undefined | Shared atomic counters for strict mode. |
+| `stores.kv` | `KvStore` | undefined | Non-atomic shared counters for best-effort mode. |
+| `rateLimit.mode` | `"strict" \| "best-effort" \| "local"` | Store-dependent | Defaults to strict with `stores.atomicKv`, best-effort with `stores.kv`, otherwise local. |
 | `rateLimit.algorithm` | `"fixed-window" | "sliding-window" | "token-bucket"` | `"fixed-window"` | Algorithm. |
 | `rateLimit.limits.uploadInit` | `{ windowSeconds, maxRequests }` | undefined | Per-route. |
 | `rateLimit.limits.uploadSign` | same | undefined | |
@@ -8285,8 +8289,9 @@ const fileFn = createFileFn({
   authorizer: composeAuthorizers([orgAdminCanRead, createDefaultAuthorizer({ db, namespace: "filefn" })]),
   logger: pinoLogger,
 
+  stores: { atomicKv: redisAtomicKvStore },
   rateLimit: {
-    persistence: redisPersistence,
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -9332,7 +9337,8 @@ interface FileFn extends FileProvider {
 | `auth` | `AuthConfig` | `{}` | `{ resolveSession, required }`. |
 | `quota` | `QuotaProvider` | undefined | Optional storage quota. |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `rateLimit` | `{ persistence?, algorithm?, limits? }` | undefined | Per-route rate limits. |
+| `stores` | `RuntimeStores` | undefined | Counter storage binding: `atomicKv` for strict mode, `kv` for best-effort. |
+| `rateLimit` | `{ mode?, algorithm?, limits? }` | undefined | Per-route rate limits; `mode` is `"strict"`, `"best-effort"`, or `"local"`. Without an explicit mode, an atomic store selects strict, a KV store selects best-effort, otherwise local. |
 | `logger` | `Logger` | undefined | Pluggable structured logger. |
 | `authorizer` | `Authorizer` | default | Permission resolution. |
 | `namespace` | `string` | `"filefn"` | Table prefix. |

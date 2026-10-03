@@ -53,6 +53,16 @@ describe("bundled DocsFn provider", () => {
     expect(entries.find(({ collection }) => collection === "assets")?.bytes).toBe(5);
   });
 
+  it.each(["txt", "json", "yaml", "yml", "md", "mdx"])("preserves published UTF-8 metadata for %s assets", async (extension) => {
+    const runtime = createDocsSiteRuntime(config, {}, { [`../../../static/input.${extension}`]: "café\n" });
+    await runtime.loadDocsSiteSource();
+    const provider = vi.mocked(buildManifest).mock.calls[0][0];
+    const entries = await provider.listEntries({ config, collections: ["assets"] });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ collection: "assets", relativePath: `input.${extension}`, bytes: 6 });
+    expect(entries[0].updatedAt).toBeUndefined();
+  });
+
   it("shares successful initialization, caches compiled pages, and rejects unknown IDs", async () => {
     const runtime = createDocsSiteRuntime(config, { "../../../guide/index.md": "# Guide" }, {});
     const [left, right] = await Promise.all([runtime.loadDocsSiteSource(), runtime.loadDocsSiteSource()]);

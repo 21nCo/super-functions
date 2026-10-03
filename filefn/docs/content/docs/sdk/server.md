@@ -38,7 +38,8 @@ interface FileFn extends FileProvider {
 | `auth` | `AuthConfig` | `{}` | `{ resolveSession, required }`. |
 | `quota` | `QuotaProvider` | undefined | Optional storage quota. |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `rateLimit` | `{ persistence?, algorithm?, limits? }` | undefined | Per-route rate limits. |
+| `stores` | `RuntimeStores` | undefined | Counter storage binding: `atomicKv` for strict mode, `kv` for best-effort. |
+| `rateLimit` | `{ mode?, algorithm?, limits? }` | undefined | Per-route rate limits; `mode` is `"strict"`, `"best-effort"`, or `"local"`. Without an explicit mode, an atomic store selects strict, a KV store selects best-effort, otherwise local. |
 | `logger` | `Logger` | undefined | Pluggable structured logger. |
 | `authorizer` | `Authorizer` | default | Permission resolution. |
 | `namespace` | `string` | `"filefn"` | Table prefix. |

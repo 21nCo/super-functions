@@ -34,10 +34,6 @@ function isRouteNotFoundError(input: unknown): input is { message: string } {
   );
 }
 
-function hasNestedDocsRoutes(routes: Record<string, string>, route: string): boolean {
-  return Object.keys(routes).some((candidate) => candidate.startsWith(`${route}/`));
-}
-
 export async function loadDocsPage(input: {
   slug: string | undefined;
   source: DocsSiteSource;
@@ -46,7 +42,6 @@ export async function loadDocsPage(input: {
     compiled: CompiledContentArtifact;
     route: string;
     sourcePath: string;
-    isIndexRoute: boolean;
   }) => CompiledContentArtifact;
   options?: DocsPageOptions;
 }) {
@@ -105,8 +100,9 @@ export async function loadDocsPage(input: {
     ? resolveMarkdownRelativeLinks({
         compiled: await getCompiledDocsPage(routeEntry.page.id),
         route: routeEntry.route,
-        sourcePath: routeEntry.page.sourcePath,
-        isIndexRoute: hasNestedDocsRoutes(source.manifest.routes, routeEntry.route),
+        // Published DocPage IDs encode collection:path; provider-only fields
+        // are not carried into the manifest. Split only the collection prefix.
+        sourcePath: routeEntry.page.id.slice(routeEntry.page.id.indexOf(":") + 1),
       })
     : undefined;
 

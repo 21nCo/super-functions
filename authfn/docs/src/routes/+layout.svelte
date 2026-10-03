@@ -18,6 +18,10 @@
 
 </script>
 
+<svelte:head>
+  <title>{$page.data.surface?.title ?? data.source.config.site.title}</title>
+</svelte:head>
+
 <div
   bind:this={siteRoot}
   class="docsfn-site-root"

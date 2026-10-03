@@ -22,6 +22,12 @@
   }
 
   function shortcut(event: KeyboardEvent) {
+    // A populated native search input otherwise consumes the first Escape.
+    if (event.key === "Escape" && dialog?.open) {
+      event.preventDefault();
+      dialog.close();
+      return;
+    }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
       openSearch();
