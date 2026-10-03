@@ -281,6 +281,22 @@ describe("endpoint and template contract", () => {
     expect(resolved.environment.DEVFN_INSTANCE_ID).toBe(owner);
   });
 
+  it("keeps referenced opaque owner delimiters as literal data in every consumer", () => {
+    const config = fixture();
+    const owner = "session/{{blue}}";
+    config.profiles.default.environment = { OWNER_COPY: "{{env.DEVFN_INSTANCE_ID}}" };
+    config.processes!.worker.env = { OWNER_NODE: "{{env.OWNER_COPY}}" };
+    config.processes!.worker.command = ["node", "{{env.OWNER_NODE}}"];
+    config.processes!.worker.health = { type: "command", command: ["node", "{{env.DEVFN_INSTANCE_ID}}"] };
+    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: owner, ports: { api: 4101, worker: 4102 } });
+    expect(resolved.environment.OWNER_COPY).toBe(owner);
+    expect(resolved.nodes.worker.environment.OWNER_NODE).toBe(owner);
+    expect(resolved.nodes.worker.command).toEqual(["node", owner]);
+    expect(resolved.nodes.worker.healthCommand).toEqual(["node", owner]);
+    config.processes!.worker.command = ["node", "{{env.OWNER_NODE}} {{broken}}"];
+    expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: owner, ports: { api: 4101, worker: 4102 } })).toThrow(/malformed template/);
+  });
+
   it("rejects invalid shadowed literals before creating state", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-shadowed-template-"));
     const stateDir = path.join(root, "state");

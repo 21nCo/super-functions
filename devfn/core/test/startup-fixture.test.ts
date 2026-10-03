@@ -37,6 +37,7 @@ await writeFile(process.env.OBSERVED_FILE, JSON.stringify({
   url: process.env.DEVFN_URL_NATIVE,
   upstream: process.env.UPSTREAM_URL,
   mode: process.env.MODE,
+  profileOnly: process.env.PROFILE_ONLY,
   argv: process.argv.slice(2),
   host: process.env.HOST,
   devfnHost: process.env.DEVFN_HOST,
@@ -98,7 +99,7 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
         env: { OBSERVED_FILE: observed, UPSTREAM_URL: "{{env.DEVFN_URL_NATIVE}}", EXPECTED_HEALTH_PATH: "/health?probe=1", MODE: "node" },
         envAllowlist: ["SECRET_TOKEN"], secretEnv: ["SECRET_TOKEN"],
       } },
-      profiles: { default: { processes: ["native"], environment: { MODE: "profile" }, proxy: withProxy } },
+      profiles: { default: { processes: ["native"], environment: { MODE: "profile", PROFILE_ONLY: "first" }, proxy: withProxy } },
       environmentOutputs: [{ path: ".devfn/generated.env" }],
       ...(withProxy ? { policy: "policy.json", hostnames: { native: { target: "native", tls: withTls ? "internal" : "off" } } } : {}),
     });
@@ -109,11 +110,22 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       const receipt = await orchestrator.up({ config, root, stateDir: path.join(root, "state") });
       started = true;
       const observation = JSON.parse(await readFile(observed, "utf8"));
-      expect(observation).toMatchObject({ port: String(receipt.allocations[0].port), url: `http://127.0.0.1:${receipt.allocations[0].port}`, host: "127.0.0.1", devfnHost: "127.0.0.1", mode: "node" });
+      expect(observation).toMatchObject({ port: String(receipt.allocations[0].port), url: `http://127.0.0.1:${receipt.allocations[0].port}`, host: "127.0.0.1", devfnHost: "127.0.0.1", mode: "node", profileOnly: "first" });
       expect(observation.argv).toEqual([observation.url, "literal $HOME `id` ; & |", "127.0.0.1", "127.0.0.1"]);
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       if (withProxy) expect(receipt.urls.native).toBe(`${withTls ? "https" : "http"}://native-${owner}.test.localhost`);
       await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      config.profiles.default.environment = { MODE: "profile", PROFILE_ONLY: "second" };
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
+      const profileRestart = await orchestrator.up({ config, root, stateDir: path.join(root, "state") });
+      expect(profileRestart.processes[0].pid).not.toBe(receipt.processes[0].pid);
+      expect(JSON.parse(await readFile(observed, "utf8")).profileOnly).toBe("second");
+      config.processes!.native.command![3] = "changed literal $HOME `id` ; & |";
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
+      const argvRestart = await orchestrator.up({ config, root, stateDir: path.join(root, "state") });
+      expect(argvRestart.processes[0].pid).not.toBe(profileRestart.processes[0].pid);
+      expect(JSON.parse(await readFile(observed, "utf8")).argv[1]).toBe("changed literal $HOME `id` ; & |");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       expect(await readFile(receipt.environmentOutputs[0], "utf8")).toContain(`DEVFN_URL_NATIVE=http://127.0.0.1:${receipt.allocations[0].port}`);
       expect(JSON.stringify(receipt)).not.toContain(secret);
@@ -200,6 +212,12 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       if (withProxy) expect(receipt.urls.web).toBe(`${withTls ? "https" : "http"}://web.localhost`);
       await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      config.services!.web.env!.MODE = "service-next";
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
+      const restarted = await orchestrator.up({ config, root, stateDir: path.join(root, "state") });
+      expect(restarted.services[0].containerIds[0]).not.toBe(receipt.services[0].containerIds[0]);
+      expect(JSON.parse(await readFile(path.join(observed, "web.json"), "utf8")).mode).toBe("service-next");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
     } finally {
       if (started) await orchestrator.down({ config, root, stateDir: path.join(root, "state") });

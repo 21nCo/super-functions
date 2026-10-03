@@ -45,6 +45,8 @@ export interface LifecycleReceipt {
   routes: ProxyRoute[];
   urls: Record<string, string>;
   environmentOutputs: string[];
+  /** Digests of effective startup inputs; no environment values are persisted. */
+  startupFingerprints?: Record<string, string>;
   cleanup?: CleanupResult;
   error?: { code: string; message: string };
 }

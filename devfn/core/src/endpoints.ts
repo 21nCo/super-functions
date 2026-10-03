@@ -95,8 +95,11 @@ function resolveValues(values: Record<string, string>, base: Readonly<Record<str
 }
 
 function expand(value: string, field: string, lookup: (name: string) => string): string {
+  // Parse the manifest source only. Referenced values (including opaque owners)
+  // are data and must never be parsed as another template.
+  const literal = value.replace(REFERENCE, "");
+  if (literal.includes("{{") || literal.includes("}}")) invalid(field, "malformed template reference.");
   const expanded = value.replace(REFERENCE, (_match, key: string) => lookup(key));
-  if (expanded.includes("{{") || expanded.includes("}}")) invalid(field, "malformed template reference.");
   if (expanded.includes("\0")) invalid(field, "NUL is not a valid environment or argv value.");
   rejectUrlCredentials(expanded, field);
   rejectCredentialArgument(expanded, field);

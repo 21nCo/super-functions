@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { ComposeController, createComposeEnvironment, type ManagedComposeService } from "@devfn/compose";
 import { defaultStateDir, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
 import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
-import { checkReadinessNow, createProcessEnvironment, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
+import { checkReadinessNow, createProcessEnvironment, resolveAdapterCommand, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
 import { CaddyProxyController, type ProxyRoute } from "@devfn/proxy";
 
 import { resolveInstanceIdentity } from "./identity.js";
@@ -47,6 +47,31 @@ function resolvedHealth(health: HealthCheck | undefined, command: string[] | und
   if (health?.type === "command" && command) return { ...health, command };
   if (health?.type === "http" && url) return { type: "http", url, ...(health.expectedStatus ? { expectedStatus: health.expectedStatus } : {}), ...(health.timeoutMs ? { timeoutMs: health.timeoutMs } : {}) };
   return health;
+}
+
+function startupFingerprints(config: DevFnConfig, resolved: ReturnType<typeof resolveEndpointTemplates>): Record<string, string> {
+  const fingerprints: Record<string, string> = {};
+  for (const [name, node] of Object.entries(resolved.nodes)) {
+    const processSpec = config.processes?.[name];
+    const serviceSpec = config.services?.[name];
+    let startup: unknown;
+    if (processSpec) {
+      const spec = { ...processSpec, env: node.environment, command: node.command, script: node.script };
+      startup = {
+        kind: "process", command: resolveAdapterCommand(spec), cwd: processSpec.cwd ?? ".",
+        environment: Object.entries(createProcessEnvironment(spec, resolved.generated)).sort(([a], [b]) => a.localeCompare(b)),
+      };
+    } else if (serviceSpec) {
+      const spec = { ...serviceSpec, env: node.environment };
+      startup = {
+        kind: "service", file: serviceSpec.file ?? "compose.yaml", service: serviceSpec.service,
+        projectName: serviceSpec.projectName ?? "devfn", ports: serviceSpec.ports ?? {},
+        environment: Object.entries(createComposeEnvironment(spec, node.environment)).sort(([a], [b]) => a.localeCompare(b)),
+      };
+    } else continue;
+    fingerprints[name] = createHash("sha256").update(JSON.stringify(startup)).digest("hex");
+  }
+  return fingerprints;
 }
 
 function isDockerProxyListener(processName?: string): boolean {
@@ -108,6 +133,9 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
       plan.nodes.some((node) => !(node.kind === "process" ? receipt.processes : receipt.services).some((managed) => managed.name === node.name))) return false;
     const loadedPolicy = await loadDevFnPolicy(root, config.policy);
     resolved = resolveEndpointTemplates({ config, plan, ownerId: receipt.instanceId, ports, hostnameSuffix: loadedPolicy?.policy.hostnameSuffix });
+    const current = startupFingerprints(config, resolved);
+    if (!receipt.startupFingerprints || Object.keys(current).length !== Object.keys(receipt.startupFingerprints).length ||
+      Object.entries(current).some(([name, fingerprint]) => receipt.startupFingerprints?.[name] !== fingerprint)) return false;
   } catch { return false; }
   const compose = new ComposeController();
   const supervisor = new ProcessSupervisor();
@@ -163,7 +191,8 @@ export class DevFnOrchestrator {
       const serviceStates = await Promise.all(existing.services.map((item) => new ComposeController().status(item)));
       const managedCount = processStates.length + serviceStates.length;
       const allRunning = managedCount > 0 && processStates.every((state) => state === "running") && serviceStates.every((state) => state === "running");
-      const allReady = allRunning && await receiptIsReady(options.config, options.root, existing, processStates, serviceStates);
+      const allReady = allRunning && existing.profile === (options.profile ?? options.config.defaultProfile ?? "default") &&
+        await receiptIsReady(options.config, options.root, existing, processStates, serviceStates);
       if (existing.state === "ready" && allReady) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
       const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready");
       if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });
@@ -200,6 +229,7 @@ export class DevFnOrchestrator {
       version: 1, projectId: options.config.project.id, instanceId: identity.instanceId, invocationId, profile: plan.profile,
       state: "starting", root: options.root, runtimeDir, stateDir: path.resolve(stateDir), startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       allocations, processes: [], services: [], startedNodes: [], routes: [], urls: {}, environmentOutputs: [],
+      startupFingerprints: startupFingerprints(options.config, resolved),
     };
     try {
       await registry.updateInvocation(invocationId, { state: "starting" });
