@@ -13,7 +13,7 @@ concurrency:
 jobs:
   freeze:
     name: Freeze release-candidate packages
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
       id-token: write
@@ -21,7 +21,7 @@ jobs:
       artifact-metadata: write
     steps:
       - name: Check out the exact commit
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           fetch-depth: 0
 
@@ -67,7 +67,7 @@ jobs:
   node:
     name: Signed ${{ matrix.cell }} evidence
     needs: freeze
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
       matrix:
@@ -85,7 +85,7 @@ jobs:
       artifact-metadata: write
     steps:
       - name: Check out evidence tooling
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           fetch-depth: 0
 
@@ -150,7 +150,7 @@ jobs:
   framework-client:
     name: Signed ${{ matrix.cell }} evidence
     needs: freeze
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
       matrix:
@@ -174,7 +174,7 @@ jobs:
       artifact-metadata: write
     steps:
       - name: Check out evidence tooling
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           fetch-depth: 0
 

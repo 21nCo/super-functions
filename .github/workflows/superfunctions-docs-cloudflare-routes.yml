@@ -28,13 +28,13 @@ on:
 
 jobs:
   routes:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     environment: ${{ github.event.inputs.environment }}
     concurrency:
       group: superfunctions-docs-cloudflare-routes-${{ github.event.inputs.environment }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
 
       - uses: actions/setup-node@v4
         with:

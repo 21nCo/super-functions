@@ -20,9 +20,9 @@ permissions:
 
 jobs:
   mailfn-release:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@v4
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
       - uses: actions/setup-node@v4
         with:
           node-version: 22
