@@ -139,16 +139,27 @@ describe("endpoint and template contract", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-url-secret-"));
     const stateDir = path.join(root, "state");
     try {
-      for (const location of ["profile", "node", "health"] as const) {
-        const config = fixture();
-        if (location === "profile") config.profiles.default.environment = { DATABASE_URL: "postgres://user:private@database.test/db" };
-        if (location === "node") config.processes!.worker.env = { CONNECTION: "postgres://user:private@database.test/db" };
-        if (location === "health") config.processes!.api.health = { type: "http", url: "http://user:private@127.0.0.1:4101/health" };
-        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
-        expect(failure).toMatch(/secret channel/);
-        expect(failure).not.toContain("private");
-        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      for (const url of ["http://user:pa'private@127.0.0.1:4101/health", "http://127.0.0.1:4101/health?token=private", "http://127.0.0.1:4101/health?api-key=private", "http://127.0.0.1:4101/health?X-Amz-Signature=private"]) {
+        for (const location of ["profile", "node", "argv", "health"] as const) {
+          const config = fixture();
+          if (location === "profile") config.profiles.default.environment = { DATABASE_URL: url };
+          if (location === "node") config.processes!.worker.env = { CONNECTION: url };
+          if (location === "argv") config.processes!.worker.command = ["node", url];
+          if (location === "health") config.processes!.api.health = { type: "http", url };
+          expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+          const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+          expect(failure).toMatch(/secret channel/);
+          expect(failure).not.toContain("private");
+          await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        }
       }
+      const quoted = fixture();
+      quoted.processes!.worker.command = ["node", "--database=\"postgres://user:private@database.test\""];
+      expect(() => resolveEndpointTemplates({ config: quoted, plan: createPlan(quoted), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+      const quotedFailure = await new DevFnOrchestrator().up({ config: quoted, root, stateDir }).then(() => "", (error: Error) => error.message);
+      expect(quotedFailure).toMatch(/secret channel/);
+      expect(quotedFailure).not.toContain("private");
+      await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 

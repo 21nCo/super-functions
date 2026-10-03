@@ -38,6 +38,12 @@ export interface EndpointResolution {
 }
 
 const REFERENCE = /\{\{env\.([A-Za-z_][A-Za-z0-9_]*)\}\}/g;
+const CREDENTIAL_QUERY_KEYS = new Set([
+  "accesskey", "accesskeyid", "accesstoken", "apikey", "auth", "authorization", "authtoken",
+  "bearer", "clientsecret", "credential", "credentials", "key", "passwd", "password",
+  "privatekey", "pwd", "refreshtoken", "secret", "secretkey", "sessionid", "sessiontoken",
+  "sig", "signature", "token", "xamzcredential", "xamzsignature", "xgoogcredential", "xgoogsignature",
+]);
 
 function invalid(field: string, message: string): never {
   throw new DevFnError("DEVFN_RUNTIME_INVALID", `${field}: ${message}`);
@@ -95,12 +101,21 @@ function expand(value: string, field: string, lookup: (name: string) => string):
 }
 
 function rejectUrlCredentials(value: string, field: string): void {
-  for (const candidate of value.match(/[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s"'<>]+/g) ?? []) {
-    try {
-      const url = new URL(candidate);
-      if (url.username || url.password) invalid(field, "credential-bearing URL must use the secret channel.");
-    } catch (error) {
-      if (error instanceof DevFnError) throw error;
+  // Quotes can occur inside URL userinfo, so they cannot delimit a candidate.
+  for (let candidate of value.match(/[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s<>]+/g) ?? []) {
+    while (candidate) {
+      try {
+        const url = new URL(candidate);
+        const sensitiveQueryKey = [...url.searchParams.keys()].some((key) =>
+          CREDENTIAL_QUERY_KEYS.has(key.replace(/[^a-z0-9]/gi, "").toLowerCase()));
+        if (url.username || url.password || sensitiveQueryKey) invalid(field, "credential-bearing URL must use the secret channel.");
+        break;
+      } catch (error) {
+        if (error instanceof DevFnError) throw error;
+        // A quoted argv fragment may leave a closing delimiter on the URL.
+        if (!/["'`),;\]}]$/.test(candidate)) break;
+        candidate = candidate.slice(0, -1);
+      }
     }
   }
 }
