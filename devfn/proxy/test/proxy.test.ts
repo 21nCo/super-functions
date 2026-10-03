@@ -24,6 +24,17 @@ describe("Caddy route rendering", () => {
     expect(() => renderCaddyfile([{ id: "a", instanceId: "i", hostname: "app.localhost", targetHost: "127.0.0.1", targetPort: Number.NaN, tls: "off", updatedAt: "now" }])).toThrow(/integer/);
   });
 
+  it("rejects route names that DNS treats as the same hostname", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-case-"));
+    try {
+      await writeFile(path.join(stateDir, "proxy-routes.json"), JSON.stringify({ version: 1, routes: [
+        { id: "first", instanceId: "owner", hostname: "api-owner.localhost", targetHost: "127.0.0.1", targetPort: 4100, tls: "off", updatedAt: "now" },
+      ] }));
+      await expect(new CaddyProxyController(stateDir).upsert([{ id: "second", instanceId: "OWNER", hostname: "API-OWNER.localhost", targetHost: "127.0.0.1", targetPort: 4101, tls: "off" }]))
+        .rejects.toThrow(/already owned/);
+    } finally { await rm(stateDir, { recursive: true, force: true }); }
+  });
+
   it("fails closed on corrupt persisted route state", async () => {
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-"));
     await writeFile(path.join(stateDir, "proxy-routes.json"), "{not-json");

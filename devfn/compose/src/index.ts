@@ -147,7 +147,7 @@ export class ComposeController {
     const preservePreExisting = before.length > 0 && !reclaimManaged;
     const preExistingIds = new Set(before);
     const previouslyRunning = new Set(beforeRunning);
-    if (preservePreExisting && Object.keys(input.environment ?? {}).length) {
+    if (preservePreExisting) {
       try {
         const configuration = JSON.parse((await this.run("docker", [...baseArgs, "config", "--format", "json"], { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 10 * 1024 * 1024 })).stdout) as { services?: Record<string, { environment?: Record<string, string> }> };
         const serviceConfiguration = configuration.services?.[input.spec.service];
@@ -156,15 +156,30 @@ export class ComposeController {
         if (typeof expected !== "object" || Array.isArray(expected)) throw new Error("Compose returned a malformed service environment.");
         const actualRows = (await this.run("docker", ["inspect", "--format", "{{json .Config.Env}}", ...before], { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 10 * 1024 * 1024 })).stdout.trim().split("\n");
         if (actualRows.length !== before.length) throw new Error("Docker returned incomplete container environments.");
-        for (const row of actualRows) {
+        for (const [index, row] of actualRows.entries()) {
           const actual = Object.fromEntries((JSON.parse(row) as string[]).map((entry) => {
             const separator = entry.indexOf("=");
             if (separator < 0) throw new Error("Docker returned a malformed container environment.");
             return [entry.slice(0, separator), entry.slice(separator + 1)];
           }));
-          if (Object.entries(expected).some(([key, value]) => actual[key] !== value) ||
-            Object.keys(actual).some((key) => key.startsWith("DEVFN_") && !Object.prototype.hasOwnProperty.call(expected, key))) {
+          const extraKeys = Object.keys(actual).filter((key) => !Object.prototype.hasOwnProperty.call(expected, key));
+          if (Object.entries(expected).some(([key, value]) => actual[key] !== value) || extraKeys.some((key) => key.startsWith("DEVFN_"))) {
             throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Pre-existing Compose service ${input.name} has a stale startup environment; refusing to reuse it.`);
+          }
+          if (extraKeys.length) {
+            // Image defaults appear in Config.Env even when Compose does not set them.
+            // A removed profile or service literal is safe only if it equals that default.
+            const imageId = (await this.run("docker", ["inspect", "--format", "{{.Image}}", before[index]], { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.trim();
+            if (!imageId) throw new Error("Docker returned no container image ID.");
+            const imageRows = JSON.parse((await this.run("docker", ["image", "inspect", "--format", "{{json .Config.Env}}", imageId], { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout) as string[] | null;
+            const imageDefaults = Object.fromEntries((imageRows ?? []).map((entry) => {
+              const separator = entry.indexOf("=");
+              if (separator < 0) throw new Error("Docker returned a malformed image environment.");
+              return [entry.slice(0, separator), entry.slice(separator + 1)];
+            }));
+            if (extraKeys.some((key) => actual[key] !== imageDefaults[key])) {
+              throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Pre-existing Compose service ${input.name} has a stale startup environment; refusing to reuse it.`);
+            }
           }
         }
       } catch (error) {

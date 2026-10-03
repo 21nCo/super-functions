@@ -112,8 +112,9 @@ function rejectCredentialArgument(value: string, field: string): void {
 }
 
 function rejectUrlCredentials(value: string, field: string): void {
-  for (const match of value.matchAll(/[?&]([^=?#&]+)=([^&#]*)/g)) {
-    if (CREDENTIAL_QUERY_KEYS.has(match[1].replace(/[^a-z0-9]/gi, "").toLowerCase())) {
+  for (const match of value.matchAll(/[?&#]([^=?#&]+)=([^&#]*)/g)) {
+    const key = new URLSearchParams(`${match[1]}=x`).keys().next().value ?? match[1];
+    if (CREDENTIAL_QUERY_KEYS.has(key.replace(/[^a-z0-9]/gi, "").toLowerCase())) {
       invalid(field, "credential-bearing URL must use the secret channel.");
     }
   }
@@ -122,7 +123,9 @@ function rejectUrlCredentials(value: string, field: string): void {
     while (candidate) {
       try {
         const url = new URL(candidate);
-        const sensitiveQueryKey = [...url.searchParams.keys()].some((key) =>
+        const fragment = url.hash.slice(1);
+        const fragmentParameters = new URLSearchParams(fragment.includes("?") ? fragment.slice(fragment.indexOf("?") + 1) : fragment);
+        const sensitiveQueryKey = [...url.searchParams.keys(), ...fragmentParameters.keys()].some((key) =>
           CREDENTIAL_QUERY_KEYS.has(key.replace(/[^a-z0-9]/gi, "").toLowerCase()));
         if (url.username || url.password || sensitiveQueryKey) invalid(field, "credential-bearing URL must use the secret channel.");
         break;
@@ -145,7 +148,7 @@ export function resolveLocalHostname(configured: string | undefined, key: string
   const ownerLabel = template.split(".").find((label) => label.includes("{instance}"));
   const budget = ownerLabel ? 63 - ownerLabel.replaceAll("{instance}", "").length : 63;
   if (budget < 14) invalid(`hostnames.${key}`, "hostname has no room for an opaque owner component.");
-  const safeOwner = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(ownerId) && ownerId.length <= budget ? ownerId : `${ownerId.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, budget - 13).replace(/-+$/g, "") || "o"}-${createHash("sha256").update(ownerId).digest("hex").slice(0, 12)}`;
+  const safeOwner = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(ownerId) && ownerId.length <= budget ? ownerId : `${ownerId.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, budget - 13).replace(/-+$/g, "") || "o"}-${createHash("sha256").update(ownerId).digest("hex").slice(0, 12)}`;
   const result = template.replaceAll("{instance}", safeOwner);
   if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(result)) invalid(`hostnames.${key}`, `local hostname ${result} must be a concrete .localhost name.`);
   return result;

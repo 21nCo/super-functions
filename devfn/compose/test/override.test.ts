@@ -112,6 +112,10 @@ describe("ComposeController", () => {
         (calls as string[][]).push([...args]);
         if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
         if (args.includes("ps")) { psCalls += 1; return { stdout: `${projectName || psCalls < 3 ? "old-id" : "new-id"}\n`, stderr: "" }; }
+        if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: {} } } }), stderr: "" };
+        if (args[0] === "image") return { stdout: '["PATH=/bin"]\n', stderr: "" };
+        if (args.includes("{{json .Config.Env}}")) return { stdout: '["PATH=/bin"]\n', stderr: "" };
+        if (args.includes("{{.Image}}")) return { stdout: "image-id\n", stderr: "" };
         if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? (projectName ? "<no value>\t<no value>\t<no value>\n" : "true\tmanaged\tapi\n") : "true\n", stderr: "" };
         return { stdout: "", stderr: "" };
       });
@@ -178,6 +182,35 @@ describe("ComposeController", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
+  it("refuses removed literal startup keys while allowing image defaults", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-literal-env-"));
+    try {
+      for (const running of [true, false]) {
+        for (const literal of ["MODE", "PROFILE_MODE"]) {
+          const calls: string[][] = [];
+          const controller = new ComposeController(async (_file, args) => {
+            calls.push([...args]);
+            if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+            if (args.includes("ps")) return { stdout: args.includes("-a") || running ? "old-id\n" : "", stderr: "" };
+            if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: { CURRENT: "yes" } } } }), stderr: "" };
+            if (args[0] === "image") return { stdout: JSON.stringify(["PATH=/bin"]) + "\n", stderr: "" };
+            if (args[0] === "inspect") {
+              if (args.includes("{{json .Config.Env}}")) return { stdout: JSON.stringify(["CURRENT=yes", "PATH=/bin", `${literal}=synthetic-sentinel`]) + "\n", stderr: "" };
+              if (args.includes("{{.Image}}")) return { stdout: "image-id\n", stderr: "" };
+              return { stdout: "<no value>\t<no value>\t<no value>\n", stderr: "" };
+            }
+            return { stdout: "", stderr: "" };
+          });
+          const error = await controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: "shared" }, root,
+            runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: {}, environment: { CURRENT: "yes" } }).then(() => "", (failure: Error) => failure.message);
+          expect(error).toMatch(/stale startup environment/);
+          expect(error).not.toContain("synthetic-sentinel");
+          expect(calls.some((args) => args.includes("up") || args[0] === "stop" || args[0] === "rm")).toBe(false);
+        }
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("preserves a real unmanaged container with an old leased value", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-stale-real-"));
     const file = path.join(root, "compose.yaml");
@@ -222,6 +255,32 @@ describe("ComposeController", () => {
     }
   }, 40_000);
 
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("refuses removed literal environment in real running and stopped unmanaged containers", async () => {
+    for (const running of [true, false]) {
+      const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-literal-real-"));
+      const file = path.join(root, "compose.yaml");
+      const projectPrefix = path.basename(root).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 42);
+      const projectName = `${projectPrefix}-owner`;
+      await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n    environment:\n      MODE: "stale-literal"\n');
+      try {
+        await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "up", "-d", "api"], { cwd: root });
+        if (!running) await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "stop", "api"], { cwd: root });
+        await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n');
+        const controller = new ComposeController();
+        const failure = await controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: projectPrefix }, root,
+          runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: {}, environment: { DEVFN_PROFILE: "default" } }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/stale startup environment/);
+        expect(failure).not.toContain("stale-literal");
+        const { stdout: id } = await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "ps", "-a", "-q", "api"], { cwd: root });
+        const { stdout: state } = await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", id.trim()]);
+        expect(state.trim()).toBe(String(running));
+      } finally {
+        await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "down"], { cwd: root }).catch(() => undefined);
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+  }, 90_000);
+
   it("restores only user-owned containers that DevFn started", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-mixed-"));
     const calls: string[][] = [];
@@ -231,6 +290,8 @@ describe("ComposeController", () => {
       if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
       if (args.includes("ps") && args.includes("-a")) { allCalls += 1; return { stdout: allCalls === 1 ? "running-id\nstopped-id\n" : "running-id\nstopped-id\ncreated-id\n", stderr: "" }; }
       if (args.includes("ps")) return { stdout: "running-id\n", stderr: "" };
+      if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: {} } } }), stderr: "" };
+      if (args.includes("{{json .Config.Env}}")) return { stdout: "[]\n[]\n", stderr: "" };
       if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? "<no value>\t<no value>\t<no value>\n<no value>\t<no value>\t<no value>\n" : "true\ntrue\ntrue\n", stderr: "" };
       return { stdout: "", stderr: "" };
     });

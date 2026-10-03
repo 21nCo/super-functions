@@ -228,7 +228,7 @@ describe("endpoint and template contract", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-url-secret-"));
     const stateDir = path.join(root, "state");
     try {
-      for (const url of ["http://user:pa'private@127.0.0.1:4101/health", "http://127.0.0.1:4101/health?token=private", "http://127.0.0.1:4101/health?api-key=private", "http://127.0.0.1:4101/health?X-Amz-Signature=private"]) {
+      for (const url of ["http://user:pa'private@127.0.0.1:4101/health", "http://127.0.0.1:4101/health?token=private", "http://127.0.0.1:4101/health?api-key=private", "http://127.0.0.1:4101/health?X-Amz-Signature=private", "http://127.0.0.1:4101/health#access_token=private", "http://127.0.0.1:4101/health#/callback?access%5Ftoken=private"]) {
         for (const location of ["profile", "node", "argv", "health"] as const) {
           const config = fixture();
           if (location === "profile") config.profiles.default.environment = { DATABASE_URL: url };
@@ -236,6 +236,21 @@ describe("endpoint and template contract", () => {
           if (location === "argv") config.processes!.worker.command = ["node", url];
           if (location === "health") config.processes!.api.health = { type: "http", url };
           expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+          const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+          expect(failure).toMatch(/secret channel/);
+          expect(failure).not.toContain("private");
+          await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        }
+      }
+      for (const kind of ["process", "service"] as const) {
+        for (const health of [{ type: "http", port: kind === "process" ? "api" : "web", path: "/health#access_token=private" }, { type: "http", url: "http://127.0.0.1:4101/health", path: "#access_token=private" }] as const) {
+          const config = fixture();
+          if (kind === "process") config.processes!.api.health = health;
+          else {
+            config.ports!.web = {};
+            config.services = { web: { adapter: "compose", service: "web", ports: { web: 8080 }, health } };
+            config.profiles.default.services = ["web"];
+          }
           const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
           expect(failure).toMatch(/secret channel/);
           expect(failure).not.toContain("private");
@@ -257,6 +272,7 @@ describe("endpoint and template contract", () => {
     const hostname = resolveLocalHostname(undefined, "api", "fixture", owner);
     expect(hostname).toMatch(/^api-session-any-owner-[a-f0-9]{12}\.localhost$/);
     expect(resolveLocalHostname(undefined, "api", "fixture", owner)).toBe(hostname);
+    expect(resolveLocalHostname(undefined, "api", "fixture", "owner")).not.toBe(resolveLocalHostname(undefined, "api", "fixture", "OWNER").toLowerCase());
     const config = fixture();
     config.profiles.default.proxy = true;
     config.hostnames = { api: { target: "api" } };
