@@ -1,0 +1,23 @@
+secfn/server/src/__tests__/installed-package.ts
+  s_ad500513bc9987::t_7afe5397f99c06 1,17
+  s_ad500513bc9987::t_ebf3d04c00831a 2-16,18-27
+secfn/server/src/__tests__/package-contracts.test.ts
+  s_ad500513bc9987::t_3e1a5a35229772 70-72
+  s_ad500513bc9987::t_e9b22fca78d42a 1-3,6,21-69,73-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5b0d3e1aec93250009724fe9ce23efb9a28b9926",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
