@@ -1,0 +1,26 @@
+devfn/compose/README.md
+  h_bdc5b81c173ee9 3
+devfn/compose/src/index.ts
+  h_bdc5b81c173ee9 2,56-60,125
+devfn/compose/test/override.test.ts
+  h_bdc5b81c173ee9 7,12-43,250,271,295
+devfn/core/README.md
+  h_bdc5b81c173ee9 9
+devfn/core/src/endpoints.ts
+  h_bdc5b81c173ee9 5,55-63,78,82,84,87,90-92,97-101,104,107,112-121,123-126,173-174,239-240,253,255,263-266,278-280,282-285,288,294-296,300,304,306
+devfn/core/test/endpoints.test.ts
+  h_bdc5b81c173ee9 273-274,277-278,303-337,364
+devfn/core/test/startup-fixture.test.ts
+  h_bdc5b81c173ee9 11,98,116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ba248a379dd19a64756bf71b1e9d37245133a657",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
