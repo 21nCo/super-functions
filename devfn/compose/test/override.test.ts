@@ -154,6 +154,30 @@ describe("ComposeController", () => {
     }
   });
 
+  it("refuses removed DevFn startup keys in stopped and running unmanaged containers", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-removed-env-"));
+    try {
+      for (const running of [true, false]) {
+        for (const removed of ["DEVFN_URL_API", "DEVFN_PORT_API"]) {
+          const calls: string[][] = [];
+          const controller = new ComposeController(async (_file, args) => {
+            calls.push([...args]);
+            if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+            if (args.includes("ps")) return { stdout: args.includes("-a") || running ? "old-id\n" : "", stderr: "" };
+            if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: { MODE: "current" } } } }), stderr: "" };
+            if (args[0] === "inspect") return { stdout: args.includes("{{json .Config.Env}}") ? JSON.stringify(["MODE=current", `${removed}=synthetic-sentinel`]) + "\n" : "<no value>\t<no value>\t<no value>\n", stderr: "" };
+            return { stdout: "", stderr: "" };
+          });
+          const error = await controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: "shared" }, root,
+            runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: {}, environment: { DEVFN_PROFILE: "default" } }).then(() => "", (failure: Error) => failure.message);
+          expect(error).toMatch(/stale startup environment/);
+          expect(error).not.toContain("synthetic-sentinel");
+          expect(calls.some((args) => args.includes("up") || args[0] === "stop" || args[0] === "rm")).toBe(false);
+        }
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("preserves a real unmanaged container with an old leased value", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-stale-real-"));
     const file = path.join(root, "compose.yaml");
@@ -171,6 +195,29 @@ describe("ComposeController", () => {
       expect(JSON.parse(current) as string[]).toContain("DEVFN_PORT_API=4101");
     } finally {
       await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "down"], { cwd: root, env: { ...process.env, DEVFN_PORT_API: "4101" } }).catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 40_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("refuses a removed DevFn URL in a real stopped unmanaged container", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-removed-real-"));
+    const file = path.join(root, "compose.yaml");
+    const projectPrefix = path.basename(root).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 42);
+    const projectName = `${projectPrefix}-owner`;
+    await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n    environment:\n      DEVFN_URL_API: "http://api:4101"\n');
+    try {
+      await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "up", "-d", "api"], { cwd: root });
+      await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "stop", "api"], { cwd: root });
+      await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n');
+      const controller = new ComposeController();
+      await expect(controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: projectPrefix }, root,
+        runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: {}, environment: { DEVFN_PROFILE: "default" } })).rejects.toThrow(/stale startup environment/);
+      const { stdout: id } = await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "ps", "-a", "-q", "api"], { cwd: root });
+      expect(id.trim()).not.toBe("");
+      const { stdout: state } = await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", id.trim()]);
+      expect(state.trim()).toBe("false");
+    } finally {
+      await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "down"], { cwd: root }).catch(() => undefined);
       await rm(root, { recursive: true, force: true });
     }
   }, 40_000);

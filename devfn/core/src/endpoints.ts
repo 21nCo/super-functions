@@ -97,10 +97,24 @@ function expand(value: string, field: string, lookup: (name: string) => string):
   if (expanded.includes("{{") || expanded.includes("}}")) invalid(field, "malformed template reference.");
   if (expanded.includes("\0")) invalid(field, "NUL is not a valid environment or argv value.");
   rejectUrlCredentials(expanded, field);
+  rejectCredentialArgument(expanded, field);
   return expanded;
 }
 
+function rejectCredentialArgument(value: string, field: string): void {
+  for (const argument of value.matchAll(/(?:^|\s)--([A-Za-z][A-Za-z0-9_-]*)(?==|\s|$)/g)) {
+    if (CREDENTIAL_QUERY_KEYS.has(argument[1].replace(/[^a-z0-9]/gi, "").toLowerCase())) {
+      invalid(field, "credential-bearing argv must use the secret channel.");
+    }
+  }
+}
+
 function rejectUrlCredentials(value: string, field: string): void {
+  for (const match of value.matchAll(/[?&]([^=?#&]+)=([^&#]*)/g)) {
+    if (CREDENTIAL_QUERY_KEYS.has(match[1].replace(/[^a-z0-9]/gi, "").toLowerCase())) {
+      invalid(field, "credential-bearing URL must use the secret channel.");
+    }
+  }
   // Quotes can occur inside URL userinfo, so they cannot delimit a candidate.
   for (let candidate of value.match(/[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s<>]+/g) ?? []) {
     while (candidate) {
@@ -167,6 +181,7 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     let url: URL;
     try { url = new URL(resolveHttpReadinessUrl(health, ports)); }
     catch (error) { invalid(field, `invalid direct HTTP readiness URL: ${error instanceof Error ? error.message : String(error)}`); }
+    rejectUrlCredentials(url.toString(), field);
     if (!health.port && selectedRouteHostnames.has(url.hostname.toLowerCase().replace(/\.$/, ""))) invalid(field, "URL-only readiness cannot wait for a selected proxy route before installation; use its leased port.");
     if (health.port) {
       if (health.url && selectedRouteHostnames.has(new URL(health.url).hostname.toLowerCase().replace(/\.$/, ""))) url.protocol = "http:";
@@ -205,16 +220,27 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
       if (profileKey && profileKey !== key) invalid(`${field}.env.${key}`, `collides with profile environment key ${profileKey}.`);
     }
     const processSpec = node.kind === "process" ? config.processes![node.name] : undefined;
+    const nativeBind: Record<string, string> = processSpec && processSpec.exposure !== "public" ? { HOST: "127.0.0.1", DEVFN_HOST: "127.0.0.1" } : {};
+    const nodeGenerated = { ...generated };
     if (node.kind === "service") {
       const consumerProject = config.services![node.name].projectName ?? "devfn";
+      const unreachable = new Set<string>();
       for (const producer of plan.nodes) {
-        if (producer.kind !== "service" || !Object.keys(composeUrls).some((port) => config.services?.[producer.name]?.ports?.[port] !== undefined)) continue;
-        const producerProject = config.services![producer.name].projectName ?? "devfn";
-        if (producerProject !== consumerProject) invalid(field, `Compose service ${node.name} cannot receive a sibling URL from ${producer.name} in another Compose project network.`);
+        if (producer.kind !== "service") continue;
+        const service = config.services![producer.name];
+        for (const port of Object.keys(service.ports ?? {})) {
+          const key = `DEVFN_URL_${normalized(port)}`;
+          if (!Object.prototype.hasOwnProperty.call(composeUrls, port)) continue;
+          if ((service.projectName ?? "devfn") === consumerProject) nodeGenerated[key] = composeUrls[port];
+          else { delete nodeGenerated[key]; unreachable.add(key); }
+        }
+      }
+      for (const value of [...Object.values(profile.environment ?? {}), ...Object.values(spec.env ?? {})]) {
+        for (const match of value.matchAll(REFERENCE)) if (unreachable.has(match[1])) {
+          invalid(field, `reference ${match[1]} is in another Compose project network.`);
+        }
       }
     }
-    const nativeBind: Record<string, string> = processSpec && processSpec.exposure !== "public" ? { HOST: "127.0.0.1", DEVFN_HOST: "127.0.0.1" } : {};
-    const nodeGenerated = node.kind === "service" ? { ...generated, ...Object.fromEntries(Object.entries(composeUrls).map(([name, url]) => [`DEVFN_URL_${normalized(name)}`, url])) } : generated;
     const profileEnvironment = node.kind === "service" ? resolveValues(profile.environment ?? {}, nodeGenerated, nodeGenerated, `profiles.${plan.profile}.environment`) : environment;
     const nodeEnvironment = resolveValues(spec.env ?? {}, { ...profileEnvironment, ...nativeBind }, { ...nodeGenerated, ...nativeBind }, `${field}.env`);
     const lookup = (key: string): string => {

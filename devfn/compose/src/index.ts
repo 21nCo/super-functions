@@ -160,7 +160,8 @@ export class ComposeController {
             if (separator < 0) throw new Error("Docker returned a malformed container environment.");
             return [entry.slice(0, separator), entry.slice(separator + 1)];
           }));
-          if (Object.entries(expected).some(([key, value]) => actual[key] !== value)) {
+          if (Object.entries(expected).some(([key, value]) => actual[key] !== value) ||
+            Object.keys(actual).some((key) => key.startsWith("DEVFN_") && !Object.prototype.hasOwnProperty.call(expected, key))) {
             throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Pre-existing Compose service ${input.name} has a stale startup environment; refusing to reuse it.`);
           }
         }

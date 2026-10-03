@@ -135,6 +135,55 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
+  it("allows independent Compose projects without publishing unreachable sibling URLs", () => {
+    const config = fixture();
+    config.services = {
+      web: { adapter: "compose", service: "web", projectName: "web", ports: { web: 8080 }, health: { type: "http", port: "web" } },
+      other: { adapter: "compose", service: "other", projectName: "other", ports: { other: 8081 }, health: { type: "http", port: "other" } },
+    };
+    config.ports!.web = {};
+    config.ports!.other = {};
+    config.profiles.default.services = ["web", "other"];
+    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103, other: 4104 } });
+    expect(resolved.nodes.web.environment.DEVFN_URL_WEB).toBe("http://web:8080");
+    expect(resolved.nodes.web.environment).not.toHaveProperty("DEVFN_URL_OTHER");
+    expect(resolved.nodes.other.environment.DEVFN_URL_OTHER).toBe("http://other:8081");
+    expect(resolved.nodes.other.environment).not.toHaveProperty("DEVFN_URL_WEB");
+  });
+
+  it("rejects credential-bearing health paths and argv before state creation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-health-argv-secret-"));
+    const stateDir = path.join(root, "state");
+    try {
+      for (const kind of ["process", "service"] as const) {
+        for (const location of ["port-path", "url-path"] as const) {
+          const config = fixture();
+          const health = { type: "http" as const, ...(location === "port-path" ? { port: kind === "process" ? "api" : "web" } : { url: "http://127.0.0.1:4101/" }), path: "/health?token=synthetic-sentinel" };
+          if (kind === "process") config.processes!.api.health = health;
+          else {
+            config.ports!.web = {};
+            config.services = { web: { adapter: "compose", service: "web", ports: { web: 8080 }, health } };
+            config.profiles.default.services = ["web"];
+          }
+          expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103 } })).toThrow(/secret channel/);
+          const error = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (failure: Error) => failure.message);
+          expect(error).toMatch(/secret channel/);
+          expect(error).not.toContain("synthetic-sentinel");
+          await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        }
+      }
+      for (const argument of ["--token=synthetic-sentinel", "--api-key=synthetic-sentinel", "--password", "prefix --secret=synthetic-sentinel", "--health=/health?token=synthetic-sentinel"]) {
+        const config = fixture();
+        config.processes!.worker.command = ["node", argument];
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+        const error = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (failure: Error) => failure.message);
+        expect(error).toMatch(/secret channel/);
+        expect(error).not.toContain("synthetic-sentinel");
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("rejects credential-bearing URL literals before state creation without echoing them", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-url-secret-"));
     const stateDir = path.join(root, "state");

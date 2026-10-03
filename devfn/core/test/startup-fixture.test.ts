@@ -208,4 +208,66 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
       await rm(root, { recursive: true, force: true });
     }
   }, 90_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("starts independent Compose projects with only their own reachable URLs", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-independent-compose-"));
+    const stateDir = path.join(root, "state");
+    const observed = path.join(root, "observed");
+    await mkdir(observed);
+    await writeFile(path.join(root, "service.mjs"), `import { createServer } from "node:http";
+import { writeFile } from "node:fs/promises";
+let ready = false;
+const server = createServer((request, response) => { response.writeHead(request.url === "/internal" || ready ? 200 : 503); response.end("ready"); });
+server.listen(8080, "0.0.0.0", async () => {
+  const response = await fetch(process.env.SELF_URL + "/internal");
+  if (!response.ok) throw new Error("own Compose URL is unreachable");
+  await writeFile("/observed/" + process.env.SERVICE_NAME + ".json", JSON.stringify({ url: process.env.SELF_URL, port: process.env.SELF_PORT, status: response.status }));
+  ready = true;
+});
+`);
+    await writeFile(path.join(root, "compose.yaml"), `services:
+  alpha:
+    image: node:22-alpine
+    working_dir: /app
+    volumes: ["./service.mjs:/app/service.mjs:ro", "./observed:/observed"]
+    command: ["node", "/app/service.mjs"]
+    environment:
+      SERVICE_NAME: alpha
+      SELF_URL: "\${DEVFN_URL_ALPHA:-}"
+      SELF_PORT: "\${DEVFN_PORT_ALPHA:-}"
+  beta:
+    image: node:22-alpine
+    working_dir: /app
+    volumes: ["./service.mjs:/app/service.mjs:ro", "./observed:/observed"]
+    command: ["node", "/app/service.mjs"]
+    environment:
+      SERVICE_NAME: beta
+      SELF_URL: "\${DEVFN_URL_BETA:-}"
+      SELF_PORT: "\${DEVFN_PORT_BETA:-}"
+`);
+    const config = validateDevFnConfig({
+      version: 1, project: { id: "independent-compose" }, ports: { alpha: {}, beta: {} },
+      services: {
+        alpha: { adapter: "compose", service: "alpha", projectName: "alpha", ports: { alpha: 8080 }, health: { type: "http", port: "alpha", timeoutMs: 30_000 } },
+        beta: { adapter: "compose", service: "beta", projectName: "beta", ports: { beta: 8080 }, health: { type: "http", port: "beta", timeoutMs: 30_000 } },
+      },
+      profiles: { default: { services: ["alpha", "beta"] } },
+    });
+    const orchestrator = new DevFnOrchestrator();
+    let projects: string[] = [];
+    try {
+      const receipt = await orchestrator.up({ config, root, stateDir });
+      projects = receipt.services.map((service) => service.projectName);
+      expect(new Set(projects).size).toBe(2);
+      for (const name of ["alpha", "beta"] as const) {
+        const actual = JSON.parse(await readFile(path.join(observed, `${name}.json`), "utf8"));
+        expect(actual).toEqual({ url: `http://${name}:8080`, port: String(receipt.allocations.find((port) => port.service === name)!.port), status: 200 });
+      }
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+    } finally {
+      await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+      for (const project of projects) await execFileAsync("docker", ["network", "rm", `${project}_default`]);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 90_000);
 });
