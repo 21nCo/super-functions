@@ -1,0 +1,26 @@
+devfn/compose/src/index.ts
+  h_bdc5b81c173ee9 150,159,165-166,169-183
+devfn/compose/test/override.test.ts
+  h_bdc5b81c173ee9 115-118,185-213,258-283,293-294
+devfn/core/src/endpoints.ts
+  h_bdc5b81c173ee9 115-117,126-128,151
+devfn/core/test/endpoints.test.ts
+  h_bdc5b81c173ee9 231,245-259,275
+devfn/docs/configuration.md
+  h_bdc5b81c173ee9 69,75
+devfn/proxy/src/index.ts
+  h_bdc5b81c173ee9 181
+devfn/proxy/test/proxy.test.ts
+  h_bdc5b81c173ee9 27-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "93c16b0f26154f4fae580a7afc79d5d1b6045516",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
