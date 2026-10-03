@@ -1,0 +1,21 @@
+devfn/core/src/endpoints.ts
+  s_ad500513bc9987::t_6166b21ec5f5ec 1-2,20-21,35-36,49-59,66,68-72,75-79,81-83,101-106,124,127,144,148,160-165,181-183,196,198
+devfn/core/test/endpoints.test.ts
+  s_ad500513bc9987::t_9ade0a4da3e664 8,84-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "20d3cc7472559464623d9b9988492899e8fcb4b0",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
