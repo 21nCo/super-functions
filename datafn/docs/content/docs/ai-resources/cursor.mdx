@@ -37,7 +37,7 @@ This project uses DataFn for the client/server data layer.
 - Sync routes are mounted on `/datafn/*` and should not be wrapped in custom middleware. Cross-cutting concerns belong in the `authorize` callback or a server plugin.
 - Errors travel as `DatafnEnvelope`. Surface `error.code` to the UI for routing; never show raw `error.message` to end users.
 
-See the docs at https://datafn.21n.co/docs.
+See the docs at https://datafn.dev/docs.
 ```
 
 See the [Skills](/docs/ai-resources/skills) page for a fuller starter template.
@@ -47,10 +47,10 @@ See the [Skills](/docs/ai-resources/skills) page for a fuller starter template.
 The "Open in Cursor" button on every page sends the page URL to Cursor's prompt panel. From there Cursor can fetch the raw markdown:
 
 ```
-fetch https://datafn.21n.co/api/docs/raw/dfql/queries.mdx
+fetch https://datafn.dev/docs/api/docs/raw/dfql/queries.mdx
 ```
 
-Cursor also accepts `@docs` references in the chat panel. If you've added DataFn as a docs source (Cursor settings → Indexing → Docs → Add → `https://datafn.21n.co/docs`), every page is searchable as `@docs:datafn`.
+Cursor also accepts `@docs` references in the chat panel. If you've added DataFn as a docs source (Cursor settings → Indexing → Docs → Add → `https://datafn.dev/docs`), every page is searchable as `@docs:datafn`.
 
 ## 3. MCP server
 
