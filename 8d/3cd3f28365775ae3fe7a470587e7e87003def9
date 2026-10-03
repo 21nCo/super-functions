@@ -1,0 +1,23 @@
+devfn/docs/configuration.md
+  s_ad500513bc9987::t_587771ef286e76 42,65,69
+devfn/config/src/schema.ts
+  s_ad500513bc9987::t_4173253f13a5c2 51,55,62,65,151-152,155-156,209
+devfn/core/test/endpoints.test.ts
+  s_ad500513bc9987::t_472c39d4a0b089 113-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8d3cd3f28365775ae3fe7a470587e7e87003def9",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
