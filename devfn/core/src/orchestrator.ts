@@ -5,12 +5,13 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { ComposeController, createComposeEnvironment, type ManagedComposeService } from "@devfn/compose";
-import { defaultStateDir, loadDevFnPolicy, type DevFnConfig } from "@devfn/config";
+import { defaultStateDir, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig } from "@devfn/config";
 import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
 import { CaddyProxyController, type ProxyRoute } from "@devfn/proxy";
 
 import { resolveInstanceIdentity } from "./identity.js";
+import { resolveEndpointTemplates } from "./endpoints.js";
 import { createPlan } from "./planner.js";
 import { readReceipt, secureRuntimeDirectory, writeEnvironmentOutputs, writeReceipt } from "./runtime.js";
 import { DevFnError, type CleanupResult, type InstanceIdentity, type LifecycleReceipt, type UpOptions } from "./types.js";
@@ -91,20 +92,9 @@ async function waitForOwnedLoopbackListeners(processName: string, expected: Arra
   throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${processName} ${missing!.protocol.toUpperCase()} port ${missing!.port} has no verified loopback listener owned by its process tree after ${timeoutMs} ms.`);
 }
 
-function envName(name: string): string { return `DEVFN_PORT_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`; }
-function lifecycleEnvironment(config: DevFnConfig, profile: string, instanceId: string, allocations: readonly PortAllocation[]): Record<string, string> {
-  const environment: Record<string, string> = { ...(config.profiles[profile]?.environment ?? {}), DEVFN_PROJECT_ID: config.project.id, DEVFN_INSTANCE_ID: instanceId, DEVFN_PROFILE: profile };
-  for (const allocation of allocations) {
-    environment[envName(allocation.service)] = String(allocation.port);
-    const configured = config.ports?.[allocation.service]?.env;
-    if (configured) environment[configured] = String(allocation.port);
-  }
-  return environment;
-}
-
 async function receiptIsReady(config: DevFnConfig, root: string, receipt: LifecycleReceipt, processStates: readonly string[], serviceStates: readonly string[]): Promise<boolean> {
   const ports = Object.fromEntries(receipt.allocations.map((allocation) => [allocation.service, allocation.port]));
-  const environment = lifecycleEnvironment(config, receipt.profile, receipt.instanceId, receipt.allocations);
+  const resolved = resolveEndpointTemplates({ config, plan: createPlan(config, receipt.profile), ownerId: receipt.instanceId, ports });
   const compose = new ComposeController();
   const supervisor = new ProcessSupervisor();
   const processReady = await Promise.all(receipt.processes.map(async (managed, index) => {
@@ -112,7 +102,7 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     if (!spec || processStates[index] !== "running") return false;
     try {
       const ready = await checkReadinessNow({
-        health: spec.health, ports, logPath: managed.logPath, cwd: managed.cwd, environment: createProcessEnvironment(spec, environment),
+        health: spec.health, ports, logPath: managed.logPath, cwd: managed.cwd, environment: createProcessEnvironment({ ...spec, env: resolved.nodes[managed.name]?.environment }, resolved.environment),
         previouslyReady: Boolean(managed.readyAt || receipt.state === "ready"), isAlive: async () => await supervisor.status(managed) === "running",
       });
       if (!ready || spec.exposure === "public") return ready;
@@ -124,7 +114,7 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     const spec = config.services?.[managed.name];
     if (!spec || serviceStates[index] !== "running") return false;
     return await checkReadinessNow({
-      health: spec.health, ports, logPath: "", cwd: root, environment: createComposeEnvironment(spec, environment),
+      health: spec.health, ports, logPath: "", cwd: root, environment: createComposeEnvironment({ ...spec, env: resolved.nodes[managed.name]?.environment }, resolved.environment),
       previouslyReady: receipt.state === "ready", isAlive: async () => await compose.status(managed) === "running",
       readLog: async () => await compose.logs({ ...managed, logsDisabled: Boolean(managed.logsDisabled || spec.secretEnv?.length) }, 1000, managed.startedAt),
     });
@@ -140,8 +130,16 @@ function hostname(configured: string | undefined, key: string, projectId: string
 
 export class DevFnOrchestrator {
   public async up(options: UpOptions): Promise<LifecycleReceipt> {
+    validateDevFnConfig(options.config);
+    const plan = createPlan(options.config, options.profile);
+    const publicNodes = plan.nodes.filter((node) => node.kind === "process" && options.config.processes?.[node.name]?.exposure === "public").map((node) => node.name);
+    const publicPorts = plan.portNames.filter((name) => options.config.ports?.[name]?.exposure === "public");
+    if ((publicNodes.length || publicPorts.length) && !options.allowPublic) {
+      throw new DevFnError("DEVFN_PUBLIC_EXPOSURE_CONFIRMATION_REQUIRED", "This profile declares public exposure. Review it and rerun with --allow-public.", { processes: publicNodes, ports: publicPorts });
+    }
     const requestedStateDir = options.stateDir ?? defaultStateDir();
     const identity = await resolveInstanceIdentity(options.config.project.id, options.root);
+    resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, ports: Object.fromEntries(plan.portNames.map((name) => [name, 1])) });
     await mkdir(requestedStateDir, { recursive: true, mode: 0o700 });
     const stateDir = await realpath(requestedStateDir);
     return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => await this.upLocked(options, stateDir, identity), { timeoutMs: 30_000 });
@@ -188,7 +186,8 @@ export class DevFnOrchestrator {
       ...policy,
     });
     const ports = Object.fromEntries(allocations.map((item) => [item.service, item.port]));
-    const environment = lifecycleEnvironment(options.config, plan.profile, identity.instanceId, allocations);
+    const resolved = resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, ports });
+    const environment = resolved.environment;
     const receipt: LifecycleReceipt = {
       version: 1, projectId: options.config.project.id, instanceId: identity.instanceId, invocationId, profile: plan.profile,
       state: "starting", root: options.root, runtimeDir, stateDir: path.resolve(stateDir), startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
@@ -210,8 +209,9 @@ export class DevFnOrchestrator {
       receipt.environmentOutputs = await writeEnvironmentOutputs(options.root, runtimeDir, options.config.environmentOutputs ?? [], environment);
       for (const node of plan.nodes) {
         if (node.kind === "service") {
+          const spec = options.config.services![node.name];
           await compose.start({
-            name: node.name, spec: options.config.services![node.name], root: options.root, runtimeDir, instanceId: identity.instanceId, ports,
+            name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, health: spec.health?.type === "http" && spec.health.port ? { ...spec.health, url: undefined } : spec.health }, root: options.root, runtimeDir, instanceId: identity.instanceId, ports,
             portHosts: Object.fromEntries(allocations.map((item) => [item.service, item.host])),
             portProtocols: Object.fromEntries(allocations.map((item) => [item.service, item.protocol])), environment,
             onStarted: async (managed) => {
@@ -222,8 +222,9 @@ export class DevFnOrchestrator {
             },
           });
         } else {
+          const spec = options.config.processes![node.name];
           const managed = await supervisor.start({
-            name: node.name, spec: options.config.processes![node.name], root: options.root, runtimeDir, ports, environment,
+            name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, command: resolved.nodes[node.name].command, health: spec.health?.type === "http" && spec.health.port ? { ...spec.health, url: undefined } : spec.health }, root: options.root, runtimeDir, ports, environment,
             onStarted: async (managed) => {
               receipt.processes.push(managed);
               receipt.startedNodes?.push({ name: node.name, kind: node.kind });

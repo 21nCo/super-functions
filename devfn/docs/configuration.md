@@ -56,6 +56,18 @@ DevFn writes a generated override with loopback host mappings unless the named p
 
 HTTP URLs are returned only for explicitly routed hostnames or ports named by HTTP health checks. Other services remain transport allocations visible through `devfn ports`; DevFn does not invent an HTTP URL for a database or arbitrary TCP listener.
 
+## Startup endpoint and template resolution
+
+`@devfn/core` exports `resolveEndpointTemplates({ config, plan, ownerId, ports })`. It is a pure resolver: `ownerId` is an opaque lifecycle owner supplied by the caller, and `ports` contains the selected profile's leased port numbers. It returns generated values, the profile environment, direct URLs, and resolved environment and command arguments for each selected node. The current CLI supplies its existing worktree instance ID as the owner. Callers of the resolver may use more than one owner per checkout. The resolver does not derive an owner from a path or start resources.
+
+For each selected port, DevFn generates `DEVFN_PORT_<NAME>` (uppercase, punctuation replaced by `_`) and its configured `ports.<name>.env` alias. An HTTP health port, or a selected proxy hostname target, also gets `DEVFN_URL_<NAME>` as `http://127.0.0.1:<leased port>`. These URLs are direct endpoints available during startup. Once all nodes are ready, the receipt's public `urls` may prefer installed proxy routes. A TCP or UDP allocation without an HTTP declaration has no invented URL.
+
+Precedence is: generated reserved values, then profile literals, then process or service literals. A process or service literal with the same key as a profile literal wins for that node. The generated `DEVFN_*` namespace and `HOST` are reserved; a local native process always receives `HOST=DEVFN_HOST=127.0.0.1`. Port environment aliases cannot use reserved keys. Colliding normalized port keys are rejected. The owner-only environment output file contains the resolved profile and generated non-secret values; node-specific values go only to that node.
+
+Use `{{env.NAME}}` to refer explicitly to a generated or previously declared environment key in a profile value, node value, or process `command` argument. References inside each environment map may be forward references; cycles and missing references fail before any lease, file, process, or service mutation. Profile values can refer to generated values; node values and argv can also refer to resolved profile and node values. Inherited `envAllowlist` values are delivered only through the existing process or Compose secret channel and cannot be template sources. Sensitive keys must be declared in `secretEnv`; credential values must not be placed in literals or argv. Empty or NUL argv values and malformed `{{...}}` references are rejected. All other characters, including `$`, backticks, semicolons, pipes and ampersands, stay literal argv data; DevFn does not invoke a shell.
+
+HTTP readiness that names a leased `port` probes its direct loopback URL during startup, even when a `url` is also configured. This avoids waiting for a selected proxy route that is installed only after startup. Existing URL-only readiness remains an explicit URL check. Compose interpolation receives the same resolved generated and profile values before `docker compose up`; Compose files must explicitly map those values into container `environment` entries when the container needs them. A native dependent can use a Compose service's leased host URL after that service becomes ready.
+
 ## Profiles and hostnames
 
 Profiles select named processes/services, add non-secret environment, and opt into the shared proxy with `proxy: true`. Dependencies are included transitively and started topologically. Cycles fail before mutation.
