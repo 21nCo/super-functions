@@ -572,10 +572,44 @@ const docsPayload = {
 outputs['uifn/storybook/generated/story-inventory.json'] = stableJson(storyPayload);
 outputs['uifn/docs/generated/docs-coverage.json'] = stableJson(docsPayload);
 outputs['uifn/docs/generated/sample-manifest.json'] = stableJson({ schemaVersion: 1, generatorVersion: PHASE_17_GENERATOR_VERSION, sampleCount: sampleManifest.length, samples: sampleManifest });
-outputs['uifn/docs/generated/site/index.html'] = stableText(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>uifn stable primitives</title></head><body><main><h1>uifn stable primitives</h1><p>React, Svelte, and Solid package and source delivery.</p><ul>${catalog.primitives.map((primitive) => `<li><a href="primitives/${primitive.id}.html">${escapeHtml(primitive.name)}</a></li>`).join('')}</ul></main></body></html>`);
+outputs['uifn/docs/generated/site/index.html'] = stableText(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>uifn stable primitives</title></head><body><main><h1>uifn stable primitives</h1><p>React, Svelte, and Solid package and source delivery.</p><p><a href="delivery.html">Choose package or source installation</a> before selecting a primitive.</p><ul>${catalog.primitives.map((primitive) => `<li><a href="primitives/${primitive.id}.html">${escapeHtml(primitive.name)}</a></li>`).join('')}</ul></main></body></html>`);
 outputs['uifn/docs/generated/README.md'] = stableText(`# uifn documentation\n\nThis generated documentation is derived from the canonical ${catalog.primitives.length}-primitive catalog. It covers the controller contract, framework compound APIs, styling, package and source installation, SSR/hydration, form semantics, composition, accessibility, keyboard/pointer/touch behavior, limitations, and migration posture.\n\nSupported stable frameworks: React, Svelte, and Solid.\n\nCompatibility status: semantic parity is complete; signed external browser, assistive-technology, and device-lab certification is still required before release readiness can be called 10/10. JAWS is not in the current matrix by explicit user decision.\n`);
 outputs['uifn/docs/generated/controller-api.md'] = stableText(`# Controller API\n\n\`@uifn/core\` owns framework-neutral state, transitions, actions, snapshots, controlled synchronization, form reset/validation bridges, and deterministic serialization. Framework adapters own lifecycle and DOM binding. Applications should dispatch catalog-declared events and read state/actions/parts rather than reaching into private controller fields.\n`);
-outputs['uifn/docs/generated/delivery.md'] = stableText(`# Package and source delivery\n\nPackage mode imports stable subpaths from \`@uifn/components-react\`, \`@uifn/components-svelte\`, or \`@uifn/components-solid\`. Source mode uses \`@uifn/registry\` and records definition, generator, template, and output hashes in the consumer lockfile. Both modes expose the same named parts and compound root contract.\n`);
+// One content model keeps the Markdown and HTML consumer guides in sync.
+const deliverySections = [
+  { heading: 'Package and source delivery', level: 1, paragraphs: [
+    'Package mode imports stable subpaths from `@uifn/components-react`, `@uifn/components-svelte`, or `@uifn/components-solid`. Source mode uses the signed offline catalog in `@uifn/registry` and records source ownership and hashes in `.uifn/registry.lock`. Both modes expose the same named parts and compound root contract.',
+  ] },
+  { heading: 'Source installation', level: 2, paragraphs: [
+    'Install the CLI as a development dependency in your consumer project. Resolve the installed `@uifn/registry` entry from that project, then use its sibling CLI file. This also finds npm-hoisted workspace dependencies without downloading a package or falling back to a global `uifn` binary. Stop if resolution fails.',
+  ], code: [
+    'npm install --save-dev @uifn/registry',
+    'UIFN_CLI="$(node -p "require(\'node:path\').join(require(\'node:path\').dirname(require.resolve(\'@uifn/registry\')), \'bin.mjs\')")"',
+    'node "$UIFN_CLI" add button --framework react --cwd . --dry-run --json',
+    'node "$UIFN_CLI" add button --framework react --cwd . --json',
+    'node "$UIFN_CLI" diff --cwd . --json',
+    'node "$UIFN_CLI" update button --cwd . --dry-run --json',
+  ], after: 'Dry run shows the exact plan without writing. Add and update validate catalog signatures, package dependencies, source hashes, and dirty-file conflicts before an atomic write. Check that `--cwd` points to the intended project before running a write; planning does not verify ancestor workspace declarations. Local edits are never silently overwritten.' },
+  { heading: 'Npm lockfiles after dependency changes', level: 2, paragraphs: [
+    'Whenever `uifn add`, `uifn update`, or `uifn apply` changes `package.json` in a project with `package-lock.json`, refresh the npm lockfile. `apply` reports `requiredActions`; `add` and `update` do not, so inspect the package diff yourself.',
+    'Run `npm install --package-lock-only --ignore-scripts --lockfile-version=3`, review the diff, then run `npm ci`. UIFn does not run npm or edit the npm lockfile during its file transaction.',
+  ] },
+];
+const deliveryMarkdown = deliverySections.map((section) => [
+  `${'#'.repeat(section.level)} ${section.heading}`,
+  ...section.paragraphs,
+  ...(section.code ? ['```sh\n' + section.code.join('\n') + '\n```'] : []),
+  ...(section.after ? [section.after] : []),
+].join('\n\n')).join('\n\n');
+const inlineDelivery = (value) => escapeHtml(value).replace(/`([^`]+)`/g, '<code>$1</code>');
+const deliveryHtml = deliverySections.map((section) => [
+  `<h${section.level}>${escapeHtml(section.heading)}</h${section.level}>`,
+  ...section.paragraphs.map((paragraph) => `<p>${inlineDelivery(paragraph)}</p>`),
+  ...(section.code ? [`<pre><code>${escapeHtml(section.code.join('\n'))}</code></pre>`] : []),
+  ...(section.after ? [`<p>${inlineDelivery(section.after)}</p>`] : []),
+].join('')).join('');
+outputs['uifn/docs/generated/delivery.md'] = stableText(deliveryMarkdown);
+outputs['uifn/docs/generated/site/delivery.html'] = stableText(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>uifn delivery</title></head><body><main><p><a href="index.html">All primitives</a></p>${deliveryHtml}</main></body></html>`);
 outputs['uifn/docs/generated/migration.md'] = stableText(`# Migration\n\nThe current stable matrix is React, Svelte, and Solid. Previous experimental Vue and Angular adapters were removed and are not supported. Migrate behavior to the framework-neutral controller contract, then replace adapter imports with the corresponding stable framework package. Legacy \`StateMachine\` and \`createMachine\` APIs are removed; use the generated primitive controller exports documented by the canonical catalog.\n`);
 
 const failures = materializeOutputs(root, outputs, {
