@@ -1,5 +1,5 @@
 {
   "title": "Python",
-  "description": "SearchFn Python — DataFn companion plugin",
+  "description": "SearchFn Python inverted-index kernel",
   "pages": ["index", "setup", "indexing", "search", "http-mount"]
 }

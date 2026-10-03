@@ -7,7 +7,7 @@ import {
 
 const environment = normalizeEnvironment(process.argv[2] ?? "dev");
 if (!environment) {
-  console.error("Usage: node scripts/cloudflare-docs/sync-routes.mjs <dev|live> [--products=datafn,filefn,searchfn,authfn|all]");
+  console.error("Usage: node scripts/cloudflare-docs/sync-routes.mjs <dev|live> [--products=apifn,datafn,filefn,searchfn,authfn|all]");
   process.exit(1);
 }
 

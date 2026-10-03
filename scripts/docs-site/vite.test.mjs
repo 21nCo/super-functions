@@ -31,25 +31,44 @@ describe("consumer-owned conditional dependency resolution", () => {
     let server;
     try {
       put(path.join(root, "package.json"), { type: "module" });
-      put(path.join(site, "package.json"), { type: "module", dependencies: { "@docsfn/core": "0.0.5", "gray-matter": "4.0.3" } });
-      for (const name of ["@docsfn/core", "gray-matter"]) {
+      put(path.join(site, "package.json"), { type: "module", dependencies: { "@docsfn/core": "0.0.5", "@docsfn/provider-fs": "0.0.2", "gray-matter": "4.0.3" } });
+      for (const name of ["@docsfn/core", "@docsfn/provider-fs", "gray-matter"]) {
         pkg(root, name, "ROOT_BAD"); pkg(site, name, "CONSUMER_OK");
       }
       pkg(ownedDependency, "@docsfn/core", "DEPENDENCY_OK");
       put(path.join(ownedDependency, "entry.js"), 'export { marker } from "@docsfn/core";');
-      put(shared, 'import { marker as core } from "@docsfn/core"; import { marker as search } from "@docsfn/core/search-runtime"; import { marker as parser } from "gray-matter"; export { core, search, parser };');
+      put(shared, 'import { marker as core } from "@docsfn/core"; import { marker as search } from "@docsfn/core/search-runtime"; import { marker as parser } from "gray-matter"; import { marker as provider } from "@docsfn/provider-fs"; export { core, search, parser, provider };');
       server = await createServer({ configFile: false, root: site,
         plugins: [docsSiteCorePlugin(pathToFileURL(path.join(site, "vite.config.ts")).href)],
         ssr: { noExternal: true }, optimizeDeps: { noDiscovery: true },
         server: { middlewareMode: true, fs: { allow: [root] } },
       });
       const loaded = await server.ssrLoadModule(shared);
-      expect([loaded.core, loaded.search, loaded.parser]).toEqual(["CONSUMER_OK_IMPORT", "CONSUMER_OK_SEARCH", "CONSUMER_OK_IMPORT"]);
+      expect([loaded.core, loaded.search, loaded.parser, loaded.provider]).toEqual(["CONSUMER_OK_IMPORT", "CONSUMER_OK_SEARCH", "CONSUMER_OK_IMPORT", "CONSUMER_OK_IMPORT"]);
       const browser = await server.transformRequest(shared);
       expect(browser.code).toContain("lib/browser.mjs");
       expect(browser.code).not.toContain("ROOT_BAD");
       const dependency = await server.ssrLoadModule(path.join(ownedDependency, "entry.js"));
       expect(dependency.marker).toBe("DEPENDENCY_OK_IMPORT");
+    } finally { await server?.close(); rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("rejects an undeclared provider instead of borrowing the root package", async () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), "docs-undeclared-provider-")));
+    const site = path.join(root, "consumer", "docs");
+    const shared = path.join(root, "scripts", "docs-site", "entry.js");
+    let server;
+    try {
+      put(path.join(root, "package.json"), { type: "module" });
+      put(path.join(site, "package.json"), { type: "module", dependencies: { "@docsfn/core": "0.0.5" } });
+      pkg(root, "@docsfn/provider-fs", "ROOT_BAD");
+      put(shared, 'export { marker } from "@docsfn/provider-fs";');
+      server = await createServer({ configFile: false, root: site,
+        plugins: [docsSiteCorePlugin(pathToFileURL(path.join(site, "vite.config.ts")).href)],
+        ssr: { noExternal: true }, optimizeDeps: { noDiscovery: true },
+        server: { middlewareMode: true, fs: { allow: [root] } },
+      });
+      await expect(server.ssrLoadModule(shared)).rejects.toThrow("Docs consumer must declare @docsfn/provider-fs.");
     } finally { await server?.close(); rmSync(root, { recursive: true, force: true }); }
   });
 

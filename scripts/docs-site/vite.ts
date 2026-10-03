@@ -13,10 +13,10 @@ export function docsSiteCorePlugin(configUrl: string): Plugin {
   return {
     name: "docs-site-pinned-core",
     enforce: "pre",
-    async resolveId(source, importer) {
+    resolveId(source, importer) {
       if (!importer?.replaceAll("\\", "/").includes("/scripts/docs-site/")) return;
       const owner = source.startsWith("@docsfn/core/") ? "@docsfn/core" : source;
-      if (!["@docsfn/core", "@docsfn/sveltekit", "@sveltejs/kit", "gray-matter", "vitest", "vite"].includes(owner)) return;
+      if (!["@docsfn/core", "@docsfn/provider-fs", "@docsfn/sveltekit", "@sveltejs/kit", "gray-matter", "vitest", "vite"].includes(owner)) return;
       if (!dependencies[owner]) throw new Error(`Docs consumer must declare ${owner}.`);
       // Preserve browser/import/SSR conditions, query handling and package exports.
       // Dependency-owned imports are deliberately not intercepted.

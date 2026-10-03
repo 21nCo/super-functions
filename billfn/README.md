@@ -8,6 +8,7 @@ It currently ships:
   - `@billfn/core`
   - `@billfn/client`
   - `@billfn/svelte`
+  - `@billfn/admin`
 - `@billfn/provider-dodo`
 - `@billfn/provider-apple`
 - `@billfn/swift-bridge`
@@ -34,6 +35,7 @@ billfn/
   swift-bridge/
   swift/
   python/
+  admin/
   docs/
 ```
 
@@ -42,6 +44,7 @@ billfn/
 - [Overview](./docs/content/docs/index.mdx)
 - [Getting Started](./docs/content/docs/getting-started.mdx)
 - [Architecture](./docs/content/docs/architecture.mdx)
+- [Administration](./docs/content/docs/server/administration.mdx)
 - [Production Readiness](./docs/content/docs/production-readiness.mdx)
 - [TypeScript Client](./docs/content/docs/clients/typescript.mdx)
 - [Swift Client](./docs/content/docs/clients/swift.mdx)

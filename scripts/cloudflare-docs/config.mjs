@@ -10,6 +10,7 @@ export const docsProducts = {
     docsDir: "apifn/docs",
     kind: "sveltekit-cloudflare",
     zoneName: "apifn.com",
+    routePaths: ["/docs*", "/"],
     hosts: {
       dev: "dev.apifn.com",
       live: "apifn.com",
@@ -123,13 +124,12 @@ export function routesFor(environment, products) {
     const route = routeDefinition(productId, environment);
     const product = docsProducts[productId];
     const aliases = product.routeAliases?.[environment] ?? [];
-    return [
-      route,
-      ...aliases.map((host) => ({
+    return [product.hosts[environment], ...aliases].flatMap((host) =>
+      (product.routePaths ?? ["/docs*"]).map((pathname) => ({
         ...route,
-        pattern: `${host}/docs*`,
+        pattern: `${host}${pathname}`,
       })),
-    ];
+    );
   });
 }
 

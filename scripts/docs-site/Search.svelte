@@ -22,6 +22,8 @@
   }
 
   function shortcut(event: KeyboardEvent) {
+    // Let the input's IME handle composition keys without moving focus.
+    if (event.isComposing) return;
     // A nonempty native search input consumes Escape to clear its value.
     // Close our modal explicitly so one Escape always dismisses search.
     if (event.key === "Escape" && dialog?.open) {
