@@ -1,10 +1,9 @@
 #!/usr/bin/env node
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildManifest, loadDocsConfig } from "@docsfn/core";
 import { FsContentProvider } from "@docsfn/provider-fs";
-import { loadLlmsSiteSource } from "../../../scripts/docs-site/llms.mjs";
+import { loadLlmsSiteSource, writeLlmsArtifacts } from "../../../scripts/docs-site/llms.mjs";
 
 const cwd = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { config, manifest } = await loadLlmsSiteSource(cwd, {
@@ -66,18 +65,4 @@ for (const page of docsPages) {
 const llmsFullTxt = fullSections.join("\n");
 
 const staticDir = resolve(cwd, "static");
-const artifacts = [["llms.txt", llmsTxt], ["llms-full.txt", llmsFullTxt]];
-if (process.argv.includes("--check")) {
-  for (const [name, text] of artifacts) {
-    if (readFileSync(resolve(staticDir, name), "utf8") !== text) {
-      throw new Error(`${name} is stale. Run npm run generate:llms.`);
-    }
-  }
-  console.log("LLM artifacts are current");
-} else {
-  mkdirSync(staticDir, { recursive: true });
-  for (const [name, text] of artifacts) {
-    writeFileSync(resolve(staticDir, name), text, "utf8");
-    console.log(`Wrote ${resolve(staticDir, name)} (${Buffer.byteLength(text, "utf8")} bytes)`);
-  }
-}
+writeLlmsArtifacts(staticDir, { llmsTxt, llmsFullTxt });

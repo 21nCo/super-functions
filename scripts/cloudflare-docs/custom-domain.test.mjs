@@ -7,7 +7,7 @@ function fixture(environment = "dev", edits = {}) {
   const target = customDomainsFor(environment, ["apifn"])[0];
   const data = {
     zone: { id: target.zoneId, name: "apifn.dev", status: "active", type: "full", account: { id: target.accountId } },
-    dns: [], domains: [], routes: [], rulesets: [{ kind: "managed", phase: "http_request_sanitize" }], pagerules: [],
+    dns: [], domains: [], routes: [], rulesets: [{ id: "managed", kind: "managed", phase: "http_request_sanitize" }], pagerules: [],
     ...edits,
   };
   const calls = [];
@@ -23,7 +23,8 @@ function fixture(environment = "dev", edits = {}) {
     else if (path.endsWith("/rulesets")) result = data.rulesets;
     else if (path.endsWith("/pagerules")) result = data.pagerules;
     else { assert.equal(path, `/client/v4/zones/${target.zoneId}`); result = data.zone; }
-    const paginated = path.endsWith("/dns_records") || path.endsWith("/workers/domains");
+    const paginated = path.endsWith("/dns_records");
+    if (!paginated) assert.equal(new URL(url).search, "", "complete array endpoints have no page/per_page parameters");
     const page = Number(new URL(url).searchParams.get("page") || 1);
     const rows = paginated ? result.slice(page - 1, page) : result;
     const payload = { success: true, result: rows, ...(paginated ? { result_info: { page, total_count: result.length } } : {}) };
@@ -36,7 +37,10 @@ for (const environment of ["dev", "live"]) {
   test(`${environment}: new docs domain requires the approved active zone/account and empty ownership`, async () => {
     const { target, calls, options } = fixture(environment);
     assert.deepEqual(await verifyCustomDomainOwnership(target, options), { hostname: target.hostname, existing: false });
-    assert.equal(calls.length, 6);
+    assert(calls.every(({ url, method }) => method === "GET" && new URL(url).origin === "https://api.cloudflare.com"));
+    for (const endpoint of ["dns_records", "workers/domains", "workers/routes", "rulesets", "pagerules"]) {
+      assert(calls.some(({ url }) => new URL(url).pathname.endsWith(endpoint)));
+    }
   });
   test(`${environment}: own matching domain redeploy accepts only its proxied address records`, async () => {
     const { target, data, options } = fixture(environment);
@@ -78,28 +82,28 @@ for (const record of [
   test(`late-page DNS conflict is preserved: ${JSON.stringify(record)}`, async () => {
     const f = fixture(); f.data.dns = [{ id: "unrelated", name: "app.apifn.dev", type: "CNAME" }, { id: "foreign", ...record }];
     await assert.rejects(verifyCustomDomainOwnership(f.target, f.options), /Conflicting docs DNS/);
-    assert(f.calls.some(({ url }) => url.includes("dns_records?per_page=50&page=2")));
+    assert(f.calls.some(({ url }) => new URL(url).pathname.endsWith("dns_records") && Number(new URL(url).searchParams.get("page")) > 1));
   });
 }
 for (const change of [{ service: "superfunctions-apifn-landing-dev" }, { zone_id: "foreign" }, { environment: "staging" }]) {
-  test(`late-page foreign domain fails without takeover: ${JSON.stringify(change)}`, async () => {
-    const f = fixture(); f.data.domains = [{ id: "unrelated", hostname: "app.apifn.dev" }, {
+  test(`complete single-array domain inventory finds a foreign owner beyond the first row: ${JSON.stringify(change)}`, async () => {
+    const f = fixture(); f.data.domains = [{ id: "unrelated", hostname: "app.apifn.dev", service: "application", zone_id: f.target.zoneId, environment: "production" }, {
       id: "foreign", hostname: f.target.hostname, service: f.target.script, zone_id: f.target.zoneId, environment: "production", ...change,
     }];
     await assert.rejects(verifyCustomDomainOwnership(f.target, f.options), /another service/);
-    assert(f.calls.some(({ url }) => url.includes("workers/domains?per_page=50&page=2")));
+    assert(f.calls.some(({ url }) => new URL(url).pathname.endsWith("workers/domains") && !new URL(url).search));
   });
 }
 for (const pattern of ["dev-docs.apifn.dev/docs*", "https://*.apifn.dev/*", "http*://*apifn.dev/api*", "*/*"]) {
   test(`overlapping Route or Page Rule blocks even a partial path: ${pattern}`, async () => {
-    const f = fixture(); f.data.routes = [{ pattern, script: null }];
+    const f = fixture(); f.data.routes = [{ id: "conflict-route", pattern, script: null }];
     await assert.rejects(verifyCustomDomainOwnership(f.target, f.options), /route\/ruleset/);
-    f.data.routes = []; f.data.pagerules = [{ status: "active", targets: [{ constraint: { value: pattern } }] }];
+    f.data.routes = []; f.data.pagerules = [{ id: "conflict-rule", status: "active", targets: [{ constraint: { value: pattern } }] }];
     await assert.rejects(verifyCustomDomainOwnership(f.target, f.options), /route\/ruleset/);
   });
 }
 test("zone custom redirect/origin rule fails closed, unrelated hostname routes remain untouched", async () => {
-  const f = fixture(); f.data.routes = [{ pattern: "app.apifn.dev/*", script: "application" }];
+  const f = fixture(); f.data.routes = [{ id: "application-route", pattern: "app.apifn.dev/*", script: "application" }];
   await verifyCustomDomainOwnership(f.target, f.options);
   f.data.rulesets.push({ kind: "zone", phase: "http_request_origin", id: "application-origin" });
   await assert.rejects(verifyCustomDomainOwnership(f.target, f.options), /route\/ruleset/);
@@ -145,6 +149,32 @@ test("duplicate late-page inventory IDs fail instead of hiding a conflict", asyn
   const f = fixture(); f.data.dns = [{ id: "duplicate", name: "app.apifn.dev", type: "CNAME" }, { id: "duplicate", name: "app.apifn.dev", type: "CNAME" }];
   await assert.rejects(verifyCustomDomainOwnership(f.target, f.options), /Incomplete or changing/);
 });
+for (const environment of ["dev", "live"]) {
+  test(`${environment}: zone apex NS is not docs-host delegation`, async () => {
+    const f = fixture(environment);
+    f.data.dns = [{ id: "apex-ns", name: "apifn.dev", type: "NS" }];
+    assert.equal((await verifyCustomDomainOwnership(f.target, f.options)).existing, false);
+    f.data.dns.push({ id: "delegation", name: f.target.hostname, type: "NS" });
+    await assert.rejects(verifyCustomDomainOwnership(f.target, f.options), /Conflicting docs DNS/);
+  });
+  test(`${environment}: later Rulesets cursor conflict blocks preflight and attachment without writes`, async () => {
+    const f = fixture(environment); const original = f.options.fetchImpl; const calls = [];
+    const options = { ...f.options, fetchImpl: async (url, request) => {
+      calls.push({ url, method: request.method });
+      assert.equal(request.method, "GET", "a later-cursor conflict cannot authorize PUT");
+      const parsed = new URL(url);
+      if (!parsed.pathname.endsWith("/rulesets")) return original(url, request);
+      return new Response(JSON.stringify(parsed.searchParams.has("cursor") ? {
+        success: true, result: [{ id: "late-origin", kind: "zone", phase: "http_request_origin" }], result_info: { count: 1 },
+      } : {
+        success: true, result: [{ id: "managed", kind: "managed", phase: "http_request_sanitize" }], result_info: { cursor: "next/+?&=", count: 1 },
+      }));
+    } };
+    await assert.rejects(verifyCustomDomainOwnership(f.target, options), /route\/ruleset/);
+    await assert.rejects(attachCustomDomain(f.target, options), /route\/ruleset/);
+    assert(calls.some(({ url }) => new URL(url).searchParams.get("cursor") === "next/+?&="));
+  });
+}
 test("denied, malformed and incomplete inventories never permit deployment", async () => {
   const f = fixture();
   for (const response of [new Response("{}", { status: 403 }), new Response('{"success":false}'), new Response('{"success":true,"result":null}')]) {

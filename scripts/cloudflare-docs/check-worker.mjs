@@ -46,6 +46,8 @@ try {
     compatibilityDate: config.compatibility_date, compatibilityFlags: config.compatibility_flags,
     assets: { directory: path.join(docs, config.assets.directory), binding: config.assets.binding, routerConfig: { has_user_worker: true } },
   });
+  // Inspect each native exchange before starting the next; this correctness
+  // harness is not a throughput/concurrency test of local workerd.
   for (const route of ["/", "/?utm_source=campaign", "/?q=%2F&q=%3F", "/?lang=ja&return=%2Fdocs", "/docs", "/docs/getting-started"]) {
     const response = await mf.dispatchFetch(origin + route);
     const html = await response.text();
@@ -64,7 +66,9 @@ try {
   }
   const head = await mf.dispatchFetch(origin + "/?head=1", { method: "HEAD" });
   assert.equal(head.status, 200); assert.equal(await head.text(), "");
-  for (const [headers, expected] of [[{}, 403], [{ origin }, 405]]) {
+  // The installed SvelteKit server rejects a missing or foreign Origin on
+  // this form-like POST; same-origin reaches the route's native 405.
+  for (const [headers, expected] of [[{}, 403], [{ origin: "https://foreign.invalid" }, 403], [{ origin }, 405]]) {
     assert.equal((await mf.dispatchFetch(origin + "/?body=1", { method: "POST", body: "not-forwarded", headers: { "content-type": "text/plain", ...headers } })).status, expected);
   }
   const html = await (await mf.dispatchFetch(origin + "/")).text();

@@ -9,7 +9,7 @@ function deploymentFixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "docs-domain-config-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.mkdirSync(path.join(root, "scripts/cloudflare-docs"), { recursive: true });
-  for (const file of ["config.mjs", "custom-domain.mjs", "deploy.mjs"]) {
+  for (const file of ["config.mjs", "inventory.mjs", "custom-domain.mjs", "deploy.mjs"]) {
     fs.copyFileSync(new URL(file, import.meta.url), path.join(root, "scripts/cloudflare-docs", file));
   }
   for (const product of ["apifn", "authfn", "filefn"]) {
@@ -52,6 +52,8 @@ for (const environment of ["dev", "live"]) {
       origins: [{ hostname: environment === "dev" ? "dev-docs.apifn.dev" : "docs.apifn.dev", zone_id: "9e8b538ad4b7a44ce7bd85ff8db1cfdc" }],
     });
     const args = JSON.parse(fs.readFileSync(path.join(root, "wrangler-call.json"), "utf8"));
+    assert.deepEqual(args.slice(0, 2), ["deploy", "--config"]);
+    assert.equal(fs.realpathSync(args[2]), fs.realpathSync(path.join(docs, ".cloudflare-docs-wrangler.jsonc")));
     assert(args.includes("--dry-run"));
     assert(!args.includes("--force"));
   });
