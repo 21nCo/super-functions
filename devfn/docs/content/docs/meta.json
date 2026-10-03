@@ -1,0 +1,4 @@
+{
+  "title": "DevFn",
+  "pages": ["index", "getting-started", "configuration", "lifecycle", "ports-and-proxy", "processes-and-compose", "security", "migration", "packages", "reference"]
+}

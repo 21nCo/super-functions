@@ -1,0 +1,27 @@
+# DevFn
+
+> Trusted local profiles, process and Compose lifecycle, port leases, readiness, and localhost routes.
+
+## Documentation
+
+- [Configuration](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/configuration.md) — Declare project identity, ports, processes, Compose services, and profiles.
+- [Getting started](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/getting-started.md) — Initialize, trust, inspect, and start a local profile.
+- [DevFn](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/index.md) — Trusted lifecycle orchestration for local development.
+- [Lifecycle and diagnostics](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/lifecycle.md) — Start, inspect, stop, and recover one worktree instance.
+- [Migrating a project](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/migration.md) — Adopt DevFn while preserving existing startup and data paths.
+- [Packages](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/packages.md) — Map DevFn's eight packages to their responsibilities.
+- [Ports and localhost routes](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/ports-and-proxy.md) — Allocate per-worktree ports and publish concrete local URLs.
+- [Processes and Compose](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/processes-and-compose.md) — Run native applications and worktree-scoped infrastructure.
+- [@devfn/cli](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/reference/cli.md) — Source package guide for @devfn/cli.
+- [@devfn/compose](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/reference/compose.md) — Source package guide for @devfn/compose.
+- [@devfn/config](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/reference/config.md) — Source package guide for @devfn/config.
+- [Configuration contract](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/reference/configuration.md) — Manifest fields, ports, processes, services, profiles, and policy.
+- [@devfn/core](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/reference/core.md) — Source package guide for @devfn/core.
+- [Reference](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/reference/index.md) — DevFn configuration, security, migration, and package guides.
+- [Migration guide](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/reference/migration.md) — Adopt DevFn without losing existing scripts, outputs, or Compose data.
+- [@devfn/ports](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/reference/ports.md) — Source package guide for @devfn/ports.
+- [@devfn/processes](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/reference/processes.md) — Source package guide for @devfn/processes.
+- [@devfn/proxy](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/reference/proxy.md) — Source package guide for @devfn/proxy.
+- [Security contract](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/reference/security.md) — Manifest trust, secret handling, local exposure, and ownership.
+- [@devfn/testing](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/reference/testing.md) — Source package guide for @devfn/testing.
+- [Trust and secret handling](https://github.com/21nCo/super-functions/blob/dev/devfn/docs/content/docs/security.md) — Review manifests, isolate secrets, and confirm public exposure.
