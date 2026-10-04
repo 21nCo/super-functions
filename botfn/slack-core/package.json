@@ -1,5 +1,5 @@
 {
-  "name": "@botfn/slack-core",
+  "name": "@superfunctions/botfn-slack-core",
   "version": "0.0.1",
   "description": "Slack integration core utilities",
   "main": "./dist/index.cjs",

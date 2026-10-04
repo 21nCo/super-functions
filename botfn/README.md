@@ -52,21 +52,25 @@ resolve sibling workspace source.
 
 The Discord bot's minimum npm prerequisite set is:
 
-- `@botfn/shared-types`
-- `@botfn/discord-core`
-- `@botfn/github-integration`
-- `@botfn/linear-integration`
-- `@botfn/persistence-service`
+- `@superfunctions/botfn-shared-types`
+- `@superfunctions/botfn-discord-core`
+- `@superfunctions/botfn-github-integration`
+- `@superfunctions/botfn-linear-integration`
+- `@superfunctions/botfn-persistence-service`
 
 These five foundations have no dependencies on each other and may be released in
-any order before installing or releasing `@botfn/discord-bot`. Slack core is
+any order before installing or releasing `@superfunctions/botfn-discord-bot`. Slack core is
 independent of the Discord closure and exports both ESM and CommonJS.
 
 Run `npm install --workspaces=false`, `npm run build`, `npm test` and
 `npm pack --dry-run` from an isolated copy of each package to check its release
 boundary. Build before packing: npm exports point at `dist`, not TypeScript source.
-Use `@botfn/persistence-service/client` for the public persistence client;
+Use `@superfunctions/botfn-persistence-service/client` for the public persistence client;
 deep imports into the package's source tree are not supported.
+
+BotFn's npm libraries live in the controlled `@superfunctions` organization.
+The npm user scope `@botfn` belongs to an unrelated account; old namespace
+references and release slugs are removed, not retained as aliases.
 
 
 ## testing

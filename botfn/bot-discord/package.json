@@ -1,5 +1,5 @@
 {
-  "name": "@botfn/discord-bot",
+  "name": "@superfunctions/botfn-discord-bot",
   "version": "0.0.1",
   "description": "Discord bot with GitHub and Linear integration",
   "main": "./dist/index.cloudflare.js",
@@ -28,11 +28,11 @@
   "dependencies": {
     "hono": "^4.0.0",
     "zod": "^3.22.0",
-    "@botfn/discord-core": "0.0.1",
-    "@botfn/github-integration": "0.0.1",
-    "@botfn/linear-integration": "0.0.1",
-    "@botfn/shared-types": "0.0.1",
-    "@botfn/persistence-service": "0.0.1",
+    "@superfunctions/botfn-discord-core": "0.0.1",
+    "@superfunctions/botfn-github-integration": "0.0.1",
+    "@superfunctions/botfn-linear-integration": "0.0.1",
+    "@superfunctions/botfn-shared-types": "0.0.1",
+    "@superfunctions/botfn-persistence-service": "0.0.1",
     "@trpc/client": "^10.45.0",
     "discord.js": "^14.24.0"
   },

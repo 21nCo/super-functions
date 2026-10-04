@@ -38,7 +38,7 @@ npx wrangler secret put DATABASE_URL --config botfn/persistence/wrangler.toml
 ## Development
 
 ```bash
-npm --workspace @botfn/persistence-service run dev
+npm --workspace @superfunctions/botfn-persistence-service run dev
 ```
 
 The service will be available at `http://localhost:8787`.
@@ -49,12 +49,12 @@ The npm package ships compiled ESM and declarations. Import the client without
 loading the server runtime:
 
 ```typescript
-import { createPersistenceClient } from '@botfn/persistence-service/client';
+import { createPersistenceClient } from '@superfunctions/botfn-persistence-service/client';
 
 const persistence = createPersistenceClient('https://persistence.example.com');
 ```
 
-The server factory is exported from `@botfn/persistence-service/core`.
+The server factory is exported from `@superfunctions/botfn-persistence-service/core`.
 `createPersistenceApp()` uses the request binding `DATABASE_URL`; an optional
 `PersistenceDatabase` argument accepts an existing Drizzle PostgreSQL database.
 The caller owns the supplied connection and its lifecycle.
@@ -73,7 +73,7 @@ filtering, thread uniqueness, foreign keys, input errors and transaction rollbac
 ## Deployment
 
 ```bash
-npm --workspace @botfn/persistence-service run deploy
+npm --workspace @superfunctions/botfn-persistence-service run deploy
 ```
 
 ## API Endpoints
