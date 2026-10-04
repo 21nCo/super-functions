@@ -64,9 +64,9 @@ export const auth = authApp.createServer({
 ```ts
 // app/auth/[...path]/route.ts
 import { auth } from "../_runtime";
-import { toNext } from "@superfunctions/http-next";
+import { toNextHandlers } from "@superfunctions/http-next";
 
-const handler = toNext(auth.router);
+const handler = toNextHandlers(auth.router).GET;
 
 export const GET = handler;
 export const POST = handler;
@@ -95,7 +95,7 @@ export default async function Dashboard() {
 }
 ```
 
-> The fake-request pattern is the canonical way to authenticate a Next.js Server Component with the cookie-based authfn session. The `@superfunctions/http-next` package exposes a helper for this — see [Frameworks → Next.js](../frameworks/nextjs).
+> The fake-request pattern is the canonical way to authenticate a Next.js Server Component with the cookie-based authfn session. Use `auth.provider.authenticate(request)` to read the session directly, as shown above and in [Frameworks → Next.js](../frameworks/nextjs). The HTTP adapter supplies route handlers; it does not provide a session helper.
 
 ## 5. Use Server Actions
 
@@ -113,7 +113,7 @@ export async function deleteMyAccount() {
     headers: reqHeaders,
   });
 
-  const response = await auth.router.fetch(fakeRequest);
+  const response = await auth.router.handle(fakeRequest);
   if (!response.ok) throw new Error("delete failed");
 
   revalidatePath("/");

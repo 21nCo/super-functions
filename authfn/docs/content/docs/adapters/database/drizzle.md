@@ -98,7 +98,7 @@ export default {
     const db = drizzle(env.DB, { schema });
     const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
     const auth = authApp.createServer({ database: drizzleAdapter({ db, dialect: 'sqlite' }) });
-    return auth.router.fetch(request);
+    return auth.router.handle(request);
   },
 };
 ```

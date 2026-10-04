@@ -37,7 +37,7 @@ If you're **comparing tools**, the highlights below are a cheatsheet against Bet
 | Two-factor (TOTP) | RFC 6238 TOTP with recovery codes, time-window tolerance, and pluggable encryption | `@authfn/two-factor` |
 | Multi-region | Region-aware lookup and request-specific runtime environment resolution | `@authfn/multi-region` |
 | Native handoff | Web ↔ native session handoff for iOS/Android wrappers | `@authfn/native-handoff` |
-| Admin API | List/delete users with custom authorization | `@authfn/admin` |
+| Admin API and Super Console | Direct user routes plus scoped user/session capability and operator authentication | `@authfn/admin` |
 | OpenAPI | Auto-generated spec from your enabled plugins, served from the kernel | bundled in `authfn` |
 
 ## SDK matrix

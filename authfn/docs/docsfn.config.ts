@@ -6,7 +6,7 @@ const config: DocsConfig = {
     title: "authfn",
     description: "Self-hosted authentication for any stack. Sessions, OTP, passwords, social OAuth, 2FA, API keys, multi-region. TypeScript, Python, and Swift SDKs.",
     basePath: "/docs",
-    canonicalUrl: "https://authfn.superfunctions.dev",
+    canonicalUrl: "https://authfn.com",
     showFooter: false,
     editLink: {
       pattern: "https://github.com/21nCo/super-functions/edit/dev/authfn/docs/{path}",
@@ -26,7 +26,7 @@ const config: DocsConfig = {
     topNav: [
       { label: "Docs", href: "/docs" },
       { label: "API Reference", href: "/docs/api" },
-      { label: "Blog", href: "/blog" },
+      { label: "Blog", href: "/docs/blog" },
       {
         label: "GitHub",
         href: "https://github.com/21nCo/super-functions/tree/dev/authfn",

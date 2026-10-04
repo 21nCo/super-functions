@@ -65,12 +65,12 @@ export const auth = authApp.createServer({
 ```ts
 // src/routes/auth/[...path]/+server.ts
 import { auth } from "$lib/server/auth";
-import { toSvelteKit } from "@superfunctions/http-sveltekit";
+import { toSvelteKitHandler } from "@superfunctions/http-sveltekit";
 
-export const GET = toSvelteKit(auth.router);
-export const POST = toSvelteKit(auth.router);
-export const PUT = toSvelteKit(auth.router);
-export const DELETE = toSvelteKit(auth.router);
+export const GET = toSvelteKitHandler(auth.router);
+export const POST = toSvelteKitHandler(auth.router);
+export const PUT = toSvelteKitHandler(auth.router);
+export const DELETE = toSvelteKitHandler(auth.router);
 ```
 
 ## 4. Wire the client and Svelte store

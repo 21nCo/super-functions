@@ -320,7 +320,7 @@ Plugins can be unit-tested by:
 
 1. Declaring an app with `authfn({ plugins: authFnPlugins(yourPlugin()) })`.
 2. Creating a server with `memoryAdapter` from `@superfunctions/db/testing`.
-3. Calling `auth.router.fetch(<Request>)` directly.
+3. Calling `auth.router.handle(<Request>)` directly.
 4. Asserting on the response envelope.
 
 The bundled plugins follow this pattern; see `authfn/core/src/__tests__/*.test.ts` for examples.

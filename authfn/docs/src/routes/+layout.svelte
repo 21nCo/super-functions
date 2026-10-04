@@ -1,10 +1,10 @@
 <script lang="ts">
   import "../app.css";
   import DocsSiteSearch from "$lib/components/DocsSiteSearch.svelte";
-  import TopBar from "@site/topbar";
+  import TopBar from "@docsfn/svelte/TopBar.svelte";
   import { page } from "$app/stores";
-  import type { Snippet } from "svelte";
-  import { onMount } from "svelte";
+  import { onMount, type Snippet } from "svelte";
+  import { observeTopBar } from "../../../../scripts/docs-site/layout";
   import type { LayoutData } from "./$types";
 
   interface Props {
@@ -13,22 +13,27 @@
   }
 
   let { data, children }: Props = $props();
+  let siteRoot: HTMLDivElement;
+  onMount(() => observeTopBar(siteRoot));
 
-  /** DocsSearch uses uifn Dialog with runes that cannot SSR; mount after hydrate. */
-  let clientSearchReady = $state(false);
-  onMount(() => {
-    clientSearchReady = true;
-  });
 </script>
 
+<!-- Blog children own their head; a reactive parent fallback must not overwrite it. -->
+<svelte:head>
+  {#if !$page.data.posts && !$page.data.post}
+    <title>{$page.data.surface?.title ?? data.source.config.site.title}</title>
+  {/if}
+</svelte:head>
+
 <div
+  bind:this={siteRoot}
   class="docsfn-site-root"
   class:docsfn-docs-chrome={$page.url.pathname.startsWith("/docs")}
 >
-  <!-- <TopBar
+  <TopBar
     items={data.source.config.navigation?.topNav}
-    searchTrigger={clientSearchReady ? DocsSiteSearch : undefined}
-  /> -->
+    searchTrigger={DocsSiteSearch}
+  />
   <div class="docsfn-site-main">
     {@render children()}
   </div>

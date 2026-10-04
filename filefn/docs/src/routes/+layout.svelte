@@ -20,6 +20,13 @@
   });
 </script>
 
+<!-- Blog children own their head; a reactive parent fallback must not overwrite it. -->
+<svelte:head>
+  {#if !$page.data.posts && !$page.data.post}
+    <title>{$page.data.surface?.title ?? data.source.config.site.title}</title>
+  {/if}
+</svelte:head>
+
 <div
   class="docsfn-site-root"
   class:docsfn-docs-chrome={$page.url.pathname.startsWith("/docs")}
