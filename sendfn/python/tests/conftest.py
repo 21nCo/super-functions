@@ -8,6 +8,7 @@ from collections.abc import Callable, Iterable
 
 import pytest
 
+
 def _clear_modules(prefixes: Iterable[str]) -> None:
     targets = tuple(prefixes)
     for module_name in list(sys.modules):

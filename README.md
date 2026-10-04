@@ -135,6 +135,11 @@ publish the real core prerequisite first, then adapters needed by SDK extras,
 then dependent SDKs. Production release validation requires those prerequisites
 on PyPI and never substitutes checkout sources.
 
+Development CI's `scripts/ci-run-python-package.mjs` installs local runtime and
+`[dev]` dependency closures before the target, including AuthFn's FastAPI/Flask
+adapters. Other optional groups are not selected by that CI gate; packed-wheel
+qualification below selects all extras.
+
 For pre-publication validation, first build the actual core wheel using
 `python scripts/python_release.py build python-superfunctions-core-v0.1.1
 --out-dir /tmp/python-core-artifacts` in its own fresh environment. In each
