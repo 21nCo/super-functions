@@ -92,7 +92,7 @@ From the monorepo root:
 
 ```bash
 npx wrangler secret put DATABASE_URL --config botfn/persistence/wrangler.toml
-npm --workspace @botfn/persistence-service run deploy
+npm --workspace @superfunctions/botfn-persistence-service run deploy
 ```
 
 After deployment, you'll get a URL like:
@@ -154,7 +154,7 @@ The discord-bot now automatically persists issues when:
 
 **Start persistence service:**
 ```bash
-npm --workspace @botfn/persistence-service run dev
+npm --workspace @superfunctions/botfn-persistence-service run dev
 ```
 
 The service will be available at `http://localhost:8787`.
@@ -173,7 +173,7 @@ PERSISTENCE_SERVICE_URL=http://localhost:8787
 ## Example Usage
 
 ```typescript
-import { createPersistenceClient } from '@botfn/persistence-service/client';
+import { createPersistenceClient } from '@superfunctions/botfn-persistence-service/client';
 
 const client = createPersistenceClient(env.PERSISTENCE_SERVICE_URL);
 

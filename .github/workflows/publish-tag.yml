@@ -12,6 +12,11 @@ on:
         description: 'Release tag in the form <package-slug>-v<version>'
         required: true
         type: string
+      channel_only:
+        description: 'Reconcile an already-published prerelease channel without republishing'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -46,11 +51,19 @@ jobs:
         id: resolve
         run: node ./scripts/resolve-release-tag.mjs "${RELEASE_TAG}"
 
+      - name: Require prerelease for channel-only dispatch
+        if: inputs.channel_only && steps.resolve.outputs.dist_tag == 'latest'
+        run: |
+          echo "Channel-only dispatch requires a prerelease tag." >&2
+          exit 1
+
       - name: Install package dependencies
+        if: '!inputs.channel_only'
         working-directory: ${{ steps.resolve.outputs.pkg_path }}
         run: npm install --workspaces=false --package-lock=false
 
       - name: Generate, build, typecheck, test and pack exact artifact
+        if: '!inputs.channel_only'
         id: pack
         run: node ./scripts/pack-release-package.mjs "${RELEASE_TAG}"
 
@@ -58,14 +71,49 @@ jobs:
         run: node ./scripts/assert-release-ref.mjs "${RELEASE_TAG}"
 
       - name: Publish package
+        if: '!inputs.channel_only'
         run: npm publish "${TARBALL}" --access public --tag "${DIST_TAG}" --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TARBALL: ${{ steps.pack.outputs.tarball }}
           DIST_TAG: ${{ steps.resolve.outputs.dist_tag }}
 
+      - name: Keep prereleases off latest
+        if: steps.resolve.outputs.dist_tag != 'latest'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PACKAGE_NAME: ${{ steps.resolve.outputs.pkg_name }}
+          PACKAGE_VERSION: ${{ steps.resolve.outputs.pkg_version }}
+          DIST_TAG: ${{ steps.resolve.outputs.dist_tag }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          const { PACKAGE_NAME: name, PACKAGE_VERSION: version, DIST_TAG: distTag } = process.env;
+          async function registryJson(path) {
+            const response = await fetch(`https://registry.npmjs.org/${path}`);
+            if (!response.ok) throw new Error(`Registry returned ${response.status} for ${path}`);
+            return response.json();
+          }
+          const encodedName = encodeURIComponent(name);
+          const metadata = await registryJson(`${encodedName}/${version}`);
+          const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+          if (metadata.name !== name || metadata.version !== version || metadata.gitHead !== commit) {
+            throw new Error('Published package does not match the immutable release tag.');
+          }
+          const tags = await registryJson(`-/package/${encodedName}/dist-tags`);
+          if (tags[distTag] !== version) throw new Error('Published prerelease channel does not match.');
+          if (tags.latest === version) {
+            execFileSync('npm', ['dist-tag', 'rm', name, 'latest'], { stdio: 'inherit' });
+          }
+          const reconciled = await registryJson(`-/package/${encodedName}/dist-tags`);
+          if (reconciled[distTag] !== version || reconciled.latest === version) {
+            throw new Error('Prerelease channel reconciliation failed.');
+          }
+          console.log(`${name}@${version} remains on ${distTag}, not latest.`);
+          NODE
+
       - name: Verify published McpFn consumer from configured registry
-        if: steps.resolve.outputs.pkg_name == '@mcpfn/testing' || steps.resolve.outputs.pkg_name == '@mcpfn/cli'
+        if: '!inputs.channel_only && (steps.resolve.outputs.pkg_name == ''@mcpfn/testing'' || steps.resolve.outputs.pkg_name == ''@mcpfn/cli'')'
         run: node ./scripts/test-mcpfn-registry-install.mjs "${{ steps.resolve.outputs.pkg_name }}" "${{ steps.resolve.outputs.pkg_version }}" "${NPM_CONFIG_REGISTRY}"
         env:
           NPM_CONFIG_REGISTRY: https://registry.npmjs.org

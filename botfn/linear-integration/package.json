@@ -1,5 +1,5 @@
 {
-  "name": "@botfn/linear-integration",
+  "name": "@superfunctions/botfn-linear-integration",
   "version": "0.0.1",
   "type": "module",
   "main": "./dist/index.js",

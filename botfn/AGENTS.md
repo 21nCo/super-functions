@@ -75,7 +75,7 @@ cd bots/my-bot
 2. Initialize package.json:
 ```json
 {
-  "name": "@botfn/my-bot",
+  "name": "@superfunctions/botfn-my-bot",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
@@ -87,8 +87,8 @@ cd bots/my-bot
   "dependencies": {
     "hono": "^4.0.0",
     "zod": "^3.22.0",
-    "@botfn/discord-core": "workspace:*",
-    "@botfn/shared-types": "workspace:*"
+    "@superfunctions/botfn-discord-core": "workspace:*",
+    "@superfunctions/botfn-shared-types": "workspace:*"
   }
 }
 ```
@@ -98,8 +98,8 @@ cd bots/my-bot
 import { Hono } from 'hono';
 import { z } from 'zod';
 // Import platform-specific utilities as needed
-// import { verifyDiscordRequest } from '@botfn/discord-core';
-// import { verifySlackRequest } from '@botfn/slack-core';
+// import { verifyDiscordRequest } from '@superfunctions/botfn-discord-core';
+// import { verifySlackRequest } from '@superfunctions/botfn-slack-core';
 
 // Define schemas
 const CommandOptionsSchema = z.object({

@@ -1,5 +1,5 @@
 {
-  "name": "@botfn/github-integration",
+  "name": "@superfunctions/botfn-github-integration",
   "version": "0.0.1",
   "type": "module",
   "main": "./dist/index.js",

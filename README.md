@@ -85,10 +85,16 @@ peer tree, keeping workspace and package-local runs coherent without first-party
 source aliases or dependency-version changes.
 Stable releases use `latest`; prereleases use their first identifier, such as
 `experimental` or `rc`. Numeric/range-like, noncanonical and `latest` prerelease
-channels fail rather than overwriting stable installations. `@uifn/patterns`
-and `@uifn/sf` remain experimental. Publication retains the existing
-`NPM_TOKEN`/`NODE_AUTH_TOKEN` mechanism; the token must have publish permission
-for the selected package. A missing/invalid token or occupied version fails.
+channels fail rather than overwriting stable installations. The workflow removes
+`latest` only if npm assigned it to the exact released prerelease, retaining any
+existing stable `latest`. For an already-published prerelease, dispatch its
+immutable release tag with `channel_only=true`: this verifies registry identity
+and reconciles tags without installing, packing or republishing the artifact.
+`@uifn/patterns` and `@uifn/sf` remain experimental. Publication retains the
+existing `NPM_TOKEN`/`NODE_AUTH_TOKEN` mechanism; the token must have publish
+permission for the selected package. A missing/invalid token or occupied version
+fails. BotFn libraries use the controlled `@superfunctions/botfn-*` names;
+the foreign npm user scope `@botfn` is not a publish target.
 Publish the required internal npm dependency closure before its consumers.
 
 ### Python libraries
