@@ -1,0 +1,18 @@
+.github/workflows/publish-python.yml
+  h_bdc5b81c173ee9 96
+README.md
+  h_bdc5b81c173ee9 105-107
+scripts/python_release.py
+  h_bdc5b81c173ee9 41-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d3f01bc1c7328b55c07805ed0d8cdb1bb5cf38d8",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
