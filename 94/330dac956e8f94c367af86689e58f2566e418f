@@ -1,0 +1,54 @@
+.github/workflows/publish-tag.yml
+  h_bdc5b81c173ee9 15-19,54-59,61,66,74,81-114,116
+README.md
+  h_bdc5b81c173ee9 88-97
+botfn/AGENTS.md
+  h_bdc5b81c173ee9 78,90-91,101-102
+botfn/README.md
+  h_bdc5b81c173ee9 55-59,62,68,71-74
+botfn/admin/package.json
+  h_bdc5b81c173ee9 2
+botfn/admin/src/__tests__/admin.test.ts
+  h_bdc5b81c173ee9 34
+botfn/bot-discord/README.md
+  h_bdc5b81c173ee9 5-6,9
+botfn/bot-discord/package.json
+  h_bdc5b81c173ee9 2,31-35
+botfn/bot-discord/src/core.ts
+  h_bdc5b81c173ee9 8-9,17,26-27
+botfn/bot-slack/package.json
+  h_bdc5b81c173ee9 2,15
+botfn/bot-slack/src/index.ts
+  h_bdc5b81c173ee9 2
+botfn/discord-core/package.json
+  h_bdc5b81c173ee9 2
+botfn/github-integration/package.json
+  h_bdc5b81c173ee9 2
+botfn/linear-integration/package.json
+  h_bdc5b81c173ee9 2
+botfn/persistence/README.md
+  h_bdc5b81c173ee9 41,52,57,76
+botfn/persistence/SETUP.md
+  h_bdc5b81c173ee9 95,157,176
+botfn/persistence/package.json
+  h_bdc5b81c173ee9 2
+botfn/shared-types/package.json
+  h_bdc5b81c173ee9 2
+botfn/slack-core/package.json
+  h_bdc5b81c173ee9 2
+package-lock.json
+  h_bdc5b81c173ee9 5746,5806,5810-5814,6309,6313,6816,6829,6840,6851,7350,7363,23010,23014,23018,23022,23026,23030,23034,23038,23042
+release-packages.json
+  h_bdc5b81c173ee9 173-180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "94330dac956e8f94c367af86689e58f2566e418f",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
