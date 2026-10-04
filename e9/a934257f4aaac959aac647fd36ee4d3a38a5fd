@@ -1,0 +1,250 @@
+authfn/docs/docsfn.config.ts
+  s_ad500513bc9987::t_ce82565e844164 29
+scripts/docs-site/runtime.ts
+  s_ad500513bc9987::t_d2fd4d445c4410 25,196
+  s_ad500513bc9987::t_32df2fc718b993 26,187
+authfn/docs/src/routes/blog/+page.svelte
+  s_ad500513bc9987::t_fe66baa752dbcc 27
+authfn/docs/src/routes/docs/blog/+page.server.ts
+  s_ad500513bc9987::t_c68a3875cb72f2 5
+  s_ad500513bc9987::t_08e8b738c3fb66 1-4
+filefn/docs/src/routes/docs/blog/rss.xml/+server.ts
+  s_ad500513bc9987::t_433edccbc531af 1-5
+authfn/docs/src/routes/blog/+page.server.ts
+  s_ad500513bc9987::t_46c8c7ccc99ab1 2
+  s_ad500513bc9987::t_74f706299159e5 5
+scripts/docs-site/vitest.config.ts
+  s_ad500513bc9987::t_8fccb18ea9917e 4,10-11,13-14
+  s_ad500513bc9987::t_f6f3c359bd8cc4 12
+scripts/docs-site/dependency-owner.test.ts
+  s_ad500513bc9987::t_6327341376db24 1-39
+filefn/docs/content/docs/core-concepts/rate-limiting.md
+  s_ad500513bc9987::t_c43d128da9e3b6 81-82
+filefn/docs/src/lib/server/docs-site-source.ts
+  s_ad500513bc9987::t_7ce42f7bd35566 22
+authfn/docs/tsconfig.json
+  s_ad500513bc9987::t_700c54c8f19e94 3-11
+scripts/docs-site/check-built-site.test.mjs
+  s_ad500513bc9987::t_30aca8ed4bec6b 1-32
+authfn/docs/package.json
+  s_ad500513bc9987::t_e0c62c47e925bd 11
+scripts/docs-site/blog.ts
+  s_ad500513bc9987::t_325099ab28d316 1,48-52
+  s_ad500513bc9987::t_50a67850423fa1 13-14,24-25,34-35,55,72,77-78
+  s_ad500513bc9987::t_81f03db44edf98 21
+  s_ad500513bc9987::t_13f18fe3954000 44-46,56
+  s_ad500513bc9987::t_3ef7b69ea48a58 16-17,22-23
+  s_ad500513bc9987::t_5625603e62ad61 54
+  s_ad500513bc9987::t_904f1de31bae0f 2-12,15,18-20,26-33,36-43,47,53,57-71,73-76,79-87
+filefn/docs/src/routes/+layout.svelte
+  s_ad500513bc9987::t_8bc68eab986563 25,27
+  s_ad500513bc9987::t_a86c8a6e17f4cd 23,26
+authfn/docs/src/routes/docs/blog/[...slug]/+page.server.ts
+  s_ad500513bc9987::t_c3101671a4c83e 2-6,8
+  s_ad500513bc9987::t_10e6d766682fbb 1,7
+authfn/docs/src/routes/docs/blog/rss.xml/+server.ts
+  s_ad500513bc9987::t_e47aa6983ca895 1-5
+authfn/docs/src/routes/docs/blog/+page.svelte
+  s_ad500513bc9987::t_cacd6fcb804fed 1-7
+authfn/docs/src/routes/+page.svelte
+  s_ad500513bc9987::t_2bec17dfa4ae3d 36
+filefn/docs/content/docs/reference/configuration.md
+  s_ad500513bc9987::t_2581e029f829de 51-52,54
+filefn/docs/content/docs/features/rate-limiting.md
+  s_ad500513bc9987::t_73a455c56b8266 37
+scripts/docs-site/check-built-site.mjs
+  s_ad500513bc9987::t_f86ee5aebc367e 5-10,23,39
+filefn/docs/src/routes/docs/blog/+page.svelte
+  s_ad500513bc9987::t_d03a91dd631a52 1-7
+authfn/docs/src/routes/docs/blog/[...slug]/+page.svelte
+  s_ad500513bc9987::t_c0815b9b655532 1-7
+filefn/docs/scripts/generate-llms.mjs
+  s_ad500513bc9987::t_c10485f975fe21 71
+  s_ad500513bc9987::t_252d67de48c187 7,17,20,23
+authfn/docs/src/lib/server/docs-site-source.ts
+  s_ad500513bc9987::t_e7fbe58f82b7ea 17
+authfn/docs/src/routes/blog/[slug]/+page.server.ts
+  s_ad500513bc9987::t_7d5269d0a52aff 3,6,8
+  s_ad500513bc9987::t_47374af730c283 7
+authfn/docs/src/routes/blog/rss.xml/+server.ts
+  s_ad500513bc9987::t_4ae312f70ca00f 2,5
+filefn/docs/src/routes/blog/[slug]/+page.server.ts
+  s_ad500513bc9987::t_201ebc4955cd3f 3,6,8
+  s_ad500513bc9987::t_05db27165c9518 7
+filefn/docs/src/routes/docs/blog/[...slug]/+page.server.ts
+  s_ad500513bc9987::t_1fc7032aa0b15e 2-6,8
+  s_ad500513bc9987::t_b466e02a6772e1 1,7
+filefn/docs/content/docs/sdk/server.md
+  s_ad500513bc9987::t_4f9b6d185f817e 41
+filefn/docs/tsconfig.json
+  s_ad500513bc9987::t_95f5f407a74123 2
+  s_ad500513bc9987::t_3c72c9a0b13ace 7-11,26-27
+  s_ad500513bc9987::t_bf276ac055012d 4-6,12
+filefn/docs/svelte.config.js
+  s_ad500513bc9987::t_3e1db292239488 9-13,24
+filefn/docs/content/docs/frameworks/hono.md
+  s_ad500513bc9987::t_d49485fe4e7d33 84
+filefn/docs/docsfn.config.ts
+  s_ad500513bc9987::t_e41c9dcc1c7649 29
+authfn/docs/src/routes/+layout.svelte
+  s_ad500513bc9987::t_4b38be7cd28418 23,25
+  s_ad500513bc9987::t_9bba6a16457d71 21,24
+filefn/docs/src/routes/docs/blog/[...slug]/+page.svelte
+  s_ad500513bc9987::t_5b881804599806 1-7
+scripts/docs-site/auth-page.test.ts
+  s_ad500513bc9987::t_1c9826ca4b3109 80,109
+  s_ad500513bc9987::t_8d80cd939c2474 31,34,83-84,96
+  s_ad500513bc9987::t_b96d6fe515d855 2-3,9-10,12-16,18-29,32-33,35,39-40,43,52-53,67-70,97,112-125
+  s_ad500513bc9987::t_c0b5b3ad8aaa19 95
+filefn/docs/package.json
+  s_ad500513bc9987::t_d8774519598330 11
+scripts/docs-site/vite.ts
+  s_ad500513bc9987::t_5d8cabd22be7f1 32,51
+  s_ad500513bc9987::t_27050e3f82b6dd 5-30,34,44-46
+filefn/docs/src/routes/+layout.server.ts
+  s_ad500513bc9987::t_f1e96531c0ea3d 4,12
+filefn/docs/src/routes/blog/+page.server.ts
+  s_ad500513bc9987::t_26c8a15d926b65 2
+  s_ad500513bc9987::t_7b27018f8d62ab 5
+scripts/docs-site/blog.test.ts
+  s_ad500513bc9987::t_dae13c0ce9f22d 4,20,23,85,88-89,94,96
+  s_ad500513bc9987::t_e880849b8239af 48-51,53-59,61-71
+  s_ad500513bc9987::t_f82ce8f033906c 1,3,5-19,21-22,24-38,40-43,46-47,72-84,86-87,90-93,95,97-98
+  s_ad500513bc9987::t_063f7c236ad054 2,39,44-45
+  s_ad500513bc9987::t_8605cf3dcbc813 52,60
+filefn/docs/src/routes/blog/+page.svelte
+  s_ad500513bc9987::t_31599cedcad1b9 27
+filefn/docs/src/routes/blog/rss.xml/+server.ts
+  s_ad500513bc9987::t_e172e5f849ebbb 2,5
+filefn/docs/src/routes/docs/blog/+page.server.ts
+  s_ad500513bc9987::t_52d0f00d390ae1 1-4
+  s_ad500513bc9987::t_a5969a4a409e45 5
+authfn/core/README.md
+  s_ad500513bc9987::t_8f4d23d1179215 12-31
+authfn/core/package.json
+  s_ad500513bc9987::t_d77a08f6b39244 3
+authfn/core/src/__tests__/api-key-docs.test.ts
+  s_ad500513bc9987::t_5d0dafac507aa0 1-245
+authfn/core/src/__tests__/api-keys.test.ts
+  s_ad500513bc9987::t_ee1b3279c4e626 9-14,38-175
+authfn/core/src/__tests__/placement-context.test.ts
+  s_ad500513bc9987::t_1d0e438ea73e89 19,499-503
+authfn/core/src/core/api-keys.ts
+  s_ad500513bc9987::t_5489466b9ffe71 13-14,47-65
+authfn/docs/content/docs/index.md
+  s_ad500513bc9987::t_8aa9e469681e70 36
+authfn/docs/content/docs/plugins/api-keys.md
+  s_ad500513bc9987::t_bb74e3af12f5ae 3,8,10,13-14,50-52,60-62,84,87-103,105-111,115-154,161,169,174-175,179-180
+authfn/docs/content/docs/plugins/index.md
+  s_ad500513bc9987::t_65615c0e2bf1dc 15
+authfn/docs/content/docs/recipes/cli-auth.md
+  s_ad500513bc9987::t_63d34f77779aca 40,43-49,51-60,64-66,68-69,73,75,77
+authfn/docs/static/llms-full.txt
+  s_ad500513bc9987::t_b9a668b57da850 5445,5488,5493,5495,5498-5499,5535-5537,5545-5547,5569,5572-5588,5590-5596,5600-5639,5646,5654,5659-5660,5664-5665,6248,8840,8843-8849,8851-8860,8864-8866,8868-8869,8873,8875,8877
+authfn/docs/static/llms.txt
+  s_ad500513bc9987::t_7dd5ad6db7a787 65
+authfn/docs/turbo.json
+  s_ad500513bc9987::t_1c612a97257293 1-19
+billfn/README.md
+  s_ad500513bc9987::t_4ad87c14173f7c 11,38,47
+billfn/docs/content/docs/index.mdx
+  s_ad500513bc9987::t_77764242ea06e8 15,97
+billfn/docs/content/docs/server/administration.mdx
+  s_ad500513bc9987::t_3f917c36cfcd5a 1-37
+billfn/docs/content/docs/server/meta.json
+  s_ad500513bc9987::t_63d9fcac8a11b4 3
+filefn/docs/static/llms-full.txt
+  s_ad500513bc9987::t_ea13f8bfc3adb3 3063-3064,4829,5577,8239-8240,8242,9342
+package-lock.json
+  s_ad500513bc9987::t_1ffa2dabb51d90 536-544,555-569,614-622,633-647,755-769,808-850,890-932,935,1468-1510,3558-3600,3662-3676,3709-3751,3793-3801,3812-3826,3894-3908,3967-4009,8704-8731,50131-50144,50157-50212,53418,57641,57652,57689,57698
+packages/db/package.json
+  s_ad500513bc9987::t_aae1f5069e3c02 3
+searchfn/docs/app/layout.tsx
+  s_ad500513bc9987::t_42bd1423887697 9
+searchfn/docs/content/docs/documentation/administration.mdx
+  s_ad500513bc9987::t_c6b2de33e34f03 1-20
+searchfn/docs/content/docs/documentation/advanced/adapter-migration.mdx
+  s_ad500513bc9987::t_5fa16a983d00e5 50,52
+searchfn/docs/content/docs/documentation/deploy/cloudflare-workers.mdx
+  s_ad500513bc9987::t_c11b9ca0ec307f 35,38-40,43,52,87,91-93
+searchfn/docs/content/docs/documentation/deploy/fly.mdx
+  s_ad500513bc9987::t_81383ff4268af2 19-27,79,83-85,92,94-96
+searchfn/docs/content/docs/documentation/deploy/railway.mdx
+  s_ad500513bc9987::t_4f986ad2fb03f7 21,23-25,29,44,48,59,62-65
+searchfn/docs/content/docs/documentation/deploy/vercel.mdx
+  s_ad500513bc9987::t_2cd00f5a5a5291 27,29-31,34,45
+searchfn/docs/content/docs/documentation/meta.json
+  s_ad500513bc9987::t_fea275abf48920 11
+searchfn/docs/content/docs/documentation/python/http-mount.mdx
+  s_ad500513bc9987::t_fc59b461d58466 2-3,6,10-12,15,17
+searchfn/docs/content/docs/documentation/python/index.mdx
+  s_ad500513bc9987::t_d321f7e75ca129 4,7,9,11-13,15
+searchfn/docs/content/docs/documentation/python/indexing.mdx
+  s_ad500513bc9987::t_a2780300c58eaa 3,6,9,11-12,15,17
+searchfn/docs/content/docs/documentation/python/meta.json
+  s_ad500513bc9987::t_563c42df806674 3
+searchfn/docs/content/docs/documentation/python/search.mdx
+  s_ad500513bc9987::t_8a323c6321c308 3,6,9,11-12,15,17
+searchfn/docs/content/docs/documentation/python/setup.mdx
+  s_ad500513bc9987::t_675b4fe0742032 3,8,12,15-16,18,20,24,27,29,31,33
+searchfn/docs/content/docs/documentation/security/request-authz.mdx
+  s_ad500513bc9987::t_e86eb980cbfe76 121,123
+searchfn/docs/content/docs/getting-started.mdx
+  s_ad500513bc9987::t_c73f62c7387a95 168
+searchfn/docs/content/docs/operations/setup.mdx
+  s_ad500513bc9987::t_1f308b69c20963 10-12,18-23,25
+searchfn/docs/content/docs/quickstart/bun.mdx
+  s_ad500513bc9987::t_427fd0930db455 20,22,26,34,41
+searchfn/docs/content/docs/quickstart/express.mdx
+  s_ad500513bc9987::t_d93479d8301763 9,16,20,22,26,31-32,51
+searchfn/docs/content/docs/quickstart/fastapi.mdx
+  s_ad500513bc9987::t_6d17c439a61e21 3,6-7,10,14,16,19-38,41,43,45,47
+searchfn/docs/content/docs/quickstart/fastify.mdx
+  s_ad500513bc9987::t_68d40744897edf 9,16,20,22,26,32
+searchfn/docs/content/docs/quickstart/flask.mdx
+  s_ad500513bc9987::t_840cd2cced7780 3,6-7,12-13,15,18-35,38,40,42,44
+searchfn/docs/content/docs/quickstart/hono.mdx
+  s_ad500513bc9987::t_2456b9a2c3e5de 11,24,28,30,34,42-43,46,54,89-93,95,98
+searchfn/docs/content/docs/quickstart/nextjs.mdx
+  s_ad500513bc9987::t_8753e3a7a364da 20,22,26,31,37
+searchfn/docs/content/docs/quickstart/starlette.mdx
+  s_ad500513bc9987::t_f6cf3f59c158e7 3,6-7,14,16,18,22-30,33-36,41,43,45,47
+searchfn/docs/content/docs/quickstart/sveltekit.mdx
+  s_ad500513bc9987::t_a40bcd5219bd4c 16,19,24,26,30,34-35,37-38,41
+searchfn/docs/content/docs/reference/adapters/postgres.mdx
+  s_ad500513bc9987::t_7a0e1e9f8a1c8a 22
+searchfn/docs/content/docs/reference/changelog.mdx
+  s_ad500513bc9987::t_6276811734f28e 41
+searchfn/docs/content/docs/reference/python.mdx
+  s_ad500513bc9987::t_adb5803d2265d4 2-3,6,9,11-13,18,20,22
+searchfn/docs/public/llms-full.txt
+  s_ad500513bc9987::t_b227c385ce6b49 1004,1219-1243,1295,1297,1599,1603,1605-1606,1611,3352,3355-3357,3360,3369,3404,3408-3410,3565-3573,3625,3629-3631,3638,3640-3642,3946,3948-3950,3954,3969,3973,3984,3987-3990,4152,4154-4156,4159,4170,4696,4699,4702,4706-4708,4711,4713,4721,4724,4726,4728-4730,4732,4740,4743,4746,4748-4749,4752,4754,4762,4765,4768,4770-4771,4774,4776,4784,4789,4793,4796-4797,4799,4801,4805,4808,4810,4812,4814,5368,5370,6095-6097,6103-6108,6110,6401,6403,6407,6415,6422,6460,6467,6471,6473,6477,6482-6483,6502,6516,6519-6520,6523,6527,6529,6532,6534-6544,6546,6549-6551,6554,6556,6558,6560,6574,6581,6585,6587,6591,6597,6627,6630-6631,6636-6637,6639,6642,6644-6655,6657-6659,6662,6664,6666,6668,6684,6697,6701,6703,6707,6715-6716,6719,6727,6762-6766,6768,6771,6802,6804,6808,6813,6819,6891,6894-6895,6902,6904,6906,6910-6918,6921-6924,6929,6931,6933,6935,6956,6959,6964,6966,6970,6974-6975,6977-6978,6981,9398,9573,10291,10294,10297,10300,10302-10304,10309,10311,10313
+searchfn/docs/public/llms.txt
+  s_ad500513bc9987::t_1915851d6f5bea 30,60-64,92,94,97,133
+secfn/core/package.json
+  s_ad500513bc9987::t_205540fd3e7189 48,59
+secfn/server/README.md
+  s_ad500513bc9987::t_cf9cac2f611d5c 5-10
+secfn/server/package.json
+  s_ad500513bc9987::t_6019915ef84861 45,48
+secfn/server/src/__tests__/installed-package.ts
+  s_ad500513bc9987::t_86d752cb5af4dc 1-27
+secfn/server/src/__tests__/package-contracts.test.ts
+  s_ad500513bc9987::t_d66f3d1ecee435 1-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e9a934257f4aaac959aac647fd36ee4d3a38a5fd",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
