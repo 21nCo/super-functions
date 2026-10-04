@@ -1,0 +1,19 @@
+apifn/react/tests/api-explorer.test.tsx
+  s_1fba027dec8e5c::t_ba38e135de14d2 36-37,39,43-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "35077841e3441552fb56d7829ddd5e4bf2901dd2",
+  "prompts": {},
+  "sessions": {
+    "s_1fba027dec8e5c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a10517-2e51-7281-93ca-ef9a65f2bf5d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
