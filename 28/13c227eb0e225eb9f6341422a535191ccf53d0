@@ -1,0 +1,16 @@
+.github/workflows/publish-tag.yml
+  h_bdc5b81c173ee9 33-34,83-122,126
+README.md
+  h_bdc5b81c173ee9 94-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2813c227eb0e225eb9f6341422a535191ccf53d0",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
