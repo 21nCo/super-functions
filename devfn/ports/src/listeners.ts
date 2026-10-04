@@ -93,7 +93,8 @@ export function parseWindowsNetstatListeners(output: string, protocol: "tcp" | "
   return listeners;
 }
 
-export async function scanListenerState(): Promise<ListenerScanResult> {
+/** Native ownership checks need OS listeners only; diagnostics may include Docker. */
+export async function scanListenerState(includeDocker = true): Promise<ListenerScanResult> {
   const results: ListenerInfo[] = [];
   const inspection = { tcp: false, udp: false, docker: false };
   if (process.platform !== "win32") {
@@ -113,7 +114,10 @@ export async function scanListenerState(): Promise<ListenerScanResult> {
       inspection.udp = true;
     } catch { /* unavailable */ }
   }
-  try { results.push(...parseDockerListeners((await execFileAsync("docker", ["ps", "--format", "{{.ID}}\\t{{.Names}}\\t{{.Ports}}"])).stdout)); inspection.docker = true; } catch { /* Docker is optional */ }
+  if (includeDocker) {
+    try { results.push(...parseDockerListeners((await execFileAsync("docker", ["ps", "--format", "{{.ID}}\\t{{.Names}}\\t{{.Ports}}"], { timeout: 1_000 })).stdout)); inspection.docker = true; }
+    catch { /* Docker is optional */ }
+  }
   return { listeners: results.sort((a, b) => a.port - b.port || a.source.localeCompare(b.source)), inspection };
 }
 

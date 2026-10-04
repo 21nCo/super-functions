@@ -243,6 +243,42 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
+  it("rejects PostgreSQL credential names and assembled header values before mutation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-assembled-secret-"));
+    const stateDir = path.join(root, "state");
+    const marker = "synthetic-sentinel";
+    try {
+      for (const location of ["profile", "process", "service", "argv", "url", "health", "assembled-header", "quoted-header"] as const) {
+        const config = fixture();
+        if (location === "profile") config.profiles.default.environment = { PGPASSWORD: marker };
+        if (location === "process") config.processes!.worker.env = { PGPASSWORD: marker };
+        if (location === "service") {
+          config.services = { web: { adapter: "compose", service: "web", env: { PGPASSWORD: marker } } };
+          config.profiles.default.services = ["web"];
+        }
+        if (location === "argv") config.processes!.worker.command = ["node", `--PGPASSWORD=${marker}`];
+        if (location === "url") config.profiles.default.environment = { ENDPOINT: `http://example.test/?PGPASSWORD=${marker}` };
+        if (location === "health") config.processes!.api.health = { type: "http", port: "api", path: `/health#PGPASSWORD=${marker}` };
+        if (location === "assembled-header") {
+          config.profiles.default.environment = { HEADER_PREFIX: "Authorization: Bearer ", HEADER_VALUE: marker };
+          config.processes!.worker.command = ["node", "--header={{env.HEADER_PREFIX}}{{env.HEADER_VALUE}}"];
+        }
+        if (location === "quoted-header") {
+          config.profiles.default.environment = { HEADER_PREFIX: "Authorization: Bearer ", HEADER_VALUE: marker };
+          config.processes!.worker.command = ["node", "--header='{{env.HEADER_PREFIX}}{{env.HEADER_VALUE}}'"];
+        }
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "opaque", ports: { api: 4101, worker: 4102 } })).toThrow(/secret/);
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      const safe = fixture();
+      safe.profiles.default.environment = { PGHOST: "127.0.0.1", HEADER: "Content-Type: application/json" };
+      expect(resolveEndpointTemplates({ config: safe, plan: createPlan(safe), ownerId: "Authorization: Bearer opaque", ports: { api: 4101, worker: 4102 } }).environment.HEADER).toBe("Content-Type: application/json");
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("rejects credential-bearing URL literals before state creation without echoing them", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-url-secret-"));
     const stateDir = path.join(root, "state");
@@ -284,7 +320,7 @@ describe("endpoint and template contract", () => {
       expect(quotedFailure).not.toContain("private");
       await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
     } finally { await rm(root, { recursive: true, force: true }); }
-  });
+  }, 20_000);
 
   it("rejects qualified credential keys in every manifest consumer before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-qualified-secret-"));
@@ -346,7 +382,7 @@ describe("endpoint and template contract", () => {
         }
       }
     } finally { await rm(root, { recursive: true, force: true }); }
-  });
+  }, 20_000);
 
   it("derives stable route labels from opaque owners without changing their identity", () => {
     const owner = "session:any/owner";

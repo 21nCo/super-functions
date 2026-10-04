@@ -133,7 +133,7 @@ async function waitForOwnedLoopbackListeners(processName: string, expected: Arra
   let missing: { port: number; protocol: "tcp" | "udp" } | undefined;
   do {
     if (!processExists(ownerPid)) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${processName} exited before listener ownership could be verified.`);
-    const scan = await scanListenerState();
+    const scan = await scanListenerState(false);
     missing = await verifyOwnedLoopbackListeners(processName, expected, ownerPid, scan);
     if (!missing) return;
     await delay(Math.min(100, Math.max(1, deadline - Date.now())));
@@ -167,7 +167,7 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
       });
       if (!ready || spec.exposure === "public") return ready;
       const expected = (spec.ports ?? []).map((name) => ({ port: ports[name], protocol: config.ports?.[name]?.protocol ?? "tcp" }));
-      return !(await verifyOwnedLoopbackListeners(managed.name, expected, managed.pid, await scanListenerState()));
+      return !(await verifyOwnedLoopbackListeners(managed.name, expected, managed.pid, await scanListenerState(false)));
     } catch { return false; }
   }));
   const serviceReady = await Promise.all(receipt.services.map(async (managed, index) => {

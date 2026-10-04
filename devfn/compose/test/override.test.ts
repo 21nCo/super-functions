@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { ComposeController, composeProjectName, createComposeEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
+const MOCK_COMPOSE_HASH = "a".repeat(64);
 
 describe("ComposeController", () => {
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("reads effective default, explicit and isolated service networks", async () => {
@@ -180,11 +181,13 @@ describe("ComposeController", () => {
         (calls as string[][]).push([...args]);
         if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
         if (args.includes("ps")) { psCalls += 1; return { stdout: `${projectName || psCalls < 3 ? "old-id" : "new-id"}\n`, stderr: "" }; }
+        if (args.includes("--hash")) return { stdout: `api ${MOCK_COMPOSE_HASH}\n`, stderr: "" };
         if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: {} } } }), stderr: "" };
         if (args[0] === "image") return { stdout: '["PATH=/bin"]\n', stderr: "" };
         if (args.includes("{{json .Config.Env}}")) return { stdout: '["PATH=/bin"]\n', stderr: "" };
+        if (args.includes("{{json .HostConfig.PortBindings}}")) return { stdout: "{}\n", stderr: "" };
         if (args.includes("{{.Image}}")) return { stdout: "image-id\n", stderr: "" };
-        if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? (projectName ? "<no value>\t<no value>\t<no value>\n" : "true\tmanaged\tapi\n") : "true\n", stderr: "" };
+        if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? (projectName ? "<no value>\t<no value>\t<no value>\n" : "true\tmanaged\tapi\n") : args.some((arg) => arg.includes("com.docker.compose.config-hash")) ? `${MOCK_COMPOSE_HASH}\n` : "true\n", stderr: "" };
         return { stdout: "", stderr: "" };
       });
       const managed = await controller.start({
@@ -224,6 +227,33 @@ describe("ComposeController", () => {
       expect(calls.some((args) => args.includes("up"))).toBe(false);
       expect(calls.some((args) => args[0] === "stop" || args[0] === "rm")).toBe(false);
     }
+  });
+
+  it("refuses unmanaged containers with stale command or leased port config before Compose up", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-stale-hash-"));
+    try {
+      for (const change of ["command", "port"] as const) for (const running of [true, false]) {
+        const calls: string[][] = [];
+        const controller = new ComposeController(async (_file, args) => {
+          calls.push([...args]);
+          if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+          if (args.includes("ps")) return { stdout: args.includes("-a") || running ? "old-id\n" : "", stderr: "" };
+          if (args.includes("--hash")) return { stdout: `api ${MOCK_COMPOSE_HASH}\n`, stderr: "" };
+          if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: {}, command: change === "command" ? ["sleep", "20"] : ["sleep", "10"], ...(change === "port" ? { ports: [{ target: 8080, published: "4102", host_ip: "127.0.0.1", protocol: "tcp" }] } : {}) } } }), stderr: "" };
+          if (args[0] === "image") return { stdout: '["PATH=/bin"]\n', stderr: "" };
+          if (args.includes("{{json .Config.Env}}")) return { stdout: '["PATH=/bin"]\n', stderr: "" };
+          if (args.includes("{{.Image}}")) return { stdout: "image-id\n", stderr: "" };
+          if (args.some((arg) => arg.includes("com.docker.compose.config-hash"))) return { stdout: `${change === "command" ? "b".repeat(64) : MOCK_COMPOSE_HASH}\n`, stderr: "" };
+          if (args.includes("{{json .HostConfig.PortBindings}}")) return { stdout: change === "port" ? '{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"4101"}]}\n' : "{}\n", stderr: "" };
+          if (args[0] === "inspect") return { stdout: "<no value>\t<no value>\t<no value>\n", stderr: "" };
+          return { stdout: "", stderr: "" };
+        });
+        const error = await controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: "shared", ...(change === "port" ? { ports: { api: 8080 } } : {}) }, root,
+          runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: change === "port" ? { api: 4102 } : {} }).then(() => "", (failure: Error) => failure.message);
+        expect(error).toMatch(change === "command" ? /stale startup configuration/ : /stale published ports/);
+        expect(calls.some((args) => args.includes("up") || args[0] === "stop" || args[0] === "rm")).toBe(false);
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
   });
 
   it("refuses removed DevFn startup keys in stopped and running unmanaged containers", async () => {
@@ -358,9 +388,11 @@ describe("ComposeController", () => {
       if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
       if (args.includes("ps") && args.includes("-a")) { allCalls += 1; return { stdout: allCalls === 1 ? "running-id\nstopped-id\n" : "running-id\nstopped-id\ncreated-id\n", stderr: "" }; }
       if (args.includes("ps")) return { stdout: "running-id\n", stderr: "" };
+      if (args.includes("--hash")) return { stdout: `api ${MOCK_COMPOSE_HASH}\n`, stderr: "" };
       if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: {} } } }), stderr: "" };
       if (args.includes("{{json .Config.Env}}")) return { stdout: "[]\n[]\n", stderr: "" };
-      if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? "<no value>\t<no value>\t<no value>\n<no value>\t<no value>\t<no value>\n" : "true\ntrue\ntrue\n", stderr: "" };
+      if (args.includes("{{json .HostConfig.PortBindings}}")) return { stdout: "{}\n{}\n", stderr: "" };
+      if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? "<no value>\t<no value>\t<no value>\n<no value>\t<no value>\t<no value>\n" : args.some((arg) => arg.includes("com.docker.compose.config-hash")) ? `${MOCK_COMPOSE_HASH}\n${MOCK_COMPOSE_HASH}\n` : "true\ntrue\ntrue\n", stderr: "" };
       return { stdout: "", stderr: "" };
     });
     const managed = await controller.start({

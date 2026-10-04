@@ -9,7 +9,7 @@ const CREDENTIAL_ALIASES = new Set([
 // Compact names have no word boundary. Support known qualifier + alias pairs;
 // otherwise words such as monkey and compass would be false positives.
 const COMPACT_QUALIFIERS = new Set([
-  "api", "app", "auth", "aws", "client", "db", "database", "google", "oauth", "server", "service", "session", "user", "xamz", "xgoog",
+  "api", "app", "auth", "aws", "client", "db", "database", "google", "oauth", "pg", "server", "service", "session", "user", "xamz", "xgoog",
 ]);
 
 function words(name: string): string[] {

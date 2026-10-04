@@ -19,6 +19,12 @@ describe("DevFn configuration", () => {
     for (const ordinary of ["MONKEY", "compass", "PASSAGE", "KEYSTONE", "DB_MODE", "DATABASE", "authority", "tokenize", "task_status_enabled"]) {
       expect(isCredentialKey(ordinary)).toBe(false);
     }
+    for (const alias of ["password", "pass", "pwd"]) {
+      for (const name of [`PG${alias.toUpperCase()}`, `pg${alias}`, `Pg${alias[0].toUpperCase()}${alias.slice(1)}`, `pg_${alias}`]) {
+        expect(isCredentialKey(name)).toBe(true);
+      }
+    }
+    for (const ordinary of ["PGPORT", "PGHOST", "PGDATABASE", "PGUSER", "PAGE", "PAGING"]) expect(isCredentialKey(ordinary)).toBe(false);
   });
   it("validates named ports, processes, services, profiles, and hostnames", () => {
     const config = validateDevFnConfig({
@@ -76,7 +82,7 @@ describe("DevFn configuration", () => {
   it("rejects qualified credential literals consistently while allowing declared host secrets", () => {
     const marker = "synthetic-sentinel";
     const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
-    for (const key of ["DB_PRIVATE_KEY", "DB_CREDENTIALS", "DB_PASSWD", "DB_PWD", "DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth", "DBKey", "DBAuth", "DBPwd", "DbKey", "dbKEY", "dbkey", "DB_PASS", "DBSIG", "DBSig", "DbSig", "apiPass", "USER_SIG"]) {
+    for (const key of ["DB_PRIVATE_KEY", "DB_CREDENTIALS", "DB_PASSWD", "DB_PWD", "DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth", "DBKey", "DBAuth", "DBPwd", "DbKey", "dbKEY", "dbkey", "DB_PASS", "DBSIG", "DBSig", "DbSig", "apiPass", "USER_SIG", "PGPASSWORD", "PgPassword", "pg_pass"]) {
       for (const location of ["profile", "process", "service"] as const) {
         const config = location === "profile"
           ? { ...base, profiles: { default: { environment: { [key]: marker } } } }

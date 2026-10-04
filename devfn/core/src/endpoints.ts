@@ -128,6 +128,10 @@ function rejectCredentialArgument(value: string, field: string): void {
       invalid(field, "credential-bearing argv must use the secret channel.");
     }
   }
+  // Template fragments can assemble an otherwise hidden credential header.
+  for (const header of value.matchAll(/(?:^|[^A-Za-z0-9_-])([A-Za-z][A-Za-z0-9_-]*)\s*:/g)) {
+    if (isCredentialKey(header[1])) invalid(field, "credential-bearing header must use the secret channel.");
+  }
 }
 
 function rejectUrlCredentials(value: string, field: string): void {

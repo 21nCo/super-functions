@@ -132,6 +132,23 @@ function dockerContainerMissing(error: unknown): boolean {
   return /no such (?:object|container)/i.test(detail);
 }
 
+interface EffectivePort { target: number; published?: string | number; host_ip?: string; protocol?: string }
+
+function effectivePortBindings(ports: EffectivePort[]): string[] {
+  return ports.map((port) => {
+    const published = String(port.published ?? "");
+    if (!Number.isInteger(port.target) || port.target < 1 || !/^\d+$/.test(published)) throw new Error("Compose returned an unsupported published port.");
+    return `${port.target}/${port.protocol ?? "tcp"}|${port.host_ip || "0.0.0.0"}|${published}`;
+  }).sort();
+}
+
+function containerPortBindings(value: Record<string, Array<{ HostIp: string; HostPort: string }> | null> | null): string[] {
+  return Object.entries(value ?? {}).flatMap(([target, bindings]) => {
+    if (!bindings) throw new Error("Docker returned an incomplete port binding.");
+    return bindings.map((binding) => `${target}|${binding.HostIp || "0.0.0.0"}|${binding.HostPort}`);
+  }).sort();
+}
+
 export function renderComposeOverride(spec: ComposeServiceSpec, ports: Record<string, number>, hosts: Record<string, string> = {}, protocols: Record<string, "tcp" | "udp"> = {}, metadata?: { instanceId: string; lifecycleName: string }): string {
   const mappings = Object.entries(spec.ports ?? {}).map(([name, internal]) => {
     const host = ports[name];
@@ -187,7 +204,7 @@ export class ComposeController {
     const previouslyRunning = new Set(beforeRunning);
     if (preservePreExisting) {
       try {
-        const configuration = JSON.parse((await this.run("docker", [...baseArgs, "config", "--format", "json"], { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 10 * 1024 * 1024 })).stdout) as { services?: Record<string, { environment?: Record<string, string> }> };
+        const configuration = JSON.parse((await this.run("docker", [...baseArgs, "config", "--format", "json"], { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 10 * 1024 * 1024 })).stdout) as { services?: Record<string, { environment?: Record<string, string>; ports?: EffectivePort[] }> };
         const serviceConfiguration = configuration.services?.[input.spec.service];
         if (!serviceConfiguration) throw new Error("Compose did not return the selected service.");
         const expected = serviceConfiguration.environment ?? {};
@@ -223,6 +240,35 @@ export class ComposeController {
       } catch (error) {
         if (error instanceof ComposeError) throw error;
         throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to verify pre-existing Compose service ${input.name} environment.`);
+      }
+    }
+    if (preservePreExisting) {
+      try {
+        // Compose's persisted service hash covers effective command, ports,
+        // image and other startup settings that --no-recreate would retain.
+        const hashOutput = (await this.run("docker", ["compose", "-p", projectName, "-f", sourceFile, "config", "--hash", input.spec.service],
+          { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.trim();
+        const expectedHash = hashOutput.match(/^\S+ ([a-f0-9]{64})$/)?.[1];
+        if (!expectedHash || !hashOutput.startsWith(`${input.spec.service} `)) throw new Error("incomplete Compose service hash");
+        const actualRows = (await this.run("docker", ["inspect", "--format", '{{ index .Config.Labels "com.docker.compose.config-hash" }}', ...before],
+          { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.trim().split("\n");
+        if (actualRows.length !== before.length) throw new Error("incomplete container config hashes");
+        if (actualRows.some((row) => row !== expectedHash)) {
+          throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Pre-existing Compose service ${input.name} has a stale startup configuration; refusing to reuse it.`);
+        }
+        const configuration = JSON.parse((await this.run("docker", [...baseArgs, "config", "--format", "json"],
+          { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 10 * 1024 * 1024 })).stdout) as { services?: Record<string, { ports?: EffectivePort[] }> };
+        const service = configuration.services?.[input.spec.service];
+        if (!service || (service.ports !== undefined && !Array.isArray(service.ports))) throw new Error("incomplete effective service ports");
+        const expectedPorts = effectivePortBindings(service.ports ?? []);
+        const portRows = (await this.run("docker", ["inspect", "--format", "{{json .HostConfig.PortBindings}}", ...before],
+          { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.trim().split("\n");
+        if (portRows.length !== before.length || portRows.some((row) => JSON.stringify(containerPortBindings(JSON.parse(row))) !== JSON.stringify(expectedPorts))) {
+          throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Pre-existing Compose service ${input.name} has stale published ports; refusing to reuse it.`);
+        }
+      } catch (error) {
+        if (error instanceof ComposeError) throw error;
+        throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to verify pre-existing Compose service ${input.name} configuration.`);
       }
     }
     if (input.spec.secretEnv?.length && before.length) {
