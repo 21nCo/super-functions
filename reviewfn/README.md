@@ -45,3 +45,11 @@ For a connection-free setup, retain only the `repository-markdown` context adapt
 See [configuration](./docs/configuration.md), [security](./docs/security.md), [GitHub setup](./docs/github-action.md), [report contract](./docs/report-schema.md), and [evaluation](./docs/evaluation.md).
 
 The release gate requires Docker and the pinned test image documented in `docs/security.md`. PR inference additionally requires the trusted Codex image and a credential-isolating proxy. Publication is a separate `reviewfn publish` command/job. See `docs/github-action.md` for identity checks, concurrency, retries and permissions.
+
+Registry release order is core first, then context-composio, github,
+harness-codex, and testing, followed by the CLI. Each package runs its own
+`npm run typecheck`, `npm run build`, `npm run lint`, and `npm test` after installing
+its declared registry dependencies in a standalone directory. No release gate
+substitutes sibling sources for published declarations. The CLI's execution tests
+run real Git snapshots and Docker containers; provide Docker and the pinned image
+rather than replacing those tests with a binary-export smoke check.

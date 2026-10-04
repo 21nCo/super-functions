@@ -1,4 +1,4 @@
-import { writeFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import ora from 'ora';
@@ -155,7 +155,7 @@ export async function serverSetupCommand(
         Logger.br();
         
         // Read and display the last 50 lines of the log
-        const logContent = require('fs').readFileSync(localLogPath, 'utf-8');
+        const logContent = readFileSync(localLogPath, 'utf-8');
         const lines = logContent.split('\n');
         const relevantLines = lines.slice(-50).join('\n');
         

@@ -37,15 +37,15 @@
   "author": "21n",
   "license": "MIT",
   "dependencies": {
-    "@secfn/core": "0.0.2",
+    "@secfn/core": "0.0.3",
     "@superfunctions/http": "0.2.0",
-    "@superfunctions/middleware": "0.2.0"
+    "@superfunctions/middleware": "0.3.0"
   },
   "peerDependencies": {
-    "@superfunctions/db": "0.2.2"
+    "@superfunctions/db": "0.3.0"
   },
   "devDependencies": {
-    "@superfunctions/db": "0.2.2",
+    "@superfunctions/db": "0.3.0",
     "@types/node": "^22.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.6.0",

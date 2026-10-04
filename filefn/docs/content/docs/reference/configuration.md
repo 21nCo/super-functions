@@ -11,7 +11,7 @@ description: Every option in FileFnConfig — types, defaults, and effects.
 
 | Field | Type | Effect |
 | --- | --- | --- |
-| `db` | `Adapter` | The DB adapter (`@superfunctions/db`). |
+| `database` | `Adapter` | The DB adapter (`@superfunctions/db`); `db` remains a deprecated alias. |
 | `storage` | `StorageAdapter` | The storage adapter (`@superfunctions/storage`). |
 
 ## Policies
@@ -48,7 +48,8 @@ Default authorizer reads `filefn_file_permissions` and respects ownership.
 | Field | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `rateLimit.persistence` | `RateLimitPersistence` | undefined | Shared persistence (Redis/KV). |
+| `stores` | `RuntimeStores` | undefined | Shared `atomicKv` / `kv` stores. |
+| `rateLimit.mode` | `"strict" \| "best-effort" \| "local"` | inferred from stores | Strict requires CAS-capable `stores.atomicKv`; best-effort uses `stores.kv`; local keeps counters in-process. |
 | `rateLimit.algorithm` | `"fixed-window" | "sliding-window" | "token-bucket"` | `"fixed-window"` | Algorithm. |
 | `rateLimit.limits.uploadInit` | `{ windowSeconds, maxRequests }` | undefined | Per-route. |
 | `rateLimit.limits.uploadSign` | same | undefined | |
@@ -79,13 +80,13 @@ Default authorizer reads `filefn_file_permissions` and respects ownership.
 | Field | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `namespace` | `string` | `"filefn"` | Table prefix. |
-| `logger` | `Logger` | undefined | Pluggable structured logger. |
+| `observability` | `ObservabilityInput<FileFnObservationEvent>` | undefined | Structured logger, events, metrics, traces and request observations. |
 
 ## Example: production config
 
 ```ts
 const fileFn = createFileFn({
-  db: createPostgresAdapter({ pool }),
+  database: createPostgresAdapter({ pool }),
   storage: createS3Storage({ region, bucket, cdnPrefix }),
   policies: createNucleusPolicies(),
 
@@ -99,10 +100,11 @@ const fileFn = createFileFn({
 
   quota: storageQuotaProvider,
   authorizer: composeAuthorizers([orgAdminCanRead, createDefaultAuthorizer({ db, namespace: "filefn" })]),
-  logger: pinoLogger,
+  observability: { logger: pinoLogger },
+  stores: { atomicKv: redisAtomicStore },
 
   rateLimit: {
-    persistence: redisPersistence,
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },

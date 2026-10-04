@@ -43,6 +43,32 @@ npm run dev
 npm run build
 ```
 
+## npm package boundaries
+
+The shared-types, discord-core, github-integration and linear-integration
+packages ship compiled ESM with TypeScript declarations. Their builds and tests
+use package-local compiler settings and declared test dependencies; they do not
+resolve sibling workspace source.
+
+The Discord bot's minimum npm prerequisite set is:
+
+- `@botfn/shared-types`
+- `@botfn/discord-core`
+- `@botfn/github-integration`
+- `@botfn/linear-integration`
+- `@botfn/persistence-service`
+
+These five foundations have no dependencies on each other and may be released in
+any order before installing or releasing `@botfn/discord-bot`. Slack core is
+independent of the Discord closure and exports both ESM and CommonJS.
+
+Run `npm install --workspaces=false`, `npm run build`, `npm test` and
+`npm pack --dry-run` from an isolated copy of each package to check its release
+boundary. Build before packing: npm exports point at `dist`, not TypeScript source.
+Use `@botfn/persistence-service/client` for the public persistence client;
+deep imports into the package's source tree are not supported.
+
+
 ## testing
 
 This repository has comprehensive test coverage using Vitest:

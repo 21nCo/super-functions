@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "datafn"
 version = "0.1.0"
 description = "Python Server SDK for DataFn"
+readme = { text = "DataFn Python server SDK for declaring resources, processing queries and mutations, and integrating data providers.", content-type = "text/markdown" }
 requires-python = ">=3.8"
 dependencies = []
 
