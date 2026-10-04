@@ -1,0 +1,39 @@
+apifn/svelte/README.md
+  s_ad500513bc9987::t_a85595b758b60e 53-54
+botfn/README.md
+  s_d52385ad0fbd0d::t_12d7a9a557bd54 65-69
+botfn/slack-core/src/verify.ts
+  s_d52385ad0fbd0d::t_8835ad4205b231 25,29-30,32
+botfn/slack-core/tests/verify.test.ts
+  s_d52385ad0fbd0d::t_6f825e3bd20450 41-51
+package-lock.json
+  s_ad500513bc9987::t_1894e7e361bc29 349,4660,5715,5723,5751,30770-30805,53932,59023,59257-59312
+superconsole/package.json
+  s_ad500513bc9987::t_5e5ae8c4914673 28
+README.md
+  s_ad500513bc9987::t_ebaffe3b669309 86-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d01458bf3e96c33c76a978d82d0cabb2cbec5b1d",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_d52385ad0fbd0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f1cc-46a9-73a2-bf93-2e81a58b21fc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
