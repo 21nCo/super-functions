@@ -1,0 +1,16 @@
+apifn/docsfn/README.md
+  h_bdc5b81c173ee9 65-67
+apifn/docsfn/src/react/ApifnApiReference.tsx
+  h_bdc5b81c173ee9 62-63,110,114-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "94d85ab4d3ebb865aa52c611758c6782178e7c8b",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
