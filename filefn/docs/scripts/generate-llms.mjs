@@ -1,11 +1,10 @@
 #!/usr/bin/env node
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { buildManifest, loadDocsConfig } from "@docsfn/core";
 import { FsContentProvider } from "@docsfn/provider-fs";
-import { loadLlmsSiteSource } from "../../../scripts/docs-site/llms.mjs";
+import { loadLlmsSiteSource, writeLlmsArtifacts } from "../../../scripts/docs-site/llms.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cwd = resolve(here, "..");
@@ -15,13 +14,13 @@ const { config, manifest } = await loadLlmsSiteSource(cwd, {
   buildManifest, loadDocsConfig, FsContentProvider,
 });
 
-const siteTitle = manifest.site?.title ?? config.site?.name ?? "filefn";
+const siteTitle = manifest.site?.title ?? config.site?.title ?? "filefn";
 const siteDescription =
   manifest.site?.description ??
-  config.site?.tagline ??
+  config.site?.description ??
   "Self-hosted file uploads, storage, and processing for TypeScript, Python, and Swift.";
 const canonicalUrl =
-  (config.site && (config.site.canonicalUrl || config.site.url)) ||
+  config.site?.canonicalUrl ||
   "https://docs.filefn.dev";
 
 const pages = Object.values(manifest.pages)
@@ -69,18 +68,4 @@ for (const page of docsPages) {
 }
 const llmsFullTxt = fullSections.join("\n");
 
-const artifacts = [["llms.txt", llmsTxt], ["llms-full.txt", llmsFullTxt]];
-if (process.argv.includes("--check")) {
-  for (const [name, text] of artifacts) {
-    if (readFileSync(resolve(staticDir, name), "utf8") !== text) {
-      throw new Error(`${name} is stale. Run npm run generate:llms.`);
-    }
-  }
-  console.log("LLM artifacts are current");
-} else {
-  mkdirSync(staticDir, { recursive: true });
-  for (const [name, text] of artifacts) {
-    writeFileSync(resolve(staticDir, name), text, "utf8");
-    console.log(`Wrote ${resolve(staticDir, name)} (${Buffer.byteLength(text, "utf8")} bytes)`);
-  }
-}
+writeLlmsArtifacts(staticDir, { llmsTxt, llmsFullTxt }, process.argv.includes("--check"));

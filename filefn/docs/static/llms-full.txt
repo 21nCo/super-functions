@@ -3060,6 +3060,8 @@ For a strict limit shared by multiple processes, configure `createFileFn` with
 directly, pass the adapter as its `atomicStore` option. The adapter must
 implement `compareAndSet`; the limiter rejects an `atomicStore` without CAS
 support instead of silently falling back to process-local serialization.
+This startup capability check does not verify the backend's atomicity,
+consistency, or durability; the shared-store implementation must supply those semantics.
 For best-effort cross-replica limits in `createFileFn`, provide `stores.kv`
 and set `rateLimit.mode: "best-effort"`. Direct `createRateLimiter` calls can
 use `persistence` for single-process or best-effort shared limits.
@@ -4824,7 +4826,7 @@ const fileFn = createFileFn({
 
 `rateLimit.algorithm` is one of `"fixed-window" | "sliding-window" | "token-bucket"`.
 
-For exact multi-instance counters, provide a shared `stores.atomicKv` and set `rateLimit.mode: "strict"`. Use `stores.kv` with `mode: "best-effort"` for non-atomic shared storage. Omitting a store uses the built-in in-memory counters; it does not coordinate instances.
+For shared counters in strict mode, provide a shared `stores.atomicKv` (`AtomicKVStoreAdapter` from `@superfunctions/db`) implementing `compareAndSet` and set `rateLimit.mode: "strict"`. The limiter rejects an atomic adapter without this capability at startup (`RATE_LIMIT_ATOMIC_CAS_REQUIRED`); method presence alone does not establish the backend's atomicity, consistency, or durability. Use `stores.kv` with `mode: "best-effort"` for non-atomic shared storage. Omitting a store uses the built-in in-memory counters; it does not coordinate instances.
 
 ## Pre-built rate limiter
 
@@ -5572,7 +5574,7 @@ const fileFn = createFileFn({
 });
 ```
 
-For exact multi-instance counters, bind a shared atomic store through `stores.atomicKv` and use `mode: "strict"`. A non-atomic `stores.kv` requires `mode: "best-effort"`.
+For shared counters in strict mode, bind an `AtomicKVStoreAdapter` implementing `compareAndSet` through `stores.atomicKv` and use `mode: "strict"`. The type is exported by `@superfunctions/db`; a missing CAS method fails at startup with `RATE_LIMIT_ATOMIC_CAS_REQUIRED`. Method presence alone does not establish the backend's atomicity, consistency, or durability. A non-atomic `stores.kv` requires `mode: "best-effort"`.
 
 ## Observability
 
@@ -8234,10 +8236,10 @@ Default authorizer reads `filefn_file_permissions` and respects ownership.
 | Field | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `stores.atomicKv` | `AtomicKvStore` | undefined | Shared atomic counters for strict mode. |
-| `stores.kv` | `KvStore` | undefined | Non-atomic shared counters for best-effort mode. |
+| `stores.atomicKv` | `AtomicKVStoreAdapter` | undefined | Shared atomic counters for strict mode; must implement `compareAndSet`. |
+| `stores.kv` | `KVStoreAdapter` | undefined | Non-atomic shared counters for best-effort mode. |
 | `rateLimit.mode` | `"strict" \| "best-effort" \| "local"` | Store-dependent | Defaults to strict with `stores.atomicKv`, best-effort with `stores.kv`, otherwise local. |
-| `rateLimit.algorithm` | `"fixed-window" | "sliding-window" | "token-bucket"` | `"fixed-window"` | Algorithm. |
+| `rateLimit.algorithm` | `"fixed-window" \| "sliding-window" \| "token-bucket"` | `"fixed-window"` | Algorithm. |
 | `rateLimit.limits.uploadInit` | `{ windowSeconds, maxRequests }` | undefined | Per-route. |
 | `rateLimit.limits.uploadSign` | same | undefined | |
 | `rateLimit.limits.uploadComplete` | same | undefined | |
@@ -9337,7 +9339,7 @@ interface FileFn extends FileProvider {
 | `auth` | `AuthConfig` | `{}` | `{ resolveSession, required }`. |
 | `quota` | `QuotaProvider` | undefined | Optional storage quota. |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `stores` | `RuntimeStores` | undefined | Counter storage binding: `atomicKv` for strict mode, `kv` for best-effort. |
+| `stores` | `RuntimeStores` | undefined | Counter storage binding: `atomicKv` (`AtomicKVStoreAdapter` implementing `compareAndSet`) for strict mode, `kv` (`KVStoreAdapter`) for best-effort. Both types are exported by `@superfunctions/db`. |
 | `rateLimit` | `{ mode?, algorithm?, limits? }` | undefined | Per-route rate limits; `mode` is `"strict"`, `"best-effort"`, or `"local"`. Without an explicit mode, an atomic store selects strict, a KV store selects best-effort, otherwise local. |
 | `logger` | `Logger` | undefined | Pluggable structured logger. |
 | `authorizer` | `Authorizer` | default | Permission resolution. |

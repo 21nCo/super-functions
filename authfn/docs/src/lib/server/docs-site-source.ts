@@ -14,4 +14,4 @@ export const {
   getCompiledDocsPost,
   getDocsSiteCompiledCacheSummary,
   createDocsSiteSearchRuntime,
-} = createDocsSiteRuntime(docsConfig, content, assets);
+} = createDocsSiteRuntime(docsConfig, content, assets, "../../../", { mountBlogAtDocs: true });

@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+// Admit only declared local endpoints before importing or initializing the server.
+const searchPath = process.argv[2] ?? "/docs/search.json";
+if (!["/docs/search.json", "/search.json"].includes(searchPath)) {
+  throw new Error("Expected /docs/search.json or /search.json");
+}
+
 // Run from a consuming workspace after its production build. Exercise the
 // actual generated SvelteKit server; a successful build alone is not SSR proof.
 const output = path.resolve(".svelte-kit/output/server");
@@ -14,14 +20,13 @@ for (const [route, status] of [["/", 200], ["/docs", 200], ["/docs/__missing_doc
   const response = await server.respond(new Request(`http://localhost${route}`), { getClientAddress: () => "127.0.0.1" });
   const html = await response.text();
   assert.equal(response.status, status, route);
-  const titles = [...html.matchAll(/<title[^>]*>([\s\S]*?)<\/title>/g)].map((match) => match[1].replace(/<!--[\s\S]*?-->/g, "").trim());
+  const titles = [...html.matchAll(/<title[^>]*>([\s\S]*?)<\/title>/g)].map((match) => match[1].trim());
   assert.equal(titles.length, 1, `${route} must have exactly one title`);
   assert(titles[0], `${route} title must not be empty`);
   if (route === "/") assert.equal([...html.matchAll(/<meta[^>]*name="description"[^>]*>/g)].length, 1);
   results.push({ route, status, titles });
 }
 // All consumers mount search at /docs; an explicit path can check a legacy alias.
-const searchPath = process.argv[2] ?? "/docs/search.json";
 const search = await server.respond(new Request(`http://localhost${searchPath}`), { getClientAddress: () => "127.0.0.1" });
 assert.equal(search.status, 200);
 const artifact = await search.json();
@@ -31,7 +36,7 @@ assert(child, "The built artifact must contain a titled child route");
 const childResponse = await server.respond(new Request(`http://localhost${child.path}`), { getClientAddress: () => "127.0.0.1" });
 assert.equal(childResponse.status, 200);
 const childHtml = await childResponse.text();
-const childTitles = [...childHtml.matchAll(/<title[^>]*>([\s\S]*?)<\/title>/g)].map((match) => match[1].replace(/<!--[\s\S]*?-->/g, "").trim());
+const childTitles = [...childHtml.matchAll(/<title[^>]*>([\s\S]*?)<\/title>/g)].map((match) => match[1].trim());
 assert.equal(childTitles.length, 1);
 const expectedTitle = child.title.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 assert.equal(childTitles[0], expectedTitle, "Child title must override the layout fallback");

@@ -78,6 +78,8 @@ For a strict limit shared by multiple processes, configure `createFileFn` with
 directly, pass the adapter as its `atomicStore` option. The adapter must
 implement `compareAndSet`; the limiter rejects an `atomicStore` without CAS
 support instead of silently falling back to process-local serialization.
+This startup capability check does not verify the backend's atomicity,
+consistency, or durability; the shared-store implementation must supply those semantics.
 For best-effort cross-replica limits in `createFileFn`, provide `stores.kv`
 and set `rateLimit.mode: "best-effort"`. Direct `createRateLimiter` calls can
 use `persistence` for single-process or best-effort shared limits.

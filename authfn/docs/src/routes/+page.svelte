@@ -33,7 +33,7 @@
     { label: "Getting Started", href: "/docs/getting-started", blurb: "Install, configure, and sign in your first user." },
     { label: "Core Concepts", href: "/docs/core-concepts", blurb: "Sessions, plugins, regions, and the auth lifecycle." },
     { label: "API Reference", href: "/docs/api", blurb: "Package-level API documentation." },
-    { label: "Blog", href: "/blog", blurb: "Release notes and announcements." },
+    { label: "Blog", href: "/docs/blog", blurb: "Release notes and announcements." },
   ];
 </script>
 

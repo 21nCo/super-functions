@@ -81,7 +81,7 @@ const fileFn = createFileFn({
 });
 ```
 
-For exact multi-instance counters, bind a shared atomic store through `stores.atomicKv` and use `mode: "strict"`. A non-atomic `stores.kv` requires `mode: "best-effort"`.
+For shared counters in strict mode, bind an `AtomicKVStoreAdapter` implementing `compareAndSet` through `stores.atomicKv` and use `mode: "strict"`. The type is exported by `@superfunctions/db`; a missing CAS method fails at startup with `RATE_LIMIT_ATOMIC_CAS_REQUIRED`. Method presence alone does not establish the backend's atomicity, consistency, or durability. A non-atomic `stores.kv` requires `mode: "best-effort"`.
 
 ## Observability
 

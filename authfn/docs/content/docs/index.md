@@ -33,7 +33,7 @@ If you're **comparing tools**, the highlights below are a cheatsheet against Bet
 | Email & password | Sign-up/sign-in, password reset via OTP, optional compromised-password checks | `@authfn/password` |
 | Email OTP | One-time codes for email verification, sign-in, sign-up, and password reset | `@authfn/email-otp` |
 | Social OAuth | Google, Apple, GitHub — and custom providers through the shared OAuth contracts | `@authfn/social-oauth` |
-| API keys | User-owned API keys with scopes, named, revocable, securely hashed | `@authfn/api-keys` |
+| API keys | Scoped, named, revocable, securely hashed keys: user-owned through HTTP routes; unowned through the trusted TypeScript server helper | `@authfn/api-keys` |
 | Two-factor (TOTP) | RFC 6238 TOTP with recovery codes, time-window tolerance, and pluggable encryption | `@authfn/two-factor` |
 | Multi-region | Region-aware lookup and request-specific runtime environment resolution | `@authfn/multi-region` |
 | Native handoff | Web ↔ native session handoff for iOS/Android wrappers | `@authfn/native-handoff` |

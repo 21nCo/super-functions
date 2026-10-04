@@ -24,7 +24,7 @@
     <ul class="blog-list-items">
       {#each data.posts as post (post.id)}
         <li>
-          <a class="blog-list-card" href="/blog/{post.slug}">
+          <a class="blog-list-card" href={post.path}>
             <span class="blog-list-title">{post.title}</span>
             <time class="blog-list-date" datetime={post.date}>{post.date}</time>
             {#if post.excerpt ?? post.summary}

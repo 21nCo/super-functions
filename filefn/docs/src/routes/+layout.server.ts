@@ -1,7 +1,7 @@
 import { loadDocsSiteSource } from "$lib/server/docs-site-source";
 import type { LayoutServerLoad } from "./$types";
 
-export const load: LayoutServerLoad = async () => {
+export const load = (async () => {
   const source = await loadDocsSiteSource();
   return {
     source: {
@@ -9,4 +9,4 @@ export const load: LayoutServerLoad = async () => {
       config: { site: source.config.site, navigation: source.config.navigation },
     },
   };
-};
+}) satisfies LayoutServerLoad;

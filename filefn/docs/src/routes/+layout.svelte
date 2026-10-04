@@ -20,8 +20,11 @@
   });
 </script>
 
+<!-- Blog children own their head; a reactive parent fallback must not overwrite it. -->
 <svelte:head>
-  <title>{$page.data.surface?.title ?? data.source.config.site.title}</title>
+  {#if !$page.data.posts && !$page.data.post}
+    <title>{$page.data.surface?.title ?? data.source.config.site.title}</title>
+  {/if}
 </svelte:head>
 
 <div

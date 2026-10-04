@@ -34,7 +34,7 @@ const fileFn = createFileFn({
 
 `rateLimit.algorithm` is one of `"fixed-window" | "sliding-window" | "token-bucket"`.
 
-For exact multi-instance counters, provide a shared `stores.atomicKv` and set `rateLimit.mode: "strict"`. Use `stores.kv` with `mode: "best-effort"` for non-atomic shared storage. Omitting a store uses the built-in in-memory counters; it does not coordinate instances.
+For shared counters in strict mode, provide a shared `stores.atomicKv` (`AtomicKVStoreAdapter` from `@superfunctions/db`) implementing `compareAndSet` and set `rateLimit.mode: "strict"`. The limiter rejects an atomic adapter without this capability at startup (`RATE_LIMIT_ATOMIC_CAS_REQUIRED`); method presence alone does not establish the backend's atomicity, consistency, or durability. Use `stores.kv` with `mode: "best-effort"` for non-atomic shared storage. Omitting a store uses the built-in in-memory counters; it does not coordinate instances.
 
 ## Pre-built rate limiter
 

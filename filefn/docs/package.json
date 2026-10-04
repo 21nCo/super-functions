@@ -8,7 +8,7 @@
     "dev": "vite dev --port 6006",
     "build": "vite build",
     "preview": "vite preview --port 6006",
-    "test": "npm run check:llms && vitest run --config ../../scripts/docs-site/vitest.config.ts",
+    "test": "npm run check:llms && node --test ../../scripts/docs-site/check-built-site.test.mjs && vitest run --config ../../scripts/docs-site/vitest.config.ts",
     "check:llms": "node scripts/generate-llms.mjs --check",
     "generate:openapi": "node scripts/generate-openapi.mjs",
     "generate:llms": "node scripts/generate-llms.mjs",
