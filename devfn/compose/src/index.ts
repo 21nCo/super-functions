@@ -83,6 +83,27 @@ export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: s
   return createHash("sha256").update(source).update("\0").update(effective).digest("hex");
 }
 
+/** Read Compose's effective service networks before publishing sibling DNS URLs. */
+export async function effectiveComposeServiceNetworks(spec: ComposeServiceSpec, root: string, instanceId: string, environment: NodeJS.ProcessEnv): Promise<string[]> {
+  const sourceFile = await resolveContainedPath(root, spec.file ?? "compose.yaml", `services.${spec.service}.file`);
+  try {
+    const output = (await execFileAsync("docker", ["compose", "-p", composeProjectName(spec.projectName ?? "devfn", instanceId),
+      "-f", sourceFile, "config", "--format", "json"], { cwd: root, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
+    const configuration = JSON.parse(output) as { services?: Record<string, { networks?: Record<string, unknown> | string[]; network_mode?: string }>; networks?: Record<string, { name?: string }> };
+    const service = configuration.services?.[spec.service];
+    if (!service) throw new Error("missing service");
+    // Host/none/container namespace modes have no Compose DNS network. A
+    // standalone service may still start; sibling URL wiring will be omitted.
+    if (service.network_mode) return [];
+    const keys = Array.isArray(service.networks) ? service.networks : Object.keys(service.networks ?? {});
+    if (!keys.length) return [];
+    return keys.map((key) => configuration.networks?.[key]?.name ?? `${composeProjectName(spec.projectName ?? "devfn", instanceId)}_${key}`);
+  } catch {
+    // Compose output may contain interpolated credentials; never include it in an error.
+    throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to verify effective Compose networks for ${spec.service}.`);
+  }
+}
+
 const DOCKER_ENVIRONMENT_KEYS = ["DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"] as const;
 
 function persistedDockerEnvironment(environment: NodeJS.ProcessEnv): Record<string, string> {

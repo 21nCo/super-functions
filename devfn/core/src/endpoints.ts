@@ -14,6 +14,8 @@ export interface EndpointResolutionInput {
   ports: Readonly<Record<string, number>>;
   /** Effective policy suffix for selected local proxy hostnames. */
   hostnameSuffix?: string;
+  /** Effective Compose network names for each selected service. Required for sibling DNS wiring. */
+  composeNetworks?: Readonly<Record<string, readonly string[]>>;
 }
 
 export interface ResolvedNodeStartup {
@@ -226,7 +228,7 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
         if (node.kind !== "service") continue;
         const service = config.services?.[node.name];
         const internal = service?.ports?.[name];
-        if (internal !== undefined) composeUrls[name] = `${httpSchemes.get(name) ?? "http"}://${service!.service}:${internal}`;
+        if (internal !== undefined && input.composeNetworks?.[node.name]?.length) composeUrls[name] = `${httpSchemes.get(name) ?? "http"}://${service!.service}:${internal}`;
       }
     }
   }
@@ -254,7 +256,10 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
         for (const port of Object.keys(producerPorts)) {
           const key = `DEVFN_URL_${normalized(port)}`;
           if (!Object.prototype.hasOwnProperty.call(directUrls, port)) continue;
-          if (producer.kind === "service" && composeProjectName(config.services![producer.name].projectName ?? "devfn", ownerId) === consumerProject) {
+          const producerNetworks = input.composeNetworks?.[producer.name] ?? [];
+          const consumerNetworks = input.composeNetworks?.[node.name] ?? [];
+          const reachable = producerNetworks.some((name) => consumerNetworks.includes(name));
+          if (producer.kind === "service" && composeProjectName(config.services![producer.name].projectName ?? "devfn", ownerId) === consumerProject && reachable) {
             nodeGenerated.values[key] = composeUrls[port];
             nodeGenerated.checked[key] = composeUrls[port];
           } else { delete nodeGenerated.values[key]; delete nodeGenerated.checked[key]; unreachable.add(key); }
@@ -264,7 +269,7 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
         for (const match of value.matchAll(REFERENCE)) if (unreachable.has(match[1])) {
           invalid(field, producerIsNative(plan, config, match[1]) ?
             `reference ${match[1]} points to a native loopback process unreachable from Compose.` :
-            `reference ${match[1]} is in another Compose project network.`);
+            `reference ${match[1]} has no shared effective Compose network.`);
         }
       }
     }

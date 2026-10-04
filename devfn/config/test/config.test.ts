@@ -3,9 +3,23 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { discoverProject, loadTrustedDevFnConfig, trustProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
+import { discoverProject, isCredentialKey, loadTrustedDevFnConfig, trustProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
 
 describe("DevFn configuration", () => {
+  it("classifies credential aliases across separators, case boundaries and documented compact qualifiers", () => {
+    for (const alias of ["key", "pass", "passcode", "passphrase", "pwd", "auth", "sig", "token", "secret", "password", "cred", "credential", "creds"]) {
+      for (const separator of ["_", "-", "."]) expect(isCredentialKey(`db${separator}${alias}`)).toBe(true);
+      for (const prefix of ["DB", "db", "Db"]) {
+        expect(isCredentialKey(`${prefix}${alias.toUpperCase()}`)).toBe(true);
+        expect(isCredentialKey(`${prefix}${alias[0].toUpperCase()}${alias.slice(1)}`)).toBe(true);
+        expect(isCredentialKey(`${prefix}USER${alias.toUpperCase()}`)).toBe(true);
+      }
+      expect(isCredentialKey(`api_${alias}_value`)).toBe(true);
+    }
+    for (const ordinary of ["MONKEY", "compass", "PASSAGE", "KEYSTONE", "DB_MODE", "DATABASE", "authority", "tokenize", "task_status_enabled"]) {
+      expect(isCredentialKey(ordinary)).toBe(false);
+    }
+  });
   it("validates named ports, processes, services, profiles, and hostnames", () => {
     const config = validateDevFnConfig({
       version: 1,
@@ -62,7 +76,7 @@ describe("DevFn configuration", () => {
   it("rejects qualified credential literals consistently while allowing declared host secrets", () => {
     const marker = "synthetic-sentinel";
     const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
-    for (const key of ["DB_PRIVATE_KEY", "DB_CREDENTIALS", "DB_PASSWD", "DB_PWD", "DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth", "DBKey", "DBAuth", "DBPwd", "DbKey", "dbKEY", "dbkey"]) {
+    for (const key of ["DB_PRIVATE_KEY", "DB_CREDENTIALS", "DB_PASSWD", "DB_PWD", "DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth", "DBKey", "DBAuth", "DBPwd", "DbKey", "dbKEY", "dbkey", "DB_PASS", "DBSIG", "DBSig", "DbSig", "apiPass", "USER_SIG"]) {
       for (const location of ["profile", "process", "service"] as const) {
         const config = location === "profile"
           ? { ...base, profiles: { default: { environment: { [key]: marker } } } }

@@ -4,11 +4,28 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { ComposeController, composeProjectName, createComposeEnvironment, fingerprintComposeSource, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
+import { ComposeController, composeProjectName, createComposeEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
 
 describe("ComposeController", () => {
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("reads effective default, explicit and isolated service networks", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-networks-"));
+    const file = path.join(root, "compose.yaml");
+    const read = (service: string) => effectiveComposeServiceNetworks({ adapter: "compose", service }, root, "opaque/owner", createComposeEnvironment({ adapter: "compose", service }));
+    try {
+      await writeFile(file, "services:\n  web:\n    image: busybox\n  consumer:\n    image: busybox\n");
+      expect(await read("web")).toEqual(await read("consumer"));
+      await writeFile(file, "services:\n  web:\n    image: busybox\n    networks: [blue]\n  consumer:\n    image: busybox\n    networks: [green]\nnetworks:\n  blue: {}\n  green: {}\n");
+      const isolatedConsumer = await read("consumer");
+      expect((await read("web")).some((network) => isolatedConsumer.includes(network))).toBe(false);
+      await writeFile(file, "services:\n  web:\n    image: busybox\n    networks: [shared]\n  consumer:\n    image: busybox\n    networks: [shared]\nnetworks:\n  shared:\n    external: true\n    name: fixture-external-network\n");
+      expect(await read("web")).toEqual(["fixture-external-network"]);
+      expect(await read("consumer")).toEqual(["fixture-external-network"]);
+      await writeFile(file, "services:\n  web:\n    image: busybox\n    network_mode: host\n");
+      expect(await read("web")).toEqual([]);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("fingerprints effective Compose command and env_file inputs", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-fingerprint-"));
     const file = path.join(root, "compose.yaml");

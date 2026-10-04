@@ -104,11 +104,29 @@ describe("endpoint and template contract", () => {
     config.ports!.web = {};
     config.profiles.default.services = ["consumer"];
     config.profiles.default.environment = { BASE: "{{env.DEVFN_URL_WEB}}" };
-    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103 } });
+    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103 }, composeNetworks: { web: ["owner_default"], consumer: ["owner_default"] } });
     expect(resolved.environment.BASE).toBe("http://127.0.0.1:4103");
     expect(resolved.nodes.worker.environment.BASE).toBe("http://127.0.0.1:4103");
     expect(resolved.nodes.consumer.environment).toMatchObject({ DEVFN_URL_WEB: "http://web:8080", BASE: "http://web:8080", UPSTREAM: "http://web:8080", DEVFN_PORT_WEB: "4103" });
     expect(resolved.nodes.consumer.readinessEnvironment).toMatchObject({ DEVFN_URL_WEB: "http://127.0.0.1:4103", BASE: "http://127.0.0.1:4103", UPSTREAM: "http://127.0.0.1:4103" });
+  });
+
+  it("publishes sibling DNS only with evidence of a shared effective network", () => {
+    const config = fixture();
+    config.profiles.default.environment = {};
+    config.ports!.web = {};
+    config.services = {
+      web: { adapter: "compose", service: "web", ports: { web: 8080 }, health: { type: "http", port: "web" } },
+      consumer: { adapter: "compose", service: "consumer", dependsOn: ["web"], env: { UPSTREAM: "{{env.DEVFN_URL_WEB}}" } },
+    };
+    config.profiles.default.services = ["consumer"];
+    const base = { config, plan: createPlan(config), ownerId: "opaque/owner", ports: { api: 4101, worker: 4102, web: 4103 } };
+    for (const composeNetworks of [undefined, { web: ["blue"], consumer: ["green"] }]) {
+      expect(() => resolveEndpointTemplates({ ...base, composeNetworks })).toThrow(/no shared effective Compose network/);
+    }
+    const shared = resolveEndpointTemplates({ ...base, composeNetworks: { web: ["blue", "shared"], consumer: ["green", "shared"] } });
+    expect(shared.nodes.consumer.environment.UPSTREAM).toBe("http://web:8080");
+    expect(shared.ownerId).toBe("opaque/owner");
   });
 
   it("rejects a native loopback URL consumed by Compose before creating state", async () => {
@@ -136,7 +154,7 @@ describe("endpoint and template contract", () => {
     };
     config.ports!.web = {};
     config.profiles.default.services = ["consumer"];
-    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103 } });
+    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103 }, composeNetworks: { web: ["owner_default"], consumer: ["owner_default"] } });
     expect(resolved.nodes.consumer.environment.UPSTREAM).toBe("http://web:8080");
     expect(resolved.nodes.consumer.readinessEnvironment.UPSTREAM).toBe("http://127.0.0.1:4103");
     expect(resolved.nodes.consumer.healthCommand).toEqual(["node", "probe.mjs", "http://127.0.0.1:4103", "http://127.0.0.1:4103"]);
@@ -164,7 +182,7 @@ describe("endpoint and template contract", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-project-network-"));
     const stateDir = path.join(root, "state");
     try {
-      await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toThrow(/another Compose project network/);
+      await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toThrow(/no shared effective Compose network/);
       await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
     } finally { await rm(root, { recursive: true, force: true }); }
   });
@@ -179,14 +197,15 @@ describe("endpoint and template contract", () => {
     config.ports!.web = {};
     config.ports!.other = {};
     config.profiles.default.services = ["web", "other"];
-    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103, other: 4104 } });
+    const composeNetworks = { web: ["web_default"], other: ["other_default"] };
+    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103, other: 4104 }, composeNetworks });
     expect(resolved.nodes.web.environment.DEVFN_URL_WEB).toBe("http://web:8080");
     expect(resolved.nodes.web.environment).not.toHaveProperty("DEVFN_URL_OTHER");
     expect(resolved.nodes.other.environment.DEVFN_URL_OTHER).toBe("http://other:8081");
     expect(resolved.nodes.other.environment).not.toHaveProperty("DEVFN_URL_WEB");
     config.services.other.dependsOn = ["web"];
     config.services.other.health = { type: "command", command: ["node", "probe.mjs", "{{env.DEVFN_URL_WEB}}"] };
-    const hostProbe = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103, other: 4104 } });
+    const hostProbe = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103, other: 4104 }, composeNetworks });
     expect(hostProbe.nodes.other.healthCommand).toEqual(["node", "probe.mjs", "http://127.0.0.1:4103"]);
     expect(hostProbe.nodes.other.environment).not.toHaveProperty("DEVFN_URL_WEB");
   });
@@ -313,7 +332,7 @@ describe("endpoint and template contract", () => {
     const stateDir = path.join(root, "state");
     const marker = "synthetic-sentinel";
     try {
-      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth", "DBKey", "DBAuth", "DBPwd", "DbKey", "dbKEY", "dbkey"]) {
+      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth", "DBKey", "DBAuth", "DBPwd", "DbKey", "dbKEY", "dbkey", "DB_PASS", "DBSIG", "DBSig", "DbSig", "apiPass", "USER_SIG"]) {
         for (const location of ["argv", "query", "fragment", "health"] as const) {
           const config = fixture();
           if (location === "argv") config.processes!.worker.command = ["node", `--${key}=${marker}`];
@@ -391,10 +410,10 @@ describe("endpoint and template contract", () => {
       consumer: { adapter: "compose", service: "consumer", projectName: "BLUE", dependsOn: ["web"], env: { UPSTREAM: "{{env.DEVFN_URL_WEB}}" } },
     };
     config.profiles.default.services = ["consumer"];
-    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "Owner", ports: { api: 4101, worker: 4102, web: 4103 } });
+    const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "Owner", ports: { api: 4101, worker: 4102, web: 4103 }, composeNetworks: { web: ["shared"], consumer: ["shared"] } });
     expect(resolved.nodes.consumer.environment.UPSTREAM).toBe("http://web:8080");
     config.services.consumer.projectName = "green";
-    expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "Owner", ports: { api: 4101, worker: 4102, web: 4103 } })).toThrow(/another Compose project network/);
+    expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "Owner", ports: { api: 4101, worker: 4102, web: 4103 } })).toThrow(/no shared effective Compose network/);
   });
 
   it("rejects invalid shadowed literals before creating state", async () => {

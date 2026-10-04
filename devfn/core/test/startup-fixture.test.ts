@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -49,6 +49,34 @@ createServer((request, response) => { response.writeHead(!process.env.EXPECTED_H
 `;
 
 describe("real local startup fixtures", () => {
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("rejects disjoint effective Compose networks before state creation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-disjoint-networks-"));
+    const stateDir = path.join(root, "state");
+    try {
+      await writeFile(path.join(root, "compose.yaml"), `services:
+  web:
+    image: busybox
+    networks: [blue]
+  consumer:
+    image: busybox
+    networks: [green]
+networks:
+  blue: {}
+  green: {}
+`);
+      const config = validateDevFnConfig({
+        version: 1, project: { id: "disjoint-networks-fixture" }, ports: { web: {} },
+        services: {
+          web: { adapter: "compose", service: "web", ports: { web: 8080 }, health: { type: "http", port: "web" } },
+          consumer: { adapter: "compose", service: "consumer", dependsOn: ["web"], env: { UPSTREAM: "{{env.DEVFN_URL_WEB}}" } },
+        },
+        profiles: { default: { services: ["consumer"] } },
+      });
+      await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toThrow(/no shared effective Compose network/);
+      await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("starts a public native process with explicit HOST only after authorization", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-public-host-"));
     const stateDir = path.join(root, "state");
@@ -164,7 +192,7 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       expect(JSON.stringify(await readReceipt(config, root, owner))).not.toContain("synthetic-sentinel");
       expect(await readFile(receipt.environmentOutputs[0], "utf8")).not.toContain("synthetic-sentinel");
       expect(await readFile(receipt.processes[0].logPath, "utf8")).not.toContain("synthetic-sentinel");
-      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth", "DBKey", "DBAuth", "DBPwd", "DbKey", "dbKEY", "dbkey"]) {
+      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth", "DBKey", "DBAuth", "DBPwd", "DbKey", "dbKEY", "dbkey", "DB_PASS", "DBSIG", "DBSig", "DbSig", "apiPass", "USER_SIG"]) {
         config.processes!.native.env![key] = "synthetic-sentinel";
         expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
         const failedRetry = await orchestrator.up({ config, root, stateDir: path.join(root, "state") }).then(() => "", (error: Error) => error.message);
@@ -275,6 +303,13 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
       expect(native.argv[0]).toBe(`http://127.0.0.1:${webPort}`);
       expect(native.upstream).toBe(`http://127.0.0.1:${webPort}`);
       expect(native.mode).toBe("node");
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      const networkSource = path.join(root, "compose.yaml");
+      const sharedSource = await readFile(networkSource, "utf8");
+      await writeFile(networkSource, sharedSource.replace('      DEVFN_PORT_WEB: "${DEVFN_PORT_WEB}"\n', '      DEVFN_PORT_WEB: "${DEVFN_PORT_WEB}"\n    networks: [isolated]\n') + '\nnetworks:\n  isolated: {}\n');
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+      await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toThrow(/no shared effective Compose network/);
+      await writeFile(networkSource, sharedSource);
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       config.services!.web.env!.CHECK_URL = "http://example.test/?db_password=synthetic-sentinel";
       const rejectedStatus = await orchestrator.status({ config, root });

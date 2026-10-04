@@ -4,7 +4,7 @@ import { mkdir, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { ComposeController, createComposeEnvironment, fingerprintComposeSource, type ManagedComposeService } from "@devfn/compose";
+import { ComposeController, composeProjectName, createComposeEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, type ManagedComposeService } from "@devfn/compose";
 import { defaultStateDir, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
 import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, resolveAdapterCommand, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
@@ -14,7 +14,7 @@ import { resolveInstanceIdentity } from "./identity.js";
 import { resolveEndpointTemplates, resolveLocalHostname } from "./endpoints.js";
 import { createPlan } from "./planner.js";
 import { readReceipt, secureRuntimeDirectory, writeEnvironmentOutputs, writeReceipt } from "./runtime.js";
-import { DevFnError, type CleanupResult, type InstanceIdentity, type LifecycleReceipt, type UpOptions } from "./types.js";
+import { DevFnError, type CleanupResult, type InstanceIdentity, type LifecyclePlan, type LifecycleReceipt, type UpOptions } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -47,6 +47,22 @@ function resolvedHealth(health: HealthCheck | undefined, command: string[] | und
   if (health?.type === "command" && command) return { ...health, command };
   if (health?.type === "http" && url) return { type: "http", url, ...(health.expectedStatus ? { expectedStatus: health.expectedStatus } : {}), ...(health.timeoutMs ? { timeoutMs: health.timeoutMs } : {}) };
   return health;
+}
+
+async function resolveWithComposeNetworks(config: DevFnConfig, plan: LifecyclePlan, root: string, ownerId: string, ports: Record<string, number>, hostnameSuffix?: string): Promise<ReturnType<typeof resolveEndpointTemplates>> {
+  // Validate literals before calling Docker. Provisional defaults are used only
+  // for that read-only validation; the result is never published or started.
+  const provisionalNetworks = Object.fromEntries(plan.nodes.filter((node) => node.kind === "service").map((node) =>
+    [node.name, [`${composeProjectName(config.services![node.name].projectName ?? "devfn", ownerId)}_default`]]));
+  const provisional = resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, composeNetworks: provisionalNetworks });
+  const composeNetworks: Record<string, string[]> = {};
+  for (const node of plan.nodes) {
+    if (node.kind !== "service") continue;
+    const spec = config.services![node.name];
+    const environment = createComposeEnvironment({ ...spec, env: provisional.nodes[node.name].environment }, provisional.nodes[node.name].environment);
+    composeNetworks[node.name] = await effectiveComposeServiceNetworks(spec, root, ownerId, environment);
+  }
+  return resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, composeNetworks });
 }
 
 async function startupFingerprints(config: DevFnConfig, root: string, resolved: ReturnType<typeof resolveEndpointTemplates>): Promise<Record<string, string>> {
@@ -134,7 +150,7 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
       plan.nodes.length !== receipt.processes.length + receipt.services.length ||
       plan.nodes.some((node) => !(node.kind === "process" ? receipt.processes : receipt.services).some((managed) => managed.name === node.name))) return false;
     const loadedPolicy = await loadDevFnPolicy(root, config.policy);
-    resolved = resolveEndpointTemplates({ config, plan, ownerId: receipt.instanceId, ports, hostnameSuffix: loadedPolicy?.policy.hostnameSuffix });
+    resolved = await resolveWithComposeNetworks(config, plan, root, receipt.instanceId, ports, loadedPolicy?.policy.hostnameSuffix);
     const current = await startupFingerprints(config, root, resolved);
     if (!receipt.startupFingerprints || Object.keys(current).length !== Object.keys(receipt.startupFingerprints).length ||
       Object.entries(current).some(([name, fingerprint]) => receipt.startupFingerprints?.[name] !== fingerprint)) return false;
@@ -178,7 +194,7 @@ export class DevFnOrchestrator {
     const requestedStateDir = options.stateDir ?? defaultStateDir();
     const identity = await resolveInstanceIdentity(options.config.project.id, options.root);
     const loadedPolicy = await loadDevFnPolicy(options.root, options.config.policy);
-    resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, ports: Object.fromEntries(plan.portNames.map((name) => [name, 1])), hostnameSuffix: loadedPolicy?.policy.hostnameSuffix });
+    await resolveWithComposeNetworks(options.config, plan, options.root, identity.instanceId, Object.fromEntries(plan.portNames.map((name) => [name, 1])), loadedPolicy?.policy.hostnameSuffix);
     await mkdir(requestedStateDir, { recursive: true, mode: 0o700 });
     const stateDir = await realpath(requestedStateDir);
     return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => await this.upLocked(options, stateDir, identity, loadedPolicy), { timeoutMs: 30_000 });
@@ -225,7 +241,12 @@ export class DevFnOrchestrator {
       ...policy,
     });
     const ports = Object.fromEntries(allocations.map((item) => [item.service, item.port]));
-    const resolved = resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, ports, hostnameSuffix: suffix });
+    let resolved: ReturnType<typeof resolveEndpointTemplates>;
+    try { resolved = await resolveWithComposeNetworks(options.config, plan, options.root, identity.instanceId, ports, suffix); }
+    catch (error) {
+      await registry.release({ invocationId, errorCode: "DEVFN_ENDPOINT_RESOLUTION_FAILED" });
+      throw error;
+    }
     const environment = resolved.environment;
     let fingerprints: Record<string, string>;
     try { fingerprints = await startupFingerprints(options.config, options.root, resolved); }

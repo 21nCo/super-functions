@@ -1,29 +1,44 @@
-/** Identify credential-bearing names in environment keys, flags, and URL parameters. */
-const CREDENTIAL_KEYS = new Set([
+/** Shared grammar for environment keys, argv flags and URL parameters. */
+const CREDENTIAL_ALIASES = new Set([
   "accesskey", "accesskeyid", "accesstoken", "apikey", "auth", "authkey", "authorization", "authtoken",
-  "bearer", "clientsecret", "cookie", "credential", "credentials", "key", "passwd", "password",
-  "privatekey", "pwd", "refreshtoken", "secret", "secretkey", "sessionid", "sessiontoken",
+  "bearer", "clientsecret", "cookie", "cred", "credential", "credentials", "creds", "key", "passwd", "password",
+  "pass", "passcode", "passphrase", "privatekey", "pwd", "refreshtoken", "secret", "secretkey", "sessionid", "sessiontoken",
   "sig", "signature", "token", "xamzcredential", "xamzsignature", "xgoogcredential", "xgoogsignature",
 ]);
 
-export function isCredentialKey(name: string): boolean {
-  const normalized = name.replace(/[^a-z0-9]/gi, "").toLowerCase();
-  if (CREDENTIAL_KEYS.has(normalized)) return true;
-  // Qualified names include application prefixes and suffixes. Short labels
-  // stay on token boundaries so ordinary names such as monkey remain valid.
-  if ([...CREDENTIAL_KEYS].some((key) => key.length >= 5 && normalized.includes(key))) return true;
-  // Compact qualified names can also cross an acronym/title-case boundary
-  // (DBKey), or use a lowercase database prefix (dbkey). Keep ordinary words
-  // such as monkey from being classified solely by their final letters.
-  const compact = name.replace(/[^a-z0-9]/gi, "");
-  for (const suffix of ["pwd", "key", "auth"]) {
-    if (compact.length <= suffix.length || !compact.toLowerCase().endsWith(suffix)) continue;
-    const prefix = compact.slice(0, -suffix.length);
-    const tail = compact.slice(-suffix.length);
-    if (suffix !== "key" || prefix.toLowerCase() === "db" ||
-        prefix === prefix.toUpperCase() || tail[0] === tail[0].toUpperCase()) return true;
+// Compact names have no word boundary. Support known qualifier + alias pairs;
+// otherwise words such as monkey and compass would be false positives.
+const COMPACT_QUALIFIERS = new Set([
+  "api", "app", "auth", "aws", "client", "db", "database", "google", "oauth", "server", "service", "session", "user", "xamz", "xgoog",
+]);
+
+function words(name: string): string[] {
+  return name.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2")
+    .split(/[^A-Za-z0-9]+/).filter(Boolean).map((word) => word.toLowerCase());
+}
+
+function compactCredential(name: string, qualifiers = 0): boolean {
+  if (qualifiers > 0 && CREDENTIAL_ALIASES.has(name)) return true;
+  if (qualifiers === 3) return false;
+  for (const qualifier of COMPACT_QUALIFIERS) {
+    if (name.startsWith(qualifier) && name.length > qualifier.length && compactCredential(name.slice(qualifier.length), qualifiers + 1)) return true;
+    if (name.endsWith(qualifier) && name.length > qualifier.length && compactCredential(name.slice(0, -qualifier.length), qualifiers + 1)) return true;
   }
-  return name.toLowerCase().split(/[^a-z0-9]+/).some((part) => CREDENTIAL_KEYS.has(part));
+  return false;
+}
+
+/** Credential names are aliases delimited by separators or case boundaries,
+ * or documented compact qualifier/alias pairs. */
+export function isCredentialKey(name: string): boolean {
+  const parts = words(name);
+  for (let start = 0; start < parts.length; start += 1) {
+    for (let end = start + 1; end <= Math.min(parts.length, start + 3); end += 1) {
+      if (CREDENTIAL_ALIASES.has(parts.slice(start, end).join(""))) return true;
+    }
+  }
+  const compact = parts.join("");
+  return compactCredential(compact);
 }
 
 /** Reject keys that would alias on case-insensitive process environments. */
