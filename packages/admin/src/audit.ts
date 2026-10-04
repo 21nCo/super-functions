@@ -105,7 +105,7 @@ export function redactAdminOutputValue(
   allowOutputPaths: readonly string[] = [],
   seen = new WeakSet<object>(),
 ): unknown {
-  return redactValue(value, sensitiveFields, true, allowOutputPaths, seen);
+  return redactValue(value, sensitiveFields, true, allowOutputPaths, seen, true);
 }
 
 export function redactDeclaredAdminValue(
@@ -122,6 +122,7 @@ function redactValue(
   redactImplicitSecrets: boolean,
   allowedPaths: readonly string[],
   seen: WeakSet<object>,
+  preserveBooleanMetadata = false,
 ): unknown {
   const normalizeKey = (field: string) =>
     field.replace(/[-_\s]/g, "").toLowerCase();
@@ -139,7 +140,12 @@ function redactValue(
           const explicitlyAllowed = allowed.has(itemPath) || allowed.has(wildcardPath);
           return [
             key,
-            explicit.has(normalizeKey(key)) || ((redactImplicitSecrets && isImplicitSecretKey(key)) && !explicitlyAllowed)
+            explicit.has(normalizeKey(key)) || (
+              redactImplicitSecrets &&
+              !(preserveBooleanMetadata && typeof item === "boolean") &&
+              isImplicitSecretKey(key) &&
+              !explicitlyAllowed
+            )
               ? "[REDACTED]"
               : visit(item, itemPath),
           ];

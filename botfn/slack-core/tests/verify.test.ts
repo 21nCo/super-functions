@@ -38,4 +38,15 @@ describe('Slack request verification with real HMAC signatures', () => {
   it.each([-301, 301])('rejects replay-window overflow at %i seconds', async offset => {
     expect(await verifySlackRequest(request(String(now + offset)), secret)).toBe(false);
   });
+
+  it.each([
+    'not-a-timestamp',
+    `${now}junk`,
+    `${now}.5`,
+    `${now}e0`,
+    `0${now}`,
+    '9007199254740993',
+  ])('rejects correctly signed malformed timestamp %s', async timestamp => {
+    expect(await verifySlackRequest(request(timestamp), secret)).toBe(false);
+  });
 });

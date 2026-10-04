@@ -62,6 +62,11 @@ These five foundations have no dependencies on each other and may be released in
 any order before installing or releasing `@superfunctions/botfn-discord-bot`. Slack core is
 independent of the Discord closure and exports both ESM and CommonJS.
 
+Slack request verification accepts canonical decimal Unix-second timestamps only,
+checks that the value is a safe integer, and rejects requests more than 300 seconds
+from the current time in either direction. It verifies the HMAC against the original
+request body without consuming it; the private Slack app can then dispatch signed events.
+
 Run `npm install --workspaces=false`, `npm run build`, `npm test` and
 `npm pack --dry-run` from an isolated copy of each package to check its release
 boundary. Build before packing: npm exports point at `dist`, not TypeScript source.

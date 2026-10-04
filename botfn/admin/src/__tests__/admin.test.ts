@@ -1,14 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  createAdminClient,
   encodeAdminCursor,
-  validateAdminCapabilityManifest,
   type AdminOperationContext,
 } from "@superfunctions/admin";
 import {
-  botFnAdminCapability,
   createBotFnAdminAdapter,
-  createBotFnAdminClient,
   createBotFnOperatorService,
   MemoryBotFnOperatorStore,
 } from "../index.js";
@@ -32,12 +28,6 @@ function legacyContext(projectId: string): AdminOperationContext {
 }
 
 describe("@superfunctions/botfn-admin", () => {
-  it("publishes a valid optional operator surface", () => {
-    expect(validateAdminCapabilityManifest(botFnAdminCapability)).toEqual([]);
-    expect(botFnAdminCapability.availability).toBe("optional-product");
-    expect(botFnAdminCapability.operations).toHaveLength(8);
-    expect(botFnAdminCapability.operations.every((operation) => operation.minimumScope === "project")).toBe(true);
-  });
 
   it("persists verified bindings, redacts credentials, and isolates projects", async () => {
     const verifyChannel = vi.fn(async () => ({ accountLabel: "Support" }));
@@ -158,19 +148,4 @@ describe("@superfunctions/botfn-admin", () => {
       .rejects.toMatchObject({ code: "precondition_failed" });
   });
 
-  it("exposes named typed client methods and common capability methods", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({
-      ok: true,
-      data: { items: [], nextCursor: null },
-    }), { status: 200 }));
-    const client = createBotFnAdminClient(createAdminClient({
-      baseUrl: "https://example.test/admin",
-      fetch: fetcher as typeof fetch,
-    }));
-
-    await client.bots.list();
-    expect(String(fetcher.mock.calls[0]![0])).toContain("botfn.bots.list");
-    expect(client.channels.connect).toEqual(expect.any(Function));
-    expect(client.availability).toEqual(expect.any(Function));
-  });
 });

@@ -22,6 +22,7 @@ export function createBillFnHttpClient(options: BillFnClientOptions = {}) {
       }
 
       let response: Response;
+      let raw: string;
       try {
         response = await fetchImpl(url, {
           method: request.method,
@@ -33,6 +34,7 @@ export function createBillFnHttpClient(options: BillFnClientOptions = {}) {
               },
           body: request.body === undefined ? undefined : JSON.stringify(request.body)
         });
+        raw = await response.text();
       } catch (error) {
         return err({
           code: 'BILLFN_NETWORK_ERROR',
@@ -42,7 +44,6 @@ export function createBillFnHttpClient(options: BillFnClientOptions = {}) {
         });
       }
 
-      const raw = await response.text();
       if (!raw) {
         return err({
           code: 'BILLFN_EMPTY_RESPONSE',

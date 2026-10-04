@@ -9,6 +9,10 @@ npm install @apifn/docsfn
 ```
 
 `docsfn` is an **optional** peer dependency — this package defines the minimal `DocsContentProvider` / `RawContentEntry` interfaces itself, so you get correct types even without docsfn installed.
+The package-local build declares its React type dependencies and the file-loading
+tests create their own temporary OpenAPI fixtures. `npm install --workspaces=false`,
+`npm run build`, and `npm test` do not require a sibling CLI checkout or workspace
+type hoisting.
 
 ## Features
 
