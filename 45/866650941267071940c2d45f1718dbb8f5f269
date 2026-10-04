@@ -1,0 +1,20 @@
+README.md
+  h_bdc5b81c173ee9 138-142
+scripts/ci-utils.mjs
+  h_bdc5b81c173ee9 94,131,148
+scripts/ci-utils.test.mjs
+  h_bdc5b81c173ee9 1-37
+sendfn/python/tests/conftest.py
+  h_bdc5b81c173ee9 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "45866650941267071940c2d45f1718dbb8f5f269",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
