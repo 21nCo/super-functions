@@ -77,6 +77,12 @@ The pack command checks committed generated inputs, then runs declared build,
 typecheck (or `type-check`) and test scripts followed by `npm pack` lifecycle
 hooks. Regenerate/sign catalogs before tagging; packing never regenerates them.
 The workflow publishes the **exact tarball**, with lifecycle scripts disabled.
+Packing embeds the checked-out commit as `gitHead` and restores the source
+manifest byte-for-byte, including on pack failure, so tarball publication keeps
+verifiable registry lineage.
+React component gates resolve React/ReactDOM from the installed test renderer's
+peer tree, keeping workspace and package-local runs coherent without first-party
+source aliases or dependency-version changes.
 Stable releases use `latest`; prereleases use their first identifier, such as
 `experimental` or `rc`. Numeric/range-like, noncanonical and `latest` prerelease
 channels fail rather than overwriting stable installations. `@uifn/patterns`
