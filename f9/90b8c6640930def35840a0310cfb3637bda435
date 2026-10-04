@@ -1,0 +1,24 @@
+apifn/admin/package.json
+  h_bdc5b81c173ee9 36-39,43
+apifn/admin/src/__tests__/admin.test.ts
+  h_bdc5b81c173ee9 1,37
+billfn/admin/package.json
+  h_bdc5b81c173ee9 36-39,42
+botfn/admin/package.json
+  h_bdc5b81c173ee9 35-36,39
+package-lock.json
+  h_bdc5b81c173ee9 82,86,89-91,98,113,130,4595,4598,4602-4604,4611,4626,4643,5739,5742-5744
+packages/admin/README.md
+  h_bdc5b81c173ee9 123-127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f990b8c6640930def35840a0310cfb3637bda435",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
