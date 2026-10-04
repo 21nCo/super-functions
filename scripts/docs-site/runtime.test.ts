@@ -13,7 +13,7 @@ const config: DocsConfig = {
   site: { title: "Contract test", basePath: "/docs" },
   content: { root: ".", docsDir: "guide", pagesDir: "pages", blogDir: "blog", apiDir: "api", assetsDir: "static", metaFileName: "META.json" },
   navigation: { sidebars: { docs: { root: true, include: ["docs/**"] } } },
-  search: { enabled: false },
+  search: { enabled: false, scopes: ["docs"] },
 };
 beforeEach(() => { vi.mocked(buildManifest).mockClear(); });
 
@@ -56,6 +56,16 @@ describe("bundled DocsFn provider", () => {
     ].sort());
     expect(entries.find(({ relativePath }) => relativePath === "META.json")?.entryType).toBe("control");
     expect(entries.find(({ collection }) => collection === "assets")?.bytes).toBe(5);
+  });
+
+  it.each(["txt", "json", "yaml", "yml", "md", "mdx"])("preserves published UTF-8 metadata for %s assets", async (extension) => {
+    const runtime = createDocsSiteRuntime(config, {}, { [`../../../static/input.${extension}`]: "café\n" });
+    await runtime.loadDocsSiteSource();
+    const provider = vi.mocked(buildManifest).mock.calls[0][0];
+    const entries = await provider.listEntries({ config, collections: ["assets"] });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ collection: "assets", relativePath: `input.${extension}`, bytes: 6 });
+    expect(entries[0].updatedAt).toBeUndefined();
   });
 
   it("shares successful initialization, caches compiled pages, and rejects unknown IDs", async () => {

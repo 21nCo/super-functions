@@ -6,10 +6,10 @@ From the repository root:
 
 ```sh
 npm --workspace @botfn/docs run dev
-npm --workspace @botfn/docs run build
+npm exec -- turbo run build --filter=@botfn/docs
 ```
 
-The build regenerates `static/llms.txt` and `static/llms-full.txt`. For CLI validation, first build the SearchFn workspace dependencies from the repository root (the Vite site build uses source aliases and does not require these separate builds):
+The normal Turbo build schedules the declared SearchFn peer and regenerates `static/llms.txt` and `static/llms-full.txt`. Before invoking tests or the CLI directly on a fresh workspace install, build its physical SearchFn dependencies from the repository root:
 
 ```sh
 npm run build --workspace @searchfn/core

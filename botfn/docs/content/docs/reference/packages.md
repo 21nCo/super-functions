@@ -1,18 +1,33 @@
 ---
 title: Packages
-description: Current BotFn package map and entry points.
+description: Current BotFn package map and public entry points.
 ---
 
-| Package | Role |
+| Package | Role and public entry point |
 | --- | --- |
-| `@botfn/discord-bot` | Cloudflare Discord interactions Worker; `botfn/bot-discord/src/index.cloudflare.ts`. |
-| `@botfn/bot-slack` | Private Slack events Worker; `botfn/bot-slack/src/index.ts`. |
-| `@botfn/persistence-service` | PostgreSQL-backed tRPC Worker and client; `botfn/persistence/src`. |
-| `@botfn/discord-core` | Discord signature verification and interaction helpers. |
-| `@botfn/slack-core` | Slack signature verification. |
-| `@botfn/github-integration` | GitHub App auth, request client, and one-off requests. |
-| `@botfn/linear-integration` | Linear GraphQL client and issue/team helpers. |
-| `@botfn/shared-types` | Shared Zod schemas and TypeScript types. |
-| `@botfn/admin` | Optional Super Console capability, client, adapter, and operator service. |
+| `@superfunctions/botfn-discord-bot` | Cloudflare Discord interactions Worker; root exports the compiled app, `/core` exports `createBotApp`. |
+| `@superfunctions/botfn-bot-slack` | Private Slack events Worker; repository entry `botfn/bot-slack/src/index.ts`, not an npm consumer API. |
+| `@superfunctions/botfn-persistence-service` | PostgreSQL-backed tRPC Worker; `/client` exports `createPersistenceClient`, `/core` exports `createPersistenceApp`. |
+| `@superfunctions/botfn-discord-core` | Discord signature verification and interaction helpers. |
+| `@superfunctions/botfn-slack-core` | Slack signature verification. |
+| `@superfunctions/botfn-github-integration` | GitHub App auth, request client, and one-off requests. |
+| `@superfunctions/botfn-linear-integration` | Linear GraphQL client and issue/team helpers. |
+| `@superfunctions/botfn-shared-types` | Shared Zod schemas and TypeScript types. |
+| `@superfunctions/botfn-admin` | Optional Super Console capability, client, adapter, and operator service. |
 
-The GitHub, Linear, Discord core, and shared-types package manifests currently point exports at TypeScript source. The Slack core package builds ESM and CJS outputs. Check a package's manifest and the chosen runtime or bundler before importing it outside this workspace.
+Public BotFn libraries use the controlled `@superfunctions/botfn-*` namespace.
+The old `@botfn` npm user scope belongs to an unrelated account; no compatibility
+aliases are provided. The private documentation workspace remains `@botfn/docs`
+and is not a published library.
+
+Discord core, GitHub, Linear, and shared-types packages export compiled ESM and
+TypeScript declarations, not TypeScript source. The Discord bot and persistence
+service also export compiled ESM and declarations; import the persistence client
+from `@superfunctions/botfn-persistence-service/client`, never `/src/client`.
+Slack core provides compiled ESM and CommonJS. Build source checkouts before using
+these exports or packing them; do not substitute source deep imports.
+
+The Discord bot depends on the shared-types, discord-core, GitHub, Linear, and
+persistence-service foundations at their declared versions. Install or release
+those prerequisites first. Local workspace builds verify source compatibility,
+not registry publication or a running Worker.

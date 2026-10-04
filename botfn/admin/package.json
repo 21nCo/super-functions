@@ -1,5 +1,5 @@
 {
-  "name": "@botfn/admin",
+  "name": "@superfunctions/botfn-admin",
   "version": "0.1.0",
   "description": "Function-owned Super Console administration capability for BotFn",
   "type": "module",

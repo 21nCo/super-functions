@@ -1,13 +1,10 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import { createPlugFnRouter } from '../src/router/http-router.js';
-import { ProviderRegistry } from '../src/core/provider-registry.js';
-import { githubProvider } from '../../providers/src/github/index.js';
-import { linearProvider } from '../../providers/src/linear/index.js';
-import { clickupProvider } from '../../providers/src/clickup/index.js';
-import { gmailProvider } from '../../providers/src/gmail/index.js';
-import { WebhookHandler } from '../src/webhooks/webhook-handler.js';
-import { NoopLogger } from '../src/utils/logger.js';
+import { createPlugFnRouter, ProviderRegistry, WebhookHandler, NoopLogger } from 'plugfn';
+import { githubProvider } from '../src/github/index.js';
+import { linearProvider } from '../src/linear/index.js';
+import { clickupProvider } from '../src/clickup/index.js';
+import { gmailProvider } from '../src/gmail/index.js';
 
 const encoder = new TextEncoder();
 

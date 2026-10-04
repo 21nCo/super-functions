@@ -1,5 +1,5 @@
 {
-  "name": "@botfn/bot-slack",
+  "name": "@superfunctions/botfn-bot-slack",
   "version": "0.0.1",
   "description": "Slack bot integration",
   "private": true,
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "hono": "^4.0.0",
-    "@botfn/slack-core": "^0.0.1"
+    "@superfunctions/botfn-slack-core": "^0.0.1"
   },
   "devDependencies": {
     "wrangler": "^3.0.0",

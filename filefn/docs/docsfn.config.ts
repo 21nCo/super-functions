@@ -26,7 +26,7 @@ const config: DocsConfig = {
     topNav: [
       { label: "Docs", href: "/docs" },
       { label: "API Reference", href: "/docs/api" },
-      { label: "Blog", href: "/blog" },
+      { label: "Blog", href: "/docs/blog" },
       {
         label: "GitHub",
         href: "https://github.com/21nCo/super-functions/tree/dev/filefn",

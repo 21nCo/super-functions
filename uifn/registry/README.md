@@ -109,6 +109,21 @@ npm test
 npm run build
 ```
 
+Run these commands from the registry package directory after installing its
+declared dependencies with `npm install --workspaces=false --package-lock=false`.
+`npm pack --json` repeats all four gates through `prepack`.
+
+Generation intentionally uses the repository's canonical phase-16 delivery
+generator and React fixture source; it needs the full source checkout but no
+root-installed toolchain or built sibling packages. After changing canonical
+source or adapter dependency versions, run `npm run generate` and commit the
+generated catalog, templates, delivery manifest, and preset fixture source.
+If catalog bytes changed, re-sign them with the pinned maintainer key using
+the procedure above before running the gates. Never edit generated output
+or replace signature validation to bypass drift. The packed runtime bundles
+its catalog, detached signature, and fixture source and does not read sibling
+packages or repository generator scripts in a consumer install.
+
 The repository-wide delivery gate also creates independent package/source consumers for React, Svelte, and Solid and verifies type checking, production build, SSR, hydration, browser semantics, accessibility, and semantic-trace equivalence.
 
 ### Preset applies and npm lockfiles

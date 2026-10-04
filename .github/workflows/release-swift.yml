@@ -1,0 +1,56 @@
+name: Release tagged Swift source
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Immutable root SwiftPM source tag v<semver>, not an npm or Python tag'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-swift-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require immutable root source tag
+        run: node scripts/assert-release-ref.mjs "${RELEASE_TAG}"
+      - name: Resolve root Swift release version
+        id: resolve
+        run: node scripts/swift-release.mjs resolve "${RELEASE_TAG}"
+      - name: Resolve, build all 12 library products and test on macOS
+        run: node scripts/swift-release.mjs validate "${RELEASE_TAG}"
+      - name: Archive the immutable source tag
+        id: archive
+        run: node scripts/swift-release.mjs archive "${RELEASE_TAG}"
+      - name: Recheck immutable root source tag
+        run: node scripts/assert-release-ref.mjs "${RELEASE_TAG}"
+      - name: Create source GitHub release without replacing existing releases
+        env:
+          SOURCE_ARCHIVE: ${{ steps.archive.outputs.source_archive }}
+          PRERELEASE: ${{ steps.resolve.outputs.prerelease }}
+        run: |
+          if [ "${PRERELEASE}" = "true" ]; then
+            gh release create "${RELEASE_TAG}" "${SOURCE_ARCHIVE}" --verify-tag --title "SuperfunctionsSwift ${RELEASE_TAG}" --generate-notes --prerelease --latest=false
+          else
+            gh release create "${RELEASE_TAG}" "${SOURCE_ARCHIVE}" --verify-tag --title "SuperfunctionsSwift ${RELEASE_TAG}" --generate-notes --latest
+          fi

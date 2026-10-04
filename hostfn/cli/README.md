@@ -55,13 +55,12 @@ npm install -g hostfn
 ### via source
 
 ```bash
-# Clone repository
-cd hostfn/
-# Install dependencies
-npm install
-# Build the project
+# From the super-functions repository root
+cd hostfn/cli
+# Install only this package's dependencies
+npm install --workspaces=false
+# Build the CLI and operator artifacts
 npm run build
-cd packages/cli
 npm link
 ```
 
@@ -72,6 +71,31 @@ npm link
 hostfn --version
 hostfn --help
 ```
+
+### Operator API
+
+The Node.js operator API is exported separately from the CLI:
+
+```ts
+import {
+  HostFnOperatorService,
+  MemoryHostFnOperatorStore,
+  type HostFnDeploymentExecutor,
+} from "hostfn/operator";
+```
+
+Importing `hostfn/operator` does not parse command-line arguments or initialize CLI
+runtime adapters. It supports the same Node.js >=18 runtime as the CLI, including
+processes without a global Web Crypto object. Inject a `HostFnDeploymentExecutor`
+to perform provider operations; the memory store is reference persistence for
+development and single-process installations. `@hostfn/admin` consumes this
+published subpath, not sibling source files.
+
+Domain attachment persists a pending intent before provider work, transitions to
+active on success or failed on provider failure, and reuses the same domain ID
+when retried. Executors must make attachment retries idempotent for that ID.
+Successful detach removes the stored intent. Provider-work leases must be
+reclaimable in durable store implementations.
 
 ---
 
@@ -1075,10 +1099,10 @@ hostfn/
 ## Development
 
 ```bash
-# Clone and setup
-git clone <repo>
-cd hostfn
-npm install
+# Clone and install this package
+git clone https://github.com/21nCo/super-functions.git
+cd super-functions/hostfn/cli
+npm install --workspaces=false
 
 # Build
 npm run build
@@ -1089,16 +1113,20 @@ npm run dev
 # Lint
 npm run lint
 
-# Test
-npm run test
+# Run tests once (use npm run test:watch for watch mode)
+npm test
 
-# Link for local testing
-cd packages/cli
+# Link the built CLI for local testing
 npm link
 
 # Use globally
 hostfn --help
 ```
+
+`npm pack --workspaces=false` runs the package's build first. The tarball contains
+the compiled CLI, `dist/operator.js`, and `dist/operator.d.ts`; test sources and
+compiled tests are excluded. Workspace deployment support uses the runtime
+`fast-glob` dependency and does not require this package's development tools.
 
 ### Project Structure
 

@@ -21,6 +21,7 @@ import {
   type DocsSearchRuntime,
   type DocsSourceEntry,
 } from "@docsfn/core";
+import { assertDocsBlogMount } from "./blog";
 
 export interface DocsSiteSource {
   siteRoot: string;
@@ -182,6 +183,7 @@ export function createDocsSiteRuntime(
   bundledContent: Record<string, string>,
   bundledStatic: Record<string, string>,
   modulePrefix = "../../../",
+  options: { mountBlogAtDocs?: boolean } = {},
 ) {
   let serverStatePromise: Promise<DocsSiteServerState> | null = null;
   async function loadDocsSiteServerState(): Promise<DocsSiteServerState> {
@@ -190,6 +192,7 @@ export function createDocsSiteRuntime(
         const config = docsConfig satisfies DocsConfig;
         const provider = createBundledContentProvider(config);
         const manifest = await buildManifest(provider, config);
+        if (options.mountBlogAtDocs) assertDocsBlogMount(manifest);
         const searchArtifact = await buildSearchIndex(manifest, {
           search: config.search,
           auth: config.auth,

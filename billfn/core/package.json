@@ -27,7 +27,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@superfunctions/db": "*",
+    "@superfunctions/db": "0.3.0",
     "@superfunctions/envelope": "*",
     "@superfunctions/errors": "*",
     "@superfunctions/http": "*",

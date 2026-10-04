@@ -45,19 +45,6 @@ const steps = [
     args: ['--prefix', 'plugfn/core', 'test', '--', '--run'],
   },
   {
-    name: 'typescriptE2E',
-    command: 'npm',
-    args: [
-      '--prefix',
-      'plugfn/core',
-      'test',
-      '--',
-      '--run',
-      'tests/e2e/oauth-callback.test.ts',
-      'tests/e2e/webhook-verification.test.ts',
-    ],
-  },
-  {
     name: 'clientBuild',
     command: 'npm',
     args: ['--prefix', 'plugfn/client', 'run', 'build'],
@@ -91,6 +78,20 @@ const steps = [
     name: 'providersTests',
     command: 'npm',
     args: ['--prefix', 'plugfn/providers', 'test', '--', '--run'],
+  },
+  {
+    name: 'providersE2E',
+    command: 'npm',
+    args: [
+      '--prefix',
+      'plugfn/providers',
+      'test',
+      '--',
+      '--run',
+      'tests/webhook-raw-body.test.ts',
+      'tests/e2e/oauth-callback.test.ts',
+      'tests/e2e/webhook-verification.test.ts',
+    ],
   },
   {
     name: 'providerGateGithub',

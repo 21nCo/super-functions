@@ -6,9 +6,7 @@ import type { Metadata } from "next";
 
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ??
-  (process.env.VERCEL_PROJECT_PRODUCTION_URL
-    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-    : "http://localhost:6002");
+  "https://searchfn.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

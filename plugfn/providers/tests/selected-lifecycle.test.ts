@@ -2,9 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import * as providers from "../src/index.js";
 import { selectedCatalog } from "./selected-catalog.js";
-import { plugFn } from "../../core/src/core/plug-fn.js";
-import { MemoryAdapter } from "../../core/src/storage/adapters/memory.js";
-import type { Provider, OAuth2Config } from "../../core/src/types/provider.js";
+import { plugFn, MemoryAdapter, type Provider, type OAuth2Config } from "plugfn";
 import { oauthProviderDescriptors } from "@superfunctions/oauth-providers";
 import { zodToJsonSchema } from "zod-to-json-schema";
 

@@ -91,6 +91,7 @@ export function parsePyprojectManifest(rootDir, relativePath) {
   let section = "";
   let name = null;
   let dependencies = [];
+  let devDependencies = [];
   let hasDevDependencyGroup = false;
   let hasRuff = false;
   let hasMypy = false;
@@ -127,6 +128,7 @@ export function parsePyprojectManifest(rootDir, relativePath) {
     if (section === "project.optional-dependencies" && trimmed.startsWith("dev = [")) {
       hasDevDependencyGroup = true;
       const parsed = readTomlArray(lines, cursor);
+      devDependencies = parsed.items.map(normalizeDependencyName).filter(Boolean);
       if (parsed.items.length > 0) {
         hasPytest ||= parsed.items.some((item) => item.startsWith("pytest"));
         hasMypy ||= parsed.items.some((item) => item.startsWith("mypy"));
@@ -143,7 +145,7 @@ export function parsePyprojectManifest(rootDir, relativePath) {
     dir: path.dirname(relativePath),
     file: relativePath,
     name: name || path.dirname(relativePath),
-    dependencies,
+    dependencies: [...dependencies, ...devDependencies],
     hasDevDependencyGroup,
     hasMypy,
     hasPytest,

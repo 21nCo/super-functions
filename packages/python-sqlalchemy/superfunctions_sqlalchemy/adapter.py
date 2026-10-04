@@ -54,7 +54,7 @@ class SQLAlchemyAdapter:
         # Metadata
         self.id = "sqlalchemy"
         self.name = "SQLAlchemy Adapter"
-        self.version = "0.1.0"
+        self.version = "0.1.1"
         self.capabilities = AdapterCapabilities(
             transactions=True,
             nestedTransactions=False,

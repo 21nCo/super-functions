@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createPlugFnRouter } from '../../src/router/http-router.js';
-import { plugFn } from '../../src/core/plug-fn.js';
-import { githubProvider } from '../../../providers/src/github/index.js';
-import { MemoryAdapter } from '../../src/storage/adapters/memory.js';
-import { DEFAULT_PLUGFN_STORAGE_MODELS } from '../../src/storage/adapters/database.js';
+import { createPlugFnRouter, plugFn, MemoryAdapter, DEFAULT_PLUGFN_STORAGE_MODELS } from 'plugfn';
+import { githubProvider } from '../../src/github/index.js';
 
 const BASE_URL = 'https://app.example.com';
 const REDIRECT_URI = 'https://app.example.com/oauth/callback';

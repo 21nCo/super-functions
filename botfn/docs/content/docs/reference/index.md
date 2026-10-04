@@ -3,7 +3,7 @@ title: Reference
 description: BotFn package and runtime contract index.
 ---
 
-- [Packages](/docs/reference/packages) maps npm names to source entry points and current roles.
+- [Packages](/docs/reference/packages) maps package names to compiled public exports and current roles.
 - [Commands and routes](/docs/reference/commands-and-routes) lists the Discord, Slack, persistence, and admin operation surfaces.
 - [Configuration](/docs/reference/configuration) lists the bindings and credentials used by each service.
 

@@ -31,7 +31,7 @@ function legacyContext(projectId: string): AdminOperationContext {
   return { ...context(projectId), scope: { organizationId: "installation", workspaceId: "workspace", projectId } };
 }
 
-describe("@botfn/admin", () => {
+describe("@superfunctions/botfn-admin", () => {
   it("publishes a valid optional operator surface", () => {
     expect(validateAdminCapabilityManifest(botFnAdminCapability)).toEqual([]);
     expect(botFnAdminCapability.availability).toBe("optional-product");

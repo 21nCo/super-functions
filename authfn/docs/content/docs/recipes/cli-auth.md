@@ -37,30 +37,44 @@ const response = await fetch('https://api.acme.com/projects', {
 
 ## Server-side authentication
 
-Your protected endpoint authenticates via `auth.provider`:
+Your protected endpoint authenticates via `auth.provider` and uses `hasScope` to return HTTP 403 before loading protected data. Here `auth` is your AuthFn server and `app` is your application's HTTP router:
 
 ```ts
+import type { AuthFnSession } from 'authfn';
+
+function hasScope(session: AuthFnSession, scope: string): boolean {
+  const scopes = session.metadata?.scopes;
+  return Array.isArray(scopes) && scopes.includes(scope);
+}
+
 app.get('/projects', async (c) => {
-  const session = await auth.provider.authenticate(c.req.raw);
+  let session: AuthFnSession | null;
+  try {
+    session = await auth.provider.authenticate(c.req.raw);
+  } catch (error) {
+    if (error !== null && typeof error === 'object' &&
+        'code' in error && error.code === 'AUTHFN_API_KEY_REVOKED') {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    throw error;
+  }
   if (!session || session.actorType !== 'api-key') {
     return c.json({ error: 'unauthorized' }, 401);
   }
+  if (!hasScope(session, 'read')) {
+    return c.json({ error: 'forbidden' }, 403);
+  }
   // session.actorId === api key id
-  // session.subject.attributes.scopes === ['read', 'write']
-  return c.json({ projects: [...] });
+  // session.metadata.scopes === ['read', 'write']
+  return c.json({ projects: [] }); // Replace with your application's project data.
 });
 ```
 
+Missing, invalid, expired, revoked, or non-API-key credentials receive HTTP 401. The catch only handles the expected revocation error from authentication; unexpected provider failures and failures while loading project data remain host application errors. Active keys lacking `read` receive HTTP 403.
+
 ## Per-key scopes
 
-Authorization is up to your application:
-
-```ts
-function require(session: AuthFnSession, scope: string) {
-  const scopes = session.subject.attributes?.scopes ?? [];
-  if (!scopes.includes(scope)) throw new Error('forbidden');
-}
-```
+Authorization is up to your application. `hasScope` in the server snippet above checks that `session.metadata.scopes` is an array containing the exact required scope. The handler owns the HTTP 403 response instead of throwing a generic error.
 
 ## Refreshing keys
 
