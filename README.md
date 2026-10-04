@@ -102,6 +102,9 @@ or `a`/`b`/`rc` prereleases; local, dev, post and epoch versions are not support
 PyPI/pip prerelease selection is preserved: publishing a prerelease does not
 promote it to a stable release. The registry gate rejects occupied versions and
 versions at or below the newest stable release.
+Tag parsing checks the supported project before validating PEP 440, without a
+backtracking name/version regex. The PyPI publisher action is pinned to an
+immutable commit from its official `release/v1` branch.
 
 Use a fresh Python 3.12 virtual environment **per package**:
 

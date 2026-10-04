@@ -4,7 +4,6 @@ from email.parser import BytesParser
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
@@ -39,10 +38,10 @@ TEST_FIXTURES = {"billfn": ("examples/mock_api.py",)}
 
 
 def resolve(tag, root=ROOT):
-    match = re.fullmatch(r"python-([a-z][a-z0-9-]*)-v([A-Za-z0-9.!+_-]+)", tag)
-    if not match or match[1] not in TARGETS:
+    prefix, separator, version = tag.rpartition("-v")
+    name = prefix.removeprefix("python-")
+    if not separator or prefix != f"python-{name}" or name not in TARGETS:
         raise ValueError("Expected python-<supported-project>-v<PEP440-version>")
-    name, version = match.groups()
     parsed = Version(version)
     if str(parsed) != version or parsed.local is not None or parsed.is_devrelease or parsed.is_postrelease or parsed.epoch:
         raise ValueError("Use a canonical stable or a/b/rc prerelease version without local, epoch, dev or post identifiers")
