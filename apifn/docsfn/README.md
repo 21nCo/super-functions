@@ -62,6 +62,9 @@ The package root (`@apifn/docsfn`) exports the provider and types. Renderer comp
 
 Pass each `RawContentEntry` returned by the provider to the renderer used by your docsfn integration.
 
+React endpoint headers are native disclosure buttons with an expanded-state
+announcement, so collapsed endpoints remain reachable and operable by keyboard.
+
 ```tsx
 import { ApifnApiReference } from "@apifn/docsfn/react";
 
