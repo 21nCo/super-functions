@@ -120,6 +120,11 @@ canonical domain operator service declares `availability: "unavailable"`, an
 `unavailableReason`, and no operations/navigation; registry startup rejects an
 attempt to enable it.
 
+ApiFn, BillFn, and BotFn admin wrappers require `@superfunctions/admin@^0.1.4`
+as a peer dependency. Install that shared client in the consuming application;
+the wrappers use the same `AdminClient` type and runtime instance rather than
+bundling a second version with incompatible private class declarations.
+
 `presentation` is optional, non-authoritative metadata for generic operator
 pages. Operation references must name reads for the same resource, dotted field
 paths are validated against declared output schemas when possible, and default
