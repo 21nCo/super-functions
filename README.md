@@ -91,9 +91,20 @@ existing stable `latest`. For an already-published prerelease, dispatch its
 immutable release tag with `channel_only=true`: this verifies registry identity
 and reconciles tags without installing, packing or republishing the artifact.
 `@uifn/patterns` and `@uifn/sf` remain experimental. Publication retains the
-existing `NPM_TOKEN`/`NODE_AUTH_TOKEN` mechanism; the token must have publish
-permission for the selected package. A missing/invalid token or occupied version
-fails. BotFn libraries use the controlled `@superfunctions/botfn-*` names;
+existing `NPM_TOKEN`/`NODE_AUTH_TOKEN` mechanism for direct publication.
+Prerelease tag reconciliation runs in a separate job using npm 11.21.0 and
+`id-token: write`; package install/build/test steps receive no OIDC permission.
+The channel job does not receive `NPM_TOKEN`. For each prerelease package, enroll
+a GitHub Actions trusted publisher on npm with organization/user `21nCo`,
+repository `super-functions`, workflow filename `publish-tag.yml`, no environment
+name, and **Allow npm dist-tag** enabled. Direct `npm publish` permission is not
+needed for this connection; preserve the existing token publishing policy.
+See [npm's dist-tag OIDC requirements](https://docs.npmjs.com/trusted-publishers#managing-dist-tags-with-trusted-publishing).
+Publish authorization does not imply dist-tag authorization. A denied cleanup
+fails the workflow even if the artifact was published; verify its registry
+channel before declaring the release complete. Missing authorization or an
+occupied version fails rather than silently relaxing channel policy.
+BotFn libraries use the controlled `@superfunctions/botfn-*` names;
 the foreign npm user scope `@botfn` is not a publish target.
 Publish the required internal npm dependency closure before its consumers.
 

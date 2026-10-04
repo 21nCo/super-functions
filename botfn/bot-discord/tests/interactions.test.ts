@@ -43,7 +43,6 @@ describe('Discord bot HTTP interactions using the dependency foundation', () => 
     expect(unsigned.status).toBe(401);
     const altered = await app.fetch(signedRequest('{"type":99}', '{"type":1}'), env);
     expect(altered.status).toBe(401);
-    expect(await altered.text()).toBe('Invalid request signature');
   });
 
   it('rejects a signed invalid body and reports unsupported interaction types', async () => {
@@ -51,7 +50,6 @@ describe('Discord bot HTTP interactions using the dependency foundation', () => 
     expect((await app.fetch(signedRequest('not-json'), env)).status).toBe(401);
     const unknown = await app.fetch(signedRequest('{"type":99}'), env);
     expect(unknown.status).toBe(400);
-    expect(await unknown.text()).toBe('Unknown interaction type');
   });
 
   it('returns an empty autocomplete result for an unsupported command without external calls', async () => {

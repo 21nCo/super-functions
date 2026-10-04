@@ -30,6 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+    outputs:
+      dist_tag: ${{ steps.resolve.outputs.dist_tag }}
 
     steps:
       - name: Checkout
@@ -78,10 +80,50 @@ jobs:
           TARBALL: ${{ steps.pack.outputs.tarball }}
           DIST_TAG: ${{ steps.resolve.outputs.dist_tag }}
 
+
+      - name: Verify published McpFn consumer from configured registry
+        if: '!inputs.channel_only && (steps.resolve.outputs.pkg_name == ''@mcpfn/testing'' || steps.resolve.outputs.pkg_name == ''@mcpfn/cli'')'
+        run: node ./scripts/test-mcpfn-registry-install.mjs "${{ steps.resolve.outputs.pkg_name }}" "${{ steps.resolve.outputs.pkg_version }}" "${NPM_CONFIG_REGISTRY}"
+        env:
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+
+  reconcile-channel:
+    needs: publish
+    if: needs.publish.outputs.dist_tag != 'latest'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+
+    steps:
+      - name: Checkout immutable artifact source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Setup OIDC dist-tag client
+        run: npm install --global npm@11.21.0 --ignore-scripts --registry=https://registry.npmjs.org
+
+      - name: Require immutable release tag
+        run: node ./scripts/assert-release-ref.mjs "${RELEASE_TAG}"
+
+      - name: Resolve publish target
+        id: resolve
+        run: node ./scripts/resolve-release-tag.mjs "${RELEASE_TAG}"
+
       - name: Keep prereleases off latest
         if: steps.resolve.outputs.dist_tag != 'latest'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ''
           PACKAGE_NAME: ${{ steps.resolve.outputs.pkg_name }}
           PACKAGE_VERSION: ${{ steps.resolve.outputs.pkg_version }}
           DIST_TAG: ${{ steps.resolve.outputs.dist_tag }}
@@ -111,9 +153,3 @@ jobs:
           }
           console.log(`${name}@${version} remains on ${distTag}, not latest.`);
           NODE
-
-      - name: Verify published McpFn consumer from configured registry
-        if: '!inputs.channel_only && (steps.resolve.outputs.pkg_name == ''@mcpfn/testing'' || steps.resolve.outputs.pkg_name == ''@mcpfn/cli'')'
-        run: node ./scripts/test-mcpfn-registry-install.mjs "${{ steps.resolve.outputs.pkg_name }}" "${{ steps.resolve.outputs.pkg_version }}" "${NPM_CONFIG_REGISTRY}"
-        env:
-          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
