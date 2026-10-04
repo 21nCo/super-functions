@@ -1,0 +1,25 @@
+devfn/core/src/endpoints.ts
+  s_ad500513bc9987::t_b7ce50e6d5f087 17-18,231,259-262,272
+devfn/compose/test/override.test.ts
+  s_ad500513bc9987::t_b7ce50e6d5f087 7,12-28
+devfn/compose/src/index.ts
+  s_ad500513bc9987::t_b7ce50e6d5f087 86-106
+devfn/core/test/endpoints.test.ts
+  s_ad500513bc9987::t_2dfd2fdb460f28 107,114-131,157,185,200-201,208,335,413,416
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6dca2e3b7e6714c3a4c04b4a157e6e714fad4fdc",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
