@@ -23,7 +23,7 @@
   "author": "21n",
   "license": "MIT",
   "dependencies": {
-    "plugfn": "0.1.0"
+    "plugfn": "0.2.0"
   },
   "publishConfig": {
     "access": "public"

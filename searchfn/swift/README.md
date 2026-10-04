@@ -112,6 +112,16 @@ let ids = try await client.search(
 try await client.dispose()
 ```
 
+## Ranking
+
+The built-in Swift engine scores original tokens with BM25-style term-frequency saturation and document-length normalization. Generated edge n-grams remain available through `analyze`, but do not add duplicate ranking evidence or inflate document lengths: prefix searches expand against the original-token vocabulary. An exact-only query does not silently match an indexed prefix.
+
+Field boosts multiply the complete BM25 contribution, after saturation (including the additive `d` term). Prefix expansions use a `0.7` multiplier and fuzzy-only expansions use `0.5`; if both expansions select the same term, only the stronger contribution is retained. This keeps comparable exact matches above prefix matches, and prefix matches above fuzzy-only matches, without counting an indexed prefix and its full word twice. Frequency, length, rarity, and explicit field boosts still affect relevance; the match types are penalties, not absolute ranking tiers.
+
+The memory and SQLite adapters compute BM25 statistics independently per resource. Native `searchAll` divides each resource's scores by its best match's score before merging, then sorts by `score DESC, resource ASC, id ASC` and applies the overall limit. Equally strong top matches therefore tie at `1.0` even when resource sizes differ. Relative ordering within each resource is preserved; normalized scores are not probabilities or globally calibrated relevance. In particular, a resource containing only fuzzy matches can tie another resource's best exact match. Use `limitPerResource` for diversity or rerank when absolute cross-resource relevance is needed.
+
+These are the Swift built-in adapters' ranking rules; raw scores should not be compared with TypeScript or external-backend scores. The low-level public `searchFnScorePostings` helper still accepts caller-supplied posting chunks and IDF values without resource normalization.
+
 ## Persistence Ownership
 
 The SQLite adapter stores SearchFn-owned derived search state under a caller-supplied root directory:

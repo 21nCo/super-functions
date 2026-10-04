@@ -109,9 +109,13 @@ Other exported providers may still be useful, but they should be treated accordi
 
 See [../docs/provider-readiness-matrix.md](../docs/provider-readiness-matrix.md).
 
-## Legacy OAuth compatibility
+## OAuth migration
 
-The legacy `plugfn/auth/oauth-flow` path remains a temporary compatibility surface. Prefer the shared OAuth package family for new code.
+Version 0.2.0 removes the legacy `OAuthFlowHandler` export and
+`plugfn/auth/oauth-flow` compatibility module at their announced removal target.
+Use `createOAuthFlowService` from `@superfunctions/oauth-flow` with the shared
+HTTP/storage packages. The connection manager already uses this canonical stack;
+there is no legacy delegate or import-time deprecation shim.
 
 ## Browser safety
 

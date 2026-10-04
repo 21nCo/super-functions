@@ -1,4 +1,4 @@
-import { getGitHubAppToken } from './auth';
+import { getGitHubAppToken } from './auth.js';
 
 export interface GitHubClientConfig {
   appId: string;

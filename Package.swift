@@ -1,33 +1,5 @@
 // swift-tools-version: 5.9
-import Foundation
 import PackageDescription
-
-let fileManager = FileManager.default
-let developerFrameworkSearchPath: String? = {
-    let commandLineToolsPath = "/Library/Developer/CommandLineTools/Library/Developer/Frameworks"
-    if fileManager.fileExists(atPath: commandLineToolsPath) {
-        return commandLineToolsPath
-    }
-
-    if let developerDirectory = ProcessInfo.processInfo.environment["DEVELOPER_DIR"] {
-        let candidate = URL(fileURLWithPath: developerDirectory)
-            .appendingPathComponent("Library/Developer/Frameworks", isDirectory: true)
-            .path
-        if fileManager.fileExists(atPath: candidate) {
-            return candidate
-        }
-    }
-
-    return nil
-}()
-
-let testSwiftSettings: [SwiftSetting] = developerFrameworkSearchPath.map {
-    [.unsafeFlags(["-F", $0])]
-} ?? []
-
-let testLinkerSettings: [LinkerSetting] = developerFrameworkSearchPath.map {
-    [.unsafeFlags(["-F", $0, "-Xlinker", "-rpath", "-Xlinker", $0])]
-} ?? []
 
 let package = Package(
     name: "SuperfunctionsSwift",
@@ -48,12 +20,6 @@ let package = Package(
         .library(name: "SearchFnSQLiteAdapter", targets: ["SearchFnSQLiteAdapter"]),
         .library(name: "SearchFnClient", targets: ["SearchFnClient"]),
         .library(name: "SearchFnConvenience", targets: ["SearchFnConvenience"]),
-    ],
-    dependencies: [
-        .package(
-            url: "https://github.com/swiftlang/swift-testing.git",
-            revision: "980fec0f03c56f771acfcc5be472d44df9245117"
-        ),
     ],
     targets: [
         .target(name: "AuthFnClient", path: "authfn/swift/Sources/AuthFnClient"),
@@ -135,7 +101,6 @@ let package = Package(
             name: "FileFnClientTests",
             dependencies: [
                 "FileFnClient",
-                .product(name: "Testing", package: "swift-testing"),
             ],
             path: "filefn/swift/Tests/FileFnClientTests"
         ),
@@ -143,7 +108,6 @@ let package = Package(
             name: "FileFnWebViewBridgeHostTests",
             dependencies: [
                 "FileFnWebViewBridgeHost",
-                .product(name: "Testing", package: "swift-testing"),
             ],
             path: "filefn/swift/Tests/FileFnWebViewBridgeHostTests"
         ),
@@ -153,7 +117,6 @@ let package = Package(
                 "FileFnSwiftUI",
                 "FileFnClient",
                 "FileFnWebViewBridgeHost",
-                .product(name: "Testing", package: "swift-testing"),
             ],
             path: "filefn/swift/Tests/FileFnSwiftUITests"
         ),
@@ -161,7 +124,6 @@ let package = Package(
             name: "FileFnIntegrationTests",
             dependencies: [
                 "FileFnClient",
-                .product(name: "Testing", package: "swift-testing"),
             ],
             path: "filefn/swift/Tests/FileFnIntegrationTests"
         ),
@@ -172,9 +134,7 @@ let package = Package(
                 "SearchFnClient",
                 "SearchFnConvenience",
             ],
-            path: "searchfn/swift/Tests/SearchFnClientTests",
-            swiftSettings: testSwiftSettings,
-            linkerSettings: testLinkerSettings
+            path: "searchfn/swift/Tests/SearchFnClientTests"
         ),
         .testTarget(
             name: "SearchFnCoreTests",
@@ -182,9 +142,7 @@ let package = Package(
                 "SearchFnAdapterContracts",
                 "SearchFnCore",
             ],
-            path: "searchfn/swift/Tests/SearchFnCoreTests",
-            swiftSettings: testSwiftSettings,
-            linkerSettings: testLinkerSettings
+            path: "searchfn/swift/Tests/SearchFnCoreTests"
         ),
         .testTarget(
             name: "SearchFnMemoryAdapterTests",
@@ -194,9 +152,7 @@ let package = Package(
                 "SearchFnConvenience",
                 "SearchFnMemoryAdapter",
             ],
-            path: "searchfn/swift/Tests/SearchFnMemoryAdapterTests",
-            swiftSettings: testSwiftSettings,
-            linkerSettings: testLinkerSettings
+            path: "searchfn/swift/Tests/SearchFnMemoryAdapterTests"
         ),
         .testTarget(
             name: "SearchFnSQLiteAdapterTests",
@@ -206,9 +162,7 @@ let package = Package(
                 "SearchFnConvenience",
                 "SearchFnSQLiteAdapter",
             ],
-            path: "searchfn/swift/Tests/SearchFnSQLiteAdapterTests",
-            swiftSettings: testSwiftSettings,
-            linkerSettings: testLinkerSettings
+            path: "searchfn/swift/Tests/SearchFnSQLiteAdapterTests"
         ),
         .testTarget(
             name: "SearchFnConformanceTests",
@@ -218,9 +172,7 @@ let package = Package(
                 "SearchFnMemoryAdapter",
                 "SearchFnSQLiteAdapter",
             ],
-            path: "searchfn/swift/Tests/SearchFnConformanceTests",
-            swiftSettings: testSwiftSettings,
-            linkerSettings: testLinkerSettings
+            path: "searchfn/swift/Tests/SearchFnConformanceTests"
         ),
     ]
 )

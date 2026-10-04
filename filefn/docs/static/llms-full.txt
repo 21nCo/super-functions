@@ -2993,9 +2993,10 @@ filefn integrates with `@superfunctions/middleware`'s `RateLimiter` to throttle 
 
 ```ts
 const fileFn = createFileFn({
-  db, storage,
+  database: db, storage,
+  stores: { atomicKv: redisAtomicStore },
   rateLimit: {
-    persistence: redisPersistence,        // or undefined for in-memory
+    mode: "strict",
     algorithm: "sliding-window",          // or "fixed-window" | "token-bucket"
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -3043,15 +3044,23 @@ Routes not in any category (read-only file metadata, listing, render-descriptor)
 - **`sliding-window`** — smooths out the boundary effect. Default for the production examples.
 - **`token-bucket`** — burst-friendly, refill over time. Best when you have legitimate bursty traffic (e.g. mass uploads from a script).
 
-## Persistence
+## Shared stores and modes
 
-In-memory persistence is fine for development and single-instance deployments. For multi-instance / Edge / load-balanced deployments, use a shared persistence:
+FileFn 0.2.0 uses `stores` and `rateLimit.mode`, not `rateLimit.persistence`.
 
-- Redis (recommended)
-- Postgres
-- Cloudflare KV
+- **`strict`** — shared `stores.atomicKv` with `compareAndSet`; missing atomic
+  storage is rejected instead of silently using process-local counters.
+- **`best-effort`** — `stores.kv` for deployments that accept approximate
+  cross-replica limits.
+- **`local`** — in-process counters for development or a single instance.
 
-`@superfunctions/middleware` ships persistence implementations or accepts your own.
+Without an explicit mode, FileFn selects strict for `stores.atomicKv`,
+best-effort for `stores.kv`, otherwise local. Supply adapters implementing
+the `@superfunctions/db` runtime-store contracts.
+
+The separate pre-built `rateLimiter` still accepts the middleware's own
+`atomicStore` / `persistence` options.
+
 
 ## What clients see
 
@@ -4792,9 +4801,10 @@ See [Core Concepts › Rate limiting](../core-concepts/rate-limiting) for the co
 import { createFileFn } from "@filefn/server";
 
 const fileFn = createFileFn({
-  db, storage,
+  database: db, storage,
+  stores: { atomicKv: redisAtomicStore },
   rateLimit: {
-    persistence: redisPersistence, // optional; in-memory by default
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -4812,7 +4822,11 @@ const fileFn = createFileFn({
 
 `rateLimit.algorithm` is one of `"fixed-window" | "sliding-window" | "token-bucket"`.
 
-`rateLimit.persistence` plugs in a shared store (Redis / Postgres / KV) so multi-instance deployments share counters.
+`rateLimit.mode: "strict"` uses CAS-capable `stores.atomicKv` for shared counters.
+Use `"best-effort"` with `stores.kv` when approximate cross-replica limits are
+acceptable, or `"local"` for in-process counters. Without an explicit mode,
+FileFn selects strict for `atomicKv`, best-effort for `kv`, otherwise local.
+The former `rateLimit.persistence` option was removed in 0.2.0.
 
 ## Pre-built rate limiter
 
@@ -8184,7 +8198,7 @@ Every option in FileFnConfig — types, defaults, and effects.
 
 | Field | Type | Effect |
 | --- | --- | --- |
-| `db` | `Adapter` | The DB adapter (`@superfunctions/db`). |
+| `database` | `Adapter` | The DB adapter (`@superfunctions/db`); `db` remains a deprecated alias. |
 | `storage` | `StorageAdapter` | The storage adapter (`@superfunctions/storage`). |
 
 ## Policies
@@ -8221,7 +8235,8 @@ Default authorizer reads `filefn_file_permissions` and respects ownership.
 | Field | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `rateLimit.persistence` | `RateLimitPersistence` | undefined | Shared persistence (Redis/KV). |
+| `stores` | `RuntimeStores` | undefined | Shared `atomicKv` / `kv` stores. |
+| `rateLimit.mode` | `"strict" \| "best-effort" \| "local"` | inferred from stores | Strict requires CAS-capable `stores.atomicKv`; best-effort uses `stores.kv`; local keeps counters in-process. |
 | `rateLimit.algorithm` | `"fixed-window" | "sliding-window" | "token-bucket"` | `"fixed-window"` | Algorithm. |
 | `rateLimit.limits.uploadInit` | `{ windowSeconds, maxRequests }` | undefined | Per-route. |
 | `rateLimit.limits.uploadSign` | same | undefined | |
@@ -8252,13 +8267,13 @@ Default authorizer reads `filefn_file_permissions` and respects ownership.
 | Field | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `namespace` | `string` | `"filefn"` | Table prefix. |
-| `logger` | `Logger` | undefined | Pluggable structured logger. |
+| `observability` | `ObservabilityInput<FileFnObservationEvent>` | undefined | Structured logger, events, metrics, traces and request observations. |
 
 ## Example: production config
 
 ```ts
 const fileFn = createFileFn({
-  db: createPostgresAdapter({ pool }),
+  database: createPostgresAdapter({ pool }),
   storage: createS3Storage({ region, bucket, cdnPrefix }),
   policies: createNucleusPolicies(),
 
@@ -8272,10 +8287,11 @@ const fileFn = createFileFn({
 
   quota: storageQuotaProvider,
   authorizer: composeAuthorizers([orgAdminCanRead, createDefaultAuthorizer({ db, namespace: "filefn" })]),
-  logger: pinoLogger,
+  observability: { logger: pinoLogger },
+  stores: { atomicKv: redisAtomicStore },
 
   rateLimit: {
-    persistence: redisPersistence,
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -9306,6 +9322,7 @@ const fileFn: FileFn = createFileFn(config);
 interface FileFn extends FileProvider {
   router: FileFnRouter;                                  // single Request → Response | null
   events: FileFnEventEmitter;                            // typed event emitter
+  readonly services: FileFnServices;                     // bound, authorized domain services
   definePolicy(name: string, policy: Omit<Policy, "name">): void;
   getSchema(): { version: number; schemas: TableSchema[] };
 }
@@ -9315,14 +9332,15 @@ interface FileFn extends FileProvider {
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `db` | `Adapter` | required | `@superfunctions/db` `Adapter`. |
+| `database` | `Adapter` | required | `@superfunctions/db` `Adapter`; FileFn applies its own schema. `db` remains a deprecated alias. |
 | `storage` | `StorageAdapter` | required | `@superfunctions/storage` `StorageAdapter`. |
+| `stores` | `RuntimeStores` | undefined | Shared runtime stores, including `atomicKv` for strict rate limiting and `kv` for best-effort counters. |
 | `policies` | `Policy[]` | `[]` | Initial policies. Use `createNucleusPolicies()` for sane defaults. |
 | `auth` | `AuthConfig` | `{}` | `{ resolveSession, required }`. |
 | `quota` | `QuotaProvider` | undefined | Optional storage quota. |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `rateLimit` | `{ persistence?, algorithm?, limits? }` | undefined | Per-route rate limits. |
-| `logger` | `Logger` | undefined | Pluggable structured logger. |
+| `rateLimit` | `{ mode?, algorithm?, limits? }` | undefined | Per-route rate limits; mode is `"strict"`, `"best-effort"`, or `"local"`. |
+| `observability` | `ObservabilityInput<FileFnObservationEvent>` | undefined | Shared logging, typed events, metrics, traces and request observations. |
 | `authorizer` | `Authorizer` | default | Permission resolution. |
 | `namespace` | `string` | `"filefn"` | Table prefix. |
 | `defaultChunkSizeBytes` | `number` | `5 MiB` | Multipart chunk floor. |
@@ -9330,6 +9348,24 @@ interface FileFn extends FileProvider {
 | `signedUrlTtlSeconds` | `number` | `900` | Per-part signed URL TTL. |
 | `dedup` | `{ enabled: boolean }` | `{ enabled: false }` | Content-addressable storage. |
 | `processing` | `{ enabled, processors?, flowFn? }` | `{ enabled: false }` | Processing pipeline. |
+
+## Migrating from 0.1.x
+
+Version 0.2.0 removes `FileFnConfig.logger` and `rateLimit.persistence`; there
+are no compatibility aliases for these options.
+
+- Replace `logger` with `observability: { logger }`, using a logger compatible
+  with `@superfunctions/observability`.
+- Replace `rateLimit.persistence` with `stores.kv` and
+  `rateLimit.mode: "best-effort"` when cross-replica limits may be approximate.
+- For strict shared limits, provide a CAS-capable `stores.atomicKv` and set
+  `rateLimit.mode: "strict"`. Missing atomic storage is rejected.
+- For process-local counters, use `rateLimit.mode: "local"`.
+
+Without an explicit mode, FileFn selects strict when `stores.atomicKv` is
+present, otherwise best-effort when `stores.kv` is present, otherwise local.
+The separate pre-built `rateLimiter` option remains supported.
+
 
 ## `FileProvider`
 
@@ -9348,6 +9384,32 @@ const result = await fileFn.completeUploadSession({ uploadSessionId: session.upl
 ```
 
 `ctx` carries the principal — `{ principalId, tenantId, uploadSessionToken }`.
+
+## Bound domain services
+
+The public `FileFn.services` bundle is available in `@filefn/server` 0.2.0.
+It contains `files`, `uploads`, `grants`, `shares`, `processing`, and `policies`.
+These are the same instances used by the facade and router, bound to the same
+schema, namespace, database, storage, policies, quota provider, and event emitter.
+No separately constructed service or table access is needed.
+
+```ts
+const { versions } = await fileFn.services.files.listVersions(fileId, ctx);
+const grants = await fileFn.services.grants.listGrants(fileId, ctx);
+const artifacts = await fileFn.services.processing.listArtifactsForFile(fileId, ctx);
+await fileFn.services.processing.triggerProcessingForFile(fileId, ctx, versionId);
+```
+
+All file operations still require the caller's domain principal/tenant context.
+Grant management remains owner-only; share management and artifact access retain
+their existing domain checks. The bound processing surface intentionally does
+not expose `runProcessing` or a trigger accepting caller-supplied storage keys:
+`triggerProcessingForFile` authorizes the file/version and resolves the input
+from FileFn before scheduling work.
+
+`@filefn/admin` requires this declared server version. Its
+`createFileFnDomainAdminService({ fileFn, context })` maps each active admin
+actor/scope to FileFn's domain context rather than bypassing these checks.
 
 ## Routes
 

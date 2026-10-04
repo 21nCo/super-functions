@@ -1,3 +1,3 @@
-export * from './discord';
-export * from './github';
-export * from './linear';
+export * from './discord.js';
+export * from './github.js';
+export * from './linear.js';

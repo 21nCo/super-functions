@@ -5,8 +5,8 @@ import {
   InteractionResponseType,
   getInteractionOption,
   updateInteractionResponse,
-} from '@botfn/discord-core';
-import { githubRequest, type GitHubClientConfig } from '@botfn/github-integration';
+} from '@superfunctions/botfn-discord-core';
+import { githubRequest, type GitHubClientConfig } from '@superfunctions/botfn-github-integration';
 import {
   linearRequest,
   getTeams,
@@ -14,7 +14,7 @@ import {
   createIssue as createLinearIssue,
   createComment as createLinearComment,
   type LinearClientConfig,
-} from '@botfn/linear-integration';
+} from '@superfunctions/botfn-linear-integration';
 import {
   LinkCommandOptionsSchema,
   CreateCommandOptionsSchema,
@@ -23,8 +23,8 @@ import {
   type DiscordBotEnv,
   type GitHubBotEnv,
   type LinearBotEnv,
-} from '@botfn/shared-types';
-import { createPersistenceClient } from '@botfn/persistence-service/src/client';
+} from '@superfunctions/botfn-shared-types';
+import { createPersistenceClient } from '@superfunctions/botfn-persistence-service/client';
 
 export interface BotEnv extends DiscordBotEnv, GitHubBotEnv, LinearBotEnv {
   PERSISTENCE_SERVICE_URL: string;

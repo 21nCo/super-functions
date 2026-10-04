@@ -119,6 +119,70 @@ describe("@hostfn/admin", () => {
     ).not.toContain("postgres://secret");
   });
 
+  it("exposes pending, failed, active, and detached domain transitions through the package operator", async () => {
+    const store = new MemoryHostFnOperatorStore();
+    const boundary = executor();
+    const target: HostFnTarget = {
+      id: "target_1", scope, name: "API", server: "api.example.test", runtime: "nodejs",
+      status: "ready", updatedAt: "2026-08-22T00:00:00.000Z",
+    };
+    await store.putTarget(target);
+    let releaseProvider!: () => void;
+    const providerGate = new Promise<void>((resolve) => { releaseProvider = resolve; });
+    const attachDomain = vi.fn(async () => undefined)
+      .mockImplementationOnce(async () => {
+        await providerGate;
+        throw new Error("provider unavailable");
+      });
+    boundary.attachDomain = attachDomain;
+    const adapter = createHostFnAdminAdapter(
+      createHostFnOperatorAdminService(new HostFnOperatorService(store, boundary)),
+    );
+    const failedAttachment = expect(adapter.invoke(
+      "hostfn.domains.attach",
+      { targetId: target.id, hostname: "api.example.test" },
+      context,
+    )).rejects.toBeInstanceOf(Error);
+    await vi.waitFor(async () => {
+      await expect(adapter.invoke(
+        "hostfn.domains.list", { targetId: target.id }, context,
+      )).resolves.toMatchObject({ data: { items: [{ status: "pending" }] } });
+    });
+    releaseProvider();
+    await failedAttachment;
+    const failed = await adapter.invoke<{ items: { id: string; status: string }[] }>(
+      "hostfn.domains.list", { targetId: target.id }, context,
+    );
+    expect(failed.data.items).toEqual([
+      expect.objectContaining({ status: "failed", hostname: "api.example.test" }),
+    ]);
+    const id = failed.data.items[0]!.id;
+    await expect(adapter.invoke(
+      "hostfn.domains.attach",
+      { targetId: target.id, hostname: "api.example.test" },
+      context,
+    )).resolves.toMatchObject({ data: { item: { id, status: "active" } } });
+    await expect(adapter.invoke(
+      "hostfn.domains.list", { targetId: target.id }, context,
+    )).resolves.toMatchObject({ data: { items: [{ id, status: "active" }] } });
+    expect(attachDomain).toHaveBeenCalledTimes(2);
+    expect(attachDomain).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      domain: expect.objectContaining({ id }),
+    }));
+    expect(attachDomain).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      domain: expect.objectContaining({ id }),
+    }));
+    await expect(adapter.invoke(
+      "hostfn.domains.detach", { id }, context,
+    )).resolves.toMatchObject({ data: { item: { id, status: "active" } } });
+    expect(boundary.detachDomain).toHaveBeenCalledWith(expect.objectContaining({
+      domain: expect.objectContaining({ id }),
+    }));
+    await expect(adapter.invoke(
+      "hostfn.domains.list", { targetId: target.id }, context,
+    )).resolves.toMatchObject({ data: { items: [] } });
+  });
+
   it("isolates identical target ids across the complete active scope", async () => {
     const store = new MemoryHostFnOperatorStore();
     const other = { ...scope, environmentId: "staging" };

@@ -57,7 +57,7 @@
 
   let query = "";
   let selected: EndpointItem | null = null;
-  let tab: "docs" | "tryit" | "history" = "docs";
+  let tab: "docs" | "tryit" | "history" | "perf" = "docs";
   let sidebarOpen = true;
   let isMobile = false;
   let history: HistoryEntry[] = [];
@@ -217,7 +217,7 @@
           <button class="tab" class:active={tab === "docs"} on:click={() => (tab = "docs")}>Documentation</button>
           <button class="tab" class:active={tab === "tryit"} on:click={() => (tab = "tryit")}>Try It</button>
           {#if watchfn}
-            <button class="tab" class:active={tab === "perf"} on:click={() => (tab = "perf" as any)}>Performance</button>
+            <button class="tab" class:active={tab === "perf"} on:click={() => (tab = "perf")}>Performance</button>
           {/if}
           {#if showHistory}
             <button class="tab" class:active={tab === "history"} on:click={() => (tab = "history")}>History</button>

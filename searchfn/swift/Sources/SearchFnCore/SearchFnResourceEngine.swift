@@ -29,7 +29,6 @@ public struct SearchFnCoreSearchRequest: Sendable, Equatable {
 public final class SearchFnResourceEngine {
     private struct PostingInfo {
         let frequency: Int
-        let metadata: SearchFnTokenMetadata?
     }
 
     private struct QueryTerm {
@@ -40,6 +39,7 @@ public final class SearchFnResourceEngine {
 
     private let configuredSearchFields: [String]
     private let pipeline: SearchFnPipelineEngine
+    private let termPipeline: SearchFnPipelineEngine
 
     private var postings: [String: [String: PostingInfo]] = [:]
     private var documentLengths: [String: Int] = [:]
@@ -54,6 +54,13 @@ public final class SearchFnResourceEngine {
     ) {
         self.configuredSearchFields = Array(Set(searchFields)).sorted()
         self.pipeline = SearchFnPipelineEngine(options: pipelineOptions)
+        self.termPipeline = SearchFnPipelineEngine(
+            options: SearchFnPipelineOptions(
+                language: pipelineOptions.language,
+                enableStemming: pipelineOptions.enableStemming,
+                customStopWords: pipelineOptions.customStopWords
+            )
+        )
     }
 
     public func analyze(field: String, text: String, documentID: String? = nil) -> [SearchFnToken] {
@@ -110,6 +117,7 @@ public final class SearchFnResourceEngine {
         }
 
         var chunks: [SearchFnPostingChunk] = []
+        var chunkBoosts: [Double] = []
         for term in terms {
             let key = postingKey(field: term.field, term: term.term)
             guard let postingMap = postings[key] else {
@@ -123,8 +131,7 @@ public final class SearchFnResourceEngine {
                 }
                 return SearchFnPosting(
                     documentID: documentID,
-                    termFrequency: Double(info.frequency) * term.boost * fieldBoost,
-                    metadata: info.metadata
+                    termFrequency: Double(info.frequency)
                 )
             }
 
@@ -137,6 +144,7 @@ public final class SearchFnResourceEngine {
                         documentFrequency: chunkPostings.count
                     )
                 )
+                chunkBoosts.append(term.boost * fieldBoost)
             }
         }
 
@@ -148,7 +156,8 @@ public final class SearchFnResourceEngine {
         let scored = searchFnScorePostings(
             chunks,
             documentLengths: documentLengths,
-            averageDocumentLength: averageLength
+            averageDocumentLength: averageLength,
+            chunkBoosts: chunkBoosts
         )
         let limit = max(0, request.limit ?? 10)
         return Array(scored.prefix(limit))
@@ -168,7 +177,9 @@ public final class SearchFnResourceEngine {
                 continue
             }
 
-            let tokens = pipeline.run(field: field, text: value, documentID: document.id)
+            // Vocabulary expansion handles prefix matches; synthetic n-grams must
+            // not count again as evidence or inflate document lengths.
+            let tokens = termPipeline.run(field: field, text: value, documentID: document.id)
             guard !tokens.isEmpty else {
                 continue
             }
@@ -176,25 +187,20 @@ public final class SearchFnResourceEngine {
             totalLength += tokens.count
 
             var termFrequencies: [String: Int] = [:]
-            var termMetadata: [String: SearchFnTokenMetadata?] = [:]
 
             for token in tokens {
                 termFrequencies[token.value, default: 0] += 1
-                if termMetadata[token.value] == nil {
-                    termMetadata[token.value] = token.metadata
-                }
             }
 
             for term in termFrequencies.keys.sorted() {
                 let key = postingKey(field: field, term: term)
                 postings[key, default: [:]][document.id] = PostingInfo(
-                    frequency: termFrequencies[term] ?? 1,
-                    metadata: termMetadata[term] ?? nil
+                    frequency: termFrequencies[term] ?? 1
                 )
                 allPostingKeys.insert(key)
             }
 
-            for term in Set(termFrequencies.keys).sorted() where termMetadata[term]??.isPrefix != true {
+            for term in termFrequencies.keys {
                 vocabularyCounts[term, default: 0] += 1
                 allVocabularyTerms.insert(term)
             }
@@ -246,13 +252,12 @@ public final class SearchFnResourceEngine {
         var resolvedTerms: [String: QueryTerm] = [:]
 
         for field in fields {
-            let tokens = pipeline.run(field: field, text: query)
-                .filter { $0.metadata?.isPrefix != true }
+            let tokens = termPipeline.run(field: field, text: query)
 
             for token in tokens {
                 if prefix {
                     for vocabularyTerm in vocabulary where vocabularyTerm.hasPrefix(token.value) {
-                        let boost = vocabularyTerm == token.value ? 1.0 : 0.9
+                        let boost = vocabularyTerm == token.value ? 1.0 : 0.7
                         upsertQueryTerm(
                             QueryTerm(field: field, term: vocabularyTerm, boost: boost),
                             into: &resolvedTerms
@@ -264,7 +269,7 @@ public final class SearchFnResourceEngine {
 
                 if let fuzzyDistance {
                     for term in searchFnFuzzyExpand(term: token.value, maxDistance: fuzzyDistance, vocabulary: vocabulary) {
-                        let boost = term == token.value ? 1.0 : 0.8
+                        let boost = term == token.value ? 1.0 : 0.5
                         upsertQueryTerm(
                             QueryTerm(field: field, term: term, boost: boost),
                             into: &resolvedTerms

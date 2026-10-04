@@ -30,7 +30,7 @@
   "author": "21n",
   "license": "MIT",
   "dependencies": {
-    "@secfn/core": "0.0.2"
+    "@secfn/core": "0.0.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
