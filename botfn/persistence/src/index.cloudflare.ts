@@ -1,4 +1,4 @@
-import { createPersistenceApp } from './core';
+import { createPersistenceApp } from './core.js';
 
 const app = createPersistenceApp();
 

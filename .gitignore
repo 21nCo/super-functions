@@ -53,6 +53,9 @@ __pycache__/
 .venv/
 .venv*/
 
+# OCR integration tests download language models into their working directory
+/filefn/server/*.traineddata
+
 # Editors
 .vscode/
 .idea/

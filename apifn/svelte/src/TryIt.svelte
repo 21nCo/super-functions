@@ -132,7 +132,7 @@
   {#if ["post","put","patch"].includes(method.toLowerCase())}
     <div class="section">
       <label class="label">Request Body</label>
-      <textarea class="textarea" bind:value={body} placeholder="{}" spellcheck="false" />
+      <textarea class="textarea" bind:value={body} placeholder={'{}'} spellcheck="false" />
     </div>
   {/if}
 

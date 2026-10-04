@@ -33,10 +33,13 @@
     "access": "public"
   },
   "dependencies": {
-    "@filefn/server": "0.1.1",
+    "@filefn/server": "0.2.0",
     "@superfunctions/admin": "0.1.0"
   },
   "devDependencies": {
+    "@superfunctions/db": "0.2.0",
+    "@superfunctions/storage-local": "0.2.0",
+    "@types/node": "^22.0.0",
     "typescript": "^5.6.0",
     "vitest": "^3.2.4"
   }

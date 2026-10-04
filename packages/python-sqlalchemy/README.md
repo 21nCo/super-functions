@@ -6,6 +6,12 @@ SQLAlchemy adapter for `superfunctions.db`
 **Package:** `superfunctions-sqlalchemy`  
 **Import:** `from superfunctions_sqlalchemy import create_adapter`
 
+Version 0.1.1 replaces the dependency on the unrelated PyPI `superfunctions`
+project with `superfunctions-core>=0.1.1,<0.2.0`; Python imports are unchanged.
+The real core must be published first. This packaging cutover is validated
+with installed wheels; no Python publication is included here.
+
+
 ## Installation
 
 ```bash

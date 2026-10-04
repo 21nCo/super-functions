@@ -17,7 +17,7 @@ This command is the only supported global readiness check for PlugFn. It emits a
 1. `npm --prefix plugfn/core run build`
 2. `npm --prefix plugfn/core run type-check`
 3. `npm --prefix plugfn/core test -- --run`
-4. `npm --prefix plugfn/core test -- --run tests/e2e/oauth-callback.test.ts tests/e2e/webhook-verification.test.ts`
+4. `npm --prefix plugfn/providers test -- --run tests/webhook-raw-body.test.ts tests/e2e/oauth-callback.test.ts tests/e2e/webhook-verification.test.ts` (after provider build/typecheck)
 5. `npm --prefix plugfn/client run build`
 6. `npm --prefix plugfn/client run typecheck`
 7. `npm --prefix plugfn/client test -- --run`
@@ -96,3 +96,28 @@ Expected interpretation:
 - old package names should be absent from public docs
 - machine-specific absolute paths should be absent from public docs
 - broad unsupported readiness claims should be absent from the primary contract docs
+
+## Isolated npm packaging and registry reconciliation
+
+Provider `build`, `typecheck`, and tests resolve `plugfn` through its installed public exports. They do not build `../core`, resolve sibling declarations, or alias sibling source. Install the prerequisite core artifact before testing providers; `plugfn@0.1.0` does not export the new `ActionContract` type or `resolveActionContract` runtime API used by the current providers and their lifecycle/wire tests.
+
+Build and pack each package in its own directory after installing its declared dependencies. The CLI publishes only `dist`, its README, and its license. Provider-backed raw-body webhook and OAuth/webhook end-to-end suites live under providers tests and exercise the installed public core entry point. Core unit tests no longer import sibling providers.
+
+Registry baselines inspected:
+
+- `plugfn@0.1.0`: git head `7d2d6754af44f61830ed43c141c2c3c205996ef9`.
+- `@plugfn/cli@0.0.3` and `@plugfn/client@0.0.1`: git head `c721fdfe1e5a372e4407b12d2bd5865d4162bc6c`.
+- `@plugfn/providers@0.0.2`: git head `162d2c4c5e05c500c4e15b598cad183ef42cb8bd`.
+
+These published histories diverge from the development snapshot; merging the registry branch is not the reconciliation strategy. Current CLI scaffolding already fixes the old unpublished `@superfunctions/plugfn` imports to public `plugfn` and `@plugfn/providers` names. Client source is unchanged from its published baseline.
+
+The following published surfaces were intentionally removed by the ownership cutover, not accidentally lost packaging fixes:
+
+- CLI `generate-types`, which generated empty configuration/action/trigger interfaces rather than provider types.
+- Providers `forwardingProvider` and `managedMailProvider`, and their entries in `requiredMailProviderIds`; platform-owned forwarding and managed mailboxes belong to MailFn.
+- Outbound mail actions and SMTP connection/configuration fields; outbound delivery belongs to SendFn.
+- Core `BackupAlertEvent`, `BackupChannel`, `BackupChannelError`, `BackupChannelType`, `assertBackupChannelConfirmed`, and `buildBackupAlertEvent`.
+- Core `ManagedMailboxIncidentInput`, `ManagedMailboxIncidentResult`, `ManagedMailboxPolicyError`, `ManagedMailboxSetupInput`, `ManagedMailboxSetupResult`, `ManagedMailboxState`, `enforceManagedMailboxSetup`, and `handleManagedMailboxIncident`.
+- Core `EscrowRecoveryInput`, `ManagedMailboxSecurityAuditEvent`, `ManagedMailboxSecurityError`, `ManagedMailboxSecurityMetadata`, `ManagedMailboxSecurityMode`, `ManagedMailboxSecurityService`, `SetManagedMailboxSecurityModeInput`, `assertManagedMailboxSecurityMode`, and `buildManagedMailboxSecurityMetadata`.
+
+Do not reintroduce obsolete exports or placeholder commands as compatibility shims. The approved `plugfn@0.2.0` release is a **breaking ownership cutover** relative to `plugfn@0.1.0`, not a compatible minor, despite its compatible new action-contract APIs. Future CLI/provider versions must exceed their actual registry latest versions (`0.0.3`/`0.0.2`), not merely the stale development manifests (`0.0.1`).

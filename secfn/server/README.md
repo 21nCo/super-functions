@@ -2,13 +2,21 @@
 
 Adapter-backed SecFn server package.
 
-The workspace builds require `@superfunctions/db@0.2.2`, which versions the
-per-call transaction isolation API used by audit metrics. Published DB `0.2.0`
-and `0.2.1` do not provide that API. Publish the prepared DB version before
-releasing dependent SecFn packages; a successful workspace build is not registry
-release readiness. Metrics still reject adapters without repeatable-read support.
+Package-local builds require the DB version declared in this package's peer
+dependencies, including its per-call transaction isolation API used by audit
+metrics. Published DB `0.2.0` and `0.2.1` do not provide that API. Publish the
+prepared DB version before releasing dependent SecFn packages; a successful
+workspace build is not registry release readiness. Metrics still reject adapters
+without repeatable-read support.
 
 `@secfn/server` hosts the control plane and runtime API for secrets, service tokens, RBAC, rate limiting, scanning, and durable security audit events. It uses `@superfunctions/db` for persistence and `@superfunctions/http` for routing.
+
+Release gates (`npm run typecheck`, `npm run build`, and `npm test`) resolve
+installed package exports, without sibling source aliases or root lockfile
+assertions. Set `SECFN_TEST_DATABASE_URL` to a disposable PostgreSQL 15+ database
+to exercise the actual migration, isolation, concurrent mutation, and rollback
+contracts; without it, those PostgreSQL tests are explicitly skipped, not evidence
+of database integration readiness.
 
 ## Example
 

@@ -24,7 +24,7 @@ import {
   type GitHubBotEnv,
   type LinearBotEnv,
 } from '@botfn/shared-types';
-import { createPersistenceClient } from '@botfn/persistence-service/src/client';
+import { createPersistenceClient } from '@botfn/persistence-service/client';
 
 export interface BotEnv extends DiscordBotEnv, GitHubBotEnv, LinearBotEnv {
   PERSISTENCE_SERVICE_URL: string;

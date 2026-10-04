@@ -2,7 +2,9 @@
 
 ## Scope
 
-The legacy `plugfn/auth/oauth-flow` import remains available for one minor release only as a compatibility shim.
+Version 0.2.0 removes the legacy `plugfn/auth/oauth-flow` compatibility module
+and `OAuthFlowHandler` export. The announced one-minor-release migration window
+is closed; no aliases or delegates remain.
 
 ## Replacement path
 
@@ -20,27 +22,12 @@ These packages are the canonical path for:
 - state persistence
 - encrypted token persistence
 
-## Removal target
+## Completed cutover
 
-- Deprecated now: `plugfn/auth/oauth-flow`
-- Planned removal target: `plugfn@0.2.0`
+The removal target was `plugfn@0.2.0`. The connection manager now uses
+`createOAuthFlowService` from `@superfunctions/oauth-flow` directly.
 
-## Remaining allowed behavior in the legacy module
-
-The legacy module is intentionally narrow. It may still:
-
-- emit the `DEPRECATED_PATH` warning
-- expose the deprecation notice metadata
-- delegate legacy method calls to a compatibility delegate
-
-It must not own:
-
-- token exchange orchestration
-- refresh orchestration
-- callback state verification logic
-- provider descriptor translation logic
-- default business storage semantics beyond delegation wiring
-
-## Migration note
-
-If you previously relied on `plugfn/auth/oauth-flow`, move new integration code onto the shared packages directly. The shim is only for short-term compatibility during the migration window.
+Applications importing `OAuthFlowHandler` must construct the shared flow
+service with their provider resolver, token HTTP client and state/token stores.
+Authorization, callback verification, exchange, refresh and disconnect belong
+to that service; do not recreate the deleted compatibility delegate.

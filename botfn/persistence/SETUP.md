@@ -173,7 +173,7 @@ PERSISTENCE_SERVICE_URL=http://localhost:8787
 ## Example Usage
 
 ```typescript
-import { createPersistenceClient } from '@botfn/persistence-service/src/client';
+import { createPersistenceClient } from '@botfn/persistence-service/client';
 
 const client = createPersistenceClient(env.PERSISTENCE_SERVICE_URL);
 

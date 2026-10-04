@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 export interface HostFnScope {
   installationId: string;
   workspaceId: string;
@@ -211,13 +213,13 @@ export class MemoryHostFnOperatorStore implements HostFnOperatorStore {
         return { domain: structuredClone(existing), acquired: false };
       }
       const retry = { ...existing, status: "pending" as const, updatedAt: domain.updatedAt };
-      const claimToken = crypto.randomUUID();
+      const claimToken = randomUUID();
       this.domains.set(existingKey, structuredClone(retry));
       this.domainAttachmentClaims.set(existingKey, claimToken);
       return { domain: structuredClone(retry), acquired: true, claimToken };
     }
     const domainKey = this.key(domain.scope, domain.id);
-    const claimToken = crypto.randomUUID();
+    const claimToken = randomUUID();
     this.domains.set(domainKey, structuredClone(domain));
     this.domainAttachmentClaims.set(domainKey, claimToken);
     return { domain: structuredClone(domain), acquired: true, claimToken };
@@ -272,7 +274,7 @@ export class MemoryHostFnOperatorStore implements HostFnOperatorStore {
 }
 
 function identifier(prefix: string): string {
-  return `${prefix}_${crypto.randomUUID()}`;
+  return `${prefix}_${randomUUID()}`;
 }
 
 export class HostFnOperatorService {

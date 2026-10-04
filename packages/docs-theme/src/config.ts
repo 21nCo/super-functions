@@ -12,6 +12,10 @@ export type DocsBaseLayoutProps = {
   githubUrl?: string;
 };
 
+/**
+ * Create independent navigation options for a docs app.
+ * The docs link defaults to `/docs`; branch names are encoded as one URL segment.
+ */
 export function createBaseLayoutOptions(
   title: string,
   gitConfig: DocsGitConfig,
