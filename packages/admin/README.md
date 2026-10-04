@@ -120,6 +120,11 @@ canonical domain operator service declares `availability: "unavailable"`, an
 `unavailableReason`, and no operations/navigation; registry startup rejects an
 attempt to enable it.
 
+ApiFn, BillFn, and BotFn admin wrappers require `@superfunctions/admin@^0.1.4`
+as a peer dependency. Install that shared client in the consuming application;
+the wrappers use the same `AdminClient` type and runtime instance rather than
+bundling a second version with incompatible private class declarations.
+
 `presentation` is optional, non-authoritative metadata for generic operator
 pages. Operation references must name reads for the same resource, dotted field
 paths are validated against declared output schemas when possible, and default
@@ -163,6 +168,7 @@ terminal record.
 - Mutations must declare required audit; destructive operations must require confirmation.
 - Destructive operations declare an exact `target.resource` and required `target.idInput`; collection actions declare `target.collection` so consoles never render an unbound target mutation.
 - `redaction.inputFields` protects audit input and `redaction.outputFields` scrubs validated domain output before the first response or idempotency storage/replay. Common secret-shaped keys are also redacted recursively from every outward domain result, including MCP and replay, even when a manifest omits them.
+- Boolean status metadata in domain output and response metadata retains its type even when its name contains a secret-shaped word, such as `credentialConfigured`. Explicit `redaction.outputFields` still redacts those fields; string/object credentials remain implicitly redacted. Audit/input redaction is unchanged.
 - Intentional one-time credentials require exact schema-bound `redaction.allowOutputPaths` such as `$.item.token`, closed non-union object schemas, explicit `[*]` array traversal, a string scalar leaf, required audit, recent-auth/MFA/approval confirmation, and `idempotent: false`. The exception applies only to the declared output path; metadata, audit/error details, sibling/nested keys, and unexpected properties remain recursively redacted, and non-idempotency prevents plaintext replay storage.
 - Idempotency identities bind key, actor, full tenant scope, and operation. Atomic begin/complete claims prevent concurrent execution; reusing a key with different input is rejected.
 - Registry dependency, cycle, operation, route-pattern, and MCP-name collisions fail closed.

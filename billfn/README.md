@@ -23,6 +23,13 @@ The core design is entitlement-first:
 - `billfn` is the internal source of truth for entitlement state
 - downstream consumers should read entitlements and quotas, not provider payloads
 
+The TypeScript client returns canonical error envelopes for transport failures, including
+connections interrupted after response headers arrive but before the body is read.
+These failures use `BILLFN_NETWORK_ERROR` with status `503` and `retryable: true`;
+the client does not retry automatically.
+The Svelte package requires `@billfn/client@^0.0.2`, the first client version with
+this response-body failure handling.
+
 ## Package Layout
 
 ```text

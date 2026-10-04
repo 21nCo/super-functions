@@ -84,11 +84,11 @@
   <!-- Path Params -->
   {#if pathParams.length > 0}
     <div class="section">
-      <label class="label">Path Parameters</label>
+      <div class="label">Path Parameters</div>
       {#each pathParams as p}
         <div class="param-row">
           <span class="param-name">{p.name}</span>
-          <input class="field" placeholder={`{${p.name}}`} bind:value={pathValues[p.name]} />
+          <input class="field" aria-label={p.name} placeholder={`{${p.name}}`} bind:value={pathValues[p.name]} />
         </div>
       {/each}
     </div>
@@ -97,11 +97,11 @@
   <!-- Query Params -->
   {#if queryParams.length > 0}
     <div class="section">
-      <label class="label">Query Parameters</label>
+      <div class="label">Query Parameters</div>
       {#each queryParams as p}
         <div class="param-row">
           <span class="param-name">{p.name}</span>
-          <input class="field" placeholder={p.name} bind:value={queryValues[p.name]} />
+          <input class="field" aria-label={p.name} placeholder={p.name} bind:value={queryValues[p.name]} />
         </div>
       {/each}
     </div>
@@ -109,21 +109,21 @@
 
   <!-- Auth -->
   <div class="section">
-    <label class="label">Auth</label>
+    <div class="label">Auth</div>
     <div class="row">
-      <select class="select" bind:value={authType}>
+      <select class="select" aria-label="Authentication type" bind:value={authType}>
         <option value="none">None</option>
         <option value="bearer">Bearer Token</option>
         <option value="apikey">API Key</option>
         <option value="basic">Basic Auth</option>
       </select>
       {#if authType === "bearer"}
-        <input class="field" placeholder="Bearer token" bind:value={authToken} />
+        <input class="field" aria-label="Bearer token" placeholder="Bearer token" bind:value={authToken} />
       {:else if authType === "apikey"}
-        <input class="field" placeholder="API key" bind:value={authKey} />
+        <input class="field" aria-label="API key" placeholder="API key" bind:value={authKey} />
       {:else if authType === "basic"}
-        <input class="field" placeholder="Username" bind:value={authUser} style="width:140px;flex:none" />
-        <input class="field" type="password" placeholder="Password" bind:value={authPass} style="width:140px;flex:none" />
+        <input class="field" aria-label="Username" placeholder="Username" bind:value={authUser} style="width:140px;flex:none" />
+        <input class="field" type="password" aria-label="Password" placeholder="Password" bind:value={authPass} style="width:140px;flex:none" />
       {/if}
     </div>
   </div>
@@ -131,8 +131,10 @@
   <!-- Body -->
   {#if ["post","put","patch"].includes(method.toLowerCase())}
     <div class="section">
-      <label class="label">Request Body</label>
-      <textarea class="textarea" bind:value={body} placeholder={'{}'} spellcheck="false" />
+      <label>
+        <span class="label">Request Body</span>
+        <textarea class="textarea" bind:value={body} placeholder={'{}'} spellcheck="false" />
+      </label>
     </div>
   {/if}
 

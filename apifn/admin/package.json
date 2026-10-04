@@ -33,11 +33,14 @@
     "access": "public"
   },
   "dependencies": {
-    "@apifn/core": "0.0.2",
-    "@superfunctions/admin": "0.1.0"
+    "@apifn/core": "0.0.2"
+  },
+  "peerDependencies": {
+    "@superfunctions/admin": "^0.1.4"
   },
   "devDependencies": {
     "@apifn/collections": "0.0.2",
+    "@superfunctions/admin": "^0.1.4",
     "typescript": "^5.6.0",
     "vitest": "^3.2.4"
   }

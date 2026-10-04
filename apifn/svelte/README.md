@@ -50,6 +50,8 @@ npm install @apifn/svelte
 | `rateLimits` | `Record<string, RateLimitInfo>` | — | Rate-limit badges, keyed `"METHOD /path"` |
 
 The explorer renders a searchable, tag-grouped sidebar and Documentation / Try It / Performance / History tabs, collapsing to a hamburger overlay at ≤768px.
+Try-It parameter, authentication and request-body controls have accessible names;
+section headings are not used as unassociated form labels.
 
 ---
 
