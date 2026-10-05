@@ -18,7 +18,7 @@
     "build": "tsc",
     "test": "vitest --config ./vitest.config.ts --run",
     "test:watch": "vitest --config ./vitest.config.ts --watch",
-    "lint": "echo 'lint not configured'",
+    "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -41,6 +41,7 @@
     "@superfunctions/oauth-core": "0.1.1"
   },
   "devDependencies": {
+    "@superfunctions/oauth-http": "0.2.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0",
     "vitest": "^3.2.4"

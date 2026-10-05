@@ -21,6 +21,14 @@ Add the client surfaces as needed:
 npm install @billfn/client @billfn/svelte
 ```
 
+BillFn packages resolve their contracts from the registry release of `@billfn/core`;
+they do not require adjacent source checkouts. For an isolated package checkout,
+install its declared dependencies before running `npm run build` and `npm test`.
+The core test suite uses the public `@superfunctions/db/testing` and
+`@superfunctions/queue` entrypoints. The Svelte store suite exercises subject query
+serialization and delivery of both successful and failed entitlement responses
+through the HTTP client.
+
 Python consumers use the separate SDK documented in [Python](/docs/clients/python).
 
 ## Minimal Server Setup

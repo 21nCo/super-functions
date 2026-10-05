@@ -4,13 +4,14 @@ import { RootProvider } from "fumadocs-ui/provider";
 import { DocsRootLayout } from "@superfunctions/docs-theme";
 import type { Metadata } from "next";
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : process.env.NODE_ENV === "development"
-      ? "http://localhost:6001"
-      : "https://datafn.dev");
+let defaultSiteUrl = "https://datafn.dev";
+if (process.env.NODE_ENV === "development") {
+  defaultSiteUrl = "http://localhost:6001";
+}
+if (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL) {
+  defaultSiteUrl = `https://${process.env.VERCEL_URL}`;
+}
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? defaultSiteUrl;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

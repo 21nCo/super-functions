@@ -74,7 +74,7 @@ interface Adapter {
   // Advanced
   upsert(params: UpsertParams): Promise<T>;
   count(params: CountParams): Promise<number>;
-  transaction<R>(callback: (trx: TransactionAdapter) => Promise<R>): Promise<R>;
+  transaction<R>(callback: (trx: TransactionAdapter) => Promise<R>, options?: { isolationLevel: TransactionIsolation }): Promise<R>;
   
   // Lifecycle
   initialize(): Promise<void>;
@@ -86,6 +86,15 @@ interface Adapter {
   setSchemaVersion(namespace: string, version: number): Promise<void>;
 }
 ```
+
+Per-call isolation is opt-in: consult `capabilities.transactions.configurableIsolation`
+and the advertised isolation levels before requiring it. PostgreSQL Drizzle honors
+explicit isolation; unsupported adapters reject requested isolation rather than
+silently downgrade it. Omitting options retains ordinary transaction behavior.
+
+Release gates are package-local: `npm run typecheck`, `npm run build`,
+`npm run lint`, and `npm test`. Tests require the declared native SQLite development
+dependency. Consumers of `@superfunctions/db/testing` must also install Vitest.
 
 ### Capabilities System
 

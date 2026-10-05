@@ -24,13 +24,14 @@ let sfPromise: ReturnType<typeof createSearchFnServer> | null = null;
 
 function getServer() {
   if (!sfPromise) {
-    sfPromise = createSearchFnServer({
-      adapter: new PostgresAdapter({
+    const adapter = new PostgresAdapter({
         connectionString: process.env.SEARCH_DB_URL!,
-      }),
+      });
+    sfPromise = createSearchFnServer({
+      adapter,
       basePath: "/searchfn",
     }).then(async (sf) => {
-      await sf.adapter.initialize?.({
+      await adapter.initialize({
         resources: [{ name: "articles", searchFields: ["title", "body"] }],
       });
       return sf;
@@ -41,12 +42,7 @@ function getServer() {
 
 const handler = async (request: Request) => {
   const sf = await getServer();
-  return sf.router.handle({
-    method: request.method,
-    url: request.url,
-    headers: request.headers,
-    body: request.body,
-  });
+  return sf.router.handle(request);
 };
 
 export const GET = handler;

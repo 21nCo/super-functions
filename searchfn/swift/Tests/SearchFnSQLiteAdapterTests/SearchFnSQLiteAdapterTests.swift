@@ -111,6 +111,11 @@ func sqliteSearchAllDeterministic() async throws {
     )
 
     #expect(results.map { "\($0.resource):\($0.id)" } == ["alpha:a1", "alpha:a2", "beta:b1"])
+    #expect(results.map(\.score) == [1.0, 1.0, 1.0])
+    let limited = try await reopened.searchAll(
+        SearchFnSearchAllParams(query: "incident", resources: ["alpha", "beta"], limit: 2)
+    )
+    #expect(limited == Array(results.prefix(2)))
 }
 
 @Test("sqlite manifest mismatches throw canonical format errors")

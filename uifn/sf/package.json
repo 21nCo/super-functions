@@ -18,12 +18,13 @@
     "test": "vitest run --config vitest.config.ts",
     "lint": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "prepack": "npm run build"
+    "prepack": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@uifn/patterns": "0.2.0-experimental.0"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
     "vitest": "^1.0.0"

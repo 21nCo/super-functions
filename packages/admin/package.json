@@ -1,6 +1,6 @@
 {
   "name": "@superfunctions/admin",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Shared administration contracts and runtime for Superfunctions",
   "type": "module",
   "main": "./dist/index.js",

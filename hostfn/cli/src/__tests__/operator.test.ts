@@ -16,6 +16,40 @@ const scope: HostFnScope = {
 };
 
 describe("MemoryHostFnOperatorStore", () => {
+  it("runs deployment and domain lifecycles without a global Web Crypto object", async () => {
+    vi.stubGlobal("crypto", undefined);
+    try {
+      const store = new MemoryHostFnOperatorStore();
+      const target: HostFnTarget = {
+        id: "target_1", scope, name: "API", server: "api.example.test", runtime: "nodejs",
+        status: "ready", updatedAt: "2026-08-22T00:00:00.000Z",
+      };
+      await store.putTarget(target);
+      const attachDomain = vi.fn(async () => undefined)
+        .mockRejectedValueOnce(new Error("provider unavailable"));
+      const executor: HostFnDeploymentExecutor = {
+        deploy: vi.fn(), cancel: vi.fn(), rollback: vi.fn(), restart: vi.fn(),
+        attachDomain, detachDomain: vi.fn(), setVariable: vi.fn(), deleteVariable: vi.fn(),
+      };
+      const operator = new HostFnOperatorService(store, executor);
+      await expect(operator.deploy(scope, {
+        targetId: target.id, revision: "git:abc123",
+      })).resolves.toMatchObject({ id: expect.stringMatching(/^deployment_/), status: "queued" });
+      await expect(operator.attachDomain(scope, {
+        targetId: target.id, hostname: "api.example.test",
+      })).rejects.toThrow("provider unavailable");
+      const [failed] = await store.listDomains(scope);
+      expect(failed).toMatchObject({ id: expect.stringMatching(/^domain_/), status: "failed" });
+      await expect(operator.attachDomain(scope, {
+        targetId: target.id, hostname: "api.example.test",
+      })).resolves.toMatchObject({ id: failed!.id, status: "active" });
+      await operator.detachDomain(scope, failed!.id);
+      await expect(store.listDomains(scope)).resolves.toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("keeps slash-bearing scope tuples isolated", async () => {
     const store = new MemoryHostFnOperatorStore();
     const firstScope = { ...scope, installationId: "a/b", workspaceId: "c" };

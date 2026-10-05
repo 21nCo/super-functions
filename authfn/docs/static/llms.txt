@@ -61,7 +61,7 @@
 - [SvelteKit](https://authfn.superfunctions.dev/docs/frameworks/sveltekit) — Mount authfn as a SvelteKit endpoint and read sessions from server load functions, hooks, and form actions.
 - [Getting Started](https://authfn.superfunctions.dev/docs/getting-started) — Declare an authfn app, create its server runtime, mount it on Hono, and sign in from the typed client.
 - [Welcome to authfn](https://authfn.superfunctions.dev/docs) — Self-hosted, framework-agnostic authentication for TypeScript and Python. Sessions, OTP, passwords, social OAuth, API keys, 2FA, multi-region — opt in to what you need.
-- [API keys plugin](https://authfn.superfunctions.dev/docs/plugins/api-keys) — User-owned API keys — issued, hashed, scoped, revocable.
+- [API keys plugin](https://authfn.superfunctions.dev/docs/plugins/api-keys) — User-owned and server-issued unowned API keys — hashed, scoped, revocable.
 - [Authoring custom plugins](https://authfn.superfunctions.dev/docs/plugins/authoring) — Step-by-step guide to writing your own authfn plugin — schema, routes, hooks, observability, and OpenAPI integration.
 - [Email OTP plugin](https://authfn.superfunctions.dev/docs/plugins/email-otp) — One-time codes for email verification, magic-link sign-in, sign-up, and password reset.
 - [Plugins](https://authfn.superfunctions.dev/docs/plugins) — Every authfn capability is a plugin. Pick the ones you need; skip the rest.

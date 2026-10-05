@@ -25,7 +25,7 @@ classifiers = [
 ]
 dependencies = [
   "pydantic>=2.5.0",
-  "superfunctions>=0.1.0",
+  "superfunctions-core>=0.1.1,<0.2.0",
   "Pillow>=10.0.0",
 ]
 

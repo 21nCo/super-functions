@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@apifn/collections": "0.0.2",
-    "@apifn/core": "0.0.2",
+    "@apifn/core": "0.0.3",
     "@apifn/mock": "0.0.2",
     "@apifn/snippets": "0.0.3",
     "cac": "^6.7.14",

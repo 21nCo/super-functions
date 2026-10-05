@@ -17,12 +17,13 @@ bun add @searchfn/server @searchfn/adapter-memory
 import { createSearchFnServer } from "@searchfn/server";
 import { MemoryAdapter } from "@searchfn/adapter-memory";
 
+const adapter = new MemoryAdapter();
 const sf = await createSearchFnServer({
-  adapter: new MemoryAdapter(),
+  adapter,
   basePath: "/searchfn",
 });
 
-await sf.adapter.initialize?.({
+await adapter.initialize({
   resources: [{ name: "messages", searchFields: ["body"] }],
 });
 
@@ -30,19 +31,14 @@ Bun.serve({
   port: 3000,
   fetch: async (req) => {
     if (new URL(req.url).pathname.startsWith("/searchfn/")) {
-      return sf.router.handle({
-        method: req.method,
-        url: req.url,
-        headers: req.headers,
-        body: req.body,
-      });
+      return sf.router.handle(req);
     }
     return new Response("Not found", { status: 404 });
   },
 });
 ```
 
-`Bun.serve` accepts native `Request`s, and `sf.router.handle` returns one — no shim needed.
+`Bun.serve` accepts native `Request`s, and `sf.router.handle` returns a `Response` — no shim needed.
 
 ## 3. Smoke test
 

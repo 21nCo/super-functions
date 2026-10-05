@@ -1,6 +1,6 @@
 {
   "name": "@filefn/server",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "FileFn server SDK for file upload/download handling",
   "type": "module",
   "main": "./dist/index.js",
@@ -13,8 +13,9 @@
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsc",
-    "test": "vitest",
+    "build": "npm run clean && tsc",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -36,7 +37,6 @@
     ]
   },
   "dependencies": {
-    "@filefn/processing": "0.1.1",
     "@superfunctions/storage": "0.2.0",
     "@superfunctions/files": "0.1.0",
     "@superfunctions/db": "0.2.0",
@@ -45,6 +45,9 @@
     "@superfunctions/observability": "0.0.1"
   },
   "devDependencies": {
+    "@filefn/processing": "0.1.1",
+    "@superfunctions/storage-local": "0.2.0",
+    "sharp": "^0.33.5",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0",
     "vitest": "^3.2.4"

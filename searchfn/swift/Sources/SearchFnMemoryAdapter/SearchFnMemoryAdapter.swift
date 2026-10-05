@@ -121,10 +121,15 @@ public actor SearchFnMemoryAdapter: SearchFnAdapter {
                     fieldBoosts: params.fieldBoosts ?? defaults?.fieldBoosts ?? [:]
                 )
             )
+            let maximumScore = matches.first?.score ?? 1.0
 
             results.append(
                 contentsOf: matches.map { match in
-                    SearchFnSearchAllResult(resource: resource, id: match.id, score: match.score)
+                    SearchFnSearchAllResult(
+                        resource: resource,
+                        id: match.id,
+                        score: maximumScore > 0 ? match.score / maximumScore : match.score
+                    )
                 }
             )
         }

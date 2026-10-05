@@ -73,6 +73,7 @@ private func runConformanceWorkflow(
         SearchFnSearchAllParams(query: "same", resources: ["notes", "items"], limit: 10)
     )
     #expect(searchAllResults.map { "\($0.resource):\($0.id)" } == ["items:a", "items:b", "items:c", "notes:n1"])
+    #expect(searchAllResults.map(\.score) == [1.0, 1.0, 1.0, 1.0])
 
     try await client.remove(resource: "items", ids: ["a", "a"])
     let afterRemove = try await client.search(
@@ -85,6 +86,26 @@ private func runConformanceWorkflow(
         SearchFnSearchParams(resource: "notes", query: "same", limit: 10)
     )
     #expect(notesAfterClear == [])
+
+    try await client.index(
+        SearchFnIndexParams(
+            resource: "notes",
+            documents: [
+                SearchFnDocument(id: "n1", fields: ["title": "same same"]),
+                SearchFnDocument(id: "n2", fields: ["title": "same extra"]),
+            ]
+        )
+    )
+    let normalized = try await client.searchAll(
+        SearchFnSearchAllParams(query: "same", resources: ["notes", "items"], limit: 10)
+    )
+    #expect(normalized.map { "\($0.resource):\($0.id)" } == ["items:b", "items:c", "notes:n1", "notes:n2"])
+    #expect(normalized.prefix(3).map(\.score) == [1.0, 1.0, 1.0])
+    #expect(normalized.last.map { $0.score > 0 && $0.score < 1.0 } == true)
+    let diverse = try await client.searchAll(
+        SearchFnSearchAllParams(query: "same", resources: ["notes", "items"], limit: 2, limitPerResource: 1)
+    )
+    #expect(diverse.map { "\($0.resource):\($0.id)" } == ["items:b", "notes:n1"])
 
     try await client.dispose()
 

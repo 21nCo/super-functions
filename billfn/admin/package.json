@@ -33,11 +33,14 @@
     "access": "public"
   },
   "dependencies": {
-    "@billfn/core": "0.0.1",
-    "@superfunctions/admin": "0.1.0"
+    "@billfn/core": "0.0.1"
+  },
+  "peerDependencies": {
+    "@superfunctions/admin": "^0.1.4"
   },
   "devDependencies": {
-    "@superfunctions/db": "0.2.0",
+    "@superfunctions/admin": "^0.1.4",
+    "@superfunctions/db": "0.3.0",
     "typescript": "^5.6.0",
     "vitest": "^3.2.4"
   }
