@@ -329,6 +329,40 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it("rejects credential keys inside structured argv before startup state is created", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-json-"));
+    const stateDir = path.join(root, "state");
+    const marker = "synthetic-sentinel";
+    const bodies = [
+      `{"password":"${marker}"}`,
+      `{"pass\\u0077ord":"${marker}"}`,
+      `{"payload":[{"api_token":"${marker}"}]}`,
+      `%7B%22clientSecret%22%3A%22${marker}%22%7D`,
+      `{\\"pass\\u0077ord\\":\\"${marker}\\"}`,
+    ];
+    try {
+      for (const body of bodies) for (const source of ["command", "script", "health"] as const) {
+        const config = fixture();
+        if (source === "command") config.processes!.worker.command = ["curl", `--data-raw=${body}`];
+        if (source === "script") {
+          config.processes!.worker.adapter = "npm";
+          config.processes!.worker.script = `start --data-raw '${body}'`;
+        }
+        if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", "--data-raw", body] };
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+        const error = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (failure: Error) => failure.message);
+        expect(error).toMatch(/secret channel/);
+        expect(error).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      const ordinary = fixture();
+      ordinary.processes!.worker.command = ["curl", "--data-raw", '{"payload":[{"page":2}]}', "literal $HOME `id` ; & |"];
+      ordinary.processes!.worker.envAllowlist = ["API_TOKEN"];
+      ordinary.processes!.worker.secretEnv = ["API_TOKEN"];
+      expect(resolveEndpointTemplates({ config: ordinary, plan: createPlan(ordinary), ownerId: "owner", ports: { api: 4101, worker: 4102 } }).nodes.worker.command).toEqual(ordinary.processes!.worker.command);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("rejects PostgreSQL credential names and assembled header values before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-assembled-secret-"));
     const stateDir = path.join(root, "state");

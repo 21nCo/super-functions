@@ -70,6 +70,8 @@ HTTP readiness that names a leased `port` probes its direct loopback URL at star
 
 For native commands, package scripts and command-health argv, a colon-delimited credential pair following `--user`, `--username`, `--proxy-user`, `-u` or `-U` is rejected in split, equals and attached forms. Plain user names remain valid. Percent-encoded credential URLs and headers are also rejected; encoding does not turn them into safe non-secret literals. This inspection does not invoke a shell or alter argument bytes.
 
+Form arguments with credential-named fields and JSON bodies with credential-named keys are rejected in those same three argv sources, including nested objects, JSON-escaped keys, percent-encoded bodies and shell-quoted JSON in package scripts. Ordinary non-secret JSON remains argv data. Deliver credentials through `envAllowlist` and `secretEnv` instead of embedding them in a command or readiness check.
+
 Before reusing an unmanaged Compose container with `--no-recreate`, DevFn also compares Compose's effective service config hash with the hash persisted on that container. A changed command, published port, image, or other startup setting is rejected even when the environment is unchanged. Missing or malformed hash evidence fails closed before `up`.
 
 ## Profiles and hostnames

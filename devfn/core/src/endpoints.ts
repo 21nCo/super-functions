@@ -126,6 +126,7 @@ function rejectCredentialArgument(value: string, field: string): void {
   // Percent encoding is data to the resolver, but many command-line clients
   // decode it before sending a header or URL. Inspect both representations.
   for (const checked of decodedVariants(value)) {
+    rejectStructuredCredentialPayload(checked, field);
     for (const argument of checked.matchAll(/(?:^|\s)--([A-Za-z][A-Za-z0-9_-]*)(?==|\s|$)/g)) {
       if (isCredentialKey(argument[1])) invalid(field, "credential-bearing argv must use the secret channel.");
     }
@@ -135,6 +136,51 @@ function rejectCredentialArgument(value: string, field: string): void {
     }
   }
   rejectCredentialVector([value], field);
+}
+
+/** Inspect JSON bodies as data, including JSON escapes in field names. */
+function rejectStructuredCredentialPayload(value: string, field: string): void {
+  const inspect = (node: unknown): void => {
+    if (Array.isArray(node)) { for (const child of node) inspect(child); return; }
+    if (node === null || typeof node !== "object") return;
+    for (const [key, child] of Object.entries(node)) {
+      if (isCredentialKey(key)) invalid(field, "credential-bearing structured argv must use the secret channel.");
+      inspect(child);
+    }
+  };
+  // A script or --data-raw= argument may contain a JSON body after other
+  // text. Include shell-quoted JSON in package scripts without executing it.
+  const candidates = [value];
+  for (let depth = 0; depth < 2; depth += 1) {
+    const unquoted = candidates.at(-1)!.replaceAll('\\"', '"');
+    if (unquoted === candidates.at(-1)) break;
+    candidates.push(unquoted);
+  }
+  for (const candidate of candidates) for (let start = 0; start < candidate.length; start += 1) {
+    if (candidate[start] !== "{" && candidate[start] !== "[") continue;
+    const stack: string[] = [];
+    let quoted = false;
+    let escaped = false;
+    for (let end = start; end < candidate.length; end += 1) {
+      const char = candidate[end];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === '"') quoted = false;
+        continue;
+      }
+      if (char === '"') { quoted = true; continue; }
+      if (char === "{" || char === "[") stack.push(char);
+      else if (char === "}" || char === "]") {
+        if (stack.pop() !== (char === "}" ? "{" : "[")) break;
+        if (stack.length === 0) {
+          try { inspect(JSON.parse(candidate.slice(start, end + 1)) as unknown); }
+          catch (error) { if (error instanceof DevFnError) throw error; }
+          break;
+        }
+      }
+    }
+  }
 }
 
 function decodedVariants(value: string): string[] {
