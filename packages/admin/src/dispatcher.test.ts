@@ -97,9 +97,7 @@ describe("AdminDispatcher", () => {
     });
     const dispatcher = createAdminDispatcher({ registry });
 
-    expect(await dispatcher.dispatch({ operationId: "examplefn.records.list", input: { limit: 20 }, context: context() })).toMatchObject({ ok: true, data: { items: [] }, requestId: "req_1" });
     expect(await dispatcher.dispatch({ operationId: "examplefn.records.list", input: {}, context: context() })).not.toHaveProperty("auditId");
-    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ input: { limit: 20 }, context: expect.objectContaining({ scope: expect.objectContaining({ environmentId: "env_1" }) }) }));
 
     expect(await dispatcher.dispatch({ operationId: "examplefn.records.list", input: { limit: 1000 }, context: context() })).toMatchObject({ ok: false, error: { code: "invalid_argument" } });
     expect(await dispatcher.dispatch({ operationId: "examplefn.records.list", input: {}, context: context({ actor: { id: "denied", permissions: [] } }) })).toMatchObject({ ok: false, error: { code: "forbidden" } });

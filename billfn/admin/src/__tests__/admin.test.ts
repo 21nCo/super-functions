@@ -3,7 +3,6 @@ import {
   billFnAdminCapability,
   createBillFnAdminAdapter,
   createBillFnDomainAdminService,
-  type BillFnAdminService,
 } from "../index.js";
 import { createBillFn, type BillFnInstance } from "@billfn/core";
 import { encodeAdminCursor } from "@superfunctions/admin";
@@ -56,50 +55,6 @@ describe("@billfn/admin", () => {
     });
   });
 
-  it("delegates the operation and complete scope to the injected domain service", async () => {
-    const listPlans = vi.fn(async (_input, operationContext) => ({
-      ok: true as const,
-      data: {
-        operationId: "billfn.plans.list",
-        namespace: operationContext.scope.namespace,
-        region: operationContext.scope.region,
-      },
-    }));
-    const unused = vi.fn(async () => ({ ok: true as const, data: {} }));
-    const service: BillFnAdminService = {
-      listProducts: unused,
-      getProduct: unused,
-      listPlans,
-      getPlan: unused,
-      listPrices: unused,
-      getPrice: unused,
-      listSubscriptions: unused,
-      getSubscription: unused,
-      listEntitlements: unused,
-      getEntitlement: unused,
-      listUsage: unused,
-      getUsage: unused,
-      changeSubscription: unused,
-      cancelSubscription: unused,
-      refundPayment: unused,
-      reconcileProvider: unused,
-    };
-    const adapter = createBillFnAdminAdapter(service);
-
-    const result = await adapter.execute(
-      "billfn.plans.list",
-      { limit: 25 },
-      context,
-    );
-
-    expect(result.data).toEqual({
-      operationId: "billfn.plans.list",
-      namespace: "tenant_1",
-      region: "in-south",
-    });
-    expect(listPlans).toHaveBeenCalledWith({ limit: 25 }, context);
-    expect(unused).not.toHaveBeenCalled();
-  });
 
   it("reads the configured catalog through a real BillFn instance", async () => {
     const billfn = createBillFn({

@@ -83,6 +83,13 @@ verifiable registry lineage.
 React component gates resolve React/ReactDOM from the installed test renderer's
 peer tree, keeping workspace and package-local runs coherent without first-party
 source aliases or dependency-version changes.
+Qualify downstream consumers outside the workspace using their packed tarballs
+and registry-installed dependencies. A workspace build alone does not prove
+published dependency compatibility. Exercise the actual HTTP, CLI or browser
+surface after installation; report any local candidate dependency substitutions
+separately rather than calling them registry-only qualification.
+The docs-theme gate covers URL encoding and independent navigation options;
+verify its document shell and CSS export in a packed browser consumer.
 Stable releases use `latest`; prereleases use their first identifier, such as
 `experimental` or `rc`. Numeric/range-like, noncanonical and `latest` prerelease
 channels fail rather than overwriting stable installations. The workflow removes
