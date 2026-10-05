@@ -286,6 +286,49 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
+  it("rejects credential-named form and query argv across command, script and health before mutation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-form-"));
+    const stateDir = path.join(root, "state");
+    const marker = "synthetic-sentinel";
+    const vectors = [
+      ["--data-urlencode", `password=${marker}`],
+      [`--data-urlencode=password%3D${marker}`],
+      ["--data-raw", `DB_PASS=${marker}`],
+      ["-d", `api_token=${marker}`],
+      [`-dapi_token=${marker}`],
+      ["--form", `clientSecret=${marker}`],
+      [`-FclientSecret=${marker}`],
+      ["--url-query", `+access_token=${marker}`],
+    ];
+    try {
+      for (const vector of vectors) {
+        for (const source of ["command", "script", "health"] as const) {
+          const config = fixture();
+          if (source === "command") config.processes!.worker.command = ["curl", ...vector];
+          if (source === "script") {
+            config.processes!.worker.adapter = "npm";
+            config.processes!.worker.script = `start curl ${vector.join(" ")}`;
+            config.processes!.worker.command = [];
+          }
+          if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", ...vector] };
+          expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+          const error = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (failure: Error) => failure.message);
+          expect(error).toMatch(/secret channel/);
+          expect(error).not.toContain(marker);
+          await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        }
+      }
+      const ordinary = fixture();
+      ordinary.processes!.worker.command = ["curl", "--user", "alice", "--data-urlencode", "page=2", "-F", "report=ok", "literal $HOME `id` ; & |"];
+      ordinary.processes!.worker.envAllowlist = ["API_TOKEN"];
+      ordinary.processes!.worker.secretEnv = ["API_TOKEN"];
+      const resolved = resolveEndpointTemplates({ config: ordinary, plan: createPlan(ordinary), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+      expect(resolved.nodes.worker.command).toEqual(ordinary.processes!.worker.command);
+      expect(JSON.stringify(resolved)).not.toContain(marker);
+      expect(JSON.stringify(resolved)).not.toContain("API_TOKEN");
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("rejects PostgreSQL credential names and assembled header values before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-assembled-secret-"));
     const stateDir = path.join(root, "state");

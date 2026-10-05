@@ -69,6 +69,12 @@ export function createComposeEnvironment(spec: ComposeServiceSpec, generated: Re
   return { ...environment, ...(spec.env ?? {}), ...generated };
 }
 
+/** Build host-side readiness environment without publishing inherited secrets in endpoint plans. */
+export function createComposeReadinessEnvironment(spec: ComposeServiceSpec, resolved: Record<string, string>): NodeJS.ProcessEnv {
+  const source = spec.health?.type === "command" ? process.env : resolved;
+  return createComposeEnvironment({ ...spec, env: resolved }, resolved, source);
+}
+
 /** Digest source bytes and Compose's effective interpolation without retaining values. */
 export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: string, instanceId: string, environment: NodeJS.ProcessEnv): Promise<string> {
   const sourceFile = await resolveContainedPath(root, spec.file ?? "compose.yaml", `services.${spec.service}.file`);
@@ -292,7 +298,7 @@ export class ComposeController {
       await input.onStarted?.(managed);
       await waitForReadiness({
         health: input.spec.health, ports: input.ports, logPath: overrideFile, cwd: input.root,
-        environment: input.readinessEnvironment ? createComposeEnvironment({ ...input.spec, env: input.readinessEnvironment }, input.readinessEnvironment) : environment,
+        environment: input.readinessEnvironment ? createComposeReadinessEnvironment(input.spec, input.readinessEnvironment) : environment,
         isAlive: async () => await this.status(managed) === "running",
         readLog: async () => await this.logs(managed, 1000, managed.startedAt),
       });

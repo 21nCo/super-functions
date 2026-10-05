@@ -3,8 +3,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { checkReadinessNow } from "@devfn/processes";
 import { describe, expect, it } from "vitest";
-import { ComposeController, composeProjectName, createComposeEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
+import { ComposeController, composeProjectName, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
 const MOCK_COMPOSE_HASH = "a".repeat(64);
@@ -104,6 +105,42 @@ describe("ComposeController", () => {
       { APP_PORT: "4100" },
       { PATH: "/bin", ALLOWED: "yes", SECRET_TOKEN: "no" },
     )).not.toHaveProperty("SECRET_TOKEN");
+  });
+
+  it("delivers allowlisted secrets to host command readiness without storing them in resolved values", async () => {
+    const marker = "synthetic-sentinel";
+    const previous = process.env.API_TOKEN;
+    process.env.API_TOKEN = marker;
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-readiness-"));
+    const readinessEnvironment = { DEVFN_URL_WEB: "http://127.0.0.1:4100", MODE: "probe" };
+    const spec = { adapter: "compose" as const, service: "web", envAllowlist: ["API_TOKEN"], secretEnv: ["API_TOKEN"],
+      health: { type: "command" as const, command: [process.execPath, "-e", "if (!process.env.API_TOKEN || process.env.DEVFN_URL_WEB !== 'http://127.0.0.1:4100') process.exit(1)"] } };
+    let psCalls = 0;
+    const controller = new ComposeController(async (_file, args) => {
+      if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+      if (args.includes("ps")) return { stdout: ++psCalls >= 3 ? "container-id\n" : "", stderr: "" };
+      if (args[0] === "inspect") return { stdout: "true\n", stderr: "" };
+      return { stdout: "", stderr: "" };
+    });
+    try {
+      const managed = await controller.start({ name: "web", spec, root, runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: {},
+        environment: { DEVFN_URL_WEB: "http://web:8080" }, readinessEnvironment });
+      expect(JSON.stringify(managed)).not.toContain(marker);
+      expect(JSON.stringify(readinessEnvironment)).not.toContain(marker);
+      const statusEnvironment = createComposeReadinessEnvironment(spec, readinessEnvironment);
+      expect(statusEnvironment).toMatchObject({ API_TOKEN: marker, DEVFN_URL_WEB: "http://127.0.0.1:4100" });
+      expect(statusEnvironment).not.toHaveProperty("UNLISTED_SECRET");
+      expect(await checkReadinessNow({ health: spec.health, ports: {}, logPath: "", cwd: root, environment: statusEnvironment, isAlive: () => true })).toBe(true);
+      delete process.env.API_TOKEN;
+      expect(await checkReadinessNow({ health: spec.health, ports: {}, logPath: "", cwd: root,
+        environment: createComposeReadinessEnvironment(spec, readinessEnvironment), isAlive: () => true })).toBe(false);
+      process.env.API_TOKEN = marker;
+      expect(createComposeReadinessEnvironment({ ...spec, health: { type: "http", url: "http://127.0.0.1:4100" } }, readinessEnvironment)).not.toHaveProperty("API_TOKEN");
+    } finally {
+      if (previous === undefined) delete process.env.API_TOKEN;
+      else process.env.API_TOKEN = previous;
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("binds explicitly public ports and disables persistence for secret-bearing logs", () => {

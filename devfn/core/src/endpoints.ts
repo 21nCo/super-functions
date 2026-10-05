@@ -160,11 +160,23 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
       const token = tokens[index].replace(/^["']|["']$/g, "");
       const option = token.match(/^(--(?:proxy-)?user(?:name)?|-u|-U)(?:=(.*))?$/i);
       const shortAttached = option ? null : token.match(/^-[uU](.+)$/);
-      if (!option && !shortAttached) continue;
-      const raw = option ? option[2] ?? tokens[index + 1] : shortAttached![1];
-      if (raw === undefined) continue;
-      for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
-        if (candidate.includes(":")) invalid(field, "credential-bearing argv must use the secret channel.");
+      if (option || shortAttached) {
+        const raw = option ? option[2] ?? tokens[index + 1] : shortAttached![1];
+        if (raw !== undefined) for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
+          if (candidate.includes(":")) invalid(field, "credential-bearing argv must use the secret channel.");
+        }
+      }
+      // Form and query options carry name=value data that may be decoded by
+      // the client after DevFn has already persisted the resolved argv.
+      const formOption = token.match(/^(--(?:data(?:-ascii|-binary|-raw|-urlencode)?|form(?:-string)?|url-query)|-[dF])(?:=(.*))?$/i);
+      const shortForm = formOption ? null : token.match(/^-[dF](.+)$/);
+      if (formOption || shortForm) {
+        const raw = formOption ? formOption[2] ?? tokens[index + 1] : shortForm![1];
+        if (raw === undefined) continue;
+        for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, "").replace(/^\+/, ""))) {
+          const assignment = candidate.match(/^([^=:@\s]+)(?:=|:=|@)/);
+          if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
+        }
       }
     }
   }

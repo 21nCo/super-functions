@@ -216,7 +216,8 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       expect(JSON.stringify(await readReceipt(config, root, owner))).not.toContain("synthetic-sentinel");
       expect(await readFile(observed, "utf8")).not.toContain("synthetic-sentinel");
-      for (const vector of [["--user", "alice:synthetic-sentinel"], ["--user=alice:synthetic-sentinel"], ["-u", "alice:synthetic-sentinel"]]) {
+      for (const vector of [["--user", "alice:synthetic-sentinel"], ["--user=alice:synthetic-sentinel"], ["-u", "alice:synthetic-sentinel"],
+        ["--data-urlencode", "password=synthetic-sentinel"], ["--data-urlencode=password%3Dsynthetic-sentinel"], ["-F", "api_token=synthetic-sentinel"]]) {
         config.processes!.native.command!.push(...vector);
         const status = await orchestrator.status({ config, root });
         expect(status).toMatchObject({ ok: false, state: "degraded", urls: {} });

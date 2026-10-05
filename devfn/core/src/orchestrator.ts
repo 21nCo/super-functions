@@ -4,7 +4,7 @@ import { mkdir, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { ComposeController, composeProjectName, createComposeEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, type ManagedComposeService } from "@devfn/compose";
+import { ComposeController, composeProjectName, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, type ManagedComposeService } from "@devfn/compose";
 import { defaultStateDir, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
 import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, resolveAdapterCommand, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
@@ -174,7 +174,7 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     const spec = config.services?.[managed.name];
     if (!spec || serviceStates[index] !== "running") return false;
     return await checkReadinessNow({
-      health: resolvedHealth(spec.health, resolved.nodes[managed.name]?.healthCommand, resolved.nodes[managed.name]?.healthUrl), ports, logPath: "", cwd: root, environment: createComposeEnvironment({ ...spec, env: resolved.nodes[managed.name]?.readinessEnvironment }, resolved.nodes[managed.name]?.readinessEnvironment),
+      health: resolvedHealth(spec.health, resolved.nodes[managed.name]?.healthCommand, resolved.nodes[managed.name]?.healthUrl), ports, logPath: "", cwd: root, environment: createComposeReadinessEnvironment(spec, resolved.nodes[managed.name]?.readinessEnvironment ?? {}),
       previouslyReady: receipt.state === "ready", isAlive: async () => await compose.status(managed) === "running",
       readLog: async () => await compose.logs({ ...managed, logsDisabled: Boolean(managed.logsDisabled || spec.secretEnv?.length) }, 1000, managed.startedAt),
     });
