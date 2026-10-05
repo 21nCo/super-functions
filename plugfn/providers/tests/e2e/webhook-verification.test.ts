@@ -1,14 +1,12 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import { createPlugFnRouter } from '../../src/router/http-router.js';
-import { plugFn } from '../../src/core/plug-fn.js';
-import { githubProvider } from '../../../providers/src/github/index.js';
-import { linearProvider } from '../../../providers/src/linear/index.js';
-import { slackProvider } from '../../../providers/src/slack/index.js';
-import { stripeProvider } from '../../../providers/src/stripe/index.js';
-import { outlookProvider, outlookSubscriptionStore } from '../../../providers/src/outlook/index.js';
-import { gmailProvider } from '../../../providers/src/gmail/index.js';
-import { MemoryAdapter } from '../../src/storage/adapters/memory.js';
+import { createPlugFnRouter, plugFn, MemoryAdapter } from 'plugfn';
+import { githubProvider } from '../../src/github/index.js';
+import { linearProvider } from '../../src/linear/index.js';
+import { slackProvider } from '../../src/slack/index.js';
+import { stripeProvider } from '../../src/stripe/index.js';
+import { outlookProvider, outlookSubscriptionStore } from '../../src/outlook/index.js';
+import { gmailProvider } from '../../src/gmail/index.js';
 
 describe('PlugFn webhook verification e2e', () => {
   it('verifies and echoes Slack URL verification challenges', async () => {

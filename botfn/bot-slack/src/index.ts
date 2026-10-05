@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { verifySlackRequest } from '@botfn/slack-core';
+import { verifySlackRequest } from '@superfunctions/botfn-slack-core';
 
 type Bindings = {
   SLACK_SIGNING_SECRET: string;

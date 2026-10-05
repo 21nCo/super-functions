@@ -1,6 +1,6 @@
 {
   "name": "plugfn",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Self-hosted integration platform for developers",
   "type": "module",
   "main": "dist/index.js",
@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "npm run clean && tsc",
     "clean": "rm -rf dist",
     "dev": "tsc --watch",
     "test": "vitest run",
@@ -33,9 +33,9 @@
   "author": "21n",
   "license": "MIT",
   "dependencies": {
-    "@superfunctions/oauth-core": "0.1.1",
+    "@superfunctions/oauth-core": "0.2.0",
     "@superfunctions/oauth-flow": "0.1.0",
-    "@superfunctions/oauth-http": "0.1.0",
+    "@superfunctions/oauth-http": "0.2.0",
     "@superfunctions/oauth-providers": "0.1.0",
     "@superfunctions/oauth-storage": "0.1.0",
     "@superfunctions/auth": "0.2.0",

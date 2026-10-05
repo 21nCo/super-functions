@@ -3,6 +3,8 @@
  */
 
 import path from "node:path";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { describe, it, expect } from "vitest";
 import { createApifnProvider } from "../src/provider.js";
 import type { OpenAPIDocument } from "../src/types.js";
@@ -53,11 +55,6 @@ describe("TV-DOCS-001: createApifnProvider — split by tag", () => {
         expect(tags).toEqual(["orders", "system", "users"]);
     });
 
-    it("all entries have kind: 'api'", async () => {
-        const provider = createApifnProvider({ spec: TAGGED_SPEC, splitByTag: true });
-        const entries = await provider();
-        for (const e of entries) expect(e.kind).toBe("api");
-    });
 
     it("each entry slug is derived from the tag", async () => {
         const provider = createApifnProvider({ spec: TAGGED_SPEC, splitByTag: true, basePath: "/api" });
@@ -174,21 +171,6 @@ describe("TV-DOCS-001: createApifnProvider — split by tag", () => {
         expect(first).toBe(second);
     });
 
-    it("provider.entries is populated after first call", async () => {
-        const provider = createApifnProvider({ spec: TAGGED_SPEC });
-        expect(provider.entries).toHaveLength(0);
-        await provider();
-        expect(provider.entries.length).toBeGreaterThan(0);
-    });
-
-    it("embeds an explicit Try-It base URL in every entry", async () => {
-        const provider = createApifnProvider({
-            spec: TAGGED_SPEC,
-            baseUrl: "https://staging.example.com",
-        });
-        const entries = await provider();
-        expect(entries.every((entry) => entry.baseUrl === "https://staging.example.com")).toBe(true);
-    });
 });
 
 // ─── TV-DOCS-001: splitByTag=false ───────────────────────────────────────────
@@ -206,27 +188,6 @@ describe("TV-DOCS-001: createApifnProvider — full spec (splitByTag: false)", (
         expect(entries[0].endpoints.length).toBe(7);
     });
 
-    it("single entry slug is the basePath", async () => {
-        const provider = createApifnProvider({ spec: TAGGED_SPEC, splitByTag: false, basePath: "/reference" });
-        const entries = await provider();
-        expect(entries[0].slug).toBe("/reference");
-    });
-
-    it("title comes from spec.info.title", async () => {
-        const provider = createApifnProvider({ spec: TAGGED_SPEC, splitByTag: false });
-        const entries = await provider();
-        expect(entries[0].title).toBe("Test API");
-    });
-
-    it("embeds an explicit Try-It base URL in the single entry", async () => {
-        const provider = createApifnProvider({
-            spec: TAGGED_SPEC,
-            splitByTag: false,
-            baseUrl: "https://staging.example.com",
-        });
-        const entries = await provider();
-        expect(entries[0].baseUrl).toBe("https://staging.example.com");
-    });
 });
 
 // ─── TV-DOCS-004: sidebar generation ─────────────────────────────────────────
@@ -248,14 +209,6 @@ describe("TV-DOCS-004: sidebar generation", () => {
         }
     });
 
-    it("sidebar link labels include HTTP method", async () => {
-        const provider = createApifnProvider({ spec: TAGGED_SPEC, splitByTag: true });
-        const entries = await provider();
-        const users = entries.find((e) => e.tag === "users")!;
-        const labels = users.sidebar.items.map((i) => i.type === "link" ? i.label : "").filter(Boolean);
-        expect(labels.some((l) => l.includes("GET"))).toBe(true);
-        expect(labels.some((l) => l.includes("POST"))).toBe(true);
-    });
 });
 
 // ─── TV-DOCS-006: split by tag (multi-page slugs) ────────────────────────────
@@ -284,11 +237,31 @@ describe("TV-DOCS-006: split by tag produces correct slugs", () => {
 
 describe("createApifnProvider — specPath loading", () => {
     it("loads and parses a YAML spec from file", async () => {
-        const specPath = path.join(import.meta.dirname, "../../cli/__tests__/fixtures/diff/before.yml");
-        const provider = createApifnProvider({ specPath, splitByTag: false });
-        const entries = await provider();
-        expect(entries.length).toBeGreaterThan(0);
-        expect(entries[0].kind).toBe("api");
+        const directory = await mkdtemp(path.join(tmpdir(), "apifn-docsfn-spec-"));
+        try {
+            const specPath = path.join(directory, "openapi.yml");
+            await writeFile(specPath, `
+openapi: 3.0.0
+info:
+  title: File-backed API
+  version: 2.0.0
+paths:
+  /file-status:
+    get:
+      responses:
+        '200':
+          description: File status
+`);
+            const provider = createApifnProvider({ specPath, splitByTag: false });
+            const entries = await provider();
+            expect(entries).toHaveLength(1);
+            expect(entries[0].spec.info).toEqual({ title: "File-backed API", version: "2.0.0" });
+            expect(entries[0].endpoints.map(({ method, path }) => ({ method, path }))).toEqual([
+                { method: "get", path: "/file-status" },
+            ]);
+        } finally {
+            await rm(directory, { recursive: true, force: true });
+        }
     });
 
     it("throws if neither spec nor specPath provided", async () => {

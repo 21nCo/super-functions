@@ -59,6 +59,8 @@ const s = {
         background: "var(--apifn-bg-surface)",
     } as React.CSSProperties,
     cardHeader: {
+        width: "100%", border: "none", background: "none",
+        color: "inherit", font: "inherit", textAlign: "left",
         display: "flex", alignItems: "center", gap: "12px",
         padding: "14px 20px", cursor: "pointer",
         borderBottom: "1px solid var(--apifn-border)",
@@ -105,12 +107,12 @@ function EndpointCard({
 
     return (
         <div id={anchorId} style={s.card}>
-            <div style={s.cardHeader} onClick={() => setOpen((o) => !o)}>
+            <button type="button" style={s.cardHeader} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
                 <span style={s.badge(method)}>{method.toUpperCase()}</span>
                 <span style={s.cardPath}>{path}</span>
                 {operation.summary && <span style={s.cardSummary}>{operation.summary as string}</span>}
-                <span style={{ color: "var(--apifn-text-muted)", fontSize: "12px", transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▼</span>
-            </div>
+                <span aria-hidden="true" style={{ color: "var(--apifn-text-muted)", fontSize: "12px", transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▼</span>
+            </button>
 
             {open && (
                 <>

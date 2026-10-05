@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   ApiKeyTable,
@@ -38,8 +39,8 @@ interface PatternStoryFile {
   stories: PatternStoryEntry[];
 }
 
-const repoRoot = path.resolve(process.cwd(), '../..');
-const storyRoot = 'uifn/patterns/stories';
+const packageRoot = fileURLToPath(new URL('..', import.meta.url));
+const storyRoot = 'stories';
 
 const patternFns: Record<PatternName, (props: Record<string, unknown>) => PatternRenderModel> = {
   AuthPanel: (props) => AuthPanel(props as unknown as Parameters<typeof AuthPanel>[0]),
@@ -59,11 +60,11 @@ const patternFns: Record<PatternName, (props: Record<string, unknown>) => Patter
 };
 
 function readJson<T>(pathname: string): T {
-  return JSON.parse(readFileSync(path.join(repoRoot, pathname), 'utf8')) as T;
+  return JSON.parse(readFileSync(path.join(packageRoot, pathname), 'utf8')) as T;
 }
 
 function listStoryFiles(): string[] {
-  const absoluteRoot = path.join(repoRoot, storyRoot);
+  const absoluteRoot = path.join(packageRoot, storyRoot);
   if (!existsSync(absoluteRoot)) {
     return [];
   }

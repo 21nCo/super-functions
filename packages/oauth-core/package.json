@@ -1,6 +1,6 @@
 {
   "name": "@superfunctions/oauth-core",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Core OAuth types and service contracts for Superfunctions",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -25,7 +25,7 @@
     "build": "tsup",
     "test": "vitest --config ./vitest.config.ts --run",
     "test:watch": "vitest --config ./vitest.config.ts --watch",
-    "lint": "echo 'lint not configured'",
+    "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "clean": "node --input-type=module -e \"import('node:fs').then(({ rmSync }) => rmSync('dist', { recursive: true, force: true }))\""
   },

@@ -49,7 +49,7 @@ const api = createApiClient({
 });
 
 const input = await readJsonStdin<{ command: string }>();
-ui.info(`running command: ${input.command}`);
+process.stderr.write(`running command: ${input.command}\n`);
 const result = await api.post("/runs", input);
 writeJsonStdout(result.data);
 ```
@@ -119,7 +119,7 @@ program
   .action(async (options, command) => {
     const globals = command.parent?.opts() ?? {};
 
-    return runAction(
+    process.exitCode = await runAction(
       async ({ name }, ctx) => {
         ctx.output.info(`hello ${name}`);
       },
@@ -129,6 +129,8 @@ program
       }
     );
   });
+
+await program.parseAsync(process.argv);
 ```
 
 ### `cac`
@@ -143,8 +145,8 @@ cli.option("--json", "Emit machine-readable output");
 cli
   .command("greet")
   .option("--name <name>", "Name to greet")
-  .action((options) =>
-    runAction(
+  .action(async (options) => {
+    process.exitCode = await runAction(
       async ({ name }, ctx) => {
         return {
           data: {
@@ -157,8 +159,11 @@ cli
       {
         mode: options.json ? "json" : "text",
       }
-    )
-  );
+    );
+  });
+
+cli.parse(process.argv, { run: false });
+await cli.runMatchedCommand();
 ```
 
 ### `node:util.parseArgs`
@@ -176,7 +181,7 @@ const { values, positionals } = parseArgs({
 });
 
 if (positionals[0] === "greet") {
-  await runAction(
+  process.exitCode = await runAction(
     async ({ name }, ctx) => {
       ctx.output.info(`hello ${name}`);
     },

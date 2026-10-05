@@ -1,16 +1,23 @@
-# superfunctions
+# superfunctions-core
 
 > Core HTTP abstractions for the superfunctions ecosystem
 
 **Location:** `packages/python-core/`  
-**Package:** `superfunctions`  
+**Package:** `superfunctions-core`
 **Import:** `from superfunctions.http import ...`
 
 ## Installation
 
 ```bash
-pip install superfunctions
+pip install 'superfunctions-core>=0.1.1,<0.2.0'
 ```
+
+The distribution name changed because PyPI's `superfunctions` belongs to an
+unrelated Youssef/youssefa metafunction project; its `0.1.3` release is not a
+21n baseline. The Python import namespace remains `superfunctions`, with no
+old-distribution compatibility shim. The initial core version is `0.1.1`.
+Publish this prerequisite before releasing dependent Python SDKs or adapters;
+until then, validate with the actual locally built wheel via `PIP_FIND_LINKS`.
 
 ## Usage
 

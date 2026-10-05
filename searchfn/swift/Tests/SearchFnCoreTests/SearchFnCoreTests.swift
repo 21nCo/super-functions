@@ -78,6 +78,47 @@ func engineRanksExactPrefixAndFuzzyMatches() throws {
     #expect(results.map { $0.id } == ["a", "b", "c"])
 }
 
+@Test("prefix indexing does not change ranking evidence or document lengths")
+func prefixIndexingDoesNotChangeRanking() throws {
+    let documents = [
+        SearchFnDocument(id: "exact", fields: ["title": "report", "body": "weekly summary"]),
+        SearchFnDocument(id: "prefix", fields: ["title": "reporting", "body": "finance"]),
+        SearchFnDocument(id: "fuzzy", fields: ["title": "repotr", "body": "typo sample"]),
+    ]
+    let plain = SearchFnResourceEngine(searchFields: ["title", "body"])
+    let indexed = SearchFnResourceEngine(
+        searchFields: ["title", "body"],
+        pipelineOptions: SearchFnPipelineOptions(enablePrefixIndexing: true)
+    )
+    plain.upsert(documents)
+    indexed.upsert(documents)
+
+    for request in [
+        SearchFnCoreSearchRequest(query: "report", fuzzy: .enabled, prefix: true),
+        SearchFnCoreSearchRequest(query: "report"),
+        SearchFnCoreSearchRequest(query: "repor", prefix: true),
+        SearchFnCoreSearchRequest(query: "report", fuzzy: .enabled),
+    ] {
+        #expect(try indexed.search(request) == plain.search(request))
+    }
+    #expect(try indexed.search(SearchFnCoreSearchRequest(query: "report")).map(\.id) == ["exact"])
+    #expect(try indexed.search(SearchFnCoreSearchRequest(query: "repor", prefix: true)).map(\.id) == ["prefix", "exact"])
+}
+
+@Test("field boosts multiply the complete BM25 contribution")
+func fieldBoostsApplyAfterSaturation() throws {
+    let engine = SearchFnResourceEngine(searchFields: ["title"])
+    engine.upsert([
+        SearchFnDocument(id: "match", fields: ["title": "budget budget"]),
+    ])
+
+    let ordinary = try engine.search(SearchFnCoreSearchRequest(query: "budget"))
+    let boosted = try engine.search(
+        SearchFnCoreSearchRequest(query: "budget", fieldBoosts: ["title": 3.0])
+    )
+    #expect(boosted.first?.score == ordinary.first.map { $0.score * 3.0 })
+}
+
 @Test("field boosts change ranking without breaking deterministic ordering")
 func fieldBoostsAffectRanking() throws {
     let engine = SearchFnResourceEngine(

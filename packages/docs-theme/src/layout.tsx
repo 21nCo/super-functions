@@ -11,6 +11,10 @@ export type DocsRootLayoutProps = {
   bodyStyle?: CSSProperties;
 };
 
+/**
+ * Render the document shell with English, the shared body classes and font by default.
+ * Explicit language/classes replace those defaults; body styles merge over the font.
+ */
 export function DocsRootLayout({
   children,
   lang = "en",

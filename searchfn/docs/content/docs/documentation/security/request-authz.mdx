@@ -118,8 +118,9 @@ Treat `authorize` like any other async function — handle your own errors.
 import { createSearchFnServer } from "@searchfn/server";
 import { MemoryAdapter } from "@searchfn/adapter-memory";
 
+const adapter = new MemoryAdapter();
 const sf = await createSearchFnServer({
-  adapter: new MemoryAdapter(),
+  adapter,
   authorize: async (ctx, action) => action === "search",
 });
 

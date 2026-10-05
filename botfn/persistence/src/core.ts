@@ -3,10 +3,11 @@ import { initTRPC } from '@trpc/server';
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
 import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
-import { issues, discordThreads } from './schema';
-import { drizzle } from 'drizzle-orm/postgres-js';
+import { issues, discordThreads } from './schema.js';
+import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import * as schema from './schema';
+import * as schema from './schema.js';
+import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
 // Environment interface
 export interface PersistenceEnv {
@@ -85,7 +86,8 @@ function generateThreadUrl(guildId: string, channelId: string): string {
   return `https://discord.com/channels/${guildId}/${channelId}`;
 }
 
-type PersistenceDb = ReturnType<typeof drizzle<typeof schema>>;
+export type PersistenceDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
+type PersistenceDb = PostgresJsDatabase<typeof schema>;
 
 const dbByUrl = new Map<string, PersistenceDb>();
 
@@ -101,7 +103,10 @@ function getDatabase(databaseUrl: string): PersistenceDb {
 }
 
 // Create tRPC context
-const createContext = (env: PersistenceEnv) => {
+const createContext = (env: PersistenceEnv, database?: PersistenceDatabase) => {
+  if (database) {
+    return { db: database };
+  }
   if (!env.DATABASE_URL) {
     throw new Error('DATABASE_URL is required for BotFn persistence');
   }
@@ -109,7 +114,9 @@ const createContext = (env: PersistenceEnv) => {
   return { db: getDatabase(env.DATABASE_URL) };
 };
 
-type Context = ReturnType<typeof createContext>;
+export interface Context {
+  db: PersistenceDatabase;
+}
 
 // Initialize tRPC
 const t = initTRPC.context<Context>().create();
@@ -389,7 +396,7 @@ const appRouter = t.router({
 export type AppRouter = typeof appRouter;
 
 // Create Hono app
-export function createPersistenceApp() {
+export function createPersistenceApp(database?: PersistenceDatabase) {
   const app = new Hono<{ Bindings: PersistenceEnv }>();
 
   app.get('/', (c) => {
@@ -401,7 +408,7 @@ export function createPersistenceApp() {
       endpoint: '/trpc',
       req: c.req.raw,
       router: appRouter,
-      createContext: () => createContext(c.env),
+      createContext: () => createContext(c.env, database),
     });
   });
 

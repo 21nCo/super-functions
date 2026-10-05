@@ -21,3 +21,7 @@ const dotenv = await secfn.toDotEnv("nucleus-production");
 ```
 
 `toDotEnv` returns text only. It does not write plaintext to disk.
+
+Release gates (`npm run typecheck`, `npm run build`, and `npm test`) consume
+installed `@secfn/core` exports, not sibling source aliases. Install the declared
+registry prerequisites before running them in a standalone checkout.

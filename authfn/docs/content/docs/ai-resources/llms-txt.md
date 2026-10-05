@@ -5,91 +5,48 @@ description: Static context files generated from the docs — drop into your ass
 
 # llms.txt
 
-[`llms.txt`](https://llmstxt.org/) is a community convention for static, LLM-friendly summaries of a project. authfn ships **two** files at the docs origin:
+[`llms.txt`](https://llmstxt.org/) is a convention for LLM-friendly project context. This docs site serves two generated files under its existing `/docs` mount:
 
-- `https://authfn.superfunctions.dev/llms.txt` — short index. Lists every doc page with a one-line description and a link.
-- `https://authfn.superfunctions.dev/llms-full.txt` — full text. Concatenated markdown of every doc page plus the OpenAPI spec.
+- `https://authfn.com/docs/llms.txt` — short page index.
+- `https://authfn.com/docs/llms-full.txt` — full documentation context, including the configured API material.
 
-Use whichever fits your assistant's context budget.
+These are the configured publication URLs; a local build does not prove live hosting or credentials.
 
-## How they're generated
+## Generation
 
-Both files are emitted by docsfn at build time:
+The normal repository build prepares AuthFn's physical dependencies before regenerating OpenAPI and LLM content:
 
-```bash
-npm run docs:llms     # writes static/llms.txt and static/llms-full.txt
+```sh
+npm exec -- turbo run build --filter=@authfn/docs
 ```
 
-The pipeline:
+After those prerequisites are built, run from `authfn/docs`:
 
-1. Walks every page in `content/docs/**`.
-2. For each page, extracts the H1 + frontmatter description for `llms.txt`.
-3. For each page, includes the full markdown body for `llms-full.txt`.
-4. Appends the OpenAPI spec from `content/api/authfn.json` (operations + schemas).
-5. Writes both files into `static/` so they ship with the deployed site.
+```sh
+npm run generate:openapi
+npm run generate:llms
+npm run check:llms
+```
+
+`generate:llms` loads `docsfn.config.ts` through the consumer's published DocsFn package and filesystem provider, builds the manifest, and writes `static/llms.txt` and `static/llms-full.txt`. Native prerendered routes publish those files at `/docs/llms.txt` and `/docs/llms-full.txt`; the app-root static copies are not the advertised docs-owner URLs. `check:llms` compares generated content without writing it.
 
 ## Use it
 
-In Cursor, Claude Desktop, ChatGPT custom GPTs, or anything that accepts a URL as context:
-
-```
-https://authfn.superfunctions.dev/llms-full.txt
-```
-
-For local development against your own fork, you can also point at:
-
-```
-http://localhost:5173/llms.txt
-http://localhost:5173/llms-full.txt
-```
-
-## What's in `llms-full.txt`
-
-Roughly:
+Supply the full-context URL to an assistant that accepts URLs:
 
 ```text
-# authfn — Self-hosted authentication for any stack
-
-> Sessions, OTP, passwords, social OAuth, 2FA, API keys, multi-region...
-
-## Welcome
-[full body of index.md]
-
-## Getting Started
-[full body of getting-started.md]
-
-## Core Concepts › Architecture
-[full body of architecture.md]
-
-...
-
-## OpenAPI
-- POST /sign-up/password — Create a new account with email and password.
-- POST /sign-in/password — Sign in with email and password.
-[...all 31 operations...]
+https://authfn.com/docs/llms-full.txt
 ```
 
-## Customizing
+The default local docs port is 6005:
 
-The `docs:llms` task is configurable via `docsfn.config.ts`:
-
-```ts
-{
-  // ...
-  llmsTxt: {
-    enabled: true,
-    includeOpenApi: true,
-    includePages: ['docs/**'],
-    excludePages: ['docs/blog/**'],
-  },
-}
+```text
+http://localhost:6005/docs/llms.txt
+http://localhost:6005/docs/llms-full.txt
 ```
 
-## Token budget
+## Configuration and size
 
-| File | Approximate size |
-| --- | --- |
-| `llms.txt` | ~8 KB (~2,000 tokens) |
-| `llms-full.txt` | ~250 KB (~65,000 tokens) |
+The manifest follows the configured content directories and `site.canonicalUrl` in `docsfn.config.ts`. The shared `scripts/docs-site/llms.mjs` builder passes the canonical URL and excludes Blog posts with the published `includeBlog:false` option. There is no consumer `docs:llms` script or invented `llmsTxt` configuration object.
 
-For models with smaller context windows, prefer `llms.txt` and use the [MCP server](./mcp) for on-demand retrieval.
+Generated sizes vary with the corpus and API schema. Prefer the short index for smaller context budgets; retrieve individual linked pages or use the separately configured [MCP server](./mcp) when appropriate. Static context files do not authenticate an assistant or establish a live MCP connection.

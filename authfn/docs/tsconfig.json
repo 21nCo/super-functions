@@ -1,5 +1,14 @@
 {
+  "extends": "./.svelte-kit/tsconfig.json",
   "compilerOptions": {
+    "paths": {
+      "$lib": ["./src/lib"], "$lib/*": ["./src/lib/*"],
+      "@docsfn/core": ["./node_modules/@docsfn/core", "../../node_modules/@docsfn/core"],
+      "@docsfn/sveltekit": ["./node_modules/@docsfn/sveltekit", "../../node_modules/@docsfn/sveltekit"],
+      "@sveltejs/kit": ["./node_modules/@sveltejs/kit", "../../node_modules/@sveltejs/kit"],
+      "gray-matter": ["./node_modules/gray-matter", "../../node_modules/gray-matter"],
+      "vite": ["./node_modules/vite", "../../node_modules/vite"]
+    },
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -13,8 +22,7 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
-    "lib": ["ES2022", "DOM"],
-    "types": ["svelte", "vite/client"]
-  },
-  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte", "vite.config.ts", "svelte.config.js"]
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["svelte", "vite/client", "node"]
+  }
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import type { OAuthProviderDescriptor } from '@superfunctions/oauth-core';
 import { DefaultOAuthTokenHttpClient } from '../src/index.js';
-const provider = { id: 'slack', authorizationUrl: 'https://slack.com/oauth/v2/authorize', tokenUrl: 'https://slack.com/api/oauth.v2.access', revocationUrl: 'https://slack.com/api/auth.revoke', revocationResponse: 'json-ok' as const, defaultScopes: ['search:read'], supportsPkce: false, supportsRefreshToken: true, authorizationCodeTokenPath: ['authed_user'] };
+const provider: OAuthProviderDescriptor = { id: 'slack', authorizationUrl: 'https://slack.com/oauth/v2/authorize', tokenUrl: 'https://slack.com/api/oauth.v2.access', revocationUrl: 'https://slack.com/api/auth.revoke', revocationResponse: 'json-ok', defaultScopes: ['search:read'], supportsPkce: false, supportsRefreshToken: true, authorizationCodeTokenPath: ['authed_user'] };
 const request = { provider, grantType: 'authorization_code' as const, clientId: 'client', clientSecret: 'secret', code: 'code', redirectUri: 'https://example.com/callback' };
 function client(body: unknown) {
   return new DefaultOAuthTokenHttpClient({ fetcher: async () => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, text: async () => JSON.stringify(body) }) });

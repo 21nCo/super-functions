@@ -61,11 +61,32 @@ public func searchFnScorePostings(
     b: Double = 0.75,
     d: Double = 0.5
 ) -> [SearchFnScoredDocument] {
+    searchFnScorePostings(
+        chunks,
+        documentLengths: documentLengths,
+        averageDocumentLength: averageDocumentLength,
+        chunkBoosts: [],
+        k1: k1,
+        b: b,
+        d: d
+    )
+}
+
+func searchFnScorePostings(
+    _ chunks: [SearchFnPostingChunk],
+    documentLengths: [String: Int],
+    averageDocumentLength: Double,
+    chunkBoosts: [Double],
+    k1: Double = 1.2,
+    b: Double = 0.75,
+    d: Double = 0.5
+) -> [SearchFnScoredDocument] {
     let normalizedAverage = max(averageDocumentLength, 1.0)
     var scores: [String: Double] = [:]
 
-    for chunk in chunks {
+    for (index, chunk) in chunks.enumerated() {
         let idf = chunk.inverseDocumentFrequency ?? log(1.0 + 1.0 / max(Double(chunk.documentFrequency), 1.0))
+        let boost = chunkBoosts.isEmpty ? 1.0 : chunkBoosts[index]
 
         for posting in chunk.postings {
             guard posting.termFrequency > 0 else {
@@ -80,7 +101,7 @@ public func searchFnScorePostings(
                 contribution *= 0.7
             }
 
-            scores[posting.documentID, default: 0.0] += contribution
+            scores[posting.documentID, default: 0.0] += contribution * boost
         }
     }
 
