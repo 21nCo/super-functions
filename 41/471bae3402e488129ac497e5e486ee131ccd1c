@@ -1,0 +1,31 @@
+devfn/compose/src/index.ts
+  s_28d4128c7417df::t_ba51b1d8e1f9af 72-77,301
+devfn/compose/test/override.test.ts
+  s_28d4128c7417df::t_67fd94f45f4753 6,8,110-145
+devfn/core/README.md
+  s_28d4128c7417df::t_9eaa35358d072b 9-10,14
+devfn/core/src/endpoints.ts
+  s_28d4128c7417df::t_6d947f1dfef16a 163-179
+devfn/core/src/orchestrator.ts
+  s_28d4128c7417df::t_1d4632230b6762 7,177
+devfn/core/test/endpoints.test.ts
+  s_28d4128c7417df::t_e1df04714c1d22 289-331
+devfn/core/test/startup-fixture.test.ts
+  s_28d4128c7417df::t_35bbd01a563cf9 219-220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "41471bae3402e488129ac497e5e486ee131ccd1c",
+  "prompts": {},
+  "sessions": {
+    "s_28d4128c7417df": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c1c580e-3b46-4699-b932-7f146605890c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
