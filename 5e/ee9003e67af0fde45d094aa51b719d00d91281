@@ -1,0 +1,22 @@
+devfn/core/README.md
+  h_bdc5b81c173ee9 10-11
+devfn/core/src/endpoints.ts
+  h_bdc5b81c173ee9 126-134,137-169,174-177,330-331,333,335-340,345,347,349,351-352
+devfn/core/test/endpoints.test.ts
+  h_bdc5b81c173ee9 246-288
+devfn/core/test/startup-fixture.test.ts
+  h_bdc5b81c173ee9 219-233
+devfn/docs/configuration.md
+  h_bdc5b81c173ee9 71-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5eee9003e67af0fde45d094aa51b719d00d91281",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
