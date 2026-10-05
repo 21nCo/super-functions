@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M46078EW538JRWJ0423YD2X6",
+  "strategy": "manual-commit",
+  "branch": "codex/docs-clifn-20260926",
+  "checkpoints_count": 17,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1774702,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 44044160,
+    "output_tokens": 241445,
+    "api_call_count": 274
+  }
+}
