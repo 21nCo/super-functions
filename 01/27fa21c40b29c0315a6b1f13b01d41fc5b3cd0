@@ -1,0 +1,21 @@
+devfn/core/test/endpoints.test.ts
+  s_c47a459dc63db7::t_2785b4e914aa94 332-365
+devfn/docs/configuration.md
+  s_c47a459dc63db7::t_c57a7b32b149b5 73-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0127fa21c40b29c0315a6b1f13b01d41fc5b3cd0",
+  "prompts": {},
+  "sessions": {
+    "s_c47a459dc63db7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a10c29-92e2-72d1-aafb-1869c77e501f",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
